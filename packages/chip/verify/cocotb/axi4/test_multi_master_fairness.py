@@ -107,7 +107,8 @@ async def collect_beats(dut, expected_per_master, max_cycles, qos_per_master=Non
     last_grant = -1
     streak = 0
     max_streak = 0
-    for cycle in range(max_cycles):
+    cycle = 0
+    for cycle in range(max_cycles):  # noqa: B007  used after the loop
         await RisingEdge(dut.clk)
 
         # AR handshake: clear arvalid bits whose master also saw arready
@@ -146,8 +147,9 @@ async def collect_beats(dut, expected_per_master, max_cycles, qos_per_master=Non
                         )
                         arvalid_mask |= bit
                         outstanding[m] += 1
-        if accepted or any(rvalid & (1 << m) and int(dut.m_rlast.value) & (1 << m)
-                           for m in range(NUM_MASTERS)):
+        if accepted or any(
+            rvalid & (1 << m) and int(dut.m_rlast.value) & (1 << m) for m in range(NUM_MASTERS)
+        ):
             # Any update to the mask above must be written back to the
             # DUT so other masters see the new valid pattern.
             dut.m_arvalid.value = arvalid_mask
@@ -169,17 +171,15 @@ async def equal_qos_round_robin_no_starvation(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
-    counts, max_streak, cycles = await collect_beats(
-        dut, expected_per_master=64, max_cycles=20000
-    )
+    counts, max_streak, cycles = await collect_beats(dut, expected_per_master=64, max_cycles=20000)
     dut._log.info(
         f"per-master beat counts (equal QoS): {counts}; max streak={max_streak};"
         f" total cycles={cycles}"
     )
-    assert all(c >= 64 for c in counts), \
-        f"some master got under 64 beats: {counts}"
-    assert max_streak <= MAX_STARVATION_BEATS, \
+    assert all(c >= 64 for c in counts), f"some master got under 64 beats: {counts}"
+    assert max_streak <= MAX_STARVATION_BEATS, (
         f"max consecutive same-master R-beats {max_streak} > {MAX_STARVATION_BEATS}"
+    )
 
 
 @cocotb.test()
@@ -206,9 +206,8 @@ async def qos_weighted_high_master_wins_no_starvation(dut):
     high = counts[0]
     others = counts[1:]
     avg_other = sum(others) / len(others)
-    assert high >= avg_other, (
-        f"high-QoS master got {high} beats vs avg-other {avg_other:.1f}"
-    )
+    assert high >= avg_other, f"high-QoS master got {high} beats vs avg-other {avg_other:.1f}"
     # No master goes over the starvation window even with QoS bias.
-    assert max_streak <= MAX_STARVATION_BEATS, \
+    assert max_streak <= MAX_STARVATION_BEATS, (
         f"max consecutive same-master R-beats {max_streak} > {MAX_STARVATION_BEATS}"
+    )

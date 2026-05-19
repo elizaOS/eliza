@@ -9,7 +9,9 @@
 # This Makefile expects the user to have placed an unpacked lmbench
 # tree under ../../external/lmbench/ before invoking `make`.  If the
 # tree is missing, the build fails closed and writes a blocker JSON.
-override CC := riscv64-unknown-linux-gnu-gcc
+override CC := $(shell command -v riscv64-unknown-linux-gnu-gcc \
+                    || command -v riscv64-linux-gnu-gcc \
+                    || echo ../../../external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc)
 CFLAGS  ?= -O3 -static -Wall -Wextra
 ARTIFACT_DIR ?= ../../../docs/evidence/memory
 LMBENCH_SRC  ?= ../../external/lmbench
@@ -21,7 +23,7 @@ check-src:
 	  echo "lmbench: $(LMBENCH_SRC)/src not present"; \
 	  exit 2; \
 	fi
-	@if ! command -v $(CC) >/dev/null 2>&1; then \
+	@if [ ! -x "$(CC)" ] && ! command -v $(CC) >/dev/null 2>&1; then \
 	  echo "lmbench: $(CC) not found"; \
 	  exit 2; \
 	fi

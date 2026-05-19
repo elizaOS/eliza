@@ -73,6 +73,32 @@ REQUIRED_TEST_IDS = {
     "id_ordering_per_axid",
     "decode_error_returns_decerr",
     "exclusive_read_then_write_returns_exokay_or_okay",
+    "decode_err_irq_w1c_clears_status",
+    "excl_fail_irq_w1c_clears_status",
+    "w1c_clears_only_masked_bits",
+    "equal_qos_round_robin_no_starvation",
+    "qos_weighted_high_master_wins_no_starvation",
+    "dfi_init_brings_cke_high",
+    "dfi_write_emits_activate_then_write_col",
+    "dfi_read_emits_activate_then_read_col",
+    "dfi_refresh_fires_within_window",
+}
+
+REQUIRED_TEST_FILES = {
+    "incr_burst_length_sweep": "verify/cocotb/axi4/test_axi4_burst.py",
+    "write_strobe_partial_beat_preserves_unwritten_bytes": "verify/cocotb/axi4/test_axi4_burst.py",
+    "id_ordering_per_axid": "verify/cocotb/axi4/test_axi4_burst.py",
+    "decode_error_returns_decerr": "verify/cocotb/axi4/test_axi4_burst.py",
+    "exclusive_read_then_write_returns_exokay_or_okay": "verify/cocotb/axi4/test_axi4_burst.py",
+    "decode_err_irq_w1c_clears_status": "verify/cocotb/axi4/test_irq_w1c.py",
+    "excl_fail_irq_w1c_clears_status": "verify/cocotb/axi4/test_irq_w1c.py",
+    "w1c_clears_only_masked_bits": "verify/cocotb/axi4/test_irq_w1c.py",
+    "equal_qos_round_robin_no_starvation": "verify/cocotb/axi4/test_multi_master_fairness.py",
+    "qos_weighted_high_master_wins_no_starvation": "verify/cocotb/axi4/test_multi_master_fairness.py",
+    "dfi_init_brings_cke_high": "verify/cocotb/axi4/test_dfi_traffic.py",
+    "dfi_write_emits_activate_then_write_col": "verify/cocotb/axi4/test_dfi_traffic.py",
+    "dfi_read_emits_activate_then_read_col": "verify/cocotb/axi4/test_dfi_traffic.py",
+    "dfi_refresh_fires_within_window": "verify/cocotb/axi4/test_dfi_traffic.py",
 }
 
 REQUIRED_ARTIFACTS = {
@@ -124,12 +150,19 @@ def main() -> int:
     missing = sorted(REQUIRED_TEST_IDS - seen_ids)
     require(not missing, "required_tests missing ids: " + ", ".join(missing), errors)
 
-    test_file = ROOT / "verify/cocotb/axi4/test_axi4_burst.py"
-    require(test_file.is_file(), "verify/cocotb/axi4/test_axi4_burst.py missing", errors)
-    if test_file.is_file():
-        text = test_file.read_text()
-        for tid in REQUIRED_TEST_IDS:
-            require(tid in text, f"cocotb file missing test {tid}", errors)
+    # Verify each declared cocotb test id exists in the file that owns
+    # it.  The W1C / multi-master / DFI tests live alongside the
+    # original burst suite in dedicated cocotb modules.
+    for tid in REQUIRED_TEST_IDS:
+        rel_opt = REQUIRED_TEST_FILES.get(tid)
+        require(rel_opt is not None, f"no source file mapping for test {tid}", errors)
+        if rel_opt is None:
+            continue
+        path = ROOT / rel_opt
+        require(path.is_file(), f"{rel_opt} missing for test {tid}", errors)
+        if path.is_file():
+            text = path.read_text()
+            require(tid in text, f"{rel_opt} missing test {tid}", errors)
 
     artifacts = data.get("required_artifacts") or []
     require(

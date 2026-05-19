@@ -44,9 +44,7 @@ async def reset(dut):
         await RisingEdge(dut.clk)
 
 
-async def axi4_write_burst(
-    dut, master, awid, addr, beats, size=4
-):
+async def axi4_write_burst(dut, master, awid, addr, beats, size=4):
     bit = 1 << master
     dut.m_awid[master].value = awid
     dut.m_awaddr[master].value = addr
@@ -223,10 +221,10 @@ async def dfi_write_emits_activate_then_write_col(dut):
     matched = sum(
         1
         for d in write_data_observed
-        if (d & 0xFFFFFFFFFFFFFFFF) in {(0xDEAD_BEEF_0000_0000 + i) & 0xFFFFFFFFFFFFFFFF for i in range(4)}
+        if (d & 0xFFFFFFFFFFFFFFFF)
+        in {(0xDEAD_BEEF_0000_0000 + i) & 0xFFFFFFFFFFFFFFFF for i in range(4)}
     )
-    assert matched >= 4, \
-        f"WRITE-col DFI wrdata did not reflect AXI4 wdata (matched={matched})"
+    assert matched >= 4, f"WRITE-col DFI wrdata did not reflect AXI4 wdata (matched={matched})"
 
 
 @cocotb.test()

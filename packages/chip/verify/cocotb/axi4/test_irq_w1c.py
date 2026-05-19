@@ -197,20 +197,23 @@ async def decode_err_irq_w1c_clears_status(dut):
 
     # Clear via W1C with master-0 bit set.
     await w1c_irq(dut, decode_err_mask=0x1)
-    assert (int(dut.decode_err_irq.value) & 0x1) == 0, \
+    assert (int(dut.decode_err_irq.value) & 0x1) == 0, (
         "decode_err_irq[0] still asserted after W1C clear"
+    )
 
     # And it stays clear when no new event fires.
     for _ in range(8):
         await RisingEdge(dut.clk)
-        assert (int(dut.decode_err_irq.value) & 0x1) == 0, \
+        assert (int(dut.decode_err_irq.value) & 0x1) == 0, (
             "decode_err_irq[0] reasserted with no new fault"
+        )
 
     # Retrigger the decode error — the bit must come back.
     rd = await axi4_read_burst(dut, 0, 0x2, 0xCAFE_1000, 1)
     assert rd
-    assert int(dut.decode_err_irq.value) & 0x1, \
+    assert int(dut.decode_err_irq.value) & 0x1, (
         "decode_err_irq[0] did not reassert after second fault"
+    )
 
 
 @cocotb.test()
@@ -231,13 +234,13 @@ async def excl_fail_irq_w1c_clears_status(dut):
     # Sticky IRQ should be visible for several cycles.
     for _ in range(8):
         await RisingEdge(dut.clk)
-        assert int(dut.exclusive_fail_irq.value) & 0x1, \
-            "exclusive_fail_irq[0] dropped while sticky"
+        assert int(dut.exclusive_fail_irq.value) & 0x1, "exclusive_fail_irq[0] dropped while sticky"
 
     # Clear via W1C.
     await w1c_irq(dut, excl_fail_mask=0x1)
-    assert (int(dut.exclusive_fail_irq.value) & 0x1) == 0, \
+    assert (int(dut.exclusive_fail_irq.value) & 0x1) == 0, (
         "exclusive_fail_irq[0] still asserted after W1C clear"
+    )
 
     # Stays clear without retrigger.
     for _ in range(8):
@@ -248,8 +251,9 @@ async def excl_fail_irq_w1c_clears_status(dut):
     rd = await axi4_read_burst(dut, 0, 0xC, 0xA000, 1, size=size, lock=1)
     assert rd
     await axi4_write_burst(dut, 1, 0xD, 0xA000, [(0xBEEF, full_strb)], size=size)
-    assert int(dut.exclusive_fail_irq.value) & 0x1, \
+    assert int(dut.exclusive_fail_irq.value) & 0x1, (
         "exclusive_fail_irq[0] did not reassert after second invalidation"
+    )
 
 
 @cocotb.test()
@@ -266,8 +270,7 @@ async def w1c_clears_only_masked_bits(dut):
 
     # W1C with mask=0 (the clear bus pulses but no bits requested).
     await w1c_irq(dut, decode_err_mask=0x0, excl_fail_mask=0x0)
-    assert int(dut.decode_err_irq.value) & 0x1, \
-        "decode_err_irq[0] should not clear when mask=0"
+    assert int(dut.decode_err_irq.value) & 0x1, "decode_err_irq[0] should not clear when mask=0"
 
     # Now actually clear.
     await w1c_irq(dut, decode_err_mask=0x1)

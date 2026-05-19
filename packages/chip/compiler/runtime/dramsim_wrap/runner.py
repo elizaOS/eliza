@@ -121,6 +121,25 @@ def run_dram_sweep(
                 "compiler/runtime/dramsim_wrap/configs/lpddr5x_10667.ini",
                 "compiler/runtime/dramsim_wrap/configs/lpddr6_14400.ini",
             ],
+            "unblock_commands": {
+                "dramsim3": [
+                    "git clone --depth 1 https://github.com/umd-memsys/DRAMsim3.git external/dramsim3",
+                    "cmake -S external/dramsim3 -B external/dramsim3/build -DCMAKE_BUILD_TYPE=Release",
+                    "cmake --build external/dramsim3/build --target dramsim3main -j",
+                    "export PATH=$PWD/external/dramsim3/build:$PATH",
+                ],
+                "ramulator2": [
+                    "git clone --depth 1 https://github.com/CMU-SAFARI/ramulator2.git external/ramulator2",
+                    "cmake -S external/ramulator2 -B external/ramulator2/build -DCMAKE_BUILD_TYPE=Release",
+                    "cmake --build external/ramulator2/build -j",
+                    "export PATH=$PWD/external/ramulator2/build:$PATH",
+                ],
+            },
+            "note": (
+                "Both upstreams are open-source academic simulators. The wrapper "
+                "prefers DRAMSim3 when both are installed because LPDDR5X/6 timing "
+                "models there are better aligned with the JEDEC standard."
+            ),
         }
         (output_dir / "dram_sim_blocked.json").write_text(json.dumps(blocked, indent=2))
         return []
