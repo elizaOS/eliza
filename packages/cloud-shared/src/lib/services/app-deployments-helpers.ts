@@ -6,12 +6,9 @@
  * @elizaos/core and the rest of the runtime).
  */
 
-export type AppDeploymentStatus =
-  | "draft"
-  | "building"
-  | "deploying"
-  | "deployed"
-  | "failed";
+import type { AppDeploymentStatus } from "../../db/schemas/apps";
+
+export type { AppDeploymentStatus };
 
 /**
  * Public-facing deployment state.
@@ -20,12 +17,7 @@ export type AppDeploymentStatus =
  * lifecycle the CLI polls on. `building` and `deploying` both surface as
  * `BUILDING` because the CLI does not care which sub-phase the worker is in.
  */
-export type DeploymentStatus =
-  | "QUEUED"
-  | "BUILDING"
-  | "READY"
-  | "ERROR"
-  | "DRAFT";
+export type DeploymentStatus = "BUILDING" | "READY" | "ERROR" | "DRAFT";
 
 const PERSISTED_TO_PUBLIC: Record<AppDeploymentStatus, DeploymentStatus> = {
   draft: "DRAFT",
