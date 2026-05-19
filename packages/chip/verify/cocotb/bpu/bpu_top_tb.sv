@@ -7,9 +7,9 @@
 
 `timescale 1ns/1ps
 
-module bpu_top_tb
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module bpu_top_tb (
     input  logic                clk,
     input  logic                rst_n,
 

@@ -120,5 +120,12 @@ def validate_command_payload(command: CommandEnvelope) -> None:
             _require_string(payload, "id")
         return
 
+    if command.command == "camera.snapshot":
+        # No required payload. Optional `camera` selects a non-default camera
+        # if the backend exposes multiple (head, overhead, etc.).
+        if "camera" in payload:
+            _require_string(payload, "camera")
+        return
+
     raise ValueError(f"unsupported command: {command.command}")
 

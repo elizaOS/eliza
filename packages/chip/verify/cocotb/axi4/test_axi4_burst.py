@@ -64,17 +64,12 @@ async def axi4_write_burst(dut, master, awid, addr, beats, size=4, burst=BURST_I
     """Issue an AXI4 write burst from ``master`` (0 or 1).
 
     ``beats`` is a list of (data, strb) tuples.  Returns the BRESP and BID.
+    AXI4 handshake protocol: valid stays high until the rising-edge
+    where ready is also high; valid is deasserted on the next cycle.
     """
-    awvalid = list(dut.m_awvalid.value)
-    awid_vec = list(dut.m_awid.value)
-    awaddr   = list(dut.m_awaddr.value)
-    awlen    = list(dut.m_awlen.value)
-    awsize   = list(dut.m_awsize.value)
-    awburst  = list(dut.m_awburst.value)
+    bit = 1 << master
 
     # Drive AW
-    bit = 1 << master
-    dut.m_awvalid.value = (int(dut.m_awvalid.value) & ~bit) | bit
     dut.m_awid[master].value    = awid
     dut.m_awaddr[master].value  = addr
     dut.m_awlen[master].value   = len(beats) - 1
@@ -85,31 +80,35 @@ async def axi4_write_burst(dut, master, awid, addr, beats, size=4, burst=BURST_I
     dut.m_awprot[master].value  = prot
     dut.m_awqos[master].value   = qos
     dut.m_awuser[master].value  = 0
-    # wait for handshake
-    for _ in range(256):
+    dut.m_awvalid.value = (int(dut.m_awvalid.value) & ~bit) | bit
+    # Wait for the handshake cycle
+    for _ in range(512):
         await RisingEdge(dut.clk)
         if int(dut.m_awready.value) & bit:
             break
     dut.m_awvalid.value = int(dut.m_awvalid.value) & ~bit
 
-    # Drive W
+    # Drive W beats
     for i, (data, strb) in enumerate(beats):
-        dut.m_wvalid.value = (int(dut.m_wvalid.value) & ~bit) | bit
         dut.m_wdata[master].value = data
         dut.m_wstrb[master].value = strb
         dut.m_wlast[master].value = 1 if i == len(beats) - 1 else 0
-        for _ in range(256):
+        dut.m_wvalid.value = (int(dut.m_wvalid.value) & ~bit) | bit
+        for _ in range(512):
             await RisingEdge(dut.clk)
             if int(dut.m_wready.value) & bit:
                 break
-    dut.m_wvalid.value = int(dut.m_wvalid.value) & ~bit
+        # Deassert valid for one cycle so the slave sees a clean edge
+        # between beats (also matches strictest AXI4 verification rules).
+        dut.m_wvalid.value = int(dut.m_wvalid.value) & ~bit
+        await RisingEdge(dut.clk)
     dut.m_wlast[master].value = 0
 
-    # Wait B
+    # Wait for B response
     dut.m_bready.value = int(dut.m_bready.value) | bit
     bresp = None
     bid = None
-    for _ in range(2048):
+    for _ in range(4096):
         await RisingEdge(dut.clk)
         if int(dut.m_bvalid.value) & bit:
             bresp = int(dut.m_bresp[master].value)
@@ -122,7 +121,6 @@ async def axi4_write_burst(dut, master, awid, addr, beats, size=4, burst=BURST_I
 async def axi4_read_burst(dut, master, arid, addr, length, size=4, burst=BURST_INCR, lock=0,
                           qos=0, cache=0x2, prot=0x2):
     bit = 1 << master
-    dut.m_arvalid.value = (int(dut.m_arvalid.value) & ~bit) | bit
     dut.m_arid[master].value    = arid
     dut.m_araddr[master].value  = addr
     dut.m_arlen[master].value   = length - 1
@@ -133,7 +131,8 @@ async def axi4_read_burst(dut, master, arid, addr, length, size=4, burst=BURST_I
     dut.m_arprot[master].value  = prot
     dut.m_arqos[master].value   = qos
     dut.m_aruser[master].value  = 0
-    for _ in range(256):
+    dut.m_arvalid.value = (int(dut.m_arvalid.value) & ~bit) | bit
+    for _ in range(512):
         await RisingEdge(dut.clk)
         if int(dut.m_arready.value) & bit:
             break
@@ -141,7 +140,7 @@ async def axi4_read_burst(dut, master, arid, addr, length, size=4, burst=BURST_I
 
     dut.m_rready.value = int(dut.m_rready.value) | bit
     beats = []
-    for _ in range(length * 64):
+    for _ in range(length * 256 + 256):
         await RisingEdge(dut.clk)
         if int(dut.m_rvalid.value) & bit:
             data = int(dut.m_rdata[master].value)

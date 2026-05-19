@@ -12,6 +12,7 @@ from e1_npu_lowering import (
     lower_bias_add_smoke,
     lower_conv2d_smoke,
     lower_fp8_matmul_smoke,
+    lower_int2_matmul_smoke,
     lower_kv_cache_update_smoke,
     lower_matmul_smoke,
     lower_mlp_smoke,
@@ -19,6 +20,7 @@ from e1_npu_lowering import (
     lower_residual_add_smoke,
     lower_rmsnorm_smoke,
     lower_rope_smoke,
+    lower_sparse_int4_matmul_smoke,
     lower_swiglu_smoke,
     lower_transformer_block_smoke,
 )
@@ -732,12 +734,84 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         )
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_sparse_int4_matmul_smoke_dispatches_sdot4_chunks(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_sparse_int4_matmul_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.sparse_2_4_matmul",
+            "precision": "sparse_int4",
+            "lhs": [
+                [1, -2, 3, -4, 5, -6, 7, -8, 1, 2],
+                [7, 6, 5, 4, 3, 2, 1, 0, -1, -2],
+            ],
+            "rhs_nonzero": [
+                [[2, -3, 4, -5], [-1, 3, -2, 6]],
+                [[7, -8, 1, -2], [4, -3, 2, -1]],
+            ],
+            "rhs_positions": [
+                [[0, 2, 1, 3], [1, 3, 0, 2]],
+                [[0, 1, 2, 3], [0, 2, 1, 3]],
+            ],
+        }
+
+        lowered = lower_sparse_int4_matmul_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.result, [[0, 26], [16, 2]])
+        self.assertEqual(lowered.golden, lowered.result)
+        self.assertEqual(lowered.sdot4_count, 8)
+        self.assertTrue(lowered.host_pads_k_to_sparse_blocks)
+        self.assertTrue(lowered.host_uses_2_4_metadata)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_dot16_s2_matches_golden(self):
         sim = E1NpuMmioSim()
         a = [1, -1, -2, 0, 1, 1, -2, -1, 0, 1, -1, -2, 1, 0, -2, 1]
         b = [-2, 1, 1, -1, 1, -2, 0, -1, 1, 1, -2, -1, 0, -2, 1, 1]
 
         self.assertEqual(sim.runtime.dot16_s2(a, b, acc=5), golden_dot16_s2(a, b, acc=5))
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_int2_matmul_smoke_dispatches_dot16_chunks(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_int2_matmul_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.bitnet_matmul",
+            "precision": "bitnet_int2",
+            "lhs": [
+                [1, -1, -2, 0, 1, 1, -2, -1, 0, 1, -1, -2, 1, 0, -2, 1, -1],
+                [-2, 1, 0, -1, 1, -2, 1, 0, -1, 1, 1, -2, 0, -2, 1, 1, -2],
+            ],
+            "rhs": [
+                [1, -2],
+                [-1, 1],
+                [0, 1],
+                [1, -1],
+                [-2, 1],
+                [1, 0],
+                [1, -2],
+                [-1, 1],
+                [0, -1],
+                [1, 1],
+                [-2, -1],
+                [1, 0],
+                [-1, 1],
+                [0, -2],
+                [1, 1],
+                [-2, -1],
+                [1, 0],
+            ],
+        }
+
+        lowered = lower_int2_matmul_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.result, [[-5, -1], [-13, 10]])
+        self.assertEqual(lowered.golden, lowered.result)
+        self.assertEqual(lowered.dot16_count, 8)
+        self.assertTrue(lowered.host_pads_k_to_dot16)
+        self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
     def test_runtime_dot4_fp8_e4m3_matches_golden(self):

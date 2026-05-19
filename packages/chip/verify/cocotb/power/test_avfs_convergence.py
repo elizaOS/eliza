@@ -12,13 +12,10 @@ Contract:
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
-
 from power_pkg_constants import (
     AVFS_CANARY_COUNT,
     AVFS_UPDATE_CYCLES,
-    DVFS_CODE_WIDTH,
 )
-
 
 CLK_SAMPLE_PERIOD_NS = 5  # 200 MHz
 
@@ -66,9 +63,7 @@ async def avfs_raises_under_low_margin(dut):
     start = int(dut.target_code_o.value)
 
     # Single canary reports low margin -> 4 updates raise by 4 LSB.
-    ran = await _run_updates(dut, num_updates=4,
-                             canary_low_mask=0x1,
-                             canary_high_mask=0)
+    ran = await _run_updates(dut, num_updates=4, canary_low_mask=0x1, canary_high_mask=0)
     assert ran == 4
     end = int(dut.target_code_o.value)
     assert end == start + 4, f"AVFS raise failed: start={start} end={end}"
@@ -81,9 +76,7 @@ async def avfs_lowers_when_all_canary_high(dut):
     await _reset_and_init(dut, init_code=0x60)
     start = int(dut.target_code_o.value)
     full_high = (1 << AVFS_CANARY_COUNT) - 1
-    ran = await _run_updates(dut, num_updates=3,
-                             canary_low_mask=0,
-                             canary_high_mask=full_high)
+    ran = await _run_updates(dut, num_updates=3, canary_low_mask=0, canary_high_mask=full_high)
     assert ran == 3
     end = int(dut.target_code_o.value)
     assert end == start - 3, f"AVFS lower failed: start={start} end={end}"
@@ -94,9 +87,7 @@ async def avfs_clamps_at_max_and_raises_fault(dut):
     cocotb.start_soon(Clock(dut.clk_sample, CLK_SAMPLE_PERIOD_NS, units="ns").start())
     await _reset_and_init(dut, init_code=0xBE, min_code=0x20, max_code=0xC0)
     # First update raises 0xBE -> 0xBF; second to 0xC0 (max); third saturates.
-    ran = await _run_updates(dut, num_updates=3,
-                             canary_low_mask=0x1,
-                             canary_high_mask=0)
+    ran = await _run_updates(dut, num_updates=3, canary_low_mask=0x1, canary_high_mask=0)
     assert ran == 3
     assert int(dut.target_code_o.value) == 0xC0
     assert int(dut.fault_o.value) == 1
@@ -107,9 +98,7 @@ async def avfs_clamps_at_min(dut):
     cocotb.start_soon(Clock(dut.clk_sample, CLK_SAMPLE_PERIOD_NS, units="ns").start())
     await _reset_and_init(dut, init_code=0x22, min_code=0x20, max_code=0xC0)
     full_high = (1 << AVFS_CANARY_COUNT) - 1
-    ran = await _run_updates(dut, num_updates=5,
-                             canary_low_mask=0,
-                             canary_high_mask=full_high)
+    ran = await _run_updates(dut, num_updates=5, canary_low_mask=0, canary_high_mask=full_high)
     assert ran == 5
     assert int(dut.target_code_o.value) == 0x20
     assert int(dut.fault_o.value) == 0

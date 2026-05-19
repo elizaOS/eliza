@@ -160,7 +160,9 @@ current_repo_classification:
     - DOT4_S8
     - DOT8_S4
     - SDOT4_S4_2_4
+    - sparse_INT4_2_4_scalar_dot_matmul_lowering_smoke
     - DOT16_S2
+    - INT2_scalar_dot_matmul_lowering_smoke
     - DOT4_FP8_E4M3
     - FP8_E4M3_scalar_dot_matmul_lowering_smoke
     - RELU4_S8

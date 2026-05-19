@@ -125,6 +125,13 @@ CIRCUIT_FOUNDATION_TARGETS_BUILD = ROOT / "build/ai_eda/circuit_foundation_model
 CIRCUIT_FOUNDATION_TARGETS_CLAIM_BOUNDARY = (
     "circuit_foundation_model_target_capture_only_no_training_embedding_or_claim"
 )
+DFM_YIELD_LITHOGRAPHY_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_dfm_yield_lithography_targets.py"
+)
+DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD = ROOT / "build/ai_eda/dfm_yield_lithography_targets"
+DFM_YIELD_LITHOGRAPHY_TARGETS_CLAIM_BOUNDARY = (
+    "dfm_yield_lithography_target_capture_only_no_mask_yield_or_release_claim"
+)
 
 REQUIRED_SOURCES = {
     "agentic-eda-survey-2512-23189v2",
@@ -140,6 +147,14 @@ REQUIRED_SOURCES = {
     "nettag",
     "deepgate4",
     "chiplingo",
+    "litho-aware-ml-hotspot",
+    "dlhsd-hotspot-detection",
+    "lithohod",
+    "torchlitho",
+    "openilt",
+    "diffopc",
+    "radai-wm811k-wafer-defect-model",
+    "pegasus-lpa",
     "google-circuit-training",
     "autodmp",
     "orassistant",
@@ -272,6 +287,7 @@ REQUIRED_WORK_ITEMS = {
     "p1-verification-debug-target-capture",
     "p1-post-silicon-validation-target-capture",
     "p1-circuit-foundation-model-target-capture",
+    "p1-dfm-yield-lithography-target-capture",
     "p2-rtl-model-evaluation-harness",
     "p2-e1-pd-predictor-dataset",
     "p2-dft-atpg-watch",
@@ -435,6 +451,7 @@ def check_readiness(source_ids: set[str], errors: list[str]) -> None:
         "assertion_generation",
         "physical_design_prediction",
         "circuit_foundation_models",
+        "dfm_yield_lithography",
         "placement_optimization",
         "npu_architecture_dse",
         "software_bsp_and_firmware",
@@ -1897,6 +1914,86 @@ def check_circuit_foundation_model_targets(source_ids: set[str], errors: list[st
                 fail(errors, f"{label}: missing follow-up gate {required_gate}")
 
 
+def check_dfm_yield_lithography_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not DFM_YIELD_LITHOGRAPHY_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {DFM_YIELD_LITHOGRAPHY_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.dfm_yield_lithography_targets.v1":
+            fail(errors, f"{label}: unexpected DFM/yield/lithography targets schema")
+        if report.get("claim_boundary") != DFM_YIELD_LITHOGRAPHY_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe DFM/yield/lithography claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_DFM_YIELD_LITHOGRAPHY_EXECUTION":
+            fail(errors, f"{label}: DFM/yield/lithography capture must not execute tools")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing DFM/yield/lithography target policy")
+        elif (
+            policy.get("changes_layout") is not False
+            or policy.get("changes_masks") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("changes_opc") is not False
+            or policy.get("changes_pdk_rules") is not False
+            or policy.get("generates_layout") is not False
+            or policy.get("generates_mask") is not False
+            or policy.get("generates_hotspot_labels") is not False
+            or policy.get("runs_lithography_sim") is not False
+            or policy.get("runs_opc") is not False
+            or policy.get("runs_drc") is not False
+            or policy.get("runs_lvs") is not False
+            or policy.get("runs_ml_model") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("imports_foundry_data") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("dfm_claim_allowed") is not False
+            or policy.get("yield_claim_allowed") is not False
+            or policy.get("mask_claim_allowed") is not False
+            or policy.get("wafer_defect_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: DFM/yield/lithography target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: DFM/yield/lithography target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale DFM/yield/lithography hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_openroad_ml_snapshot.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-contract-check",
+            "make manufacturing-artifacts-check",
+            "make real-world-gates-check",
+            "make product-check",
+            "make synth",
+            "make docs-check",
+            "make no-hardware-action-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
 def main() -> int:
     errors: list[str] = []
     source_ids = check_inventory(errors)
@@ -1928,6 +2025,7 @@ def main() -> int:
     check_verification_debug_targets(source_ids, errors)
     check_post_silicon_validation_targets(source_ids, errors)
     check_circuit_foundation_model_targets(source_ids, errors)
+    check_dfm_yield_lithography_targets(source_ids, errors)
     check_openroad_autotune(errors)
     check_rtl_eval(errors)
     check_pd_predictor(errors)

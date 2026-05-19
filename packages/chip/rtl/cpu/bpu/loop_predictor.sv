@@ -12,9 +12,9 @@
 
 `timescale 1ns/1ps
 
-module loop_predictor
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module loop_predictor (
     input  logic                clk,
     input  logic                rst_n,
 

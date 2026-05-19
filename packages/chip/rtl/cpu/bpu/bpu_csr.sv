@@ -8,9 +8,9 @@
 
 `timescale 1ns/1ps
 
-module bpu_csr
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module bpu_csr (
     input  logic                clk,
     input  logic                rst_n,
 

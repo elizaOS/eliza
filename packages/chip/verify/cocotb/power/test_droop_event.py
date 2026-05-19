@@ -11,13 +11,12 @@ See docs/pd/droop-detection.md for the contract narrative.
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge
 
-
-CLK_SAMPLE_PERIOD_NS = 5     # 200 MHz
-CLK_IN_PERIOD_NS = 4         # 250 MHz functional clock
-RO_FAST_PERIOD_NS = 0.5      # high-frequency RO when supply is healthy (2 GHz)
-RO_SLOW_PERIOD_NS = 5.0      # low-frequency RO when supply has drooped (200 MHz)
+CLK_SAMPLE_PERIOD_NS = 5  # 200 MHz
+CLK_IN_PERIOD_NS = 4  # 250 MHz functional clock
+RO_FAST_PERIOD_NS = 0.5  # high-frequency RO when supply is healthy (2 GHz)
+RO_SLOW_PERIOD_NS = 5.0  # low-frequency RO when supply has drooped (200 MHz)
 
 
 async def _reset_and_init(dut):
@@ -51,7 +50,7 @@ async def healthy_supply_holds_no_alarm(dut):
     cocotb.start_soon(Clock(dut.ro_clk, RO_FAST_PERIOD_NS, units="ns").start())
 
     await _reset_and_init(dut)
-    dut.threshold_i.value = 100   # require >= 100 RO cycles per sample window
+    dut.threshold_i.value = 100  # require >= 100 RO cycles per sample window
     dut.enable_i.value = 1
 
     cocotb.start_soon(_drive_sample_tick(dut, period_ratio=10))

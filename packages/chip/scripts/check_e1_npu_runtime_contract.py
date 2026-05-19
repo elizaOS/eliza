@@ -267,6 +267,74 @@ def main() -> int:
         if token not in lowering_text:
             errors.append(f"matmul lowering smoke missing token {token!r}")
 
+    sparse_int4_matmul_lowering = contract.get("sparse_int4_matmul_lowering_smoke", {})
+    if sparse_int4_matmul_lowering.get("runtime_api") != "lower_sparse_int4_matmul_smoke":
+        errors.append(
+            "sparse INT4 matmul lowering smoke must identify lower_sparse_int4_matmul_smoke"
+        )
+    if (
+        sparse_int4_matmul_lowering.get("claim_boundary")
+        != "sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend"
+    ):
+        errors.append(
+            "sparse INT4 matmul lowering smoke claim boundary must remain scalar-dot-only"
+        )
+    if set(sparse_int4_matmul_lowering.get("supported_precisions", [])) != {
+        "int4",
+        "sparse_int4",
+        "s4_2_4",
+    }:
+        errors.append(
+            "sparse INT4 matmul lowering smoke must be limited to int4/sparse_int4/s4_2_4"
+        )
+    for required in ("SDOT4_S4_2_4", "two distinct metadata positions", "OP_ADD"):
+        if required not in str(sparse_int4_matmul_lowering.get("lowering", "")):
+            errors.append(f"sparse INT4 matmul contract missing {required!r}")
+    for token in (
+        "SUPPORTED_SPARSE_INT4_MATMUL_SCHEMA",
+        "lower_sparse_int4_matmul_smoke",
+        "golden_sdot4_s4_2_4",
+        "runtime.sdot4_s4_2_4",
+        "host_pads_k_to_sparse_blocks",
+        "host_uses_2_4_metadata",
+        "sdot4_count",
+        "eliza.sparse_2_4_matmul",
+        "eliza.sparse_int4_matmul",
+        "sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"sparse INT4 matmul lowering smoke missing token {token!r}")
+
+    int2_matmul_lowering = contract.get("int2_matmul_lowering_smoke", {})
+    if int2_matmul_lowering.get("runtime_api") != "lower_int2_matmul_smoke":
+        errors.append("INT2 matmul lowering smoke must identify lower_int2_matmul_smoke")
+    if (
+        int2_matmul_lowering.get("claim_boundary")
+        != "int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend"
+    ):
+        errors.append("INT2 matmul lowering smoke claim boundary must remain scalar-dot-only")
+    if set(int2_matmul_lowering.get("supported_precisions", [])) != {
+        "int2",
+        "bitnet_int2",
+    }:
+        errors.append("INT2 matmul lowering smoke must be limited to int2/bitnet_int2")
+    for required in ("DOT16_S2", "pads K to DOT16 width", "signed int32 accumulation"):
+        if required not in str(int2_matmul_lowering.get("lowering", "")):
+            errors.append(f"INT2 matmul contract missing {required!r}")
+    for token in (
+        "SUPPORTED_INT2_MATMUL_SCHEMA",
+        "lower_int2_matmul_smoke",
+        "golden_dot16_s2",
+        "runtime.dot16_s2",
+        "host_pads_k_to_dot16",
+        "dot16_count",
+        "eliza.int2_matmul",
+        "eliza.bitnet_matmul",
+        "int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"INT2 matmul lowering smoke missing token {token!r}")
+
     fp8_matmul_lowering = contract.get("fp8_matmul_lowering_smoke", {})
     if fp8_matmul_lowering.get("runtime_api") != "lower_fp8_matmul_smoke":
         errors.append("FP8 matmul lowering smoke must identify lower_fp8_matmul_smoke")
@@ -749,6 +817,8 @@ def main() -> int:
         "golden_gemm_s4",
         "golden_vrelu_s8",
         "lower_matmul_smoke",
+        "lower_sparse_int4_matmul_smoke",
+        "lower_int2_matmul_smoke",
         "lower_fp8_matmul_smoke",
         "lower_conv2d_smoke",
         "lower_attention_qk_smoke",
@@ -764,6 +834,8 @@ def main() -> int:
         "lower_rmsnorm_smoke",
         "test_runtime_matmul_smoke_lowering_dispatches_multiple_tiles",
         "test_runtime_matmul_smoke_lowering_split_k_accumulates_npu_partials",
+        "test_runtime_sparse_int4_matmul_smoke_dispatches_sdot4_chunks",
+        "test_runtime_int2_matmul_smoke_dispatches_dot16_chunks",
         "test_runtime_fp8_matmul_smoke_dispatches_dot4_chunks",
         "test_runtime_conv2d_smoke_lowering_dispatches_im2col_tiles",
         "test_runtime_attention_qk_smoke_lowering_dispatches_per_head_gemm",

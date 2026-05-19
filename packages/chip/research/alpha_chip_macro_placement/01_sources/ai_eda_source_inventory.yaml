@@ -3417,6 +3417,234 @@ entries:
         inspection equipment.
       - Research-use notices and generated defects require license and evidence
         review before use.
+  - id: litho-aware-ml-hotspot
+    name: Litho-aware Machine Learning For Hotspot Detection
+    kind: lithography_hotspot_detection
+    stage:
+      - dfm
+      - lithography
+      - hotspot_detection
+      - yield
+    priority: P2
+    source_url: https://pdxscholar.library.pdx.edu/ece_fac/529/
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Useful baseline for lithography-aware hotspot detection that uses optical
+      information rather than geometry alone, but E1 has no signed-off layout
+      clips, foundry deck, or hotspot labels.
+    integration_action: >
+      Track as a DFM/yield review source only; do not use hotspot predictions
+      for layout, mask, or release decisions without local process evidence.
+    evidence_gate: >
+      Any hotspot claim requires exact GDS/DEF hashes, layer map, foundry DFM
+      rule deck, lithography/process-window setup, labels, false-positive
+      disposition, and human signoff.
+    risk:
+      - Paper benchmarks may not transfer to E1 process, layers, or design rules.
+      - False negatives can become yield escapes if treated as signoff.
+  - id: dlhsd-hotspot-detection
+    name: Layout Hotspot Detection With Feature Tensor Generation And Deep Biased Learning
+    kind: deep_learning_hotspot_detector
+    stage:
+      - dfm
+      - lithography
+      - hotspot_detection
+      - benchmark
+    priority: P2
+    source_url: https://researchportal.hkust.edu.hk/en/publications/layout-hotspot-detection-with-feature-tensor-generation-and-deep-/
+    code_url: https://github.com/phdyang007/dlhsd
+    model_url: https://github.com/phdyang007/dlhsd
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: reported_trained_models_to_review
+    e1_fit: >
+      Relevant open code/model reference for layout hotspot classification, but
+      public benchmarks do not establish E1 manufacturability.
+    integration_action: >
+      Keep as a candidate backend for future offline experiments after license,
+      dataset, and process applicability review.
+    evidence_gate: >
+      Local use requires pinned code/model revisions, benchmark provenance,
+      exact layout feature extraction hashes, held-out E1 labels, and DFM gate
+      review.
+    risk:
+      - ICCAD-style benchmarks can overstate generalization to new processes.
+      - Trained models may learn dataset artifacts instead of yield mechanisms.
+  - id: lithohod
+    name: LithoHoD
+    kind: lithography_simulator_powered_hotspot_detection
+    stage:
+      - dfm
+      - lithography
+      - hotspot_detection
+      - simulation
+    priority: P2
+    source_url: https://arxiv.org/abs/2409.10021
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation_found
+    model_status: no_model
+    e1_fit: >
+      Useful SOTA pattern for combining object detection with lithography
+      simulation, but E1 lacks the simulator setup and labels it depends on.
+    integration_action: >
+      Track as a future hotspot-screening architecture only; no local model
+      execution or hotspot claim is allowed.
+    evidence_gate: >
+      Requires local lithography simulator configuration, process-window
+      provenance, layout clips, labels, and deterministic DFM report review.
+    risk:
+      - Simulator assumptions can dominate apparent model quality.
+      - Object detectors may localize known patterns while missing new failures.
+  - id: torchlitho
+    name: TorchLitho
+    kind: differentiable_lithography_framework
+    stage:
+      - dfm
+      - lithography
+      - opc
+      - differentiable_simulation
+    priority: P2
+    source_url: https://arxiv.org/abs/2409.15306
+    code_url: https://github.com/TorchOPC/TorchLitho
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: framework_not_model
+    e1_fit: >
+      Relevant open computational-lithography framework for future DFM/OPC
+      experiments, but not a foundry signoff substitute.
+    integration_action: >
+      Track as a blocked backend until E1 has release-safe layout clips,
+      process kernels, resist settings, and comparison metrics.
+    evidence_gate: >
+      Any run needs pinned code, process model provenance, mask/layout hashes,
+      EPE/PVBand metrics, and foundry or human DFM review.
+    risk:
+      - Open lithography kernels are not equivalent to foundry signoff decks.
+      - Differentiable optimization can create mask features that violate
+        manufacturability limits.
+  - id: openilt
+    name: OpenILT
+    kind: inverse_lithography_research_platform
+    stage:
+      - dfm
+      - lithography
+      - opc
+      - inverse_lithography
+    priority: P2
+    source_url: https://github.com/OpenOPC/OpenILT
+    code_url: https://github.com/OpenOPC/OpenILT
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: framework_not_model
+    e1_fit: >
+      Useful open ILT research platform for evaluating mask optimization ideas,
+      but E1 has no approved mask or process inputs.
+    integration_action: >
+      Keep as research-only backend inventory until process, layout, and legal
+      review unblock local experiments.
+    evidence_gate: >
+      ILT outputs require exact mask/layout hashes, lithography model, runtime
+      logs, manufacturability metrics, and explicit non-release disposition.
+    risk:
+      - ILT may optimize academic metrics while worsening mask complexity.
+      - Public benchmarks do not prove E1 wafer printability.
+  - id: diffopc
+    name: Differentiable Edge-based OPC
+    kind: differentiable_opc_method
+    stage:
+      - dfm
+      - lithography
+      - opc
+      - mask_optimization
+    priority: P2
+    source_url: https://arxiv.org/abs/2408.08969
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation_found
+    model_status: no_model
+    e1_fit: >
+      Relevant method for mask-rule-aware differentiable OPC, but cannot be
+      applied to E1 without real process and mask constraints.
+    integration_action: >
+      Track for future OPC review; block any automatic mask or layout edits.
+    evidence_gate: >
+      Requires process deck, mask rules, EPE and manufacturability metrics,
+      layout hashes, and foundry/human review before use.
+    risk:
+      - Edge movement can satisfy paper metrics while violating local mask rules.
+      - No public implementation is currently selected for E1.
+  - id: radai-wm811k-wafer-defect-model
+    name: RadAI WM-811K Wafer Defect Detection Model
+    kind: wafer_map_defect_model
+    stage:
+      - yield
+      - wafer_defect_classification
+      - manufacturing_inspection
+      - model
+    priority: P3
+    source_url: https://huggingface.co/radai-agent/radai-wm811k-defect-detection
+    code_url: null
+    model_url: https://huggingface.co/radai-agent/radai-wm811k-defect-detection
+    dataset_url: null
+    license_status: MIT_reported_review_required
+    code_status: model_card_to_review
+    model_status: available_to_review
+    e1_fit: >
+      Relevant example of a public wafer-map defect classifier, but E1 has no
+      wafer maps, lot data, or process-specific defect labels.
+    integration_action: >
+      Track as a post-fabrication/yield model example only; do not download or
+      run weights until license and evidence policy review.
+    evidence_gate: >
+      Any defect classification needs lot/wafer/die provenance, measured defect
+      labels, model revision, held-out validation, and manufacturing review.
+    risk:
+      - WM-811K defect classes may not map to an E1 foundry process.
+      - Public model cards can omit data-cleaning and leakage details.
+  - id: pegasus-lpa
+    name: Cadence Pegasus Layout Pattern Analyzer
+    kind: commercial_dfm_hotspot_tool
+    stage:
+      - dfm
+      - lithography
+      - hotspot_detection
+      - commercial_signoff
+    priority: P2
+    source_url: https://www.cadence.com/en_US/home/tools/digital-design-and-signoff/silicon-signoff/layout-pattern-analyzer.html
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: commercial_terms_review_required
+    code_status: commercial_tool
+    model_status: no_public_model
+    e1_fit: >
+      Useful reference for how production DFM tools combine pattern matching,
+      ML prediction, and implementation integration, but unavailable in the
+      local open flow.
+    integration_action: >
+      Track as commercial SOTA context and signoff expectation; do not claim
+      equivalent E1 DFM coverage from open research tools.
+    evidence_gate: >
+      Any comparable local gate needs foundry-certified decks or explicit
+      non-signoff wording, tool versions, layout hashes, reports, and review.
+    risk:
+      - Commercial tool capabilities depend on foundry enablement.
+      - Open-source surrogates are not foundry-certified signoff.
   - id: ieee-1801-upf
     name: IEEE 1801 Unified Power Format
     kind: low_power_intent_standard

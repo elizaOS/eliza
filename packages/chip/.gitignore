@@ -42,6 +42,7 @@ downloads/
 fw/opensbi-payloads/e1-smode/*.bin
 fw/opensbi-payloads/e1-smode/*.elf
 fw/opensbi-payloads/e1-smode/*.o
+fw/pmc/build/
 pd/reports/*
 !pd/reports/.gitkeep
 pd/openlane/runs/

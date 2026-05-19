@@ -82,9 +82,11 @@ def validate_plan(payload: dict) -> list[str]:
 
     rails = payload.get("rails", [])
     if not isinstance(rails, list) or len(rails) != len(EXPECTED_RAILS):
-        fail(failures,
-             f"rails: expected {len(EXPECTED_RAILS)} entries, found "
-             f"{len(rails) if isinstance(rails, list) else 'non-list'}")
+        fail(
+            failures,
+            f"rails: expected {len(EXPECTED_RAILS)} entries, found "
+            f"{len(rails) if isinstance(rails, list) else 'non-list'}",
+        )
         return failures
 
     seen_ids: set[str] = set()
@@ -97,9 +99,9 @@ def validate_plan(payload: dict) -> list[str]:
             continue
         missing_keys = sorted(REQUIRED_RAIL_KEYS - set(entry))
         if missing_keys:
-            fail(failures,
-                 f"rails[{entry.get('id', '?')}]: missing keys: "
-                 f"{', '.join(missing_keys)}")
+            fail(
+                failures, f"rails[{entry.get('id', '?')}]: missing keys: {', '.join(missing_keys)}"
+            )
             continue
 
         rail_id = entry["id"]
@@ -121,9 +123,10 @@ def validate_plan(payload: dict) -> list[str]:
         if entry["peak_a"] < entry["avg_a"]:
             fail(failures, f"rails[{rail_id}]: peak_a < avg_a")
         if entry["dvfs_step_mv"] not in (0, 6.25):
-            fail(failures,
-                 f"rails[{rail_id}]: dvfs_step_mv must be 0 or 6.25, "
-                 f"got {entry['dvfs_step_mv']}")
+            fail(
+                failures,
+                f"rails[{rail_id}]: dvfs_step_mv must be 0 or 6.25, got {entry['dvfs_step_mv']}",
+            )
 
         peak_sum_w += float(entry["nominal_v"]) * float(entry["peak_a"])
         avg_sum_w += float(entry["nominal_v"]) * float(entry["avg_a"])
@@ -144,32 +147,39 @@ def validate_plan(payload: dict) -> list[str]:
 
     declared_standalone = float(sum_check.get("standalone_peak_sum_w_modeled", 0))
     if abs(declared_standalone - peak_sum_w) > 0.05:
-        fail(failures,
-             f"sum_check.standalone_peak_sum_w_modeled "
-             f"({declared_standalone:.3f}) does not match computed "
-             f"sum-of-standalone-peaks ({peak_sum_w:.3f})")
+        fail(
+            failures,
+            f"sum_check.standalone_peak_sum_w_modeled "
+            f"({declared_standalone:.3f}) does not match computed "
+            f"sum-of-standalone-peaks ({peak_sum_w:.3f})",
+        )
 
     declared_active = float(sum_check.get("workload_active_sum_w_modeled", 0))
     if abs(declared_active - avg_sum_w) > 0.05:
-        fail(failures,
-             f"sum_check.workload_active_sum_w_modeled "
-             f"({declared_active:.3f}) does not match computed "
-             f"sum-of-avg ({avg_sum_w:.3f})")
+        fail(
+            failures,
+            f"sum_check.workload_active_sum_w_modeled "
+            f"({declared_active:.3f}) does not match computed "
+            f"sum-of-avg ({avg_sum_w:.3f})",
+        )
 
     declared_active_target = float(sum_check.get("workload_active_sum_w_target", 0))
-    if abs(declared_active - declared_active_target) / \
-       max(declared_active_target, 1e-6) > 0.20:
-        fail(failures,
-             f"sum_check.workload_active_sum_w_modeled "
-             f"({declared_active:.3f}) differs from "
-             f"workload_active_sum_w_target "
-             f"({declared_active_target:.3f}) by > 20%")
+    if abs(declared_active - declared_active_target) / max(declared_active_target, 1e-6) > 0.20:
+        fail(
+            failures,
+            f"sum_check.workload_active_sum_w_modeled "
+            f"({declared_active:.3f}) differs from "
+            f"workload_active_sum_w_target "
+            f"({declared_active_target:.3f}) by > 20%",
+        )
 
     # standalone peak must match the declared burst target.
     if abs(peak_sum_w - burst_target) / max(burst_target, 1e-6) > 0.15:
-        fail(failures,
-             f"computed standalone peak sum ({peak_sum_w:.3f}) "
-             f"differs from budgets.burst_peak_w ({burst_target:.3f}) by > 15%")
+        fail(
+            failures,
+            f"computed standalone peak sum ({peak_sum_w:.3f}) "
+            f"differs from budgets.burst_peak_w ({burst_target:.3f}) by > 15%",
+        )
 
     return failures
 
@@ -189,9 +199,11 @@ def validate_hash() -> list[str]:
     evidence = yaml.safe_load(RAIL_EVIDENCE_PATH.read_text())
     declared = evidence.get("rail_plan_sha256")
     if declared != plan_hash:
-        fail(failures,
-             f"rail-plan-evidence.yaml.rail_plan_sha256 mismatch: "
-             f"declared={declared}, actual={plan_hash}")
+        fail(
+            failures,
+            f"rail-plan-evidence.yaml.rail_plan_sha256 mismatch: "
+            f"declared={declared}, actual={plan_hash}",
+        )
     return failures
 
 
@@ -208,22 +220,29 @@ def validate_binding(rel_path: str) -> list[str]:
         return failures
     declared = binding.get("rail_plan_sha256")
     if declared != plan_hash:
-        fail(failures,
-             f"{rel_path}: rail_plan_hash.rail_plan_sha256 mismatch "
-             f"(declared={declared}, actual={plan_hash})")
+        fail(
+            failures,
+            f"{rel_path}: rail_plan_hash.rail_plan_sha256 mismatch "
+            f"(declared={declared}, actual={plan_hash})",
+        )
     if binding.get("rail_plan_path") != "docs/pd/rail-plan-2028.yaml":
-        fail(failures,
-             f"{rel_path}: rail_plan_hash.rail_plan_path must point to "
-             f"docs/pd/rail-plan-2028.yaml")
+        fail(
+            failures,
+            f"{rel_path}: rail_plan_hash.rail_plan_path must point to docs/pd/rail-plan-2028.yaml",
+        )
     return failures
 
 
 def main() -> int:
     import argparse
+
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--binding-target", action="append", default=None,
-                        help="extra consumer YAML that must declare a "
-                             "rail_plan_hash binding")
+    parser.add_argument(
+        "--binding-target",
+        action="append",
+        default=None,
+        help="extra consumer YAML that must declare a rail_plan_hash binding",
+    )
     args = parser.parse_args()
 
     if not RAIL_PLAN_PATH.is_file():
@@ -235,16 +254,14 @@ def main() -> int:
         return 1
     failures = validate_plan(payload)
     failures += validate_hash()
-    binding_targets = args.binding_target if args.binding_target \
-        else DEFAULT_BINDING_TARGETS
+    binding_targets = args.binding_target if args.binding_target else DEFAULT_BINDING_TARGETS
     for target in binding_targets:
         failures += validate_binding(target)
     if failures:
         for failure in failures:
             print(f"FAIL: {failure}", file=sys.stderr)
         return 1
-    print(f"Rail plan {RAIL_PLAN_PATH.relative_to(ROOT)} passed schema, "
-          f"hash, and binding checks.")
+    print(f"Rail plan {RAIL_PLAN_PATH.relative_to(ROOT)} passed schema, hash, and binding checks.")
     return 0
 
 

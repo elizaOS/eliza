@@ -43,9 +43,7 @@ def check_commercial(payload: dict) -> tuple[bool, list[str]]:
         for glob_pattern in option.get("report_globs", []):
             if not files_match(glob_pattern):
                 all_present = False
-                blockers.append(
-                    f"commercial {option['tool']}: missing artifact for "
-                    f"{glob_pattern}")
+                blockers.append(f"commercial {option['tool']}: missing artifact for {glob_pattern}")
         if all_present:
             return True, []
     return False, blockers
@@ -56,27 +54,26 @@ def check_open_flow_waiver(payload: dict) -> tuple[bool, list[str]]:
     waiver = payload.get("open_flow_waiver_path", {})
     waiver_yaml = ROOT / "pd" / "signoff" / "waivers" / "pdn-open-flow-waiver.yaml"
     if not waiver_yaml.is_file():
-        blockers.append(
-            f"open-flow waiver: {waiver_yaml.relative_to(ROOT)} missing")
+        blockers.append(f"open-flow waiver: {waiver_yaml.relative_to(ROOT)} missing")
         return False, blockers
     waiver_doc = yaml.safe_load(waiver_yaml.read_text()) or {}
     margin = float(waiver_doc.get("margin_factor", 0))
     required_margin = float(waiver.get("required_margin_factor", 2.0))
     if margin < required_margin:
-        blockers.append(
-            f"open-flow waiver: margin_factor {margin} < required "
-            f"{required_margin}")
+        blockers.append(f"open-flow waiver: margin_factor {margin} < required {required_margin}")
     for glob_pattern in waiver.get("required_artifacts", []):
         if not files_match(glob_pattern):
-            blockers.append(
-                f"open-flow waiver: missing artifact for {glob_pattern}")
+            blockers.append(f"open-flow waiver: missing artifact for {glob_pattern}")
     return (not blockers), blockers
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--allow-blocked", action="store_true",
-                        help="exit 0 when status='blocked' but emit blockers")
+    parser.add_argument(
+        "--allow-blocked",
+        action="store_true",
+        help="exit 0 when status='blocked' but emit blockers",
+    )
     args = parser.parse_args(argv)
 
     if not GATE_FILE.is_file():
@@ -104,8 +101,7 @@ def main(argv: list[str]) -> int:
     for b in blockers:
         print(f"  - {b}", file=sys.stderr)
     if args.allow_blocked and status == "blocked":
-        print("--allow-blocked: surfacing blockers without failing CI.",
-              file=sys.stderr)
+        print("--allow-blocked: surfacing blockers without failing CI.", file=sys.stderr)
         return 0
     return 1
 

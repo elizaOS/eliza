@@ -8,9 +8,9 @@
 
 `timescale 1ns/1ps
 
-module ras_formal(input logic clk);
-    import bpu_pkg::*;
+import bpu_pkg::*;
 
+module ras_formal(input logic clk);
     logic                 rst_n = 1'b0;
     (* anyseq *) logic               spec_push;
     (* anyseq *) logic [VADDR_W-1:0] spec_push_addr;

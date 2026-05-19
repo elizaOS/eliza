@@ -77,14 +77,43 @@ dense activation lanes, interpreted as two groups of four. `ACC[7:0]` carries
 four 2-bit positions, two positions for each group. The opcode multiplies each
 nonzero weight by the selected dense lane from its group and returns the signed
 int32 sum. Runtime validation requires positions to be in `0..3` and distinct
-inside each 2:4 group. This proves metadata-selected sparse dot semantics; it
-is not a sparse GEMM or sparse tensor-core throughput claim.
+inside each 2:4 group. `lower_sparse_int4_matmul_smoke` lifts this primitive
+into a bounded sparse-weight matmul evidence path for `stablehlo.dot_general`,
+`stablehlo.dot`, `tflite.fully_connected`, `tflite.batch_matmul`,
+`tflite.matmul`, `eliza.sparse_2_4_matmul`, and `eliza.sparse_int4_matmul`
+records. It accepts a dense signed INT4 activation matrix plus per-8-K-block
+2:4 sparse INT4 weight values and metadata positions. Host code validates the
+INT4 ranges and metadata, pads K to the sparse block width with zero INT4
+values when needed, dispatches each sparse block through `SDOT4_S4_2_4`, and
+accumulates sparse partial sums through `OP_ADD`. The returned evidence records
+the output matrix, golden matrix, sparse block count, `sdot4_count`, padded K,
+`host_pads_k_to_sparse_blocks`, `host_uses_2_4_metadata`,
+`cpu_fallback=false`, and the claim boundary
+`sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend`.
+
+This proves scalar-dot sparse INT4 matmul orchestration only. It is not a
+sparse tensor GEMM, sparse tensor-core throughput path, hardware metadata
+scheduler, pruning/calibration flow, Android delegation, production compiler
+backend, or sustained TOPS/W claim.
 
 `DOT16_S2` is the first INT2 execution primitive. `OP_A` and `OP_B` each pack
 sixteen signed 2-bit lanes, low lane first, using the two's-complement range
 `[-2, 1]`. The opcode returns the signed int32 sum of lane-wise products plus
-signed `ACC`. It is scalar packed-dot evidence only; it does not establish INT2
-GEMM, quantized transformer lowering, or sustained TOPS/W behavior.
+signed `ACC`. `lower_int2_matmul_smoke` lifts this primitive into a bounded
+INT2/BitNet-style matmul evidence path for `stablehlo.dot_general`,
+`stablehlo.dot`, `tflite.fully_connected`, `tflite.batch_matmul`,
+`tflite.matmul`, `eliza.int2_matmul`, and `eliza.bitnet_matmul` records. Host
+code validates the signed INT2 range, pads K to the sixteen-lane dot width with
+INT2 zero values when needed, and dispatches every INT2 MAC chunk through
+`DOT16_S2` with signed int32 accumulation. The returned evidence records the
+output matrix, golden matrix, dot16 dispatch count, padded K,
+`host_pads_k_to_dot16`, `cpu_fallback=false`, and the claim boundary
+`int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend`.
+
+This proves scalar-dot INT2 matmul orchestration only. It is not a tensor INT2
+GEMM, BitNet production kernel, sparsity-aware INT2 tensor path, graph
+partitioning, Android delegation, production compiler backend, or sustained
+TOPS/W claim.
 
 `DOT4_FP8_E4M3` is the first FP8 execution primitive. `OP_A` and `OP_B` each
 pack four raw FP8 E4M3 values, low byte first. The RTL decodes each lane to

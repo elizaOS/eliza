@@ -10,9 +10,9 @@
 
 `timescale 1ns/1ps
 
-module uftb
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module uftb (
     input  logic                clk,
     input  logic                rst_n,
 

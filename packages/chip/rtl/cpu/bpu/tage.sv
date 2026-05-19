@@ -15,9 +15,9 @@
 
 `timescale 1ns/1ps
 
-module tage
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module tage (
     input  logic                clk,
     input  logic                rst_n,
 

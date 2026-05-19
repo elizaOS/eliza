@@ -21,9 +21,11 @@ from e1_npu_runtime import (
     golden_dot16_s2,
     golden_gemm_s4,
     golden_gemm_s8,
+    golden_sdot4_s4_2_4,
 )
 
 SUPPORTED_SCHEMA = "eliza.e1_npu_matmul_smoke.v1"
+SUPPORTED_SPARSE_INT4_MATMUL_SCHEMA = "eliza.e1_npu_sparse_int4_matmul_smoke.v1"
 SUPPORTED_INT2_MATMUL_SCHEMA = "eliza.e1_npu_int2_matmul_smoke.v1"
 SUPPORTED_FP8_MATMUL_SCHEMA = "eliza.e1_npu_fp8_matmul_smoke.v1"
 SUPPORTED_CONV2D_SCHEMA = "eliza.e1_npu_conv2d_smoke.v1"
@@ -45,6 +47,10 @@ SUPPORTED_MATMUL_OPS = {
     "tflite.fully_connected",
     "tflite.batch_matmul",
     "tflite.matmul",
+}
+SUPPORTED_SPARSE_INT4_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {
+    "eliza.sparse_2_4_matmul",
+    "eliza.sparse_int4_matmul",
 }
 SUPPORTED_INT2_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.int2_matmul", "eliza.bitnet_matmul"}
 SUPPORTED_FP8_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.fp8_matmul"}
@@ -156,6 +162,46 @@ class LoweredMatmulResult:
             "tiled_dispatch": self.tiled_dispatch,
             "split_k": self.split_k,
             "host_accumulates_partials": self.host_accumulates_partials,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredSparseInt4MatmulResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    abi_opcode: int
+    result: list[list[int]]
+    golden: list[list[int]]
+    input_shape: list[int]
+    output_shape: list[int]
+    sparse_block_count: int
+    sdot4_count: int
+    padded_k: int
+    cpu_fallback: bool
+    host_pads_k_to_sparse_blocks: bool
+    host_uses_2_4_metadata: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "abi_opcode": self.abi_opcode,
+            "result": self.result,
+            "golden": self.golden,
+            "input_shape": self.input_shape,
+            "output_shape": self.output_shape,
+            "sparse_block_count": self.sparse_block_count,
+            "sdot4_count": self.sdot4_count,
+            "padded_k": self.padded_k,
+            "cpu_fallback": self.cpu_fallback,
+            "host_pads_k_to_sparse_blocks": self.host_pads_k_to_sparse_blocks,
+            "host_uses_2_4_metadata": self.host_uses_2_4_metadata,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -855,6 +901,77 @@ def lower_matmul_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredM
     )
 
 
+def lower_sparse_int4_matmul_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredSparseInt4MatmulResult:
+    """Lower a tiny 2:4 sparse INT4 weight matmul through SDOT4_S4_2_4 commands."""
+
+    if graph.get("schema") != SUPPORTED_SPARSE_INT4_MATMUL_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_SPARSE_INT4_MATMUL_OPS:
+        raise NpuLoweringError(f"unsupported sparse_int4_matmul source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision not in {"int4", "sparse_int4", "s4_2_4"}:
+        raise NpuLoweringError(f"unsupported sparse_int4_matmul precision {precision!r}")
+
+    lhs = _matrix(graph.get("lhs"), "lhs")
+    rhs_nonzero = _tensor3(graph.get("rhs_nonzero"), "rhs_nonzero")
+    rhs_positions = _tensor3(graph.get("rhs_positions"), "rhs_positions")
+    _validate_sparse_int4_matmul_shape(lhs, rhs_nonzero, rhs_positions)
+    _validate_range(lhs, -8, 7, "lhs")
+    _validate_tensor3_range(rhs_nonzero, -8, 7, "rhs_nonzero")
+    _validate_tensor3_range(rhs_positions, 0, 3, "rhs_positions")
+
+    result: list[list[int]] = []
+    golden: list[list[int]] = []
+    sdot4_count = 0
+    output_cols = len(rhs_nonzero[0])
+    for lhs_row in lhs:
+        result_row: list[int] = []
+        golden_row: list[int] = []
+        for col_index in range(output_cols):
+            acc = 0
+            golden_acc = 0
+            for block_index, block in enumerate(rhs_nonzero):
+                dense_values = lhs_row[block_index * 8 : block_index * 8 + 8]
+                if len(dense_values) < 8:
+                    dense_values = dense_values + [0] * (8 - len(dense_values))
+                nonzero_weights = block[col_index]
+                positions = rhs_positions[block_index][col_index]
+                acc = _s32(
+                    runtime.add(acc, runtime.sdot4_s4_2_4(nonzero_weights, dense_values, positions))
+                )
+                golden_acc = _s32(
+                    golden_acc + golden_sdot4_s4_2_4(nonzero_weights, dense_values, positions)
+                )
+                sdot4_count += 1
+            result_row.append(acc)
+            golden_row.append(golden_acc)
+        result.append(result_row)
+        golden.append(golden_row)
+
+    padded_k = len(rhs_nonzero) * 8
+    return LoweredSparseInt4MatmulResult(
+        schema="eliza.e1_npu_lowered_sparse_int4_matmul_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision="sparse_int4_2_4",
+        abi_opcode=runtime.OP_SDOT4_S4_2_4,
+        result=result,
+        golden=golden,
+        input_shape=[len(lhs), len(lhs[0]), output_cols],
+        output_shape=[len(lhs), output_cols],
+        sparse_block_count=len(rhs_nonzero),
+        sdot4_count=sdot4_count,
+        padded_k=padded_k,
+        cpu_fallback=False,
+        host_pads_k_to_sparse_blocks=padded_k != len(lhs[0]),
+        host_uses_2_4_metadata=True,
+        claim_boundary="sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
+    )
+
+
 def lower_int2_matmul_smoke(
     runtime: E1NpuRuntime, graph: dict[str, Any]
 ) -> LoweredInt2MatmulResult:
@@ -887,8 +1004,7 @@ def lower_int2_matmul_smoke(
             for k_base in range(0, len(rhs), 16):
                 a_chunk = lhs_row[k_base : k_base + 16]
                 b_chunk = [
-                    rhs[k_index][col_index]
-                    for k_index in range(k_base, min(k_base + 16, len(rhs)))
+                    rhs[k_index][col_index] for k_index in range(k_base, min(k_base + 16, len(rhs)))
                 ]
                 if len(a_chunk) < 16:
                     a_chunk = a_chunk + [0] * (16 - len(a_chunk))
@@ -2247,6 +2363,32 @@ def _matrix(value: Any, name: str) -> list[list[int]]:
     return matrix
 
 
+def _tensor3(value: Any, name: str) -> list[list[list[int]]]:
+    if not isinstance(value, list) or not value:
+        raise NpuLoweringError(f"{name} must be a non-empty rank-3 tensor")
+    tensor: list[list[list[int]]] = []
+    dim1: int | None = None
+    dim2: int | None = None
+    for item0 in value:
+        if not isinstance(item0, list) or not item0:
+            raise NpuLoweringError(f"{name} must contain non-empty rank-2 slices")
+        if dim1 is None:
+            dim1 = len(item0)
+        elif len(item0) != dim1:
+            raise NpuLoweringError(f"{name} must be rectangular")
+        tensor_item0: list[list[int]] = []
+        for item1 in item0:
+            if not isinstance(item1, list) or not item1:
+                raise NpuLoweringError(f"{name} must contain non-empty innermost rows")
+            if dim2 is None:
+                dim2 = len(item1)
+            elif len(item1) != dim2:
+                raise NpuLoweringError(f"{name} must be rectangular")
+            tensor_item0.append([_int(element, name) for element in item1])
+        tensor.append(tensor_item0)
+    return tensor
+
+
 def _vector(value: Any, name: str) -> list[int]:
     if not isinstance(value, list) or not value:
         raise NpuLoweringError(f"{name} must be a non-empty vector")
@@ -2356,6 +2498,35 @@ def _validate_matmul_shape(lhs: list[list[int]], rhs: list[list[int]]) -> None:
         raise NpuLoweringError("matmul smoke path requires non-empty K dimension")
     if m < 1 or n < 1:
         raise NpuLoweringError("matmul smoke path requires non-empty M/N dimensions")
+
+
+def _validate_sparse_int4_matmul_shape(
+    lhs: list[list[int]],
+    rhs_nonzero: list[list[list[int]]],
+    rhs_positions: list[list[list[int]]],
+) -> None:
+    if len(rhs_positions) != len(rhs_nonzero):
+        raise NpuLoweringError("sparse_int4_matmul metadata block mismatch")
+    output_cols = len(rhs_nonzero[0])
+    if output_cols < 1:
+        raise NpuLoweringError("sparse_int4_matmul requires non-empty output columns")
+    for block_index, block in enumerate(rhs_nonzero):
+        if len(block) != output_cols or len(rhs_positions[block_index]) != output_cols:
+            raise NpuLoweringError("sparse_int4_matmul metadata column mismatch")
+        for col_index, nonzero_weights in enumerate(block):
+            positions = rhs_positions[block_index][col_index]
+            if len(nonzero_weights) != 4:
+                raise NpuLoweringError("sparse_int4_matmul requires four nonzero weights per block")
+            if len(positions) != 4:
+                raise NpuLoweringError(
+                    "sparse_int4_matmul requires four metadata positions per block"
+                )
+            if len(set(positions[:2])) != 2 or len(set(positions[2:])) != 2:
+                raise NpuLoweringError("sparse_int4_matmul requires distinct 2:4 positions")
+    if len(lhs[0]) > len(rhs_nonzero) * 8:
+        raise NpuLoweringError("sparse_int4_matmul K exceeds sparse metadata blocks")
+    if len(lhs[0]) <= (len(rhs_nonzero) - 1) * 8:
+        raise NpuLoweringError("sparse_int4_matmul has unused sparse metadata blocks")
 
 
 def _validate_same_shape(lhs: list[list[int]], rhs: list[list[int]], op_name: str) -> None:
@@ -2920,3 +3091,11 @@ def _validate_tensor_range(
                 for value in item2:
                     if not low <= value <= high:
                         raise NpuLoweringError(f"{name} value {value} outside range {low}..{high}")
+
+
+def _validate_tensor3_range(tensor: list[list[list[int]]], low: int, high: int, name: str) -> None:
+    for item0 in tensor:
+        for item1 in item0:
+            for value in item1:
+                if not low <= value <= high:
+                    raise NpuLoweringError(f"{name} value {value} outside range {low}..{high}")

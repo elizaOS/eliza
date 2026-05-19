@@ -17,9 +17,9 @@
 
 `timescale 1ns/1ps
 
-module ras
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module ras (
     input  logic                   clk,
     input  logic                   rst_n,
 
@@ -70,14 +70,20 @@ module ras
 
     // Speculative top read. When the SP is zero we cannot pop and the
     // consumer must treat `spec_top_valid` as zero.
+    logic [RAS_IDX_W-1:0] spec_top_rdaddr;
+    assign spec_top_rdaddr = spec_sp_q[RAS_IDX_W-1:0] - 1'b1;
+
+    ras_entry_t spec_top_entry;
+    assign spec_top_entry = spec_stack_q[spec_top_rdaddr];
+
     always_comb begin
         if (spec_empty) begin
             spec_top_addr  = '0;
             spec_top_valid = 1'b0;
             spec_top_idx   = '0;
         end else begin
-            spec_top_addr  = spec_stack_q[spec_sp_q - 1'b1].addr;
-            spec_top_valid = spec_stack_q[spec_sp_q - 1'b1].valid;
+            spec_top_addr  = spec_top_entry.addr;
+            spec_top_valid = spec_top_entry.valid;
             spec_top_idx   = spec_sp_q;
         end
     end
@@ -89,10 +95,10 @@ module ras
             spec_sp_q <= '0;
             arch_sp_q <= '0;
             for (i = 0; i < RAS_SPEC_ENTRIES; i++) begin
-                spec_stack_q[i] <= '{addr:'0, ovf:'0, valid:1'b0};
+                spec_stack_q[i] <= '0;
             end
             for (i = 0; i < RAS_ARCH_ENTRIES; i++) begin
-                arch_stack_q[i] <= '{addr:'0, ovf:'0, valid:1'b0};
+                arch_stack_q[i] <= '0;
             end
             pmu_overflow  <= 1'b0;
             pmu_underflow <= 1'b0;
@@ -115,21 +121,19 @@ module ras
                             spec_stack_q[RAS_SPEC_ENTRIES-1].ovf + 1'b1;
                         pmu_overflow <= 1'b1;
                     end else begin
-                        spec_stack_q[spec_sp_q] <= '{
-                            addr: spec_push_addr,
-                            ovf:  '0,
-                            valid: 1'b1
-                        };
+                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]].addr  <= spec_push_addr;
+                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]].ovf   <= '0;
+                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]].valid <= 1'b1;
                         spec_sp_q <= spec_sp_q + 1'b1;
                     end
                 end else if (spec_pop && !spec_push) begin
                     if (spec_empty) begin
                         pmu_underflow <= 1'b1;
-                    end else if (spec_stack_q[spec_sp_q - 1'b1].ovf != '0) begin
-                        spec_stack_q[spec_sp_q - 1'b1].ovf <=
-                            spec_stack_q[spec_sp_q - 1'b1].ovf - 1'b1;
+                    end else if (spec_stack_q[spec_top_rdaddr].ovf != '0) begin
+                        spec_stack_q[spec_top_rdaddr].ovf <=
+                            spec_stack_q[spec_top_rdaddr].ovf - 1'b1;
                     end else begin
-                        spec_stack_q[spec_sp_q - 1'b1].valid <= 1'b0;
+                        spec_stack_q[spec_top_rdaddr].valid <= 1'b0;
                         spec_sp_q <= spec_sp_q - 1'b1;
                     end
                 end
@@ -145,22 +149,18 @@ module ras
                     for (i = 0; i < RAS_ARCH_ENTRIES-1; i++) begin
                         arch_stack_q[i] <= arch_stack_q[i+1];
                     end
-                    arch_stack_q[RAS_ARCH_ENTRIES-1] <= '{
-                        addr: commit_push_addr,
-                        ovf:  '0,
-                        valid: 1'b1
-                    };
+                    arch_stack_q[RAS_ARCH_ENTRIES-1].addr  <= commit_push_addr;
+                    arch_stack_q[RAS_ARCH_ENTRIES-1].ovf   <= '0;
+                    arch_stack_q[RAS_ARCH_ENTRIES-1].valid <= 1'b1;
                 end else begin
-                    arch_stack_q[arch_sp_q] <= '{
-                        addr: commit_push_addr,
-                        ovf:  '0,
-                        valid: 1'b1
-                    };
+                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]].addr  <= commit_push_addr;
+                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]].ovf   <= '0;
+                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]].valid <= 1'b1;
                     arch_sp_q <= arch_sp_q + 1'b1;
                 end
             end else if (commit_pop && !commit_push) begin
                 if (arch_sp_q != '0) begin
-                    arch_stack_q[arch_sp_q - 1'b1].valid <= 1'b0;
+                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0] - 1'b1].valid <= 1'b0;
                     arch_sp_q <= arch_sp_q - 1'b1;
                 end
             end

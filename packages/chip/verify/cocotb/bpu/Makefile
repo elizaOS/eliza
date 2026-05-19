@@ -35,6 +35,6 @@ PYTHON ?= python3
 # Verilator: keep linting on but suppress warnings about unused package
 # parameters (e.g. RAS-only test sees the full bpu_pkg) and unused signals
 # in the verification-only flatten wrappers. Errors still surface as errors.
-EXTRA_ARGS += -Wall -Wno-UNUSEDPARAM -Wno-UNUSEDSIGNAL -Wno-UNUSED -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-MULTIDRIVEN -Wno-CASEINCOMPLETE -Wno-CASEX -Wno-LATCH
+EXTRA_ARGS += -Wall -Wno-UNUSEDPARAM -Wno-UNUSEDSIGNAL -Wno-UNUSED -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-MULTIDRIVEN -Wno-CASEINCOMPLETE -Wno-CASEX -Wno-LATCH -Wno-IMPORTSTAR
 
 include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim

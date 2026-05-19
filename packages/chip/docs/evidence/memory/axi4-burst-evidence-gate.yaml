@@ -89,6 +89,23 @@ unblock_requires:
   - No closed-IP PHY substitution: the AXI4 controller stops at the DFI 5.0 north interface.
   - The e1_axi_lite_interconnect scaffold continues to elaborate for backward compatibility.
 
+cocotb_status_at_check_in:
+  elaboration: pass
+  test_pass_count: 1
+  test_fail_count: 4
+  passing_tests:
+    - id_ordering_per_axid
+  failing_tests_known_issues:
+    - id: incr_burst_length_sweep
+      reason: cocotb-driver handshake helper needs additional iteration for single-beat writes; multi-beat path works (id_ordering passes a 4-beat burst).
+    - id: decode_error_returns_decerr
+      reason: depends on the same helper.
+    - id: write_strobe_partial_beat_preserves_unwritten_bytes
+      reason: depends on the same helper.
+    - id: exclusive_read_then_write_returns_exokay_or_okay
+      reason: depends on the same helper.
+  next_step: Iterate the AXI4 cocotb driver to align W-channel timing per AXI4 spec section A3.4; then re-run cocotb-axi4.
+
 claim_rules:
   - The production data path is the AXI4 fabric. The AXI-Lite scaffold remains for boot-bringup testing only.
   - Bandwidth claims based on this AXI4 fabric remain blocked until a real DRAM controller + PHY is attached and STREAM/lmbench evidence exists.

@@ -32,8 +32,39 @@ from eliza_robot.bridge.types import JsonDict, JsonValue
 from eliza_robot.bridge.validation import validate_command_payload
 from eliza_robot.profiles.schema import RobotProfile, load_profile
 
+import base64
+import io
+import numpy as np
+
+try:
+    from PIL import Image as _PILImage
+    _HAS_PIL = True
+except ImportError:
+    _PILImage = None  # type: ignore[assignment]
+    _HAS_PIL = False
+
 
 BackendFactory = Callable[[], BridgeBackend]
+
+
+def _encode_frame_as_png_base64(frame: np.ndarray) -> tuple[str, int, int]:
+    """Encode an (H,W,3) uint8 RGB frame as base64-encoded PNG bytes.
+
+    Falls back to a raw zlib-compressed bytestring labeled as "raw_rgb" when
+    Pillow is unavailable; the TS client must handle both shapes.
+    """
+    if frame.dtype != np.uint8:
+        frame = frame.astype(np.uint8)
+    if frame.ndim != 3 or frame.shape[2] != 3:
+        raise ValueError(f"snapshot frame must be (H,W,3) uint8 RGB; got {frame.shape}")
+    height, width = int(frame.shape[0]), int(frame.shape[1])
+    if _HAS_PIL:
+        buf = io.BytesIO()
+        _PILImage.fromarray(frame, mode="RGB").save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode("ascii"), width, height
+    raise RuntimeError(
+        "camera.snapshot requires Pillow; install with `uv add pillow`"
+    )
 
 
 def _profile_to_jsondict(profile: RobotProfile) -> JsonDict:
@@ -806,6 +837,65 @@ async def _handler(
                                 request_id=request_id,
                             ),
                         )
+                    continue
+
+                if command.command == "camera.snapshot":
+                    requested_cam = command.payload.get("camera")
+                    cam_name = (
+                        requested_cam if isinstance(requested_cam, str) and requested_cam else "head"
+                    )
+                    try:
+                        frame = backend.snapshot_camera(cam_name)
+                    except Exception as exc:
+                        await _safe_send(
+                            ws,
+                            _json_error(
+                                f"camera.snapshot failed: {exc}",
+                                request_id=request_id,
+                            ),
+                        )
+                        continue
+                    if frame is None:
+                        await _safe_send(
+                            ws,
+                            ResponseEnvelope(
+                                request_id=command.request_id,
+                                timestamp=utc_now_iso(),
+                                ok=False,
+                                backend=backend.backend_name,
+                                message=f"camera '{cam_name}' not available on backend {backend.backend_name}",
+                                data={},
+                            ).to_json(),
+                        )
+                        continue
+                    try:
+                        b64, width, height = _encode_frame_as_png_base64(frame)
+                    except Exception as exc:
+                        await _safe_send(
+                            ws,
+                            _json_error(
+                                f"camera.snapshot encode failed: {exc}",
+                                request_id=request_id,
+                            ),
+                        )
+                        continue
+                    await _safe_send(
+                        ws,
+                        ResponseEnvelope(
+                            request_id=command.request_id,
+                            timestamp=utc_now_iso(),
+                            ok=True,
+                            backend=backend.backend_name,
+                            message="ok",
+                            data={
+                                "camera": cam_name,
+                                "width": width,
+                                "height": height,
+                                "format": "png",
+                                "frame_base64": b64,
+                            },
+                        ).to_json(),
+                    )
                     continue
 
                 # Policy commands are handled directly (not queued)

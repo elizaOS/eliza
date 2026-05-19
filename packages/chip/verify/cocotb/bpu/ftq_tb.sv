@@ -6,9 +6,9 @@
 
 `timescale 1ns/1ps
 
-module ftq_tb
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module ftq_tb (
     input  logic                clk,
     input  logic                rst_n,
 

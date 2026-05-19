@@ -8,6 +8,9 @@ config="${CHIPYARD_CONFIG:-ElizaRocketConfig}"
 config_package="${CHIPYARD_CONFIG_PACKAGE:-eliza}"
 
 cd "$repo_dir"
+if [ "${CHIPYARD_PREPARE_SPIKE_LIBRARIES:-1}" = "1" ]; then
+	CHIPYARD_CHECKOUT="$checkout" python3 scripts/prepare_chipyard_spike_libraries.py
+fi
 CHIPYARD_CHECKOUT="$checkout" python3 scripts/check_chipyard_verilator_preflight.py
 python3 scripts/check_chipyard_verilator_linux_smoke.py --repair-stale-generated
 

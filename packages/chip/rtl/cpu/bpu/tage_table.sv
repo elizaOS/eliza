@@ -12,8 +12,9 @@
 
 `timescale 1ns/1ps
 
+import bpu_pkg::*;
+
 module tage_table
-    import bpu_pkg::*;
 #(
     parameter int unsigned TABLE_ID   = 0,
     parameter int unsigned ENTRIES    = TAGE_ENTRIES_TABLE,

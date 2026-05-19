@@ -14,9 +14,9 @@
 
 `timescale 1ns/1ps
 
-module ftb
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module ftb (
     input  logic                     clk,
     input  logic                     rst_n,
 

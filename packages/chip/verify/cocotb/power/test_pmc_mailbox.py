@@ -12,19 +12,17 @@ Contract:
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
-
 from power_pkg_constants import (
     DVFS_CODE_WIDTH,
     DVFS_RAIL_COUNT,
+    PMC_REG_AVFS_STATUS,
     PMC_REG_CTRL,
     PMC_REG_DROOP_COUNT,
     PMC_REG_DVFS_BASE,
-    PMC_REG_AVFS_STATUS,
 )
 
-
-CLK_AON_PERIOD_NS = 30      # ~32 kHz divided & boosted on AON PLL — abstracted here
-CLK_SAMPLE_PERIOD_NS = 5    # 200 MHz
+CLK_AON_PERIOD_NS = 30  # ~32 kHz divided & boosted on AON PLL — abstracted here
+CLK_SAMPLE_PERIOD_NS = 5  # 200 MHz
 
 
 async def _reset(dut):
@@ -88,7 +86,7 @@ async def dvfs_request_fanout_per_rail(dut):
     expected_codes = []
     for rail in range(DVFS_RAIL_COUNT):
         code = (0x10 + rail) & ((1 << DVFS_CODE_WIDTH) - 1)
-        word = (1 << 31) | code   # valid + code
+        word = (1 << 31) | code  # valid + code
         await _mbox_write(dut, PMC_REG_DVFS_BASE + 4 * rail, word)
         expected_codes.append(code)
 
@@ -100,8 +98,9 @@ async def dvfs_request_fanout_per_rail(dut):
         actual_code = int(dut.dvfs_request_code_o[rail].value)
         actual_valid = int(dut.dvfs_request_valid_o[rail].value)
         assert actual_valid == 1, f"rail {rail}: valid not asserted"
-        assert actual_code == expected_codes[rail], \
+        assert actual_code == expected_codes[rail], (
             f"rail {rail}: expected code {expected_codes[rail]:#x} got {actual_code:#x}"
+        )
 
 
 @cocotb.test()

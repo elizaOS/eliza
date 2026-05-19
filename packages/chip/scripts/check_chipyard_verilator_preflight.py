@@ -287,7 +287,7 @@ def main() -> int:
                     )
             config_source_checks.append(record)
 
-    for tool in ("make", "java", "verilator", "firtool"):
+    for tool in ("ar", "make", "java", "verilator", "firtool"):
         resolved_tool = tool_path(tool)
         checks[f"tool:{tool}"] = resolved_tool
         if resolved_tool is None:
@@ -375,6 +375,40 @@ def main() -> int:
                 "missing Spike static library under RISCV: "
                 f"{spike_library}; build/install Chipyard riscv-isa-sim collateral"
             )
+        elif ar_path := checks.get("tool:ar"):
+            spike_archive = run([str(ar_path), "t", str(spike_library)])
+            if spike_archive.returncode != 0:
+                blockers.append(f"cannot inspect Spike static library: {spike_library}")
+            else:
+                members = set(spike_archive.stdout.splitlines())
+                excluded_members = {"remote_bitbang.o", "sim.o", "interactive.o"}
+                required_members = {
+                    "disasm.o",
+                    "isa_parser.o",
+                    "fdt.o",
+                    "f32_add.o",
+                    "softfloat_state.o",
+                }
+                present_excluded = sorted(excluded_members & members)
+                missing_required = sorted(required_members - members)
+                checks["archive:RISCV/lib/libriscv.a/excluded_members_present"] = (
+                    present_excluded
+                )
+                checks["archive:RISCV/lib/libriscv.a/missing_required_members"] = (
+                    missing_required
+                )
+                if present_excluded:
+                    blockers.append(
+                        "Spike static library contains standalone simulator objects "
+                        f"that conflict with Chipyard Verilator collateral: {present_excluded}; "
+                        "run scripts/prepare_chipyard_spike_libraries.py"
+                    )
+                if missing_required:
+                    blockers.append(
+                        "Spike static library is missing companion archive objects "
+                        f"needed by the generated Verilator link: {missing_required}; "
+                        "run scripts/prepare_chipyard_spike_libraries.py"
+                    )
 
     env_sh = CHECKOUT / "env.sh"
     checks["exists:env.sh"] = env_sh.is_file()

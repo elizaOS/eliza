@@ -104,6 +104,9 @@ VALID_COMMANDS = {
     "policy.status",
     # Profile / introspection
     "profile.describe",
+    # Camera (unified across sim + real backends — sim returns rendered
+    # head-camera RGB, real returns the last v4l2/ROS camera frame).
+    "camera.snapshot",
 }
 
 VALID_EVENTS = {

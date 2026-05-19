@@ -197,6 +197,29 @@ stages:
       corpus governance, license review, paired RTL/netlist/layout/log hashes,
       held-out local tasks, and deterministic verification/PD gates before any
       model output can influence design decisions.
+  - id: dfm_yield_lithography
+    rating: READY_DRY_RUN
+    source_ids:
+      - litho-aware-ml-hotspot
+      - dlhsd-hotspot-detection
+      - lithohod
+      - torchlitho
+      - openilt
+      - diffopc
+      - radai-wm811k-wafer-defect-model
+      - pegasus-lpa
+    local_lane: p1-dfm-yield-lithography-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_dfm_yield_lithography_targets.py
+      - build/ai_eda/dfm_yield_lithography_targets/validation/targets_report.json
+    next_gate: make pd-contract-check
+    critical_review: >
+      ML hotspot detectors, differentiable lithography, ILT/OPC optimizers, and
+      wafer-defect classifiers are potentially useful after physical design is
+      real, but they are not signoff. E1 currently lacks final layout, foundry
+      decks, lithography kernels, mask rules, local hotspot labels, wafer maps,
+      and manufacturing inspection evidence, so the lane only captures targets
+      and blockers.
   - id: placement_optimization
     rating: BLOCKED_NEEDS_EVIDENCE
     source_ids:

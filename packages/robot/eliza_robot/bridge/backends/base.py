@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
+import numpy as np
+
 from eliza_robot.bridge.protocol import CommandEnvelope, EventEnvelope, ResponseEnvelope
 from eliza_robot.bridge.types import JsonDict
 
@@ -35,4 +37,14 @@ class BridgeBackend(ABC):
     @abstractmethod
     def capabilities(self) -> JsonDict:
         """Return backend capabilities in JSON-serializable form."""
+
+    def snapshot_camera(self, _camera: str = "head") -> np.ndarray | None:
+        """Return the current camera frame as (H, W, 3) uint8 RGB, or None
+        when the backend does not expose camera frames yet.
+
+        The server-level `camera.snapshot` handler encodes the frame as PNG
+        and ships it as base64. Subclasses (mujoco, mock, ros_real) override
+        this to return real pixels.
+        """
+        return None
 

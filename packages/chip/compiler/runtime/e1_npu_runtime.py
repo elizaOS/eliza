@@ -200,8 +200,8 @@ class E1NpuRuntime:
         NpuPrecisionSupport(
             "INT4",
             NpuPrecisionState.SUPPORTED,
-            "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse dot, and bounded GEMM_S4 through 64-byte MMIO scratchpad",
-            "runtime opcode, sparse metadata, and bounded GEMM_S4 tests only; no compiler path",
+            "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse dot, bounded sparse INT4 matmul lowering smoke, and bounded GEMM_S4 through 64-byte MMIO scratchpad",
+            "runtime opcode, sparse metadata, bounded sparse INT4 matmul, and bounded GEMM_S4 tests only; no compiler path",
         ),
         NpuPrecisionSupport(
             "INT2",

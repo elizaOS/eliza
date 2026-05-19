@@ -13,9 +13,9 @@
 
 `timescale 1ns/1ps
 
-module ittage
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module ittage (
     input  logic                clk,
     input  logic                rst_n,
 

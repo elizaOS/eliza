@@ -1284,3 +1284,55 @@ work_items:
       - Report hashes local source inventory, RAG, external probe, PD snapshot, RTL, and verification-debug inputs.
       - Report states no training, fine-tuning, inference, embedding generation, corpus export, model-quality claim, design-decision claim, or release use is enabled.
       - Candidate tasks list deterministic RAG, source inventory, RTL model eval, formal, synthesis, PD, RTL rewrite/equivalence, verification-debug, cocotb, and no-hardware-action gates.
+  - id: p1-dfm-yield-lithography-target-capture
+    title: DFM Yield And Lithography Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - litho-aware-ml-hotspot
+      - dlhsd-hotspot-detection
+      - lithohod
+      - torchlitho
+      - openilt
+      - diffopc
+      - radai-wm811k-wafer-defect-model
+      - pegasus-lpa
+    target_area:
+      - dfm
+      - yield
+      - lithography
+      - hotspot_detection
+      - opc
+      - wafer_defect_classification
+    owner_scope: dry-run target capture only; no layout, mask, OPC, lithography simulation, model inference, yield prediction, signoff, or release claims
+    objective: >
+      Track ML lithography hotspot detection, differentiable lithography,
+      inverse lithography/OPC, and wafer defect classification while keeping all
+      future E1 use behind foundry/process evidence, local layout hashes,
+      manufacturing gates, and human review.
+    deliverables:
+      - scripts/ai_eda/capture_dfm_yield_lithography_targets.py
+      - build/ai_eda/dfm_yield_lithography_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      DFM/yield automation reports may only hash local PD, signoff,
+      manufacturing, and evidence-gate artifacts; any hotspot, mask, OPC, yield,
+      wafer-defect, or release claim requires foundry/process collateral,
+      layout/mask provenance, local labels, deterministic signoff gates, and
+      human review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_dfm_yield_lithography_targets.py --run-id validation
+      - python3 scripts/ai_eda/capture_openroad_ml_snapshot.py --run-id validation
+      - make pd-contract-check
+      - make manufacturing-artifacts-check
+    blocked_by:
+      - No E1 final GDS, routed DEF, fill, density, DRC, LVS, antenna, EM, OPC, mask, or lithography simulation evidence
+      - No foundry-approved rule deck, layer map, lithography kernel, resist model, focus/dose process window, or DFM hotspot labels
+      - No license-reviewed ICCAD, foundry, wafer-map, AOI, or E1 manufacturing dataset selected for local training or evaluation
+      - No local held-out E1 layout clips with human-reviewed hotspot, false-positive, or repair labels
+      - No wafer, lot, die, board, camera, SEM, inspection, or first-article measurement corpus for yield or defect models
+      - No approved flow for AI-generated layout, mask, OPC, DFM fixes, yield prediction, or signoff waivers
+    acceptance_criteria:
+      - Report hashes local source inventory, SOTA review, PD signoff, manufacturing release, OpenLane, formal, synthesis, and PD predictor inputs.
+      - Report states no layout, mask, constraint, OPC, PDK-rule, lithography, DRC, LVS, model, download, prediction, DFM, yield, wafer-defect, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, OpenLane preflight, PD contract, manufacturing, real-world, product, synthesis, docs, no-hardware-action, and PD snapshot gates.

@@ -163,6 +163,43 @@ power, and manufacturing preparation.
   summaries are not evidence until tied to local artifact hashes, held-out
   tasks, formal/synthesis checks, and human review.
 
+## DFM, yield, lithography, and OPC
+
+### Hotspot detection
+
+- Litho-aware ML hotspot detection:
+  https://pdxscholar.library.pdx.edu/ece_fac/529/
+- DLHSD code/models: https://github.com/phdyang007/dlhsd
+- LithoHoD: https://arxiv.org/abs/2409.10021
+- Pegasus LPA:
+  https://www.cadence.com/en_US/home/tools/digital-design-and-signoff/silicon-signoff/layout-pattern-analyzer.html
+- Use: detect or localize lithography hotspot patterns before mask release,
+  with production tools mixing pattern matching, ML, and implementation-flow
+  integration.
+- E1 fit: target capture only. Hotspot detectors need local GDS/DEF clips,
+  layer maps, process decks, focus/dose windows, labels, false-positive review,
+  and foundry or human DFM disposition.
+
+### Differentiable lithography and OPC
+
+- TorchLitho: https://github.com/TorchOPC/TorchLitho
+- OpenILT: https://github.com/OpenOPC/OpenILT
+- DiffOPC: https://arxiv.org/abs/2408.08969
+- Use: research-grade lithography simulation, inverse lithography, and
+  gradient-based OPC/mask optimization.
+- E1 fit: blocked backend inventory. These flows can guide future experiments,
+  but E1 has no foundry-approved process kernels, resist models, mask rules, or
+  release-safe layout clips.
+
+### Wafer and manufacturing defect models
+
+- RadAI WM-811K wafer defect model:
+  https://huggingface.co/radai-agent/radai-wm811k-defect-detection
+- Use: classify wafer-map defect patterns after fabrication.
+- E1 fit: post-fabrication reference only. E1 has no wafer maps, lot/die
+  provenance, inspection images, or measured defect labels, so public weights
+  must not be downloaded or used for yield claims.
+
 ## Synthesis, timing, power, and routability predictors
 
 ### OpenABC-D
@@ -330,3 +367,8 @@ power, and manufacturing preparation.
    Do not export training corpora, generate embeddings, train/fine-tune models,
    run inference, or make model-quality/design-decision claims without local
    provenance, held-out tasks, deterministic gates, and review.
+10. DFM/yield/lithography target capture with
+    `scripts/ai_eda/capture_dfm_yield_lithography_targets.py --run-id validation`.
+    Do not run hotspot detectors, lithography simulation, OPC/ILT, wafer-defect
+    models, or make DFM/yield/mask claims without foundry/process collateral,
+    local layout labels, deterministic signoff gates, and review.

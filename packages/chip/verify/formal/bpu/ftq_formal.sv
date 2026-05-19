@@ -5,26 +5,39 @@
 //   2. push_ready is exactly the inverse of pmu_full.
 //   3. pop_valid is exactly the inverse of pmu_empty.
 //   4. push on a full FTQ does not advance the write pointer.
+//
+// The harness uses ftq_tb.sv (the cocotb flatten wrapper) as the DUT so the
+// FTQ struct ports stay outside the formal frontend's parse scope. yosys
+// 0.64 in oss-cad-suite does not yet support struct typedefs in module port
+// lists; using the already-flattened wrapper is the pragmatic equivalent.
 
 `timescale 1ns/1ps
 
-module ftq_formal(input logic clk);
-    import bpu_pkg::*;
+import bpu_pkg::*;
 
+module ftq_formal(input logic clk);
     logic        rst_n = 1'b0;
     (* anyseq *) logic        push_valid;
-    (* anyseq *) ftq_entry_t  push_entry;
+    (* anyseq *) logic [VADDR_W-1:0] push_start_pc;
+    (* anyseq *) logic [VADDR_W-1:0] push_end_pc;
+    (* anyseq *) logic [VADDR_W-1:0] push_target_pc;
+    (* anyseq *) logic        push_taken;
+    (* anyseq *) logic [1:0]  push_kind;
     logic        push_ready;
     (* anyseq *) logic        pop_ready;
     logic        pop_valid;
-    ftq_entry_t  pop_entry;
+    logic [VADDR_W-1:0] pop_start_pc;
+    logic [VADDR_W-1:0] pop_target_pc;
+    logic        pop_taken;
+    logic [1:0]  pop_kind;
+    logic [FTQ_IDX_W-1:0] pop_ftq_idx;
     (* anyseq *) logic        flush_valid;
     (* anyseq *) logic [FTQ_IDX_W-1:0] flush_idx;
     logic        pmu_full;
     logic        pmu_empty;
     logic [FTQ_IDX_W:0] occupancy;
 
-    ftq dut(.*);
+    ftq_tb dut (.*);
 
     initial rst_n = 1'b0;
     always_ff @(posedge clk) begin
@@ -34,7 +47,7 @@ module ftq_formal(input logic clk);
             assert(push_ready != pmu_full);
             assert(pop_valid != pmu_empty);
             if ($past(push_valid) && !$past(push_ready) && !$past(flush_valid))
-                assert(dut.wr_ptr_q == $past(dut.wr_ptr_q));
+                assert(dut.u_ftq.wr_ptr_q == $past(dut.u_ftq.wr_ptr_q));
         end
     end
 endmodule

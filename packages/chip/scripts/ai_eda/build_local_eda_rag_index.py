@@ -130,6 +130,11 @@ SOURCE_SET = (
         "ai_eda_runner",
     ),
     (
+        "dfm_yield_lithography_targets_runner",
+        "scripts/ai_eda/capture_dfm_yield_lithography_targets.py",
+        "ai_eda_runner",
+    ),
+    (
         "external_source_probe_runner",
         "scripts/ai_eda/probe_external_ai_eda_sources.py",
         "ai_eda_runner",
@@ -329,6 +334,17 @@ SMOKE_QUERIES = (
             "make formal",
             "make synth",
             "make power-thermal-evidence-check",
+        ],
+    },
+    {
+        "id": "dfm_yield_lithography_targets",
+        "query": "Which local sources define DFM, yield, lithography, OPC, and wafer-defect AI target capture?",
+        "required_source_ids": ["dfm_yield_lithography_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_dfm_yield_lithography_targets.py --run-id validation",
+            "make pd-contract-check",
+            "make manufacturing-artifacts-check",
+            "make real-world-gates-check",
         ],
     },
 )

@@ -11,9 +11,9 @@
 
 `timescale 1ns/1ps
 
-module sc
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module sc (
     input  logic                clk,
     input  logic                rst_n,
 

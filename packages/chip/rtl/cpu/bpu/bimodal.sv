@@ -9,9 +9,9 @@
 
 `timescale 1ns/1ps
 
-module bimodal
-    import bpu_pkg::*;
-(
+import bpu_pkg::*;
+
+module bimodal (
     input  logic                clk,
     input  logic                rst_n,
 

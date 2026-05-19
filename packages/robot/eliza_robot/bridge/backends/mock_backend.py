@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from random import random
+
+import numpy as np
 
 from eliza_robot.bridge.backends.base import BridgeBackend
 from eliza_robot.bridge.protocol import CommandEnvelope, EventEnvelope, ResponseEnvelope, utc_now_iso
@@ -54,7 +57,50 @@ class MockBackend(BridgeBackend):
             "head_set": True,
             "servo_set": True,
             "camera_stream_passthrough": False,
+            "camera_snapshot": True,
         }
+
+    def snapshot_camera(self, _camera: str = "head") -> np.ndarray | None:
+        """Return a deterministic synthetic frame that encodes the current
+        robot heading + head pan + step count.
+
+        The frame is a 320×240 RGB gradient whose color shifts as `walk_yaw`
+        and `head_pan` change. Pixel-diff tests can compare two snapshots
+        taken before and after a motion and assert the image moved.
+        """
+        width, height = 320, 240
+        # Hue rotates with composite yaw heading; saturation rises with speed.
+        hue = (self._state.angle * 18.0 + self._head.pan * 90.0 + 360.0) % 360.0
+        sat = 0.4 + 0.15 * min(self._state.speed, 4)
+        val = 0.85
+        c = val * sat
+        x = c * (1 - abs((hue / 60.0) % 2 - 1))
+        m = val - c
+        if hue < 60:
+            r, g, b = c, x, 0.0
+        elif hue < 120:
+            r, g, b = x, c, 0.0
+        elif hue < 180:
+            r, g, b = 0.0, c, x
+        elif hue < 240:
+            r, g, b = 0.0, x, c
+        elif hue < 300:
+            r, g, b = x, 0.0, c
+        else:
+            r, g, b = c, 0.0, x
+        base = np.zeros((height, width, 3), dtype=np.uint8)
+        # Per-row vertical gradient so the frame is non-uniform.
+        for row in range(height):
+            shade = 0.5 + 0.5 * math.sin(row / height * math.pi + self._state.angle)
+            base[row, :, 0] = int(255 * (r + m) * shade)
+            base[row, :, 1] = int(255 * (g + m) * shade)
+            base[row, :, 2] = int(255 * (b + m) * shade)
+        # Mark walk state with a top-left bar (red while walking, green idle)
+        if self._state.is_walking:
+            base[0:10, 0:60] = (255, 60, 60)
+        else:
+            base[0:10, 0:60] = (60, 255, 60)
+        return base
 
     async def handle_command(self, cmd: CommandEnvelope) -> ResponseEnvelope:
         message = "ok"

@@ -87,8 +87,16 @@ class MuJocoBackend(BridgeBackend):
             "head_set": True,
             "servo_set": True,
             "camera_stream_passthrough": False,
+            "camera_snapshot": True,
             "mujoco_sim": True,
         }
+
+    def snapshot_camera(self, _camera: str = "head") -> np.ndarray | None:
+        """Render the DemoEnv's head-mounted ego camera as an (H, W, 3) uint8 RGB."""
+        try:
+            return self._env.render_ego()
+        except Exception:
+            return None
 
     async def handle_command(self, cmd: CommandEnvelope) -> ResponseEnvelope:
         """Execute one command envelope against the MuJoCo simulation."""

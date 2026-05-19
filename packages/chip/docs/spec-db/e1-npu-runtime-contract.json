@@ -105,6 +105,57 @@
     "claim_boundary": "single_matmul_tiled_smoke_only_not_production_compiler_backend",
     "not_claimed": "No graph partitioning, StableHLO/FlatBuffer parser, quantization calibration, hardware scheduler, CPU fallback planner, Android delegate, or production compiler backend is implemented"
   },
+  "sparse_int4_matmul_lowering_smoke": {
+    "runtime_api": "lower_sparse_int4_matmul_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_sparse_int4_matmul_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot",
+      "tflite.fully_connected",
+      "tflite.batch_matmul",
+      "tflite.matmul",
+      "eliza.sparse_2_4_matmul",
+      "eliza.sparse_int4_matmul"
+    ],
+    "supported_precisions": [
+      "int4",
+      "sparse_int4",
+      "s4_2_4"
+    ],
+    "mapped_opcodes": [
+      "SDOT4_S4_2_4"
+    ],
+    "layout": "dense signed INT4 activation matrix plus per-8-K-block 2:4 sparse INT4 weight values and metadata positions",
+    "lowering": "Host validates signed INT4 activations, four nonzero weights and two distinct metadata positions per 2:4 group, pads K to 8-lane sparse blocks with INT4 zero values when needed, dispatches each sparse block through SDOT4_S4_2_4, and accumulates sparse block partial sums through OP_ADD",
+    "claim_boundary": "sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
+    "not_claimed": "No sparse tensor GEMM, sparse tensor-core throughput, hardware metadata scheduler, pruning/calibration flow, Android delegate, or production compiler backend is implemented"
+  },
+  "int2_matmul_lowering_smoke": {
+    "runtime_api": "lower_int2_matmul_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_int2_matmul_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot",
+      "tflite.fully_connected",
+      "tflite.batch_matmul",
+      "tflite.matmul",
+      "eliza.int2_matmul",
+      "eliza.bitnet_matmul"
+    ],
+    "supported_precisions": [
+      "int2",
+      "bitnet_int2"
+    ],
+    "mapped_opcodes": [
+      "DOT16_S2"
+    ],
+    "layout": "signed INT2 matrices in the two's-complement range [-2, 1] with signed int32 accumulator output",
+    "lowering": "Host validates signed INT2 matrices, pads K to DOT16 width with INT2 zero values when needed, and dispatches every sixteen-lane INT2 MAC chunk through DOT16_S2 with signed int32 accumulation",
+    "claim_boundary": "int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend",
+    "not_claimed": "No tensor INT2 GEMM, BitNet production kernel, sparsity-aware INT2 tensor path, graph partitioning, quantization calibration, Android delegate, or production compiler backend is implemented"
+  },
   "fp8_matmul_lowering_smoke": {
     "runtime_api": "lower_fp8_matmul_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
@@ -400,12 +451,12 @@
     {
       "precision": "INT4",
       "state": "supported_prototype",
-      "path": "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse metadata dot, and bounded GEMM_S4 through 64-byte MMIO scratchpad; no compiler path"
+      "path": "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse metadata dot, bounded sparse INT4 matmul lowering smoke, and bounded GEMM_S4 through 64-byte MMIO scratchpad; no compiler path"
     },
     {
       "precision": "INT2",
       "state": "supported_prototype",
-      "path": "DOT16_S2 packed scalar dot prototype only; no tensor GEMM/compiler path"
+      "path": "DOT16_S2 packed scalar dot prototype plus bounded scalar-dot INT2 matmul lowering smoke; no tensor INT2 GEMM/compiler path"
     },
     {
       "precision": "FP16",

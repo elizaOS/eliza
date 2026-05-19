@@ -23,6 +23,7 @@ dependencies = [
   "websockets>=12",
   # Perception
   "opencv-python-headless>=4.10",
+  "Pillow>=10",
   "sentence-transformers>=3",
   "onnxruntime>=1.18",
   # CLI / DX

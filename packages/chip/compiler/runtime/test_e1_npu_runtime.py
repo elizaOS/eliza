@@ -15,6 +15,7 @@ from e1_npu_lowering import (
     lower_residual_add_smoke,
     lower_rmsnorm_smoke,
     lower_rope_smoke,
+    lower_sparse_int4_matmul_smoke,
     lower_swiglu_smoke,
     lower_transformer_block_smoke,
 )
@@ -1445,6 +1446,79 @@ def test_int2_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio():
         lower_int2_matmul_smoke(runtime, {**base, "lhs": [[1, -1]], "rhs": [[1]]})
     with pytest.raises(NpuLoweringError, match="outside range"):
         lower_int2_matmul_smoke(runtime, {**base, "lhs": [[2]]})
+
+    assert mmio.writes == []
+
+
+def test_sparse_int4_matmul_smoke_lowers_to_sdot4_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_sparse_int4_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.sparse_2_4_matmul",
+        "precision": "sparse_int4",
+        "lhs": [
+            [1, -2, 3, -4, 5, -6, 7, -8, 1, 2],
+            [7, 6, 5, 4, 3, 2, 1, 0, -1, -2],
+        ],
+        "rhs_nonzero": [
+            [[2, -3, 4, -5], [-1, 3, -2, 6]],
+            [[7, -8, 1, -2], [4, -3, 2, -1]],
+        ],
+        "rhs_positions": [
+            [[0, 2, 1, 3], [1, 3, 0, 2]],
+            [[0, 1, 2, 3], [0, 2, 1, 3]],
+        ],
+    }
+
+    lowered = lower_sparse_int4_matmul_smoke(runtime, graph)
+
+    assert lowered.result == [[0, 26], [16, 2]]
+    assert lowered.golden == lowered.result
+    assert lowered.abi_opcode == runtime.OP_SDOT4_S4_2_4
+    assert lowered.sparse_block_count == 2
+    assert lowered.sdot4_count == 8
+    assert lowered.padded_k == 16
+    assert lowered.host_pads_k_to_sparse_blocks is True
+    assert lowered.host_uses_2_4_metadata is True
+    assert lowered.cpu_fallback is False
+    assert "sparse_int4_2_4_matmul_sdot4_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_SDOT4_S4_2_4) == 8
+    assert mmio.commands.count(runtime.OP_ADD) == 8
+
+
+def test_sparse_int4_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_sparse_int4_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.sparse_int4_matmul",
+        "precision": "sparse_int4",
+        "lhs": [[1, -2, 3, -4, 5, -6, 7, -8]],
+        "rhs_nonzero": [[[2, -3, 4, -5]]],
+        "rhs_positions": [[[0, 2, 1, 3]]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_sparse_int4_matmul_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported sparse_int4_matmul source op"):
+        lower_sparse_int4_matmul_smoke(runtime, {**base, "op": "stablehlo.convolution"})
+    with pytest.raises(NpuLoweringError, match="unsupported sparse_int4_matmul precision"):
+        lower_sparse_int4_matmul_smoke(runtime, {**base, "precision": "int8"})
+    with pytest.raises(NpuLoweringError, match="outside range"):
+        lower_sparse_int4_matmul_smoke(runtime, {**base, "lhs": [[8]]})
+    with pytest.raises(NpuLoweringError, match="requires distinct 2:4 positions"):
+        lower_sparse_int4_matmul_smoke(runtime, {**base, "rhs_positions": [[[0, 0, 1, 2]]]})
+    with pytest.raises(NpuLoweringError, match="unused sparse metadata blocks"):
+        lower_sparse_int4_matmul_smoke(
+            runtime,
+            {
+                **base,
+                "lhs": [[1]],
+                "rhs_nonzero": [[[1, 2, 3, 4]], [[1, 2, 3, 4]]],
+                "rhs_positions": [[[0, 1, 0, 1]], [[0, 1, 0, 1]]],
+            },
+        )
 
     assert mmio.writes == []
 

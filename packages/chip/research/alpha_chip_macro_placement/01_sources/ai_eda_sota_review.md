@@ -61,6 +61,11 @@ affect source, release claims, or tapeout-facing artifacts.
   autorouters, FPGA placers, and inspection datasets are target-capture sources
   only until E1 has release-clean package, KiCad, SI/PI, RF, manufacturing, and
   FPGA evidence.
+- DFM, yield, lithography, OPC, and wafer-defect AI are important but sit
+  beyond ordinary PD prediction. Hotspot detectors, differentiable lithography,
+  ILT/OPC optimizers, and wafer-map classifiers need foundry decks, process
+  windows, mask rules, final layout, local labels, and manufacturing evidence;
+  otherwise they are research context and target capture only.
 - Post-silicon validation and lab-debug automation must stay explicit rather
   than being folded into simulator success. RISC-V architectural tests, RISCOF,
   riscv-dv, QED-style methods, SoC trace-debug reconstruction, cross-target
@@ -100,6 +105,7 @@ affect source, release claims, or tapeout-facing artifacts.
 | Power, thermal, IR drop, and PDN | DeepOHeat, 2D-ThermAl, ThermEDGe/IREDGe, WACA-UNet, IR-Drop-Predictor, EDA IR-Drop Prediction, OpeNPDN, AiEDA, RTLMUL | Capture power/thermal/PDN target tasks only; block generated power maps, thermal maps, PDNs, IR-drop predictions, TOPS/W, and thermal claims until measured traces, package models, PDNSim/OpenROAD labels, and signoff evidence exist. |
 | Hardware security | Hardware Trojan ML, PEARL, TrojanSAINT, GNN-MFF, SecureRAG-RTL, TrojanWhisper, TrojanGYM, GHOST Benchmarks | Capture local RTL/security target tasks only; block scanner execution, Trojan insertion, vulnerability claims, generated-RTL trust claims, and release use until labels, deterministic regressions, provenance, and human security review exist. |
 | Board, package, manufacturing, and FPGA | PCBSchemaGen, PCB-Bench, PCBAgent, NeurPCB, PCB-Migrator, PCB-PR-App, Freerouting, DREAMPlaceFPGA, RapidWright FPGA interchange, DeepPCB defect dataset | Capture local package, KiCad, FPGA, Wi-Fi/RF, and manufacturing target tasks only; block generated schematics, board placement/routing, Gerbers, package/pinout edits, FPGA output, fabrication claims, inspection claims, and release use until deterministic gates and review evidence exist. |
+| DFM, yield, lithography, and OPC | Litho-aware ML hotspot detection, DLHSD, LithoHoD, TorchLitho, OpenILT, DiffOPC, RadAI WM-811K wafer defect model, Pegasus LPA | Capture hotspot-screening, differentiable lithography, ILT/OPC, signoff-feature, and wafer-defect targets only; block layout/mask/OPC edits, lithography simulation, model execution, DFM/yield/mask/wafer-defect claims, and release use until foundry/process collateral, local layout labels, deterministic signoff gates, and review exist. |
 | Post-silicon validation and bring-up | Symbolic QED, SoC trace protocol debug, RISC-V DV, RISCOF, RISC-V architectural tests, OpenTitan chip tests, ML/XAI boot-failure debug, LLM4SecHW | Capture post-silicon, FPGA, RISC-V compliance, trace-debug, and lab-evidence targets only; block generated lab scripts, test binaries, hardware runs, compliance claims, silicon bring-up claims, and release use until local logs, traces, signatures, board/silicon IDs, and review exist. |
 | Low-power intent, DVFS, and clock gating | IEEE 1801 UPF, IEEE UPF examples, Yosys `clockgate`, CODMAS/RTLOPT, Prompting for Power, POET, RTL PPA SOG estimation, OpenROAD two-phase clocking conversion | Capture power-state, UPF, clock-gating, DVFS, retention, isolation, and low-power verification targets only; block generated UPF, RTL edits, gated clocks, DVFS policy, retention/isolation insertion, power-saving claims, and release use until platform, RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and PD gates exist. |
 
@@ -213,6 +219,12 @@ affect source, release claims, or tapeout-facing artifacts.
     source provenance, RAG, RTL, spec, PD, formal, synthesis, and verification
     gates before any corpus export, training, embedding generation, inference,
     model-quality claim, or design-decision claim is allowed.
+26. Use `scripts/ai_eda/capture_dfm_yield_lithography_targets.py --run-id validation`
+    to keep DFM/yield, lithography hotspot detection, differentiable
+    lithography, ILT/OPC, wafer-defect classification, and commercial-signoff
+    comparisons tied to local PD, manufacturing, real-world, synthesis, and
+    review gates before any layout, mask, OPC, hotspot, yield, wafer-defect, or
+    release claim is allowed.
 
 ## Current Blockers
 

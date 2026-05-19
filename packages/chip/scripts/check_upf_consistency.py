@@ -43,32 +43,27 @@ def main() -> int:
 
     missing_in_upf = plan_rails - supply_nets
     if missing_in_upf:
-        failures.append(
-            f"UPF missing create_supply_net for rails: "
-            f"{sorted(missing_in_upf)}")
+        failures.append(f"UPF missing create_supply_net for rails: {sorted(missing_in_upf)}")
     extra_in_upf = supply_nets - plan_rails - {"VSS"}
     if extra_in_upf:
-        failures.append(
-            f"UPF has supply nets not in rail plan: {sorted(extra_in_upf)}")
+        failures.append(f"UPF has supply nets not in rail plan: {sorted(extra_in_upf)}")
 
     missing_ports = plan_rails - supply_ports
     if missing_ports:
-        failures.append(
-            f"UPF missing create_supply_port for rails: "
-            f"{sorted(missing_ports)}")
+        failures.append(f"UPF missing create_supply_port for rails: {sorted(missing_ports)}")
 
     # Domains file rails must be a subset of plan rails.
     domain_rails = {d["rail"] for d in domains.get("power_domains", [])}
     missing_in_domains = domain_rails - plan_rails
     if missing_in_domains:
         failures.append(
-            f"power-domains.yaml references rails not in rail plan: "
-            f"{sorted(missing_in_domains)}")
+            f"power-domains.yaml references rails not in rail plan: {sorted(missing_in_domains)}"
+        )
     missing_in_plan = plan_rails - domain_rails
     if missing_in_plan:
         failures.append(
-            f"power-domains.yaml does not reference rail plan rails: "
-            f"{sorted(missing_in_plan)}")
+            f"power-domains.yaml does not reference rail plan rails: {sorted(missing_in_plan)}"
+        )
 
     # UPF must declare a create_power_domain per power-domain entry.
     pd_names = set(re.findall(r"^\s*create_power_domain\s+(\w+)", upf_text, re.M))
@@ -77,18 +72,18 @@ def main() -> int:
         only_upf = pd_names - domain_names
         only_yaml = domain_names - pd_names
         if only_upf:
-            failures.append(f"UPF create_power_domain not in YAML: "
-                            f"{sorted(only_upf)}")
+            failures.append(f"UPF create_power_domain not in YAML: {sorted(only_upf)}")
         if only_yaml:
-            failures.append(f"power-domains.yaml entries not in UPF: "
-                            f"{sorted(only_yaml)}")
+            failures.append(f"power-domains.yaml entries not in UPF: {sorted(only_yaml)}")
 
     if failures:
         for f in failures:
             print(f"FAIL: {f}", file=sys.stderr)
         return 1
-    print(f"UPF {UPF_FILE.relative_to(ROOT)} and power-domains "
-          f"consistent with rail plan ({len(plan_rails)} rails).")
+    print(
+        f"UPF {UPF_FILE.relative_to(ROOT)} and power-domains "
+        f"consistent with rail plan ({len(plan_rails)} rails)."
+    )
     return 0
 
 
