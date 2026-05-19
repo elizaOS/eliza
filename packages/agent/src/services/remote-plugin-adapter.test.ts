@@ -1,9 +1,9 @@
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import type { Readable } from "node:stream";
 import { pathToFileURL } from "node:url";
 import {
@@ -17,7 +17,6 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
-import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";
@@ -210,6 +209,28 @@ const remoteModule: RemotePluginModuleManifest = {
     },
   ],
 };
+
+async function buildRemoteViewFixtures({
+  entryPoints,
+  outfile,
+  outdir,
+}: {
+  entryPoints: string[];
+  outfile?: string;
+  outdir?: string;
+}) {
+  for (const entryPoint of entryPoints) {
+    const source = await readFile(entryPoint, "utf8");
+    const outputPath =
+      outfile ??
+      join(
+        outdir ?? dirname(entryPoint),
+        basename(entryPoint).replace(/\.[cm]?tsx?$/, ".js"),
+      );
+    await writeFile(outputPath, source, "utf8");
+  }
+  return { errors: [] };
+}
 
 const originalFetch = globalThis.fetch;
 type CapabilityServerChild = ChildProcessByStdio<null, Readable, Readable>;
@@ -2826,14 +2847,9 @@ describe("remote plugin adapter", () => {
     );
 
     const builtBundlePath = join(distDir, "remote-view.js");
-    const buildResult = await esbuild({
+    const buildResult = await buildRemoteViewFixtures({
       entryPoints: [viewSource],
       outfile: builtBundlePath,
-      target: "es2022",
-      platform: "browser",
-      format: "esm",
-      bundle: true,
-      write: true,
     });
     expect(buildResult.errors).toHaveLength(0);
 
@@ -3231,14 +3247,9 @@ export function createRouter() {
       ].join("\n"),
       "utf8",
     );
-    const buildResult = await esbuild({
+    const buildResult = await buildRemoteViewFixtures({
       entryPoints: [viewSource],
       outfile: builtBundlePath,
-      target: "es2022",
-      platform: "browser",
-      format: "esm",
-      bundle: true,
-      write: true,
     });
     expect(buildResult.errors).toHaveLength(0);
 
@@ -3443,9 +3454,7 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
       await mkdir(distDir, { recursive: true });
 
       const viewSource = join(srcDir, "docker-view.ts");
-      const builtBundlePath = join(distDir, "docker-view.js");
       const toolsViewSource = join(srcDir, "docker-tools-view.ts");
-      const builtToolsBundlePath = join(distDir, "docker-tools-view.js");
       await writeFile(
         viewSource,
         [
@@ -3465,14 +3474,9 @@ process.on("SIGTERM", () => server.close(() => process.exit(0)));
         ].join("\n"),
         "utf8",
       );
-      const buildResult = await esbuild({
+      const buildResult = await buildRemoteViewFixtures({
         entryPoints: [viewSource, toolsViewSource],
         outdir: distDir,
-        target: "es2022",
-        platform: "browser",
-        format: "esm",
-        bundle: true,
-        write: true,
       });
       expect(buildResult.errors).toHaveLength(0);
 
