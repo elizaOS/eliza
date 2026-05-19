@@ -9,7 +9,37 @@ import {
   useState,
 } from "react";
 
-import "./voice-pill.css";
+import { VOICE_PILL_CSS } from "./voice-pill.css.ts";
+
+const STYLE_TAG_MARKER = "data-elizaos-voice-pill";
+let stylesInjected = false;
+
+/**
+ * Inject the VoicePill stylesheet into `document.head` once per page.
+ *
+ * Done at runtime (rather than via a `.css` import) so the component file
+ * stays importable from Node's ESM loader — re-exporting `<VoicePill>` from
+ * plugin barrels (e.g. `@elizaos/plugin-training/ui`) must not break
+ * server-side plugin discovery, which trips on `ERR_UNKNOWN_FILE_EXTENSION`
+ * when tsx encounters a `.css` import. The dataset marker guards against
+ * duplicate insertion when multiple instances or multiple bundles of
+ * `@elizaos/ui` mount on the same page.
+ *
+ * SSR-safe: no-op when `document` is unavailable.
+ */
+function ensureVoicePillStyles(): void {
+  if (stylesInjected) return;
+  if (typeof document === "undefined") return;
+  if (document.head.querySelector(`style[${STYLE_TAG_MARKER}]`)) {
+    stylesInjected = true;
+    return;
+  }
+  const style = document.createElement("style");
+  style.setAttribute(STYLE_TAG_MARKER, "");
+  style.textContent = VOICE_PILL_CSS;
+  document.head.appendChild(style);
+  stylesInjected = true;
+}
 
 export interface VoicePillMessage {
   id: string;
@@ -90,6 +120,11 @@ function SendIcon() {
 }
 
 export function VoicePill(props: VoicePillProps) {
+  // Inject styles inline during render so they're present before paint.
+  // The module-level `stylesInjected` flag makes every call after the first
+  // a single boolean check.
+  ensureVoicePillStyles();
+
   const {
     open: openProp,
     onOpenChange,
