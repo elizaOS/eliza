@@ -316,7 +316,7 @@ export class ElizaSandboxService {
       system:
         typeof rawConfig.system === "string" && rawConfig.system.trim()
           ? rawConfig.system
-          : "You are a concise, helpful cloud agent.",
+          : "Concise cloud agent.",
       bio:
         Array.isArray(rawConfig.bio) && rawConfig.bio.length > 0
           ? rawConfig.bio

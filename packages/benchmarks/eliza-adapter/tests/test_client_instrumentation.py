@@ -21,6 +21,10 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
     monkeypatch.setenv("BENCHMARK_TELEMETRY_JSONL", str(telemetry))
     monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "cerebras")
     monkeypatch.setenv("BENCHMARK_MODEL_NAME", "gpt-oss-120b")
+    monkeypatch.setenv("BENCHMARK_TASK_AGENT", "opencode")
+    monkeypatch.setenv("ELIZA_ACP_DEFAULT_AGENT", "opencode")
+    monkeypatch.setenv("ELIZA_DEFAULT_AGENT_TYPE", "opencode")
+    monkeypatch.setenv("ELIZA_AGENT_SELECTION_STRATEGY", "fixed")
     client = _client(monkeypatch)
     get_calls: list[str] = []
 
@@ -166,6 +170,10 @@ def test_send_message_preserves_usage_tool_calls_metadata_and_telemetry(
     assert len(records) == 1
     record = records[0]
     assert record["agent_label"] == "eliza"
+    assert record["benchmark_task_agent"] == "opencode"
+    assert record["acp_default_agent"] == "opencode"
+    assert record["default_agent_type"] == "opencode"
+    assert record["agent_selection_strategy"] == "fixed"
     assert record["prompt_tokens"] == 100
     assert record["completion_tokens"] == 12
     assert record["duration_ms"] == record["latency_ms"]

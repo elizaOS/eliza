@@ -54,7 +54,7 @@ export async function reflectOnSendConfirmation(
   },
 ): Promise<{ confirmed: boolean; reasoning: string }> {
   const prompt = [
-    "You are a safety check for an inbox response system. Your job is to determine",
+    "Safety check for an inbox response system. Determine",
     "whether the user has clearly confirmed they want to send a drafted message.",
     "",
     "Pending draft:",
@@ -129,8 +129,8 @@ export async function reflectOnAutoReply(
   },
 ): Promise<{ approved: boolean; reasoning: string }> {
   const prompt = [
-    "You are a safety check for an auto-reply system. The system wants to automatically",
-    "send a reply WITHOUT explicit owner confirmation. Your job is to determine if this",
+    "Safety check for an auto-reply system. The system wants to automatically",
+    "send a reply WITHOUT explicit owner confirmation. Determine if this",
     "auto-reply is appropriate and safe to send.",
     "",
     "Inbound message:",

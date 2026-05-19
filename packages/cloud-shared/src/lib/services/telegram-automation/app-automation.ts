@@ -303,7 +303,7 @@ Requirements:
 - If off-topic, redirect in YOUR way
 
 Respond NOW as YOUR character:`
-      : `You are an AI assistant for "${app.name}" on Telegram.
+      : `${app.name} on Telegram.
 App description: ${app.description || "A helpful application"}
 Website: ${app.website_url || app.app_url}
 

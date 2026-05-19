@@ -1,0 +1,28 @@
+{
+  "name": "@elizaos/plugin-xr-simulator",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "WebXR device emulator and Playwright fixtures for plugin-xr development and testing",
+  "main": "./src/node.ts",
+  "exports": {
+    ".": "./src/node.ts",
+    "./emulator": "./dist/emulator.js"
+  },
+  "scripts": {
+    "build": "vite build",
+    "build:watch": "vite build --watch",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "iwer": "^2.1.1",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^25.0.3",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.5.0",
+    "vite": "^5.4.0"
+  }
+}

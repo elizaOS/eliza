@@ -6,24 +6,15 @@
  * Android, BlueBubbles, or cloud state.
  */
 import { spawnSync } from "node:child_process";
-import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const homepageScript = path.join(scriptDir, "check-homepage-public-readiness.mjs");
+const installScript = path.join(scriptDir, "install-android-sms-gateway.mjs");
 const adbPath = "/opt/homebrew/share/android-commandlinetools/platform-tools/adb";
 const bridgeUrl = "http://127.0.0.1:8795";
-const cloudSmokeUrl =
-  "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles";
-const localBridgeEnvPath = path.resolve(
-  scriptDir,
-  "..",
-  "..",
-  "..",
-  ".eliza-local",
-  "bluebubbles-bridge.env",
-);
+let blocked = false;
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -43,10 +34,12 @@ function printSection(title, result) {
   if (result.stderr.trim()) console.error(result.stderr.trim());
   if (result.status !== 0) {
     console.error(`[sms-gateway-readiness] ${title} exited with ${result.status}`);
+    blocked = true;
   }
 }
 
-function printAdbState() {
+function printAndroidState() {
+  printSection("android doctor", run("node", [installScript, "--doctor"]));
   printSection("adb devices", run(adbPath, ["devices", "-l"]));
   printSection(
     "host usb",
@@ -62,57 +55,10 @@ function printBridgeState() {
   );
 }
 
-function readLocalEnvValue(filePath, key) {
-  if (!fs.existsSync(filePath)) return null;
-  const line = fs
-    .readFileSync(filePath, "utf8")
-    .split(/\r?\n/)
-    .find((line) => line.startsWith(`${key}=`));
-  if (!line) return null;
-  return line.slice(key.length + 1).trim().replace(/^['"]|['"]$/g, "") || null;
-}
-
-function printCloudSmoke() {
-  const gatewaySecret =
-    process.env.BLUEBUBBLES_GATEWAY_SECRET ||
-    readLocalEnvValue(localBridgeEnvPath, "BLUEBUBBLES_GATEWAY_SECRET");
-  if (!gatewaySecret) {
-    printSection("production cloud smoke", {
-      status: 1,
-      stdout: "",
-      stderr:
-        "BLUEBUBBLES_GATEWAY_SECRET is not available locally; cannot authenticate smoke request.",
-    });
-    return;
-  }
-  const sender = `+1415555${String(Math.floor(Math.random() * 10000)).padStart(4, "0")}`;
-  const payload = JSON.stringify({
-    type: "message",
-    message_id: `readiness-${Date.now()}`,
-    chat_id: `SMS;-;${sender}`,
-    from: sender,
-    to: "+14159611510",
-    text: "readiness smoke",
-    timestamp: new Date().toISOString(),
-  });
-  printSection(
-    "production cloud smoke",
-    run("curl", [
-      "-sS",
-      "-X",
-      "POST",
-      cloudSmokeUrl,
-      "-H",
-      "content-type: application/json",
-      "-H",
-      `x-gateway-secret: ${gatewaySecret}`,
-      "--data",
-      payload,
-    ]),
-  );
-}
-
 printSection("homepage public readiness", run("node", [homepageScript]));
-printAdbState();
+printAndroidState();
 printBridgeState();
-printCloudSmoke();
+
+if (blocked) {
+  process.exitCode = 1;
+}

@@ -796,7 +796,7 @@ function runtimeSetting(
   const runtimeWithSettings = runtime as IAgentRuntime & {
     getSetting?: (setting: string) => unknown;
   };
-  return normalizeString(runtimeWithSettings.getSetting(key));
+  return normalizeString(runtimeWithSettings.getSetting?.(key));
 }
 
 function resolveCloudBaseUrl(runtime: IAgentRuntime): string {

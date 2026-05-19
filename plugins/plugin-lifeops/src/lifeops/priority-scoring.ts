@@ -114,7 +114,7 @@ function buildPrompt(
 ): string {
   const lines: string[] = [];
   lines.push(
-    "You are a priority scorer for a personal inbox. For each message decide:",
+    "Score each inbox message. For each one decide:",
     "- score: integer 0–100 reflecting how much the user should care right now (100 = drop everything; 0 = ignorable).",
     "- category: one of:",
     "    - important: high signal, demands attention or action soon",

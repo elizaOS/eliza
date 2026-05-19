@@ -4,7 +4,7 @@
 [![CI](https://github.com/elizaos/eliza/actions/workflows/ci.yml/badge.svg)](https://github.com/elizaos/eliza/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (codex, claude, opencode) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
+The canonical orchestration plugin for ElizaOS task agents. Spawns local coding agents (elizaos, pi-agent, opencode, codex, claude) through Agent Client Protocol transports, routes their output back through the runtime so the main agent decides what to do, and bundles workspace lifecycle, GitHub PR integration, task share, and supporting services in a single package.
 
 > Naming: this plugin is *not* the same thing as `@elizaos/plugin-acp`. That package is Shaw's ACP gateway client (IDE bridge over a remote ACP gateway). `@elizaos/plugin-agent-orchestrator` is the *task backend* that runs coding agents as subprocesses on the same host as the runtime.
 
@@ -12,8 +12,8 @@ The canonical orchestration plugin for ElizaOS task agents. Spawns local coding 
 
 The plugin combines three concerns:
 
-1. **Spawn** coding agents via ACP. The legacy path shells out to [`acpx`](https://github.com/openclaw/acpx). The opt-in native path embeds ACP JSON-RPC session management in this plugin and talks directly to an ACP-compatible agent process.
-2. **Route** sub-agent terminal events (`task_complete`, `error`, `blocked`) back into the runtime as synthetic inbound messages addressed to the original `roomId`/`userId`/`messageId`. The main agent's normal action layer then decides whether to `REPLY` to the user, `SEND_TO_AGENT` to push the sub-agent further, or both. See [`docs/sub-agent-routing.md`](./docs/sub-agent-routing.md).
+1. **Spawn** coding agents via ACP. The default path embeds ACP JSON-RPC session management in this plugin and talks directly to an ACP-compatible agent process; the legacy path can still shell out to [`acpx`](https://github.com/openclaw/acpx) when `ELIZA_ACP_TRANSPORT=cli`.
+2. **Route** sub-agent terminal events (`task_complete`, `error`, `blocked`) and swarm coordination events back into the runtime as synthetic inbound messages addressed to the task room, worktree room, or original `roomId`/`userId`/`messageId`. The main agent's normal action layer then decides whether to `REPLY` to the user, `SEND_TO_AGENT` to push the sub-agent further, ask the task creator a question, or coordinate with other agents. See [`docs/sub-agent-routing.md`](./docs/sub-agent-routing.md).
 3. **Coordinate** workspace lifecycle (clone, branch, commit, push, PR open) and GitHub issue management for repo-hosted tasks.
 
 ## Installation
@@ -22,22 +22,27 @@ The plugin combines three concerns:
 npm install @elizaos/plugin-agent-orchestrator
 ```
 
-You also need one transport path:
+Native TypeScript ACP is the default transport. Set the default coding agent with `ELIZA_ACP_DEFAULT_AGENT` (`elizaos`, `pi-agent`, or `opencode` are the primary supported defaults):
 
 ```bash
-# Existing command-wrapper transport:
-npm install -g acpx@latest
-acpx --version
-
-# Opt-in native transport:
 export ELIZA_ACP_TRANSPORT=native
+export ELIZA_ACP_DEFAULT_AGENT=elizaos
+export ELIZA_ELIZAOS_ACP_COMMAND="elizaos"
+export ELIZA_PI_AGENT_ACP_COMMAND="pi-agent"
 export ELIZA_CODEX_ACP_COMMAND="npx -y @zed-industries/codex-acp@0.14.0"
 export ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0"
 ```
 
 Authenticate the underlying agent you plan to use before spawning sessions. Native Codex and Claude defaults use `npx`, so pin or replace those commands in production if you do not want runtime downloads.
 
-Adapter packaging decision: this release does not vendor the Codex or Claude ACP adapter packages. The CLI transport remains the default for compatibility; native transport is opt-in and uses pinned `npx` commands for Codex and Claude unless deployment config overrides them. OpenCode is the exception: the package prefers the bundled OpenCode shim when available, then falls back to `opencode acp`.
+The legacy command-wrapper path remains available for compatibility:
+
+```bash
+npm install -g acpx@latest
+export ELIZA_ACP_TRANSPORT=cli
+```
+
+Adapter packaging decision: this release does not vendor the Codex or Claude ACP adapter packages. Native transport is the default; Codex and Claude use pinned `npx` commands unless deployment config overrides them. OpenCode is the exception: the package prefers the bundled OpenCode shim when available, then falls back to `opencode acp`.
 
 `coding-agent-adapters` is a runtime registry/API dependency used by this plugin's agent inventory and routes; it is not a bundled Codex or Claude ACP adapter executable.
 
@@ -120,16 +125,18 @@ You usually don't subscribe directly — `SubAgentRouter` already does, and rout
 
 ## Configuration
 
-All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=cli` for the existing `acpx` wrapper and `ELIZA_ACP_TRANSPORT=native` to opt in to the embedded TypeScript ACP client.
+All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=native` for the embedded TypeScript ACP client and `ELIZA_ACP_TRANSPORT=cli` only when you deliberately want the existing `acpx` wrapper.
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `ELIZA_ACP_TRANSPORT` | `cli` | Transport mode. Accepted values include `cli`/`acpx` and `native`/`direct`. |
+| `ELIZA_ACP_TRANSPORT` | `native` | Transport mode. Accepted values include `native`/`direct` and `cli`/`acpx`. |
 | `ELIZA_ACP_CLI` | `acpx` | ACPX executable name or absolute path for the CLI transport. |
+| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. Primary choices: `elizaos`, `pi-agent`, `opencode`. |
+| `ELIZA_ELIZAOS_ACP_COMMAND` | `elizaos` | Native ElizaOS ACP command. |
+| `ELIZA_PI_AGENT_ACP_COMMAND` | `pi-agent` | Native Pi Agent ACP command. |
 | `ELIZA_CODEX_ACP_COMMAND` | `npx -y @zed-industries/codex-acp@0.14.0` | Native Codex ACP command. |
 | `ELIZA_CLAUDE_ACP_COMMAND` | `npx -y @agentclientprotocol/claude-agent-acp@0.34.0` | Native Claude ACP command. |
 | `ELIZA_OPENCODE_ACP_COMMAND` | bundled shim or `opencode acp` | Native OpenCode ACP command override. |
-| `ELIZA_ACP_DEFAULT_AGENT` | `elizaos` | Default agent type. |
 | `ELIZA_ACP_DEFAULT_APPROVAL` | `autonomous` | Approval preset (`read-only`, `auto`, `permissive`, `autonomous`, `full-access`). |
 | `ELIZA_ACP_PROMPT_TIMEOUT_MS` / `ACPX_DEFAULT_TIMEOUT_MS` | `1800000` (30m) | Per-prompt timeout. |
 | `ELIZA_ACP_STATE_DIR` | `~/.eliza/plugin-acp` | Where to persist session state when no runtime DB. |
@@ -140,9 +147,9 @@ All configuration is via environment variables. Use `ELIZA_ACP_TRANSPORT=cli` fo
 
 ### Native transport status
 
-Native transport is an ACP JSON-RPC client. It currently handles `initialize`, `session/new`, `session/prompt`, cooperative `session/cancel`, `session/close`, file reads/writes scoped to the session workspace, permission requests, and basic terminal requests from the agent. It is still opt-in because adapter behavior differs by provider and because the default `npx` commands may download packages at runtime.
+Native transport is an ACP JSON-RPC client. It currently handles `initialize`, `session/new`, `session/prompt`, cooperative `session/cancel`, `session/close`, file reads/writes scoped to the session workspace, permission requests, and basic terminal requests from the agent.
 
-Use the CLI transport when you need the existing `acpx` command wrapper semantics. Use native when you want the plugin to own the ACP session lifecycle directly and have pinned the ACP adapter commands for your deployment.
+Use the CLI transport only when you need the existing `acpx` command wrapper semantics.
 
 ## Persistence
 
@@ -165,11 +172,23 @@ node tests/e2e/acp-codex-smoke.mjs
 
 # Full router loop (vitest, gated):
 RUN_LIVE_ACPX=1 bun run test
+
+# Native ACP adapter smoke (gated, no-op unless enabled):
+RUN_LIVE_NATIVE_ACP=1 bun run test:e2e:native
 ```
 
 `acp-codex-smoke.mjs` exercises the legacy `acpx` path by spawning a real codex session, sending "what is 7 + 8?", and verifying `task_complete` fires with response `"15"`. The vitest live test (`__tests__/live/sub-agent-router.live.test.ts`) verifies the synthetic Memory routes back from a real subprocess into a test `messageService.handleMessage` with all routing keys intact. Both no-op (skip) when `acpx` isn't installed.
 
-Native transport is covered by unit tests under `__tests__/unit/acp-native-transport.test.ts`. Add a gated live native smoke before making native the default transport in production.
+`live-native-acp-smoke.mjs` sets `ELIZA_ACP_TRANSPORT=native`, starts a native ACP adapter over stdio, sends a tiny math prompt, and verifies the prompt response ended with `stopReason: "end_turn"` and final text containing `15`. Optional providers require explicit commands:
+
+```bash
+RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=claude ELIZA_CLAUDE_ACP_COMMAND="npx -y @agentclientprotocol/claude-agent-acp@0.34.0" bun run test:e2e:native
+RUN_LIVE_NATIVE_ACP=1 LIVE_NATIVE_ACP_AGENT=opencode ELIZA_OPENCODE_ACP_COMMAND="opencode acp" bun run test:e2e:native
+```
+
+The native smoke skips successfully when `RUN_LIVE_NATIVE_ACP` is unset, when an optional provider command is not configured, or when the adapter reports missing authentication/credentials. Use `RUN_LIVE_NATIVE_ACP=1 bun run test -- __tests__/live/native-acp-smoke.live.test.ts` to run the same smoke through Vitest.
+
+Native transport is covered by unit tests under `__tests__/unit/acp-native-transport.test.ts` and by the gated live smoke above.
 
 ## Package scripts
 
@@ -181,6 +200,7 @@ Native transport is covered by unit tests under `__tests__/unit/acp-native-trans
 | `bun run test` | Run the plugin vitest suite. |
 | `bun run test:unit` | Run unit tests only. |
 | `bun run test:e2e:manual` | Run the manual `acp-codex-smoke.mjs` smoke against installed/authenticated `acpx` + Codex. |
+| `bun run test:e2e:native` | Run the gated native ACP adapter smoke when `RUN_LIVE_NATIVE_ACP=1`. |
 | `bun run lint:check` | Run Biome checks without writing changes. |
 | `bun run lint` | Run Biome checks with write/unsafe fixes. |
 | `bun run format:check` | Check formatting. |

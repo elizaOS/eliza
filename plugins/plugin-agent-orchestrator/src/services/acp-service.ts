@@ -163,13 +163,13 @@ export class AcpService extends Service {
   constructor(runtime: IAgentRuntime, opts: { store?: SessionStore } = {}) {
     super(runtime);
     this.runtime = runtime as RuntimeLike;
-    this.logger = (this.runtime.logger) as RuntimeLogger;
+    this.logger = this.runtime.logger as RuntimeLogger;
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     this.transportMode =
       normalizeTransportMode(
         this.setting("ELIZA_ACP_TRANSPORT") ?? this.setting("ACPX_TRANSPORT"),
-      ) ?? "cli";
+      ) ?? "native";
     this.defaultAgent =
       normalizeTaskAgentAdapter(
         this.setting("BENCHMARK_TASK_AGENT") ??

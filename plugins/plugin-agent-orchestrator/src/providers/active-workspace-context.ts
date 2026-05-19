@@ -38,7 +38,7 @@ const FALLBACK_FRAMEWORK_STATE: FrameworkState = {
   configuredSubscriptionProvider: undefined,
   frameworks: [],
   preferred: {
-    id: "codex",
+    id: "elizaos",
     reason: "Task-agent framework state unavailable.",
   },
 };

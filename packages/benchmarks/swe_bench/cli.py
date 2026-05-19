@@ -53,7 +53,10 @@ logger = logging.getLogger(__name__)
 _PATCH_FENCE_RE = re.compile(
     r"```(?:diff|patch)?\s*\n(?P<body>.*?)```", re.DOTALL | re.IGNORECASE
 )
-_DIFF_HEADER_RE = re.compile(r"^\s*diff --git ", re.MULTILINE)
+_DIFF_HEADER_RE = re.compile(r"diff --git ")
+_VALID_HUNK_HEADER_RE = re.compile(
+    r"^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@(?: .*)?$"
+)
 _SOURCE_CONTEXT_CACHE: dict[tuple[str, str, str], str | None] = {}
 _CODE_PROVIDER_CAPABILITIES = {
     "code.read",
@@ -75,6 +78,7 @@ _DEFAULT_PROVIDER_CAPABILITIES: dict[str, set[str]] = {
 _CLAUDE_AGENT_KEY_ENVS = ("ANTHROPIC_API_KEY", "CLAUDE_API_KEY", "CLAUDE_CODE_API_KEY")
 _CODEX_AGENT_KEY_ENVS = ("OPENAI_API_KEY", "CODEX_API_KEY")
 _SUBTASK_PROVIDERS = {"opencode", "codex", "claude-code"}
+_ELIZA_WORKTREE_PROVIDERS = {"elizaos", "eliza"}
 
 
 def _parse_required_capabilities(raw: str | None) -> list[str]:
@@ -131,8 +135,52 @@ def _normalize_patch_text(text: str) -> str:
     return normalized + "\n" if normalized else ""
 
 
-def _extract_patch(text: str) -> str:
-    """Pull a unified diff out of an LLM response.
+def _sanitize_patch_text(text: str) -> str:
+    """Remove common model artifacts that make otherwise valid diffs fail."""
+    lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if stripped in {"*** End of File ***", "*** End Patch", "*** Begin Patch"}:
+            continue
+        lines.append(line.rstrip("\r"))
+    sanitized = "\n".join(lines).strip("\n")
+    return sanitized + "\n" if sanitized else ""
+
+
+def _unified_diff_error(patch: str) -> str | None:
+    """Return a structural error for patch text that git apply is likely to reject."""
+    if not patch.strip():
+        return "empty patch"
+    if not patch.lstrip().startswith("diff --git "):
+        return "patch must start with diff --git"
+
+    has_file_header = False
+    has_valid_hunk = False
+    for line in patch.splitlines():
+        if line.startswith("--- ") or line.startswith("+++ "):
+            has_file_header = True
+        if line.startswith("@@"):
+            if not _VALID_HUNK_HEADER_RE.match(line):
+                return (
+                    "invalid hunk header; use headers like "
+                    "`@@ -12,7 +12,9 @@`, never bare `@@`"
+                )
+            has_valid_hunk = True
+
+    if not has_file_header:
+        return "missing ---/+++ file headers"
+    if not has_valid_hunk:
+        return "missing unified diff hunk headers"
+    return None
+
+
+def _valid_patch_or_empty(patch: str) -> str:
+    patch = _sanitize_patch_text(patch)
+    return "" if _unified_diff_error(patch) else patch
+
+
+def _extract_patch_candidate(text: str) -> str:
+    """Pull raw unified diff-looking text out of an LLM response.
 
     Strategies, in order:
       1. Triple-backtick block tagged ``diff`` or ``patch``.
@@ -146,14 +194,230 @@ def _extract_patch(text: str) -> str:
     for match in _PATCH_FENCE_RE.finditer(text):
         body = match.group("body")
         if body and "diff --git" in body:
-            return _normalize_patch_text(body)
+            return _sanitize_patch_text(_normalize_patch_text(body))
 
     diff_match = _DIFF_HEADER_RE.search(text)
     if diff_match:
         body = text[diff_match.start() :]
-        return _normalize_patch_text(body)
+        return _sanitize_patch_text(_normalize_patch_text(body))
 
     return ""
+
+
+def _extract_patch(text: str) -> str:
+    """Pull a structurally valid unified diff out of an LLM response."""
+    return _valid_patch_or_empty(_extract_patch_candidate(text))
+
+
+def _format_hunk_range(start: int, count: int) -> str:
+    return str(start) if count == 1 else f"{start},{count}"
+
+
+def _find_subsequence(haystack: list[str], needle: list[str]) -> int | None:
+    if not needle:
+        return 0
+    limit = len(haystack) - len(needle)
+    for idx in range(limit + 1):
+        if haystack[idx : idx + len(needle)] == needle:
+            return idx
+    return None
+
+
+def _hunk_old_new_lines(
+    hunk_lines: list[str],
+) -> tuple[list[str], list[str], int, int] | None:
+    old_lines: list[str] = []
+    new_lines: list[str] = []
+    old_count = 0
+    new_count = 0
+    for line in hunk_lines:
+        if not line:
+            old_lines.append("")
+            new_lines.append("")
+            old_count += 1
+            new_count += 1
+            continue
+        prefix = line[0]
+        if prefix == "\\":
+            continue
+        if prefix == "+":
+            new_lines.append(line[1:])
+            new_count += 1
+            continue
+        if prefix == "-":
+            old_lines.append(line[1:])
+            old_count += 1
+            continue
+        if prefix == " ":
+            old_lines.append(line[1:])
+            new_lines.append(line[1:])
+            old_count += 1
+            new_count += 1
+            continue
+        return None
+    return old_lines, new_lines, old_count, new_count
+
+
+def _repairable_bare_hunk_section(line: str) -> str | None:
+    """Return a section label for invalid model hunk headers we can repair."""
+    if not line.startswith("@@") or _VALID_HUNK_HEADER_RE.match(line):
+        return None
+    section = line[2:].strip()
+    if section.endswith("@@"):
+        section = section[:-2].strip()
+    return section
+
+
+def _add_missing_file_headers(patch: str) -> str:
+    """Insert ---/+++ headers when a model emits only diff --git plus hunks."""
+    lines = patch.splitlines()
+    repaired: list[str] = []
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if not line.startswith("diff --git "):
+            repaired.append(line)
+            idx += 1
+            continue
+
+        parts = line.split()
+        old_label = parts[2] if len(parts) >= 4 else None
+        new_label = parts[3] if len(parts) >= 4 else None
+        repaired.append(line)
+        idx += 1
+
+        section_start = idx
+        while idx < len(lines) and not lines[idx].startswith("diff --git "):
+            idx += 1
+        section = lines[section_start:idx]
+        has_headers = any(item.startswith("--- ") for item in section) and any(
+            item.startswith("+++ ") for item in section
+        )
+        if has_headers or old_label is None or new_label is None:
+            repaired.extend(section)
+            continue
+
+        insert_at = 0
+        while insert_at < len(section):
+            section_line = section[insert_at]
+            if (
+                section_line.startswith("index ")
+                or section_line.startswith("old mode ")
+                or section_line.startswith("new mode ")
+                or section_line.startswith("deleted file mode ")
+                or section_line.startswith("new file mode ")
+            ):
+                repaired.append(section_line)
+                insert_at += 1
+                continue
+            break
+        repaired.append(f"--- {old_label}")
+        repaired.append(f"+++ {new_label}")
+        repaired.extend(section[insert_at:])
+
+    normalized = "\n".join(repaired).strip("\n")
+    return normalized + "\n" if normalized else ""
+
+
+def _repair_bare_hunk_headers(patch: str, repo_root: Path | None) -> str:
+    """Synthesize line-numbered hunk headers for model diffs using bare ``@@``."""
+    if repo_root is None or "\n@@" not in patch:
+        return _add_missing_file_headers(patch)
+
+    lines = patch.splitlines()
+    repaired: list[str] = []
+    old_path: Path | None = None
+    source_cache: dict[Path, list[str]] = {}
+    idx = 0
+    while idx < len(lines):
+        line = lines[idx]
+        if line.startswith("diff --git "):
+            parts = line.split()
+            old_path = None
+            if len(parts) >= 3 and parts[2].startswith("a/"):
+                old_path = repo_root / parts[2][2:]
+            repaired.append(line)
+            idx += 1
+            continue
+
+        section = _repairable_bare_hunk_section(line)
+        if section is None or old_path is None:
+            repaired.append(line)
+            idx += 1
+            continue
+
+        hunk_lines: list[str] = []
+        cursor = idx + 1
+        while cursor < len(lines):
+            next_line = lines[cursor]
+            if next_line.startswith("diff --git ") or next_line.startswith("@@"):
+                break
+            hunk_lines.append(next_line)
+            cursor += 1
+
+        has_change = any(line.startswith(("+", "-")) for line in hunk_lines)
+        if not has_change:
+            idx = cursor
+            continue
+
+        hunk = _hunk_old_new_lines(hunk_lines)
+        if hunk is None or not old_path.exists():
+            repaired.append(line)
+            idx += 1
+            continue
+
+        old_lines, new_lines, old_count, new_count = hunk
+        if old_lines == new_lines:
+            idx = cursor
+            continue
+        if old_path not in source_cache:
+            source_cache[old_path] = old_path.read_text(
+                encoding="utf-8",
+                errors="replace",
+            ).splitlines()
+        source_lines = source_cache[old_path]
+        match_idx = _find_subsequence(source_lines, old_lines)
+        if match_idx is None:
+            repaired.append(line)
+        else:
+            has_context = any(item.startswith(" ") for item in hunk_lines)
+            start = match_idx + 1
+            if not has_context:
+                if match_idx > 0:
+                    hunk_lines = [" " + source_lines[match_idx - 1]] + hunk_lines
+                    start -= 1
+                    old_count += 1
+                    new_count += 1
+                after_idx = match_idx + len(old_lines)
+                if after_idx < len(source_lines):
+                    hunk_lines = hunk_lines + [" " + source_lines[after_idx]]
+                    old_count += 1
+                    new_count += 1
+            header = (
+                "@@ -"
+                + _format_hunk_range(start, old_count)
+                + " +"
+                + _format_hunk_range(start, new_count)
+                + " @@"
+            )
+            if section:
+                header += f" {section}"
+            repaired.append(header)
+        repaired.extend(hunk_lines)
+        idx = cursor
+
+    normalized = "\n".join(repaired).strip("\n")
+    normalized = normalized + "\n" if normalized else ""
+    return _add_missing_file_headers(normalized)
+
+
+def _extract_patch_for_repo(text: str, repo_root: Path | None) -> str:
+    """Extract a patch and repair common model-only diff syntax when possible."""
+    patch = _extract_patch_candidate(text)
+    if not patch:
+        return ""
+    patch = _repair_bare_hunk_headers(patch, repo_root)
+    return _valid_patch_or_empty(patch)
 
 
 def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
@@ -164,7 +428,14 @@ def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
     files avoids the pathological "patch without repository context" failure.
     """
     repo_root = instance.repo.split("/")[-1].replace("-", "_")
-    text = instance.problem_statement
+    text = "\n".join(
+        [
+            instance.problem_statement,
+            instance.hints_text,
+            *instance.fail_to_pass,
+            *instance.pass_to_pass,
+        ]
+    )
     candidates: list[str] = []
 
     def add(path: str) -> None:
@@ -187,6 +458,10 @@ def _candidate_context_paths(instance: SWEBenchInstance) -> list[str]:
 
     for match in re.finditer(r"(?<![A-Za-z0-9_./-])([A-Za-z0-9_./-]+\.py)\b", text):
         add(match.group(1))
+        path = match.group(1).strip().strip("`'\"").lstrip("./")
+        test_match = re.search(r"^(?P<prefix>.+)/tests/test_(?P<name>[^/]+)\.py$", path)
+        if test_match:
+            add(f"{test_match.group('prefix')}/{test_match.group('name')}.py")
 
     # If a package-qualified module is mentioned without an import statement,
     # include the corresponding source file as a final hint.
@@ -248,7 +523,9 @@ def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
     )
     retry_prefix = (
         "Your previous response did not contain an applicable unified diff. "
-        "This time return only the diff text, starting with `diff --git`.\n\n"
+        "This time return only the diff text, starting with `diff --git`. "
+        "Every hunk header must include line ranges like `@@ -12,7 +12,9 @@`; "
+        "never use bare `@@`, apply-patch markers, or `*** End of File ***`.\n\n"
         if retry
         else ""
     )
@@ -267,9 +544,114 @@ def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
         "Do not replace whole classes, whole modules, or public APIs unless the issue requires it. "
         "Preserve surrounding signatures, imports, formatting, and behavior outside the bug. "
         "Start the response with `diff --git`; a fenced ```diff block is also acceptable. "
+        "Every hunk header must include real line ranges like `@@ -12,7 +12,9 @@`; "
+        "do not use bare `@@` or apply-patch markers. "
         "Do not include commentary outside the diff. The diff must be applicable with `git apply` from "
         "the repository root."
     )
+
+
+def _build_repair_prompt(
+    instance: SWEBenchInstance,
+    previous_patch: str,
+    result: SWEBenchResult,
+) -> str:
+    """Build a follow-up prompt using evaluator feedback from a failed patch."""
+    failed_tests = (
+        "Failed tests from the previous official evaluation:\n"
+        + "\n".join(f"- {test}" for test in result.tests_failed)
+        + "\n\n"
+        if result.tests_failed
+        else ""
+    )
+    passed_tests = (
+        "Tests that already passed and should keep passing:\n"
+        + "\n".join(f"- {test}" for test in result.tests_passed[:20])
+        + ("\n- ... truncated ...\n" if len(result.tests_passed) > 20 else "\n")
+        + "\n"
+        if result.tests_passed
+        else ""
+    )
+    error = (
+        "Evaluator error from the previous patch:\n"
+        + textwrap.shorten(
+            result.error.replace("\n", " ") if result.error else "",
+            width=2000,
+            placeholder="...",
+        )
+        + "\n\n"
+        if result.error
+        else ""
+    )
+    status = (
+        f"Previous patch status: {result.patch_status.value}\n"
+        f"Previous result status: {result.status}\n\n"
+    )
+    return (
+        "Your previous SWE-bench patch did not resolve the instance. "
+        "Use the evaluation feedback below to produce a corrected patch.\n\n"
+        + status
+        + failed_tests
+        + passed_tests
+        + error
+        + "Previous patch:\n"
+        "```diff\n"
+        f"{previous_patch}\n"
+        "```\n\n"
+        + _build_prompt(instance, retry=True)
+    )
+
+
+def _repair_attempts_for_provider(provider_label: str | None) -> int:
+    """Return the configured number of native patch repair attempts."""
+    raw = os.environ.get("SWE_BENCH_REPAIR_ATTEMPTS")
+    if raw is None:
+        return 1 if provider_label in {"elizaos", "eliza"} else 0
+    try:
+        return max(0, int(raw))
+    except ValueError:
+        logger.warning("[swe_bench] invalid SWE_BENCH_REPAIR_ATTEMPTS=%r", raw)
+        return 0
+
+
+def _eliza_worktree_enabled(provider_label: str | None) -> bool:
+    """Return whether native eliza providers should normalize patches in a checkout."""
+    if provider_label not in _ELIZA_WORKTREE_PROVIDERS:
+        return False
+    return os.environ.get("SWE_BENCH_ELIZA_WORKTREE", "1") not in {
+        "0",
+        "false",
+        "False",
+    }
+
+
+def _keep_instance_workspaces() -> bool:
+    """Return whether per-instance checkouts should remain after evaluation."""
+    return os.environ.get("SWE_BENCH_KEEP_WORKSPACES", "").lower() in {
+        "1",
+        "true",
+        "yes",
+    }
+
+
+def _cleanup_instance_workspace(config: SWEBenchConfig, instance: SWEBenchInstance) -> None:
+    """Remove one known per-instance checkout while preserving shared caches."""
+    if _keep_instance_workspaces():
+        return
+
+    workspace = Path(config.workspace_dir)
+    repo_dir = workspace / instance.instance_id.replace("/", "_")
+    try:
+        resolved_workspace = workspace.resolve()
+        resolved_repo = repo_dir.resolve()
+    except OSError:
+        return
+
+    if resolved_repo == resolved_workspace or not resolved_repo.is_relative_to(
+        resolved_workspace
+    ):
+        return
+    shutil.rmtree(repo_dir, ignore_errors=True)
 
 
 def _build_subtask_prompt(instance: SWEBenchInstance) -> str:
@@ -421,6 +803,7 @@ async def _generate_patch_with_client(
     instance: SWEBenchInstance,
     provider_label: str,
     model_name: str | None,
+    repo_root: Path | None = None,
 ) -> tuple[str, str | None]:
     """Ask the harness client for a patch without evaluating it."""
     task_id = f"{provider_label}:patch:{instance.instance_id}"
@@ -441,11 +824,11 @@ async def _generate_patch_with_client(
             },
         )
         text = getattr(response, "text", "") or ""
-        patch = _extract_patch(text)
+        patch = _extract_patch_for_repo(text, repo_root)
         if not patch:
             params = getattr(response, "params", None)
             if isinstance(params, dict) and params:
-                patch = _extract_patch(json.dumps(params))
+                patch = _extract_patch_for_repo(json.dumps(params), repo_root)
         if patch:
             return patch, None
 
@@ -464,11 +847,11 @@ async def _generate_patch_with_client(
             },
         )
         retry_text = getattr(retry, "text", "") or ""
-        patch = _extract_patch(retry_text)
+        patch = _extract_patch_for_repo(retry_text, repo_root)
         if not patch:
             retry_params = getattr(retry, "params", None)
             if isinstance(retry_params, dict) and retry_params:
-                patch = _extract_patch(json.dumps(retry_params))
+                patch = _extract_patch_for_repo(json.dumps(retry_params), repo_root)
         if patch:
             return patch, None
         preview = textwrap.shorten(
@@ -499,6 +882,7 @@ async def _run_opencode_patchfile_instance(
             instance,
             provider,
             model_name,
+            repo_root,
         )
         if not patch:
             return SWEBenchResult(
@@ -588,6 +972,136 @@ async def _run_opencode_patchfile_instance(
             error=str(exc),
             status="subtask_provider=opencode patchfile",
         )
+    finally:
+        if not _keep_instance_workspaces():
+            manager.cleanup_current_repo()
+
+
+async def _run_eliza_worktree_instance(
+    client: object,
+    instance: SWEBenchInstance,
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None,
+    provider_label: str = "elizaos",
+) -> SWEBenchResult:
+    """Generate with eliza, apply in a checkout, then evaluate the worktree diff."""
+    started = time.time()
+    manager = RepositoryManager(config.workspace_dir)
+    task_id = f"{provider_label}:worktree:{instance.instance_id}"
+    try:
+        await manager.setup_repo(instance)
+        patch, patch_error = await _generate_patch_with_client(
+            client,
+            instance,
+            provider_label,
+            model_name,
+            manager.current_repo,
+        )
+        if not patch:
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch="",
+                patch_status=PatchStatus.NOT_GENERATED,
+                tests_passed=[],
+                tests_failed=[],
+                success=False,
+                duration_seconds=time.time() - started,
+                tokens_used=None,
+                error=f"patch generation failed before native worktree apply: {patch_error}",
+                status=f"native_worktree provider={provider_label}",
+            )
+
+        send_message = client.send_message  # type: ignore[attr-defined]
+        current_patch = patch
+        repair_attempts = _repair_attempts_for_provider(provider_label)
+        attempt = 0
+        last_patch_status: PatchStatus | None = None
+        while True:
+            await manager.reset_repo()
+            ok, apply_error = await manager.apply_patch(current_patch)
+            if ok:
+                worktree_patch = await manager.get_diff()
+                if not worktree_patch:
+                    worktree_patch = current_patch
+                result = await evaluator.evaluate_patch(instance, worktree_patch)
+                result.duration_seconds = time.time() - started
+                result.status = (
+                    f"{result.status} native_worktree provider={provider_label}"
+                )
+                if attempt and last_patch_status is not None:
+                    result.status = (
+                        f"{result.status} repaired_from={last_patch_status.value} "
+                        f"repair_attempts={attempt}"
+                    )
+                current_patch = worktree_patch
+            else:
+                result = SWEBenchResult(
+                    instance_id=instance.instance_id,
+                    generated_patch=current_patch,
+                    patch_status=PatchStatus.APPLY_FAILED,
+                    tests_passed=[],
+                    tests_failed=[],
+                    success=False,
+                    duration_seconds=time.time() - started,
+                    tokens_used=None,
+                    error=apply_error,
+                    status=f"native_worktree provider={provider_label} apply_failed",
+                )
+
+            if result.success or attempt >= repair_attempts:
+                return result
+
+            attempt += 1
+            last_patch_status = result.patch_status
+            await manager.reset_repo()
+            repair_response = send_message(
+                text=_build_repair_prompt(instance, current_patch, result),
+                context={
+                    "benchmark": "swe_bench",
+                    "task_id": task_id,
+                    "instance_id": instance.instance_id,
+                    "provider": provider_label,
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "model_name": model_name,
+                    "phase": "native_worktree_patch_repair",
+                    "repair_attempt": attempt,
+                    "previous_patch_status": result.patch_status.value,
+                    "previous_tests_failed": result.tests_failed,
+                },
+            )
+            repair_text = getattr(repair_response, "text", "") or ""
+            repair_patch = _extract_patch_for_repo(repair_text, manager.current_repo)
+            if not repair_patch:
+                repair_params = getattr(repair_response, "params", None)
+                if isinstance(repair_params, dict) and repair_params:
+                    repair_patch = _extract_patch_for_repo(
+                        json.dumps(repair_params),
+                        manager.current_repo,
+                    )
+            if not repair_patch:
+                result.status = (
+                    f"{result.status} repair_attempts={attempt} repair_no_patch"
+                )
+                return result
+            current_patch = repair_patch
+    except Exception as exc:  # noqa: BLE001
+        return SWEBenchResult(
+            instance_id=instance.instance_id,
+            generated_patch="",
+            patch_status=PatchStatus.NOT_GENERATED,
+            tests_passed=[],
+            tests_failed=[],
+            success=False,
+            duration_seconds=time.time() - started,
+            tokens_used=None,
+            error=str(exc),
+            status=f"native_worktree provider={provider_label}",
+        )
+    finally:
+        if not _keep_instance_workspaces():
+            manager.cleanup_current_repo()
 
 
 async def _run_subtask_provider_instance(
@@ -634,9 +1148,9 @@ async def _run_subtask_provider_instance(
         stderr = stderr_bytes.decode("utf-8", errors="replace")
         patch = await manager.get_diff()
         if not patch:
-            emitted_patch = _extract_patch(stdout)
+            emitted_patch = _extract_patch_for_repo(stdout, repo_root)
             if not emitted_patch:
-                emitted_patch = _extract_patch(stderr)
+                emitted_patch = _extract_patch_for_repo(stderr, repo_root)
             if emitted_patch:
                 ok, error = await manager.apply_patch(emitted_patch)
                 if ok:
@@ -702,6 +1216,9 @@ async def _run_subtask_provider_instance(
             error=str(exc),
             status=f"subtask_provider={provider}",
         )
+    finally:
+        if "manager" in locals() and not _keep_instance_workspaces():
+            manager.cleanup_current_repo()
 
 
 async def _run_subtask_provider_instances(
@@ -731,6 +1248,38 @@ async def _run_subtask_provider_instances(
                 client,
             )
         )
+        _cleanup_instance_workspace(config, inst)
+    return results
+
+
+async def _run_eliza_worktree_instances(
+    client: object,
+    provider: str,
+    instances: list[SWEBenchInstance],
+    evaluator: SWEBenchEvaluator,
+    config: SWEBenchConfig,
+    model_name: str | None = None,
+) -> list[SWEBenchResult]:
+    results: list[SWEBenchResult] = []
+    for idx, inst in enumerate(instances):
+        logger.info(
+            "[swe_bench] %d/%d %s provider=%s native_worktree",
+            idx + 1,
+            len(instances),
+            inst.instance_id,
+            provider,
+        )
+        results.append(
+            await _run_eliza_worktree_instance(
+                client,
+                inst,
+                evaluator,
+                config,
+                model_name,
+                provider,
+            )
+        )
+        _cleanup_instance_workspace(config, inst)
     return results
 
 
@@ -817,6 +1366,55 @@ async def _run_instance(
 
     result = await evaluator.evaluate_patch(instance, patch)
     result.duration_seconds = time.time() - started
+    repair_attempts = _repair_attempts_for_provider(provider_label)
+    for attempt in range(repair_attempts):
+        if result.success:
+            break
+        try:
+            repair_response = send_message(
+                text=_build_repair_prompt(instance, patch, result),
+                context={
+                    "benchmark": "swe_bench",
+                    "task_id": task_id,
+                    "instance_id": instance.instance_id,
+                    "provider": provider_label,
+                    "repo": instance.repo,
+                    "base_commit": instance.base_commit,
+                    "model_name": model_name,
+                    "phase": "patch_repair",
+                    "repair_attempt": attempt + 1,
+                    "previous_patch_status": result.patch_status.value,
+                    "previous_tests_failed": result.tests_failed,
+                },
+            )
+            repair_text = getattr(repair_response, "text", "") or ""
+            repair_patch = _extract_patch(repair_text)
+            if not repair_patch:
+                repair_params = getattr(repair_response, "params", None)
+                if isinstance(repair_params, dict) and repair_params:
+                    repair_patch = _extract_patch(json.dumps(repair_params))
+            if not repair_patch:
+                result.status = (
+                    f"{result.status} repair_attempts={attempt + 1} "
+                    "repair_no_patch"
+                )
+                break
+            repaired = await evaluator.evaluate_patch(instance, repair_patch)
+            repaired.duration_seconds = time.time() - started
+            repaired.status = (
+                f"{repaired.status} repaired_from={result.patch_status.value} "
+                f"repair_attempts={attempt + 1}"
+            )
+            patch = repair_patch
+            result = repaired
+        except Exception as exc:  # noqa: BLE001
+            result.status = f"{result.status} repair_attempts={attempt + 1}"
+            result.error = (
+                f"{result.error}; repair failed: {exc}"
+                if result.error
+                else f"repair failed: {exc}"
+            )
+            break
 
     # Surface token usage + cost from response.params (Cerebras/OpenAI shape).
     params = getattr(response, "params", None)
@@ -1302,6 +1900,21 @@ async def _run(args: argparse.Namespace) -> int:
                         config,
                         config.model_name,
                     )
+                elif (
+                    config.harness == "eliza"
+                    and config.baseline is None
+                    and not args.mock
+                    and args.execution_mode == "orchestrated"
+                    and _eliza_worktree_enabled(provider)
+                ):
+                    provider_results = await _run_eliza_worktree_instances(
+                        client,
+                        provider,
+                        instances,
+                        evaluator,
+                        config,
+                        config.model_name,
+                    )
                 else:
                     provider_results = await _run_instances(
                         client,
@@ -1374,7 +1987,7 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument(
         "--variant",
-        choices=["lite", "verified", "full"],
+        choices=["lite", "verified", "full", "multilingual"],
         default="lite",
         help="SWE-bench variant (default: lite)",
     )

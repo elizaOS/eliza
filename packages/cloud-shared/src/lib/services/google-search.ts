@@ -326,7 +326,7 @@ export async function executeHostedGoogleSearch(
           systemInstruction: {
             parts: [
               {
-                text: "You are a factual hosted search tool. Answer only with grounded web information. Do not invent unsupported facts.",
+                text: "Answer only with grounded web information. Do not invent unsupported facts.",
               },
             ],
           },

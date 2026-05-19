@@ -65,6 +65,9 @@ const MAX_HISTORY_MESSAGES = 200;
 const CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = "gpt-oss-120b";
 const DEFAULT_ONBOARDING_APP_URL = "https://app.elizacloud.ai";
+const ELIZA_APP_INITIAL_CREDIT_USD = "$5";
+const ELIZA_APP_PRICING_SUMMARY =
+  "Eliza Cloud is usage-based: your agent runs in a private cloud container and spends credits only as it works.";
 
 function sessionCacheKey(sessionId: string): string {
   return `eliza-app:onboarding:${sessionId}`;
@@ -135,6 +138,14 @@ function inferName(message: string): string | undefined {
   return undefined;
 }
 
+function isPlaceholderPhoneName(name: string | undefined): boolean {
+  return Boolean(name && /^(?:User\s+)?\*{3}\d{2,4}$/.test(name.trim()));
+}
+
+function hasPreferredName(session: OnboardingSession): boolean {
+  return Boolean(session.name?.trim() && !isPlaceholderPhoneName(session.name));
+}
+
 function isPhoneLikePlatform(input: OnboardingChatInput): boolean {
   return (
     input.trustedPlatformIdentity === true &&
@@ -156,7 +167,12 @@ async function maybeBindTrustedPlatformIdentity(
     ...session,
     userId: result.user.id,
     organizationId: result.organization.id,
-    name: session.name ?? result.user.name ?? input.platformDisplayName,
+    name:
+      session.name ??
+      input.platformDisplayName ??
+      (result.isNew || isPlaceholderPhoneName(result.user.name ?? undefined)
+        ? undefined
+        : (result.user.name ?? undefined)),
   };
 }
 
@@ -190,15 +206,15 @@ function fallbackReply(args: {
   loginUrl: string;
   handoffComplete: boolean;
 }): string {
-  const name = args.session.name;
+  const name = hasPreferredName(args.session) ? args.session.name : undefined;
   if (!name) {
-    return "Hey, I'm Eliza. What should I call you?";
+    return `Hey, I'm Eliza. I set up private Eliza Cloud agents that can text, remember context, and work for you. ${ELIZA_APP_PRICING_SUMMARY} New users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. What should I call you?`;
   }
   if (args.requiresLogin) {
-    return `Nice to meet you, ${name}. I can set up your private Eliza Cloud agent next. Connect Eliza Cloud here: ${args.loginUrl}`;
+    return `Nice to meet you, ${name}. I can set up your private Eliza Cloud agent next. ${ELIZA_APP_PRICING_SUMMARY} When you connect, you get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it. Connect Eliza Cloud here: ${args.loginUrl}`;
   }
   if (args.handoffComplete) {
-    return `You're live, ${name}. Your container is running, and I copied this onboarding chat into your agent memory so we can continue with context.`;
+    return `You're live, ${name}. Your private agent is running, and I copied this onboarding chat into its memory so you can continue with context. Your ${ELIZA_APP_INITIAL_CREDIT_USD} starter credit is on your account.`;
   }
   if (args.provisioning.status === "running") {
     return `Your container is running, ${name}. I'm finishing the handoff now.`;
@@ -209,6 +225,13 @@ function fallbackReply(args: {
   return `Good, ${name}. Your private Eliza container is provisioning now. Keep chatting here while it starts up.`;
 }
 
+function sanitizeReplyText(reply: string): string {
+  return reply
+    .replaceAll("httpshttps://", "https://")
+    .replaceAll("httphttp://", "http://")
+    .trim();
+}
+
 async function generateOnboardingReply(args: {
   session: OnboardingSession;
   provisioning: ElizaAppProvisioningStatus;
@@ -217,7 +240,12 @@ async function generateOnboardingReply(args: {
   controlPanelUrl: string;
   launchUrl: string | null;
   handoffComplete: boolean;
+  preferredNameCaptured: boolean;
 }): Promise<string> {
+  if (!args.preferredNameCaptured) {
+    return fallbackReply(args);
+  }
+
   const client = getCerebrasClient();
   if (!client) return fallbackReply(args);
 
@@ -228,13 +256,17 @@ async function generateOnboardingReply(args: {
 
 Goals:
 - Learn the user's preferred name.
+- Briefly explain the product: a private Eliza Cloud agent in its own cloud container that can text, remember context, and work for the user.
+- Briefly explain pricing: usage-based cloud credits; new users get ${ELIZA_APP_INITIAL_CREDIT_USD} free credit to try it.
+- If the user's preferred name is unknown, ask what to call them and do not claim their container is provisioning or running yet.
 - If not logged in, ask them to connect Eliza Cloud and give this private link: ${args.loginUrl}
-- If logged in, explain that their personal Eliza container is provisioning.
+- If logged in, explain that their personal Eliza container is provisioning and their starter credit is available.
 - If running, announce the container is running and that the onboarding conversation was copied into agent memory.
 - Keep responses short, warm, and direct.
 
 State:
 - Known name: ${args.session.name ?? "unknown"}
+- Preferred name captured: ${args.preferredNameCaptured ? "yes" : "no"}
 - Logged in: ${args.requiresLogin ? "no" : "yes"}
 - Container status: ${args.provisioning.status}
 - Control panel: ${args.controlPanelUrl}
@@ -244,7 +276,7 @@ State:
         content: message.content,
       })),
     });
-    return text.trim() || fallbackReply(args);
+    return sanitizeReplyText(text) || fallbackReply(args);
   } catch (error) {
     logger.warn("[eliza-app onboarding] generation failed; using fallback", {
       error: error instanceof Error ? error.message : String(error),
@@ -356,12 +388,22 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   session = await maybeBindTrustedPlatformIdentity(session, input);
 
   const userMessage = input.message?.trim();
+  let preferredNameProvidedThisTurn = false;
   if (userMessage) {
     session = appendMessage(session, "user", userMessage);
-    session.name = session.name ?? inferName(userMessage) ?? input.platformDisplayName;
+    const inferredName = inferName(userMessage) ?? input.platformDisplayName;
+    if (inferredName && (!session.name || isPlaceholderPhoneName(session.name))) {
+      session.name = inferredName;
+      preferredNameProvidedThisTurn = true;
+    }
   }
 
   const requiresLogin = !session.userId || !session.organizationId;
+  const preferredNameCaptured =
+    hasPreferredName(session) &&
+    (!isPhoneLikePlatform(input) ||
+      preferredNameProvidedThisTurn ||
+      Boolean(input.authenticatedUser));
   let provisioning: ElizaAppProvisioningStatus = {
     status: "none",
     agentId: null,
@@ -370,7 +412,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   };
 
   if (!requiresLogin && session.userId && session.organizationId) {
-    provisioning = userMessage
+    provisioning = userMessage && preferredNameCaptured
       ? await ensureElizaAppProvisioning({
           userId: session.userId,
           organizationId: session.organizationId,
@@ -400,6 +442,7 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
     controlPanelUrl: panelUrl,
     launchUrl,
     handoffComplete,
+    preferredNameCaptured,
   });
 
   session = appendMessage(session, "assistant", reply);

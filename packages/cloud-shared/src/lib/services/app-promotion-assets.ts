@@ -453,7 +453,7 @@ class AppPromotionAssetsService {
       metadata: { stage: "input" },
     });
 
-    const prompt = `You are a world-class copywriter for tech startups. Generate compelling advertising copy for this ${category}:
+    const prompt = `Generate compelling advertising copy for this ${category}:
 
 ## App Details
 Name: ${app.name}

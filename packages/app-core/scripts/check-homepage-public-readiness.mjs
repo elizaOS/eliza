@@ -155,6 +155,16 @@ function main() {
       ) && allPassed;
   }
 
+  const delegatedNameservers = dig(expectedDomain, "NS");
+  allPassed =
+    check(
+      "domain-delegation",
+      delegatedNameservers.length > 0,
+      delegatedNameservers.length
+        ? delegatedNameservers.join(", ")
+        : "no delegated nameservers at .app registry",
+    ) && allPassed;
+
   const apexRecords = new Set(dig(expectedDomain));
   allPassed =
     check(
@@ -173,7 +183,7 @@ function main() {
 
   if (!allPassed) {
     console.error(
-      "[homepage-public] next: add eliza.app DNS records for GitHub Pages, then rerun this script.",
+      "[homepage-public] next: delegate eliza.app to DNS nameservers, add GitHub Pages DNS records, then rerun this script.",
     );
     process.exitCode = 1;
   }

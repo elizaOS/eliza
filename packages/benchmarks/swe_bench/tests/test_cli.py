@@ -10,7 +10,9 @@ from benchmarks.swe_bench.cli import (
     _BaselineClient,
     _build_client_for_harness,
     _build_prompt,
+    _build_repair_prompt,
     _build_report,
+    _candidate_context_paths,
     _capability_report,
     _default_task_agent_provider,
     _harness_turn_cost_usd,
@@ -18,6 +20,8 @@ from benchmarks.swe_bench.cli import (
     _opencode_config_content,
     _parse_required_capabilities,
     _report_to_dict,
+    _run_eliza_worktree_instance,
+    _run_instance,
     _run_opencode_patchfile_instance,
     _run_subtask_provider_instance,
     _subtask_provider_command,
@@ -203,6 +207,277 @@ def test_build_prompt_includes_test_targets_and_narrow_patch_guidance() -> None:
     assert "- test_hello" in prompt
     assert "Prefer the smallest local edit" in prompt
     assert "Do not replace whole classes" in prompt
+    assert "@@ -12,7 +12,9 @@" in prompt
+    assert "do not use bare `@@`" in prompt
+
+
+def test_candidate_context_paths_infer_source_from_test_path() -> None:
+    instance = _mock_instance()
+    instance.repo = "astropy/astropy"
+    instance.problem_statement = (
+        "Traceback references astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"
+    )
+
+    candidates = _candidate_context_paths(instance)
+
+    assert "astropy/io/ascii/tests/test_rst.py" in candidates
+    assert "astropy/io/ascii/rst.py" in candidates
+
+
+def test_candidate_context_paths_scan_swe_test_targets() -> None:
+    instance = _mock_instance()
+    instance.repo = "astropy/astropy"
+    instance.problem_statement = "Header rows fail for RST writer."
+    instance.fail_to_pass = [
+        "astropy/io/ascii/tests/test_rst.py::test_rst_with_header_rows"
+    ]
+
+    candidates = _candidate_context_paths(instance)
+
+    assert "astropy/io/ascii/tests/test_rst.py" in candidates
+    assert "astropy/io/ascii/rst.py" in candidates
+
+
+def test_extract_patch_rejects_bare_hunk_headers() -> None:
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        "-print('hello')\n"
+        "+print('fixed')\n"
+    )
+
+    assert swe_cli._extract_patch(response) == ""
+
+
+def test_extract_patch_strips_model_end_of_file_marker() -> None:
+    response = (
+        "```diff\n"
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1 @@\n"
+        "-print('hello')\n"
+        "+print('fixed')\n"
+        "*** End of File ***\n"
+        "```\n"
+    )
+
+    patch = swe_cli._extract_patch(response)
+
+    assert patch.startswith("diff --git a/hello.py b/hello.py")
+    assert "*** End of File ***" not in patch
+    assert "+print('fixed')" in patch
+
+
+def test_extract_patch_recovers_diff_header_embedded_after_prose() -> None:
+    response = (
+        "We need to write diff."
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1 @@\n"
+        "-print('hello')\n"
+        "+print('fixed')\n"
+    )
+
+    patch = swe_cli._extract_patch(response)
+
+    assert patch.startswith("diff --git a/hello.py b/hello.py")
+    assert "+print('fixed')" in patch
+
+
+def test_extract_patch_for_repo_repairs_bare_hunk_headers(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text("print('hello')\nprint('bye')\n", encoding="utf-8")
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        "-print('hello')\n"
+        "+print('fixed')\n"
+        " print('bye')\n"
+        "*** End of File ***\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "@@ -1,2 +1,2 @@" in patch
+    assert "*** End of File ***" not in patch
+    assert "+print('fixed')" in patch
+
+
+def test_extract_patch_for_repo_adds_missing_file_headers(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text("print('hello')\n", encoding="utf-8")
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "index 1111111..2222222 100644\n"
+        "@@\n"
+        "-print('hello')\n"
+        "+print('fixed')\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "--- a/hello.py" in patch
+    assert "+++ b/hello.py" in patch
+    assert "@@ -1 +1 @@" in patch
+
+
+def test_extract_patch_for_repo_drops_context_only_bare_hunks(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text(
+        "def greet():\n"
+        "    print('hello')\n",
+        encoding="utf-8",
+    )
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        " def greet():\n"
+        "@@\n"
+        "-    print('hello')\n"
+        "+    print('fixed')\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "@@ -1,2 +1,2 @@" in patch
+    assert " def greet()" in patch
+    assert "+    print('fixed')" in patch
+
+
+def test_extract_patch_for_repo_repairs_bare_hunk_headers_with_sections(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text(
+        "def greet():\n"
+        "    print('hello')\n",
+        encoding="utf-8",
+    )
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ def greet():\n"
+        "-    print('hello')\n"
+        "+    print('fixed')\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "@@ -1,2 +1,2 @@ def greet():" in patch
+    assert " def greet()" in patch
+    assert "+    print('fixed')" in patch
+
+
+def test_extract_patch_for_repo_drops_noop_bare_hunks(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text(
+        "def greet():\n"
+        "    print('hello')\n",
+        encoding="utf-8",
+    )
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        "-def greet():\n"
+        "+def greet():\n"
+        "@@\n"
+        "-    print('hello')\n"
+        "+    print('fixed')\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "-def greet()" not in patch
+    assert "+def greet()" not in patch
+    assert "@@ -1,2 +1,2 @@" in patch
+    assert " def greet()" in patch
+    assert "+    print('fixed')" in patch
+
+
+def test_extract_patch_for_repo_expands_zero_context_hunks(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text(
+        "before\n"
+        "bug\n"
+        "after\n",
+        encoding="utf-8",
+    )
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        "-bug\n"
+        "+fixed\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "@@ -1,3 +1,3 @@" in patch
+    assert " before" in patch
+    assert " after" in patch
+    assert "+fixed" in patch
+
+
+def test_extract_patch_for_repo_preserves_blank_context_lines(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text(
+        "before\n"
+        "bug\n"
+        "\n",
+        encoding="utf-8",
+    )
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        "-bug\n"
+        "+fixed\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "\n \n" in patch
+
+
+def test_build_repair_prompt_includes_evaluator_feedback() -> None:
+    result = SWEBenchResult(
+        instance_id="mock__swe-bench-1",
+        generated_patch="diff --git a/hello.py b/hello.py",
+        patch_status=PatchStatus.TESTS_FAILED,
+        tests_passed=["test_existing"],
+        tests_failed=["test_hello"],
+        success=False,
+        duration_seconds=1.0,
+        tokens_used=None,
+        error="assertion failed",
+    )
+
+    prompt = _build_repair_prompt(_mock_instance(), result.generated_patch, result)
+
+    assert "Failed tests from the previous official evaluation:" in prompt
+    assert "- test_hello" in prompt
+    assert "assertion failed" in prompt
+    assert "Previous patch:" in prompt
 
 
 def test_config_validates_baseline_name() -> None:
@@ -351,7 +626,7 @@ async def test_opencode_patchfile_flow_does_not_score_patchfile_itself(
                 "diff --git a/sample.py b/sample.py\n"
                 "--- a/sample.py\n"
                 "+++ b/sample.py\n"
-                "@@ -1 +1 @@\n"
+                "@@\n"
                 "-print('bug')\n"
                 "+print('fixed')\n"
             )
@@ -393,3 +668,328 @@ async def test_opencode_patchfile_flow_does_not_score_patchfile_itself(
 
     assert ".swe-bench-opencode.patch" not in result.generated_patch
     assert "+print('fixed')" in result.generated_patch
+
+
+@pytest.mark.asyncio
+async def test_elizaos_run_instance_repairs_failed_patch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("SWE_BENCH_REPAIR_ATTEMPTS", raising=False)
+
+    first_patch = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1 @@\n"
+        "-print('hello')\n"
+        "+print('still broken')\n"
+    )
+    repaired_patch = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1 @@\n"
+        "-print('hello')\n"
+        "+print('hello swe-bench')\n"
+    )
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def reset(self, *, task_id, benchmark):
+            self.calls.append(("reset", task_id, benchmark))
+
+        def send_message(self, *, text, context):
+            self.calls.append(("send", text, context))
+            patch = repaired_patch if context.get("phase") == "patch_repair" else first_patch
+            return type("Response", (), {"text": patch, "params": {}})()
+
+    class FakeEvaluator:
+        def __init__(self):
+            self.seen_patches = []
+
+        async def evaluate_patch(self, instance, patch):
+            self.seen_patches.append(patch)
+            if "still broken" in patch:
+                return SWEBenchResult(
+                    instance_id=instance.instance_id,
+                    generated_patch=patch,
+                    patch_status=PatchStatus.TESTS_FAILED,
+                    tests_passed=[],
+                    tests_failed=["test_hello"],
+                    success=False,
+                    duration_seconds=0.0,
+                    tokens_used=None,
+                    error="expected greeting",
+                )
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch=patch,
+                patch_status=PatchStatus.TESTS_PASSED,
+                tests_passed=["test_hello"],
+                tests_failed=[],
+                success=True,
+                duration_seconds=0.0,
+                tokens_used=None,
+            )
+
+    client = FakeClient()
+    evaluator = FakeEvaluator()
+    result = await _run_instance(
+        client,
+        _mock_instance(),
+        evaluator,
+        provider_label="elizaos",
+        model_name="gpt-oss-120b",
+    )
+
+    assert result.success is True
+    assert result.generated_patch == repaired_patch
+    assert len(evaluator.seen_patches) == 2
+    repair_calls = [
+        call for call in client.calls
+        if call[0] == "send" and call[2].get("phase") == "patch_repair"
+    ]
+    assert len(repair_calls) == 1
+    assert "expected greeting" in repair_calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_generate_patch_retries_malformed_unified_diff() -> None:
+    malformed_patch = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        "-print('hello')\n"
+        "+print('broken')\n"
+    )
+    valid_patch = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@ -1 +1 @@\n"
+        "-print('hello')\n"
+        "+print('fixed')\n"
+    )
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def reset(self, *, task_id, benchmark):
+            self.calls.append(("reset", task_id, benchmark))
+
+        def send_message(self, *, text, context):
+            self.calls.append(("send", text, context))
+            patch = (
+                valid_patch
+                if context.get("phase") == "patch_generation_retry"
+                else malformed_patch
+            )
+            return type("Response", (), {"text": patch, "params": {}})()
+
+    client = FakeClient()
+
+    patch, error = await swe_cli._generate_patch_with_client(
+        client,
+        _mock_instance(),
+        "elizaos",
+        "gpt-oss-120b",
+    )
+
+    assert error is None
+    assert patch == valid_patch
+    retry_calls = [
+        call for call in client.calls
+        if call[0] == "send" and call[2].get("phase") == "patch_generation_retry"
+    ]
+    assert len(retry_calls) == 1
+    assert "never use bare `@@`" in retry_calls[0][1]
+
+
+@pytest.mark.asyncio
+async def test_eliza_worktree_applies_and_scores_worktree_diff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+
+    async def fake_setup(self, instance):
+        self.current_repo = repo
+        self._current_repo_resolved = repo.resolve()
+        self.current_instance = instance
+        return repo
+
+    monkeypatch.setattr(swe_cli.RepositoryManager, "setup_repo", fake_setup)
+
+    class FakeClient:
+        def reset(self, *, task_id, benchmark):
+            pass
+
+        def send_message(self, *, text, context):
+            patch = (
+                "diff --git a/sample.py b/sample.py\n"
+                "--- a/sample.py\n"
+                "+++ b/sample.py\n"
+                "@@ -1 +1 @@\n"
+                "-print('bug')\n"
+                "+print('fixed')\n"
+            )
+            return type("Response", (), {"text": patch, "params": {}})()
+
+    class FakeEvaluator:
+        async def evaluate_patch(self, instance, patch):
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch=patch,
+                patch_status=PatchStatus.TESTS_PASSED,
+                tests_passed=["test_sample"],
+                tests_failed=[],
+                success=True,
+                duration_seconds=0.0,
+                tokens_used=None,
+            )
+
+    instance = SWEBenchInstance(
+        instance_id="mock__repo-1",
+        repo="mock/repo",
+        base_commit="abc123",
+        problem_statement="Fix sample.py",
+        hints_text="",
+        created_at="",
+        patch="",
+        test_patch="",
+        fail_to_pass=[],
+        pass_to_pass=[],
+    )
+
+    result = await _run_eliza_worktree_instance(
+        FakeClient(),
+        instance,
+        FakeEvaluator(),
+        SWEBenchConfig(workspace_dir=str(tmp_path / "workspace"), timeout_seconds=30),
+        "gpt-oss-120b",
+        "elizaos",
+    )
+
+    assert result.success is True
+    assert "native_worktree provider=elizaos" in result.status
+    assert "@@ -1 +1 @@" in result.generated_patch
+    assert "+print('fixed')" in result.generated_patch
+
+
+@pytest.mark.asyncio
+async def test_eliza_worktree_records_repair_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "init"], cwd=repo, check=True, stdout=subprocess.DEVNULL)
+    subprocess.run(["git", "config", "user.email", "test@example.com"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Test"], cwd=repo, check=True)
+    (repo / "sample.py").write_text("print('bug')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "sample.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+
+    async def fake_setup(self, instance):
+        self.current_repo = repo
+        self._current_repo_resolved = repo.resolve()
+        self.current_instance = instance
+        return repo
+
+    monkeypatch.setattr(swe_cli.RepositoryManager, "setup_repo", fake_setup)
+
+    class FakeClient:
+        def __init__(self):
+            self.calls = []
+
+        def reset(self, *, task_id, benchmark):
+            pass
+
+        def send_message(self, *, text, context):
+            self.calls.append((text, context))
+            if context.get("phase") == "native_worktree_patch_repair":
+                patch = (
+                    "diff --git a/sample.py b/sample.py\n"
+                    "--- a/sample.py\n"
+                    "+++ b/sample.py\n"
+                    "@@\n"
+                    "-print('bug')\n"
+                    "+print('fixed')\n"
+                )
+            else:
+                patch = (
+                    "diff --git a/sample.py b/sample.py\n"
+                    "--- a/sample.py\n"
+                    "+++ b/sample.py\n"
+                    "@@ -1 +1 @@\n"
+                    "-print('bug')\n"
+                    "+print('still broken')\n"
+                )
+            return type("Response", (), {"text": patch, "params": {}})()
+
+    class FakeEvaluator:
+        async def evaluate_patch(self, instance, patch):
+            if "still broken" in patch:
+                return SWEBenchResult(
+                    instance_id=instance.instance_id,
+                    generated_patch=patch,
+                    patch_status=PatchStatus.TESTS_FAILED,
+                    tests_passed=[],
+                    tests_failed=["test_sample"],
+                    success=False,
+                    duration_seconds=0.0,
+                    tokens_used=None,
+                    error="sample failed",
+                )
+            return SWEBenchResult(
+                instance_id=instance.instance_id,
+                generated_patch=patch,
+                patch_status=PatchStatus.TESTS_PASSED,
+                tests_passed=["test_sample"],
+                tests_failed=[],
+                success=True,
+                duration_seconds=0.0,
+                tokens_used=None,
+            )
+
+    instance = SWEBenchInstance(
+        instance_id="mock__repo-1",
+        repo="mock/repo",
+        base_commit="abc123",
+        problem_statement="Fix sample.py",
+        hints_text="",
+        created_at="",
+        patch="",
+        test_patch="",
+        fail_to_pass=[],
+        pass_to_pass=[],
+    )
+    client = FakeClient()
+
+    result = await _run_eliza_worktree_instance(
+        client,
+        instance,
+        FakeEvaluator(),
+        SWEBenchConfig(workspace_dir=str(tmp_path / "workspace"), timeout_seconds=30),
+        "gpt-oss-120b",
+        "elizaos",
+    )
+
+    assert result.success is True
+    assert "repaired_from=tests_failed" in result.status
+    assert "repair_attempts=1" in result.status
+    assert any(
+        context.get("phase") == "native_worktree_patch_repair"
+        for _, context in client.calls
+    )

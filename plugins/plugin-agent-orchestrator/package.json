@@ -112,9 +112,44 @@
       },
       "ELIZA_ACP_TRANSPORT": {
         "type": "string",
-        "description": "ACP transport mode. Use cli/acpx for the existing acpx command wrapper; opt in to the embedded TypeScript client with native/direct.",
+        "description": "ACP transport mode. Native/direct uses the embedded TypeScript ACP client; cli/acpx keeps the legacy command-wrapper transport.",
         "required": false,
-        "default": "cli",
+        "default": "native",
+        "sensitive": false
+      },
+      "ELIZA_ACP_DEFAULT_AGENT": {
+        "type": "string",
+        "description": "Default coding agent adapter for TASKS create/spawn_agent when the user or planner does not choose one. Supported defaults include elizaos, pi-agent, and opencode.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_DEFAULT_AGENT_TYPE": {
+        "type": "string",
+        "description": "Compatibility alias for the default coding agent adapter. Use elizaos, pi-agent, or opencode to switch the default code agent from settings.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_AGENT_SELECTION_STRATEGY": {
+        "type": "string",
+        "description": "Task-agent selection policy. fixed makes the configured default adapter authoritative; dynamic allows runtime selection when implemented.",
+        "required": false,
+        "default": "fixed",
+        "sensitive": false
+      },
+      "ELIZA_ELIZAOS_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for ElizaOS coding-agent sessions when ELIZA_ACP_TRANSPORT=native.",
+        "required": false,
+        "default": "elizaos",
+        "sensitive": false
+      },
+      "ELIZA_PI_AGENT_ACP_COMMAND": {
+        "type": "string",
+        "description": "Native ACP command used for Pi Agent sessions when ELIZA_ACP_TRANSPORT=native.",
+        "required": false,
+        "default": "pi-agent",
         "sensitive": false
       },
       "ELIZA_CODEX_ACP_COMMAND": {

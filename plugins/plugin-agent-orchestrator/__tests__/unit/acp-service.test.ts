@@ -333,13 +333,71 @@ describe("AcpService", () => {
     expect(args).toContain("--no-terminal");
   });
 
-  it("keeps the CLI transport as the default unless native is explicitly configured", async () => {
-    const reg = nextProc();
+  it("uses the native TypeScript transport by default", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_CODEX_ACP_COMMAND: "codex-acp --stdio",
+      }),
+    );
+    await service.start();
+
+    const spawned = await service.spawnSession({
+      name: "default-native",
+      agentType: "codex",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(spawned.status).toBe("ready");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe(
+      "codex-acp --stdio",
+    );
+  });
+
+  it("defaults untyped sessions to the native elizaos agent", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
     await service.start();
 
+    const spawned = await service.spawnSession({
+      name: "default-elizaos",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(spawned.agentType).toBe("elizaos");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe("elizaos");
+  });
+
+  it("supports pi-agent as a configured native default", async () => {
+    const service = new AcpService(
+      runtime({
+        ELIZA_ACP_TRANSPORT: undefined,
+        ELIZA_ACP_DEFAULT_AGENT: "pi-agent",
+      }),
+    );
+    await service.start();
+
+    const spawned = await service.spawnSession({
+      name: "default-pi-agent",
+      workdir: "/tmp/acp-test",
+    });
+
+    expect(spawned.agentType).toBe("pi-agent");
+    expect(spawnMock).not.toHaveBeenCalled();
+    expect(nativeClientMock.instances).toHaveLength(1);
+    expect(nativeClientMock.instances[0]?.opts.command).toBe("pi-agent");
+  });
+
+  it("still supports the legacy CLI transport when explicitly configured", async () => {
+    const reg = nextProc();
+    const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: "cli" }));
+    await service.start();
+
     const spawned = service.spawnSession({
-      name: "default-cli",
+      name: "explicit-cli",
       agentType: "codex",
       workdir: "/tmp/acp-test",
     });
@@ -351,7 +409,7 @@ describe("AcpService", () => {
     expect(nativeClientMock.instances).toHaveLength(0);
   });
 
-  it("uses native transport only when explicitly configured", async () => {
+  it("uses configured native commands when explicitly configured", async () => {
     const service = new AcpService(
       runtime({
         ELIZA_ACP_TRANSPORT: "native",

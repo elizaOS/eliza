@@ -199,7 +199,11 @@ class RepositoryManager:
         if not patch.strip():
             return False, "Empty patch"
 
-        # First check if patch can be applied
+        apply_args = ["git", "apply", "-"]
+
+        # First check if patch can be applied. If normal context matching fails,
+        # allow zero-context application as a fallback for model diffs whose
+        # bare ``@@`` hunks were line-number repaired by the SWE runner.
         try:
             result = await self._run_command(
                 ["git", "apply", "--check", "-"],
@@ -208,14 +212,22 @@ class RepositoryManager:
                 check=False,
             )
             if result.returncode != 0:
-                return False, f"Patch check failed: {result.stderr}"
+                zero_context = await self._run_command(
+                    ["git", "apply", "--check", "--unidiff-zero", "-"],
+                    cwd=self.current_repo,
+                    input_data=patch,
+                    check=False,
+                )
+                if zero_context.returncode != 0:
+                    return False, f"Patch check failed: {result.stderr}"
+                apply_args = ["git", "apply", "--unidiff-zero", "-"]
         except Exception as e:
             return False, f"Patch check error: {str(e)}"
 
         # Apply the patch
         try:
             result = await self._run_command(
-                ["git", "apply", "-"],
+                apply_args,
                 cwd=self.current_repo,
                 input_data=patch,
             )
@@ -464,3 +476,29 @@ class RepositoryManager:
         """Clean up the workspace."""
         if self.workspace_dir.exists():
             shutil.rmtree(self.workspace_dir)
+
+    def cleanup_current_repo(self) -> None:
+        """Remove the active per-instance checkout while preserving shared caches."""
+        if self.current_repo is None:
+            return
+
+        repo_path = self.current_repo
+        try:
+            resolved_workspace = self.workspace_dir.resolve()
+            resolved_repo = repo_path.resolve()
+        except OSError:
+            resolved_workspace = self.workspace_dir
+            resolved_repo = repo_path
+
+        if resolved_repo == resolved_workspace or not resolved_repo.is_relative_to(
+            resolved_workspace
+        ):
+            self.current_repo = None
+            self.current_instance = None
+            self._current_repo_resolved = None
+            return
+
+        shutil.rmtree(repo_path, ignore_errors=True)
+        self.current_repo = None
+        self.current_instance = None
+        self._current_repo_resolved = None

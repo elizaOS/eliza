@@ -22,8 +22,7 @@ export async function buildFragmentPrompt(
   template: Templates,
   includeApiContext = true,
 ): Promise<string> {
-  const basePrompt = `You are a skilled software engineer.
-Generate a fragment using the provided template.
+  const basePrompt = `Generate a fragment using the provided template.
 Do not wrap code in backticks.
 Templates available: ${templatesToPrompt(template)}`;
 

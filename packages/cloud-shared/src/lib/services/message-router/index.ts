@@ -9,7 +9,12 @@ import { createHash, randomUUID } from "crypto";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../../db/client";
-import { agentPhoneNumbers, type NewPhoneMessageLog, phoneMessageLog } from "../../../db/schemas";
+import {
+  agentPhoneContacts,
+  agentPhoneNumbers,
+  type NewPhoneMessageLog,
+  phoneMessageLog,
+} from "../../../db/schemas";
 import { ObjectNamespaces } from "../../storage/object-namespace";
 import { offloadTextField } from "../../storage/object-store";
 import { logger } from "../../utils/logger";
@@ -31,6 +36,20 @@ const messageMetadataSchema = z
     ]),
   )
   .optional();
+
+function isUndefinedTableError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
+    return true;
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && cause !== error) return isUndefinedTableError(cause);
+  const message = (error as { message?: unknown }).message;
+  return (
+    typeof message === "string" &&
+    message.includes('relation "agent_phone_contacts" does not exist')
+  );
+}
 
 // Maximum metadata size to prevent DoS via large payloads (10KB)
 const MAX_METADATA_SIZE = 10 * 1024;
@@ -166,6 +185,10 @@ export interface SendMessageParams {
   provider: "twilio" | "blooio" | "whatsapp";
   mediaUrls?: string[];
   organizationId: string;
+  agentId?: string;
+  agentOrganizationId?: string;
+  agentUserId?: string;
+  contactDisplayName?: string;
 }
 
 class MessageRouterService {
@@ -429,11 +452,17 @@ class MessageRouterService {
       });
 
       if (params.provider === "twilio") {
-        return await this.sendViaTwilio(params);
+        const sent = await this.sendViaTwilio(params);
+        if (sent) await this.recordAgentPhoneContact(params);
+        return sent;
       } else if (params.provider === "blooio") {
-        return await this.sendViaBlooio(params);
+        const sent = await this.sendViaBlooio(params);
+        if (sent) await this.recordAgentPhoneContact(params);
+        return sent;
       } else if (params.provider === "whatsapp") {
-        return await this.sendViaWhatsApp(params);
+        const sent = await this.sendViaWhatsApp(params);
+        if (sent) await this.recordAgentPhoneContact(params);
+        return sent;
       }
 
       logger.error("[MessageRouter] Unknown provider", {
@@ -443,6 +472,62 @@ class MessageRouterService {
     } catch (error) {
       logger.error("[MessageRouter] Error sending message", { error });
       return false;
+    }
+  }
+
+  private normalizeContactIdentifier(value: string): string {
+    const trimmed = value.trim();
+    return trimmed.includes("@") ? trimmed.toLowerCase() : normalizePhoneNumber(trimmed);
+  }
+
+  private async recordAgentPhoneContact(params: SendMessageParams): Promise<void> {
+    if (!params.agentId || !params.agentOrganizationId || !params.agentUserId) {
+      return;
+    }
+
+    const contactIdentifier = this.normalizeContactIdentifier(params.to);
+    if (!contactIdentifier) {
+      return;
+    }
+
+    const now = new Date();
+    try {
+      await dbWrite
+        .insert(agentPhoneContacts)
+        .values({
+          organization_id: params.agentOrganizationId,
+          user_id: params.agentUserId,
+          agent_id: params.agentId,
+          provider: params.provider,
+          contact_identifier: contactIdentifier,
+          contact_display_name: params.contactDisplayName,
+          first_contacted_at: now,
+          last_contacted_at: now,
+          last_outbound_at: now,
+          is_active: true,
+        })
+        .onConflictDoUpdate({
+          target: [
+            agentPhoneContacts.provider,
+            agentPhoneContacts.contact_identifier,
+            agentPhoneContacts.agent_id,
+          ],
+          set: {
+            organization_id: params.agentOrganizationId,
+            user_id: params.agentUserId,
+            contact_display_name: params.contactDisplayName,
+            last_contacted_at: now,
+            last_outbound_at: now,
+            is_active: true,
+            updated_at: now,
+          },
+        });
+    } catch (error) {
+      if (isUndefinedTableError(error)) {
+        logger.warn("[MessageRouter] agent_phone_contacts table is not migrated yet");
+        return;
+      }
+      throw error;
     }
   }
 
