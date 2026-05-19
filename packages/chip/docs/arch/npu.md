@@ -894,8 +894,11 @@ shape fields. The same blob includes `descriptor_batches`, a batch-level
 readiness summary with blocked op names and reasons, plus
 `descriptor_execution_batches`, which splits each original command-buffer batch
 into materializable sub-batches that share one `shared_mmio_preamble`.
-Delegates can reject a mixed command-buffer batch before trying to emit
-descriptors, or use the execution-batch plan to split a ready run safely.
+`execution_command_buffer_image(arena_base, descriptor_base,
+execution_batch_index)` materializes one of those sub-batches into the same
+descriptor image schema while recording the `execution_batch_index`. Delegates
+can reject a mixed command-buffer batch before trying to emit descriptors, or
+use the execution-batch plan to split a ready run safely.
 ExecuTorch exposes this through `descriptor_command_buffer_image`, and LiteRT
 mirrors it through `e1_litert_delegate_descriptor_command_buffer_image`, both
 returning the same `eliza.e1_npu_descriptor_command_buffer_image.v1` shape for

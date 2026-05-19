@@ -478,6 +478,53 @@ class RuntimeDescriptorStagingPlan:
                 "split the batch before descriptor materialization"
             )
 
+        return self._command_buffer_image_for_ops(
+            ops,
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            batch_index=batch_index,
+        )
+
+    def execution_command_buffer_image(
+        self, arena_base: int, descriptor_base: int, *, execution_batch_index: int
+    ) -> RuntimeDescriptorCommandBufferImage:
+        if arena_base < 0 or arena_base & 0x3:
+            raise ValueError("descriptor arena base must be non-negative and 32-bit aligned")
+        if descriptor_base < 0 or descriptor_base & 0x3:
+            raise ValueError("descriptor base must be non-negative and 32-bit aligned")
+        matches = tuple(
+            batch
+            for batch in self.descriptor_execution_batches
+            if batch.execution_batch_index == execution_batch_index
+        )
+        if not matches:
+            raise ValueError(f"no descriptor execution batch {execution_batch_index}")
+        execution_batch = matches[0]
+        if not execution_batch.descriptor_codegen_ready:
+            blocked = ", ".join(blocked.op_name for blocked in execution_batch.blocked_ops)
+            raise ValueError(
+                f"descriptor execution batch {execution_batch_index} contains "
+                f"non-codegen-ready ops: {blocked}"
+            )
+        ops_by_name = {op.op_name: op for op in self.ops}
+        ops = tuple(ops_by_name[op_name] for op_name in execution_batch.op_names)
+        return self._command_buffer_image_for_ops(
+            ops,
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            batch_index=execution_batch.batch_index,
+            execution_batch_index=execution_batch.execution_batch_index,
+        )
+
+    def _command_buffer_image_for_ops(
+        self,
+        ops: tuple[RuntimeDescriptorStagingOp, ...],
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        batch_index: int,
+        execution_batch_index: int | None = None,
+    ) -> RuntimeDescriptorCommandBufferImage:
         command_buffer = CommandBuffer(descriptor_base)
         descriptor_words: list[tuple[int, int, int, int]] = []
         for op in ops:
@@ -499,6 +546,7 @@ class RuntimeDescriptorStagingPlan:
 
         return RuntimeDescriptorCommandBufferImage(
             batch_index=batch_index,
+            execution_batch_index=execution_batch_index,
             arena_base=arena_base,
             descriptor_base=descriptor_base,
             op_names=tuple(op.op_name for op in ops),
@@ -590,6 +638,7 @@ class RuntimeDescriptorCommandBufferImage:
     """Concrete descriptor image for one ready command-buffer batch."""
 
     batch_index: int
+    execution_batch_index: int | None
     arena_base: int
     descriptor_base: int
     op_names: tuple[str, ...]
@@ -598,7 +647,7 @@ class RuntimeDescriptorCommandBufferImage:
     submission: dict[str, int]
 
     def as_dict(self) -> dict[str, Any]:
-        return {
+        payload = {
             "schema": "eliza.e1_npu_descriptor_command_buffer_image.v1",
             "claim_boundary": (
                 "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population"
@@ -613,6 +662,9 @@ class RuntimeDescriptorCommandBufferImage:
             },
             "submission": self.submission,
         }
+        if self.execution_batch_index is not None:
+            payload["execution_batch_index"] = self.execution_batch_index
+        return payload
 
 
 @dataclass(frozen=True)

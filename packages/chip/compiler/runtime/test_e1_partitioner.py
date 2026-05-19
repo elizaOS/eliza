@@ -561,6 +561,79 @@ def test_descriptor_staging_plan_splits_execution_batches_by_mmio_preamble() -> 
     ]
 
 
+def test_descriptor_staging_plan_materializes_execution_batch_images() -> None:
+    staging_plan = partition_module(
+        parse_module(_mismatched_dot_batch_payload())
+    ).descriptor_staging_plan
+
+    first = staging_plan.execution_command_buffer_image(
+        arena_base=0x8000_0000,
+        descriptor_base=0x2000,
+        execution_batch_index=0,
+    )
+    second = staging_plan.execution_command_buffer_image(
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert first.as_dict() == {
+        "schema": "eliza.e1_npu_descriptor_command_buffer_image.v1",
+        "claim_boundary": (
+            "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population"
+        ),
+        "batch_index": 0,
+        "arena_base": 0x8000_0000,
+        "descriptor_base": 0x2000,
+        "op_names": ["dot0"],
+        "descriptor_words": [[0xD0000108, 0x8000_0010, 0x8000_0000, 0]],
+        "descriptor_image": {
+            "0x00002000": 0xD0000108,
+            "0x00002004": 0x8000_0010,
+            "0x00002008": 0x8000_0000,
+            "0x0000200c": 0,
+        },
+        "submission": {"base": 0x2000, "head": 0, "tail": 1},
+        "execution_batch_index": 0,
+    }
+    assert second.as_dict() == {
+        "schema": "eliza.e1_npu_descriptor_command_buffer_image.v1",
+        "claim_boundary": (
+            "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population"
+        ),
+        "batch_index": 0,
+        "arena_base": 0x8000_0000,
+        "descriptor_base": 0x2100,
+        "op_names": ["dot1"],
+        "descriptor_words": [[0xCC000108, 0x8000_0038, 0x8000_0020, 0]],
+        "descriptor_image": {
+            "0x00002100": 0xCC000108,
+            "0x00002104": 0x8000_0038,
+            "0x00002108": 0x8000_0020,
+            "0x0000210c": 0,
+        },
+        "submission": {"base": 0x2100, "head": 0, "tail": 1},
+        "execution_batch_index": 1,
+    }
+
+
+def test_descriptor_staging_plan_execution_batch_image_is_fail_closed() -> None:
+    staging_plan = partition_module(parse_module(_dot_add_payload())).descriptor_staging_plan
+
+    with pytest.raises(ValueError, match="no descriptor execution batch"):
+        staging_plan.execution_command_buffer_image(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            execution_batch_index=7,
+        )
+    with pytest.raises(ValueError, match="non-codegen-ready ops: add0"):
+        staging_plan.execution_command_buffer_image(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            execution_batch_index=1,
+        )
+
+
 def test_partition_report_prepares_descriptor_batch_with_mmio_preamble() -> None:
     report = partition_module(parse_module(_dot_payload("int8")))
 

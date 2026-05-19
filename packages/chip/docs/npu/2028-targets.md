@@ -116,6 +116,8 @@ that matches the runtime `CommandBuffer.descriptor_image()` layout and fails
 closed when ready ops in the same batch require different GEMM MMIO preambles.
 The blob also reports `descriptor_batches` with batch-level blocked op reasons
 and `descriptor_execution_batches` split by `shared_mmio_preamble`, and the
+`execution_command_buffer_image` helper materializes those sub-batches with an
+`execution_batch_index`. The
 ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
 wrappers for ready-batch descriptor image materialization. The partitioner and
 delegates also expose `prepared_descriptor_batch`/

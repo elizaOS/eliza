@@ -626,6 +626,7 @@ def main() -> int:
         ("descriptor_batches", partitioner_text, PARTITIONER),
         ("descriptor_execution_batches", partitioner_text, PARTITIONER),
         ("shared_mmio_preamble", partitioner_text, PARTITIONER),
+        ("execution_command_buffer_image", partitioner_text, PARTITIONER),
         ("command_buffer_image", partitioner_text, PARTITIONER),
         ("eliza.e1_npu_descriptor_command_buffer_image.v1", partitioner_text, PARTITIONER),
         ("incompatible GEMM MMIO preambles", partitioner_text, PARTITIONER),
@@ -710,6 +711,16 @@ def main() -> int:
         ("_mismatched_dot_batch_payload", partitioner_test_text, PARTITIONER_TEST),
         (
             "test_descriptor_staging_plan_splits_execution_batches_by_mmio_preamble",
+            partitioner_test_text,
+            PARTITIONER_TEST,
+        ),
+        (
+            "test_descriptor_staging_plan_materializes_execution_batch_images",
+            partitioner_test_text,
+            PARTITIONER_TEST,
+        ),
+        (
+            "test_descriptor_staging_plan_execution_batch_image_is_fail_closed",
             partitioner_test_text,
             PARTITIONER_TEST,
         ),
@@ -1206,6 +1217,8 @@ def main() -> int:
         ("descriptor_execution_batches", doc_text, DOC),
         ("shared_mmio_preamble", arch_text, ARCH),
         ("shared_mmio_preamble", doc_text, DOC),
+        ("execution_command_buffer_image", arch_text, ARCH),
+        ("execution_command_buffer_image", doc_text, DOC),
         ("descriptor_command_buffer_image", arch_text, ARCH),
         ("descriptor_command_buffer_image", doc_text, DOC),
         ("command_buffer_image", arch_text, ARCH),
