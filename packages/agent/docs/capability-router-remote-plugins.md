@@ -1149,8 +1149,10 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   invalid Cloud API base URLs, Cloud API base URLs with query or fragment
   components, provider report filename/provider mismatches, failed route
   responses, non-JavaScript view assets, missing or malformed view asset SHA-256
-  digests, wrong artifact report counts, stale or future-dated observations,
-  missing, malformed, or mismatched CI run metadata, duplicate artifact
+  digests, wrong artifact report counts, stale, future-dated, or malformed
+  observations, Cloud/provider reports with valid CI metadata, missing,
+  malformed, mismatched, or non-observed-event CI run metadata, missing
+  required GitHub environment variables under `--match-github-env`, duplicate artifact
   endpoint/provider identities, accidental credential-shaped fields and string
   values, unknown provider-family reports, missing required provider-family
   observations, exercised RPC targets without `moduleId:target` syntax,
@@ -1195,15 +1197,18 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   moving Cloud live validation onto the reusable endpoint conformance harness.
 - `bun run test:remote-capabilities:live-ci-audit` passes and statically
   enforces that the workflow keeps the Cloud and provider live jobs wired to
-  strict scheduled/manual observation, required provider endpoints, strict live
-  report validation, required artifact upload, and matching live report
+  strict scheduled/manual observation, and that the final `test-status` gate
+  treats scheduled runs as strict, with required provider endpoints, strict
+  live report validation, required artifact upload, and matching live report
   directories between smoke producers, validators, and uploaded artifacts.
 - `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
-  report-directory env vars, artifact upload paths, scheduled/manual live
-  observation gates, Cloud freshness/identity validation flags, provider
-  allowed/required lists, and provider GitHub-env matching, and proves the
-  live-CI audit fails when smoke output no longer feeds the validator/artifact
-  path or when the Cloud/E2B/home/mobile observation contract is weakened.
+  report-directory env vars, artifact upload paths, final `test-status` live
+  job gating, scheduled/manual live observation gates, Cloud
+  freshness/identity validation flags, provider primary endpoint secret
+  enforcement, provider allowed/required lists, and provider GitHub-env
+  matching, and proves the live-CI audit fails when smoke output no longer
+  feeds the validator/artifact path or when the Cloud/E2B/home/mobile
+  observation contract is weakened.
 - Provider live reports include `endpointUrlSha256`, a SHA-256 fingerprint of
   the normalized endpoint base URL. The live report validator requires this
   fingerprint for provider artifacts and rejects duplicates across the provider

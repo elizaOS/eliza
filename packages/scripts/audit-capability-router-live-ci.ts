@@ -28,9 +28,9 @@ export const checks: Check[] = [
   },
   {
     name: "provider live job is required by test-status",
-    pattern: /for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
+    pattern: /strict_results="\$\{\{\s*github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\s*\}\}"[\s\S]*for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
     message:
-      "test-status must fail when cloud-live-e2e or provider-live-e2e are not successful in strict events.",
+      "test-status must fail when cloud-live-e2e or provider-live-e2e are not successful on push, workflow_dispatch, or schedule.",
   },
   {
     name: "cloud live smoke is observed only on manual or scheduled runs",

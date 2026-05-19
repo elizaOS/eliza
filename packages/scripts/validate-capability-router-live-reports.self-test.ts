@@ -25,7 +25,9 @@ async function main(): Promise<void> {
     );
     const cloudOnlyDir = join(workspace, "cloud-only");
     const ciDir = join(workspace, "ci");
+    const providerCiDir = join(workspace, "provider-ci");
     const malformedCiDir = join(workspace, "malformed-ci");
+    const pushCiDir = join(workspace, "push-ci");
     const providerOnlyDir = join(workspace, "provider-only");
     const requiredProvidersDir = join(workspace, "required-providers");
     const expectedCountDir = join(workspace, "expected-count");
@@ -34,6 +36,7 @@ async function main(): Promise<void> {
     const staleDir = join(workspace, "stale");
     const nearFutureDir = join(workspace, "near-future");
     const farFutureDir = join(workspace, "far-future");
+    const malformedObservedAtDir = join(workspace, "malformed-observed-at");
     const wrongSchemaDir = join(workspace, "wrong-schema");
     const partialDir = join(workspace, "partial");
     const failedRouteDir = join(workspace, "failed-route");
@@ -150,7 +153,9 @@ async function main(): Promise<void> {
     await mkdir(completePartialModuleDir, { recursive: true });
     await mkdir(cloudOnlyDir, { recursive: true });
     await mkdir(ciDir, { recursive: true });
+    await mkdir(providerCiDir, { recursive: true });
     await mkdir(malformedCiDir, { recursive: true });
+    await mkdir(pushCiDir, { recursive: true });
     await mkdir(providerOnlyDir, { recursive: true });
     await mkdir(requiredProvidersDir, { recursive: true });
     await mkdir(expectedCountDir, { recursive: true });
@@ -159,6 +164,7 @@ async function main(): Promise<void> {
     await mkdir(staleDir, { recursive: true });
     await mkdir(nearFutureDir, { recursive: true });
     await mkdir(farFutureDir, { recursive: true });
+    await mkdir(malformedObservedAtDir, { recursive: true });
     await mkdir(wrongSchemaDir, { recursive: true });
     await mkdir(partialDir, { recursive: true });
     await mkdir(failedRouteDir, { recursive: true });
@@ -244,8 +250,18 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(providerCiDir, "provider.json"),
+      `${JSON.stringify(makeProviderCiReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(malformedCiDir, "cloud.json"),
       `${JSON.stringify(makeMalformedCiReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(pushCiDir, "cloud.json"),
+      `${JSON.stringify(makePushCiReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -301,6 +317,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(farFutureDir, "provider.json"),
       `${JSON.stringify(makeCompleteReport("provider", "far-future-endpoint", "e2b", new Date(Date.now() + 10 * 60_000).toISOString()), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(malformedObservedAtDir, "provider.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "malformed-observed-at-endpoint", "e2b", "not-a-timestamp"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -659,6 +680,16 @@ async function main(): Promise<void> {
         `ci report should validate, got ${ci.exitCode}: ${ci.output}`,
       );
     }
+    const providerCi = await runValidator(
+      providerCiDir,
+      "--kind=provider",
+      "--require-ci",
+    );
+    if (providerCi.exitCode !== 0) {
+      throw new Error(
+        `provider ci report should validate, got ${providerCi.exitCode}: ${providerCi.output}`,
+      );
+    }
     const matchedCi = await runValidator(
       ciDir,
       "--kind=cloud",
@@ -700,6 +731,30 @@ async function main(): Promise<void> {
         `mismatched ci failed for the wrong reason: ${mismatchedCi.output}`,
       );
     }
+    const missingGithubEnv = await runValidator(
+      ciDir,
+      "--kind=cloud",
+      "--match-github-env",
+      {
+        GITHUB_RUN_ID: "123456",
+        GITHUB_RUN_ATTEMPT: "1",
+        GITHUB_WORKFLOW: "Tests",
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        GITHUB_REPOSITORY: "elizaOS/eliza",
+        GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+        GITHUB_REF: "",
+      },
+    );
+    if (missingGithubEnv.exitCode === 0) {
+      throw new Error(
+        "missing GitHub env report unexpectedly passed validation.",
+      );
+    }
+    if (!missingGithubEnv.output.includes("GITHUB_REF must be set")) {
+      throw new Error(
+        `missing GitHub env failed for the wrong reason: ${missingGithubEnv.output}`,
+      );
+    }
     const malformedCi = await runValidator(
       malformedCiDir,
       "--kind=cloud",
@@ -712,6 +767,21 @@ async function main(): Promise<void> {
       throw new Error(
         `malformed ci failed for the wrong reason: ${malformedCi.output}`,
       );
+    }
+    const pushCi = await runValidator(
+      pushCiDir,
+      "--kind=cloud",
+      "--require-ci",
+    );
+    if (pushCi.exitCode === 0) {
+      throw new Error("push ci report unexpectedly passed validation.");
+    }
+    if (
+      !pushCi.output.includes(
+        "ci.eventName must be workflow_dispatch or schedule",
+      )
+    ) {
+      throw new Error(`push ci failed for the wrong reason: ${pushCi.output}`);
     }
     const missingCi = await runValidator(
       cloudOnlyDir,
@@ -851,6 +921,15 @@ async function main(): Promise<void> {
     if (!farFuture.output.includes("observedAt is newer")) {
       throw new Error(
         `far-future report failed for the wrong reason: ${farFuture.output}`,
+      );
+    }
+    const malformedObservedAt = await runValidator(malformedObservedAtDir);
+    if (malformedObservedAt.exitCode === 0) {
+      throw new Error("malformed observedAt report unexpectedly passed.");
+    }
+    if (!malformedObservedAt.output.includes("observedAt must be an ISO timestamp")) {
+      throw new Error(
+        `malformed observedAt failed for the wrong reason: ${malformedObservedAt.output}`,
       );
     }
     const wrongSchema = await runValidator(wrongSchemaDir);
@@ -2038,6 +2117,21 @@ function makeCiReport() {
   };
 }
 
+function makeProviderCiReport() {
+  return {
+    ...makeCompleteReport("provider", "ci-provider-endpoint"),
+    ci: {
+      runId: "654321",
+      runAttempt: "2",
+      workflow: "Tests",
+      eventName: "schedule",
+      repository: "elizaOS/eliza",
+      sha: "89abcdef0123456789abcdef0123456789abcdef",
+      ref: "refs/heads/main",
+    },
+  };
+}
+
 function makeMalformedCiReport() {
   const report = makeCiReport();
   return {
@@ -2045,6 +2139,17 @@ function makeMalformedCiReport() {
     ci: {
       ...report.ci,
       sha: "not-a-sha",
+    },
+  };
+}
+
+function makePushCiReport() {
+  const report = makeCiReport();
+  return {
+    ...report,
+    ci: {
+      ...report.ci,
+      eventName: "push",
     },
   };
 }

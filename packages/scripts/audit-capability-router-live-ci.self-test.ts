@@ -18,6 +18,27 @@ assertFails(
 );
 
 assertFails(
+  "cloud live job is required by test-status",
+  workflow.replace("      - cloud-live-e2e\n", ""),
+);
+
+assertFails(
+  "provider live job is required by test-status",
+  workflow.replace(
+    '            "provider-live-e2e:${{ needs.provider-live-e2e.result }}"',
+    "",
+  ),
+);
+
+assertFails(
+  "provider live job is required by test-status",
+  workflow.replace(
+    "strict_results=\"${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}\"",
+    "strict_results=\"${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}\"",
+  ),
+);
+
+assertFails(
   "cloud live smoke writes reports to the validated directory",
   workflow.replace(
     "ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports/remote-capabilities/cloud",

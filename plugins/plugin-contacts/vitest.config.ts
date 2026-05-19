@@ -22,6 +22,14 @@ export default defineConfig({
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: resolve(rootDir, "../../packages/ui/src/$1"),
       },
+      {
+        find: /^@elizaos\/app-core$/,
+        replacement: resolve(rootDir, "../../packages/app-core/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/app-core\/(.+)$/,
+        replacement: resolve(rootDir, "../../packages/app-core/src/$1"),
+      },
     ],
   },
   test: {
