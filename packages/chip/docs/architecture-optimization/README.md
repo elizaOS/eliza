@@ -19,6 +19,8 @@ area/size, manufacturability, verification evidence, and release blockers.
 | CPU+NPU burst/sustained policy | `../../benchmarks/results/cpu-npu-2028-burst-sustained-policy.json` |
 | CPU+NPU burst thermal transient | `../../benchmarks/results/cpu-npu-2028-burst-thermal-transient.json` |
 | CPU+NPU AOSP governor trace | `../../benchmarks/results/cpu-npu-2028-aosp-governor-trace.json` |
+| CPU+NPU 14A process eval | `../../benchmarks/results/cpu-npu-2028-14a-process-eval.json` |
+| CPU+NPU competitive envelope | `../../benchmarks/results/cpu-npu-2028-competitive-envelope.json` |
 | Modeled CPU+NPU operating point | `soc-optimized-operating-point.yaml` |
 | Platform and product IO | `phone-platform.md` |
 | Physical, power, package, thermal | `physical-power-thermal.md` |

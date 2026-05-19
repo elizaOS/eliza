@@ -17,12 +17,16 @@ MODELED_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json"
 BURST_SUSTAINED_POLICY = ROOT / "benchmarks/results/cpu-npu-2028-burst-sustained-policy.json"
 BURST_THERMAL_TRANSIENT = ROOT / "benchmarks/results/cpu-npu-2028-burst-thermal-transient.json"
 AOSP_GOVERNOR_TRACE = ROOT / "benchmarks/results/cpu-npu-2028-aosp-governor-trace.json"
+PROCESS_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-14a-process-eval.json"
+COMPETITIVE_ENVELOPE = ROOT / "benchmarks/results/cpu-npu-2028-competitive-envelope.json"
 OPTIMIZER_CHECK = ROOT / "scripts/check_soc_optimization.py"
 WORK_ORDER_CHECK = ROOT / "scripts/check_soc_optimized_work_order.py"
 MODELED_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_modeled_benchmark_eval.py"
 BURST_SUSTAINED_POLICY_CHECK = ROOT / "scripts/check_cpu_npu_burst_sustained_policy.py"
 BURST_THERMAL_TRANSIENT_CHECK = ROOT / "scripts/check_cpu_npu_burst_thermal_transient.py"
 AOSP_GOVERNOR_TRACE_CHECK = ROOT / "scripts/check_cpu_npu_aosp_governor_trace.py"
+PROCESS_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_14a_process_eval.py"
+COMPETITIVE_ENVELOPE_CHECK = ROOT / "scripts/check_cpu_npu_competitive_envelope.py"
 BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
 MAKEFILE = ROOT / "Makefile"
 
@@ -478,6 +482,138 @@ def check_aosp_governor_trace(scorecard: dict[str, Any], errors: list[str]) -> N
     )
 
 
+def check_process_eval(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("process_14a_eval")
+        == "benchmarks/results/cpu-npu-2028-14a-process-eval.json",
+        "scorecard must point at CPU+NPU 14A process eval",
+        errors,
+    )
+    require(
+        source_artifacts.get("process_14a_eval_command") == "make cpu-npu-14a-process-eval",
+        "scorecard must list CPU+NPU 14A process eval command",
+        errors,
+    )
+    if not PROCESS_EVAL.exists():
+        run_required_check([sys.executable, str(PROCESS_EVAL_CHECK)], errors)
+    if not PROCESS_EVAL.exists():
+        errors.append("CPU+NPU 14A process eval report missing")
+        return
+    try:
+        data = load_json_object(PROCESS_EVAL)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_14a_process_eval.v1",
+        "CPU+NPU 14A process eval schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "modeled_process_eval_release_blocked",
+        "CPU+NPU 14A process eval must remain release-blocked",
+        errors,
+    )
+    effect_results = data.get("effect_results")
+    if not isinstance(effect_results, list):
+        errors.append("CPU+NPU 14A process eval missing effect_results")
+        return
+    required_effects = {
+        "node_identity_and_pdk_binding",
+        "nanosheet_device_variability",
+        "frontside_vs_backside_power_delivery",
+        "interconnect_rc_and_congestion",
+        "self_heating_and_power_density",
+        "sram_density_vmin_and_ecc",
+        "reliability_aging_and_lifetime",
+        "dft_yield_and_debug_lock",
+    }
+    seen_effects = {item.get("id") for item in effect_results if isinstance(item, dict)}
+    missing = sorted(required_effects - seen_effects)
+    require(not missing, "CPU+NPU 14A process eval missing: " + ", ".join(missing), errors)
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("CPU+NPU 14A process eval missing checks")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in (
+        "all_required_14a_effects_modeled",
+        "modeled_effects_preserve_sustained_guardband",
+        "modeled_sota_headroom_after_process_derates",
+    ):
+        require(by_id.get(row_id, {}).get("status") == "pass", f"{row_id} must pass", errors)
+    require(
+        by_id.get("pdk_signoff_release_blocked", {}).get("status") == "blocked",
+        "pdk_signoff_release_blocked must remain blocked",
+        errors,
+    )
+
+
+def check_competitive_envelope(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("competitive_envelope")
+        == "benchmarks/results/cpu-npu-2028-competitive-envelope.json",
+        "scorecard must point at competitive envelope report",
+        errors,
+    )
+    require(
+        source_artifacts.get("competitive_envelope_command") == "make cpu-npu-competitive-envelope",
+        "scorecard must list competitive envelope command",
+        errors,
+    )
+    if not COMPETITIVE_ENVELOPE.exists():
+        run_required_check([sys.executable, str(COMPETITIVE_ENVELOPE_CHECK)], errors)
+    if not COMPETITIVE_ENVELOPE.exists():
+        errors.append("competitive envelope report missing")
+        return
+    try:
+        data = load_json_object(COMPETITIVE_ENVELOPE)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_competitive_envelope.v1",
+        "competitive envelope schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "modeled_competitive_envelope_release_blocked",
+        "competitive envelope must remain release-blocked",
+        errors,
+    )
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("competitive envelope missing checks")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in (
+        "cpu_peak_envelope_pass",
+        "cpu_process_derated_envelope_pass",
+        "cpu_efficiency_envelope_pass",
+        "npu_peak_envelope_pass",
+        "npu_process_derated_peak_envelope_pass",
+        "npu_sparse_envelope_pass",
+        "memory_envelope_pass",
+        "sustained_power_envelope_pass",
+        "burst_power_thermal_envelope_pass",
+    ):
+        require(by_id.get(row_id, {}).get("status") == "pass", f"{row_id} must pass", errors)
+    for row_id in ("npu_worst_corner_envelope_blocked", "future_pixel_comparison_release_blocked"):
+        require(
+            by_id.get(row_id, {}).get("status") == "blocked",
+            f"{row_id} must remain blocked",
+            errors,
+        )
+
+
 def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     require(
@@ -502,6 +638,8 @@ def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> lis
     check_burst_sustained_policy(scorecard, errors)
     check_burst_thermal_transient(scorecard, errors)
     check_aosp_governor_trace(scorecard, errors)
+    check_process_eval(scorecard, errors)
+    check_competitive_envelope(scorecard, errors)
     blockers = "\n".join(str(item) for item in scorecard.get("release_claim_forbidden_until", []))
     for domain in REQUIRED_DOMAINS:
         require(domain in blockers, f"release blockers missing {domain}", errors)

@@ -13,12 +13,16 @@ source_artifacts:
   burst_sustained_policy: benchmarks/results/cpu-npu-2028-burst-sustained-policy.json
   burst_thermal_transient: benchmarks/results/cpu-npu-2028-burst-thermal-transient.json
   aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
+  process_14a_eval: benchmarks/results/cpu-npu-2028-14a-process-eval.json
+  competitive_envelope: benchmarks/results/cpu-npu-2028-competitive-envelope.json
   optimizer_command: make soc-optimization
   modeled_benchmark_command: make benchmark-modeled-cpu-npu
   modeled_benchmark_eval_command: make cpu-npu-modeled-benchmark-eval
   burst_sustained_policy_command: make cpu-npu-burst-sustained-policy
   burst_thermal_transient_command: make cpu-npu-burst-thermal-transient
   aosp_governor_trace_command: make cpu-npu-aosp-governor-trace
+  process_14a_eval_command: make cpu-npu-14a-process-eval
+  competitive_envelope_command: make cpu-npu-competitive-envelope
   work_order_check_command: make soc-optimization-work-order
   scorecard_check_command: make cpu-npu-2028-readiness-scorecard
 modeled_operating_point:

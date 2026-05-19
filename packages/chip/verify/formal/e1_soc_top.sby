@@ -11,6 +11,9 @@ read -formal e1_peripherals.sv
 read -formal e1_dma.sv
 read -formal e1_npu.sv
 read -formal e1_display.sv
+read -formal e1_cva6_wrapper.sv
+read -formal e1_cpu_axi_bridge.sv
+read -formal e1_cpu_subsystem_stub.sv
 read -formal e1_soc_top.sv
 read -formal e1_soc_top_formal.sv
 prep -top e1_soc_top_formal
@@ -21,5 +24,8 @@ rtl/peripherals/e1_peripherals.sv
 rtl/dma/e1_dma.sv
 rtl/npu/e1_npu.sv
 rtl/display/e1_display.sv
+rtl/cpu/e1_cva6_wrapper.sv
+rtl/cpu/e1_cpu_axi_bridge.sv
+rtl/cpu/e1_cpu_subsystem_stub.sv
 rtl/top/e1_soc_top.sv
 verify/formal/e1_soc_top_formal.sv

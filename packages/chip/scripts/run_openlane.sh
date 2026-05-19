@@ -137,6 +137,23 @@ diagnose_latest_run() {
         --run-root "$REPO_DIR/pd/openlane/runs" || true
 }
 
+copy_docker_runs() {
+    cid_file=$1
+    if [ ! -s "$cid_file" ] || ! command -v docker >/dev/null 2>&1; then
+        return 0
+    fi
+    cid="$(cat "$cid_file")"
+    if ! docker container inspect "$cid" >/dev/null 2>&1; then
+        return 0
+    fi
+    if ! docker exec "$cid" sh -lc 'test -d /work/pd/openlane/runs' >/dev/null 2>&1; then
+        return 0
+    fi
+    mkdir -p "$REPO_DIR/pd/openlane/runs"
+    echo "Copying OpenLane run artifacts from Docker container $cid to pd/openlane/runs"
+    docker cp "$cid:/work/pd/openlane/runs/." "$REPO_DIR/pd/openlane/runs/"
+}
+
 run_and_diagnose() {
     set +e
     run_maybe_timeout "$@"
@@ -144,6 +161,27 @@ run_and_diagnose() {
     set -e
     if [ "$status" -ne 0 ]; then
         echo "OpenLane command exited with status $status; diagnosing latest run directory."
+        diagnose_latest_run
+    fi
+    return "$status"
+}
+
+run_docker_and_diagnose() {
+    rm -f "$DOCKER_CID_FILE"
+    set +e
+    run_maybe_timeout docker run \
+        --cidfile "$DOCKER_CID_FILE" \
+        --label "openagent.openlane=1" \
+        --label "openagent.repo=$REPO_DIR" \
+        -v "$REPO_DIR:/work" \
+        -w /work \
+        -e "PDK_ROOT=$pdk_root_container" \
+        "$IMAGE" openlane --pdk-root "$pdk_root_container" "$CONFIG"
+    status=$?
+    set -e
+    copy_docker_runs "$DOCKER_CID_FILE"
+    if [ "$status" -ne 0 ]; then
+        echo "OpenLane Docker command exited with status $status; diagnosing latest run directory."
         diagnose_latest_run
     fi
     return "$status"
@@ -179,13 +217,6 @@ else
         "$REPO_DIR"/external/pdks) pdk_root_container="/work/external/pdks" ;;
         *) pdk_root_container="$PDK_ROOT_HOST" ;;
     esac
-    echo "OpenLane wrapper command: docker run --rm -v $REPO_DIR:/work -w /work -e PDK_ROOT=$pdk_root_container $IMAGE openlane --pdk-root $pdk_root_container $CONFIG"
-    run_and_diagnose docker run --rm \
-        --cidfile "$DOCKER_CID_FILE" \
-        --label "openagent.openlane=1" \
-        --label "openagent.repo=$REPO_DIR" \
-        -v "$REPO_DIR:/work" \
-        -w /work \
-        -e "PDK_ROOT=$pdk_root_container" \
-        "$IMAGE" openlane --pdk-root "$pdk_root_container" "$CONFIG"
+    echo "OpenLane wrapper command: docker run -v $REPO_DIR:/work -w /work -e PDK_ROOT=$pdk_root_container $IMAGE openlane --pdk-root $pdk_root_container $CONFIG"
+    run_docker_and_diagnose
 fi

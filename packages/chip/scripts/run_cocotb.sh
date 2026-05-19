@@ -19,7 +19,12 @@ else
     PYTHON_BIN=python3
 fi
 case "$PYTHON_BIN" in
-    */*) PYTHON_BIN="$(CDPATH=; cd -- "$(dirname "$PYTHON_BIN")" && pwd)/$(basename "$PYTHON_BIN")" ;;
+    */*)
+        PYTHON_DIRNAME="$(dirname "$PYTHON_BIN")"
+        if [ -d "$PYTHON_DIRNAME" ]; then
+            PYTHON_BIN="$(CDPATH=; cd -- "$PYTHON_DIRNAME" && pwd)/$(basename "$PYTHON_BIN")"
+        fi
+        ;;
 esac
 if ! command -v "$PYTHON_BIN" >/dev/null 2>&1; then
     PYTHON_BIN=python3

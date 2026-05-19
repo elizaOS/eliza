@@ -25,6 +25,8 @@ REQUIRED_FINDINGS = {
     "modeled_burst_sustained_policy_pass": "pass",
     "modeled_burst_thermal_transient_pass": "pass",
     "modeled_aosp_governor_trace_pass": "pass",
+    "modeled_14a_process_eval_pass": "pass",
+    "modeled_competitive_envelope_pass": "pass",
     "cpu_ap_evidence_blocked": "blocked",
     "npu_nnapi_evidence_blocked": "blocked",
     "aosp_simulator_evidence_blocked": "blocked",

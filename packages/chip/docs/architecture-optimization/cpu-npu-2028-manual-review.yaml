@@ -14,6 +14,8 @@ review_inputs:
   burst_sustained_policy: benchmarks/results/cpu-npu-2028-burst-sustained-policy.json
   burst_thermal_transient: benchmarks/results/cpu-npu-2028-burst-thermal-transient.json
   aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
+  process_14a_eval: benchmarks/results/cpu-npu-2028-14a-process-eval.json
+  competitive_envelope: benchmarks/results/cpu-npu-2028-competitive-envelope.json
   benchmark_plan: benchmarks/configs/benchmark_plan.json
   process_effects_contract: docs/spec-db/process-14a-effects.yaml
 selected_modeled_point:
@@ -61,6 +63,14 @@ modeled_review_findings:
     status: pass
     evidence: Modeled AOSP-style scheduler and thermal HAL trace selects sustained and burst CPU+NPU states, denies repeat burst during cooldown, and remains blocked until real virtual-device evidence exists.
     metric_check: make cpu-npu-aosp-governor-trace
+  - id: modeled_14a_process_eval_pass
+    status: pass
+    evidence: CPU+NPU 14A process evaluation covers all required process-effect categories and preserves modeled SOTA headroom while keeping PDK/signoff claims blocked.
+    metric_check: make cpu-npu-14a-process-eval
+  - id: modeled_competitive_envelope_pass
+    status: pass
+    evidence: Local 2028 compact-flagship planning envelope checks CPU, NPU, memory, sustained power, burst power, and thermal headroom while blocking future Pixel product claims.
+    metric_check: make cpu-npu-competitive-envelope
   - id: cpu_ap_evidence_blocked
     status: blocked
     evidence: Generated Linux-capable AP manifest and boot/benchmark transcripts are still absent.
