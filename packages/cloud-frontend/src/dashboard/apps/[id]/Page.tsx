@@ -13,6 +13,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import { isValidUUID } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useApp } from "../../../lib/data/apps";
 import { AppDetailsTabs } from "../_components/app-details-tabs";
@@ -21,6 +22,7 @@ import { AppPageWrapper } from "../_components/single-app-page-wrapper";
 
 /** /dashboard/apps/:id */
 export default function AppDetailsPage() {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const session = useRequireAuth();
   const [searchParams] = useSearchParams();
@@ -56,10 +58,20 @@ export default function AppDetailsPage() {
     return <Navigate to="/dashboard/apps" replace />;
   }
 
-  const title = app ? `${app.name} | Eliza Cloud` : "App";
+  const title = app
+    ? t("cloud.apps.detail.metaTitle", {
+        defaultValue: "{{name}} | Eliza Cloud",
+        name: app.name,
+      })
+    : t("cloud.apps.detail.metaTitleFallback", { defaultValue: "App" });
   const description =
     app?.description ||
-    (app ? `Manage ${app.name} app settings and analytics` : "");
+    (app
+      ? t("cloud.apps.detail.metaDescription", {
+          defaultValue: "Manage {{name}} app settings and analytics",
+          name: app.name,
+        })
+      : "");
 
   return (
     <>
@@ -69,11 +81,19 @@ export default function AppDetailsPage() {
         <meta name="robots" content="noindex,nofollow" />
       </Helmet>
       {!session.ready || isLoading ? (
-        <DashboardLoadingState label="Loading app" />
+        <DashboardLoadingState
+          label={t("cloud.apps.detail.loading", {
+            defaultValue: "Loading app",
+          })}
+        />
       ) : isError ? (
         <DashboardErrorState
           message={
-            error instanceof Error ? error.message : "Failed to load app"
+            error instanceof Error
+              ? error.message
+              : t("cloud.apps.detail.errorFailedLoad", {
+                  defaultValue: "Failed to load app",
+                })
           }
         />
       ) : !app ? (

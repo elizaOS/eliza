@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 import type { App } from "../../../lib/data/apps";
 import { AppAnalytics } from "./app-analytics";
 import { AppDomains } from "./app-domains";
@@ -37,26 +38,54 @@ type TabValue =
   | "users"
   | "settings";
 
-// "Build" tab intentionally absent — the codebuilder it linked to
-// (/dashboard/apps/create) is currently disabled and redirects back
-// to the apps list, so a Build tab would loop. App creation happens
-// through CreateAppDialog (manual) or the cloud SDK (agent path).
-const tabs: {
-  value: TabValue;
-  label: string;
-  icon: typeof Grid3x3;
-}[] = [
-  { value: "overview", label: "Overview", icon: Grid3x3 },
-  { value: "monetization", label: "Monetize", icon: DollarSign },
-  { value: "earnings", label: "Earnings", icon: TrendingUp },
-  { value: "domains", label: "Domains", icon: Globe },
-  { value: "analytics", label: "Analytics", icon: BarChart3 },
-  { value: "promote", label: "Promote", icon: Megaphone },
-  { value: "users", label: "Users", icon: Users },
-  { value: "settings", label: "Settings", icon: Settings },
-];
-
 export function AppDetailsTabs({ app, showApiKey }: AppDetailsTabsProps) {
+  const t = useT();
+  const tabs: {
+    value: TabValue;
+    label: string;
+    icon: typeof Grid3x3;
+  }[] = [
+    {
+      value: "overview",
+      label: t("cloud.apps.tab.overview", { defaultValue: "Overview" }),
+      icon: Grid3x3,
+    },
+    {
+      value: "monetization",
+      label: t("cloud.apps.tab.monetize", { defaultValue: "Monetize" }),
+      icon: DollarSign,
+    },
+    {
+      value: "earnings",
+      label: t("cloud.apps.tab.earnings", { defaultValue: "Earnings" }),
+      icon: TrendingUp,
+    },
+    {
+      value: "domains",
+      label: t("cloud.apps.tab.domains", { defaultValue: "Domains" }),
+      icon: Globe,
+    },
+    {
+      value: "analytics",
+      label: t("cloud.apps.tab.analytics", { defaultValue: "Analytics" }),
+      icon: BarChart3,
+    },
+    {
+      value: "promote",
+      label: t("cloud.apps.tab.promote", { defaultValue: "Promote" }),
+      icon: Megaphone,
+    },
+    {
+      value: "users",
+      label: t("cloud.apps.tab.users", { defaultValue: "Users" }),
+      icon: Users,
+    },
+    {
+      value: "settings",
+      label: t("cloud.apps.tab.settings", { defaultValue: "Settings" }),
+      icon: Settings,
+    },
+  ];
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const activeTab = (searchParams.get("tab") || "overview") as TabValue;

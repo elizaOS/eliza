@@ -35,6 +35,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 
 interface McpServer {
   id: string;
@@ -69,6 +70,7 @@ const iconMap: Record<string, typeof Puzzle> = {
 };
 
 export function MCPsSection({ servers, className }: MCPsSectionProps) {
+  const t = useT();
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [selectedServer, setSelectedServer] = useState<McpServer | null>(null);
@@ -100,7 +102,11 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
 
     await navigator.clipboard.writeText(fullUrl);
     setCopiedEndpoint(serverId);
-    toast.success("Endpoint URL copied to clipboard");
+    toast.success(
+      t("cloud.mcps.endpointCopied", {
+        defaultValue: "Endpoint URL copied to clipboard",
+      }),
+    );
     setTimeout(() => setCopiedEndpoint(null), 2000);
   };
 
@@ -128,7 +134,12 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
         if (contentType.includes("application/json")) {
           const data = await metadataResponse.json();
           setTestResult(JSON.stringify(data, null, 2));
-          toast.success(`${server.name} is responding`);
+          toast.success(
+            t("cloud.mcps.serverResponding", {
+              defaultValue: "{{name}} is responding",
+              name: server.name,
+            }),
+          );
           setTestingServer(null);
           return;
         }
@@ -172,11 +183,21 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
             2,
           ),
         );
-        toast.success(`${server.name} is online (requires auth)`);
+        toast.success(
+          t("cloud.mcps.serverOnlineAuth", {
+            defaultValue: "{{name}} is online (requires auth)",
+            name: server.name,
+          }),
+        );
       } else if (mcpResponse.ok) {
         const data = await mcpResponse.json();
         setTestResult(JSON.stringify(data, null, 2));
-        toast.success(`${server.name} is responding`);
+        toast.success(
+          t("cloud.mcps.serverResponding", {
+            defaultValue: "{{name}} is responding",
+            name: server.name,
+          }),
+        );
       } else {
         const errorText = await mcpResponse.text().catch(() => "");
         setTestResult(
@@ -189,11 +210,20 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
             2,
           ),
         );
-        toast.error(`Server returned ${mcpResponse.status}`);
+        toast.error(
+          t("cloud.mcps.serverReturned", {
+            defaultValue: "Server returned {{code}}",
+            code: mcpResponse.status,
+          }),
+        );
       }
     } catch (error) {
       const errorMessage =
-        error instanceof Error ? error.message : "Connection failed";
+        error instanceof Error
+          ? error.message
+          : t("cloud.mcps.connectionFailed", {
+              defaultValue: "Connection failed",
+            });
       setTestResult(
         JSON.stringify(
           {
@@ -204,7 +234,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
           2,
         ),
       );
-      toast.error(`Failed to connect: ${errorMessage}`);
+      toast.error(
+        `${t("cloud.mcps.failedToConnect", { defaultValue: "Failed to connect" })}: ${errorMessage}`,
+      );
     }
     setTestingServer(null);
   };
@@ -213,24 +245,39 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
     <div className={cn("space-y-4", className)}>
       {/* What is MCP Info Card */}
       <div className="p-4 rounded-sm bg-white/5 border border-white/10">
-        <h3 className="text-base font-medium text-white mb-1">What is MCP?</h3>
+        <h3 className="text-base font-medium text-white mb-1">
+          {t("cloud.mcps.whatIsMcp", { defaultValue: "What is MCP?" })}
+        </h3>
         <p className="text-sm text-white/60 mb-3">
-          The Model Context Protocol (MCP) is an open standard that enables AI
-          assistants to securely connect with data sources and tools. These MCP
-          servers provide ready-to-use tools for your AI agents.
+          {t("cloud.mcps.whatIsMcpBody", {
+            defaultValue:
+              "The Model Context Protocol (MCP) is an open standard that enables AI assistants to securely connect with data sources and tools. These MCP servers provide ready-to-use tools for your AI agents.",
+          })}
         </p>
         <div className="flex flex-wrap gap-3 text-xs">
           <div className="flex items-center gap-1.5 text-white/50">
             <span className="w-1.5 h-1.5 rounded-full bg-green-400" />
-            <span>Serverless & Scalable</span>
+            <span>
+              {t("cloud.mcps.serverless", {
+                defaultValue: "Serverless & Scalable",
+              })}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-white/50">
             <span className="w-1.5 h-1.5 rounded-full bg-purple-400" />
-            <span>x402 Micropayments</span>
+            <span>
+              {t("cloud.mcps.x402Micro", {
+                defaultValue: "x402 Micropayments",
+              })}
+            </span>
           </div>
           <div className="flex items-center gap-1.5 text-white/50">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-            <span>SSE & HTTP Transport</span>
+            <span>
+              {t("cloud.mcps.sseHttp", {
+                defaultValue: "SSE & HTTP Transport",
+              })}
+            </span>
           </div>
         </div>
       </div>
@@ -238,7 +285,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
       {/* Section Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <h2 className="text-xl font-semibold text-white">MCP Servers</h2>
+          <h2 className="text-xl font-semibold text-white">
+            {t("cloud.mcps.serversTitle", { defaultValue: "MCP Servers" })}
+          </h2>
           <span className="text-base text-white/50">({servers.length})</span>
           <Tooltip>
             <TooltipTrigger asChild>
@@ -253,7 +302,10 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
               side="right"
               className="max-w-[220px] text-xs bg-zinc-900 text-white/80 border border-white/10"
             >
-              MCP servers provide tools and capabilities for your AI agents.
+              {t("cloud.mcps.tooltip", {
+                defaultValue:
+                  "MCP servers provide tools and capabilities for your AI agents.",
+              })}
             </TooltipContent>
           </Tooltip>
         </div>
@@ -266,7 +318,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-neutral-500" />
           <input
             type="text"
-            placeholder="Search MCPs..."
+            placeholder={t("cloud.mcps.searchPlaceholder", {
+              defaultValue: "Search MCPs...",
+            })}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full h-8 bg-white/5 border border-white/10 rounded-full pl-9 pr-4 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-[#FF5800]/50 transition-colors"
@@ -375,7 +429,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   {/* Endpoint */}
                   <div className="flex flex-col space-y-3">
                     <p className="text-xs text-neutral-500 uppercase tracking-wider">
-                      MCP Endpoint
+                      {t("cloud.mcps.endpointLabel", {
+                        defaultValue: "MCP Endpoint",
+                      })}
                     </p>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-white/5 border border-white/10 p-3 font-mono text-sm text-white/80 rounded-sm overflow-x-auto">
@@ -406,7 +462,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   {/* Config */}
                   <div className="flex flex-col space-y-3">
                     <p className="text-xs text-neutral-500 uppercase tracking-wider">
-                      Configuration
+                      {t("cloud.mcps.configurationLabel", {
+                        defaultValue: "Configuration",
+                      })}
                     </p>
                     <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-white/70 rounded-sm overflow-x-auto">
                       <pre>
@@ -434,7 +492,10 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                 {/* Tools */}
                 <div className="mt-6 flex flex-col space-y-3">
                   <p className="text-xs text-neutral-500 uppercase tracking-wider">
-                    Available Tools ({selectedServer.toolCount})
+                    {t("cloud.mcps.availableTools", {
+                      defaultValue: "Available Tools",
+                    })}{" "}
+                    ({selectedServer.toolCount})
                   </p>
                   <div className="flex flex-wrap gap-1.5">
                     {selectedServer.features.map((feature) => (
@@ -460,7 +521,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     className="mt-6 flex flex-col space-y-3"
                   >
                     <p className="text-xs text-neutral-500 uppercase tracking-wider">
-                      Server Response
+                      {t("cloud.mcps.serverResponseLabel", {
+                        defaultValue: "Server Response",
+                      })}
                     </p>
                     <div className="bg-white/5 border border-white/10 p-3 font-mono text-xs text-green-400/80 rounded-sm overflow-x-auto max-h-48 overflow-y-auto">
                       <pre>{testResult}</pre>
@@ -474,15 +537,22 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     <div className="flex items-center gap-2 mb-2">
                       <Zap className="h-4 w-4 text-purple-400" />
                       <span className="text-sm font-medium text-purple-300">
-                        x402 Micropayments Enabled
+                        {t("cloud.mcps.x402Enabled", {
+                          defaultValue: "x402 Micropayments Enabled",
+                        })}
                       </span>
                     </div>
                     <p className="text-xs text-neutral-400">
-                      This MCP server supports accountless micropayments via the
-                      x402 protocol. Pay only for what you use
+                      {t("cloud.mcps.x402Body", {
+                        defaultValue:
+                          "This MCP server supports accountless micropayments via the x402 protocol. Pay only for what you use",
+                      })}
                       {selectedServer.pricing.pricePerRequest &&
                         ` ($${selectedServer.pricing.pricePerRequest}/request)`}
-                      . Powered by Coinbase CDP.
+                      .{" "}
+                      {t("cloud.mcps.poweredByCdp", {
+                        defaultValue: "Powered by Coinbase CDP.",
+                      })}
                     </p>
                   </div>
                 )}
@@ -498,7 +568,11 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 text-white/70 hover:border-white/30 hover:text-white transition-colors rounded-sm text-sm"
                   >
                     <ExternalLink className="h-4 w-4" />
-                    <span className="hidden sm:inline">Open Endpoint</span>
+                    <span className="hidden sm:inline">
+                      {t("cloud.mcps.openEndpoint", {
+                        defaultValue: "Open Endpoint",
+                      })}
+                    </span>
                   </a>
                   <button
                     type="button"
@@ -511,7 +585,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                     }
                   >
                     <Terminal className="h-4 w-4" />
-                    <span className="hidden sm:inline">Docs</span>
+                    <span className="hidden sm:inline">
+                      {t("cloud.mcps.docs", { defaultValue: "Docs" })}
+                    </span>
                   </button>
                 </div>
                 <button
@@ -525,7 +601,9 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   ) : (
                     <Play className="h-4 w-4" />
                   )}
-                  Test Connection
+                  {t("cloud.mcps.testConnection", {
+                    defaultValue: "Test Connection",
+                  })}
                 </button>
               </div>
             </>
@@ -544,6 +622,7 @@ function MCPCard({
   server: McpServer;
   onSelect: () => void;
 }) {
+  const t = useT();
   const Icon = iconMap[server.icon] || Puzzle;
 
   return (
@@ -576,7 +655,11 @@ function MCPCard({
                   )}
                 </h3>
                 <p className="text-xs text-white/74">
-                  v{server.version} - {server.toolCount} tools
+                  v{server.version} -{" "}
+                  {t("cloud.mcps.toolsCount", {
+                    defaultValue: "{{n}} tools",
+                    n: server.toolCount,
+                  })}
                 </p>
               </div>
             </div>

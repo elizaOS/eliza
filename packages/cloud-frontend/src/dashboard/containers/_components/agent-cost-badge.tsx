@@ -11,12 +11,14 @@ import {
   formatHourlyRate,
   formatMonthlyEstimate,
 } from "@/lib/constants/agent-pricing-display";
+import { useT } from "@/providers/I18nProvider";
 
 interface AgentCostBadgeProps {
   status: string;
 }
 
 export function AgentCostBadge({ status }: AgentCostBadgeProps) {
+  const t = useT();
   const isRunning = status === "running" || status === "provisioning";
   const isIdle = status === "stopped" || status === "disconnected";
 
@@ -39,7 +41,12 @@ export function AgentCostBadge({ status }: AgentCostBadgeProps) {
       </TooltipTrigger>
       <TooltipContent className="bg-neutral-900 border-white/10 text-xs">
         <p className="font-medium text-white mb-0.5">
-          {isRunning ? "Active" : "Idle"} agent
+          {isRunning
+            ? t("cloud.containers.costBadge.active", { defaultValue: "Active" })
+            : t("cloud.containers.costBadge.idle", {
+                defaultValue: "Idle",
+              })}{" "}
+          {t("cloud.containers.costBadge.agent", { defaultValue: "agent" })}
         </p>
         <p className="text-white/60">
           {formatHourlyRate(rate)} · {formatMonthlyEstimate(rate)}

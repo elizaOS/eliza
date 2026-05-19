@@ -1,6 +1,7 @@
 import { DashboardErrorState, DashboardLoadingState } from "@elizaos/ui";
 import { useMemo, useState } from "react";
 import { Helmet } from "react-helmet-async";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import {
   type AnalyticsBreakdown,
@@ -42,6 +43,7 @@ function adaptProjections(p: AnalyticsProjections) {
 
 /** /dashboard/analytics — usage metrics + cost projections. */
 export default function AnalyticsPage() {
+  const t = useT();
   const { ready, authenticated } = useRequireAuth();
   const [timeRange] = useState<AnalyticsTimeRange>("weekly");
   const breakdown = useAnalyticsBreakdown(timeRange);
@@ -57,10 +59,15 @@ export default function AnalyticsPage() {
 
   const helmet = (
     <Helmet>
-      <title>Analytics</title>
+      <title>
+        {t("cloud.analytics.metaTitle", { defaultValue: "Analytics" })}
+      </title>
       <meta
         name="description"
-        content="View detailed usage statistics, performance metrics, and insights for your AI agents"
+        content={t("cloud.analytics.metaDescription", {
+          defaultValue:
+            "View detailed usage statistics, performance metrics, and insights for your AI agents",
+        })}
       />
     </Helmet>
   );
@@ -72,7 +79,11 @@ export default function AnalyticsPage() {
     return (
       <>
         {helmet}
-        <DashboardLoadingState label="Loading analytics" />
+        <DashboardLoadingState
+          label={t("cloud.analytics.loading", {
+            defaultValue: "Loading analytics",
+          })}
+        />
       </>
     );
   }
@@ -99,7 +110,11 @@ export default function AnalyticsPage() {
     return (
       <>
         {helmet}
-        <DashboardLoadingState label="Loading analytics" />
+        <DashboardLoadingState
+          label={t("cloud.analytics.loading", {
+            defaultValue: "Loading analytics",
+          })}
+        />
       </>
     );
   }

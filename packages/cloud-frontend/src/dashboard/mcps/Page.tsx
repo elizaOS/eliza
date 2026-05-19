@@ -5,6 +5,7 @@ import {
   DashboardPageStack,
 } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { MCPsPageWrapper } from "./_components/mcps-page-wrapper";
 import { MCPsSection } from "./_components/mcps-section";
@@ -100,16 +101,22 @@ const demoMcpServers = [
 ];
 
 export default function MCPsPage() {
+  const t = useT();
   const { ready, authenticated } = useRequireAuth();
 
   // Render Helmet unconditionally so the page title is set even while
   // auth resolves — otherwise the homepage <title> leaks through.
   const head = (
     <Helmet>
-      <title>MCP Servers</title>
+      <title>
+        {t("cloud.mcps.metaTitle", { defaultValue: "MCP Servers" })}
+      </title>
       <meta
         name="description"
-        content="Explore and connect to Model Context Protocol (MCP) servers. Access ready-to-use tools for AI agents including time, weather, crypto prices, and more."
+        content={t("cloud.mcps.metaDescription", {
+          defaultValue:
+            "Explore and connect to Model Context Protocol (MCP) servers. Access ready-to-use tools for AI agents including time, weather, crypto prices, and more.",
+        })}
       />
     </Helmet>
   );
@@ -118,7 +125,9 @@ export default function MCPsPage() {
     return (
       <>
         {head}
-        <DashboardLoadingState label="Loading MCPs" />
+        <DashboardLoadingState
+          label={t("cloud.mcps.loading", { defaultValue: "Loading MCPs" })}
+        />
       </>
     );
 

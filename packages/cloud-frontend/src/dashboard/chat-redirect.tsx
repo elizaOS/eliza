@@ -2,6 +2,7 @@ import { DashboardLoadingState } from "@elizaos/ui";
 import { MessageCircle, Plus } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../lib/auth-hooks";
 import { useAgents } from "../lib/data/eliza-agents";
 
@@ -13,6 +14,7 @@ import { useAgents } from "../lib/data/eliza-agents";
  * - Otherwise, render an empty state with a CTA to create one.
  */
 export default function DashboardChatRedirectPage() {
+  const t = useT();
   const session = useRequireAuth();
   const enabled = session.ready && session.authenticated;
   const query = useAgents();
@@ -21,9 +23,17 @@ export default function DashboardChatRedirectPage() {
     return (
       <>
         <Helmet>
-          <title>Chat — Eliza Cloud</title>
+          <title>
+            {t("cloud.chatRedirect.metaTitle", {
+              defaultValue: "Chat — Eliza Cloud",
+            })}
+          </title>
         </Helmet>
-        <DashboardLoadingState label="Loading agents" />
+        <DashboardLoadingState
+          label={t("cloud.chatRedirect.loading", {
+            defaultValue: "Loading agents",
+          })}
+        />
       </>
     );
   }
@@ -49,7 +59,11 @@ export default function DashboardChatRedirectPage() {
   return (
     <>
       <Helmet>
-        <title>Chat — Eliza Cloud</title>
+        <title>
+          {t("cloud.chatRedirect.metaTitle", {
+            defaultValue: "Chat — Eliza Cloud",
+          })}
+        </title>
       </Helmet>
       <div className="max-w-xl mx-auto py-16 text-center space-y-5">
         <div className="inline-flex items-center justify-center w-12 h-12 border border-white/10 bg-black/40 mx-auto">
@@ -57,11 +71,15 @@ export default function DashboardChatRedirectPage() {
         </div>
         <div className="space-y-2">
           <h1 className="text-xl font-semibold text-white">
-            No running agents
+            {t("cloud.chatRedirect.emptyTitle", {
+              defaultValue: "No running agents",
+            })}
           </h1>
           <p className="text-sm text-white/55">
-            Spin up an agent to start chatting. Once it's running, this page
-            will jump you straight into its chat.
+            {t("cloud.chatRedirect.emptyBody", {
+              defaultValue:
+                "Spin up an agent to start chatting. Once it's running, this page will jump you straight into its chat.",
+            })}
           </p>
         </div>
         <div className="flex items-center justify-center gap-2">
@@ -70,7 +88,9 @@ export default function DashboardChatRedirectPage() {
             className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium border border-[#FF5800] bg-[#FF5800] text-black hover:bg-[#FF5800]/90 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            Create an agent
+            {t("cloud.chatRedirect.createAgent", {
+              defaultValue: "Create an agent",
+            })}
           </Link>
         </div>
       </div>

@@ -25,12 +25,14 @@ import { FileText, Loader2, Search } from "lucide-react";
 import { useState } from "react";
 
 import type { QueryResult } from "@/lib/types/documents";
+import { useT } from "@/providers/I18nProvider";
 
 interface DocumentQueryProps {
   characterId: string | null;
 }
 
 export function DocumentQuery({ characterId }: DocumentQueryProps) {
+  const t = useT();
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(5);
   const [loading, setLoading] = useState(false);
@@ -42,7 +44,11 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
     e.preventDefault();
 
     if (!query.trim()) {
-      setError("Please enter a search query");
+      setError(
+        t("cloud.documents.query.enterQuery", {
+          defaultValue: "Please enter a search query",
+        }),
+      );
       return;
     }
 
@@ -65,7 +71,12 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
     if (!response.ok) {
       const data = await response.json();
       setLoading(false);
-      throw new Error(data.error || "Failed to query documents");
+      throw new Error(
+        data.error ||
+          t("cloud.documents.query.queryFailed", {
+            defaultValue: "Failed to query documents",
+          }),
+      );
     }
 
     const data = await response.json();
@@ -84,12 +95,18 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
     <div className="space-y-6">
       <form onSubmit={handleSearch} className="space-y-4">
         <div>
-          <Label htmlFor="query">Search Query</Label>
+          <Label htmlFor="query">
+            {t("cloud.documents.query.searchQuery", {
+              defaultValue: "Search Query",
+            })}
+          </Label>
           <div className="flex gap-2">
             <Input
               id="query"
               type="text"
-              placeholder="Ask a question about your documents..."
+              placeholder={t("cloud.documents.query.placeholder", {
+                defaultValue: "Ask a question about your documents...",
+              })}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               disabled={loading}
@@ -99,12 +116,16 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
               {loading ? (
                 <>
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Searching...
+                  {t("cloud.documents.query.searching", {
+                    defaultValue: "Searching...",
+                  })}
                 </>
               ) : (
                 <>
                   <Search className="mr-2 h-4 w-4" />
-                  Search
+                  {t("cloud.documents.query.search", {
+                    defaultValue: "Search",
+                  })}
                 </>
               )}
             </Button>
@@ -113,7 +134,10 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
 
         <div>
           <Label htmlFor="limit">
-            Number of Results: <span className="font-mono">{limit}</span>
+            {t("cloud.documents.query.numberOfResults", {
+              defaultValue: "Number of Results",
+            })}
+            : <span className="font-mono">{limit}</span>
           </Label>
           <Slider
             id="limit"
@@ -139,15 +163,26 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
           {results.length === 0 ? (
             <div className="text-center py-12">
               <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No results found</h3>
+              <h3 className="text-lg font-semibold mb-2">
+                {t("cloud.documents.query.noResults", {
+                  defaultValue: "No results found",
+                })}
+              </h3>
               <p className="text-muted-foreground">
-                Try a different query or upload more documents.
+                {t("cloud.documents.query.noResultsBody", {
+                  defaultValue:
+                    "Try a different query or upload more documents.",
+                })}
               </p>
             </div>
           ) : (
             <div>
               <h3 className="text-lg font-semibold mb-4">
-                Found {results.length} result{results.length !== 1 ? "s" : ""}
+                {t("cloud.documents.query.foundCount", {
+                  defaultValue: "Found {{n}} result{{plural}}",
+                  n: results.length,
+                  plural: results.length !== 1 ? "s" : "",
+                })}
               </h3>
               <div className="space-y-3">
                 {results.map((result, index) => (
@@ -155,13 +190,20 @@ export function DocumentQuery({ characterId }: DocumentQueryProps) {
                     <CardHeader className="pb-3">
                       <div className="flex items-center justify-between">
                         <CardTitle className="text-sm font-medium">
-                          Result #{index + 1}
+                          {t("cloud.documents.query.resultNumber", {
+                            defaultValue: "Result #{{n}}",
+                            n: index + 1,
+                          })}
                         </CardTitle>
                         <span
                           className={`text-sm font-mono ${getSimilarityColor(result.similarity)}`}
                         >
-                          {toSuccessRatePercent(result.similarity).toFixed(1)}%
-                          match
+                          {t("cloud.documents.query.percentMatch", {
+                            defaultValue: "{{p}}% match",
+                            p: toSuccessRatePercent(result.similarity).toFixed(
+                              1,
+                            ),
+                          })}
                         </span>
                       </div>
                     </CardHeader>

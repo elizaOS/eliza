@@ -37,6 +37,7 @@ import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useCopyFeedback } from "@/hooks/use-copy-feedback";
+import { useT } from "@/providers/I18nProvider";
 
 interface CreateAppDialogProps {
   open: boolean;
@@ -44,6 +45,7 @@ interface CreateAppDialogProps {
 }
 
 export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
+  const t = useT();
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [name, setName] = useState("");
@@ -128,16 +130,35 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
       });
       if (!res.ok) {
         const error = await res.json().catch(() => ({}));
-        throw new Error(error.error || "Failed to create app");
+        throw new Error(
+          error.error ||
+            t("cloud.apps.create.errFailedCreate", {
+              defaultValue: "Failed to create app",
+            }),
+        );
       }
       const data = await res.json();
       setCreatedApp({ appId: data.app.id, apiKey: data.apiKey });
-      toast.success("App created — copy the API key, you won't see it again");
+      toast.success(
+        t("cloud.apps.create.toastSuccess", {
+          defaultValue:
+            "App created — copy the API key, you won't see it again",
+        }),
+      );
     } catch (error) {
-      toast.error("Failed to create app", {
-        description:
-          error instanceof Error ? error.message : "Please try again",
-      });
+      toast.error(
+        t("cloud.apps.create.errFailedCreate", {
+          defaultValue: "Failed to create app",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.apps.toast.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
     } finally {
       setIsLoading(false);
     }
@@ -147,7 +168,9 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
     if (!createdApp) return;
     await navigator.clipboard.writeText(createdApp.apiKey);
     markCopied();
-    toast.success("API key copied");
+    toast.success(
+      t("cloud.apps.create.apiKeyCopied", { defaultValue: "API key copied" }),
+    );
   };
 
   const handleClose = () => {
@@ -166,14 +189,20 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Check className="h-5 w-5 text-green-500" />
-              App Created
+              {t("cloud.apps.create.successTitle", {
+                defaultValue: "App Created",
+              })}
             </DialogTitle>
             <DialogDescription>
-              Copy your API key now — you won&apos;t see it again.
+              {t("cloud.apps.create.copyApiKeyHint", {
+                defaultValue: "Copy your API key now — you won't see it again.",
+              })}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2 py-4">
-            <Label className="text-xs text-white/60">API Key</Label>
+            <Label className="text-xs text-white/60">
+              {t("cloud.apps.create.apiKeyLabel", { defaultValue: "API Key" })}
+            </Label>
             <div className="flex gap-2">
               <Input
                 value={createdApp.apiKey}
@@ -194,11 +223,18 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
               </Button>
             </div>
             <p className="text-xs text-white/40 leading-relaxed">
-              Most apps don't need this. Users sign in with their own Eliza
-              Cloud account (OAuth), and your app forwards their JWT — earnings
-              go to you, charges go to them. This key is only for{" "}
-              <strong>server-to-server</strong> calls where there's no logged-in
-              user.
+              {t("cloud.apps.create.apiKeyExplain1", {
+                defaultValue:
+                  "Most apps don't need this. Users sign in with their own Eliza Cloud account (OAuth), and your app forwards their JWT — earnings go to you, charges go to them. This key is only for",
+              })}{" "}
+              <strong>
+                {t("cloud.apps.create.serverToServer", {
+                  defaultValue: "server-to-server",
+                })}
+              </strong>{" "}
+              {t("cloud.apps.create.apiKeyExplain2", {
+                defaultValue: "calls where there's no logged-in user.",
+              })}
             </p>
           </div>
           <DialogFooter>
@@ -206,7 +242,9 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
               onClick={handleClose}
               className="bg-[#FF5800] hover:bg-[#FF5800]/90 w-full sm:w-auto"
             >
-              Set Markup &amp; Earnings →
+              {t("cloud.apps.create.setMarkupCta", {
+                defaultValue: "Set Markup & Earnings →",
+              })}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -218,10 +256,14 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Create New App</DialogTitle>
+          <DialogTitle>
+            {t("cloud.apps.create.title", { defaultValue: "Create New App" })}
+          </DialogTitle>
           <DialogDescription>
-            Just a name and a URL. You can set markup, allowed origins, and
-            other settings on the app's detail page once it exists.
+            {t("cloud.apps.create.desc", {
+              defaultValue:
+                "Just a name and a URL. You can set markup, allowed origins, and other settings on the app's detail page once it exists.",
+            })}
           </DialogDescription>
         </DialogHeader>
 
@@ -229,19 +271,24 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
           <div className="space-y-2">
             <div className="flex items-center justify-between">
               <Label htmlFor="app-name">
-                Name <span className="text-red-500">*</span>
+                {t("cloud.apps.create.nameLabel", { defaultValue: "Name" })}{" "}
+                <span className="text-red-500">*</span>
               </Label>
               {checkingName && (
                 <Loader2 className="h-3 w-3 animate-spin text-white/40" />
               )}
               {!checkingName && nameAvailable === true && (
                 <span className="text-xs text-green-500 inline-flex items-center gap-1">
-                  <Check className="h-3 w-3" /> available
+                  <Check className="h-3 w-3" />{" "}
+                  {t("cloud.apps.create.available", {
+                    defaultValue: "available",
+                  })}
                 </span>
               )}
               {!checkingName && nameAvailable === false && (
                 <span className="text-xs text-red-400 inline-flex items-center gap-1">
-                  <AlertCircle className="h-3 w-3" /> taken
+                  <AlertCircle className="h-3 w-3" />{" "}
+                  {t("cloud.apps.create.taken", { defaultValue: "taken" })}
                 </span>
               )}
             </div>
@@ -249,7 +296,9 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
               id="app-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="My App"
+              placeholder={t("cloud.apps.create.namePlaceholder", {
+                defaultValue: "My App",
+              })}
               maxLength={100}
               disabled={isLoading}
             />
@@ -257,7 +306,8 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
 
           <div className="space-y-2">
             <Label htmlFor="app-url">
-              App URL <span className="text-red-500">*</span>
+              {t("cloud.apps.create.urlLabel", { defaultValue: "App URL" })}{" "}
+              <span className="text-red-500">*</span>
             </Label>
             <Input
               id="app-url"
@@ -268,8 +318,10 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
               disabled={isLoading}
             />
             <p className="text-xs text-white/40">
-              Where your app lives. Used as the default CORS origin and for
-              affiliate redirects.
+              {t("cloud.apps.create.urlHint", {
+                defaultValue:
+                  "Where your app lives. Used as the default CORS origin and for affiliate redirects.",
+              })}
             </p>
           </div>
 
@@ -280,7 +332,7 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
               onClick={() => onOpenChange(false)}
               className="w-full sm:w-auto"
             >
-              Cancel
+              {t("cloud.apps.deleteDialog.cancel", { defaultValue: "Cancel" })}
             </Button>
             <Button
               type="submit"
@@ -289,10 +341,13 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
             >
               {isLoading ? (
                 <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" /> Creating...
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />{" "}
+                  {t("cloud.apps.create.creating", {
+                    defaultValue: "Creating...",
+                  })}
                 </>
               ) : (
-                "Create App"
+                t("cloud.apps.createApp", { defaultValue: "Create App" })
               )}
             </Button>
           </DialogFooter>

@@ -60,12 +60,13 @@ import type {
   AdminRole,
   AdminUserDto,
 } from "@/lib/types/cloud-api";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError, api } from "../../lib/api-client";
 import { useAdminModerationStatus } from "../../lib/data/admin";
 
-function errorMessage(error: unknown): string {
+function errorMessage(error: unknown, fallback: string): string {
   if (error instanceof ApiError) return error.message;
-  return error instanceof Error ? error.message : "Request failed";
+  return error instanceof Error ? error.message : fallback;
 }
 
 function isAdminRole(value: string): value is AdminRole {
@@ -73,6 +74,7 @@ function isAdminRole(value: string): value is AdminRole {
 }
 
 export default function AdminPage() {
+  const t = useT();
   const { data: status } = useAdminModerationStatus();
   const adminRole = status?.role ?? null;
 
@@ -99,6 +101,10 @@ export default function AdminPage() {
   const [userDetail, setUserDetail] =
     useState<AdminModerationUserDetailResponse | null>(null);
 
+  const requestFailed = t("cloud.admin.error.requestFailed", {
+    defaultValue: "Request failed",
+  });
+
   const loadAdmins = useCallback(async () => {
     try {
       const data = await api<AdminModerationAdminsResponse>(
@@ -106,9 +112,11 @@ export default function AdminPage() {
       );
       setAdmins(data.admins);
     } catch (error) {
-      toast.error(`Failed to load admins: ${errorMessage(error)}`);
+      toast.error(
+        `${t("cloud.admin.toast.loadAdminsFailed", { defaultValue: "Failed to load admins" })}: ${errorMessage(error, requestFailed)}`,
+      );
     }
-  }, []);
+  }, [t, requestFailed]);
 
   const loadUsers = useCallback(async () => {
     try {
@@ -118,9 +126,11 @@ export default function AdminPage() {
       setFlaggedUsers(data.flaggedUsers);
       setBannedUsers(data.bannedUsers);
     } catch (error) {
-      toast.error(`Failed to load users: ${errorMessage(error)}`);
+      toast.error(
+        `${t("cloud.admin.toast.loadUsersFailed", { defaultValue: "Failed to load users" })}: ${errorMessage(error, requestFailed)}`,
+      );
     }
-  }, []);
+  }, [t, requestFailed]);
 
   const loadViolations = useCallback(async () => {
     try {
@@ -129,9 +139,11 @@ export default function AdminPage() {
       );
       setViolations(data.violations);
     } catch (error) {
-      toast.error(`Failed to load violations: ${errorMessage(error)}`);
+      toast.error(
+        `${t("cloud.admin.toast.loadViolationsFailed", { defaultValue: "Failed to load violations" })}: ${errorMessage(error, requestFailed)}`,
+      );
     }
-  }, []);
+  }, [t, requestFailed]);
 
   // Initial load: pull all four panels in a single round trip via the
   // multi-view endpoint. Per-tab refresh still issues targeted calls when the
@@ -149,23 +161,30 @@ export default function AdminPage() {
       }
       if (data.violations) setViolations(data.violations.violations);
     } catch (error) {
-      toast.error(`Failed to load admin panel: ${errorMessage(error)}`);
-    }
-  }, []);
-
-  const loadUserDetail = useCallback(async (userId: string) => {
-    setSelectedUserId(userId);
-    setUserDetailOpen(true);
-    try {
-      setUserDetail(
-        await api<AdminModerationUserDetailResponse>(
-          `/api/v1/admin/moderation?view=user-detail&userId=${encodeURIComponent(userId)}`,
-        ),
+      toast.error(
+        `${t("cloud.admin.toast.loadPanelFailed", { defaultValue: "Failed to load admin panel" })}: ${errorMessage(error, requestFailed)}`,
       );
-    } catch (error) {
-      toast.error(`Failed to load user details: ${errorMessage(error)}`);
     }
-  }, []);
+  }, [t, requestFailed]);
+
+  const loadUserDetail = useCallback(
+    async (userId: string) => {
+      setSelectedUserId(userId);
+      setUserDetailOpen(true);
+      try {
+        setUserDetail(
+          await api<AdminModerationUserDetailResponse>(
+            `/api/v1/admin/moderation?view=user-detail&userId=${encodeURIComponent(userId)}`,
+          ),
+        );
+      } catch (error) {
+        toast.error(
+          `${t("cloud.admin.toast.loadUserDetailFailed", { defaultValue: "Failed to load user details" })}: ${errorMessage(error, requestFailed)}`,
+        );
+      }
+    },
+    [t, requestFailed],
+  );
 
   useEffect(() => {
     queueMicrotask(() => loadAll());
@@ -182,13 +201,19 @@ export default function AdminPage() {
         json: { action, ...data } satisfies AdminModerationActionRequest,
       });
     } catch (error) {
-      toast.error(`Action failed: ${errorMessage(error)}`);
+      toast.error(
+        `${t("cloud.admin.toast.actionFailed", { defaultValue: "Action failed" })}: ${errorMessage(error, requestFailed)}`,
+      );
       return false;
     } finally {
       setActionLoading(false);
     }
 
-    toast.success("Action completed successfully");
+    toast.success(
+      t("cloud.admin.toast.actionSuccess", {
+        defaultValue: "Action completed successfully",
+      }),
+    );
     loadAll();
     return true;
   }
@@ -196,48 +221,64 @@ export default function AdminPage() {
   return (
     <>
       <Helmet>
-        <title>Admin Panel</title>
+        <title>
+          {t("cloud.admin.metaTitle", { defaultValue: "Admin Panel" })}
+        </title>
         <meta
           name="description"
-          content="Admin moderation panel for managing users, reviewing violations, and configuring platform settings."
+          content={t("cloud.admin.metaDescription", {
+            defaultValue:
+              "Admin moderation panel for managing users, reviewing violations, and configuring platform settings.",
+          })}
         />
       </Helmet>
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight">Admin Panel</h1>
+            <h1 className="text-3xl font-bold tracking-tight">
+              {t("cloud.admin.title", { defaultValue: "Admin Panel" })}
+            </h1>
             <p className="text-muted-foreground">
-              Moderation and user management • {adminRole}
+              {t("cloud.admin.subtitle", {
+                defaultValue: "Moderation and user management",
+              })}{" "}
+              • {adminRole}
             </p>
           </div>
           <Button variant="outline" onClick={loadAll}>
             <RefreshCw className="mr-2 h-4 w-4" />
-            Refresh
+            {t("cloud.admin.refresh", { defaultValue: "Refresh" })}
           </Button>
         </div>
 
         {overview && (
           <div className="grid gap-4 md:grid-cols-4">
             <DashboardStatCard
-              label="Total Violations"
+              label={t("cloud.admin.stat.totalViolations", {
+                defaultValue: "Total Violations",
+              })}
               value={overview.totalViolations}
               icon={<AlertTriangle className="h-4 w-4 text-orange-500" />}
               accent="amber"
             />
             <DashboardStatCard
-              label="Flagged Users"
+              label={t("cloud.admin.stat.flaggedUsers", {
+                defaultValue: "Flagged Users",
+              })}
               value={overview.flaggedUsers}
               icon={<UserX className="h-4 w-4 text-[#FF5800]" />}
               accent="orange"
             />
             <DashboardStatCard
-              label="Banned Users"
+              label={t("cloud.admin.stat.bannedUsers", {
+                defaultValue: "Banned Users",
+              })}
               value={overview.bannedUsers}
               icon={<Ban className="h-4 w-4 text-red-500" />}
               accent="red"
             />
             <DashboardStatCard
-              label="Admins"
+              label={t("cloud.admin.stat.admins", { defaultValue: "Admins" })}
               value={overview.adminCount}
               icon={<Shield className="h-4 w-4 text-blue-400" />}
               accent="blue"
@@ -249,35 +290,58 @@ export default function AdminPage() {
           <TabsList>
             <TabsTrigger value="violations" onClick={loadViolations}>
               <AlertTriangle className="mr-2 h-4 w-4" />
-              Violations
+              {t("cloud.admin.tab.violations", { defaultValue: "Violations" })}
             </TabsTrigger>
             <TabsTrigger value="users" onClick={loadUsers}>
               <Users className="mr-2 h-4 w-4" />
-              Users
+              {t("cloud.admin.tab.users", { defaultValue: "Users" })}
             </TabsTrigger>
             <TabsTrigger value="admins" onClick={loadAdmins}>
               <Shield className="mr-2 h-4 w-4" />
-              Admins
+              {t("cloud.admin.tab.admins", { defaultValue: "Admins" })}
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="violations" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Recent Violations</CardTitle>
+                <CardTitle>
+                  {t("cloud.admin.violations.cardTitle", {
+                    defaultValue: "Recent Violations",
+                  })}
+                </CardTitle>
                 <CardDescription>
-                  Content moderation violations detected by the system
+                  {t("cloud.admin.violations.cardDesc", {
+                    defaultValue:
+                      "Content moderation violations detected by the system",
+                  })}
                 </CardDescription>
               </CardHeader>
               <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Time</TableHead>
-                      <TableHead>User</TableHead>
-                      <TableHead>Categories</TableHead>
-                      <TableHead>Action</TableHead>
-                      <TableHead>Content</TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.time", { defaultValue: "Time" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.user", { defaultValue: "User" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.categories", {
+                          defaultValue: "Categories",
+                        })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.action", {
+                          defaultValue: "Action",
+                        })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.content", {
+                          defaultValue: "Content",
+                        })}
+                      </TableHead>
                       <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -332,7 +396,9 @@ export default function AdminPage() {
                           colSpan={6}
                           className="text-center text-muted-foreground"
                         >
-                          No violations found
+                          {t("cloud.admin.violations.empty", {
+                            defaultValue: "No violations found",
+                          })}
                         </TableCell>
                       </TableRow>
                     )}
@@ -348,10 +414,14 @@ export default function AdminPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <UserX className="h-5 w-5 text-orange-500" />
-                    Flagged Users
+                    {t("cloud.admin.flagged.title", {
+                      defaultValue: "Flagged Users",
+                    })}
                   </CardTitle>
                   <CardDescription>
-                    Users with violations requiring review
+                    {t("cloud.admin.flagged.desc", {
+                      defaultValue: "Users with violations requiring review",
+                    })}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -364,9 +434,19 @@ export default function AdminPage() {
                         <div>
                           <p className="text-sm">{u.userId.slice(0, 12)}...</p>
                           <div className="flex gap-2 text-xs text-muted-foreground">
-                            <span>{u.totalViolations} violations</span>
+                            <span>
+                              {u.totalViolations}{" "}
+                              {t("cloud.admin.violationsLabel", {
+                                defaultValue: "violations",
+                              })}
+                            </span>
                             <span>•</span>
-                            <span>Risk: {u.riskScore}</span>
+                            <span>
+                              {t("cloud.admin.riskLabel", {
+                                defaultValue: "Risk",
+                              })}
+                              : {u.riskScore}
+                            </span>
                           </div>
                         </div>
                         <div className="flex gap-2">
@@ -383,7 +463,9 @@ export default function AdminPage() {
                             onClick={() =>
                               performAction("ban", {
                                 userId: u.userId,
-                                reason: "Admin review",
+                                reason: t("cloud.admin.banReasonDefault", {
+                                  defaultValue: "Admin review",
+                                }),
                               })
                             }
                           >
@@ -394,7 +476,9 @@ export default function AdminPage() {
                     ))}
                     {flaggedUsers.length === 0 && (
                       <p className="text-center text-sm text-muted-foreground">
-                        No flagged users
+                        {t("cloud.admin.flagged.empty", {
+                          defaultValue: "No flagged users",
+                        })}
                       </p>
                     )}
                   </div>
@@ -405,10 +489,14 @@ export default function AdminPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Ban className="h-5 w-5 text-red-500" />
-                    Banned Users
+                    {t("cloud.admin.banned.title", {
+                      defaultValue: "Banned Users",
+                    })}
                   </CardTitle>
                   <CardDescription>
-                    Users currently banned from the platform
+                    {t("cloud.admin.banned.desc", {
+                      defaultValue: "Users currently banned from the platform",
+                    })}
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -421,7 +509,10 @@ export default function AdminPage() {
                         <div>
                           <p className="text-sm">{u.userId.slice(0, 12)}...</p>
                           <p className="text-xs text-muted-foreground">
-                            {u.banReason ?? "No reason provided"}
+                            {u.banReason ??
+                              t("cloud.admin.noReasonProvided", {
+                                defaultValue: "No reason provided",
+                              })}
                           </p>
                         </div>
                         <Button
@@ -431,13 +522,15 @@ export default function AdminPage() {
                             performAction("unban", { userId: u.userId })
                           }
                         >
-                          Unban
+                          {t("cloud.admin.unban", { defaultValue: "Unban" })}
                         </Button>
                       </div>
                     ))}
                     {bannedUsers.length === 0 && (
                       <p className="text-center text-sm text-muted-foreground">
-                        No banned users
+                        {t("cloud.admin.banned.empty", {
+                          defaultValue: "No banned users",
+                        })}
                       </p>
                     )}
                   </div>
@@ -450,13 +543,21 @@ export default function AdminPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between">
                 <div>
-                  <CardTitle>Admin Users</CardTitle>
-                  <CardDescription>Manage admin privileges</CardDescription>
+                  <CardTitle>
+                    {t("cloud.admin.adminUsers.title", {
+                      defaultValue: "Admin Users",
+                    })}
+                  </CardTitle>
+                  <CardDescription>
+                    {t("cloud.admin.adminUsers.desc", {
+                      defaultValue: "Manage admin privileges",
+                    })}
+                  </CardDescription>
                 </div>
                 {adminRole === "super_admin" && (
                   <Button onClick={() => setAddAdminOpen(true)}>
                     <Plus className="mr-2 h-4 w-4" />
-                    Add Admin
+                    {t("cloud.admin.addAdmin", { defaultValue: "Add Admin" })}
                   </Button>
                 )}
               </CardHeader>
@@ -464,10 +565,20 @@ export default function AdminPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Wallet</TableHead>
-                      <TableHead>Role</TableHead>
-                      <TableHead>Added</TableHead>
-                      <TableHead>Notes</TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.wallet", {
+                          defaultValue: "Wallet",
+                        })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.role", { defaultValue: "Role" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.added", { defaultValue: "Added" })}
+                      </TableHead>
+                      <TableHead>
+                        {t("cloud.admin.col.notes", { defaultValue: "Notes" })}
+                      </TableHead>
                       <TableHead></TableHead>
                     </TableRow>
                   </TableHeader>
@@ -525,14 +636,24 @@ export default function AdminPage() {
         <Dialog open={addAdminOpen} onOpenChange={setAddAdminOpen}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Admin</DialogTitle>
+              <DialogTitle>
+                {t("cloud.admin.addAdminDialog.title", {
+                  defaultValue: "Add Admin",
+                })}
+              </DialogTitle>
               <DialogDescription>
-                Grant admin privileges to a wallet address
+                {t("cloud.admin.addAdminDialog.desc", {
+                  defaultValue: "Grant admin privileges to a wallet address",
+                })}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
-                <Label>Wallet Address</Label>
+                <Label>
+                  {t("cloud.admin.walletAddress", {
+                    defaultValue: "Wallet Address",
+                  })}
+                </Label>
                 <Input
                   placeholder="0x..."
                   value={newAdminWallet}
@@ -540,7 +661,9 @@ export default function AdminPage() {
                 />
               </div>
               <div className="space-y-2">
-                <Label>Role</Label>
+                <Label>
+                  {t("cloud.admin.col.role", { defaultValue: "Role" })}
+                </Label>
                 <Select
                   value={newAdminRole}
                   onValueChange={(value) => {
@@ -551,16 +674,26 @@ export default function AdminPage() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="super_admin">Super Admin</SelectItem>
-                    <SelectItem value="moderator">Moderator</SelectItem>
-                    <SelectItem value="viewer">Viewer</SelectItem>
+                    <SelectItem value="super_admin">
+                      {t("cloud.admin.role.superAdmin", {
+                        defaultValue: "Super Admin",
+                      })}
+                    </SelectItem>
+                    <SelectItem value="moderator">
+                      {t("cloud.admin.role.moderator", {
+                        defaultValue: "Moderator",
+                      })}
+                    </SelectItem>
+                    <SelectItem value="viewer">
+                      {t("cloud.admin.role.viewer", { defaultValue: "Viewer" })}
+                    </SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setAddAdminOpen(false)}>
-                Cancel
+                {t("cloud.admin.cancel", { defaultValue: "Cancel" })}
               </Button>
               <Button
                 onClick={async () => {
@@ -578,7 +711,7 @@ export default function AdminPage() {
                 {actionLoading && (
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                 )}
-                Add Admin
+                {t("cloud.admin.addAdmin", { defaultValue: "Add Admin" })}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -587,33 +720,56 @@ export default function AdminPage() {
         <Dialog open={userDetailOpen} onOpenChange={setUserDetailOpen}>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
-              <DialogTitle>User Details</DialogTitle>
+              <DialogTitle>
+                {t("cloud.admin.userDetails.title", {
+                  defaultValue: "User Details",
+                })}
+              </DialogTitle>
               <DialogDescription>
-                Detailed information and moderation actions
+                {t("cloud.admin.userDetails.desc", {
+                  defaultValue: "Detailed information and moderation actions",
+                })}
               </DialogDescription>
             </DialogHeader>
             {userDetail ? (
               <div className="space-y-4">
                 <div className="rounded-sm border p-4">
-                  <h4 className="font-medium mb-2">User Info</h4>
+                  <h4 className="font-medium mb-2">
+                    {t("cloud.admin.userInfo", { defaultValue: "User Info" })}
+                  </h4>
                   <div className="grid grid-cols-2 gap-2 text-sm">
                     <div>
-                      <span className="text-muted-foreground">ID:</span>{" "}
+                      <span className="text-muted-foreground">
+                        {t("cloud.admin.field.id", { defaultValue: "ID" })}:
+                      </span>{" "}
                       <span>{userDetail.user?.id}</span>
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Email:</span>{" "}
+                      <span className="text-muted-foreground">
+                        {t("cloud.admin.field.email", {
+                          defaultValue: "Email",
+                        })}
+                        :
+                      </span>{" "}
                       {userDetail.user?.email || "-"}
                     </div>
                     <div>
-                      <span className="text-muted-foreground">Wallet:</span>{" "}
+                      <span className="text-muted-foreground">
+                        {t("cloud.admin.field.wallet", {
+                          defaultValue: "Wallet",
+                        })}
+                        :
+                      </span>{" "}
                       <span>
                         {userDetail.user?.wallet_address?.slice(0, 10)}...
                       </span>
                     </div>
                     <div>
                       <span className="text-muted-foreground">
-                        Generations:
+                        {t("cloud.admin.field.generations", {
+                          defaultValue: "Generations",
+                        })}
+                        :
                       </span>{" "}
                       {userDetail.generationsCount}
                     </div>
@@ -622,7 +778,11 @@ export default function AdminPage() {
 
                 {userDetail.moderationStatus && (
                   <div className="rounded-sm border p-4">
-                    <h4 className="font-medium mb-2">Moderation Status</h4>
+                    <h4 className="font-medium mb-2">
+                      {t("cloud.admin.moderationStatus", {
+                        defaultValue: "Moderation Status",
+                      })}
+                    </h4>
                     <div className="flex flex-wrap gap-4 text-sm">
                       <Badge
                         variant={
@@ -634,11 +794,16 @@ export default function AdminPage() {
                         {userDetail.moderationStatus.status}
                       </Badge>
                       <span>
-                        Violations:{" "}
-                        {userDetail.moderationStatus.totalViolations}
+                        {t("cloud.admin.violationsCount", {
+                          defaultValue: "Violations",
+                        })}
+                        : {userDetail.moderationStatus.totalViolations}
                       </span>
                       <span>
-                        Risk Score: {userDetail.moderationStatus.riskScore}
+                        {t("cloud.admin.riskScore", {
+                          defaultValue: "Risk Score",
+                        })}
+                        : {userDetail.moderationStatus.riskScore}
                       </span>
                     </div>
                   </div>
@@ -646,7 +811,10 @@ export default function AdminPage() {
 
                 <div className="rounded-sm border p-4">
                   <h4 className="font-medium mb-2">
-                    Recent Violations ({userDetail.violations.length})
+                    {t("cloud.admin.recentViolationsCount", {
+                      defaultValue: "Recent Violations",
+                    })}{" "}
+                    ({userDetail.violations.length})
                   </h4>
                   <div className="max-h-[200px] overflow-y-auto space-y-2">
                     {userDetail.violations.slice(0, 10).map((v) => (
@@ -679,7 +847,9 @@ export default function AdminPage() {
                     }
                     disabled={actionLoading || !selectedUserId}
                   >
-                    Mark as Spammer
+                    {t("cloud.admin.markSpammer", {
+                      defaultValue: "Mark as Spammer",
+                    })}
                   </Button>
                   <Button
                     variant="outline"
@@ -689,7 +859,9 @@ export default function AdminPage() {
                     }
                     disabled={actionLoading || !selectedUserId}
                   >
-                    Mark as Scammer
+                    {t("cloud.admin.markScammer", {
+                      defaultValue: "Mark as Scammer",
+                    })}
                   </Button>
                   <Button
                     variant="destructive"
@@ -703,7 +875,7 @@ export default function AdminPage() {
                     disabled={actionLoading || !selectedUserId}
                   >
                     <Ban className="mr-2 h-4 w-4" />
-                    Ban User
+                    {t("cloud.admin.banUser", { defaultValue: "Ban User" })}
                   </Button>
                 </div>
               </div>

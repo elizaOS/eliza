@@ -19,6 +19,7 @@ import {
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { toast } from "sonner";
+import { useT } from "@/providers/I18nProvider";
 import type { App } from "../../../lib/data/apps";
 
 interface AppsTableProps {
@@ -26,15 +27,24 @@ interface AppsTableProps {
 }
 
 export function AppsTable({ apps }: AppsTableProps) {
+  const t = useT();
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<App | null>(null);
 
   const handleCopyUrl = async (url: string) => {
     try {
       await navigator.clipboard.writeText(url);
-      toast.success("URL copied to clipboard");
+      toast.success(
+        t("cloud.apps.toast.urlCopied", {
+          defaultValue: "URL copied to clipboard",
+        }),
+      );
     } catch {
-      toast.error("Failed to copy URL");
+      toast.error(
+        t("cloud.apps.toast.urlCopyFailed", {
+          defaultValue: "Failed to copy URL",
+        }),
+      );
     }
   };
 
@@ -53,16 +63,34 @@ export function AppsTable({ apps }: AppsTableProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Failed to delete app");
+        throw new Error(
+          error.error ||
+            t("cloud.apps.toast.deleteFailed", {
+              defaultValue: "Failed to delete app",
+            }),
+        );
       }
 
-      toast.success("App deleted successfully");
+      toast.success(
+        t("cloud.apps.toast.deleteSuccess", {
+          defaultValue: "App deleted successfully",
+        }),
+      );
       window.location.reload();
     } catch (error) {
-      toast.error("Failed to delete app", {
-        description:
-          error instanceof Error ? error.message : "Please try again",
-      });
+      toast.error(
+        t("cloud.apps.toast.deleteFailed", {
+          defaultValue: "Failed to delete app",
+        }),
+        {
+          description:
+            error instanceof Error
+              ? error.message
+              : t("cloud.apps.toast.tryAgain", {
+                  defaultValue: "Please try again",
+                }),
+        },
+      );
     } finally {
       setDeletingId(null);
     }
@@ -92,22 +120,33 @@ export function AppsTable({ apps }: AppsTableProps) {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete App</AlertDialogTitle>
+            <AlertDialogTitle>
+              {t("cloud.apps.deleteDialog.title", {
+                defaultValue: "Delete App",
+              })}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete{" "}
+              {t("cloud.apps.deleteDialog.confirmPrefix", {
+                defaultValue: "Are you sure you want to delete",
+              })}{" "}
               <span className="font-semibold text-white">
                 "{deleteTarget?.name}"
               </span>
-              ? This action cannot be undone.
+              ?{" "}
+              {t("cloud.apps.deleteDialog.cannotBeUndone", {
+                defaultValue: "This action cannot be undone.",
+              })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel>
+              {t("cloud.apps.deleteDialog.cancel", { defaultValue: "Cancel" })}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirmDelete}
               className="bg-red-600 hover:bg-red-700"
             >
-              Delete
+              {t("cloud.apps.deleteDialog.delete", { defaultValue: "Delete" })}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

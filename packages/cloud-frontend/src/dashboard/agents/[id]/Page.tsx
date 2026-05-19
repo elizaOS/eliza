@@ -19,6 +19,7 @@ import {
   statusBadgeColor,
   statusDotColor,
 } from "@/lib/constants/sandbox-status";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError } from "../../../lib/api-client";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useAgent } from "../../../lib/data/eliza-agents";
@@ -46,19 +47,32 @@ function formatTime(date: string | null): string {
   });
 }
 
-function formatRelativeShort(date: string | null): string {
-  if (!date) return "Never";
+function formatRelativeShort(
+  date: string | null,
+  t: ReturnType<typeof useT>,
+): string {
+  if (!date) return t("cloud.agents.detail.never", { defaultValue: "Never" });
   const d = new Date(date);
   const diffMs = Date.now() - d.getTime();
   const diffMin = Math.floor(diffMs / 60_000);
-  if (diffMin < 1) return "Just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
+  if (diffMin < 1)
+    return t("cloud.agents.detail.justNow", { defaultValue: "Just now" });
+  if (diffMin < 60)
+    return t("cloud.agents.detail.minutesAgo", {
+      defaultValue: "{{n}}m ago",
+      n: diffMin,
+    });
   const diffH = Math.floor(diffMin / 60);
-  if (diffH < 24) return `${diffH}h ago`;
+  if (diffH < 24)
+    return t("cloud.agents.detail.hoursAgo", {
+      defaultValue: "{{n}}h ago",
+      n: diffH,
+    });
   return formatDate(date);
 }
 
 export default function AgentDetailPage() {
+  const t = useT();
   const session = useRequireAuth();
   const { id } = useParams<{ id: string }>();
   const enabled = session.ready && session.authenticated;
@@ -70,9 +84,18 @@ export default function AgentDetailPage() {
     return (
       <>
         <Helmet>
-          <title>{`Agent ${titleId} — Instances`}</title>
+          <title>
+            {t("cloud.agents.detail.metaTitle", {
+              defaultValue: "Agent {{id}} — Instances",
+              id: titleId,
+            })}
+          </title>
         </Helmet>
-        <DashboardLoadingState label="Loading agent" />
+        <DashboardLoadingState
+          label={t("cloud.agents.detail.loading", {
+            defaultValue: "Loading agent",
+          })}
+        />
       </>
     );
   }
@@ -84,7 +107,9 @@ export default function AgentDetailPage() {
     const msg =
       query.error instanceof Error
         ? query.error.message
-        : "Failed to load agent";
+        : t("cloud.agents.detail.errorFailedLoad", {
+            defaultValue: "Failed to load agent",
+          });
     return <DashboardErrorState message={msg} />;
   }
 
@@ -103,7 +128,12 @@ export default function AgentDetailPage() {
   return (
     <>
       <Helmet>
-        <title>{`Agent ${titleId} — Instances`}</title>
+        <title>
+          {t("cloud.agents.detail.metaTitle", {
+            defaultValue: "Agent {{id}} — Instances",
+            id: titleId,
+          })}
+        </title>
         <meta name="robots" content="noindex,nofollow" />
       </Helmet>
       <div className="max-w-5xl mx-auto space-y-6">
@@ -115,7 +145,11 @@ export default function AgentDetailPage() {
             <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[var(--brand-orange)]/40 transition-colors">
               <ArrowLeft className="h-3.5 w-3.5" />
             </div>
-            <span>Instances</span>
+            <span>
+              {t("cloud.agents.detail.backToInstances", {
+                defaultValue: "Instances",
+              })}
+            </span>
           </Link>
 
           <div className="flex items-center gap-2">
@@ -125,7 +159,7 @@ export default function AgentDetailPage() {
                 className="inline-flex items-center gap-1.5 h-8 px-3 text-sm font-medium border border-[var(--brand-orange)] bg-[var(--brand-orange)] text-black hover:bg-[var(--brand-orange)]/90 transition-colors"
               >
                 <MessageCircle className="h-3.5 w-3.5" />
-                Chat
+                {t("cloud.agents.detail.chat", { defaultValue: "Chat" })}
               </Link>
             )}
             {showConnect && <ElizaConnectButton agentId={agent.id} />}
@@ -147,7 +181,10 @@ export default function AgentDetailPage() {
                   className="text-2xl font-semibold text-white truncate"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 >
-                  {agent.agentName ?? "Unnamed Agent"}
+                  {agent.agentName ??
+                    t("cloud.agents.detail.unnamedAgent", {
+                      defaultValue: "Unnamed Agent",
+                    })}
                 </h1>
                 <Badge
                   variant="outline"
@@ -169,7 +206,7 @@ export default function AgentDetailPage() {
         <div className="grid grid-cols-2 lg:grid-cols-5 gap-px bg-white/5 border border-white/10">
           <div className="bg-black/60 p-4 space-y-1">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Status
+              {t("cloud.agents.detail.statusLabel", { defaultValue: "Status" })}
             </p>
             <p
               className="text-lg font-medium text-white capitalize tabular-nums"
@@ -180,24 +217,32 @@ export default function AgentDetailPage() {
           </div>
           <div className="bg-black/60 p-4 space-y-1">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Database
+              {t("cloud.agents.detail.databaseLabel", {
+                defaultValue: "Database",
+              })}
             </p>
             <p
               className="text-lg font-medium text-white tabular-nums"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               {agent.databaseStatus === "ready"
-                ? "Connected"
+                ? t("cloud.agents.detail.dbConnected", {
+                    defaultValue: "Connected",
+                  })
                 : agent.databaseStatus === "provisioning"
-                  ? "Setting up"
+                  ? t("cloud.agents.detail.dbSettingUp", {
+                      defaultValue: "Setting up",
+                    })
                   : agent.databaseStatus === "none"
-                    ? "None"
-                    : "Error"}
+                    ? t("cloud.agents.detail.dbNone", { defaultValue: "None" })
+                    : t("cloud.agents.detail.dbError", {
+                        defaultValue: "Error",
+                      })}
             </p>
           </div>
           <div className="bg-black/60 p-4 space-y-1">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Cost
+              {t("cloud.agents.detail.costLabel", { defaultValue: "Cost" })}
             </p>
             <p
               className="text-lg font-medium text-white tabular-nums"
@@ -219,7 +264,9 @@ export default function AgentDetailPage() {
           </div>
           <div className="bg-black/60 p-4 space-y-1">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Created
+              {t("cloud.agents.detail.createdLabel", {
+                defaultValue: "Created",
+              })}
             </p>
             <p
               className="text-lg font-medium text-white tabular-nums"
@@ -233,13 +280,15 @@ export default function AgentDetailPage() {
           </div>
           <div className="bg-black/60 p-4 space-y-1">
             <p className="text-[11px] uppercase tracking-[0.2em] text-white/35">
-              Last Heartbeat
+              {t("cloud.agents.detail.lastHeartbeatLabel", {
+                defaultValue: "Last Heartbeat",
+              })}
             </p>
             <p
               className="text-lg font-medium text-white tabular-nums"
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
-              {formatRelativeShort(agent.lastHeartbeatAt)}
+              {formatRelativeShort(agent.lastHeartbeatAt, t)}
             </p>
             {agent.lastHeartbeatAt && (
               <p className="text-[10px] text-white/30 tabular-nums">
@@ -255,8 +304,11 @@ export default function AgentDetailPage() {
               <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
               <div className="min-w-0 space-y-0.5">
                 <p className="text-sm font-medium text-red-400">
-                  Error ({agent.errorCount} occurrence
-                  {agent.errorCount !== 1 ? "s" : ""})
+                  {t("cloud.agents.detail.errorWithCount", {
+                    defaultValue: "Error ({{n}} occurrence{{plural}})",
+                    n: agent.errorCount,
+                    plural: agent.errorCount !== 1 ? "s" : "",
+                  })}
                 </p>
                 <p className="text-sm text-red-400/70">{agent.errorMessage}</p>
               </div>
@@ -268,29 +320,39 @@ export default function AgentDetailPage() {
               <div className="flex items-center gap-2">
                 <span className="inline-block size-2 bg-[var(--brand-orange)]" />
                 <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
-                  Infrastructure
+                  {t("cloud.agents.detail.infrastructure", {
+                    defaultValue: "Infrastructure",
+                  })}
                 </p>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-px bg-white/5 border border-white/10">
                 <InfoCell
-                  label="Node"
+                  label={t("cloud.agents.detail.node", {
+                    defaultValue: "Node",
+                  })}
                   value={adminDetails.nodeId ?? "—"}
                   mono
                 />
                 <InfoCell
-                  label="Container"
+                  label={t("cloud.agents.detail.container", {
+                    defaultValue: "Container",
+                  })}
                   value={adminDetails.containerName ?? "—"}
                   mono
                 />
                 <InfoCell
-                  label="Docker Image"
+                  label={t("cloud.agents.detail.dockerImage", {
+                    defaultValue: "Docker Image",
+                  })}
                   value={adminDetails.dockerImage ?? "—"}
                   mono
                 />
                 {adminDetails.headscaleIp && (
                   <InfoCell
-                    label="VPN IP"
+                    label={t("cloud.agents.detail.vpnIp", {
+                      defaultValue: "VPN IP",
+                    })}
                     value={adminDetails.headscaleIp}
                     mono
                     accent="emerald"
@@ -298,14 +360,18 @@ export default function AgentDetailPage() {
                 )}
                 {adminDetails.bridgePort !== null && (
                   <InfoCell
-                    label="Bridge Port"
+                    label={t("cloud.agents.detail.bridgePort", {
+                      defaultValue: "Bridge Port",
+                    })}
                     value={String(adminDetails.bridgePort)}
                     mono
                   />
                 )}
                 {adminDetails.webUiPort !== null && (
                   <InfoCell
-                    label="Web UI Port"
+                    label={t("cloud.agents.detail.webUiPort", {
+                      defaultValue: "Web UI Port",
+                    })}
                     value={String(adminDetails.webUiPort)}
                     mono
                   />
@@ -315,7 +381,7 @@ export default function AgentDetailPage() {
               {adminDetails.webUiUrl && (
                 <div className="border border-white/10 bg-black/40 px-4 py-3 flex items-center gap-3 text-sm">
                   <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0">
-                    Web UI
+                    {t("cloud.agents.detail.webUi", { defaultValue: "Web UI" })}
                   </span>
                   <span className="text-white/74 font-mono text-xs break-all">
                     {adminDetails.webUiUrl}
@@ -330,7 +396,9 @@ export default function AgentDetailPage() {
               <div className="flex items-center gap-2">
                 <span className="inline-block size-2 bg-[var(--brand-orange)]" />
                 <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
-                  SSH Access
+                  {t("cloud.agents.detail.sshAccess", {
+                    defaultValue: "SSH Access",
+                  })}
                 </p>
               </div>
 
@@ -365,13 +433,17 @@ export default function AgentDetailPage() {
               <div className="flex items-center gap-2">
                 <span className="inline-block size-2 bg-[var(--brand-orange)]" />
                 <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
-                  Sandbox Connection
+                  {t("cloud.agents.detail.sandboxConnection", {
+                    defaultValue: "Sandbox Connection",
+                  })}
                 </p>
               </div>
 
               <div className="border border-white/10 bg-black/40 px-4 py-3 flex items-start gap-3">
                 <span className="text-[11px] uppercase tracking-widest text-white/35 shrink-0 pt-0.5">
-                  Bridge URL
+                  {t("cloud.agents.detail.bridgeUrl", {
+                    defaultValue: "Bridge URL",
+                  })}
                 </span>
                 <a
                   href={agent.bridgeUrl}
@@ -390,13 +462,23 @@ export default function AgentDetailPage() {
 
           <ElizaAgentBackupsPanel
             agentId={agent.id}
-            agentName={agent.agentName ?? "Unnamed Agent"}
+            agentName={
+              agent.agentName ??
+              t("cloud.agents.detail.unnamedAgent", {
+                defaultValue: "Unnamed Agent",
+              })
+            }
             status={agent.status}
           />
 
           <ElizaAgentLogsViewer
             agentId={agent.id}
-            agentName={agent.agentName ?? "Unnamed Agent"}
+            agentName={
+              agent.agentName ??
+              t("cloud.agents.detail.unnamedAgent", {
+                defaultValue: "Unnamed Agent",
+              })
+            }
             status={agent.status}
             showAdvancedHint={!!adminDetails && isDockerBacked}
           />

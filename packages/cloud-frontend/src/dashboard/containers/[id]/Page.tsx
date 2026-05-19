@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Helmet } from "react-helmet-async";
 import { Link, Navigate, useParams } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { ApiError } from "../../../lib/api-client";
 import { useRequireAuth } from "../../../lib/auth-hooks";
 import { useContainer } from "../../../lib/data/containers";
@@ -34,6 +35,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 /** /dashboard/containers/:id — comprehensive details for a single container. */
 export default function ContainerDetailsPage() {
+  const t = useT();
   const session = useRequireAuth();
   const { id } = useParams<{ id: string }>();
   const { data: container, isLoading, error } = useContainer(id);
@@ -42,9 +44,17 @@ export default function ContainerDetailsPage() {
     return (
       <>
         <Helmet>
-          <title>Container Details</title>
+          <title>
+            {t("cloud.containers.detail.metaTitleFallback", {
+              defaultValue: "Container Details",
+            })}
+          </title>
         </Helmet>
-        <DashboardLoadingState label="Loading container" />
+        <DashboardLoadingState
+          label={t("cloud.containers.detail.loading", {
+            defaultValue: "Loading container",
+          })}
+        />
       </>
     );
   }
@@ -68,12 +78,20 @@ export default function ContainerDetailsPage() {
   return (
     <>
       <Helmet>
-        <title>{container.name} — Container</title>
+        <title>
+          {t("cloud.containers.detail.metaTitle", {
+            defaultValue: "{{name}} — Container",
+            name: container.name,
+          })}
+        </title>
         <meta
           name="description"
           content={
             container.description ??
-            `Container ${container.name} status, metrics, and logs`
+            t("cloud.containers.detail.metaDescription", {
+              defaultValue: "Container {{name}} status, metrics, and logs",
+              name: container.name,
+            })
           }
         />
       </Helmet>
@@ -87,7 +105,11 @@ export default function ContainerDetailsPage() {
             <div className="flex items-center justify-center w-8 h-8 rounded-sm border border-white/10 bg-black/40 group-hover:bg-white/5 group-hover:border-[var(--brand-orange)]/50 transition-all duration-200">
               <ArrowLeft className="h-4 w-4" />
             </div>
-            <span className="font-medium">Back to Containers</span>
+            <span className="font-medium">
+              {t("cloud.containers.detail.backToContainers", {
+                defaultValue: "Back to Containers",
+              })}
+            </span>
           </Link>
 
           {container.load_balancer_url && (
@@ -98,7 +120,9 @@ export default function ContainerDetailsPage() {
                 rel="noopener noreferrer"
               >
                 <ExternalLink className="h-4 w-4" />
-                Open Container
+                {t("cloud.containers.detail.openContainer", {
+                  defaultValue: "Open Container",
+                })}
               </a>
             </BrandButton>
           )}

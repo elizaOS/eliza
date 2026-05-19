@@ -4,6 +4,7 @@ import { useWalletModal } from "@solana/wallet-adapter-react-ui";
 import type { StewardAuth, StewardAuthResult } from "@stwd/sdk";
 import { useCallback, useEffect, useRef } from "react";
 import { useAccount, useSignMessage } from "wagmi";
+import { useT } from "@/providers/I18nProvider";
 
 interface EthereumProvider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
@@ -110,6 +111,7 @@ function EthereumButton({
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
 }) {
+  const t = useT();
   const { address, isConnected } = useAccount();
   const { signMessageAsync } = useSignMessage();
   const { openConnectModal } = useConnectModal();
@@ -148,7 +150,11 @@ function EthereumButton({
         });
         const account = getFirstEvmAccount(accounts);
         if (!account) {
-          throw new Error("No Ethereum account returned by wallet.");
+          throw new Error(
+            t("cloud.login.wallet.error.noAccount", {
+              defaultValue: "No Ethereum account returned by wallet.",
+            }),
+          );
         }
 
         const result = await auth.signInWithSIWE(
@@ -159,7 +165,11 @@ function EthereumButton({
               params: [toPersonalSignHex(message), account],
             });
             if (typeof signature !== "string" || !signature.startsWith("0x")) {
-              throw new Error("Wallet returned an invalid signature.");
+              throw new Error(
+                t("cloud.login.wallet.error.invalidSignature", {
+                  defaultValue: "Wallet returned an invalid signature.",
+                }),
+              );
             }
             return signature;
           },
@@ -172,7 +182,7 @@ function EthereumButton({
         onLoadingChange(false);
       }
     },
-    [auth, onSuccess, onError, onLoadingChange],
+    [auth, onSuccess, onError, onLoadingChange, t],
   );
 
   // If click triggered a connect modal, once connection lands, auto-sign.
@@ -220,7 +230,8 @@ function EthereumButton({
       disabled={disabled}
       className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
     >
-      {loading ? <Spinner /> : <EthereumIcon />} Ethereum
+      {loading ? <Spinner /> : <EthereumIcon />}{" "}
+      {t("cloud.login.wallet.ethereum", { defaultValue: "Ethereum" })}
     </button>
   );
 }
@@ -242,6 +253,7 @@ function SolanaButton({
   onError: (err: Error) => void;
   onLoadingChange: (loading: boolean) => void;
 }) {
+  const t = useT();
   const wallet = useWallet();
   const { setVisible } = useWalletModal();
   const pendingSignRef = useRef(false);
@@ -249,7 +261,12 @@ function SolanaButton({
   const sign = useCallback(async () => {
     if (!wallet.publicKey || !wallet.signMessage) {
       onError(
-        new Error("Connected Solana wallet does not support message signing."),
+        new Error(
+          t("cloud.login.wallet.error.notSupported", {
+            defaultValue:
+              "Connected Solana wallet does not support message signing.",
+          }),
+        ),
       );
       return;
     }
@@ -261,7 +278,12 @@ function SolanaButton({
         publicKey,
         async (msg: Uint8Array) => {
           const out = await signMessage(msg);
-          if (!out) throw new Error("Wallet returned an empty signature.");
+          if (!out)
+            throw new Error(
+              t("cloud.login.wallet.error.emptySignature", {
+                defaultValue: "Wallet returned an empty signature.",
+              }),
+            );
           return out;
         },
       );
@@ -272,7 +294,7 @@ function SolanaButton({
     } finally {
       onLoadingChange(false);
     }
-  }, [auth, wallet, onSuccess, onError, onLoadingChange]);
+  }, [auth, wallet, onSuccess, onError, onLoadingChange, t]);
 
   useEffect(() => {
     if (pendingSignRef.current && wallet.connected && wallet.publicKey) {
@@ -298,7 +320,8 @@ function SolanaButton({
       disabled={disabled}
       className="flex items-center justify-center gap-2 border border-white/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/10 disabled:opacity-50"
     >
-      {loading ? <Spinner /> : <SolanaIcon />} Solana
+      {loading ? <Spinner /> : <SolanaIcon />}{" "}
+      {t("cloud.login.wallet.solana", { defaultValue: "Solana" })}
     </button>
   );
 }

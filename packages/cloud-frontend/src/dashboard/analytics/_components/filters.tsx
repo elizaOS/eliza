@@ -16,8 +16,10 @@ import { Sparkles } from "lucide-react";
 import { useMemo } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 
 export function AnalyticsFilters() {
+  const t = useT();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
 
@@ -49,9 +51,27 @@ export function AnalyticsFilters() {
   }, [startDateParam, endDateParam]);
 
   const presets = [
-    { label: "Last 7 days", value: "7d", days: 7 },
-    { label: "Last 30 days", value: "30d", days: 30 },
-    { label: "Last 90 days", value: "90d", days: 90 },
+    {
+      label: t("cloud.analytics.filters.last7", {
+        defaultValue: "Last 7 days",
+      }),
+      value: "7d",
+      days: 7,
+    },
+    {
+      label: t("cloud.analytics.filters.last30", {
+        defaultValue: "Last 30 days",
+      }),
+      value: "30d",
+      days: 30,
+    },
+    {
+      label: t("cloud.analytics.filters.last90", {
+        defaultValue: "Last 90 days",
+      }),
+      value: "90d",
+      days: 90,
+    },
   ] as const;
 
   const updateFilters = (updates: Record<string, string>) => {
@@ -67,7 +87,9 @@ export function AnalyticsFilters() {
       <div className="flex flex-wrap items-center gap-4 md:gap-5">
         <div className="space-y-2">
           <p className="text-xs uppercase tracking-wide text-white/50">
-            Aggregation
+            {t("cloud.analytics.filters.aggregation", {
+              defaultValue: "Aggregation",
+            })}
           </p>
           <Select
             value={granularity}
@@ -83,25 +105,31 @@ export function AnalyticsFilters() {
                 value="hour"
                 className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
-                Hourly
+                {t("cloud.analytics.filters.hourly", {
+                  defaultValue: "Hourly",
+                })}
               </SelectItem>
               <SelectItem
                 value="day"
                 className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
-                Daily
+                {t("cloud.analytics.filters.daily", { defaultValue: "Daily" })}
               </SelectItem>
               <SelectItem
                 value="week"
                 className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
-                Weekly
+                {t("cloud.analytics.filters.weekly", {
+                  defaultValue: "Weekly",
+                })}
               </SelectItem>
               <SelectItem
                 value="month"
                 className="rounded-sm text-white hover:bg-white/10 focus:bg-white/10"
               >
-                Monthly
+                {t("cloud.analytics.filters.monthly", {
+                  defaultValue: "Monthly",
+                })}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -110,7 +138,9 @@ export function AnalyticsFilters() {
         {activeRange === "custom" ? (
           <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1 text-xs">
             <Sparkles className="h-3.5 w-3.5 text-[#FF5800]" />
-            Custom range detected
+            {t("cloud.analytics.filters.customRange", {
+              defaultValue: "Custom range detected",
+            })}
           </span>
         ) : null}
       </div>

@@ -18,6 +18,7 @@ import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { openWebUIWithPairing } from "@/lib/hooks/open-web-ui";
 import { useJobPoller } from "@/lib/hooks/use-job-poller";
+import { useT } from "@/providers/I18nProvider";
 
 interface ElizaAgentActionsProps {
   agentId: string;
@@ -25,13 +26,25 @@ interface ElizaAgentActionsProps {
 }
 
 export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
+  const t = useT();
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const poller = useJobPoller({
-    onComplete: () => toast.success("Agent provisioning completed"),
-    onFailed: (job) => toast.error(job.error ?? "Provisioning failed"),
+    onComplete: () =>
+      toast.success(
+        t("cloud.containers.agentActions.provisioningCompleted", {
+          defaultValue: "Agent provisioning completed",
+        }),
+      ),
+    onFailed: (job) =>
+      toast.error(
+        job.error ??
+          t("cloud.containers.agentActions.provisioningFailed", {
+            defaultValue: "Provisioning failed",
+          }),
+      ),
   });
 
   const trackedJob = poller.getStatus(agentId);
@@ -77,7 +90,11 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
           poller.track(agentId, jobId);
-          toast.info("Provisioning already in progress");
+          toast.info(
+            t("cloud.containers.agentActions.alreadyProvisioning", {
+              defaultValue: "Provisioning already in progress",
+            }),
+          );
           return;
         }
       }
@@ -89,7 +106,11 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
       }
 
       if (action === "delete") {
-        toast.success("Agent deleted");
+        toast.success(
+          t("cloud.containers.agentActions.agentDeleted", {
+            defaultValue: "Agent deleted",
+          }),
+        );
         navigate("/dashboard/agents");
         return;
       }
@@ -101,26 +122,47 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
         const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
         if (jobId) {
           poller.track(agentId, jobId);
-          toast.success("Agent provisioning queued");
+          toast.success(
+            t("cloud.containers.agentActions.provisioningQueued", {
+              defaultValue: "Agent provisioning queued",
+            }),
+          );
           return;
         }
 
-        toast.success("Agent provisioning started");
+        toast.success(
+          t("cloud.containers.agentActions.provisioningStarted", {
+            defaultValue: "Agent provisioning started",
+          }),
+        );
         window.location.reload();
         return;
       }
 
       const messages: Record<string, string> = {
-        provision: "Agent provisioning started",
-        resume: "Agent resuming from snapshot",
-        snapshot: "Snapshot saved",
-        suspend: "Agent suspended (snapshot saved)",
+        provision: t("cloud.containers.agentActions.provisioningStarted", {
+          defaultValue: "Agent provisioning started",
+        }),
+        resume: t("cloud.containers.agentActions.resumingSnapshot", {
+          defaultValue: "Agent resuming from snapshot",
+        }),
+        snapshot: t("cloud.containers.agentActions.snapshotSaved", {
+          defaultValue: "Snapshot saved",
+        }),
+        suspend: t("cloud.containers.agentActions.suspended", {
+          defaultValue: "Agent suspended (snapshot saved)",
+        }),
       };
-      toast.success(messages[action] ?? "Done");
+      toast.success(
+        messages[action] ??
+          t("cloud.containers.agentActions.done", { defaultValue: "Done" }),
+      );
       window.location.reload();
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      toast.error(`Action failed: ${msg}`);
+      toast.error(
+        `${t("cloud.containers.agentActions.actionFailed", { defaultValue: "Action failed" })}: ${msg}`,
+      );
     } finally {
       setLoading(null);
       setShowDeleteConfirm(false);
@@ -136,7 +178,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
             className="text-xl font-normal text-white"
             style={{ fontFamily: "var(--font-roboto-mono)" }}
           >
-            Agent Actions
+            {t("cloud.containers.agentActions.title", {
+              defaultValue: "Agent Actions",
+            })}
           </h2>
         </div>
 
@@ -149,7 +193,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 onClick={() => void openWebUIWithPairing(agentId)}
               >
                 <ExternalLink className="h-4 w-4" />
-                Open Web UI
+                {t("cloud.containers.agentActions.openWebUi", {
+                  defaultValue: "Open Web UI",
+                })}
               </BrandButton>
             )}
 
@@ -165,7 +211,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 ) : (
                   <Play className="h-4 w-4" />
                 )}
-                Resume Agent
+                {t("cloud.containers.agentActions.resume", {
+                  defaultValue: "Resume Agent",
+                })}
               </BrandButton>
             )}
 
@@ -181,7 +229,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 ) : (
                   <Camera className="h-4 w-4" />
                 )}
-                Save Snapshot
+                {t("cloud.containers.agentActions.saveSnapshot", {
+                  defaultValue: "Save Snapshot",
+                })}
               </BrandButton>
             )}
 
@@ -197,7 +247,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 ) : (
                   <Pause className="h-4 w-4" />
                 )}
-                Suspend Agent
+                {t("cloud.containers.agentActions.suspend", {
+                  defaultValue: "Suspend Agent",
+                })}
               </BrandButton>
             )}
           </div>
@@ -212,7 +264,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                 className="text-red-400 border-red-500/30 hover:bg-red-500/10 hover:text-red-300"
               >
                 <Trash2 className="h-4 w-4" />
-                Delete Agent
+                {t("cloud.containers.agentActions.delete", {
+                  defaultValue: "Delete Agent",
+                })}
               </BrandButton>
             ) : (
               <div className="flex flex-wrap items-center gap-2 rounded-sm border border-red-500/30 bg-red-950/20 p-3">
@@ -220,7 +274,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                   className="text-sm text-red-400"
                   style={{ fontFamily: "var(--font-roboto-mono)" }}
                 >
-                  Confirm delete?
+                  {t("cloud.containers.agentActions.confirmDelete", {
+                    defaultValue: "Confirm delete?",
+                  })}
                 </span>
                 <BrandButton
                   variant="outline"
@@ -232,7 +288,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                   {loading === "delete" ? (
                     <Loader2 className="h-3 w-3 animate-spin" />
                   ) : null}
-                  Yes, delete
+                  {t("cloud.containers.agentActions.yesDelete", {
+                    defaultValue: "Yes, delete",
+                  })}
                 </BrandButton>
                 <BrandButton
                   variant="outline"
@@ -240,7 +298,9 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
                   onClick={() => setShowDeleteConfirm(false)}
                   className="text-white/60"
                 >
-                  Cancel
+                  {t("cloud.containers.agentActions.cancel", {
+                    defaultValue: "Cancel",
+                  })}
                 </BrandButton>
               </div>
             )}
@@ -254,15 +314,20 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
               style={{ fontFamily: "var(--font-roboto-mono)" }}
             >
               <Loader2 className="h-4 w-4 animate-spin" />
-              Agent is provisioning. This page will refresh when the job
-              finishes.
+              {t("cloud.containers.agentActions.provisioningHint", {
+                defaultValue:
+                  "Agent is provisioning. This page will refresh when the job finishes.",
+              })}
             </p>
             {trackedJob && (
               <p
                 className="text-xs text-white/40"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}
               >
-                Job {trackedJob.jobId.slice(0, 8)} • {trackedJob.status}
+                {t("cloud.containers.agentActions.jobLabel", {
+                  defaultValue: "Job",
+                })}{" "}
+                {trackedJob.jobId.slice(0, 8)} • {trackedJob.status}
               </p>
             )}
           </div>

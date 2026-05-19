@@ -20,6 +20,7 @@ import { format } from "date-fns";
 import { useCallback, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import { cn } from "@/lib/utils";
+import { useT } from "@/providers/I18nProvider";
 
 type MetricKey = "requests" | "cost" | "successRate";
 
@@ -33,22 +34,28 @@ interface UsageChartProps {
   granularity: "hour" | "day" | "week" | "month";
 }
 
-const chartConfig = {
-  requests: {
-    label: "Requests",
-    color: "#6366F1",
-  },
-  cost: {
-    label: "Cost (USD)",
-    color: "#22C55E",
-  },
-  successRate: {
-    label: "Success rate (%)",
-    color: "#F97316",
-  },
-} as const;
-
 export function UsageChart({ data, granularity }: UsageChartProps) {
+  const t = useT();
+  const chartConfig = {
+    requests: {
+      label: t("cloud.analytics.usageChart.requests", {
+        defaultValue: "Requests",
+      }),
+      color: "#6366F1",
+    },
+    cost: {
+      label: t("cloud.analytics.usageChart.costUsd", {
+        defaultValue: "Cost (USD)",
+      }),
+      color: "#22C55E",
+    },
+    successRate: {
+      label: t("cloud.analytics.usageChart.successRatePct", {
+        defaultValue: "Success rate (%)",
+      }),
+      color: "#F97316",
+    },
+  } as const;
   const [activeMetric, setActiveMetric] = useState<MetricKey>("requests");
 
   const formatDate = useCallback(
@@ -124,7 +131,9 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
       <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-1">
           <p className="text-xs uppercase tracking-wide text-muted-foreground/80">
-            Focus metric
+            {t("cloud.analytics.usageChart.focusMetric", {
+              defaultValue: "Focus metric",
+            })}
           </p>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl font-semibold text-foreground">
@@ -134,7 +143,9 @@ export function UsageChart({ data, granularity }: UsageChartProps) {
               variant="outline"
               className="rounded-full bg-background/80 text-xs"
             >
-              Latest data point
+              {t("cloud.analytics.usageChart.latestDataPoint", {
+                defaultValue: "Latest data point",
+              })}
             </Badge>
           </div>
         </div>

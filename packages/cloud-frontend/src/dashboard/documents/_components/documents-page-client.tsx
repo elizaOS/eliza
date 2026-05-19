@@ -30,6 +30,7 @@ import { Bot, InfoIcon, List, Search, Upload } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import type { ElizaCharacter } from "@/lib/types";
 import type { CloudDocument } from "@/lib/types/documents";
+import { useT } from "@/providers/I18nProvider";
 import { DocumentList } from "./document-list";
 import { DocumentQuery } from "./document-query";
 import { DocumentUpload } from "./document-upload";
@@ -51,6 +52,7 @@ interface PageState {
 export function DocumentsPageClient({
   initialCharacters,
 }: DocumentsPageClientProps) {
+  const t = useT();
   const [pageState, setPageState] = useState<PageState>({
     documents: [],
     loading: true,
@@ -80,7 +82,11 @@ export function DocumentsPageClient({
     if (response.status === 503) {
       const data = await response.json();
       updatePageState({
-        error: data.error || "Knowledge service is not available",
+        error:
+          data.error ||
+          t("cloud.documents.error.serviceUnavailable", {
+            defaultValue: "Knowledge service is not available",
+          }),
         serviceAvailable: false,
         loading: false,
       });
@@ -90,7 +96,11 @@ export function DocumentsPageClient({
     if (!response.ok) {
       const data = await response.json();
       throw new Error(
-        data.details || data.error || "Failed to fetch documents",
+        data.details ||
+          data.error ||
+          t("cloud.documents.error.fetchFailed", {
+            defaultValue: "Failed to fetch documents",
+          }),
       );
     }
 
@@ -100,7 +110,7 @@ export function DocumentsPageClient({
       serviceAvailable: true,
       loading: false,
     });
-  }, [pageState.selectedCharacterId, updatePageState]);
+  }, [pageState.selectedCharacterId, updatePageState, t]);
 
   useEffect(() => {
     if (pageState.selectedCharacterId) {
@@ -137,7 +147,11 @@ export function DocumentsPageClient({
     });
 
     if (!response.ok) {
-      throw new Error("Failed to delete document");
+      throw new Error(
+        t("cloud.documents.error.deleteFailed", {
+          defaultValue: "Failed to delete document",
+        }),
+      );
     }
 
     // Refresh the list
@@ -148,14 +162,25 @@ export function DocumentsPageClient({
     return (
       <div className="container mx-auto py-8 space-y-4">
         <DashboardSection
-          label="Knowledge"
-          title="File Management"
-          description="Upload, index, and query agent documents from a single surface."
+          label={t("cloud.documents.section.label", {
+            defaultValue: "Knowledge",
+          })}
+          title={t("cloud.documents.section.title", {
+            defaultValue: "File Management",
+          })}
+          description={t("cloud.documents.section.descShort", {
+            defaultValue:
+              "Upload, index, and query agent documents from a single surface.",
+          })}
         />
         <Alert variant="destructive">
           <InfoIcon className="h-4 w-4" />
           <AlertDescription>
-            <p className="font-semibold">Service unavailable</p>
+            <p className="font-semibold">
+              {t("cloud.documents.serviceUnavailable", {
+                defaultValue: "Service unavailable",
+              })}
+            </p>
             {pageState.error && (
               <p className="text-sm mt-1">{pageState.error}</p>
             )}
@@ -169,9 +194,16 @@ export function DocumentsPageClient({
     <div className="container mx-auto py-8 space-y-6">
       <div className="space-y-4">
         <DashboardSection
-          label="Knowledge"
-          title="File Management"
-          description="Upload and manage documents for your agents. These files provide context and information for enhanced AI responses."
+          label={t("cloud.documents.section.label", {
+            defaultValue: "Knowledge",
+          })}
+          title={t("cloud.documents.section.title", {
+            defaultValue: "File Management",
+          })}
+          description={t("cloud.documents.section.descLong", {
+            defaultValue:
+              "Upload and manage documents for your agents. These files provide context and information for enhanced AI responses.",
+          })}
         />
 
         {/* Character Selector */}
@@ -182,7 +214,11 @@ export function DocumentsPageClient({
           >
             <SelectTrigger className="w-full max-w-xs">
               <Bot className="h-4 w-4 mr-2" />
-              <SelectValue placeholder="Select agent..." />
+              <SelectValue
+                placeholder={t("cloud.documents.selectAgent", {
+                  defaultValue: "Select agent...",
+                })}
+              />
             </SelectTrigger>
             <SelectContent>
               {initialCharacters.map((char) =>
@@ -200,7 +236,9 @@ export function DocumentsPageClient({
           <Alert>
             <InfoIcon className="h-4 w-4" />
             <AlertDescription>
-              Please select an agent to manage its files.
+              {t("cloud.documents.pleaseSelectAgent", {
+                defaultValue: "Please select an agent to manage its files.",
+              })}
             </AlertDescription>
           </Alert>
         )}
@@ -225,19 +263,31 @@ export function DocumentsPageClient({
                     {pageState.activeTab === "documents" && (
                       <>
                         <List className="h-4 w-4" />
-                        <span>Documents</span>
+                        <span>
+                          {t("cloud.documents.tab.documents", {
+                            defaultValue: "Documents",
+                          })}
+                        </span>
                       </>
                     )}
                     {pageState.activeTab === "upload" && (
                       <>
                         <Upload className="h-4 w-4" />
-                        <span>Upload</span>
+                        <span>
+                          {t("cloud.documents.tab.upload", {
+                            defaultValue: "Upload",
+                          })}
+                        </span>
                       </>
                     )}
                     {pageState.activeTab === "query" && (
                       <>
                         <Search className="h-4 w-4" />
-                        <span>Query</span>
+                        <span>
+                          {t("cloud.documents.tab.query", {
+                            defaultValue: "Query",
+                          })}
+                        </span>
                       </>
                     )}
                   </div>
@@ -247,19 +297,23 @@ export function DocumentsPageClient({
                 <SelectItem value="documents">
                   <div className="flex items-center gap-2">
                     <List className="h-4 w-4" />
-                    Documents
+                    {t("cloud.documents.tab.documents", {
+                      defaultValue: "Documents",
+                    })}
                   </div>
                 </SelectItem>
                 <SelectItem value="upload">
                   <div className="flex items-center gap-2">
                     <Upload className="h-4 w-4" />
-                    Upload
+                    {t("cloud.documents.tab.upload", {
+                      defaultValue: "Upload",
+                    })}
                   </div>
                 </SelectItem>
                 <SelectItem value="query">
                   <div className="flex items-center gap-2">
                     <Search className="h-4 w-4" />
-                    Query
+                    {t("cloud.documents.tab.query", { defaultValue: "Query" })}
                   </div>
                 </SelectItem>
               </SelectContent>
@@ -271,22 +325,26 @@ export function DocumentsPageClient({
         <TabsList className="hidden md:grid w-full grid-cols-3">
           <TabsTrigger value="documents">
             <List className="h-4 w-4 mr-2" />
-            Documents
+            {t("cloud.documents.tab.documents", { defaultValue: "Documents" })}
           </TabsTrigger>
           <TabsTrigger value="upload">
             <Upload className="h-4 w-4 mr-2" />
-            Upload
+            {t("cloud.documents.tab.upload", { defaultValue: "Upload" })}
           </TabsTrigger>
           <TabsTrigger value="query">
             <Search className="h-4 w-4 mr-2" />
-            Query
+            {t("cloud.documents.tab.query", { defaultValue: "Query" })}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="documents" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Uploaded Files</CardTitle>
+              <CardTitle>
+                {t("cloud.documents.uploadedFiles", {
+                  defaultValue: "Uploaded Files",
+                })}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {pageState.error ? (
@@ -308,7 +366,11 @@ export function DocumentsPageClient({
         <TabsContent value="upload" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Upload Documents</CardTitle>
+              <CardTitle>
+                {t("cloud.documents.uploadDocuments", {
+                  defaultValue: "Upload Documents",
+                })}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <DocumentUpload
@@ -322,7 +384,11 @@ export function DocumentsPageClient({
         <TabsContent value="query" className="space-y-4">
           <Card>
             <CardHeader>
-              <CardTitle>Search Files</CardTitle>
+              <CardTitle>
+                {t("cloud.documents.searchFiles", {
+                  defaultValue: "Search Files",
+                })}
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <DocumentQuery characterId={pageState.selectedCharacterId} />
