@@ -55,7 +55,7 @@ async function main(): Promise<void> {
 
   const client = HetznerCloudClient.withToken(token);
   const { server } = await client.createServer({
-    name: `ci-hetzner-e2e-${runId}`,
+    name: `agent-containers-${runId}`,
     serverType,
     location,
     image,

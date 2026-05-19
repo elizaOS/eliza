@@ -27,7 +27,7 @@ on `develop` and be activated later by adding secrets.
 ### 2. Create the GitHub environment
 
 In the repo settings, create a new environment named
-`ci-hetzner-e2e`. (Restricting to `develop` is recommended.)
+`agent-containers`. (Restricting to `develop` is recommended.)
 
 ### 3. Add environment secrets
 

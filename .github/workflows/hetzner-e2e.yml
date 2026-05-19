@@ -6,7 +6,7 @@ name: Hetzner Agent E2E
 # everything down. Gracefully skips when the required secrets are
 # unset (so this workflow can land on develop and be activated later).
 #
-# Required secrets / config (GitHub environment: ci-hetzner-e2e):
+# Required secrets / config (GitHub environment: agent-containers):
 #   HCLOUD_TOKEN_CI        - Hetzner Cloud API token (CI-scoped project)
 #   CLOUD_E2E_API_KEY      - Eliza Cloud staging bearer token (long-lived)
 #   CI_SSH_PRIVATE_KEY     - OpenSSH private key (matches the public key
@@ -37,7 +37,7 @@ jobs:
   deploy:
     name: Provision + deploy + healthcheck
     runs-on: ubuntu-latest
-    environment: ci-hetzner-e2e
+    environment: agent-containers
     timeout-minutes: 25
     env:
       HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}
@@ -60,7 +60,7 @@ jobs:
             {
               echo "### Hetzner E2E skipped"
               echo ""
-              echo "Missing secrets in GitHub environment \`ci-hetzner-e2e\`:"
+              echo "Missing secrets in GitHub environment \`agent-containers\`:"
               for s in "${missing[@]}"; do echo "- \`$s\`"; done
               echo ""
               echo "See \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` for setup."
@@ -117,7 +117,7 @@ jobs:
     needs: deploy
     if: always()
     runs-on: ubuntu-latest
-    environment: ci-hetzner-e2e
+    environment: agent-containers
     timeout-minutes: 10
     env:
       HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}

@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<incidents format="6" by="lint 9.2.0" type="partial_results">
-    <map id="UnusedResources">
-        <entry
-            name="model"
-            string=""/>
-    </map>
-
-</incidents>
