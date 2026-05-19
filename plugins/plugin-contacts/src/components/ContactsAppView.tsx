@@ -98,6 +98,23 @@ function matchesQuery(contact: ContactSummary, q: string): boolean {
   return false;
 }
 
+async function loadContactsState(options?: { query?: string; limit?: number }) {
+  const query = options?.query?.trim() ?? "";
+  const limit = options?.limit;
+  const result = await Contacts.listContacts({
+    ...(query ? { query } : {}),
+    ...(typeof limit === "number" ? { limit } : {}),
+  });
+  const contacts = query
+    ? result.contacts.filter((contact) => matchesQuery(contact, query))
+    : result.contacts;
+  return {
+    contacts,
+    query,
+    count: contacts.length,
+  };
+}
+
 export function ContactsAppView({ exitToApps, t }: OverlayAppContext) {
   const [contacts, setContacts] = useState<ContactSummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -664,4 +681,480 @@ function Avatar({
       {getInitials(name)}
     </div>
   );
+}
+
+export function ContactsTuiView() {
+  const [contacts, setContacts] = useState<ContactSummary[]>([]);
+  const [query, setQuery] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [phoneNumber, setPhoneNumber] = useState("");
+  const [emailAddress, setEmailAddress] = useState("");
+  const [vcardText, setVcardText] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadContactsState({ query });
+      setContacts(next.contacts);
+      setLastAction(query ? `search ${query}` : "refresh");
+    } catch (err) {
+      setContacts([]);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [query]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const selected = useMemo(
+    () => contacts.find((contact) => contact.id === selectedId) ?? null,
+    [contacts, selectedId],
+  );
+
+  const createContact = useCallback(async () => {
+    const name = displayName.trim();
+    if (!name || submitting) return;
+    const payload: CreateContactOptions = { displayName: name };
+    const phone = phoneNumber.trim();
+    const email = emailAddress.trim();
+    if (phone) payload.phoneNumber = phone;
+    if (email) payload.emailAddress = email;
+
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await Contacts.createContact(payload);
+      setDisplayName("");
+      setPhoneNumber("");
+      setEmailAddress("");
+      setLastAction(`created ${result.id}`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [displayName, emailAddress, phoneNumber, refresh, submitting]);
+
+  const importVCard = useCallback(async () => {
+    const text = vcardText.trim();
+    if (!text || submitting) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      const result = await Contacts.importVCard({ vcardText: text });
+      setVcardText("");
+      setLastAction(`imported ${result.imported.length}`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
+    }
+  }, [refresh, submitting, vcardText]);
+
+  const state = {
+    viewType: "tui",
+    viewId: "contacts",
+    contactCount: contacts.length,
+    query,
+    selectedId,
+    selectedName: selected?.displayName ?? null,
+    pendingName: displayName,
+    pendingPhone: phoneNumber,
+    pendingEmail: emailAddress,
+    pendingVCardLength: vcardText.length,
+    loading,
+    submitting,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(state)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://contacts --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : `${contacts.length} contacts`} | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(240px, 0.9fr) minmax(300px, 1.1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Contacts list"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+              marginBottom: 12,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>address book</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+
+          <label
+            htmlFor="contacts-tui-search"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            search
+          </label>
+          <input
+            id="contacts-tui-search"
+            name="query"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {!loading && !error && contacts.length === 0 && (
+            <div style={{ color: "#64748b" }}>no contacts</div>
+          )}
+          {contacts.map((contact, index) => {
+            const subtitle =
+              contact.phoneNumbers[0] ??
+              contact.emailAddresses[0] ??
+              "no contact method";
+            return (
+              <button
+                key={contact.id}
+                type="button"
+                onClick={() => {
+                  setSelectedId(contact.id);
+                  setLastAction(`open ${contact.id}`);
+                }}
+                style={{
+                  width: "100%",
+                  display: "grid",
+                  gridTemplateColumns: "4ch minmax(8ch, 1fr) 2ch",
+                  gap: 10,
+                  border: "none",
+                  borderTop:
+                    index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                  background:
+                    contact.id === selectedId
+                      ? "rgba(125,211,252,0.12)"
+                      : "transparent",
+                  color: "#cbd5e1",
+                  padding: "8px 0",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                  textAlign: "left",
+                }}
+              >
+                <span style={{ color: "#64748b" }}>
+                  {String(index + 1).padStart(2, "0")}
+                </span>
+                <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
+                  {contact.displayName || "Unnamed"}
+                </span>
+                <span
+                  style={{ color: contact.starred ? "#facc15" : "#64748b" }}
+                >
+                  {contact.starred ? "*" : "-"}
+                </span>
+                <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+                  {subtitle}
+                </span>
+              </button>
+            );
+          })}
+        </section>
+
+        <section
+          aria-label="Contacts detail and create"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>
+            {selected ? selected.displayName || "Unnamed" : "create contact"}
+          </strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: list | create | import-vcard
+          </div>
+
+          {selected && (
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ color: "#a7f3d0", marginBottom: 8 }}>detail</div>
+              <div>
+                <span style={{ color: "#64748b" }}>id</span> {selected.id}
+              </div>
+              {dedupePreservingOrder(selected.phoneNumbers).map((phone) => (
+                <div key={phone}>
+                  <span style={{ color: "#64748b" }}>tel</span> {phone}
+                </div>
+              ))}
+              {dedupePreservingOrder(selected.emailAddresses).map((email) => (
+                <div key={email}>
+                  <span style={{ color: "#64748b" }}>mail</span> {email}
+                </div>
+              ))}
+              {selected.starred && (
+                <div style={{ color: "#facc15" }}>starred</div>
+              )}
+            </div>
+          )}
+
+          <label
+            htmlFor="contacts-tui-name"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            name
+          </label>
+          <input
+            id="contacts-tui-name"
+            name="displayName"
+            value={displayName}
+            onChange={(event) => setDisplayName(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 10,
+            }}
+          />
+          <label
+            htmlFor="contacts-tui-phone"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            phone
+          </label>
+          <input
+            id="contacts-tui-phone"
+            name="phoneNumber"
+            value={phoneNumber}
+            onChange={(event) => setPhoneNumber(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 10,
+            }}
+          />
+          <label
+            htmlFor="contacts-tui-email"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            email
+          </label>
+          <input
+            id="contacts-tui-email"
+            name="emailAddress"
+            value={emailAddress}
+            onChange={(event) => setEmailAddress(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => void createContact()}
+            disabled={!displayName.trim() || submitting}
+            style={{
+              background: "transparent",
+              color: "#7dd3fc",
+              border: "1px solid rgba(125,211,252,0.45)",
+              borderRadius: 4,
+              padding: "6px 10px",
+              cursor:
+                !displayName.trim() || submitting ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+              marginBottom: 18,
+            }}
+          >
+            create
+          </button>
+
+          <label
+            htmlFor="contacts-tui-vcard"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            vcard
+          </label>
+          <textarea
+            id="contacts-tui-vcard"
+            name="vcardText"
+            value={vcardText}
+            onChange={(event) => setVcardText(event.target.value)}
+            rows={5}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              resize: "vertical",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => void importVCard()}
+            disabled={!vcardText.trim() || submitting}
+            style={{
+              background: "transparent",
+              color: "#a7f3d0",
+              border: "1px solid rgba(167,243,208,0.45)",
+              borderRadius: 4,
+              padding: "6px 10px",
+              cursor:
+                !vcardText.trim() || submitting ? "not-allowed" : "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            import-vcard
+          </button>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-list-contacts") {
+    const state = await loadContactsState({
+      query: typeof params?.query === "string" ? params.query : undefined,
+      limit: typeof params?.limit === "number" ? params.limit : undefined,
+    });
+    return {
+      viewType: "tui",
+      query: state.query,
+      count: state.count,
+      contacts: state.contacts.map((contact) => ({
+        id: contact.id,
+        lookupKey: contact.lookupKey,
+        displayName: contact.displayName,
+        phoneNumbers: contact.phoneNumbers,
+        emailAddresses: contact.emailAddresses,
+        starred: contact.starred,
+      })),
+    };
+  }
+
+  if (capability === "terminal-create-contact") {
+    const displayName =
+      typeof params?.displayName === "string" ? params.displayName.trim() : "";
+    if (!displayName) throw new Error("displayName is required");
+    const payload: CreateContactOptions = { displayName };
+    const phoneNumber =
+      typeof params?.phoneNumber === "string" ? params.phoneNumber.trim() : "";
+    const emailAddress =
+      typeof params?.emailAddress === "string"
+        ? params.emailAddress.trim()
+        : "";
+    if (phoneNumber) payload.phoneNumber = phoneNumber;
+    if (emailAddress) payload.emailAddress = emailAddress;
+    const result = await Contacts.createContact(payload);
+    return { created: true, id: result.id, viewType: "tui" };
+  }
+
+  if (capability === "terminal-import-vcard") {
+    const vcardText =
+      typeof params?.vcardText === "string" ? params.vcardText.trim() : "";
+    if (!vcardText) throw new Error("vcardText is required");
+    const result = await Contacts.importVCard({ vcardText });
+    return {
+      imported: result.imported.length,
+      contacts: result.imported.map((contact) => ({
+        id: contact.id,
+        lookupKey: contact.lookupKey,
+        displayName: contact.displayName,
+        phoneNumbers: contact.phoneNumbers,
+        emailAddresses: contact.emailAddresses,
+        starred: contact.starred,
+        sourceName: contact.sourceName,
+      })),
+      viewType: "tui",
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

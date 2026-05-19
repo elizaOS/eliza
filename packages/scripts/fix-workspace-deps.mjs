@@ -386,7 +386,9 @@ if (CHECK_MODE) {
     for (const issue of [...issues, ...danglingIssues]) {
       console.log(`  ${issue}`);
     }
-    console.log(`\nRun \`node packages/scripts/fix-workspace-deps.mjs\` to fix them.`);
+    console.log(
+      `\nRun \`node packages/scripts/fix-workspace-deps.mjs\` to fix them.`,
+    );
     process.exit(1);
   } else {
     console.log(

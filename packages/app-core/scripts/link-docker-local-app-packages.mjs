@@ -182,30 +182,32 @@ function removePath(filePath) {
 
 function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
   const packageSegments = packageName.split("/");
-  for (const baseDir of baseDirs) {
-    const packageDir = path.join(
-      baseDir,
-      "node_modules",
-      ...packageSegments,
-    );
-    if (fs.existsSync(path.join(packageDir, "package.json"))) {
-      return packageDir;
+  // Return the realpath so `linkDependencyPackage`'s `packageDir === target`
+  // check works when a previous loop iteration already symlinked the dep
+  // (avoids circular symlinks like jose → app-core/jose → root jose).
+  const realIfExists = (dir) => {
+    if (!fs.existsSync(path.join(dir, "package.json"))) return null;
+    try {
+      return fs.realpathSync(dir);
+    } catch {
+      return null;
     }
+  };
+  for (const baseDir of baseDirs) {
+    const real = realIfExists(
+      path.join(baseDir, "node_modules", ...packageSegments),
+    );
+    if (real) return real;
   }
 
   for (const baseDir of baseDirs) {
     const bunStoreDir = path.join(baseDir, "node_modules", ".bun");
     if (pathExists(bunStoreDir)) {
       for (const entry of fs.readdirSync(bunStoreDir).sort().reverse()) {
-        const candidate = path.join(
-          bunStoreDir,
-          entry,
-          "node_modules",
-          ...packageSegments,
+        const real = realIfExists(
+          path.join(bunStoreDir, entry, "node_modules", ...packageSegments),
         );
-        if (fs.existsSync(path.join(candidate, "package.json"))) {
-          return candidate;
-        }
+        if (real) return real;
       }
     }
   }
@@ -215,7 +217,12 @@ function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
       .map((baseDir) =>
         path.relative(
           repoRoot,
-          path.join(baseDir, "node_modules", ...packageSegments, "package.json"),
+          path.join(
+            baseDir,
+            "node_modules",
+            ...packageSegments,
+            "package.json",
+          ),
         ),
       )
       .join(" or ")}`,

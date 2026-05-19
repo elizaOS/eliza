@@ -60,7 +60,12 @@ async function getDirectoriesToCheck(): Promise<string[]> {
 async function createTempTsconfig(directory: string): Promise<string> {
   const safeDirectoryName = directory.replace(/[\\/]/g, ".");
   const workspaceRoot = process.cwd();
-  const tempDir = join(workspaceRoot, "node_modules", ".cache", "typecheck-split");
+  const tempDir = join(
+    workspaceRoot,
+    "node_modules",
+    ".cache",
+    "typecheck-split",
+  );
   await mkdir(tempDir, { recursive: true });
   const tempPath = join(
     tempDir,
@@ -111,11 +116,18 @@ async function createTempTsconfig(directory: string): Promise<string> {
   return tempPath;
 }
 
-async function runTsc(tscPath: string, tempConfigPath: string): Promise<TscRunResult> {
+async function runTsc(
+  tscPath: string,
+  tempConfigPath: string,
+): Promise<TscRunResult> {
   return new Promise((resolveRun) => {
-    const child = spawn(process.execPath, [tscPath, "--noEmit", "--project", tempConfigPath], {
-      env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=2048" },
-    });
+    const child = spawn(
+      process.execPath,
+      [tscPath, "--noEmit", "--project", tempConfigPath],
+      {
+        env: { ...process.env, NODE_OPTIONS: "--max-old-space-size=2048" },
+      },
+    );
     let output = "";
 
     child.stdout.on("data", (chunk) => {
@@ -142,10 +154,20 @@ async function checkDirectory(directory: string): Promise<CheckResult> {
 
     tempConfigPath = await createTempTsconfig(directory);
     const workspaceRoot = process.cwd();
-    const tscPath = resolve(workspaceRoot, "node_modules", "typescript", "lib", "tsc.js");
+    const tscPath = resolve(
+      workspaceRoot,
+      "node_modules",
+      "typescript",
+      "lib",
+      "tsc.js",
+    );
 
     let tscRun = await runTsc(tscPath, tempConfigPath);
-    if (!tscRun.success && tscRun.signal === "SIGKILL" && !tscRun.output.trim()) {
+    if (
+      !tscRun.success &&
+      tscRun.signal === "SIGKILL" &&
+      !tscRun.output.trim()
+    ) {
       tscRun = await runTsc(tscPath, tempConfigPath);
     }
 
@@ -171,7 +193,9 @@ async function checkDirectory(directory: string): Promise<CheckResult> {
           error.message
         : String(error);
 
-    console.log(`   ✗ ${directory}/ has errors (${(duration / 1000).toFixed(1)}s)`);
+    console.log(
+      `   ✗ ${directory}/ has errors (${(duration / 1000).toFixed(1)}s)`,
+    );
 
     return { directory, success: false, output, duration };
   } finally {
@@ -188,8 +212,13 @@ async function main() {
 
   const directories = await getDirectoriesToCheck();
   console.log(`Found ${directories.length} directories to check\n`);
-  const requestedConcurrency = Number.parseInt(process.env.CHECK_TYPES_CONCURRENCY ?? "2", 10);
-  const concurrency = Number.isFinite(requestedConcurrency) ? Math.max(1, requestedConcurrency) : 2;
+  const requestedConcurrency = Number.parseInt(
+    process.env.CHECK_TYPES_CONCURRENCY ?? "2",
+    10,
+  );
+  const concurrency = Number.isFinite(requestedConcurrency)
+    ? Math.max(1, requestedConcurrency)
+    : 2;
   const workerCount = Math.min(concurrency, directories.length);
   console.log(`Using ${workerCount} type-check worker(s)\n`);
 

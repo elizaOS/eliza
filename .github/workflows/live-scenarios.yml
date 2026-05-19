@@ -133,6 +133,13 @@ jobs:
           bun run --cwd packages/shared build
           echo "::endgroup::"
 
+          echo "::group::Build packages/skills"
+          # plugin-agent-skills imports @elizaos/skills via its dist exports
+          # (getSkillsDir, loadSkills, formatSkillsForPrompt). Must build
+          # before plugin-agent-skills typechecks its declaration emit.
+          bun run --cwd packages/skills build
+          echo "::endgroup::"
+
           provider_package=""
           if [ -n "${GROQ_API_KEY:-}" ]; then
             provider_package="plugins/plugin-groq"

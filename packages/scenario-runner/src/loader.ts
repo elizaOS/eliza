@@ -8,7 +8,7 @@ import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
-import type { ScenarioDefinition } from "@elizaos/scenario-schema";
+import type { ScenarioDefinition } from "@elizaos/scenario-runner/schema";
 import ts from "typescript";
 
 async function walk(dir: string, out: string[]): Promise<void> {

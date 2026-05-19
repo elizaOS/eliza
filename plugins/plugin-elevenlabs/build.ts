@@ -8,7 +8,9 @@ import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 
-const externalDeps = ["@elizaos/core"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build() {
   const totalStart = Date.now();
@@ -24,7 +26,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps],
+    external: externalDeps,
   });
   if (!nodeResult.success) {
     console.error(nodeResult.logs);
@@ -44,7 +46,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: true,
-    external: [...externalDeps, "@elevenlabs/elevenlabs-js"],
+    external: externalDeps,
   });
   if (!browserResult.success) {
     console.error(browserResult.logs);
@@ -64,7 +66,7 @@ async function build() {
     format: "cjs",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps],
+    external: externalDeps,
   });
   if (!cjsResult.success) {
     console.error(cjsResult.logs);

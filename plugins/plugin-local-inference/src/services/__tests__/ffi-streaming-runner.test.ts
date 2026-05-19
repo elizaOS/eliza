@@ -23,11 +23,10 @@ import {
 } from "../ffi-llm-streaming-abi";
 import { FfiStreamingRunner } from "../ffi-streaming-runner";
 import type {
-	ElizaInferenceContextHandle,
-	ElizaInferenceFfi,
-	LlmStreamHandle,
-	LlmStreamStep,
-} from "../voice/ffi-bindings";
+	LlmCtxHandle,
+	LlmStreamingBinding,
+} from "../llm-streaming-binding";
+import type { LlmStreamHandle, LlmStreamStep } from "../voice/ffi-bindings";
 
 /**
  * Tiny GGUF fixture probe. Tests that need a real model are skipped
@@ -67,8 +66,8 @@ function scriptedStep(steps: LlmStreamStep[], index: number): LlmStreamStep {
 
 /** Build a mocked FFI surface that scripts a fixed sequence of steps. */
 function makeMockFfi(steps: LlmStreamStep[]): {
-	ffi: ElizaInferenceFfi;
-	ctx: ElizaInferenceContextHandle;
+	ffi: LlmStreamingBinding;
+	ctx: LlmCtxHandle;
 	spies: {
 		open: ReturnType<typeof vi.fn>;
 		prefill: ReturnType<typeof vi.fn>;
@@ -79,7 +78,7 @@ function makeMockFfi(steps: LlmStreamStep[]): {
 		restoreSlot: ReturnType<typeof vi.fn>;
 	};
 } {
-	const ctx: ElizaInferenceContextHandle = 1n;
+	const ctx: LlmCtxHandle = 1n;
 	const stream: LlmStreamHandle = 2n;
 	let stepIdx = 0;
 
@@ -105,17 +104,11 @@ function makeMockFfi(steps: LlmStreamStep[]): {
 	const saveSlot = vi.fn();
 	const restoreSlot = vi.fn();
 
-	const ffi = {
-		libraryPath: "/fake/libelizainference.dylib",
-		libraryAbiVersion: "3",
-		create: vi.fn().mockReturnValue(ctx),
-		destroy: vi.fn(),
-		mmapAcquire: vi.fn(),
-		mmapEvict: vi.fn(),
-		ttsSynthesize: vi.fn().mockReturnValue(0),
-		asrTranscribe: vi.fn().mockReturnValue(""),
-		ttsStreamSupported: () => false,
-		ttsSynthesizeStream: vi.fn(),
+	// The runner consumes only the narrow `LlmStreamingBinding`. The
+	// mock formerly populated the entire `ElizaInferenceFfi` surface
+	// (TTS/ASR/mmap) — none of which the runner reads — so we trim to
+	// just the methods it actually calls.
+	const ffi: LlmStreamingBinding = {
 		llmStreamSupported: () => true,
 		llmStreamOpen: open,
 		llmStreamPrefill: prefill,
@@ -124,8 +117,7 @@ function makeMockFfi(steps: LlmStreamStep[]): {
 		llmStreamSaveSlot: saveSlot,
 		llmStreamRestoreSlot: restoreSlot,
 		llmStreamClose: close,
-		close: vi.fn(),
-	} as unknown as ElizaInferenceFfi;
+	};
 
 	return {
 		ffi,

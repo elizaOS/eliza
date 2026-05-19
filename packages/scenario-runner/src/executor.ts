@@ -26,7 +26,7 @@ import type {
   ScenarioJudgeRubric,
   ScenarioTurn,
   ScenarioTurnExecution,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import { runFinalCheck } from "./final-checks/index.ts";
 import { attachInterceptor } from "./interceptor.ts";
 import { judgeTextWithLlm } from "./judge.ts";

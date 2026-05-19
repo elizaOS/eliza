@@ -135,7 +135,8 @@ describe("clipboard — Linux Wayland", () => {
     setPlatform("linux");
     process.env.WAYLAND_DISPLAY = "wayland-0";
     setLinuxToolset({ wayland: false, xclip: false });
-    const { readClipboard, ClipboardUnavailableError } = await importClipboard();
+    const { readClipboard, ClipboardUnavailableError } =
+      await importClipboard();
     await expect(readClipboard()).rejects.toBeInstanceOf(
       ClipboardUnavailableError,
     );
@@ -173,7 +174,8 @@ describe("clipboard — Linux X11", () => {
     setPlatform("linux");
     delete process.env.WAYLAND_DISPLAY;
     setLinuxToolset({ wayland: false, xclip: false });
-    const { writeClipboard, ClipboardUnavailableError } = await importClipboard();
+    const { writeClipboard, ClipboardUnavailableError } =
+      await importClipboard();
     await expect(writeClipboard("foo")).rejects.toBeInstanceOf(
       ClipboardUnavailableError,
     );

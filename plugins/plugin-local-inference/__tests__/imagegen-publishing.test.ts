@@ -38,6 +38,8 @@ const EXTRAS_PATH = path.resolve(
 interface ImageGenEntry {
 	id: string;
 	file: string;
+	splitDiffusionModel?: boolean;
+	companionAssets?: { role?: unknown; file?: unknown; url?: unknown }[];
 	estimatedSizeBytes: number;
 	license: string;
 	url?: string;
@@ -245,5 +247,43 @@ describe("WS3 imagegen publishing pipeline", () => {
 				`tier "${tierId}" missing from ELIZA_1_BUNDLE_EXTRAS.json#imagegen.perTier`,
 			).toBeDefined();
 		}
+	});
+
+	it("split Z-Image defaults declare required companion assets", () => {
+		const extras = loadExtras();
+		const failures: string[] = [];
+		for (const tierId of [
+			"eliza-1-9b",
+			"eliza-1-27b",
+			"eliza-1-27b-256k",
+		]) {
+			const entry = extras.imagegen.perTier[tierId]?.default;
+			const where = `imagegen.perTier.${tierId}.default`;
+			if (entry?.id !== "imagegen-z-image-turbo-q4_k_m") {
+				failures.push(`${where}: expected z-image default`);
+				continue;
+			}
+			if (entry.splitDiffusionModel !== true) {
+				failures.push(`${where}: missing splitDiffusionModel:true`);
+			}
+			const companions = entry.companionAssets ?? [];
+			const byRole = new Map(companions.map((asset) => [asset.role, asset]));
+			for (const [role, file] of [
+				["vae", "imagegen/vae/ae.safetensors"],
+				[
+					"llm",
+					"imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+				],
+			] as const) {
+				const asset = byRole.get(role);
+				if (asset?.file !== file) {
+					failures.push(`${where}: ${role} companion file missing`);
+				}
+				if (!isHttpsUrl(asset?.url)) {
+					failures.push(`${where}: ${role} companion url missing`);
+				}
+			}
+		}
+		expect(failures, failures.join("\n")).toHaveLength(0);
 	});
 });

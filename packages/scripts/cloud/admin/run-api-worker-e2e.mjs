@@ -1,11 +1,14 @@
 import { spawn, spawnSync } from "node:child_process";
-import { rmSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { createConnection } from "node:net";
-import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { config } from "dotenv";
 
-for (const envPath of [resolve(".env"), resolve(".env.local"), resolve(".env.test")]) {
+for (const envPath of [
+  resolve(".env"),
+  resolve(".env.local"),
+  resolve(".env.test"),
+]) {
   config({ path: envPath });
 }
 
@@ -13,12 +16,16 @@ const port = Number.parseInt(process.env.TEST_API_PORT || "8787", 10);
 const baseUrl = process.env.TEST_API_BASE_URL || `http://127.0.0.1:${port}`;
 const startupTimeoutMs = 120_000;
 const pollIntervalMs = 500;
-const testAuthSecret = process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret";
+const testAuthSecret =
+  process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret";
 const pglitePort = Number.parseInt(process.env.TEST_PGLITE_PORT || "55432", 10);
 const pgliteHost = process.env.PGLITE_HOST || "127.0.0.1";
-const pgliteDataDir = process.env.TEST_PGLITE_DATA_DIR || ".eliza/.pgdata-worker-e2e";
+const pgliteDataDir =
+  process.env.TEST_PGLITE_DATA_DIR || ".eliza/.pgdata-worker-e2e";
 const pgliteMaxConnections =
-  process.env.TEST_PGLITE_MAX_CONNECTIONS || process.env.PGLITE_MAX_CONNECTIONS || "16";
+  process.env.TEST_PGLITE_MAX_CONNECTIONS ||
+  process.env.PGLITE_MAX_CONNECTIONS ||
+  "16";
 const defaultE2eEnv = {
   CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
   INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
@@ -35,7 +42,8 @@ function bunExecutable() {
     .map((entry) => resolve(entry, "bun"))
     .find((candidate) => existsSync(candidate));
   if (pathBun) return pathBun;
-  if (process.env.npm_execpath?.includes("bun")) return process.env.npm_execpath;
+  if (process.env.npm_execpath?.includes("bun"))
+    return process.env.npm_execpath;
   return "bun";
 }
 
@@ -85,7 +93,9 @@ async function waitForTcp(child, host, port) {
     }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
-  throw new Error(`PGlite TCP server did not become reachable at ${host}:${port}`);
+  throw new Error(
+    `PGlite TCP server did not become reachable at ${host}:${port}`,
+  );
 }
 
 async function waitForHealth(child) {
@@ -97,7 +107,9 @@ async function waitForHealth(child) {
     }
     await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
   }
-  throw new Error(`Worker dev server did not become healthy at ${baseUrl}/api/health`);
+  throw new Error(
+    `Worker dev server did not become healthy at ${baseUrl}/api/health`,
+  );
 }
 
 async function main() {
@@ -116,7 +128,8 @@ async function main() {
   }
 
   const configuredDbUrl = testEnv.TEST_DATABASE_URL || "";
-  const usingPGliteTcpBridge = !configuredDbUrl || configuredDbUrl.startsWith("pglite://");
+  const usingPGliteTcpBridge =
+    !configuredDbUrl || configuredDbUrl.startsWith("pglite://");
   let workerExit = null;
   let result;
 
@@ -125,7 +138,9 @@ async function main() {
       const pgliteDatabaseUrl = `postgresql://postgres@${pgliteHost}:${pglitePort}/postgres`;
       const dataDir = parsePGliteDataDir(configuredDbUrl) || pgliteDataDir;
       const shouldResetDefaultPGlite =
-        !configuredDbUrl && testEnv.TEST_PGLITE_PERSIST !== "1" && Boolean(dataDir);
+        !configuredDbUrl &&
+        testEnv.TEST_PGLITE_PERSIST !== "1" &&
+        Boolean(dataDir);
       testEnv.DATABASE_URL = pgliteDatabaseUrl;
       testEnv.TEST_DATABASE_URL = pgliteDatabaseUrl;
 
@@ -140,16 +155,20 @@ async function main() {
       }
 
       if (!pgliteAlreadyRunning) {
-        pgliteChild = spawn(bun, ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"], {
-          stdio: ["ignore", "inherit", "inherit"],
-          env: {
-            ...testEnv,
-            PGLITE_HOST: pgliteHost,
-            PGLITE_PORT: String(pglitePort),
-            PGLITE_MAX_CONNECTIONS: pgliteMaxConnections,
-            ...(dataDir ? { PGLITE_DATA_DIR: dataDir } : {}),
+        pgliteChild = spawn(
+          bun,
+          ["run", "packages/scripts/cloud/admin/dev/pglite-server.ts"],
+          {
+            stdio: ["ignore", "inherit", "inherit"],
+            env: {
+              ...testEnv,
+              PGLITE_HOST: pgliteHost,
+              PGLITE_PORT: String(pglitePort),
+              PGLITE_MAX_CONNECTIONS: pgliteMaxConnections,
+              ...(dataDir ? { PGLITE_DATA_DIR: dataDir } : {}),
+            },
           },
-        });
+        );
         await waitForTcp(pgliteChild, pgliteHost, pglitePort);
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
@@ -166,7 +185,9 @@ async function main() {
       throw migrateResult.error;
     }
     if (migrateResult.status !== 0) {
-      throw new Error(`db:cloud:migrate exited with code ${migrateResult.status}`);
+      throw new Error(
+        `db:cloud:migrate exited with code ${migrateResult.status}`,
+      );
     }
 
     const workerEnv = {
@@ -178,15 +199,21 @@ async function main() {
     };
 
     if (!(await healthOk())) {
-      const syncResult = spawnSync(bun, ["run", "packages/scripts/cloud/admin/sync-api-dev-vars.ts"], {
-        stdio: "inherit",
-        env: workerEnv,
-      });
+      const syncResult = spawnSync(
+        bun,
+        ["run", "packages/scripts/cloud/admin/sync-api-dev-vars.ts"],
+        {
+          stdio: "inherit",
+          env: workerEnv,
+        },
+      );
       if (syncResult.error) {
         throw syncResult.error;
       }
       if (syncResult.status !== 0) {
-        throw new Error(`sync-api-dev-vars exited with code ${syncResult.status}`);
+        throw new Error(
+          `sync-api-dev-vars exited with code ${syncResult.status}`,
+        );
       }
 
       child = spawn(
@@ -219,10 +246,14 @@ async function main() {
       await waitForHealth(child);
     }
 
-    result = spawnSync(bun, ["run", "--cwd", "packages/cloud-api", "test:e2e"], {
-      stdio: "inherit",
-      env: workerEnv,
-    });
+    result = spawnSync(
+      bun,
+      ["run", "--cwd", "packages/cloud-api", "test:e2e"],
+      {
+        stdio: "inherit",
+        env: workerEnv,
+      },
+    );
   } finally {
     if (child) {
       child.kill("SIGTERM");

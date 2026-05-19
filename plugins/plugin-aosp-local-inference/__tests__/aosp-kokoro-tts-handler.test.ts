@@ -1,8 +1,8 @@
+import { describe, expect, it } from "bun:test";
 import {
   type KokoroEngineDiscoveryResult,
   KokoroMockRuntime,
 } from "@elizaos/shared";
-import { describe, expect, it } from "bun:test";
 import {
   makeKokoroTextToSpeechHandler,
   prewarmKokoroTextToSpeechHandler,

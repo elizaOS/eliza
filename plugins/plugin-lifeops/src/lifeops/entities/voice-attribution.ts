@@ -31,7 +31,8 @@ import type { SELF_ENTITY_ID } from "./types.js";
 // casing variants explicitly. The captured name stays anchored on an uppercase
 // first letter to filter lowercased noise; JavaScript RegExp does not support
 // scoped flag groups such as `(?-i:...)`.
-const NAME_PATTERN = "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
+const NAME_PATTERN =
+  "[A-Z][A-Za-z'.-]{1,40}(?:\\s+[A-Z][A-Za-z'.-]{1,40}){0,2}";
 const NAME_CLAIM_PATTERNS: RegExp[] = [
   new RegExp(`\\b[Mm]y\\s+name\\s+is\\s+(${NAME_PATTERN})\\b`),
   new RegExp(`\\b[Ii]\\s+am\\s+(${NAME_PATTERN})\\b`),

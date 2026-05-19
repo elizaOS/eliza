@@ -8,7 +8,12 @@
  * ID and how to navigate manually.
  */
 
-import type { ActionResult, HandlerCallback, Memory } from "@elizaos/core";
+import type {
+	ActionResult,
+	HandlerCallback,
+	Memory,
+	ViewType,
+} from "@elizaos/core";
 import { logger, resolveServerOnlyPort } from "@elizaos/core";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 import { scoreView } from "./views-search.js";
@@ -117,7 +122,10 @@ function resolveView(
 	return { kind: "ambiguous", candidates: topTied.map(({ view }) => view) };
 }
 
-async function navigateToView(view: ViewSummary): Promise<string> {
+async function navigateToView(
+	view: ViewSummary,
+	requestedViewType?: ViewType,
+): Promise<string> {
 	// Emit navigate event via POST /api/views/:id/navigate (shell listens).
 	// If that route 501s (not yet implemented in all shells), fall back to a
 	// descriptive message — the user can click through to the view manually.
@@ -126,15 +134,16 @@ async function navigateToView(view: ViewSummary): Promise<string> {
 
 	try {
 		const resp = await fetch(
-			`${base}/api/views/${encodeURIComponent(view.id)}/navigate`,
+			`${base}/api/views/${encodeURIComponent(view.id)}/navigate${requestedViewType ? `?viewType=${requestedViewType}` : ""}`,
 			{
 				method: "POST",
 				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify({ path: view.path }),
+				body: JSON.stringify({ path: view.path, viewType: requestedViewType }),
 				signal: AbortSignal.timeout(5_000),
 			},
 		);
-		if (resp.ok) return `Navigated to ${view.label}.`;
+		if (resp.ok)
+			return `Navigated to ${view.label} (${view.viewType ?? "gui"}).`;
 		// 501 = not implemented on this shell — not an error.
 		if (resp.status === 501) return `Opened ${view.label}.`;
 		// 404 for the route itself means the agent doesn't expose this endpoint.
@@ -149,13 +158,14 @@ async function navigateToView(view: ViewSummary): Promise<string> {
 	}
 
 	const pathHint = view.path ? ` at ${view.path}` : "";
-	return `Switched to ${view.label}${pathHint}.`;
+	return `Switched to ${view.label}${pathHint} (${view.viewType ?? "gui"}).`;
 }
 
 export interface RunViewsShowInput {
 	client: ViewsClient;
 	message: Memory;
 	options?: Record<string, unknown>;
+	viewType?: ViewType;
 	callback?: HandlerCallback;
 }
 
@@ -163,6 +173,7 @@ export async function runViewsShow({
 	client,
 	message,
 	options,
+	viewType,
 	callback,
 }: RunViewsShowInput): Promise<ActionResult> {
 	const target = extractViewTarget(message, options);
@@ -173,7 +184,7 @@ export async function runViewsShow({
 		return { success: false, text };
 	}
 
-	const views = await client.listViews();
+	const views = await client.listViews({ viewType });
 	const resolution = resolveView(target, views);
 
 	if (resolution.kind === "none") {
@@ -191,14 +202,21 @@ export async function runViewsShow({
 	}
 
 	const view = resolution.view;
-	const resultText = await navigateToView(view);
+	const resultText = await navigateToView(view, viewType);
 
-	logger.info(`[plugin-app-control] VIEWS/show viewId=${view.id}`);
+	logger.info(
+		`[plugin-app-control] VIEWS/show viewId=${view.id} viewType=${view.viewType ?? "gui"}`,
+	);
 	await callback?.({ text: resultText });
 	return {
 		success: true,
 		text: resultText,
-		values: { mode: "show", viewId: view.id, label: view.label },
+		values: {
+			mode: "show",
+			viewId: view.id,
+			viewType: view.viewType ?? viewType ?? "gui",
+			label: view.label,
+		},
 		data: { view },
 	};
 }

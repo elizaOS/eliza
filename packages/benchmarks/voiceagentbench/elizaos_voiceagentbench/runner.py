@@ -135,8 +135,9 @@ async def run_task(
                     if assistant.content:
                         final_text = assistant.content
                         agent_messages.append(final_text)
-                        break
-                    continue
+                    else:
+                        agent_messages.append("")
+                    break
                 final_text = assistant.content or ""
                 agent_messages.append(final_text)
                 break

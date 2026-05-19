@@ -31,18 +31,21 @@ const integrationEnv = {
   PLAYWRIGHT_TEST_AUTH_SECRET:
     process.env.PLAYWRIGHT_TEST_AUTH_SECRET || "playwright-local-auth-secret",
   AGENT_TEST_BOOTSTRAP_ADMIN: process.env.AGENT_TEST_BOOTSTRAP_ADMIN || "true",
-  PAYOUT_STATUS_SKIP_LIVE_BALANCE: process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
+  PAYOUT_STATUS_SKIP_LIVE_BALANCE:
+    process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
   CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
   INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
 };
 
-const isolatedServerFiles = new Set(["packages/cloud-api/test/e2e/agent-token-flow.test.ts"]);
+const isolatedServerFiles = new Set([
+  "packages/cloud-api/test/e2e/agent-token-flow.test.ts",
+]);
 const isolatedDbFiles = new Set([]);
 
 fs.mkdirSync(testCwd, { recursive: true });
 fs.writeFileSync(
   path.join(testCwd, "bunfig.toml"),
-  '[test]\ntimeout = 60000\ncoverage = false\n',
+  "[test]\ntimeout = 60000\ncoverage = false\n",
 );
 
 function walk(dir) {
@@ -60,7 +63,11 @@ function walk(dir) {
 }
 
 function isDbOnlyFile(file) {
-  return file.includes("/db/") || file.includes("/financial/") || file.includes("/services/");
+  return (
+    file.includes("/db/") ||
+    file.includes("/financial/") ||
+    file.includes("/services/")
+  );
 }
 
 function run(label, preload, files) {
@@ -122,7 +129,9 @@ async function waitForServer(child) {
     }
     await new Promise((resolve) => setTimeout(resolve, 1_000));
   }
-  throw new Error("[cloud-integration] Timed out waiting for API server health");
+  throw new Error(
+    "[cloud-integration] Timed out waiting for API server health",
+  );
 }
 
 async function ensureServer() {
@@ -155,10 +164,16 @@ function stopServer(child) {
 
 const allFiles = walk(integrationRoot);
 const serverFiles = allFiles.filter(
-  (file) => !isDbOnlyFile(file) && !isolatedServerFiles.has(file) && !isolatedDbFiles.has(file),
+  (file) =>
+    !isDbOnlyFile(file) &&
+    !isolatedServerFiles.has(file) &&
+    !isolatedDbFiles.has(file),
 );
 const dbFiles = allFiles.filter(
-  (file) => isDbOnlyFile(file) && !isolatedServerFiles.has(file) && !isolatedDbFiles.has(file),
+  (file) =>
+    isDbOnlyFile(file) &&
+    !isolatedServerFiles.has(file) &&
+    !isolatedDbFiles.has(file),
 );
 
 const server = await ensureServer();

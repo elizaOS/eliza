@@ -10,7 +10,7 @@
  * Cited: 03-coverage-gap-matrix.md — cross-channel search.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   judgeRubric,

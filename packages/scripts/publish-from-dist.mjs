@@ -21,9 +21,8 @@
  */
 
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
-import { dirname } from "node:path";
+import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -39,17 +38,14 @@ function parseArgs() {
   const tagIdx = argv.indexOf("--tag");
   if (tagIdx >= 0) flags.tag = argv[tagIdx + 1];
   const filterIdx = argv.indexOf("--filter");
-  if (filterIdx >= 0) flags.filter = argv[filterIdx + 1].split(",").map((s) => s.trim());
+  if (filterIdx >= 0)
+    flags.filter = argv[filterIdx + 1].split(",").map((s) => s.trim());
   const otpIdx = argv.indexOf("--otp");
   if (otpIdx >= 0) flags.otp = argv[otpIdx + 1];
   return flags;
 }
 
-const WORKSPACE_GLOBS = [
-  "packages",
-  "plugins",
-  "cloud/packages",
-];
+const WORKSPACE_GLOBS = ["packages", "plugins", "cloud/packages"];
 
 function walkPackages() {
   const out = [];
@@ -89,7 +85,9 @@ function main() {
     ? pkgs.filter((p) => flags.filter.includes(p.name))
     : pkgs;
 
-  console.log(`${flags.apply ? "[PUBLISH]" : "[DRY-RUN]"} ${filtered.length} packages`);
+  console.log(
+    `${flags.apply ? "[PUBLISH]" : "[DRY-RUN]"} ${filtered.length} packages`,
+  );
   if (flags.tag) console.log(`  tag: ${flags.tag}`);
   if (flags.filter) console.log(`  filter: ${flags.filter.join(", ")}`);
 
@@ -98,7 +96,9 @@ function main() {
   for (const pkg of filtered) {
     const distDir = join(pkg.dir, "dist");
     if (!existsSync(join(distDir, "package.json"))) {
-      console.warn(`  ${pkg.name}: SKIP (no dist/package.json — did you run build?)`);
+      console.warn(
+        `  ${pkg.name}: SKIP (no dist/package.json — did you run build?)`,
+      );
       continue;
     }
     const args = [flags.apply ? "publish" : "pack", "--dry-run"];

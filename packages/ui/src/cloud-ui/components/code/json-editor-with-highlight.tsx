@@ -1,9 +1,8 @@
 "use client";
 
-/// <reference path="../../types/react-syntax-highlighter.d.ts" />
-
 import { useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+
+import { SyntaxHighlighter } from "./prism-light";
 
 interface JsonEditorWithHighlightProps {
   value: string;

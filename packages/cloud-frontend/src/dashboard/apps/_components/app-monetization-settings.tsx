@@ -155,7 +155,7 @@ export function AppMonetizationSettings({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
       </div>
     );
   }
@@ -218,7 +218,7 @@ export function AppMonetizationSettings({
                   onClick={() =>
                     navigate(`/dashboard/apps/${appId}?tab=earnings`)
                   }
-                  className="mt-2 text-xs text-[#FF5800] hover:text-[#FF5800]/80 transition-colors flex items-center gap-1"
+                  className="mt-2 text-xs text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80 transition-colors flex items-center gap-1"
                 >
                   ${settings.totalCreatorEarnings.toFixed(2)} earned
                   <ChevronRight className="h-3 w-3" />
@@ -345,7 +345,7 @@ export function AppMonetizationSettings({
               <Button
                 onClick={handleSave}
                 disabled={!hasChanges || isSaving}
-                className="w-full bg-[#FF5800] hover:bg-[#FF5800]/80 text-white disabled:bg-white/5 disabled:text-white/30"
+                className="w-full bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white disabled:bg-white/5 disabled:text-white/30"
               >
                 {isSaving ? (
                   <Loader2 className="h-4 w-4 animate-spin mr-2" />
@@ -387,7 +387,7 @@ export function AppMonetizationSettings({
                   <li>See inference costs with your markup applied</li>
                   <li>Purchase credits that contribute to your earnings</li>
                 </ul>
-                <p className="pt-2 text-[#FF5800] text-sm">
+                <p className="pt-2 text-[var(--brand-orange)] text-sm">
                   You can adjust markup and purchase share after enabling.
                 </p>
               </AlertDialogDescription>
@@ -401,7 +401,7 @@ export function AppMonetizationSettings({
                   toggleMonetization(true);
                   setShowEnableDialog(false);
                 }}
-                className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white px-6"
+                className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white px-6"
               >
                 Start Earning
               </AlertDialogAction>
@@ -421,10 +421,10 @@ export function AppMonetizationSettings({
  */
 function SelfHostCTA() {
   return (
-    <div className="border border-[#FF5800]/30 bg-[#FF5800]/10 p-5">
+    <div className="border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10 p-5">
       <div className="flex items-start gap-4">
-        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border border-[#FF5800]/40 bg-[#FF5800]/10 shrink-0">
-          <Server className="h-5 w-5 text-[#FF5800]" />
+        <div className="hidden sm:flex items-center justify-center w-10 h-10 rounded-sm border border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/10 shrink-0">
+          <Server className="h-5 w-5 text-[var(--brand-orange)]" />
         </div>
         <div className="flex-1 min-w-0">
           <h3 className="text-base font-mono text-white mb-1">
@@ -438,14 +438,14 @@ function SelfHostCTA() {
           <div className="flex flex-wrap gap-2">
             <Link
               to="/dashboard/containers"
-              className="inline-flex items-center gap-2 px-4 py-2 bg-[#FF5800] hover:bg-[#FF5800]/90 text-white text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white text-sm font-mono transition-colors"
             >
               <Server className="h-4 w-4" />
               Deploy a Container
             </Link>
             <Link
               to="/dashboard/earnings"
-              className="inline-flex items-center gap-2 px-4 py-2 border border-white/20 hover:border-[#FF5800]/50 text-white/80 hover:text-white text-sm font-mono transition-colors"
+              className="inline-flex items-center gap-2 px-4 py-2 border border-white/20 hover:border-[var(--brand-orange)]/50 text-white/80 hover:text-white text-sm font-mono transition-colors"
             >
               <Coins className="h-4 w-4" />
               View Earnings

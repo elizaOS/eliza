@@ -292,6 +292,7 @@ interface ShimSymbols {
   ) => void;
   eliza_llama_context_params_set_embeddings: (p: Pointer, v: boolean) => void;
   eliza_llama_context_params_set_pooling_type: (p: Pointer, v: number) => void;
+  eliza_llama_context_params_set_ctx_type: (p: Pointer, v: number) => void;
   /**
    * type_k / type_v: ggml_type enum values for the K and V cache slots.
    * TBQ3_0 = 43 and TBQ4_0 = 44 are the apothic/llama.cpp-1bit-turboquant
@@ -469,6 +470,7 @@ interface AospLoader {
  * paths into one and remove the OOB risk entirely.
  */
 const LLAMA_POOLING_TYPE_MEAN = 1;
+const LLAMA_CONTEXT_TYPE_MTP = 1;
 
 /**
  * GGML type ids used for KV-cache configuration. The base set comes from
@@ -630,7 +632,22 @@ function envFlagDisabled(name: string): boolean {
   return raw === "0" || raw === "false" || raw === "no" || raw === "off";
 }
 
-function firstSentenceEndIndex(text: string, minChars = 12): number {
+type AospSpeculativeMode = "dflash" | "draft-mtp";
+
+function readAospSpeculativeMode(): AospSpeculativeMode {
+  const raw = (
+    process.env.ELIZA_SPEC_TYPE ??
+    process.env.ELIZA_SPECULATIVE_TYPE ??
+    ""
+  )
+    .trim()
+    .toLowerCase();
+  if (raw === "mtp" || raw === "draft-mtp") return "draft-mtp";
+  if (envFlagEnabled("ELIZA_MTP")) return "draft-mtp";
+  return "dflash";
+}
+
+export function firstSentenceEndIndex(text: string, minChars = 12): number {
   const minEnd = Math.max(1, minChars);
   for (let i = 0; i < text.length; i += 1) {
     const ch = text[i];
@@ -639,6 +656,10 @@ function firstSentenceEndIndex(text: string, minChars = 12): number {
     const prev = i > 0 ? text[i - 1] : "";
     const next = i + 1 < text.length ? text[i + 1] : "";
     if (/\d/.test(prev) && /\d/.test(next)) continue;
+    // Streaming chunks can end between a decimal point and the next digit
+    // ("0." now, "8B" in the next callback). Wait for more text instead
+    // of ending the sentence on an incomplete decimal.
+    if (ch === "." && /\d/.test(prev) && next === "") continue;
     return i + 1;
   }
   return -1;
@@ -675,7 +696,7 @@ export function resolveAospGenerateTokenBudget(options: {
   // and the phone spends minutes decoding an irrelevant tail.
   const usableContext = Math.max(1, options.nCtx - options.nBatch);
   const contextCap = Math.max(1, Math.floor(usableContext / 2));
-  const envCapRaw = readEnvInt("ELIZA_LLAMA_MAX_OUTPUT_TOKENS", 0, env);
+  const envCapRaw = readEnvInt("ELIZA_LLAMA_MAX_OUTPUT_TOKENS", 256, env);
   const envCap = envCapRaw > 0 ? Math.min(envCapRaw, contextCap) : null;
   const cap = envCap ?? contextCap;
   const maxTokens = Math.max(1, Math.min(requested, cap));
@@ -911,6 +932,10 @@ function dlopenShim(ffi: BunFFIModule, shimPath: string): ShimSymbols {
       args: [T.ptr, T.i32],
       returns: T.void,
     },
+    eliza_llama_context_params_set_ctx_type: {
+      args: [T.ptr, T.i32],
+      returns: T.void,
+    },
     eliza_llama_context_params_set_type_k: {
       args: [T.ptr, T.i32],
       returns: T.void,
@@ -1085,6 +1110,7 @@ class AospLlamaAdapter implements AospLoader {
     nUBatch: number;
     kvCacheType?: { k?: KvCacheTypeName; v?: KvCacheTypeName };
     embeddings: boolean;
+    contextType?: number;
     phase: string;
   }): Pointer {
     const ctxParamsPtr = this.shim.eliza_llama_context_params_default();
@@ -1123,6 +1149,12 @@ class AospLlamaAdapter implements AospLoader {
         this.shim.eliza_llama_context_params_set_pooling_type(
           ctxParamsPtr,
           LLAMA_POOLING_TYPE_MEAN,
+        );
+      }
+      if (args.contextType !== undefined) {
+        this.shim.eliza_llama_context_params_set_ctx_type(
+          ctxParamsPtr,
+          args.contextType,
         );
       }
       if (args.kvCacheType?.k !== undefined) {
@@ -1175,114 +1207,158 @@ class AospLlamaAdapter implements AospLoader {
     nUBatch: number;
     kvCacheType?: { k?: KvCacheTypeName; v?: KvCacheTypeName };
   }): Promise<void> {
-    if (!args.loadArgs.draftModelPath) return;
-    const required = envFlagEnabled("ELIZA_DFLASH_REQUIRED");
-    if (!this.speculativeShim) {
-      const message =
-        "[aosp-llama] DFlash drafter present but speculative shim is not bundled";
-      if (required) throw new Error(message);
-      logger.warn(`${message}; using target-only decode`);
-      return;
-    }
-    if (this.speculativeShim.eliza_speculative_supported() !== 1) {
-      const message =
-        "[aosp-llama] speculative shim reports unsupported for this llama.cpp checkout";
-      if (required) throw new Error(message);
-      logger.warn(`${message}; using target-only decode`);
-      return;
-    }
-    if (this.ctx === null) return;
-    if (this.speculativeShim.eliza_speculative_is_compat(this.ctx) !== 1) {
-      const message =
-        "[aosp-llama] target context is not speculative-compatible";
-      if (required) throw new Error(message);
-      logger.warn(`${message}; using target-only decode`);
-      return;
+    const tryConfigureSpeculativeMode = async (
+      specMode: AospSpeculativeMode,
+      required: boolean,
+    ): Promise<boolean> => {
+      const useMtp = specMode === "draft-mtp";
+      if (!useMtp && !args.loadArgs.draftModelPath) return false;
+      if (!this.speculativeShim) {
+        const message = `[aosp-llama] ${useMtp ? "MTP" : "DFlash"} requested but speculative shim is not bundled`;
+        if (required) throw new Error(message);
+        logger.warn(`${message}; using target-only decode`);
+        return false;
+      }
+      if (this.speculativeShim.eliza_speculative_supported() !== 1) {
+        const message =
+          "[aosp-llama] speculative shim reports unsupported for this llama.cpp checkout";
+        if (required) throw new Error(message);
+        logger.warn(`${message}; using target-only decode`);
+        return false;
+      }
+      if (this.ctx === null) return false;
+      if (this.speculativeShim.eliza_speculative_is_compat(this.ctx) !== 1) {
+        const message =
+          "[aosp-llama] target context is not speculative-compatible";
+        if (required) throw new Error(message);
+        logger.warn(`${message}; using target-only decode`);
+        return false;
+      }
+
+      const draftPath = useMtp
+        ? args.loadArgs.modelPath
+        : args.loadArgs.draftModelPath;
+      if (!draftPath) return false;
+      const draftContextSize = useMtp
+        ? args.targetContextSize
+        : (args.loadArgs.draftContextSize ??
+          readEnvInt(
+            "ELIZA_DFLASH_DRAFT_N_CTX",
+            Math.min(2048, args.targetContextSize),
+          ));
+      const draftBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_BATCH", args.nBatch);
+      const draftUBatch = readEnvInt(
+        "ELIZA_DFLASH_DRAFT_N_UBATCH",
+        args.nUBatch,
+      );
+      const draftMax =
+        args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 8);
+      // Mobile chat turns are short. The fork's DFlash draft-simple path clears
+      // any draft shorter than n_min before target verification, so a default of
+      // 4 often degenerates into target-only decode on Pixel. Keep the default
+      // permissive and let the target model verify every drafted token.
+      const draftMin =
+        args.loadArgs.draftMin ?? readEnvInt("ELIZA_DFLASH_DRAFT_MIN", 1);
+      const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.25);
+      const phase = useMtp ? "loadModel:mtpDraft" : "loadModel:dflashDraft";
+      const draftModel = useMtp
+        ? this.model
+        : this.loadModelPointer(draftPath, args.gpuLayers, phase);
+      if (!draftModel) {
+        if (required)
+          throw new Error("[aosp-llama] target model is not loaded");
+        return false;
+      }
+      const ownsDraftModel = !useMtp;
+      let draftCtx: Pointer = 0;
+      let specHandle: Pointer = 0;
+      try {
+        draftCtx = this.initContextPointer({
+          modelPtr: draftModel,
+          modelPath: draftPath,
+          contextSize: draftContextSize,
+          maxThreads: args.maxThreads,
+          nBatch: draftBatch,
+          nUBatch: draftUBatch,
+          kvCacheType: args.kvCacheType,
+          embeddings: false,
+          contextType: useMtp ? LLAMA_CONTEXT_TYPE_MTP : undefined,
+          phase,
+        });
+        const specType = encodeCString(specMode);
+        specHandle = this.speculativeShim.eliza_speculative_init(
+          this.ctx,
+          draftCtx,
+          this.ffi.ptr(specType),
+          draftMax,
+          draftMin,
+          draftPMin,
+        );
+        if (!specHandle) {
+          throw new Error("[aosp-llama] eliza_speculative_init returned NULL");
+        }
+      } catch (err) {
+        if (draftCtx) this.sym.llama_free(draftCtx);
+        if (ownsDraftModel) this.sym.llama_model_free(draftModel);
+        const message =
+          err instanceof Error ? err.message : String(err ?? "unknown error");
+        if (required) {
+          throw err;
+        }
+        logger.warn(
+          `[aosp-llama] ${useMtp ? "MTP" : "DFlash"} speculative decode failed to initialize; using target-only decode: ${message}`,
+        );
+        writeAospLlamaDebugLog(
+          useMtp ? "loadModel:mtp:fallback" : "loadModel:dflash:fallback",
+          {
+            target: path.basename(args.loadArgs.modelPath),
+            draft: path.basename(draftPath),
+            specType: specMode,
+            error: message,
+          },
+        );
+        return false;
+      }
+      this.draftModel = ownsDraftModel ? draftModel : null;
+      this.draftCtx = draftCtx;
+      this.speculativeHandle = specHandle;
+      this.loadedDraftPath = useMtp ? `${draftPath}#mtp` : draftPath;
+      writeAospLlamaDebugLog(
+        useMtp ? "loadModel:mtp:ready" : "loadModel:dflash:ready",
+        {
+          target: path.basename(args.loadArgs.modelPath),
+          draft: path.basename(draftPath),
+          specType: specMode,
+          draftContextSize,
+          draftBatch,
+          draftUBatch,
+          draftMax,
+          draftMin,
+          draftPMin,
+        },
+      );
+      logger.info(
+        `[aosp-llama] in-process ${useMtp ? "MTP" : "DFlash"} ready (draft=${path.basename(draftPath)}, n_ctx=${draftContextSize}, n_draft=${draftMax})`,
+      );
+      return true;
+    };
+
+    const requestedMode = readAospSpeculativeMode();
+    if (requestedMode === "draft-mtp") {
+      const mtpRequired =
+        envFlagEnabled("ELIZA_MTP_REQUIRED") ||
+        envFlagEnabled("ELIZA_SPECULATIVE_REQUIRED");
+      if (await tryConfigureSpeculativeMode("draft-mtp", mtpRequired)) return;
+      if (mtpRequired || !args.loadArgs.draftModelPath) return;
+      writeAospLlamaDebugLog("loadModel:mtp:dflashFallback", {
+        target: path.basename(args.loadArgs.modelPath),
+        draft: path.basename(args.loadArgs.draftModelPath),
+      });
     }
 
-    const draftPath = args.loadArgs.draftModelPath;
-    const draftContextSize =
-      args.loadArgs.draftContextSize ??
-      readEnvInt(
-        "ELIZA_DFLASH_DRAFT_N_CTX",
-        Math.min(2048, args.targetContextSize),
-      );
-    const draftBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_BATCH", args.nBatch);
-    const draftUBatch = readEnvInt("ELIZA_DFLASH_DRAFT_N_UBATCH", args.nUBatch);
-    const draftMax =
-      args.loadArgs.draftMax ?? readEnvInt("ELIZA_DFLASH_DRAFT_MAX", 8);
-    // Mobile chat turns are short. The fork's DFlash draft-simple path clears
-    // any draft shorter than n_min before target verification, so a default of
-    // 4 often degenerates into target-only decode on Pixel. Keep the default
-    // permissive and let the target model verify every drafted token.
-    const draftMin =
-      args.loadArgs.draftMin ?? readEnvInt("ELIZA_DFLASH_DRAFT_MIN", 1);
-    const draftPMin = readEnvFloat("ELIZA_DFLASH_DRAFT_P_MIN", 0.25);
-    const draftModel = this.loadModelPointer(
-      draftPath,
-      args.gpuLayers,
-      "loadModel:dflashDraft",
-    );
-    let draftCtx: Pointer = 0;
-    let specHandle: Pointer = 0;
-    try {
-      draftCtx = this.initContextPointer({
-        modelPtr: draftModel,
-        modelPath: draftPath,
-        contextSize: draftContextSize,
-        maxThreads: args.maxThreads,
-        nBatch: draftBatch,
-        nUBatch: draftUBatch,
-        kvCacheType: args.kvCacheType,
-        embeddings: false,
-        phase: "loadModel:dflashDraft",
-      });
-      const specType = encodeCString("dflash");
-      specHandle = this.speculativeShim.eliza_speculative_init(
-        this.ctx,
-        draftCtx,
-        this.ffi.ptr(specType),
-        draftMax,
-        draftMin,
-        draftPMin,
-      );
-      if (!specHandle) {
-        throw new Error("[aosp-llama] eliza_speculative_init returned NULL");
-      }
-    } catch (err) {
-      if (draftCtx) this.sym.llama_free(draftCtx);
-      this.sym.llama_model_free(draftModel);
-      const message =
-        err instanceof Error ? err.message : String(err ?? "unknown error");
-      if (required) {
-        throw err;
-      }
-      logger.warn(
-        `[aosp-llama] DFlash drafter failed to initialize; using target-only decode: ${message}`,
-      );
-      writeAospLlamaDebugLog("loadModel:dflash:fallback", {
-        target: path.basename(args.loadArgs.modelPath),
-        draft: path.basename(draftPath),
-        error: message,
-      });
-      return;
-    }
-    this.draftModel = draftModel;
-    this.draftCtx = draftCtx;
-    this.speculativeHandle = specHandle;
-    this.loadedDraftPath = draftPath;
-    writeAospLlamaDebugLog("loadModel:dflash:ready", {
-      target: path.basename(args.loadArgs.modelPath),
-      draft: path.basename(draftPath),
-      draftContextSize,
-      draftBatch,
-      draftUBatch,
-      draftMax,
-      draftMin,
-      draftPMin,
-    });
-    logger.info(
-      `[aosp-llama] in-process DFlash ready (draft=${path.basename(draftPath)}, n_ctx=${draftContextSize}, n_draft=${draftMax})`,
+    await tryConfigureSpeculativeMode(
+      "dflash",
+      envFlagEnabled("ELIZA_DFLASH_REQUIRED"),
     );
   }
 
@@ -1787,6 +1863,18 @@ class AospLlamaAdapter implements AospLoader {
       throw makeAbortError(args.signal);
     }
 
+    const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
+    const tokenBudget = resolveAospGenerateTokenBudget({
+      requestedMaxTokens: args.maxTokens,
+      nCtx: this.nCtx,
+      nBatch,
+    });
+    if (tokenBudget.capped) {
+      writeAospLlamaDebugLog("generate:maxTokens:capped", tokenBudget);
+      logger.warn(
+        `[aosp-llama] capping maxTokens ${tokenBudget.requestedMaxTokens} -> ${tokenBudget.maxTokens} (n_ctx=${this.nCtx}, n_batch=${nBatch}, envCap=${tokenBudget.envCap ?? "none"})`,
+      );
+    }
     const requestedMaxTokens =
       Number.isFinite(args.maxTokens) && args.maxTokens != null
         ? Math.max(1, Math.floor(args.maxTokens))
@@ -1796,8 +1884,7 @@ class AospLlamaAdapter implements AospLoader {
       readEnvInt("ELIZA_DFLASH_MIN_TOKENS", 64),
     );
     const dflashForced = envFlagEnabled("ELIZA_DFLASH_FORCE");
-    const dflashShortTurn =
-      args.stopOnFirstSentence === true || requestedMaxTokens < dflashMinTokens;
+    const dflashShortTurn = requestedMaxTokens < dflashMinTokens;
     const useDflash =
       this.speculativeHandle !== null &&
       !envFlagDisabled("ELIZA_DFLASH") &&
@@ -1805,7 +1892,10 @@ class AospLlamaAdapter implements AospLoader {
 
     if (useDflash) {
       try {
-        return await this.generateWithSpeculativeShim(args);
+        return await this.generateWithSpeculativeShim({
+          ...args,
+          maxTokens: tokenBudget.maxTokens,
+        });
       } catch (err) {
         if (envFlagEnabled("ELIZA_DFLASH_REQUIRED")) {
           throw err;
@@ -1824,9 +1914,7 @@ class AospLlamaAdapter implements AospLoader {
       !envFlagDisabled("ELIZA_DFLASH")
     ) {
       writeAospLlamaDebugLog("generate:dflash:skip", {
-        reason: args.stopOnFirstSentence
-          ? "first_sentence_short_turn"
-          : "below_min_tokens",
+        reason: "below_min_tokens",
         requestedMaxTokens,
         minTokens: dflashMinTokens,
         force: dflashForced,
@@ -1991,19 +2079,7 @@ class AospLlamaAdapter implements AospLoader {
       // Decode chunk size is bounded by n_batch (set in loadModel).
       // Reading it here mirrors the parameter that loadModel committed
       // to via eliza_llama_context_params_set_n_batch.
-      const nBatch = readEnvInt("ELIZA_LLAMA_N_BATCH", 64);
-      const tokenBudget = resolveAospGenerateTokenBudget({
-        requestedMaxTokens: args.maxTokens,
-        nCtx: this.nCtx,
-        nBatch,
-      });
       const maxOutputReserve = tokenBudget.maxOutputReserve;
-      if (tokenBudget.capped) {
-        writeAospLlamaDebugLog("generate:maxTokens:capped", tokenBudget);
-        logger.warn(
-          `[aosp-llama] capping maxTokens ${tokenBudget.requestedMaxTokens} -> ${tokenBudget.maxTokens} (n_ctx=${this.nCtx}, n_batch=${nBatch}, envCap=${tokenBudget.envCap ?? "none"})`,
-        );
-      }
       // Reserve maxOutputReserve + n_batch (one ubatch slack) + an
       // empirical 25 % safety margin. llama.cpp's Flash-Attention sliding
       // memory allocator on the b8198 build returns

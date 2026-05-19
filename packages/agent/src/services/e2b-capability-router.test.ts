@@ -106,6 +106,14 @@ type SatelliteRouteContext = {
   bodyText: string;
 };
 
+function replaceGlobalFetch(fetchImpl: typeof fetch): void {
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    writable: true,
+    value: fetchImpl,
+  });
+}
+
 function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
@@ -119,7 +127,7 @@ function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
 function startSatelliteHttpServer(): SatelliteHttpServer {
   const calls: SatelliteHttpCall[] = [];
   const originalFetch = globalThis.fetch;
-  const fetchMock = vi.fn(
+  const fetchMock: typeof fetch = Object.assign(
     async (
       input: Parameters<typeof fetch>[0],
       init?: Parameters<typeof fetch>[1],
@@ -127,13 +135,14 @@ function startSatelliteHttpServer(): SatelliteHttpServer {
       const request = new Request(input, init);
       return handleSatelliteHttpRequest(request, calls);
     },
+    { preconnect: originalFetch.preconnect },
   );
-  vi.stubGlobal("fetch", fetchMock);
+  replaceGlobalFetch(fetchMock);
   return {
     baseUrl: "https://satellite.test",
     calls,
     close: async () => {
-      vi.stubGlobal("fetch", originalFetch);
+      replaceGlobalFetch(originalFetch);
     },
   };
 }
@@ -141,7 +150,7 @@ function startSatelliteHttpServer(): SatelliteHttpServer {
 function startElizaCloudProvisioningServer(): SatelliteHttpServer {
   const calls: SatelliteHttpCall[] = [];
   const originalFetch = globalThis.fetch;
-  const fetchMock = vi.fn(
+  const fetchMock: typeof fetch = Object.assign(
     async (
       input: Parameters<typeof fetch>[0],
       init?: Parameters<typeof fetch>[1],
@@ -173,13 +182,14 @@ function startElizaCloudProvisioningServer(): SatelliteHttpServer {
       }
       return handleSatelliteHttpRequest(request, calls);
     },
+    { preconnect: originalFetch.preconnect },
   );
-  vi.stubGlobal("fetch", fetchMock);
+  replaceGlobalFetch(fetchMock);
   return {
     baseUrl: "https://api.elizacloud.ai/api/v1",
     calls,
     close: async () => {
-      vi.stubGlobal("fetch", originalFetch);
+      replaceGlobalFetch(originalFetch);
     },
   };
 }

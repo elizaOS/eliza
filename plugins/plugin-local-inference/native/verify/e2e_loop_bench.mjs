@@ -1155,7 +1155,12 @@ async function main() {
     return finish(out, args, logFn);
   }
   if (!tierUsesOmniVoice(tier)) {
-    const kokoroModel = path.join(bundleDir, "tts", "kokoro", "model_q4.onnx");
+    // Kokoro bundles use GGUF artifacts via the fork; discover by scanning tts/kokoro/
+    const kokoroDir = path.join(bundleDir, "tts", "kokoro");
+    const kokoroGgufs = fs.existsSync(kokoroDir)
+      ? fs.readdirSync(kokoroDir).filter((f) => f.endsWith(".gguf"))
+      : [];
+    const kokoroModelPresent = kokoroGgufs.some((f) => !/token/i.test(f));
     const out = {
       ...baseReport,
       status: "needs-harness",
@@ -1163,7 +1168,7 @@ async function main() {
       bundleArtifacts: {
         text: !!isRealGguf(files.text),
         drafter: files.drafter ? !!isRealGguf(files.drafter, 10_000_000) : null,
-        kokoroModel: fs.existsSync(kokoroModel),
+        kokoroModel: kokoroModelPresent,
         ttsModel: null,
         ttsCodec: null,
         asr: !!isRealGguf(files.asr, 1_000_000),

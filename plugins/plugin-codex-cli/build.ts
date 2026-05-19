@@ -1,7 +1,9 @@
 #!/usr/bin/env bun
 /** Build script for @elizaos/plugin-codex-cli. */
 
-const externalDeps = ["@elizaos/core"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

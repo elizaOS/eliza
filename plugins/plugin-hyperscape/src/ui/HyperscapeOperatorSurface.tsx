@@ -14,9 +14,9 @@ import {
   toneForStatusText,
   toneForViewerAttachment,
   useApp,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import { Button, Input } from "@elizaos/ui";
-import { useCallback, useMemo, useState } from "react";
+import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 interface HyperscapeActivityEntry {
   id: string;
@@ -180,9 +180,7 @@ export function HyperscapeOperatorSurface({
       setStatusMessage(null);
       try {
         const response = await client.controlAppRun(run.runId, action);
-        setStatusMessage(
-          response.message,
-        );
+        setStatusMessage(response.message);
       } catch (error) {
         setStatusMessage(
           error instanceof Error
@@ -418,4 +416,195 @@ export function HyperscapeOperatorSurface({
       ) : null}
     </section>
   );
+}
+
+export function HyperscapeTuiView() {
+  const { appRuns, setActionNotice } = useApp();
+  const { run, matchingRuns } = useMemo(
+    () => selectLatestRunForApp("@elizaos/plugin-hyperscape", appRuns),
+    [appRuns],
+  );
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const session = run?.session ?? null;
+  const recentActivity = run ? extractRecentActivity(run) : [];
+  const suggestedPrompts = session?.suggestedPrompts ?? [];
+  const canSend = Boolean(session?.canSendCommands);
+  const viewState = {
+    viewType: "tui",
+    viewId: "hyperscape",
+    appName: "@elizaos/plugin-hyperscape",
+    runId: run?.runId ?? null,
+    status: run?.status ?? "idle",
+    health: run?.health.state ?? null,
+    viewerAttachment: run?.viewerAttachment ?? null,
+    activeRunCount: matchingRuns.length,
+    sessionId: session?.sessionId ?? null,
+    canSend,
+    followEntity:
+      session?.followEntity ?? run?.viewer?.authMessage?.followEntity ?? null,
+    characterId: session?.characterId ?? null,
+    recentActivityCount: recentActivity.length,
+    suggestedPromptCount: suggestedPrompts.length,
+  };
+
+  const sendDraft = async (content: string) => {
+    const trimmed = content.trim();
+    if (!run?.runId || !trimmed || sending) return;
+    setSending(true);
+    try {
+      const response = await client.sendAppRunMessage(run.runId, trimmed);
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
+      setDraft("");
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error
+          ? error.message
+          : "Failed to relay the Hyperscape operator message.",
+        "error",
+        3200,
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
+      <div style={tuiRouteStyle}>elizaos://hyperscape --type=tui</div>
+      <div style={tuiMetaStyle}>
+        {run?.status ?? "idle"} | {run?.viewerAttachment ?? "viewer pending"} |{" "}
+        {run?.health.state ?? "unknown"}
+      </div>
+      <section style={tuiPanelStyle} aria-label="Hyperscape state">
+        <strong style={tuiTitleStyle}>Hyperscape</strong>
+        <div>run {run?.runId ?? "none"}</div>
+        <div>session {session?.sessionId ?? "none"}</div>
+        <div>follow {viewState.followEntity ?? "none"}</div>
+        <div>commands {canSend ? "available" : "unavailable"}</div>
+        <div style={tuiSubtleStyle}>suggested prompts</div>
+        {(suggestedPrompts.length
+          ? suggestedPrompts
+          : ["look around", "follow target", "pause"]
+        )
+          .slice(0, 6)
+          .map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              disabled={!canSend || sending}
+              onClick={() => void sendDraft(prompt)}
+              style={tuiButtonStyle}
+            >
+              {prompt}
+            </button>
+          ))}
+        <input
+          aria-label="Hyperscape command"
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void sendDraft(draft);
+          }}
+          placeholder="Send an operator message..."
+          style={tuiInputStyle}
+        />
+        <button
+          type="button"
+          disabled={!canSend || sending || !draft.trim()}
+          onClick={() => void sendDraft(draft)}
+          style={tuiButtonStyle}
+        >
+          send command
+        </button>
+      </section>
+    </div>
+  );
+}
+
+const tuiRootStyle: CSSProperties = {
+  minHeight: "100vh",
+  background: "#020617",
+  color: "#cbd5e1",
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+  padding: 20,
+};
+const tuiRouteStyle: CSSProperties = { color: "#7dd3fc", marginBottom: 4 };
+const tuiMetaStyle: CSSProperties = { color: "#475569", marginBottom: 16 };
+const tuiPanelStyle: CSSProperties = {
+  border: "1px solid rgba(125,211,252,0.3)",
+  borderRadius: 6,
+  padding: 16,
+  maxWidth: 760,
+};
+const tuiTitleStyle: CSSProperties = {
+  display: "block",
+  color: "#e2e8f0",
+  marginBottom: 10,
+};
+const tuiSubtleStyle: CSSProperties = { color: "#64748b", marginTop: 14 };
+const tuiButtonStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  margin: "8px 0",
+  background: "transparent",
+  color: "#a7f3d0",
+  border: "1px solid rgba(167,243,208,0.45)",
+  borderRadius: 4,
+  padding: "6px 8px",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+const tuiInputStyle: CSSProperties = {
+  width: "100%",
+  marginTop: 14,
+  background: "#020617",
+  color: "#e2e8f0",
+  border: "1px solid rgba(125,211,252,0.35)",
+  borderRadius: 4,
+  padding: "8px",
+  fontFamily: "inherit",
+};
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-hyperscape-state") {
+    return {
+      viewType: "tui",
+      appName: "@elizaos/plugin-hyperscape",
+      commands: ["terminal-hyperscape-command", "terminal-hyperscape-control"],
+    };
+  }
+  if (capability === "terminal-hyperscape-command") {
+    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
+    const content =
+      typeof params?.content === "string" ? params.content.trim() : "";
+    if (!runId) throw new Error("runId is required");
+    if (!content) throw new Error("content is required");
+    return {
+      viewType: "tui",
+      command: await client.sendAppRunMessage(runId, content),
+    };
+  }
+  if (capability === "terminal-hyperscape-control") {
+    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
+    const action =
+      params?.action === "pause" || params?.action === "resume"
+        ? params.action
+        : null;
+    if (!runId) throw new Error("runId is required");
+    if (!action) throw new Error("action must be pause or resume");
+    return {
+      viewType: "tui",
+      control: await client.controlAppRun(runId, action),
+    };
+  }
+  throw new Error(`Unsupported Hyperscape TUI capability: ${capability}`);
 }

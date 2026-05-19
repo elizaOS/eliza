@@ -14,10 +14,10 @@
  */
 
 import { execSync } from "node:child_process";
+import type { WindowInfo } from "../types.js";
 import { commandExists, currentPlatform } from "./helpers.js";
 import { listProcesses, type ProcessInfo } from "./process-list.js";
 import { listWindows } from "./windows-list.js";
-import type { WindowInfo } from "../types.js";
 
 export interface A11yNode {
   role: string;

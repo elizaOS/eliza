@@ -944,8 +944,7 @@ export function withDiscord<TBase extends Constructor<LifeOpsServiceBase>>(
           normalizeDiscordCapabilities(existing.capabilities),
           capabilities,
         ) &&
-        JSON.stringify(existing.identity) ===
-          JSON.stringify(args.identity) &&
+        JSON.stringify(existing.identity) === JSON.stringify(args.identity) &&
         JSON.stringify(existing.metadata) === JSON.stringify(metadata)
       ) {
         return existing;

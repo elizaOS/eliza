@@ -76,6 +76,22 @@ function smsRole(status: SystemStatus | null) {
   return status?.roles.find((role) => role.role === "sms") ?? null;
 }
 
+async function loadMessagesState(limit = 200) {
+  const [messageResult, statusResult] = await Promise.all([
+    Messages.listMessages({ limit }),
+    System.getStatus().catch(() => null),
+  ]);
+  const threads = buildThreads(messageResult.messages);
+  const currentSmsRole = smsRole(statusResult);
+  return {
+    messages: messageResult.messages,
+    threads,
+    systemStatus: statusResult,
+    ownsSmsRole: currentSmsRole?.held === true,
+    smsRoleHolder: currentSmsRole?.holders[0] ?? null,
+  };
+}
+
 export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
   const [messages, setMessages] = useState<SmsMessageSummary[]>([]);
   const [systemStatus, setSystemStatus] = useState<SystemStatus | null>(null);
@@ -489,4 +505,381 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
       </main>
     </div>
   );
+}
+
+export function MessagesTuiView() {
+  const [messages, setMessages] = useState<SmsMessageSummary[]>([]);
+  const [threads, setThreads] = useState<ThreadSummary[]>([]);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
+  const [composeAddress, setComposeAddress] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [ownsSmsRole, setOwnsSmsRole] = useState(false);
+  const [smsRoleHolder, setSmsRoleHolder] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadMessagesState(200);
+      setMessages(next.messages);
+      setThreads(next.threads);
+      setOwnsSmsRole(next.ownsSmsRole);
+      setSmsRoleHolder(next.smsRoleHolder);
+      setLastAction("refresh");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setMessages([]);
+      setThreads([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const selectedThread = useMemo(
+    () => threads.find((thread) => thread.id === selectedThreadId) ?? null,
+    [selectedThreadId, threads],
+  );
+
+  const openThread = useCallback((thread: ThreadSummary) => {
+    setSelectedThreadId(thread.id);
+    setComposeAddress(thread.address);
+    setLastAction(`open ${thread.id}`);
+  }, []);
+
+  const send = useCallback(async () => {
+    const address = composeAddress.trim();
+    const body = composeBody.trim();
+    if (!address || !body || sending) return;
+    setSending(true);
+    setError(null);
+    try {
+      await Messages.sendSms({ address, body });
+      setComposeBody("");
+      setLastAction(`sent ${address}`);
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSending(false);
+    }
+  }, [composeAddress, composeBody, refresh, sending]);
+
+  const requestSmsRole = useCallback(async () => {
+    setError(null);
+    try {
+      await System.requestRole({ role: "sms" });
+      await refresh();
+      setLastAction("request-sms-role");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [refresh]);
+
+  const state = {
+    viewType: "tui",
+    viewId: "messages",
+    messageCount: messages.length,
+    threadCount: threads.length,
+    selectedThreadId,
+    composeAddress,
+    composeBodyLength: composeBody.length,
+    ownsSmsRole,
+    smsRoleHolder,
+    loading,
+    sending,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(state)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://messages --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : `${threads.length} threads`} | sms{" "}
+        {ownsSmsRole
+          ? "owned"
+          : smsRoleHolder
+            ? `held:${smsRoleHolder}`
+            : "unclaimed"}{" "}
+        | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(220px, 0.9fr) minmax(280px, 1.1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="SMS threads"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 360,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>threads</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {!loading && !error && threads.length === 0 && (
+            <div style={{ color: "#64748b" }}>no sms threads</div>
+          )}
+          {threads.map((thread, index) => (
+            <button
+              key={thread.id}
+              type="button"
+              onClick={() => openThread(thread)}
+              style={{
+                width: "100%",
+                display: "grid",
+                gridTemplateColumns: "4ch minmax(8ch, 1fr) 6ch",
+                gap: 10,
+                border: "none",
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                background:
+                  thread.id === selectedThreadId
+                    ? "rgba(125,211,252,0.12)"
+                    : "transparent",
+                color: "#cbd5e1",
+                padding: "8px 0",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
+                {thread.address}
+              </span>
+              <span
+                style={{ color: thread.unreadCount ? "#fca5a5" : "#64748b" }}
+              >
+                {thread.unreadCount ? `${thread.unreadCount} new` : "read"}
+              </span>
+              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+                {thread.lastMessage.body}
+              </span>
+            </button>
+          ))}
+        </section>
+
+        <section
+          aria-label="SMS compose"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 360,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>
+            {selectedThread ? selectedThread.address : "compose"}
+          </strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: refresh | request-role | send
+          </div>
+
+          {!ownsSmsRole && (
+            <button
+              type="button"
+              onClick={() => void requestSmsRole()}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                marginBottom: 14,
+              }}
+            >
+              request sms role
+            </button>
+          )}
+
+          <label
+            htmlFor="messages-tui-address"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            to
+          </label>
+          <input
+            id="messages-tui-address"
+            name="address"
+            value={composeAddress}
+            onChange={(event) => setComposeAddress(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+
+          <label
+            htmlFor="messages-tui-body"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            body
+          </label>
+          <textarea
+            id="messages-tui-body"
+            name="body"
+            value={composeBody}
+            onChange={(event) => setComposeBody(event.target.value)}
+            rows={6}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              resize: "vertical",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+
+          <button
+            type="button"
+            onClick={() => void send()}
+            disabled={!composeAddress.trim() || !composeBody.trim() || sending}
+            style={{
+              background: "transparent",
+              color: "#7dd3fc",
+              border: "1px solid rgba(125,211,252,0.45)",
+              borderRadius: 4,
+              padding: "6px 10px",
+              cursor:
+                !composeAddress.trim() || !composeBody.trim() || sending
+                  ? "not-allowed"
+                  : "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            send
+          </button>
+
+          {selectedThread && (
+            <div style={{ marginTop: 18 }}>
+              <div style={{ color: "#a7f3d0", marginBottom: 8 }}>messages</div>
+              {selectedThread.messages.slice(-8).map((message) => (
+                <div key={message.id} style={{ padding: "4px 0" }}>
+                  <span style={{ color: "#64748b" }}>
+                    {message.type === SENT_SMS_TYPE ? "out" : "in "}
+                  </span>{" "}
+                  {message.body}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-list-threads") {
+    const state = await loadMessagesState(
+      typeof params?.limit === "number" ? params.limit : 200,
+    );
+    return {
+      viewType: "tui",
+      threads: state.threads.map((thread) => ({
+        id: thread.id,
+        address: thread.address,
+        messageCount: thread.messages.length,
+        unreadCount: thread.unreadCount,
+        lastMessage: thread.lastMessage.body,
+        lastMessageAt: thread.lastMessage.date,
+      })),
+      ownsSmsRole: state.ownsSmsRole,
+      smsRoleHolder: state.smsRoleHolder,
+    };
+  }
+
+  if (capability === "terminal-send-sms") {
+    const address =
+      typeof params?.address === "string" ? params.address.trim() : "";
+    const body = typeof params?.body === "string" ? params.body.trim() : "";
+    if (!address) throw new Error("address is required");
+    if (!body) throw new Error("body is required");
+    await Messages.sendSms({ address, body });
+    return { sent: true, address, bodyLength: body.length, viewType: "tui" };
+  }
+
+  if (capability === "terminal-request-sms-role") {
+    await System.requestRole({ role: "sms" });
+    const state = await loadMessagesState(200);
+    return {
+      requested: true,
+      ownsSmsRole: state.ownsSmsRole,
+      smsRoleHolder: state.smsRoleHolder,
+      viewType: "tui",
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

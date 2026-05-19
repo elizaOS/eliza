@@ -185,7 +185,7 @@
       ],
       "ignore": ["dist/**", ".turbo/**"]
     },
-    "packages/os-usb-installer": {
+    "packages/os/usb-installer": {
       "entry": [
         "index.html",
         "src/index.ts",

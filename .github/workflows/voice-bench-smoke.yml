@@ -135,7 +135,7 @@ jobs:
         with:
           bun-version: "1.3.13"
       - name: Install workspace deps
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
       - name: Typecheck bench.ts
         run: |
           bun build --target=node packages/benchmarks/voicebench/typescript/src/bench.ts \

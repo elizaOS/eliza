@@ -100,7 +100,7 @@ Hard rules:
   MUST fail loudly. No silent passes, no skip-and-continue.
 
 The reference implementations and on-device kernels live in
-`packages/native-plugins/{qjl-cpu,polarquant-cpu}` and
+`packages/native/plugins/{qjl-cpu,polarquant-cpu}` and
 `packages/inference/{vulkan,metal,reference}`. The Python recipes here
 MUST stay byte-for-byte compatible with those references — when a
 recipe's block layout, codebook, or sign-vector seed changes, the
@@ -264,7 +264,7 @@ shipped bundle.
   its target text checkpoint's hash.
 - **Bit-exact with kernels.** When a quantization recipe and a kernel
   reference disagree, the kernel reference (`packages/inference/reference/`,
-  `packages/native-plugins/{qjl-cpu,polarquant-cpu}`) is canonical.
+  `packages/native/plugins/{qjl-cpu,polarquant-cpu}`) is canonical.
   Update the recipe to match, not the other way around.
 - **Branding.** Published HF repos and READMEs say `Eliza-1`. Internal
   training logs, dataset names, and source-checkpoint references may

@@ -16,13 +16,21 @@ const SATELLITE_TOKEN = "sat-token";
 let workspaceRoot = "";
 let originalFetch: typeof fetch;
 
+function replaceGlobalFetch(fetchImpl: typeof fetch): void {
+  Object.defineProperty(globalThis, "fetch", {
+    configurable: true,
+    writable: true,
+    value: fetchImpl,
+  });
+}
+
 beforeEach(async () => {
   workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "agent-satellite-"));
   originalFetch = globalThis.fetch;
 });
 
 afterEach(async () => {
-  vi.stubGlobal("fetch", originalFetch);
+  replaceGlobalFetch(originalFetch);
   await rm(workspaceRoot, { recursive: true, force: true });
 });
 
@@ -43,22 +51,21 @@ async function installCodingSatelliteFetch(): Promise<void> {
   });
   await ensureWorkspace(config);
   const handler = createHandler(config);
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(
-      async (
-        input: Parameters<typeof fetch>[0],
-        init?: Parameters<typeof fetch>[1],
-      ) => {
-        const request = new Request(input, init);
-        const url = new URL(request.url);
-        if (url.origin !== SATELLITE_URL) {
-          return originalFetch(input, init);
-        }
-        return handler(request);
-      },
-    ),
+  const fetchMock: typeof fetch = Object.assign(
+    async (
+      input: Parameters<typeof fetch>[0],
+      init?: Parameters<typeof fetch>[1],
+    ): Promise<Response> => {
+      const request = new Request(input, init);
+      const url = new URL(request.url);
+      if (url.origin !== SATELLITE_URL) {
+        return originalFetch(input, init);
+      }
+      return handler(request);
+    },
+    { preconnect: originalFetch.preconnect },
   );
+  replaceGlobalFetch(fetchMock);
 }
 
 describe("E2B Satellite router with the Coding Satellite HTTP runner", () => {

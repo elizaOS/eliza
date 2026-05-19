@@ -109,11 +109,15 @@ export function manifestGpuRamGb(manifest: VastServeManifest): number {
 }
 
 export function manifestDiskGb(manifest: VastServeManifest): number {
-  const diskFromSearch = parseConstraintNumber(manifest.search_params?.disk_space);
+  const diskFromSearch = parseConstraintNumber(
+    manifest.search_params?.disk_space,
+  );
   return Math.ceil(diskFromSearch ?? manifest.min_disk_gb ?? 60);
 }
 
-export function manifestSearchParamsToQuery(manifest: VastServeManifest): string {
+export function manifestSearchParamsToQuery(
+  manifest: VastServeManifest,
+): string {
   const params = manifest.search_params ?? {};
   const parts: string[] = [];
 
@@ -121,10 +125,17 @@ export function manifestSearchParamsToQuery(manifest: VastServeManifest): string
     parts.push(`gpu_name in [${params.gpu_name.join(",")}]`);
   }
 
-  for (const key of ["num_gpus", "gpu_ram", "disk_space", "inet_down", "reliability"] as const) {
+  for (const key of [
+    "num_gpus",
+    "gpu_ram",
+    "disk_space",
+    "inet_down",
+    "reliability",
+  ] as const) {
     const value = params[key];
     if (value === undefined || value === null || value === "") continue;
-    const rendered = typeof value === "number" ? `>=${value}` : String(value).trim();
+    const rendered =
+      typeof value === "number" ? `>=${value}` : String(value).trim();
     parts.push(
       `${key}${rendered.startsWith(">") || rendered.startsWith("<") ? "" : "="}${rendered}`,
     );

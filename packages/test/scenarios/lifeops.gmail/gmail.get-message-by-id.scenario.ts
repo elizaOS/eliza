@@ -9,7 +9,7 @@
  * Cited: 03-coverage-gap-matrix.md — single-message fetch by id.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const MESSAGE_ID = "msg-julia";

@@ -1,4 +1,4 @@
-import { Button, client, type CodingAgentSession } from "@elizaos/ui";
+import { Button, type CodingAgentSession, client } from "@elizaos/ui";
 import { Send, Square, Terminal, X } from "lucide-react";
 import {
   type KeyboardEvent,

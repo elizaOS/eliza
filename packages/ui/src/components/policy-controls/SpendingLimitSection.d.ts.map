@@ -1,1 +1,0 @@
-{"version":3,"file":"SpendingLimitSection.d.ts","sourceRoot":"","sources":["SpendingLimitSection.tsx"],"names":[],"mappings":"AAEA,OAAO,KAAK,EAAE,mBAAmB,EAAE,MAAM,SAAS,CAAC;AAkCnD,wBAAgB,oBAAoB,CAAC,EACnC,MAAM,EACN,QAAQ,GACT,EAAE;IACD,MAAM,EAAE,mBAAmB,CAAC;IAC5B,QAAQ,EAAE,CAAC,MAAM,EAAE,mBAAmB,KAAK,IAAI,CAAC;CACjD,2CAoBA;AAED,wBAAgB,eAAe,CAAC,MAAM,EAAE,mBAAmB,GAAG,MAAM,CAEnE"}

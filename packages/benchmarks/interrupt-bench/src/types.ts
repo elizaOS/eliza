@@ -228,7 +228,7 @@ export interface ScenarioResult {
 export interface BenchmarkReport {
   startedAt: string;
   finishedAt: string;
-  mode: "scripted" | "cerebras";
+  mode: "scripted" | "cerebras" | "harness";
   model?: string;
   aggregate: number;
   judgeBonus: number;

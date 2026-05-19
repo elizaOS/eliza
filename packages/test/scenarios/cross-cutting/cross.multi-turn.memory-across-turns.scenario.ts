@@ -3,7 +3,7 @@
  * later turn. The response to turn 2 must recall the fact from turn 1.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "cross.multi-turn.memory-across-turns",

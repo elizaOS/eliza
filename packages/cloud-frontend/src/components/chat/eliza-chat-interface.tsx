@@ -1564,7 +1564,7 @@ export function ElizaChatInterface({
               {loadingState.isSending && (
                 <div className="absolute top-0 left-0 right-0 h-[2px] overflow-hidden pointer-events-none z-10">
                   <div
-                    className="absolute h-full w-24 bg-[#FF5800]"
+                    className="absolute h-full w-24 bg-[var(--brand-orange)]"
                     style={{
                       animation:
                         "visor-scan 4.8s cubic-bezier(0.4, 0, 0.6, 1) infinite",
@@ -1573,7 +1573,7 @@ export function ElizaChatInterface({
                     }}
                   />
                   <div
-                    className="absolute h-full w-16 bg-[#FF5800]/60"
+                    className="absolute h-full w-16 bg-[var(--brand-orange)]/60"
                     style={{
                       animation:
                         "visor-scan-delayed 6.2s cubic-bezier(0.3, 0.1, 0.7, 0.9) infinite 1.5s",
@@ -1676,12 +1676,12 @@ export function ElizaChatInterface({
                       >
                         <div className="flex items-center gap-3">
                           <ImageIcon
-                            className={`h-4 w-4 ${createImageEnabled ? "text-[#FF5800]" : "text-white/50"}`}
+                            className={`h-4 w-4 ${createImageEnabled ? "text-[var(--brand-orange)]" : "text-white/50"}`}
                           />
                           <span className="text-sm">Create image</span>
                         </div>
                         {createImageEnabled && (
-                          <Check className="h-4 w-4 text-[#FF5800]" />
+                          <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                         )}
                       </DropdownMenuItem>
 
@@ -1694,12 +1694,12 @@ export function ElizaChatInterface({
                       >
                         <div className="flex items-center gap-3">
                           <Globe
-                            className={`h-4 w-4 ${webSearchEnabled ? "text-[#FF5800]" : "text-white/50"}`}
+                            className={`h-4 w-4 ${webSearchEnabled ? "text-[var(--brand-orange)]" : "text-white/50"}`}
                           />
                           <span className="text-sm">Web search</span>
                         </div>
                         {webSearchEnabled && (
-                          <Check className="h-4 w-4 text-[#FF5800]" />
+                          <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                         )}
                       </DropdownMenuItem>
 
@@ -1715,12 +1715,12 @@ export function ElizaChatInterface({
                       >
                         <div className="flex items-center gap-3">
                           <Volume2
-                            className={`h-4 w-4 ${audioState.autoPlayTTS ? "text-[#FF5800]" : "text-white/50"}`}
+                            className={`h-4 w-4 ${audioState.autoPlayTTS ? "text-[var(--brand-orange)]" : "text-white/50"}`}
                           />
                           <span className="text-sm">Auto-play voice</span>
                         </div>
                         {audioState.autoPlayTTS && (
-                          <Check className="h-4 w-4 text-[#FF5800]" />
+                          <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                         )}
                       </DropdownMenuItem>
 
@@ -1802,7 +1802,7 @@ export function ElizaChatInterface({
                     <button
                       type="button"
                       onClick={() => setCreateImageEnabled(false)}
-                      className="flex items-center gap-1 h-7 px-3 rounded-sm bg-transparent hover:bg-[#FF5800]/10 text-[#FF5800] text-sm transition-colors"
+                      className="flex items-center gap-1 h-7 px-3 rounded-sm bg-transparent hover:bg-[var(--brand-orange)]/10 text-[var(--brand-orange)] text-sm transition-colors"
                     >
                       <span>{selectedImageModel.name}</span>
                       <X className="h-3.5 w-3.5" />
@@ -1910,7 +1910,7 @@ export function ElizaChatInterface({
                                       {tier.name}
                                     </span>
                                     {tier.recommended && (
-                                      <span className="rounded-full border border-[#FF5800]/30 bg-[#FF5800]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
+                                      <span className="rounded-full border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
                                         Recommended
                                       </span>
                                     )}
@@ -1924,7 +1924,7 @@ export function ElizaChatInterface({
                                 </div>
                               </div>
                               {!customModel && selectedTier === tier.id && (
-                                <Check className="h-4 w-4 text-[#FF5800]" />
+                                <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                               )}
                             </DropdownMenuItem>
                           ))}
@@ -1977,7 +1977,7 @@ export function ElizaChatInterface({
                                             )}
                                           </span>
                                           {model.recommended && (
-                                            <span className="rounded-full border border-[#FF5800]/30 bg-[#FF5800]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
+                                            <span className="rounded-full border border-[var(--brand-orange)]/30 bg-[var(--brand-orange)]/10 px-1.5 py-0.5 text-[9px] uppercase text-[#FF9B66]">
                                               Recommended
                                             </span>
                                           )}
@@ -1995,7 +1995,7 @@ export function ElizaChatInterface({
                                         </span>
                                       </div>
                                       {customModel?.id === model.id && (
-                                        <Check className="h-4 w-4 text-[#FF5800]" />
+                                        <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                                       )}
                                     </DropdownMenuItem>
                                   ))}
@@ -2080,7 +2080,7 @@ export function ElizaChatInterface({
                                 </div>
                                 {createImageEnabled &&
                                   selectedImageModel.id === tier.model.id && (
-                                    <Check className="h-4 w-4 text-[#FF5800]" />
+                                    <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                                   )}
                               </DropdownMenuItem>
                             );
@@ -2155,7 +2155,7 @@ export function ElizaChatInterface({
                                     </div>
                                     {createImageEnabled &&
                                       selectedImageModel.id === model.id && (
-                                        <Check className="h-4 w-4 text-[#FF5800]" />
+                                        <Check className="h-4 w-4 text-[var(--brand-orange)]" />
                                       )}
                                   </DropdownMenuItem>
                                 );
@@ -2177,7 +2177,7 @@ export function ElizaChatInterface({
                       isMessageLimitReached
                     }
                     size="icon"
-                    className="h-8 w-8 rounded-sm bg-[#FF5800] hover:bg-[#e54e00] disabled:bg-white/10 transition-colors group"
+                    className="h-8 w-8 rounded-sm bg-[var(--brand-orange)] hover:bg-[#e54e00] disabled:bg-white/10 transition-colors group"
                   >
                     {loadingState.isSending ? (
                       <Loader2 className="h-4 w-4 animate-spin text-white" />

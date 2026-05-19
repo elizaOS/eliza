@@ -439,6 +439,9 @@ export interface PluginAppUiExtension {
 /** Platform availability for a view. */
 export type ViewPlatform = "web" | "desktop" | "ios" | "android";
 
+/** Presentation/runtime family for a view. */
+export type ViewType = "gui" | "tui";
+
 /** A discrete capability the agent can exercise on a mounted view. */
 export interface ViewCapability {
 	/** Unique id within the view (e.g. "click-button", "fill-input"). */
@@ -475,6 +478,14 @@ export interface ViewDeclaration {
 	id: string;
 	/** Display label shown in the view manager and agent responses. */
 	label: string;
+	/**
+	 * View presentation type. Defaults to `"gui"`.
+	 *
+	 * Plugins may register a `"tui"` declaration with the same `id` as a GUI
+	 * declaration to override that view when the shell or agent requests TUI
+	 * mode.
+	 */
+	viewType?: ViewType;
 	/** One-line description used for semantic view search. */
 	description?: string;
 	/** Lucide icon name (e.g. "Wallet", "MessageSquare"). */
@@ -507,6 +518,12 @@ export interface ViewDeclaration {
 	 * URL at startup and on plugin hot-reload.
 	 */
 	bundlePath?: string;
+	/**
+	 * Fully resolved compiled view bundle URL for remote capability modules.
+	 * Local plugins should prefer `bundlePath`; remote plugins use this when
+	 * the code is served by a sandbox/container rather than the agent process.
+	 */
+	bundleUrl?: string;
 	/** Capabilities the agent can exercise on this view when it is mounted. */
 	capabilities?: ViewCapability[];
 	/** Allow this view to be pinned as a desktop tab. Default true. */

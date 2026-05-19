@@ -38,7 +38,9 @@ const FINAL_PROBE_RETRY_DELAY_MS = 1000;
 function parseArgs(argv) {
   const options = {
     seconds: DEFAULT_SECONDS,
-    uiPort: Number(process.env.ELIZA_UI_PORT || process.env.ELIZA_PORT) || DEFAULT_UI_PORT,
+    uiPort:
+      Number(process.env.ELIZA_UI_PORT || process.env.ELIZA_PORT) ||
+      DEFAULT_UI_PORT,
     apiPort: Number(process.env.ELIZA_API_PORT) || DEFAULT_API_PORT,
     initialProbeDelayMs: DEFAULT_INITIAL_PROBE_DELAY_MS,
     logDir: path.join(process.cwd(), "logs"),
@@ -140,7 +142,11 @@ function parsePositiveNumber(value, label) {
 
 function parsePositiveInteger(value, label) {
   const parsed = Number.parseInt(value, 10);
-  if (!Number.isFinite(parsed) || parsed <= 0 || String(parsed) !== String(value)) {
+  if (
+    !Number.isFinite(parsed) ||
+    parsed <= 0 ||
+    String(parsed) !== String(value)
+  ) {
     throw new Error(`${label} must be a positive integer`);
   }
   return parsed;
@@ -165,7 +171,9 @@ function createLogPath(logDir) {
 }
 
 function createRunState(logPath) {
-  const runId = path.basename(logPath, ".log").replace(/^dev-health-check-/, "");
+  const runId = path
+    .basename(logPath, ".log")
+    .replace(/^dev-health-check-/, "");
   const runDir = path.join(process.cwd(), "tmp", "dev-health-check", runId);
   const stateDir = path.join(runDir, "state");
   const pgliteDataDir = path.join(runDir, ".elizadb");
@@ -257,10 +265,18 @@ function analyzeLogs(logText) {
 }
 
 function isSuspiciousLogLine(line) {
-  if (/\b(Fatal|Unhandled|Uncaught|SyntaxError|TypeError|ReferenceError|RangeError)\b/i.test(line)) {
+  if (
+    /\b(Fatal|Unhandled|Uncaught|SyntaxError|TypeError|ReferenceError|RangeError)\b/i.test(
+      line,
+    )
+  ) {
     return true;
   }
-  if (/\b(EADDRINUSE|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ERR_[A-Z0-9_]+)\b/.test(line)) {
+  if (
+    /\b(EADDRINUSE|ECONNREFUSED|ECONNRESET|ETIMEDOUT|ERR_[A-Z0-9_]+)\b/.test(
+      line,
+    )
+  ) {
     return true;
   }
   if (/\bPort \d+ is already in use\b/i.test(line)) {
@@ -275,7 +291,11 @@ function isSuspiciousLogLine(line) {
   if (/\]\s+\[(?:stdout|stderr)\]\s+Error\b/i.test(line)) {
     return true;
   }
-  if (/\b(Runtime bootstrap failed|Migration failed|Task execution failed|failed to load model|proxy error|crashed during init)\b/i.test(line)) {
+  if (
+    /\b(Runtime bootstrap failed|Migration failed|Task execution failed|failed to load model|proxy error|crashed during init)\b/i.test(
+      line,
+    )
+  ) {
     return true;
   }
   if (/\b(Pre-transform error|Transform failed|PARSE_ERROR)\b/i.test(line)) {
@@ -293,18 +313,23 @@ function wait(ms) {
 
 function execFileResult(command, args, options = {}) {
   return new Promise((resolve) => {
-    execFile(command, args, {
-      encoding: "utf8",
-      timeout: options.timeout ?? FETCH_TIMEOUT_MS + 1000,
-      maxBuffer: options.maxBuffer ?? 1024 * 1024,
-    }, (error, stdout, stderr) => {
-      resolve({
-        ok: !error,
-        error,
-        stdout,
-        stderr,
-      });
-    });
+    execFile(
+      command,
+      args,
+      {
+        encoding: "utf8",
+        timeout: options.timeout ?? FETCH_TIMEOUT_MS + 1000,
+        maxBuffer: options.maxBuffer ?? 1024 * 1024,
+      },
+      (error, stdout, stderr) => {
+        resolve({
+          ok: !error,
+          error,
+          stdout,
+          stderr,
+        });
+      },
+    );
   });
 }
 
@@ -319,7 +344,8 @@ async function probeTcpPort(port) {
   if (result.ok) {
     return { ok: true };
   }
-  const message = result.stderr?.trim() || result.error?.message || "not listening";
+  const message =
+    result.stderr?.trim() || result.error?.message || "not listening";
   return {
     ok: false,
     error: /timed out|timeout/i.test(message) ? "timeout" : message,
@@ -339,7 +365,8 @@ async function probeHttp(url, { parseJson = false } = {}) {
   ]);
 
   if (!result.ok) {
-    const message = result.stderr?.trim() || result.error?.message || "fetch failed";
+    const message =
+      result.stderr?.trim() || result.error?.message || "fetch failed";
     return {
       ok: false,
       error:
@@ -353,7 +380,9 @@ async function probeHttp(url, { parseJson = false } = {}) {
   const bodyText =
     markerIndex >= 0 ? result.stdout.slice(0, markerIndex) : result.stdout;
   const statusText =
-    markerIndex >= 0 ? result.stdout.slice(markerIndex + marker.length + 1) : "";
+    markerIndex >= 0
+      ? result.stdout.slice(markerIndex + marker.length + 1)
+      : "";
   const status = Number.parseInt(statusText.trim(), 10) || 0;
   const response = {
     ok: status >= 200 && status < 400,
@@ -399,7 +428,10 @@ function apiHealthProblem(result) {
   if (typeof body.runtime === "string" && /error|failed/i.test(body.runtime)) {
     return `runtime=${body.runtime}`;
   }
-  if (typeof body.database === "string" && /error|failed/i.test(body.database)) {
+  if (
+    typeof body.database === "string" &&
+    /error|failed/i.test(body.database)
+  ) {
     return `database=${body.database}`;
   }
   if (
@@ -508,9 +540,10 @@ async function run() {
         process.env.ELIZA_DEV_HEALTH_USE_CLOUD === "1"
           ? process.env.ELIZAOS_CLOUD_ENABLED || ""
           : "",
-      EVM_PRIVATE_KEY: process.env.ELIZA_DEV_HEALTH_USE_WALLET === "1"
-        ? process.env.EVM_PRIVATE_KEY || ""
-        : "",
+      EVM_PRIVATE_KEY:
+        process.env.ELIZA_DEV_HEALTH_USE_WALLET === "1"
+          ? process.env.EVM_PRIVATE_KEY || ""
+          : "",
       ELIZA_STATE_DIR: runState.stateDir,
       PGLITE_DATA_DIR: runState.pgliteDataDir,
     },
@@ -537,7 +570,12 @@ async function run() {
     appendLog(logChunks, logStream, "stderr", chunk),
   );
   child.on("error", (error) => {
-    childExit = { code: null, signal: null, error: error.message, at: Date.now() };
+    childExit = {
+      code: null,
+      signal: null,
+      error: error.message,
+      at: Date.now(),
+    };
   });
   child.on("exit", (code, signal) => {
     childExit = { code, signal, error: null, at: Date.now() };
@@ -590,9 +628,13 @@ async function run() {
   const logAnalysis = analyzeLogs(logText);
   const uiEverReady = probes.some((probe) => probe.uiReady);
   const apiEverReady = probes.some((probe) => probe.apiReady);
-  const firstReadyProbe = probes.find((probe) => probe.uiReady && probe.apiReady);
+  const firstReadyProbe = probes.find(
+    (probe) => probe.uiReady && probe.apiReady,
+  );
   const probeTimeoutsAfterReady = firstReadyProbe
-    ? probes.filter((probe) => probe.at >= firstReadyProbe.at && probeHasTimeout(probe))
+    ? probes.filter(
+        (probe) => probe.at >= firstReadyProbe.at && probeHasTimeout(probe),
+      )
     : [];
   const exitedEarly = Boolean(
     childExit && childExit.at && childExit.at - startedAt < durationMs - 1000,
@@ -610,10 +652,14 @@ async function run() {
     failures.push(`UI never became ready on port ${options.uiPort}`);
   }
   if (!apiEverReady) {
-    failures.push(`API /api/health never became ready on port ${options.apiPort}`);
+    failures.push(
+      `API /api/health never became ready on port ${options.apiPort}`,
+    );
   }
   if (!finalProbe.uiReady) {
-    failures.push(`UI was not ready at the end of the run on port ${options.uiPort}`);
+    failures.push(
+      `UI was not ready at the end of the run on port ${options.uiPort}`,
+    );
   }
   if (!finalProbe.apiReady) {
     failures.push(
@@ -621,7 +667,9 @@ async function run() {
     );
   }
   if (finalProbe.apiProblem) {
-    failures.push(`API health reports a runtime problem: ${finalProbe.apiProblem}`);
+    failures.push(
+      `API health reports a runtime problem: ${finalProbe.apiProblem}`,
+    );
   }
   if (probeTimeoutsAfterReady.length > 0) {
     failures.push(
@@ -629,7 +677,9 @@ async function run() {
     );
   }
   if (logAnalysis.suspectLines.length > 0) {
-    failures.push(`${logAnalysis.suspectLines.length} suspicious log line(s) found`);
+    failures.push(
+      `${logAnalysis.suspectLines.length} suspicious log line(s) found`,
+    );
   }
 
   const report = {

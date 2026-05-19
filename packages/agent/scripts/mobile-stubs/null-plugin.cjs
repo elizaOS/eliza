@@ -62,6 +62,10 @@ function makeStubProxy() {
     "handleDiscordLocalRoute",
     // plugin-computeruse (api server route handler)
     "handleComputerUseRoutes",
+    // plugin-workflow route surface. Mobile does not host the workflow
+    // runtime, but api/server.ts still awaits this optional route hook before
+    // falling through to normal conversation routes.
+    "handleTriggerRoutes",
     // plugin-mcp / plugin-streaming used elsewhere; safer to populate
     // since some are stubbed via `optionalPluginStubs`.
     "handleMcpRoutes",

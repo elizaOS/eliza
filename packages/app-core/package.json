@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/app-core",
-  "version": "2.0.0-beta.5",
+  "version": "2.0.0-beta.4",
   "description": "Shared application core for elizaOS white-label agent apps.",
   "type": "module",
   "license": "MIT",
@@ -150,6 +150,11 @@
       "types": "./dist/platform/native-library-policy.d.ts",
       "import": "./dist/platform/native-library-policy.js",
       "default": "./dist/platform/native-library-policy.js"
+    },
+    "./ui-compat": {
+      "types": "./dist/ui-compat.d.ts",
+      "import": "./dist/ui-compat.js",
+      "default": "./dist/ui-compat.js"
     }
   },
   "peerDependencies": {

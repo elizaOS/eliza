@@ -114,7 +114,19 @@ const DEV_VIEW = {
   order: 200,
 };
 
-const PLUGIN_NAMES = ["views-integration-wallet", "views-integration-dev"];
+const REMOTE_VIEW = {
+  id: "remote.panel",
+  label: "Remote Panel",
+  description: "Remote capability panel",
+  bundleUrl: "https://capability.example.test/assets/remote-panel.js",
+  order: 20,
+};
+
+const PLUGIN_NAMES = [
+  "views-integration-wallet",
+  "views-integration-dev",
+  "views-integration-remote",
+];
 
 // ---------------------------------------------------------------------------
 // Setup / teardown
@@ -156,6 +168,54 @@ describe("GET /api/views", () => {
     expect(Array.isArray(payload.views)).toBe(true);
     const ids = payload.views.map((v: { id: string }) => v.id);
     expect(ids).toContain("wallet.inventory");
+  });
+
+  it("defaults views to gui and lets tui override the same logical id", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-wallet",
+        description: "wallet",
+        actions: [],
+        views: [
+          WALLET_VIEW,
+          {
+            ...WALLET_VIEW,
+            label: "Wallet TUI",
+            viewType: "tui",
+            bundlePath: "dist/views/tui.js",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const { ctx: guiCtx, json: guiJson } = makeCtx("GET", "/api/views");
+    await handleViewsRoutes(guiCtx);
+    const [, guiPayload] = guiJson.mock.calls[0] as [
+      unknown,
+      { views: { id: string; label: string; viewType: string }[] },
+    ];
+    expect(
+      guiPayload.views.find((v) => v.id === "wallet.inventory"),
+    ).toMatchObject({
+      label: "Wallet",
+      viewType: "gui",
+    });
+
+    const { ctx: tuiCtx, json: tuiJson } = makeCtx("GET", "/api/views", {
+      viewType: "tui",
+    });
+    await handleViewsRoutes(tuiCtx);
+    const [, tuiPayload] = tuiJson.mock.calls[0] as [
+      unknown,
+      { views: { id: string; label: string; viewType: string }[] },
+    ];
+    expect(
+      tuiPayload.views.find((v) => v.id === "wallet.inventory"),
+    ).toMatchObject({
+      label: "Wallet TUI",
+      viewType: "tui",
+    });
   });
 
   it("returns 200 with empty views array when no plugins are registered", async () => {
@@ -281,6 +341,51 @@ describe("GET /api/views", () => {
     expect(filtered[0]?.id).toBe("chat.main");
     expect(filtered[1]?.id).toBe("wallet.inventory");
   });
+
+  it("returns absolute remote bundleUrl for remote capability views", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-remote",
+        description: "remote",
+        actions: [],
+        views: [REMOTE_VIEW],
+      },
+      undefined,
+    );
+
+    const registryEntry = getView("remote.panel");
+    expect(registryEntry).toMatchObject({
+      id: "remote.panel",
+      pluginName: "views-integration-remote",
+      available: true,
+      bundleUrl: "https://capability.example.test/assets/remote-panel.js",
+      bundleUrlVersioned:
+        "https://capability.example.test/assets/remote-panel.js",
+    });
+    expect(registryEntry?.pluginDir).toBeUndefined();
+    expect(registryEntry?.bundlePath).toBeUndefined();
+
+    const { ctx, json } = makeCtx("GET", "/api/views");
+    await handleViewsRoutes(ctx);
+
+    const [, payload] = json.mock.calls[0] as [
+      unknown,
+      {
+        views: Array<{
+          id: string;
+          available: boolean;
+          bundleUrl?: string;
+          bundleUrlVersioned?: string;
+        }>;
+      },
+    ];
+    expect(payload.views.find((v) => v.id === "remote.panel")).toMatchObject({
+      available: true,
+      bundleUrl: "https://capability.example.test/assets/remote-panel.js",
+      bundleUrlVersioned:
+        "https://capability.example.test/assets/remote-panel.js",
+    });
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -344,6 +449,33 @@ describe("GET /api/views/:id", () => {
     expect(json).toHaveBeenCalledOnce();
     const [, payload] = json.mock.calls[0] as [unknown, { id: string }];
     expect(payload.id).toBe("wallet.inventory");
+  });
+
+  it("returns single remote view metadata with absolute bundleUrl", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-remote",
+        description: "remote",
+        actions: [],
+        views: [REMOTE_VIEW],
+      },
+      undefined,
+    );
+
+    const { ctx, json } = makeCtx("GET", "/api/views/remote.panel");
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(json).toHaveBeenCalledOnce();
+    const [, payload] = json.mock.calls[0] as [
+      unknown,
+      { id: string; available: boolean; bundleUrl?: string },
+    ];
+    expect(payload).toMatchObject({
+      id: "remote.panel",
+      available: true,
+      bundleUrl: "https://capability.example.test/assets/remote-panel.js",
+    });
   });
 });
 
@@ -415,6 +547,31 @@ describe("GET /api/views/:id/bundle.js", () => {
     expect(error).toHaveBeenCalledOnce();
     const [, , status] = error.mock.calls[0] as [unknown, string, number];
     expect(status).toBe(404);
+  });
+
+  it("does not fabricate a local bundle route for remote absolute bundleUrl views", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-remote",
+        description: "remote",
+        actions: [],
+        views: [REMOTE_VIEW],
+      },
+      undefined,
+    );
+
+    const { ctx, error } = makeCtx("GET", "/api/views/remote.panel/bundle.js");
+    const handled = await handleViewsRoutes(ctx);
+
+    expect(handled).toBe(true);
+    expect(error).toHaveBeenCalledOnce();
+    const [, message, status] = error.mock.calls[0] as [
+      unknown,
+      string,
+      number,
+    ];
+    expect(status).toBe(404);
+    expect(message).toContain("no bundle path configured");
   });
 });
 
@@ -495,8 +652,13 @@ describe("POST /api/views/:id/interact", () => {
     // Simulate the frontend sending back a result after the WS broadcast.
     await new Promise<void>((resolve) => setTimeout(resolve, 10));
     expect(broadcasts).toHaveLength(1);
-    const broadcast = broadcasts[0] as { type: string; requestId: string };
+    const broadcast = broadcasts[0] as {
+      type: string;
+      requestId: string;
+      viewType: string;
+    };
     expect(broadcast.type).toBe("view:interact");
+    expect(broadcast.viewType).toBe("gui");
     expect(typeof broadcast.requestId).toBe("string");
 
     // Resolve the pending request as the frontend would.
@@ -515,6 +677,49 @@ describe("POST /api/views/:id/interact", () => {
     ];
     expect(result.success).toBe(true);
     expect(result.result).toBe("Hello from the view");
+  });
+
+  it("routes interact to the requested tui view override", async () => {
+    await registerPluginViews(
+      {
+        name: "views-integration-wallet",
+        description: "wallet",
+        actions: [],
+        views: [
+          WALLET_VIEW,
+          {
+            ...WALLET_VIEW,
+            label: "Wallet TUI",
+            viewType: "tui",
+            capabilities: [
+              { id: "terminal-select-row", description: "Select a row" },
+            ],
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const broadcasts: object[] = [];
+    const { ctx } = makeCtx(
+      "POST",
+      "/api/views/wallet.inventory/interact",
+      { viewType: "tui" },
+      undefined,
+      { capability: "terminal-select-row", timeoutMs: 50 },
+      (payload) => broadcasts.push(payload),
+    );
+
+    await handleViewsRoutes(ctx);
+    expect(broadcasts).toHaveLength(1);
+    const broadcast = broadcasts[0] as {
+      type: string;
+      viewType: string;
+      capability: string;
+    };
+    expect(broadcast.type).toBe("view:interact");
+    expect(broadcast.viewType).toBe("tui");
+    expect(broadcast.capability).toBe("terminal-select-row");
   });
 
   it("returns 400 for undeclared capability when view has declared capabilities", async () => {

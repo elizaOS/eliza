@@ -6,7 +6,25 @@
  */
 
 import { $ } from "bun";
-import { buildConfig, workersConfig } from "./build.config";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const NODE_BUILTINS = [
+  "fs",
+  "path",
+  "http",
+  "https",
+  "crypto",
+  "node:fs",
+  "node:path",
+  "node:http",
+  "node:https",
+  "node:crypto",
+  "node:stream",
+  "node:buffer",
+  "node:util",
+  "node:events",
+  "node:url",
+] as const;
 
 async function build() {
   console.log("🏗️  Building package...");
@@ -14,9 +32,22 @@ async function build() {
   // Clean dist directory
   await $`rm -rf dist`;
 
+  const external = await externalsFromPackageJson("./package.json", {
+    extra: NODE_BUILTINS,
+  });
+
   // Build main package
   console.log("📦 Building main package...");
-  const mainResult = await Bun.build(buildConfig);
+  const mainResult = await Bun.build({
+    entrypoints: ["./src/index.ts"],
+    outdir: "./dist",
+    target: "node",
+    format: "esm",
+    splitting: false,
+    sourcemap: "external",
+    external,
+    naming: "[dir]/[name].[ext]",
+  });
 
   if (!mainResult.success) {
     console.error("❌ Main build failed:");
@@ -36,7 +67,25 @@ async function build() {
     const workerFiles = files.filter((f) => f.endsWith(".ts"));
     if (workerFiles.length > 0) {
       console.log("👷 Building workers...");
-      const workersResult = await Bun.build(workersConfig);
+      const workersResult = await Bun.build({
+        entrypoints: [
+          "./src/workers/screen-capture-worker.ts",
+          "./src/workers/ocr-worker.ts",
+        ],
+        outdir: "./dist/workers",
+        target: "node",
+        format: "cjs", // Workers need CommonJS format
+        splitting: false,
+        sourcemap: true,
+        external: [
+          ...external,
+          "@mapbox/node-pre-gyp",
+          "mock-aws-s3",
+          "aws-sdk",
+          "nock",
+        ],
+        naming: "[name].[ext]",
+      });
 
       if (!workersResult.success) {
         console.error("❌ Workers build failed:");

@@ -207,7 +207,13 @@ def _resolve_im_end_token_id(tokenizer) -> int:
 
 
 def _build_optimizer(model, config: TrainingConfig):
-    """Build the optimizer. APOLLO when --apollo, else 8-bit AdamW."""
+    """Build the optimizer. APOLLO when --apollo, else plain AdamW.
+
+    For LoRA training the trainable params are tiny (~10 MB at rank 8),
+    so the 8-bit AdamW savings don't justify the bitsandbytes complexity
+    (which fails GPU-placement checks under modern transformers + LoRA
+    on single-GPU layouts). Plain AdamW is simpler and fast enough.
+    """
     trainable = [p for p in model.parameters() if p.requires_grad]
     if config.use_apollo:
         try:
@@ -219,21 +225,9 @@ def _build_optimizer(model, config: TrainingConfig):
                 "APOLLO requested via --apollo but apollo_torch is not "
                 "installed. `pip install apollo-torch`."
             ) from exc
-    try:
-        import bitsandbytes as bnb  # type: ignore
+    import torch  # type: ignore
 
-        return bnb.optim.AdamW8bit(trainable, lr=config.learning_rate)
-    except ImportError:
-        # bitsandbytes is GPU-bound and sometimes unavailable on
-        # workstations. Fall through to torch's AdamW so the trainer
-        # still works (memory penalty, but explicit and visible).
-        logger.warning(
-            "bitsandbytes not available; falling back to torch.optim.AdamW "
-            "(higher VRAM use). Install bitsandbytes for the 8-bit variant."
-        )
-        import torch  # type: ignore
-
-        return torch.optim.AdamW(trainable, lr=config.learning_rate)
+    return torch.optim.AdamW(trainable, lr=config.learning_rate)
 
 
 def train(config: TrainingConfig) -> Path:
@@ -257,12 +251,17 @@ def train(config: TrainingConfig) -> Path:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # Force single-GPU placement for LoRA training. `device_map="auto"` can
+    # split a small model awkwardly and confuses the optimizer's device
+    # checks; bitsandbytes is_on_gpu in particular rejects the resulting
+    # tensor layout. Single GPU is the right choice for ~10MB of trainable
+    # LoRA params anyway.
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model = AutoModelForCausalLM.from_pretrained(
         config.tier_spec.base_id,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
         trust_remote_code=False,
-    )
+    ).to(device)
 
     im_end_id = _resolve_im_end_token_id(tokenizer)
     vocab_size = int(model.config.vocab_size)
@@ -308,8 +307,8 @@ def train(config: TrainingConfig) -> Path:
         for batch in _iter_batches(records, config.batch_size, tokenizer, config.seq_len):
             input_ids = batch["input_ids"].to(model.device)
             attention_mask = batch["attention_mask"].to(model.device)
-            labels = batch["labels"]
-            last_token_idx = batch["last_token_idx"]
+            labels = batch["labels"].to(model.device)
+            last_token_idx = batch["last_token_idx"].to(model.device)
 
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             logits = outputs.logits  # [B, T, V]
@@ -322,7 +321,24 @@ def train(config: TrainingConfig) -> Path:
                 vocab_size=vocab_size,
                 device=model.device,
             )
+            # Skip-and-warn on NaN/Inf rather than poisoning the optimizer.
+            if not torch.isfinite(loss):
+                logger.warning(
+                    "epoch=%d step=%d non-finite loss (%s); skipping batch",
+                    epoch,
+                    step,
+                    loss.item(),
+                )
+                optimizer.zero_grad(set_to_none=True)
+                step += 1
+                continue
             loss.backward()
+
+            # Gradient clipping — without this, bf16 + AdamW can explode.
+            torch.nn.utils.clip_grad_norm_(
+                [p for p in model.parameters() if p.requires_grad],
+                max_norm=1.0,
+            )
 
             if (step + 1) % config.gradient_accumulation == 0:
                 optimizer.step()
@@ -376,30 +392,45 @@ def _iter_batches(records, batch_size, tokenizer, seq_len):
 
 
 def _eot_batch_loss(logits, last_token_idx, labels, im_end_id, vocab_size, device):
-    """Compute the EOT loss across a batch."""
+    """Compute the EOT loss across a batch.
+
+    bf16 logits can produce inf/nan through log_softmax — we cast to fp32
+    before the softmax. Per-example non-finite losses are filtered out
+    rather than poisoning the batch mean (which would skip the whole batch).
+    """
     import torch  # type: ignore
     import torch.nn.functional as F  # type: ignore
 
     # Extract the next-token logit for each row at its last position.
     batch_size = logits.shape[0]
     final_logits = logits[torch.arange(batch_size), last_token_idx]  # [B, V]
-    log_probs = F.log_softmax(final_logits, dim=-1)  # [B, V]
+    # Cast to fp32 for numerically-stable softmax/log.
+    log_probs = F.log_softmax(final_logits.float(), dim=-1)  # [B, V] in fp32
 
     labels = labels.to(device)
     losses = []
     for i in range(batch_size):
         if labels[i].item() == 1:
-            # Positive: maximize log P(im_end).
-            losses.append(-log_probs[i, im_end_id])
+            # Positive: maximize log P(im_end). Clamp to avoid -inf when
+            # the model assigns vanishing mass.
+            log_p_im_end = log_probs[i, im_end_id].clamp(min=-30.0)
+            losses.append(-log_p_im_end)
         else:
             # Negative: minimize P(im_end) by maximizing log P(not im_end).
             #   log P(not im_end) = log(1 - exp(log_probs[im_end]))
-            # Numerically stable: log1p(-exp(x)) for x < 0.
-            log_p_im_end = log_probs[i, im_end_id]
+            log_p_im_end = log_probs[i, im_end_id].clamp(min=-30.0, max=-1e-6)
             log_p_not_im_end = torch.log1p(-torch.exp(log_p_im_end).clamp(max=0.999999))
             losses.append(-log_p_not_im_end)
 
-    return torch.stack(losses).mean()
+    stacked = torch.stack(losses)
+    # Filter per-example non-finite losses; mean over the survivors.
+    finite_mask = torch.isfinite(stacked)
+    if finite_mask.any():
+        return stacked[finite_mask].mean()
+    # Whole batch was bad — return a finite zero so the outer skip-on-non-finite
+    # still records it as "skip"; outer loop also has skip-on-non-finite as a
+    # belt-and-suspenders guard.
+    return torch.tensor(float("nan"), device=device)
 
 
 # ---------------------------------------------------------------------------

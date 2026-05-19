@@ -3,7 +3,7 @@ import type {
   BabylonAgentStatus,
   BabylonChatMessage,
   BabylonTeamAgent,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) {

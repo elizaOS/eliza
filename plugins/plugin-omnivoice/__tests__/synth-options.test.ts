@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { _internal, pcmFloatToWavBuffer } from "../src/synth";
+import { type OmnivoiceContext, OV_TTS_PARAMS_LAYOUT } from "../src/ffi";
+import { _internal, pcmFloatToWavBuffer, runSynthesis } from "../src/synth";
 
 describe("plugin-omnivoice synth option mapping", () => {
   it("buildInstruct prefers explicit instruct over design", () => {
@@ -62,5 +63,44 @@ describe("plugin-omnivoice synth option mapping", () => {
     expect(wav.readInt16LE(44 + 3 * 2)).toBe(32767);
     // sample 4 (-1.0) should clip to -32767
     expect(wav.readInt16LE(44 + 4 * 2)).toBe(-32767);
+  });
+
+  it("normalizes numeric Bun FFI pointers when writing TTS params", async () => {
+    const ctx = {
+      synthesize: async (
+        prepare: Parameters<OmnivoiceContext["synthesize"]>[0],
+      ) => {
+        const params = new Uint8Array(OV_TTS_PARAMS_LAYOUT.size);
+        const view = new DataView(
+          params.buffer,
+          params.byteOffset,
+          params.byteLength,
+        );
+        prepare(
+          view,
+          OV_TTS_PARAMS_LAYOUT,
+          {
+            ptr: () => 123,
+          } as never,
+          () => {},
+        );
+        expect(
+          view.getBigUint64(OV_TTS_PARAMS_LAYOUT.fields.text.offset, true),
+        ).toBe(123n);
+        return {
+          samples: new Float32Array(0),
+          sampleRate: 24000,
+          channels: 1,
+        };
+      },
+    };
+
+    await expect(
+      runSynthesis(ctx as unknown as OmnivoiceContext, { text: "hello" }),
+    ).resolves.toEqual({
+      samples: new Float32Array(0),
+      sampleRate: 24000,
+      channels: 1,
+    });
   });
 });

@@ -2,7 +2,7 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { type IAgentRuntime, logger, ModelType, type Plugin } from "@elizaos/core";
-import { EdgeTTS, type EdgeTTSOptions } from "node-edge-tts";
+import { EdgeTTS } from "node-edge-tts";
 
 /**
  * Edge TTS voice settings configuration
@@ -35,6 +35,18 @@ interface EdgeTTSParams {
   pitch?: string;
   /** Edge TTS specific: volume adjustment (e.g., +20%, -10%) */
   volume?: string;
+}
+
+interface EdgeTTSOptions {
+  voice?: string;
+  lang?: string;
+  outputFormat?: string;
+  saveSubtitles?: boolean;
+  proxy?: string;
+  rate?: string;
+  pitch?: string;
+  volume?: string;
+  timeout?: number;
 }
 
 // Default voice configurations

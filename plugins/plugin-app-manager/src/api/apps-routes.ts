@@ -3,6 +3,21 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import { ServerResponse } from "node:http";
 import path from "node:path";
+import {
+  importAppRouteModule,
+  resolveWorkspacePackageDir,
+} from "@elizaos/agent/services/app-package-modules";
+import { setOverlayAppPresence } from "@elizaos/agent/services/overlay-app-presence";
+import type {
+  InstallProgressLike,
+  PluginManagerLike,
+  RegistryPluginInfo,
+  RegistrySearchResult,
+} from "@elizaos/agent/services/plugin-manager-types";
+import {
+  scoreEntries,
+  toSearchResults,
+} from "@elizaos/agent/services/registry-client-queries";
 import type {
   AppPackageRouteContext,
   IAgentRuntime,
@@ -42,21 +57,6 @@ import {
   parseAppIsolation,
   parseAppPermissions,
 } from "@elizaos/shared";
-import {
-  importAppRouteModule,
-  resolveWorkspacePackageDir,
-} from "@elizaos/agent/services/app-package-modules";
-import { setOverlayAppPresence } from "@elizaos/agent/services/overlay-app-presence";
-import type {
-  InstallProgressLike,
-  PluginManagerLike,
-  RegistryPluginInfo,
-  RegistrySearchResult,
-} from "@elizaos/agent/services/plugin-manager-types";
-import {
-  scoreEntries,
-  toSearchResults,
-} from "@elizaos/agent/services/registry-client-queries";
 
 const HERO_IMAGE_CONTENT_TYPES: Record<string, string> = {
   ".webp": "image/webp",
@@ -1417,11 +1417,7 @@ export async function handleAppsRoutes(
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const path = issue?.path.join(".");
-      error(
-        res,
-        `Invalid request body at ${path}: ${issue?.message}`,
-        400,
-      );
+      error(res, `Invalid request body at ${path}: ${issue?.message}`, 400);
       return true;
     }
     const result = await registry.setGrantedNamespaces(
@@ -1449,11 +1445,7 @@ export async function handleAppsRoutes(
     if (!parsed.success) {
       const issue = parsed.error.issues[0];
       const path = issue?.path.join(".");
-      error(
-        res,
-        `Invalid request body at ${path}: ${issue?.message}`,
-        400,
-      );
+      error(res, `Invalid request body at ${path}: ${issue?.message}`, 400);
       return true;
     }
     const directory = parsed.data.directory;

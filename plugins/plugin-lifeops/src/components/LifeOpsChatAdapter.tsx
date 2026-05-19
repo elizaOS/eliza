@@ -66,9 +66,7 @@ export function buildMessageChatPrefill(message: LifeOpsInboxMessage): string {
     `Help me handle this ${channelLabel(message.channel)} from ${message.sender.displayName}.`,
     `Subject: ${subject}.`,
     receivedAt ? `Received: ${receivedAt}.` : null,
-    message.snippet.trim().length
-      ? `Context: ${message.snippet.trim()}`
-      : null,
+    message.snippet.trim().length ? `Context: ${message.snippet.trim()}` : null,
     link || null,
   ]
     .filter(Boolean)

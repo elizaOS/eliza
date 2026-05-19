@@ -256,7 +256,7 @@ Parallel notes:
 Owner files:
 
 - `packages/app-core/src/services/local-inference/voice/*`
-- `packages/native-plugins/*audio*`
+- `packages/native/plugins/*audio*`
 - New `packages/app-core/src/services/ambient-audio/*`
 
 Tasks:

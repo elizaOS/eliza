@@ -33,7 +33,7 @@ import { PairingView } from "./PairingView";
 import { RuntimeGate } from "./RuntimeGate";
 import { StartupFailureView } from "./StartupFailureView";
 
-const FONT = "'Open Sans', Arial, system-ui, sans-serif";
+const FONT = "'Poppins', Arial, system-ui, sans-serif";
 
 const PHASE_PROGRESS: Record<string, number> = {
   splash: 0,

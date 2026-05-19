@@ -9,7 +9,9 @@
  * - dist/*.d.ts (TypeScript declarations)
  */
 
-const externalDeps = ["@elizaos/core", "@ai-sdk/openai", "ai", "js-tiktoken"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

@@ -2,11 +2,12 @@
 // assert the entry module exports a default function via static inspection.
 // Runs under `node --test` so the homepage `test` script exits clean without
 // adding vitest as a dep.
+
+import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import test from "node:test";
-import assert from "node:assert/strict";
+import { fileURLToPath } from "node:url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const marketingPath = resolve(__dirname, "../src/pages/marketing.tsx");

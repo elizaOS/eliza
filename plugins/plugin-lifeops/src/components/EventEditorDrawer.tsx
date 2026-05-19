@@ -398,10 +398,10 @@ export function EventEditorDrawer({
           if (titleTrimmed !== event.title) patch.title = titleTrimmed;
           if (startIso !== event.startAt) patch.startAt = startIso;
           if (endIso !== event.endAt) patch.endAt = endIso;
-          if (form.notes.trim() !== (event.description)) {
+          if (form.notes.trim() !== event.description) {
             patch.notes = form.notes.trim();
           }
-          if (form.location.trim() !== (event.location)) {
+          if (form.location.trim() !== event.location) {
             patch.location = form.location.trim();
           }
           if (didAttendeesChange(form.attendees, event)) {

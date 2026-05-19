@@ -7,14 +7,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = [
-  "@elizaos/core",
-  "@elizaos/plugin-task-coordinator",
-  "coding-agent-adapters",
-  "drizzle-orm",
-  "git-workspace-service",
-];
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build() {
   const totalStart = Date.now();

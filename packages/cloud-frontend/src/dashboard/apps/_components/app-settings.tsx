@@ -168,7 +168,7 @@ export function AppSettings({ app }: AppSettingsProps) {
       {/* Basic Settings */}
       <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
         <h3 className="text-sm font-medium text-white flex items-center gap-2">
-          <Settings className="h-4 w-4 text-[#FF5800]" />
+          <Settings className="h-4 w-4 text-[var(--brand-orange)]" />
           Basic Settings
         </h3>
 
@@ -184,7 +184,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, name: e.target.value })
               }
               placeholder="My Awesome App"
-              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
+              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
             />
           </div>
 
@@ -200,7 +200,7 @@ export function AppSettings({ app }: AppSettingsProps) {
               }
               placeholder="A brief description of your app..."
               rows={3}
-              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 resize-none rounded-sm"
+              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 resize-none rounded-sm"
             />
           </div>
 
@@ -217,7 +217,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, app_url: e.target.value })
                 }
                 placeholder="https://myapp.com"
-                className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
+                className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
               />
             </div>
 
@@ -233,7 +233,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                   setFormData({ ...formData, website_url: e.target.value })
                 }
                 placeholder="https://website.com"
-                className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
+                className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
               />
             </div>
           </div>
@@ -250,7 +250,7 @@ export function AppSettings({ app }: AppSettingsProps) {
                 setFormData({ ...formData, contact_email: e.target.value })
               }
               placeholder="contact@myapp.com"
-              className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
+              className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
             />
           </div>
 
@@ -290,7 +290,7 @@ export function AppSettings({ app }: AppSettingsProps) {
             value={newOrigin}
             onChange={(e) => setNewOrigin(e.target.value)}
             placeholder="https://example.com"
-            className="bg-black/40 border-white/10 focus:border-[#FF5800]/50 rounded-sm"
+            className="bg-black/40 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm"
             onKeyPress={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault();
@@ -335,7 +335,7 @@ export function AppSettings({ app }: AppSettingsProps) {
         <Button
           onClick={handleSave}
           disabled={isLoading}
-          className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+          className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white"
         >
           {isLoading ? (
             <>

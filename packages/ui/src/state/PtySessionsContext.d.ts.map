@@ -1,1 +1,0 @@
-{"version":3,"file":"PtySessionsContext.d.ts","sourceRoot":"","sources":["PtySessionsContext.tsx"],"names":[],"mappings":"AAAA;;;;;;;GAOG;AAGH,OAAO,KAAK,EAAE,kBAAkB,EAAE,MAAM,eAAe,CAAC;AAExD,MAAM,WAAW,gBAAgB;IAC/B,WAAW,EAAE,kBAAkB,EAAE,CAAC;CACnC;AAED,eAAO,MAAM,cAAc,2CAEzB,CAAC;AAEH,wBAAgB,cAAc,IAAI,gBAAgB,CAEjD"}

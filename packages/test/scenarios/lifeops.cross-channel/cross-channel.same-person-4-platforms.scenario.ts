@@ -11,7 +11,10 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import {
   acceptCanonicalIdentityMerge,
   assertCanonicalIdentityMerged,

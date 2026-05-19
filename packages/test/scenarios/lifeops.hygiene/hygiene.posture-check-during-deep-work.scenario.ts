@@ -4,7 +4,7 @@
  * verifies the definition is created; runtime gating is a separate concern.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.posture-check-during-deep-work",

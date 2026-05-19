@@ -26,7 +26,13 @@ const MIGRATIONS_DIR = path.join(
 );
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 const ALLOWED_DUPLICATE_PREFIX_GROUPS = new Map<string, string[]>([
-  ["0017", ["0017_add_organization_encryption_keys.sql", "0017_fix_earnings_precision.sql"]],
+  [
+    "0017",
+    [
+      "0017_add_organization_encryption_keys.sql",
+      "0017_fix_earnings_precision.sql",
+    ],
+  ],
   [
     "0048",
     [
@@ -37,7 +43,10 @@ const ALLOWED_DUPLICATE_PREFIX_GROUPS = new Map<string, string[]>([
       "0048_add_token_agent_linkage.sql",
     ],
   ],
-  ["0065", ["0065_add_device_bus_tables.sql", "0065_add_generations_is_public.sql"]],
+  [
+    "0065",
+    ["0065_add_device_bus_tables.sql", "0065_add_generations_is_public.sql"],
+  ],
 ]);
 
 function sortByNumericPrefix(a: string, b: string): number {
@@ -79,7 +88,9 @@ async function main() {
       allowedFiles.every((file) => files.includes(file));
 
     if (!isAllowedHistoricalGroup) {
-      errors.push(`Duplicate journal-tracked migration prefix ${prefix}: ${files.join(", ")}`);
+      errors.push(
+        `Duplicate journal-tracked migration prefix ${prefix}: ${files.join(", ")}`,
+      );
     }
   }
 

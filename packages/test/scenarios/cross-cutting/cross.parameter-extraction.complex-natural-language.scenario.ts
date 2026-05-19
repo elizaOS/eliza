@@ -7,8 +7,8 @@
  * part is that the captured parameters contain the extracted entities.
  */
 
-import type { CapturedAction } from "@elizaos/scenario-schema";
-import { scenario } from "@elizaos/scenario-schema";
+import type { CapturedAction } from "@elizaos/scenario-runner/schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const ACCEPTED_ACTIONS = [
   "SCHEDULE_FOLLOW_UP",

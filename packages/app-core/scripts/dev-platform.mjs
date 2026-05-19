@@ -151,8 +151,8 @@ function syncRendererPublicAssets() {
   const syncScript = path.join(
     bundleRoot,
     isElizaMonorepo
-      ? "eliza/packages/shared-brand/scripts/sync-to-public.mjs"
-      : "packages/shared-brand/scripts/sync-to-public.mjs",
+      ? "eliza/packages/shared/scripts/sync-to-public.mjs"
+      : "packages/shared/scripts/sync-to-public.mjs",
   );
   if (!existsSync(syncScript)) {
     return;

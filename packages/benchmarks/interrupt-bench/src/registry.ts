@@ -13,7 +13,7 @@
 import {
   type ResponseHandlerFieldEvaluator,
   ResponseHandlerFieldRegistry,
-} from "@elizaos/core";
+} from "./core-lite.ts";
 
 const SOURCE_REF_SCHEMA = {
   type: ["object", "null"],

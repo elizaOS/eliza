@@ -1,3 +1,5 @@
+import { BRAND_COLORS } from "@elizaos/shared/brand";
+
 type Msg = { from: "bot" | "user"; text: string };
 type ChatPlatform = "imessage" | "telegram";
 
@@ -206,7 +208,7 @@ export function measureBubbleHeight(text: string): number {
   const canvas = document.createElement("canvas");
   const ctx = get2dContext(canvas);
   const msgFontSize = s(16);
-  ctx.font = `400 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`;
+  ctx.font = `400 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
   const padX = s(14);
   const padY = s(10);
@@ -236,7 +238,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
   const statusY = topInset - s(36);
   const now = new Date();
   ctx.fillStyle = "#000";
-  ctx.font = `700 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
+  ctx.font = `700 ${s(17)}px "Poppins", Arial, system-ui, sans-serif`;
   ctx.textBaseline = "middle";
   ctx.textAlign = "left";
   const statusBarTime = now.toLocaleTimeString([], {
@@ -345,7 +347,7 @@ function drawStatusBar(ctx: CanvasRenderingContext2D) {
 function drawBackButton(ctx: CanvasRenderingContext2D, label: string) {
   const topInset = s(59);
   const navY = topInset;
-  const backBtnFont = `700 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
+  const backBtnFont = `700 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
   ctx.font = backBtnFont;
   const backLabelW = ctx.measureText(label).width;
   const backH = s(40);
@@ -362,7 +364,7 @@ function drawBackButton(ctx: CanvasRenderingContext2D, label: string) {
   ctx.shadowColor = "rgba(0,0,0,0.15)";
   ctx.shadowBlur = s(8);
   ctx.shadowOffsetY = s(2);
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = BRAND_COLORS.white;
   pill(ctx, backX, backY, backW, backH);
   ctx.fill();
   ctx.restore();
@@ -405,7 +407,7 @@ function renderLoginCard(
   ctx.save();
   roundRect(ctx, 0, 0, W, H, screenR, screenR, screenR, screenR);
   ctx.clip();
-  ctx.fillStyle = "#ffffff";
+  ctx.fillStyle = BRAND_COLORS.white;
   ctx.fillRect(0, 0, W, H);
 
   drawStatusBar(ctx);
@@ -413,14 +415,14 @@ function renderLoginCard(
 
   const textY = s(59) + s(15) + s(20) + s(60);
   ctx.fillStyle = "#000";
-  ctx.font = `600 ${s(22)}px "Open Sans", Arial, system-ui, sans-serif`;
+  ctx.font = `600 ${s(22)}px "Poppins", Arial, system-ui, sans-serif`;
   ctx.textAlign = "center";
   ctx.textBaseline = "top";
   ctx.fillText(title, W / 2, textY);
 
   if (subtitle) {
     ctx.fillStyle = "#8e8e93";
-    ctx.font = `400 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
     ctx.fillText(subtitle, W / 2, textY + s(42));
   }
 
@@ -519,7 +521,7 @@ export function renderChatToCanvas(
     ctx.shadowBlur = s(12);
     ctx.shadowOffsetX = -s(6);
     ctx.shadowOffsetY = s(2);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = BRAND_COLORS.white;
     roundRect(ctx, 0, 0, W, H, cardR, cardR, cardR, cardR);
     ctx.fill();
     ctx.restore();
@@ -550,7 +552,7 @@ export function renderChatToCanvas(
   ) {
     ctx.drawImage(tgBgImg, 0, 0, W, H);
   } else {
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = BRAND_COLORS.white;
     ctx.fillRect(0, 0, W, H);
   }
 
@@ -582,7 +584,7 @@ export function renderChatToCanvas(
     const isTGDate = currentRenderPlatform === "telegram";
     const dateText = isTGDate ? "Today" : `Today ${statusTime}`;
     const dateFontSize = s(13);
-    ctx.font = `400 ${dateFontSize}px "Open Sans", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${dateFontSize}px "Poppins", Arial, system-ui, sans-serif`;
     const dateY =
       sepY + s(20) - scrollOffset + dateSlide - (isTGDate ? s(65) : 0);
     ctx.textAlign = "center";
@@ -595,7 +597,7 @@ export function renderChatToCanvas(
       const chipX = W / 2 - chipW / 2;
       const chipY = dateY - dateFontSize - chipPadY + s(2);
       const chipR = isTGDate ? chipH / 2 : s(8);
-      ctx.fillStyle = isTGDate ? "rgba(0,0,0,0.2)" : "#ffffff";
+      ctx.fillStyle = isTGDate ? "rgba(0,0,0,0.2)" : BRAND_COLORS.white;
       ctx.beginPath();
       ctx.moveTo(chipX + chipR, chipY);
       ctx.lineTo(chipX + chipW - chipR, chipY);
@@ -614,7 +616,7 @@ export function renderChatToCanvas(
       ctx.closePath();
       ctx.fill();
     }
-    ctx.fillStyle = isTGDate ? "#ffffff" : "#8e8e93";
+    ctx.fillStyle = isTGDate ? BRAND_COLORS.white : "#8e8e93";
     ctx.fillText(dateText, W / 2, dateY);
     ctx.textAlign = "left";
     ctx.restore();
@@ -623,7 +625,7 @@ export function renderChatToCanvas(
   const isTGMsg = currentRenderPlatform === "telegram";
   let msgY = sepY + s(32) - scrollOffset - (isTGMsg ? s(60) : 0);
   const msgFontSize = s(16);
-  const msgFont = `400 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`;
+  const msgFont = `400 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`;
   const maxBubbleW = W * 0.7;
   const padX = s(14);
   const padY = s(10);
@@ -687,7 +689,7 @@ export function renderChatToCanvas(
         ? "#e9fec7"
         : "#007AFF"
       : isTG
-        ? "#ffffff"
+        ? BRAND_COLORS.white
         : "#ebebed";
     iMessageBubble(
       ctx,
@@ -704,10 +706,14 @@ export function renderChatToCanvas(
     );
     ctx.restore();
 
-    ctx.fillStyle = isUser ? (isTG ? "#000000" : "#ffffff") : "#000000";
+    ctx.fillStyle = isUser
+      ? isTG
+        ? BRAND_COLORS.black
+        : BRAND_COLORS.white
+      : BRAND_COLORS.black;
     ctx.font =
       isUser && !isTG
-        ? `200 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`
+        ? `200 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`
         : msgFont;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(
@@ -751,7 +757,7 @@ export function renderChatToCanvas(
       ctx.shadowBlur = s(4);
       ctx.shadowOffsetY = s(1);
       const isTGTyping = currentRenderPlatform === "telegram";
-      ctx.fillStyle = isTGTyping ? "#ffffff" : "#ebebed";
+      ctx.fillStyle = isTGTyping ? BRAND_COLORS.white : "#ebebed";
       iMessageBubble(
         ctx,
         typingX,
@@ -839,7 +845,7 @@ export function renderChatToCanvas(
           ? "#e9fec7"
           : "#007AFF"
         : isTG2
-          ? "#ffffff"
+          ? BRAND_COLORS.white
           : "#ebebed";
       iMessageBubble(
         ctx,
@@ -856,10 +862,14 @@ export function renderChatToCanvas(
       );
       ctx.restore();
 
-      ctx.fillStyle = isUser ? (isTG2 ? "#000000" : "#ffffff") : "#000000";
+      ctx.fillStyle = isUser
+        ? isTG2
+          ? BRAND_COLORS.black
+          : BRAND_COLORS.white
+        : BRAND_COLORS.black;
       ctx.font =
         isUser && !isTG2
-          ? `200 ${msgFontSize}px "Open Sans", Arial, system-ui, sans-serif`
+          ? `200 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`
           : msgFont;
       for (let i = 0; i < lines.length; i++) {
         ctx.fillText(
@@ -914,20 +924,20 @@ export function renderChatToCanvas(
     ctx.lineJoin = "miter";
 
     ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${s(17)}px "Poppins", Arial, system-ui, sans-serif`;
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillText("Log In", s(36), chevCy + s(2));
     ctx.textBaseline = "alphabetic";
 
     ctx.fillStyle = "#000";
-    ctx.font = `700 ${s(17)}px "Open Sans", Arial, system-ui, sans-serif`;
+    ctx.font = `700 ${s(17)}px "Poppins", Arial, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("Eliza", W / 2, chevCy - s(12));
 
     ctx.fillStyle = "#007AFF";
-    ctx.font = `400 ${s(13)}px "Open Sans", Arial, system-ui, sans-serif`;
+    ctx.font = `400 ${s(13)}px "Poppins", Arial, system-ui, sans-serif`;
     ctx.textAlign = "center";
     ctx.textBaseline = "top";
     ctx.fillText("online", W / 2, chevCy + s(8));
@@ -963,7 +973,7 @@ export function renderChatToCanvas(
     }
     ctx.restore();
   } else {
-    const backBtnFont = `700 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
+    const backBtnFont = `700 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
     ctx.font = backBtnFont;
     const backLabel = "Log In";
     const backLabelW = ctx.measureText(backLabel).width;
@@ -981,7 +991,7 @@ export function renderChatToCanvas(
     ctx.shadowColor = "rgba(0,0,0,0.15)";
     ctx.shadowBlur = s(8);
     ctx.shadowOffsetY = s(2);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = BRAND_COLORS.white;
     pill(ctx, backX, backY, backW, backH);
     ctx.fill();
     ctx.restore();
@@ -1013,7 +1023,7 @@ export function renderChatToCanvas(
     ctx.shadowColor = "rgba(0,0,0,0.15)";
     ctx.shadowBlur = s(8);
     ctx.shadowOffsetY = s(2);
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = BRAND_COLORS.white;
     ctx.beginPath();
     ctx.arc(vidCx, vidCy, vidR, 0, Math.PI * 2);
     ctx.fill();
@@ -1041,7 +1051,7 @@ export function renderChatToCanvas(
     const avatarCy = contactY + s(26) + s(contentYOffset) - headerShift;
     const avatarR = s(26);
 
-    ctx.font = `800 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
+    ctx.font = `800 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
     const nameText = "Eliza";
     const nameTextW = ctx.measureText(nameText).width;
     const namePadX = s(16);
@@ -1060,7 +1070,7 @@ export function renderChatToCanvas(
     ctx.shadowColor = `rgba(0,0,0,${0.15 * shadowProgress})`;
     ctx.shadowBlur = s(8) * shadowProgress;
     ctx.shadowOffsetY = s(3) * shadowProgress;
-    ctx.fillStyle = "#ffffff";
+    ctx.fillStyle = BRAND_COLORS.white;
     pill(ctx, nameX, nameY, nameW, nameH);
     ctx.fill();
     ctx.restore();
@@ -1146,7 +1156,7 @@ export function renderChatToCanvas(
   ctx.stroke();
 
   ctx.fillStyle = "#c7c7cc";
-  ctx.font = `400 ${s(16)}px "Open Sans", Arial, system-ui, sans-serif`;
+  ctx.font = `400 ${s(16)}px "Poppins", Arial, system-ui, sans-serif`;
   ctx.textAlign = "left";
   ctx.fillText("iMessage", inputX + s(16), inputFieldY + s(23));
 

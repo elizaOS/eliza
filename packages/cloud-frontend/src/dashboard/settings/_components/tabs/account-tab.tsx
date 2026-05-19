@@ -9,7 +9,7 @@
 
 "use client";
 
-import { STEWARD_SESSION_ENDPOINT } from "@elizaos/steward-session-client";
+import { STEWARD_SESSION_ENDPOINT } from "@elizaos/shared/steward-session-client";
 import { BrandCard, CornerBrackets } from "@elizaos/ui";
 import { ArrowUpRight, Copy } from "lucide-react";
 import { useEffect, useState } from "react";

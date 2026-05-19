@@ -460,13 +460,19 @@ export class HetznerCloudClient {
 // ---------------------------------------------------------------------------
 
 function mapStatusToCode(status: number, apiCode?: string): HetznerCloudErrorCode {
+  // Explicit quota/limit apiCodes win over auth-status fallback: Hetzner
+  // returns HTTP 403 with body code `limit_reached` (or
+  // `resource_limit_exceeded`) when the project's server cap is hit. Without
+  // this priority, `status === 403` collapses both "no token" and "quota
+  // exhausted" into `missing_token`, which sends operators chasing a
+  // non-existent auth bug while the real issue is account quota.
+  if (apiCode === "limit_reached" || apiCode === "resource_limit_exceeded") {
+    return "quota_exceeded";
+  }
   if (status === 404) return "not_found";
   if (status === 401 || status === 403) return "missing_token";
   if (status === 422 || status === 400) return "invalid_input";
   if (status === 429) return "rate_limited";
-  if (apiCode === "limit_reached" || apiCode === "resource_limit_exceeded") {
-    return "quota_exceeded";
-  }
   return "server_error";
 }
 

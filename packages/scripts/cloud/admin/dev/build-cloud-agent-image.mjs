@@ -33,7 +33,8 @@ if (!existsSync(dockerfile)) {
 
 const tag = process.env.ELIZA_AGENT_IMAGE_TAG ?? "eliza-cloud-agent:local";
 const platform =
-  process.env.ELIZA_AGENT_IMAGE_PLATFORM ?? (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
+  process.env.ELIZA_AGENT_IMAGE_PLATFORM ??
+  (process.arch === "arm64" ? "linux/arm64" : "linux/amd64");
 
 const dockerfileRelToContext = path.relative(miladyRoot, dockerfile);
 

@@ -20,40 +20,40 @@
  * anchors via plugin config (future work).
  */
 
-import {
-	ELIZA_BOUNDARY_END,
-	ELIZA_IDENTITY_MARKER,
-} from "./eliza-fingerprint.js";
 import { SYSTEM_CONFIG_PARAPHRASE } from "./constants.js";
+import {
+  ELIZA_BOUNDARY_END,
+  ELIZA_IDENTITY_MARKER,
+} from "./eliza-fingerprint.js";
 
 const MIN_STRIP_LEN = 200;
 
 export function stripSystemConfig(m: string): {
-	body: string;
-	stripped: number;
+  body: string;
+  stripped: number;
 } {
-	const sysArrayStart = m.indexOf('"system":[');
-	const searchFrom = sysArrayStart !== -1 ? sysArrayStart : 0;
-	const configStart = m.indexOf(ELIZA_IDENTITY_MARKER, searchFrom);
-	if (configStart === -1) return { body: m, stripped: 0 };
+  const sysArrayStart = m.indexOf('"system":[');
+  const searchFrom = sysArrayStart !== -1 ? sysArrayStart : 0;
+  const configStart = m.indexOf(ELIZA_IDENTITY_MARKER, searchFrom);
+  if (configStart === -1) return { body: m, stripped: 0 };
 
-	let stripFrom = configStart;
-	if (stripFrom >= 2 && m[stripFrom - 2] === "\\" && m[stripFrom - 1] === "n") {
-		stripFrom -= 2;
-	}
+  let stripFrom = configStart;
+  if (stripFrom >= 2 && m[stripFrom - 2] === "\\" && m[stripFrom - 1] === "n") {
+    stripFrom -= 2;
+  }
 
-	const boundaryStart = m.indexOf(
-		ELIZA_BOUNDARY_END,
-		configStart + ELIZA_IDENTITY_MARKER.length,
-	);
-	if (boundaryStart === -1) return { body: m, stripped: 0 };
+  const boundaryStart = m.indexOf(
+    ELIZA_BOUNDARY_END,
+    configStart + ELIZA_IDENTITY_MARKER.length,
+  );
+  if (boundaryStart === -1) return { body: m, stripped: 0 };
 
-	const configEnd = boundaryStart + ELIZA_BOUNDARY_END.length;
-	const strippedLen = configEnd - stripFrom;
-	if (strippedLen <= MIN_STRIP_LEN) return { body: m, stripped: 0 };
+  const configEnd = boundaryStart + ELIZA_BOUNDARY_END.length;
+  const strippedLen = configEnd - stripFrom;
+  if (strippedLen <= MIN_STRIP_LEN) return { body: m, stripped: 0 };
 
-	return {
-		body: m.slice(0, stripFrom) + SYSTEM_CONFIG_PARAPHRASE + m.slice(configEnd),
-		stripped: strippedLen,
-	};
+  return {
+    body: m.slice(0, stripFrom) + SYSTEM_CONFIG_PARAPHRASE + m.slice(configEnd),
+    stripped: strippedLen,
+  };
 }

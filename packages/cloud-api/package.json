@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/cloud-api",
-  "version": "2.0.0-beta.5",
+  "version": "2.0.0-beta.4",
   "type": "module",
   "main": "src/index.ts",
   "scripts": {
@@ -23,8 +23,6 @@
     "@ai-sdk/openai": "^3.0.54",
     "@cloudflare/workers-types": "^4.20260429.1",
     "@elizaos/cloud-shared": "workspace:*",
-    "@elizaos/hardware-catalog": "workspace:*",
-    "@elizaos/steward-session-client": "workspace:*",
     "@fal-ai/client": "^1.10.1",
     "@fal-ai/server-proxy": "^1.2.1",
     "@neondatabase/serverless": "^1.1.0",
@@ -40,7 +38,8 @@
     "uuid": "^14.0.0",
     "viem": "^2.48.8",
     "wrangler": "^4.0.0",
-    "zod": "^4.4.3"
+    "zod": "^4.4.3",
+    "@elizaos/shared": "workspace:*"
   },
   "devDependencies": {
     "@biomejs/biome": "2.4.14",

@@ -37,25 +37,14 @@
  * refuses to activate Kokoro — no silent downgrade.
  */
 
-import { createHash } from "node:crypto";
-import { createReadStream, existsSync, statSync } from "node:fs";
-import os from "node:os";
+import { existsSync } from "node:fs";
 import path from "node:path";
-import {
-  buildKokoroOrtSessionOptions,
-  type KokoroExecutionProvider,
-} from "../kokoro-execution-provider.js";
 import {
   type KokoroModelLayout,
   KokoroModelMissingError,
   type KokoroPhonemeSequence,
   type KokoroVoicePack,
 } from "./types.js";
-
-/** Pinned model URL — referenced by docs and the download script. The
- *  runtime itself never fetches; it only verifies on-disk state. */
-export const KOKORO_ONNX_MODEL_URL =
-  "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model.onnx";
 
 /** Pinned voices directory tree on HF. Each voice pack is a single .bin. */
 export const KOKORO_VOICES_BASE_URL =
@@ -98,322 +87,10 @@ export interface KokoroRuntimeInputs {
 /** Shared runtime contract — `KokoroTtsBackend` depends on this, not the
  *  concrete classes. Tests inject a mock. */
 export interface KokoroRuntime {
-  readonly id: "onnx" | "gguf" | "python" | "mock";
+  readonly id: "gguf" | "python" | "mock" | "onnx";
   readonly sampleRate: number;
   synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }>;
   dispose(): void;
-}
-
-// ---------------------------------------------------------------------------
-// ONNX Runtime path — preferred, default-in-production.
-// ---------------------------------------------------------------------------
-
-/**
- * Structural view of the `onnxruntime-node` (or `-web`) module surface we
- * actually use. Imported dynamically so a build without ORT installed still
- * type-checks. Each implementation only honours its known shapes; runtime
- * surface drift surfaces as a thrown error, not a silent no-op.
- */
-type OrtInputMetadata = Readonly<{ name?: string; type?: string }>;
-
-interface OrtSession {
-  run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
-  release(): Promise<void>;
-  /**
-   * Optional — present on real onnxruntime-node sessions, absent on test
-   * stubs. When present we use it to detect whether the loaded export
-   * expects `input_ids` (newer) or `tokens` (older `kokoro-onnx`).
-   */
-  readonly inputNames?: ReadonlyArray<string>;
-  /**
-   * Optional per-input metadata (dtype + shape). Real ORT sessions can expose
-   * this as a positional array aligned with `inputNames`; some test stubs use
-   * a name-keyed record.
-   * We use it to pick the speed-tensor dtype from the actual model rather
-   * than guessing from the token-input name — Kokoro v1.0 ONNX exports
-   * pair `input_ids` with `speed: float`, `input_ids` with `speed: int32`,
-   * `tokens` with `speed: float`, and `tokens` with `speed: int32` across
-   * different community re-exports, so a single name-based heuristic
-   * always misfires on some variant. Reading the actual dtype is the
-   * only correct probe.
-   */
-  readonly inputMetadata?:
-    | ReadonlyArray<OrtInputMetadata>
-    | Readonly<Record<string, OrtInputMetadata>>;
-}
-
-interface OrtTensor {
-  type: string;
-  data: Float32Array | Int32Array | BigInt64Array;
-  dims: ReadonlyArray<number>;
-}
-
-interface OrtModule {
-  InferenceSession: {
-    create(
-      modelPath: string,
-      opts?: Record<string, unknown>,
-    ): Promise<OrtSession>;
-  };
-  Tensor: new (
-    type: string,
-    data: Float32Array | Int32Array | BigInt64Array,
-    dims: ReadonlyArray<number>,
-  ) => OrtTensor;
-}
-
-function getInputMetadataType(
-  session: OrtSession,
-  inputName: string,
-): string | undefined {
-  const metadata = session.inputMetadata;
-  if (!metadata) return undefined;
-
-  if (Array.isArray(metadata)) {
-    const namedEntry = metadata.find((entry) => entry.name === inputName);
-    if (namedEntry?.type) return namedEntry.type;
-
-    const index = session.inputNames?.indexOf(inputName) ?? -1;
-    return index >= 0 ? metadata[index]?.type : undefined;
-  }
-
-  const metadataByName = metadata as Readonly<Record<string, OrtInputMetadata>>;
-  return metadataByName[inputName]?.type;
-}
-
-function isInt32TensorType(type: string | undefined): boolean {
-  return typeof type === "string" && /\bint32\b/i.test(type);
-}
-
-export interface KokoroOnnxRuntimeOptions {
-  layout: KokoroModelLayout;
-  /**
-   * ORT execution provider. Defaults to CPU so existing Kokoro behavior stays
-   * unchanged until Android callers explicitly gate NNAPI through their probe.
-   */
-  executionProvider?: KokoroExecutionProvider;
-  /** Custom ORT module loader (tests inject mocks). Defaults to dynamic
-   *  import of `onnxruntime-node`. */
-  loadOrt?: () => Promise<OrtModule>;
-  /** SHA-256 the model bytes must match. Tests can set this to `null` to
-   *  skip verification; production paths always provide it. */
-  expectedSha256?: string | null;
-}
-
-/**
- * Default-path Kokoro runtime backed by ONNX Runtime. The class is split
- * out so `KokoroTtsBackend` can be unit-tested without dragging the ORT
- * loader into the test graph.
- */
-export class KokoroOnnxRuntime implements KokoroRuntime {
-  readonly id = "onnx" as const;
-  readonly sampleRate: number;
-  private readonly opts: KokoroOnnxRuntimeOptions;
-  private session: OrtSession | null = null;
-  private ort: OrtModule | null = null;
-  private readonly voiceCache = new Map<string, Float32Array>();
-
-  constructor(opts: KokoroOnnxRuntimeOptions) {
-    this.opts = opts;
-    this.sampleRate = opts.layout.sampleRate;
-  }
-
-  private async ensureSession(): Promise<{
-    ort: OrtModule;
-    session: OrtSession;
-  }> {
-    if (this.session && this.ort)
-      return { ort: this.ort, session: this.session };
-    const modelPath = path.join(
-      this.opts.layout.root,
-      this.opts.layout.modelFile,
-    );
-    if (!existsSync(modelPath)) {
-      throw new KokoroModelMissingError(
-        `[kokoro] ONNX model not found at ${modelPath}. Download from ${KOKORO_ONNX_MODEL_URL} and place under <bundleRoot>/${this.opts.layout.modelFile}.`,
-      );
-    }
-    if (this.opts.expectedSha256) {
-      await verifySha256(modelPath, this.opts.expectedSha256);
-    }
-    const load = this.opts.loadOrt ?? defaultOrtLoader;
-    this.ort = await load();
-    // `onnxruntime-node` defaults `intraOpNumThreads` to 1 — every operator
-    // runs single-threaded. On an 8-core CPU this leaves Kokoro above real
-    // time for medium prompts; using the available core count gives a measured
-    // wall-clock improvement without changing inference semantics.
-    // `interOpNumThreads` stays at 1 because Kokoro's graph is mostly a
-    // single sequential chain (BERT encoder → flow → vocoder) — there are
-    // very few independent ops to parallelise across.
-    const cpuCores = Math.max(1, os.cpus().length);
-    this.session = await this.ort.InferenceSession.create(modelPath, {
-      ...buildKokoroOrtSessionOptions(this.opts.executionProvider),
-      graphOptimizationLevel: "all",
-      intraOpNumThreads: cpuCores,
-      interOpNumThreads: 1,
-      enableCpuMemArena: true,
-      enableMemPattern: true,
-    });
-    return { ort: this.ort, session: this.session };
-  }
-
-  async synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
-    // Kokoro's BERT encoder is exported with a fixed max sequence length of
-    // 510 phoneme tokens (matches `kokoro-onnx` upstream
-    // `kokoro_onnx/__init__.py:MAX_PHONEME_LENGTH`). Anything longer trips
-    // an unhelpful "invalid expand shape" failure deep inside ORT's
-    // `/encoder/bert/Expand` node and surfaces to callers as an opaque 502.
-    // Reject early with a clear message so the API layer can map it to a
-    // 4xx and so the user sees what to do about it (split into chunks).
-    if (args.phonemes.ids.length > 510) {
-      throw new Error(
-        `[kokoro] phoneme sequence is too long: ${args.phonemes.ids.length} > 510. ` +
-          `The Kokoro ONNX export caps the BERT encoder at 510 tokens; split the input into shorter chunks before synthesizing.`,
-      );
-    }
-    const { ort, session } = await this.ensureSession();
-    const fullStyle = await this.loadVoiceStyle(args.voice);
-    const inputIds = new BigInt64Array(args.phonemes.ids.length);
-    for (let i = 0; i < args.phonemes.ids.length; i++) {
-      const id = args.phonemes.ids[i];
-      inputIds[i] = BigInt(id ?? 0);
-    }
-    // Per kokoro-onnx upstream (`_create_audio`): a voice pack may ship as a
-    // single `voice.dim` style vector OR as the `Kokoro-82M-v1.0-ONNX` per-token-
-    // length format `[N_positions][voice.dim]`. In the per-position case the
-    // upstream Python uses `voice[len(tokens)]`. We mirror that here so the
-    // .bin files at `KOKORO_VOICES_BASE_URL` load as-shipped.
-    const numPositions = fullStyle.length / args.voice.dim;
-    const style =
-      numPositions > 1
-        ? fullStyle.subarray(
-            Math.min(inputIds.length, numPositions - 1) * args.voice.dim,
-            (Math.min(inputIds.length, numPositions - 1) + 1) * args.voice.dim,
-          )
-        : fullStyle;
-    // Probe the loaded ONNX session for the actual `speed` input dtype
-    // and pick the matching JS typed-array. Different Kokoro v1.0 ONNX
-    // re-exports pair `input_ids`/`tokens` with `speed: float` or
-    // `speed: int32` in inconsistent combinations (the community
-    // onnx-community/Kokoro-82M-v1.0-ONNX/onnx/model_quantized.onnx ships
-    // `input_ids` + `speed: float`; older kokoro-onnx exports ship
-    // `tokens` + `speed: int32`), so naming-based heuristics misfire on
-    // at least one variant. Reading the dtype from session metadata is
-    // the only correct probe. When metadata is missing (test stubs / old
-    // ORT builds) we fall back to the float32 default since that's the
-    // shape every v1.0 ONNX export with `input_ids` we've seen uses.
-    const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
-    const tokensInputName = inputNames.includes("input_ids")
-      ? "input_ids"
-      : "tokens";
-    const speedDtype = isInt32TensorType(getInputMetadataType(session, "speed"))
-      ? "int32"
-      : "float32";
-    const speedTensor =
-      speedDtype === "int32"
-        ? new ort.Tensor("int32", new Int32Array([1]), [1])
-        : new ort.Tensor("float32", new Float32Array([1.0]), [1]);
-    const feeds: Record<string, OrtTensor> = {
-      [tokensInputName]: new ort.Tensor("int64", inputIds, [
-        1,
-        inputIds.length,
-      ]),
-      style: new ort.Tensor("float32", style, [1, style.length]),
-      speed: speedTensor,
-    };
-    const out = (await session.run(feeds)) as Record<
-      string,
-      OrtTensor | undefined
-    >;
-    const waveformTensor = out.waveform ?? out.audio;
-    const waveform = waveformTensor?.data;
-    if (!(waveform instanceof Float32Array)) {
-      throw new Error(
-        "[kokoro] ONNX session returned no float32 waveform tensor (expected 'waveform' or 'audio' output)",
-      );
-    }
-    if (args.cancelSignal.cancelled) return { cancelled: true };
-    const cap = args.maxSamples ?? this.sampleRate * 16;
-    const pcm = waveform.length > cap ? waveform.subarray(0, cap) : waveform;
-    const want = args.onChunk({
-      pcm,
-      sampleRate: this.sampleRate,
-      isFinal: false,
-    });
-    args.onChunk({
-      pcm: new Float32Array(0),
-      sampleRate: this.sampleRate,
-      isFinal: true,
-    });
-    return { cancelled: want === true };
-  }
-
-  private async loadVoiceStyle(voice: KokoroVoicePack): Promise<Float32Array> {
-    const cached = this.voiceCache.get(voice.id);
-    if (cached) return cached;
-    const file = path.join(this.opts.layout.voicesDir, voice.file);
-    if (!existsSync(file)) {
-      throw new KokoroModelMissingError(
-        `[kokoro] voice pack file missing at ${file}. Download from ${KOKORO_VOICES_BASE_URL}/${voice.file}.`,
-      );
-    }
-    const { readFile } = await import("node:fs/promises");
-    const buf = await readFile(file);
-    const ab = buf.buffer.slice(
-      buf.byteOffset,
-      buf.byteOffset + buf.byteLength,
-    );
-    const arr = new Float32Array(ab);
-    // Accept both the single-style format (`voice.dim` fp32 total) and the
-    // upstream `Kokoro-82M-v1.0-ONNX` per-token-length format
-    // (`N_positions × voice.dim` fp32). `synthesize()` slices based on input
-    // length when the latter is in use, matching `kokoro-onnx` upstream.
-    if (arr.length === 0 || arr.length % voice.dim !== 0) {
-      throw new KokoroModelMissingError(
-        `[kokoro] voice pack ${voice.id} has ${arr.length} fp32 values, expected a positive multiple of ${voice.dim}`,
-      );
-    }
-    this.voiceCache.set(voice.id, arr);
-    return arr;
-  }
-
-  dispose(): void {
-    if (this.session) {
-      void this.session.release();
-      this.session = null;
-    }
-    this.voiceCache.clear();
-  }
-}
-
-async function defaultOrtLoader(): Promise<OrtModule> {
-  // String-spread the spec so bundlers don't try to resolve at build time
-  // (ORT is an optional peer — voice can run without it via GGUF / mock).
-  const spec = ["onnxruntime", "node"].join("-");
-  return (await import(spec)) as OrtModule;
-}
-
-async function verifySha256(filePath: string, expected: string): Promise<void> {
-  const expectedNorm = expected.trim().toLowerCase();
-  if (!/^[0-9a-f]{64}$/.test(expectedNorm)) {
-    throw new KokoroModelMissingError(
-      `[kokoro] invalid expected SHA-256 (${expected}); must be 64 hex chars`,
-    );
-  }
-  const hash = createHash("sha256");
-  const stream = createReadStream(filePath);
-  await new Promise<void>((resolve, reject) => {
-    stream.on("data", (b) => hash.update(b));
-    stream.on("end", () => resolve());
-    stream.on("error", reject);
-  });
-  const got = hash.digest("hex");
-  if (got !== expectedNorm) {
-    const size = statSync(filePath).size;
-    throw new KokoroModelMissingError(
-      `[kokoro] model at ${filePath} (size ${size}) has SHA-256 ${got}, expected ${expectedNorm}. Re-download or update the manifest pin.`,
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -643,4 +320,33 @@ export class KokoroMockRuntime implements KokoroRuntime {
   dispose(): void {
     /* nothing */
   }
+}
+
+// ---------------------------------------------------------------------------
+// KokoroOnnxRuntime — legacy ONNX path stub. Real implementation lives in
+// the AOSP build pipeline; this stub keeps the symbol exported so callers
+// that conditionally reference it (plugin-aosp-local-inference) compile.
+// ---------------------------------------------------------------------------
+
+export interface KokoroOnnxRuntimeOptions {
+  modelPath?: string;
+  voicesDir?: string;
+  loadOrt?: () => Promise<unknown>;
+  layout?: KokoroModelLayout;
+  expectedSha256?: string | null;
+}
+
+export const KOKORO_ONNX_MODEL_URL =
+  "https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/onnx/model_q8f16.onnx";
+
+export class KokoroOnnxRuntime implements KokoroRuntime {
+  readonly id = "onnx" as const;
+  readonly sampleRate = 24000;
+  constructor(_opts: KokoroOnnxRuntimeOptions) {}
+  async synthesize(
+    _args: KokoroRuntimeInputs,
+  ): Promise<{ cancelled: boolean }> {
+    throw new Error("KokoroOnnxRuntime is not available in this build");
+  }
+  dispose(): void {}
 }

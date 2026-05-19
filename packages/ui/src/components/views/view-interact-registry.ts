@@ -14,17 +14,25 @@ type InteractHandler = (
   params: Record<string, unknown> | undefined,
 ) => Promise<unknown>;
 
-/** viewId → handler registered by the mounted DynamicViewLoader. */
+type ViewType = "gui" | "tui";
+
+function handlerKey(viewId: string, viewType: ViewType): string {
+  return `${viewType}:${viewId}`;
+}
+
+/** viewType:viewId → handler registered by the mounted DynamicViewLoader. */
 const handlers = new Map<string, InteractHandler>();
 
 export function registerViewInteractHandler(
   viewId: string,
+  viewType: ViewType,
   handler: InteractHandler,
 ): () => void {
-  handlers.set(viewId, handler);
+  const key = handlerKey(viewId, viewType);
+  handlers.set(key, handler);
   return () => {
-    if (handlers.get(viewId) === handler) {
-      handlers.delete(viewId);
+    if (handlers.get(key) === handler) {
+      handlers.delete(key);
     }
   };
 }
@@ -35,18 +43,20 @@ export function registerViewInteractHandler(
  */
 export async function dispatchViewInteract(
   viewId: string,
+  viewType: ViewType | undefined,
   capability: string,
   params: Record<string, unknown> | undefined,
   requestId: string,
 ): Promise<void> {
-  const handler = handlers.get(viewId);
+  const resolvedViewType = viewType ?? "gui";
+  const handler = handlers.get(handlerKey(viewId, resolvedViewType));
 
   if (!handler) {
     client.sendWsMessage({
       type: "view:interact:result",
       requestId,
       success: false,
-      error: `No interact handler registered for view "${viewId}" — view may not be mounted`,
+      error: `No interact handler registered for ${resolvedViewType} view "${viewId}" - view may not be mounted`,
     });
     return;
   }

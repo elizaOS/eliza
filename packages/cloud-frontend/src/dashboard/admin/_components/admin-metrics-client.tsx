@@ -238,7 +238,7 @@ export function AdminMetricsClient() {
           <div className="flex items-start justify-between w-full">
             <div className="flex flex-col gap-2 max-w-[500px]">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Controls
                 </h3>
@@ -368,14 +368,14 @@ export function AdminMetricsClient() {
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Daily Active Users
                 </h3>
               </div>
               {loading ? (
                 <div className="flex h-[340px] items-center justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                 </div>
               ) : dailyTrendData.length > 0 ? (
                 <ChartContainer
@@ -454,14 +454,14 @@ export function AdminMetricsClient() {
               <CornerBrackets size="sm" className="opacity-50" />
               <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                   <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                     Messages
                   </h3>
                 </div>
                 {loading ? (
                   <div className="flex h-[240px] items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                   </div>
                 ) : dailyTrendData.length > 0 ? (
                   <ChartContainer
@@ -497,14 +497,14 @@ export function AdminMetricsClient() {
               <CornerBrackets size="sm" className="opacity-50" />
               <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                   <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                     New Signups
                   </h3>
                 </div>
                 {loading ? (
                   <div className="flex h-[240px] items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                   </div>
                 ) : dailyTrendData.length > 0 ? (
                   <ChartContainer
@@ -545,14 +545,14 @@ export function AdminMetricsClient() {
               <CornerBrackets size="sm" className="opacity-50" />
               <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                   <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                     Platform Distribution
                   </h3>
                 </div>
                 {loading ? (
                   <div className="flex h-[300px] items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                   </div>
                 ) : platformPieData.length > 0 ? (
                   <div className="flex h-[300px] items-center justify-center">
@@ -587,14 +587,14 @@ export function AdminMetricsClient() {
               <CornerBrackets size="sm" className="opacity-50" />
               <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                   <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                     Platform DAU
                   </h3>
                 </div>
                 {loading ? (
                   <div className="flex h-[200px] items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                   </div>
                 ) : (
                   <div className="space-y-4">
@@ -640,7 +640,7 @@ export function AdminMetricsClient() {
             <CornerBrackets size="sm" className="opacity-50" />
             <div className="relative z-10 space-y-4">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Cohort Retention
                 </h3>
@@ -650,7 +650,7 @@ export function AdminMetricsClient() {
               </p>
               {loading ? (
                 <div className="flex h-[340px] items-center justify-center">
-                  <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                 </div>
               ) : retentionData.length > 0 ? (
                 <ChartContainer
@@ -728,7 +728,7 @@ export function AdminMetricsClient() {
               <CornerBrackets size="sm" className="opacity-50" />
               <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                   <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                     OAuth Connection Rate
                   </h3>
@@ -738,7 +738,7 @@ export function AdminMetricsClient() {
                 </p>
                 {loading ? (
                   <div className="flex h-[120px] items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                   </div>
                 ) : (
                   <div className="flex flex-col items-center gap-4 py-6">
@@ -762,14 +762,14 @@ export function AdminMetricsClient() {
               <CornerBrackets size="sm" className="opacity-50" />
               <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                  <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                   <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                     Connected Services
                   </h3>
                 </div>
                 {loading ? (
                   <div className="flex h-[240px] items-center justify-center">
-                    <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+                    <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
                   </div>
                 ) : oauthServiceData.length > 0 ? (
                   <ChartContainer
@@ -838,7 +838,7 @@ function StatCell({
         <Icon className="h-3 md:h-4 w-3 md:w-4 text-[#A2A2A2] flex-shrink-0" />
       </div>
       {loading ? (
-        <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[#FF5800] my-2" />
+        <Loader2 className="h-5 md:h-6 w-5 md:w-6 animate-spin text-[var(--brand-orange)] my-2" />
       ) : (
         <>
           <p className="text-xl md:text-2xl font-mono text-white tracking-tight">

@@ -1,4 +1,4 @@
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 /**
  * Single-turn create when no installed app fuzzy-matches the intent. The

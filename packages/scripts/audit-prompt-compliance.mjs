@@ -88,18 +88,23 @@ const KEYWORD_SOUP_CONNECTORS =
   /\b(?:to|for|with|by|from|in|on|via|as|when|after|before|into|using|or|and|of|the|a|an|if|at|about|through|across|without|within|requires?|returns?|only|per)\b/i;
 
 const SEMANTIC_ROUTING_TERMS = [
-  { name: "chain", pattern: /\b(?:chain|chains|chainId|chain=|chain:|blockchain)\b/i },
+  {
+    name: "chain",
+    pattern: /\b(?:chain|chains|chainId|chain=|chain:|blockchain)\b/i,
+  },
   { name: "category", pattern: /\bcategor(?:y|ies)\b/i },
   { name: "connector", pattern: /\bconnectors?\b/i },
   { name: "source", pattern: /\bsources?\b/i },
   { name: "subaction", pattern: /\bsubactions?\b/i },
   {
     name: "live",
-    pattern: /\blive\s+(?:preview|refresh|data|operation|read|write|search|urls?)\b/i,
+    pattern:
+      /\blive\s+(?:preview|refresh|data|operation|read|write|search|urls?)\b/i,
   },
   {
     name: "read",
-    pattern: /\b(?:read-only|public-read|read\/write|read access|read,\s*type)\b/i,
+    pattern:
+      /\b(?:read-only|public-read|read\/write|read access|read,\s*type)\b/i,
   },
   {
     name: "write",
@@ -122,7 +127,8 @@ const NEGATED_FORMAT_PATTERN =
 const ACTION_XML_PATTERNS = [
   {
     pattern: /\bparseKeyValueXml\b/,
-    reason: "actions must use native tool calling and JSON, not legacy XML helpers",
+    reason:
+      "actions must use native tool calling and JSON, not legacy XML helpers",
   },
   {
     pattern:
@@ -570,9 +576,7 @@ function auditActionXmlUsage() {
       scannedLineCount += 1;
       for (const { pattern, reason } of ACTION_XML_PATTERNS) {
         if (!pattern.test(line)) continue;
-        violations.push(
-          `${file}:${index + 1}: ${reason}: ${line.trim()}`,
-        );
+        violations.push(`${file}:${index + 1}: ${reason}: ${line.trim()}`);
       }
     });
   }

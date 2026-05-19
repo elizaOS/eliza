@@ -5,9 +5,9 @@
  * shape and the timeouts.
  */
 
+import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, test } from "bun:test";
 import { parse as parseYaml } from "yaml";
 
 const CONFIG_PATH = join(

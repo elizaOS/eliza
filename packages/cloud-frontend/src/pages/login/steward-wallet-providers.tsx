@@ -1,3 +1,4 @@
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import {
   darkTheme,
   getDefaultConfig,
@@ -68,8 +69,8 @@ export function StewardWalletProviders({
   const rainbowTheme = useMemo(
     () =>
       darkTheme({
-        accentColor: "#FF5800",
-        accentColorForeground: "#FFFFFF",
+        accentColor: BRAND_COLORS.orange,
+        accentColorForeground: BRAND_COLORS.white,
         borderRadius: "medium",
         overlayBlur: "small",
       }),

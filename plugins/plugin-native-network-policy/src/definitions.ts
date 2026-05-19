@@ -20,33 +20,33 @@
  */
 
 export interface MeteredHint {
-	/**
-	 * `true` if Android reports `NET_CAPABILITY_NOT_METERED === false`
-	 * (i.e. the link IS metered), `false` if not metered, `null` when the
-	 * platform cannot report a definitive answer (no active network or
-	 * permission denied).
-	 */
-	metered: boolean | null;
-	/** Source label for debugging — always `"android-os"` from this plugin. */
-	source: "android-os";
+  /**
+   * `true` if Android reports `NET_CAPABILITY_NOT_METERED === false`
+   * (i.e. the link IS metered), `false` if not metered, `null` when the
+   * platform cannot report a definitive answer (no active network or
+   * permission denied).
+   */
+  metered: boolean | null;
+  /** Source label for debugging — always `"android-os"` from this plugin. */
+  source: "android-os";
 }
 
 export interface PathHints {
-	/** `NWPath.isExpensive` — true when the link is metered per Apple's policy. */
-	isExpensive: boolean;
-	/**
-	 * `NWPath.isConstrained` — true when Low Data Mode is engaged. The voice-
-	 * updater treats this as "metered" because the user has explicitly asked
-	 * the OS to limit non-essential traffic.
-	 */
-	isConstrained: boolean;
-	/** Source label for debugging — always `"nw-path-monitor"` from this plugin. */
-	source: "nw-path-monitor";
+  /** `NWPath.isExpensive` — true when the link is metered per Apple's policy. */
+  isExpensive: boolean;
+  /**
+   * `NWPath.isConstrained` — true when Low Data Mode is engaged. The voice-
+   * updater treats this as "metered" because the user has explicitly asked
+   * the OS to limit non-essential traffic.
+   */
+  isConstrained: boolean;
+  /** Source label for debugging — always `"nw-path-monitor"` from this plugin. */
+  source: "nw-path-monitor";
 }
 
 export interface NetworkPolicyPlugin {
-	/** Android-only. Returns `{ metered: null, source: "android-os" }` on iOS / web. */
-	getMeteredHint(): Promise<MeteredHint>;
-	/** iOS-only. Returns `{ isExpensive: false, isConstrained: false, source: "nw-path-monitor" }` on Android / web. */
-	getPathHints(): Promise<PathHints>;
+  /** Android-only. Returns `{ metered: null, source: "android-os" }` on iOS / web. */
+  getMeteredHint(): Promise<MeteredHint>;
+  /** iOS-only. Returns `{ isExpensive: false, isConstrained: false, source: "nw-path-monitor" }` on Android / web. */
+  getPathHints(): Promise<PathHints>;
 }

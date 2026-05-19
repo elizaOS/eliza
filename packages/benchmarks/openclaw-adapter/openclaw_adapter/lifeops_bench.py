@@ -106,7 +106,7 @@ def build_lifeops_bench_agent_fn(
             world_snapshot_path,
         )
 
-    bridge = client or OpenClawClient()
+    bridge = client or OpenClawClient(direct_openai_compatible=True)
 
     async def _agent_fn(
         conversation_history: list[Any],

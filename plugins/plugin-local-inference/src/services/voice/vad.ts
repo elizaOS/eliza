@@ -29,7 +29,7 @@
  * (`silero-vad-int8.onnx`) loaded via `onnxruntime-node`. That dependency is
  * gone. The preferred path is now `silero-vad-cpp`: a standalone Bun FFI
  * binding to `libsilero_vad` that loads `vad/silero-vad-v5.gguf`, produced by
- * `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
+ * `packages/native/plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
  * The older libelizainference VAD ABI remains as a temporary fallback only.
  */
 
@@ -69,7 +69,7 @@ export class VadUnavailableError extends Error {
 
 /** Relative path of the preferred Silero v5 GGUF VAD model inside an Eliza-1
  *  bundle. The file is produced by
- *  `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`. */
+ *  `packages/native/plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`. */
 export const SILERO_VAD_BUNDLE_REL_PATH = path.join(
 	"vad",
 	"silero-vad-v5.gguf",
@@ -124,7 +124,7 @@ export const SILERO_VAD_CPP_BUNDLE_REL_PATH = SILERO_VAD_BUNDLE_REL_PATH;
  *    3. `<state-dir>/local-inference/vad/silero-vad-v5.gguf`.
  *    4. `$ELIZA_SILERO_VAD_GGUF`.
  *    5. The repo-local CMake build output
- *       (`packages/native-plugins/silero-vad-cpp/build/silero-vad-v5.gguf`).
+ *       (`packages/native/plugins/silero-vad-cpp/build/silero-vad-v5.gguf`).
  *  Returns `null` when none exist. */
 export function resolveSileroVadCppGgufPath(opts: {
 	modelPath?: string;
@@ -452,7 +452,7 @@ export interface CreateVadDetectorOptions {
 	config?: VadDetectorConfig;
 	prefer?: VadProviderPreference;
 	/** Optional explicit path to the standalone Silero VAD GGUF
-	 *  produced by `packages/native-plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
+	 *  produced by `packages/native/plugins/silero-vad-cpp/scripts/silero_vad_to_gguf.py`.
 	 *  Resolved via `resolveSileroVadCppGgufPath` when omitted. */
 	sileroCppGgufPath?: string;
 	/** Optional override path to `libsilero_vad.{so,dylib,dll}`. Falls
@@ -468,7 +468,7 @@ export function vadProviderOrder(
 ): VadProviderId[] {
 	if (prefer !== "auto") return [prefer];
 	// `silero-cpp` is the new standalone, GGUF-backed pure-C runtime
-	// (packages/native-plugins/silero-vad-cpp). It wins when both the
+	// (packages/native/plugins/silero-vad-cpp). It wins when both the
 	// shared library and the converted GGUF are present. The legacy
 	// `silero-ggml` (libelizainference's whisper-style VAD ABI) stays
 	// as a fallback until `silero-cpp` has soaked in production.

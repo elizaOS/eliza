@@ -7,11 +7,14 @@
 
 export type Pair = readonly [string, string];
 
-export function applyReplacements(input: string, pairs: ReadonlyArray<Pair>): string {
-	let m = input;
-	for (const [find, replace] of pairs) {
-		// split/join is the algorithm used by proxy.js — preserves byte parity.
-		m = m.split(find).join(replace);
-	}
-	return m;
+export function applyReplacements(
+  input: string,
+  pairs: ReadonlyArray<Pair>,
+): string {
+  let m = input;
+  for (const [find, replace] of pairs) {
+    // split/join is the algorithm used by proxy.js — preserves byte parity.
+    m = m.split(find).join(replace);
+  }
+  return m;
 }

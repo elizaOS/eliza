@@ -13,7 +13,12 @@ const filter =
   filterArg === "--filter"
     ? args[args.indexOf(filterArg) + 1]
     : filterArg?.slice("--filter=".length);
-const hostViewExternals = ["react", "react/jsx-dev-runtime", "lucide-react"];
+const hostViewExternals = [
+  "react",
+  "react/jsx-dev-runtime",
+  "react/jsx-runtime",
+  "lucide-react",
+];
 
 async function findViewConfigs() {
   const pluginsDir = path.join(repoRoot, "plugins");
@@ -66,6 +71,14 @@ for (const configPath of configs) {
     "--naming=bundle.js",
     "--define",
     `process.env.NODE_ENV=${JSON.stringify(process.env.NODE_ENV ?? "production")}`,
+    "--define",
+    "import.meta.env.DEV=false",
+    "--define",
+    "import.meta.env.PROD=true",
+    "--define",
+    `import.meta.env.MODE=${JSON.stringify(process.env.NODE_ENV ?? "production")}`,
+    "--define",
+    "import.meta.env.SSR=false",
     "--define",
     `__ELIZA_VIEW_ID__=${JSON.stringify(config.viewId ?? "")}`,
     "--define",

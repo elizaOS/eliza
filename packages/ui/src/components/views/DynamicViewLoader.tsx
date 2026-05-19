@@ -24,7 +24,7 @@ import { ErrorBoundary } from "../ui/error-boundary";
 import { registerViewInteractHandler } from "./view-interact-registry";
 
 interface ViewBundleModule {
-  component: ComponentType;
+  component: ComponentType<Record<string, unknown>>;
   interact?: (
     capability: string,
     params?: Record<string, unknown>,
@@ -36,8 +36,120 @@ interface ViewBundleModule {
 // component unmounts.
 const bundleModuleCache = new Map<string, Promise<ViewBundleModule>>();
 
+function isReactComponentExport(
+  value: unknown,
+): value is ComponentType<Record<string, unknown>> {
+  return (
+    typeof value === "function" ||
+    (typeof value === "object" && value !== null && "$$typeof" in value)
+  );
+}
+
+type HostExternalImporter = () => Promise<Record<string, unknown>>;
+
+const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
+  "@elizaos/app-core": () => import("@elizaos/app-core"),
+  "@elizaos/app-core/browser": () => import("@elizaos/app-core"),
+  "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
+  "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
+  "@elizaos/capacitor-mobile-signals": () =>
+    import("@elizaos/capacitor-mobile-signals"),
+  "@elizaos/capacitor-phone": () => import("@elizaos/capacitor-phone"),
+  "@elizaos/capacitor-system": () => import("@elizaos/capacitor-system"),
+  "@elizaos/shared": () => import("@elizaos/shared"),
+  "@elizaos/ui": () => import("@elizaos/ui"),
+  "@elizaos/ui/platform": () => import("../../platform/index.ts"),
+  "@elizaos/ui/platform/ios-runtime": () =>
+    import("../../platform/ios-runtime.ts"),
+  "@elizaos/ui/state/useApp": () => import("../../state/useApp.ts"),
+  "@elizaos/ui/components/ui/button": () => import("../ui/button.tsx"),
+  "@elizaos/ui/components/ui/input": () => import("../ui/input.tsx"),
+  "@elizaos/ui/components/ui/spinner": () => import("../ui/spinner.tsx"),
+  "@elizaos/ui/components/ui/tabs": () => import("../ui/tabs.tsx"),
+  "@elizaos/ui/components/ui/textarea": () => import("../ui/textarea.tsx"),
+  "@elizaos/ui/components/apps/surfaces/GameOperatorShell": () =>
+    import("../apps/surfaces/GameOperatorShell.tsx"),
+  "lucide-react": () => import("lucide-react"),
+  "@pixiv/three-vrm": () => import("@pixiv/three-vrm"),
+  react: () => import("react"),
+  "react-plaid-link": () => import("react-plaid-link"),
+  "react/jsx-dev-runtime": async () => {
+    const devRuntime = await import("react/jsx-dev-runtime");
+    if (typeof devRuntime.jsxDEV === "function") {
+      return devRuntime;
+    }
+    const runtime = await import("react/jsx-runtime");
+    return { ...runtime, jsxDEV: runtime.jsx };
+  },
+  "react/jsx-runtime": () => import("react/jsx-runtime"),
+  three: () => import("three"),
+  "three/examples/jsm/controls/OrbitControls.js": () =>
+    import("three/examples/jsm/controls/OrbitControls.js"),
+  "three/examples/jsm/libs/meshopt_decoder.module.js": () =>
+    import("three/examples/jsm/libs/meshopt_decoder.module.js"),
+  "three/examples/jsm/loaders/DRACOLoader.js": () =>
+    import("three/examples/jsm/loaders/DRACOLoader.js"),
+  "three/examples/jsm/loaders/FBXLoader.js": () =>
+    import("three/examples/jsm/loaders/FBXLoader.js"),
+  "three/examples/jsm/loaders/GLTFLoader.js": () =>
+    import("three/examples/jsm/loaders/GLTFLoader.js"),
+};
+
+const HOST_EXTERNAL_IMPORTER_SPECIFIERS = Object.keys(HOST_EXTERNAL_IMPORTERS);
+
+declare global {
+  interface Window {
+    __ELIZA_DYNAMIC_VIEW_IMPORT__?: (
+      specifier: string,
+    ) => Promise<Record<string, unknown>>;
+    __ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__?: (
+      bundleUrl: string,
+    ) => Promise<Record<string, unknown>>;
+  }
+}
+
+if (typeof window !== "undefined" && !window.__ELIZA_DYNAMIC_VIEW_IMPORT__) {
+  window.__ELIZA_DYNAMIC_VIEW_IMPORT__ = async (specifier) => {
+    const importer = HOST_EXTERNAL_IMPORTERS[specifier];
+    if (!importer) {
+      throw new Error(
+        `DynamicViewLoader: unsupported host external "${specifier}"`,
+      );
+    }
+    return importer();
+  };
+}
+
 /** Dev-mode polling interval in ms. Not used in production builds. */
 const DEV_POLL_INTERVAL_MS = 2000;
+
+async function importViewBundle(
+  bundleUrl: string,
+): Promise<Record<string, unknown>> {
+  if (
+    typeof window !== "undefined" &&
+    window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__
+  ) {
+    return window.__ELIZA_DYNAMIC_VIEW_BUNDLE_IMPORT__(bundleUrl);
+  }
+
+  try {
+    return await import(/* @vite-ignore */ bundleUrl);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (!message.includes("Failed to resolve module specifier")) {
+      throw err;
+    }
+  }
+
+  const rewrittenUrl = new URL(bundleUrl, window.location.href);
+  rewrittenUrl.searchParams.set("hostExternalRuntime", "1");
+  rewrittenUrl.searchParams.set(
+    "hostExternalSpecifiers",
+    HOST_EXTERNAL_IMPORTER_SPECIFIERS.join(","),
+  );
+  return import(/* @vite-ignore */ rewrittenUrl.href);
+}
 
 function loadBundleModule(
   bundleUrl: string,
@@ -47,10 +159,10 @@ function loadBundleModule(
   const cached = bundleModuleCache.get(cacheKey);
   if (cached) return cached;
 
-  const promise = import(/* @vite-ignore */ bundleUrl).then(
+  const promise = importViewBundle(bundleUrl).then(
     (mod: Record<string, unknown>) => {
       const exported = mod[componentExport] ?? mod.default;
-      if (typeof exported !== "function") {
+      if (!isReactComponentExport(exported)) {
         throw new Error(
           `DynamicViewLoader: bundle at ${bundleUrl} did not export a React component as "${componentExport}"`,
         );
@@ -62,7 +174,7 @@ function loadBundleModule(
       const cleanup =
         typeof mod.cleanup === "function" ? mod.cleanup : undefined;
       return {
-        component: exported as ComponentType,
+        component: exported as ComponentType<Record<string, unknown>>,
         interact,
         cleanup: cleanup as ViewBundleModule["cleanup"],
       };
@@ -174,6 +286,8 @@ interface DynamicViewLoaderProps {
   componentExport?: string;
   /** The view's stable ID, used in error state messages. */
   viewId: string;
+  /** Presentation/runtime family for this view. Defaults to GUI. */
+  viewType?: "gui" | "tui";
 }
 
 /**
@@ -191,6 +305,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   bundleUrl,
   componentExport = "default",
   viewId,
+  viewType = "gui",
 }: DynamicViewLoaderProps) {
   const [bundle, setBundle] = useState<ViewBundleModule | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
@@ -230,7 +345,12 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
       })
       .catch((err) => {
         if (cancelled) return;
-        setLoadError(err instanceof Error ? err : new Error(String(err)));
+        const error = err instanceof Error ? err : new Error(String(err));
+        console.error(
+          `DynamicViewLoader failed to load view "${viewId}" from ${bundleUrl}`,
+          error,
+        );
+        setLoadError(error);
       });
 
     return () => {
@@ -244,7 +364,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
           });
       }
     };
-  }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey]);
+  }, [bundleUrl, componentExport, dynamicLoadingAllowed, reloadKey, viewId]);
 
   // Register this view's interact handler whenever the bundle is loaded.
   // The handler is unregistered on unmount or when the bundle changes.
@@ -253,6 +373,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
 
     const unregister = registerViewInteractHandler(
       viewId,
+      viewType,
       async (capability, params) => {
         // Standard capabilities are handled here regardless of whether the
         // module exports interact — they operate on the container DOM.
@@ -275,7 +396,7 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
     );
 
     return unregister;
-  }, [bundle, viewId]);
+  }, [bundle, viewId, viewType]);
 
   // Dev-mode only: poll the bundle URL with HEAD requests every 2s. When the
   // ETag changes the bundle has been rebuilt — evict the cache entry and bump
@@ -319,11 +440,29 @@ export const DynamicViewLoader = memo(function DynamicViewLoader({
   }
 
   const View = bundle.component;
+  const viewProps = {
+    exitToApps: () => {
+      if (typeof window !== "undefined") {
+        window.history.pushState(null, "", "/views");
+        window.dispatchEvent(new PopStateEvent("popstate"));
+      }
+    },
+    t: (
+      key: string,
+      options?: { defaultValue?: string } | Record<string, unknown>,
+    ) =>
+      typeof options === "object" &&
+      options !== null &&
+      "defaultValue" in options &&
+      typeof options.defaultValue === "string"
+        ? options.defaultValue
+        : key,
+  };
 
   return (
     <div ref={containerRef} className="contents">
       <ErrorBoundary fallback={() => <ViewErrorState viewId={viewId} />}>
-        <View />
+        <View {...viewProps} />
       </ErrorBoundary>
     </div>
   );

@@ -3900,7 +3900,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * `closeConversation`, and at process shutdown.
 	 *
 	 * Returns true when a save was issued, false when there was no slot to
-	 * save (e.g. slot pinning disabled, server not running).
+	 * save or the best-effort save failed (e.g. slot pinning disabled,
+	 * server not running, shutdown race).
 	 */
 	async persistConversationKv(
 		conversationId: string,
@@ -3939,12 +3940,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			slotCacheFileName(conversationId, "long"),
 		);
 		try {
-			const restored = await this.requestSlotRestore(
-				baseUrl,
-				slotId,
-				sourcePath,
-			);
-			return restored;
+			return await this.requestSlotRestore(baseUrl, slotId, sourcePath);
 		} catch {
 			return false;
 		}

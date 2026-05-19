@@ -8,7 +8,6 @@
 
 import type { OverlayApp } from "@elizaos/ui";
 import { registerOverlayApp } from "@elizaos/ui";
-import { ShopifyAppView } from "./ShopifyAppView";
 
 export const SHOPIFY_APP_NAME = "@elizaos/plugin-shopify-ui";
 
@@ -19,7 +18,8 @@ export const shopifyApp: OverlayApp = {
     "Manage your Shopify store — products, orders, inventory, customers",
   category: "utility",
   icon: null,
-  Component: ShopifyAppView,
+  loader: () =>
+    import("./ShopifyAppView").then((m) => ({ default: m.ShopifyAppView })),
 };
 
 // Self-register at import time

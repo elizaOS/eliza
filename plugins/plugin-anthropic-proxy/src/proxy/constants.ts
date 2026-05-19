@@ -22,11 +22,11 @@
  */
 
 import {
-	ELIZA_PROP_RENAMES,
-	ELIZA_REPLACEMENTS,
-	ELIZA_REVERSE_MAP,
-	ELIZA_SYSTEM_CONFIG_PARAPHRASE,
-	ELIZA_TOOL_RENAMES,
+  ELIZA_PROP_RENAMES,
+  ELIZA_REPLACEMENTS,
+  ELIZA_REVERSE_MAP,
+  ELIZA_SYSTEM_CONFIG_PARAPHRASE,
+  ELIZA_TOOL_RENAMES,
 } from "./eliza-fingerprint.js";
 
 export const VERSION = "0.2.0";
@@ -42,14 +42,14 @@ export const BILLING_HASH_INDICES: readonly number[] = [4, 7, 20];
 
 /** Beta flags required for OAuth + Claude Code features */
 export const REQUIRED_BETAS: readonly string[] = [
-	"oauth-2025-04-20",
-	"claude-code-20250219",
-	"interleaved-thinking-2025-05-14",
-	"advanced-tool-use-2025-11-20",
-	"context-management-2025-06-27",
-	"prompt-caching-scope-2026-01-05",
-	"effort-2025-11-24",
-	"fast-mode-2026-02-01",
+  "oauth-2025-04-20",
+  "claude-code-20250219",
+  "interleaved-thinking-2025-05-14",
+  "advanced-tool-use-2025-11-20",
+  "context-management-2025-06-27",
+  "prompt-caching-scope-2026-01-05",
+  "effort-2025-11-24",
+  "fast-mode-2026-02-01",
 ];
 
 /**
@@ -60,11 +60,11 @@ export const REQUIRED_BETAS: readonly string[] = [
  * which inserts these by string concatenation into the tools array.
  */
 export const CC_TOOL_STUBS: readonly string[] = [
-	'{"name":"Glob","description":"Find files by pattern","input_schema":{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern"}},"required":["pattern"]}}',
-	'{"name":"Grep","description":"Search file contents","input_schema":{"type":"object","properties":{"pattern":{"type":"string","description":"Regex pattern"},"path":{"type":"string","description":"Search path"}},"required":["pattern"]}}',
-	'{"name":"Agent","description":"Launch a subagent for complex tasks","input_schema":{"type":"object","properties":{"prompt":{"type":"string","description":"Task description"}},"required":["prompt"]}}',
-	'{"name":"NotebookEdit","description":"Edit notebook cells","input_schema":{"type":"object","properties":{"notebook_path":{"type":"string"},"cell_index":{"type":"integer"}},"required":["notebook_path"]}}',
-	'{"name":"TodoRead","description":"Read current task list","input_schema":{"type":"object","properties":{}}}',
+  '{"name":"Glob","description":"Find files by pattern","input_schema":{"type":"object","properties":{"pattern":{"type":"string","description":"Glob pattern"}},"required":["pattern"]}}',
+  '{"name":"Grep","description":"Search file contents","input_schema":{"type":"object","properties":{"pattern":{"type":"string","description":"Regex pattern"},"path":{"type":"string","description":"Search path"}},"required":["pattern"]}}',
+  '{"name":"Agent","description":"Launch a subagent for complex tasks","input_schema":{"type":"object","properties":{"prompt":{"type":"string","description":"Task description"}},"required":["prompt"]}}',
+  '{"name":"NotebookEdit","description":"Edit notebook cells","input_schema":{"type":"object","properties":{"notebook_path":{"type":"string"},"cell_index":{"type":"integer"}},"required":["notebook_path"]}}',
+  '{"name":"TodoRead","description":"Read current task list","input_schema":{"type":"object","properties":{}}}',
 ];
 
 // ─── Default Fingerprint Dictionaries (eliza) ──────────────────────────────

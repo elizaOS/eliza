@@ -116,22 +116,28 @@ export interface ImageGenResult {
  * `createImageGenCapabilityRegistration` populates from the catalog +
  * `ELIZA_1_BUNDLE_EXTRAS.json`.
  *
- * Most diffusion families are single-file GGUFs once quantized — SD 1.5
- * Q5_0, Z-Image-Turbo Q4_K_M, FLUX.1 schnell Q4_K_M all bundle the
- * UNet/DiT + VAE + text encoders into one file. The optional `vae` /
- * `clip` / `t5` paths exist for runtimes that prefer split assets
- * (mlx-mflux ships split FLUX components; Core ML uses split `.mlpackage`
- * directories).
+ * Some diffusion families are single-file GGUFs once quantized, such as
+ * SD 1.5 Q5_0. Others stay split: stable-diffusion.cpp runs Z-Image
+ * with `--diffusion-model` plus separate Qwen LLM text encoder and VAE
+ * files. The optional paths below carry those companion assets.
  */
 export interface ImageGenLoadArgs {
 	/** Absolute path to the primary diffusion weights (GGUF / mlpackage / engine). */
 	modelPath: string;
+	/**
+	 * Treat `modelPath` as a stable-diffusion.cpp `--diffusion-model` rather
+	 * than a monolithic `--model`. Required for Z-Image/Flux-style split
+	 * diffusion bundles.
+	 */
+	splitDiffusionModel?: boolean;
 	/** Optional split VAE path. */
 	vae?: string;
 	/** Optional split CLIP-L / CLIP-G path. */
 	clip?: string;
 	/** Optional split T5 / Gemma text encoder path. */
 	t5?: string;
+	/** Optional split LLM text encoder path, e.g. Qwen3 for Z-Image. */
+	llm?: string;
 	/**
 	 * Backend-specific acceleration hint. Accepts:
 	 *   - `"auto"` (default) — let the binding decide.

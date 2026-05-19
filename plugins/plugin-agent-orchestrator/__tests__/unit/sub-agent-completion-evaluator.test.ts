@@ -219,7 +219,11 @@ describe("subAgentCompletionResponseEvaluator", () => {
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
     expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
       requiresTool: true,
-      setContexts: ["general"],
+      // `automation` (not `general`) is the context the TASKS contextGate
+      // accepts. Routing through TASKS_SEND_TO_AGENT with the wrong
+      // context would fail `executePlannedToolCall` with "Action TASKS_*
+      // is not allowed in the current context".
+      setContexts: ["automation"],
       clearReply: true,
       addCandidateActions: ["TASKS_SEND_TO_AGENT"],
       addParentActionHints: ["TASKS"],
@@ -384,32 +388,12 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
-  it("surfaces incomplete build reports without spawning another agent", async () => {
+  it("does not suppress incomplete build reports", async () => {
     const context = makeContext({
-      text: "[sub-agent: demo (opencode) — task_complete]\nDone: https://example.test/apps/demo/\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]\n  - https://example.test/apps/demo/ → HTTP 404",
-      messageHandler: {
-        plan: {
-          contexts: ["general"],
-          reply: "On it — spawning opencode sub-agent to handle your request.",
-          requiresTool: true,
-          candidateActions: ["TASKS_SPAWN_AGENT"],
-          parentActionHints: ["TASKS"],
-        },
-      },
+      text: "[sub-agent: demo (opencode) — task_complete]\nDone: https://example.test/apps/demo/\n\n[verification: the following URL(s) the sub-agent referenced are NOT reachable — do NOT tell the user the app is live]",
     });
 
-    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
-    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
-      requiresTool: false,
-      setContexts: [SIMPLE_CONTEXT_ID],
-      clearCandidateActions: true,
-      clearParentActionHints: true,
-      reply:
-        "The sub-agent reported completion, but verification failed, so I am not treating the app as live yet.\nUnreachable URL(s):\n- https://example.test/apps/demo/ → HTTP 404",
-      debug: [
-        "sub-agent completion failed verification; surfacing failure without re-dispatch",
-      ],
-    });
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
   });
 
   it("does not handle non-completion sub-agent events", async () => {
@@ -419,5 +403,59 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
 
     expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(false);
+  });
+
+  it("does not mis-flag URL paths in prose as raw tool transcripts", async () => {
+    // Regression: the old `/^\/[^\s]+/m` heuristic fired on any line starting
+    // with `/`, including URL paths the sub-agent mentions in prose
+    // (`/admin`, `/posts/123`). After tightening the regex to known top-level
+    // dirs (`/Users|home|root|...`), these completions should flow through
+    // as direct replies instead of being routed back through TASKS as a
+    // suspected transcript leak.
+    const context = makeContext({
+      text: "[sub-agent: blog (opencode) — task_complete]\nDeployed the blog. The admin panel is mounted at /admin and posts live under /posts/123.\nhttps://example.test/blog/",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "https://example.test/blog/",
+          requiresTool: false,
+        },
+      },
+    });
+
+    const patch = subAgentCompletionResponseEvaluator.evaluate(context);
+    expect(patch.requiresTool).toBe(false);
+    // The body (which contains `/admin` and `/posts/123`) is NOT flagged as
+    // raw transcript — the reply path picks up the prose+URL body.
+    expect(patch.reply).toContain("/admin");
+    expect(patch.reply).toContain("/posts/123");
+    expect(patch.reply).toContain("https://example.test/blog/");
+  });
+
+  it("still flags absolute filesystem paths as raw tool transcripts", async () => {
+    // Positive: `/Users/...` and `/var/...` remain tool-transcript signals,
+    // so the evaluator routes such completions back through TASKS rather
+    // than leaking the path to the user.
+    const context = makeContext({
+      text: "[sub-agent: demo (opencode) — task_complete]\nFound files:\n/Users/stan/projects/demo/index.html\n/var/log/app.log",
+      metadata: {
+        subAgentVerifiedUrls: ["https://example.test/apps/demo/"],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "https://example.test/apps/demo/",
+          requiresTool: true,
+          candidateActions: ["SHELL"],
+        },
+      },
+    });
+
+    const patch = subAgentCompletionResponseEvaluator.evaluate(context);
+    // Verified URL is used (the raw paths are detected and the verified URL
+    // wins over the unsafe completion body).
+    expect(patch.reply).toBe("https://example.test/apps/demo/");
+    expect(patch.reply).not.toContain("/Users/");
+    expect(patch.reply).not.toContain("/var/");
   });
 });

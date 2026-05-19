@@ -8,7 +8,7 @@ on:
       - "packages/app/**"
       - "packages/app-core/**"
       - "packages/core/**"
-      - "packages/native-plugins/**"
+      - "packages/native/plugins/**"
       - "packages/shared/**"
       - "plugins/plugin-sql/**"
       - ".github/workflows/mobile-build-smoke.yml"
@@ -236,6 +236,10 @@ jobs:
         run: node --max-old-space-size=8192 packages/app-core/scripts/run-mobile-build.mjs android-cloud-debug
         env:
           NODE_OPTIONS: "--max-old-space-size=8192"
+          # This smoke job intentionally installs no native/DFlash deps.
+          # Real local/AOSP Android builds still fail if fork llama libs are
+          # missing; the opt-out only lets CI validate Capacitor/Gradle wiring.
+          ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB: "1"
 
       - name: Verify APK exists
         run: |

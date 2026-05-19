@@ -1,0 +1,10 @@
+source,design,format,num_macros,num_std_cells,technology,has_def,has_lef,has_verilog,has_timing,license,redistributable,conversion_status,notes
+google_circuit_training,toy_macro_stdcell,protobuf+plc,unknown,unknown,synthetic,no,no,no,no,Apache-2.0,yes,ready,Included in upstream test_data for smoke testing.
+google_circuit_training,ariane,protobuf+plc,134,unknown,unspecified,no,no,no,no,Apache-2.0,yes,ready,Canonical AlphaChip public RISC-V example.
+tilos_macroplacement,ariane133/136,protobuf+lef/def,133-136,unknown,asap7/other,yes,yes,yes,unknown,BSD-3-Clause plus enablement terms,check,external,High-priority pretraining/eval corpus.
+tilos_macroplacement,blackparrot/mempool/nvdla,lef/def+flow,unknown,unknown,multiple,yes,yes,yes,unknown,BSD-3-Clause plus enablement terms,check,external,Good public macro-heavy designs.
+circuitnet,CircuitNet-N14/N28/N45,lef/def+features,unknown,unknown,N14/N28/N45,yes,yes,yes,yes,BSD-3-Clause code; dataset terms to verify,check,not_started,Useful for congestion/timing/IR ML features more than direct AlphaChip training.
+openroad_flow_scripts,public designs,verilog+lef/def from flow,varies,varies,sky130/gf180/asap7/nangate45,generated,yes,yes,varies,BSD-3-Clause plus design/platform terms,check,not_started,Generate reproducible placement examples through ORFS.
+ispd_2005_2006,placement_contests,bookshelf,varies,varies,abstract,no,no,no,no,contest terms,check,not_started,Classic mixed-size placement benchmarks; research-use caution.
+ispd_2014_2015,detailed_routing_contests,lef/def+verilog,varies,varies,contest,yes,yes,yes,varies,contest terms,check,not_started,Parser/routability benchmarks; may require macro unfixing.
+e1,eliza_e1,lef/def+protobuf future,unknown,unknown,sky130/gf180,planned,planned,yes,yes,internal,internal,blocked,Needs OpenLane/OpenROAD handoff and conversion.

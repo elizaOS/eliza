@@ -9,7 +9,7 @@
  * Cited: 03-coverage-gap-matrix.md — send-after-approval round trip.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 export default scenario({

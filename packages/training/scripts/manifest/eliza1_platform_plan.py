@@ -78,13 +78,17 @@ VAD_ARTIFACTS: Final[tuple[str, ...]] = ("vad/silero-vad-v5.gguf",)
 VAD_OPTIONAL_FALLBACK_ARTIFACTS: Final[tuple[str, ...]] = (
     "vad/silero-vad-int8.onnx",
 )
+Z_IMAGE_COMPANION_ARTIFACTS: Final[tuple[str, ...]] = (
+    "imagegen/vae/ae.safetensors",
+    "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
+)
 IMAGEGEN_ARTIFACTS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
     "0_8b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "2b": ("imagegen/sd-1.5-Q5_0.gguf",),
     "4b": ("imagegen/sd-1.5-Q5_0.gguf",),
-    "9b": ("imagegen/z-image-turbo-Q4_K_M.gguf",),
-    "27b": ("imagegen/z-image-turbo-Q4_K_M.gguf",),
-    "27b-256k": ("imagegen/z-image-turbo-Q4_K_M.gguf",),
+    "9b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
+    "27b": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
+    "27b-256k": ("imagegen/z-image-turbo-Q4_K_M.gguf", *Z_IMAGE_COMPANION_ARTIFACTS),
 }
 VISION_TIERS: Final[frozenset[str]] = ELIZA_1_VISION_TIERS
 DFLASH_TIERS: Final[frozenset[str]] = ELIZA_1_DFLASH_TIERS
@@ -318,7 +322,17 @@ _RELEASE_FINAL_FLAGS_BASE_V1: Final[tuple[str, ...]] = tuple(
     f for f in _RELEASE_FINAL_FLAGS_ALL if f != "weights"
 )
 _WEIGHT_PAYLOAD_DIRS: Final[frozenset[str]] = frozenset(
-    {"text", "tts", "asr", "vad", "vision", "dflash", "embedding", "wakeword"}
+    {
+        "text",
+        "tts",
+        "asr",
+        "vad",
+        "imagegen",
+        "vision",
+        "dflash",
+        "embedding",
+        "wakeword",
+    }
 )
 
 

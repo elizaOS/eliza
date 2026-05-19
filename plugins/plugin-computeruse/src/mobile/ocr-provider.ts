@@ -209,7 +209,7 @@ export function _resetOcrProvidersForTests(): void {
  * the runtime registers a provider here at boot.
  *
  * Phase 2 target: replace the transitional RapidOCR-backed adapter with the
- * native doctr-cpp provider once `packages/native-plugins/doctr-cpp/` ships.
+ * native doctr-cpp provider once `packages/native/plugins/doctr-cpp/` ships.
  */
 export interface CoordOcrSemantic {
   readonly position:

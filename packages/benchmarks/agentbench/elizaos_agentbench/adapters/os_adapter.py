@@ -411,11 +411,17 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
 
     async def evaluate(self, task: AgentBenchTask, trajectory: list[str]) -> bool:
         """Evaluate task completion."""
-        if not task.ground_truth:
+        expected_value = task.ground_truth
+        evaluation = task.metadata.get("evaluation")
+        if not expected_value and isinstance(evaluation, dict):
+            match = evaluation.get("match")
+            if isinstance(match, str) and match:
+                expected_value = match
+        if not expected_value:
             return False
 
         # Check if expected output/state is achieved
-        expected = task.ground_truth.lower()
+        expected = expected_value.lower()
 
         # Execute verification command if specified
         if "verify_command" in task.metadata:
@@ -425,6 +431,18 @@ class OSEnvironmentAdapter(EnvironmentAdapter):
                 task.metadata["verify_command"]
             )
             return exit_code == 0 and expected in output.lower()
+
+        if isinstance(evaluation, dict) and isinstance(evaluation.get("match"), str):
+            if self._container_id:
+                output, exit_code = await self._execute_docker_command(
+                    f"grep -R -- {shlex.quote(expected_value)} . 2>/dev/null"
+                )
+            else:
+                output, exit_code = await self._execute_local_command(
+                    f"grep -R -- {shlex.quote(expected_value)} . 2>/dev/null"
+                )
+            if exit_code == 0 and expected in output.lower():
+                return True
 
         # Check last command output
         if self._command_history:

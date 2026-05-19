@@ -5,9 +5,7 @@ if (
   process.env.ELIZA_SKIP_LOCAL_UPSTREAMS = "1";
 }
 
-const upstream = await import(
-  "../app-core/test/eliza-package-paths.ts"
-);
+const upstream = await import("../app-core/test/eliza-package-paths.ts");
 
 export const getAppCoreSourceRoot = upstream.getAppCoreSourceRoot;
 export const getAutonomousSourceRoot = upstream.getAutonomousSourceRoot;

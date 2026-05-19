@@ -23,6 +23,7 @@ import {
   type JsonObject,
   type LocalModelStatusResult,
   logger,
+  type RemotePluginCapability,
   Service,
   type TerminalRunParams,
   type TerminalRunResult,
@@ -573,6 +574,33 @@ export class E2BSatelliteCapabilityRouterService
   readonly model = {
     status: () => this.modelStatus(),
   };
+  readonly plugin: RemotePluginCapability = {
+    listModules: () => this.pluginUnavailable("plugin.module.list"),
+    invokeAction: () => this.pluginUnavailable("plugin.action.invoke"),
+    getProvider: () => this.pluginUnavailable("plugin.provider.get"),
+    callRoute: () => this.pluginUnavailable("plugin.route.call"),
+    getAsset: () => this.pluginUnavailable("plugin.asset.get"),
+    shouldRunEvaluator: () =>
+      this.pluginUnavailable("plugin.evaluator.shouldRun"),
+    prepareEvaluator: () => this.pluginUnavailable("plugin.evaluator.prepare"),
+    promptEvaluator: () => this.pluginUnavailable("plugin.evaluator.prompt"),
+    processEvaluator: () => this.pluginUnavailable("plugin.evaluator.process"),
+    shouldRunResponseHandlerEvaluator: () =>
+      this.pluginUnavailable("plugin.responseHandlerEvaluator.shouldRun"),
+    evaluateResponseHandlerEvaluator: () =>
+      this.pluginUnavailable("plugin.responseHandlerEvaluator.evaluate"),
+    shouldRunResponseHandlerFieldEvaluator: () =>
+      this.pluginUnavailable("plugin.responseHandlerFieldEvaluator.shouldRun"),
+    parseResponseHandlerFieldEvaluator: () =>
+      this.pluginUnavailable("plugin.responseHandlerFieldEvaluator.parse"),
+    handleResponseHandlerFieldEvaluator: () =>
+      this.pluginUnavailable("plugin.responseHandlerFieldEvaluator.handle"),
+    callLifecycle: () => this.pluginUnavailable("plugin.lifecycle.call"),
+    handleEvent: () => this.pluginUnavailable("plugin.event.handle"),
+    invokeModel: () => this.pluginUnavailable("plugin.model.invoke"),
+    callService: () => this.pluginUnavailable("plugin.service.call"),
+    callAppBridge: () => this.pluginUnavailable("plugin.appBridge.call"),
+  };
 
   private sandboxPromise: Promise<E2BSandboxClient> | null = null;
   private preparePromise: Promise<void> | null = null;
@@ -632,6 +660,7 @@ export class E2BSatelliteCapabilityRouterService
         pty: available,
         git: available,
         model: false,
+        plugin: false,
       },
       ...(available
         ? {}
@@ -833,6 +862,15 @@ export class E2BSatelliteCapabilityRouterService
       capability: "model",
       method: "model.status",
       message: "Cloud sandbox runner does not own local model control.",
+    });
+  }
+
+  private async pluginUnavailable(method: string): Promise<never> {
+    throw new CapabilityError({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method,
+      message: "Cloud sandbox runner does not own remote plugin execution.",
     });
   }
 

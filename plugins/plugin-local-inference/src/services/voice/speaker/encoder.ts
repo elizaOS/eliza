@@ -1,38 +1,36 @@
 /**
- * WeSpeaker ResNet34-LM ONNX speaker-embedding encoder.
+ * Speaker-embedding encoder — GGML-backed re-export shim.
  *
- * Produces a 256-dim L2-normalized speaker embedding from a mono PCM
- * waveform sampled at 16 kHz. The model is the upstream
- * `Wespeaker/wespeaker-voxceleb-resnet34-LM` int8 ONNX export
- * (~7 MB on disk; CC-BY-4.0 — attribution required in the manifest).
+ * The ONNX `WespeakerEncoder` was removed when `onnxruntime-node` was
+ * dropped. This file re-exports the GGML equivalents under backward-
+ * compatible names so callers in `routes/` and `engine-bridge.ts` do not
+ * all need simultaneous updates.
  *
- * The encoder is intentionally stateless: callers pass an audio
- * window, get back a single centroid-friendly embedding. Frame-level
- * statistics pooling happens inside the model graph itself; we feed
- * the entire window in one shot. For long captures the recommended
- * pattern is 3-second sliding windows averaged in caller code (the
- * profile store does this when finalizing an owner capture).
- *
- * The dependency on `onnxruntime-node` is *optional* — `loadOnnxRuntime`
- * raises a structured error if the dep is missing. The voice pipeline
- * surfaces that as "speaker recognition unavailable" without crashing
- * the rest of the runtime. There is no synthetic fallback (synthetic
- * embeddings would silently match every voice to whatever cluster they
- * happened to be near in the synthetic feature space — see
- * `voice-profile-artifact.ts` for the historical synthetic-feature
- * path; that file is now consent / hashing only and does NOT feed
- * matching).
+ * New callers should import from `./encoder-ggml` directly.
  */
 
-import {
-	loadOnnxRuntime,
-	OnnxRuntimeUnavailableError,
-	type OrtInferenceSession,
-	type OrtTensorCtor,
-} from "../onnx-runtime";
 import { normalizeVoiceEmbedding } from "../speaker-imprint";
+import {
+	SPEAKER_GGML_EMBEDDING_DIM,
+	SPEAKER_GGML_MIN_SAMPLES,
+	SPEAKER_GGML_SAMPLE_RATE,
+	SpeakerEncoderGgmlImpl,
+	SpeakerEncoderGgmlUnavailableError,
+} from "./encoder-ggml";
 
-/** Canonical model id stored on every `VoiceProfileRecord.embeddingModel`. */
+export {
+	SpeakerEncoderGgmlImpl,
+	type SpeakerEncoderGgmlOptions,
+	SpeakerEncoderGgmlUnavailableError,
+} from "./encoder-ggml";
+
+// ---------------------------------------------------------------------------
+// Backward-compatible model id constants.
+// The GGUF model replaces the ONNX exports; the model id strings are kept
+// for compatibility with stored profiles (changing them would invalidate
+// any existing voice profiles in the database).
+// ---------------------------------------------------------------------------
+
 export const WESPEAKER_RESNET34_LM_INT8_MODEL_ID =
 	"wespeaker-resnet34-lm-int8" as const;
 export const WESPEAKER_RESNET34_LM_FP32_MODEL_ID =
@@ -41,20 +39,23 @@ export type WespeakerModelId =
 	| typeof WESPEAKER_RESNET34_LM_INT8_MODEL_ID
 	| typeof WESPEAKER_RESNET34_LM_FP32_MODEL_ID;
 
-/** Output embedding dim of the ResNet34-LM checkpoint. */
-export const WESPEAKER_EMBEDDING_DIM = 256;
+export const WESPEAKER_EMBEDDING_DIM = SPEAKER_GGML_EMBEDDING_DIM;
+export const WESPEAKER_SAMPLE_RATE = SPEAKER_GGML_SAMPLE_RATE;
+export const WESPEAKER_MIN_SAMPLES = SPEAKER_GGML_MIN_SAMPLES;
 
-/** Required input sample rate (matches the WeSpeaker training config). */
-export const WESPEAKER_SAMPLE_RATE = 16_000;
+// ---------------------------------------------------------------------------
+// Backward-compatible error class alias.
+// ---------------------------------------------------------------------------
 
-/** Minimum useful audio window for an embedding (~1.0 s).
- *  Shorter windows yield embeddings dominated by the silence-padding
- *  bias and are not safe to fold into a centroid. */
-export const WESPEAKER_MIN_SAMPLES = 16_000;
-
-/** Thrown when the encoder cannot be constructed (missing ORT, bad graph). */
 export class SpeakerEncoderUnavailableError extends Error {
-	readonly code: "ort-missing" | "model-load-failed" | "invalid-input";
+	readonly code:
+		| "native-missing"
+		| "library-missing"
+		| "model-missing"
+		| "model-load-failed"
+		| "model-shape-mismatch"
+		| "forward-not-implemented"
+		| "invalid-input";
 	constructor(code: SpeakerEncoderUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "SpeakerEncoderUnavailableError";
@@ -62,165 +63,61 @@ export class SpeakerEncoderUnavailableError extends Error {
 	}
 }
 
-/** The bare contract every speaker encoder honors. */
+// ---------------------------------------------------------------------------
+// Backward-compatible SpeakerEncoder interface.
+// ---------------------------------------------------------------------------
+
+/** The minimal contract every speaker encoder honors. */
 export interface SpeakerEncoder {
-	readonly modelId: WespeakerModelId;
 	readonly embeddingDim: number;
 	readonly sampleRate: number;
-	/**
-	 * Encode a PCM window to a 256-dim L2-normalized embedding.
-	 * Throws `SpeakerEncoderUnavailableError` with `code:"invalid-input"`
-	 * when the window is shorter than `WESPEAKER_MIN_SAMPLES` or contains
-	 * non-finite samples — the matcher would otherwise produce garbage.
-	 */
+	readonly modelId?: string;
 	encode(pcm: Float32Array): Promise<Float32Array>;
-	/** Release the underlying ORT session. Idempotent. */
 	dispose(): Promise<void>;
 }
 
-async function loadOrt() {
-	try {
-		return await loadOnnxRuntime();
-	} catch (err) {
-		if (err instanceof OnnxRuntimeUnavailableError) {
-			throw new SpeakerEncoderUnavailableError(
-				"ort-missing",
-				`${err.message} Install it to enable on-device speaker recognition; the pipeline runs without speaker-ID until then.`,
-			);
-		}
-		throw err;
-	}
-}
+// ---------------------------------------------------------------------------
+// WespeakerEncoder — now a factory wrapper around SpeakerEncoderGgmlImpl.
+// The model path argument is kept for API compatibility; it now points to
+// a GGUF file (`voice/speaker-encoder/wespeaker-resnet34-lm.gguf`).
+// ---------------------------------------------------------------------------
 
-function pickInputName(session: OrtInferenceSession): string {
-	const name = session.inputNames[0];
-	if (!name) {
-		throw new SpeakerEncoderUnavailableError(
-			"model-load-failed",
-			"[wespeaker] ONNX session has no input bindings",
-		);
-	}
-	return name;
-}
-
-function pickOutputName(session: OrtInferenceSession): string {
-	const name = session.outputNames[0];
-	if (!name) {
-		throw new SpeakerEncoderUnavailableError(
-			"model-load-failed",
-			"[wespeaker] ONNX session has no output bindings",
-		);
-	}
-	return name;
-}
-
-/**
- * WeSpeaker ResNet34-LM ONNX implementation. Honors the
- * `[batch=1, time]` raw-PCM input convention used by the upstream
- * export. Releases the session via `dispose()`.
- */
 export class WespeakerEncoder implements SpeakerEncoder {
-	readonly modelId: WespeakerModelId;
 	readonly embeddingDim = WESPEAKER_EMBEDDING_DIM;
 	readonly sampleRate = WESPEAKER_SAMPLE_RATE;
-	private disposed = false;
+	private readonly impl: SpeakerEncoderGgmlImpl;
 
-	private constructor(
-		private readonly session: OrtInferenceSession,
-		private readonly Tensor: OrtTensorCtor,
-		private readonly inputName: string,
-		private readonly outputName: string,
-		modelId: WespeakerModelId,
-	) {
-		this.modelId = modelId;
+	private constructor(ggufPath: string) {
+		this.impl = new SpeakerEncoderGgmlImpl({ ggufPath });
 	}
 
 	static async load(
-		modelPath: string,
-		modelId: WespeakerModelId = WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
+		ggufPath: string,
+		_modelId: WespeakerModelId = WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	): Promise<WespeakerEncoder> {
-		const ort = await loadOrt();
-		let session: OrtInferenceSession;
-		try {
-			session = await ort.InferenceSession.create(modelPath);
-		} catch (err) {
-			throw new SpeakerEncoderUnavailableError(
-				"model-load-failed",
-				`[wespeaker] failed to load encoder from ${modelPath}: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
-		return new WespeakerEncoder(
-			session,
-			ort.Tensor,
-			pickInputName(session),
-			pickOutputName(session),
-			modelId,
-		);
+		return new WespeakerEncoder(ggufPath);
 	}
 
 	async encode(pcm: Float32Array): Promise<Float32Array> {
-		if (this.disposed) {
-			throw new SpeakerEncoderUnavailableError(
-				"model-load-failed",
-				"[wespeaker] encoder has been disposed",
-			);
-		}
-		if (pcm.length < WESPEAKER_MIN_SAMPLES) {
-			throw new SpeakerEncoderUnavailableError(
-				"invalid-input",
-				`[wespeaker] input window too short: ${pcm.length} samples (< ${WESPEAKER_MIN_SAMPLES})`,
-			);
-		}
-		for (let i = 0; i < pcm.length; i += 1) {
-			if (!Number.isFinite(pcm[i])) {
-				throw new SpeakerEncoderUnavailableError(
-					"invalid-input",
-					`[wespeaker] non-finite sample at index ${i}`,
-				);
+		try {
+			return await this.impl.encode(pcm);
+		} catch (err) {
+			if (err instanceof SpeakerEncoderGgmlUnavailableError) {
+				throw new SpeakerEncoderUnavailableError(err.code, err.message);
 			}
+			throw err;
 		}
-		const input = new this.Tensor("float32", pcm, [1, pcm.length]);
-		const out = await this.session.run({ [this.inputName]: input });
-		const tensor = out[this.outputName];
-		if (!tensor || !(tensor.data instanceof Float32Array)) {
-			throw new SpeakerEncoderUnavailableError(
-				"model-load-failed",
-				"[wespeaker] encoder did not return a Float32Array embedding",
-			);
-		}
-		// Some upstream exports emit `[1, 256]`, others `[256]`. We
-		// L2-normalize defensively so the caller can dot-product directly.
-		if (tensor.data.length !== this.embeddingDim) {
-			throw new SpeakerEncoderUnavailableError(
-				"model-load-failed",
-				`[wespeaker] expected ${this.embeddingDim}-dim embedding, got ${tensor.data.length}`,
-			);
-		}
-		const normalized = normalizeVoiceEmbedding(tensor.data);
-		return Float32Array.from(normalized);
 	}
 
 	async dispose(): Promise<void> {
-		this.disposed = true;
-		// `OrtInferenceSession.release` exists at runtime on
-		// onnxruntime-node but is not in our minimal type contract;
-		// best-effort cast for the cleanup.
-		const maybe = this.session as unknown as {
-			release?: () => Promise<void> | void;
-		};
-		if (typeof maybe.release === "function") {
-			await maybe.release();
-		}
+		await this.impl.dispose();
 	}
 }
 
-/**
- * Combine N per-window embeddings into a single L2-normalized centroid.
- * Used by the onboarding finalizer (six 3-second windows → one centroid)
- * and by the running-mean refinement on each new attribution.
- */
+// ---------------------------------------------------------------------------
+// averageEmbeddings — pure helper, unchanged from original encoder.ts.
+// ---------------------------------------------------------------------------
+
 export function averageEmbeddings(
 	embeddings: readonly Float32Array[],
 ): Float32Array {

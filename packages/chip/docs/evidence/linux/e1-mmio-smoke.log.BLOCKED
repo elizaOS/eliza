@@ -1,0 +1,11 @@
+reason: no boot transcript of an imported OpenPhone hello kernel/rootfs exists, so /dev/hello-npu and DMA sysfs smoke output cannot be captured.
+state: blocked
+evidence_id: linux_mmio_smoke
+evidence_path: docs/evidence/linux/hello-mmio-smoke.log
+status_report: docs/evidence/linux/linux-external-bsp-status.json
+candidate_external_tree: external/linux
+preflight_command: python3 scripts/check_linux_external_bsp.py external/linux
+capture_command: HELLO_SMOKE_CMD='ssh root@TARGET /usr/bin/hello-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh external/linux smoke
+required_markers: openphone-evidence: target=linux artifact=hello-mmio-smoke; HELLO_NPU_BASE=0x10020000; HELLO_MMIO_SMOKE_PASS; openphone-evidence: status=PASS
+current_local_blockers: linux_kernel_build_evidence_blocked; linux_dtb_check_evidence_blocked; booted_target_missing
+audit: docs/android/bsp-critical-gap-audit-2026-05-17.md

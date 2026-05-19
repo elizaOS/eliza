@@ -3,7 +3,7 @@
  * daily evening habit and not collapse it into the brushing habit.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.floss-daily-before-brush",

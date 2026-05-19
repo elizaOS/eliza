@@ -2,28 +2,20 @@
  * Tests for the Voice Wave 2 turn-detector resolver:
  *
  *   1. `turnDetectorRevisionForTier` — tier ↔ upstream revision routing.
- *      - 0_8b/2b → `v1.2.2-en` (SmolLM2-135M EN-only, ~66 MB Q8 ONNX).
- *      - 4b/9b/27b* → `v0.4.1-intl` (pruned Qwen2.5-0.5B, ~396 MB Q8 ONNX).
- *   2. `createBundledLiveKitTurnDetector` — filename resolution priority:
- *      explicit > env > `onnx/model_q8.onnx` > legacy `model_quantized.onnx`.
- *      Returns `null` when no candidate ONNX is present, so the engine
- *      falls back to `HeuristicEotClassifier`.
+ *      - 0_8b/2b → `v1.2.2-en` (English-only GGUF).
+ *      - 4b/9b/27b* → `v0.4.1-intl` (multilingual GGUF).
+ *   2. Heuristic fallback contract: `HeuristicEotClassifier` satisfies
+ *      `EotClassifier` and emits well-formed `VoiceTurnSignal`s.
  *   3. Cancellation handshake (R11): turn detector emits a `VoiceTurnSignal`
  *      only — it NEVER aborts a turn directly. The controller layer above
  *      consumes the signal and decides whether to suppress (via
  *      `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
-	createBundledLiveKitTurnDetector,
-	DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
 	type EotClassifier,
 	HeuristicEotClassifier,
-	LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
 	LIVEKIT_TURN_DETECTOR_EN_REVISION,
 	LIVEKIT_TURN_DETECTOR_INTL_REVISION,
 	turnDetectorRevisionForTier,
@@ -71,120 +63,7 @@ describe("turnDetectorRevisionForTier — tier ↔ revision mapping", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 2. Bundled resolver — picks the right ONNX filename
-// ---------------------------------------------------------------------------
-
-describe("createBundledLiveKitTurnDetector — filename resolution", () => {
-	let modelDir: string;
-	const originalEnv = { ...process.env };
-
-	beforeEach(async () => {
-		modelDir = await mkdtemp(path.join(tmpdir(), "eliza-turn-resolver-"));
-		// Reset env between cases.
-		delete process.env.ELIZA_TURN_DETECTOR_MODEL_DIR;
-		delete process.env.ELIZA_TURN_DETECTOR_ONNX;
-	});
-
-	afterEach(async () => {
-		await rm(modelDir, { recursive: true, force: true });
-		// Restore env.
-		for (const key of Object.keys(process.env)) {
-			if (!(key in originalEnv)) delete process.env[key];
-		}
-		Object.assign(process.env, originalEnv);
-	});
-
-	async function stub(...rel: string[]): Promise<void> {
-		for (const r of rel) {
-			const target = path.join(modelDir, r);
-			await mkdir(path.dirname(target), { recursive: true });
-			await writeFile(target, ""); // empty stub — the real load() will fail.
-		}
-	}
-
-	it("returns null when nothing is staged", async () => {
-		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).toBeNull();
-	});
-
-	it("returns null when ONNX exists but tokenizer.json does not", async () => {
-		await stub(DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX);
-		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).toBeNull();
-	});
-
-	// The factory currently always returns null even when the bundle is
-	// fully staged: the @huggingface/transformers runtime dependency was
-	// removed and the LiveKit detector cannot load its tokenizer without it.
-	// Once a ggml/llama.cpp-backed tokenizer lands, these cases should
-	// expect `not.toBeNull()` again.
-
-	it("returns null when the canonical bundle is staged (tokenizer dep removed)", async () => {
-		await stub(
-			DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
-			LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
-			"tokenizer.json",
-		);
-		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).toBeNull();
-	});
-
-	it("returns null when only the legacy bundle is staged (tokenizer dep removed)", async () => {
-		await stub(LEGACY_LIVEKIT_TURN_DETECTOR_ONNX, "tokenizer.json");
-		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).toBeNull();
-	});
-
-	it("returns null with an explicit onnxFilename (tokenizer dep removed)", async () => {
-		await stub(
-			DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
-			"custom/finetune.onnx",
-			"tokenizer.json",
-		);
-		const detector = await createBundledLiveKitTurnDetector({
-			modelDir,
-			onnxFilename: "custom/finetune.onnx",
-		});
-		expect(detector).toBeNull();
-	});
-
-	it("returns null when the explicit onnxFilename does not exist", async () => {
-		await stub(DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX, "tokenizer.json");
-		const detector = await createBundledLiveKitTurnDetector({
-			modelDir,
-			onnxFilename: "missing.onnx",
-		});
-		// Explicit means "trust the caller" — if they pointed at a missing
-		// file, that's a hard miss, not silent fallback to the default.
-		expect(detector).toBeNull();
-	});
-
-	it("returns null with ELIZA_TURN_DETECTOR_ONNX env override (tokenizer dep removed)", async () => {
-		await stub("custom/from-env.onnx", "tokenizer.json");
-		process.env.ELIZA_TURN_DETECTOR_ONNX = "custom/from-env.onnx";
-		const detector = await createBundledLiveKitTurnDetector({ modelDir });
-		expect(detector).toBeNull();
-	});
-
-	it("returns null with ELIZA_TURN_DETECTOR_MODEL_DIR env override (tokenizer dep removed)", async () => {
-		const otherDir = await mkdtemp(path.join(tmpdir(), "eliza-turn-env-"));
-		try {
-			const tok = path.join(otherDir, "tokenizer.json");
-			const onnx = path.join(otherDir, DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX);
-			await mkdir(path.dirname(onnx), { recursive: true });
-			await writeFile(tok, "");
-			await writeFile(onnx, "");
-			process.env.ELIZA_TURN_DETECTOR_MODEL_DIR = otherDir;
-			const detector = await createBundledLiveKitTurnDetector({});
-			expect(detector).toBeNull();
-		} finally {
-			await rm(otherDir, { recursive: true, force: true });
-		}
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 3. Heuristic-fallback contract (engine wires this when bundle is absent)
+// 2. Heuristic-fallback contract (engine wires this when bundle is absent)
 // ---------------------------------------------------------------------------
 
 describe("heuristic fallback when bundled model is absent", () => {
@@ -218,7 +97,7 @@ describe("heuristic fallback when bundled model is absent", () => {
 });
 
 // ---------------------------------------------------------------------------
-// 4. Cancellation handshake (R11) — detector never aborts a turn directly
+// 3. Cancellation handshake (R11) — detector never aborts a turn directly
 // ---------------------------------------------------------------------------
 
 describe("cancellation handshake (R11) — detector emits data, never aborts", () => {
@@ -226,10 +105,7 @@ describe("cancellation handshake (R11) — detector emits data, never aborts", (
 		const heuristic = new HeuristicEotClassifier();
 		const signal = await heuristic.signal("anything");
 		// Structural assertion: the signal carries scoring data + telemetry,
-		// not any cancellation handle. Any future detector that grew an
-		// AbortSignal surface would break the contract documented at
-		// `eot-classifier.ts` doc block (lines 39-43) and in
-		// `.swarm/research/R1-turn.md` §6.
+		// not any cancellation handle.
 		const allowed = new Set([
 			"endOfTurnProbability",
 			"nextSpeaker",
@@ -302,10 +178,7 @@ describe("cancellation handshake (R11) — detector emits data, never aborts", (
 
 	it("signal source matches expected taxonomy", () => {
 		// Sources documented in `VoiceTurnSignal['source']` =
-		// "heuristic" | "livekit-turn-detector" | "remote" | "custom".
-		// `turn-suppressed` is a cancellation REASON the controller emits on
-		// BargeInCancelToken — NOT a signal source. Test guards that the
-		// type union here doesn't drift.
+		// "heuristic" | "livekit-turn-detector" | "remote" | "custom" | "eliza-1-drafter".
 		const sources: VoiceTurnSignal["source"][] = [
 			"heuristic",
 			"livekit-turn-detector",
@@ -320,22 +193,5 @@ describe("cancellation handshake (R11) — detector emits data, never aborts", (
 			});
 			expect(s.source).toBe(source);
 		}
-	});
-});
-
-// ---------------------------------------------------------------------------
-// 5. Smoke — verify the bundle resolver does not throw on non-existent dirs
-// ---------------------------------------------------------------------------
-
-describe("bundle resolver smoke", () => {
-	it("does not throw on a nonexistent modelDir", async () => {
-		const nonexistent = path.join(tmpdir(), `eliza-no-such-dir-${Date.now()}`);
-		// Make absolutely sure it does not exist.
-		await rm(nonexistent, { recursive: true, force: true }).catch(() => {});
-		await expect(access(nonexistent)).rejects.toThrow();
-		const detector = await createBundledLiveKitTurnDetector({
-			modelDir: nonexistent,
-		});
-		expect(detector).toBeNull();
 	});
 });

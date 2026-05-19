@@ -8,7 +8,7 @@ import {
   type StewardSessionErrorCode,
   type StewardSessionRequest,
   type StewardSessionResponse,
-} from "@elizaos/steward-session-client";
+} from "@elizaos/shared/steward-session-client";
 import { Hono } from "hono";
 import { deleteCookie, setCookie } from "hono/cookie";
 import { cookieDomainForHost } from "@/lib/auth/cookie-domain";

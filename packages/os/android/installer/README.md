@@ -156,6 +156,16 @@ node packages/os/android/installer/scripts/validate-release-manifest.mjs \
   packages/os/android/installer/manifests/android-release-manifest.example.json
 ```
 
+Checked-in pre-release draft manifests may still carry placeholder checksums or
+sentinel sizes while artifacts are being produced. That review-only state must
+be explicit:
+
+```bash
+node packages/os/android/installer/scripts/validate-release-manifest.mjs \
+  packages/os/release/beta-2026-05-16/android-release-manifest.json \
+  --allow-placeholders
+```
+
 If artifacts are available locally, pass `--artifact-dir` to verify declared
 file sizes and SHA-256 values:
 

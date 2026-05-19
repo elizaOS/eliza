@@ -242,7 +242,11 @@ const MODEL_TESTER_HTML = String.raw`<!doctype html>
   </body>
 </html>`;
 
-function sendHtml(res: http.ServerResponse, status: number, html: string): void {
+function sendHtml(
+  res: http.ServerResponse,
+  status: number,
+  html: string,
+): void {
   res.statusCode = status;
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
@@ -732,7 +736,9 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
           );
         }
       }
-      throw new Error(`All TEXT_SMALL providers failed:\n${attempts.join("\n")}`);
+      throw new Error(
+        `All TEXT_SMALL providers failed:\n${attempts.join("\n")}`,
+      );
     }
     case "text-large": {
       const attempts: string[] = [];
@@ -751,7 +757,9 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
           );
         }
       }
-      throw new Error(`All TEXT_LARGE providers failed:\n${attempts.join("\n")}`);
+      throw new Error(
+        `All TEXT_LARGE providers failed:\n${attempts.join("\n")}`,
+      );
     }
     case "embedding": {
       const vector = await runtime.useModel(ModelType.TEXT_EMBEDDING, {
@@ -790,9 +798,7 @@ async function runModelTest(runtime: IAgentRuntime, body: ModelTestRequest) {
           );
         }
       }
-      throw new Error(
-        `All IMAGE providers failed:\n${attempts.join("\n")}`,
-      );
+      throw new Error(`All IMAGE providers failed:\n${attempts.join("\n")}`);
     }
     case "image-description": {
       const imageDataUrl = body.imageDataUrl ?? DEFAULT_IMAGE_DATA_URL;

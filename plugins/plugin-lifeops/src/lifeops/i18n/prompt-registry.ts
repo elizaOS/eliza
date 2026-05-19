@@ -16,9 +16,28 @@
 
 import type { ActionExample, IAgentRuntime } from "@elizaos/core";
 
-export type PromptLocale = "en" | "es" | "fr" | "ja";
+export type PromptLocale =
+  | "en"
+  | "es"
+  | "fr"
+  | "ja"
+  | "ko"
+  | "pt"
+  | "tl"
+  | "vi"
+  | "zh-CN";
 
-const SUPPORTED_LOCALES: ReadonlyArray<PromptLocale> = ["en", "es", "fr", "ja"];
+const SUPPORTED_LOCALES: ReadonlyArray<PromptLocale> = [
+  "en",
+  "es",
+  "fr",
+  "ja",
+  "ko",
+  "pt",
+  "tl",
+  "vi",
+  "zh-CN",
+];
 
 const DEFAULT_LOCALE: PromptLocale = "en";
 
@@ -217,6 +236,91 @@ const OWNER_ROUTINES_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
       name: "{{agentName}}",
       content: {
         text: "毎日8時と21時の習慣として歯磨きを設定できます。確認したら保存します。",
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "ko",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "매일 아침 8시랑 밤 9시에 양치하게 도와줘",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: "매일 오전 8시와 오후 9시 양치 습관으로 설정할게요. 확인해 주시면 저장합니다.",
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "pt",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "me ajuda a escovar os dentes às 8h e às 21h todo dia",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: 'Posso criar um hábito "Escovar os dentes" às 8h e 21h todos os dias. Confirma que eu salvo.',
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "tl",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "tulungan mo akong magsipilyo araw-araw alas 8 ng umaga at alas 9 ng gabi",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: 'Pwede kong i-set ang "Magsipilyo" araw-araw alas 8 ng umaga at alas 9 ng gabi. Confirm mo lang at ise-save ko na.',
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "vi",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "nhắc tớ đánh răng 8h sáng và 9h tối mỗi ngày",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: 'Mình sẽ tạo thói quen "Đánh răng" lúc 8h sáng và 9h tối mỗi ngày. Bạn xác nhận thì mình lưu lại nhé.',
+        actions: ["OWNER_ROUTINES"],
+      },
+    },
+  },
+  {
+    exampleKey: "OWNER_ROUTINES.example.0",
+    locale: "zh-CN",
+    user: {
+      name: "{{name1}}",
+      content: {
+        text: "每天早上 8 点和晚上 9 点提醒我刷牙",
+      },
+    },
+    agent: {
+      name: "{{agentName}}",
+      content: {
+        text: "我可以把「刷牙」设为每天 8:00 和 21:00 的习惯，确认后我就保存。",
         actions: ["OWNER_ROUTINES"],
       },
     },

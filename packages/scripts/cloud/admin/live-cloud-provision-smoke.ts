@@ -11,9 +11,18 @@ import { apiKeysService } from "../lib/services/api-keys";
 type JsonObject = Record<string, unknown>;
 
 const DEFAULT_BASE_URL = "https://api-staging.elizacloud.ai";
-const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
-const timeoutMs = Number.parseInt(process.env.CLOUD_SMOKE_TIMEOUT_MS ?? "240000", 10);
-const pollIntervalMs = Number.parseInt(process.env.CLOUD_SMOKE_POLL_INTERVAL_MS ?? "5000", 10);
+const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(
+  /\/+$/,
+  "",
+);
+const timeoutMs = Number.parseInt(
+  process.env.CLOUD_SMOKE_TIMEOUT_MS ?? "240000",
+  10,
+);
+const pollIntervalMs = Number.parseInt(
+  process.env.CLOUD_SMOKE_POLL_INTERVAL_MS ?? "5000",
+  10,
+);
 const skipStreamSmoke = process.env.CLOUD_SMOKE_SKIP_STREAM === "1";
 const keepResources = process.env.CLOUD_SMOKE_KEEP_RESOURCES === "1";
 const runId = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
@@ -32,7 +41,13 @@ function describeBody(body: unknown): string {
 
   const record = body as JsonObject;
   const parts: JsonObject = {};
-  for (const key of ["success", "code", "error", "message", "status"] as const) {
+  for (const key of [
+    "success",
+    "code",
+    "error",
+    "message",
+    "status",
+  ] as const) {
     if (key in record) parts[key] = record[key];
   }
   if ("data" in record && record.data && typeof record.data === "object") {
@@ -73,7 +88,10 @@ async function requestJson(
   return { status: response.status, body };
 }
 
-async function jsonRpc(method: string, params: JsonObject = {}): Promise<JsonObject> {
+async function jsonRpc(
+  method: string,
+  params: JsonObject = {},
+): Promise<JsonObject> {
   if (!agentId) throw new Error("Agent not initialized");
   const { body } = await requestJson(`/api/v1/eliza/agents/${agentId}/bridge`, {
     method: "POST",
@@ -94,7 +112,10 @@ async function jsonRpc(method: string, params: JsonObject = {}): Promise<JsonObj
   return result as JsonObject;
 }
 
-async function requestStream(path: string, init: RequestInit = {}): Promise<Response> {
+async function requestStream(
+  path: string,
+  init: RequestInit = {},
+): Promise<Response> {
   if (!apiKey) throw new Error("API key not initialized");
 
   const headers = new Headers(init.headers);
@@ -198,27 +219,39 @@ async function createSmokeIdentityViaSiwe(): Promise<void> {
   const privateKey = `0x${randomBytes(32).toString("hex")}` as `0x${string}`;
   const account = privateKeyToAccount(privateKey);
 
-  const nonceResponse = await fetch(`${baseUrl}/api/auth/siwe/nonce?chainId=1`, {
-    headers: {
-      accept: "application/json",
-      "user-agent": "eliza-cloud-live-smoke/1.0",
+  const nonceResponse = await fetch(
+    `${baseUrl}/api/auth/siwe/nonce?chainId=1`,
+    {
+      headers: {
+        accept: "application/json",
+        "user-agent": "eliza-cloud-live-smoke/1.0",
+      },
+      signal: AbortSignal.timeout(30_000),
     },
-    signal: AbortSignal.timeout(30_000),
-  });
-  const nonceBody = (await nonceResponse.json().catch(() => ({}))) as JsonObject;
+  );
+  const nonceBody = (await nonceResponse
+    .json()
+    .catch(() => ({}))) as JsonObject;
   if (!nonceResponse.ok) {
-    throw new Error(`SIWE nonce returned ${nonceResponse.status}: ${describeBody(nonceBody)}`);
+    throw new Error(
+      `SIWE nonce returned ${nonceResponse.status}: ${describeBody(nonceBody)}`,
+    );
   }
 
   const nonce = typeof nonceBody.nonce === "string" ? nonceBody.nonce : null;
   const domain = typeof nonceBody.domain === "string" ? nonceBody.domain : null;
   const uri = typeof nonceBody.uri === "string" ? nonceBody.uri : null;
   const statement =
-    typeof nonceBody.statement === "string" ? nonceBody.statement : "Sign in to Eliza Cloud";
-  const version = typeof nonceBody.version === "string" ? nonceBody.version : "1";
+    typeof nonceBody.statement === "string"
+      ? nonceBody.statement
+      : "Sign in to Eliza Cloud";
+  const version =
+    typeof nonceBody.version === "string" ? nonceBody.version : "1";
   const chainId = typeof nonceBody.chainId === "number" ? nonceBody.chainId : 1;
   if (!nonce || !domain || !uri) {
-    throw new Error(`SIWE nonce response missing required fields: ${describeBody(nonceBody)}`);
+    throw new Error(
+      `SIWE nonce response missing required fields: ${describeBody(nonceBody)}`,
+    );
   }
 
   const message = buildSiweMessage({
@@ -242,22 +275,31 @@ async function createSmokeIdentityViaSiwe(): Promise<void> {
     body: JSON.stringify({ message, signature }),
     signal: AbortSignal.timeout(60_000),
   });
-  const verifyBody = (await verifyResponse.json().catch(() => ({}))) as JsonObject;
+  const verifyBody = (await verifyResponse
+    .json()
+    .catch(() => ({}))) as JsonObject;
   if (!verifyResponse.ok) {
-    throw new Error(`SIWE verify returned ${verifyResponse.status}: ${describeBody(verifyBody)}`);
+    throw new Error(
+      `SIWE verify returned ${verifyResponse.status}: ${describeBody(verifyBody)}`,
+    );
   }
 
-  const plainKey = typeof verifyBody.apiKey === "string" ? verifyBody.apiKey : null;
+  const plainKey =
+    typeof verifyBody.apiKey === "string" ? verifyBody.apiKey : null;
   const user = verifyBody.user as JsonObject | undefined;
   const organization = verifyBody.organization as JsonObject | undefined;
   if (!plainKey) {
-    throw new Error(`SIWE verify response missing apiKey: ${describeBody(verifyBody)}`);
+    throw new Error(
+      `SIWE verify response missing apiKey: ${describeBody(verifyBody)}`,
+    );
   }
 
   apiKey = plainKey;
   orgId =
     (typeof organization?.id === "string" ? organization.id : undefined) ??
-    (typeof user?.organization_id === "string" ? user.organization_id : undefined);
+    (typeof user?.organization_id === "string"
+      ? user.organization_id
+      : undefined);
 }
 
 async function createAgent(): Promise<void> {
@@ -270,7 +312,8 @@ async function createAgent(): Promise<void> {
         agentConfig: {
           name: `Cloud Smoke ${runId}`,
           username: `cloud-smoke-${runId}`,
-          system: "You are a concise test assistant for cloud provisioning smoke checks.",
+          system:
+            "You are a concise test assistant for cloud provisioning smoke checks.",
           bio: ["Cloud provisioning smoke test agent."],
           topics: ["cloud provisioning smoke"],
           adjectives: ["concise"],
@@ -300,7 +343,9 @@ async function provisionAgent(): Promise<string> {
   );
   const data = body.data as JsonObject | undefined;
   if (status !== 202 || !data || typeof data.jobId !== "string") {
-    throw new Error(`Provision did not return an async job: ${describeBody(body)}`);
+    throw new Error(
+      `Provision did not return an async job: ${describeBody(body)}`,
+    );
   }
   return data.jobId;
 }
@@ -321,19 +366,29 @@ async function waitForJob(jobId: string): Promise<void> {
     if (status === "completed") {
       const result = data?.result as JsonObject | undefined;
       if (result?.status !== "running") {
-        throw new Error(`Completed job did not produce a running agent: ${describeBody(data)}`);
+        throw new Error(
+          `Completed job did not produce a running agent: ${describeBody(data)}`,
+        );
       }
       return;
     }
 
-    if (status === "failed" || status === "cancelled" || status === "canceled") {
-      throw new Error(`Provisioning job ended in ${status}: ${describeBody(data)}`);
+    if (
+      status === "failed" ||
+      status === "cancelled" ||
+      status === "canceled"
+    ) {
+      throw new Error(
+        `Provisioning job ended in ${status}: ${describeBody(data)}`,
+      );
     }
 
     await sleep(pollIntervalMs);
   }
 
-  throw new Error(`Timed out waiting ${timeoutMs}ms for provisioning job ${jobId}`);
+  throw new Error(
+    `Timed out waiting ${timeoutMs}ms for provisioning job ${jobId}`,
+  );
 }
 
 async function assertAgentRunning(): Promise<void> {
@@ -341,7 +396,9 @@ async function assertAgentRunning(): Promise<void> {
   const { body } = await requestJson(`/api/v1/eliza/agents/${agentId}`);
   const data = body.data as JsonObject | undefined;
   if (data?.status !== "running" || data.databaseStatus !== "ready") {
-    throw new Error(`Agent is not running with a ready database: ${describeBody(body)}`);
+    throw new Error(
+      `Agent is not running with a ready database: ${describeBody(body)}`,
+    );
   }
 }
 
@@ -364,12 +421,16 @@ async function assertBridge(): Promise<void> {
   });
   const reply = typeof message.text === "string" ? message.text.trim() : "";
   if (!reply) {
-    throw new Error(`Bridge message send failed: ${JSON.stringify(message).slice(0, 500)}`);
+    throw new Error(
+      `Bridge message send failed: ${JSON.stringify(message).slice(0, 500)}`,
+    );
   }
   console.log(`[smoke] bridge reply ${reply.length} chars`);
 }
 
-function parseSseBlock(block: string): { event: string; data: JsonObject | null } | null {
+function parseSseBlock(
+  block: string,
+): { event: string; data: JsonObject | null } | null {
   if (!block.trim()) return null;
   let event = "message";
   const dataLines: string[] = [];
@@ -422,19 +483,22 @@ function extractSseText(event: string, data: JsonObject | null): string {
 
 async function assertStreamReply(): Promise<void> {
   if (!agentId) throw new Error("Agent not initialized");
-  const response = await requestStream(`/api/v1/eliza/agents/${agentId}/stream`, {
-    method: "POST",
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: `stream-${Date.now()}`,
-      method: "message.send",
-      params: {
-        text: `Please reply with the exact words: cloud stream smoke pong ${runId}`,
-        roomId: `cloud-smoke-stream-room-${runId}`,
-        mode: "simple",
-      },
-    }),
-  });
+  const response = await requestStream(
+    `/api/v1/eliza/agents/${agentId}/stream`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: `stream-${Date.now()}`,
+        method: "message.send",
+        params: {
+          text: `Please reply with the exact words: cloud stream smoke pong ${runId}`,
+          roomId: `cloud-smoke-stream-room-${runId}`,
+          mode: "simple",
+        },
+      }),
+    },
+  );
 
   if (!response.body) {
     throw new Error("Stream response did not include a body");
@@ -476,20 +540,28 @@ async function assertStreamReply(): Promise<void> {
 
   const trimmed = reply.trim();
   if (!trimmed) {
-    throw new Error(`Stream did not return assistant text${sawDone ? "" : " before timeout"}`);
+    throw new Error(
+      `Stream did not return assistant text${sawDone ? "" : " before timeout"}`,
+    );
   }
   console.log(`[smoke] stream reply ${trimmed.length} chars`);
 }
 
 async function assertPairingToken(): Promise<void> {
   if (!agentId) throw new Error("Agent not initialized");
-  const { body } = await requestJson(`/api/v1/eliza/agents/${agentId}/pairing-token`, {
-    method: "POST",
-  });
+  const { body } = await requestJson(
+    `/api/v1/eliza/agents/${agentId}/pairing-token`,
+    {
+      method: "POST",
+    },
+  );
   const data = body.data as JsonObject | undefined;
-  const redirectUrl = typeof data?.redirectUrl === "string" ? data.redirectUrl : null;
+  const redirectUrl =
+    typeof data?.redirectUrl === "string" ? data.redirectUrl : null;
   if (!data || typeof data.token !== "string" || !redirectUrl) {
-    throw new Error(`Pairing token response missing token or redirect URL: ${describeBody(body)}`);
+    throw new Error(
+      `Pairing token response missing token or redirect URL: ${describeBody(body)}`,
+    );
   }
 
   const response = await fetch(redirectUrl, {
@@ -504,14 +576,20 @@ async function assertPairingToken(): Promise<void> {
 async function deleteAgent(): Promise<void> {
   if (!agentId) return;
   const deletedAgentId = agentId;
-  await requestJson(`/api/v1/eliza/agents/${deletedAgentId}`, { method: "DELETE" }, [200, 404]);
+  await requestJson(
+    `/api/v1/eliza/agents/${deletedAgentId}`,
+    { method: "DELETE" },
+    [200, 404],
+  );
   await requestJson(`/api/v1/eliza/agents/${deletedAgentId}`, {}, [404]);
   agentId = undefined;
 }
 
 async function cleanup(): Promise<void> {
   if (keepResources) {
-    console.warn(`[smoke] keeping resources for debug: agent=${agentId ?? ""} org=${orgId ?? ""}`);
+    console.warn(
+      `[smoke] keeping resources for debug: agent=${agentId ?? ""} org=${orgId ?? ""}`,
+    );
     return;
   }
 

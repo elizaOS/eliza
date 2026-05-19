@@ -14,9 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
-    "types": [
-      "node"
-    ],
+    "types": ["node"],
     "outDir": "./dist",
     "rootDir": "../..",
     "paths": {
@@ -33,9 +31,7 @@
       "@elizaos/agent/services/*": ["../../packages/agent/src/services/*.ts"]
     }
   },
-  "include": [
-    "src/**/*"
-  ],
+  "include": ["src/**/*"],
   "exclude": [
     "node_modules",
     "dist",

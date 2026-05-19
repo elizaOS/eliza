@@ -19,8 +19,6 @@ export type {
 } from "./kokoro-runtime";
 export {
 	KOKORO_GGUF_REL_PATH,
-	KOKORO_ONNX_MODEL_URL,
-	KOKORO_VOICES_BASE_URL,
 	KokoroGgufRuntime,
 	KokoroMockRuntime,
 	KokoroOnnxRuntime,

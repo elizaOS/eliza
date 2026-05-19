@@ -5,7 +5,7 @@
  * via GET_TIME_ON_SITE.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import {
   expectScenarioToCallAction,
   expectTurnToCallAction,

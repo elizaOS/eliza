@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/eliza/eliza,e1-gpio.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Eliza e1 GPIO
+
+maintainers:
+  - Eliza e1 BSP <bsp@eliza.invalid>
+
+description: |
+  32-bit GPIO_OUT register at E1_PERIPHERAL_CONTROL_BASE +
+  E1_PERIPH_GPIO_OUT_OFFSET, wrapped as a 32-line gpiochip via gpio-mmio.
+
+properties:
+  compatible:
+    const: eliza,e1-gpio
+
+  reg:
+    maxItems: 1
+    description: 4 KiB peripheral-control window covering GPIO_OUT.
+
+  gpio-controller: true
+
+  "#gpio-cells":
+    const: 2
+
+required:
+  - compatible
+  - reg
+  - gpio-controller
+  - "#gpio-cells"
+
+additionalProperties: false
+
+examples:
+  - |
+    gpio@10000000 {
+        compatible = "eliza,e1-gpio";
+        reg = <0x10000000 0x1000>;
+        gpio-controller;
+        #gpio-cells = <2>;
+    };

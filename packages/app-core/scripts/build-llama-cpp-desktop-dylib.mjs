@@ -198,6 +198,16 @@ function buildTarget(targetKey) {
   fs.mkdirSync(buildDir, { recursive: true });
 
   // ── Step 1: build libllama as a shared library ────────────────────────────
+  // Vision (mmproj/mtmd) is opt-in: setting `ELIZA_ENABLE_VISION=1` in the
+  // build env flips `LLAMA_BUILD_MTMD=ON` so the mtmd shared library
+  // gets built alongside libllama. The shim then compiles with
+  // `-DELIZA_ENABLE_VISION=1` and links against `libmtmd`. Default builds
+  // skip vision entirely (no mtmd target, no shim vision wrappers).
+  //
+  // Upstream renamed the multimodal surface from `examples/llava/` to
+  // `tools/mtmd/` and consolidated llava + clip into a single mtmd target
+  // built as a shared library when `BUILD_SHARED_LIBS=ON`.
+  const ENABLE_VISION = process.env.ELIZA_ENABLE_VISION === "1";
   const cmakeArgs = [
     srcDir,
     "-DCMAKE_BUILD_TYPE=Release",
@@ -207,6 +217,7 @@ function buildTarget(targetKey) {
     "-DLLAMA_BUILD_EXAMPLES=OFF",
     "-DLLAMA_BUILD_SERVER=OFF",
     "-DLLAMA_CURL=OFF",
+    ...(ENABLE_VISION ? ["-DLLAMA_BUILD_MTMD=ON"] : []),
     ...t.cmakeFlags,
   ];
   log(`cmake configure ${targetKey} (shared libllama)`);
@@ -226,6 +237,29 @@ function buildTarget(targetKey) {
     ],
     buildDir,
   );
+
+  // ── Step 1b: build mtmd when vision is enabled ───────────────────────────
+  // llama.cpp HEAD exposes multimodal under `tools/mtmd/`. The `mtmd`
+  // cmake target builds `libmtmd.<ext>` as a shared library (because
+  // BUILD_SHARED_LIBS=ON). LLAMA_BUILD_MTMD=ON enables the target. The
+  // shim links against this shared lib via `-lmtmd`.
+  if (ENABLE_VISION) {
+    log(`cmake build ${targetKey} (mtmd for vision)`);
+    run(
+      "cmake",
+      [
+        "--build",
+        ".",
+        "--config",
+        "Release",
+        "--target",
+        "mtmd",
+        "--parallel",
+        String(os.cpus().length),
+      ],
+      buildDir,
+    );
+  }
 
   // ── Step 2: locate the built libllama.<ext> and stage it ─────────────────
   const libllamaName = `libllama.${t.libExt}`;
@@ -256,6 +290,34 @@ function buildTarget(targetKey) {
   log(`staging ${libllamaSrcPath} → ${outDir}`);
   fs.copyFileSync(libllamaSrcPath, path.join(outDir, libllamaName));
 
+  // ── Step 2b: stage libmtmd.<ext> when vision is enabled ──────────────────
+  // mtmd is built as a shared lib (BUILD_SHARED_LIBS=ON propagates to all
+  // targets). The shim's `-lmtmd` link will need it resolvable next to
+  // libllama at load time via the same rpath.
+  if (ENABLE_VISION) {
+    const libmtmdName = `libmtmd.${t.libExt}`;
+    const mtmdCandidates = [
+      path.join(buildDir, libmtmdName),
+      path.join(buildDir, "bin", libmtmdName),
+      path.join(buildDir, "tools", "mtmd", libmtmdName),
+    ];
+    let libmtmdSrcPath = mtmdCandidates.find((p) => fs.existsSync(p));
+    if (!libmtmdSrcPath) {
+      const found = spawnSync("find", [buildDir, "-name", libmtmdName, "-print"], {
+        encoding: "utf8",
+      });
+      libmtmdSrcPath = found.stdout.split("\n").find((s) => s.trim());
+    }
+    if (!libmtmdSrcPath) {
+      die(
+        `ELIZA_ENABLE_VISION=1 but ${libmtmdName} not found in ${buildDir}; ` +
+          `check that -DLLAMA_BUILD_MTMD=ON + -DBUILD_SHARED_LIBS=ON took effect.`,
+      );
+    }
+    log(`staging ${libmtmdSrcPath} → ${outDir}`);
+    fs.copyFileSync(libmtmdSrcPath, path.join(outDir, libmtmdName));
+  }
+
   // ── Step 3: stage headers ────────────────────────────────────────────────
   const incDir = path.join(outDir, "include");
   fs.mkdirSync(incDir, { recursive: true });
@@ -272,6 +334,15 @@ function buildTarget(targetKey) {
     path.join(SHIM_DIR, "eliza_llama_shim.h"),
     path.join(incDir, "eliza_llama_shim.h"),
   );
+  // mtmd.h is staged into include/ for debug/reference; the shim compile
+  // also has `-I${srcDir}/tools/mtmd` so this copy is optional but matches
+  // how llama.h is staged.
+  if (ENABLE_VISION) {
+    const mtmdH = path.join(srcDir, "tools", "mtmd", "mtmd.h");
+    if (fs.existsSync(mtmdH)) {
+      fs.copyFileSync(mtmdH, path.join(incDir, "mtmd.h"));
+    }
+  }
 
   // ── Step 4: compile the shim and NEEDED-link libllama ────────────────────
   const shimOut = path.join(outDir, `libeliza-llama-shim.${t.libExt}`);
@@ -291,6 +362,18 @@ function buildTarget(targetKey) {
     `-L${outDir}`,
     "-lllama",
   ];
+
+  // Vision opt-in: link against the shared `libmtmd.<ext>` built in
+  // Step 1b. We add the mtmd include dir to the compile invocation and
+  // define ELIZA_ENABLE_VISION so the shim's `#ifdef` block compiles.
+  if (ENABLE_VISION) {
+    compilerArgs.push("-DELIZA_ENABLE_VISION=1");
+    // Header search path for mtmd.h.
+    compilerArgs.push(`-I${path.join(srcDir, "tools", "mtmd")}`);
+    // NEEDED-link against the staged libmtmd next to libllama. The shared
+    // lib pulls in its own C++ transitive deps, so no -lc++/-lstdc++ here.
+    compilerArgs.push("-lmtmd");
+  }
 
   // Set rpath so libeliza-llama-shim resolves libllama from its own dir at
   // load time. Otherwise the user has to set DYLD_LIBRARY_PATH/LD_LIBRARY_PATH.

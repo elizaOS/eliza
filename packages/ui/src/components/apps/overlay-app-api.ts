@@ -6,7 +6,7 @@
  * Component and manages lifecycle hooks.
  */
 
-import type { ReactElement } from "react";
+import type { ComponentType, ReactElement } from "react";
 
 /** Context passed to every full-screen overlay app by the host shell. */
 export interface OverlayAppContext {
@@ -54,8 +54,20 @@ export interface OverlayApp {
    * React component rendered as the full-screen overlay.
    * Receives context with exit callback, theme, and i18n.
    * Must handle its own resource lifecycle (load on mount, dispose on unmount).
+   *
+   * Provide EITHER `Component` (eager) OR `loader` (lazy). Prefer `loader` so
+   * the app's component tree is only fetched when the window mounts; this
+   * keeps the heavy per-app code out of the main entry chunk.
    */
-  readonly Component: (props: OverlayAppContext) => ReactElement;
+  readonly Component?: (props: OverlayAppContext) => ReactElement;
+  /**
+   * Dynamic-import loader for the overlay component. When present, the host
+   * shell wraps the resolved component in `React.lazy()` + `<Suspense>` so the
+   * app's bundle is split out of the registration module.
+   */
+  readonly loader?: () => Promise<{
+    default: ComponentType<OverlayAppContext>;
+  }>;
   /**
    * Called immediately before the component mounts.
    * Use for resource prefetching (e.g. VRM assets).

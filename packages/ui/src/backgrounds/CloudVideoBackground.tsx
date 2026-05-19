@@ -2,7 +2,7 @@ import {
   BRAND_PATHS,
   CLOUD_VIDEO_VARIANTS,
   type CloudVideoSpeed,
-} from "@elizaos/shared-brand";
+} from "@elizaos/shared/brand";
 import {
   type CSSProperties,
   type ReactNode,

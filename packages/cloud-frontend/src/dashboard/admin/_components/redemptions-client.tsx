@@ -312,7 +312,7 @@ export function AdminRedemptionsClient() {
               <p className="text-xs text-white/60">Processing</p>
             </div>
             <div className="text-center">
-              <p className="text-2xl font-bold text-[#FF5800]">
+              <p className="text-2xl font-bold text-[var(--brand-orange)]">
                 {formatCurrency(stats?.totalPendingUsd || 0)}
               </p>
               <p className="text-xs text-white/60">Pending Value</p>
@@ -420,7 +420,7 @@ export function AdminRedemptionsClient() {
                     <button
                       type="button"
                       onClick={() => copyToClipboard(r.user_id)}
-                      className="text-white/80 text-xs hover:text-[#FF5800] flex items-center gap-1"
+                      className="text-white/80 text-xs hover:text-[var(--brand-orange)] flex items-center gap-1"
                     >
                       {truncateAddress(r.user_id)}
                       <Copy className="h-3 w-3 opacity-50" />
@@ -443,7 +443,7 @@ export function AdminRedemptionsClient() {
                     <button
                       type="button"
                       onClick={() => copyToClipboard(r.payout_address)}
-                      className="text-white/80 text-xs hover:text-[#FF5800] flex items-center gap-1"
+                      className="text-white/80 text-xs hover:text-[var(--brand-orange)] flex items-center gap-1"
                     >
                       {truncateAddress(r.payout_address)}
                       <Copy className="h-3 w-3 opacity-50" />
@@ -502,7 +502,7 @@ export function AdminRedemptionsClient() {
                           href={getExplorerUrl(r.network, r.tx_hash)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="h-8 w-8 flex items-center justify-center text-[#FF5800] hover:text-[#FF5800]/80"
+                          className="h-8 w-8 flex items-center justify-center text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/80"
                         >
                           <ExternalLink className="h-4 w-4" />
                         </a>
@@ -557,7 +557,7 @@ export function AdminRedemptionsClient() {
                 </div>
                 <div>
                   <p className="text-xs text-white/40 mb-1">elizaOS Amount</p>
-                  <p className="text-sm text-[#FF5800] font-semibold">
+                  <p className="text-sm text-[var(--brand-orange)] font-semibold">
                     {parseFloat(selectedRedemption.eliza_amount).toFixed(4)}
                   </p>
                 </div>
@@ -590,7 +590,7 @@ export function AdminRedemptionsClient() {
                     )}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-sm text-[#FF5800] font-mono break-all hover:underline flex items-center gap-1"
+                    className="text-sm text-[var(--brand-orange)] font-mono break-all hover:underline flex items-center gap-1"
                   >
                     {selectedRedemption.tx_hash}
                     <ExternalLink className="h-3 w-3 shrink-0" />
@@ -632,7 +632,7 @@ export function AdminRedemptionsClient() {
             </AlertDialogTitle>
             <AlertDialogDescription className="text-white/60">
               This will approve the redemption of{" "}
-              <span className="text-[#FF5800] font-semibold">
+              <span className="text-[var(--brand-orange)] font-semibold">
                 {selectedRedemption &&
                   formatCurrency(selectedRedemption.usd_value)}
               </span>{" "}

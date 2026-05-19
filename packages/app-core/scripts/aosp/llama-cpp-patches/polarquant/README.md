@@ -31,7 +31,7 @@ took during the consolidation).
 - Fork CPU implementation:
   `plugins/plugin-local-inference/native/llama.cpp/ggml/src/ggml-cpu/quants.{c,h}`.
 - Standalone user-space library:
-  `packages/native-plugins/polarquant-cpu/` (this is what
+  `packages/native/plugins/polarquant-cpu/` (this is what
   `polarquant_to_gguf.py` and off-llama.cpp parity tests link).
 - Tier coverage matrix:
   `packages/training/reports/eliza1-quant-matrix-2026-05-14.md`.

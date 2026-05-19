@@ -159,6 +159,12 @@ async def run_benchmark(args: argparse.Namespace) -> int:
             overall_score,
             scenarios_hash="placeholder",
             scoring_hash="placeholder",
+            execution={
+                "mock_mode": orchestrator.mock_mode,
+                "offline_mode": surfpool_config.offline_mode,
+                "clone_mainnet": args.clone_mainnet,
+                "rpc_url": surfpool.rpc_url,
+            },
         )
         md_path = exporter.export_markdown(
             metrics.run_metrics,

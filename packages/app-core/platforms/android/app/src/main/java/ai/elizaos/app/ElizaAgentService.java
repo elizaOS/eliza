@@ -1046,6 +1046,7 @@ public class ElizaAgentService extends Service {
             File abiLlamaShim = new File(abiDir, "libeliza-llama-shim.so");
             File abiSpeculativeShim = new File(abiDir, "libeliza-llama-speculative-shim.so");
             boolean nativeLlamaBundled = abiLibllama.isFile() && abiLlamaShim.isFile();
+            boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
             if (nativeLlamaBundled && !env.containsKey("ELIZA_LOCAL_LLAMA")) {
                 agentEnv.put("ELIZA_LOCAL_LLAMA", "1");
                 Log.i(TAG, "agent/" + abiDir.getName()
@@ -1066,6 +1067,18 @@ public class ElizaAgentService extends Service {
                     // cache priming.
                     agentEnv.put("ELIZA_KOKORO_PREWARM_DELAY_MS", "60000");
                 }
+                if (abiSpeculativeShim.isFile()
+                        && !env.containsKey("ELIZA_SPEC_TYPE")
+                        && !env.containsKey("ELIZA_SPECULATIVE_TYPE")) {
+                    // Prefer the in-process MTP path when the bundled
+                    // llama.cpp fork supports it. This is intentionally not
+                    // required: current mobile Eliza-1 bundles ship DFlash
+                    // drafter GGUFs, and the adapter falls back to DFlash when
+                    // the target model lacks NextN/MTP tensors.
+                    agentEnv.put("ELIZA_SPEC_TYPE", "mtp");
+                    Log.i(TAG, "agent/" + abiDir.getName()
+                        + "/libeliza-llama-speculative-shim.so present; preferring MTP speculative decode with DFlash fallback");
+                }
                 if (abiSpeculativeShim.isFile() && brandedAospBuild && !env.containsKey("ELIZA_DFLASH")) {
                     agentEnv.put("ELIZA_DFLASH", "1");
                     Log.i(TAG, "agent/" + abiDir.getName()
@@ -1081,7 +1094,6 @@ public class ElizaAgentService extends Service {
                     Log.i(TAG, "agent/" + abiDir.getName()
                         + "/libeliza-llama-speculative-shim.so present; leaving DFlash opt-in for stock APK");
                 }
-                boolean brandedAospBuild = BuildConfig.AOSP_BUILD && isBrandedDevice();
                 if (BuildConfig.DEBUG && !env.containsKey("ELIZA_AOSP_LLAMA_DEBUG_LOG")) {
                     File debugLog = new File(agentStateDir(), "aosp-llama-debug.log");
                     agentEnv.put("ELIZA_AOSP_LLAMA_DEBUG_LOG", debugLog.getAbsolutePath());

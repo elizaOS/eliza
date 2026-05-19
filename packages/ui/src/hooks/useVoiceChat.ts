@@ -45,6 +45,7 @@ import {
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "../voice/local-asr-capture";
+import { transcribeLocalInferenceWav } from "../voice/local-asr-transcribe";
 import {
   collapseWhitespace,
   nextIdleMouthOpen,
@@ -651,34 +652,7 @@ export function useVoiceChat(options: VoiceChatOptions): VoiceChatState {
 
   const transcribeLocalInferenceAudio = useCallback(
     async (audio: Uint8Array, signal?: AbortSignal): Promise<string> => {
-      const audioBody = new ArrayBuffer(audio.byteLength);
-      new Uint8Array(audioBody).set(audio);
-      const res = await fetchWithCsrf(
-        resolveApiUrl("/api/asr/local-inference"),
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "audio/wav",
-            Accept: "application/json",
-          },
-          body: audioBody,
-          signal,
-        },
-      );
-      if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        throw new Error(
-          `Local inference ASR ${res.status}: ${body.slice(0, 200)}`,
-        );
-      }
-
-      const body = (await res.json().catch(() => null)) as {
-        text?: unknown;
-      } | null;
-      const text = typeof body?.text === "string" ? body.text.trim() : "";
-      if (!text) {
-        throw new Error("Local inference ASR returned an empty transcript");
-      }
+      const { text } = await transcribeLocalInferenceWav(audio, { signal });
       return text;
     },
     [],

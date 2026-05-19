@@ -2,11 +2,9 @@
  * Integration tests for `EngineVoiceBridge.startKokoroOnly` — the entry
  * point that constructs a Kokoro-backed bridge without an Eliza-1 bundle.
  *
- * No `vi.mock` here: `KokoroOnnxRuntime`'s constructor does not touch
- * disk (the model file is only opened lazily inside `ensureSession()`,
- * which we never call in these tests), and `KokoroTtsBackend` works the
- * same way. So the tests exercise the real classes against a fake layout
- * pointing at a never-read path.
+ * No `vi.mock` here: the runtimes are constructed lazily, and
+ * `KokoroTtsBackend` works the same way. The tests exercise the real
+ * classes against a fake layout pointing at a never-read path.
  *
  * The standalone integration script at `scripts/test-kokoro-tts.mjs`
  * covers the real-ORT path against staged artifacts on disk.

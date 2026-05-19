@@ -14,7 +14,10 @@
  * Each test verifies one stage of the pipeline.
  */
 
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import type http from "node:http";
+import os from "node:os";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   generateViewHeroSvg,
@@ -25,7 +28,10 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.js";
 import type { ViewsRouteContext } from "../api/views-routes.js";
-import { handleViewsRoutes } from "../api/views-routes.js";
+import {
+  clearCurrentViewState,
+  handleViewsRoutes,
+} from "../api/views-routes.js";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -51,6 +57,7 @@ function makeCtx(
   opts: {
     broadcastWs?: (payload: object) => void;
     developerMode?: boolean;
+    res?: http.ServerResponse;
   } = {},
 ): {
   ctx: ViewsRouteContext;
@@ -62,9 +69,9 @@ function makeCtx(
   const url = new URL(`http://localhost${pathname}`);
   const ctx: ViewsRouteContext = {
     req: { headers: {} } as http.IncomingMessage,
-    res: {} as http.ServerResponse,
+    res: opts.res ?? ({} as http.ServerResponse),
     method,
-    pathname,
+    pathname: url.pathname,
     url,
     json,
     error,
@@ -80,6 +87,7 @@ beforeEach(() => {
 
 afterEach(() => {
   unregisterPluginViews(SMOKE_PLUGIN);
+  clearCurrentViewState();
   vi.restoreAllMocks();
 });
 
@@ -125,6 +133,24 @@ describe("stage 1: plugin declares views → registry populated", () => {
       /^\/api\/views\/smoke\.main\/bundle\.js\?v=\d+$/,
     );
     expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero");
+  });
+
+  it("entry includes viewType in derived TUI asset URLs", async () => {
+    await registerPluginViews(
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [{ ...SMOKE_VIEW, viewType: "tui", path: "/smoke/tui" }],
+      },
+      undefined,
+    );
+
+    const entry = getView("smoke.main", { viewType: "tui" });
+    expect(entry?.bundleUrl).toMatch(
+      /^\/api\/views\/smoke\.main\/bundle\.js\?viewType=tui&v=\d+$/,
+    );
+    expect(entry?.heroImageUrl).toBe("/api/views/smoke.main/hero?viewType=tui");
   });
 
   it("entry marks available=false when pluginDir is not resolvable", async () => {
@@ -310,6 +336,43 @@ describe("stage 4: GET /api/views/:id/bundle.js serves the view bundle", () => {
     const diskPath = getBundleDiskPath(entry);
     expect(diskPath).toBe("/some/plugin/dir/dist/views/bundle.js");
   });
+
+  it("serves relative chunks emitted beside the root bundle", async () => {
+    const pluginDir = await mkdtemp(path.join(os.tmpdir(), "eliza-view-"));
+    const viewsDir = path.join(pluginDir, "dist", "views");
+    await mkdir(viewsDir, { recursive: true });
+    await writeFile(path.join(viewsDir, "bundle.js"), "import './chunk.js';");
+    await writeFile(path.join(viewsDir, "chunk.js"), "export const ok = true;");
+
+    try {
+      await registerPluginViews(
+        {
+          name: SMOKE_PLUGIN,
+          description: "smoke plugin",
+          actions: [],
+          views: [SMOKE_VIEW],
+        },
+        pluginDir,
+      );
+
+      const writeHead = vi.fn();
+      const end = vi.fn();
+      const { ctx } = makeCtx("GET", "/api/views/smoke.main/chunk.js", {
+        res: { writeHead, end } as unknown as http.ServerResponse,
+      });
+      await handleViewsRoutes(ctx);
+
+      expect(writeHead).toHaveBeenCalledWith(
+        200,
+        expect.objectContaining({
+          "Content-Type": "application/javascript; charset=utf-8",
+        }),
+      );
+      expect(end).toHaveBeenCalledWith(Buffer.from("export const ok = true;"));
+    } finally {
+      await rm(pluginDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -365,18 +428,21 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
       type: string;
       viewId: string;
       viewPath: string | null;
+      viewType: string;
     };
     expect(event.type).toBe("shell:navigate:view");
     expect(event.viewId).toBe("smoke.main");
     expect(event.viewPath).toBe("/smoke");
+    expect(event.viewType).toBe("gui");
 
     // Also returns JSON with ok: true
     const [, body] = json.mock.calls[0] as [
       unknown,
-      { ok: boolean; viewId: string },
+      { ok: boolean; viewId: string; viewType: string },
     ];
     expect(body.ok).toBe(true);
     expect(body.viewId).toBe("smoke.main");
+    expect(body.viewType).toBe("gui");
   });
 
   it("navigate works for synthetic IDs not in registry (like view manager)", async () => {
@@ -423,6 +489,55 @@ describe("stage 6: POST /api/views/:id/navigate broadcasts WS event", () => {
     expect(handled).toBe(true);
     const [, body] = json.mock.calls[0] as [unknown, { ok: boolean }];
     expect(body.ok).toBe(true);
+  });
+
+  it("records the current view for agent-side awareness", async () => {
+    await registerPluginViews(
+      {
+        name: SMOKE_PLUGIN,
+        description: "smoke plugin",
+        actions: [],
+        views: [
+          SMOKE_VIEW,
+          {
+            ...SMOKE_VIEW,
+            viewType: "tui",
+            label: "Smoke TUI",
+            path: "/smoke/tui",
+            componentExport: "SmokeTuiView",
+          },
+        ],
+      },
+      undefined,
+    );
+
+    const navigate = makeCtx(
+      "POST",
+      "/api/views/smoke.main/navigate?viewType=tui",
+    );
+    await handleViewsRoutes(navigate.ctx);
+
+    const current = makeCtx("GET", "/api/views/current");
+    const handled = await handleViewsRoutes(current.ctx);
+
+    expect(handled).toBe(true);
+    const [, body] = current.json.mock.calls[0] as [
+      unknown,
+      {
+        currentView: {
+          viewId: string;
+          viewPath: string;
+          viewLabel: string;
+          viewType: string;
+          updatedAt: string;
+        };
+      },
+    ];
+    expect(body.currentView.viewId).toBe("smoke.main");
+    expect(body.currentView.viewPath).toBe("/smoke/tui");
+    expect(body.currentView.viewLabel).toBe("Smoke TUI");
+    expect(body.currentView.viewType).toBe("tui");
+    expect(Date.parse(body.currentView.updatedAt)).not.toBeNaN();
   });
 });
 

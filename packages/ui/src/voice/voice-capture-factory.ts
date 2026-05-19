@@ -17,14 +17,14 @@
  * underlying primitives ({@link startLocalAsrRecorder} + browser
  * `SpeechRecognition`). This factory adds nothing on top besides routing.
  */
-import { fetchWithCsrf } from "../api/csrf-client";
+
 import type { AsrProvider } from "../api/client-types-config";
-import { resolveApiUrl } from "../utils";
 import {
   isLocalAsrCaptureSupported,
   type LocalAsrRecorder,
   startLocalAsrRecorder,
 } from "./local-asr-capture";
+import { transcribeLocalInferenceWav } from "./local-asr-transcribe";
 import {
   getSpeechRecognitionCtor,
   type SpeechRecognitionInstance,
@@ -126,33 +126,6 @@ function resolveBackend(
   return { kind: "browser" };
 }
 
-async function transcribeWav(audio: Uint8Array): Promise<string> {
-  const audioBody = new ArrayBuffer(audio.byteLength);
-  new Uint8Array(audioBody).set(audio);
-  const res = await fetchWithCsrf(resolveApiUrl("/api/asr/local-inference"), {
-    method: "POST",
-    headers: {
-      "Content-Type": "audio/wav",
-      Accept: "application/json",
-    },
-    body: audioBody,
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    throw new Error(
-      `Local inference ASR ${res.status}: ${body.slice(0, 200)}`,
-    );
-  }
-  const parsed = (await res.json().catch(() => null)) as {
-    text?: unknown;
-  } | null;
-  const text = typeof parsed?.text === "string" ? parsed.text.trim() : "";
-  if (!text) {
-    throw new Error("Local inference ASR returned an empty transcript");
-  }
-  return text;
-}
-
 export function createVoiceCapture(
   options: VoiceCaptureFactoryOptions,
 ): VoiceCaptureHandle {
@@ -193,7 +166,11 @@ export function createVoiceCapture(
     instance.lang = lang;
 
     instance.onresult = (event: SpeechRecognitionResultEvent) => {
-      for (let index = event.resultIndex; index < event.results.length; index += 1) {
+      for (
+        let index = event.resultIndex;
+        index < event.results.length;
+        index += 1
+      ) {
         const result = event.results[index];
         if (!result) continue;
         const text = result[0]?.transcript?.trim() ?? "";
@@ -255,7 +232,7 @@ export function createVoiceCapture(
       }
       try {
         const wav = await current.stop();
-        const text = await transcribeWav(wav);
+        const { text } = await transcribeLocalInferenceWav(wav);
         onTranscript({ text, final: true, backend: "local-inference" });
         setState("stopped");
       } catch (err) {

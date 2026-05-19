@@ -1,9 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
 import http from "node:http";
+import path from "node:path";
 import { gunzipSync } from "node:zlib";
 import { WebSocketServer } from "ws";
 
 const port = Number(process.env.ELIZA_UI_SMOKE_API_PORT || "31337");
+const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
+const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 let browserWorkspaceCounter = 0;
 let browserWorkspaceTabs = [];
 let lifeOpsAppEnabled = true;
@@ -37,6 +40,306 @@ function readSmokeVrm() {
 }
 
 const SMOKE_VRM = readSmokeVrm();
+
+const smokeViewDeclarations = [
+  ["companion", "Companion", "plugin-companion", "/companion", "CompanionView"],
+  [
+    "companion",
+    "Companion TUI",
+    "plugin-companion",
+    "/companion/tui",
+    "CompanionTuiView",
+    "tui",
+  ],
+  ["contacts", "Contacts", "plugin-contacts", "/contacts", "ContactsAppView"],
+  [
+    "contacts",
+    "Contacts TUI",
+    "plugin-contacts",
+    "/contacts/tui",
+    "ContactsTuiView",
+    "tui",
+  ],
+  [
+    "hyperliquid",
+    "Hyperliquid",
+    "plugin-hyperliquid-app",
+    "/hyperliquid",
+    "HyperliquidAppView",
+  ],
+  [
+    "hyperliquid",
+    "Hyperliquid TUI",
+    "plugin-hyperliquid-app",
+    "/hyperliquid/tui",
+    "HyperliquidTuiView",
+    "tui",
+  ],
+  ["lifeops", "LifeOps", "plugin-lifeops", "/lifeops", "LifeOpsPageView"],
+  [
+    "lifeops",
+    "LifeOps TUI",
+    "plugin-lifeops",
+    "/lifeops/tui",
+    "LifeOpsTuiView",
+    "tui",
+  ],
+  ["messages", "Messages", "plugin-messages", "/messages", "MessagesAppView"],
+  [
+    "messages",
+    "Messages TUI",
+    "plugin-messages",
+    "/messages/tui",
+    "MessagesTuiView",
+    "tui",
+  ],
+  [
+    "model-tester",
+    "Model Tester",
+    "app-model-tester",
+    "/model-tester",
+    "ModelTesterAppView",
+  ],
+  [
+    "model-tester",
+    "Model Tester TUI",
+    "app-model-tester",
+    "/model-tester/tui",
+    "ModelTesterTuiView",
+    "tui",
+  ],
+  ["phone", "Phone", "plugin-phone", "/phone", "PhoneAppView"],
+  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneTuiView", "tui"],
+  [
+    "polymarket",
+    "Polymarket",
+    "plugin-polymarket-app",
+    "/polymarket",
+    "PolymarketAppView",
+  ],
+  [
+    "polymarket",
+    "Polymarket TUI",
+    "plugin-polymarket-app",
+    "/polymarket/tui",
+    "PolymarketTuiView",
+    "tui",
+  ],
+  ["shopify", "Shopify", "plugin-shopify-ui", "/shopify", "ShopifyAppView"],
+  [
+    "shopify",
+    "Shopify TUI",
+    "plugin-shopify-ui",
+    "/shopify/tui",
+    "ShopifyTuiView",
+    "tui",
+  ],
+  ["steward", "Steward", "plugin-steward-app", "/steward", "StewardView"],
+  [
+    "steward",
+    "Steward TUI",
+    "plugin-steward-app",
+    "/steward/tui",
+    "StewardTuiView",
+    "tui",
+  ],
+  ["vincent", "Vincent", "plugin-vincent", "/vincent", "VincentAppView"],
+  [
+    "vincent",
+    "Vincent TUI",
+    "plugin-vincent",
+    "/vincent/tui",
+    "VincentTuiView",
+    "tui",
+  ],
+  ["wallet", "Wallet", "plugin-wallet-ui", "/wallet", "InventoryView"],
+  [
+    "wallet",
+    "Wallet TUI",
+    "plugin-wallet-ui",
+    "/wallet/tui",
+    "InventoryTuiView",
+    "tui",
+  ],
+  [
+    "2004scape",
+    "2004Scape",
+    "plugin-2004scape",
+    "/2004scape",
+    "TwoThousandFourScapeOperatorSurface",
+  ],
+  [
+    "2004scape",
+    "2004Scape TUI",
+    "plugin-2004scape",
+    "/2004scape/tui",
+    "TwoThousandFourScapeTuiView",
+    "tui",
+  ],
+  [
+    "babylon",
+    "Babylon",
+    "plugin-babylon",
+    "/babylon",
+    "BabylonOperatorSurface",
+  ],
+  [
+    "babylon",
+    "Babylon TUI",
+    "plugin-babylon",
+    "/babylon/tui",
+    "BabylonTuiView",
+    "tui",
+  ],
+  ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
+  [
+    "views-manager",
+    "Views TUI",
+    "plugin-app-control",
+    "/views/tui",
+    "ViewManagerTuiView",
+    "tui",
+  ],
+  [
+    "clawville",
+    "Clawville",
+    "plugin-clawville",
+    "/clawville",
+    "ClawvilleOperatorSurface",
+  ],
+  [
+    "clawville",
+    "Clawville TUI",
+    "plugin-clawville",
+    "/clawville/tui",
+    "ClawvilleTuiView",
+    "tui",
+  ],
+  [
+    "defense-of-the-agents",
+    "Defense of the Agents",
+    "plugin-defense-of-the-agents",
+    "/defense-of-the-agents",
+    "DefenseAgentsOperatorSurface",
+  ],
+  [
+    "defense-of-the-agents",
+    "Defense of the Agents TUI",
+    "plugin-defense-of-the-agents",
+    "/defense-of-the-agents/tui",
+    "DefenseAgentsTuiView",
+    "tui",
+  ],
+  [
+    "hyperscape",
+    "Hyperscape",
+    "plugin-hyperscape",
+    "/hyperscape",
+    "HyperscapeOperatorSurface",
+  ],
+  [
+    "hyperscape",
+    "Hyperscape TUI",
+    "plugin-hyperscape",
+    "/hyperscape/tui",
+    "HyperscapeTuiView",
+    "tui",
+  ],
+  ["scape", "Scape", "plugin-scape", "/scape", "ScapeOperatorSurface"],
+  ["scape", "Scape TUI", "plugin-scape", "/scape/tui", "ScapeTuiView", "tui"],
+  [
+    "screenshare",
+    "Screenshare",
+    "plugin-screenshare",
+    "/screenshare",
+    "ScreenshareOperatorSurface",
+  ],
+  [
+    "screenshare",
+    "Screenshare TUI",
+    "plugin-screenshare",
+    "/screenshare/tui",
+    "ScreenshareTuiView",
+    "tui",
+  ],
+  [
+    "task-coordinator",
+    "Task Coordinator",
+    "plugin-task-coordinator",
+    "/task-coordinator",
+    "CodingAgentTasksPanel",
+  ],
+  [
+    "task-coordinator",
+    "Task Coordinator TUI",
+    "plugin-task-coordinator",
+    "/task-coordinator/tui",
+    "TaskCoordinatorTuiView",
+    "tui",
+  ],
+  [
+    "trajectory-logger",
+    "Trajectory Logger",
+    "plugin-trajectory-logger",
+    "/trajectory-logger",
+    "TrajectoryLoggerView",
+  ],
+  [
+    "trajectory-logger",
+    "Trajectory Logger TUI",
+    "plugin-trajectory-logger",
+    "/trajectory-logger/tui",
+    "TrajectoryLoggerTuiView",
+    "tui",
+  ],
+  ["training", "Fine Tuning", "plugin-training", "/training", "FineTuningView"],
+  [
+    "training",
+    "Fine Tuning TUI",
+    "plugin-training",
+    "/training/tui",
+    "FineTuningTuiView",
+    "tui",
+  ],
+];
+
+const smokeViews = smokeViewDeclarations.map(
+  ([id, label, pluginDirName, viewPath, componentExport, viewType = "gui"]) => {
+    const encodedId = encodeURIComponent(id);
+    const query =
+      viewType === "tui" ? "?viewType=tui&v=ui-smoke" : "?v=ui-smoke";
+    return {
+      id,
+      label,
+      viewType,
+      pluginName: `@elizaos/${pluginDirName}`,
+      path: viewPath,
+      order: 100,
+      bundlePath: "dist/views/bundle.js",
+      bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
+      componentExport,
+      available: existsSync(
+        path.join(
+          repoRoot,
+          "plugins",
+          pluginDirName,
+          "dist",
+          "views",
+          "bundle.js",
+        ),
+      ),
+      visibleInManager: true,
+      capabilities: [
+        {
+          id: "get-state",
+          label: "Get state",
+          inputSchema: { type: "object" },
+        },
+      ],
+      _smokePluginDirName: pluginDirName,
+    };
+  },
+);
 
 const stubPlugins = [
   {
@@ -1110,6 +1413,141 @@ function sendBinary(req, res, status, contentType, body) {
   res.end(req.method === "HEAD" ? undefined : body);
 }
 
+function contentTypeForSmokeViewAsset(assetPath) {
+  const ext = path.extname(assetPath).toLowerCase();
+  if (ext === ".js" || ext === ".mjs")
+    return "application/javascript; charset=utf-8";
+  if (ext === ".css") return "text/css; charset=utf-8";
+  if (ext === ".map" || ext === ".json")
+    return "application/json; charset=utf-8";
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  return "application/octet-stream";
+}
+
+function convertNamedImportsToDestructuring(namedImports) {
+  return namedImports
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.replace(/\s+as\s+/u, ": "))
+    .join(", ");
+}
+
+function buildHostExternalImportReplacement(importClause, specifier, index) {
+  const moduleVar = `__eliza_dynamic_view_host_external_${index}`;
+  const lines = [
+    `const ${moduleVar} = await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(specifier)});`,
+  ];
+  const trimmed = importClause.trim();
+  if (trimmed.startsWith("* as ")) {
+    lines.push(`const ${trimmed.slice("* as ".length).trim()} = ${moduleVar};`);
+    return lines.join("\n");
+  }
+  const namedMatch = trimmed.match(/^\{([\s\S]*)\}$/u);
+  if (namedMatch) {
+    lines.push(
+      `const { ${convertNamedImportsToDestructuring(namedMatch[1])} } = ${moduleVar};`,
+    );
+    return lines.join("\n");
+  }
+  const defaultAndNamedMatch = trimmed.match(/^([^,]+),\s*\{([\s\S]*)\}$/u);
+  if (defaultAndNamedMatch) {
+    lines.push(
+      `const ${defaultAndNamedMatch[1].trim()} = ${moduleVar}.default ?? ${moduleVar};`,
+    );
+    lines.push(
+      `const { ${convertNamedImportsToDestructuring(defaultAndNamedMatch[2])} } = ${moduleVar};`,
+    );
+    return lines.join("\n");
+  }
+  lines.push(`const ${trimmed} = ${moduleVar}.default ?? ${moduleVar};`);
+  return lines.join("\n");
+}
+
+function rewriteHostExternalImports(source, specifiers) {
+  if (specifiers.length === 0) return source;
+  const specifierPattern = specifiers
+    .map((item) => item.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&"))
+    .join("|");
+  const fromImportPattern = new RegExp(
+    `import\\s+([^;]*?)\\s+from\\s+["'](${specifierPattern})["'];?`,
+    "gu",
+  );
+  const sideEffectPattern = new RegExp(
+    `import\\s+["'](${specifierPattern})["'];?`,
+    "gu",
+  );
+  let replacementIndex = 0;
+  return source
+    .replace(fromImportPattern, (_match, importClause, specifier) =>
+      buildHostExternalImportReplacement(
+        String(importClause),
+        String(specifier),
+        replacementIndex++,
+      ),
+    )
+    .replace(
+      sideEffectPattern,
+      (_match, specifier) =>
+        `await globalThis.__ELIZA_DYNAMIC_VIEW_IMPORT__(${JSON.stringify(String(specifier))});`,
+    );
+}
+
+function parseHostExternalSpecifiers(url) {
+  if (url.searchParams.get("hostExternalRuntime") !== "1") return [];
+  return (url.searchParams.get("hostExternalSpecifiers") ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function smokeViewByRequest(id, viewType) {
+  return smokeViews.find(
+    (view) => view.id === id && view.viewType === (viewType || "gui"),
+  );
+}
+
+function sendSmokeViewAsset(req, res, url, view, subResource) {
+  const bundleDir = path.join(
+    repoRoot,
+    "plugins",
+    view._smokePluginDirName,
+    "dist",
+    "views",
+  );
+  const assetPath = path.resolve(bundleDir, decodeURIComponent(subResource));
+  const relative = path.relative(bundleDir, assetPath);
+  if (
+    relative.startsWith("..") ||
+    path.isAbsolute(relative) ||
+    relative === ""
+  ) {
+    sendJson(req, res, 400, { error: "Malformed view asset path" });
+    return;
+  }
+  if (!existsSync(assetPath)) {
+    sendJson(req, res, 404, { error: `View asset not found: ${subResource}` });
+    return;
+  }
+  const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
+  const rawBody = readFileSync(assetPath);
+  const body =
+    hostExternalSpecifiers.length > 0 &&
+    contentTypeForSmokeViewAsset(assetPath).startsWith("application/javascript")
+      ? Buffer.from(
+          rewriteHostExternalImports(
+            rawBody.toString("utf8"),
+            hostExternalSpecifiers,
+          ),
+          "utf8",
+        )
+      : rawBody;
+  sendBinary(req, res, 200, contentTypeForSmokeViewAsset(assetPath), body);
+}
+
 function sendSseHeaders(req, res) {
   applyCors(req, res);
   res.writeHead(200, {
@@ -1199,6 +1637,58 @@ const server = http.createServer(async (req, res) => {
     url.pathname.startsWith("/api/apps/hero/")
   ) {
     sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/views") {
+    const requestedViewType = url.searchParams.get("viewType");
+    const views =
+      requestedViewType === "gui" || requestedViewType === "tui"
+        ? smokeViews.filter((view) => view.viewType === requestedViewType)
+        : smokeViews;
+    sendJson(req, res, 200, { views });
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/views/current") {
+    sendJson(req, res, 200, { currentView: null });
+    return;
+  }
+
+  if (
+    (req.method === "GET" || req.method === "HEAD") &&
+    url.pathname.startsWith("/api/views/")
+  ) {
+    const afterPrefix = url.pathname.slice("/api/views/".length);
+    const slashIndex = afterPrefix.indexOf("/");
+    const rawId =
+      slashIndex === -1 ? afterPrefix : afterPrefix.slice(0, slashIndex);
+    const subResource =
+      slashIndex === -1 ? "" : afterPrefix.slice(slashIndex + 1);
+    const id = decodeURIComponent(rawId);
+    const view = smokeViewByRequest(id, url.searchParams.get("viewType"));
+    if (!view) {
+      sendJson(req, res, 404, { error: `View not found: ${id}` });
+      return;
+    }
+    if (subResource === "") {
+      sendJson(req, res, 200, view);
+      return;
+    }
+    if (subResource === "hero") {
+      sendBinary(req, res, 200, "image/png", ONE_PIXEL_PNG);
+      return;
+    }
+    if (subResource === "bundle.js") {
+      sendSmokeViewAsset(req, res, url, view, "bundle.js");
+      return;
+    }
+    sendSmokeViewAsset(req, res, url, view, subResource);
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname.startsWith("/api/views/")) {
+    sendJson(req, res, 200, { ok: true });
     return;
   }
 
@@ -2242,6 +2732,45 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === "GET" && url.pathname === "/api/apps/runs") {
     sendJson(req, res, 200, []);
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/apps/screenshare/capabilities"
+  ) {
+    sendJson(req, res, 200, {
+      platform: "smoke",
+      capabilities: {
+        screenshot: { available: true, tool: "screencapture" },
+        headfulGui: { available: true, tool: "browser" },
+        keyboard: { available: false, tool: "computer-use" },
+      },
+    });
+    return;
+  }
+
+  if (
+    req.method === "GET" &&
+    url.pathname === "/api/apps/screenshare/sessions"
+  ) {
+    sendJson(req, res, 200, {
+      sessions: [
+        {
+          id: "smoke-session",
+          label: "Smoke session",
+          status: "active",
+          createdAt: SMOKE_GENERATED_AT,
+          updatedAt: SMOKE_GENERATED_AT,
+          stoppedAt: null,
+          platform: "smoke",
+          frameCount: 1,
+          inputCount: 0,
+          lastFrameAt: SMOKE_GENERATED_AT,
+          lastInputAt: null,
+        },
+      ],
+    });
     return;
   }
 

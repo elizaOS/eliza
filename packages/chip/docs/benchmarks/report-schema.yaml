@@ -1,0 +1,255 @@
+schema: eliza.benchmark_report.v1
+format: generated JSON report validated by benchmarks/run_benchmarks.py
+strict_validation_command: python3 benchmarks/run_benchmarks.py validate-report <report.json>
+required_fields:
+  schema: string
+  report_id: string
+  date_utc: string
+  dry_run: boolean
+  claim_level:
+    enum:
+      - L0_RTL_UNIT
+      - L1_RTL_FULL_SOC
+      - L2_ARCH_SIM
+      - L3_FPGA
+      - L4_DEV_BOARD
+      - L5_PROTOTYPE_SILICON
+      - L6_COMPLETE_PHONE
+  platform:
+    name: string
+    revision: string
+    source_tree_sha: string
+    host: string
+    host_system: string
+  config:
+    path: string
+    version: string
+  software:
+    os: string
+    kernel: string
+    firmware: string
+    runtime: string
+    build_id: string
+  clocks:
+    source: string
+    cpu_hz: number
+    npu_hz: number
+    memory_hz: number
+    governor: string
+  memory:
+    type: string
+    capacity_bytes: integer
+    bandwidth_bytes_per_second: number
+    channels: integer
+  thermal:
+    ambient_c: number
+    die_c: number
+    cooling: string
+    throttle_state: string
+  power:
+    source: string
+    watts: number
+    measurement_method: string
+    sample_count: integer
+    averaging_window_seconds: number
+  calibration:
+    status:
+      enum:
+        - calibrated
+        - blocked-no-calibrated-assets
+    source: string
+    ground_truth_reference: string
+    last_calibrated_utc: string
+    assets:
+      type: object
+  workload:
+    name: string
+    dataset: string
+    batch_size: integer
+  results:
+    type: list
+    item:
+      name: string
+      suite: string
+      version: string
+      command: list
+      input_dataset: string
+      primary_metric: string
+      units: string
+      parser:
+        enum:
+          - coremark_v1
+          - stream_v5
+          - lmbench_bw_mem
+          - lmbench_lat_mem_rd
+          - fio_json_v3
+          - tflite_benchmark_model
+          - simulator_metrics_v1
+          - eliza_npu_scale_sim_v1
+      provenance:
+        enum:
+          - dry_run
+          - measured
+          - simulator
+          - imported
+      status:
+        enum:
+          - planned
+          - planned_missing_deps
+          - blocked
+          - missing_dependencies
+          - passed
+          - failed
+          - timeout
+          - error
+      dependencies:
+        type: list
+        item:
+          name: string
+          kind:
+            enum:
+              - executable
+              - file
+              - model_artifact
+              - capability_artifact
+          available: boolean
+          path: string_or_null
+      artifacts:
+        raw_output: string
+      metrics: object
+      run_metadata:
+        runs: integer
+        warmup_runs: integer
+        required_metadata: list
+        required_calibration_assets: list
+  artifacts:
+    logs: list
+    reports: list
+    traces: list
+optional_result_fields:
+  missing_dependencies: list
+  blocked_assets:
+    type: list
+    item:
+      name: string
+      reason: string
+      blocker_id: string
+      pipeline_visible: boolean
+      release_blocking: boolean
+      resolution: string
+  returncode: integer
+  elapsed_seconds: number
+  error: string
+validation_rules:
+  - Generated reports must validate with `python3 benchmarks/run_benchmarks.py validate-report <report.json>`.
+  - Real reports (`dry_run: false`) must include populated software, clocks, memory, thermal, and power metadata fields at report level.
+  - Dry-run reports must use result provenance `dry_run` and must never contain `passed` results.
+  - Passed real results must include non-empty parser-derived `metrics` and `run_metadata`.
+  - Passed real results must include `calibration.status: calibrated` and calibrated entries for every result `required_calibration_assets` item.
+  - Blocked calibration templates may validate for blocked/missing reports, but any parsed result that would otherwise pass must fail validation until calibration is replaced with real evidence.
+  - Parser failures make the result `failed`; raw logs alone are not host-verifiable performance evidence.
+  - Results with unavailable model_artifact dependencies must use status `blocked`, not `passed`.
+  - Results with unavailable capability_artifact dependencies must use status `blocked`, not `passed`.
+  - Non-L2 reports must not pass with dependencies whose `release_claim_allowed` field is false.
+  - Blocked model artifacts must carry stable `blocker_id`, `pipeline_visible`, and `release_blocking` fields so CI and release pipelines can gate on them.
+  - Placeholder or undersized TFLite models are blocked until replaced by a declared non-proprietary model artifact.
+  - Simulator wall-clock time must not be compared against commercial phone scores.
+  - Simulator-only metrics must use provenance `simulator`, claim level L0-L2, and may report target cycles, IPC, MPKI, cache/memory transactions, modeled frequency, explicitly modeled power, explicitly modeled thermal estimates, and process-corner derates only.
+  - Simulator-only metrics must include `benchmark_success_allowed: true`; QEMU liveness-only exports set it to false and are parser-rejected as benchmark success.
+  - FPGA power must not be reported as mobile SoC power.
+  - NPU reports must include unsupported op count and CPU fallback percentage.
+  - >
+    E1-NPU NNAPI proof must bind to the exact model SHA-256, report the
+    expected accelerator name, and show zero CPU fallback plus zero unsupported
+    ops before `tflite_e1_npu` can run as target evidence.
+  - >
+    E1-NPU NNAPI proof must include claim level, precision, dataflow name,
+    DMA byte counts, delegated and total NNAPI node counts, MACs per inference,
+    NPU cycles, NPU clock, observed TOPS, and a MAC/cycle TOPS formula.
+  - >
+    E1-NPU observed TOPS must not exceed the MAC/cycle/NPU-clock derived
+    upper bound apart from rounding slack; simulator wall-clock time and
+    marketing TOPS are not accepted.
+  - Android reports must separate boot success from CTS/VTS compatibility.
+parser_manifests:
+  coremark_v1:
+    source: CoreMark stdout
+    required_metric: coremark_per_mhz
+    rejects: missing CoreMark/MHz line
+  stream_v5:
+    source: STREAM stdout
+    required_metric: triad_mb_per_s
+    rejects: missing Triad line
+  lmbench_bw_mem:
+    source: lmbench bw_mem stdout
+    required_metric: bandwidth_mb_per_s
+    rejects: no numeric bandwidth row
+  lmbench_lat_mem_rd:
+    source: lmbench lat_mem_rd stdout
+    required_metric: points[].latency_ns
+    rejects: no numeric latency points
+  fio_json_v3:
+    source: fio --output-format=json
+    required_metric: one or more non-zero read/write IOPS or bandwidth fields
+    rejects: non-JSON fio output or empty jobs
+  tflite_benchmark_model:
+    source: TensorFlow Lite benchmark_model stdout
+    required_metric: avg_latency_us
+    required_npu_metrics:
+      - unsupported_op_count
+      - cpu_fallback_percent
+    rejects: missing average inference latency
+  simulator_metrics_v1:
+    source: JSON exported by simulator flow
+    required_metrics:
+      - target_cycles
+      - simulated_frequency_hz
+      - ipc
+      - benchmark_success_allowed
+    modeled_14a_metrics:
+      - estimated_package_power_w
+      - estimated_die_temp_c
+      - instructions_per_joule
+      - process_corner_count
+      - worst_process_corner_ipc
+      - worst_process_corner_frequency_hz
+      - worst_process_corner_power_w
+      - worst_process_corner_die_temp_c
+    forbidden_metrics:
+      - wall_clock_score
+      - phone_score
+      - geekbench_score
+calibration_asset_contract:
+  status: calibrated
+  source: string
+  sha256: string
+  evidence: string
+required_calibration_assets_by_suite:
+  CoreMark:
+    - clock_source
+    - power_meter
+    - coremark_binary
+  STREAM:
+    - clock_source
+    - power_meter
+    - stream_binary
+    - memory_model
+  lmbench:
+    - clock_source
+    - power_meter
+    - lmbench_binary
+    - memory_model
+  fio:
+    - clock_source
+    - power_meter
+    - fio_binary
+    - storage_target
+  TensorFlow Lite benchmark_model:
+    - clock_source
+    - power_meter
+    - tflite_benchmark_model
+    - tflite_model
+    - nnapi_driver
+  Eliza simulator metrics:
+    - simulator_config
+    - simulator_counter_export

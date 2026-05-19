@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import importlib.util
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 
@@ -24,7 +26,22 @@ from .types import SUITES
 
 _AGENT_CHOICES = ("eliza", "hermes", "openclaw", "echo")
 _SUITE_CHOICES = ("all",) + SUITES
-_STT_CHOICES = ("groq", "eliza-runtime")
+_STT_CHOICES = ("groq", "eliza-runtime", "faster-whisper", "local-whisper")
+
+
+def _default_stt_provider() -> str:
+    explicit = (
+        os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+        or os.environ.get("VOICEBENCH_STT_PROVIDER")
+        or ""
+    ).strip()
+    if explicit:
+        return explicit
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if importlib.util.find_spec("faster_whisper") is not None:
+        return "faster-whisper"
+    return "groq"
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -53,8 +70,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--stt-provider",
         choices=_STT_CHOICES,
-        default="groq",
-        help="STT provider for cascaded voice→text input (default: groq).",
+        default=_default_stt_provider(),
+        help="STT provider for cascaded voice→text input.",
     )
     parser.add_argument(
         "--judge-model",

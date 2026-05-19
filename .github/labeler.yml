@@ -58,7 +58,7 @@ plugins:
   - changed-files:
     - any-glob-to-any-file:
       - 'plugins/**'
-      - 'packages/native-plugins/**'
+      - 'packages/native/plugins/**'
 
 electron:
   - changed-files:

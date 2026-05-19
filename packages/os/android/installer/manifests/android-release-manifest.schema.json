@@ -40,7 +40,13 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["codename", "tier", "slots", "dynamicPartitions", "rollbackSupported"],
+        "required": [
+          "codename",
+          "tier",
+          "slots",
+          "dynamicPartitions",
+          "rollbackSupported"
+        ],
         "properties": {
           "codename": {
             "type": "string",
@@ -83,7 +89,14 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["partition", "filename", "sha256", "sizeBytes", "required", "fastbootMode"],
+        "required": [
+          "partition",
+          "filename",
+          "sha256",
+          "sizeBytes",
+          "required",
+          "fastbootMode"
+        ],
         "properties": {
           "partition": {
             "type": "string",

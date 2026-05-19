@@ -1,0 +1,68 @@
+{
+  "blockers": [
+    {
+      "detail": "/home/shaw/milady/eliza/packages/chip/external/linux",
+      "id": "external_linux_tree_missing"
+    },
+    {
+      "detail": "set CROSS_COMPILE=... or install a riscv64 Linux compiler",
+      "id": "riscv_cross_compiler_missing"
+    },
+    {
+      "detail": "docs/evidence/linux/eliza_e1_kernel_build.log",
+      "id": "linux_kernel_build_evidence_blocked"
+    },
+    {
+      "detail": "docs/evidence/linux/eliza_e1_dtb_check.log",
+      "id": "linux_dtb_check_evidence_blocked"
+    },
+    {
+      "detail": "docs/evidence/linux/e1-mmio-smoke.log",
+      "id": "linux_mmio_smoke_evidence_blocked"
+    }
+  ],
+  "claim_boundary": "status_only_not_linux_boot_evidence",
+  "evidence": {
+    "linux_dtb_check": {
+      "blocked_marker": "docs/evidence/linux/eliza_e1_dtb_check.log.BLOCKED",
+      "path": "docs/evidence/linux/eliza_e1_dtb_check.log",
+      "reason": "reason: external/linux exists and has imported the OpenPhone hello DTS/bindings, but host tools cannot run dtbs_check and no PASS transcript has been captured.",
+      "state": "blocked"
+    },
+    "linux_kernel_build": {
+      "blocked_marker": "docs/evidence/linux/eliza_e1_kernel_build.log.BLOCKED",
+      "path": "docs/evidence/linux/eliza_e1_kernel_build.log",
+      "reason": "reason: external/linux exists and has imported the OpenPhone hello BSP, but host tools cannot run the kernel build and no PASS transcript has been captured.",
+      "state": "blocked"
+    },
+    "linux_mmio_smoke": {
+      "blocked_marker": "docs/evidence/linux/e1-mmio-smoke.log.BLOCKED",
+      "path": "docs/evidence/linux/e1-mmio-smoke.log",
+      "reason": "reason: no boot transcript of an imported OpenPhone hello kernel/rootfs exists, so /dev/hello-npu and DMA sysfs smoke output cannot be captured.",
+      "state": "blocked"
+    }
+  },
+  "imported_bsp": {
+    "status": "missing_tree"
+  },
+  "linux_tree": "/home/shaw/milady/eliza/packages/chip/external/linux",
+  "linux_tree_valid": false,
+  "producer_commands": {
+    "configure": "cd /home/shaw/milady/eliza/packages/chip/external/linux && make ARCH=riscv eliza_e1.config olddefconfig",
+    "dtb_check": "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux dtb-check",
+    "import": "sw/linux/scripts/import-linux-bsp.sh /home/shaw/milady/eliza/packages/chip/external/linux",
+    "import_check": "sw/linux/scripts/import-linux-bsp.sh --check /home/shaw/milady/eliza/packages/chip/external/linux",
+    "kernel_build": "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux kernel-build",
+    "mmio_smoke": "E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux smoke"
+  },
+  "schema": "eliza.linux_external_bsp_status.v1",
+  "status": "blocked",
+  "tools": {
+    "cross_compile": "",
+    "dtc": "",
+    "make": "/usr/bin/make",
+    "make_version": "GNU Make 4.3",
+    "make_version_ok": true,
+    "riscv_compiler": ""
+  }
+}

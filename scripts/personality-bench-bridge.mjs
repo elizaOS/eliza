@@ -60,7 +60,8 @@ export function bridgePersonalityExpect(scenario) {
   const bridged = {
     bucket,
     directiveTurn:
-      Number.isInteger(sourceExpect.directiveTurn) && sourceExpect.directiveTurn > 0
+      Number.isInteger(sourceExpect.directiveTurn) &&
+      sourceExpect.directiveTurn > 0
         ? sourceExpect.directiveTurn
         : 1,
     checkTurns: Array.isArray(sourceExpect.checkTurns)
@@ -79,7 +80,9 @@ export function bridgePersonalityExpect(scenario) {
         options.maxTokens = options.maxTokens ?? 80;
       }
       if (Number.isInteger(judgeKwargs.instructionTurnIndex)) {
-        bridged.directiveTurn = assistantTurnFor(judgeKwargs.instructionTurnIndex);
+        bridged.directiveTurn = assistantTurnFor(
+          judgeKwargs.instructionTurnIndex,
+        );
       }
       bridged.checkTurns = arrayOfAssistantTurns(judgeKwargs.probeTurnIndices);
       break;
@@ -90,15 +93,21 @@ export function bridgePersonalityExpect(scenario) {
       copyString(judgeKwargs, options, "lastName");
       copyString(judgeKwargs, options, "last_name", "lastName");
       if (Number.isInteger(judgeKwargs.traitMentionTurnIndex)) {
-        bridged.directiveTurn = assistantTurnFor(judgeKwargs.traitMentionTurnIndex);
+        bridged.directiveTurn = assistantTurnFor(
+          judgeKwargs.traitMentionTurnIndex,
+        );
       }
-      bridged.checkTurns = arrayOfAssistantTurns(judgeKwargs.traitCheckTurnIndices);
+      bridged.checkTurns = arrayOfAssistantTurns(
+        judgeKwargs.traitCheckTurnIndices,
+      );
       break;
     }
 
     case "shut_up": {
       if (Number.isInteger(judgeKwargs.instructionTurnIndex)) {
-        bridged.directiveTurn = assistantTurnFor(judgeKwargs.instructionTurnIndex);
+        bridged.directiveTurn = assistantTurnFor(
+          judgeKwargs.instructionTurnIndex,
+        );
       }
       const silentTurns = arrayOfAssistantTurns(judgeKwargs.silentTurnIndices);
       if (

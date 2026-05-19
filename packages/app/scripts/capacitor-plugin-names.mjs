@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 /**
  * Absolute path to `eliza/plugins` — workspace plugin root. Native plugins
- * live under `plugin-native-*` (formerly `packages/native-plugins/*`).
+ * live under `plugin-native-*` (formerly `packages/native/plugins/*`).
  * Resolved from `packages/app/scripts/` so build scripts and repo utilities share one root.
  */
 const NATIVE_PLUGIN_PREFIX = "plugin-native-";
@@ -15,7 +15,7 @@ export const NATIVE_PLUGINS_ROOT = path.resolve(__dirname, "../../../plugins");
 /**
  * Short names of each real native workspace plugin (without the
  * `plugin-native-` prefix), matching the historical directory names that
- * lived under `packages/native-plugins/`.
+ * lived under `packages/native/plugins/`.
  */
 export const CAPACITOR_PLUGIN_NAMES = fs
   .readdirSync(NATIVE_PLUGINS_ROOT, { withFileTypes: true })

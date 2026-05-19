@@ -1,8 +1,10 @@
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import { Input } from "@elizaos/ui/input";
 import { getCountries, getCountryCallingCode } from "libphonenumber-js";
 import { ChevronDown } from "lucide-react";
 import { useMemo } from "react";
 import { CountryFlag } from "@/components/login/country-flag";
+import { useT } from "@/providers/I18nProvider";
 
 const COUNTRY_LIST = getCountries();
 const DISPLAY_NAMES =
@@ -99,6 +101,7 @@ export function PhoneNumberInput({
   autoFocus = false,
   countryOptions,
 }: PhoneNumberInputProps) {
+  const t = useT();
   const styles = variantStyles[variant];
 
   return (
@@ -110,7 +113,9 @@ export function PhoneNumberInput({
           value={selectedCountry}
           onChange={(e) => onCountryChange(e.target.value)}
           className={styles.select}
-          aria-label="Choose country"
+          aria-label={t("homepage_eliza.phoneInput.chooseCountryAria", {
+            defaultValue: "Choose country",
+          })}
           style={{ color: "initial" }}
         >
           {countryOptions.map((opt) => (
@@ -118,16 +123,22 @@ export function PhoneNumberInput({
               key={opt.code}
               value={opt.code}
               className="bg-white text-neutral-900 dark:bg-neutral-800 dark:text-white"
-              style={{ backgroundColor: "#1a1a1c", color: "#ffffff" }}
+              style={{ backgroundColor: "#1a1a1c", color: BRAND_COLORS.white }}
             >
-              {opt.name} (+{opt.dialCode})
+              {t("homepage_eliza.phoneInput.optionFormat", {
+                defaultValue: "{{name}} (+{{dial}})",
+                name: opt.name,
+                dial: opt.dialCode,
+              })}
             </option>
           ))}
         </select>
       </label>
       <Input
         type="tel"
-        placeholder="(000) 000-0000"
+        placeholder={t("homepage_eliza.phoneInput.placeholder", {
+          defaultValue: "(000) 000-0000",
+        })}
         value={phoneValue}
         onChange={(e) => onPhoneChange(e.target.value)}
         onKeyDown={(e) => {
@@ -136,7 +147,9 @@ export function PhoneNumberInput({
           }
         }}
         className={styles.input}
-        aria-label="Phone number"
+        aria-label={t("homepage_eliza.phoneInput.phoneAria", {
+          defaultValue: "Phone number",
+        })}
         autoFocus={autoFocus}
       />
     </div>

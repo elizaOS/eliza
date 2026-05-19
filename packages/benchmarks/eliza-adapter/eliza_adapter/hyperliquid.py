@@ -48,6 +48,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+_CANONICAL_STEP_KEYS = {
+    "perp_orders",
+    "cancel_last",
+    "cancel_oids",
+    "cancel_all",
+    "usd_class_transfer",
+    "set_leverage",
+    "sleep_ms",
+}
+
 
 def _subprocess_timeout_seconds(default: float = 120.0) -> float:
     raw = os.environ.get("HL_BENCH_COMMAND_TIMEOUT_S") or os.environ.get("HL_RUNNER_TIMEOUT_S")
@@ -65,6 +75,187 @@ def _timeout_text(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value or ""
+
+
+def _first_present(mapping: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        if key in mapping:
+            return mapping[key]
+    return None
+
+
+def _coerce_float(value: Any, default: float) -> float:
+    if value is None:
+        return default
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if number > 0 else default
+
+
+def _coerce_int(value: Any, default: int, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        number = default
+    if minimum is not None:
+        number = max(minimum, number)
+    if maximum is not None:
+        number = min(maximum, number)
+    return number
+
+
+def _coerce_bool(value: Any, default: bool = False) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "perp", "to_perp"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "spot", "to_spot"}:
+            return False
+    if value is None:
+        return default
+    return bool(value)
+
+
+def _normalize_coin(value: Any) -> str:
+    if not isinstance(value, str) or not value.strip():
+        return "ETH"
+    coin = value.strip().upper()
+    for suffix in ("-PERP", "_PERP", "/USDC", "-USDC", "/USD", "-USD"):
+        if coin.endswith(suffix):
+            coin = coin[: -len(suffix)]
+            break
+    return coin or "ETH"
+
+
+def _normalize_price(value: Any) -> float | str:
+    if isinstance(value, (int, float)):
+        number = float(value)
+        return number if number > 0 else "mid+0%"
+    if isinstance(value, str):
+        normalized = value.strip()
+        if not normalized or normalized.lower() == "market":
+            return "mid+0%"
+        if normalized.startswith(("mid+", "mid-")):
+            return normalized
+        try:
+            number = float(normalized)
+        except ValueError:
+            return "mid+0%"
+        return number if number > 0 else "mid+0%"
+    return "mid+0%"
+
+
+def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
+    if len(_CANONICAL_STEP_KEYS.intersection(step)) == 1:
+        return step
+
+    action = str(
+        _first_present(step, "action", "type", "name", "tool", "tool_name") or ""
+    ).strip().lower()
+
+    if action in {"open_perp", "place_order", "perp_order", "perp_orders", "order"}:
+        side = str(_first_present(step, "side", "direction") or "buy").strip().lower()
+        if side not in {"buy", "sell"}:
+            side = "buy"
+        tif = str(_first_present(step, "tif", "time_in_force") or "GTC").strip().upper()
+        if tif not in {"GTC", "ALO", "IOC"}:
+            tif = "GTC"
+        order: dict[str, Any] = {
+            "coin": _normalize_coin(_first_present(step, "coin", "symbol", "asset", "market")),
+            "side": side,
+            "tif": tif,
+            "sz": _coerce_float(_first_present(step, "sz", "size", "quantity", "qty"), 0.01),
+            "reduceOnly": _coerce_bool(
+                _first_present(step, "reduceOnly", "reduce_only"),
+                False,
+            ),
+            "px": _normalize_price(_first_present(step, "px", "price", "limit_price")),
+        }
+        return {"perp_orders": {"orders": [order]}}
+
+    if action in {"cancel_all", "cancel", "cancel_orders"}:
+        coin = _first_present(step, "coin", "symbol", "asset", "market")
+        inner: dict[str, Any] = {}
+        if coin is not None:
+            inner["coin"] = _normalize_coin(coin)
+        return {"cancel_all": inner}
+
+    if action in {"transfer", "usd_class_transfer", "class_transfer", "wallet_transfer"}:
+        to_perp_value = _first_present(step, "toPerp", "to_perp", "direction")
+        if to_perp_value is None:
+            destination = str(_first_present(step, "to_account", "destination", "to") or "").lower()
+            to_perp = "perp" in destination or destination in {"demo_account", "perp_account"}
+        else:
+            to_perp = _coerce_bool(to_perp_value, True)
+        return {
+            "usd_class_transfer": {
+                "toPerp": to_perp,
+                "usdc": _coerce_float(_first_present(step, "usdc", "amount", "size"), 10.0),
+            }
+        }
+
+    if action in {"set_leverage", "leverage"}:
+        return {
+            "set_leverage": {
+                "coin": _normalize_coin(_first_present(step, "coin", "symbol", "asset", "market")),
+                "leverage": _coerce_int(
+                    _first_present(step, "leverage", "value"),
+                    1,
+                    minimum=1,
+                    maximum=20,
+                ),
+                "cross": _coerce_bool(_first_present(step, "cross", "cross_margin"), False),
+            }
+        }
+
+    if action in {"sleep", "sleep_ms", "wait"}:
+        return {
+            "sleep_ms": {
+                "duration_ms": _coerce_int(
+                    _first_present(step, "duration_ms", "ms", "milliseconds"),
+                    100,
+                    minimum=0,
+                )
+            }
+        }
+
+    return None
+
+
+def _normalize_plan_steps(steps: list[Any]) -> list[Any]:
+    normalized: list[Any] = []
+    changed = False
+    for step in steps:
+        if not isinstance(step, dict):
+            normalized.append(step)
+            continue
+
+        actions = step.get("actions")
+        if isinstance(actions, list):
+            batch_steps: list[dict[str, Any]] = []
+            for action in actions:
+                if isinstance(action, dict):
+                    normalized_action = _normalize_action_step(action)
+                    if normalized_action is not None:
+                        batch_steps.append(normalized_action)
+            if batch_steps:
+                normalized.extend(batch_steps)
+                changed = True
+                continue
+
+        normalized_step = _normalize_action_step(step)
+        if normalized_step is not None:
+            normalized.append(normalized_step)
+            changed = changed or normalized_step != step
+            continue
+
+        normalized.append(step)
+
+    return normalized if changed else steps
 
 
 # Mirrors the action's parser so we accept the same shapes (markdown fences,
@@ -98,7 +289,7 @@ def _extract_json_plan(raw_text: str) -> dict[str, Any]:
         raise ValueError("Plan JSON must contain a 'steps' key")
     if not isinstance(parsed["steps"], list) or not parsed["steps"]:
         raise ValueError("Plan must have at least one step")
-    return {"steps": parsed["steps"]}
+    return {"steps": _normalize_plan_steps(parsed["steps"])}
 
 
 class _RuntimeShim:

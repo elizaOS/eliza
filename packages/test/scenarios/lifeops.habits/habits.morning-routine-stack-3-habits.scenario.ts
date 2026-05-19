@@ -4,7 +4,7 @@
  * "brush + water + meditate" trio.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "habits.morning-routine-stack-3-habits",

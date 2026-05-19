@@ -422,10 +422,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // Companion disabled unless explicitly feature-flagged
   if (
     !COMPANION_ENABLED &&
-    (normalized === "/companion" ||
-      normalized === "/apps/companion" ||
-      normalized === "/character-select" ||
-      normalized === "/character/select")
+    (normalized === "/character-select" || normalized === "/character/select")
   ) {
     return "chat";
   }
@@ -471,8 +468,17 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // Legacy /connectors — redirect into Settings → Connectors.
   if (normalized === "/connectors") return "settings";
 
-  // Check current paths first, then legacy redirects
-  return PATH_TO_TAB.get(normalized) ?? null;
+  // Check current paths first, then route unknown top-level paths through the
+  // view registry. Plugin views declare routes like `/hyperliquid` and
+  // `/contacts/tui` that are not built-in tabs; the Views tab can then match
+  // the exact registry path and mount the remote bundle.
+  const knownTab = PATH_TO_TAB.get(normalized);
+  if (knownTab === "companion") return "views";
+  if (knownTab) return knownTab;
+  if (APPS_ENABLED && normalized.startsWith("/") && normalized !== "/") {
+    return "views";
+  }
+  return null;
 }
 
 function normalizeBasePath(basePath: string): string {

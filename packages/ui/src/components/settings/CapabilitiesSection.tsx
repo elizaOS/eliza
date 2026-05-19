@@ -1,7 +1,15 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { AlertTriangle, Cloud, Loader2, PlugZap } from "lucide-react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 
 interface AutoTrainingConfig {
@@ -19,6 +27,33 @@ interface AutoTrainingStatusResponse {
   serviceRegistered?: boolean;
 }
 
+type CapabilityRouterConnectResponse = {
+  success?: boolean;
+  mode?:
+    | "endpoint"
+    | "cloud"
+    | "e2b"
+    | "home-machine"
+    | "mobile-companion"
+    | "desktop-companion";
+  provider?:
+    | "e2b"
+    | "home-machine"
+    | "mobile-companion"
+    | "desktop-companion";
+  agentId?: string;
+  endpoint?: {
+    id?: string;
+    baseUrl?: string;
+    hasToken?: boolean;
+  };
+  sync?: {
+    registered?: string[];
+    unloaded?: string[];
+    skipped?: string[];
+  };
+};
+
 export function CapabilitiesSection() {
   const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } =
     useApp();
@@ -29,6 +64,31 @@ export function CapabilitiesSection() {
   >(null);
   const [autoTrainingLoading, setAutoTrainingLoading] = useState(true);
   const [autoTrainingSaving, setAutoTrainingSaving] = useState(false);
+  const [capabilityConnectMode, setCapabilityConnectMode] = useState<
+    "endpoint" | "cloud"
+  >("endpoint");
+  const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
+    | "direct"
+    | "e2b"
+    | "home-machine"
+    | "mobile-companion"
+    | "desktop-companion"
+  >("direct");
+  const [capabilityEndpointUrl, setCapabilityEndpointUrl] = useState("");
+  const [capabilityEndpointId, setCapabilityEndpointId] = useState("");
+  const [capabilityEndpointToken, setCapabilityEndpointToken] = useState("");
+  const [capabilityCloudApiBase, setCapabilityCloudApiBase] = useState("");
+  const [capabilityCloudAuthToken, setCapabilityCloudAuthToken] = useState("");
+  const [capabilityCloudName, setCapabilityCloudName] = useState("");
+  const [capabilityCloudBio, setCapabilityCloudBio] = useState("");
+  const [capabilityAllowedModules, setCapabilityAllowedModules] = useState("");
+  const [capabilityConnectLoading, setCapabilityConnectLoading] =
+    useState(false);
+  const [capabilityConnectError, setCapabilityConnectError] = useState<
+    string | null
+  >(null);
+  const [capabilityConnectResult, setCapabilityConnectResult] =
+    useState<CapabilityRouterConnectResponse | null>(null);
 
   const refreshAutoTraining = useCallback(async () => {
     setAutoTrainingLoading(true);
@@ -87,6 +147,125 @@ export function CapabilitiesSection() {
       : autoTrainingAvailable === false
         ? "unavailable"
         : null;
+
+  const handleCapabilityConnect = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const baseUrl = capabilityEndpointUrl.trim();
+      const cloudApiBase = capabilityCloudApiBase.trim();
+      const cloudAuthToken = capabilityCloudAuthToken.trim();
+      const cloudName = capabilityCloudName.trim();
+      if (capabilityConnectMode === "endpoint" && !baseUrl) {
+        setCapabilityConnectError("Endpoint URL is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+      if (capabilityConnectMode === "cloud" && !cloudApiBase) {
+        setCapabilityConnectError("Cloud API base URL is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+      if (capabilityConnectMode === "cloud" && !cloudAuthToken) {
+        setCapabilityConnectError("Cloud auth token is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+      if (capabilityConnectMode === "cloud" && !cloudName) {
+        setCapabilityConnectError("Cloud sandbox name is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+
+      setCapabilityConnectLoading(true);
+      setCapabilityConnectError(null);
+      setCapabilityConnectResult(null);
+      const allowedModuleIds = [
+        ...new Set(
+          capabilityAllowedModules
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        ),
+      ];
+      try {
+        const response = await client.fetch<CapabilityRouterConnectResponse>(
+          "/api/capability-router/connect",
+          {
+            method: "POST",
+            body: JSON.stringify(
+              capabilityConnectMode === "endpoint"
+                ? {
+                    ...(capabilityEndpointProvider === "direct"
+                      ? {}
+                      : { provider: capabilityEndpointProvider }),
+                    endpoint: {
+                      baseUrl,
+                      ...(capabilityEndpointId.trim()
+                        ? { id: capabilityEndpointId.trim() }
+                        : {}),
+                      ...(capabilityEndpointToken.trim()
+                        ? { token: capabilityEndpointToken.trim() }
+                        : {}),
+                    },
+                    persist: true,
+                    unloadMissing: false,
+                    ...(allowedModuleIds.length === 0
+                      ? {}
+                      : { allowedModuleIds }),
+                  }
+                : {
+                    cloud: {
+                      cloudApiBase,
+                      authToken: cloudAuthToken,
+                      name: cloudName,
+                      ...(capabilityCloudBio.trim()
+                        ? {
+                            bio: capabilityCloudBio
+                              .split("\n")
+                              .map((item) => item.trim())
+                              .filter(Boolean),
+                          }
+                        : {}),
+                      ...(capabilityEndpointId.trim()
+                        ? { endpointId: capabilityEndpointId.trim() }
+                        : {}),
+                      ...(capabilityEndpointToken.trim()
+                        ? { token: capabilityEndpointToken.trim() }
+                        : {}),
+                      ...(allowedModuleIds.length === 0
+                        ? {}
+                        : { allowedModuleIds }),
+                    },
+                    persist: true,
+                    unloadMissing: false,
+                  },
+            ),
+          },
+        );
+        setCapabilityConnectResult(response);
+      } catch (err) {
+        setCapabilityConnectError(
+          err instanceof Error
+            ? err.message
+            : "Failed to connect capability router endpoint.",
+        );
+      } finally {
+        setCapabilityConnectLoading(false);
+      }
+    },
+    [
+      capabilityAllowedModules,
+      capabilityCloudApiBase,
+      capabilityCloudAuthToken,
+      capabilityCloudBio,
+      capabilityCloudName,
+      capabilityConnectMode,
+      capabilityEndpointId,
+      capabilityEndpointProvider,
+      capabilityEndpointToken,
+      capabilityEndpointUrl,
+    ],
+  );
 
   return (
     <div className="space-y-4">
@@ -158,6 +337,182 @@ export function CapabilitiesSection() {
           })}
         />
       </CapabilityRow>
+      <form
+        className="space-y-3 border-border border-t pt-4"
+        onSubmit={handleCapabilityConnect}
+      >
+        <div className="flex items-start gap-3">
+          <PlugZap className="mt-0.5 h-4 w-4 text-accent" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-sm">
+              {t("settings.sections.capabilities.capabilityRouterName", {
+                defaultValue: "Capability Router",
+              })}
+            </div>
+            <div className="mt-1 text-2xs text-muted">
+              {t("settings.sections.capabilities.capabilityRouterHint", {
+                defaultValue:
+                  "Connect a remote endpoint that contributes plugin actions, providers, routes, apps, and views.",
+              })}
+            </div>
+          </div>
+        </div>
+        <div
+          className="inline-flex rounded-md border border-border p-0.5"
+          role="group"
+          aria-label="Capability router connection mode"
+        >
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs ${
+              capabilityConnectMode === "endpoint"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-strong"
+            }`}
+            aria-pressed={capabilityConnectMode === "endpoint"}
+            onClick={() => setCapabilityConnectMode("endpoint")}
+          >
+            <PlugZap className="h-3.5 w-3.5" aria-hidden />
+            Endpoint
+          </button>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs ${
+              capabilityConnectMode === "cloud"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-strong"
+            }`}
+            aria-pressed={capabilityConnectMode === "cloud"}
+            onClick={() => setCapabilityConnectMode("cloud")}
+          >
+            <Cloud className="h-3.5 w-3.5" aria-hidden />
+            Cloud
+          </button>
+        </div>
+        {capabilityConnectMode === "cloud" ? (
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Input
+              value={capabilityCloudApiBase}
+              onChange={(event) =>
+                setCapabilityCloudApiBase(event.target.value)
+              }
+              placeholder="https://api.elizacloud.ai"
+              aria-label="Capability cloud API base URL"
+              autoComplete="url"
+              inputMode="url"
+            />
+            <Input
+              value={capabilityCloudAuthToken}
+              onChange={(event) =>
+                setCapabilityCloudAuthToken(event.target.value)
+              }
+              placeholder="Cloud API token"
+              aria-label="Capability cloud auth token"
+              type="password"
+              autoComplete="off"
+            />
+            <Input
+              value={capabilityCloudName}
+              onChange={(event) => setCapabilityCloudName(event.target.value)}
+              placeholder="Remote Tools Sandbox"
+              aria-label="Capability cloud sandbox name"
+              autoComplete="off"
+            />
+            <Input
+              value={capabilityCloudBio}
+              onChange={(event) => setCapabilityCloudBio(event.target.value)}
+              placeholder="Sandbox bio"
+              aria-label="Capability cloud sandbox bio"
+              autoComplete="off"
+            />
+          </div>
+        ) : null}
+        {capabilityConnectMode === "endpoint" ? (
+          <label className="block min-w-0">
+            <span className="mb-1 block text-2xs text-muted">
+              Capability endpoint provider
+            </span>
+            <select
+              value={capabilityEndpointProvider}
+              onChange={(event) =>
+                setCapabilityEndpointProvider(
+                  event.target.value as typeof capabilityEndpointProvider,
+                )
+              }
+              aria-label="Capability endpoint provider"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="direct">Direct endpoint</option>
+              <option value="e2b">E2B sandbox</option>
+              <option value="home-machine">Home machine</option>
+              <option value="mobile-companion">Mobile companion</option>
+              <option value="desktop-companion">Desktop companion</option>
+            </select>
+          </label>
+        ) : null}
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem]">
+          <Input
+            value={capabilityEndpointUrl}
+            onChange={(event) => setCapabilityEndpointUrl(event.target.value)}
+            placeholder="https://capability.example"
+            aria-label="Capability router endpoint URL"
+            autoComplete="url"
+            inputMode="url"
+            disabled={capabilityConnectMode === "cloud"}
+          />
+          <Input
+            value={capabilityEndpointId}
+            onChange={(event) => setCapabilityEndpointId(event.target.value)}
+            placeholder="device"
+            aria-label="Capability router endpoint ID"
+            autoComplete="off"
+          />
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <Input
+            value={capabilityEndpointToken}
+            onChange={(event) => setCapabilityEndpointToken(event.target.value)}
+            placeholder="Bearer token"
+            aria-label="Capability router endpoint token"
+            type="password"
+            autoComplete="off"
+          />
+          <Input
+            value={capabilityAllowedModules}
+            onChange={(event) =>
+              setCapabilityAllowedModules(event.target.value)
+            }
+            placeholder="module-id, other-module"
+            aria-label="Allowed remote module IDs"
+            autoComplete="off"
+          />
+          <Button type="submit" disabled={capabilityConnectLoading}>
+            {capabilityConnectLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <PlugZap className="h-4 w-4" aria-hidden />
+            )}
+            {t("settings.sections.capabilities.capabilityRouterConnect", {
+              defaultValue: "Connect",
+            })}
+          </Button>
+        </div>
+        {capabilityConnectError ? (
+          <div className="text-2xs text-danger" role="alert">
+            {capabilityConnectError}
+          </div>
+        ) : null}
+        {capabilityConnectResult?.success ? (
+          <div className="text-2xs text-muted-strong" role="status">
+            {t("settings.sections.capabilities.capabilityRouterConnected", {
+              defaultValue: "Connected remote capability endpoint.",
+            })}{" "}
+            {capabilityConnectResult.sync?.registered?.length
+              ? capabilityConnectResult.sync.registered.join(", ")
+              : capabilityConnectResult.endpoint?.baseUrl}
+          </div>
+        ) : null}
+      </form>
     </div>
   );
 }

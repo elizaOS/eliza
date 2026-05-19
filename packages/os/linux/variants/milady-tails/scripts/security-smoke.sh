@@ -301,6 +301,12 @@ require_fixed 'contains unlisted file' "${update_manager}" \
     "update manager must reject files outside the signed runtime inventory"
 require_fixed 'runtime_store' "${update_manager}" \
     "update manager must materialize verified runtimes into a root-owned store"
+require_fixed 'os.O_NOFOLLOW' "${update_manager}" \
+    "update manager must materialize files without following source symlinks"
+require_fixed 'tempfile.mkstemp' "${update_manager}" \
+    "update manager must materialize files through temporary files"
+require_fixed 'verified runtime file changed while copying' "${update_manager}" \
+    "update manager must re-check manifest digests during materialization"
 if grep -q 'ELIZAOS_ALLOW_RUNTIME_ENV_OVERRIDES' "${runtime_env}"; then
     fail "runtime selector must not expose caller-controlled runtime override escape hatches"
 fi

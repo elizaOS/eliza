@@ -49,15 +49,15 @@ function isComputerUseContextSource(
 }
 
 function uniqueProcessNames(): string[] {
-	const names = new Set<string>();
-	for (const process of listProcesses()) {
-		const name = process.name.trim();
-		if (name) names.add(name);
-		if (names.size >= 50) break;
-	}
-	const out = [...names];
-	if (out[0] === "launchd") return [];
-	return out;
+  const names = new Set<string>();
+  for (const process of listProcesses()) {
+    const name = process.name.trim();
+    if (name) names.add(name);
+    if (names.size >= 50) break;
+  }
+  const out = [...names];
+  if (out[0] === "launchd") return [];
+  return out;
 }
 
 function uniqueVisibleAppNames(scene: Scene | null): string[] {
@@ -86,13 +86,13 @@ function focusedWindowFromScene(
 function focusedWindowFromPlatform(): VisionContextFocusedWindow | null {
   const [window] = listWindows();
   if (!window) return null;
-	const app = window.app.trim();
-	const title = window.title.trim();
-	if (!app && !title) return null;
-	if (!app && title === "unknown") return null;
-	return {
-		app,
-		title,
+  const app = window.app.trim();
+  const title = window.title.trim();
+  if (!app && !title) return null;
+  if (!app && title === "unknown") return null;
+  return {
+    app,
+    title,
     bbox: null,
   };
 }
@@ -127,7 +127,8 @@ export class VisionContextProvider extends Service {
     const sceneAppNames = uniqueVisibleAppNames(scene);
     return {
       openApps: sceneAppNames.length > 0 ? sceneAppNames : processNames,
-      focusedWindow: focusedWindowFromScene(scene) ?? focusedWindowFromPlatform(),
+      focusedWindow:
+        focusedWindowFromScene(scene) ?? focusedWindowFromPlatform(),
       recentActions: this.getRecentActions(source),
       currentTaskGoal: await this.getCurrentTaskGoal(),
     };
@@ -136,7 +137,9 @@ export class VisionContextProvider extends Service {
   noteAction(action: string): void {
     const label = action.trim();
     if (!label) {
-      throw new Error("VisionContextProvider requires a non-empty action label");
+      throw new Error(
+        "VisionContextProvider requires a non-empty action label",
+      );
     }
     this.recentActions.push({ action: label, ts: Date.now() });
     if (this.recentActions.length > 10) {

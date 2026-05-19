@@ -16,7 +16,7 @@
  *    40 — description contains query
  */
 
-import type { ActionResult, HandlerCallback } from "@elizaos/core";
+import type { ActionResult, HandlerCallback, ViewType } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
 import type { ViewSummary, ViewsClient } from "./views-client.js";
 
@@ -65,12 +65,14 @@ function formatSearchResults(
 async function fetchSemanticSearch(
 	query: string,
 	limit: number,
+	viewType?: ViewType,
 ): Promise<ScoredView[] | null> {
 	try {
 		const port = resolveServerOnlyPort(process.env);
 		const url = new URL(`http://127.0.0.1:${port}/api/views/search`);
 		url.searchParams.set("q", query);
 		url.searchParams.set("limit", String(limit));
+		if (viewType) url.searchParams.set("viewType", viewType);
 
 		const resp = await fetch(url.toString(), {
 			signal: AbortSignal.timeout(5_000),
@@ -97,12 +99,14 @@ async function fetchSemanticSearch(
 export interface RunViewsSearchInput {
 	client: ViewsClient;
 	query: string;
+	viewType?: ViewType;
 	callback?: HandlerCallback;
 }
 
 export async function runViewsSearch({
 	client,
 	query,
+	viewType,
 	callback,
 }: RunViewsSearchInput): Promise<ActionResult> {
 	if (!query.trim()) {
@@ -113,20 +117,25 @@ export async function runViewsSearch({
 	}
 
 	// Attempt hybrid semantic+keyword search via the server endpoint.
-	const semanticResults = await fetchSemanticSearch(query, 5);
+	const semanticResults = await fetchSemanticSearch(query, 5, viewType);
 	if (semanticResults !== null) {
 		const text = formatSearchResults(semanticResults, query);
 		await callback?.({ text });
 		return {
 			success: true,
 			text,
-			values: { mode: "search", query, resultCount: semanticResults.length },
+			values: {
+				mode: "search",
+				query,
+				viewType: viewType ?? "gui",
+				resultCount: semanticResults.length,
+			},
 			data: { results: semanticResults },
 		};
 	}
 
 	// Fallback: keyword-only scoring using the views client directly.
-	const views = await client.listViews();
+	const views = await client.listViews({ viewType });
 	const scored: ScoredView[] = views
 		.map((view) => ({ view, score: scoreView(view, query) }))
 		.filter(({ score }) => score > 0)
@@ -137,7 +146,12 @@ export async function runViewsSearch({
 	return {
 		success: true,
 		text,
-		values: { mode: "search", query, resultCount: scored.length },
+		values: {
+			mode: "search",
+			query,
+			viewType: viewType ?? "gui",
+			resultCount: scored.length,
+		},
 		data: { results: scored },
 	};
 }

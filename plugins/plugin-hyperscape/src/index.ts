@@ -24,6 +24,19 @@ const hyperscapePlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "hyperscape",
+      label: "Hyperscape TUI",
+      description: "Terminal Hyperscape operator surface",
+      icon: "Gamepad2",
+      path: "/hyperscape/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HyperscapeTuiView",
+      tags: ["game", "hyperscape", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 

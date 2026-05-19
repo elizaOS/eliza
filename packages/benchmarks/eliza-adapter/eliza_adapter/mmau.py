@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import os
 from pathlib import Path
+import tempfile
 import time
 from typing import Any
 
@@ -113,10 +114,7 @@ class _BaseMMAUAgent:
             return ""
         api_key = os.environ.get("GROQ_API_KEY", "").strip()
         if not api_key:
-            raise RuntimeError(
-                "MMAU full-audio runs require GROQ_API_KEY for cascaded STT; "
-                "use fixture mode for text-only smoke runs."
-            )
+            return await asyncio.to_thread(_transcribe_with_faster_whisper, audio_bytes)
         model = (
             self.config.stt_model
             or os.environ.get("GROQ_TRANSCRIPTION_MODEL")
@@ -243,3 +241,30 @@ def _audio_metadata(sample: MMAUSample) -> dict[str, object]:
             if isinstance(value, str) and value.strip():
                 audio[key] = value.strip()
     return audio
+
+
+def _transcribe_with_faster_whisper(audio_bytes: bytes) -> str:
+    """Local STT fallback over real audio bytes for Cerebras-only runs."""
+    from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+
+    model_name = (
+        os.environ.get("MMAU_FASTER_WHISPER_MODEL")
+        or os.environ.get("FASTER_WHISPER_MODEL")
+        or "base.en"
+    )
+    model = WhisperModel(model_name, device="auto", compute_type="auto")
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
+        fh.write(audio_bytes)
+        audio_path = Path(fh.name)
+    try:
+        segments, _info = model.transcribe(
+            str(audio_path),
+            beam_size=1,
+            vad_filter=False,
+        )
+        text = " ".join(segment.text.strip() for segment in segments).strip()
+    finally:
+        audio_path.unlink(missing_ok=True)
+    if not text:
+        raise RuntimeError("faster-whisper returned no transcript")
+    return text

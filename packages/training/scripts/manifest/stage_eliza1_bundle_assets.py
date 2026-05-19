@@ -12,8 +12,8 @@ Default sources:
   - ASR: ggml-org/Qwen3-ASR-0.6B-GGUF / Qwen3-ASR-1.7B-GGUF, GGUF artifacts.
   - VAD: the Eliza-1 release repo's voice/vad/silero-vad-v5.gguf, native
     silero-vad-cpp Silero VAD v5 model.
-    The legacy onnx-community/silero-vad int8 ONNX model can be staged as
-    an explicit fallback with --include-vad-onnx-fallback.
+    The legacy onnx-community/silero-vad int8 ONNX fallback can still be
+    staged explicitly with --include-vad-onnx-fallback (deprecated).
   - Wake word (optional): github.com/dscripka/openWakeWord release ONNX
     graphs (melspectrogram + embedding feature models, "hey jarvis" head
     staged as the Eliza-1 default `wake/hey-eliza.onnx`). Skip with
@@ -28,6 +28,7 @@ import json
 import os
 import shutil
 import struct
+import subprocess
 import sys
 import time
 import urllib.request
@@ -99,6 +100,13 @@ GGUF_QUANT_PREFERENCE: Final[tuple[str, ...]] = (
     "Q5_K_M",
     "Q8_0",
 )
+ASR_REQUANTIZE_BY_TIER: Final[dict[str, str]] = {
+    # The upstream Qwen3-ASR-0.6B GGUF repo publishes Q8_0/BF16 only.
+    # The 0.8B voice-loop memory gate needs the exact 752M ASR model
+    # requantized to Q4_K_M to keep ASR + mmproj + text + DFlash + Kokoro
+    # resident under the 3.7 GB small-tier budget.
+    "0_8b": "Q4_K_M",
+}
 
 VAD_NATIVE_FILES: Final[tuple[tuple[str, str], ...]] = (
     ("voice/vad/silero-vad-v5.gguf", "vad/silero-vad-v5.gguf"),
@@ -233,10 +241,10 @@ def _slot_for_bundle_path(rel: str) -> str | None:
     if rel.startswith("wake/"):
         return "wakeword"
     if rel.startswith("turn/"):
-        # Voice Wave 2: only the ONNX gates the manifest `files.turn` slot;
-        # tokenizer.json + languages.json are co-located on disk but are
-        # tokenizer/threshold sidecars, not a manifest-file entry.
-        if rel.endswith(".onnx"):
+        # Voice Wave 2: only the model file gates the manifest `files.turn`
+        # slot; tokenizer.json + languages.json are co-located on disk but
+        # are tokenizer/threshold sidecars, not manifest-file entries.
+        if rel.endswith(".onnx") or rel.endswith(".gguf"):
             return "turn"
         return None
     if rel == "cache/voice-preset-default.bin":
@@ -421,6 +429,53 @@ def copy_hf_file(
         "remotePath": remote_path,
         "path": str(destination),
         "linkMode": link_mode,
+        "sizeBytes": destination.stat().st_size,
+        "sha256": sha256_file(destination),
+    }
+
+
+def requantize_gguf_file(
+    *,
+    quantize_bin: Path,
+    source: Path,
+    destination: Path,
+    quant: str,
+    allow_requantize: bool,
+    dry_run: bool = False,
+) -> dict[str, Any]:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    if dry_run:
+        return {
+            "path": str(destination),
+            "sourcePath": str(source),
+            "quantizeBin": str(quantize_bin),
+            "quant": quant,
+            "allowRequantize": allow_requantize,
+            "dryRun": True,
+            "kind": "gguf-requantize",
+        }
+
+    if not source.is_file():
+        raise FileNotFoundError(f"ASR source GGUF missing before requantize: {source}")
+    if not quantize_bin.is_file():
+        raise FileNotFoundError(f"llama-quantize binary not found: {quantize_bin}")
+
+    tmp = destination.with_suffix(destination.suffix + ".tmp")
+    if tmp.exists():
+        tmp.unlink()
+    cmd = [str(quantize_bin)]
+    if allow_requantize:
+        cmd.append("--allow-requantize")
+    cmd.extend([str(source), str(tmp), quant])
+    subprocess.run(cmd, check=True)
+    tmp.replace(destination)
+    return {
+        "path": str(destination),
+        "sourcePath": str(source),
+        "quantizeBin": str(quantize_bin),
+        "quant": quant,
+        "allowRequantize": allow_requantize,
+        "kind": "gguf-requantize",
         "sizeBytes": destination.stat().st_size,
         "sha256": sha256_file(destination),
     }
@@ -738,8 +793,6 @@ def write_license_notes(
         "LICENSE.vad": (
             "VAD assets staged from the Eliza-1 release repo as native silero-vad-cpp "
             "Silero VAD v5 GGUF at vad/silero-vad-v5.gguf.\n"
-            "Optional legacy ONNX fallback may be staged from "
-            "onnx-community/silero-vad at vad/silero-vad-int8.onnx.\n"
             "Declared upstream license: MIT.\n"
         ),
         "LICENSE.wakeword": (
@@ -847,16 +900,55 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
                 dry_run=args.dry_run,
             )
         )
-    staged.append(
-        copy_hf_file(
-            repo_id=asr_repo,
-            revision=revisions[asr_repo],
-            remote_path=asr_remote_path,
-            destination=bundle_dir / "asr" / "eliza-1-asr.gguf",
-            link_mode=args.link_mode,
+    asr_destination = bundle_dir / "asr" / "eliza-1-asr.gguf"
+    asr_source_stage = copy_hf_file(
+        repo_id=asr_repo,
+        revision=revisions[asr_repo],
+        remote_path=asr_remote_path,
+        destination=asr_destination,
+        link_mode=args.link_mode,
+        dry_run=args.dry_run,
+    )
+    staged.append(asr_source_stage)
+    requested_asr_requantize = getattr(args, "asr_requantize", None)
+    asr_requantize_quant = (
+        requested_asr_requantize
+        if requested_asr_requantize is not None
+        else ASR_REQUANTIZE_BY_TIER.get(tier)
+    )
+    if isinstance(asr_requantize_quant, str) and asr_requantize_quant.lower() in {
+        "none",
+        "off",
+        "false",
+    }:
+        asr_requantize_quant = None
+    asr_requantize_report = None
+    if asr_requantize_quant:
+        quantize_bin = getattr(args, "llama_quantize_bin", None)
+        if not quantize_bin:
+            if args.dry_run:
+                quantize_bin = Path("<llama-quantize-required>")
+            else:
+                raise ValueError(
+                    "--llama-quantize-bin is required when ASR requantization is enabled"
+                )
+        q8_backup = bundle_dir / "asr" / "eliza-1-asr.source.gguf"
+        if not args.dry_run:
+            shutil.copy2(asr_destination, q8_backup)
+        asr_requantize_report = requantize_gguf_file(
+            quantize_bin=Path(quantize_bin),
+            source=q8_backup if not args.dry_run else asr_destination,
+            destination=asr_destination,
+            quant=asr_requantize_quant,
+            allow_requantize=True,
             dry_run=args.dry_run,
         )
-    )
+        if not args.dry_run and q8_backup.exists():
+            q8_backup.unlink()
+        asr_requantize_report["sourceRepo"] = asr_repo
+        asr_requantize_report["sourceRevision"] = revisions[asr_repo]
+        asr_requantize_report["sourceRemotePath"] = asr_remote_path
+        staged.append(asr_requantize_report)
     staged.append(
         copy_hf_file(
             repo_id=asr_repo,
@@ -1006,6 +1098,7 @@ def stage_assets(args: argparse.Namespace) -> dict[str, Any]:
         "voiceQuant": quant if "omnivoice" in voice_backends else None,
         "asrRepo": asr_repo,
         "asrRemotePath": asr_remote_path,
+        "asrRequantize": asr_requantize_report,
         "asrMmprojRemotePath": asr_mmproj_remote_path,
         "turnDetector": (
             None
@@ -1122,6 +1215,20 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         "--asr-mmproj-file",
         default=None,
         help="Exact ASR mmproj GGUF file path inside --asr-repo.",
+    )
+    ap.add_argument(
+        "--asr-requantize",
+        default=None,
+        help=(
+            "Requantize the staged canonical ASR GGUF to this llama.cpp quant "
+            "type. Defaults to Q4_K_M for 0_8b; pass 'none' to disable."
+        ),
+    )
+    ap.add_argument(
+        "--llama-quantize-bin",
+        type=Path,
+        default=None,
+        help="Path to llama-quantize, required when ASR requantization is enabled.",
     )
     ap.add_argument(
         "--skip-wakeword",

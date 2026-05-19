@@ -382,7 +382,7 @@ function resolveNativeLlamaAssetDir(androidAbi) {
 
 function shouldStageNativeLlamaAsset(name) {
   return (
-    /^lib(?:llama|ggml|mtmd|eliza-llama|elizainference).*(?:\.so|\.so\.\d.*)$/.test(
+    /^lib(?:llama|llama-common|ggml|mtmd|eliza-llama|elizainference).*(?:\.so|\.so\.\d.*)$/.test(
       name,
     ) ||
     /^libomnivoice(?:\.so|\.so\.\d.*)$/.test(name) ||

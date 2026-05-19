@@ -15,7 +15,25 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
 import { cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+
+// React 19's scheduler can post a `setImmediate` callback that runs AFTER
+// the test file completes but while Vitest is tearing down the per-file
+// jsdom environment, throwing `ReferenceError: window is not defined`
+// from react-dom-client.development.js. Drain the macrotask queue before
+// the environment is unwound so any pending scheduler work runs while
+// `window` still exists.
+afterAll(async () => {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+});
 
 beforeEach(() => {
   Object.defineProperty(HTMLMediaElement.prototype, "pause", {

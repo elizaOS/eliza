@@ -1,1 +1,0 @@
-{"version":3,"file":"pairing-command.d.ts","sourceRoot":"","sources":["pairing-command.ts"],"names":[],"mappings":"AAMA,MAAM,WAAW,sBAAsB;IACrC,aAAa,EAAE,MAAM,CAAC;IACtB,UAAU,EAAE,MAAM,GAAG,IAAI,CAAC;IAC1B,SAAS,EAAE,MAAM,GAAG,IAAI,CAAC;IACzB,eAAe,EAAE,OAAO,CAAC;IACzB,UAAU,EAAE,OAAO,CAAC;CACrB;AA6BD,wBAAgB,2BAA2B,CACzC,SAAS,CAAC,EAAE,MAAM,GACjB,sBAAsB,CAmBxB"}

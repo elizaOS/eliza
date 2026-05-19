@@ -24,7 +24,9 @@
     "paths": {
       "drizzle-orm": ["../plugin-sql/node_modules/drizzle-orm"],
       "drizzle-orm/*": ["../plugin-sql/node_modules/drizzle-orm/*"],
-      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": [
+        "../../plugins/plugin-wallet-ui/src/index.ts"
+      ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/ui": ["../../packages/ui/src/index.ts"],
       "@elizaos/ui/*": ["../../packages/ui/src/*"],

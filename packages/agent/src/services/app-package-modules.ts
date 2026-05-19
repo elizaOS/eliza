@@ -48,6 +48,7 @@ export type AppRouteModule = {
   ) => Promise<AppLaunchDiagnostic[]>;
   resolveLaunchSession?: AppLaunchSessionResolver;
   refreshRunSession?: AppRunSessionRefresher;
+  stopRun?: (ctx: AppRunSessionContext) => Promise<void>;
   [key: string]: unknown;
 };
 
@@ -59,6 +60,27 @@ type AppPluginModule = {
   default?: AppPluginWithBridge;
   [key: string]: unknown;
 };
+
+const runtimeAppRouteModules = new Map<string, AppRouteModule>();
+
+function runtimeAppRouteKey(appIdentifier: string): string {
+  return packageNameToAppRouteSlug(appIdentifier) ?? appIdentifier;
+}
+
+export function registerRuntimeAppRouteModule(
+  appIdentifier: string,
+  routeModule: AppRouteModule,
+): void {
+  runtimeAppRouteModules.set(runtimeAppRouteKey(appIdentifier), routeModule);
+}
+
+export function hasRuntimeAppRouteModule(appIdentifier: string): boolean {
+  return runtimeAppRouteModules.has(runtimeAppRouteKey(appIdentifier));
+}
+
+export function unregisterRuntimeAppRouteModule(appIdentifier: string): void {
+  runtimeAppRouteModules.delete(runtimeAppRouteKey(appIdentifier));
+}
 
 function uniquePaths(paths: string[]): string[] {
   const seen = new Set<string>();
@@ -490,6 +512,13 @@ function resolvePluginAppBridge(plugin: Plugin | null): AppRouteModule | null {
 export async function importAppRouteModule(
   appIdentifier: string,
 ): Promise<AppRouteModule | null> {
+  const runtimeModule = runtimeAppRouteModules.get(
+    runtimeAppRouteKey(appIdentifier),
+  );
+  if (runtimeModule) {
+    return runtimeModule;
+  }
+
   const resolved = await resolveAppModuleTarget(appIdentifier);
   const packageName = resolved?.packageName ?? null;
   const label = packageName ?? appIdentifier;

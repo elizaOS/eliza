@@ -2,7 +2,17 @@
 import { renameSync, rmSync } from "node:fs";
 import { $ } from "bun";
 
-const external = [/^@elizaos\//];
+// Externalize everything in `dependencies` + `peerDependencies` so transitive
+// Node-internal API users (undici, ws, etc.) aren't inlined, and so workspace
+// `@elizaos/*` packages stay external regardless of how Bun.build resolves
+// them (string vs. workspace-relative path). This replaces the previous
+// `[/^@elizaos\//, "undici"]` regex, which missed @elizaos/plugin-elizacloud
+// when resolved via a relative path and thus inlined undici@8.x — whose
+// `CacheStorage` constructor calls Node-internal `webidl.util.markAsUncloneable`
+// (absent on Bun), crashing at top-level import.
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const external = await externalsFromPackageJson("./package.json");
 
 console.log("🔨 Building @elizaos/plugin-wallet...");
 const start = Date.now();

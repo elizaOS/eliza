@@ -326,6 +326,7 @@ def _build_agent_fn(name: str, *, model_override: str | None = None, base_url_ov
             provider=provider,
             model=model,
             base_url=base_url_override,
+            direct_openai_compatible=True,
         )
         client.wait_until_ready(timeout=120)
         return build_lifeops_bench_agent_fn(

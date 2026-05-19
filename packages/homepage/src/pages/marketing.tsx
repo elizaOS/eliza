@@ -1,4 +1,4 @@
-import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import {
   ArrowRight,
@@ -12,6 +12,7 @@ import {
   Store,
 } from "lucide-react";
 import { releaseData } from "@/generated/release-data";
+import { useT } from "@/providers/I18nProvider";
 
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
 const osUrl = EXTERNAL_URLS.os;
@@ -25,29 +26,9 @@ const primaryDownloadIds = [
   "android-apk",
 ] as const;
 
-const fallbackDownloads: Record<(typeof primaryDownloadIds)[number], string> = {
-  "macos-arm64": "macOS Apple Silicon",
-  "macos-x64": "macOS Intel",
-  "windows-x64": "Windows",
-  "linux-x64": "Linux",
-  "android-apk": "Android APK",
-};
+type DownloadId = (typeof primaryDownloadIds)[number];
 
-const platformDescriptions: Record<
-  (typeof primaryDownloadIds)[number],
-  string
-> = {
-  "macos-arm64": "For M1, M2, M3, and newer Apple Silicon Macs.",
-  "macos-x64": "For Intel Macs.",
-  "windows-x64": "For 64-bit Windows PCs.",
-  "linux-x64": "For 64-bit Linux desktops.",
-  "android-apk": "Direct APK sideload while Play Store review is pending.",
-};
-
-const platformIcon: Record<
-  (typeof primaryDownloadIds)[number],
-  typeof Package
-> = {
+const platformIcon: Record<DownloadId, typeof Package> = {
   "macos-arm64": MonitorDown,
   "macos-x64": MonitorDown,
   "windows-x64": MonitorDown,
@@ -55,7 +36,40 @@ const platformIcon: Record<
   "android-apk": Smartphone,
 };
 
+const FALLBACK_LABEL_KEYS: Record<DownloadId, string> = {
+  "macos-arm64": "homepage_eliza.marketing.fallbackMacosArm64",
+  "macos-x64": "homepage_eliza.marketing.fallbackMacosX64",
+  "windows-x64": "homepage_eliza.marketing.fallbackWindowsX64",
+  "linux-x64": "homepage_eliza.marketing.fallbackLinuxX64",
+  "android-apk": "homepage_eliza.marketing.fallbackAndroidApk",
+};
+
+const FALLBACK_LABEL_DEFAULTS: Record<DownloadId, string> = {
+  "macos-arm64": "macOS (Apple Silicon)",
+  "macos-x64": "macOS (Intel)",
+  "windows-x64": "Windows",
+  "linux-x64": "Linux",
+  "android-apk": "Android APK",
+};
+
+const PLATFORM_DESCRIPTION_KEYS: Record<DownloadId, string> = {
+  "macos-arm64": "homepage_eliza.marketing.descMacosArm64",
+  "macos-x64": "homepage_eliza.marketing.descMacosX64",
+  "windows-x64": "homepage_eliza.marketing.descWindowsX64",
+  "linux-x64": "homepage_eliza.marketing.descLinuxX64",
+  "android-apk": "homepage_eliza.marketing.descAndroidApk",
+};
+
+const PLATFORM_DESCRIPTION_DEFAULTS: Record<DownloadId, string> = {
+  "macos-arm64": "For M1, M2, M3, and newer Apple Silicon Macs.",
+  "macos-x64": "For Intel Macs.",
+  "windows-x64": "For 64-bit Windows PCs.",
+  "linux-x64": "For 64-bit Linux desktops.",
+  "android-apk": "Direct APK sideload while Play Store review is pending.",
+};
+
 export default function MarketingPage() {
+  const t = useT();
   const downloads = primaryDownloadIds.map((id) => {
     const releaseDownload = releaseData.release.downloads.find(
       (download) => download.id === id,
@@ -64,16 +78,37 @@ export default function MarketingPage() {
 
     return {
       id,
-      label: releaseDownload?.label ?? fallbackDownloads[id],
+      label:
+        releaseDownload?.label ??
+        t(FALLBACK_LABEL_KEYS[id], {
+          defaultValue: FALLBACK_LABEL_DEFAULTS[id],
+        }),
       href: releaseDownload?.url ?? releaseFallbackUrl,
       detail: releaseDownload
-        ? `${releaseDownload.note} · ${releaseDownload.sizeLabel}`
-        : "Release page",
+        ? t("homepage_eliza.marketing.releaseDetail", {
+            defaultValue: "{{note}} · {{sizeLabel}}",
+            note: releaseDownload.note,
+            sizeLabel: releaseDownload.sizeLabel,
+          })
+        : t("homepage_eliza.marketing.releaseFallbackDetail", {
+            defaultValue: "Release page",
+          }),
       meta: releaseDownload
-        ? `From ${releaseDownload.releaseTagName}`
-        : "Opens release page",
-      fileName: releaseDownload?.fileName ?? "Latest release",
-      description: platformDescriptions[id],
+        ? t("homepage_eliza.marketing.releaseFromMeta", {
+            defaultValue: "From {{tag}}",
+            tag: releaseDownload.releaseTagName,
+          })
+        : t("homepage_eliza.marketing.releaseFallbackMeta", {
+            defaultValue: "Opens release page",
+          }),
+      fileName:
+        releaseDownload?.fileName ??
+        t("homepage_eliza.marketing.releaseFallbackFile", {
+          defaultValue: "Latest release",
+        }),
+      description: t(PLATFORM_DESCRIPTION_KEYS[id], {
+        defaultValue: PLATFORM_DESCRIPTION_DEFAULTS[id],
+      }),
       icon: Icon,
     };
   });
@@ -82,25 +117,48 @@ export default function MarketingPage() {
     <div className="theme-app app-shell">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[#FF5800]"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[var(--brand-orange)]"
       >
-        Skip to content
+        {t("homepage_eliza.common.skipToContent", {
+          defaultValue: "Skip to content",
+        })}
       </a>
       <header className="app-header">
-        <a href="/" aria-label="Eliza home" className="app-brand">
+        <a
+          href="/"
+          aria-label={t("homepage_eliza.common.brandHomeAria", {
+            defaultValue: "Eliza home",
+          })}
+          className="app-brand"
+        >
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaLockupBlack}`}
-            alt="Eliza"
+            alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
             draggable={false}
             className="app-brand-mark"
           />
         </a>
-        <nav className="app-nav" aria-label="Eliza products">
-          <a href="#download">Downloads</a>
-          <a href={cloudUrl}>Cloud</a>
-          <a href={osUrl}>OS</a>
+        <nav
+          className="app-nav"
+          aria-label={t("homepage_eliza.marketing.navProducts", {
+            defaultValue: "Eliza products",
+          })}
+        >
+          <a href="#download">
+            {t("homepage_eliza.marketing.navDownloads", {
+              defaultValue: "Downloads",
+            })}
+          </a>
+          <a href={cloudUrl}>
+            {t("homepage_eliza.marketing.navCloud", { defaultValue: "Cloud" })}
+          </a>
+          <a href={osUrl}>
+            {t("homepage_eliza.marketing.navOs", { defaultValue: "OS" })}
+          </a>
           <a href="#download" className="app-nav-download">
-            Download
+            {t("homepage_eliza.marketing.navDownload", {
+              defaultValue: "Download",
+            })}
           </a>
         </nav>
       </header>
@@ -121,35 +179,62 @@ export default function MarketingPage() {
           <div className="app-cloud-scrim" />
           <div className="app-band-inner app-hero-grid app-hero-copy--cloud">
             <div className="app-hero-copy">
-              <p className="app-kicker">Eliza App</p>
-              <h1 className="app-display">Your Eliza, everywhere.</h1>
+              <p className="app-kicker">
+                {t("homepage_eliza.marketing.heroKicker", {
+                  defaultValue: "Eliza App",
+                })}
+              </p>
+              <h1 className="app-display">
+                {t("homepage_eliza.marketing.heroTitle", {
+                  defaultValue: "Your Eliza, everywhere.",
+                })}
+              </h1>
               <p className="app-lede">
-                Download the desktop and mobile app, connect one agent across
-                your devices, and keep Cloud and elizaOS one click away.
+                {t("homepage_eliza.marketing.heroLede", {
+                  defaultValue:
+                    "Download the desktop and mobile app, connect one agent across your devices, and keep Cloud and elizaOS one click away.",
+                })}
               </p>
               <div className="app-cta-row">
                 <a href="#download" className="app-cta app-cta--black">
                   <Download className="app-icon" aria-hidden="true" />
-                  Download the app
+                  {t("homepage_eliza.marketing.ctaDownload", {
+                    defaultValue: "Download the app",
+                  })}
                 </a>
                 <a href={cloudUrl} className="app-cta app-cta--glass">
                   <Cloud className="app-icon" aria-hidden="true" />
-                  Try Eliza Cloud
+                  {t("homepage_eliza.marketing.ctaTryCloud", {
+                    defaultValue: "Try Eliza Cloud",
+                  })}
                 </a>
                 <a href={osUrl} className="app-cta app-cta--ghost">
-                  Install elizaOS
+                  {t("homepage_eliza.marketing.ctaInstallOs", {
+                    defaultValue: "Install elizaOS",
+                  })}
                   <ArrowRight className="app-icon" aria-hidden="true" />
                 </a>
               </div>
             </div>
-            <section className="app-release-panel" aria-label="Current release">
+            <section
+              className="app-release-panel"
+              aria-label={t("homepage_eliza.marketing.releaseLabel", {
+                defaultValue: "Current release",
+              })}
+            >
               <div>
-                <span className="app-pill">Latest release</span>
+                <span className="app-pill">
+                  {t("homepage_eliza.marketing.releasePill", {
+                    defaultValue: "Latest release",
+                  })}
+                </span>
                 <h2>{releaseData.release.tagName}</h2>
                 <p>{releaseData.release.publishedAtLabel}</p>
               </div>
               <a href={releaseData.release.url} className="app-release-link">
-                Release notes
+                {t("homepage_eliza.marketing.releaseNotes", {
+                  defaultValue: "Release notes",
+                })}
                 <ExternalLink className="app-icon" aria-hidden="true" />
               </a>
             </section>
@@ -159,12 +244,21 @@ export default function MarketingPage() {
         <section id="download" className="brand-section brand-section--white">
           <div className="app-band-inner app-download-band">
             <div className="app-section-heading">
-              <p className="app-kicker">Downloads</p>
-              <h2 className="app-h2">Install the app.</h2>
+              <p className="app-kicker">
+                {t("homepage_eliza.marketing.downloadsKicker", {
+                  defaultValue: "Downloads",
+                })}
+              </p>
+              <h2 className="app-h2">
+                {t("homepage_eliza.marketing.downloadsH2", {
+                  defaultValue: "Install the app.",
+                })}
+              </h2>
               <p className="app-section-copy">
-                Release cards link directly to the published GitHub assets.
-                Store distribution is listed separately and stays disabled until
-                review is complete.
+                {t("homepage_eliza.marketing.downloadsCopy", {
+                  defaultValue:
+                    "Release cards link directly to the published GitHub assets. Store distribution is listed separately and stays disabled until review is complete.",
+                })}
               </p>
             </div>
             <div className="app-download-grid">
@@ -176,13 +270,23 @@ export default function MarketingPage() {
               })}
             </div>
 
-            <ul className="app-store-grid" aria-label="App store status">
+            <ul
+              className="app-store-grid"
+              aria-label={t("homepage_eliza.marketing.storeGridAria", {
+                defaultValue: "App store status",
+              })}
+            >
               {releaseData.storeTargets.map((target) => (
                 <li className="app-store-card" key={target.platform}>
                   <Store className="app-icon" aria-hidden="true" />
                   <div>
                     <strong>{target.label}</strong>
-                    <span>Coming soon · {target.rolloutChannel}</span>
+                    <span>
+                      {t("homepage_eliza.marketing.storeComingSoon", {
+                        defaultValue: "Coming soon · {{channel}}",
+                        channel: target.rolloutChannel,
+                      })}
+                    </span>
                   </div>
                 </li>
               ))}
@@ -192,13 +296,22 @@ export default function MarketingPage() {
               {releaseData.release.checksum ? (
                 <a href={releaseData.release.checksum.url}>
                   <BadgeCheck className="app-icon" aria-hidden="true" />
-                  Verify with {releaseData.release.checksum.fileName}
+                  {t("homepage_eliza.marketing.verifyWith", {
+                    defaultValue: "Verify with {{file}}",
+                    file: releaseData.release.checksum.fileName,
+                  })}
                 </a>
               ) : (
-                <span>Checksums publish with release assets.</span>
+                <span>
+                  {t("homepage_eliza.marketing.checksumPending", {
+                    defaultValue: "Checksums publish with release assets.",
+                  })}
+                </span>
               )}
               <a href={releaseData.release.url}>
-                View all assets
+                {t("homepage_eliza.marketing.viewAllAssets", {
+                  defaultValue: "View all assets",
+                })}
                 <ExternalLink className="app-icon" aria-hidden="true" />
               </a>
             </div>
@@ -208,17 +321,31 @@ export default function MarketingPage() {
         <section className="brand-section brand-section--black">
           <div className="app-band-inner app-action-grid">
             <ProductCta
-              title="Run in Cloud."
-              body="Launch your agent runtime and account dashboard in Eliza Cloud."
+              title={t("homepage_eliza.marketing.actionRunCloudTitle", {
+                defaultValue: "Run in Cloud.",
+              })}
+              body={t("homepage_eliza.marketing.actionRunCloudBody", {
+                defaultValue:
+                  "Launch your agent runtime and account dashboard in Eliza Cloud.",
+              })}
               href={cloudUrl}
-              label="Try Eliza Cloud"
+              label={t("homepage_eliza.marketing.ctaTryCloud", {
+                defaultValue: "Try Eliza Cloud",
+              })}
               icon={Cloud}
             />
             <ProductCta
-              title="Install elizaOS."
-              body="Use the full operating system when you want device-level control."
+              title={t("homepage_eliza.marketing.actionInstallOsTitle", {
+                defaultValue: "Install elizaOS.",
+              })}
+              body={t("homepage_eliza.marketing.actionInstallOsBody", {
+                defaultValue:
+                  "Use the full operating system when you want device-level control.",
+              })}
               href={osUrl}
-              label="Install elizaOS"
+              label={t("homepage_eliza.marketing.ctaInstallOs", {
+                defaultValue: "Install elizaOS",
+              })}
               icon={MonitorDown}
             />
           </div>
@@ -229,15 +356,36 @@ export default function MarketingPage() {
         <div className="app-footer-inner">
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaWhite}`}
-            alt="Eliza"
+            alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
             className="app-footer-logo"
             draggable={false}
           />
-          <nav className="app-footer-nav" aria-label="Footer">
-            <a href="#download">Downloads</a>
-            <a href={cloudUrl}>Eliza Cloud</a>
-            <a href={osUrl}>ElizaOS</a>
-            <a href={releaseData.release.url}>GitHub Releases</a>
+          <nav
+            className="app-footer-nav"
+            aria-label={t("homepage_eliza.marketing.footerNavAria", {
+              defaultValue: "Footer",
+            })}
+          >
+            <a href="#download">
+              {t("homepage_eliza.marketing.navDownloads", {
+                defaultValue: "Downloads",
+              })}
+            </a>
+            <a href={cloudUrl}>
+              {t("homepage_eliza.marketing.footerCloud", {
+                defaultValue: "Eliza Cloud",
+              })}
+            </a>
+            <a href={osUrl}>
+              {t("homepage_eliza.marketing.footerOs", {
+                defaultValue: "ElizaOS",
+              })}
+            </a>
+            <a href={releaseData.release.url}>
+              {t("homepage_eliza.marketing.footerReleases", {
+                defaultValue: "GitHub Releases",
+              })}
+            </a>
           </nav>
         </div>
       </footer>

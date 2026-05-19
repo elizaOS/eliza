@@ -1,4 +1,4 @@
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { expectTurnToCallAction } from "../_helpers/action-assertions.ts";
 
 const THIRD_PARTY_CALENDLY_URL = "https://calendly.com/alex/intro";

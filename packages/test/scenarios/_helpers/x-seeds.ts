@@ -3,7 +3,7 @@ import type { IAgentRuntime } from "@elizaos/core";
 import type {
   ScenarioCheckResult,
   ScenarioContext,
-} from "@elizaos/scenario-schema";
+} from "@elizaos/scenario-runner/schema";
 import type { LifeOpsXFeedType } from "@elizaos/shared";
 import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 import { seedXConnectorGrant } from "../../mocks/helpers/seed-grants.ts";

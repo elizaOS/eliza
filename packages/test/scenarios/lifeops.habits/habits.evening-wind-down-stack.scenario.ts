@@ -3,7 +3,7 @@
  * request. Distinct from the existing night-routine full-stack.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "habits.evening-wind-down-stack",

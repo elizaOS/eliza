@@ -181,7 +181,16 @@ export function selectImageGenBackends(
  * resolve the catalog's bare tier id into a concrete diffusion file.
  */
 export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
-	Record<string, { modelId: string; file: string }>
+	Record<
+		string,
+		{
+			modelId: string;
+			file: string;
+			splitDiffusionModel?: boolean;
+			vae?: string;
+			llm?: string;
+		}
+	>
 > = {
 	"eliza-1-0_8b": {
 		modelId: "imagegen-sd-1_5-q5_0",
@@ -198,14 +207,23 @@ export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
 	"eliza-1-9b": {
 		modelId: "imagegen-z-image-turbo-q4_k_m",
 		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+		splitDiffusionModel: true,
+		vae: "imagegen/vae/ae.safetensors",
+		llm: "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
 	},
 	"eliza-1-27b": {
 		modelId: "imagegen-z-image-turbo-q4_k_m",
 		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+		splitDiffusionModel: true,
+		vae: "imagegen/vae/ae.safetensors",
+		llm: "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
 	},
 	"eliza-1-27b-256k": {
 		modelId: "imagegen-z-image-turbo-q4_k_m",
 		file: "imagegen/z-image-turbo-Q4_K_M.gguf",
+		splitDiffusionModel: true,
+		vae: "imagegen/vae/ae.safetensors",
+		llm: "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf",
 	},
 };
 
@@ -216,7 +234,13 @@ export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
  */
 export function resolveDefaultImageGenModel(
 	keyOrTier: string,
-): { modelId: string; file: string } | null {
+): {
+	modelId: string;
+	file: string;
+	splitDiffusionModel?: boolean;
+	vae?: string;
+	llm?: string;
+} | null {
 	const direct = TIER_TO_DEFAULT_IMAGE_MODEL[keyOrTier];
 	if (direct) return direct;
 	// Allow callers to pass the bare model id straight through; if it

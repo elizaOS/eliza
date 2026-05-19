@@ -1,7 +1,7 @@
 import {
   registerDetailExtension,
   registerOperatorSurface,
-} from "@elizaos/app-core";
+} from "@elizaos/app-core/ui-compat";
 import { TwoThousandFourScapeDetailExtension } from "./TwoThousandFourScapeDetailExtension.js";
 import { TwoThousandFourScapeOperatorSurface } from "./TwoThousandFourScapeOperatorSurface.js";
 

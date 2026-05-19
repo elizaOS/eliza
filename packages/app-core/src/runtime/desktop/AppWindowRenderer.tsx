@@ -22,6 +22,7 @@ import {
   getInternalToolAppDescriptors,
   getInternalToolAppTargetTab,
 } from "@elizaos/ui/components/apps/internal-tool-apps";
+import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import {
   getAvailableOverlayApps,
   getOverlayApp,
@@ -55,7 +56,9 @@ import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
 import {
+  type ComponentType,
   type JSX,
+  lazy,
   Suspense,
   useEffect,
   useMemo,
@@ -183,6 +186,28 @@ function exitAppWindow(): void {
   }
 }
 
+const overlayLazyComponentCache = new WeakMap<
+  NonNullable<OverlayApp["loader"]>,
+  ComponentType<{
+    exitToApps: () => void;
+    uiTheme: "light" | "dark";
+    t: (key: string, opts?: Record<string, unknown>) => string;
+  }>
+>();
+
+function getOverlayLazyComponent(overlay: OverlayApp): ComponentType<{
+  exitToApps: () => void;
+  uiTheme: "light" | "dark";
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}> | null {
+  if (!overlay.loader) return null;
+  const existing = overlayLazyComponentCache.get(overlay.loader);
+  if (existing) return existing;
+  const created = lazy(overlay.loader);
+  overlayLazyComponentCache.set(overlay.loader, created);
+  return created;
+}
+
 function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
   const overlay = getOverlayApp(appName);
   const { uiTheme, t } = useApp();
@@ -195,14 +220,26 @@ function OverlayAppWindowView({ appName }: { appName: string }): JSX.Element {
     );
   }
 
+  const theme = uiTheme === "dark" ? "dark" : "light";
+
+  const LazyComponent = getOverlayLazyComponent(overlay);
+  if (LazyComponent) {
+    return (
+      <AppWindowSuspense>
+        <LazyComponent exitToApps={exitAppWindow} uiTheme={theme} t={t} />
+      </AppWindowSuspense>
+    );
+  }
+
   const Component = overlay.Component;
-  return (
-    <Component
-      exitToApps={exitAppWindow}
-      uiTheme={uiTheme === "dark" ? "dark" : "light"}
-      t={t}
-    />
-  );
+  if (!Component) {
+    return (
+      <AppWindowError
+        message={`Overlay app "${appName}" has no component or loader.`}
+      />
+    );
+  }
+  return <Component exitToApps={exitAppWindow} uiTheme={theme} t={t} />;
 }
 
 interface RegistryRunState {

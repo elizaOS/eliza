@@ -7,20 +7,20 @@
  *   3. String replacements (using reverseMap pairs)
  */
 
-import { applyReplacements } from "./sanitize.js";
 import type { Pair } from "./sanitize.js";
+import { applyReplacements } from "./sanitize.js";
 import { applyQuotedRenamesReverse } from "./tool-rename.js";
 
 export interface ReverseMapConfig {
-	toolRenames: ReadonlyArray<Pair>;
-	propRenames: ReadonlyArray<Pair>;
-	reverseMap: ReadonlyArray<Pair>;
+  toolRenames: ReadonlyArray<Pair>;
+  propRenames: ReadonlyArray<Pair>;
+  reverseMap: ReadonlyArray<Pair>;
 }
 
 export function reverseMap(text: string, config: ReverseMapConfig): string {
-	let r = text;
-	r = applyQuotedRenamesReverse(r, config.toolRenames);
-	r = applyQuotedRenamesReverse(r, config.propRenames);
-	r = applyReplacements(r, config.reverseMap);
-	return r;
+  let r = text;
+  r = applyQuotedRenamesReverse(r, config.toolRenames);
+  r = applyQuotedRenamesReverse(r, config.propRenames);
+  r = applyReplacements(r, config.reverseMap);
+  return r;
 }

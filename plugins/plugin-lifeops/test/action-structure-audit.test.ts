@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { isDarwin } from "../src/platform/host.js";
 import { appLifeOpsPlugin } from "../src/plugin.js";
+
+// OWNER_SCREENTIME is only registered on darwin because the native activity
+// tracker is macOS-only. See `platformGatedActionUmbrellas` in src/plugin.ts
+// and `b56fb4edf6` (graceful Windows fallbacks for darwin-only features).
+const DARWIN_ONLY_PARENTS = new Set(["OWNER_SCREENTIME"]);
 
 const RETIRED_REGISTERED_NAMES = [
   "LIFE",
@@ -65,7 +71,9 @@ describe("LifeOps canonical action structure", () => {
     const actionNames = new Set(
       (appLifeOpsPlugin.actions ?? []).map((a) => a.name),
     );
+    const darwin = isDarwin();
     for (const expected of CANONICAL_OWNER_PARENTS) {
+      if (!darwin && DARWIN_ONLY_PARENTS.has(expected)) continue;
       expect(actionNames.has(expected), expected).toBe(true);
     }
   });

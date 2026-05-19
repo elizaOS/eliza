@@ -3,7 +3,9 @@
  * Build script for @elizaos/plugin-local-storage (Node ESM only)
  */
 
-const externalDeps = ["@elizaos/core", "@brighter/storage-adapter-local"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

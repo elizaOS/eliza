@@ -3,8 +3,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = ["@elizaos/core", "@ai-sdk/groq", "ai"] as const;
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build(): Promise<void> {
   const totalStart = Date.now();
@@ -25,7 +26,7 @@ async function build(): Promise<void> {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps],
+    external: externalDeps,
   });
   if (!nodeResult.success) {
     console.error("Node build failed:", nodeResult.logs);
@@ -43,7 +44,7 @@ async function build(): Promise<void> {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps],
+    external: externalDeps,
   });
   if (!browserResult.success) {
     console.error("Browser build failed:", browserResult.logs);
@@ -61,7 +62,7 @@ async function build(): Promise<void> {
     format: "cjs",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps],
+    external: externalDeps,
   });
   if (!cjsResult.success) {
     console.error("CJS build failed:", cjsResult.logs);

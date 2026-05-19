@@ -1,11 +1,8 @@
 "use client";
 
-/// <reference path="../../types/react-syntax-highlighter.d.ts" />
-
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-
 import { cn } from "../../lib/utils";
+import { SyntaxHighlighter } from "./prism-light";
 
 export interface CodeDisplayProps {
   code: string;

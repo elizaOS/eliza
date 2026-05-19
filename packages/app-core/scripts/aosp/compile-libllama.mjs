@@ -566,7 +566,7 @@ export function ensureLlamaCppCheckout({
  * and across partial-failure re-runs.
  *
  * Patches under `llama-cpp-patches/qjl/` add `GGML_TYPE_QJL1_256` (=46),
- * the QJL kernel sources vendored from `packages/native-plugins/qjl-cpu/`,
+ * the QJL kernel sources vendored from `packages/native/plugins/qjl-cpu/`,
  * the type-traits + op-dispatch wiring, and the `tests/test-qjl-cache.cpp`
  * synthetic-graph test.
  *
@@ -601,6 +601,30 @@ export function applyVendoredPatches({
     `[compile-libllama] Applying vendored llama.cpp patches (qjl) to ${srcDir}`,
   );
   spawn("node", [applierPath, "--repo", srcDir, "--series", "qjl"], {});
+}
+
+function sourceContainsSwaSpecDecodeFallback(srcDir) {
+  const serverContextPath = path.join(
+    srcDir,
+    "tools",
+    "server",
+    "server-context.cpp",
+  );
+  if (!fs.existsSync(serverContextPath)) return false;
+  const source = fs.readFileSync(serverContextPath, "utf8");
+  return (
+    source.includes("seq_rm probe failed but model declares SWA") &&
+    source.includes("llama_model_n_swa(model_tgt) > 0") &&
+    source.includes("ctx_tgt_seq_rm_type = COMMON_CONTEXT_SEQ_RM_TYPE_FULL")
+  );
+}
+
+function assertSwaSpecDecodeFallback({ srcDir }) {
+  if (sourceContainsSwaSpecDecodeFallback(srcDir)) return;
+  throw new Error(
+    `[compile-libllama] checkout ${srcDir} lacks the SWA-aware seq_rm fallback ` +
+      `required for --spec-type dflash on SWA target bodies (elizaOS/eliza#7635).`,
+  );
 }
 
 /**
@@ -938,11 +962,19 @@ export function buildLibllamaForAbi({
         `them the runtime dlopen will fail. Check that BUILD_SHARED_LIBS=ON took effect.`,
     );
   }
+  const builtRuntimeSiblingLibs = ["libllama-common.so", "libmtmd.so"]
+    .map((name) => locateBuiltLib(buildDir, name))
+    .filter(Boolean);
 
   fs.mkdirSync(abiAssetDir, { recursive: true });
   const llamaOut = path.join(abiAssetDir, "libllama.so");
   fs.copyFileSync(builtLlama, llamaOut);
   const ggmlOuts = builtGgmlLibs.map((src) => {
+    const dst = path.join(abiAssetDir, path.basename(src));
+    fs.copyFileSync(src, dst);
+    return dst;
+  });
+  const runtimeSiblingOuts = builtRuntimeSiblingLibs.map((src) => {
     const dst = path.join(abiAssetDir, path.basename(src));
     fs.copyFileSync(src, dst);
     return dst;
@@ -960,7 +992,7 @@ export function buildLibllamaForAbi({
   // identical). APK build dedupes identical files automatically; even
   // without dedup this is well under the per-ABI .so budget.
   const sonameAliases = [];
-  for (const out of [llamaOut, ...ggmlOuts]) {
+  for (const out of [llamaOut, ...ggmlOuts, ...runtimeSiblingOuts]) {
     const soname = readSoname(out);
     if (soname && soname !== path.basename(out)) {
       const aliasPath = path.join(abiAssetDir, soname);
@@ -1035,7 +1067,12 @@ export function buildLibllamaForAbi({
     );
   }
 
-  const stripTargets = [...ggmlOuts, llamaOut, ...sonameAliases];
+  const stripTargets = [
+    ...ggmlOuts,
+    ...runtimeSiblingOuts,
+    llamaOut,
+    ...sonameAliases,
+  ];
   if (llamaServerOut) stripTargets.push(llamaServerOut);
   if (fusedLibOut) stripTargets.push(fusedLibOut);
   if (fusedServerOut) stripTargets.push(fusedServerOut);
@@ -1199,6 +1236,7 @@ export function buildSpeculativeShimForAbi({
   cacheDir,
   abi,
   abiAssetDir,
+  llamaSourceDir,
   shimSourcePath = path.join(
     here,
     "llama-shim",
@@ -1223,6 +1261,23 @@ export function buildSpeculativeShimForAbi({
 
   const { cxxPath } = ensureZigDrivers({ cacheDir, abi, zigBin });
   const shimOut = path.join(abiAssetDir, "libeliza-llama-speculative-shim.so");
+  const includeArgs = [];
+  const linkArgs = ["-lllama"];
+  if (llamaSourceDir) {
+    const includeDir = path.join(llamaSourceDir, "include");
+    const commonDir = path.join(llamaSourceDir, "common");
+    const ggmlIncludeDir = path.join(llamaSourceDir, "ggml", "include");
+    const srcDir = path.join(llamaSourceDir, "src");
+    for (const dir of [includeDir, commonDir, ggmlIncludeDir, srcDir]) {
+      if (fs.existsSync(dir)) includeArgs.push(`-I${dir}`);
+    }
+  }
+  if (fs.existsSync(path.join(abiAssetDir, "libllama-common.so"))) {
+    // The real speculative shim calls common/* C++ helpers that live in
+    // libllama-common.so. Link it explicitly so clean APK builds get a
+    // deterministic DT_NEEDED edge instead of relying on load-order globals.
+    linkArgs.unshift("-lllama-common");
+  }
 
   log(
     `[compile-libllama] Compiling libeliza-llama-speculative-shim.so for ${abi}`,
@@ -1234,13 +1289,13 @@ export function buildSpeculativeShimForAbi({
       "-fPIC",
       "-O2",
       "-std=c++17",
-      "-DELIZA_SHIM_HEADERLESS=1",
+      ...includeArgs,
       `-L${abiAssetDir}`,
       "-Wl,--disable-new-dtags",
       "-o",
       shimOut,
       shimSourcePath,
-      "-lllama",
+      ...linkArgs,
     ],
     {},
   );
@@ -1785,6 +1840,7 @@ export async function main(argv = process.argv.slice(2)) {
       cacheDir: args.cacheDir,
       abi,
       abiAssetDir,
+      llamaSourceDir: srcDir,
       log: console.log,
       spawn: run,
     });
@@ -1946,6 +2002,7 @@ export async function mainTargets(args) {
       cacheDir: args.cacheDir,
       abi: parsed.androidAbi,
       abiAssetDir,
+      llamaSourceDir: srcDir,
       log: console.log,
       spawn: run,
     });

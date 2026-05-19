@@ -67,6 +67,23 @@ def _metrics_score_payload(score: float) -> dict[str, Any]:
     return {"metrics": {"score": score, "n": 2}}
 
 
+def _vision_language_payload(score: float) -> dict[str, Any]:
+    return {
+        "schemaVersion": "vision-language-bench-v1",
+        "tier": "calibration-real-runtime",
+        "runtime_id": "calibration-real-runtime",
+        "smoke": False,
+        "benchmark": "textvqa",
+        "sample_count": 2,
+        "score": score,
+        "baseline_score": None,
+        "delta": None,
+        "runtime_seconds": 0.01,
+        "error_count": 0,
+        "samples": [],
+    }
+
+
 def _bfcl_payload(score: float) -> dict[str, Any]:
     total = 2
     passed = _passed_count(score, total)
@@ -115,8 +132,8 @@ def _scambench_payload(score: float) -> dict[str, Any]:
             "score": score,
             "scam_refuse_rate": score,
             "legit_help_rate": score,
-            "n_scam": 0,
-            "n_legit": 0,
+            "n_scam": 1,
+            "n_legit": 1,
         }
     }
 
@@ -463,6 +480,7 @@ def _tau_bench_payload(score: float) -> dict[str, Any]:
         "overall_success_rate": score,
         "overall_tool_accuracy": score,
         "overall_policy_compliance": score,
+        "num_tasks": 2,
     }
 
 
@@ -544,6 +562,10 @@ def _voicebench_payload(score: float) -> dict[str, Any]:
             }
         },
         "profile": "synthetic-calibration",
+        "runtime": "synthetic-calibration",
+        "sampleCount": 2,
+        "datasetName": "synthetic-calibration",
+        "results": [{"mode": "simple"}, {"mode": "simple"}],
     }
 
 
@@ -713,7 +735,7 @@ _RESULT_TEMPLATES: dict[str, tuple[str, Any]] = {
     "trust": ("trust-results.json", _trust_payload),
     "vending_bench": ("vending-bench-results.json", _vending_payload),
     "visualwebbench": ("visualwebbench-results.json", _visualwebbench_payload),
-    "vision_language": ("vision-language-results.json", _metrics_score_payload),
+    "vision_language": ("vision-language-results.json", _vision_language_payload),
     "voiceagentbench": ("voiceagentbench_random_v1.json", _voiceagentbench_payload),
     "voicebench": ("voicebench-results.json", _voicebench_payload),
     "voicebench_quality": ("voicebench-quality-results.json", _voicebench_quality_payload),

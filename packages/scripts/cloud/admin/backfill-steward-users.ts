@@ -44,7 +44,9 @@ Options:
     process.exit(0);
   }
 
-  const { backfillStewardUserMappings } = await import("@/lib/services/steward-user-migration");
+  const { backfillStewardUserMappings } = await import(
+    "@/lib/services/steward-user-migration"
+  );
 
   const options: StewardUserBackfillOptions = {
     batchSize: parseNumberFlag(args, "--batch-size"),
@@ -72,6 +74,9 @@ Options:
 }
 
 main().catch((error) => {
-  console.error("Backfill failed:", error instanceof Error ? error.message : String(error));
+  console.error(
+    "Backfill failed:",
+    error instanceof Error ? error.message : String(error),
+  );
   process.exit(1);
 });

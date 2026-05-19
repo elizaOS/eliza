@@ -5,7 +5,7 @@
  * credential-leakage surface.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "1password-autofill.non-whitelisted-refused",

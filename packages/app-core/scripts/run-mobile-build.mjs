@@ -52,7 +52,7 @@ import {
   findForbiddenRuntimeImportGroups,
   findForbiddenRuntimeStrings,
   formatForbiddenRuntimeFindings,
-} from "../../bun-ios-runtime/scripts/ios-app-store-runtime-policy.mjs";
+} from "../../native/bun-runtime/scripts/ios-app-store-runtime-policy.mjs";
 import {
   loadAospVariantConfig,
   resolveAppConfigPath,
@@ -136,7 +136,11 @@ const androidAgentSpikeDir = path.join(
 );
 const IOS_BUN_ENGINE_FRAMEWORK_NAME = "ElizaBunEngine";
 const IOS_BUN_ENGINE_ABI_VERSION = "3";
-const iosBunRuntimePackageRoot = path.join(packagesRoot, "bun-ios-runtime");
+const iosBunRuntimePackageRoot = path.join(
+  packagesRoot,
+  "native",
+  "bun-runtime",
+);
 const defaultIosBunEngineXcframework = path.join(
   iosBunRuntimePackageRoot,
   "artifacts",
@@ -227,33 +231,34 @@ function resolveNodeExecutable() {
   return process.env.NODE?.trim() || "node";
 }
 
-function firstExisting(paths) {
-  for (const p of paths) {
-    if (p && fs.existsSync(p)) return p;
+export function resolveCapacitorCli({
+  appDirValue = appDir,
+  repoRootValue = repoRoot,
+} = {}) {
+  const capacitorCliPackage = resolvePackageAbsolutePath("@capacitor/cli", {
+    appDirValue,
+    repoRootValue,
+  });
+  const capacitorCli = capacitorCliPackage
+    ? path.join(capacitorCliPackage, "bin", "capacitor")
+    : null;
+  if (!capacitorCli || !fs.existsSync(capacitorCli)) {
+    throw new Error("@capacitor/cli not found; run bun install");
   }
-  return null;
-}
-
-function resolveCapacitorCli() {
-  const cli = firstExisting([
-    path.join(appDir, "node_modules", "@capacitor", "cli", "bin", "capacitor"),
-    path.join(
-      repoRoot,
-      "node_modules",
-      "@capacitor",
-      "cli",
-      "bin",
-      "capacitor",
-    ),
-  ]);
-  if (cli) return cli;
-  throw new Error("Could not find @capacitor/cli/bin/capacitor");
+  return capacitorCli;
 }
 
 function runCapacitor(args) {
   return run(resolveNodeExecutable(), [resolveCapacitorCli(), ...args], {
     cwd: appDir,
   });
+}
+
+function firstExisting(paths) {
+  for (const p of paths) {
+    if (p && fs.existsSync(p)) return p;
+  }
+  return null;
 }
 
 function walkFiles(root, visitor) {
@@ -442,17 +447,24 @@ function resolvePackagePath(pkgName, relativeTo) {
   return path.relative(relativeTo, linked);
 }
 
-function resolvePackageAbsolutePath(pkgName) {
-  const appPackage = path.join(appDir, "node_modules", ...pkgName.split("/"));
+function resolvePackageAbsolutePath(
+  pkgName,
+  { appDirValue = appDir, repoRootValue = repoRoot } = {},
+) {
+  const appPackage = path.join(
+    appDirValue,
+    "node_modules",
+    ...pkgName.split("/"),
+  );
   const rootNodeModulesPackage = path.join(
-    repoRoot,
+    repoRootValue,
     "node_modules",
     ...pkgName.split("/"),
   );
   const candidates = [appPackage, rootNodeModulesPackage];
   for (const bunStore of [
-    path.join(appDir, "node_modules", ".bun"),
-    path.join(repoRoot, "node_modules", ".bun"),
+    path.join(appDirValue, "node_modules", ".bun"),
+    path.join(repoRootValue, "node_modules", ".bun"),
   ]) {
     if (!fs.existsSync(bunStore)) continue;
     for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
@@ -469,7 +481,7 @@ function resolvePackageAbsolutePath(pkgName) {
 
 function resolveNativePluginPackagePath(pkgName, relativeTo) {
   if (pkgName === "@elizaos/bun-ios-runtime") {
-    const localPackageRoot = path.join(packagesRoot, "bun-ios-runtime");
+    const localPackageRoot = path.join(packagesRoot, "native", "bun-runtime");
     if (fs.existsSync(path.join(localPackageRoot, "package.json"))) {
       return path.relative(relativeTo, localPackageRoot);
     }
@@ -1102,30 +1114,48 @@ export function injectNativeLibLegacyPackaging(content) {
  * Fails local builds when no path is configured or the dir doesn't exist. The
  * Android Capacitor JNI wrapper links against these DFlash libraries and cannot
  * honestly support Eliza-1/Qwen3.5 without them. Cloud builds skip the task.
+ * CI smoke builds that intentionally install no native deps can opt out with
+ * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
-function ensureCopyForkLlamaLibCloudGuard(content) {
+function ensureCopyForkLlamaLibGuards(content) {
   if (!/\[copyForkLlamaLib\]/.test(content)) return content;
-  if (/skipped for cloud build/.test(content)) return content;
-  return content.replace(
-    /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
-    `$1` +
+  const hasCloudGuard = /skipped for cloud build/.test(content);
+  const hasExplicitSkipGuard =
+    /elizaSkipForkLlamaLib/.test(content) ||
+    /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content);
+  if (hasCloudGuard && hasExplicitSkipGuard) return content;
+  let guards = "";
+  if (!hasCloudGuard) {
+    guards +=
       `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
       `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
       `            return\n` +
-      `        }\n`,
+      `        }\n`;
+  }
+  if (!hasExplicitSkipGuard) {
+    guards +=
+      `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+      `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
+      `            return\n` +
+      `        }\n`;
+  }
+  return content.replace(
+    /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
+    `$1${guards}`,
   );
 }
 
 export function injectCopyForkLlamaLibTask(content) {
   if (/\[copyForkLlamaLib\]/.test(content)) {
-    return ensureCopyForkLlamaLibCloudGuard(content);
+    return ensureCopyForkLlamaLibGuards(content);
   }
   const block =
     `\n// Bundle the DFlash Android ARM64 llama.cpp stack into the APK so\n` +
     `// mobile gets Eliza-1/Qwen3.5 support. Local builds fail if these\n` +
-    `// libraries are absent; cloud builds skip this task.\n` +
+    `// libraries are absent; cloud builds and explicitly opted-out CI smoke\n` +
+    `// builds skip this task.\n` +
     `def resolveForkLlamaLibDir = { ->\n` +
     `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
     `    if (fromProp) return fromProp.toString()\n` +
@@ -1179,6 +1209,10 @@ export function injectCopyForkLlamaLibTask(content) {
     `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
     `            return\n` +
     `        }\n` +
+    `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+    `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
+    `            return\n` +
+    `        }\n` +
     `        def libDir = resolveForkLlamaLibDir()\n` +
     `        if (!libDir) {\n` +
     `            throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")\n` +
@@ -1220,7 +1254,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `afterEvaluate {\n` +
     `    tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }\n` +
     `}\n`;
-  const androidOpen = content.search(/\n\s*android\s*\{/);
+  const androidOpen = content.search(/(^|\n)\s*android\s*\{/);
   if (androidOpen < 0) return content;
   let depth = 0;
   let i = content.indexOf("{", androidOpen);
@@ -1467,7 +1501,10 @@ function removeXmlCommentsContaining(xml, markers) {
   for (const marker of markers) {
     const escapedMarker = escapeRegExp(marker);
     patched = patched.replace(
-      new RegExp(`\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`, "g"),
+      new RegExp(
+        `\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`,
+        "g",
+      ),
       "\n",
     );
   }
@@ -2352,10 +2389,12 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-              category: "android.intent.category.APP_CONTACTS",
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+                category: "android.intent.category.APP_CONTACTS",
+              },
+            )}
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2379,9 +2418,11 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+              },
+            )}
             <intent-filter>
                 <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2405,9 +2446,11 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+              },
+            )}
             <intent-filter>
                 <action android:name="android.intent.action.SET_ALARM" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2439,10 +2482,12 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-              category: "android.intent.category.APP_CALENDAR",
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+                category: "android.intent.category.APP_CALENDAR",
+              },
+            )}
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -4126,7 +4171,7 @@ function ensureIosFullBunEngineArtifact({ buildTarget = null } = {}) {
       [
         "ELIZA_IOS_FULL_BUN_ENGINE is set, but ElizaBunEngine.xcframework was not found.",
         "Build the Bun fork first:",
-        `  ELIZA_BUN_IOS_SOURCE_DIR=/path/to/elizaos-bun bun run --cwd packages/bun-ios-runtime build:${target === "simulator" ? "sim" : "device"}`,
+        `  ELIZA_BUN_IOS_SOURCE_DIR=/path/to/elizaos-bun bun run --cwd packages/native/bun-runtime build:${target === "simulator" ? "sim" : "device"}`,
         "Or set ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK=/absolute/path/ElizaBunEngine.xcframework.",
         "Refusing to fall back to the JSContext compatibility host for a full-engine build.",
       ].join("\n"),

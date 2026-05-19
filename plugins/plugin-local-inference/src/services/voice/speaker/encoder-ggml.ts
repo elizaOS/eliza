@@ -3,7 +3,7 @@
  *
  * Replaces `encoder.ts` (onnxruntime-node WeSpeaker ResNet34-LM) with
  * a `bun:ffi` binding to the `voice-classifier-cpp` SHARED library at
- * `packages/native-plugins/voice-classifier-cpp/`.
+ * `packages/native/plugins/voice-classifier-cpp/`.
  *
  * Status today (K2 native forward landed):
  *   - The native library now ships as `libvoice_classifier.{so,dylib,dll}`.
@@ -205,7 +205,7 @@ export class SpeakerEncoderGgmlImpl implements SpeakerEncoderGgml {
 		if (!libraryPath) {
 			throw new SpeakerEncoderGgmlUnavailableError(
 				"library-missing",
-				"[speaker-ggml] libvoice_classifier not found. Build via cmake in packages/native-plugins/voice-classifier-cpp/.",
+				"[speaker-ggml] libvoice_classifier not found. Build via cmake in packages/native/plugins/voice-classifier-cpp/.",
 			);
 		}
 

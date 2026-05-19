@@ -389,5 +389,19 @@ export const stewardPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "steward",
+      label: "Steward TUI",
+      description:
+        "Terminal transaction history and approval queue for Steward wallet management",
+      icon: "Shield",
+      path: "/steward/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "StewardTuiView",
+      tags: ["finance", "wallet", "approvals", "transactions", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };

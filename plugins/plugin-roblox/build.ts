@@ -3,8 +3,12 @@
 import { existsSync } from "node:fs";
 import { mkdir } from "node:fs/promises";
 import { join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = ["@elizaos/core", "zod"];
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  // zod is a transitive dep used through @elizaos/core; keep externalized.
+  extra: ["zod"],
+});
 
 async function build() {
   const distDir = join(process.cwd(), "dist");

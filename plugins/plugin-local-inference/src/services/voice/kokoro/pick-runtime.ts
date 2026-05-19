@@ -1,22 +1,14 @@
 /**
- * Kokoro runtime selector — picks the resolved-runtime path between the fork's
- * llama-server `/v1/audio/speech` route (`KokoroGgufRuntime`, the J2 default)
- * and the legacy ONNX runtime path (`KokoroOnnxRuntime`, the one-release
- * deprecation runway).
+ * Kokoro runtime selector — picks between the fork's llama-server
+ * `/v1/audio/speech` route (`KokoroGgufRuntime`), the ONNX runtime used by
+ * release verification, and the mock runtime (tests only).
  *
  * The env knob is `KOKORO_BACKEND`:
  *
  *   fork  (default)  → KokoroGgufRuntime → POST /v1/audio/speech on the
- *                       running llama-server. The fork is the strategic
- *                       single-runtime path per `.swarm/impl/I1-single-runtime.md`.
- *   onnx             → KokoroOnnxRuntime → onnxruntime-node. Kept for one
- *                       release while the fork's StyleTTS-2 graph closes the
- *                       acoustic quality gap (see J2-kokoro-port-notes.md).
+ *                       running llama-server.
+ *   onnx             → KokoroOnnxRuntime → bundled ONNX model + voice pack.
  *   mock             → KokoroMockRuntime. Tests only.
- *
- * This selector is dependency-free at import time — it does not pull in
- * onnxruntime-node (which is an optional peer). The concrete runtime classes
- * are constructed lazily, after `pickKokoroRuntimeBackend()` returns.
  */
 
 import {
@@ -37,10 +29,10 @@ export interface KokoroBackendInputs {
 	/** Default backend derived from the discovered model layout. Used when no
 	 *  explicit backend and no `KOKORO_BACKEND` env override are set. */
 	defaultBackend?: KokoroBackendId;
-	/** Construction options for the ONNX path. Used iff backend === "onnx". */
-	onnx?: KokoroOnnxRuntimeOptions;
 	/** Construction options for the fork (HTTP) path. Used iff backend === "fork". */
 	fork?: KokoroGgufRuntimeOptions;
+	/** Construction options for the ONNX path. Used iff backend === "onnx". */
+	onnx?: KokoroOnnxRuntimeOptions;
 	/** Construction options for the mock path. */
 	mock?: KokoroMockRuntimeOptions;
 	/** Override the process.env source. */
@@ -115,16 +107,16 @@ export function pickKokoroRuntimeBackend(
 		if (!inputs.onnx) {
 			throw new Error(
 				"[voice/kokoro] KOKORO_BACKEND=onnx requires `inputs.onnx` " +
-					"(layout). Configure the bundle's kokoro model path first.",
+					"(layout + optional SHA/runtime options).",
 			);
 		}
 		return {
 			backend,
 			reason: inputs.backend
-				? "explicit backend=onnx (deprecation runway)"
+				? "explicit backend=onnx (bundled ONNX runtime)"
 				: fromEnv
-					? "KOKORO_BACKEND=onnx → onnxruntime-node (deprecation runway)"
-					: "model layout default → onnxruntime-node (ONNX model file)",
+					? `KOKORO_BACKEND=${fromEnv} → onnx (bundled ONNX runtime)`
+					: "model layout default → onnx (bundled ONNX runtime)",
 			runtime: new KokoroOnnxRuntime(inputs.onnx),
 		};
 	}

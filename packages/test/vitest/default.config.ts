@@ -303,7 +303,7 @@ const vitestResolveAlias: ModuleAlias[] = [
     ),
   },
   {
-    find: "@elizaos/scenario-schema",
+    find: "@elizaos/scenario-runner/schema",
     replacement: path.join(
       elizaWorkspaceRoot,
       "packages",

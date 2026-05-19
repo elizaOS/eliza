@@ -400,7 +400,9 @@ class OpenClawClient:
         reasoning_effort: str | None = None,
         max_tokens: int | None = None,
         direct_openai_compatible: bool = False,
+        allow_text_tool_calls: bool = False,
     ) -> None:
+        del allow_text_tool_calls
         self.repo_path = Path(repo_path) if repo_path else _default_repo_path()
         self.binary_path = Path(binary_path) if binary_path else _resolve_default_binary()
         self.provider = provider
@@ -410,7 +412,12 @@ class OpenClawClient:
         self.base_url_env = base_url_env
         self.api_key = api_key if api_key is not None else _default_api_key(provider, api_key_env)
         self.thinking_level = thinking_level
-        self.timeout_s = float(timeout_s)
+        env_timeout_s = _env_optional_float("OPENCLAW_TIMEOUT_S")
+        self.timeout_s = float(
+            env_timeout_s
+            if timeout_s == DEFAULT_TIMEOUT_S and env_timeout_s is not None
+            else timeout_s
+        )
         self.temperature = (
             temperature
             if temperature is not None

@@ -17,6 +17,7 @@ import { useCallback, useEffect, useState } from "react";
 interface ViewEntry {
 	id: string;
 	label: string;
+	viewType?: "gui" | "tui";
 	description?: string;
 	icon?: string;
 	path?: string;
@@ -25,6 +26,31 @@ interface ViewEntry {
 	bundleUrl?: string;
 	heroImageUrl?: string;
 	pluginName: string;
+}
+
+async function fetchViewEntries(
+	viewType?: "gui" | "tui",
+): Promise<ViewEntry[]> {
+	const qs = viewType ? `?viewType=${viewType}` : "";
+	const res = await fetch(`/api/views${qs}`);
+	if (!res.ok) throw new Error(`HTTP ${res.status}`);
+	const data = (await res.json()) as { views: ViewEntry[] };
+	return Array.isArray(data.views) ? data.views : [];
+}
+
+async function requestViewNavigation(
+	view: Pick<ViewEntry, "id" | "path" | "viewType">,
+) {
+	await fetch(
+		`/api/views/${encodeURIComponent(view.id)}/navigate${
+			view.viewType ? `?viewType=${view.viewType}` : ""
+		}`,
+		{
+			method: "POST",
+			headers: { "Content-Type": "application/json" },
+			body: JSON.stringify({ path: view.path, viewType: view.viewType }),
+		},
+	);
 }
 
 // ─── Sub-components ──────────────────────────────────────────────────────────
@@ -134,10 +160,7 @@ export function ViewManagerView() {
 		setLoading(true);
 		setError(null);
 		try {
-			const res = await fetch("/api/views");
-			if (!res.ok) throw new Error(`HTTP ${res.status}`);
-			const data = (await res.json()) as { views: ViewEntry[] };
-			setViews(data.views);
+			setViews(await fetchViewEntries());
 		} catch (err) {
 			setError(err instanceof Error ? err.message : "Failed to load views");
 		} finally {
@@ -262,3 +285,203 @@ export function ViewManagerView() {
 }
 
 export default ViewManagerView;
+
+function TuiStatusBadge({ view }: { view: ViewEntry }) {
+	return (
+		<span
+			style={{
+				color: view.available ? "#7dd3fc" : "#fca5a5",
+				minWidth: 10,
+				display: "inline-block",
+			}}
+		>
+			{view.available ? "ready" : "missing"}
+		</span>
+	);
+}
+
+function TuiViewRow({
+	view,
+	index,
+	onOpen,
+}: {
+	view: ViewEntry;
+	index: number;
+	onOpen: (view: ViewEntry) => void;
+}) {
+	return (
+		<div
+			style={{
+				display: "grid",
+				gridTemplateColumns: "4ch minmax(10ch, 24ch) 8ch minmax(12ch, 1fr) 8ch",
+				gap: 12,
+				alignItems: "center",
+				padding: "8px 0",
+				borderTop: index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+			}}
+		>
+			<span style={{ color: "#64748b" }}>
+				{String(index + 1).padStart(2, "0")}
+			</span>
+			<span style={{ color: "#e2e8f0", fontWeight: 700 }}>{view.label}</span>
+			<span style={{ color: "#a7f3d0" }}>{view.viewType ?? "gui"}</span>
+			<span
+				style={{
+					color: "#94a3b8",
+					overflow: "hidden",
+					textOverflow: "ellipsis",
+				}}
+			>
+				{view.id}
+			</span>
+			<TuiStatusBadge view={view} />
+			<div style={{ gridColumn: "2 / 5", color: "#94a3b8", fontSize: 12 }}>
+				{view.description ?? view.pluginName}
+			</div>
+			<button
+				type="button"
+				onClick={() => onOpen(view)}
+				style={{
+					gridColumn: "5",
+					gridRow: "1 / span 2",
+					background: "transparent",
+					color: "#7dd3fc",
+					border: "1px solid rgba(125,211,252,0.45)",
+					borderRadius: 4,
+					padding: "4px 8px",
+					cursor: "pointer",
+					fontFamily: "inherit",
+				}}
+			>
+				open
+			</button>
+		</div>
+	);
+}
+
+export function ViewManagerTuiView() {
+	const [views, setViews] = useState<ViewEntry[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [error, setError] = useState<string | null>(null);
+	const [lastAction, setLastAction] = useState<string>("ready");
+
+	const fetchViews = useCallback(async () => {
+		setLoading(true);
+		setError(null);
+		try {
+			setViews(await fetchViewEntries("tui"));
+			setLastAction("refreshed");
+		} catch (err) {
+			setError(err instanceof Error ? err.message : "Failed to load views");
+		} finally {
+			setLoading(false);
+		}
+	}, []);
+
+	useEffect(() => {
+		void fetchViews();
+	}, [fetchViews]);
+
+	const openView = useCallback((view: ViewEntry) => {
+		void requestViewNavigation(view)
+			.then(() => setLastAction(`opened ${view.id}`))
+			.catch((err) =>
+				setLastAction(
+					`open failed: ${err instanceof Error ? err.message : String(err)}`,
+				),
+			);
+	}, []);
+
+	return (
+		<div
+			data-view-state={JSON.stringify({
+				viewType: "tui",
+				viewCount: views.length,
+				lastAction,
+			})}
+			style={{
+				minHeight: "100vh",
+				background: "#020617",
+				color: "#cbd5e1",
+				fontFamily:
+					'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+				padding: 20,
+			}}
+		>
+			<div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+				elizaos://views-manager --type=tui
+			</div>
+			<div style={{ color: "#475569", marginBottom: 16 }}>
+				{loading ? "loading" : `${views.length} entries`} | {lastAction}
+			</div>
+
+			<div
+				style={{
+					border: "1px solid rgba(125,211,252,0.3)",
+					borderRadius: 6,
+					padding: 16,
+					boxShadow: "inset 0 0 0 1px rgba(15,23,42,0.8)",
+				}}
+			>
+				<div
+					style={{
+						display: "flex",
+						justifyContent: "space-between",
+						alignItems: "center",
+						marginBottom: 10,
+					}}
+				>
+					<strong style={{ color: "#e2e8f0" }}>registered tui views</strong>
+					<button
+						type="button"
+						onClick={() => void fetchViews()}
+						disabled={loading}
+						style={{
+							background: "transparent",
+							color: "#a7f3d0",
+							border: "1px solid rgba(167,243,208,0.45)",
+							borderRadius: 4,
+							padding: "4px 8px",
+							cursor: loading ? "not-allowed" : "pointer",
+							fontFamily: "inherit",
+						}}
+					>
+						refresh
+					</button>
+				</div>
+
+				{error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+				{!error && views.length === 0 && !loading && (
+					<div style={{ color: "#64748b" }}>no tui views registered</div>
+				)}
+				{views.map((view, index) => (
+					<TuiViewRow
+						key={`${view.viewType ?? "gui"}:${view.id}`}
+						view={view}
+						index={index}
+						onOpen={openView}
+					/>
+				))}
+			</div>
+		</div>
+	);
+}
+
+export async function interact(
+	capability: string,
+	params?: Record<string, unknown>,
+): Promise<unknown> {
+	if (capability === "terminal-list-views") {
+		return { views: await fetchViewEntries("tui") };
+	}
+	if (capability === "terminal-open-view") {
+		const viewId = typeof params?.viewId === "string" ? params.viewId : null;
+		if (!viewId) throw new Error("viewId is required");
+		const views = await fetchViewEntries("tui");
+		const view = views.find((entry) => entry.id === viewId);
+		if (!view) throw new Error(`View "${viewId}" not found`);
+		await requestViewNavigation(view);
+		return { opened: true, viewId, viewType: view.viewType ?? "gui" };
+	}
+	throw new Error(`Unsupported capability "${capability}"`);
+}

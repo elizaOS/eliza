@@ -74,7 +74,9 @@ function readPositiveInt(name: string): number {
   return parsed;
 }
 
-export function buildEndpointJobPayload(manifest: VastServeManifest): EndpointJobPayload {
+export function buildEndpointJobPayload(
+  manifest: VastServeManifest,
+): EndpointJobPayload {
   const alias = manifest.model_alias?.replace(/^vast\//, "") ?? "eliza-1";
   return {
     endpoint_name: readEnv("VAST_ENDPOINT_NAME", `eliza-cloud-${alias}`),
@@ -95,7 +97,10 @@ export function buildWorkergroupPayload(
   const payload: WorkergroupPayload = {
     template_id: templateId,
     gpu_ram: readNumber("VAST_GPU_RAM_GB", manifestGpuRamGb(manifest)),
-    search_params: readEnv("VAST_SEARCH_PARAMS", manifestSearchParamsToQuery(manifest)),
+    search_params: readEnv(
+      "VAST_SEARCH_PARAMS",
+      manifestSearchParamsToQuery(manifest),
+    ),
   };
   if (endpointId) {
     payload.endpoint_id = endpointId;
@@ -133,9 +138,16 @@ async function createEndpointJob(
   apiKey: string,
   payload: EndpointJobPayload,
 ): Promise<number | null> {
-  const result = await vastFetch<VastCreateResult>(apiKey, "POST", "/api/v0/endptjobs/", payload);
+  const result = await vastFetch<VastCreateResult>(
+    apiKey,
+    "POST",
+    "/api/v0/endptjobs/",
+    payload,
+  );
   if (result.success === false) {
-    throw new Error(`Vast endpoint create failed: ${result.error ?? "error"} ${result.msg ?? ""}`);
+    throw new Error(
+      `Vast endpoint create failed: ${result.error ?? "error"} ${result.msg ?? ""}`,
+    );
   }
   return typeof result.result === "number" ? result.result : null;
 }
@@ -158,7 +170,10 @@ async function createWorkergroup(
   return typeof result.result === "number" ? result.result : null;
 }
 
-function printDryRun(endpoint: EndpointJobPayload, workergroup: WorkergroupPayload): void {
+function printDryRun(
+  endpoint: EndpointJobPayload,
+  workergroup: WorkergroupPayload,
+): void {
   console.log(
     JSON.stringify(
       {
@@ -177,19 +192,27 @@ function printDryRun(endpoint: EndpointJobPayload, workergroup: WorkergroupPaylo
 export async function main(): Promise<void> {
   const apiKey = readEnv("VASTAI_API_KEY");
   const templateId = readPositiveInt("VAST_TEMPLATE_ID");
-  const manifest = readVastManifest(readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json")).manifest;
+  const manifest = readVastManifest(
+    readEnv("ELIZA_VAST_MANIFEST", "eliza-1-2b.json"),
+  ).manifest;
   const endpoint = buildEndpointJobPayload(manifest);
   const explicitEndpointId = process.env.VAST_ENDPOINT_ID
     ? readPositiveInt("VAST_ENDPOINT_ID")
     : undefined;
-  const workergroup = buildWorkergroupPayload(templateId, endpoint, manifest, explicitEndpointId);
+  const workergroup = buildWorkergroupPayload(
+    templateId,
+    endpoint,
+    manifest,
+    explicitEndpointId,
+  );
 
   if (process.env.VAST_DRY_RUN === "1" || process.env.VAST_DRY_RUN === "true") {
     printDryRun(endpoint, workergroup);
     return;
   }
 
-  const endpointId = explicitEndpointId ?? (await createEndpointJob(apiKey, endpoint));
+  const endpointId =
+    explicitEndpointId ?? (await createEndpointJob(apiKey, endpoint));
   if (endpointId && !workergroup.endpoint_id) {
     delete workergroup.endpoint_name;
     workergroup.endpoint_id = endpointId;
@@ -200,7 +223,9 @@ export async function main(): Promise<void> {
     `[vast] Endpoint ready: name=${endpoint.endpoint_name} id=${endpointId ?? "unknown"}`,
   );
   console.log(`[vast] Workergroup ready: id=${workergroupId ?? "unknown"}`);
-  console.log(`[vast] Worker base URL: https://openai.vast.ai/${endpoint.endpoint_name}`);
+  console.log(
+    `[vast] Worker base URL: https://openai.vast.ai/${endpoint.endpoint_name}`,
+  );
   console.log(
     `[vast] Configure cloud: VAST_BASE_URL_${endpoint.endpoint_name
       .replace(/^eliza-cloud-/, "")

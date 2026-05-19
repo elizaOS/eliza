@@ -14,10 +14,10 @@ import {
   DetachedShellRoot,
 } from "@elizaos/app-core";
 import {
-  installIosLocalAgentFetchBridge,
-  installIosLocalAgentNativeRequestBridge,
   type IosLocalAgentNativeRequestOptions,
   type IosLocalAgentNativeRequestResult,
+  installIosLocalAgentFetchBridge,
+  installIosLocalAgentNativeRequestBridge,
   primeIosFullBunRuntime,
 } from "@elizaos/app-core/api/ios-local-agent-transport";
 import { Agent } from "@elizaos/capacitor-agent";

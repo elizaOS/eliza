@@ -46,9 +46,7 @@ const FORBIDDEN_PATTERNS = [
 const SKIP_DIRS = new Set(["node_modules", "dist", ".turbo", ".git", "target"]);
 
 // Files/directories to whitelist (relative to repo root, using path.sep)
-const WHITELIST_SEGMENTS = [
-  path.join("test", "mocks"),
-];
+const WHITELIST_SEGMENTS = [path.join("test", "mocks")];
 
 function isWhitelisted(filePath) {
   const rel = path.relative(repoRoot, filePath);

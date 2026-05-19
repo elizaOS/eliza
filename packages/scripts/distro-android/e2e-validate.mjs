@@ -27,8 +27,8 @@ import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
-import { loadBrandFromArgv } from "./brand-config.mjs";
 import { validateBootedDevice } from "./boot-validate.mjs";
+import { loadBrandFromArgv } from "./brand-config.mjs";
 import {
   buildStepMap,
   captureScreens,

@@ -72,6 +72,11 @@ export {
 	resolveMaxConcurrentSpeculativeResponses,
 } from "./engine";
 export {
+	createImageDescriptionRuntime,
+	type ImageDescriptionRuntime,
+	type ImageDescriptionRuntimeOptions,
+} from "./image-description-runtime";
+export {
 	type HandlerRegistration,
 	handlerRegistry,
 	type PublicRegistration,
@@ -139,12 +144,6 @@ export {
 	type MemoryPressureSource,
 	nodeOsPressureSource,
 } from "./memory-pressure";
-export {
-	MLX_BACKEND_ID,
-	MlxLocalServer,
-	mlxBackendEligible,
-	mlxLocalServer,
-} from "./mlx-server";
 export {
 	buildPlanActionsSkeleton,
 	buildPlannerGuidedDecode,

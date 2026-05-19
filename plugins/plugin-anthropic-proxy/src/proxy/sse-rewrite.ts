@@ -20,37 +20,37 @@ const SSE_TAIL_SIZE = 64;
 export type ReverseFn = (text: string) => string;
 
 export interface SseStream {
-	write: (chunk: Buffer) => void;
-	end: () => void;
+  write: (chunk: Buffer) => void;
+  end: () => void;
 }
 
 export function createSseStream(
-	reverseFn: ReverseFn,
-	emit: (text: string) => void,
-	finish: () => void,
+  reverseFn: ReverseFn,
+  emit: (text: string) => void,
+  finish: () => void,
 ): SseStream {
-	const decoder = new StringDecoder("utf8");
-	let pending = "";
+  const decoder = new StringDecoder("utf8");
+  let pending = "";
 
-	return {
-		write(chunk: Buffer): void {
-			pending += decoder.write(chunk);
-			if (pending.length > SSE_TAIL_SIZE) {
-				let sliceIdx = pending.length - SSE_TAIL_SIZE;
-				// Don't cut between a UTF-16 surrogate pair
-				const prev = pending.charCodeAt(sliceIdx - 1);
-				if (prev >= 0xd800 && prev <= 0xdbff) sliceIdx -= 1;
-				const flushable = pending.slice(0, sliceIdx);
-				pending = pending.slice(sliceIdx);
-				emit(reverseFn(flushable));
-			}
-		},
-		end(): void {
-			pending += decoder.end();
-			if (pending.length > 0) {
-				emit(reverseFn(pending));
-			}
-			finish();
-		},
-	};
+  return {
+    write(chunk: Buffer): void {
+      pending += decoder.write(chunk);
+      if (pending.length > SSE_TAIL_SIZE) {
+        let sliceIdx = pending.length - SSE_TAIL_SIZE;
+        // Don't cut between a UTF-16 surrogate pair
+        const prev = pending.charCodeAt(sliceIdx - 1);
+        if (prev >= 0xd800 && prev <= 0xdbff) sliceIdx -= 1;
+        const flushable = pending.slice(0, sliceIdx);
+        pending = pending.slice(sliceIdx);
+        emit(reverseFn(flushable));
+      }
+    },
+    end(): void {
+      pending += decoder.end();
+      if (pending.length > 0) {
+        emit(reverseFn(pending));
+      }
+      finish();
+    },
+  };
 }

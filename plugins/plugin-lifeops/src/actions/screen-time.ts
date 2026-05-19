@@ -35,6 +35,7 @@ import {
   messageText,
   renderLifeOpsActionReply,
 } from "../lifeops/voice/grounded-reply.js";
+import { isDarwin } from "../platform/host.js";
 import {
   resolveActionArgs,
   type SubactionsMap,
@@ -44,10 +45,6 @@ const ACTION_NAME = "SCREEN_TIME";
 
 const DEFAULT_WINDOW_HOURS = 24;
 const MAX_WINDOW_HOURS = 24 * 30;
-
-function isSupportedPlatform(): boolean {
-  return process.platform === "darwin";
-}
 
 type Subaction =
   | "summary"
@@ -534,7 +531,7 @@ export async function runScreenTimeHandler(
 
     case "activity_report": {
       const windowMs = resolveWindowMs(params.windowHours);
-      if (!isSupportedPlatform()) {
+      if (!isDarwin()) {
         return respond({
           success: true,
           scenario: "activity_report_unsupported_platform",
@@ -584,7 +581,7 @@ export async function runScreenTimeHandler(
         });
       }
       const windowMs = resolveWindowMs(params.windowHours);
-      if (!isSupportedPlatform()) {
+      if (!isDarwin()) {
         return respond({
           success: true,
           scenario: "time_on_app_unsupported_platform",

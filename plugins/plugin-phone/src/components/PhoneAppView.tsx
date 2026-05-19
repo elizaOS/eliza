@@ -120,6 +120,20 @@ function normalizeNumber(input: string): string {
   return `${leadingPlus}${trimmed.replace(/[^0-9]/g, "")}`;
 }
 
+async function loadPhoneState(options?: { limit?: number; number?: string }) {
+  const [status, recent] = await Promise.all([
+    Phone.getStatus().catch(() => null),
+    Phone.listRecentCalls({
+      limit: options?.limit ?? 50,
+      ...(options?.number ? { number: normalizeNumber(options.number) } : {}),
+    }),
+  ]);
+  return {
+    status,
+    calls: recent.calls,
+  };
+}
+
 interface ContactsModule {
   Contacts: {
     listContacts(options?: {
@@ -611,4 +625,503 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
       </Tabs>
     </div>
   );
+}
+
+export function PhoneTuiView() {
+  const [status, setStatus] = useState<Awaited<
+    ReturnType<typeof Phone.getStatus>
+  > | null>(null);
+  const [calls, setCalls] = useState<CallLogEntry[]>([]);
+  const [dialed, setDialed] = useState("");
+  const [transcriptCallId, setTranscriptCallId] = useState("");
+  const [transcript, setTranscript] = useState("");
+  const [summary, setSummary] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [calling, setCalling] = useState(false);
+  const [savingTranscript, setSavingTranscript] = useState(false);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadPhoneState({ limit: 50 });
+      setStatus(next.status);
+      setCalls(next.calls);
+      setLastAction("refresh");
+    } catch (err) {
+      setStatus(null);
+      setCalls([]);
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const callNumber = useCallback(async () => {
+    const number = normalizeNumber(dialed);
+    if (!number || calling) return;
+    setCalling(true);
+    setError(null);
+    try {
+      await Phone.placeCall({ number });
+      setLastAction(`call ${number}`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCalling(false);
+    }
+  }, [calling, dialed]);
+
+  const openDialer = useCallback(async () => {
+    const number = normalizeNumber(dialed);
+    setError(null);
+    try {
+      await Phone.openDialer(number ? { number } : undefined);
+      setLastAction(number ? `dialer ${number}` : "dialer");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  }, [dialed]);
+
+  const saveTranscript = useCallback(async () => {
+    const callId = transcriptCallId.trim();
+    const text = transcript.trim();
+    if (!callId || !text || savingTranscript) return;
+    setSavingTranscript(true);
+    setError(null);
+    try {
+      const result = await Phone.saveCallTranscript({
+        callId,
+        transcript: text,
+        ...(summary.trim() ? { summary: summary.trim() } : {}),
+      });
+      setLastAction(`transcript ${result.updatedAt}`);
+      setTranscript("");
+      setSummary("");
+      await refresh();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingTranscript(false);
+    }
+  }, [refresh, savingTranscript, summary, transcript, transcriptCallId]);
+
+  const state = {
+    viewType: "tui",
+    viewId: "phone",
+    callCount: calls.length,
+    dialed,
+    canPlaceCalls: status?.canPlaceCalls ?? false,
+    isDefaultDialer: status?.isDefaultDialer ?? false,
+    defaultDialerPackage: status?.defaultDialerPackage ?? null,
+    loading,
+    calling,
+    savingTranscript,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(state)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://phone --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : `${calls.length} recent`} |{" "}
+        {status?.canPlaceCalls ? "call-ready" : "call-blocked"} | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(260px, 0.9fr) minmax(320px, 1.1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Phone dialer"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>dialer</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            default dialer: {status?.isDefaultDialer ? "yes" : "no"}{" "}
+            {status?.defaultDialerPackage ?? ""}
+          </div>
+
+          <label
+            htmlFor="phone-tui-number"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            number
+          </label>
+          <input
+            id="phone-tui-number"
+            name="number"
+            value={dialed}
+            onChange={(event) => setDialed(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(3, 1fr)",
+              gap: 8,
+              marginBottom: 12,
+            }}
+          >
+            {DIAL_KEYS.map((key) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setDialed((prev) => `${prev}${key}`)}
+                style={{
+                  background: "transparent",
+                  color: "#e2e8f0",
+                  border: "1px solid rgba(125,211,252,0.28)",
+                  borderRadius: 4,
+                  padding: "8px 0",
+                  cursor: "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {key}
+              </button>
+            ))}
+          </div>
+
+          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+            <button
+              type="button"
+              onClick={() =>
+                setDialed((prev) => (prev ? prev.slice(0, -1) : ""))
+              }
+              style={{
+                background: "transparent",
+                color: "#94a3b8",
+                border: "1px solid rgba(148,163,184,0.45)",
+                borderRadius: 4,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              backspace
+            </button>
+            <button
+              type="button"
+              onClick={() => void openDialer()}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              open-dialer
+            </button>
+            <button
+              type="button"
+              onClick={() => void callNumber()}
+              disabled={!normalizeNumber(dialed) || calling}
+              style={{
+                background: "transparent",
+                color: "#7dd3fc",
+                border: "1px solid rgba(125,211,252,0.45)",
+                borderRadius: 4,
+                padding: "6px 10px",
+                cursor:
+                  !normalizeNumber(dialed) || calling
+                    ? "not-allowed"
+                    : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              call
+            </button>
+          </div>
+
+          <strong style={{ color: "#e2e8f0" }}>transcript</strong>
+          <label
+            htmlFor="phone-tui-call-id"
+            style={{ display: "block", color: "#94a3b8", margin: "12px 0 6px" }}
+          >
+            call id
+          </label>
+          <input
+            id="phone-tui-call-id"
+            name="callId"
+            value={transcriptCallId}
+            onChange={(event) => setTranscriptCallId(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 10,
+            }}
+          />
+          <label
+            htmlFor="phone-tui-transcript"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            transcript
+          </label>
+          <textarea
+            id="phone-tui-transcript"
+            name="transcript"
+            value={transcript}
+            onChange={(event) => setTranscript(event.target.value)}
+            rows={4}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              resize: "vertical",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 10,
+            }}
+          />
+          <label
+            htmlFor="phone-tui-summary"
+            style={{ display: "block", color: "#94a3b8", marginBottom: 6 }}
+          >
+            summary
+          </label>
+          <input
+            id="phone-tui-summary"
+            name="summary"
+            value={summary}
+            onChange={(event) => setSummary(event.target.value)}
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              background: "#0f172a",
+              color: "#e2e8f0",
+              border: "1px solid rgba(125,211,252,0.3)",
+              borderRadius: 4,
+              padding: 8,
+              fontFamily: "inherit",
+              marginBottom: 12,
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => void saveTranscript()}
+            disabled={
+              !transcriptCallId.trim() || !transcript.trim() || savingTranscript
+            }
+            style={{
+              background: "transparent",
+              color: "#a7f3d0",
+              border: "1px solid rgba(167,243,208,0.45)",
+              borderRadius: 4,
+              padding: "6px 10px",
+              cursor:
+                !transcriptCallId.trim() ||
+                !transcript.trim() ||
+                savingTranscript
+                  ? "not-allowed"
+                  : "pointer",
+              fontFamily: "inherit",
+            }}
+          >
+            save-transcript
+          </button>
+        </section>
+
+        <section
+          aria-label="Recent calls"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>recent calls</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {!loading && !error && calls.length === 0 && (
+            <div style={{ color: "#64748b" }}>no recent calls</div>
+          )}
+          {calls.map((call, index) => (
+            <button
+              key={call.id}
+              type="button"
+              onClick={() => setDialed(call.number)}
+              style={{
+                width: "100%",
+                display: "grid",
+                gridTemplateColumns: "4ch minmax(8ch, 1fr) 10ch",
+                gap: 10,
+                border: "none",
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                background: "transparent",
+                color: "#cbd5e1",
+                padding: "8px 0",
+                cursor: "pointer",
+                fontFamily: "inherit",
+                textAlign: "left",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
+                {callLabelFor(call)}
+              </span>
+              <span
+                style={{
+                  color: call.type === "missed" ? "#fca5a5" : "#94a3b8",
+                }}
+              >
+                {call.type}
+              </span>
+              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+                {call.number} | {formatTimestamp(call.date)} |{" "}
+                {call.durationSeconds}s
+              </span>
+              {(call.agentSummary || call.agentTranscript) && (
+                <span style={{ gridColumn: "2 / 4", color: "#a7f3d0" }}>
+                  {call.agentSummary ?? call.agentTranscript}
+                </span>
+              )}
+            </button>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-phone-state") {
+    const state = await loadPhoneState({
+      limit: typeof params?.limit === "number" ? params.limit : 50,
+      number: typeof params?.number === "string" ? params.number : undefined,
+    });
+    return {
+      viewType: "tui",
+      status: state.status,
+      calls: state.calls.map((call) => ({
+        id: call.id,
+        number: call.number,
+        cachedName: call.cachedName,
+        label: callLabelFor(call),
+        date: call.date,
+        durationSeconds: call.durationSeconds,
+        type: call.type,
+        isNew: call.isNew,
+        agentSummary: call.agentSummary,
+        agentTranscript: call.agentTranscript,
+      })),
+    };
+  }
+
+  if (capability === "terminal-place-call") {
+    const number = normalizeNumber(
+      typeof params?.number === "string" ? params.number : "",
+    );
+    if (!number) throw new Error("number is required");
+    await Phone.placeCall({ number });
+    return { placed: true, number, viewType: "tui" };
+  }
+
+  if (capability === "terminal-open-dialer") {
+    const number = normalizeNumber(
+      typeof params?.number === "string" ? params.number : "",
+    );
+    await Phone.openDialer(number ? { number } : undefined);
+    return { opened: true, number: number || null, viewType: "tui" };
+  }
+
+  if (capability === "terminal-save-call-transcript") {
+    const callId =
+      typeof params?.callId === "string" ? params.callId.trim() : "";
+    const transcript =
+      typeof params?.transcript === "string" ? params.transcript.trim() : "";
+    const summary =
+      typeof params?.summary === "string" ? params.summary.trim() : "";
+    if (!callId) throw new Error("callId is required");
+    if (!transcript) throw new Error("transcript is required");
+    const result = await Phone.saveCallTranscript({
+      callId,
+      transcript,
+      ...(summary ? { summary } : {}),
+    });
+    return { saved: true, updatedAt: result.updatedAt, viewType: "tui" };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

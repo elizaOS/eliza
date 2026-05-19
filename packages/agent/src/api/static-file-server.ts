@@ -10,13 +10,9 @@ import type http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { logger, sendJsonError } from "@elizaos/core";
-import { resolveApiToken } from "@elizaos/shared";
+import { isCloudProvisionedContainer, resolveApiToken } from "@elizaos/shared";
 import { getOrReadCachedFile } from "./memory-bounds.ts";
 import { findOwnPackageRoot } from "./server-helpers.ts";
-
-const { isCloudProvisionedContainer } = await import(
-  "@elizaos/plugin-elizacloud"
-);
 
 // ---------------------------------------------------------------------------
 // MIME types

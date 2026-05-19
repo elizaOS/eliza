@@ -39,7 +39,10 @@ const { values } = parseArgs({
     environment: { type: "string", short: "e", default: "staging" },
     branch: { type: "string" },
     "github-repo": { type: "string", default: "elizaOS/eliza" },
-    "repo-url": { type: "string", default: "https://github.com/elizaOS/eliza.git" },
+    "repo-url": {
+      type: "string",
+      default: "https://github.com/elizaOS/eliza.git",
+    },
     "env-file": { type: "string", default: join(cloudRoot, ".env.local") },
     "server-name": { type: "string" },
     "server-type": { type: "string", default: "cpx21" },
@@ -62,13 +65,23 @@ if (values.help) {
 
 const environment = String(values.environment);
 if (!["staging", "production"].includes(environment)) {
-  fail(`--environment must be "staging" or "production" (received ${environment})`);
+  fail(
+    `--environment must be "staging" or "production" (received ${environment})`,
+  );
 }
 
-const branch = String(values.branch ?? (environment === "production" ? "main" : "develop"));
+const branch = String(
+  values.branch ?? (environment === "production" ? "main" : "develop"),
+);
 const envFile = resolve(String(values["env-file"]));
-const hcloudToken = readFirstEnv("HCLOUD_TOKEN", "HETZNER_CLOUD_TOKEN", "HETZNER_CLOUD_API_KEY");
-const serverName = String(values["server-name"] ?? `eliza-provisioning-worker-${environment}`);
+const hcloudToken = readFirstEnv(
+  "HCLOUD_TOKEN",
+  "HETZNER_CLOUD_TOKEN",
+  "HETZNER_CLOUD_API_KEY",
+);
+const serverName = String(
+  values["server-name"] ?? `eliza-provisioning-worker-${environment}`,
+);
 const keyDir = join(repoRoot, ".eliza", "provisioning-worker", environment);
 const keyPath = join(keyDir, "deploy_ed25519");
 const publicKeyPath = `${keyPath}.pub`;
@@ -86,7 +99,9 @@ if (!existsSync(envFile)) {
 }
 
 const sourceEnv = dotenv.parse(readFileSync(envFile, "utf8"));
-const location = String(values.location ?? sourceEnv.CONTAINERS_HCLOUD_LOCATION ?? "fsn1");
+const location = String(
+  values.location ?? sourceEnv.CONTAINERS_HCLOUD_LOCATION ?? "fsn1",
+);
 validateRuntimeEnv(sourceEnv);
 
 log(`environment: ${environment}`);
@@ -123,7 +138,10 @@ if (!values["skip-remote-deploy"]) {
 
 if (!values["skip-github-secrets"]) {
   await setGitHubSecret("ELIZA_PROVISIONING_HOST", host);
-  await setGitHubSecret("ELIZA_PROVISIONING_SSH_KEY", readFileSync(keyPath, "utf8"));
+  await setGitHubSecret(
+    "ELIZA_PROVISIONING_SSH_KEY",
+    readFileSync(keyPath, "utf8"),
+  );
 }
 
 log("");
@@ -211,7 +229,16 @@ function ensureSshKey() {
   log(`generating deploy ssh key in ${keyDir}`);
   const result = spawnSync(
     "ssh-keygen",
-    ["-t", "ed25519", "-C", `eliza-provisioning-worker-${environment}`, "-f", keyPath, "-N", ""],
+    [
+      "-t",
+      "ed25519",
+      "-C",
+      `eliza-provisioning-worker-${environment}`,
+      "-f",
+      keyPath,
+      "-N",
+      "",
+    ],
     { stdio: "inherit" },
   );
   if (result.status !== 0) fail("ssh-keygen failed");
@@ -260,7 +287,9 @@ async function resolveServer() {
   for (let attempt = 1; attempt <= 60; attempt++) {
     const current = await hcloud("GET", `/servers/${serverId}`);
     if (current.server.status === "running") return current.server;
-    log(`waiting for server ${serverName} (${current.server.status}) ${attempt}/60`);
+    log(
+      `waiting for server ${serverName} (${current.server.status}) ${attempt}/60`,
+    );
     await sleep(5_000);
   }
   fail(`Server ${serverName} did not become running within 5 minutes.`);
@@ -318,7 +347,11 @@ async function writeRemoteEnv(host) {
   writeFileSync(localEnvPath, buildRemoteEnv(raw, sourceEnv), { mode: 0o600 });
 
   try {
-    await run("scp", [...sshCommonArgs(), localEnvPath, `deploy@${host}:${remoteTmpPath}`]);
+    await run("scp", [
+      ...sshCommonArgs(),
+      localEnvPath,
+      `deploy@${host}:${remoteTmpPath}`,
+    ]);
     await ssh(
       host,
       [
@@ -344,9 +377,15 @@ function buildRemoteEnv(raw, parsed) {
         ? "https://api.elizacloud.ai"
         : "https://api-staging.elizacloud.ai",
     NEXT_PUBLIC_APP_URL:
-      environment === "production" ? "https://elizacloud.ai" : "https://staging.elizacloud.ai",
+      environment === "production"
+        ? "https://elizacloud.ai"
+        : "https://staging.elizacloud.ai",
   };
-  if (!parsed.HCLOUD_TOKEN && !parsed.HETZNER_CLOUD_TOKEN && !parsed.HETZNER_CLOUD_API_KEY) {
+  if (
+    !parsed.HCLOUD_TOKEN &&
+    !parsed.HETZNER_CLOUD_TOKEN &&
+    !parsed.HETZNER_CLOUD_API_KEY
+  ) {
     overlays.HCLOUD_TOKEN = hcloudToken;
   }
 
@@ -443,9 +482,14 @@ async function assertWorkerHealthy(host) {
 async function waitForSsh(host) {
   log("waiting for deploy SSH");
   for (let attempt = 1; attempt <= 60; attempt++) {
-    const result = spawnSync("ssh", [...sshCommonArgs(), `deploy@${host}`, "true"]);
+    const result = spawnSync("ssh", [
+      ...sshCommonArgs(),
+      `deploy@${host}`,
+      "true",
+    ]);
     if (result.status === 0) return;
-    if (attempt === 60) fail(`Could not connect to deploy@${host} with ${keyPath}.`);
+    if (attempt === 60)
+      fail(`Could not connect to deploy@${host} with ${keyPath}.`);
     await sleep(5_000);
   }
 }
@@ -454,7 +498,15 @@ async function setGitHubSecret(name, value) {
   log(`setting GitHub secret ${name}`);
   await run(
     "gh",
-    ["secret", "set", name, "--repo", String(values["github-repo"]), "--env", environment],
+    [
+      "secret",
+      "set",
+      name,
+      "--repo",
+      String(values["github-repo"]),
+      "--env",
+      environment,
+    ],
     value,
   );
 }
@@ -475,7 +527,9 @@ async function hcloud(method, path, body) {
   const data = text ? JSON.parse(text) : {};
   if (!response.ok) {
     const message = data?.error?.message ?? response.statusText;
-    fail(`Hetzner API ${method} ${path} failed (${response.status}): ${message}`);
+    fail(
+      `Hetzner API ${method} ${path} failed (${response.status}): ${message}`,
+    );
   }
   return data;
 }

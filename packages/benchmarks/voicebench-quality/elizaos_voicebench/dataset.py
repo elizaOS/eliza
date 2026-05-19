@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import logging
 import json
+import hashlib
 from pathlib import Path
 from typing import Iterable
 
@@ -29,7 +30,7 @@ from .types import SUITES, Sample, SuiteId
 
 log = logging.getLogger("elizaos_voicebench.dataset")
 
-HF_REPO = "hlt-mt/VoiceBench"
+HF_REPO = "hlt-lab/voicebench"
 
 def load_samples(
     suite: SuiteId,
@@ -78,6 +79,12 @@ def _load_huggingface(suite: SuiteId, *, limit: int | None) -> list[Sample]:
 
     log.info("loading %s/%s from Hugging Face", HF_REPO, suite)
     ds = load_dataset(HF_REPO, suite, split="test")
+    try:
+        from datasets import Audio  # type: ignore[import-not-found]
+
+        ds = ds.cast_column("audio", Audio(decode=False))
+    except Exception:
+        pass
     samples: list[Sample] = []
     for row in _iter_rows(ds, limit=limit):
         samples.append(_row_to_sample(suite, row, require_audio=True))
@@ -107,7 +114,10 @@ def _row_to_sample(
             path = audio.get("path")
             sample_id_raw = str(path) if isinstance(path, str) else ""
     if not sample_id_raw:
-        raise ValueError(f"VoiceBench row missing sample id (suite={suite}): {row!r}")
+        prompt_fingerprint = hashlib.sha1(
+            str(row.get("prompt") or row.get("instruction") or row.get("text") or "").encode("utf-8")
+        ).hexdigest()[:12]
+        sample_id_raw = f"{suite}-{prompt_fingerprint}"
 
     prompt_raw = row.get("prompt") or row.get("instruction") or row.get("text") or ""
     if not isinstance(prompt_raw, str):

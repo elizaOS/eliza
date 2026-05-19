@@ -10,7 +10,10 @@
  * Cited: 03-coverage-gap-matrix.md — batch partial failure.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 function checkPartialReported(ctx: ScenarioContext): string | undefined {

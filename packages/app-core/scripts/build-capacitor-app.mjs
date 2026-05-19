@@ -38,7 +38,7 @@ const buildNativePluginsScript = path.join(
 );
 const syncPublicAssetsScript = path.resolve(
   __dirname,
-  "../../shared-brand/scripts/sync-to-public.mjs",
+  "../../shared/scripts/sync-to-public.mjs",
 );
 const bunExecutable = path
   .basename(process.execPath)

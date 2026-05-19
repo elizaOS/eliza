@@ -246,9 +246,7 @@ async function main() {
 
   if (modelFilter && models.length === 0) {
     console.error(`Unknown model id: ${modelFilter}`);
-    console.error(
-      `Available ids: ${VOICE_MODELS.map((m) => m.id).join(", ")}`,
-    );
+    console.error(`Available ids: ${VOICE_MODELS.map((m) => m.id).join(", ")}`);
     process.exit(1);
   }
 

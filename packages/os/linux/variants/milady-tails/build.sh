@@ -71,7 +71,11 @@ else
     git -C "${HERE}/tails-live-build" fetch --depth 1 origin "${LIVE_BUILD_REF}"
     git -C "${HERE}/tails-live-build" checkout -q FETCH_HEAD
 fi
-docker build -t "${IMAGE}" "${HERE}"
+# Force x86_64 so the Tails-required x86-only packages (grub-pc-bin,
+# grub-efi-amd64-bin, syslinux, isolinux) resolve correctly. Without this,
+# Apple Silicon hosts pull the arm64 debian image and apt-get install
+# exits 100 with "Unable to locate package grub-pc-bin".
+docker build --platform linux/amd64 -t "${IMAGE}" "${HERE}"
 rm -rf "${HERE}/tails-live-build"
 
 # Create the apt-cacher-ng cache volume on first run.
@@ -86,6 +90,7 @@ mkdir -p "${OUT}"
 docker_run_args=(
     --rm
     --privileged
+    --platform linux/amd64
     -e "MT_STAGE=${STAGE}"
     -e "MT_FAST=${MT_FAST:-}"
     -e "ELIZAOS_SKIP_WEBSITE=${ELIZAOS_SKIP_WEBSITE:-}"

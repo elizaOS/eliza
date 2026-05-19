@@ -7,7 +7,7 @@
  * the full AppControlClient (different concern, different surface).
  */
 
-import type { ViewCapability } from "@elizaos/core";
+import type { ViewCapability, ViewType } from "@elizaos/core";
 import { resolveServerOnlyPort } from "@elizaos/core";
 
 const REQUEST_TIMEOUT_MS = 10_000;
@@ -16,6 +16,7 @@ const REQUEST_TIMEOUT_MS = 10_000;
 export interface ViewSummary {
 	id: string;
 	label: string;
+	viewType?: ViewType;
 	description?: string;
 	icon?: string;
 	path?: string;
@@ -28,6 +29,15 @@ export interface ViewSummary {
 	capabilities?: ViewCapability[];
 	visibleInManager?: boolean;
 	developerOnly?: boolean;
+}
+
+export interface CurrentViewSummary {
+	viewId: string;
+	viewPath: string | null;
+	viewLabel: string;
+	viewType: ViewType;
+	action?: string;
+	updatedAt: string;
 }
 
 function getApiBase(): string {
@@ -58,6 +68,10 @@ function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 		typeof entry.description === "string" ? entry.description : undefined;
 	const icon = typeof entry.icon === "string" ? entry.icon : undefined;
 	const path = typeof entry.path === "string" ? entry.path : undefined;
+	const viewType =
+		entry.viewType === "gui" || entry.viewType === "tui"
+			? entry.viewType
+			: undefined;
 	const order = typeof entry.order === "number" ? entry.order : undefined;
 	const bundleUrl =
 		typeof entry.bundleUrl === "string" ? entry.bundleUrl : undefined;
@@ -81,6 +95,7 @@ function parseViewSummary(entry: Record<string, unknown>): ViewSummary {
 	return {
 		id,
 		label,
+		viewType,
 		description,
 		icon,
 		path,
@@ -107,14 +122,49 @@ function parseViewList(body: unknown): ViewSummary[] {
 	return views.filter(isObject).map(parseViewSummary);
 }
 
+function parseCurrentView(body: unknown): CurrentViewSummary | null {
+	if (!isObject(body)) {
+		throw new Error("Malformed /api/views/current response: expected object");
+	}
+	const currentView = body.currentView;
+	if (currentView === null || currentView === undefined) return null;
+	if (!isObject(currentView)) {
+		throw new Error("Malformed currentView: expected object or null");
+	}
+	const viewId = currentView.viewId;
+	const viewPath = currentView.viewPath;
+	const viewLabel = currentView.viewLabel;
+	const viewType = currentView.viewType;
+	const updatedAt = currentView.updatedAt;
+	if (
+		typeof viewId !== "string" ||
+		!(typeof viewPath === "string" || viewPath === null) ||
+		typeof viewLabel !== "string" ||
+		!(viewType === "gui" || viewType === "tui") ||
+		typeof updatedAt !== "string"
+	) {
+		throw new Error("Malformed currentView: missing required fields");
+	}
+	const action =
+		typeof currentView.action === "string" ? currentView.action : undefined;
+	return { viewId, viewPath, viewLabel, viewType, action, updatedAt };
+}
+
 export interface ViewsClient {
-	listViews(opts?: { developerMode?: boolean }): Promise<ViewSummary[]>;
+	listViews(opts?: {
+		developerMode?: boolean;
+		viewType?: ViewType;
+	}): Promise<ViewSummary[]>;
+	getCurrentView(): Promise<CurrentViewSummary | null>;
 }
 
 export function createViewsClient(): ViewsClient {
 	return {
 		async listViews(opts = {}) {
-			const qs = opts.developerMode ? "?developerMode=true" : "";
+			const params = new URLSearchParams();
+			if (opts.developerMode) params.set("developerMode", "true");
+			if (opts.viewType) params.set("viewType", opts.viewType);
+			const qs = params.size > 0 ? `?${params.toString()}` : "";
 			const url = `${getApiBase()}/api/views${qs}`;
 			const response = await fetch(url, {
 				method: "GET",
@@ -126,6 +176,19 @@ export function createViewsClient(): ViewsClient {
 			}
 			const body: unknown = await response.json();
 			return parseViewList(body);
+		},
+
+		async getCurrentView() {
+			const response = await fetch(`${getApiBase()}/api/views/current`, {
+				method: "GET",
+				headers: { "Content-Type": "application/json" },
+				signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+			});
+			if (!response.ok) {
+				throw new Error(`Failed to get current view: HTTP ${response.status}`);
+			}
+			const body: unknown = await response.json();
+			return parseCurrentView(body);
 		},
 	};
 }

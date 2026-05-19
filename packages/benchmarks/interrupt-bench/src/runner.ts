@@ -5,7 +5,8 @@
  * Usage:
  *
  *   bun run src/runner.ts                     # scripted mode (default)
- *   bun run src/runner.ts --mode=cerebras     # live LLM mode
+ *   bun run src/runner.ts --mode=cerebras     # direct Cerebras mode
+ *   bun run src/runner.ts --mode=harness      # Eliza/Hermes/OpenClaw bridge mode
  *   bun run src/runner.ts --mode=cerebras --judge
  *   bun run src/runner.ts --scenario=A1-fragmented-email-draft
  *   bun run src/runner.ts --out=./out         # write report files
@@ -35,7 +36,7 @@ function parseArgs(argv: string[]): Args {
     if (a === "--mode=cerebras" || a === "--cerebras") args.mode = "cerebras";
     else if (a.startsWith("--mode=")) {
       const v = a.slice(7);
-      if (v === "scripted" || v === "cerebras") args.mode = v;
+      if (v === "scripted" || v === "cerebras" || v === "harness") args.mode = v;
       else throw new Error(`unknown --mode value: ${v}`);
     } else if (a.startsWith("--scenario="))
       args.scenarioFilter = a.slice("--scenario=".length);
@@ -54,7 +55,8 @@ function parseArgs(argv: string[]): Args {
 const HELP_TEXT = `InterruptBench runner
 
 Flags:
-  --mode=scripted | --mode=cerebras   choose LLM provider (default: scripted)
+  --mode=scripted | --mode=cerebras | --mode=harness
+                                      choose LLM provider (default: scripted)
   --scenario=<id>                     run only this scenario id
   --judge                             enable LLM-as-judge bonus (requires CEREBRAS_API_KEY)
   --model=<id>                        override Cerebras model (default: gpt-oss-120b)
@@ -110,7 +112,7 @@ async function main(): Promise<void> {
     results,
     mode: args.mode,
     model:
-      args.mode === "cerebras"
+      args.mode === "cerebras" || args.mode === "harness"
         ? (args.cerebrasModel ?? "gpt-oss-120b")
         : undefined,
     startedAt,

@@ -56,7 +56,9 @@ if (!existsSync(envFilePath)) {
 }
 
 const parsed = dotenv.parse(readFileSync(envFilePath, "utf8"));
-const onlyKeys = values.only ? new Set(values.only.split(",").map((k) => k.trim())) : null;
+const onlyKeys = values.only
+  ? new Set(values.only.split(",").map((k) => k.trim()))
+  : null;
 const wranglerEnvFlag = values.env ? ["--env", values.env] : [];
 
 const candidates = Object.entries(parsed).filter(([key, val]) => {
@@ -87,7 +89,10 @@ let failures = 0;
 
 for (const [key, value] of candidates) {
   process.stdout.write(`  setting ${key} ... `);
-  const ok = await runWrangler(["secret", "put", key, ...wranglerEnvFlag], value);
+  const ok = await runWrangler(
+    ["secret", "put", key, ...wranglerEnvFlag],
+    value,
+  );
   console.log(ok ? "ok" : "FAILED");
   if (!ok) failures++;
 }

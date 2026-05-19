@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Build every Capacitor / Electrobun native plugin package under
- * `eliza/packages/native-plugins/` whose `pkg.elizaos.platforms` allowlist
+ * `eliza/packages/native/plugins/` whose `pkg.elizaos.platforms` allowlist
  * matches the current build host (or omits an OS allowlist entirely).
  *
  * Designed to be invoked from any elizaOS-based fork:

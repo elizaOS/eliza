@@ -24,14 +24,14 @@ stage it under `App/public/agent/`, and include the native llama bridge. The
 default local target is the iOS simulator; use
 `bun run build:ios:local:device` or set
 `ELIZA_IOS_BUILD_DESTINATION='generic/platform=iOS'` plus normal Xcode signing
-when you want a device build.
-
-The full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
-`packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework` or
+when you want a sideload/device build.
+That target still does not imply a host shell or downloaded native code. The
+full Bun engine path is gated by `ELIZA_IOS_FULL_BUN_ENGINE=1` and requires
+`packages/native/bun-runtime/artifacts/ElizaBunEngine.xcframework` or
 `ELIZA_IOS_BUN_ENGINE_XCFRAMEWORK`. External override paths are validated and
-staged into `packages/bun-ios-runtime/artifacts/` before CocoaPods runs. If that
-artifact is missing, a full-engine build fails instead of falling back to the
-JSContext compatibility host. When the framework is present, the React app
+staged into `packages/native/bun-runtime/artifacts/` before CocoaPods runs. If
+that artifact is missing, a full-engine build fails instead of falling back to
+the JSContext compatibility host. When the framework is present, the React app
 routes local-agent requests through
 Capacitor `ElizaBunRuntime.call("http_request")`, the native C ABI, and the
 agent bundle's `ios-bridge --stdio` command. The WebView does not open a TCP
@@ -75,7 +75,7 @@ plug into the existing `ElizaBunRuntime` Capacitor bridge and keep agent
 semantics in the TypeScript bundle. It is not a Swift-owned runtime and is not
 approved as the production local iOS backend unless it passes the same route,
 capability, and App Store execution checks documented by
-`packages/bun-ios-runtime/SWIFT_BUN_COMPATIBILITY.md`.
+`packages/native/bun-runtime/SWIFT_BUN_COMPATIBILITY.md`.
 
 The AOSP / ElizaOS Android build is a separate privileged system target. It can
 stage the on-device Bun agent, `/system/bin/sh`, shell plugin, coding-tools

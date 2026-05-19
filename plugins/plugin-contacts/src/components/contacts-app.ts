@@ -7,7 +7,6 @@
  */
 
 import { type OverlayApp, registerOverlayApp } from "@elizaos/ui";
-import { ContactsAppView } from "./ContactsAppView";
 
 export const CONTACTS_APP_NAME = "@elizaos/plugin-contacts";
 
@@ -18,7 +17,8 @@ export const contactsApp: OverlayApp = {
   category: "system",
   icon: null,
   androidOnly: true,
-  Component: ContactsAppView,
+  loader: () =>
+    import("./ContactsAppView").then((m) => ({ default: m.ContactsAppView })),
 };
 
 /** Register the Contacts app with the overlay app registry. */

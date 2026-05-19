@@ -6,264 +6,264 @@ import type { ElectrobunConfig } from "electrobun/bun";
 const electrobunDir = path.dirname(fileURLToPath(import.meta.url));
 
 function chromiumFlags(
-	flags: Record<string, string | boolean>,
+  flags: Record<string, string | boolean>,
 ): Record<string, string | true> {
-	return Object.fromEntries(
-		Object.entries(flags)
-			.filter(([, value]) => value !== false)
-			.map(([key, value]) => [key, value === true ? true : value]),
-	) as Record<string, string | true>;
+  return Object.fromEntries(
+    Object.entries(flags)
+      .filter(([, value]) => value !== false)
+      .map(([key, value]) => [key, value === true ? true : value]),
+  ) as Record<string, string | true>;
 }
 
 function isTruthyEnv(value: string | undefined): boolean {
-	const normalized = value?.trim().toLowerCase();
-	return (
-		normalized === "1" ||
-		normalized === "true" ||
-		normalized === "yes" ||
-		normalized === "on"
-	);
+  const normalized = value?.trim().toLowerCase();
+  return (
+    normalized === "1" ||
+    normalized === "true" ||
+    normalized === "yes" ||
+    normalized === "on"
+  );
 }
 
 const EXTERNAL_API_BASE_ENV_KEYS = [
-	"ELIZA_DESKTOP_TEST_API_BASE",
-	"ELIZA_DESKTOP_API_BASE",
-	"ELIZA_API_BASE_URL",
-	"ELIZA_API_BASE",
+  "ELIZA_DESKTOP_TEST_API_BASE",
+  "ELIZA_DESKTOP_API_BASE",
+  "ELIZA_API_BASE_URL",
+  "ELIZA_API_BASE",
 ] as const;
 
 function normalizeApiBase(raw: string | undefined): string | null {
-	if (!raw?.trim()) return null;
-	try {
-		const parsed = new URL(raw.trim());
-		return parsed.protocol === "http:" || parsed.protocol === "https:"
-			? parsed.origin
-			: null;
-	} catch {
-		return null;
-	}
+  if (!raw?.trim()) return null;
+  try {
+    const parsed = new URL(raw.trim());
+    return parsed.protocol === "http:" || parsed.protocol === "https:"
+      ? parsed.origin
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function shouldEmbedRuntimeBundle(
-	env: Record<string, string | undefined> = process.env,
+  env: Record<string, string | undefined> = process.env,
 ): boolean {
-	for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
-		if (normalizeApiBase(env[key])) {
-			return false;
-		}
-	}
-	return !isTruthyEnv(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT);
+  for (const key of EXTERNAL_API_BASE_ENV_KEYS) {
+    if (normalizeApiBase(env[key])) {
+      return false;
+    }
+  }
+  return !isTruthyEnv(env.ELIZA_DESKTOP_SKIP_EMBEDDED_AGENT);
 }
 
 function linuxCefChromiumFlags(): Record<string, string | true> {
-	// Linux CEF WebGPU/Vulkan is still experimental in Electrobun. Keep the
-	// default renderer path stable and let hardware debugging opt in explicitly.
-	if (!isTruthyEnv(process.env.ELIZA_ELECTROBUN_ENABLE_CEF_WEBGPU)) {
-		return {};
-	}
+  // Linux CEF WebGPU/Vulkan is still experimental in Electrobun. Keep the
+  // default renderer path stable and let hardware debugging opt in explicitly.
+  if (!isTruthyEnv(process.env.ELIZA_ELECTROBUN_ENABLE_CEF_WEBGPU)) {
+    return {};
+  }
 
-	return chromiumFlags({
-		"enable-unsafe-webgpu": true,
-		"enable-features": "Vulkan",
-		"disable-gpu": false,
-		"disable-gpu-compositing": false,
-		"disable-gpu-sandbox": false,
-		"enable-software-rasterizer": false,
-		"force-software-rasterizer": false,
-		"disable-accelerated-2d-canvas": false,
-		"disable-accelerated-video-decode": false,
-		"disable-accelerated-video-encode": false,
-		"disable-gpu-memory-buffer-video-frames": false,
-	});
+  return chromiumFlags({
+    "enable-unsafe-webgpu": true,
+    "enable-features": "Vulkan",
+    "disable-gpu": false,
+    "disable-gpu-compositing": false,
+    "disable-gpu-sandbox": false,
+    "enable-software-rasterizer": false,
+    "force-software-rasterizer": false,
+    "disable-accelerated-2d-canvas": false,
+    "disable-accelerated-video-decode": false,
+    "disable-accelerated-video-encode": false,
+    "disable-gpu-memory-buffer-video-frames": false,
+  });
 }
 
 const linuxCefEnabled = isTruthyEnv(
-	process.env.ELIZA_ELECTROBUN_ENABLE_LINUX_CEF,
+  process.env.ELIZA_ELECTROBUN_ENABLE_LINUX_CEF,
 );
 
 export function hasElectrobunWorkspaceRoot(candidateDir: string): boolean {
-	return (
-		fs.existsSync(path.join(candidateDir, "bun.lock")) &&
-		fs.existsSync(path.join(candidateDir, "package.json")) &&
-		(fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
-			fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
-		(fs.existsSync(
-			path.join(
-				candidateDir,
-				"packages/app-core/platforms/electrobun/package.json",
-			),
-		) ||
-			fs.existsSync(
-				path.join(
-					candidateDir,
-					"eliza/packages/app-core/platforms/electrobun/package.json",
-				),
-			))
-	);
+  return (
+    fs.existsSync(path.join(candidateDir, "bun.lock")) &&
+    fs.existsSync(path.join(candidateDir, "package.json")) &&
+    (fs.existsSync(path.join(candidateDir, "packages/app/package.json")) ||
+      fs.existsSync(path.join(candidateDir, "apps/app/package.json"))) &&
+    (fs.existsSync(
+      path.join(
+        candidateDir,
+        "packages/app-core/platforms/electrobun/package.json",
+      ),
+    ) ||
+      fs.existsSync(
+        path.join(
+          candidateDir,
+          "eliza/packages/app-core/platforms/electrobun/package.json",
+        ),
+      ))
+  );
 }
 
 function hasOuterElizaElectrobunCheckout(candidateDir: string): boolean {
-	return fs.existsSync(
-		path.join(
-			candidateDir,
-			"eliza",
-			"packages",
-			"app-core",
-			"platforms",
-			"electrobun",
-			"package.json",
-		),
-	);
+  return fs.existsSync(
+    path.join(
+      candidateDir,
+      "eliza",
+      "packages",
+      "app-core",
+      "platforms",
+      "electrobun",
+      "package.json",
+    ),
+  );
 }
 
 function hasDirectElizaElectrobunCheckout(candidateDir: string): boolean {
-	return fs.existsSync(
-		path.join(
-			candidateDir,
-			"packages",
-			"app-core",
-			"platforms",
-			"electrobun",
-			"package.json",
-		),
-	);
+  return fs.existsSync(
+    path.join(
+      candidateDir,
+      "packages",
+      "app-core",
+      "platforms",
+      "electrobun",
+      "package.json",
+    ),
+  );
 }
 
 export function findElizaRepoRoot(startDir: string): string {
-	let current = path.resolve(startDir);
-	const matches: string[] = [];
-	while (true) {
-		if (hasElectrobunWorkspaceRoot(current)) {
-			matches.push(current);
-		}
-		const parent = path.dirname(current);
-		if (parent === current) {
-			const directRoot = matches.find(hasDirectElizaElectrobunCheckout);
-			if (directRoot) {
-				return directRoot;
-			}
-			const outerWrapperRoot = matches.find(hasOuterElizaElectrobunCheckout);
-			if (outerWrapperRoot) {
-				return outerWrapperRoot;
-			}
-			if (matches[0]) {
-				return matches[0];
-			}
-			throw new Error(
-				`Could not locate monorepo root from Electrobun config at ${startDir}`,
-			);
-		}
-		current = parent;
-	}
+  let current = path.resolve(startDir);
+  const matches: string[] = [];
+  while (true) {
+    if (hasElectrobunWorkspaceRoot(current)) {
+      matches.push(current);
+    }
+    const parent = path.dirname(current);
+    if (parent === current) {
+      const directRoot = matches.find(hasDirectElizaElectrobunCheckout);
+      if (directRoot) {
+        return directRoot;
+      }
+      const outerWrapperRoot = matches.find(hasOuterElizaElectrobunCheckout);
+      if (outerWrapperRoot) {
+        return outerWrapperRoot;
+      }
+      if (matches[0]) {
+        return matches[0];
+      }
+      throw new Error(
+        `Could not locate monorepo root from Electrobun config at ${startDir}`,
+      );
+    }
+    current = parent;
+  }
 }
 
 export function resolveElectrobunRepoRoot(startDir: string): string {
-	const override = (process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? "").trim();
-	if (override) {
-		const resolved = path.resolve(override);
-		if (!hasElectrobunWorkspaceRoot(resolved)) {
-			throw new Error(
-				`ELIZA_ELECTROBUN_REPO_ROOT does not point at an Electrobun workspace root: ${resolved}`,
-			);
-		}
-		return resolved;
-	}
+  const override = (process.env.ELIZA_ELECTROBUN_REPO_ROOT ?? "").trim();
+  if (override) {
+    const resolved = path.resolve(override);
+    if (!hasElectrobunWorkspaceRoot(resolved)) {
+      throw new Error(
+        `ELIZA_ELECTROBUN_REPO_ROOT does not point at an Electrobun workspace root: ${resolved}`,
+      );
+    }
+    return resolved;
+  }
 
-	return findElizaRepoRoot(startDir);
+  return findElizaRepoRoot(startDir);
 }
 
 const repoRoot = resolveElectrobunRepoRoot(electrobunDir);
 const rendererDistDir = path.relative(
-	electrobunDir,
-	fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
-		? path.join(repoRoot, "packages/app/dist")
-		: path.join(repoRoot, "apps/app/dist"),
+  electrobunDir,
+  fs.existsSync(path.join(repoRoot, "packages/app/package.json"))
+    ? path.join(repoRoot, "packages/app/dist")
+    : path.join(repoRoot, "apps/app/dist"),
 );
 function hasBrokenSymlink(filePath: string): boolean {
-	try {
-		return fs.lstatSync(filePath).isSymbolicLink() && !fs.existsSync(filePath);
-	} catch {
-		return false;
-	}
+  try {
+    return fs.lstatSync(filePath).isSymbolicLink() && !fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
 }
 
 function resolveRuntimeBundleSourcePath(rootDir: string): string {
-	const runtimeDistPath = path.join(rootDir, "dist");
-	const runtimeNodeModulesPath = path.join(runtimeDistPath, "node_modules");
-	if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
-		return runtimeDistPath;
-	}
+  const runtimeDistPath = path.join(rootDir, "dist");
+  const runtimeNodeModulesPath = path.join(runtimeDistPath, "node_modules");
+  if (!hasBrokenSymlink(runtimeNodeModulesPath)) {
+    return runtimeDistPath;
+  }
 
-	const sanitizedDistPath = path.join(
-		electrobunDir,
-		".generated",
-		"runtime-dist",
-	);
-	fs.rmSync(sanitizedDistPath, { recursive: true, force: true });
-	fs.mkdirSync(sanitizedDistPath, { recursive: true });
-	for (const entry of fs.readdirSync(runtimeDistPath)) {
-		if (entry === "node_modules") continue;
-		fs.cpSync(
-			path.join(runtimeDistPath, entry),
-			path.join(sanitizedDistPath, entry),
-			{
-				recursive: true,
-				dereference: false,
-			},
-		);
-	}
-	return sanitizedDistPath;
+  const sanitizedDistPath = path.join(
+    electrobunDir,
+    ".generated",
+    "runtime-dist",
+  );
+  fs.rmSync(sanitizedDistPath, { recursive: true, force: true });
+  fs.mkdirSync(sanitizedDistPath, { recursive: true });
+  for (const entry of fs.readdirSync(runtimeDistPath)) {
+    if (entry === "node_modules") continue;
+    fs.cpSync(
+      path.join(runtimeDistPath, entry),
+      path.join(sanitizedDistPath, entry),
+      {
+        recursive: true,
+        dereference: false,
+      },
+    );
+  }
+  return sanitizedDistPath;
 }
 
 const runtimeBundleSourcePath = resolveRuntimeBundleSourcePath(repoRoot);
 const runtimeBundleDistDir = path.relative(
-	electrobunDir,
-	runtimeBundleSourcePath,
+  electrobunDir,
+  runtimeBundleSourcePath,
 );
 const runtimeBundleNodeModulesDir = path.join(
-	runtimeBundleDistDir,
-	"node_modules",
+  runtimeBundleDistDir,
+  "node_modules",
 );
 const runtimeBundleNodeModulesPath = path.join(
-	runtimeBundleSourcePath,
-	"node_modules",
+  runtimeBundleSourcePath,
+  "node_modules",
 );
 const useMacIconsetBuild = isTruthyEnv(
 	process.env.ELIZA_ELECTROBUN_USE_ICONSET,
 );
 const repoPluginsJsonPath = path.relative(
-	electrobunDir,
-	path.join(repoRoot, "plugins.json"),
+  electrobunDir,
+  path.join(repoRoot, "plugins.json"),
 );
 const repoPackageJsonPath = path.relative(
-	electrobunDir,
-	path.join(repoRoot, "package.json"),
+  electrobunDir,
+  path.join(repoRoot, "package.json"),
 );
 const defaultBrandConfigPath = path.join(
-	electrobunDir,
-	"assets",
-	"brand-config.json",
+  electrobunDir,
+  "assets",
+  "brand-config.json",
 );
 const generatedBrandConfigPath = path.join(
-	electrobunDir,
-	".generated",
-	"brand-config.json",
+  electrobunDir,
+  ".generated",
+  "brand-config.json",
 );
 const libMacWindowEffectsDylib = path.join(
-	electrobunDir,
-	"src",
-	"libMacWindowEffects.dylib",
+  electrobunDir,
+  "src",
+  "libMacWindowEffects.dylib",
 );
 
 function readJsonFile(filePath: string): Record<string, unknown> {
-	try {
-		const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
-		return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-			? parsed
-			: {};
-	} catch {
-		return {};
-	}
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch {
+    return {};
+  }
 }
 
 type EntitlementValue = boolean | string | string[];
@@ -280,154 +280,154 @@ type EntitlementValue = boolean | string | string[];
  * sandbox build with no entitlements.
  */
 function parseEntitlementsPlist(
-	filePath: string,
+  filePath: string,
 ): Record<string, EntitlementValue> {
-	const xml = fs.readFileSync(filePath, "utf8");
-	const dictMatch = xml.match(/<dict>([\s\S]*?)<\/dict>/);
-	if (!dictMatch?.[1]) {
-		throw new Error(`Entitlements plist has no <dict> body: ${filePath}`);
-	}
-	const body = dictMatch[1];
-	const out: Record<string, EntitlementValue> = {};
-	const keyRe =
-		/<key>([^<]+)<\/key>\s*(<true\/>|<false\/>|<string>([^<]*)<\/string>|<array>([\s\S]*?)<\/array>)/g;
-	for (const match of body.matchAll(keyRe)) {
-		const key = match[1];
-		const valueTag = match[2];
-		if (!key || !valueTag) continue;
-		if (valueTag === "<true/>") {
-			out[key] = true;
-		} else if (valueTag === "<false/>") {
-			out[key] = false;
-		} else if (valueTag.startsWith("<string>")) {
-			out[key] = match[3] ?? "";
-		} else if (valueTag.startsWith("<array>")) {
-			const inner = match[4] ?? "";
-			out[key] = Array.from(inner.matchAll(/<string>([^<]*)<\/string>/g)).map(
-				(m) => m[1] ?? "",
-			);
-		}
-	}
-	return out;
+  const xml = fs.readFileSync(filePath, "utf8");
+  const dictMatch = xml.match(/<dict>([\s\S]*?)<\/dict>/);
+  if (!dictMatch?.[1]) {
+    throw new Error(`Entitlements plist has no <dict> body: ${filePath}`);
+  }
+  const body = dictMatch[1];
+  const out: Record<string, EntitlementValue> = {};
+  const keyRe =
+    /<key>([^<]+)<\/key>\s*(<true\/>|<false\/>|<string>([^<]*)<\/string>|<array>([\s\S]*?)<\/array>)/g;
+  for (const match of body.matchAll(keyRe)) {
+    const key = match[1];
+    const valueTag = match[2];
+    if (!key || !valueTag) continue;
+    if (valueTag === "<true/>") {
+      out[key] = true;
+    } else if (valueTag === "<false/>") {
+      out[key] = false;
+    } else if (valueTag.startsWith("<string>")) {
+      out[key] = match[3] ?? "";
+    } else if (valueTag.startsWith("<array>")) {
+      const inner = match[4] ?? "";
+      out[key] = Array.from(inner.matchAll(/<string>([^<]*)<\/string>/g)).map(
+        (m) => m[1] ?? "",
+      );
+    }
+  }
+  return out;
 }
 
 function trimEnv(name: string): string {
-	return (process.env[name] ?? "").trim();
+  return (process.env[name] ?? "").trim();
 }
 
 export function resolveElectrobunCopyMap({
-	buildVariant,
-	runtimeDistDir,
-	embedRuntime = buildVariant !== "store",
+  buildVariant,
+  runtimeDistDir,
+  embedRuntime = buildVariant !== "store",
 }: {
-	buildVariant: "store" | "direct";
-	runtimeDistDir: string;
-	embedRuntime?: boolean;
+  buildVariant: "store" | "direct";
+  runtimeDistDir: string;
+  embedRuntime?: boolean;
 }): Record<string, string> {
-	const copy: Record<string, string> = {
-		[rendererDistDir]: "renderer",
-		"src/preload.js": "bun/preload.js",
-		"src/dynamic-views/demo": "bun/demo",
-		"src/trace/views": "bun/trace/views",
-		"src/launch/views": "bun/launch/views",
-		"assets/appIcon.png": "assets/appIcon.png",
-		"assets/appIcon.ico": "assets/appIcon.ico",
-	};
+  const copy: Record<string, string> = {
+    [rendererDistDir]: "renderer",
+    "src/preload.js": "bun/preload.js",
+    "src/dynamic-views/demo": "bun/demo",
+    "src/trace/views": "bun/trace/views",
+    "src/launch/views": "bun/launch/views",
+    "assets/appIcon.png": "assets/appIcon.png",
+    "assets/appIcon.ico": "assets/appIcon.ico",
+  };
 
-	if (buildVariant !== "store" && embedRuntime) {
-		copy[runtimeBundleDistDir] = runtimeDistDir;
-		if (fs.existsSync(runtimeBundleNodeModulesPath)) {
-			copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
-		}
-		if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
-			copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
-		}
-		copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
-	}
+  if (buildVariant !== "store" && embedRuntime) {
+    copy[runtimeBundleDistDir] = runtimeDistDir;
+    if (fs.existsSync(runtimeBundleNodeModulesPath)) {
+      copy[runtimeBundleNodeModulesDir] = `${runtimeDistDir}/node_modules`;
+    }
+    if (fs.existsSync(path.join(repoRoot, "plugins.json"))) {
+      copy[repoPluginsJsonPath] = `${runtimeDistDir}/plugins.json`;
+    }
+    copy[repoPackageJsonPath] = `${runtimeDistDir}/package.json`;
+  }
 
-	return copy;
+  return copy;
 }
 
 function resolveBrandConfigCopySource({
-	appName,
-	appId,
-	urlScheme,
+  appName,
+  appId,
+  urlScheme,
 }: {
-	appName: string;
-	appId: string;
-	urlScheme: string;
+  appName: string;
+  appId: string;
+  urlScheme: string;
 }): string {
-	const explicitConfigPath = trimEnv("ELIZA_BRAND_CONFIG_PATH");
-	const namespace = trimEnv("ELIZA_NAMESPACE");
-	const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
-	const hasBrandOverride = Boolean(
-		explicitConfigPath ||
-			trimEnv("ELIZA_APP_NAME") ||
-			trimEnv("ELIZA_APP_ID") ||
-			trimEnv("ELIZA_URL_SCHEME") ||
-			namespace ||
-			appDescription,
-	);
+  const explicitConfigPath = trimEnv("ELIZA_BRAND_CONFIG_PATH");
+  const namespace = trimEnv("ELIZA_NAMESPACE");
+  const appDescription = trimEnv("ELIZA_APP_DESCRIPTION");
+  const hasBrandOverride = Boolean(
+    explicitConfigPath ||
+      trimEnv("ELIZA_APP_NAME") ||
+      trimEnv("ELIZA_APP_ID") ||
+      trimEnv("ELIZA_URL_SCHEME") ||
+      namespace ||
+      appDescription,
+  );
 
-	if (!hasBrandOverride) {
-		return "assets/brand-config.json";
-	}
+  if (!hasBrandOverride) {
+    return "assets/brand-config.json";
+  }
 
-	const fileConfig = explicitConfigPath
-		? readJsonFile(path.resolve(explicitConfigPath))
-		: readJsonFile(defaultBrandConfigPath);
-	const configDirName =
-		trimEnv("ELIZA_CONFIG_DIR_NAME") ||
-		(explicitConfigPath &&
-		typeof fileConfig.configDirName === "string" &&
-		fileConfig.configDirName.trim()
-			? fileConfig.configDirName
-			: appName);
-	const brandConfig = {
-		...fileConfig,
-		appName,
-		appId,
-		urlScheme,
-		buildVariant:
-			process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
-		namespace: namespace || fileConfig.namespace || "elizaos",
-		configDirName,
-		...(appDescription
-			? { appDescription }
-			: typeof fileConfig.appDescription === "string"
-				? { appDescription: fileConfig.appDescription }
-				: {}),
-	};
+  const fileConfig = explicitConfigPath
+    ? readJsonFile(path.resolve(explicitConfigPath))
+    : readJsonFile(defaultBrandConfigPath);
+  const configDirName =
+    trimEnv("ELIZA_CONFIG_DIR_NAME") ||
+    (explicitConfigPath &&
+    typeof fileConfig.configDirName === "string" &&
+    fileConfig.configDirName.trim()
+      ? fileConfig.configDirName
+      : appName);
+  const brandConfig = {
+    ...fileConfig,
+    appName,
+    appId,
+    urlScheme,
+    buildVariant:
+      process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct",
+    namespace: namespace || fileConfig.namespace || "elizaos",
+    configDirName,
+    ...(appDescription
+      ? { appDescription }
+      : typeof fileConfig.appDescription === "string"
+        ? { appDescription: fileConfig.appDescription }
+        : {}),
+  };
 
-	fs.mkdirSync(path.dirname(generatedBrandConfigPath), { recursive: true });
-	fs.writeFileSync(
-		generatedBrandConfigPath,
-		`${JSON.stringify(brandConfig, null, "\t")}\n`,
-	);
+  fs.mkdirSync(path.dirname(generatedBrandConfigPath), { recursive: true });
+  fs.writeFileSync(
+    generatedBrandConfigPath,
+    `${JSON.stringify(brandConfig, null, "\t")}\n`,
+  );
 
-	return path.relative(electrobunDir, generatedBrandConfigPath);
+  return path.relative(electrobunDir, generatedBrandConfigPath);
 }
 
 export function createElectrobunConfig(): ElectrobunConfig {
-	const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
-	const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
-	const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
-	const appVersion =
-		(process.env.ELIZA_APP_VERSION ?? "").trim() || "2.0.0-beta.0";
-	const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
-	const runtimeDistDir =
-		(process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
-	const buildVariant: "store" | "direct" =
-		process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
-	const embedRuntime = shouldEmbedRuntimeBundle(process.env);
-	const brandConfigCopySource = resolveBrandConfigCopySource({
-		appName,
-		appId,
-		urlScheme,
-	});
-	// Note: All paths relative to electrobun.config.ts location
-	// (eliza/packages/app-core/platforms/electrobun/)
-	// ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
+  const appName = (process.env.ELIZA_APP_NAME ?? "").trim() || "Eliza";
+  const appId = (process.env.ELIZA_APP_ID ?? "").trim() || "ai.elizaos.app";
+  const urlScheme = (process.env.ELIZA_URL_SCHEME ?? "").trim() || "elizaos";
+  const appVersion =
+    (process.env.ELIZA_APP_VERSION ?? "").trim() || "2.0.0-beta.0";
+  const releaseUrl = (process.env.ELIZA_RELEASE_URL ?? "").trim() || "";
+  const runtimeDistDir =
+    (process.env.ELIZA_RUNTIME_DIST_DIR ?? "").trim() || "eliza-dist";
+  const buildVariant: "store" | "direct" =
+    process.env.ELIZA_BUILD_VARIANT === "store" ? "store" : "direct";
+  const embedRuntime = shouldEmbedRuntimeBundle(process.env);
+  const brandConfigCopySource = resolveBrandConfigCopySource({
+    appName,
+    appId,
+    urlScheme,
+  });
+  // Note: All paths relative to electrobun.config.ts location
+  // (eliza/packages/app-core/platforms/electrobun/)
+  // ../../../../../ goes to eliza repo root where dist/, plugins.json, package.json exist
 
 	return {
 		app: {

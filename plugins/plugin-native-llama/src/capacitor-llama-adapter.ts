@@ -273,7 +273,9 @@ function fallbackHardwareInfo(
   ).navigator;
   const totalRamGb = numberFromUnknown(nav?.deviceMemory) ?? 0;
   const gpu =
-    platform === "ios" ? ({ backend: "metal", available: true } as const) : null;
+    platform === "ios"
+      ? ({ backend: "metal", available: true } as const)
+      : null;
   return {
     platform,
     deviceModel: platform,

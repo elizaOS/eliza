@@ -971,8 +971,7 @@ export function withBrowser<TBase extends Constructor<LifeOpsServiceBase>>(
           nowIso,
         );
       } else {
-        const existingPendingPairingTokens =
-          credential.pendingPairingTokens;
+        const existingPendingPairingTokens = credential.pendingPairingTokens;
         const pendingPairingTokens = normalizePendingBrowserPairingTokenHashes(
           [
             pairingTokenHash,

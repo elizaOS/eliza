@@ -1,27 +1,17 @@
 /**
- * VoiceEmotionClassifier tests.
+ * Pure-function tests for voice-emotion-classifier.ts.
  *
- * These tests cover the pure-TS surface of the classifier — the V-A-D →
- * `ExpressiveEmotion` projection table, error gating on inputs that don't
- * match the model contract, and the lazy-load behaviour against a *fake*
- * ONNX session. We do NOT load the real Wav2Small ONNX in CI — that file
- * lives in the eliza-1 voice bundle and is not vendored into the repo.
- *
- * The fake session is plugged in by monkey-patching the `onnx-runtime`
- * loader cache via `setLoadOnnxRuntimeForTesting` — but that helper does
- * not exist yet (the existing code uses a private memoised promise). To
- * keep test isolation honest we instead exercise the classifier through
- * the constructor + projection helpers, and the test that asserts the
- * loader contract is a structural import smoke test.
+ * Covers the V-A-D → `ExpressiveEmotion` projection table and the 7-class
+ * logit interpreter. The ONNX-backed `VoiceEmotionClassifier` class was
+ * removed when `onnxruntime-node` was dropped; inference now goes through
+ * `VoiceEmotionGgmlClassifier` in `voice-emotion-classifier-ggml.ts`.
  */
 
 import { describe, expect, it } from "vitest";
 import {
 	interpretCls7Output,
 	projectVadToExpressiveEmotion,
-	VoiceEmotionClassifier,
 	VoiceEmotionClassifierError,
-	type VoiceEmotionClassifierOutput,
 	WAV2SMALL_INT8_MODEL_ID,
 	WAV2SMALL_MIN_SAMPLES,
 	WAV2SMALL_SAMPLE_RATE,
@@ -209,37 +199,12 @@ describe("interpretCls7Output (cls7 head)", () => {
 	});
 });
 
-describe("VoiceEmotionClassifier construction", () => {
-	it("requires a non-empty model path", () => {
-		expect(() => new VoiceEmotionClassifier({ modelPath: "" })).toThrow(
-			VoiceEmotionClassifierError,
-		);
-	});
-
-	it("defaults the model id to the int8 student", () => {
-		// We can construct without loading; loading happens lazily.
-		const c = new VoiceEmotionClassifier({ modelPath: "/tmp/nope.onnx" });
-		expect(c).toBeInstanceOf(VoiceEmotionClassifier);
-		// modelId is private; we cover its surfaced value through `classify` in
-		// integration tests. Smoke: the const is what we expect.
+describe("model id constants", () => {
+	it("WAV2SMALL_INT8_MODEL_ID is the expected stable string", () => {
 		expect(WAV2SMALL_INT8_MODEL_ID).toBe("wav2small-msp-dim-int8");
 	});
 
-	it("classify rejects a Float32Array that is shorter than the minimum window", async () => {
-		const c = new VoiceEmotionClassifier({ modelPath: "/tmp/nope.onnx" });
-		const tooShort = new Float32Array(WAV2SMALL_MIN_SAMPLES - 1);
-		await expect(c.classify(tooShort)).rejects.toBeInstanceOf(
-			VoiceEmotionClassifierError,
-		);
-	});
-
-	it("classify rejects a non-Float32Array PCM input", async () => {
-		const c = new VoiceEmotionClassifier({ modelPath: "/tmp/nope.onnx" });
-		const classifyInvalidPcm = c.classify.bind(c) as (
-			pcm: Uint8Array,
-		) => Promise<VoiceEmotionClassifierOutput>;
-		await expect(
-			classifyInvalidPcm(new Uint8Array(WAV2SMALL_SAMPLE_RATE)),
-		).rejects.toBeInstanceOf(VoiceEmotionClassifierError);
+	it("WAV2SMALL_MIN_SAMPLES is at least one second at 16 kHz", () => {
+		expect(WAV2SMALL_MIN_SAMPLES).toBeGreaterThanOrEqual(WAV2SMALL_SAMPLE_RATE);
 	});
 });

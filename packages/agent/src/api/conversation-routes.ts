@@ -74,13 +74,11 @@ interface DiscordProfileLike {
   username?: string;
 }
 
-const {
-  cacheDiscordAvatarForRuntime,
-  isCanonicalDiscordSource,
-  resolveDiscordMessageAuthorProfile,
-  resolveDiscordUserProfile,
-  resolveStoredDiscordEntityProfile,
-} = (await import("@elizaos/plugin-discord")) as {
+// Lazy memoized loader — previously module-scope `await import`, which forced
+// @elizaos/plugin-discord (and its transitive deps) to load on every agent
+// boot. Now only loads when a conversation actually contains Discord-sourced
+// messages.
+type DiscordConversationModule = {
   cacheDiscordAvatarForRuntime: (
     runtime: AgentRuntime,
     avatarUrl: string | undefined,
@@ -101,6 +99,15 @@ const {
     entityId: string | undefined,
   ) => Promise<DiscordProfileLike | null>;
 };
+
+let discordConversationPromise: Promise<DiscordConversationModule> | null =
+  null;
+function getDiscordConversationApi(): Promise<DiscordConversationModule> {
+  discordConversationPromise ??= import(
+    "@elizaos/plugin-discord"
+  ) as Promise<unknown> as Promise<DiscordConversationModule>;
+  return discordConversationPromise;
+}
 
 function chunkVisibleTextForSse(text: string): string[] {
   const chunks: string[] = [];
@@ -1277,17 +1284,19 @@ export async function handleConversationRoutes(
         // plugin action logs with only `thought` / `actions` fields).
         // Without this filter they appear as blank chat bubbles.
         .filter((m) => m.text.trim().length > 0);
+      const discord = await getDiscordConversationApi();
       await Promise.all(
         messages.map(async (message) => {
-          if (!isCanonicalDiscordSource(message.source)) {
+          if (!discord.isCanonicalDiscordSource(message.source)) {
             return;
           }
 
           try {
-            const storedSenderProfile = await resolveStoredDiscordEntityProfile(
-              runtime,
-              message.senderEntityId,
-            );
+            const storedSenderProfile =
+              await discord.resolveStoredDiscordEntityProfile(
+                runtime,
+                message.senderEntityId,
+              );
             if (!message.from && storedSenderProfile?.displayName) {
               message.from = storedSenderProfile.displayName;
             }
@@ -1300,7 +1309,7 @@ export async function handleConversationRoutes(
 
             const messageAuthorProfile =
               message.rawDiscordChannelId && message.rawDiscordMessageId
-                ? await resolveDiscordMessageAuthorProfile(
+                ? await discord.resolveDiscordMessageAuthorProfile(
                     runtime,
                     message.rawDiscordChannelId,
                     message.rawDiscordMessageId,
@@ -1321,7 +1330,7 @@ export async function handleConversationRoutes(
               storedSenderProfile?.rawUserId ??
               messageAuthorProfile?.rawUserId;
             if (rawSenderId) {
-              const profile = await resolveDiscordUserProfile(
+              const profile = await discord.resolveDiscordUserProfile(
                 runtime,
                 rawSenderId,
               );
@@ -1338,7 +1347,7 @@ export async function handleConversationRoutes(
               }
             }
 
-            message.avatarUrl = await cacheDiscordAvatarForRuntime(
+            message.avatarUrl = await discord.cacheDiscordAvatarForRuntime(
               runtime,
               message.avatarUrl,
               rawSenderId,

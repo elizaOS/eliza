@@ -45,6 +45,7 @@ class Exporter:
         overall_score: OverallScore,
         scenarios_hash: str,
         scoring_hash: str,
+        execution: dict[str, object] | None = None,
     ) -> Path:
         """
         Export run results as JSON.
@@ -64,6 +65,7 @@ class Exporter:
                 "scenario_set_hash": scenarios_hash,
                 "scoring_config_hash": scoring_hash,
                 "exported_at": datetime.utcnow().isoformat(),
+                "execution": execution or {},
             },
             "run": {
                 "run_id": run_metrics.run_id,
@@ -392,4 +394,3 @@ class Exporter:
     def compute_hash(content: str) -> str:
         """Compute SHA-256 hash of content."""
         return hashlib.sha256(content.encode()).hexdigest()[:16]
-

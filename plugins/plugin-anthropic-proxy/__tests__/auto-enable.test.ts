@@ -15,7 +15,9 @@ describe("plugin-anthropic-proxy auto-enable", () => {
   });
 
   it("is case-insensitive and trims whitespace", () => {
-    expect(shouldEnable(ctx({ CLAUDE_MAX_PROXY_MODE: "  INLINE  " }))).toBe(true);
+    expect(shouldEnable(ctx({ CLAUDE_MAX_PROXY_MODE: "  INLINE  " }))).toBe(
+      true,
+    );
     expect(shouldEnable(ctx({ CLAUDE_MAX_PROXY_MODE: "Shared" }))).toBe(true);
   });
 

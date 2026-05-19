@@ -3,9 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 
-import {
-  writeCapabilities,
-} from "./build-llama-cpp-dflash.mjs";
+import { writeCapabilities } from "./build-llama-cpp-dflash.mjs";
 
 function makeTempTree() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-cuda-evidence-"));
@@ -54,7 +52,7 @@ function stageDflashDraftSources(cacheDir) {
   );
   fs.writeFileSync(
     path.join(cacheDir, "common", "arg.cpp"),
-    '--spec-type common_speculative_types_from_names\n',
+    "--spec-type common_speculative_types_from_names\n",
   );
 }
 
@@ -65,6 +63,18 @@ function stageRunnableHelp(outDir) {
     "#!/usr/bin/env bash\nprintf '%s\\n' 'dflash tbq3_0 tbq4_0 turbo3_tcq qjl q4_polar'\n",
   );
   fs.chmodSync(server, 0o755);
+}
+
+function stageCudaObjects(buildDir) {
+  for (const file of [
+    "dflash.cu.o",
+    "turboquant.cu.o",
+    "turbo-tcq.cu.o",
+    "qjl.cu.o",
+    "polarquant.cu.o",
+  ]) {
+    fs.writeFileSync(path.join(buildDir, file), "");
+  }
 }
 
 function withEnv(name, value, fn) {
@@ -87,6 +97,7 @@ test("linux CUDA capabilities require target-matching runtime dispatch evidence 
     stageCudaSources(cacheDir);
     stageDflashDraftSources(cacheDir);
     stageRunnableHelp(outDir);
+    stageCudaObjects(buildDir);
 
     const capabilities = writeCapabilities({
       outDir,
@@ -114,11 +125,7 @@ test("CUDA object/source scans fail closed when runtime evidence does not match 
   try {
     stageCudaSources(cacheDir);
     stageDflashDraftSources(cacheDir);
-    fs.writeFileSync(path.join(buildDir, "dflash.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "turboquant.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "turbo-tcq.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "qjl.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "polarquant.cu.o"), "");
+    stageCudaObjects(buildDir);
 
     const capabilities = withEnv(
       "ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE",
@@ -144,9 +151,9 @@ test("CUDA object/source scans fail closed when runtime evidence does not match 
       "turbo3_tcq",
       "turbo4",
     ]);
-    expect(
-      capabilities.runtimeDispatch.kernels.turbo3.requiredSmoke,
-    ).toMatch(/cuda_runner\.sh --report <path>/);
+    expect(capabilities.runtimeDispatch.kernels.turbo3.requiredSmoke).toMatch(
+      /cuda_runner\.sh --report <path>/,
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

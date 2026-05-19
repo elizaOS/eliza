@@ -2801,13 +2801,11 @@ export async function runLifeOperationHandler(
         ? (explicitCadence ?? deferredGoalDraft.request.cadence)
         : (deferredGoalDraft?.request.cadence ?? explicitCadence);
       let successCriteria = editingDeferredGoalDraft
-        ? (explicitSuccessCriteria ??
-          deferredGoalDraft.request.successCriteria)
+        ? (explicitSuccessCriteria ?? deferredGoalDraft.request.successCriteria)
         : (deferredGoalDraft?.request.successCriteria ??
           explicitSuccessCriteria);
       let supportStrategy = editingDeferredGoalDraft
-        ? (explicitSupportStrategy ??
-          deferredGoalDraft.request.supportStrategy)
+        ? (explicitSupportStrategy ?? deferredGoalDraft.request.supportStrategy)
         : (deferredGoalDraft?.request.supportStrategy ??
           explicitSupportStrategy);
       let goalMetadata: CreateLifeOpsGoalRequest["metadata"] | undefined =
@@ -3061,8 +3059,9 @@ export async function runLifeOperationHandler(
           intent,
           currentTitle: target.definition.title,
           currentCadenceKind: target.definition.cadence.kind,
-          currentWindows:
-            target.definition.windowPolicy.windows.map((w) => w.name),
+          currentWindows: target.definition.windowPolicy.windows.map(
+            (w) => w.name,
+          ),
         });
         if (llmFields) {
           if (llmFields.title) request.title = llmFields.title;

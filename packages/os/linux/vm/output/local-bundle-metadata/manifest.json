@@ -16,33 +16,18 @@
   "hardware_requirements": {
     "qemu": {
       "notes": "The scripted harness in scripts/boot.sh requires Linux KVM. Metadata generation does not.",
-      "recommended": [
-        "KVM on Linux or HVF on Intel macOS"
-      ],
-      "requires": [
-        "x86_64 CPU",
-        "QEMU"
-      ]
+      "recommended": ["KVM on Linux or HVF on Intel macOS"],
+      "requires": ["x86_64 CPU", "QEMU"]
     },
     "utm": {
       "notes": "Apple Silicon can emulate this x86_64 image, but that is slower and not the CI path.",
-      "recommended": [
-        "Intel Mac for x86_64 virtualization"
-      ],
-      "requires": [
-        "macOS",
-        "UTM"
-      ]
+      "recommended": ["Intel Mac for x86_64 virtualization"],
+      "requires": ["macOS", "UTM"]
     },
     "virtualbox": {
       "notes": "This x86_64 appliance is not a native Apple Silicon VirtualBox target.",
-      "recommended": [
-        "Intel/AMD Linux, Windows, or macOS host"
-      ],
-      "requires": [
-        "VirtualBox",
-        "x86_64 host CPU with VT-x or AMD-V"
-      ]
+      "recommended": ["Intel/AMD Linux, Windows, or macOS host"],
+      "requires": ["VirtualBox", "x86_64 host CPU with VT-x or AMD-V"]
     }
   },
   "host": {

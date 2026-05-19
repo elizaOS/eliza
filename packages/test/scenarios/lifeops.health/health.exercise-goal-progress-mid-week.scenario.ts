@@ -4,7 +4,7 @@
  * goal is achievable.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsGoal } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({

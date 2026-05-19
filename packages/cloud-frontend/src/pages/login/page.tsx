@@ -1,4 +1,4 @@
-import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
+import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import { CloudVideoBackground } from "@elizaos/ui";
 import { lazy, Suspense } from "react";
 import { Link } from "react-router-dom";
@@ -58,14 +58,14 @@ export default function LoginPage() {
           By signing in, you agree to the{" "}
           <Link
             to="/terms-of-service"
-            className="text-white transition-colors hover:text-[#FF5800]"
+            className="text-white transition-colors hover:text-[var(--brand-orange)]"
           >
             Terms
           </Link>{" "}
           and{" "}
           <Link
             to="/privacy-policy"
-            className="text-white transition-colors hover:text-[#FF5800]"
+            className="text-white transition-colors hover:text-[var(--brand-orange)]"
           >
             Privacy Policy
           </Link>

@@ -115,14 +115,18 @@ jobs:
           SNAP_STORE_CREDENTIALS: ${{ secrets.SNAP_STORE_CREDENTIALS }}
           APT_REPO_TOKEN: ${{ secrets.APT_REPO_TOKEN }}
         run: |
-          missing=0
+          # Downstream Snap / APT jobs gate on these readiness flags via `if:`.
+          # We intentionally do NOT fail the whole publish job when these
+          # secrets are missing: npm + PyPI publishing must keep working for
+          # forks / staging environments that have no Snap Store or APT repo
+          # access. The Snap/APT jobs themselves will skip cleanly when
+          # ready=false; an explicit warning preserves the signal in logs.
           if [[ -n "$SNAP_STORE_CREDENTIALS" ]]; then
             echo "snap_store_ready=true" >> "$GITHUB_OUTPUT"
           else
             echo "snap_store_ready=false" >> "$GITHUB_OUTPUT"
             if [[ "$INPUT_SNAP" == "true" ]]; then
-              echo "::error::SNAP_STORE_CREDENTIALS is required when Snap publishing is enabled."
-              missing=1
+              echo "::warning::SNAP_STORE_CREDENTIALS missing — skipping Snap publish even though inputs.snap=true."
             fi
           fi
 
@@ -131,12 +135,9 @@ jobs:
           else
             echo "apt_repo_ready=false" >> "$GITHUB_OUTPUT"
             if [[ "$INPUT_APT" == "true" ]]; then
-              echo "::error::APT_REPO_TOKEN is required when apt publishing is enabled."
-              missing=1
+              echo "::warning::APT_REPO_TOKEN missing — skipping APT publish even though inputs.apt=true."
             fi
           fi
-
-          exit "$missing"
 
   # ── PyPI ───────────────────────────────────────────────────────────────
   publish-pypi:

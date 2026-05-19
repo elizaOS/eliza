@@ -52,7 +52,8 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--model") args.model = next();
     else if (arg === "--start") args.startDate = new Date(next());
     else if (arg === "--end") args.endDate = new Date(next());
-    else if (arg === "--provider-spend-total") args.providerSpendTotal = Number(next());
+    else if (arg === "--provider-spend-total")
+      args.providerSpendTotal = Number(next());
     else if (arg === "--max-drift") args.maxDrift = Number(next());
     else if (arg === "--evidence-dir") args.evidenceDir = resolve(next());
     else if (arg === "--help" || arg === "-h") {
@@ -70,10 +71,16 @@ function parseArgs(argv: string[]): Args {
     }
   }
 
-  if (!Number.isFinite(args.startDate.getTime())) throw new Error("--start is invalid");
-  if (!Number.isFinite(args.endDate.getTime())) throw new Error("--end is invalid");
-  if (args.endDate <= args.startDate) throw new Error("--end must be after --start");
-  if (args.providerSpendTotal !== null && !Number.isFinite(args.providerSpendTotal)) {
+  if (!Number.isFinite(args.startDate.getTime()))
+    throw new Error("--start is invalid");
+  if (!Number.isFinite(args.endDate.getTime()))
+    throw new Error("--end is invalid");
+  if (args.endDate <= args.startDate)
+    throw new Error("--end must be after --start");
+  if (
+    args.providerSpendTotal !== null &&
+    !Number.isFinite(args.providerSpendTotal)
+  ) {
     throw new Error("--provider-spend-total must be numeric");
   }
   if (!Number.isFinite(args.maxDrift) || args.maxDrift < 0) {
@@ -90,14 +97,22 @@ function timestampForFile(): string {
     .replace(/\.\d{3}Z$/, "Z");
 }
 
-function writeEvidence(evidenceDir: string, gate: string, evidence: Record<string, unknown>) {
+function writeEvidence(
+  evidenceDir: string,
+  gate: string,
+  evidence: Record<string, unknown>,
+) {
   mkdirSync(evidenceDir, { recursive: true });
   const file = resolve(evidenceDir, `${gate}-${timestampForFile()}.json`);
   writeFileSync(file, `${JSON.stringify(evidence, null, 2)}\n`);
-  console.log(`[eliza1:${gate}] wrote ${relative(REPO_ROOT, file)} (${evidence.status})`);
+  console.log(
+    `[eliza1:${gate}] wrote ${relative(REPO_ROOT, file)} (${evidence.status})`,
+  );
 }
 
-function sum(records: readonly { usage_total_cost: string; ledger_total: string }) {
+function sum(
+  records: readonly { usage_total_cost: string; ledger_total: string },
+) {
   return records.reduce(
     (acc, record) => {
       acc.usage += Number(record.usage_total_cost);
@@ -193,10 +208,14 @@ async function main() {
   const usageRecordsTotal = Number(totals.usage.toFixed(6));
   const ledgerTotal = Number(totals.ledger.toFixed(6));
   const providerSpendTotal =
-    args.providerSpendTotal === null ? null : Number(args.providerSpendTotal.toFixed(6));
+    args.providerSpendTotal === null
+      ? null
+      : Number(args.providerSpendTotal.toFixed(6));
   const drift = Number(Math.abs(usageRecordsTotal - ledgerTotal).toFixed(6));
-  const hasProviderSpend = providerSpendTotal !== null && providerSpendTotal >= 0;
-  const costStatus = records.length > 0 && hasProviderSpend && drift <= args.maxDrift;
+  const hasProviderSpend =
+    providerSpendTotal !== null && providerSpendTotal >= 0;
+  const costStatus =
+    records.length > 0 && hasProviderSpend && drift <= args.maxDrift;
 
   writeEvidence(args.evidenceDir, "cost_reconciliation", {
     gate: "cost_reconciliation",
@@ -221,7 +240,8 @@ async function main() {
   const settlementIds = Array.isArray(latest?.settlement_transaction_ids)
     ? latest.settlement_transaction_ids
     : [];
-  const creditTransactionId = latest?.reservation_transaction_id ?? settlementIds[0] ?? null;
+  const creditTransactionId =
+    latest?.reservation_transaction_id ?? settlementIds[0] ?? null;
   const billingStatus = Boolean(
     latest?.usage_record_id && creditTransactionId && latest.idempotency_key,
   );

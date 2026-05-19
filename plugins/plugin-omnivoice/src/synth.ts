@@ -42,6 +42,18 @@ function encodeCString(s: string): Uint8Array {
   return buf;
 }
 
+function writePointerField(
+  view: DataView,
+  offset: number,
+  value: bigint | number,
+): void {
+  view.setBigUint64(
+    offset,
+    typeof value === "bigint" ? value : BigInt(value),
+    true,
+  );
+}
+
 /** Run synthesis with elizaOS-shaped options and return raw PCM result. */
 export async function runSynthesis(
   ctx: OmnivoiceContext,
@@ -59,17 +71,17 @@ export async function runSynthesis(
     const fields = layout.fields;
     const textBuf = encodeCString(opts.text);
     retain(textBuf);
-    view.setBigUint64(fields.text.offset, ffi.ptr(textBuf), true);
+    writePointerField(view, fields.text.offset, ffi.ptr(textBuf));
 
     if (opts.lang) {
       const langBuf = encodeCString(opts.lang);
       retain(langBuf);
-      view.setBigUint64(fields.lang.offset, ffi.ptr(langBuf), true);
+      writePointerField(view, fields.lang.offset, ffi.ptr(langBuf));
     }
     if (instruct) {
       const ibuf = encodeCString(instruct);
       retain(ibuf);
-      view.setBigUint64(fields.instruct.offset, ffi.ptr(ibuf), true);
+      writePointerField(view, fields.instruct.offset, ffi.ptr(ibuf));
     }
 
     if (typeof opts.frameOverride === "number" && opts.frameOverride > 0) {
@@ -137,7 +149,7 @@ export async function runSynthesis(
         ),
       );
       retain(refBuf);
-      view.setBigUint64(fields.ref_audio_24k.offset, ffi.ptr(refBuf), true);
+      writePointerField(view, fields.ref_audio_24k.offset, ffi.ptr(refBuf));
       view.setInt32(
         fields.ref_n_samples.offset,
         opts.reference.audio24k.length,
@@ -147,7 +159,7 @@ export async function runSynthesis(
     if (opts.reference?.text) {
       const rtxt = encodeCString(opts.reference.text);
       retain(rtxt);
-      view.setBigUint64(fields.ref_text.offset, ffi.ptr(rtxt), true);
+      writePointerField(view, fields.ref_text.offset, ffi.ptr(rtxt));
     }
   });
 }

@@ -1,4 +1,7 @@
+import { useT } from "@/providers/I18nProvider";
+
 export default function QRCode({ className }: { className?: string }) {
+  const t = useT();
   return (
     <svg
       className={className}
@@ -7,7 +10,9 @@ export default function QRCode({ className }: { className?: string }) {
       width="220"
       height="220"
     >
-      <title>Eliza QR code</title>
+      <title>
+        {t("homepage_eliza.qrcode.title", { defaultValue: "Eliza QR code" })}
+      </title>
       <rect x="0" y="0" width="220" fill="none" height="220" stroke="none" />
       <g transform="translate(10, 10)">
         <g shapeRendering="geometricPrecision" fill="#222222">

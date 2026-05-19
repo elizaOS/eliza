@@ -49,6 +49,13 @@ export interface UpgradeOptions {
   skipUpstream?: boolean;
 }
 
+export interface DeployOptions {
+  appId?: string;
+  domain?: string;
+  dryRun?: boolean;
+  verbose?: boolean;
+}
+
 export interface PluginTemplateValues extends Record<string, string> {
   displayName: string;
   elizaVersion: string;

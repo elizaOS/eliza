@@ -14,5 +14,9 @@ export default createViewBundleConfig({
     "puppeteer-core",
     "puppeteer",
     "jsdom",
+    // Mobile-only native plugin. Resolved at runtime on Capacitor builds;
+    // pruned from desktop / snap workspaces, where the view bundle still
+    // needs to compile.
+    "@elizaos/capacitor-mobile-signals",
   ],
 });

@@ -7,7 +7,7 @@
  * intent as plain chat.
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 const ACCEPTED_REMINDER_ACTIONS = ["CREATE_TASK", "SCHEDULE_FOLLOW_UP", "LIFE"];
 

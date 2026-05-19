@@ -1611,9 +1611,7 @@ export function IMessageConnectorCard() {
               <AccessPips items={bridgePips} label="iMessage bridge status" />
             </summary>
             <div className="mt-2 rounded-xl border border-border/40 bg-card/18 px-3 py-2 text-xs text-muted">
-              <div>
-                Send path: {formatIMessageSendMode(status.sendMode)}
-              </div>
+              <div>Send path: {formatIMessageSendMode(status.sendMode)}</div>
               <div>Read path: {nativeReadDegraded ? "limited" : "ready"}</div>
             </div>
           </details>

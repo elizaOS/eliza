@@ -217,6 +217,7 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
+import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
   type SandboxMode,
@@ -421,6 +422,54 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
     return;
   }
   _coreStaticPluginsRegistrationPromise = (async () => {
+    // Per-plugin timing + timeout. Converts a silent boot hang into a named,
+    // attributable failure: the log line tells you which plugin is stuck,
+    // and the timeout prevents one bad module (e.g. plugin-sql opening
+    // PGlite on a locked data dir) from holding the container forever.
+    //
+    // plugin-sql is required — if it times out we throw. Optional plugins
+    // resolve to `null` on timeout so the boot continues without them.
+    const bootTimeoutMs = Number(
+      process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
+    );
+    logger.info(`[boot] resolving plugins (timeout=${bootTimeoutMs}ms)`);
+
+    const trackImport = async <T>(
+      name: string,
+      loader: () => Promise<T>,
+      { required }: { required: boolean },
+    ): Promise<T | null> => {
+      const startedAt = Date.now();
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(
+            new Error(`plugin ${name} timed out after ${bootTimeoutMs}ms`),
+          );
+        }, bootTimeoutMs);
+        if (typeof timer.unref === "function") timer.unref();
+      });
+      try {
+        const result = await Promise.race([loader(), timeout]);
+        logger.info(`[boot] ${name} loaded in ${Date.now() - startedAt}ms`);
+        return result;
+      } catch (err) {
+        const elapsed = Date.now() - startedAt;
+        if (required) {
+          logger.error(
+            `[boot] ${name} FAILED after ${elapsed}ms: ${formatError(err)}`,
+          );
+          throw err;
+        }
+        logger.warn(
+          `[boot] ${name} skipped after ${elapsed}ms: ${formatError(err)}`,
+        );
+        return null;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
+
     const [
       pluginSql,
       pluginLocalEmbedding,
@@ -437,21 +486,79 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginOpenai,
       pluginGoogle,
     ] = await Promise.all([
-      getPluginSql(),
-      getPluginLocalEmbedding(),
-      getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
-      getOptionalPlugin("@elizaos/plugin-shell"),
-      getOptionalPlugin("@elizaos/plugin-coding-tools"),
-      getOptionalPlugin("@elizaos/plugin-commands"),
-      getOptionalPlugin("@elizaos/plugin-video"),
-      getOptionalPlugin("@elizaos/plugin-background-runner"),
-      getOptionalPlugin("@elizaos/plugin-elizacloud"),
-      getOptionalPlugin("@elizaos/plugin-ollama"),
-      getOptionalPlugin("@elizaos/plugin-mlx"),
-      getOptionalPlugin("@elizaos/plugin-anthropic"),
-      getOptionalPlugin("@elizaos/plugin-openai"),
-      getOptionalPlugin("@elizaos/plugin-google"),
+      trackImport("@elizaos/plugin-sql", () => getPluginSql(), {
+        required: true,
+      }),
+      trackImport(
+        "@elizaos/plugin-local-inference",
+        () => getPluginLocalEmbedding(),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-agent-orchestrator",
+        () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-shell",
+        () => getOptionalPlugin("@elizaos/plugin-shell"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-coding-tools",
+        () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-commands",
+        () => getOptionalPlugin("@elizaos/plugin-commands"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-video",
+        () => getOptionalPlugin("@elizaos/plugin-video"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-background-runner",
+        () => getOptionalPlugin("@elizaos/plugin-background-runner"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-elizacloud",
+        () => getOptionalPlugin("@elizaos/plugin-elizacloud"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-ollama",
+        () => getOptionalPlugin("@elizaos/plugin-ollama"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-mlx",
+        () => getOptionalPlugin("@elizaos/plugin-mlx"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-anthropic",
+        () => getOptionalPlugin("@elizaos/plugin-anthropic"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-openai",
+        () => getOptionalPlugin("@elizaos/plugin-openai"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-google",
+        () => getOptionalPlugin("@elizaos/plugin-google"),
+        { required: false },
+      ),
     ]);
+
+    if (!pluginSql) {
+      throw new Error("[boot] @elizaos/plugin-sql failed to load");
+    }
 
     Object.assign(STATIC_ELIZA_PLUGINS, {
       "@elizaos/plugin-sql": pluginSql,
@@ -673,7 +780,6 @@ export function configureLocalEmbeddingPlugin(
       return String(value);
     }
     if (value === "auto" || value === "max") {
-      // plugin-local-embedding understands "auto" and treats it as runtime max
       return "auto";
     }
     return undefined;
@@ -688,9 +794,9 @@ export function configureLocalEmbeddingPlugin(
     process.env[key] = value;
   };
 
-  // Keep plugin-local-embedding aligned with Eliza's hardware-adaptive preset
-  // selection. Hard-coding the standard preset here forces slower first-run
-  // downloads on Windows and low-spec machines.
+  // Apply Eliza's hardware-adaptive preset selection. Hard-coding the standard
+  // preset here forces slower first-run downloads on Windows and low-spec
+  // machines.
   setEnvIfMissing(
     "LOCAL_EMBEDDING_MODEL",
     configuredModel || detectedPreset.model,
@@ -2912,19 +3018,25 @@ export async function startEliza(
   // Boot-time vault hydration: migrate plaintext sensitive values into the
   // OS-keychain vault and resolve vault://KEY sentinels in config.env.
   //
-  // Skipped on mobile. `hydrateWalletKeysFromNodePlatformSecureStore` and
-  // `runVaultBootstrap` both reach for the OS keychain through
-  // `defaultMasterKey().load()` (packages/vault/src/master-key.ts:217)
-  // and open a second PGlite worker at `<stateDir>/.vault-pglite/`. Neither
-  // is meaningful on Android: there is no D-Bus session for the libsecret
-  // backend (vault falls back to an ELIZA_VAULT_PASSPHRASE-derived key,
-  // which `ElizaAgentService` already sets per-install from ANDROID_ID),
-  // the spawned bun process has no sensitive secrets to migrate (those
-  // arrive through the service env — per-boot bearer token, llama config),
-  // and the second PGlite worker just doubles disk + RAM pressure on a
-  // 4 GB device. Mirrors the `if (!isMobilePlatform()) { ... }` guard at
-  // line ~2888 around the `applyCloudConfigToEnv` block.
-  if (!isMobilePlatform()) {
+  // Skipped on mobile AND in cloud-provisioned containers. The vault flow
+  // (`hydrateWalletKeysFromNodePlatformSecureStore` + `runVaultBootstrap`)
+  // reaches for the OS keychain through `defaultMasterKey().load()`
+  // (packages/vault/src/master-key.ts:217) and opens a second PGlite worker
+  // at `<stateDir>/.vault-pglite/`. Both target environments where it's
+  // pointless or actively harmful:
+  //   - Android: no D-Bus for libsecret (vault falls back to an
+  //     ELIZA_VAULT_PASSPHRASE-derived key, which `ElizaAgentService` already
+  //     sets per-install from ANDROID_ID), the spawned bun process has no
+  //     plaintext secrets to migrate (env arrives from the service), and the
+  //     second PGlite worker doubles disk + RAM pressure on a 4 GB device.
+  //   - Cloud sandbox (Docker, ELIZA_CLOUD_PROVISIONED=1): the daemon already
+  //     injects every secret as a real env var (ELIZA_API_TOKEN,
+  //     ELIZAOS_CLOUD_API_KEY, OPENAI_API_KEY, …), libsecret isn't installed
+  //     in the slim image, and the second PGlite worker has been observed to
+  //     hang vault-pglite init silently — blocking the HTTP listen and
+  //     tripping the 180s health check on every fresh provision.
+  const isCloudProvisioned = process.env.ELIZA_CLOUD_PROVISIONED === "1";
+  if (!isMobilePlatform() && !isCloudProvisioned) {
     try {
       const { hydrateWalletKeysFromNodePlatformSecureStore } =
         await importAppCoreRuntime();
@@ -3102,26 +3214,40 @@ export async function startEliza(
 
   // 2f. Install the multi-account pool shims and apply selected direct API
   //     accounts before plugin resolution snapshots process.env.
-  try {
-    const accountPool = await importAppCoreRuntime();
-    accountPool.getDefaultAccountPool();
-    await accountPool.applyAccountPoolApiCredentials({
-      activeBackend: resolveServiceRoutingInConfig(
-        config as Record<string, unknown>,
-      )?.llmText?.backend,
-      accountStrategies: (
-        config as Record<string, unknown> & {
-          accountStrategies?: Record<string, unknown>;
-        }
-      ).accountStrategies,
-      serviceRouting: resolveServiceRoutingInConfig(
-        config as Record<string, unknown>,
-      ),
-    });
-    accountPool.startAccountPoolKeepAlive();
-  } catch (err) {
-    logger.debug(`[eliza] Account pool bootstrap skipped: ${formatError(err)}`);
-  }
+  //
+  // Skipped in cloud containers (ELIZA_CLOUD_PROVISIONED=1): the multi-account
+  // pool is a desktop feature for users juggling several accounts per provider
+  // (work / personal / throwaway). Cloud sandboxes get one set of credentials
+  // injected by the daemon as env vars, so there's nothing to multiplex. The
+  // dynamic `importAppCoreRuntime()` here also pulls in
+  // `app-core/services/account-pool`, which statically imports from
+  // `@elizaos/agent` — completing a circular import that deadlocks Node ESM
+  // module evaluation in the cloud Docker boot path. Manifests as a silent
+  // hang at this await call after the node:sqlite experimental warning; PID 1
+  // sits in `ep_poll`, no listen, 180s health timeout.
+  if (process.env.ELIZA_CLOUD_PROVISIONED !== "1")
+    try {
+      const accountPool = await importAppCoreRuntime();
+      accountPool.getDefaultAccountPool();
+      await accountPool.applyAccountPoolApiCredentials({
+        activeBackend: resolveServiceRoutingInConfig(
+          config as Record<string, unknown>,
+        )?.llmText?.backend,
+        accountStrategies: (
+          config as Record<string, unknown> & {
+            accountStrategies?: Record<string, unknown>;
+          }
+        ).accountStrategies,
+        serviceRouting: resolveServiceRoutingInConfig(
+          config as Record<string, unknown>,
+        ),
+      });
+      accountPool.startAccountPoolKeepAlive();
+    } catch (err) {
+      logger.debug(
+        `[eliza] Account pool bootstrap skipped: ${formatError(err)}`,
+      );
+    }
 
   // 2g. Apply subscription-based credentials (Claude Max, Codex Max).
   //     Failure is non-fatal — the agent can still start with other providers.
@@ -3216,8 +3342,13 @@ export async function startEliza(
   // routing layer, then write the resolved value into process.env so
   // the synchronous runtime.getSetting fast path picks it up. Idempotent;
   // safe to run multiple times. Opt-out via
-  // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1.
-  if (process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1") {
+  // ELIZA_DISABLE_VAULT_PROFILE_RESOLVER=1. Auto-disabled in cloud containers
+  // (ELIZA_CLOUD_PROVISIONED=1) — vault PGlite init hangs in the slim Docker
+  // image; see the boot-time vault hydration block earlier in this function.
+  if (
+    process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED !== "1"
+  ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
       const { applyVaultProfilesForAgent } = await import(
@@ -3236,7 +3367,12 @@ export async function startEliza(
   // the *user* wallet; per-agent wallets live inside the encrypted vault and
   // are surfaced separately in the in-app browser. Idempotent — existing
   // wallets are preserved. Opt-out via ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP=1.
-  if (process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1") {
+  // Auto-disabled in cloud containers (ELIZA_CLOUD_PROVISIONED=1) — same
+  // PGlite vault init hang as the earlier vault hydration block.
+  if (
+    process.env.ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP !== "1" &&
+    process.env.ELIZA_CLOUD_PROVISIONED !== "1"
+  ) {
     try {
       const { sharedVault } = await importAppCoreRuntime();
       const { ensureAgentWallets } = await import("./agent-wallets.ts");
@@ -3867,6 +4003,28 @@ export async function startEliza(
     );
   };
 
+  const syncRemoteCapabilityPluginsIfAvailable = async (): Promise<void> => {
+    try {
+      const result = await bootstrapRemoteCapabilityPlugins(runtime, {
+        unloadMissing: true,
+      });
+      if (
+        result.registered.length > 0 ||
+        result.unloaded.length > 0 ||
+        result.skipped.length > 0
+      ) {
+        logger.info(
+          `[eliza] Remote capability plugins synced — registered=${result.registered.length}, ` +
+            `unloaded=${result.unloaded.length}, skipped=${result.skipped.length}`,
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `[eliza] Remote capability plugin sync failed: ${formatError(err)}`,
+      );
+    }
+  };
+
   const applyPluginRoleGatingIfAvailable = async (): Promise<void> => {
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
@@ -3986,6 +4144,7 @@ export async function startEliza(
     await registerConnectorSetupService();
     await registerCloudSandboxRunner();
     await initializeCoreRuntime();
+    await syncRemoteCapabilityPluginsIfAvailable();
     await applyPluginRoleGatingIfAvailable();
     await registerConversationProximityProvider();
     await seedBundledDocumentsIfEnabled();

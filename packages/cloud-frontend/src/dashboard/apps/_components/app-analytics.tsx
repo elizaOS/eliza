@@ -1,6 +1,7 @@
 "use client";
 
 import { toRatePercent } from "@elizaos/cloud-shared/lib/services/analytics-derived";
+import { BRAND_COLORS } from "@elizaos/shared/brand";
 import {
   Button,
   DashboardStatCard,
@@ -87,7 +88,7 @@ interface Visitor {
 }
 
 const SOURCE_COLORS: Record<string, string> = {
-  api_key: "#FF5800",
+  api_key: BRAND_COLORS.orange,
   sandbox_preview: "#8b5cf6",
   embed: "#3b82f6",
 };
@@ -100,7 +101,7 @@ const SOURCE_LABELS: Record<string, string> = {
 
 const TYPE_COLORS: Record<string, string> = {
   pageview: "#10b981",
-  chat: "#FF5800",
+  chat: BRAND_COLORS.orange,
   image: "#8b5cf6",
   video: "#3b82f6",
   voice: "#f59e0b",
@@ -264,7 +265,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
       </div>
     );
   }
@@ -375,7 +376,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
           <div className="bg-neutral-900 rounded-sm p-4">
             <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
-              <BarChart3 className="h-4 w-4 text-[#FF5800]" />
+              <BarChart3 className="h-4 w-4 text-[var(--brand-orange)]" />
               Requests Over Time
             </h3>
             {chartData.length > 0 ? (
@@ -406,9 +407,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <Line
                     type="monotone"
                     dataKey="requests"
-                    stroke="#FF5800"
+                    stroke={BRAND_COLORS.orange}
                     strokeWidth={2}
-                    dot={{ fill: "#FF5800", r: 3 }}
+                    dot={{ fill: BRAND_COLORS.orange, r: 3 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -464,7 +465,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
             </div>
           ) : requestStats ? (
             <>
@@ -480,7 +481,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                     requestStats.totalRequests -
                     (requestStats.byType?.pageview || 0)
                   ).toLocaleString()}
-                  color="text-[#FF5800]"
+                  color="text-[var(--brand-orange)]"
                 />
                 <MiniStatCard
                   label="Unique Visitors"
@@ -579,7 +580,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                                   style={{
                                     width: `${toRatePercent(count, requestStats.totalRequests)}%`,
                                     backgroundColor:
-                                      TYPE_COLORS[type] || "#FF5800",
+                                      TYPE_COLORS[type] || BRAND_COLORS.orange,
                                   }}
                                 />
                               </div>
@@ -612,7 +613,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
         <div className="space-y-4">
           {isLoadingStats ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
             </div>
           ) : (
             <>
@@ -621,7 +622,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique IPs"
                     value={requestStats.uniqueIps.toLocaleString()}
-                    icon={<Globe className="h-5 w-5 text-[#FF5800]" />}
+                    icon={
+                      <Globe className="h-5 w-5 text-[var(--brand-orange)]" />
+                    }
                   />
                   <DashboardStatCard
                     label="Unique Users"
@@ -740,7 +743,7 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
 
           {isLoadingLogs ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+              <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
             </div>
           ) : requestLogs.length > 0 ? (
             <>

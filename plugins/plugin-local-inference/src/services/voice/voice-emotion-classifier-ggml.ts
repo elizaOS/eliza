@@ -3,7 +3,7 @@
  *
  * Replaces the `voice-emotion-classifier.ts` onnxruntime-node path
  * with a `bun:ffi` binding to the `voice-classifier-cpp` SHARED
- * library at `packages/native-plugins/voice-classifier-cpp/`.
+ * library at `packages/native/plugins/voice-classifier-cpp/`.
  *
  * Status today (J1.a infrastructure landed):
  *   - The native library now ships as `libvoice_classifier.{so,dylib,dll}`
@@ -254,7 +254,7 @@ export class VoiceEmotionGgmlClassifier {
 		if (!libraryPath) {
 			throw new VoiceEmotionGgmlUnavailableError(
 				"library-missing",
-				"[voice-emotion-ggml] libvoice_classifier not found. Build it via `cmake -B packages/native-plugins/voice-classifier-cpp/build -S packages/native-plugins/voice-classifier-cpp && cmake --build packages/native-plugins/voice-classifier-cpp/build`, or set $ELIZA_VOICE_CLASSIFIER_LIB.",
+				"[voice-emotion-ggml] libvoice_classifier not found. Build it via `cmake -B packages/native/plugins/voice-classifier-cpp/build -S packages/native/plugins/voice-classifier-cpp && cmake --build packages/native/plugins/voice-classifier-cpp/build`, or set $ELIZA_VOICE_CLASSIFIER_LIB.",
 			);
 		}
 

@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="packages/shared-brand/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
+  <img src="packages/shared/assets/banners/elizaos_banner.svg" alt="elizaOS" width="100%" />
   <h1>elizaOS</h1>
   <p><strong>An open-source framework for building autonomous AI agents.</strong></p>
 </div>

@@ -3,7 +3,7 @@
  * should compute the right interval (not collapse it to a weekly habit).
  */
 
-import { scenario } from "@elizaos/scenario-schema";
+import { scenario } from "@elizaos/scenario-runner/schema";
 
 export default scenario({
   id: "hygiene.haircut-every-6-weeks",

@@ -77,9 +77,14 @@ jobs:
             exit 0
           fi
 
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
-          changed_files="$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")"
-          if grep -Eq '^(packages/homepage/|packages/shared-brand/|packages/app-core/scripts/write-homepage-release-data\.mjs|\.github/workflows/(deploy-homepage|release-electrobun|release-orchestrator)\.yml)' <<< "${changed_files}"; then
+          git fetch --no-tags origin "${{ github.base_ref }}"
+          if merge_base="$(git merge-base "origin/${{ github.base_ref }}" HEAD)"; then
+            changed_files="$(git diff --name-only "${merge_base}" HEAD)"
+          else
+            echo "No merge base found with origin/${{ github.base_ref }}; falling back to direct base/head diff." >&2
+            changed_files="$(git diff --name-only "origin/${{ github.base_ref }}" HEAD)"
+          fi
+          if grep -Eq '^(packages/homepage/|packages/shared/|packages/app-core/scripts/write-homepage-release-data\.mjs|\.github/workflows/(deploy-homepage|release-electrobun|release-orchestrator)\.yml)' <<< "${changed_files}"; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"

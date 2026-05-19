@@ -9,8 +9,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = ["@ai-sdk/anthropic", "@elizaos/core", "ai"];
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build() {
   const totalStart = Date.now();

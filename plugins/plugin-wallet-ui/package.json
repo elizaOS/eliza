@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-wallet-ui",
-  "version": "2.0.0-beta.5",
+  "version": "2.0.0-beta.4",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -46,13 +46,15 @@
     "clean": "rm -rf dist",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
-    "build:types": "tsc --noCheck -p tsconfig.build.json"
+    "build:types": "tsc --noCheck -p tsconfig.build.json",
+    "test": "bunx vitest run --config ./vitest.config.ts"
   },
   "files": [
     "dist"
   ],
   "devDependencies": {
     "tsup": "^8.5.1",
+    "vitest": "^4.0.17",
     "vite": "^8.0.0"
   }
 }
