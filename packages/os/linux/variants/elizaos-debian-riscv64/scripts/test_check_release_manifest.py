@@ -169,9 +169,7 @@ class FixedPathTests(unittest.TestCase):
     def test_template_only_blocks(self) -> None:
         self.sandbox.remove_manifest()
         template = self.sandbox.tmpdir / "manifest.json.template"
-        template.write_text(
-            (gate.VARIANT_DIR / "manifest.json.template").read_text()
-        )
+        template.write_text((gate.VARIANT_DIR / "manifest.json.template").read_text())
         status, _results = _run(self.sandbox)
         self.assertEqual(status, "BLOCKED")
 
@@ -204,7 +202,9 @@ class FixedPathTests(unittest.TestCase):
 
     def test_missing_marker_fails(self) -> None:
         bad_transcript = self.sandbox.transcript_path
-        bad_transcript.write_text(_good_transcript().replace(gate.REQUIRED_TRANSCRIPT_MARKER, ""))
+        bad_transcript.write_text(
+            _good_transcript().replace(gate.REQUIRED_TRANSCRIPT_MARKER, "")
+        )
         status, results = _run(self.sandbox)
         self.assertEqual(status, "FAIL")
         self.assertTrue(
@@ -235,7 +235,9 @@ class FixedPathTests(unittest.TestCase):
     def test_required_evidence_id_missing_fails(self) -> None:
         payload = dict(self.sandbox.manifest_payload)
         payload["validation"]["requiredEvidence"] = [
-            row for row in payload["validation"]["requiredEvidence"] if row != "qemu-virt-boot"
+            row
+            for row in payload["validation"]["requiredEvidence"]
+            if row != "qemu-virt-boot"
         ]
         self.sandbox.write_manifest(payload)
         status, _results = _run(self.sandbox)
@@ -344,9 +346,7 @@ class MutationFuzz(unittest.TestCase):
         payload["validation"]["evidence"][2]["status"] = bad_status
         self.sandbox.write_manifest(payload)
         status, results = _run(self.sandbox)
-        self.assertEqual(
-            status, "FAIL", msg=[(r.status, r.message) for r in results]
-        )
+        self.assertEqual(status, "FAIL", msg=[(r.status, r.message) for r in results])
 
 
 class AggregationTests(unittest.TestCase):

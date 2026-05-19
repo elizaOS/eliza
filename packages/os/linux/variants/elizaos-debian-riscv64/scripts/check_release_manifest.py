@@ -53,11 +53,10 @@ REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
     "hardware-board-boot",
 )
 
-# Status values that the umbrella release schema allows on an artifact entry,
-# split into "promoted" (= every evidence row must be ``collected``) and
-# "pre-release" (= ``missing`` is informational BLOCKED, not FAIL).
+# Promoted artifact statuses require every evidence row to be ``collected``;
+# the umbrella schema also permits ``planned`` and ``withdrawn`` where
+# ``missing`` rows stay informational BLOCKED.
 PROMOTED_STATUSES: frozenset[str] = frozenset({"candidate", "published"})
-PRE_RELEASE_STATUSES: frozenset[str] = frozenset({"planned"})
 
 # Marker the elizaOS first-boot unit prints once the agent is up. The qemu-virt
 # boot transcript must contain this literal string for the gate to PASS.
@@ -198,13 +197,16 @@ def check_required_evidence_rows(manifest: dict) -> list[GateResult]:
         return [GateResult("FAIL", "manifest.validation is missing or not an object")]
     required = validation.get("requiredEvidence")
     if not isinstance(required, list):
-        return [GateResult("FAIL", "manifest.validation.requiredEvidence must be an array")]
+        return [
+            GateResult("FAIL", "manifest.validation.requiredEvidence must be an array")
+        ]
     missing = sorted(set(REQUIRED_EVIDENCE_IDS) - set(required))
     if missing:
         return [
             GateResult(
                 "FAIL",
-                "manifest.validation.requiredEvidence is missing rows: " + ", ".join(missing),
+                "manifest.validation.requiredEvidence is missing rows: "
+                + ", ".join(missing),
             )
         ]
     return [GateResult("PASS", "manifest declares every required evidence id")]
@@ -221,7 +223,9 @@ def _evidence_index(manifest: dict) -> dict[str, dict]:
     return out
 
 
-def check_evidence_rows_collected(manifest: dict, is_template: bool) -> list[GateResult]:
+def check_evidence_rows_collected(
+    manifest: dict, is_template: bool
+) -> list[GateResult]:
     """Evidence rows must be ``collected`` when the artifact is promoted."""
     status = manifest.get("status")
     rows = _evidence_index(manifest)
@@ -231,7 +235,9 @@ def check_evidence_rows_collected(manifest: dict, is_template: bool) -> list[Gat
         row = rows.get(evidence_id)
         if row is None:
             out.append(
-                GateResult("FAIL", f"manifest.validation.evidence missing row id={evidence_id}")
+                GateResult(
+                    "FAIL", f"manifest.validation.evidence missing row id={evidence_id}"
+                )
             )
             continue
         row_status = row.get("status")
@@ -280,7 +286,11 @@ def check_qemu_virt_evidence(
     rows = _evidence_index(manifest)
     row = rows.get("qemu-virt-boot")
     if row is None:
-        return [GateResult("FAIL", "manifest.validation.evidence missing qemu-virt-boot row")]
+        return [
+            GateResult(
+                "FAIL", "manifest.validation.evidence missing qemu-virt-boot row"
+            )
+        ]
 
     path_value = row.get("path")
     if not isinstance(path_value, str) or not path_value:
@@ -342,7 +352,9 @@ def check_qemu_virt_evidence(
     elif isinstance(transcript_path_value, str) and transcript_path_value:
         transcript_path = _resolve_evidence_path(variant_dir, transcript_path_value)
         if not transcript_path.is_file():
-            out.append(GateResult("FAIL", f"transcript file missing: {transcript_path}"))
+            out.append(
+                GateResult("FAIL", f"transcript file missing: {transcript_path}")
+            )
         else:
             transcript_text = transcript_path.read_text(errors="replace")
     else:
@@ -353,7 +365,10 @@ def check_qemu_virt_evidence(
             )
         )
 
-    if transcript_text is not None and REQUIRED_TRANSCRIPT_MARKER not in transcript_text:
+    if (
+        transcript_text is not None
+        and REQUIRED_TRANSCRIPT_MARKER not in transcript_text
+    ):
         out.append(
             GateResult(
                 "FAIL",
@@ -418,7 +433,9 @@ def run_checks(variant_dir: Path) -> tuple[Status, list[GateResult], Path, bool]
     return aggregate(results), results, manifest_path, is_template
 
 
-def _emit(results: list[GateResult], aggregate_status: Status, manifest_path: Path) -> None:
+def _emit(
+    results: list[GateResult], aggregate_status: Status, manifest_path: Path
+) -> None:
     print(f"release-manifest gate: {manifest_path}")
     for result in results:
         print(f"  [{result.status:<7}] {result.message}")
