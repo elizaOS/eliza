@@ -57,7 +57,9 @@ mock.module("../provisioning-jobs", () => ({
   },
 }));
 
-const { ensureElizaAppProvisioning } = await import("./provisioning.ts?test=provisioning");
+const { ensureElizaAppProvisioning } = await import(
+  `./provisioning.ts?test=provisioning-${Date.now()}`
+);
 
 describe("ensureElizaAppProvisioning", () => {
   beforeEach(() => {

@@ -433,12 +433,13 @@ export async function runOnboardingChat(input: OnboardingChatInput): Promise<Onb
   };
 
   if (!requiresLogin && session.userId && session.organizationId) {
-    provisioning = preferredNameCaptured
-      ? await ensureElizaAppProvisioning({
-          userId: session.userId,
-          organizationId: session.organizationId,
-        })
-      : await getElizaAppProvisioningStatus(session.organizationId);
+    provisioning =
+      (userMessage || input.authenticatedUser) && preferredNameCaptured
+        ? await ensureElizaAppProvisioning({
+            userId: session.userId,
+            organizationId: session.organizationId,
+          })
+        : await getElizaAppProvisioningStatus(session.organizationId);
     session.agentId = provisioning.agentId ?? session.agentId;
   }
 

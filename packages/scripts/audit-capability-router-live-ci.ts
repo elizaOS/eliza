@@ -43,6 +43,65 @@ type Check = {
   message: string;
 };
 
+type CheckSource = NonNullable<Check["source"]>;
+
+type CheckContentOptions = {
+  agentPackageJson?: string;
+  coreCapabilitiesSource?: string;
+  endpointConformanceSource?: string;
+  githubLiveArtifactValidatorSource?: string;
+  githubLiveArtifactValidatorSelfTestSource?: string;
+  liveReportValidatorSelfTestSource?: string;
+  providerSmokeSource?: string;
+  remoteCapabilityRoutesSource?: string;
+  remotePluginAdapterTestSource?: string;
+  rootPackageJson?: string;
+  liveReportValidatorSource?: string;
+  liveReportWriterSource?: string;
+  onlyCheckNames?: Iterable<string>;
+};
+
+const checkContentReaders: Record<
+  CheckSource,
+  (options: CheckContentOptions, workflow: string) => string
+> = {
+  "agent-package": (options) => options.agentPackageJson ?? "",
+  "core-capabilities": (options) => options.coreCapabilitiesSource ?? "",
+  "endpoint-conformance": (options) => options.endpointConformanceSource ?? "",
+  "github-live-artifact-validator": (options) =>
+    options.githubLiveArtifactValidatorSource ?? "",
+  "github-live-artifact-validator-self-test": (options) =>
+    options.githubLiveArtifactValidatorSelfTestSource ?? "",
+  "live-report-validator": (options) => options.liveReportValidatorSource ?? "",
+  "live-report-validator-self-test": (options) =>
+    options.liveReportValidatorSelfTestSource ?? "",
+  "live-report-writer": (options) => options.liveReportWriterSource ?? "",
+  "provider-smoke": (options) => options.providerSmokeSource ?? "",
+  "remote-capability-routes": (options) =>
+    options.remoteCapabilityRoutesSource ?? "",
+  "remote-plugin-adapter-test": (options) =>
+    options.remotePluginAdapterTestSource ?? "",
+  "root-package": (options) => options.rootPackageJson ?? "",
+  workflow: (_options, workflow) => workflow,
+};
+
+const checkSourcePaths: Record<CheckSource, string | undefined> = {
+  "agent-package": agentPackagePath,
+  "core-capabilities": coreCapabilitiesPath,
+  "endpoint-conformance": endpointConformancePath,
+  "github-live-artifact-validator": githubLiveArtifactValidatorPath,
+  "github-live-artifact-validator-self-test":
+    githubLiveArtifactValidatorSelfTestPath,
+  "live-report-validator": liveReportValidatorPath,
+  "live-report-validator-self-test": liveReportValidatorSelfTestPath,
+  "live-report-writer": liveReportWriterPath,
+  "provider-smoke": providerSmokePath,
+  "remote-capability-routes": remoteCapabilityRoutesPath,
+  "remote-plugin-adapter-test": remotePluginAdapterTestPath,
+  "root-package": rootPackagePath,
+  workflow: undefined,
+};
+
 export type LiveCiAuditFailure = {
   sourcePath: string;
   workflowPath: string;
@@ -73,15 +132,13 @@ export const checks: Check[] = [
     name: "GitHub live evidence validator self-test is a CI gate",
     pattern:
       /Remote capability GitHub live evidence self-test[\s\S]*test:remote-capabilities:github-live-evidence:self-test/,
-    message:
-      "server CI must run the GitHub live evidence validator self-test.",
+    message: "server CI must run the GitHub live evidence validator self-test.",
   },
   {
     name: "GitHub live artifact validator self-test is a CI gate",
     pattern:
       /Remote capability GitHub live artifact self-test[\s\S]*test:remote-capabilities:github-live-artifacts:self-test/,
-    message:
-      "server CI must run the GitHub live artifact validator self-test.",
+    message: "server CI must run the GitHub live artifact validator self-test.",
   },
   {
     name: "live report validator self-test script exists",
@@ -211,7 +268,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers redacted product trust audit records",
     pattern:
-      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT)(?=[\s\S]*provider:\s*"direct")(?=[\s\S]*allowedModuleIds:\s*\["remote-demo"\])(?=[\s\S]*trustDecisions:[\s\S]*trusted:\s*true)(?=[\s\S]*JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\))/,
+      /ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT[\s\S]{0,6000}provider:\s*"direct"[\s\S]{0,6000}allowedModuleIds:\s*\["remote-demo"\][\s\S]{0,6000}trustDecisions:[\s\S]{0,6000}trusted:\s*true[\s\S]{0,6000}JSON\.stringify\(trustAudit\)\)\.not\.toContain\("product-token"\)/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove product connect persists trust audit records without bearer tokens.",
@@ -219,7 +276,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers Cloud provision restart reopened view",
     pattern:
-      /(?=[\s\S]*reopens a persisted Cloud-provisioned remote view after restart)(?=[\s\S]*connectCloudSandbox:[\s\S]*mockResolvedValue)(?=[\s\S]*cloud-product-token)(?=[\s\S]*bootstrapRemoteCapabilityPlugins\(restartRuntime\))(?=[\s\S]*getView\("cloud\.restart\.view"\))(?=[\s\S]*\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js)(?=[\s\S]*plugin\.asset\.get)(?=[\s\S]*Bearer cloud-product-token)/,
+      /reopens a persisted Cloud-provisioned remote view after restart[\s\S]{0,16000}connectCloudSandbox:[\s\S]{0,16000}mockResolvedValue[\s\S]{0,16000}cloud-product-token[\s\S]{0,16000}plugin\.asset\.get[\s\S]{0,16000}bootstrapRemoteCapabilityPlugins\(restartRuntime\)[\s\S]{0,16000}getView\("cloud\.restart\.view"\)[\s\S]{0,16000}\/api\/capability-router\/assets\/cloud-product\/cloud-product-plugin\/assets\/cloud-view\.js[\s\S]{0,16000}Bearer cloud-product-token/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove Cloud provision persistence can restart, reopen the remote view, and fetch its bundle with the persisted token.",
@@ -227,7 +284,7 @@ export const checks: Check[] = [
   {
     name: "remote adapter test covers signed provenance trust policy",
     pattern:
-      /(?=[\s\S]*requireSignedProvenance:\s*true)(?=[\s\S]*allowedProvenanceIssuers:\s*\["eliza-cloud-build"\])(?=[\s\S]*provenanceIssuer:\s*"eliza-cloud-build")(?=[\s\S]*reason:\s*"missing-provenance")(?=[\s\S]*reason:\s*"provenance-issuer-not-allowed")(?=[\s\S]*requireVerifiedProvenance:\s*true)(?=[\s\S]*trustedProvenancePublicKeys)(?=[\s\S]*reason:\s*"invalid-provenance-signature")(?=[\s\S]*reason:\s*"missing-provenance-public-key")(?=[\s\S]*requireProvenanceDigestMatch:\s*true)(?=[\s\S]*reason:\s*"invalid-provenance-digest")/,
+      /allowedProvenanceIssuers:\s*\["eliza-cloud-build"\][\s\S]{0,20000}requireSignedProvenance:\s*true[\s\S]{0,20000}provenanceIssuer:\s*"eliza-cloud-build"[\s\S]{0,20000}reason:\s*"missing-provenance"[\s\S]{0,20000}reason:\s*"provenance-issuer-not-allowed"[\s\S]{0,20000}trustedProvenancePublicKeys[\s\S]{0,20000}requireVerifiedProvenance:\s*true[\s\S]{0,20000}requireProvenanceDigestMatch:\s*true[\s\S]{0,20000}reason:\s*"invalid-provenance-signature"[\s\S]{0,20000}reason:\s*"invalid-provenance-digest"[\s\S]{0,20000}reason:\s*"missing-provenance-public-key"/,
     source: "remote-plugin-adapter-test",
     message:
       "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",
@@ -275,7 +332,7 @@ export const checks: Check[] = [
   {
     name: "live report validator self-test covers provider runtime evidence",
     pattern:
-      /(?=[\s\S]*missingProviderEvidenceDir)(?=[\s\S]*mismatchedProviderEvidenceDir)(?=[\s\S]*makeMissingProviderEvidenceReport\(\))(?=[\s\S]*makeMismatchedProviderEvidenceReport\(\))(?=[\s\S]*providerEvidence must be an object)(?=[\s\S]*providerEvidence\.endpointRuntime must be)/,
+      /missingProviderEvidenceDir[\s\S]{0,8000}mismatchedProviderEvidenceDir[\s\S]{0,160000}providerEvidence must be an object[\s\S]{0,8000}providerEvidence\.endpointRuntime must be[\s\S]{0,180000}makeMissingProviderEvidenceReport\(\)[\s\S]{0,8000}makeMismatchedProviderEvidenceReport\(\)/,
     source: "live-report-validator-self-test",
     message:
       "live report validator self-test must cover missing and mismatched provider runtime evidence.",
@@ -410,7 +467,8 @@ export const checks: Check[] = [
   },
   {
     name: "provider live job is required by test-status",
-    pattern: /strict_results="\$\{\{\s*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\s*\}\}"[\s\S]*for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
+    pattern:
+      /strict_results="\$\{\{\s*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\s*\}\}"[\s\S]*for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
     message:
       "test-status must fail when cloud-live-e2e or provider-live-e2e are not successful on workflow_dispatch or schedule.",
   },
@@ -458,8 +516,7 @@ export const checks: Check[] = [
   },
   {
     name: "provider live primary endpoints are required on observed runs",
-    pattern:
-      /echo "::error::\$\{message\}"\s*\n\s*exit 1/,
+    pattern: /echo "::error::\$\{message\}"\s*\n\s*exit 1/,
     message:
       "observed provider live runs must fail instead of skipping when any primary endpoint secret is absent.",
   },
@@ -496,7 +553,8 @@ export const checks: Check[] = [
     name: "cloud live reports are uploaded as required artifacts",
     pattern:
       /remote-capability-cloud-live-report[\s\S]*path: reports\/remote-capabilities\/cloud\/\*\.json[\s\S]*if-no-files-found: error/,
-    message: "cloud live report artifact upload must fail when reports are absent.",
+    message:
+      "cloud live report artifact upload must fail when reports are absent.",
   },
   {
     name: "provider live reports are uploaded as required artifacts",
@@ -509,22 +567,7 @@ export const checks: Check[] = [
 
 export function validateCapabilityRouterLiveCi(
   workflow: string,
-  options: {
-    agentPackageJson?: string;
-    coreCapabilitiesSource?: string;
-    endpointConformanceSource?: string;
-    githubLiveArtifactValidatorSource?: string;
-    githubLiveArtifactValidatorSelfTestSource?: string;
-    liveReportValidatorSelfTestSource?: string;
-    providerSmokeSource?: string;
-    remoteCapabilityRoutesSource?: string;
-    remotePluginAdapterTestSource?: string;
-    rootPackageJson?: string;
-    liveReportValidatorSource?: string;
-    liveReportWriterSource?: string;
-    workflowPath?: string;
-    onlyCheckNames?: Iterable<string>;
-  } = {},
+  options: CheckContentOptions & { workflowPath?: string } = {},
 ): LiveCiAuditFailure[] {
   const path = options.workflowPath ?? workflowPath;
   const onlyCheckNames =
@@ -548,80 +591,13 @@ export function validateCapabilityRouterLiveCi(
 function getCheckContent(
   check: Check,
   workflow: string,
-  options: {
-    agentPackageJson?: string;
-    coreCapabilitiesSource?: string;
-    endpointConformanceSource?: string;
-    githubLiveArtifactValidatorSource?: string;
-    githubLiveArtifactValidatorSelfTestSource?: string;
-    liveReportValidatorSelfTestSource?: string;
-    providerSmokeSource?: string;
-    remoteCapabilityRoutesSource?: string;
-    remotePluginAdapterTestSource?: string;
-    rootPackageJson?: string;
-    liveReportValidatorSource?: string;
-    liveReportWriterSource?: string;
-  },
+  options: CheckContentOptions,
 ): string {
-  if (check.source === "agent-package") return options.agentPackageJson ?? "";
-  if (check.source === "core-capabilities") {
-    return options.coreCapabilitiesSource ?? "";
-  }
-  if (check.source === "endpoint-conformance") {
-    return options.endpointConformanceSource ?? "";
-  }
-  if (check.source === "github-live-artifact-validator") {
-    return options.githubLiveArtifactValidatorSource ?? "";
-  }
-  if (check.source === "github-live-artifact-validator-self-test") {
-    return options.githubLiveArtifactValidatorSelfTestSource ?? "";
-  }
-  if (check.source === "live-report-validator") {
-    return options.liveReportValidatorSource ?? "";
-  }
-  if (check.source === "live-report-validator-self-test") {
-    return options.liveReportValidatorSelfTestSource ?? "";
-  }
-  if (check.source === "live-report-writer") {
-    return options.liveReportWriterSource ?? "";
-  }
-  if (check.source === "provider-smoke") {
-    return options.providerSmokeSource ?? "";
-  }
-  if (check.source === "remote-capability-routes") {
-    return options.remoteCapabilityRoutesSource ?? "";
-  }
-  if (check.source === "remote-plugin-adapter-test") {
-    return options.remotePluginAdapterTestSource ?? "";
-  }
-  if (check.source === "root-package") return options.rootPackageJson ?? "";
-  return workflow;
+  return checkContentReaders[check.source ?? "workflow"](options, workflow);
 }
 
 function getCheckSourcePath(check: Check, workflowPath: string): string {
-  if (check.source === "agent-package") return agentPackagePath;
-  if (check.source === "core-capabilities") return coreCapabilitiesPath;
-  if (check.source === "endpoint-conformance") return endpointConformancePath;
-  if (check.source === "github-live-artifact-validator") {
-    return githubLiveArtifactValidatorPath;
-  }
-  if (check.source === "github-live-artifact-validator-self-test") {
-    return githubLiveArtifactValidatorSelfTestPath;
-  }
-  if (check.source === "live-report-validator") return liveReportValidatorPath;
-  if (check.source === "live-report-validator-self-test") {
-    return liveReportValidatorSelfTestPath;
-  }
-  if (check.source === "live-report-writer") return liveReportWriterPath;
-  if (check.source === "provider-smoke") return providerSmokePath;
-  if (check.source === "remote-capability-routes") {
-    return remoteCapabilityRoutesPath;
-  }
-  if (check.source === "remote-plugin-adapter-test") {
-    return remotePluginAdapterTestPath;
-  }
-  if (check.source === "root-package") return rootPackagePath;
-  return workflowPath;
+  return checkSourcePaths[check.source ?? "workflow"] ?? workflowPath;
 }
 
 if (import.meta.main) {
@@ -633,7 +609,10 @@ if (import.meta.main) {
     endpointConformancePath,
     "utf8",
   );
-  const liveReportValidatorSource = readFileSync(liveReportValidatorPath, "utf8");
+  const liveReportValidatorSource = readFileSync(
+    liveReportValidatorPath,
+    "utf8",
+  );
   const liveReportValidatorSelfTestSource = readFileSync(
     liveReportValidatorSelfTestPath,
     "utf8",

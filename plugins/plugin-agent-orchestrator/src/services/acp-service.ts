@@ -106,7 +106,7 @@ const ORPHAN_RESUME_STATUSES: ReadonlySet<string> = new Set([
 ]);
 const ORPHAN_RESUME_PROMPT =
   "[System] Your previous turn was interrupted by a runtime restart. Continue where you left off on the original task and report results as usual.";
-const DEFAULT_AGENTS: AgentType[] = ["codex", "claude", "opencode"];
+const DEFAULT_AGENTS: AgentType[] = ["elizaos", "codex", "claude", "opencode"];
 const DENY_ENV_PATTERNS = [
   /DISCORD.*TOKEN/i,
   /TELEGRAM.*TOKEN/i,

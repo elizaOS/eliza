@@ -34,7 +34,18 @@ mock.module("../../db/schemas", () => ({
   },
   agentPhoneNumbers: {},
   appRequests: {},
+  appAnalytics: {},
+  apps: {},
   appUsers: {},
+  adminUsers: {},
+  containers: {},
+  conversations: {},
+  elizaRoomCharactersTable: {},
+  invoices: {},
+  mcpUsage: {},
+  moderationViolations: {},
+  organizationEncryptionKeys: {},
+  organizations: {},
   phoneMessageLog: {},
   phoneGatewayDevices: {
     id: "id",
@@ -42,6 +53,12 @@ mock.module("../../db/schemas", () => ({
     phone_number: "phone_number",
     bridge_id: "bridge_id",
   },
+  userCharacters: {},
+  userModerationStatus: {},
+  users: {},
+  vertexModelAssignments: {},
+  vertexTunedModels: {},
+  vertexTuningJobs: {},
 }));
 
 const { registerPhoneGatewayDevice } = await import("./phone-gateway-devices");
