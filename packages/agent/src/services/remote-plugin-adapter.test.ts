@@ -1150,6 +1150,168 @@ describe("remote plugin adapter", () => {
     });
   });
 
+  it("rejects duplicate remote widget ids for the same widget plugin key", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          remoteModule,
+          {
+            ...remoteModule,
+            id: "remote-widget-copy",
+            name: "@remote/widget-copy",
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            events: [],
+            models: [],
+            services: [],
+            routes: [],
+            views: [],
+            widgets: [
+              {
+                id: "remote.widget",
+                pluginId: "@remote/demo",
+                slot: "chat-sidebar",
+                label: "Remote Widget Copy",
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote widget collision for "@remote/demo/remote.widget" between modules "remote-demo" and "remote-widget-copy".',
+    });
+  });
+
+  it("rejects remote widgets that collide with local runtime widgets", async () => {
+    const runtime = makeRuntime(makeRouter(), {
+      plugins: [
+        {
+          name: "@local/widgets",
+          description: "Local plugin with an existing widget",
+          widgets: [
+            {
+              id: "remote.widget",
+              pluginId: "@remote/demo",
+              slot: "chat-sidebar",
+              label: "Local Widget",
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, { modules: [remoteModule] }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" widget "@remote/demo/remote.widget" would collide with an existing runtime widget.',
+    });
+  });
+
+  it("rejects duplicate remote app nav tab ids in the same sync batch", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          remoteModule,
+          {
+            ...remoteModule,
+            id: "remote-nav-copy",
+            name: "@remote/nav-copy",
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            events: [],
+            models: [],
+            services: [],
+            routes: [],
+            views: [],
+            widgets: [],
+            appBridge: undefined,
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote app nav tab collision for "remote.demo" between modules "remote-demo" and "remote-nav-copy".',
+    });
+  });
+
+  it("rejects remote app nav tabs that collide with local runtime nav tabs", async () => {
+    const runtime = makeRuntime(makeRouter(), {
+      plugins: [
+        {
+          name: "@local/nav",
+          description: "Local plugin with an existing app nav tab",
+          app: {
+            displayName: "Local Nav",
+            navTabs: [
+              {
+                id: "remote.demo",
+                label: "Local Remote Demo",
+                path: "/local-remote-demo",
+              },
+            ],
+          },
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, { modules: [remoteModule] }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" app nav tab "remote.demo" would collide with an existing runtime app nav tab.',
+    });
+  });
+
+  it("rejects remote app bridge identifiers that normalize to the same route key", async () => {
+    const runtime = makeRuntime(makeRouter());
+    const firstModule: RemotePluginModuleManifest = {
+      id: "plugin-weather",
+      name: "@remote/plugin-weather",
+      appBridge: { hooks: ["handleAppRoutes"] },
+    };
+    const secondModule: RemotePluginModuleManifest = {
+      id: "weather",
+      name: "@remote/weather",
+      appBridge: { hooks: ["handleAppRoutes"] },
+    };
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [firstModule, secondModule],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote app bridge identifier collision for "weather" between modules "plugin-weather" (@remote/plugin-weather) and "weather" (@remote/weather).',
+    });
+  });
+
   it("enforces remote plugin trust policy before registration", async () => {
     const runtime = makeRuntime(makeRouter());
     const trustedModule = {

@@ -9,6 +9,7 @@ import {
   connectCloudCapabilitySandbox,
   provisionCloudCapabilitySandbox,
 } from "./remote-capability-cloud-sandbox.ts";
+import type { RemoteCapabilityRouterService } from "./remote-capability-router.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -215,6 +216,27 @@ describe("cloud capability sandbox provisioner", () => {
                       description: "Run cloud capability action.",
                     },
                   ],
+                  providers: [
+                    {
+                      name: "CLOUD_CAPABILITY_CONTEXT",
+                      description: "Cloud capability context.",
+                    },
+                  ],
+                  routes: [
+                    {
+                      method: "POST",
+                      path: "/cloud/capability",
+                      public: true,
+                      name: "cloud-capability-route",
+                    },
+                  ],
+                  views: [
+                    {
+                      id: "cloud-capability.view",
+                      label: "Cloud Capability",
+                      bundlePath: "/assets/cloud-capability.js",
+                    },
+                  ],
                 },
               ],
             },
@@ -224,6 +246,37 @@ describe("cloud capability sandbox provisioner", () => {
           return jsonResponse({
             ok: true,
             result: { text: "cloud capability action" },
+          });
+        }
+        if (body.method === "plugin.provider.get") {
+          return jsonResponse({
+            ok: true,
+            result: {
+              text: "cloud capability provider",
+              values: { source: "cloud" },
+            },
+          });
+        }
+        if (body.method === "plugin.route.call") {
+          return jsonResponse({
+            ok: true,
+            result: {
+              status: 202,
+              headers: { "x-cloud-capability": "yes" },
+              body: { routed: true },
+            },
+          });
+        }
+        if (body.method === "plugin.asset.get") {
+          return jsonResponse({
+            ok: true,
+            result: {
+              path: "/assets/cloud-capability.js",
+              contentType: "text/javascript",
+              bodyBase64: Buffer.from(
+                "export const cloudCapabilityView = true;",
+              ).toString("base64"),
+            },
           });
         }
       }
@@ -266,6 +319,11 @@ describe("cloud capability sandbox provisioner", () => {
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
       "@remote/cloud-capability",
     ]);
+    expect(runtime.plugins[0]?.views?.[0]).toMatchObject({
+      id: "cloud-capability.view",
+      bundleUrl:
+        "/api/capability-router/assets/cloud-capability/cloud-capability-plugin/assets/cloud-capability.js",
+    });
     await expect(
       runtime.actions[0]?.handler(runtime, {
         content: { text: "run" },
@@ -274,18 +332,64 @@ describe("cloud capability sandbox provisioner", () => {
       success: true,
       text: "cloud capability action",
     });
+    await expect(
+      runtime.providers[0]?.get(runtime, {} as never, {} as never),
+    ).resolves.toMatchObject({
+      text: "cloud capability provider",
+      values: { source: "cloud" },
+    });
+    await expect(
+      runtime.routes[0]?.routeHandler?.({
+        runtime,
+        method: "POST",
+        path: "/cloud/capability",
+        body: { id: "abc" },
+        params: {},
+        query: {},
+        headers: {},
+        inProcess: false,
+      }),
+    ).resolves.toEqual({
+      status: 202,
+      headers: { "x-cloud-capability": "yes" },
+      body: { routed: true },
+    });
+    const router = runtime.getService(
+      CAPABILITY_ROUTER_SERVICE_TYPE,
+    ) as RemoteCapabilityRouterService | null;
+    await expect(
+      router?.plugin.getAsset({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        path: "/assets/cloud-capability.js",
+      }),
+    ).resolves.toMatchObject({
+      contentType: "text/javascript",
+      bodyBase64: expect.any(String),
+    });
     const capabilityCalls = fetchMock.mock.calls.filter(
       ([url]) =>
         String(url) ===
         "https://capability-cloud.example.test/v1/capabilities/invoke",
     );
-    expect(capabilityCalls).toHaveLength(2);
-    expect(capabilityCalls[0]?.[1]?.headers).toMatchObject({
-      authorization: "Bearer capability-token",
-    });
-    expect(capabilityCalls[1]?.[1]?.headers).toMatchObject({
-      authorization: "Bearer capability-token",
-    });
+    expect(capabilityCalls).toHaveLength(5);
+    expect(
+      capabilityCalls.map(([, init]) => {
+        const body = JSON.parse(String(init?.body)) as { method?: string };
+        return body.method;
+      }),
+    ).toEqual([
+      "plugin.modules.list",
+      "plugin.action.invoke",
+      "plugin.provider.get",
+      "plugin.route.call",
+      "plugin.asset.get",
+    ]);
+    for (const [, init] of capabilityCalls) {
+      expect(init?.headers).toMatchObject({
+        authorization: "Bearer capability-token",
+      });
+    }
   });
 });
 

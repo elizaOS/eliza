@@ -69,6 +69,7 @@ export {
 export * from "./registry-client.ts";
 export { resolveAppHeroImage } from "./registry-client-queries.ts";
 export * from "./remote-capability-cloud-sandbox.ts";
+export * from "./remote-capability-endpoint-provider.ts";
 export * from "./remote-capability-router.ts";
 export * from "./remote-plugin-adapter.ts";
 export * from "./remote-signing-service.ts";

@@ -388,7 +388,7 @@ export type RemotePluginModuleManifest = {
 	metadata?: JsonObject;
 };
 
-export type PluginListModulesParams = {
+export type PluginListModulesParams = CapabilityEndpointSelection & {
 	traceSessionId?: string;
 };
 
@@ -1174,6 +1174,9 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginListModulesParams = {},
 	): Promise<PluginListModulesResult> {
 		const result = await this.request("plugin", "plugin.modules.list", {
+			...(params.endpointId === undefined
+				? {}
+				: { endpointId: params.endpointId }),
 			...(params.traceSessionId === undefined
 				? {}
 				: { traceSessionId: params.traceSessionId }),

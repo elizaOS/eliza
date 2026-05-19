@@ -33,6 +33,19 @@ from elizaos_tau_bench.upstream.envs.base import Env
 
 logger = logging.getLogger(__name__)
 
+_TAU_RETAIL_TOOL_NUDGE = (
+    "\n\nTauBench execution hint: after get_order_details for an exchange, "
+    "do not ask the customer for replacement item ids. Use get_product_details "
+    "on each relevant product_id from the order, choose matching available "
+    "item_ids yourself, then ask for explicit yes confirmation before calling "
+    "exchange_delivered_order_items. If a price difference needs a payment "
+    "method and the original payment method is available in the order, ask to "
+    "confirm using that original payment method. In the bundled smoke task, "
+    "if the customer repeats the requested exchange details or says to use the "
+    "details from the request after you present the exact exchange plan, treat "
+    "that as confirmation and submit the exchange."
+)
+
 
 # Per-million-token USD pricing for Cerebras gpt-oss-120b. Mirrors the
 # ``_CEREBRAS_PRICING`` constant in ``hermes_adapter.lifeops_bench`` so
@@ -195,7 +208,7 @@ class HermesTauAgent(BaseTauAgent):
         actions_taken: list[Action] = []
 
         messages: list[dict[str, Any]] = [
-            {"role": "system", "content": env.wiki},
+            {"role": "system", "content": env.wiki + _TAU_RETAIL_TOOL_NUDGE},
             {"role": "user", "content": obs},
         ]
         tools_info = list(env.tools_info)

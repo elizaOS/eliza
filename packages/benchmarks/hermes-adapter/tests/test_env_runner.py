@@ -151,6 +151,46 @@ def test_env_runner_parses_summary_falls_back_to_zero(tmp_path: Path) -> None:
     assert result.higher_is_better is True
 
 
+def test_env_runner_does_not_score_placeholder_metric(tmp_path: Path) -> None:
+    evals_root = tmp_path / "evals" / "hermes_swe_env"
+    evals_root.mkdir(parents=True)
+    (evals_root / "metrics.json").write_text(json.dumps({"placeholder": 0.0}))
+    (evals_root / "samples.jsonl").write_text("")
+    result = parse_hermes_env_result(
+        env_id="hermes_swe_env",
+        evals_root=evals_root,
+        duration_s=0.1,
+    )
+    assert result.score == 0.0
+    assert "placeholder" in result.metrics
+
+
+def test_env_runner_counts_incomplete_rollouts(tmp_path: Path) -> None:
+    evals_root = tmp_path / "evals" / "tblite"
+    evals_root.mkdir(parents=True)
+    (evals_root / "eval-summary.json").write_text(
+        json.dumps({"metrics": {"pass_rate": 0.0}})
+    )
+    (evals_root / "samples.jsonl").write_text(
+        json.dumps(
+            {
+                "passed": False,
+                "messages": [
+                    {"role": "user", "content": "fix it"},
+                    {"role": "assistant", "tool_calls": []},
+                    {"role": "tool", "content": "ok"},
+                ],
+            }
+        )
+        + "\n"
+    )
+
+    result = parse_hermes_env_result(env_id="tblite", evals_root=evals_root, duration_s=0.1)
+
+    assert result.metrics["sample_rows"] == 1
+    assert result.metrics["incomplete_rollouts"] == 1
+
+
 def test_env_runner_finds_artifacts_in_subdir(tmp_path: Path) -> None:
     """atroposlib writes under a timestamped subdir — make sure rglob() finds it."""
     evals_root = tmp_path / "evals" / "tblite"
@@ -225,8 +265,8 @@ def test_env_runner_task_filter_flag_present_when_set(fake_repo: Path, tmp_path:
     assert "--env.task_filter=broken-python,pandas-etl" in captured_cmd
 
 
-def test_env_runner_sets_terminal_env_local(fake_repo: Path, tmp_path: Path) -> None:
-    """TERMINAL_ENV must always be ``local`` to prevent silent Modal/Docker fan-out."""
+def test_env_runner_sets_terminal_env_docker_when_available(fake_repo: Path, tmp_path: Path) -> None:
+    """TERMINAL_ENV defaults to Docker when a local Docker daemon is available."""
     captured_env: dict[str, str] = {}
     captured_cmd: list[str] = []
 
@@ -239,7 +279,9 @@ def test_env_runner_sets_terminal_env_local(fake_repo: Path, tmp_path: Path) -> 
         (save_dir / "samples.jsonl").write_text("{}\n")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+    with patch("hermes_adapter.env_runner._docker_daemon_available", return_value=True), patch(
+        "hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run
+    ):
         run_hermes_env(
             "tblite",
             output_dir=tmp_path / "out",
@@ -248,17 +290,43 @@ def test_env_runner_sets_terminal_env_local(fake_repo: Path, tmp_path: Path) -> 
             api_key="key",
             base_url="https://b",
         )
-    assert captured_env.get("TERMINAL_ENV") == "local"
+    assert captured_env.get("TERMINAL_ENV") == "docker"
     assert captured_env.get("OPENAI_API_KEY") == "key"
     assert captured_env.get("OPENAI_BASE_URL") == "https://b"
     assert captured_env.get("OPENAI_MODEL") == "m"
-    assert "--env.terminal_backend=local" in captured_cmd
+    assert "--env.terminal_backend=docker" in captured_cmd
 
 
-def test_env_runner_sets_terminal_env_local_even_when_parent_overrides(
+def test_env_runner_writes_terminal_prompt_and_temperature(
+    fake_repo: Path, tmp_path: Path
+) -> None:
+    def _fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        save_dir = tmp_path / "out" / "evals" / "tblite"
+        save_dir.mkdir(parents=True)
+        (save_dir / "eval-summary.json").write_text(json.dumps({"metrics": {"accuracy": 0.1}}))
+        (save_dir / "samples.jsonl").write_text("{}\n")
+        return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
+
+    with patch("hermes_adapter.env_runner._docker_daemon_available", return_value=True), patch(
+        "hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run
+    ):
+        run_hermes_env(
+            "tblite",
+            output_dir=tmp_path / "out",
+            repo_path=fake_repo,
+            model="m",
+        )
+
+    config_text = (tmp_path / "out" / "hermes_env_config.yaml").read_text()
+    assert "agent_temperature: 0.0" in config_text
+    assert "system_prompt:" in config_text
+    assert "Use the available terminal and file tools" in config_text
+
+
+def test_env_runner_falls_back_to_local_even_when_parent_overrides(
     fake_repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Even a parent shell with TERMINAL_ENV=modal must be overridden to local."""
+    """Without Docker, a parent shell with TERMINAL_ENV=modal is overridden to local."""
     monkeypatch.setenv("TERMINAL_ENV", "modal")
     captured_env: dict[str, str] = {}
 
@@ -270,7 +338,9 @@ def test_env_runner_sets_terminal_env_local_even_when_parent_overrides(
         (save_dir / "samples.jsonl").write_text("{}\n")
         return subprocess.CompletedProcess(args=cmd, returncode=0, stdout="", stderr="")
 
-    with patch("hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run):
+    with patch("hermes_adapter.env_runner._docker_daemon_available", return_value=False), patch(
+        "hermes_adapter.env_runner.subprocess.run", side_effect=_fake_run
+    ):
         run_hermes_env(
             "tblite", output_dir=tmp_path / "out", repo_path=fake_repo, model="m"
         )

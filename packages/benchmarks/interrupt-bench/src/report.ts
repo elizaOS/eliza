@@ -40,7 +40,7 @@ export function aggregateScore(results: readonly ScenarioResult[]): {
 
 export function buildReport(args: {
   results: ScenarioResult[];
-  mode: "scripted" | "cerebras";
+  mode: "scripted" | "cerebras" | "harness";
   model?: string;
   startedAt: string;
   finishedAt: string;

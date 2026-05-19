@@ -12,17 +12,15 @@ import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
   connectCloudCapabilitySandbox,
-  installRemoteCapabilityEndpoint,
 } from "../services/remote-capability-cloud-sandbox.ts";
-import type {
-  RemoteCapabilityEndpointConfig,
-  RemoteCapabilityRouterConfig,
-} from "../services/remote-capability-router.ts";
 import {
-  type RemotePluginAdapterOptions,
-  type RemotePluginSyncResult,
-  syncRemoteCapabilityPlugins,
-} from "../services/remote-plugin-adapter.ts";
+  type ConnectRemoteCapabilityEndpointProviderOptions,
+  type ConnectRemoteCapabilityEndpointProviderResult,
+  connectRemoteCapabilityEndpointProvider,
+  directRemoteCapabilityEndpointProvider,
+} from "../services/remote-capability-endpoint-provider.ts";
+import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
+import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter.ts";
 
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
@@ -38,14 +36,10 @@ export interface RemoteCapabilityRouteContext
   readJsonBody: JsonBodyReader;
   saveConfig?: (config: CapabilityRouterPersistConfig) => void;
   persistConfigEnv?: (key: string, value: string) => Promise<void>;
-  installEndpoint?: (
+  connectEndpointProvider?: <TOptions>(
     runtime: IAgentRuntime,
-    config: RemoteCapabilityRouterConfig,
-  ) => unknown;
-  syncPlugins?: (
-    runtime: IAgentRuntime,
-    options: RemotePluginAdapterOptions & { unloadMissing?: boolean },
-  ) => Promise<RemotePluginSyncResult>;
+    options: ConnectRemoteCapabilityEndpointProviderOptions<TOptions>,
+  ) => Promise<ConnectRemoteCapabilityEndpointProviderResult>;
   connectCloudSandbox?: (
     runtime: IAgentRuntime,
     options: ConnectCloudCapabilitySandboxOptions,
@@ -154,25 +148,18 @@ export async function handleRemoteCapabilityRoutes(
   try {
     if (body.endpoint !== undefined) {
       const endpoint = parseDirectEndpoint(body.endpoint);
-      const installEndpoint =
-        ctx.installEndpoint ?? installRemoteCapabilityEndpoint;
-      installEndpoint(runtime, {
-        enabled: true,
-        endpoints: [endpoint],
-        environment: "server",
-        requestTimeoutMs: requestTimeoutMs ?? 60_000,
-      });
-      const sync = await (ctx.syncPlugins ?? syncRemoteCapabilityPlugins)(
-        runtime,
-        {
-          unloadMissing,
-          trustPolicy: {
-            allowedEndpointIds: [endpoint.id],
-            ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
-            requireEndpointId: true,
-          },
+      const connectEndpointProvider =
+        ctx.connectEndpointProvider ?? connectRemoteCapabilityEndpointProvider;
+      const result = await connectEndpointProvider(runtime, {
+        provider: directRemoteCapabilityEndpointProvider(),
+        provisionOptions: {
+          endpoint,
+          ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
         },
-      );
+        unloadMissing,
+        requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+      });
       if (persist) {
         await persistEndpoint(ctx, endpoint, allowedModuleIds);
       }
@@ -181,7 +168,7 @@ export async function handleRemoteCapabilityRoutes(
         mode: "endpoint",
         endpoint: redactEndpoint(endpoint),
         persisted: persist,
-        sync: serializeSyncResult(sync),
+        sync: serializeSyncResult(result.sync),
       });
       return true;
     }
@@ -243,7 +230,7 @@ async function serveCapabilityRouterAssetProxy(
   ctx: RemoteCapabilityRouteContext,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const { req, res, pathname, method } = ctx;
+  const { res, pathname, method } = ctx;
   const parsed = parseAssetProxyPath(pathname);
   const router = getRuntimeCapabilityRouter(runtime);
   const asset = await router.plugin.getAsset({

@@ -5,6 +5,7 @@
 import { join, resolve } from "node:path";
 import { determineExitCode } from "./exit-code.js";
 import {
+  createHarnessBridgeHandler,
   failingHandler,
   perfectHandler,
   randomHandler,
@@ -30,6 +31,11 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   const useEliza = args.includes("--eliza") || args.includes("--all");
   const verbose = args.includes("--verbose") || args.includes("-v");
+  const harnessIndex = args.indexOf("--harness");
+  const harness =
+    harnessIndex >= 0 && args[harnessIndex + 1]
+      ? args[harnessIndex + 1].trim().toLowerCase()
+      : "";
   const outputIndex = args.indexOf("--output");
   const outputDir =
     outputIndex >= 0 && args[outputIndex + 1]
@@ -67,6 +73,12 @@ async function main(): Promise<void> {
     const { elizaHandler } = await import("./handlers/eliza.js");
     handlers.push(elizaHandler);
     console.log(`  ${Y}Eliza handler enabled — requires LLM API key${X}\n`);
+  }
+  if (harness) {
+    handlers.push(createHarnessBridgeHandler(harness));
+    console.log(
+      `  ${Y}${harness} harness bridge enabled — requires benchmark client credentials${X}\n`,
+    );
   }
 
   const results = await runBenchmark(handlers, scenarios, {

@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 _TOOL_DESCRIPTION_LIMIT = 280
 _OBSERVATION_LIMIT = 2400
 
+_TAU_RETAIL_TOOL_NUDGE = (
+    "TauBench execution hint: after get_order_details for an exchange, do not "
+    "ask the customer for replacement item ids. Use get_product_details on "
+    "each relevant product_id from the order, choose matching available "
+    "item_ids yourself, then ask for explicit yes confirmation before calling "
+    "exchange_delivered_order_items. If a price difference needs a payment "
+    "method and the original payment method is available in the order, ask to "
+    "confirm using that original payment method."
+)
+
 
 _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
@@ -188,6 +198,7 @@ def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
         return (
             "Domain rules:\n"
             f"{system}\n\n"
+            f"{_TAU_RETAIL_TOOL_NUDGE}\n\n"
             "Customer message:\n"
             f"{latest}"
         ).strip()
@@ -207,6 +218,7 @@ def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
         "facts to fetch the next missing fact, ask the customer for required "
         "confirmation with REPLY when policy requires it, then call the final "
         "mutation tool after confirmation.\n\n"
+        f"{_TAU_RETAIL_TOOL_NUDGE}\n\n"
         "Latest customer/tool observation:\n"
         f"{latest}"
     ).strip()

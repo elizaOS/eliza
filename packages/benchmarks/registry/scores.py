@@ -1288,6 +1288,28 @@ def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
     metrics_dict: dict[str, JSONValue] = {}
     if isinstance(metrics_raw, dict):
         metrics_dict.update(metrics_raw)
+    metric_keys = {str(key) for key in metrics_dict}
+    score_metric_keys = {
+        "accuracy",
+        "pass_rate",
+        "avg_composite_score",
+        "survival_rate",
+        "mean_reward",
+        "reward",
+        "score",
+    }
+    if "placeholder" in metric_keys and not (metric_keys & score_metric_keys):
+        raise ValueError("hermes_env: placeholder-only score is not publishable")
+    incomplete = metrics_dict.get("incomplete_rollouts")
+    sample_rows = metrics_dict.get("sample_rows") or metrics_dict.get("total_tasks")
+    if (
+        score == 0.0
+        and isinstance(incomplete, (int, float))
+        and isinstance(sample_rows, (int, float))
+        and sample_rows > 0
+        and incomplete >= sample_rows
+    ):
+        raise ValueError("hermes_env: all rollouts stopped incomplete after tool output")
     env_id_public = get_optional(root, "env_id_public") or get_optional(root, "env_id")
     if env_id_public is not None:
         metrics_dict["env_id"] = env_id_public

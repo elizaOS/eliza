@@ -44,9 +44,11 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -294,6 +296,30 @@ def _read_caps(bin_dir: Path) -> dict | None:
 
 
 def discover_engine(prefer_backend: str | None = None) -> Engine | None:
+    override = os.environ.get("ELIZA_EVAL_ENGINE_BIN_DIR")
+    if override:
+        best = Path(override).expanduser().resolve()
+        if not best.is_dir():
+            return None
+        backend = prefer_backend or best.name
+
+        def _bin(directory: Path, name: str) -> Path | None:
+            p = directory / name
+            return p if p.is_file() and os.access(p, os.X_OK) else None
+
+        lib_override = os.environ.get("ELIZA_EVAL_ENGINE_DYLIB")
+        lib = Path(lib_override).expanduser().resolve() if lib_override else best / _eliza_lib_name()
+        return Engine(
+            backend=backend,
+            bin_dir=best,
+            llama_cli=_bin(best, "llama-cli"),
+            speculative=_bin(best, "llama-speculative-simple"),
+            omnivoice_server=_bin(best, "llama-omnivoice-server"),
+            llama_server=_bin(best, "llama-server"),
+            eliza_lib=lib if lib.is_file() else None,
+            is_fused=True,
+        )
+
     root = _engine_bin_root()
     if not root.is_dir():
         return None
@@ -518,6 +544,144 @@ def _run_llama(
 _BUN = shutil.which("bun")
 
 
+def _llama_perplexity_bin(ctx: EvalContext) -> Path | None:
+    override = os.environ.get("ELIZA_EVAL_TEXT_PERPLEXITY_BIN")
+    if override:
+        p = Path(override).expanduser().resolve()
+        return p if p.is_file() and os.access(p, os.X_OK) else None
+    candidates: list[Path] = []
+    if ctx.engine is not None:
+        candidates.append(ctx.engine.bin_dir / "llama-perplexity")
+        root = ctx.engine.bin_dir.parent
+        candidates.extend(d / "llama-perplexity" for d in sorted(root.iterdir()) if d.is_dir())
+    candidates.extend(
+        [
+            _TRAINING_ROOT.parent.parent
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
+            / "llama.cpp"
+            / "build-codex-merge"
+            / "bin"
+            / "llama-perplexity",
+            _TRAINING_ROOT.parent.parent
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
+            / "llama.cpp"
+            / "build"
+            / "darwin-arm64-metal-fused"
+            / "bin"
+            / "llama-perplexity",
+        ]
+    )
+    seen: set[Path] = set()
+    for p in candidates:
+        p = p.expanduser().resolve()
+        if p in seen:
+            continue
+        seen.add(p)
+        if p.is_file() and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+_PPL_RE = re.compile(r"Final estimate:\s+PPL\s*=\s*([0-9]+(?:\.[0-9]+)?)", re.I)
+
+
+def _eval_text_with_llama_perplexity(ctx: EvalContext, model: Path) -> dict[str, Any] | None:
+    binary = _llama_perplexity_bin(ctx)
+    if binary is None:
+        return None
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as fh:
+        corpus_path = Path(fh.name)
+        fh.write("\n\n".join(ctx.text_eval_corpus))
+        fh.write("\n")
+    args = [
+        "-m",
+        str(model),
+        "-f",
+        str(corpus_path),
+        "-c",
+        os.environ.get("ELIZA_EVAL_TEXT_PPL_CTX", "512"),
+        "-b",
+        os.environ.get("ELIZA_EVAL_TEXT_PPL_BATCH", "512"),
+        "-ngl",
+        os.environ.get(
+            "ELIZA_EVAL_TEXT_PPL_NGL",
+            "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
+        ),
+        "--no-warmup",
+    ]
+    chunks = os.environ.get("ELIZA_EVAL_TEXT_PPL_CHUNKS")
+    if chunks:
+        args += ["--chunks", chunks]
+    try:
+        rc, out = _run_llama(ctx, binary, args, timeout_s=min(ctx.timeout_s, 900))
+    except subprocess.TimeoutExpired:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": f"llama-perplexity timed out after {min(ctx.timeout_s, 900)}s",
+            "binary": str(binary),
+            "model": str(model),
+        }
+    finally:
+        try:
+            corpus_path.unlink()
+        except OSError:
+            pass
+    if rc != 0:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": f"llama-perplexity exited {rc}",
+            "outputTail": "\n".join(out.strip().splitlines()[-30:]),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    m = _PPL_RE.search(out)
+    if not m:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": "could not parse final PPL from llama-perplexity output",
+            "outputTail": "\n".join(out.strip().splitlines()[-30:]),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    ppl = float(m.group(1))
+    mean_nll = math.log(ppl)
+    score = round(math.exp(-_NLL_DECAY * mean_nll), 4)
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "metric": "text_eval",
+        "op": ">=",
+        "status": "ok",
+        "score": score,
+        "perplexity": round(ppl, 4),
+        "meanNllNats": round(mean_nll, 4),
+        "tokens": None,
+        "model": str(model),
+        "modelIsBundleText": model == ctx.text_model,
+        "corpusRecords": len(ctx.text_eval_corpus),
+        "binary": str(binary),
+        "scoring": f"score = exp(-{_NLL_DECAY} * ln(PPL)); PPL from llama-perplexity over extracted held-out assistant corpus",
+    }
+
+
 def _e2e_loop_bench_path() -> Path | None:
     # Allow an explicit override via env var (useful in CI / worktree setups).
     env_override = os.environ.get("ELIZA_EVAL_E2E_BENCH_PATH")
@@ -734,6 +898,9 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
                 "and no --text-eval-model override given)"
             ),
         }
+    binary_result = _eval_text_with_llama_perplexity(ctx, model)
+    if binary_result is not None:
+        return binary_result
     try:
         from llama_cpp import Llama
     except ImportError:

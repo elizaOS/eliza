@@ -98,10 +98,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
     "loca_bench": ("eliza", "hermes"),
-    # ConfigBench currently has an in-process Eliza handler plus oracle/mock
-    # handlers. Hermes/OpenClaw rows were previously scored against the
-    # Perfect oracle fallback, which is not a real harness comparison.
-    "configbench": ("eliza",),
     # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
     # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
     # misleading until real per-harness framework drivers exist.
@@ -129,8 +125,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # them out of real-agent publication is safer than emitting rows labeled as
     # Eliza/Hermes/OpenClaw that all exercised the same direct-provider path.
     "openclaw_bench": (),
-    "interrupt_bench": (),
-    "scambench": (),
 }
 
 
@@ -263,7 +257,7 @@ def _make_registry_adapter(
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
-        if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench"} and harness == "openclaw":
+        if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench", "lifeops_bench"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
         if benchmark_id == "hyperliquid_bench":
@@ -401,9 +395,11 @@ def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
     args = ["bun", "run", "src/index.ts", "--output", str(ctx.output_root)]
     agent = ctx.request.extra_config.get("agent")
     provider_name = ctx.request.provider.strip().lower()
-    if (
-        ctx.request.agent.lower() == "eliza"
-        or agent == "eliza"
+    harness = ctx.request.agent.strip().lower()
+    if harness in {"eliza", "hermes", "openclaw"}:
+        args.extend(["--harness", harness])
+    elif (
+        agent == "eliza"
         or ctx.request.extra_config.get("eliza") is True
         or provider_name == "eliza"
     ):
@@ -1240,7 +1236,7 @@ def _score_from_configbench(path: Path) -> ScoreSummary:
         if not isinstance(item, dict):
             continue
         name = str(item.get("handlerName", "")).lower()
-        if "eliza" in name:
+        if "eliza" in name or "harness bridge" in name:
             target = item
             break
     if target is None:
@@ -1838,22 +1834,31 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
 
 
 def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
-    args = [
+    harness = ctx.request.agent.strip().lower()
+    mode = "harness" if harness in {"eliza", "hermes", "openclaw"} else "cerebras"
+    runner_args = [
         "bun",
         "run",
         "src/runner.ts",
-        "--mode=cerebras",
+        f"--mode={mode}",
         f"--model={ctx.request.model}",
         f"--out={ctx.output_root}",
     ]
     scenario = ctx.request.extra_config.get("scenario")
     if isinstance(scenario, str) and scenario.strip():
-        args.append(f"--scenario={scenario.strip()}")
+        runner_args.append(f"--scenario={scenario.strip()}")
     elif int(ctx.request.extra_config.get("max_tasks", 0) or 0) == 1:
-        args.append("--scenario=A1-fragmented-email-draft")
+        runner_args.append("--scenario=A1-fragmented-email-draft")
     if ctx.request.extra_config.get("judge") is True:
-        args.append("--judge")
-    return args
+        runner_args.append("--judge")
+    if harness == "eliza":
+        return [
+            sys.executable,
+            "scripts/run_harness_benchmark.py",
+            "--",
+            *runner_args,
+        ]
+    return runner_args
 
 
 def _score_from_interrupt_bench(path: Path) -> ScoreSummary:
@@ -2081,7 +2086,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {
-            "agent_max_turns": 6,
+            "agent_max_turns": 10,
             "domain": "retail",
             "max_tasks": 1,
             "num_trials": 1,
@@ -2461,6 +2466,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=score_extractor_factory.for_benchmark("webshop"),
             default_extra_config={
                 "max_tasks": 1,
+                "max_turns": 6,
                 "sample": True,
             },
         ),

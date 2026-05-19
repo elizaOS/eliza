@@ -268,8 +268,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 
     for benchmark_id in (
         "openclaw_bench",
-        "interrupt_bench",
-        "scambench",
     ):
         for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
@@ -290,8 +288,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     for benchmark_id in (
         "gaia",
         "gaia_orchestrated",
+        "configbench",
         "hyperliquid_bench",
+        "interrupt_bench",
         "orchestrator_lifecycle",
+        "scambench",
         "vending_bench",
         "webshop",
     ):
@@ -307,15 +308,23 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             if benchmark_id == "gaia_orchestrated":
                 assert "--providers" in cell.command
                 assert cell.command[cell.command.index("--providers") + 1] == harness
+            if benchmark_id == "configbench":
+                assert "--harness" in cell.command
+                assert cell.command[cell.command.index("--harness") + 1] == harness
             if benchmark_id == "vending_bench":
                 assert "--provider" in cell.command
                 assert cell.command[cell.command.index("--provider") + 1] == "eliza"
             if benchmark_id == "hyperliquid_bench":
                 assert "--mode" in cell.command
                 assert cell.command[cell.command.index("--mode") + 1] == "eliza"
+            if benchmark_id == "interrupt_bench":
+                assert "--mode=harness" in cell.command
             if benchmark_id == "orchestrator_lifecycle":
                 assert "--mode" in cell.command
                 assert cell.command[cell.command.index("--mode") + 1] == "bridge"
+            if benchmark_id == "scambench":
+                assert "--provider" in cell.command
+                assert cell.command[cell.command.index("--provider") + 1] == "cerebras"
 
     for benchmark_id in (
         "hermes_tblite",
@@ -599,8 +608,6 @@ def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
 
     for benchmark_id in (
         "openclaw_bench",
-        "interrupt_bench",
-        "scambench",
     ):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ()
@@ -624,7 +631,6 @@ def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -
     adapters = discover_adapters(_workspace_root()).adapters
 
     for benchmark_id in (
-        "configbench",
         "framework",
         "eliza_1",
     ):

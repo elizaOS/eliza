@@ -62,7 +62,7 @@ function parseArgs(argv) {
     turns: intEnv("ELIZA_KOKORO_E2E_TURNS", 1),
     nPredict: intEnv("ELIZA_KOKORO_E2E_N_PREDICT", 32),
     threads: intEnv("ELIZA_KOKORO_E2E_THREADS", Math.min(os.cpus().length, 12)),
-    ctx: intEnv("ELIZA_KOKORO_E2E_CTX", 2048),
+    ctx: intEnv("ELIZA_KOKORO_E2E_CTX", 1024),
     ngl:
       process.env.ELIZA_KOKORO_E2E_NGL ||
       (defaultBackend === "cpu" ? "0" : "99"),
@@ -269,7 +269,16 @@ function resolveBundleFiles(bundleDir, tier) {
   const asrDir = path.join(bundleDir, "asr");
   const ttsRoot = path.join(bundleDir, "tts", "kokoro");
   const voicesDir = path.join(ttsRoot, "voices");
-  const kokoroModel =
+  const kokoroGgufModel =
+    firstExisting(
+      path.join(ttsRoot, "kokoro-82m-v1_0-Q4_K_M.gguf"),
+      path.join(ttsRoot, "kokoro-82m-v1_0.gguf"),
+      path.join(ttsRoot, "kokoro-82m-fp32.gguf"),
+      path.join(ttsRoot, "kokoro-v1.0.gguf"),
+      path.join(ttsRoot, "kokoro-v1.0-q4.gguf"),
+      ...ggufsIn(ttsRoot),
+    ) || null;
+  const kokoroOnnxModel =
     firstExisting(
       path.join(ttsRoot, "model_q4.onnx"),
       path.join(ttsRoot, "model_quantized.onnx"),
@@ -277,6 +286,7 @@ function resolveBundleFiles(bundleDir, tier) {
       path.join(ttsRoot, "model.onnx"),
       path.join(ttsRoot, "kokoro-v1.0.onnx"),
     ) || null;
+  const kokoroModel = kokoroGgufModel || kokoroOnnxModel;
   const embeddingDir = path.join(bundleDir, "embedding");
   const dedicatedEmbedding = ggufsIn(embeddingDir).sort()[0] || null;
   return {
@@ -296,6 +306,9 @@ function resolveBundleFiles(bundleDir, tier) {
       root: ttsRoot,
       modelPath: kokoroModel,
       modelFile: kokoroModel ? path.basename(kokoroModel) : null,
+      ggufModelPath: kokoroGgufModel,
+      onnxModelPath: kokoroOnnxModel,
+      modelKind: kokoroGgufModel ? "gguf" : kokoroOnnxModel ? "onnx" : null,
       voicesDir,
       voices: fs.existsSync(voicesDir)
         ? fs.readdirSync(voicesDir).filter((f) => f.endsWith(".bin")).sort()
@@ -362,7 +375,7 @@ function missingArtifacts(files, engine) {
   if (!isRealGguf(files.asr)) missing.push("asr/eliza-1-asr.gguf");
   if (!isRealGguf(files.asrMmproj, 1_000)) missing.push("asr/eliza-1-asr-mmproj.gguf");
   if (!files.kokoro.modelPath || !fs.existsSync(files.kokoro.modelPath)) {
-    missing.push("tts/kokoro/model_q4.onnx");
+    missing.push("tts/kokoro/{kokoro-82m-v1_0.gguf|model_q4.onnx}");
   }
   if (!fs.existsSync(files.kokoro.voicesDir) || files.kokoro.voices.length === 0) {
     missing.push("tts/kokoro/voices/*.bin");
@@ -648,14 +661,19 @@ function asrTranscribe(ffiState, ctx, samples, sampleRate) {
 
 async function createKokoro(files, voiceId, serverUrl) {
   const kokoro = await import("../../src/services/voice/kokoro/index.ts");
+  const runtimeKind = process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx";
+  const modelFile =
+    runtimeKind === "fork"
+      ? path.basename(files.kokoro.ggufModelPath || files.kokoro.modelPath || "")
+      : path.basename(files.kokoro.onnxModelPath || files.kokoro.modelPath || "");
   const layout = {
     root: files.kokoro.root,
-    modelFile: files.kokoro.modelFile,
+    modelFile,
     voicesDir: files.kokoro.voicesDir,
     sampleRate: 24000,
   };
   const runtime =
-    (process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx") === "fork"
+    runtimeKind === "fork"
       ? new kokoro.KokoroGgufRuntime({
           serverUrl,
           modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
@@ -1009,6 +1027,19 @@ async function startTextServer(engine, files, args, log) {
     if (args.draftNgl) {
       serverArgs.push("--spec-draft-ngl", String(args.draftNgl));
     }
+  }
+  if (args.kokoroRuntime === "fork") {
+    if (!isRealGguf(files.kokoro.ggufModelPath, 10_000_000)) {
+      throw new Error(
+        `--kokoro-runtime fork requires a Kokoro GGUF under tts/kokoro (got ${files.kokoro.ggufModelPath || "none"})`,
+      );
+    }
+    serverArgs.push(
+      "--kokoro-model",
+      files.kokoro.ggufModelPath,
+      "--kokoro-voices-dir",
+      files.kokoro.voicesDir,
+    );
   }
   log(`starting text server port=${port} text=${path.basename(files.text)} dflash=${drafterReady}`);
   const child = spawn(engine.server, serverArgs, {

@@ -322,6 +322,19 @@ Manifest decoding is strict at the capability-router boundary:
   collide with existing local runtime views outside a reload of an adapter-owned
   remote plugin, so compiled frontend entries are not silently dropped by the
   view registry.
+- Remote widget ids are registry keys scoped by `pluginId/id`, where omitted
+  `pluginId` defaults to the remote plugin name. The adapter rejects duplicate
+  remote widget keys in a sync batch and rejects remote widgets that would
+  collide with existing local runtime widgets outside a reload of an
+  adapter-owned remote plugin.
+- Remote app nav tab ids are shell navigation keys. The adapter rejects
+  duplicate remote nav tab ids in a sync batch and rejects remote nav tabs that
+  would collide with existing local runtime nav tabs outside a reload of an
+  adapter-owned remote plugin.
+- Remote app bridge identifiers are registered under normalized app route keys.
+  The adapter rejects duplicate remote app bridge keys in a sync batch before
+  plugin initialization, so one remote app bridge cannot replace another in the
+  runtime app route-module registry.
 - Evaluator `schema` is required and must be a JSON object. Evaluator `prompt`
   is manifest data because the current core evaluator interface expects
   synchronous prompt generation; async remote work belongs in `shouldRun`,
@@ -508,9 +521,11 @@ Keep `satellite` for a concrete deployment target when useful. Use
 ## Critical Assessment Of PR #7779
 
 Review target: <https://github.com/elizaOS/eliza/pull/7779>, inspected on
-2026-05-19 with `gh pr view 7779 --repo elizaOS/eliza`. The PR is open on
-`codex/phase-11-event-bridge-wip` against `develop`; GitHub currently reports
-`mergeable: CONFLICTING`.
+2026-05-19 with `gh pr view 7779 --repo elizaOS/eliza`. Refreshed on
+2026-05-19 with `gh pr view 7779 --repo elizaOS/eliza --json
+number,title,state,mergeable,headRefName,baseRefName,updatedAt,author,labels,url`.
+The PR is open on `codex/phase-11-event-bridge-wip` against `develop`; GitHub
+currently reports `mergeable: UNKNOWN`, last updated `2026-05-18T13:56:20Z`.
 
 Useful ideas to keep:
 
@@ -561,9 +576,28 @@ Concrete findings from the inspected PR files:
   the objective also requires iOS, cloud-to-home, home-to-cloud, and generic
   coding-agent-created modules. The canonical abstraction must live in core and
   agent packages, with Electrobun satellites as one deployment backend.
-- The PR body says GitHub reports the branch as mergeable, but the current PR
-  metadata reports `CONFLICTING`. Treat any validation list in the PR body as
-  historical until re-run on the current head.
+- GitHub currently reports `mergeable: UNKNOWN`, so mergeability and any
+  validation list in the PR body should be treated as historical until re-run on
+  the current head.
+
+Current branch provider-adapter check:
+
+- The historical PR files above are not present in this checkout. A current
+  file scan under `packages/agent`, `packages/cloud-services`, `packages/app-core`,
+  `plugins`, and `.github` finds the canonical implementation in
+  `remote-capability-router`, `remote-plugin-adapter`, the agent API route, and
+  the Cloud provisioner only.
+- `packages/agent/src/services/remote-capability-cloud-sandbox.ts` is the only
+  concrete provider adapter currently wired to the canonical endpoint model. It
+  normalizes Cloud create/provision/job responses into a
+  `RemoteCapabilityEndpointConfig`, installs that endpoint into
+  `RemoteCapabilityRouterService`, and syncs modules through the same remote
+  plugin adapter and endpoint/module trust policy used by direct endpoints.
+- There is no current E2B, home-machine, mobile-companion, or coding-satellite
+  provider implementation to fold in. Those should be added as thin endpoint
+  providers that return the same endpoint config and serve the same
+  `plugin.modules.list`, `plugin.*`, route, and asset RPC contract, not as new
+  runtime abstractions or separate remote-plugin contracts.
 
 Current extraction strategy:
 
@@ -584,9 +618,16 @@ Current local implementation includes:
   `packages/agent/src/services/remote-capability-router.ts`.
 - Agent cloud sandbox endpoint provisioner in
   `packages/agent/src/services/remote-capability-cloud-sandbox.ts`.
+- Shared endpoint-provider adapter contract in
+  `packages/agent/src/services/remote-capability-endpoint-provider.ts`, so
+  direct endpoints, Cloud, E2B, home-machine runners, mobile companions, and
+  future providers all converge to the same `RemoteCapabilityEndpointConfig`
+  plus endpoint/module trust policy before plugin sync.
 - Agent API route `POST /api/capability-router/connect` that installs an
   already-provisioned endpoint or provisions a Cloud endpoint, then syncs remote
-  plugins without returning stored tokens.
+  plugins without returning stored tokens. Direct endpoint connect uses the
+  same endpoint-provider adapter path as Cloud provisioning, so product connect
+  flows converge before runtime service installation and plugin sync.
 - Restart persistence for connected endpoints: redacted endpoint metadata is
   saved in `eliza.json`, while token-bearing `ELIZA_CAPABILITY_ROUTER_URLS`
   lives in the existing `config.env` secret channel and is re-applied to
@@ -604,6 +645,10 @@ Current local implementation includes:
 - Materialized remote plugins preserve endpoint affinity with
   `capabilityEndpointId`, so multiple remote devices or cloud containers can
   contribute modules without later calls falling back to the primary endpoint.
+- Incremental endpoint-provider connects preserve already-installed runtime
+  endpoints. The sync path fetches only the newly connected endpoint's manifest
+  and scopes `unloadMissing` to plugins owned by that endpoint, so connecting a
+  second device or sandbox does not unload the first device's remote plugins.
 - Explicit `endpointId` routing for low-level `fs`, `pty`, `git`, and
   `model.status` capabilities.
 
@@ -631,11 +676,27 @@ Current focused tests cover:
 - endpoint affinity on materialized plugin config and action/provider/route RPC
   payloads,
 - low-level capability routing to explicit endpoint ids,
+- generic endpoint-provider adapters that provision or resolve an endpoint,
+  install the normal `RemoteCapabilityRouterService`, and sync plugins through
+  the same endpoint/module trust policy regardless of whether the provider is
+  direct, Cloud, E2B, home-machine, or mobile-companion,
+- API connect routing for direct endpoints through the generic `direct`
+  endpoint provider rather than a separate install/sync branch,
+- sequential provider connects preserving multiple live endpoints and keeping
+  action RPC affinity for plugins from both endpoints,
+- product route sequential direct-connect flow preserving multiple live
+  endpoints through `/api/capability-router/connect`, with both endpoint-owned
+  plugins remaining invokable after the second connect,
+- product route mixed direct-plus-Cloud connect flow preserving a local device
+  endpoint and a Cloud-provisioned endpoint in the same running router, with
+  both endpoint-owned plugins remaining invokable and Cloud endpoint tokens
+  redacted from the API response,
 - cloud sandbox provisioning normalization from Cloud create/provision/job
   responses into capability-router endpoint configs,
 - cloud sandbox connection helper that installs the returned endpoint into the
   runtime capability-router service and syncs remote modules through normal
-  plugin ownership,
+  plugin ownership, including mocked Cloud action, provider, route, and compiled
+  view asset calls through the provisioned endpoint with bearer auth,
 - authenticated agent route for direct endpoint connection or Cloud
   provisioning, including token redaction in API responses,
 - remote route and app-bridge route header sanitization so local user/agent
@@ -676,6 +737,12 @@ Current focused tests cover:
 - remote frontend bundle URL validation before browser import URL exposure,
 - remote view id collision rejection before frontend entries are handed to the
   local view registry,
+- remote widget id collision rejection before widget declarations are handed to
+  the UI widget resolver,
+- remote app nav tab id collision rejection before shell navigation metadata is
+  exposed,
+- remote app bridge route-key collision rejection before app route modules are
+  registered,
 - remote asset RPC response validation before decoded bytes and content-type
   metadata are exposed through the asset proxy,
 - browser-facing view registry and `/api/views` metadata for remote absolute
@@ -724,6 +791,9 @@ when `ELIZAOS_CLOUD_API_KEY` is configured. That live smoke provisions a real
 Eliza Cloud capability endpoint, verifies it exposes at least one remote plugin
 module with a compiled view bundle, syncs it through the same endpoint trust
 policy, and executes remote action/provider/route surfaces.
+The non-secret Cloud provisioner test mirrors that contract with a mocked Cloud
+endpoint by syncing a module that contributes an action, provider, route, and
+compiled view asset through the installed capability-router service.
 
 Run the browser app-shell remote view smoke:
 

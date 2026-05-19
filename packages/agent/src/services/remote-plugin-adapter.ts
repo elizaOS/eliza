@@ -27,6 +27,7 @@ import {
   type ServiceClass,
   type ViewDeclaration,
 } from "@elizaos/core";
+import { packageNameToAppRouteSlug } from "@elizaos/shared";
 import {
   type AppRouteModule,
   registerRuntimeAppRouteModule,
@@ -41,6 +42,7 @@ export type RemotePluginAdapterOptions = {
   modules?: RemotePluginModuleManifest[];
   reloadExisting?: boolean;
   trustPolicy?: RemotePluginTrustPolicy;
+  unloadMissingEndpointIds?: string[];
 };
 
 export type RemotePluginBootstrapOptions = RemotePluginAdapterOptions & {
@@ -89,6 +91,9 @@ export async function registerRemoteCapabilityPlugins(
   validateRemotePluginRouteDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
   validateRemotePluginViewCollisions(runtime, modules, options);
+  validateRemotePluginWidgetCollisions(runtime, modules, options);
+  validateRemotePluginNavTabCollisions(runtime, modules, options);
+  validateRemotePluginAppBridgeIdentifierCollisions(modules);
   const plugins = modules
     .map((module) => createRemoteCapabilityPlugin(module))
     .filter((plugin) => shouldRegisterPlugin(runtime, plugin, options));
@@ -136,6 +141,9 @@ export async function syncRemoteCapabilityPlugins(
   validateRemotePluginRouteDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
   validateRemotePluginViewCollisions(runtime, modules, options);
+  validateRemotePluginWidgetCollisions(runtime, modules, options);
+  validateRemotePluginNavTabCollisions(runtime, modules, options);
+  validateRemotePluginAppBridgeIdentifierCollisions(modules);
   const nextPlugins = modules.map((module) =>
     createRemoteCapabilityPlugin(module),
   );
@@ -158,8 +166,13 @@ export async function syncRemoteCapabilityPlugins(
 
   const unloaded: string[] = [];
   if (options.unloadMissing) {
+    const unloadEndpointIds =
+      options.unloadMissingEndpointIds === undefined
+        ? undefined
+        : new Set(options.unloadMissingEndpointIds);
     for (const pluginName of getRegisteredRemoteCapabilityPluginNames(
       runtime,
+      unloadEndpointIds,
     )) {
       if (nextPluginNames.has(pluginName)) continue;
       const ownership = await runtime.unloadPlugin(pluginName);
@@ -1339,6 +1352,126 @@ function validateRemotePluginViewCollisions(
   }
 }
 
+function validateRemotePluginWidgetCollisions(
+  runtime: IAgentRuntime,
+  modules: RemotePluginModuleManifest[],
+  options: Pick<RemotePluginAdapterOptions, "reloadExisting">,
+): void {
+  const seen = new Map<string, string>();
+  for (const module of modules) {
+    for (const widget of module.widgets ?? []) {
+      const key = widgetCollisionKey(module, widget);
+      const existingModuleId = seen.get(key);
+      if (existingModuleId) {
+        throw new CapabilityError({
+          code: "CAPABILITY_DECODE_FAILED",
+          message: `Remote widget collision for "${key}" between modules "${existingModuleId}" and "${module.id}".`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+        });
+      }
+      seen.set(key, module.id);
+    }
+  }
+
+  if (options.reloadExisting) return;
+
+  const registeredRemoteWidgetKeys = new Set(
+    getRegisteredRemoteCapabilityWidgets(runtime).map(widgetDeclarationKey),
+  );
+  for (const module of modules) {
+    for (const widget of module.widgets ?? []) {
+      const key = widgetCollisionKey(module, widget);
+      const existing = (runtime.plugins ?? [])
+        .filter((plugin) => {
+          const config = plugin.config as Record<string, unknown> | undefined;
+          return typeof config?.remoteCapabilityModuleId !== "string";
+        })
+        .flatMap((plugin) => plugin.widgets ?? [])
+        .find((runtimeWidget) => widgetDeclarationKey(runtimeWidget) === key);
+      if (!existing) continue;
+      if (registeredRemoteWidgetKeys.has(key)) continue;
+      throw new CapabilityError({
+        code: "CAPABILITY_DECODE_FAILED",
+        message: `Remote plugin "${module.id}" widget "${key}" would collide with an existing runtime widget.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+      });
+    }
+  }
+}
+
+function validateRemotePluginNavTabCollisions(
+  runtime: IAgentRuntime,
+  modules: RemotePluginModuleManifest[],
+  options: Pick<RemotePluginAdapterOptions, "reloadExisting">,
+): void {
+  const seen = new Map<string, string>();
+  for (const module of modules) {
+    for (const navTab of module.app?.navTabs ?? []) {
+      const key = navTab.id;
+      const existingModuleId = seen.get(key);
+      if (existingModuleId) {
+        throw new CapabilityError({
+          code: "CAPABILITY_DECODE_FAILED",
+          message: `Remote app nav tab collision for "${key}" between modules "${existingModuleId}" and "${module.id}".`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+        });
+      }
+      seen.set(key, module.id);
+    }
+  }
+
+  if (options.reloadExisting) return;
+
+  const registeredRemoteNavTabKeys = new Set(
+    getRegisteredRemoteCapabilityNavTabs(runtime).map((navTab) => navTab.id),
+  );
+  for (const module of modules) {
+    for (const navTab of module.app?.navTabs ?? []) {
+      const key = navTab.id;
+      const existing = (runtime.plugins ?? [])
+        .filter((plugin) => {
+          const config = plugin.config as Record<string, unknown> | undefined;
+          return typeof config?.remoteCapabilityModuleId !== "string";
+        })
+        .flatMap((plugin) => plugin.app?.navTabs ?? [])
+        .find((runtimeNavTab) => runtimeNavTab.id === key);
+      if (!existing) continue;
+      if (registeredRemoteNavTabKeys.has(key)) continue;
+      throw new CapabilityError({
+        code: "CAPABILITY_DECODE_FAILED",
+        message: `Remote plugin "${module.id}" app nav tab "${key}" would collide with an existing runtime app nav tab.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+      });
+    }
+  }
+}
+
+function validateRemotePluginAppBridgeIdentifierCollisions(
+  modules: RemotePluginModuleManifest[],
+): void {
+  const seen = new Map<string, { moduleId: string; identifier: string }>();
+  for (const module of modules) {
+    if (module.appBridge === undefined) continue;
+    for (const identifier of remoteAppBridgeIdentifiers(module)) {
+      const key = appBridgeIdentifierKey(identifier);
+      const existing = seen.get(key);
+      if (existing) {
+        throw new CapabilityError({
+          code: "CAPABILITY_DECODE_FAILED",
+          message: `Remote app bridge identifier collision for "${key}" between modules "${existing.moduleId}" (${existing.identifier}) and "${module.id}" (${identifier}).`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+        });
+      }
+      seen.set(key, { moduleId: module.id, identifier });
+    }
+  }
+}
+
 function routeCollisionKey(method: string, routePath: string): string {
   return `${method.toUpperCase()} ${normalizeRoutePath(routePath)}`;
 }
@@ -1347,8 +1480,25 @@ function normalizeRoutePath(routePath: string): string {
   return routePath.startsWith("/") ? routePath : `/${routePath}`;
 }
 
-function viewCollisionKey(view: Pick<ViewDeclaration, "id" | "viewType">): string {
+function viewCollisionKey(
+  view: Pick<ViewDeclaration, "id" | "viewType">,
+): string {
   return `${view.viewType === "tui" ? "tui" : "gui"}:${view.id}`;
+}
+
+function widgetCollisionKey(
+  module: RemotePluginModuleManifest,
+  widget: NonNullable<RemotePluginModuleManifest["widgets"]>[number],
+): string {
+  return `${widget.pluginId ?? module.name}/${widget.id}`;
+}
+
+function widgetDeclarationKey(widget: PluginWidgetDeclaration): string {
+  return `${widget.pluginId}/${widget.id}`;
+}
+
+function appBridgeIdentifierKey(identifier: string): string {
+  return packageNameToAppRouteSlug(identifier) ?? identifier;
 }
 
 async function ensureConfiguredCapabilityRouter(
@@ -1405,6 +1555,44 @@ function getRegisteredRemoteCapabilityViews(
     }
   }
   return views;
+}
+
+function getRegisteredRemoteCapabilityWidgets(
+  runtime: IAgentRuntime,
+): NonNullable<Plugin["widgets"]> {
+  const widgets: NonNullable<Plugin["widgets"]> = [];
+  for (const item of runtime.getAllPluginOwnership?.() ?? []) {
+    const config = item.plugin.config as Record<string, unknown> | undefined;
+    if (typeof config?.remoteCapabilityModuleId === "string") {
+      widgets.push(...(item.plugin.widgets ?? []));
+    }
+  }
+  for (const plugin of runtime.plugins ?? []) {
+    const config = plugin.config as Record<string, unknown> | undefined;
+    if (typeof config?.remoteCapabilityModuleId === "string") {
+      widgets.push(...(plugin.widgets ?? []));
+    }
+  }
+  return widgets;
+}
+
+function getRegisteredRemoteCapabilityNavTabs(
+  runtime: IAgentRuntime,
+): NonNullable<NonNullable<Plugin["app"]>["navTabs"]> {
+  const navTabs: NonNullable<NonNullable<Plugin["app"]>["navTabs"]> = [];
+  for (const item of runtime.getAllPluginOwnership?.() ?? []) {
+    const config = item.plugin.config as Record<string, unknown> | undefined;
+    if (typeof config?.remoteCapabilityModuleId === "string") {
+      navTabs.push(...(item.plugin.app?.navTabs ?? []));
+    }
+  }
+  for (const plugin of runtime.plugins ?? []) {
+    const config = plugin.config as Record<string, unknown> | undefined;
+    if (typeof config?.remoteCapabilityModuleId === "string") {
+      navTabs.push(...(plugin.app?.navTabs ?? []));
+    }
+  }
+  return navTabs;
 }
 
 function getRegisteredRemoteCapabilityActions(
@@ -1475,22 +1663,40 @@ function getRegisteredRemoteCapabilityServiceTypes(
 
 function getRegisteredRemoteCapabilityPluginNames(
   runtime: IAgentRuntime,
+  endpointIds?: Set<string>,
 ): string[] {
   const ownership = runtime.getAllPluginOwnership?.() ?? [];
   const names = new Set<string>();
   for (const item of ownership) {
     const config = item.plugin.config as Record<string, unknown> | undefined;
-    if (typeof config?.remoteCapabilityModuleId === "string") {
+    if (
+      typeof config?.remoteCapabilityModuleId === "string" &&
+      remotePluginEndpointMatches(config, endpointIds)
+    ) {
       names.add(item.pluginName);
     }
   }
   for (const plugin of runtime.plugins ?? []) {
     const config = plugin.config as Record<string, unknown> | undefined;
-    if (typeof config?.remoteCapabilityModuleId === "string") {
+    if (
+      typeof config?.remoteCapabilityModuleId === "string" &&
+      remotePluginEndpointMatches(config, endpointIds)
+    ) {
       names.add(plugin.name);
     }
   }
   return [...names];
+}
+
+function remotePluginEndpointMatches(
+  config: Record<string, unknown>,
+  endpointIds: Set<string> | undefined,
+): boolean {
+  if (endpointIds === undefined) return true;
+  return (
+    typeof config.remoteCapabilityEndpointId === "string" &&
+    endpointIds.has(config.remoteCapabilityEndpointId)
+  );
 }
 
 function requireCapabilityRouter(
