@@ -117,6 +117,8 @@ def main() -> int:
             "llm-eda-opencores",
             "hardware-verilogeval-v2-hf",
             "llm4verilog-dataset",
+            "qimeng-codev-r1",
+            "evolve-verilog",
             "llmsanitize",
             "min-k-prob-contamination",
         ],
