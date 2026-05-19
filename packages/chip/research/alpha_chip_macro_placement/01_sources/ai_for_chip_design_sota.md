@@ -804,8 +804,9 @@ power, and manufacturing preparation.
 20. Chiplet/2.5D/3DIC/package co-design target capture with
     `scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation`.
     Do not generate chiplet partitions, interposer layouts, die-to-die
-    interfaces, package or bump maps, SI/PI/thermal models, architecture edits,
-    RTL edits, PD configs, board/package edits, simulator outputs, or
+    interfaces, RapidChiplet/PlaceIT/DiffChip/TDPNavigator-style topology or
+    placement outputs, package or bump maps, SI/PI/thermal models, architecture
+    edits, RTL edits, PD configs, board/package edits, simulator outputs, or
     cost/yield/performance/signoff claims without exact revisions,
     source/license review, package and architecture constraints, deterministic
     local gates, and review.
@@ -829,10 +830,11 @@ power, and manufacturing preparation.
     `scripts/ai_eda/capture_physical_verification_targets.py --run-id validation`.
     Do not run KLayout, Magic, Netgen, OpenROAD/OpenLane signoff steps, DRC,
     LVS, XOR, antenna checks, generated DRC decks, layout fixes, waivers, Tcl,
-    or patches, and do not claim DRC, LVS, antenna, physical signoff, or release
-    readiness without pinned tool and rule-deck revisions, layout/netlist
-    hashes, before/after deterministic logs, extraction/STA/power/
-    manufacturing/commercial-EDA gates where applicable, and review.
+    patches, structural-verifier approvals, or OpenDRC reports, and do not
+    claim DRC, LVS, antenna, physical signoff, or release readiness without
+    pinned tool and rule-deck revisions, layout/netlist hashes, before/after
+    deterministic logs, extraction/STA/power/manufacturing/commercial-EDA gates
+    where applicable, open-tool correlation where applicable, and review.
 24. Placement, legalization, density, and generative placement target capture
     with
     `scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation`.

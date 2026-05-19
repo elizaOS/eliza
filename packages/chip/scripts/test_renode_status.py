@@ -144,12 +144,17 @@ def test_renode_with_firmware_fails_without_banner() -> None:
         renode = bindir / "renode"
         write_renode_test_double(renode)
         write_firmware_fixture()
+        # Provide a valid QEMU transcript so the equivalence check passes;
+        # the failure should come from Renode not printing the banner.
+        qemu_log = Path(td) / "qemu_smoke.log"
+        qemu_log.write_text(f"fake qemu output\n{BANNER}\n")
         result = run_check(
             {
                 "PATH": f"{bindir}:/usr/bin:/bin",
                 "REQUIRE_RENODE": "0",
                 "RENODE_SMOKE_SECONDS": "1",
                 "ELIZA_RENODE_USE_REPO_TOOLS": "0",
+                "RENODE_QEMU_TRANSCRIPT": str(qemu_log),
             }
         )
     if result.returncode != 1:
@@ -168,12 +173,16 @@ def test_renode_with_firmware_and_banner_passes() -> None:
         renode = bindir / "renode"
         write_renode_banner_test_double(renode)
         write_firmware_fixture()
+        # Provide a valid QEMU transcript so the equivalence check passes.
+        qemu_log = Path(td) / "qemu_smoke.log"
+        qemu_log.write_text(f"fake qemu output\n{BANNER}\n")
         result = run_check(
             {
                 "PATH": f"{bindir}:/usr/bin:/bin",
                 "REQUIRE_RENODE": "0",
                 "RENODE_SMOKE_SECONDS": "1",
                 "ELIZA_RENODE_USE_REPO_TOOLS": "0",
+                "RENODE_QEMU_TRANSCRIPT": str(qemu_log),
             }
         )
     if result.returncode != 0:

@@ -148,7 +148,7 @@ function buildAscendantPrompt(
       ? `\n\n## User Feedback So Far\n${feedback.map((f) => `- Re: ${f.topic}: "${f.response}"`).join("\n")}`
       : "";
 
-  return `You are an insightful, warm, and articulate astrologer continuing a natal chart reading. Address the querent directly as "you."
+  return `Insightful, warm, and articulate astrologer continuing a natal chart reading. Address the querent directly as "you."
 
 ## The Ascendant: ${signName} Rising
 

@@ -1,7 +1,7 @@
 {
   "id": "smartglasses",
   "name": "Smartglasses",
-  "description": "Even Realities G1/G2 smartglasses integration for display text, microphone audio, side-tap mic control, and bridge/simulator workflows.",
+  "description": "Even Realities G1/G2 smartglasses integration for whole-headset pairing, display text, microphone audio, side-tap mic control, bridge Wi-Fi setup, and diagnostics.",
   "npmName": "@elizaos/plugin-smartglasses",
   "version": "2.0.0-beta.2",
   "source": "bundled",
@@ -13,7 +13,8 @@
     "g2",
     "display",
     "microphone",
-    "bluetooth"
+    "bluetooth",
+    "wifi"
   ],
   "config": {
     "SMARTGLASSES_TRANSPORT": {
@@ -59,8 +60,8 @@
     "visible": true,
     "pinTo": [],
     "style": "card",
-    "icon": "Eye",
-    "group": "media",
+    "icon": "Glasses",
+    "group": "hardware",
     "groupOrder": 8,
     "actions": ["enable", "configure", "launch"]
   },

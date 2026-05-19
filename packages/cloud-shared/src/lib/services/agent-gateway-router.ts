@@ -3,7 +3,7 @@ import { and, desc, eq } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
 import { type AgentSandbox, agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { usersRepository } from "../../db/repositories/users";
-import { agentPhoneContacts } from "../../db/schemas";
+import { agentPhoneNumbers, phoneMessageLog } from "../../db/schemas";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
 import { type AgentGatewayRelaySession, agentGatewayRelayService } from "./agent-gateway-relay";
@@ -58,20 +58,6 @@ type PhoneTargetResolution = {
 };
 
 const PHONE_TARGET_CACHE_TTL_MS = 5_000;
-
-function isUndefinedTableError(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
-    return true;
-  }
-  const cause = (error as { cause?: unknown }).cause;
-  if (cause && cause !== error) return isUndefinedTableError(cause);
-  const message = (error as { message?: unknown }).message;
-  return (
-    typeof message === "string" &&
-    message.includes('relation "agent_phone_contacts" does not exist')
-  );
-}
 
 function asConfigRecord(
   value: AgentSandbox["agent_config"],
@@ -349,147 +335,103 @@ export class AgentGatewayRouterService {
       ? await usersRepository.findByEmailWithOrganization(args.lookupId)
       : await usersRepository.findByPhoneNumberWithOrganization(args.lookupId);
 
-    if (owner?.organization_id) {
-      let owned: Awaited<ReturnType<AgentGatewayRouterService["resolveOwnedRuntimeTarget"]>>;
-      try {
-        owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
-      } catch (error) {
-        logger.error("[AgentGatewayRouter] Failed to resolve phone sender's own runtime", {
-          provider: args.provider,
-          userId: owner.id,
-          organizationId: owner.organization_id,
-          error: error instanceof Error ? error.message : String(error),
-        });
-        owned = {
-          reason: "owner_agent_not_running",
-          userId: owner.id,
-        };
-      }
+    if (!owner) {
+      const contact = await this.resolveLoggedPhoneContactTarget(args.lookupId);
+      return contact.target ? contact : { reason: "unknown_owner" };
+    }
 
-      if (owned.target) {
-        return {
-          ...owned,
-          organizationId: owner.organization_id,
-          source: "owner",
-        };
-      }
+    if (!owner.organization_id) {
+      return {
+        reason: "unknown_owner",
+        userId: owner.id,
+      };
+    }
 
-      const contact = await this.resolvePhoneContactTarget({
+    let owned: Awaited<ReturnType<AgentGatewayRouterService["resolveOwnedRuntimeTarget"]>>;
+    try {
+      owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Failed to resolve phone sender's own runtime", {
         provider: args.provider,
-        senderId: args.senderId,
+        userId: owner.id,
+        organizationId: owner.organization_id,
+        error: error instanceof Error ? error.message : String(error),
       });
-      if (contact.target) return contact;
+      owned = {
+        reason: "owner_agent_not_running",
+        userId: owner.id,
+      };
+    }
 
-        return {
-          ...owned,
-          organizationId: owner.organization_id,
-          source: "owner",
-        };
-      }
+    if (owned.target) {
+      return {
+        ...owned,
+        organizationId: owner.organization_id,
+        source: "owner",
+      };
+    }
 
-    const contact = await this.resolvePhoneContactTarget({
-      provider: args.provider,
-      senderId: args.senderId,
-    });
+    const contact = await this.resolveLoggedPhoneContactTarget(args.lookupId);
     if (contact.target) return contact;
 
     return {
-      reason: "unknown_owner",
+      ...owned,
+      organizationId: owner.organization_id,
+      source: "owner",
     };
   }
 
-  private normalizeContactIdentifier(value: string): string {
-    const trimmed = value.trim();
-    return trimmed.includes("@") ? trimmed.toLowerCase() : normalizePhoneNumber(trimmed);
-  }
-
-  private async resolvePhoneContactTarget(args: {
-    provider: "twilio" | "blooio" | "whatsapp";
-    senderId: string;
-  }): Promise<PhoneTargetResolution> {
-    const contactIdentifier = this.normalizeContactIdentifier(args.senderId);
-    if (!contactIdentifier) {
+  private async resolveLoggedPhoneContactTarget(lookupId: string): Promise<PhoneTargetResolution> {
+    const normalizedPhone = lookupId.includes("@")
+      ? lookupId.toLowerCase()
+      : normalizePhoneNumber(lookupId);
+    if (!normalizedPhone) {
       return { reason: "unknown_owner" };
     }
 
-    let contacts: (typeof agentPhoneContacts.$inferSelect)[] = [];
-    try {
-      contacts = await dbWrite
-        .select()
-        .from(agentPhoneContacts)
-        .where(
-          and(
-            eq(agentPhoneContacts.provider, args.provider),
-            eq(agentPhoneContacts.contact_identifier, contactIdentifier),
-            eq(agentPhoneContacts.is_active, true),
-          ),
-        )
-        .orderBy(desc(agentPhoneContacts.last_contacted_at))
-        .limit(5);
-    } catch (error) {
-      if (isUndefinedTableError(error)) {
-        logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
-        return { reason: "unknown_owner" };
-      }
-      throw error;
+    const [latestOutbound] = await dbWrite
+      .select({
+        agentId: agentPhoneNumbers.agent_id,
+        organizationId: agentPhoneNumbers.organization_id,
+      })
+      .from(phoneMessageLog)
+      .innerJoin(agentPhoneNumbers, eq(phoneMessageLog.phone_number_id, agentPhoneNumbers.id))
+      .where(
+        and(
+          eq(phoneMessageLog.direction, "outbound"),
+          eq(phoneMessageLog.to_number, normalizedPhone),
+          eq(agentPhoneNumbers.is_active, true),
+        ),
+      )
+      .orderBy(desc(phoneMessageLog.created_at))
+      .limit(1);
+
+    if (!latestOutbound) {
+      return { reason: "unknown_owner" };
     }
 
-    for (const contact of contacts) {
-      const localSessions = await agentGatewayRelayService.listOwnerSessions(
-        contact.organization_id,
-        contact.user_id,
-      );
-      const matchingSession = localSessions.find(
-        (session) => session.runtimeAgentId === contact.agent_id,
-      );
-      if (matchingSession) {
-        return {
-          target: {
-            kind: "local-session",
-            session: matchingSession,
-            sessions: [matchingSession],
-          },
-          agentId: contact.agent_id,
-          userId: contact.user_id,
-          organizationId: contact.organization_id,
-          source: "contact",
-        };
-      }
-
-      const sandbox = await agentSandboxesRepository.findRunningSandbox(
-        contact.agent_id,
-        contact.organization_id,
-      );
-      if (sandbox && isNonGatewayRunningSandbox(sandbox)) {
-        await dbWrite
-          .update(agentPhoneContacts)
-          .set({
-            last_contacted_at: new Date(),
-            last_inbound_at: new Date(),
-            updated_at: new Date(),
-          })
-          .where(eq(agentPhoneContacts.id, contact.id));
-
-        return {
-          target: {
-            kind: "sandbox",
-            sandbox,
-          },
-          agentId: contact.agent_id,
-          userId: contact.user_id,
-          organizationId: contact.organization_id,
-          source: "contact",
-        };
-      }
+    const sandbox = await agentSandboxesRepository.findRunningSandbox(
+      latestOutbound.agentId,
+      latestOutbound.organizationId,
+    );
+    if (!sandbox || !isNonGatewayRunningSandbox(sandbox)) {
+      return {
+        reason: "owner_agent_not_running",
+        agentId: latestOutbound.agentId,
+        organizationId: latestOutbound.organizationId,
+        source: "contact",
+      };
     }
 
-    const last = contacts[0];
     return {
-      reason: contacts.length > 0 ? "owner_agent_not_running" : "unknown_owner",
-      agentId: last?.agent_id,
-      userId: last?.user_id,
-      organizationId: last?.organization_id,
-      source: contacts.length > 0 ? "contact" : undefined,
+      target: {
+        kind: "sandbox",
+        sandbox,
+      },
+      agentId: latestOutbound.agentId,
+      userId: sandbox.user_id,
+      organizationId: latestOutbound.organizationId,
+      source: "contact",
     };
   }
 
@@ -945,10 +887,7 @@ export class AgentGatewayRouterService {
       const owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
       resolved = owned.target
         ? { ...owned, organizationId: owner.organization_id }
-        : await this.resolvePhoneContactTarget({
-            provider: "whatsapp",
-            senderId: normalizedPhone || senderWhatsAppId,
-          });
+        : await this.resolveLoggedPhoneContactTarget(normalizedPhone || senderWhatsAppId);
       if (!resolved.target) {
         resolved = {
           ...owned,
@@ -956,10 +895,7 @@ export class AgentGatewayRouterService {
         };
       }
     } else {
-      resolved = await this.resolvePhoneContactTarget({
-        provider: "whatsapp",
-        senderId: normalizedPhone || senderWhatsAppId,
-      });
+      resolved = await this.resolveLoggedPhoneContactTarget(normalizedPhone || senderWhatsAppId);
     }
 
     if (!resolved.target) {

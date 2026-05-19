@@ -519,7 +519,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     const originalSystemPrompt = runtime.character.system;
     if (!runtime.character.system) {
       runtime.character.system =
-        "You are an AI task executor that helps complete user requests by selecting and executing actions.";
+        "Select and execute actions to fulfill user requests.";
     }
 
     const maxIterations =
@@ -1199,7 +1199,7 @@ export class CloudBootstrapMessageService implements IMessageService {
     // doesn't send an empty system message (which OpenAI rejects).
     const originalSystemPrompt = runtime.character.system;
     if (!runtime.character.system) {
-      runtime.character.system = "You are a helpful AI assistant that responds to user messages.";
+      runtime.character.system = "Respond to user messages.";
     }
 
     try {

@@ -586,7 +586,9 @@ def _validate_descriptor_writeback_preamble(
     if not isinstance(descriptor_words, list) or not isinstance(op_mmio_preamble, list):
         raise ValueError("prepared execution batch requires descriptor_words and op_mmio_preamble")
     if len(descriptor_words) != len(op_mmio_preamble):
-        raise ValueError("prepared execution batch descriptor_words count does not match op_mmio_preamble")
+        raise ValueError(
+            "prepared execution batch descriptor_words count does not match op_mmio_preamble"
+        )
     for words, entry in zip(descriptor_words, op_mmio_preamble, strict=True):
         if not isinstance(words, list) or not words:
             raise ValueError("prepared execution batch descriptor_words entry must have four words")
@@ -711,6 +713,12 @@ def _validate_sequence_mmio_preamble(batch: Mapping[str, Any], sequence: Mapping
                 raise TypeError("host runtime sequence write entry must be a mapping")
             if write.get("register") != register:
                 raise ValueError("prepared execution batch mmio_preamble_writes register mismatch")
+            if (
+                not isinstance(expected_value, int)
+                or expected_value < 0
+                or expected_value > 0xFFFF_FFFF
+            ):
+                raise ValueError(f"prepared execution batch {register} must be a uint32")
             _address, value = _sequence_write_address_value(write)
             if value != expected_value:
                 raise ValueError("prepared execution batch mmio_preamble_writes value mismatch")

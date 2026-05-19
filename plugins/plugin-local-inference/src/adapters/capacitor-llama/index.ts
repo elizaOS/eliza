@@ -59,7 +59,7 @@ import {
 } from "./types";
 
 const DEFAULT_LOCAL_SYSTEM_PROMPT =
-	"You are a helpful AI assistant. Respond to the current request only.";
+	"Respond to the current request only.";
 
 interface ContextEntry {
 	ctx: CapacitorLlamaContext;

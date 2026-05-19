@@ -228,7 +228,7 @@ Workflow-level settings, e.g. timezone, error workflow, execution options.
 
 ## **Prompt Example for AI**
 
-> You are an workflow generator. Given a user's intent, generate a workflow as a JSON object.
+> Given the user's intent, generate a workflow as a JSON object.
 > Use the following structure:
 > - \`nodes\`: List of nodes, each with \`id\`, \`name\`, \`type\`, \`typeVersion\`, \`position\`, \`parameters\`, and optional \`credentials\`.
 > - \`connections\`: Object mapping node names to their output connections.

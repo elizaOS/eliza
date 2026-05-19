@@ -1,0 +1,63 @@
+{
+  "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/text_conditioned_v2",
+  "verdict": "PASS",
+  "gates": {
+    "g1_training": {
+      "passed": true,
+      "results": [
+        {
+          "prompt": "stand_up",
+          "matched_task": "get_up",
+          "action_shape": [
+            24
+          ],
+          "action_mean": -0.0014844685792922974,
+          "action_std": 0.027858616784214973
+        },
+        {
+          "prompt": "walk_forward",
+          "matched_task": "walk_forward",
+          "action_shape": [
+            24
+          ],
+          "action_mean": -0.0003445375186856836,
+          "action_std": 0.03255560249090195
+        },
+        {
+          "prompt": "turn_left",
+          "matched_task": "turn_left",
+          "action_shape": [
+            24
+          ],
+          "action_mean": -0.0014231536770239472,
+          "action_std": 0.039931826293468475
+        },
+        {
+          "prompt": "turn_right",
+          "matched_task": "turn_right",
+          "action_shape": [
+            24
+          ],
+          "action_mean": -0.002356898272410035,
+          "action_std": 0.03932861611247063
+        }
+      ]
+    },
+    "g2_conditioning": {
+      "passed": true,
+      "mean_action_l2": 0.05052723673482736,
+      "threshold": 0.001
+    },
+    "g3_sysid": {
+      "passed": true,
+      "median_offset_err_mrad": 4.728911811609327,
+      "threshold_mrad": 15.0,
+      "fits_count": 12
+    },
+    "g4_bridge_dual": {
+      "passed": true,
+      "commands_attempted": 4,
+      "failures": []
+    }
+  }
+}
