@@ -227,20 +227,27 @@ function resolveNodeExecutable() {
   return process.env.NODE?.trim() || "node";
 }
 
+export function resolveCapacitorCli({
+  appDirValue = appDir,
+  repoRootValue = repoRoot,
+} = {}) {
+  const capacitorCliPackage = resolvePackageAbsolutePath("@capacitor/cli", {
+    appDirValue,
+    repoRootValue,
+  });
+  const capacitorCli = capacitorCliPackage
+    ? path.join(capacitorCliPackage, "bin", "capacitor")
+    : null;
+  if (!capacitorCli || !fs.existsSync(capacitorCli)) {
+    throw new Error("@capacitor/cli not found; run bun install");
+  }
+  return capacitorCli;
+}
+
 function runCapacitor(args) {
   return run(
     resolveNodeExecutable(),
-    [
-      path.join(
-        appDir,
-        "node_modules",
-        "@capacitor",
-        "cli",
-        "bin",
-        "capacitor",
-      ),
-      ...args,
-    ],
+    [resolveCapacitorCli(), ...args],
     { cwd: appDir },
   );
 }
@@ -438,17 +445,24 @@ function resolvePackagePath(pkgName, relativeTo) {
   return path.relative(relativeTo, linked);
 }
 
-function resolvePackageAbsolutePath(pkgName) {
-  const appPackage = path.join(appDir, "node_modules", ...pkgName.split("/"));
+function resolvePackageAbsolutePath(
+  pkgName,
+  { appDirValue = appDir, repoRootValue = repoRoot } = {},
+) {
+  const appPackage = path.join(
+    appDirValue,
+    "node_modules",
+    ...pkgName.split("/"),
+  );
   const rootNodeModulesPackage = path.join(
-    repoRoot,
+    repoRootValue,
     "node_modules",
     ...pkgName.split("/"),
   );
   const candidates = [appPackage, rootNodeModulesPackage];
   for (const bunStore of [
-    path.join(appDir, "node_modules", ".bun"),
-    path.join(repoRoot, "node_modules", ".bun"),
+    path.join(appDirValue, "node_modules", ".bun"),
+    path.join(repoRootValue, "node_modules", ".bun"),
   ]) {
     if (!fs.existsSync(bunStore)) continue;
     for (const entry of fs.readdirSync(bunStore, { withFileTypes: true })) {
