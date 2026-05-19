@@ -2877,6 +2877,32 @@ def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) 
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
 
 
+def test_terminalbench_default_allows_real_corpus_test_bootstrap(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+    adapter = discover_adapters(_workspace_root()).adapters["terminal_bench"]
+
+    request = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=["terminal_bench"],
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        request.extra_config,
+    )
+
+    assert request.extra_config["network_mode"] == "bridge"
+    assert command[command.index("--network-mode") + 1] == "bridge"
+
+
 def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
         "terminal_bench"

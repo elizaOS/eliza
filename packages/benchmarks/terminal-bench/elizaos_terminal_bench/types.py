@@ -239,7 +239,7 @@ class TerminalBenchConfig:
     docker_image: str = "ubuntu:22.04"
     memory_limit: str = "2g"
     cpu_limit: float = 1.0
-    network_mode: str = "none"
+    network_mode: str = "bridge"
     
     # Model settings
     # Use an accessible, inexpensive default for quick validation.

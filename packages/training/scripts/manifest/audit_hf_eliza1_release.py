@@ -1105,12 +1105,15 @@ def _dataset_live_audit_blockers(
     audit: Mapping[str, Any],
     *,
     dataset_repo: str,
+    current_revision: str | None = None,
 ) -> list[str]:
     blockers: list[str] = []
     if audit.get("schema") != DATASET_LIVE_AUDIT_SCHEMA:
         blockers.append(f"schema: {audit.get('schema')!r}")
     if audit.get("datasetRepo") != dataset_repo:
         blockers.append(f"datasetRepo: {audit.get('datasetRepo')!r}")
+    if not isinstance(audit.get("datasetRevision"), str) or not audit.get("datasetRevision"):
+        blockers.append("datasetRevision: missing")
     if audit.get("passed") is not True:
         blockers.append(f"passed: {audit.get('passed')!r}")
 
@@ -1532,6 +1535,7 @@ def audit_hf_release(
 
     dataset_payload = fetch_json(_repo_api_url(DATASET_API, dataset_repo))
     dataset_paths = _sibling_paths(dataset_payload)
+    dataset_revision = dataset_payload.get("sha") if isinstance(dataset_payload.get("sha"), str) else None
     report.check("dataset repo file list available", bool(dataset_paths), f"{len(dataset_paths)} files")
     report.check("dataset README present", "README.md" in dataset_paths, "README.md")
     report.check(
@@ -1667,6 +1671,7 @@ def audit_hf_release(
                     dataset_manifest,
                     live_audit,
                     dataset_repo=dataset_repo,
+                    current_revision=dataset_revision,
                 )
                 report.check(
                     "dataset live validation audit passed",

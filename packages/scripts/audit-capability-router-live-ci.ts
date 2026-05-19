@@ -99,12 +99,28 @@ export const checks: Check[] = [
       "root package scripts must expose the GitHub live evidence validator.",
   },
   {
+    name: "GitHub live artifact validator script exists",
+    pattern:
+      /"test:remote-capabilities:github-live-artifacts"\s*:\s*"bun packages\/scripts\/validate-capability-router-github-live-artifacts\.ts"/,
+    source: "root-package",
+    message:
+      "root package scripts must expose the GitHub live artifact validator.",
+  },
+  {
     name: "GitHub live evidence validator self-test script exists",
     pattern:
       /"test:remote-capabilities:github-live-evidence:self-test"\s*:\s*"bun packages\/scripts\/validate-capability-router-github-live-evidence\.self-test\.ts"/,
     source: "root-package",
     message:
       "root package scripts must expose the GitHub live evidence validator self-test.",
+  },
+  {
+    name: "GitHub live artifact validator downloads and validates reports",
+    pattern:
+      /gh[\s\S]*run[\s\S]*download[\s\S]*remote-capability-cloud-live-report[\s\S]*remote-capability-provider-live-report[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*--kind[\s\S]*cloud[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*--kind[\s\S]*provider[\s\S]*--require-providers[\s\S]*e2b,home-machine,mobile-companion/,
+    source: "github-live-artifact-validator",
+    message:
+      "GitHub live artifact validation must download both artifacts and validate Cloud plus required provider report contents.",
   },
   {
     name: "canonical remote capability suite covers live report writer",
@@ -129,6 +145,30 @@ export const checks: Check[] = [
     source: "live-report-validator",
     message:
       "live report validation must compare runtime.remotePlugins counts with sync.registeredModules.",
+  },
+  {
+    name: "provider live reports include endpoint runtime evidence",
+    pattern:
+      /providerEvidence:[\s\S]*provider:\s*target\.label[\s\S]*endpointRuntime:\s*target\.endpointRuntime[\s\S]*agentRuntime:\s*"github-actions"[\s\S]*connection:\s*"url-backed-provider"/,
+    source: "provider-smoke",
+    message:
+      "provider live reports must record the provider family, endpoint runtime, agent runtime, and URL-backed adapter path.",
+  },
+  {
+    name: "live report validator requires provider runtime evidence",
+    pattern:
+      /function validateProviderEvidence[\s\S]*providerEvidence\.provider must match provider[\s\S]*CANONICAL_PROVIDER_ENDPOINT_RUNTIMES[\s\S]*providerEvidence\.agentRuntime must be "github-actions"[\s\S]*providerEvidence\.connection must be "url-backed-provider"/,
+    source: "live-report-validator",
+    message:
+      "live report validation must require provider runtime evidence for provider reports.",
+  },
+  {
+    name: "live report validator self-test covers provider runtime evidence",
+    pattern:
+      /(?=[\s\S]*missingProviderEvidenceDir)(?=[\s\S]*mismatchedProviderEvidenceDir)(?=[\s\S]*makeMissingProviderEvidenceReport\(\))(?=[\s\S]*makeMismatchedProviderEvidenceReport\(\))(?=[\s\S]*providerEvidence must be an object)(?=[\s\S]*providerEvidence\.endpointRuntime must be)/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing and mismatched provider runtime evidence.",
   },
   {
     name: "endpoint conformance requires non-empty route bodies",

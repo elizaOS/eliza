@@ -42,14 +42,19 @@ def _api_url(template: str, repo: str) -> str:
     return template.format(repo=quote(repo, safe=safe))
 
 
-def _siblings(paths: list[str], *, lfs_sha256s: Mapping[str, str] | None = None) -> dict[str, Any]:
+def _siblings(
+    paths: list[str],
+    *,
+    lfs_sha256s: Mapping[str, str] | None = None,
+    sha: str = "test-revision",
+) -> dict[str, Any]:
     siblings: list[dict[str, Any]] = []
     for path in paths:
         item: dict[str, Any] = {"rfilename": path}
         if lfs_sha256s and path in lfs_sha256s:
             item["lfs"] = {"sha256": lfs_sha256s[path], "size": 1}
         siblings.append(item)
-    return {"siblings": siblings}
+    return {"sha": sha, "siblings": siblings}
 
 
 def _complete_model_paths() -> list[str]:
@@ -92,6 +97,7 @@ def _fetcher(
     model_paths: list[str] | None = None,
     model_lfs_sha256s: Mapping[str, str] | None = None,
     dataset_paths: list[str] | None = None,
+    dataset_sha: str = "test-revision",
     splits: list[str] | None = None,
 ):
     payloads: dict[str, Mapping[str, Any]] = {
@@ -100,7 +106,8 @@ def _fetcher(
             lfs_sha256s=model_lfs_sha256s,
         ),
         _api_url(DATASET_API, DATASET_REPO): _siblings(
-            dataset_paths if dataset_paths is not None else _complete_dataset_paths()
+            dataset_paths if dataset_paths is not None else _complete_dataset_paths(),
+            sha=dataset_sha,
         ),
         _api_url(DATASET_SPLITS_API, DATASET_REPO): {
             "splits": [
@@ -464,6 +471,7 @@ def _passing_dataset_live_audit() -> str:
         {
             "schema": "eliza.eliza1_training_dataset_live_audit.v1",
             "datasetRepo": DATASET_REPO,
+            "datasetRevision": "test-revision",
             "passed": True,
             "validation": __import__("json").loads(_passing_dataset_validation_report()),
             "rowCounts": {
@@ -1575,6 +1583,24 @@ def test_hf_release_audit_blocks_dirty_dataset_live_audit() -> None:
         and "hashMismatches: non-empty" in check["detail"]
         and "secretScan.passed: False" in check["detail"]
         and "rowCounts total: 1425 != manifest 1426" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_dataset_live_audit_revision() -> None:
+    stale = __import__("json").loads(_passing_dataset_live_audit())
+    stale.pop("datasetRevision")
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(dataset_sha="new-revision"),
+        fetch_text=_text_fetcher(dataset_live_audit=__import__("json").dumps(stale)),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset live validation audit passed"
+        and "datasetRevision: missing" in check["detail"]
         for check in failed
     )
 

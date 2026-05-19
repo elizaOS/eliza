@@ -487,6 +487,53 @@ if (
   );
 }
 
+const providerRuntimeEvidenceFailure = assertFails(
+  "provider live reports include endpoint runtime evidence",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource.replace(
+    "            endpointRuntime: target.endpointRuntime,\n",
+    "",
+  ),
+);
+if (
+  providerRuntimeEvidenceFailure.sourcePath !==
+  "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts"
+) {
+  throw new Error(
+    `provider runtime evidence failure reported wrong source path: ${providerRuntimeEvidenceFailure.sourcePath}`,
+  );
+}
+
+const validatorProviderEvidenceFailure = assertFails(
+  "live report validator requires provider runtime evidence",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    'providerEvidence.agentRuntime must be "github-actions"',
+    'providerEvidence.agentRuntime disabled',
+  ),
+);
+if (
+  validatorProviderEvidenceFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `validator provider evidence failure reported wrong source path: ${validatorProviderEvidenceFailure.sourcePath}`,
+  );
+}
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers provider runtime evidence",
+  liveReportValidatorSelfTestSource.replace(
+    "providerEvidence must be an object",
+    "providerEvidence disabled check",
+  ),
+);
+
 assertFails(
   "provider live smoke is observed only on manual or scheduled runs",
   workflow.replace(

@@ -2482,6 +2482,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "terminal_bench": {
             "max_tasks": 1,
+            # Upstream run-tests.sh commonly bootstraps uv/pytest in-container.
+            # Keep real corpus grading publishable by allowing that setup path.
+            "network_mode": "bridge",
             "timeout": 180,
             "no_markdown": True,
             "no_sessions": True,

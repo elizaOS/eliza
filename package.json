@@ -128,6 +128,7 @@
     "test:remote-capabilities:naming-audit": "bun packages/scripts/audit-capability-router-naming.ts",
     "test:remote-capabilities:naming-audit:self-test": "bun packages/scripts/audit-capability-router-naming.self-test.ts",
     "test:remote-capabilities:fixture-server": "bun packages/scripts/capability-router-fixture-conformance-smoke.ts",
+    "test:remote-capabilities:github-live-artifacts": "bun packages/scripts/validate-capability-router-github-live-artifacts.ts",
     "test:remote-capabilities:github-live-evidence": "bun packages/scripts/validate-capability-router-github-live-evidence.ts",
     "test:remote-capabilities:github-live-evidence:self-test": "bun packages/scripts/validate-capability-router-github-live-evidence.self-test.ts",
     "test:remote-capabilities:validate-live-reports": "bun packages/scripts/validate-capability-router-live-reports.ts",
