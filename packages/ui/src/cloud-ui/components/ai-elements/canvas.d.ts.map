@@ -1,1 +1,0 @@
-{"version":3,"file":"canvas.d.ts","sourceRoot":"","sources":["canvas.tsx"],"names":[],"mappings":"AAAA,OAAO,EAAyB,KAAK,cAAc,EAAE,MAAM,eAAe,CAAC;AAC3E,OAAO,KAAK,EAAE,SAAS,EAAE,MAAM,OAAO,CAAC;AAEvC,KAAK,WAAW,GAAG,cAAc,GAAG;IAClC,QAAQ,CAAC,EAAE,SAAS,CAAC;CACtB,CAAC;AAEF,eAAO,MAAM,MAAM,GAAI,wBAAwB,WAAW,4CAazD,CAAC"}

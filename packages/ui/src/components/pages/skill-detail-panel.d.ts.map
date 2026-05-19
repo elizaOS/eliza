@@ -1,1 +1,0 @@
-{"version":3,"file":"skill-detail-panel.d.ts","sourceRoot":"","sources":["skill-detail-panel.tsx"],"names":[],"mappings":"AAAA;;;;GAIG;AA4BH,wBAAgB,cAAc,CAAC,EAC7B,OAAO,EACP,SAAS,EACT,OAAO,EACP,OAAO,GACR,EAAE;IACD,OAAO,EAAE,MAAM,CAAC;IAChB,SAAS,EAAE,MAAM,CAAC;IAClB,OAAO,EAAE,MAAM,IAAI,CAAC;IACpB,OAAO,EAAE,MAAM,IAAI,CAAC;CACrB,2CAyKA;AAID,wBAAgB,eAAe,4CAsR9B"}
