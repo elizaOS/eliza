@@ -1,11 +1,39 @@
 # Eliza E1 2028 SOTA 14A Integration Shortlist
 
 Date: 2026-05-19
-Status: triage_complete_implementation_in_progress
+Status: triage_complete_initial_implementation_landed
 Claim boundary: this is a research-triage planning document. Each row maps to
 implementation work tracked under the same packet's `03_implementation/` plan
 and the existing repo evidence gates. Nothing here promotes any silicon,
 boot, MLPerf, or PD claim.
+
+## Implementation snapshot (2026-05-19)
+
+The first implementation wave is committed. Each landed item carries an
+opt-in `make` target that fails closed when its evidence is missing.
+
+| Item        | Status   | Artifact                                                              | Validator                                |
+| ----------- | -------- | --------------------------------------------------------------------- | ---------------------------------------- |
+| C-1..C-7    | landed   | `docs/spec-db/cpu-2028-target.yaml`                                   | `make cpu-2028-target-check`             |
+| D-1..D-9    | landed   | `docs/spec-db/memory-2028-target.yaml`                                | `make memory-2028-target-check`          |
+| E-1..E-8    | landed   | `docs/spec-db/security-2028-target.yaml`                              | `make security-2028-target-check`        |
+| I-1..I-6    | landed   | `docs/spec-db/process-14a-effects.yaml` (variant_requirements, library_variant_binding, reliability_derate_sources, sram_vmin_ecc_repair_plan, thermal_capture_phases, packaging_default) | `make process-14a-effects-check` |
+| G-1         | landed   | `verify/formal/e1_*.sby` + `verify/formal/bpu/{ras,ftq}.sby` (bitwuzla added as second SBY engine alongside z3) | `make formal` |
+| H-5         | landed   | `scripts/check_pd_utilization.py` + `pd/signoff/util_threshold.yaml`  | `make pd-util-check`                     |
+| J-1..J-6    | landed   | `package/{display,pmic,usb-pd,charger,sensors,audio}/` + `docs/board/{power-tree,pdn-budget,antenna-plan,thermal-stack}.md` + `board/kicad/e1-phone/` skeleton | manual review pending integration check |
+| F-1..F-5    | covered  | existing `docs/sw/{opensbi,u-boot,buildroot,linux}/README.md` + `sw/aosp-device/device/eliza/eliza_ai_soc/` + Makefile aosp-build targets | `make aosp-bsp-check` |
+| B-1..B-5    | partial  | `compiler/runtime/e1_npu_stablehlo.py` + extensions to `e1_npu_lowering.py` (StableHLO canonicalisation present; ExecuTorch / LiteRT delegate skeletons and partitioner still pending) | existing `make typecheck` + new pytest |
+| A-1, A-2, A-4 | partial | extensions to `docs/arch/npu.md` + `docs/spec-db/e1-npu-runtime-contract.json` (specs landed; RTL deferred) | `make npu-runtime-contract-check` |
+| A-3 RTL     | pending  | BitNet ternary mode on `DOT16_S2` — RTL + cocotb deferred             | n/a                                      |
+| A-5 RTL     | pending  | DMA writeback path — spec wiring deferred                             | n/a                                      |
+| A-8 RTL     | pending  | expanded NPU perf counters — RTL deferred                             | n/a                                      |
+| G-2..G-7    | pending  | cocotb-coverage merge, reset/CDC properties, AXI-Lite property file, Accelergy/Timeloop integration, Hypothesis property tests, MLPerf-Power schema | n/a |
+| H-1..H-4    | pending  | OpenROAD repair-timing margin tune, PSM IR-drop step, explicit PDN topology, tool-digest schema beyond `openlane_image_digest` | n/a |
+| L-tier      | tracked  | all `03_implementation/*` Low-confidence items remain deferred to v1/v2 | n/a |
+
+The "pending" items are the next wave of work; the sub-agents that owned
+them hit a global rate limit before completion. Their scope and target
+files are unchanged.
 
 ## Goal
 
