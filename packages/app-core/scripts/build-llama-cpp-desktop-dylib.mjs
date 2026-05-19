@@ -198,13 +198,19 @@ function buildTarget(targetKey) {
   fs.mkdirSync(buildDir, { recursive: true });
 
   // ── Step 1: build libllama as a shared library ────────────────────────────
+  // Vision (mmproj/llava) is opt-in: setting `ELIZA_ENABLE_VISION=1` in the
+  // build env flips `LLAMA_BUILD_EXAMPLES=ON` so the llava + clip libraries
+  // get built alongside libllama. The shim then compiles with
+  // `-DELIZA_ENABLE_VISION=1` and links against them. Default builds skip
+  // vision entirely (no examples target, no shim vision wrappers).
+  const ENABLE_VISION = process.env.ELIZA_ENABLE_VISION === "1";
   const cmakeArgs = [
     srcDir,
     "-DCMAKE_BUILD_TYPE=Release",
     "-DBUILD_SHARED_LIBS=ON",
     "-DGGML_NATIVE=OFF",
     "-DLLAMA_BUILD_TESTS=OFF",
-    "-DLLAMA_BUILD_EXAMPLES=OFF",
+    `-DLLAMA_BUILD_EXAMPLES=${ENABLE_VISION ? "ON" : "OFF"}`,
     "-DLLAMA_BUILD_SERVER=OFF",
     "-DLLAMA_CURL=OFF",
     ...t.cmakeFlags,
@@ -226,6 +232,48 @@ function buildTarget(targetKey) {
     ],
     buildDir,
   );
+
+  // ── Step 1b: build llava + clip when vision is enabled ───────────────────
+  // llama.cpp's llava lives under `examples/llava/` (older checkouts) or
+  // `tools/mtmd/` (recent). The `llava` target builds both the llava and
+  // clip object/static libraries when LLAMA_BUILD_EXAMPLES=ON. We build
+  // both static libs here and link them into the shim below.
+  if (ENABLE_VISION) {
+    log(`cmake build ${targetKey} (llava + clip for vision)`);
+    // The target name has historically been `llava` (older) or
+    // `llava_static`/`mtmd` (newer). Try the common ones; let cmake
+    // surface a clear error if neither exists.
+    const visionTargets = ["llava_static", "llava", "mtmd"];
+    let visionTargetBuilt = false;
+    for (const vt of visionTargets) {
+      const probe = spawnSync(
+        "cmake",
+        [
+          "--build",
+          ".",
+          "--config",
+          "Release",
+          "--target",
+          vt,
+          "--parallel",
+          String(os.cpus().length),
+        ],
+        { cwd: buildDir, stdio: "inherit" },
+      );
+      if (probe.status === 0) {
+        visionTargetBuilt = true;
+        log(`built vision target ${vt}`);
+        break;
+      }
+    }
+    if (!visionTargetBuilt) {
+      die(
+        `ELIZA_ENABLE_VISION=1 but could not build any of {${visionTargets.join(", ")}}; ` +
+          `the llama.cpp checkout may not expose llava/mtmd. Check ` +
+          `${path.join(srcDir, "examples", "llava")} or ${path.join(srcDir, "tools", "mtmd")}.`,
+      );
+    }
+  }
 
   // ── Step 2: locate the built libllama.<ext> and stage it ─────────────────
   const libllamaName = `libllama.${t.libExt}`;
@@ -291,6 +339,54 @@ function buildTarget(targetKey) {
     `-L${outDir}`,
     "-lllama",
   ];
+
+  // Vision opt-in: link against the static llava + clip libraries built
+  // in Step 1b. We add their include dirs + static-lib paths to the
+  // compile invocation, and define ELIZA_ENABLE_VISION so the shim's
+  // `#ifdef` block compiles.
+  if (ENABLE_VISION) {
+    compilerArgs.push("-DELIZA_ENABLE_VISION=1");
+    // Header search paths for llava.h / clip.h. Older llama.cpp keeps them
+    // under examples/llava/; newer puts them under tools/mtmd/. Add both —
+    // missing dirs are harmless.
+    compilerArgs.push(
+      `-I${path.join(srcDir, "examples", "llava")}`,
+      `-I${path.join(srcDir, "tools", "mtmd")}`,
+    );
+    // Find the built static libs and link them. They land somewhere
+    // under buildDir depending on cmake generator; do a shallow scan
+    // for `libllava*.a` and `libclip*.a` plus `libmtmd*.a`.
+    const visionLibCandidates = spawnSync(
+      "find",
+      [
+        buildDir,
+        "-name",
+        "libllava*.a",
+        "-o",
+        "-name",
+        "libclip*.a",
+        "-o",
+        "-name",
+        "libmtmd*.a",
+      ],
+      { encoding: "utf8" },
+    );
+    const visionLibs = visionLibCandidates.stdout
+      .split("\n")
+      .filter((s) => s.trim());
+    if (visionLibs.length === 0) {
+      die(
+        `ELIZA_ENABLE_VISION=1 but no llava/clip/mtmd static lib found in ${buildDir} ` +
+          `after the vision target build step. Check Step 1b's cmake output.`,
+      );
+    }
+    for (const lib of visionLibs) {
+      log(`linking vision lib ${lib}`);
+      compilerArgs.push(lib);
+    }
+    // Linker also needs C++ stdlib for llava (it's C++ under the hood).
+    compilerArgs.push(platform === "darwin" ? "-lc++" : "-lstdc++");
+  }
 
   // Set rpath so libeliza-llama-shim resolves libllama from its own dir at
   // load time. Otherwise the user has to set DYLD_LIBRARY_PATH/LD_LIBRARY_PATH.

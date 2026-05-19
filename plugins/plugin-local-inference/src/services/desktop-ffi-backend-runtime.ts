@@ -89,12 +89,14 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 		// through to the runner.
 		const drafterPath = resolveDrafterPath(plan);
 		const runner = new FfiStreamingRunner(result.binding, result.ctx);
+		const mmprojPath = plan.overrides?.mmprojPath ?? null;
 		const session: FfiBackendSession = {
 			binding: result.binding,
 			ctx: result.ctx,
 			runner,
 			tokenize: (prompt) => result.adapter.tokenize(prompt),
 			drafterPath,
+			mmprojPath,
 		};
 		this.active = { adapter: result.adapter, session };
 		return session;
@@ -114,6 +116,35 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 	async resizeParallel(target: number): Promise<boolean> {
 		if (!this.active) return false;
 		return this.active.adapter.resizeParallel(target);
+	}
+
+	/** Vision availability — true when the shim was built with vision. */
+	visionSupported(): boolean {
+		return this.active?.adapter.visionSupported() ?? false;
+	}
+
+	/** Current mmproj path (per the most recent describeImage). */
+	currentMmprojPath(): string | null {
+		return this.active?.adapter.currentMmprojPath() ?? null;
+	}
+
+	/**
+	 * Vision describe — load mmproj if needed, embed the image, generate
+	 * the description. Throws when no model is loaded OR vision build flag
+	 * is off (the adapter surfaces an actionable error in that case).
+	 */
+	async describeImage(args: {
+		imageBytes: Uint8Array;
+		mmprojPath: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
+		if (!this.active) {
+			throw new Error("[desktop-ffi-runtime] describeImage before load");
+		}
+		return this.active.adapter.describeImage(args);
 	}
 
 	async release(): Promise<void> {

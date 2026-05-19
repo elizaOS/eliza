@@ -606,3 +606,68 @@ void* eliza_llama_sampler_init_prefill_plan(const uint8_t* plan_bytes, size_t pl
     memcpy(s->raw_bytes, plan_bytes, plan_size);
     return llama_sampler_init(&prefill_plan_sampler_i, s);
 }
+
+// ── vision: mmproj-driven image describe (OPT-IN) ────────────────────────────
+//
+// Gated by `-DELIZA_ENABLE_VISION=1` at shim compile time. The build script
+// flips this when `ELIZA_ENABLE_VISION=1` is set in the build env, AND
+// supplements the compile invocation with the llava + clip object files
+// (or static lib) so the symbols exist to link.
+//
+// llama.cpp's vision API has shifted between releases: older checkouts
+// expose llava via `examples/llava/{llava.h, clip.h}`; recent ones moved
+// to `tools/mtmd/mtmd.h` with a slightly different surface. The wrappers
+// below target the older but more stable API. The build script's vision
+// step is responsible for putting those headers on the include path.
+
+#ifdef ELIZA_ENABLE_VISION
+
+#include "clip.h"
+#include "llava.h"
+
+void* eliza_clip_load(const char* path) {
+    if (!path) return NULL;
+    // verbosity=0 silences clip_model_load's stderr chatter (it prints
+    // per-layer load progress otherwise, which spams the host).
+    return (void*)clip_model_load(path, /*verbosity=*/0);
+}
+
+void eliza_clip_free(void* ctx_clip) {
+    if (ctx_clip) clip_free((struct clip_ctx*)ctx_clip);
+}
+
+void* eliza_llava_image_embed_load(
+    void* ctx_clip,
+    int32_t n_threads,
+    const uint8_t* image_bytes,
+    int32_t image_bytes_length)
+{
+    if (!ctx_clip || !image_bytes || image_bytes_length <= 0) return NULL;
+    return (void*)llava_image_embed_make_with_bytes(
+        (struct clip_ctx*)ctx_clip,
+        n_threads,
+        image_bytes,
+        image_bytes_length);
+}
+
+void eliza_llava_image_embed_free(void* embed) {
+    if (embed) llava_image_embed_free((struct llava_image_embed*)embed);
+}
+
+int32_t eliza_llava_image_embed_eval(
+    void* ctx_llama,
+    void* embed,
+    int32_t n_batch,
+    int32_t* n_past)
+{
+    if (!ctx_llama || !embed || !n_past) return -1;
+    // llava_eval_image_embed returns bool; map to int32 for the ABI.
+    bool ok = llava_eval_image_embed(
+        (struct llama_context*)ctx_llama,
+        (const struct llava_image_embed*)embed,
+        n_batch,
+        n_past);
+    return ok ? 0 : -1;
+}
+
+#endif  // ELIZA_ENABLE_VISION

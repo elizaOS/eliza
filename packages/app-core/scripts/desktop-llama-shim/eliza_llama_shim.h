@@ -168,6 +168,54 @@ void* eliza_llama_sampler_init_token_tree(const uint8_t* trie_bytes, size_t trie
 // NULL on parse failure.
 void* eliza_llama_sampler_init_prefill_plan(const uint8_t* plan_bytes, size_t plan_size);
 
+// ── vision: mmproj-driven image describe (OPT-IN) ────────────────────────────
+//
+// These wrappers compile only when the shim build defines
+// `ELIZA_ENABLE_VISION=1`. The build script
+// (`packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs`) flips this
+// when the operator sets `ELIZA_ENABLE_VISION=1` in the build environment,
+// which also enables building llava + clip out of llama.cpp's tools tree
+// (or the older `examples/llava/` location on pre-mtmd checkouts).
+//
+// The wrappers expose a minimal pointer-style surface over llama.cpp's
+// stock multimodal API. The adapter layer (desktop-llama-adapter.ts) loads
+// an mmproj GGUF via `eliza_clip_load`, embeds an image into KV state via
+// `eliza_llava_image_embed_load` + `eliza_llava_image_embed_eval`, and then
+// runs a normal text-generation loop seeded against the embedded image.
+//
+// Default builds (no `ELIZA_ENABLE_VISION` flag) skip these symbols
+// entirely; the corresponding TS bindings are absent and `describeImage`
+// throws an actionable "vision build flag not set" error.
+
+#ifdef ELIZA_ENABLE_VISION
+// Load a CLIP / mmproj GGUF for vision encoding. Returns NULL on failure.
+void* eliza_clip_load(const char* path);
+
+// Free a previously-loaded clip context.
+void eliza_clip_free(void* ctx_clip);
+
+// Embed a raw image byte buffer (PNG/JPEG/WebP — whatever STB recognises)
+// via the loaded clip ctx. `n_threads` is the per-image preprocessing
+// thread count. Returns an opaque `llava_image_embed *` or NULL.
+void* eliza_llava_image_embed_load(
+    void* ctx_clip,
+    int32_t n_threads,
+    const uint8_t* image_bytes,
+    int32_t image_bytes_length);
+
+void eliza_llava_image_embed_free(void* embed);
+
+// Inject the image embed into the main llama context's KV state, advancing
+// `n_past` by the number of image tokens consumed. Returns 0 on success,
+// negative on failure. The adapter then prefills any text turn-prefix
+// tokens and runs the normal decode loop.
+int32_t eliza_llava_image_embed_eval(
+    void* ctx_llama,
+    void* embed,
+    int32_t n_batch,
+    int32_t* n_past);
+#endif  // ELIZA_ENABLE_VISION
+
 #ifdef __cplusplus
 }
 #endif
