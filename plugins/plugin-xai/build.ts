@@ -24,12 +24,20 @@ async function build(): Promise<void> {
   await mkdir("dist/browser", { recursive: true });
   await mkdir("dist/cjs", { recursive: true });
 
-  // Node ESM build
+  // Node ESM build.
+  //
+  // We deliberately bundle `index.ts` (the real entry) rather than the
+  // `index.node.ts` re-export shim. Bundling the shim triggers a Bun.build
+  // codegen bug where the inlined default export is renamed to `default2`
+  // but the corresponding `var default2 = ...` declaration is never emitted,
+  // producing an unimportable bundle (`"default2" is not declared in this
+  // file`). The output is renamed to `index.node.js` afterwards so the
+  // package.json `exports` map remains stable.
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-xai for Node (ESM)...");
 
   const nodeResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["index.ts"],
     outdir: "dist/node",
     target: "node",
     format: "esm",
@@ -41,6 +49,12 @@ async function build(): Promise<void> {
   if (!nodeResult.success) {
     console.error("Node ESM build failed:", nodeResult.logs);
     throw new Error("Node ESM build failed");
+  }
+
+  {
+    const { rename } = await import("node:fs/promises");
+    await rename("dist/node/index.js", "dist/node/index.node.js");
+    await rename("dist/node/index.js.map", "dist/node/index.node.js.map");
   }
 
   console.log(
@@ -70,12 +84,14 @@ async function build(): Promise<void> {
     `✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`,
   );
 
-  // Node CJS build
+  // Node CJS build. Same rationale as the ESM build above: bundle `index.ts`
+  // directly and rename to `index.node.cjs` to avoid the Bun.build re-export
+  // shim codegen bug.
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-xai for Node (CJS)...");
 
   const cjsResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["index.ts"],
     outdir: "dist/cjs",
     target: "node",
     format: "cjs",
@@ -89,13 +105,10 @@ async function build(): Promise<void> {
     throw new Error("Node CJS build failed");
   }
 
-  // Rename .js to .cjs for correct module resolution
-  const { rename, access } = await import("node:fs/promises");
-  try {
-    await access("dist/cjs/index.node.js");
-    await rename("dist/cjs/index.node.js", "dist/cjs/index.node.cjs");
-  } catch {
-    console.warn("CJS rename step warning: file may not exist");
+  {
+    const { rename } = await import("node:fs/promises");
+    await rename("dist/cjs/index.js", "dist/cjs/index.node.cjs");
+    await rename("dist/cjs/index.js.map", "dist/cjs/index.node.cjs.map");
   }
 
   console.log(

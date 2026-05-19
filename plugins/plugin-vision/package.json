@@ -46,7 +46,6 @@
     "README.md",
     ".npmignore",
     "package.json",
-    "build.config.ts",
     "auto-enable.ts"
   ],
   "elizaos": {
