@@ -306,74 +306,77 @@ if (
   );
 }
 
-const assetMetadataSelfTestFailure = assertFails(
-  "live report validator self-test covers asset metadata failures",
-  workflow,
-  rootPackageJson,
-  agentPackageJson,
-  providerSmokeSource,
-  liveReportValidatorSource,
-  liveReportWriterSource,
-  endpointConformanceSource,
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers non-JavaScript asset failures",
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.path must be a JavaScript asset\",\n",
+    "",
+  ),
+);
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers missing route body failures",
+  liveReportValidatorSelfTestSource.replace(
+    "makeMissingRouteBodyReport()",
+    "makeCompleteReport(\"provider\")",
+  ),
+);
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers empty route body failures",
+  liveReportValidatorSelfTestSource.replace(
+    "makeEmptyRouteBodyReport()",
+    "makeCompleteReport(\"provider\")",
+  ),
+);
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers manifest-mismatched asset failures",
   liveReportValidatorSelfTestSource.replace(
     "        \"conformance.assetResult.manifestContentType must match\",\n",
     "",
   ),
 );
-if (
-  assetMetadataSelfTestFailure.sourcePath !==
-  "packages/scripts/validate-capability-router-live-reports.self-test.ts"
-) {
-  throw new Error(
-    `asset metadata self-test failure reported wrong source path: ${assetMetadataSelfTestFailure.sourcePath}`,
-  );
-}
 
-const assetDigestSelfTestFailure = assertFails(
-  "live report validator self-test covers asset digest failures",
-  workflow,
-  rootPackageJson,
-  agentPackageJson,
-  providerSmokeSource,
-  liveReportValidatorSource,
-  liveReportWriterSource,
-  endpointConformanceSource,
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers missing asset digest failures",
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.sha256 must be a non-empty string\",\n",
+    "",
+  ),
+);
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers malformed asset digest failures",
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.sha256 has invalid format\",\n",
+    "",
+  ),
+);
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers empty asset digest failures",
   liveReportValidatorSelfTestSource.replace(
     "        \"conformance.assetResult.sha256 must not be the empty SHA-256 digest\",\n",
     "",
   ),
 );
-if (
-  assetDigestSelfTestFailure.sourcePath !==
-  "packages/scripts/validate-capability-router-live-reports.self-test.ts"
-) {
-  throw new Error(
-    `asset digest self-test failure reported wrong source path: ${assetDigestSelfTestFailure.sourcePath}`,
-  );
-}
 
-const assetIntegritySelfTestFailure = assertFails(
-  "live report validator self-test covers asset integrity failures",
-  workflow,
-  rootPackageJson,
-  agentPackageJson,
-  providerSmokeSource,
-  liveReportValidatorSource,
-  liveReportWriterSource,
-  endpointConformanceSource,
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers mismatched asset integrity failures",
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.integrity must match conformance.assetResult.sha256\",\n",
+    "",
+  ),
+);
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers missing sha256 asset integrity failures",
   liveReportValidatorSelfTestSource.replace(
     "        \"conformance.assetResult.integrity must include a sha256 digest\",\n",
     "",
   ),
 );
-if (
-  assetIntegritySelfTestFailure.sourcePath !==
-  "packages/scripts/validate-capability-router-live-reports.self-test.ts"
-) {
-  throw new Error(
-    `asset integrity self-test failure reported wrong source path: ${assetIntegritySelfTestFailure.sourcePath}`,
-  );
-}
 
 assertFails(
   "cloud live job is required by test-status",
@@ -584,6 +587,31 @@ function assertFails(
     );
   }
   return expectedFailure;
+}
+
+function assertValidatorSelfTestFailure(
+  expectedCheckName: string,
+  candidateLiveReportValidatorSelfTestSource: string,
+): void {
+  const failure = assertFails(
+    expectedCheckName,
+    workflow,
+    rootPackageJson,
+    agentPackageJson,
+    providerSmokeSource,
+    liveReportValidatorSource,
+    liveReportWriterSource,
+    endpointConformanceSource,
+    candidateLiveReportValidatorSelfTestSource,
+  );
+  if (
+    failure.sourcePath !==
+    "packages/scripts/validate-capability-router-live-reports.self-test.ts"
+  ) {
+    throw new Error(
+      `live report validator self-test failure reported wrong source path: ${failure.sourcePath}`,
+    );
+  }
 }
 
 function assertRootPackageFailure(

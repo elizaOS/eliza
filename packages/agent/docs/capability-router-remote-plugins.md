@@ -1240,7 +1240,9 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   view assets keep being fetched as non-empty bytes with SHA-256 evidence and
   integrity checks against those bytes, and audits the live report validator so
   uploaded artifacts keep rejecting non-JavaScript, manifest-mismatched,
-  empty-digest, malformed-digest, and integrity-mismatched view asset evidence,
+  missing-digest, empty-digest, malformed-digest, and integrity-mismatched view
+  asset evidence. It also audits the validator self-test source so route-body
+  and asset failure fixtures and assertions stay present,
   requires the live report validator self-test to stay in CI, and audits the
   root package scripts that invoke the live report validator, the validator
   self-test, the live CI audit, and the live CI audit self-test.
@@ -1249,8 +1251,8 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   `providerId` evidence, runtime remote plugin per-module count evidence, route
   body evidence in both source conformance and report validation, view asset
   byte/digest/integrity evidence in endpoint conformance and live report
-  validation, live report validator self-test coverage, root package live
-  validator and live CI audit
+  validation, validator self-test route-body and asset fixture coverage, root
+  package live validator and live CI audit
   script wiring, package-level remote capability suite membership, final
   `test-status` live job gating,
   scheduled/manual live observation gates, Cloud

@@ -1479,10 +1479,17 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
     command = entry.build_command(
         tmp_path,
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "eliza", "max_tasks": 1, "max_steps": 3, "timeout": 60000},
+        {
+            "agent": "eliza",
+            "categories": ["P11"],
+            "max_tasks": 1,
+            "max_steps": 3,
+            "timeout": 60000,
+        },
     )
 
-    assert "--categories" not in command
+    assert "--categories" in command
+    assert command[command.index("--categories") + 1] == "P11"
     assert "--use-sample-tasks" not in command
     assert command[command.index("--max-tasks") + 1] == "1"
     assert command[command.index("--max-steps") + 1] == "3"

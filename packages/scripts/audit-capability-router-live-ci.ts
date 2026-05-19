@@ -164,28 +164,76 @@ export const checks: Check[] = [
       "live report validation must compare view asset integrity tokens with the recorded SHA-256 digest.",
   },
   {
-    name: "live report validator self-test covers asset metadata failures",
+    name: "live report validator self-test covers non-JavaScript asset failures",
     pattern:
-      /(?=[\s\S]*nonJavascriptAssetDir)(?=[\s\S]*makeNonJavascriptAssetReport\(\))(?=[\s\S]*conformance\.assetResult\.path must be a JavaScript asset)(?=[\s\S]*mismatchedAssetManifestDir)(?=[\s\S]*makeMismatchedAssetManifestReport\(\))(?=[\s\S]*conformance\.assetResult\.manifestContentType must match)/,
+      /nonJavascriptAssetDir[\s\S]*makeNonJavascriptAssetReport\(\)[\s\S]*conformance\.assetResult\.path must be a JavaScript asset/,
     source: "live-report-validator-self-test",
     message:
-      "live report validator self-test must cover non-JavaScript and manifest-mismatched asset evidence.",
+      "live report validator self-test must cover non-JavaScript asset evidence.",
   },
   {
-    name: "live report validator self-test covers asset digest failures",
+    name: "live report validator self-test covers missing route body failures",
     pattern:
-      /(?=[\s\S]*missingAssetDigestDir)(?=[\s\S]*makeMissingAssetDigestReport\(\))(?=[\s\S]*conformance\.assetResult\.sha256 must be a non-empty string)(?=[\s\S]*malformedAssetDigestDir)(?=[\s\S]*makeMalformedAssetDigestReport\(\))(?=[\s\S]*conformance\.assetResult\.sha256 has invalid format)(?=[\s\S]*emptyAssetDigestDir)(?=[\s\S]*makeEmptyAssetDigestReport\(\))(?=[\s\S]*conformance\.assetResult\.sha256 must not be the empty SHA-256 digest)/,
+      /missingRouteBodyDir[\s\S]*makeMissingRouteBodyReport\(\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value/,
     source: "live-report-validator-self-test",
     message:
-      "live report validator self-test must cover missing, malformed, and empty view asset digests.",
+      "live report validator self-test must cover missing route body evidence.",
   },
   {
-    name: "live report validator self-test covers asset integrity failures",
+    name: "live report validator self-test covers empty route body failures",
     pattern:
-      /(?=[\s\S]*mismatchedAssetIntegrityDir)(?=[\s\S]*makeMismatchedAssetIntegrityReport\(\))(?=[\s\S]*conformance\.assetResult\.integrity must match conformance\.assetResult\.sha256)(?=[\s\S]*missingSha256AssetIntegrityDir)(?=[\s\S]*makeMissingSha256AssetIntegrityReport\(\))(?=[\s\S]*conformance\.assetResult\.integrity must include a sha256 digest)/,
+      /emptyRouteBodyDir[\s\S]*makeEmptyRouteBodyReport\(\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value/,
     source: "live-report-validator-self-test",
     message:
-      "live report validator self-test must cover mismatched and missing-sha256 view asset integrity evidence.",
+      "live report validator self-test must cover empty route body evidence.",
+  },
+  {
+    name: "live report validator self-test covers manifest-mismatched asset failures",
+    pattern:
+      /mismatchedAssetManifestDir[\s\S]*makeMismatchedAssetManifestReport\(\)[\s\S]*conformance\.assetResult\.manifestContentType must match/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover manifest-mismatched asset evidence.",
+  },
+  {
+    name: "live report validator self-test covers missing asset digest failures",
+    pattern:
+      /missingAssetDigestDir[\s\S]*makeMissingAssetDigestReport\(\)[\s\S]*conformance\.assetResult\.sha256 must be a non-empty string/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers malformed asset digest failures",
+    pattern:
+      /malformedAssetDigestDir[\s\S]*makeMalformedAssetDigestReport\(\)[\s\S]*conformance\.assetResult\.sha256 has invalid format/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover malformed view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers empty asset digest failures",
+    pattern:
+      /emptyAssetDigestDir[\s\S]*makeEmptyAssetDigestReport\(\)[\s\S]*conformance\.assetResult\.sha256 must not be the empty SHA-256 digest/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover empty view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers mismatched asset integrity failures",
+    pattern:
+      /mismatchedAssetIntegrityDir[\s\S]*makeMismatchedAssetIntegrityReport\(\)[\s\S]*conformance\.assetResult\.integrity must match conformance\.assetResult\.sha256/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover mismatched view asset integrity evidence.",
+  },
+  {
+    name: "live report validator self-test covers missing sha256 asset integrity failures",
+    pattern:
+      /missingSha256AssetIntegrityDir[\s\S]*makeMissingSha256AssetIntegrityReport\(\)[\s\S]*conformance\.assetResult\.integrity must include a sha256 digest/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing-sha256 view asset integrity evidence.",
   },
   {
     name: "provider live job is required by test-status",
