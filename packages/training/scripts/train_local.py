@@ -250,13 +250,36 @@ def build_dataset(
     return ds
 
 
-def main() -> int:
+# Tracked-by-merge args have argparse default=None so we can distinguish
+# "user passed it" from "argparse filled it in". The fallback values that
+# argparse used to inject sit in _FALLBACK_DEFAULTS and are applied AFTER
+# the registry + preset merges if the value is still None at that point.
+_TRACKED_DESTS = (
+    "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
+    "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
+)
+
+_FALLBACK_DEFAULTS: dict[str, Any] = {
+    "model": "Qwen/Qwen3.5-0.8B",
+    "batch_size": 4,
+    "grad_accum": 8,
+    "max_seq_len": 4096,
+    "optimizer": "apollo",
+    "apollo_rank": 256,
+    "max_samples": 0,
+    "epochs": 3.0,
+    # memory_budget_gb intentionally stays None — downstream treats None
+    # as "no enforcement", matching the original behavior.
+}
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """Build the train_local CLI parser.
+
+    Factored out so unit tests can drive the same merge pipeline as
+    `main()` without duplicating the argparse layout by hand.
+    """
     ap = argparse.ArgumentParser()
-    # Tracked-by-merge args default to None so we can tell "user passed it"
-    # from "argparse filled it in" without a separate snapshot dict. The
-    # fallback values that argparse used to inject sit in _FALLBACK_DEFAULTS
-    # below and are applied AFTER the registry+preset merges if the value
-    # is still None at that point.
     ap.add_argument("--model", default=None)
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
@@ -359,33 +382,35 @@ def main() -> int:
              "for VRAM headroom; do NOT use the resulting checkpoint as a "
              "publishable artifact — this is for path-validation only."
     )
-    args = ap.parse_args()
+    return ap
 
-    # Tracked-by-merge args use default=None so "user passed it" is
-    # unambiguous: anything still None after parse_args() came from
-    # argparse, not from the CLI. Registry and preset merges only touch
-    # None values, so explicit CLI flags always win — even when the
-    # caller passed a value that happens to equal the historical
-    # argparse default (e.g. --epochs 3.0, --max-samples 0). The merge
-    # order is:
-    #   1. registry-key fills None values with registry entries
-    #   2. --low-vram-smoke preset fills any still-None values from
-    #      the tracked set with preset constants
-    #   3. _FALLBACK_DEFAULTS fills anything still None with the
-    #      historical argparse defaults (used when no registry key
-    #      is set and no preset fired)
-    _TRACKED_DESTS = (
-        "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
-        "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
-    )
-    _user_passed = {dest: getattr(args, dest) is not None for dest in _TRACKED_DESTS}
+
+def apply_resolved_defaults(args: argparse.Namespace) -> None:
+    """Apply the registry → preset → fallback merge to a parsed namespace.
+
+    Mutates `args` in place. Tracked-by-merge args use argparse default=None
+    so "user passed it" is unambiguous: anything still None after
+    `parse_args()` came from argparse, not the CLI. Registry and preset
+    merges only touch None values, so explicit CLI flags always win — even
+    when the caller passed a value that happens to equal the historical
+    argparse default (e.g. --epochs 3.0, --max-samples 0).
+
+    Merge order:
+      1. --registry-key fills None values with registry entries
+      2. --low-vram-smoke preset fills any still-None values from the
+         tracked set with preset constants
+      3. _FALLBACK_DEFAULTS fills anything still None with the historical
+         argparse defaults (used when no registry key is set and no
+         preset fired)
+    """
+    user_passed = {dest: getattr(args, dest) is not None for dest in _TRACKED_DESTS}
 
     from training.model_registry import get as _registry_get  # noqa: E402
     if args.registry_key:
         entry = _registry_get(args.registry_key)
         if (
             entry.unverified_base
-            and not _user_passed["model"]
+            and not user_passed["model"]
             and os.environ.get("ELIZA_ALLOW_UNVERIFIED_BASE") != "1"
         ):
             raise SystemExit(
@@ -396,19 +421,19 @@ def main() -> int:
                 "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
-        if not _user_passed["model"]:
+        if not user_passed["model"]:
             args.model = entry.hf_id
-        if not _user_passed["batch_size"]:
+        if not user_passed["batch_size"]:
             args.batch_size = entry.micro_batch
-        if not _user_passed["grad_accum"]:
+        if not user_passed["grad_accum"]:
             args.grad_accum = entry.grad_accum
-        if not _user_passed["max_seq_len"]:
+        if not user_passed["max_seq_len"]:
             args.max_seq_len = entry.seq_len
-        if not _user_passed["optimizer"]:
+        if not user_passed["optimizer"]:
             args.optimizer = entry.optimizer
-        if not _user_passed["apollo_rank"]:
+        if not user_passed["apollo_rank"]:
             args.apollo_rank = entry.optimizer_rank
-        if not _user_passed["memory_budget_gb"]:
+        if not user_passed["memory_budget_gb"]:
             args.memory_budget_gb = entry.train_mem_gb_budget
         log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB",
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
@@ -422,41 +447,24 @@ def main() -> int:
     # the loss signal is comparable to the registry default; memory budget
     # is 11.5 GB (1.5 GB headroom under the card's 12 GB). The preset is
     # explicitly NOT for publishable runs — it is a path-validation smoke
-    # for the SFT entrypoint on commodity hardware. CLI flags the user passed
-    # explicitly (--max-seq-len, --batch-size, --grad-accum, --memory-budget-gb,
-    # --max-samples, --epochs) still win over the preset, including cases
-    # where the explicit value happens to equal a historical argparse default
-    # (e.g. --epochs 3.0, --max-samples 0): _user_passed is True iff the
-    # parser saw a real CLI token, so the preset cannot silently overwrite.
+    # for the SFT entrypoint on commodity hardware.
     if args.low_vram_smoke:
-        if not _user_passed["max_seq_len"]:
+        if not user_passed["max_seq_len"]:
             args.max_seq_len = 2048
-        if not _user_passed["batch_size"]:
+        if not user_passed["batch_size"]:
             args.batch_size = 1
-        if not _user_passed["grad_accum"]:
+        if not user_passed["grad_accum"]:
             args.grad_accum = 16
-        if not _user_passed["max_samples"]:
+        if not user_passed["max_samples"]:
             args.max_samples = 1000
-        if not _user_passed["epochs"]:
+        if not user_passed["epochs"]:
             args.epochs = 1.0
-        if not _user_passed["memory_budget_gb"]:
+        if not user_passed["memory_budget_gb"]:
             args.memory_budget_gb = 11.5
 
     # Fill anything still None with the historical argparse fallback.
     # Reached when no registry key is set and (for max-samples / epochs)
     # the preset didn't fire either.
-    _FALLBACK_DEFAULTS = {
-        "model": "Qwen/Qwen3.5-0.8B",
-        "batch_size": 4,
-        "grad_accum": 8,
-        "max_seq_len": 4096,
-        "optimizer": "apollo",
-        "apollo_rank": 256,
-        "max_samples": 0,
-        "epochs": 3.0,
-        # memory_budget_gb intentionally stays None — downstream treats
-        # None as "no enforcement", matching the original behavior.
-    }
     for dest, fallback in _FALLBACK_DEFAULTS.items():
         if getattr(args, dest) is None:
             setattr(args, dest, fallback)
@@ -468,6 +476,11 @@ def main() -> int:
             args.max_seq_len, args.batch_size, args.grad_accum, args.max_samples,
             args.epochs, args.memory_budget_gb, args.batch_size * args.grad_accum,
         )
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    apply_resolved_defaults(args)
 
     train_recs = load_jsonl(
         Path(args.train_file),

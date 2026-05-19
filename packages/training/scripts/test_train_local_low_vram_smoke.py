@@ -25,113 +25,18 @@ if str(SCRIPTS) not in sys.path:
 train_local = importlib.import_module("train_local")
 
 
-def _build_parser():
-    """Reach into train_local.main and reconstruct just its argparse.
-
-    Cheaper than refactoring main() to factor out the parser; the preset
-    branch lives inline after parse_args so we parse with the real CLI
-    and apply the override block by hand below.
-
-    Tracked-by-merge args use default=None so "user passed it" is
-    unambiguous — anything still None after parse_args came from
-    argparse, not from the CLI. Mirrors train_local.main exactly.
-    """
-    import argparse
-
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default=None)
-    ap.add_argument("--train-file")
-    ap.add_argument("--val-file")
-    ap.add_argument("--out-dir")
-    ap.add_argument("--run-name", default="qwen35-eliza-native")
-    ap.add_argument("--max-samples", type=int, default=None)
-    ap.add_argument("--epochs", type=float, default=None)
-    ap.add_argument("--max-steps", type=int, default=0)
-    ap.add_argument("--resume-from-checkpoint", default=None)
-    ap.add_argument("--batch-size", type=int, default=None)
-    ap.add_argument("--grad-accum", type=int, default=None)
-    ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--max-seq-len", type=int, default=None)
-    ap.add_argument("--full-finetune", action="store_true")
-    ap.add_argument("--preflight-only", action="store_true")
-    ap.add_argument("--optimizer", choices=["apollo", "apollo_mini"], default=None)
-    ap.add_argument("--apollo-rank", type=int, default=None)
-    ap.add_argument("--apollo-scale", type=float, default=1.0)
-    ap.add_argument("--apollo-update-proj-gap", type=int, default=200)
-    ap.add_argument("--max-chars", type=int, default=0)
-    ap.add_argument("--use-liger", default="auto", choices=("auto", "on", "off"))
-    ap.add_argument("--registry-key", default=None)
-    ap.add_argument("--memory-budget-gb", type=float, default=None)
-    ap.add_argument("--low-vram-smoke", action="store_true")
-    return ap
-
-
-# Historical argparse fallbacks — applied AFTER registry + preset merges
-# for anything still None. Mirrors train_local.main._FALLBACK_DEFAULTS.
-_FALLBACK_DEFAULTS = {
-    "model": "Qwen/Qwen3.5-0.8B",
-    "batch_size": 4,
-    "grad_accum": 8,
-    "max_seq_len": 4096,
-    "optimizer": "apollo",
-    "apollo_rank": 256,
-    "max_samples": 0,
-    "epochs": 3.0,
-}
-
-_TRACKED_DESTS = (
-    "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
-    "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
-)
-
-
 def _resolve(argv):
-    """Mirror of the merge logic in train_local.main: parse, snapshot
-    "user-passed" (= value is not None for tracked dests), run the
-    registry merge, then run the --low-vram-smoke preset, then fill
-    fallbacks. Kept in sync with train_local.main by hand."""
-    from scripts.training.model_registry import get as _registry_get
+    """Drive the same parser + merge pipeline that `train_local.main()` uses.
 
-    ap = _build_parser()
+    This delegates to `train_local.build_parser()` and
+    `train_local.apply_resolved_defaults()` so the test exercises the
+    exact code path that ships, not a hand-maintained mirror. Catches
+    the regression where someone touches the merge logic in
+    train_local.main but forgets to update a tests-only copy.
+    """
+    ap = train_local.build_parser()
     args = ap.parse_args(argv)
-
-    user_passed = {dest: getattr(args, dest) is not None for dest in _TRACKED_DESTS}
-
-    if args.registry_key:
-        entry = _registry_get(args.registry_key)
-        if not user_passed["model"]:
-            args.model = entry.hf_id
-        if not user_passed["batch_size"]:
-            args.batch_size = entry.micro_batch
-        if not user_passed["grad_accum"]:
-            args.grad_accum = entry.grad_accum
-        if not user_passed["max_seq_len"]:
-            args.max_seq_len = entry.seq_len
-        if not user_passed["optimizer"]:
-            args.optimizer = entry.optimizer
-        if not user_passed["apollo_rank"]:
-            args.apollo_rank = entry.optimizer_rank
-        if not user_passed["memory_budget_gb"]:
-            args.memory_budget_gb = entry.train_mem_gb_budget
-
-    if args.low_vram_smoke:
-        if not user_passed["max_seq_len"]:
-            args.max_seq_len = 2048
-        if not user_passed["batch_size"]:
-            args.batch_size = 1
-        if not user_passed["grad_accum"]:
-            args.grad_accum = 16
-        if not user_passed["max_samples"]:
-            args.max_samples = 1000
-        if not user_passed["epochs"]:
-            args.epochs = 1.0
-        if not user_passed["memory_budget_gb"]:
-            args.memory_budget_gb = 11.5
-
-    for dest, fallback in _FALLBACK_DEFAULTS.items():
-        if getattr(args, dest) is None:
-            setattr(args, dest, fallback)
-
+    train_local.apply_resolved_defaults(args)
     return args
 
 
