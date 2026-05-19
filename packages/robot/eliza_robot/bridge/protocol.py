@@ -96,11 +96,14 @@ VALID_COMMANDS = {
     "walk.command",
     "action.play",
     "head.set",
+    "servo.set",
     # Policy lifecycle commands
     "policy.start",
     "policy.stop",
     "policy.tick",
     "policy.status",
+    # Profile / introspection
+    "profile.describe",
 }
 
 VALID_EVENTS = {

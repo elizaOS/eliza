@@ -47,6 +47,18 @@
       "deadman_timeout_sec": 60.0,
       "requires_ros": false,
       "camera_url": ""
+    },
+    "mujoco": {
+      "description": "MuJoCo CPU simulation (DemoEnv)",
+      "backend": "mujoco",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9092,
+      "envelope_port": 9100,
+      "publish_hz": 30.0,
+      "max_commands_per_sec": 60,
+      "deadman_timeout_sec": 60.0,
+      "requires_ros": false,
+      "camera_url": ""
     }
   },
   "env_overrides": {

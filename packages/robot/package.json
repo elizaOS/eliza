@@ -52,7 +52,10 @@
     "test": "vitest run && bun run test:py",
     "test:py": "uv run pytest tests/ -q || python -m pytest tests/ -q",
     "format": "bunx @biomejs/biome format --write ./src",
-    "format:check": "bunx @biomejs/biome format ./src"
+    "format:check": "bunx @biomejs/biome format ./src",
+    "robot:bridge:mock": "uv run python -m eliza_robot.bridge.server --backend mock --port 9100",
+    "robot:bridge:mujoco": "uv run python -m eliza_robot.bridge.server --backend mujoco --port 9100",
+    "robot:demo": "bash examples/robot-mujoco-demo/run.sh"
   },
   "dependencies": {
     "@elizaos/core": "workspace:*"

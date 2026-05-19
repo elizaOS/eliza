@@ -155,15 +155,29 @@ export function parseRobotProfileDescriptor(
 /**
  * Fetch the active robot profile from the bridge via `profile.describe`.
  *
- * TODO(W3.1): send `profile.describe` over the websocket and parse the
- * response. For now this returns a hardcoded Hiwonder AiNex descriptor that
- * matches `packages/robot/profiles/hiwonder-ainex/profile.yaml` so the rest
- * of the plugin can be wired against a real shape.
+ * Falls back to the bundled Hiwonder AiNex descriptor when the bridge is
+ * unreachable (so offline CI tests and pre-connection plugin init still
+ * resolve a valid profile to provider/action callers).
  */
 export async function loadProfileFromBridge(
-  _client: AinexBridgeClient,
+  client: AinexBridgeClient,
 ): Promise<RobotProfileDescriptor> {
-  return parseRobotProfileDescriptor(HIWONDER_AINEX_FALLBACK);
+  if (!client.isConnected()) {
+    return parseRobotProfileDescriptor(HIWONDER_AINEX_FALLBACK);
+  }
+  try {
+    const response = await client.send("profile.describe", {});
+    if (!response.ok) {
+      return parseRobotProfileDescriptor(HIWONDER_AINEX_FALLBACK);
+    }
+    const profile = response.data.profile;
+    if (!profile) {
+      return parseRobotProfileDescriptor(HIWONDER_AINEX_FALLBACK);
+    }
+    return parseRobotProfileDescriptor(profile);
+  } catch {
+    return parseRobotProfileDescriptor(HIWONDER_AINEX_FALLBACK);
+  }
 }
 
 // Hardcoded Hiwonder AiNex descriptor. Mirrors profile.yaml exactly. When

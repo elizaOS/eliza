@@ -6,22 +6,36 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { getStringOption, sendOne } from "./_helpers";
 
 export const pickUpAction: Action = {
   name: "AINEX_PICK_UP",
-  similes: ["PICK_UP", "GRAB"],
-  description: "Run the pick-up sequence on the AiNex robot.",
+  similes: ["PICK_UP", "GRAB", "GRASP_OBJECT"],
+  description:
+    "Run the learned `pick_up` policy. Starts a policy.start with task='pick_up'; options: target_label (default 'red ball'), max_steps.",
   examples: [],
   validate: async (_runtime: IAgentRuntime, _message: Memory) => true,
   handler: async (
-    _runtime: IAgentRuntime,
+    runtime: IAgentRuntime,
     _message: Memory,
     _state: State | undefined,
-    _options: Record<string, unknown> | undefined,
+    options: Record<string, unknown> | undefined,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const text = "(ainex stub) pick up not implemented yet";
-    await callback?.({ text });
-    return { success: false, text };
+    return sendOne(
+      runtime,
+      callback,
+      "policy.start",
+      {
+        task: "pick_up",
+        canonical_action: "pick_up",
+        target_label: getStringOption(options, "target_label", "red ball"),
+        target_entity_id: getStringOption(options, "target_entity_id", ""),
+        hz: 10,
+        max_steps: 1000,
+      },
+      "AiNex is reaching to pick up the target.",
+      "pick up",
+    );
   },
 };

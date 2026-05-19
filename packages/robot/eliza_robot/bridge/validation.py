@@ -114,5 +114,11 @@ def validate_command_payload(command: CommandEnvelope) -> None:
         # Status query, no required payload
         return
 
+    if command.command == "profile.describe":
+        # Optional 'id' overrides the bridge's active profile.
+        if "id" in payload:
+            _require_string(payload, "id")
+        return
+
     raise ValueError(f"unsupported command: {command.command}")
 

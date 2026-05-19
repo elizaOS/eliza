@@ -30,9 +30,24 @@ from eliza_robot.bridge.safety import (
 from eliza_robot.bridge.trace_log import TraceLogger, safe_to_record
 from eliza_robot.bridge.types import JsonDict, JsonValue
 from eliza_robot.bridge.validation import validate_command_payload
+from eliza_robot.profiles.schema import RobotProfile, load_profile
 
 
 BackendFactory = Callable[[], BridgeBackend]
+
+
+def _profile_to_jsondict(profile: RobotProfile) -> JsonDict:
+    """Serialize a RobotProfile to a JSON-safe dict.
+
+    Pydantic's `model_dump()` keeps `Path` objects as-is, which `json.dumps`
+    rejects. Stringify them here so the wire payload is plain JSON.
+    """
+    raw = profile.model_dump()
+    assets = raw.get("assets")
+    if isinstance(assets, dict):
+        for key, value in list(assets.items()):
+            assets[key] = str(value)
+    return raw
 
 
 @dataclass
@@ -58,6 +73,9 @@ class RuntimeConfig:
     max_commands_per_sec: int
     deadman_timeout_sec: float
     trace_log_path: str
+    profile_id: str = "hiwonder-ainex"
+    # MuJoCo backend knobs (only consulted when backend == "mujoco").
+    mujoco_target_xyz: tuple[float, float, float] = (2.0, 0.0, 0.05)
 
 
 def _load_config_file(path: str) -> JsonDict:
@@ -99,10 +117,16 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
         max_commands_per_sec=max_commands_per_sec,
         deadman_timeout_sec=deadman_timeout_sec,
         trace_log_path=trace_log_path,
+        profile_id=getattr(args, "profile", "hiwonder-ainex"),
+        mujoco_target_xyz=(
+            getattr(args, "mujoco_target_x", 2.0),
+            getattr(args, "mujoco_target_y", 0.0),
+            getattr(args, "mujoco_target_z", 0.05),
+        ),
     )
 
 
-def _build_backend_factory(name: str) -> BackendFactory:
+def _build_backend_factory(name: str, config: RuntimeConfig) -> BackendFactory:
     if name == "mock":
         return MockBackend
     if name == "ros":
@@ -115,12 +139,17 @@ def _build_backend_factory(name: str) -> BackendFactory:
         return IsaacBackend
     if name == "mujoco":
         # Lazy import so the bridge can boot without mujoco installed.
-        # MuJocoBackend requires a concrete demo_env; the W7.1 wave provides
-        # a CLI factory that constructs and injects the env. For now, raise
-        # a clear error rather than silently fall through.
-        raise NotImplementedError(
-            "--backend mujoco requires a demo env factory; wiring lands in W7.1"
-        )
+        # DemoEnv (CPU MuJoCo) is the default sim — it loads the profile's
+        # primitives model, spawns a target ball, and exposes the same
+        # joint-target + telemetry surface the real robot does.
+        def _build_mujoco_backend() -> BridgeBackend:
+            from eliza_robot.bridge.backends.mujoco_backend import MuJocoBackend
+            from eliza_robot.sim.mujoco.demo_env import DemoEnv
+
+            env = DemoEnv(target_position=config.mujoco_target_xyz)
+            return MuJocoBackend(env)
+
+        return _build_mujoco_backend
     raise ValueError(f"unsupported backend: {name}")
 
 
@@ -746,6 +775,39 @@ async def _handler(
                 if is_deadman_heartbeat_command(command):
                     last_heartbeat = loop.time()
 
+                # Server-level commands are answered inline without touching
+                # the backend command queue. `profile.describe` returns the
+                # active RobotProfile so plugins can self-configure.
+                if command.command == "profile.describe":
+                    requested_id = command.payload.get("id")
+                    target_profile_id = (
+                        requested_id
+                        if isinstance(requested_id, str) and requested_id
+                        else config.profile_id
+                    )
+                    try:
+                        profile = load_profile(target_profile_id)
+                        await _safe_send(
+                            ws,
+                            ResponseEnvelope(
+                                request_id=command.request_id,
+                                timestamp=utc_now_iso(),
+                                ok=True,
+                                backend=backend.backend_name,
+                                message="ok",
+                                data={"profile": _profile_to_jsondict(profile)},
+                            ).to_json(),
+                        )
+                    except Exception as exc:
+                        await _safe_send(
+                            ws,
+                            _json_error(
+                                f"profile.describe failed: {exc}",
+                                request_id=request_id,
+                            ),
+                        )
+                    continue
+
                 # Policy commands are handled directly (not queued)
                 if command.command.startswith("policy."):
                     # Preempt manual command queue when entering policy mode
@@ -834,7 +896,7 @@ async def _handler(
 
 
 async def _run_server(host: str, port: int, backend: str, config: RuntimeConfig) -> None:
-    backend_factory = _build_backend_factory(backend)
+    backend_factory = _build_backend_factory(backend, config)
     async with serve(
         lambda ws: _handler(ws, backend_factory, config),
         host=host,
@@ -901,6 +963,24 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default="",
         help="optional JSONL path for command/response trace logging",
+    )
+    parser.add_argument(
+        "--mujoco-target-x",
+        type=float,
+        default=2.0,
+        help="MuJoCo backend: target ball X position (m, default 2.0)",
+    )
+    parser.add_argument(
+        "--mujoco-target-y",
+        type=float,
+        default=0.0,
+        help="MuJoCo backend: target ball Y position (m, default 0.0)",
+    )
+    parser.add_argument(
+        "--mujoco-target-z",
+        type=float,
+        default=0.05,
+        help="MuJoCo backend: target ball Z position (m, default 0.05)",
     )
     parser.add_argument(
         "--config",
