@@ -3,6 +3,8 @@ export interface SandboxProvider {
   stop(sandboxId: string): Promise<void>;
   checkHealth(handle: SandboxHandle): Promise<boolean>;
   runCommand?(sandboxId: string, cmd: string, args?: string[]): Promise<string>;
+  /** Tail container logs from the sandbox runtime (e.g. `docker logs --tail N`). */
+  fetchLogs?(sandboxId: string, tail: number): Promise<string>;
 }
 
 export interface SandboxHandle {

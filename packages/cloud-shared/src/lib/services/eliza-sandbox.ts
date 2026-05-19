@@ -2808,6 +2808,130 @@ export class ElizaSandboxService {
     return { success: true, containerStarted: true, reprovisioned: true };
   }
 
+  /**
+   * Daemon-side handler for the `agent_restart` job. Runs `shutdown()`
+   * (SSH stop + DB to stopped) and then `provision()` (recreate
+   * container + restore URLs). Replaces the Worker-side sequence which
+   * silently no-op'd the SSH stop and left the old container running
+   * alongside the new one.
+   *
+   * `shutdown()` failure is logged but doesn't abort — same lenience as
+   * the legacy restart route (the old container may already be gone or
+   * unreachable; the goal is "end up with a running fresh container",
+   * not "verify the old one stopped cleanly").
+   */
+  async executeRestart(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    containerStopped: boolean;
+    containerStarted: boolean;
+    bridgeUrl?: string;
+    healthUrl?: string;
+    error?: string;
+  }> {
+    const shutdownResult = await this.shutdown(agentId, orgId);
+    if (!shutdownResult.success) {
+      if (shutdownResult.error === "Agent not found") {
+        return {
+          success: false,
+          containerStopped: false,
+          containerStarted: false,
+          error: "Agent not found",
+        };
+      }
+      logger.warn("[agent-sandbox] Shutdown during restart returned error, continuing", {
+        agentId,
+        error: shutdownResult.error,
+      });
+    }
+
+    const provisionResult = await this.provision(agentId, orgId);
+    if (!provisionResult.success) {
+      return {
+        success: false,
+        containerStopped: shutdownResult.success,
+        containerStarted: false,
+        error: provisionResult.error,
+      };
+    }
+
+    return {
+      success: true,
+      containerStopped: shutdownResult.success,
+      containerStarted: true,
+      bridgeUrl: provisionResult.bridgeUrl,
+      healthUrl: provisionResult.healthUrl,
+    };
+  }
+
+  /**
+   * Daemon-side handler for the `agent_logs` job. SSH `docker logs
+   * --tail N <container>` on the assigned core via the provider. The
+   * daemon path works for stopped/crashed agents (the legacy Worker
+   * path hits the bridge HTTP `/logs` endpoint which is gone when the
+   * agent isn't running).
+   */
+  async executeLogs(
+    agentId: string,
+    orgId: string,
+    tail: number,
+  ): Promise<{
+    success: boolean;
+    status: string;
+    logs?: string;
+    message?: string;
+    error?: string;
+  }> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec) {
+      return { success: false, status: "missing", error: "Agent not found" };
+    }
+    if (!rec.sandbox_id) {
+      return {
+        success: true,
+        status: rec.status,
+        message: `Agent is ${rec.status} — no container assigned yet.`,
+      };
+    }
+
+    const provider = await this.getProvider();
+    if (typeof provider.fetchLogs !== "function") {
+      return {
+        success: true,
+        status: rec.status,
+        message: "Logs unavailable: sandbox provider does not implement fetchLogs.",
+      };
+    }
+
+    try {
+      const logs = await provider.fetchLogs(rec.sandbox_id, tail);
+      return { success: true, status: rec.status, logs };
+    } catch (e) {
+      return {
+        success: false,
+        status: rec.status,
+        error: e instanceof Error ? e.message : String(e),
+      };
+    }
+  }
+
+  /**
+   * Daemon-side handler for the `agent_snapshot` job. Same operation
+   * as the Worker-side `snapshot()` path, but invoked from the daemon
+   * so outbound traffic to the agent bridge uses the same network
+   * identity as every other cores-bound call. Returns the
+   * `agent_sandbox_backups` row that was persisted.
+   */
+  async executeSnapshot(
+    agentId: string,
+    orgId: string,
+    snapshotType: "manual" | "auto" = "manual",
+  ): Promise<SnapshotResult> {
+    return await this.snapshot(agentId, orgId, snapshotType);
+  }
+
   // Private helpers
 
   private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {

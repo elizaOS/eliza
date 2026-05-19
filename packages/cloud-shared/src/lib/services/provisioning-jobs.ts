@@ -60,6 +60,26 @@ export interface AgentResumeJobData {
   userId: string;
 }
 
+export interface AgentRestartJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface AgentLogsJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  tail: number;
+}
+
+export interface AgentSnapshotJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+  snapshotType: "manual" | "auto";
+}
+
 // ---------------------------------------------------------------------------
 // Job result shapes (stored in jobs.result JSONB)
 // ---------------------------------------------------------------------------
@@ -92,6 +112,33 @@ export interface AgentResumeJobResult {
   error?: string;
 }
 
+export interface AgentRestartJobResult {
+  cloudAgentId: string;
+  containerStopped: boolean;
+  containerStarted: boolean;
+  bridgeUrl?: string;
+  healthUrl?: string;
+  error?: string;
+}
+
+export interface AgentLogsJobResult {
+  cloudAgentId: string;
+  status: string;
+  tail: number;
+  logs?: string;
+  message?: string;
+  error?: string;
+}
+
+export interface AgentSnapshotJobResult {
+  cloudAgentId: string;
+  backupId?: string;
+  snapshotType?: string;
+  sizeBytes?: number;
+  createdAt?: string;
+  error?: string;
+}
+
 function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -121,6 +168,30 @@ function agentResumeJobDataToRecord(data: AgentResumeJobData): Record<string, un
 }
 
 function agentResumeJobResultToRecord(result: AgentResumeJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentRestartJobDataToRecord(data: AgentRestartJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentRestartJobResultToRecord(result: AgentRestartJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentLogsJobDataToRecord(data: AgentLogsJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentLogsJobResultToRecord(result: AgentLogsJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentSnapshotJobDataToRecord(data: AgentSnapshotJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentSnapshotJobResultToRecord(result: AgentSnapshotJobResult): Record<string, unknown> {
   return { ...result };
 }
 
@@ -193,6 +264,59 @@ function readAgentResumeJobData(job: Job): AgentResumeJobData {
   return job.data;
 }
 
+function isAgentRestartJobData(value: unknown): value is AgentRestartJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string"
+  );
+}
+
+function readAgentRestartJobData(job: Job): AgentRestartJobData {
+  if (!isAgentRestartJobData(job.data)) {
+    throw new Error(`Invalid agent restart job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentLogsJobData(value: unknown): value is AgentLogsJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    typeof (value as { tail?: unknown }).tail === "number"
+  );
+}
+
+function readAgentLogsJobData(job: Job): AgentLogsJobData {
+  if (!isAgentLogsJobData(job.data)) {
+    throw new Error(`Invalid agent logs job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentSnapshotJobData(value: unknown): value is AgentSnapshotJobData {
+  if (typeof value !== "object" || value === null) return false;
+  const snapshotType = (value as { snapshotType?: unknown }).snapshotType;
+  return (
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string" &&
+    (snapshotType === "manual" || snapshotType === "auto")
+  );
+}
+
+function readAgentSnapshotJobData(job: Job): AgentSnapshotJobData {
+  if (!isAgentSnapshotJobData(job.data)) {
+    throw new Error(`Invalid agent snapshot job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
 export interface EnqueueAgentProvisionResult {
   job: Job;
   created: boolean;
@@ -209,6 +333,21 @@ export interface EnqueueAgentSuspendResult {
 }
 
 export interface EnqueueAgentResumeResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentRestartResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentLogsResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentSnapshotResult {
   job: Job;
   created: boolean;
 }
@@ -637,6 +776,300 @@ export class ProvisioningJobService {
   }
 
   /**
+   * Enqueue an Agent restart job.
+   *
+   * Daemon-side execution: SSH `docker stop` on the existing container
+   * if any, then full `provision()` to recreate it. Atomic on the
+   * daemon side so two concurrent restarts can't interleave stop+start
+   * out of order. Replaces the Worker-side `shutdown()` then
+   * `provision()` sequence which silently no-op'd the stop (Workers
+   * can't SSH) and left a stale container running alongside the new
+   * one.
+   */
+  async enqueueAgentRestartOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentRestartResult> {
+    if (params.webhookUrl) {
+      await assertSafeOutboundUrl(params.webhookUrl);
+    }
+
+    const jobData: AgentRestartJobData = {
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    };
+
+    const newJob: NewJob = {
+      type: JOB_TYPES.AGENT_RESTART,
+      status: "pending",
+      data: agentRestartJobDataToRecord(jobData),
+      data_storage: "inline",
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      webhook_url: params.webhookUrl,
+      max_attempts: 3,
+      // shutdown ~5s + provision ~60s; budget the long path.
+      estimated_completion_at: new Date(Date.now() + 90_000),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
+
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.agentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_RESTART),
+            eq(jobs.organization_id, params.organizationId),
+            eq(jobs.agent_id, params.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      if (existing) {
+        logger.info("[provisioning-jobs] Reusing active agent_restart job", {
+          jobId: existing.id,
+          agentId: params.agentId,
+          orgId: params.organizationId,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info("[provisioning-jobs] Enqueued agent_restart job", {
+        jobId: job.id,
+        agentId: params.agentId,
+        orgId: params.organizationId,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
+  /**
+   * Enqueue an Agent logs read job.
+   *
+   * Daemon-side execution: SSH `docker logs --tail <N>` on the assigned
+   * core and persist the captured stdout/stderr into `jobs.result`.
+   * Replaces the Worker-side `fetch(bridge_url + "/logs")` path which
+   * returned empty for any non-running container (the bridge HTTP
+   * endpoint is gone when the agent is stopped or crashed).
+   *
+   * In-flight reuse: a second logs request on the same agent while one
+   * is still executing returns the existing job rather than spawning a
+   * duplicate. Completed jobs are NOT reused — the user asking again
+   * after a result has landed wants fresh logs.
+   */
+  async enqueueAgentLogsOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    tail: number;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentLogsResult> {
+    if (params.webhookUrl) {
+      await assertSafeOutboundUrl(params.webhookUrl);
+    }
+
+    const jobData: AgentLogsJobData = {
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      tail: params.tail,
+    };
+
+    const newJob: NewJob = {
+      type: JOB_TYPES.AGENT_LOGS,
+      status: "pending",
+      data: agentLogsJobDataToRecord(jobData),
+      data_storage: "inline",
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      webhook_url: params.webhookUrl,
+      max_attempts: 2,
+      estimated_completion_at: new Date(Date.now() + 15_000),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
+
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.agentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_LOGS),
+            eq(jobs.organization_id, params.organizationId),
+            eq(jobs.agent_id, params.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      if (existing) {
+        logger.info("[provisioning-jobs] Reusing active agent_logs job", {
+          jobId: existing.id,
+          agentId: params.agentId,
+          orgId: params.organizationId,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info("[provisioning-jobs] Enqueued agent_logs job", {
+        jobId: job.id,
+        agentId: params.agentId,
+        orgId: params.organizationId,
+        tail: params.tail,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
+  /**
+   * Enqueue an Agent snapshot job.
+   *
+   * Daemon-side execution: pulls runtime state from the bridge URL and
+   * persists a row in `agent_sandbox_backups`. Same operation as the
+   * Worker-side `snapshot()` path, but run from the daemon so it
+   * survives bridge HTTP being unreachable from CF Workers (firewall,
+   * SSRF guard) and consistently uses the same network identity for
+   * outbound traffic to cores.
+   */
+  async enqueueAgentSnapshotOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    snapshotType?: "manual" | "auto";
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentSnapshotResult> {
+    if (params.webhookUrl) {
+      await assertSafeOutboundUrl(params.webhookUrl);
+    }
+
+    const jobData: AgentSnapshotJobData = {
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+      snapshotType: params.snapshotType ?? "manual",
+    };
+
+    const newJob: NewJob = {
+      type: JOB_TYPES.AGENT_SNAPSHOT,
+      status: "pending",
+      data: agentSnapshotJobDataToRecord(jobData),
+      data_storage: "inline",
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      webhook_url: params.webhookUrl,
+      max_attempts: 2,
+      estimated_completion_at: new Date(Date.now() + 45_000),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
+
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.agentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_SNAPSHOT),
+            eq(jobs.organization_id, params.organizationId),
+            eq(jobs.agent_id, params.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      if (existing) {
+        logger.info("[provisioning-jobs] Reusing active agent_snapshot job", {
+          jobId: existing.id,
+          agentId: params.agentId,
+          orgId: params.organizationId,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info("[provisioning-jobs] Enqueued agent_snapshot job", {
+        jobId: job.id,
+        agentId: params.agentId,
+        orgId: params.organizationId,
+        snapshotType: jobData.snapshotType,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
+  /**
    * Best-effort kick of the provisioning worker without waiting for the
    * next cron tick. Fire-and-forget — the cron is the safety net.
    *
@@ -870,6 +1303,15 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_RESUME:
         await this.executeAgentResume(job);
         break;
+      case JOB_TYPES.AGENT_RESTART:
+        await this.executeAgentRestart(job);
+        break;
+      case JOB_TYPES.AGENT_LOGS:
+        await this.executeAgentLogs(job);
+        break;
+      case JOB_TYPES.AGENT_SNAPSHOT:
+        await this.executeAgentSnapshot(job);
+        break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
@@ -971,6 +1413,176 @@ export class ProvisioningJobService {
       agentId: data.agentId,
       containerStarted: result.containerStarted,
       reprovisioned: result.reprovisioned,
+    });
+  }
+
+  private async executeAgentRestart(job: Job): Promise<void> {
+    const data = readAgentRestartJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_restart", {
+      jobId: job.id,
+      agentId: data.agentId,
+    });
+
+    const result = await elizaSandboxService.executeRestart(data.agentId, data.organizationId);
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentRestartJobResultToRecord({
+          cloudAgentId: data.agentId,
+          containerStopped: result.containerStopped,
+          containerStarted: result.containerStarted,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_restart failure");
+    }
+
+    const jobResult: AgentRestartJobResult = {
+      cloudAgentId: data.agentId,
+      containerStopped: result.containerStopped,
+      containerStarted: result.containerStarted,
+      bridgeUrl: result.bridgeUrl,
+      healthUrl: result.healthUrl,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentRestartJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_restart completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      containerStopped: result.containerStopped,
+      containerStarted: result.containerStarted,
+    });
+  }
+
+  private async executeAgentLogs(job: Job): Promise<void> {
+    const data = readAgentLogsJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_logs", {
+      jobId: job.id,
+      agentId: data.agentId,
+      tail: data.tail,
+    });
+
+    const result = await elizaSandboxService.executeLogs(
+      data.agentId,
+      data.organizationId,
+      data.tail,
+    );
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentLogsJobResultToRecord({
+          cloudAgentId: data.agentId,
+          status: result.status,
+          tail: data.tail,
+          message: result.message,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_logs failure");
+    }
+
+    const jobResult: AgentLogsJobResult = {
+      cloudAgentId: data.agentId,
+      status: result.status,
+      tail: data.tail,
+      logs: result.logs,
+      message: result.message,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentLogsJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_logs completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      status: result.status,
+      bytes: result.logs?.length ?? 0,
+    });
+  }
+
+  private async executeAgentSnapshot(job: Job): Promise<void> {
+    const data = readAgentSnapshotJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_snapshot", {
+      jobId: job.id,
+      agentId: data.agentId,
+      snapshotType: data.snapshotType,
+    });
+
+    const result = await elizaSandboxService.executeSnapshot(
+      data.agentId,
+      data.organizationId,
+      data.snapshotType,
+    );
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentSnapshotJobResultToRecord({
+          cloudAgentId: data.agentId,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_snapshot failure");
+    }
+
+    const jobResult: AgentSnapshotJobResult = {
+      cloudAgentId: data.agentId,
+      backupId: result.backup?.id,
+      snapshotType: result.backup?.snapshot_type ?? data.snapshotType,
+      sizeBytes: result.backup?.size_bytes ?? undefined,
+      createdAt: result.backup?.created_at
+        ? new Date(result.backup.created_at).toISOString()
+        : undefined,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentSnapshotJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_snapshot completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      backupId: jobResult.backupId,
+      bytes: jobResult.sizeBytes,
     });
   }
 
@@ -1141,7 +1753,10 @@ export class ProvisioningJobService {
       | AgentProvisionJobResult
       | AgentDeleteJobResult
       | AgentSuspendJobResult
-      | AgentResumeJobResult,
+      | AgentResumeJobResult
+      | AgentRestartJobResult
+      | AgentLogsJobResult
+      | AgentSnapshotJobResult,
   ): Promise<void> {
     if (!job.webhook_url) return;
 
