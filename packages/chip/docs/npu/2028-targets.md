@@ -95,9 +95,9 @@ requires the done bit and rejects the error bit. The
 `required_runtime_steps`, `descriptor_base`, `descriptor_memory_writes`, and
 `mmio_preamble_writes` against the packaged `descriptor_words`,
 `descriptor_image`, and `op_mmio_preamble`, including descriptor image
-`submission` base/head/tail, descriptor word0 `valid_owner`,
+`submission` base/head/tail, the RTL ring window, descriptor word0 `valid_owner`,
 `stream_to_scratch`, byte-count/scratch bounds, GEMM-only aligned
-`writeback_request`, and `op_names`. The
+`writeback_request` with nonzero `GEMM_CFG` output bytes, and `op_names`. The
 `stage_prepared_descriptor_execution_batches` helper validates ordered
 `eliza.e1_npu_prepared_descriptor_execution_batches.v1` packages and returns
 `eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1` after
@@ -105,10 +105,10 @@ checking each descriptor image and `DESC_BASE` submission against
 `descriptor_base + execution_batch_index * descriptor_stride_bytes`, and
 checking `batch_index`/`execution_batch_index` identity, `arena_base consistency`,
 arena sizing, `required_runtime_steps`, and
-`descriptor_words` and `descriptor_memory_writes` exactly match the packaged
+`descriptor_words` stay inside the RTL ring window and `descriptor_memory_writes` exactly match the packaged
 `descriptor_image`. It rejects descriptors whose word0 is missing the
 `valid_owner` or `stream_to_scratch` bit, rejects unaligned or out-of-bounds
-stream byte ranges, rejects non-GEMM or unaligned writeback requests, checks
+stream byte ranges, rejects non-GEMM, unaligned, or zero-output writeback requests, checks
 descriptor image `submission` base/head/tail and `submission_mmio_writes`
 against the descriptor count, then checks descriptor image `op_names` and
 `mmio_preamble_writes` match

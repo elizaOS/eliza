@@ -29,7 +29,7 @@ const JUDGE_SCHEMA: JSONSchema = {
 };
 
 const JUDGE_SYSTEM =
-  "You are a strict but fair benchmark judge. Read the rubric and the agent's replies. Decide pass/fail. Output JSON only.";
+  "Strict but fair benchmark judge. Read the rubric and the agent's replies. Decide pass/fail. Output JSON only.";
 
 export async function runJudge(args: {
   scenario: Scenario;

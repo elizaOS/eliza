@@ -120,6 +120,25 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
     if "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS" not in build_timeout["next_step"]:
         raise AssertionError(f"expected wall-time guidance, got {build_timeout}")
 
+    testdriver_assert = smoke.classify_smoke_progress(
+        "OpenSBI v1.2\n"
+        "[10000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver\n"
+        "%Error: generated-src/TestDriver.v:147: Verilog $stop\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "fatal_errors": ["%Fatal: TestDriver.v:147: Assertion failed in TestDriver"],
+            "sim_failures": [
+                "%Fatal: TestDriver.v:147: Assertion failed in TestDriver",
+                "%Error: generated-src/TestDriver.v:147: Verilog $stop",
+            ],
+        },
+    )
+    if testdriver_assert["stage"] != "opensbi_banner_then_testdriver_assert":
+        raise AssertionError(f"expected TestDriver assertion stage, got {testdriver_assert}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in testdriver_assert["next_step"]:
+        raise AssertionError(f"expected timeout-cycle guidance, got {testdriver_assert}")
+
 
 def main() -> int:
     tests = (

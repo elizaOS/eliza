@@ -25,8 +25,16 @@ describe("smartglasses registry entry", () => {
     expect(parsed.config).toHaveProperty("SMARTGLASSES_TRANSPORT");
     expect(parsed.config).toHaveProperty("SMARTGLASSES_INIT_MODE");
     expect(parsed.tags).toEqual(
-      expect.arrayContaining(["smartglasses", "even-realities", "bluetooth"]),
+      expect.arrayContaining([
+        "smartglasses",
+        "even-realities",
+        "bluetooth",
+        "wifi",
+      ]),
     );
+    expect(parsed.render.actions).toContain("launch");
+    expect(parsed.launch?.target).toBe("smartglasses");
+    expect(parsed.launch?.capabilities).toContain("wifi-provisioning");
     expect(registry.byId.get("smartglasses")?.name).toBe("Smartglasses");
     expect(registry.byNpmName.get("@elizaos/plugin-smartglasses")?.id).toBe(
       "smartglasses",

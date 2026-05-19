@@ -3,10 +3,10 @@ set -eu
 
 repo_dir="$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)"
 if [ "${ELIZA_RENODE_USE_REPO_TOOLS:-1}" = "1" ] && [ -d "$repo_dir/tools/bin" ]; then
-    PATH="$repo_dir/tools/bin:$PATH"
+    PATH="${PATH}${PATH:+:}$repo_dir/tools/bin"
 fi
 if [ -d "$repo_dir/.venv/bin" ]; then
-    PATH="$repo_dir/.venv/bin:$PATH"
+    PATH="${PATH}${PATH:+:}$repo_dir/.venv/bin"
 fi
 firmware="$repo_dir/build/qemu/e1_qemu_firmware.elf"
 firmware_lock="$repo_dir/build/qemu/.e1_qemu_firmware.lock"
@@ -18,6 +18,7 @@ banner="eliza e1 qemu"
 intake_transcript=
 smoke_seconds="${RENODE_SMOKE_SECONDS:-30}"
 qemu_transcript="$repo_dir/build/reports/qemu_smoke.log"
+qemu_transcript_effective="${RENODE_QEMU_TRANSCRIPT:-$qemu_transcript}"
 artifact_dir="$repo_dir/build/renode"
 transcript="$artifact_dir/eliza_e1_uart.transcript"
 manifest="$artifact_dir/eliza_e1_smoke.json"
@@ -480,12 +481,12 @@ blocked_check() {
 }
 
 run_executable_smoke() {
-    if [ ! -s "$qemu_transcript" ]; then
+    if [ ! -s "$qemu_transcript_effective" ]; then
         blocked_check "Renode equivalence needs QEMU reference transcript ${qemu_transcript#"$repo_dir"/}; run scripts/run_qemu.sh --check first." "missing_artifact"
     fi
 
     renode_path=$(command -v renode)
-    python3 - "$repo_dir" "$firmware" "$transcript" "$manifest" "$qemu_transcript" "$banner" "$status_report" "$renode_path" <<'PY'
+    python3 - "$repo_dir" "$firmware" "$transcript" "$manifest" "$qemu_transcript_effective" "$banner" "$status_report" "$renode_path" <<'PY'
 import hashlib
 import json
 import os

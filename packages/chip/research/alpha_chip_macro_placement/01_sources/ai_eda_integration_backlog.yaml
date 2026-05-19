@@ -1516,20 +1516,26 @@ work_items:
       - netgen-lvs
       - openroad-antenna-check
       - rule2drc
+      - drc-coder
+      - structural-eda-code-verification
+      - opendrc
       - posteda-bench
     target_area:
       - physical_verification
       - drc
       - lvs
       - antenna
+      - drc_checker_generation
+      - structural_script_verification
       - layout_repair
       - signoff
     owner_scope: dry-run target capture only; no layout, GDS, DEF, ODB, netlist, PDK-rule, PD config, constraint, DRC deck, waiver, antenna fix, Tcl, patch, tool run, or signoff claim
     objective: >
       Capture local E1 KLayout, Magic, Netgen, OpenROAD/OpenLane DRC/LVS/XOR,
       antenna, and signoff artifacts as hashed targets for future AI-assisted
-      physical-verification log triage while quarantining generated decks,
-      layout repairs, waivers, and antenna fixes.
+      physical-verification log triage, generated-checker research, and
+      structural script guardrails while quarantining generated decks, layout
+      repairs, waivers, and antenna fixes.
     deliverables:
       - scripts/ai_eda/capture_physical_verification_targets.py
       - build/ai_eda/physical_verification_targets/<run-id>/targets_report.json
@@ -1553,6 +1559,7 @@ work_items:
     blocked_by:
       - No foundry-approved DRC/LVS/antenna signoff deck, waiver policy, or commercial-signoff correlation for E1
       - No accepted AI-generated DRC deck, layout repair, antenna fix, or LVS waiver workflow with deterministic before/after artifacts
+      - No approved structural dependency schema, command whitelist, generated-script quarantine, or OpenDRC correlation evidence for physical-verification code generation
       - Current PD closure evidence is not release-clean
       - No release gate allowing AI physical-verification output to bypass deterministic tool and reviewer gates
     acceptance_criteria:
@@ -2278,6 +2285,10 @@ work_items:
     status: IN_PROGRESS
     source_ids:
       - tap-2p5d
+      - rapidchiplet
+      - placeit-chiplet-topology
+      - diffchip-chiplet-placement
+      - tdpnavigator-placer
       - chipletpart
       - chiplet-network-sim
       - eco-chip
@@ -2290,13 +2301,16 @@ work_items:
       - chiplet_package
       - architecture_partitioning
       - die_to_die_interconnect
+      - topology_synthesis
+      - thermal_aware_placement
       - package_codesign
       - system_modeling
     owner_scope: dry-run target capture only; no chiplet partition, interposer layout, UCIe/die-to-die interface, package/bump map, SI/PI/thermal model, architecture edit, RTL edit, PD edit, board/package edit, external simulator run, LLM/agent run, prediction, signoff claim, or release use
     objective: >
-      Track chiplet partitioning, 2.5D/3DIC placement/topology, die-to-die
-      standards, package metadata exchange, cost/yield models, and LLM/agentic
-      chiplet co-design work while keeping every output behind E1 architecture,
+      Track chiplet partitioning, 2.5D/3DIC placement/topology,
+      package-level DSE, thermally aware placement, multi-agent RL placement,
+      die-to-die standards, package metadata exchange, cost/yield models, and
+      LLM/agentic chiplet co-design work while keeping every output behind E1 architecture,
       package, memory, power/thermal, RTL, PD, software, manufacturing, and
       reviewer gates.
     deliverables:
@@ -2328,6 +2342,7 @@ work_items:
       - No UCIe or other die-to-die RTL, PHY collateral, verification suite, firmware contract, Linux contract, or package pin/bump evidence
       - No package vendor stack-up, SI/PI extraction, thermal stack, warpage, assembly, known-good-die, or yield evidence
       - No license-reviewed external chiplet/package simulator, placement, topology, or LLM-agent implementation with pinned revisions and local replay
+      - No approved RapidChiplet, PlaceIT, DiffChip, or TDPNavigator-style flow with pinned revisions/assets, package stack, power maps, traffic manifests, PHY assumptions, rewards/seeds where applicable, output hashes, thermal/SI/PI evidence, and reviewer disposition
       - No release gate allowing AI-generated chiplet partitioning, package changes, interposer routing, or die-to-die interfaces to bypass architecture, RTL, PD, software, package, manufacturing, and review gates
     acceptance_criteria:
       - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, package pinout, bonding, padframe, package docs, manufacturing blockers, memory/power/process evidence gates, SI/PI gaps, checker scripts, and RAG manifest.

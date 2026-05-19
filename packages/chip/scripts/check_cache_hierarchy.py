@@ -79,10 +79,19 @@ REQUIRED_BLOCKED_IDS = {
     "phone_class_ipc",
     "phone_class_latency_curve",
     "phone_class_sustained_bandwidth",
-    "champsim_prefetcher_sweep",
-    "mockingjay_vs_lru_sweep",
+    "pythia_rl_prefetcher_dpc3",
+    "berti_ipcp_bingo_bop_dpc3",
+    "hawkeye_mockingjay_dpc3_replacement",
     "pythia_rl_prefetcher",
     "silicon_evidence",
+}
+
+# Measured (no longer BLOCKED) claims that must carry an explicit
+# `evidence_class` tag and have their evidence artifact present.
+REQUIRED_MEASURED_IDS = {
+    "champsim_prefetcher_sweep": "champsim_dpc3_traces_only",
+    "mockingjay_vs_lru_sweep": "champsim_dpc3_traces_only",
+    "mockingjay_cocotb_synthetic": "cocotb_synthetic_stream",
 }
 
 
@@ -264,6 +273,47 @@ def check_gate_yaml(errors: list[str]) -> dict:
             if (ROOT / artifact).exists():
                 errors.append(f"claim {item.get('id')} is blocked but artifact exists: {artifact}")
 
+    measured = data.get("measured_real_claims") or []
+    measured_ids = {item.get("id") for item in measured if isinstance(item, dict)}
+    missing_measured = sorted(set(REQUIRED_MEASURED_IDS) - measured_ids)
+    require(
+        not missing_measured,
+        "cache gate missing measured claim ids: " + ", ".join(missing_measured),
+        errors,
+    )
+    for item in measured:
+        if not isinstance(item, dict):
+            continue
+        cid = item.get("id")
+        if cid not in REQUIRED_MEASURED_IDS:
+            continue
+        expected_class = REQUIRED_MEASURED_IDS[cid]
+        require(
+            item.get("evidence_class") == expected_class,
+            f"claim {cid} must declare evidence_class={expected_class}",
+            errors,
+        )
+        require(
+            isinstance(item.get("status"), str) and str(item.get("status")).startswith("measured_"),
+            f"claim {cid} must carry a measured_* status",
+            errors,
+        )
+        artifacts = item.get("evidence_artifacts") or []
+        require(
+            bool(artifacts),
+            f"claim {cid} must list at least one evidence artifact",
+            errors,
+        )
+        for artifact in artifacts:
+            if not isinstance(artifact, str):
+                errors.append(f"claim {cid} non-string evidence artifact")
+                continue
+            require(
+                (ROOT / artifact).is_file(),
+                f"claim {cid} evidence artifact missing on disk: {artifact}",
+                errors,
+            )
+
     return data
 
 
@@ -290,6 +340,7 @@ def main() -> int:
         "phone_2028_minimums": gate["phone_2028_minimums"],
         "cache_pkg_actuals": actual,
         "blocked_claim_count": len(REQUIRED_BLOCKED_IDS),
+        "measured_claim_count": len(REQUIRED_MEASURED_IDS),
     }
     (out_dir / "cache_hierarchy_gate.json").write_text(json.dumps(report, indent=2) + "\n")
     print("Cache hierarchy claim gate passed.")
@@ -302,6 +353,7 @@ def main() -> int:
         f"slc={actual.get('SLC_SIZE_BYTES')} B"
     )
     print(f"  blocked_real_claims: {len(REQUIRED_BLOCKED_IDS)}")
+    print(f"  measured_real_claims: {len(REQUIRED_MEASURED_IDS)}")
     return 0
 
 

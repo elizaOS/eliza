@@ -55,7 +55,7 @@ export function buildHexagramPrompt(
     ? `\n## Transformed Hexagram\n${transformedHexagram.character} Hexagram ${transformedHexagram.number}: ${transformedHexagram.name} (${transformedHexagram.englishName})\n${transformedHexagram.judgment}\n\nThis is where the situation is moving toward.`
     : "";
 
-  return `You are an I Ching reader providing a thoughtful, personalized interpretation.
+  return `I Ching reader providing a thoughtful, personalized interpretation.
 
 ## The Question
 "${question}"
@@ -110,7 +110,7 @@ export function buildLinePrompt(
     ? "yang (solid) changing to yin (broken)"
     : "yin (broken) changing to yang (solid)";
 
-  return `You are an I Ching reader interpreting a specific changing line.
+  return `I Ching reader interpreting a specific changing line.
 
 ## Context
 The querent asked: "${question}"
@@ -168,7 +168,7 @@ ${transformedHexagram.description}`
     : `\n## Stability
 No changing lines were cast. This situation has a stable, settled quality. The hexagram speaks to a condition rather than a transition.`;
 
-  return `You are an I Ching reader delivering the final synthesis of a reading.
+  return `I Ching reader delivering the final synthesis of a reading.
 
 ## The Question
 "${question}"

@@ -41,9 +41,9 @@ const JSON_CONTRACT =
   'Respond with a single JSON object and nothing else. Schema: {"verdict":"YES"|"NO"|"NEEDS_REVIEW","reason":"<one sentence>"}. No prose, no code fences, no trailing commentary.';
 
 const PERTURBATIONS: ReadonlyArray<string> = [
-  `You are a meticulous personality-benchmark judge. Be strict. ${JSON_CONTRACT}`,
-  `You are an independent reviewer scoring assistant transcripts. Be conservative. ${JSON_CONTRACT}`,
-  `You are an evaluation auditor. Reject ambiguous evidence. ${JSON_CONTRACT}`,
+  `Meticulous personality-benchmark judge. Be strict. ${JSON_CONTRACT}`,
+  `Independent reviewer scoring assistant transcripts. Be conservative. ${JSON_CONTRACT}`,
+  `Evaluation auditor. Reject ambiguous evidence. ${JSON_CONTRACT}`,
 ];
 
 export function tolerantJsonParse(
@@ -110,7 +110,7 @@ async function runOnePass(
   question: LlmJudgeQuestion,
   systemPromptIndex: number,
 ): Promise<LlmJudgePayload | null> {
-  const fallbackPrompt = PERTURBATIONS[0] ?? "You are a strict judge.";
+  const fallbackPrompt = PERTURBATIONS[0] ?? "Strict judge.";
   const systemPrompt =
     PERTURBATIONS[systemPromptIndex % PERTURBATIONS.length] ?? fallbackPrompt;
   try {

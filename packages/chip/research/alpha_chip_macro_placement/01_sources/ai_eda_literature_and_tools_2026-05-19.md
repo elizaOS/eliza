@@ -151,6 +151,44 @@ candidate inputs to reproducible gates, not as standalone evidence.
   compiler/hardware/software contract reasoning. E1 status: paper-assets review
   only until formalization assets, theorem logs, subset coverage, generated
   source hashes, and review are pinned.
+- RapidChiplet: <https://arxiv.org/abs/2311.06081> and
+  <https://github.com/spcl/rapidchiplet>. Chiplet architecture and package
+  design-space exploration code candidate. E1 status: citation/code candidate
+  only until revision, license, package stack, objective function, input/output
+  hashes, cost/yield assumptions, local replay, and review exist.
+- PlaceIT: <https://arxiv.org/abs/2502.01449>. Placement-aware inter-chiplet
+  interconnect topology synthesis method. E1 status: method reference only
+  until code/assets, topology constraints, package/bump maps, PHY assumptions,
+  traffic manifests, simulator logs, SI/PI review, and architecture review
+  exist.
+- DiffChip: <https://arxiv.org/abs/2502.16633>. Differentiable thermal-aware
+  chiplet placement method. E1 status: paper-only target capture until
+  implementation assets, package stack, power maps, thermal solver logs, SI/PI
+  constraints, and reviewer disposition are pinned.
+- TDPNavigator-Placer: <https://arxiv.org/abs/2602.11187>. Current
+  multi-agent RL method for 2.5D chiplet placement that balances wirelength and
+  thermal objectives. E1 status: paper-only target capture until code/assets,
+  reward definitions, seeds, package stack, power maps, thermal/wirelength logs,
+  and reviewer disposition are pinned.
+- Rule2DRC: <https://arxiv.org/abs/2605.15669> and
+  <https://github.com/snu-mllab/Rule2DRC>. Current code-bearing benchmark for
+  LLM DRC-script synthesis with execution-guided test generation. E1 status:
+  generated-deck quarantine only until rule-source hashes, generated script
+  hashes, test-layout coverage, tool correlation, false-positive/false-negative
+  review, and signoff disposition exist.
+- DRC-Coder: <https://arxiv.org/abs/2412.05311>. Multi-agent/VLM method for
+  DRC checker generation from rule text, images, layouts, and reports. E1
+  status: method reference only until data rights, prompts/models, generated
+  code, layout/report hashes, tool correlation, and review are pinned.
+- Structural Verification for EDA Code Generation:
+  <https://arxiv.org/abs/2604.18834>. Guardrail method for generated EDA code
+  using dependency contracts before tool execution. E1 status: guardrail
+  reference only until local command schemas, prerequisites, artifact hashes,
+  dry-run diagnostics, and reviewer disposition exist.
+- OpenDRC: <https://github.com/opendrc/opendrc>. Open-source GPU-accelerated
+  DRC engine reference. E1 status: backend watchlist only until revision,
+  license, build, rule mapping, layout hashes, report correlation, and review
+  are complete.
 
 ## E1 integration ranking
 
@@ -171,3 +209,15 @@ candidate inputs to reproducible gates, not as standalone evidence.
    memories, run models, change binaries, or make kernel/proof claims without
    target adapters, pinned revisions, semantic-equivalence evidence,
    simulator/runtime logs, benchmark replay, and review.
+8. Use chiplet/3DIC/package target capture for RapidChiplet, PlaceIT, DiffChip,
+   and TDPNavigator-style DSE. Do not generate package topology, placement,
+   interposer, bump-map, thermal/SI/PI, simulator, or cost/yield outputs
+   without pinned revisions/assets, package stack, power maps, traffic
+   manifests, PHY assumptions, reward definitions where applicable, output
+   hashes, deterministic replay, and review.
+9. Use physical-verification target capture for Rule2DRC, DRC-Coder,
+   structural EDA-code verification, OpenDRC, and PostEDA-Bench. Do not
+   generate decks, run DRC/LVS/antenna tools, apply repairs, issue waivers, or
+   claim signoff without pinned rule/layout/netlist hashes, command schemas,
+   generated-output quarantine, before/after tool logs, tool correlation, and
+   review.

@@ -349,7 +349,7 @@ export class RsSdkGameService extends Service {
 
     const actionListStr = formatRs2004RouterPrompt();
 
-    return `You are an autonomous RuneScape bot playing 2004scape. Step ${this.stepNumber}.
+    return `Autonomous RuneScape bot playing 2004scape. Step ${this.stepNumber}.
 Your name: ${p.name} | Combat: ${p.combatLevel} | HP: ${p.hp}/${p.maxHp} | Position: (${p.worldX}, ${p.worldZ}) | Inventory: ${state.inventory.length}/28
 
 ${providerContext}

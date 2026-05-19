@@ -185,6 +185,9 @@ def main() -> int:
             "netgen-lvs",
             "openroad-antenna-check",
             "rule2drc",
+            "drc-coder",
+            "structural-eda-code-verification",
+            "opendrc",
             "posteda-bench",
         ],
         "policy": {
@@ -243,12 +246,23 @@ def main() -> int:
             {
                 "id": "generated-drc-deck-quarantine-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future Rule2DRC-style generated DRC scripts remain citation-only until decks are reviewed against process rules and run on pinned layouts",
+                "target": "future Rule2DRC or DRC-Coder-style generated DRC scripts remain citation-only until decks are reviewed against process rules and run on pinned layouts",
                 "acceptance_gates": [
                     "make docs-check",
                     "make no-hardware-action-check",
                     "make manufacturing-artifacts-check",
                     "make commercial-eda-gate",
+                ],
+            },
+            {
+                "id": "structural-eda-code-guardrail-watch",
+                "status": "CAPTURED_NOT_VERIFIED",
+                "target": "future generated physical-verification scripts must pass structural dependency checks for command scope, artifact prerequisites, rule decks, layouts, and reports before any tool invocation",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make no-hardware-action-check",
+                    "make openlane-run-preflight-check",
+                    "make pd-signoff-manifest-check",
                 ],
             },
             {
@@ -267,6 +281,7 @@ def main() -> int:
         "blocked_by": [
             "no foundry-approved DRC/LVS/antenna signoff deck, waiver policy, or commercial-signoff correlation for E1",
             "no accepted AI-generated DRC deck, layout repair, antenna fix, or LVS waiver workflow with deterministic before/after artifacts",
+            "no approved structural dependency schema, command whitelist, generated-script quarantine, or OpenDRC correlation evidence for physical-verification code generation",
             "no release gate allowing AI physical-verification output to bypass KLayout, Magic, Netgen, OpenROAD/OpenLane, STA, extraction, power, manufacturing, and reviewer gates",
         ],
     }

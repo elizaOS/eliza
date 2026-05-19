@@ -172,8 +172,15 @@ Publish lmbench `lat_mem_rd` curves at five working-set points (1 KB, 64 KB, 1 M
 
 - `make cache-hierarchy-claim-gate` — RTL exists at each level.
 - `make cocotb-cache-coherence` — TL-C / CHI coherence vectors.
-- `make champsim-prefetch-sweep` — fail-closed if Berti/Pythia not measured.
-- `make mockingjay-vs-lru-sweep` — fail-closed without numbers.
+- `make champsim-prefetch-sweep` — DPC-3 sweep of upstream-bundled
+  prefetchers (no/next_line/ip_stride/spp_dev/va_ampm_lite); Berti /
+  IPCP / Bingo / BOP / Pythia remain BLOCKED until the CRC drop-ins are
+  ported. evidence_class=champsim_dpc3_traces_only.
+- `make mockingjay-vs-lru-sweep` — DPC-3 LRU baseline + bundled
+  replacement deltas (lru/drrip/ship/srrip); Hawkeye / Mockingjay-prod
+  remain BLOCKED. evidence_class=champsim_dpc3_traces_only.
+- `make cocotb-cache-mockingjay-accuracy` — Mockingjay-prod RTL vs LRU
+  oracle on synthetic scan+reuse stream.
 
 ## E. Optimizations: has / should / needs
 

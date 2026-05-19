@@ -148,7 +148,7 @@ export async function predictScreenSpot(
  */
 export function groundingPrompt(instruction: string): string {
   return [
-    "You are a UI grounding model. Identify the screen element described below.",
+    "UI grounding model. Identify the screen element described below.",
     `Instruction: ${instruction}`,
     "Output the click coordinate as `x, y` in pixel space. No prose.",
   ].join("\n");

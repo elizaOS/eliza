@@ -520,7 +520,7 @@ async function submitOnboarding(apiBase: string): Promise<void> {
     body: JSON.stringify({
       name: "Playwright Smoke",
       bio: ["A real runtime used by the UI smoke suite."],
-      systemPrompt: "You are a concise assistant for Playwright smoke tests.",
+      systemPrompt: "Concise assistant for Playwright smoke tests.",
       language: "en",
       presetId: "default",
       avatarIndex: 0,
