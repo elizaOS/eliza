@@ -78,7 +78,7 @@
  */
 
 import { existsSync } from "node:fs";
-import { VisionBackendUnavailableError } from "./node-llama-cpp";
+import { VisionBackendUnavailableError } from "./capacitor-llama";
 import type { VisionDescribeBackend, VisionDescribeLoadArgs } from "./types";
 
 /**

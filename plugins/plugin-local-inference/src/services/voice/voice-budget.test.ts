@@ -25,7 +25,7 @@ const maxProbe: HardwareProbe = {
 	arch: "x64",
 	appleSilicon: false,
 	recommendedBucket: "xl",
-	source: "node-llama-cpp",
+	source: "capacitor-llama",
 };
 
 const okayProbe: HardwareProbe = {
@@ -37,7 +37,7 @@ const okayProbe: HardwareProbe = {
 	arch: "x64",
 	appleSilicon: false,
 	recommendedBucket: "mid",
-	source: "node-llama-cpp",
+	source: "capacitor-llama",
 };
 
 const _poorProbe: HardwareProbe = {
@@ -49,7 +49,7 @@ const _poorProbe: HardwareProbe = {
 	arch: "x64",
 	appleSilicon: false,
 	recommendedBucket: "small",
-	source: "node-llama-cpp",
+	source: "capacitor-llama",
 };
 
 const iosMobileProbe: HardwareProbe = {
@@ -61,7 +61,7 @@ const iosMobileProbe: HardwareProbe = {
 	arch: "arm64",
 	appleSilicon: true,
 	recommendedBucket: "small",
-	source: "node-llama-cpp",
+	source: "capacitor-llama",
 	mobile: { platform: "ios", availableRamGb: 3.5 },
 };
 

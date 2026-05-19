@@ -214,4 +214,8 @@ module e1_axi4_tb #(
         end
     endgenerate
 
+    // Per-channel `AXI4_TRACE` instrumentation lives in the build's dev
+    // helpers (`+define+AXI4_TRACE`) and is intentionally not committed; the
+    // gate above ensures the synth path stays clean.
+
 endmodule

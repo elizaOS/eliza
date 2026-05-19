@@ -279,7 +279,8 @@ module e1_axi4_dram_model
                     end
                 end
                 R_DATA: begin
-                    if (!s_rvalid || (s_rvalid && s_rready)) begin
+                    // Phase A: prefill (a new burst — no in-flight beat yet)
+                    if (!s_rvalid) begin
                         logic [ADDR_WIDTH-1:0] beat_byte_addr;
                         beat_byte_addr = r_addr_q;
                         if (beat_byte_addr >= ADDR_WIDTH'(DEPTH_BYTES)) begin
@@ -294,18 +295,30 @@ module e1_axi4_dram_model
                         s_rvalid <= 1'b1;
                         s_rid    <= r_id_q;
                         s_rlast  <= (r_beat_idx == r_len_q);
-                        if (s_rready || !s_rvalid) begin
-                            if (r_beat_idx == r_len_q) begin
-                                r_state <= R_IDLE;
+                    end else if (s_rready) begin
+                        // Phase B: beat handshake completed this cycle.
+                        if (s_rlast) begin
+                            s_rvalid <= 1'b0;
+                            s_rlast  <= 1'b0;
+                            r_state  <= R_IDLE;
+                        end else begin
+                            logic [ADDR_WIDTH-1:0] next_byte_addr;
+                            next_byte_addr = next_addr(r_addr_q, r_addr_q, r_len_q,
+                                                       r_size_q, r_burst_q);
+                            r_addr_q   <= next_byte_addr;
+                            r_beat_idx <= r_beat_idx + 1'b1;
+                            if (next_byte_addr >= ADDR_WIDTH'(DEPTH_BYTES)) begin
+                                s_rdata <= {DATA_WIDTH{1'b0}} | DATA_WIDTH'(64'hDEAD_BEEF_DEAD_BEEF);
+                                s_rresp <= RESP_SLVERR;
                             end else begin
-                                r_addr_q <= next_addr(r_addr_q, r_addr_q, r_len_q,
-                                                      r_size_q, r_burst_q);
-                                r_beat_idx <= r_beat_idx + 1'b1;
+                                logic [BEAT_IDX_W-1:0] beat_idx_n;
+                                beat_idx_n = next_byte_addr[BEAT_IDX_W-1+$clog2(BYTES_PER_BEAT) : $clog2(BYTES_PER_BEAT)];
+                                s_rdata <= mem[beat_idx_n];
+                                s_rresp <= RESP_OKAY;
                             end
+                            // Keep s_rvalid=1, set rlast if this is the new last beat
+                            s_rlast <= ((r_beat_idx + 1'b1) == r_len_q);
                         end
-                    end
-                    if (s_rvalid && s_rready && s_rlast) begin
-                        s_rvalid <= 1'b0;
                     end
                 end
                 default: r_state <= R_IDLE;

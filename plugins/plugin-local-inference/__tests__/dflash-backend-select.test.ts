@@ -134,7 +134,7 @@ describe("DFlash backend selection (catalog tiers → dispatcher)", () => {
 describe("DFlash backend selection — env override sanity", () => {
 	it("ELIZA_LOCAL_BACKEND=node-llama-cpp is still overridden by the required kernel set", () => {
 		const decision = decideBackend({
-			override: "node-llama-cpp",
+			override: "capacitor-llama",
 			catalog: findCatalogModel("eliza-1-2b"),
 			llamaServerAvailable: true,
 			dflashRequired: false,

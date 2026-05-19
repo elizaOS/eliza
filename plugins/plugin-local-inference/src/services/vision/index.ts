@@ -59,13 +59,13 @@ export {
 	type LlamaServerVisionBackendOptions,
 } from "./llama-server";
 export {
-	loadNodeLlamaCppVisionBackend,
-	type NodeLlamaCppMtmdBinding,
-	type NodeLlamaCppMtmdHandle,
-	type NodeLlamaCppVisionBackendOptions,
+	loadCapacitorLlamaVisionBackend,
+	type CapacitorLlamaMtmdBinding,
+	type CapacitorLlamaMtmdHandle,
+	type CapacitorLlamaVisionBackendOptions,
 	VisionBackendUnavailableError,
 	type VisionManagerLike,
-} from "./node-llama-cpp";
+} from "./capacitor-llama";
 export type {
 	VisionDescribeBackend,
 	VisionDescribeBackendLoader,

@@ -9,9 +9,9 @@
  * `elizaos/eliza-1` under `voice/turn-detector/onnx/turn-detector-en-q8.gguf`
  * (and the multilingual variant at
  * `voice/turn/intl/turn-detector-intl-q8.gguf`), running through the
- * canonical fork wrapper `node-llama-cpp` (per
+ * canonical fork wrapper `capacitor-llama` (per
  * `plugins/plugin-local-inference/native/AGENTS.md` §1 — the npm
- * `node-llama-cpp` dep is the elizaOS fork's republish, binding to the
+ * `capacitor-llama` dep is the elizaOS fork's republish, binding to the
  * fork's `libllama`).
  *
  * Why this exists: per I1's single-runtime audit
@@ -22,7 +22,7 @@
  * head on the `<|im_end|>` logit) is exactly what `LLM_ARCH_QWEN2`
  * already implements in the fork. The work is wiring, not porting.
  *
- * No silent fallback (AGENTS.md §3): when `node-llama-cpp` is
+ * No silent fallback (AGENTS.md §3): when `capacitor-llama` is
  * unavailable, the GGUF is missing, or the model load fails, this
  * class throws `EotGgmlUnavailableError` with a structured code. The
  * resolver above this binding picks `HeuristicEotClassifier` or the
@@ -220,30 +220,34 @@ interface NlcLlamaSequence {
 	dispose?(): Promise<void>;
 }
 
-let cachedNlcModule: NlcModule | null = null;
 async function loadNlc(): Promise<NlcModule> {
-	if (cachedNlcModule) return cachedNlcModule;
-	try {
-		const mod = (await import("node-llama-cpp")) as unknown as NlcModule;
-		cachedNlcModule = mod;
-		return mod;
-	} catch (err) {
-		throw new EotGgmlUnavailableError(
-			"native-missing",
-			`[eot-ggml] node-llama-cpp is not installed: ${err instanceof Error ? err.message : String(err)}. The fork's canonical wrapper is required (see plugins/plugin-local-inference/native/AGENTS.md §1).`,
-		);
-	}
+	// node-llama-cpp has been removed. The EOT classifier relied on
+	// `LlamaContextSequence.controlledEvaluate({ generateNext: { probabilities:
+	// true } })` to read the next-token probability distribution after a
+	// truncated prompt — that API has no equivalent in the Capacitor binding
+	// or the desktop bun:ffi shim today (both expose `completion()` which
+	// consumes tokens rather than returning a logit map without sampling).
+	//
+	// The resolver above this binding (`tryBuildEliza1EotClassifier`) checks
+	// `dispatcher.activeBackendId() === "capacitor-llama"` AND the model
+	// pointer, both of which now return null since `NodeLlamaCppBackend` is
+	// stubbed out, so this path is only reached if a future caller bypasses
+	// the resolver. Throwing here keeps fail-closed semantics: the binding
+	// never fabricates a probability.
+	throw new EotGgmlUnavailableError(
+		"native-missing",
+		"[eot-ggml] node-llama-cpp has been removed; the Capacitor / bun:ffi llama.cpp adapters do not yet expose a controlled-evaluate API for next-token probabilities. Use HeuristicEotClassifier or route through the LiveKit ONNX fallback until the shim exposes `llama_get_logits_ith`.",
+	);
 }
 
-let cachedLlama: NlcLlama | null = null;
 async function getLlama(): Promise<NlcLlama> {
-	if (cachedLlama) return cachedLlama;
-	const mod = await loadNlc();
-	// CPU-only for the turn-detector: the model is small (~40-280 MB), the
-	// classification call is single-token, and putting it on GPU would
-	// contend with the text model that's already there.
-	cachedLlama = await mod.getLlama({ gpu: false });
-	return cachedLlama;
+	// Unreachable while loadNlc() throws — kept so the signature still
+	// satisfies the call sites below.
+	await loadNlc();
+	throw new EotGgmlUnavailableError(
+		"native-missing",
+		"[eot-ggml] llama runtime unavailable",
+	);
 }
 
 // ---------------------------------------------------------------------------
@@ -272,7 +276,7 @@ export interface LiveKitGgmlTurnDetectorOptions {
 
 /**
  * Local GGUF-backed LiveKit turn-detector. Replaces the ONNX path in
- * `LiveKitTurnDetector` with a `node-llama-cpp` evaluation of the same
+ * `LiveKitTurnDetector` with a `capacitor-llama` evaluation of the same
  * Qwen2-style decoder, reading `P(<|im_end|>)` from the next-token
  * distribution after the truncated user-template prefix.
  *

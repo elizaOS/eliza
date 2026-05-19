@@ -719,7 +719,7 @@ const FIELD_HELP: Record<string, string> = {
   "agents.defaults.memorySearch.remote.batch.timeoutMinutes":
     "Timeout in minutes for batch indexing (default: 60).",
   "agents.defaults.memorySearch.local.modelPath":
-    "Local GGUF model path or hf: URI (node-llama-cpp).",
+    "Local GGUF model path or hf: URI (capacitor-llama).",
   "agents.defaults.memorySearch.fallback":
     'Fallback provider when embeddings fail ("openai", "gemini", "local", or "none").',
   "agents.defaults.memorySearch.store.path":

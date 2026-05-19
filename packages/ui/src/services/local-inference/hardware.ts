@@ -268,7 +268,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
       arch,
       appleSilicon,
       recommendedBucket: recommendBucket(totalRamGb, 0, appleSilicon),
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
       openvino,
     };
   }
@@ -290,7 +290,7 @@ export async function probeHardware(): Promise<HardwareProbe> {
     arch,
     appleSilicon,
     recommendedBucket: recommendBucket(totalRamGb, totalVramGb, appleSilicon),
-    source: "node-llama-cpp",
+    source: "capacitor-llama",
     openvino,
   };
 }

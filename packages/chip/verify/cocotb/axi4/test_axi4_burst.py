@@ -205,8 +205,9 @@ async def write_strobe_partial_beat_preserves_unwritten_bytes(dut):
     # write 0xDEADBEEF... pattern
     pattern = sum(0xAA << (8 * b) for b in range(BYTES_PER_BEAT))
     await axi4_write_burst(dut, 0, 0x2, 0x4000, [(pattern, full_strb)], size=size)
-    # overwrite only byte 1
-    new_pattern = pattern | (0xC3 << 8)
+    # overwrite only byte 1 — strobe=0x2 takes byte 1 of WDATA, so place
+    # the target value (0xC3) at bits [15:8] of the beat.
+    new_pattern = (pattern & ~(0xFF << 8)) | (0xC3 << 8)
     await axi4_write_burst(dut, 0, 0x2, 0x4000, [(new_pattern, 0x2)], size=size)
     rd = await axi4_read_burst(dut, 0, 0x2, 0x4000, 1, size=size)
     data, resp, _, _ = rd[0]

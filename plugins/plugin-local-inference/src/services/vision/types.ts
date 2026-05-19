@@ -107,8 +107,8 @@ export interface VisionDescribeLoadArgs {
  * file descriptors on eviction.
  */
 export interface VisionDescribeBackend {
-	/** Stable identifier — `"node-llama-cpp"`, `"llama-server"`, `"aosp"`, or `"fake"` (tests). */
-	readonly id: "node-llama-cpp" | "llama-server" | "aosp" | "fake";
+	/** Stable identifier — `"capacitor-llama"`, `"llama-server"`, `"aosp"`, or `"fake"` (tests). */
+	readonly id: "capacitor-llama" | "llama-server" | "aosp" | "fake";
 	/**
 	 * Run a describe pass. Backends MAY consult an injected projector cache
 	 * via `args.projectedTokens` (when the caller's hash already produced

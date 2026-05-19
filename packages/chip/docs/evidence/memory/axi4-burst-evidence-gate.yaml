@@ -91,20 +91,40 @@ unblock_requires:
 
 cocotb_status_at_check_in:
   elaboration: pass
-  test_pass_count: 1
-  test_fail_count: 4
+  test_pass_count: 5
+  test_fail_count: 0
   passing_tests:
+    - incr_burst_length_sweep
+    - decode_error_returns_decerr
+    - write_strobe_partial_beat_preserves_unwritten_bytes
     - id_ordering_per_axid
-  failing_tests_known_issues:
-    - id: incr_burst_length_sweep
-      reason: cocotb-driver handshake helper needs additional iteration for single-beat writes; multi-beat path works (id_ordering passes a 4-beat burst).
-    - id: decode_error_returns_decerr
-      reason: depends on the same helper.
-    - id: write_strobe_partial_beat_preserves_unwritten_bytes
-      reason: depends on the same helper.
-    - id: exclusive_read_then_write_returns_exokay_or_okay
-      reason: depends on the same helper.
-  next_step: Iterate the AXI4 cocotb driver to align W-channel timing per AXI4 spec section A3.4; then re-run cocotb-axi4.
+    - exclusive_read_then_write_returns_exokay_or_okay
+  root_cause_history:
+    summary: >
+      Initial 4-of-5 failure trace was driven by two RTL race conditions, two
+      structural bugs (decoder constant + multi-beat read), and one helper
+      test bug, all addressed in the same pass.
+    bugs_fixed:
+      - The AW/AR grant always_comb block was decoupled from the AW/AR
+        fanout block, allowing Verilator to read stale grant values in the
+        same delta cycle (s_awvalid was driven high while grant=NUM_MASTERS).
+        Merged grant + fanout into a single combinational block per
+        channel and propagate m_*valid[g] rather than unconditional 1'b1.
+      - Decode-error detection in the comb + handshake blocks compared the
+        decoder return value against NUM_MASTERS instead of NUM_SLAVES; the
+        decoder returns NUM_SLAVES on miss, so the DECERR path was never
+        taken and out-of-aperture transactions hung the response queue.
+      - The behavioural DRAM R_DATA state had overlapping rvalid drivers
+        across two branches; multi-beat reads stuck after the first beat.
+        Rewrote as an explicit prefill / handshake-advance / last-clear state.
+      - exclusive_fail_irq was a one-cycle pulse; the test inspected the
+        flag after write_burst returned which polled the B response, so
+        the pulse was lost. Latched to a sticky IRQ that holds until the
+        next reset (subsequent revisions can add a write-1-to-clear MMR).
+      - write_strobe_partial_beat_preserves_unwritten_bytes set its
+        replacement byte via OR instead of clear+OR, so the expected and
+        actual values disagreed; corrected the bench expression.
+  command_to_reproduce: make cocotb-axi4
 
 claim_rules:
   - The production data path is the AXI4 fabric. The AXI-Lite scaffold remains for boot-bringup testing only.

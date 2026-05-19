@@ -82,19 +82,19 @@
 		"phonemizer": "^1.2.1"
 	},
 	"optionalDependencies": {
-		"node-llama-cpp": "3.18.1"
+		"llama-cpp-capacitor": "0.1.5"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*"
 	},
 	"peerDependenciesMeta": {
-		"node-llama-cpp": {
+		"llama-cpp-capacitor": {
 			"optional": true
 		}
 	},
 	"trustedDependencies": [
-		"node-llama-cpp"
+		"llama-cpp-capacitor"
 	],
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",

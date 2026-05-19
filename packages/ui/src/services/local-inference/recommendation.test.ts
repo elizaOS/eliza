@@ -33,7 +33,7 @@ describe("local inference recommendations", () => {
         totalVramGb: 24,
         freeVramGb: 22,
       },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const recommended = selectRecommendedModels(probe);
@@ -52,7 +52,7 @@ describe("local inference recommendations", () => {
         totalVramGb: 128,
         freeVramGb: 110,
       },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const recommended = selectRecommendedModels(probe);
@@ -120,7 +120,7 @@ describe("local inference recommendations", () => {
       freeRamGb: 24,
       platform: "linux",
       gpu: { backend: "cuda", totalVramGb: 16, freeVramGb: 14 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
       recommendedBucket: "mid",
     });
 
@@ -138,7 +138,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const stockBinary = {
@@ -165,7 +165,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const completeBinary = {
@@ -197,7 +197,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const mixedBinary = {
@@ -228,7 +228,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const openvinoOnlyBinary = {
@@ -256,7 +256,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
 
     const recommended = selectRecommendedModels(probe);
@@ -276,7 +276,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "vulkan", totalVramGb: 32, freeVramGb: 24 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
     const base = findCatalogModel("eliza-1-27b");
 
@@ -309,7 +309,7 @@ describe("local inference recommendations", () => {
       totalRamGb: 64,
       freeRamGb: 48,
       gpu: { backend: "cuda", totalVramGb: 24, freeVramGb: 22 },
-      source: "node-llama-cpp",
+      source: "capacitor-llama",
     });
     const recommended = selectRecommendedModels(probe);
     const top = recommended.TEXT_LARGE.alternatives[0];

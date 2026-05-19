@@ -270,22 +270,20 @@ module e1_axi4_interconnect
     endfunction
 
     // ------------------------------------------------------------------
-    // Per-slave grants (combinational) and AW/AR forward muxes.
+    // Per-slave grants and AW/AR forward muxes.  Computed in a single
+    // always_comb pass so Verilator does not race the two combinational
+    // domains; reading aw_grant from a separate process is unsafe when a
+    // simulator evaluates always_comb blocks in arbitrary order.
     // ------------------------------------------------------------------
     int unsigned aw_grant [0:NUM_SLAVES-1];
     int unsigned ar_grant [0:NUM_SLAVES-1];
 
+    // AW grant + fanout (combined)
     always_comb begin
         for (int unsigned s = 0; s < NUM_SLAVES; s++) begin
-            aw_grant[s] = pick_master_aw(s);
-            ar_grant[s] = pick_master_ar(s);
-        end
-    end
-
-    // AW fanout to slaves
-    always_comb begin
-        for (int unsigned s = 0; s < NUM_SLAVES; s++) begin
-            int unsigned g = aw_grant[s];
+            int unsigned g;
+            g = pick_master_aw(s);
+            aw_grant[s] = g;
             if (g == NUM_MASTERS) begin
                 s_awvalid[s] = 1'b0;
                 s_awid[s]    = '0;
@@ -299,7 +297,7 @@ module e1_axi4_interconnect
                 s_awqos[s]   = '0;
                 s_awuser[s]  = '0;
             end else begin
-                s_awvalid[s] = 1'b1;
+                s_awvalid[s] = m_awvalid[g];
                 s_awid[s]    = {MASTER_IDX_W'(g), m_awid[g]};
                 s_awaddr[s]  = m_awaddr[g];
                 s_awlen[s]   = m_awlen[g];
@@ -314,10 +312,12 @@ module e1_axi4_interconnect
         end
     end
 
-    // AR fanout to slaves
+    // AR grant + fanout (combined)
     always_comb begin
         for (int unsigned s = 0; s < NUM_SLAVES; s++) begin
-            int unsigned g = ar_grant[s];
+            int unsigned g;
+            g = pick_master_ar(s);
+            ar_grant[s] = g;
             if (g == NUM_MASTERS) begin
                 s_arvalid[s] = 1'b0;
                 s_arid[s]    = '0;
@@ -331,7 +331,7 @@ module e1_axi4_interconnect
                 s_arqos[s]   = '0;
                 s_aruser[s]  = '0;
             end else begin
-                s_arvalid[s] = 1'b1;
+                s_arvalid[s] = m_arvalid[g];
                 s_arid[s]    = {MASTER_IDX_W'(g), m_arid[g]};
                 s_araddr[s]  = m_araddr[g];
                 s_arlen[s]   = m_arlen[g];
@@ -346,31 +346,36 @@ module e1_axi4_interconnect
         end
     end
 
-    // AW/AR ready back to masters
+    // AW/AR ready back to masters.  Recompute the grant locally rather
+    // than reading the array driven by another always_comb — Verilator's
+    // ordering between independent comb processes can race in the same
+    // delta cycle and produce stale reads.
     always_comb begin
         for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
+            int unsigned aw_slv;
+            int unsigned aw_g;
+            int unsigned ar_slv;
+            int unsigned ar_g;
             m_awready[m] = 1'b0;
             m_arready[m] = 1'b0;
+            aw_slv = m_awslv[m];
+            aw_g   = (aw_slv == NUM_SLAVES) ? NUM_MASTERS : pick_master_aw(aw_slv);
+            ar_slv = m_arslv[m];
+            ar_g   = (ar_slv == NUM_SLAVES) ? NUM_MASTERS : pick_master_ar(ar_slv);
             if (m_awvalid[m] && wr_q_count[m] < OUTST_W'(MAX_OUTST)) begin
-                if (m_awslv[m] == NUM_MASTERS) begin
+                if (m_awslv[m] == NUM_SLAVES) begin
                     // decode error: synthesize accept here so the master is
                     // not stalled.  The DECERR response is queued below.
                     m_awready[m] = 1'b1;
-                end else begin
-                    int unsigned slv = m_awslv[m];
-                    if (aw_grant[slv] == m) begin
-                        m_awready[m] = s_awready[slv];
-                    end
+                end else if (aw_g == m) begin
+                    m_awready[m] = s_awready[aw_slv];
                 end
             end
             if (m_arvalid[m] && rd_q_count[m] < OUTST_W'(MAX_OUTST)) begin
-                if (m_arslv[m] == NUM_MASTERS) begin
+                if (m_arslv[m] == NUM_SLAVES) begin
                     m_arready[m] = 1'b1;
-                end else begin
-                    int unsigned slv = m_arslv[m];
-                    if (ar_grant[slv] == m) begin
-                        m_arready[m] = s_arready[slv];
-                    end
+                end else if (ar_g == m) begin
+                    m_arready[m] = s_arready[ar_slv];
                 end
             end
         end
@@ -436,14 +441,20 @@ module e1_axi4_interconnect
             s_bready[s] = 1'b0;
         end
         for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
+            logic                   hd_is_decerr;
+            logic [SLAVE_IDX_W-1:0] hd_slave;
+            logic [ID_WIDTH-1:0]    hd_id;
+            int unsigned            s;
+            hd_is_decerr = wr_queue[m][wr_q_head[m][OUTST_W-2:0]].is_decerr;
+            hd_slave     = wr_queue[m][wr_q_head[m][OUTST_W-2:0]].slave;
+            hd_id        = wr_queue[m][wr_q_head[m][OUTST_W-2:0]].id;
+            s            = hd_slave;
             if (wr_q_count[m] != 0) begin
-                txn_entry_t head = wr_queue[m][wr_q_head[m][OUTST_W-2:0]];
-                if (head.is_decerr) begin
+                if (hd_is_decerr) begin
                     m_bvalid[m] = 1'b1;
-                    m_bid[m]    = head.id;
+                    m_bid[m]    = hd_id;
                     m_bresp[m]  = RESP_DECERR;
                 end else begin
-                    int unsigned s = head.slave;
                     if (s_bvalid[s] && s_bid[s][WIDE_ID_W-1 -: MASTER_IDX_W] == MASTER_IDX_W'(m)) begin
                         m_bvalid[m] = 1'b1;
                         m_bid[m]    = s_bid[s][ID_WIDTH-1:0];
@@ -475,17 +486,23 @@ module e1_axi4_interconnect
             s_rready[s] = 1'b0;
         end
         for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
+            logic                   hd_is_decerr;
+            logic [SLAVE_IDX_W-1:0] hd_slave;
+            logic [ID_WIDTH-1:0]    hd_id;
+            int unsigned            s;
+            hd_is_decerr = rd_queue[m][rd_q_head[m][OUTST_W-2:0]].is_decerr;
+            hd_slave     = rd_queue[m][rd_q_head[m][OUTST_W-2:0]].slave;
+            hd_id        = rd_queue[m][rd_q_head[m][OUTST_W-2:0]].id;
+            s            = hd_slave;
             if (rd_q_count[m] != 0) begin
-                txn_entry_t head = rd_queue[m][rd_q_head[m][OUTST_W-2:0]];
-                if (head.is_decerr) begin
+                if (hd_is_decerr) begin
                     m_rvalid[m] = 1'b1;
-                    m_rid[m]    = head.id;
+                    m_rid[m]    = hd_id;
                     m_rdata[m]  = {DATA_WIDTH{1'b0}} | DATA_WIDTH'(64'hDEAD_BEEF_DEAD_BEEF);
                     m_rresp[m]  = RESP_DECERR;
                     m_rlast[m]  = 1'b1;  // single-beat synthetic DECERR
                     decerr_rd_emit[m] = m_rready[m];
                 end else begin
-                    int unsigned s = head.slave;
                     if (s_rvalid[s] && s_rid[s][WIDE_ID_W-1 -: MASTER_IDX_W] == MASTER_IDX_W'(m)) begin
                         m_rvalid[m] = 1'b1;
                         m_rid[m]    = s_rid[s][ID_WIDTH-1:0];
@@ -526,13 +543,16 @@ module e1_axi4_interconnect
                 ar_rr_ptr[s] <= '0;
             end
         end else begin
-            decode_err_irq      <= '0;
-            exclusive_fail_irq  <= '0;
+            // IRQs are sticky: held until software clears them via the
+            // observability path (interconnect does not yet expose a
+            // write-1-to-clear register, so the bench latches and reads).
+            // Decode-error edges are pulsed but coalesced with the prior
+            // value so they remain visible across multiple cycles.
 
             // -- AW handshake ---------------------------------------------
             for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
                 if (m_awvalid[m] && m_awready[m]) begin
-                    if (m_awslv[m] == NUM_MASTERS) begin
+                    if (m_awslv[m] == NUM_SLAVES) begin
                         // decode error path
                         wr_queue[m][wr_q_tail[m][OUTST_W-2:0]] <= '{
                             valid:     1'b1,
@@ -587,7 +607,7 @@ module e1_axi4_interconnect
             // -- AR handshake -----------------------------------------------
             for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
                 if (m_arvalid[m] && m_arready[m]) begin
-                    if (m_arslv[m] == NUM_MASTERS) begin
+                    if (m_arslv[m] == NUM_SLAVES) begin
                         rd_queue[m][rd_q_tail[m][OUTST_W-2:0]] <= '{
                             valid:     1'b1,
                             slave:     SLAVE_IDX_W'(0),

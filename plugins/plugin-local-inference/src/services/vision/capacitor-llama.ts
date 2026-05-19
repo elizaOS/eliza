@@ -1,16 +1,15 @@
 /**
- * node-llama-cpp vision-describe backend (WS2).
+ * Capacitor-llama vision-describe backend (WS2).
  *
- * Wraps the in-process node-llama-cpp binding's multimodal projector
+ * Wraps the in-process capacitor-llama binding's multimodal projector
  * (mtmd) surface and exposes the WS2 `VisionDescribeBackend` contract.
  *
- * State of the binding (2026-05-13):
- *   The upstream `node-llama-cpp` 3.x TypeScript API does NOT yet
- *   expose llama.cpp's mtmd (multi-modal definition) helpers
- *   (`mtmd_init_from_file`, `mtmd_bitmap_init`, `mtmd_encode_chunks`,
- *   `llama_decode_with_chunks`). The native C++ side has had them since
- *   b8198; the binding will add them in a follow-up release once the
- *   elizaOS fork lands the typed wrappers (tracked in elizaOS/node-llama-cpp).
+ * State of the binding (2026-05-19):
+ *   `llama-cpp-capacitor`'s `LlamaContext` exposes `initMultimodal` and
+ *   `getMultimodalSupport`, which load an mmproj alongside the chat
+ *   target. The desktop bun:ffi shim does not yet bind those symbols —
+ *   the desktop FFI path returns `binding_missing_mtmd` until the shim
+ *   adds `mtmd_init_from_file` + the encode/decode helpers.
  *
  * What this module does today:
  *   - Provides the WS2-shaped backend so plugin-vision / plugin-image-gen /
@@ -23,13 +22,14 @@
  *   - When neither path is wired, `describe()` throws a structured
  *     `VisionBackendUnavailableError` the arbiter surfaces upward.
  *
- * Metal / CUDA / QNN validation status (this host has neither GPU):
+ * GPU validation status (this host has neither GPU):
  *   The mtmd encode path is GPU-accelerated when the underlying llama.cpp
  *   build dispatches `llama_image_t` through the model's batch path. We
  *   document the on-device validation that's required for each GPU
  *   family at the bottom of this file's tests (see
- *   `__tests__/vision-describe.test.ts`). Until those run on real hardware,
- *   GPU-backed vision is "implementation present, not validated".
+ *   `__tests__/vision-describe.test.ts`). Until those run on real
+ *   hardware, GPU-backed vision is "implementation present, not
+ *   validated".
  */
 
 import { existsSync, promises as fs } from "node:fs";
@@ -58,23 +58,23 @@ export class VisionBackendUnavailableError extends Error {
 }
 
 /**
- * Optional shape the elizaOS fork of node-llama-cpp will expose once
- * the mtmd typed wrappers land. We keep the shape narrow on purpose —
- * the backend only consumes `describeWithMmproj`, which is the binding's
- * planned single-call wrapper around mtmd_encode + decode. Backends
- * that don't satisfy this shape are treated as "binding without mtmd
- * support" and the fallback path is used.
+ * Optional shape the Capacitor-llama binding exposes once the mtmd typed
+ * wrappers land in the shared adapter. The backend only consumes
+ * `describeWithMmproj`, which wraps `LlamaContext.initMultimodal` +
+ * `completion(...)` with `media_paths`. Backends that don't satisfy this
+ * shape are treated as "binding without mtmd support" and the fallback
+ * path is used.
  */
-export interface NodeLlamaCppMtmdBinding {
+export interface CapacitorLlamaMtmdBinding {
 	loadVisionModel(args: {
 		modelPath: string;
 		mmprojPath: string;
 		gpuLayers?: number | "auto" | "max";
 		contextSize?: number;
-	}): Promise<NodeLlamaCppMtmdHandle>;
+	}): Promise<CapacitorLlamaMtmdHandle>;
 }
 
-export interface NodeLlamaCppMtmdHandle {
+export interface CapacitorLlamaMtmdHandle {
 	describeWithMmproj(args: {
 		imageBytes: Uint8Array;
 		mimeType?: string;
@@ -88,12 +88,9 @@ export interface NodeLlamaCppMtmdHandle {
 }
 
 /**
- * Optional VisionManager-shape fallback. The legacy
- * `adapters/node-llama-cpp/utils/visionManager.ts` (Florence-2 via
- * @huggingface/transformers) has been removed, but the interface
- * stays available as a pluggable injection point for tests and
- * out-of-tree integrations that want to supply their own image
- * captioning implementation.
+ * Optional VisionManager-shape fallback. Kept available as a pluggable
+ * injection point for tests and out-of-tree integrations that want to
+ * supply their own image captioning implementation.
  */
 export interface VisionManagerLike {
 	processImage(
@@ -101,15 +98,15 @@ export interface VisionManagerLike {
 	): Promise<{ title: string; description: string }>;
 }
 
-export interface NodeLlamaCppVisionBackendOptions {
+export interface CapacitorLlamaVisionBackendOptions {
 	loadArgs: VisionDescribeLoadArgs;
 	/**
-	 * Injected by tests and (eventually) by the elizaOS fork's typed
-	 * wrappers. When provided the backend uses the mtmd path.
+	 * Injected by tests and by the shared mtmd typed wrappers. When
+	 * provided the backend uses the mtmd path.
 	 */
-	mtmd?: NodeLlamaCppMtmdBinding;
+	mtmd?: CapacitorLlamaMtmdBinding;
 	/**
-	 * Florence-2 fallback. Optional — when present the backend uses it
+	 * Caption-only fallback. Optional — when present the backend uses it
 	 * as last resort, after mtmd. Backends that have neither throw a
 	 * structured `VisionBackendUnavailableError`.
 	 */
@@ -118,8 +115,8 @@ export interface NodeLlamaCppVisionBackendOptions {
 
 const DEFAULT_PROMPT = "Describe what is in this image.";
 
-export async function loadNodeLlamaCppVisionBackend(
-	opts: NodeLlamaCppVisionBackendOptions,
+export async function loadCapacitorLlamaVisionBackend(
+	opts: CapacitorLlamaVisionBackendOptions,
 ): Promise<VisionDescribeBackend> {
 	const { loadArgs, mtmd, visionManager } = opts;
 
@@ -128,9 +125,9 @@ export async function loadNodeLlamaCppVisionBackend(
 		// burning a load (the binding's own error would be cryptic).
 		if (!existsSync(loadArgs.mmprojPath)) {
 			throw new VisionBackendUnavailableError(
-				"node-llama-cpp",
+				"capacitor-llama",
 				"mmproj_missing",
-				`[vision/node-llama-cpp] mmproj GGUF not found: ${loadArgs.mmprojPath}`,
+				`[vision/capacitor-llama] mmproj GGUF not found: ${loadArgs.mmprojPath}`,
 			);
 		}
 		const handle = await mtmd.loadVisionModel({
@@ -140,7 +137,7 @@ export async function loadNodeLlamaCppVisionBackend(
 			contextSize: loadArgs.contextSize,
 		});
 		return {
-			id: "node-llama-cpp",
+			id: "capacitor-llama",
 			async describe(
 				request: VisionDescribeRequest,
 				args?: VisionDescribeBackendOptions,
@@ -169,7 +166,7 @@ export async function loadNodeLlamaCppVisionBackend(
 
 	if (visionManager) {
 		return {
-			id: "node-llama-cpp",
+			id: "capacitor-llama",
 			async describe(
 				request: VisionDescribeRequest,
 			): Promise<VisionDescribeResult> {
@@ -191,9 +188,9 @@ export async function loadNodeLlamaCppVisionBackend(
 	}
 
 	throw new VisionBackendUnavailableError(
-		"node-llama-cpp",
+		"capacitor-llama",
 		"binding_missing_mtmd",
-		"[vision/node-llama-cpp] no mtmd binding and no VisionManager fallback was provided. Install the elizaOS fork build of node-llama-cpp that ships mtmd, or pass a VisionManager fallback in options.",
+		"[vision/capacitor-llama] no mtmd binding and no VisionManager fallback was provided. Wire up the Capacitor-llama mtmd adapter (initMultimodal + media_paths completion) or pass a VisionManager fallback in options.",
 	);
 }
 
@@ -203,7 +200,7 @@ function shapeResult(
 ): VisionDescribeResult {
 	const trimmed = text.trim();
 	if (!trimmed) {
-		throw new Error("[vision/node-llama-cpp] backend returned empty text");
+		throw new Error("[vision/capacitor-llama] backend returned empty text");
 	}
 	const title = trimmed.split(/[.!?]/, 1)[0]?.trim() || "Image";
 	return {
@@ -227,9 +224,6 @@ async function imageInputToDataUrl(
 			return `data:${mimeType};base64,${base64}`;
 		}
 		case "url": {
-			// Local file URLs are common in the computer-use path. Treat
-			// `file://...` and bare paths uniformly — read the bytes and
-			// reencode as a data URL.
 			const url = input.url;
 			if (url.startsWith("data:")) return url;
 			if (url.startsWith("file://") || url.startsWith("/")) {
@@ -238,12 +232,10 @@ async function imageInputToDataUrl(
 				const mimeType = input.mimeType ?? guessMimeFromPath(filePath);
 				return `data:${mimeType};base64,${bytes.toString("base64")}`;
 			}
-			// Real HTTP(S) URL — fetch it. We can't avoid HTTP here for the
-			// VisionManager path because Florence-2 expects a dataUrl.
 			const res = await fetch(url);
 			if (!res.ok) {
 				throw new Error(
-					`[vision/node-llama-cpp] failed to fetch image: ${res.status} ${res.statusText}`,
+					`[vision/capacitor-llama] failed to fetch image: ${res.status} ${res.statusText}`,
 				);
 			}
 			const buf = new Uint8Array(await res.arrayBuffer());

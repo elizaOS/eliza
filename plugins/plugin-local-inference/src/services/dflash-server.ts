@@ -3222,7 +3222,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 
 		if (!dflash) {
 			throw new Error(
-				`[dflash] llama-server backend currently requires a catalog 'runtime.dflash' block. Model '${plan.modelId ?? plan.modelPath}' has none — declare DFlash or route this model through node-llama-cpp.`,
+				`[dflash] llama-server backend currently requires a catalog 'runtime.dflash' block. Model '${plan.modelId ?? plan.modelPath}' has none — declare DFlash or route this model through capacitor-llama.`,
 			);
 		}
 
