@@ -1,7 +1,9 @@
-import { Z_SYSTEM_CRITICAL } from "../../lib/floating-layers";
 import { useApp } from "../../state";
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
+
+// z-[9999] mirrors Z_SYSTEM_CRITICAL in ../../lib/floating-layers.ts.
+// Kept as a literal so Tailwind v4's source scanner emits the utility.
 
 /**
  * Banner shown during WebSocket reconnection attempts.
@@ -25,7 +27,7 @@ export function ConnectionFailedBanner() {
         role="status"
         aria-live="polite"
         data-window-titlebar-banner="true"
-        className={`shrink-0 z-[${Z_SYSTEM_CRITICAL}] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm`}
+        className="shrink-0 z-[9999] flex items-center gap-3 bg-warn px-4 py-2 text-sm font-medium text-[color:var(--accent-foreground)] shadow-sm"
       >
         <Spinner
           size={16}
@@ -50,7 +52,7 @@ export function ConnectionFailedBanner() {
         role="alert"
         aria-live="assertive"
         data-window-titlebar-banner="true"
-        className={`shrink-0 z-[${Z_SYSTEM_CRITICAL}] flex items-center justify-between gap-3 bg-danger px-4 py-2 text-sm font-medium text-white shadow-sm`}
+        className="shrink-0 z-[9999] flex items-center justify-between gap-3 bg-danger px-4 py-2 text-sm font-medium text-white shadow-sm"
       >
         <span className="truncate">
           {t("connectionfailedbanner.ConnectionLostAfte")}{" "}
