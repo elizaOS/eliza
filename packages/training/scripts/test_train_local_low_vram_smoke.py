@@ -31,27 +31,31 @@ def _build_parser():
     Cheaper than refactoring main() to factor out the parser; the preset
     branch lives inline after parse_args so we parse with the real CLI
     and apply the override block by hand below.
+
+    Tracked-by-merge args use default=None so "user passed it" is
+    unambiguous — anything still None after parse_args came from
+    argparse, not from the CLI. Mirrors train_local.main exactly.
     """
     import argparse
 
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
+    ap.add_argument("--model", default=None)
     ap.add_argument("--train-file")
     ap.add_argument("--val-file")
     ap.add_argument("--out-dir")
     ap.add_argument("--run-name", default="qwen35-eliza-native")
-    ap.add_argument("--max-samples", type=int, default=0)
-    ap.add_argument("--epochs", type=float, default=3.0)
+    ap.add_argument("--max-samples", type=int, default=None)
+    ap.add_argument("--epochs", type=float, default=None)
     ap.add_argument("--max-steps", type=int, default=0)
     ap.add_argument("--resume-from-checkpoint", default=None)
-    ap.add_argument("--batch-size", type=int, default=4)
-    ap.add_argument("--grad-accum", type=int, default=8)
+    ap.add_argument("--batch-size", type=int, default=None)
+    ap.add_argument("--grad-accum", type=int, default=None)
     ap.add_argument("--lr", type=float, default=2e-4)
-    ap.add_argument("--max-seq-len", type=int, default=4096)
+    ap.add_argument("--max-seq-len", type=int, default=None)
     ap.add_argument("--full-finetune", action="store_true")
     ap.add_argument("--preflight-only", action="store_true")
-    ap.add_argument("--optimizer", choices=["apollo", "apollo_mini"], default="apollo")
-    ap.add_argument("--apollo-rank", type=int, default=256)
+    ap.add_argument("--optimizer", choices=["apollo", "apollo_mini"], default=None)
+    ap.add_argument("--apollo-rank", type=int, default=None)
     ap.add_argument("--apollo-scale", type=float, default=1.0)
     ap.add_argument("--apollo-update-proj-gap", type=int, default=200)
     ap.add_argument("--max-chars", type=int, default=0)
@@ -62,55 +66,71 @@ def _build_parser():
     return ap
 
 
+# Historical argparse fallbacks — applied AFTER registry + preset merges
+# for anything still None. Mirrors train_local.main._FALLBACK_DEFAULTS.
+_FALLBACK_DEFAULTS = {
+    "model": "Qwen/Qwen3.5-0.8B",
+    "batch_size": 4,
+    "grad_accum": 8,
+    "max_seq_len": 4096,
+    "optimizer": "apollo",
+    "apollo_rank": 256,
+    "max_samples": 0,
+    "epochs": 3.0,
+}
+
+_TRACKED_DESTS = (
+    "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
+    "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
+)
+
+
 def _resolve(argv):
     """Mirror of the merge logic in train_local.main: parse, snapshot
-    "value came in at default" for each tracked dest, run the registry
-    merge, then run the --low-vram-smoke preset. Kept in sync with
-    train_local.main by hand."""
+    "user-passed" (= value is not None for tracked dests), run the
+    registry merge, then run the --low-vram-smoke preset, then fill
+    fallbacks. Kept in sync with train_local.main by hand."""
     from scripts.training.model_registry import get as _registry_get
 
     ap = _build_parser()
     args = ap.parse_args(argv)
 
-    defaults_at_parse = {
-        dest: getattr(args, dest) == ap.get_default(dest)
-        for dest in (
-            "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
-            "apollo_rank", "max_samples", "epochs",
-        )
-    }
-    memory_budget_unset = args.memory_budget_gb is None
+    user_passed = {dest: getattr(args, dest) is not None for dest in _TRACKED_DESTS}
 
     if args.registry_key:
         entry = _registry_get(args.registry_key)
-        if defaults_at_parse["model"]:
+        if not user_passed["model"]:
             args.model = entry.hf_id
-        if defaults_at_parse["batch_size"]:
+        if not user_passed["batch_size"]:
             args.batch_size = entry.micro_batch
-        if defaults_at_parse["grad_accum"]:
+        if not user_passed["grad_accum"]:
             args.grad_accum = entry.grad_accum
-        if defaults_at_parse["max_seq_len"]:
+        if not user_passed["max_seq_len"]:
             args.max_seq_len = entry.seq_len
-        if defaults_at_parse["optimizer"]:
+        if not user_passed["optimizer"]:
             args.optimizer = entry.optimizer
-        if defaults_at_parse["apollo_rank"]:
+        if not user_passed["apollo_rank"]:
             args.apollo_rank = entry.optimizer_rank
-        if memory_budget_unset:
+        if not user_passed["memory_budget_gb"]:
             args.memory_budget_gb = entry.train_mem_gb_budget
 
     if args.low_vram_smoke:
-        if defaults_at_parse["max_seq_len"]:
+        if not user_passed["max_seq_len"]:
             args.max_seq_len = 2048
-        if defaults_at_parse["batch_size"]:
+        if not user_passed["batch_size"]:
             args.batch_size = 1
-        if defaults_at_parse["grad_accum"]:
+        if not user_passed["grad_accum"]:
             args.grad_accum = 16
-        if defaults_at_parse["max_samples"]:
+        if not user_passed["max_samples"]:
             args.max_samples = 1000
-        if defaults_at_parse["epochs"]:
+        if not user_passed["epochs"]:
             args.epochs = 1.0
-        if memory_budget_unset:
+        if not user_passed["memory_budget_gb"]:
             args.memory_budget_gb = 11.5
+
+    for dest, fallback in _FALLBACK_DEFAULTS.items():
+        if getattr(args, dest) is None:
+            setattr(args, dest, fallback)
 
     return args
 
@@ -185,3 +205,59 @@ def test_low_vram_smoke_flag_lives_on_train_local_parser() -> None:
     assert '"--low-vram-smoke"' in src
     assert "args.low_vram_smoke" in src
     assert "low-vram-smoke preset" in src
+
+
+@pytest.mark.parametrize(
+    "flag,value,attr,expected",
+    [
+        # The historical argparse defaults: --epochs 3.0 and --max-samples 0.
+        # If the caller explicitly passes those values together with
+        # --low-vram-smoke, the preset must NOT overwrite them with 1.0 / 1000.
+        # This is exactly the contract Greptile flagged on PR #7805: the old
+        # `_defaults_at_parse` snapshot compared the parsed value to the
+        # argparse default and silently said "user didn't pass it" when the
+        # explicit value matched the default. None-sentinel defaults make the
+        # distinction unambiguous.
+        ("--epochs", "3.0", "epochs", 3.0),
+        ("--max-samples", "0", "max_samples", 0),
+        ("--batch-size", "4", "batch_size", 4),
+        ("--grad-accum", "8", "grad_accum", 8),
+        ("--max-seq-len", "4096", "max_seq_len", 4096),
+    ],
+)
+def test_low_vram_smoke_respects_explicit_default_equal_value(
+    flag: str, value: str, attr: str, expected: object
+) -> None:
+    """An explicit CLI flag set to the historical argparse default must
+    survive the preset. The preset can only fill values the user did
+    not pass."""
+    args = _resolve(["--low-vram-smoke", flag, value])
+    assert getattr(args, attr) == expected, (
+        f"preset clobbered explicit {flag} {value} → got {getattr(args, attr)!r}"
+    )
+
+
+def test_low_vram_smoke_respects_explicit_max_samples_zero_with_registry() -> None:
+    """Combined regression: --registry-key + --low-vram-smoke + an explicit
+    --max-samples 0 (meaning "no cap"). Neither the registry nor the preset
+    may rewrite the user's 0 to a positive value."""
+    args = _resolve(
+        ["--registry-key", "qwen3.5-2b", "--low-vram-smoke", "--max-samples", "0"]
+    )
+    assert args.max_samples == 0
+    # Other preset overrides still apply.
+    assert args.max_seq_len == 2048
+    assert args.epochs == 1.0  # not user-passed, preset wins
+
+
+def test_low_vram_smoke_respects_explicit_epochs_three() -> None:
+    """Combined regression: --registry-key + --low-vram-smoke + an explicit
+    --epochs 3.0 (which equals the historical argparse default). The user's
+    value must survive."""
+    args = _resolve(
+        ["--registry-key", "qwen3.5-2b", "--low-vram-smoke", "--epochs", "3.0"]
+    )
+    assert args.epochs == 3.0
+    # Other preset overrides still apply.
+    assert args.max_seq_len == 2048
+    assert args.max_samples == 1000  # not user-passed, preset wins

@@ -252,13 +252,30 @@ def build_dataset(
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--model", default="Qwen/Qwen3.5-0.8B")
+    # Tracked-by-merge args default to None so we can tell "user passed it"
+    # from "argparse filled it in" without a separate snapshot dict. The
+    # fallback values that argparse used to inject sit in _FALLBACK_DEFAULTS
+    # below and are applied AFTER the registry+preset merges if the value
+    # is still None at that point.
+    ap.add_argument("--model", default=None)
     ap.add_argument("--train-file", default=str(ROOT / "data" / "final" / "train.jsonl"))
     ap.add_argument("--val-file", default=str(ROOT / "data" / "final" / "val.jsonl"))
     ap.add_argument("--out-dir", default=str(ROOT / "checkpoints"))
     ap.add_argument("--run-name", default="qwen35-eliza-native")
-    ap.add_argument("--max-samples", type=int, default=0)
-    ap.add_argument("--epochs", type=float, default=3.0)
+    ap.add_argument(
+        "--max-samples", type=int, default=None,
+        help="Cap the number of training records loaded. 0 = no cap. Default "
+             "None means: fall back to registry default if --registry-key is "
+             "set, else 0 (no cap). Explicit 0 from the caller is honored as "
+             "'no cap' and is NOT overridden by --low-vram-smoke."
+    )
+    ap.add_argument(
+        "--epochs", type=float, default=None,
+        help="Training epochs. Default None means: fall back to registry "
+             "default if --registry-key is set, else 3.0. Explicit value "
+             "from the caller is honored and is NOT overridden by "
+             "--low-vram-smoke (including --epochs 3.0)."
+    )
     ap.add_argument(
         "--max-steps", type=int, default=0,
         help="Hard cap on training steps. 0 = use --epochs. Use this to "
@@ -275,14 +292,15 @@ def main() -> int:
              "--max-steps to extend training past the original cap. Path "
              "forwarded to Trainer.train(resume_from_checkpoint=...).",
     )
-    ap.add_argument("--batch-size", type=int, default=4)
-    ap.add_argument("--grad-accum", type=int, default=8)
+    ap.add_argument("--batch-size", type=int, default=None)
+    ap.add_argument("--grad-accum", type=int, default=None)
     ap.add_argument("--lr", type=float, default=2e-4)
     ap.add_argument(
-        "--max-seq-len", type=int, default=4096,
+        "--max-seq-len", type=int, default=None,
         help="Training sequence length. When `--registry-key` is set and the "
              "user did not pass `--max-seq-len`, the registry's `seq_len` "
              "default is used (e.g. 4k for 0.8B, 8k for 2B, 16k for 4B). "
+             "Default None falls back to 4096 when no registry key is set. "
              "Pass `--max-seq-len <N>` to override the registry default for "
              "a single run — useful for long-context experiments "
              "(validate VRAM with `memory_calc.py --shape qwen3.5-4b` first)."
@@ -297,10 +315,12 @@ def main() -> int:
     ap.add_argument(
         "--optimizer",
         choices=["apollo", "apollo_mini"],
-        default="apollo",
-        help="optimizer to use. This local training entrypoint is APOLLO-only.",
+        default=None,
+        help="optimizer to use. This local training entrypoint is APOLLO-only. "
+             "Default None falls back to registry value, or 'apollo' when no "
+             "registry key is set."
     )
-    ap.add_argument("--apollo-rank", type=int, default=256)
+    ap.add_argument("--apollo-rank", type=int, default=None)
     ap.add_argument("--apollo-scale", type=float, default=1.0)
     ap.add_argument("--apollo-update-proj-gap", type=int, default=200)
     ap.add_argument(
@@ -341,29 +361,31 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    # Track which dest names came in at argparse defaults (i.e. the caller
-    # didn't pass them on the CLI). Both the registry merge and the
-    # --low-vram-smoke preset only fill in values the caller did not
-    # supply, so explicit CLI flags always win over both. We have to
-    # snapshot this BEFORE the registry merge mutates the namespace —
-    # otherwise the preset block can no longer tell the difference
-    # between "filled in by registry" (override OK) and "passed on CLI"
-    # (do not override).
-    _defaults_at_parse: dict[str, object] = {
-        dest: getattr(args, dest) == ap.get_default(dest)
-        for dest in (
-            "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
-            "apollo_rank", "max_samples", "epochs",
-        )
-    }
-    _memory_budget_unset = args.memory_budget_gb is None
+    # Tracked-by-merge args use default=None so "user passed it" is
+    # unambiguous: anything still None after parse_args() came from
+    # argparse, not from the CLI. Registry and preset merges only touch
+    # None values, so explicit CLI flags always win — even when the
+    # caller passed a value that happens to equal the historical
+    # argparse default (e.g. --epochs 3.0, --max-samples 0). The merge
+    # order is:
+    #   1. registry-key fills None values with registry entries
+    #   2. --low-vram-smoke preset fills any still-None values from
+    #      the tracked set with preset constants
+    #   3. _FALLBACK_DEFAULTS fills anything still None with the
+    #      historical argparse defaults (used when no registry key
+    #      is set and no preset fired)
+    _TRACKED_DESTS = (
+        "model", "batch_size", "grad_accum", "max_seq_len", "optimizer",
+        "apollo_rank", "max_samples", "epochs", "memory_budget_gb",
+    )
+    _user_passed = {dest: getattr(args, dest) is not None for dest in _TRACKED_DESTS}
 
     from training.model_registry import get as _registry_get  # noqa: E402
     if args.registry_key:
         entry = _registry_get(args.registry_key)
         if (
             entry.unverified_base
-            and args.model == ap.get_default("model")
+            and not _user_passed["model"]
             and os.environ.get("ELIZA_ALLOW_UNVERIFIED_BASE") != "1"
         ):
             raise SystemExit(
@@ -374,19 +396,19 @@ def main() -> int:
                 "eliza-1-4b), pass an explicit --model <real-hf-id>, or set "
                 "ELIZA_ALLOW_UNVERIFIED_BASE=1 to override."
             )
-        if args.model == ap.get_default("model"):
+        if not _user_passed["model"]:
             args.model = entry.hf_id
-        if args.batch_size == ap.get_default("batch_size"):
+        if not _user_passed["batch_size"]:
             args.batch_size = entry.micro_batch
-        if args.grad_accum == ap.get_default("grad_accum"):
+        if not _user_passed["grad_accum"]:
             args.grad_accum = entry.grad_accum
-        if args.max_seq_len == ap.get_default("max_seq_len"):
+        if not _user_passed["max_seq_len"]:
             args.max_seq_len = entry.seq_len
-        if args.optimizer == ap.get_default("optimizer"):
+        if not _user_passed["optimizer"]:
             args.optimizer = entry.optimizer
-        if args.apollo_rank == ap.get_default("apollo_rank"):
+        if not _user_passed["apollo_rank"]:
             args.apollo_rank = entry.optimizer_rank
-        if args.memory_budget_gb is None:
+        if not _user_passed["memory_budget_gb"]:
             args.memory_budget_gb = entry.train_mem_gb_budget
         log.info("registry %s → model=%s batch=%d accum=%d seq=%d optimizer=%s budget=%.0fGB",
                  entry.short_name, args.model, args.batch_size, args.grad_accum,
@@ -402,25 +424,44 @@ def main() -> int:
     # explicitly NOT for publishable runs — it is a path-validation smoke
     # for the SFT entrypoint on commodity hardware. CLI flags the user passed
     # explicitly (--max-seq-len, --batch-size, --grad-accum, --memory-budget-gb,
-    # --max-samples, --epochs) still win over the preset; we only override
-    # values that are still at their argparse default.
+    # --max-samples, --epochs) still win over the preset, including cases
+    # where the explicit value happens to equal a historical argparse default
+    # (e.g. --epochs 3.0, --max-samples 0): _user_passed is True iff the
+    # parser saw a real CLI token, so the preset cannot silently overwrite.
     if args.low_vram_smoke:
-        # Override values that came in at the argparse default (i.e. the
-        # caller did not pass them on the CLI). Values the registry filled
-        # in count as "not passed" — the preset wins over registry defaults
-        # but loses to anything the operator typed by hand.
-        if _defaults_at_parse["max_seq_len"]:
+        if not _user_passed["max_seq_len"]:
             args.max_seq_len = 2048
-        if _defaults_at_parse["batch_size"]:
+        if not _user_passed["batch_size"]:
             args.batch_size = 1
-        if _defaults_at_parse["grad_accum"]:
+        if not _user_passed["grad_accum"]:
             args.grad_accum = 16
-        if _defaults_at_parse["max_samples"]:
+        if not _user_passed["max_samples"]:
             args.max_samples = 1000
-        if _defaults_at_parse["epochs"]:
+        if not _user_passed["epochs"]:
             args.epochs = 1.0
-        if _memory_budget_unset:
+        if not _user_passed["memory_budget_gb"]:
             args.memory_budget_gb = 11.5
+
+    # Fill anything still None with the historical argparse fallback.
+    # Reached when no registry key is set and (for max-samples / epochs)
+    # the preset didn't fire either.
+    _FALLBACK_DEFAULTS = {
+        "model": "Qwen/Qwen3.5-0.8B",
+        "batch_size": 4,
+        "grad_accum": 8,
+        "max_seq_len": 4096,
+        "optimizer": "apollo",
+        "apollo_rank": 256,
+        "max_samples": 0,
+        "epochs": 3.0,
+        # memory_budget_gb intentionally stays None — downstream treats
+        # None as "no enforcement", matching the original behavior.
+    }
+    for dest, fallback in _FALLBACK_DEFAULTS.items():
+        if getattr(args, dest) is None:
+            setattr(args, dest, fallback)
+
+    if args.low_vram_smoke:
         log.info(
             "low-vram-smoke preset → seq=%d batch=%d accum=%d max_samples=%d "
             "epochs=%.1f budget=%.1fGB (effective_batch=%d)",
