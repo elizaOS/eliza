@@ -15,6 +15,7 @@ on an x86_64 Linux host with Docker.
 bun-riscv64/
   Dockerfile              cross-compile image (debian:bookworm + LLVM 21 + Rust nightly + Zig 0.14 + Alpine v3.21 riscv64 sysroot at /sysroot)
   build.sh                in-container build driver
+  run-build.sh            host-side wrapper: docker build && docker run with the right mounts
   bun-version.json        single source of truth: Bun tag, WebKit commit, toolchain pins, JIT mode
   bun-patches/            patches against oven-sh/bun (Arch type + flags + CMake)
     README.md             which files to patch + why
@@ -42,6 +43,20 @@ bun-riscv64/
   source + build caches).
 
 ## Building
+
+Easiest path — the bundled host-side runner:
+
+```bash
+cd packages/app-core/scripts/bun-riscv64
+./run-build.sh                # builds the image + runs the cross-compile
+./run-build.sh --shell        # drop into the toolchain image for poking
+./run-build.sh --image-only   # just build the image
+./run-build.sh --no-cache     # rebuild the image from scratch
+./run-build.sh --c-loop       # fallback: build with ENABLE_C_LOOP=ON
+./run-build.sh --jobs 4       # cap parallel build jobs
+```
+
+Or invoke Docker directly:
 
 ```bash
 cd packages/app-core/scripts/bun-riscv64
