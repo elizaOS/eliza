@@ -18,7 +18,8 @@ const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, "../..");
 
 const DEFAULT_ROOTS = ["packages", "plugins"];
-const DEFAULT_ALLOWLIST = "packages/scripts/duplicate-component-audit.allowlist.json";
+const DEFAULT_ALLOWLIST =
+  "packages/scripts/duplicate-component-audit.allowlist.json";
 const MAX_SCAN_FILE_BYTES = 1_000_000;
 
 const SOURCE_EXTENSIONS = new Set([
@@ -805,9 +806,7 @@ function isEmptyProvider(provider, sourceFile) {
       : null;
   if (!body) return false;
   const returns = collectReturnExpressions(body);
-  return (
-    returns.length > 0 && returns.every(isEmptyProviderReturnExpression)
-  );
+  return returns.length > 0 && returns.every(isEmptyProviderReturnExpression);
 }
 
 function shouldBeProviderByName(actionName) {

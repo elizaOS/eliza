@@ -22,12 +22,18 @@ const DEFAULT_ENTRY: LatencyEntry = { p50: 100, jitter: 30 };
  * resolves immediately. Otherwise sleeps for `p50 + uniformJitter(±jitter)`
  * scaled by `multiplier` (default 1).
  */
-export async function injectLatency(routeKey: string, multiplier = 1): Promise<void> {
+export async function injectLatency(
+  routeKey: string,
+  multiplier = 1,
+): Promise<void> {
   if (process.env.MOCK_HETZNER_LATENCY === "0") return;
   if (multiplier === 0) return;
   const entry = LATENCY_TABLE[routeKey] ?? DEFAULT_ENTRY;
   const jitterOffset = (Math.random() * 2 - 1) * entry.jitter;
-  const delay = Math.max(0, Math.round((entry.p50 + jitterOffset) * multiplier));
+  const delay = Math.max(
+    0,
+    Math.round((entry.p50 + jitterOffset) * multiplier),
+  );
   if (delay === 0) return;
   await new Promise<void>((resolve) => setTimeout(resolve, delay));
 }

@@ -495,11 +495,12 @@ async function loadShopifyTuiState(): Promise<{
   inventory: ShopifyInventoryResponse | null;
   customers: ShopifyCustomersResponse | null;
 }> {
-  const status =
-    (await fetchShopifyTuiJson<ShopifyStatus>("/api/shopify/status")) ?? {
-      connected: false,
-      shop: null,
-    };
+  const status = (await fetchShopifyTuiJson<ShopifyStatus>(
+    "/api/shopify/status",
+  )) ?? {
+    connected: false,
+    shop: null,
+  };
 
   if (!status.connected) {
     return {
@@ -528,8 +529,9 @@ async function loadShopifyTuiState(): Promise<{
 }
 
 export function ShopifyTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadShopifyTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadShopifyTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -543,7 +545,9 @@ export function ShopifyTuiView() {
       setLastAction("refresh");
     } catch (caught) {
       setState(null);
-      setError(caught instanceof Error ? caught.message : "Shopify refresh failed");
+      setError(
+        caught instanceof Error ? caught.message : "Shopify refresh failed",
+      );
     } finally {
       setLoading(false);
     }
@@ -586,8 +590,12 @@ export function ShopifyTuiView() {
         elizaos://shopify --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.status.connected ? "connected" : "not-connected"} |{" "}
-        {state?.status.shop?.domain ?? "no shop"} | {lastAction}
+        {loading
+          ? "loading"
+          : state?.status.connected
+            ? "connected"
+            : "not-connected"}{" "}
+        | {state?.status.shop?.domain ?? "no shop"} | {lastAction}
       </div>
 
       <div
@@ -652,10 +660,13 @@ export function ShopifyTuiView() {
           <div>orders {state?.orders?.total ?? 0}</div>
           <div>customers {state?.customers?.total ?? 0}</div>
           <div>inventory rows {state?.inventory?.items.length ?? 0}</div>
-          <div style={{ color: "#fca5a5" }}>low inventory {lowInventory.length}</div>
+          <div style={{ color: "#fca5a5" }}>
+            low inventory {lowInventory.length}
+          </div>
           {!state?.status.connected && !loading ? (
             <div style={{ color: "#94a3b8", marginTop: 18 }}>
-              Configure SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN for live data.
+              Configure SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN for live
+              data.
             </div>
           ) : null}
         </section>
@@ -671,7 +682,8 @@ export function ShopifyTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>commerce</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | products | orders | inventory | customers | create-product | adjust-inventory
+            commands: state | products | orders | inventory | customers |
+            create-product | adjust-inventory
           </div>
           <div style={{ color: "#a7f3d0", marginBottom: 8 }}>recent orders</div>
           {(state?.orders?.orders ?? []).slice(0, 6).map((order) => (
@@ -696,7 +708,10 @@ export function ShopifyTuiView() {
             low inventory
           </div>
           {lowInventory.slice(0, 8).map((item) => (
-            <div key={`${item.id}:${item.locationName}`} style={{ padding: "5px 0" }}>
+            <div
+              key={`${item.id}:${item.locationName}`}
+              style={{ padding: "5px 0" }}
+            >
               {item.productTitle}
               {item.variantTitle ? ` / ${item.variantTitle}` : ""} @{" "}
               {item.locationName}: {item.available}
@@ -779,7 +794,9 @@ export async function interact(
         title,
         vendor: typeof params?.vendor === "string" ? params.vendor : undefined,
         productType:
-          typeof params?.productType === "string" ? params.productType : undefined,
+          typeof params?.productType === "string"
+            ? params.productType
+            : undefined,
         price:
           typeof params?.price === "string" || typeof params?.price === "number"
             ? params.price
@@ -789,7 +806,8 @@ export async function interact(
   }
 
   if (capability === "terminal-shopify-adjust-inventory") {
-    const itemId = typeof params?.itemId === "string" ? params.itemId.trim() : "";
+    const itemId =
+      typeof params?.itemId === "string" ? params.itemId.trim() : "";
     const delta = typeof params?.delta === "number" ? params.delta : null;
     if (!itemId) throw new Error("itemId is required");
     if (delta === null) throw new Error("delta is required");
@@ -800,7 +818,9 @@ export async function interact(
         {
           delta,
           locationId:
-            typeof params?.locationId === "string" ? params.locationId : undefined,
+            typeof params?.locationId === "string"
+              ? params.locationId
+              : undefined,
         },
       ),
     };

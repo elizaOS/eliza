@@ -45,7 +45,9 @@
       "@elizaos/plugin-discord-local/*": [
         "../../plugins/plugin-discord-local/src/*"
       ],
-      "@elizaos/plugin-wallet-ui": ["../../plugins/plugin-wallet-ui/src/index.ts"],
+      "@elizaos/plugin-wallet-ui": [
+        "../../plugins/plugin-wallet-ui/src/index.ts"
+      ],
       "@elizaos/plugin-wallet-ui/*": ["../../plugins/plugin-wallet-ui/src/*"],
       "@elizaos/plugin-task-coordinator": [
         "../../plugins/plugin-task-coordinator/src/index.ts"

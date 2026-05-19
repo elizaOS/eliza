@@ -245,11 +245,9 @@ export function resolveCapacitorCli({
 }
 
 function runCapacitor(args) {
-  return run(
-    resolveNodeExecutable(),
-    [resolveCapacitorCli(), ...args],
-    { cwd: appDir },
-  );
+  return run(resolveNodeExecutable(), [resolveCapacitorCli(), ...args], {
+    cwd: appDir,
+  });
 }
 
 function firstExisting(paths) {
@@ -1450,7 +1448,10 @@ function removeXmlCommentsContaining(xml, markers) {
   for (const marker of markers) {
     const escapedMarker = escapeRegExp(marker);
     patched = patched.replace(
-      new RegExp(`\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`, "g"),
+      new RegExp(
+        `\\n?\\s*<!--[\\s\\S]*?${escapedMarker}[\\s\\S]*?-->\\s*`,
+        "g",
+      ),
       "\n",
     );
   }
@@ -2335,10 +2336,12 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaContactsActivity"
             android:exported="true"
             android:label="Contacts"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-              category: "android.intent.category.APP_CONTACTS",
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+                category: "android.intent.category.APP_CONTACTS",
+              },
+            )}
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2362,9 +2365,11 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaCameraActivity"
             android:exported="true"
             android:label="Camera"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+              },
+            )}
             <intent-filter>
                 <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2388,9 +2393,11 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaClockActivity"
             android:exported="true"
             android:label="Clock"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+              },
+            )}
             <intent-filter>
                 <action android:name="android.intent.action.SET_ALARM" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -2422,10 +2429,12 @@ function overlayAndroid({ includeAospRoleLaunchers = false } = {}) {
             android:name="${androidPackage}.ElizaCalendarActivity"
             android:exported="true"
             android:label="Calendar"
-            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter({
-              enabled: includeAospRoleLaunchers,
-              category: "android.intent.category.APP_CALENDAR",
-            })}
+            android:theme="@style/AppTheme.NoActionBar">${androidAospRoleLauncherIntentFilter(
+              {
+                enabled: includeAospRoleLaunchers,
+                category: "android.intent.category.APP_CALENDAR",
+              },
+            )}
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

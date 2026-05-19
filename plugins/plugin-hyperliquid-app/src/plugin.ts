@@ -1,5 +1,11 @@
 import type http from "node:http";
-import type { IAgentRuntime, Plugin, Route, RouteRequest, RouteResponse } from "@elizaos/core";
+import type {
+  IAgentRuntime,
+  Plugin,
+  Route,
+  RouteRequest,
+  RouteResponse,
+} from "@elizaos/core";
 import {
   hyperliquidActions,
   PERPETUAL_MARKET_SERVICE_TYPE,
@@ -116,7 +122,8 @@ export const hyperliquidPlugin: Plugin = {
     {
       id: "hyperliquid",
       label: "Hyperliquid",
-      description: "Hyperliquid perpetual markets — positions, trading status, and market data",
+      description:
+        "Hyperliquid perpetual markets — positions, trading status, and market data",
       icon: "TrendingUp",
       path: "/hyperliquid",
       bundlePath: "dist/views/bundle.js",
@@ -128,7 +135,8 @@ export const hyperliquidPlugin: Plugin = {
     {
       id: "hyperliquid",
       label: "Hyperliquid TUI",
-      description: "Terminal Hyperliquid markets, positions, orders, and status",
+      description:
+        "Terminal Hyperliquid markets, positions, orders, and status",
       icon: "TrendingUp",
       path: "/hyperliquid/tui",
       viewType: "tui",
@@ -140,7 +148,9 @@ export const hyperliquidPlugin: Plugin = {
     },
   ],
   async dispose(runtime: IAgentRuntime) {
-    const svc = runtime.getService<PerpetualMarketService>(PERPETUAL_MARKET_SERVICE_TYPE);
+    const svc = runtime.getService<PerpetualMarketService>(
+      PERPETUAL_MARKET_SERVICE_TYPE,
+    );
     await svc?.stop();
   },
 };

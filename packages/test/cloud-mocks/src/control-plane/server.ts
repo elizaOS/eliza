@@ -58,11 +58,15 @@ interface HetznerServerResponse {
 export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app: Hono;
   store: ControlPlaneStore;
-  tick: (limit?: number) => Promise<{ processed: number; failed: number; skipped: number }>;
+  tick: (
+    limit?: number,
+  ) => Promise<{ processed: number; failed: number; skipped: number }>;
   cleanupStuck: () => Promise<{ failed: number }>;
 } {
-  const token = options.token ?? process.env.CONTAINER_CONTROL_PLANE_TOKEN ?? "test-token";
-  const hetznerToken = options.hetznerToken ?? process.env.HCLOUD_TOKEN ?? "test-token";
+  const token =
+    options.token ?? process.env.CONTAINER_CONTROL_PLANE_TOKEN ?? "test-token";
+  const hetznerToken =
+    options.hetznerToken ?? process.env.HCLOUD_TOKEN ?? "test-token";
   const hetznerUrl = options.hetznerUrl.replace(/\/$/, "");
   const now = options.now ?? (() => new Date());
   const store = options.store ?? new ControlPlaneStore(now);
@@ -105,53 +109,81 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     // Compat endpoints are public stubs.
     if (c.req.path.startsWith("/api/compat/")) return next();
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
-    if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() !== token) {
+    if (
+      !auth ||
+      !auth.startsWith("Bearer ") ||
+      auth.slice(7).trim() !== token
+    ) {
       return c.json({ success: false, error: "Unauthorized" }, 401);
     }
     if (expectedAuxToken) {
       const aux = c.req.header("x-container-control-plane-token")?.trim();
       if (aux !== expectedAuxToken) {
-        return c.json({ success: false, error: "Unauthorized (aux token)" }, 401);
+        return c.json(
+          { success: false, error: "Unauthorized (aux token)" },
+          401,
+        );
       }
     }
     await next();
   });
 
-  function requireForwardedAuth(c: Context): { userId: string; organizationId: string } | Response {
+  function requireForwardedAuth(
+    c: Context,
+  ): { userId: string; organizationId: string } | Response {
     const userId = c.req.header("x-eliza-user-id")?.trim();
     const organizationId = c.req.header("x-eliza-organization-id")?.trim();
     if (!userId || !organizationId) {
-      return c.json({ success: false, error: "Missing forwarded user or organization headers" }, 400);
+      return c.json(
+        {
+          success: false,
+          error: "Missing forwarded user or organization headers",
+        },
+        400,
+      );
     }
     return { userId, organizationId };
   }
 
-  app.get("/health", (c) => c.json({ success: true, service: "control-plane-mock" }));
+  app.get("/health", (c) =>
+    c.json({ success: true, service: "control-plane-mock" }),
+  );
 
   app.post("/jobs", async (c) => {
     const auth = requireForwardedAuth(c);
     if (auth instanceof Response) return auth;
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return c.json({ success: false, error: "JSON body required" }, 400);
+    const body = (await c.req.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!body)
+      return c.json({ success: false, error: "JSON body required" }, 400);
 
-    const type = body.type === "agent_delete" ? "agent_delete" : "agent_provision";
+    const type =
+      body.type === "agent_delete" ? "agent_delete" : "agent_provision";
 
-    let sandboxId = typeof body.sandbox_id === "string" ? body.sandbox_id : undefined;
+    let sandboxId =
+      typeof body.sandbox_id === "string" ? body.sandbox_id : undefined;
     if (type === "agent_provision") {
       if (!sandboxId) {
         const sandbox = store.createSandbox({
           organizationId: auth.organizationId,
           userId: auth.userId,
-          agentId: typeof body.agent_id === "string" ? body.agent_id : undefined,
+          agentId:
+            typeof body.agent_id === "string" ? body.agent_id : undefined,
         });
         sandboxId = sandbox.id;
       }
     } else {
       if (!sandboxId) {
-        return c.json({ success: false, error: "sandbox_id required for agent_delete" }, 400);
+        return c.json(
+          { success: false, error: "sandbox_id required for agent_delete" },
+          400,
+        );
       }
       const sandbox = store.getSandbox(sandboxId);
-      if (!sandbox) return c.json({ success: false, error: "sandbox not found" }, 404);
+      if (!sandbox)
+        return c.json({ success: false, error: "sandbox not found" }, 404);
       store.updateSandbox(sandboxId, { status: "deletion_pending" });
     }
 
@@ -163,7 +195,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       payload: (body.payload as Record<string, unknown> | undefined) ?? {},
     });
 
-    return c.json({ success: true, data: { job, sandbox: store.getSandbox(sandboxId) } }, 201);
+    return c.json(
+      { success: true, data: { job, sandbox: store.getSandbox(sandboxId) } },
+      201,
+    );
   });
 
   app.get("/jobs/:id", (c) => {
@@ -174,21 +209,29 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
 
   app.get("/sandboxes/:id", (c) => {
     const sandbox = store.getSandbox(c.req.param("id"));
-    if (!sandbox) return c.json({ success: false, error: "sandbox not found" }, 404);
+    if (!sandbox)
+      return c.json({ success: false, error: "sandbox not found" }, 404);
     return c.json({ success: true, data: sandbox });
   });
 
   const processProvisioningJobsHandler = async (c: Context) => {
     const rawLimit = c.req.query("limit");
-    const parsed = rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
+    const parsed =
+      rawLimit !== undefined ? Number.parseInt(rawLimit, 10) : Number.NaN;
     const limit = Number.isFinite(parsed) && parsed > 0 ? parsed : 1000;
     const result = await tick(limit);
     return c.json({ success: true, data: result });
   };
   app.post("/cron/process-provisioning-jobs", processProvisioningJobsHandler);
   app.get("/cron/process-provisioning-jobs", processProvisioningJobsHandler);
-  app.post("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsHandler);
-  app.get("/api/v1/cron/process-provisioning-jobs", processProvisioningJobsHandler);
+  app.post(
+    "/api/v1/cron/process-provisioning-jobs",
+    processProvisioningJobsHandler,
+  );
+  app.get(
+    "/api/v1/cron/process-provisioning-jobs",
+    processProvisioningJobsHandler,
+  );
 
   const cleanupStuckHandler = async (c: Context) => {
     const result = await cleanupStuck();
@@ -207,7 +250,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
 
   function requireAdmin(c: Context): Response | null {
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
-    if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() !== adminToken) {
+    if (
+      !auth ||
+      !auth.startsWith("Bearer ") ||
+      auth.slice(7).trim() !== adminToken
+    ) {
       return c.json({ success: false, error: "Unauthorized (admin)" }, 401);
     }
     return null;
@@ -218,21 +265,30 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const auth = requireForwardedAuth(c);
     if (auth instanceof Response) return auth;
     await latency();
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return c.json({ success: false, error: "JSON body required" }, 400);
+    const body = (await c.req.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!body)
+      return c.json({ success: false, error: "JSON body required" }, 400);
     const name = typeof body.name === "string" ? body.name : undefined;
-    const projectName = typeof body.project_name === "string" ? body.project_name : undefined;
+    const projectName =
+      typeof body.project_name === "string" ? body.project_name : undefined;
     const image = typeof body.image === "string" ? body.image : undefined;
     if (!name || !projectName || !image) {
-      return c.json({ success: false, error: "name, project_name, image required" }, 400);
+      return c.json(
+        { success: false, error: "name, project_name, image required" },
+        400,
+      );
     }
     const env =
-      body.environment_vars && typeof body.environment_vars === "object" && !Array.isArray(body.environment_vars)
+      body.environment_vars &&
+      typeof body.environment_vars === "object" &&
+      !Array.isArray(body.environment_vars)
         ? Object.fromEntries(
-            Object.entries(body.environment_vars as Record<string, unknown>).map(([k, v]) => [
-              k,
-              String(v),
-            ]),
+            Object.entries(
+              body.environment_vars as Record<string, unknown>,
+            ).map(([k, v]) => [k, String(v)]),
           )
         : {};
     const container = store.createContainer({
@@ -242,11 +298,14 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       userId: auth.userId,
       image,
       port: typeof body.port === "number" ? body.port : undefined,
-      desiredCount: typeof body.desired_count === "number" ? body.desired_count : undefined,
+      desiredCount:
+        typeof body.desired_count === "number" ? body.desired_count : undefined,
       cpu: typeof body.cpu === "number" ? body.cpu : undefined,
       memoryMb: typeof body.memory === "number" ? body.memory : undefined,
       healthCheckPath:
-        typeof body.health_check_path === "string" ? body.health_check_path : undefined,
+        typeof body.health_check_path === "string"
+          ? body.health_check_path
+          : undefined,
       environmentVars: env,
       actionMs: containerActionMs,
     });
@@ -270,7 +329,8 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     await latency();
     store.resolveContainerActions();
     const container = store.getContainer(c.req.param("id"));
-    if (!container) return c.json({ success: false, error: "Container not found" }, 404);
+    if (!container)
+      return c.json({ success: false, error: "Container not found" }, 404);
     if (container.organizationId !== auth.organizationId) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
@@ -286,14 +346,27 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (!container || container.organizationId !== auth.organizationId) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body) return c.json({ success: false, error: "JSON body required" }, 400);
+    const body = (await c.req.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (!body)
+      return c.json({ success: false, error: "JSON body required" }, 400);
     if (body.environment_vars !== undefined) {
-      if (typeof body.environment_vars !== "object" || body.environment_vars === null || Array.isArray(body.environment_vars)) {
-        return c.json({ success: false, error: "environment_vars must be an object" }, 400);
+      if (
+        typeof body.environment_vars !== "object" ||
+        body.environment_vars === null ||
+        Array.isArray(body.environment_vars)
+      ) {
+        return c.json(
+          { success: false, error: "environment_vars must be an object" },
+          400,
+        );
       }
       const env = Object.fromEntries(
-        Object.entries(body.environment_vars as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
+        Object.entries(body.environment_vars as Record<string, unknown>).map(
+          ([k, v]) => [k, String(v)],
+        ),
       );
       const updated = store.updateContainer(id, { environmentVars: env });
       return c.json({ success: true, data: updated });
@@ -301,7 +374,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (body.desired_count !== undefined) {
       const next = Number(body.desired_count);
       if (!Number.isFinite(next)) {
-        return c.json({ success: false, error: "desired_count must be a number" }, 400);
+        return c.json(
+          { success: false, error: "desired_count must be a number" },
+          400,
+        );
       }
       const updated = store.updateContainer(id, { desiredCount: next });
       return c.json({ success: true, data: updated });
@@ -315,7 +391,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       return c.json({ success: true, data: updated });
     }
     return c.json(
-      { success: false, error: "PATCH supports environment_vars, desired_count, or action=restart" },
+      {
+        success: false,
+        error:
+          "PATCH supports environment_vars, desired_count, or action=restart",
+      },
       400,
     );
   });
@@ -346,7 +426,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (!container || container.organizationId !== auth.organizationId) {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
-    const updated = store.updateContainer(id, { workspaceSyncs: container.workspaceSyncs + 1 });
+    const updated = store.updateContainer(id, {
+      workspaceSyncs: container.workspaceSyncs + 1,
+    });
     return c.json(
       {
         success: true,
@@ -370,7 +452,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       return c.json({ success: false, error: "Container not found" }, 404);
     }
     const tailRaw = Number(c.req.query("tail") ?? "200");
-    const tail = Number.isFinite(tailRaw) ? Math.max(1, Math.floor(tailRaw)) : 200;
+    const tail = Number.isFinite(tailRaw)
+      ? Math.max(1, Math.floor(tailRaw))
+      : 200;
     const lines = containerLogLines.slice(-tail).join("\n");
     return c.text(lines, 200, { "content-type": "text/plain; charset=utf-8" });
   });
@@ -401,10 +485,16 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const auth = requireForwardedAuth(c);
     if (auth instanceof Response) return auth;
     await latency();
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const body = (await c.req.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
     if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
       return c.json(
-        { jsonrpc: "2.0", error: { code: -32600, message: "Invalid JSON-RPC request" } },
+        {
+          jsonrpc: "2.0",
+          error: { code: -32600, message: "Invalid JSON-RPC request" },
+        },
         400,
       );
     }
@@ -414,7 +504,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     if (method === "ping") {
       result = { pong: true, agentId: c.req.param("agentId") };
     } else if (method === "getStatus") {
-      result = { status: "running", agentId: c.req.param("agentId"), uptimeMs: 1000 };
+      result = {
+        status: "running",
+        agentId: c.req.param("agentId"),
+        uptimeMs: 1000,
+      };
     } else {
       result = {};
     }
@@ -425,10 +519,16 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const authResult = requireForwardedAuth(c);
     if (authResult instanceof Response) return authResult;
     return streamSSE(c, async (stream) => {
-      await stream.writeSSE({ event: "ready", data: JSON.stringify({ agentId: c.req.param("agentId") }) });
+      await stream.writeSSE({
+        event: "ready",
+        data: JSON.stringify({ agentId: c.req.param("agentId") }),
+      });
       for (let i = 0; i < 3; i += 1) {
         await stream.sleep(bridgeStreamIntervalMs);
-        await stream.writeSSE({ event: "tick", data: JSON.stringify({ n: i + 1 }) });
+        await stream.writeSSE({
+          event: "tick",
+          data: JSON.stringify({ n: i + 1 }),
+        });
       }
       await stream.writeSSE({ event: "done", data: JSON.stringify({}) });
     });
@@ -439,7 +539,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   app.post("/api/v1/eliza/agents/:agentId/stream", async (c) => {
     const authResult = requireForwardedAuth(c);
     if (authResult instanceof Response) return authResult;
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
+    const body = (await c.req.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
     const streamHeaders = {
       "content-type": "text/event-stream",
       "cache-control": "no-cache, no-transform",
@@ -459,13 +562,21 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         await stream.sleep(bridgeStreamIntervalMs);
         await stream.writeSSE({
           event: "progress",
-          data: JSON.stringify({ jsonrpc: "2.0", method: "progress", params: { step: i } }),
+          data: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "progress",
+            params: { step: i },
+          }),
         });
       }
       await stream.sleep(bridgeStreamIntervalMs);
       await stream.writeSSE({
         event: "response",
-        data: JSON.stringify({ jsonrpc: "2.0", id: rpcId, result: { agentId, accepted: true } }),
+        data: JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpcId,
+          result: { agentId, accepted: true },
+        }),
       });
     });
   });
@@ -485,7 +596,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
   const agentHotPoolHandler = async (c: Context) => {
     await latency();
     const count = store.incrementCron("agent-hot-pool-tick");
-    const added = store.replenishWarmPool(defaultAgentImage, store.getHotPoolTarget());
+    const added = store.replenishWarmPool(
+      defaultAgentImage,
+      store.getHotPoolTarget(),
+    );
     return c.json({
       success: true,
       data: {
@@ -568,14 +682,24 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     const unauthorized = requireAdmin(c);
     if (unauthorized) return unauthorized;
     await latency();
-    const body = (await c.req.json().catch(() => null)) as Record<string, unknown> | null;
-    if (!body || typeof body.target !== "number" || !Number.isFinite(body.target)) {
+    const body = (await c.req.json().catch(() => null)) as Record<
+      string,
+      unknown
+    > | null;
+    if (
+      !body ||
+      typeof body.target !== "number" ||
+      !Number.isFinite(body.target)
+    ) {
       return c.json({ success: false, error: "target (number) required" }, 400);
     }
     store.setHotPoolTarget(body.target);
     return c.json({
       success: true,
-      data: { target: store.getHotPoolTarget(), warmPoolSize: store.warmPoolSnapshot().length },
+      data: {
+        target: store.getHotPoolTarget(),
+        warmPoolSize: store.warmPoolSnapshot().length,
+      },
     });
   });
 
@@ -585,7 +709,11 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     await latency();
     return c.json({
       success: true,
-      data: { nodeId: c.req.param("id"), healthy: true, timestamp: now().toISOString() },
+      data: {
+        nodeId: c.req.param("id"),
+        healthy: true,
+        timestamp: now().toISOString(),
+      },
     });
   });
 
@@ -598,7 +726,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     // Find a sandbox associated with this agentId (best-effort match).
     const sandbox = store
       .allSandboxes()
-      .find((s) => s.agentId === id && s.organizationId === auth.organizationId);
+      .find(
+        (s) => s.agentId === id && s.organizationId === auth.organizationId,
+      );
     if (!sandbox) {
       return c.json({ error: "agent_not_found" }, 404);
     }
@@ -628,7 +758,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     });
   });
 
-  async function hetznerFetch(path: string, init: RequestInit = {}): Promise<Response> {
+  async function hetznerFetch(
+    path: string,
+    init: RequestInit = {},
+  ): Promise<Response> {
     return fetch(`${hetznerUrl}${path}`, {
       ...init,
       headers: {
@@ -639,7 +772,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     });
   }
 
-  async function pollHetznerAction(actionId: number): Promise<"success" | "error" | "timeout"> {
+  async function pollHetznerAction(
+    actionId: number,
+  ): Promise<"success" | "error" | "timeout"> {
     const deadline = Date.now() + actionPollTimeoutMs;
     while (Date.now() < deadline) {
       const res = await hetznerFetch(`/actions/${actionId}`);
@@ -670,12 +805,20 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
         location: "fsn1",
         image: "ubuntu-22.04",
         user_data: "",
-        labels: { sandbox_id: sandbox.id, organization_id: sandbox.organizationId },
+        labels: {
+          sandbox_id: sandbox.id,
+          organization_id: sandbox.organizationId,
+        },
       }),
     });
     if (!createRes.ok) {
       const text = await createRes.text().catch(() => "");
-      failJobAndSandbox(job, sandbox, `hetzner create failed: ${createRes.status} ${text}`, "error");
+      failJobAndSandbox(
+        job,
+        sandbox,
+        `hetzner create failed: ${createRes.status} ${text}`,
+        "error",
+      );
       return;
     }
     const body = (await createRes.json()) as HetznerServerResponse;
@@ -710,17 +853,26 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       return;
     }
     if (sandbox.hetznerServerId !== null) {
-      const deleteRes = await hetznerFetch(`/servers/${sandbox.hetznerServerId}`, {
-        method: "DELETE",
-      });
+      const deleteRes = await hetznerFetch(
+        `/servers/${sandbox.hetznerServerId}`,
+        {
+          method: "DELETE",
+        },
+      );
       // 404 = already gone; treated as success per docker-error-classifier (PR #7746).
       if (!deleteRes.ok && deleteRes.status !== 404) {
         const text = await deleteRes.text().catch(() => "");
-        failDeleteJob(job, sandbox, `hetzner delete failed: ${deleteRes.status} ${text}`);
+        failDeleteJob(
+          job,
+          sandbox,
+          `hetzner delete failed: ${deleteRes.status} ${text}`,
+        );
         return;
       }
       if (deleteRes.ok) {
-        const body = (await deleteRes.json().catch(() => null)) as HetznerActionResponse | null;
+        const body = (await deleteRes
+          .json()
+          .catch(() => null)) as HetznerActionResponse | null;
         if (body?.action) {
           const result = await pollHetznerAction(body.action.id);
           if (result === "error") {
@@ -740,13 +892,27 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     reason: string,
     sandboxStatus: "error",
   ): void {
-    store.updateSandbox(sandbox.id, { status: sandboxStatus, errorReason: reason });
-    store.updateJob(job.id, { status: "failed", errorReason: reason, finishedAt: now() });
+    store.updateSandbox(sandbox.id, {
+      status: sandboxStatus,
+      errorReason: reason,
+    });
+    store.updateJob(job.id, {
+      status: "failed",
+      errorReason: reason,
+      finishedAt: now(),
+    });
   }
 
   function failDeleteJob(job: Job, sandbox: Sandbox, reason: string): void {
-    store.updateSandbox(sandbox.id, { status: "deletion_failed", errorReason: reason });
-    store.updateJob(job.id, { status: "failed", errorReason: reason, finishedAt: now() });
+    store.updateSandbox(sandbox.id, {
+      status: "deletion_failed",
+      errorReason: reason,
+    });
+    store.updateJob(job.id, {
+      status: "failed",
+      errorReason: reason,
+      finishedAt: now(),
+    });
   }
 
   async function tick(limit = Number.POSITIVE_INFINITY): Promise<{
@@ -755,7 +921,9 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
     skipped: number;
   }> {
     const pending = store.pendingJobs();
-    const cap = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : pending.length;
+    const cap = Number.isFinite(limit)
+      ? Math.max(0, Math.floor(limit))
+      : pending.length;
     const slice = pending.slice(0, cap);
     let processed = 0;
     let failed = 0;
@@ -787,7 +955,10 @@ export function buildControlPlaneApp(options: ControlPlaneMockOptions): {
       });
       // Fail any pending/in-progress jobs that target this sandbox.
       for (const job of store.allJobs()) {
-        if (job.sandboxId === sandbox.id && (job.status === "pending" || job.status === "in_progress")) {
+        if (
+          job.sandboxId === sandbox.id &&
+          (job.status === "pending" || job.status === "in_progress")
+        ) {
           store.updateJob(job.id, {
             status: "failed",
             errorReason: "sandbox stuck in provisioning",

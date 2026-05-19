@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -75,7 +81,11 @@ function mockBridge() {
       },
     ],
   });
-  bridge.requestRole.mockResolvedValue({ role: "sms", held: true, resultCode: 0 });
+  bridge.requestRole.mockResolvedValue({
+    role: "sms",
+    held: true,
+    resultCode: 0,
+  });
 }
 
 afterEach(() => {
@@ -95,16 +105,16 @@ describe("MessagesTuiView", () => {
     expect(bridge.listMessages).toHaveBeenCalledWith({ limit: 200 });
 
     const stateElement = container.querySelector("[data-view-state]");
-    expect(JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}")).toMatchObject(
-      {
-        viewType: "tui",
-        viewId: "messages",
-        messageCount: 3,
-        threadCount: 2,
-        ownsSmsRole: false,
-        smsRoleHolder: "com.android.messages",
-      },
-    );
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({
+      viewType: "tui",
+      viewId: "messages",
+      messageCount: 3,
+      threadCount: 2,
+      ownsSmsRole: false,
+      smsRoleHolder: "com.android.messages",
+    });
 
     fireEvent.click(screen.getByText("+15550100"));
     fireEvent.change(screen.getByRole("textbox", { name: "body" }), {

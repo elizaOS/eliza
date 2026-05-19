@@ -22,9 +22,7 @@
   ],
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 100,
-  "VERILOG_DEFINES": [
-    "E1_PD_SMALL_DRAM"
-  ],
+  "VERILOG_DEFINES": ["E1_PD_SMALL_DRAM"],
   "PNR_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "FP_PIN_ORDER_CFG": "dir::../pin_order.cfg",
@@ -32,7 +30,7 @@
   "DIE_AREA": "0 0 1800 1800",
   "CORE_AREA": "90 90 1710 1710",
   "FP_CORE_UTIL": 20,
-  "PL_TARGET_DENSITY": 0.30,
+  "PL_TARGET_DENSITY": 0.3,
   "STA_THREADS": 1,
   "RT_MAX_LAYER": "met5",
   "RUN_POST_GRT_DESIGN_REPAIR": true,

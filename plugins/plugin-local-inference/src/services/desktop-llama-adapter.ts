@@ -857,7 +857,8 @@ export class DesktopLlamaAdapter {
 				this.nextStep(args.stream, args.maxTokensPerStep, args.maxTextBytes),
 			llmStreamCancel: (stream) => this.cancelSession(stream),
 			llmStreamClose: (stream) => this.closeSession(stream),
-			llmStreamSaveSlot: (args) => this.saveSlotForStream(args.stream, args.filename),
+			llmStreamSaveSlot: (args) =>
+				this.saveSlotForStream(args.stream, args.filename),
 			llmStreamRestoreSlot: (args) =>
 				this.restoreSlotForStream(args.stream, args.filename),
 		};
@@ -869,10 +870,7 @@ export class DesktopLlamaAdapter {
 	 * save/restore to the session's specific ctx so concurrent conversations
 	 * persist independently.
 	 */
-	private saveSlotForStream(
-		stream: LlmStreamHandle,
-		filename: string,
-	): void {
+	private saveSlotForStream(stream: LlmStreamHandle, filename: string): void {
 		const sess = this.requireSession(stream);
 		const ctx = this.ctxPool[sess.ctxIdx];
 		if (!ctx) throw new Error("[desktop-llama] saveSlot ctx gone");
@@ -1187,8 +1185,7 @@ export class DesktopLlamaAdapter {
 		// internally and accumulates drafter counters on the ctx. We
 		// snapshot before/after and diff to report per-step
 		// `drafterDrafted` / `drafterAccepted` on the LlmStreamStep.
-		const usingDrafter =
-			this.shim.eliza_llama_context_has_drafter(ctx) === 1;
+		const usingDrafter = this.shim.eliza_llama_context_has_drafter(ctx) === 1;
 		const statsBefore = usingDrafter ? this.readDflashStats(ctx) : null;
 
 		for (let i = 0; i < maxTokensPerStep; i++) {

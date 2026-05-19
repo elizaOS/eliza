@@ -1,6 +1,9 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { startHetznerMock, type RunningHetznerMock } from "../src/hetzner";
-import { startControlPlaneMock, type RunningControlPlaneMock } from "../src/control-plane";
+import {
+  type RunningControlPlaneMock,
+  startControlPlaneMock,
+} from "../src/control-plane";
+import { type RunningHetznerMock, startHetznerMock } from "../src/hetzner";
 
 process.env.MOCK_HETZNER_LATENCY = "0";
 
@@ -40,7 +43,8 @@ function cpFetch(
   };
   const authMode = opts.auth ?? "user";
   if (authMode === "user") headers.authorization = `Bearer ${TOKEN}`;
-  else if (authMode === "admin") headers.authorization = `Bearer ${ADMIN_TOKEN}`;
+  else if (authMode === "admin")
+    headers.authorization = `Bearer ${ADMIN_TOKEN}`;
   if (opts.org !== false) {
     headers["x-eliza-user-id"] = "user-1";
     headers["x-eliza-organization-id"] = "org-1";
@@ -81,7 +85,9 @@ describe("control-plane mock — containers CRUD", () => {
       }),
     });
     expect(createRes.status).toBe(201);
-    const created = (await createRes.json()) as { data: { id: string; status: string } };
+    const created = (await createRes.json()) as {
+      data: { id: string; status: string };
+    };
     expect(created.data.status).toBe("pending");
     const id = created.data.id;
 
@@ -93,7 +99,9 @@ describe("control-plane mock — containers CRUD", () => {
       body: JSON.stringify({ environment_vars: { FOO: "baz", NEW: "v" } }),
     });
     expect(patchEnvRes.ok).toBe(true);
-    const envBody = (await patchEnvRes.json()) as { data: { environmentVars: Record<string, string> } };
+    const envBody = (await patchEnvRes.json()) as {
+      data: { environmentVars: Record<string, string> };
+    };
     expect(envBody.data.environmentVars).toEqual({ FOO: "baz", NEW: "v" });
 
     const patchScaleRes = await cpFetch(`/api/v1/containers/${id}`, {
@@ -106,11 +114,15 @@ describe("control-plane mock — containers CRUD", () => {
       method: "PATCH",
       body: JSON.stringify({ action: "restart" }),
     });
-    const restartBody = (await restartRes.json()) as { data: { status: string } };
+    const restartBody = (await restartRes.json()) as {
+      data: { status: string };
+    };
     expect(restartBody.data.status).toBe("restarting");
     await pollContainer(id, (s) => s === "running");
 
-    const deleteRes = await cpFetch(`/api/v1/containers/${id}`, { method: "DELETE" });
+    const deleteRes = await cpFetch(`/api/v1/containers/${id}`, {
+      method: "DELETE",
+    });
     expect(deleteRes.ok).toBe(true);
     await pollContainer(id, (s) => s === null);
   });
@@ -118,7 +130,11 @@ describe("control-plane mock — containers CRUD", () => {
   test("workspace-sync, logs, metrics", async () => {
     const createRes = await cpFetch("/api/v1/containers", {
       method: "POST",
-      body: JSON.stringify({ name: "agent-2", project_name: "p", image: "img" }),
+      body: JSON.stringify({
+        name: "agent-2",
+        project_name: "p",
+        image: "img",
+      }),
     });
     const { data } = (await createRes.json()) as { data: { id: string } };
     const id = data.id;
@@ -220,7 +236,9 @@ describe("control-plane mock — hot-pool and autoscale crons", () => {
     );
     expect(adminRes.ok).toBe(true);
 
-    const tickRes = await cpFetch("/api/v1/cron/agent-hot-pool", { method: "POST" });
+    const tickRes = await cpFetch("/api/v1/cron/agent-hot-pool", {
+      method: "POST",
+    });
     expect(tickRes.ok).toBe(true);
     const body = (await tickRes.json()) as {
       data: { added: number; warmPoolSize: number; target: number };
@@ -246,7 +264,9 @@ describe("control-plane mock — hot-pool and autoscale crons", () => {
   });
 
   test("node-autoscale → noop success", async () => {
-    const res = await cpFetch("/api/v1/cron/node-autoscale", { method: "POST" });
+    const res = await cpFetch("/api/v1/cron/node-autoscale", {
+      method: "POST",
+    });
     expect(res.ok).toBe(true);
     const body = (await res.json()) as { data: { action: string } };
     expect(body.data.action).toBe("noop");
@@ -255,7 +275,9 @@ describe("control-plane mock — hot-pool and autoscale crons", () => {
   test("pool-* wildcard cron", async () => {
     const r1 = await cpFetch("/api/v1/cron/pool-replenish", { method: "POST" });
     expect(r1.ok).toBe(true);
-    const r2 = await cpFetch("/api/v1/cron/pool-drain-idle", { method: "POST" });
+    const r2 = await cpFetch("/api/v1/cron/pool-drain-idle", {
+      method: "POST",
+    });
     expect(r2.ok).toBe(true);
     const body = (await r2.json()) as { data: { kind: string } };
     expect(body.data.kind).toBe("pool-drain-idle");
@@ -290,7 +312,9 @@ describe("control-plane mock — admin endpoints", () => {
       { auth: "admin", org: false },
     );
     expect(res.ok).toBe(true);
-    const body = (await res.json()) as { data: { healthy: boolean; nodeId: string } };
+    const body = (await res.json()) as {
+      data: { healthy: boolean; nodeId: string };
+    };
     expect(body.data.healthy).toBe(true);
     expect(body.data.nodeId).toBe("node-1");
   });
@@ -307,7 +331,11 @@ describe("control-plane mock — admin endpoints", () => {
 
 describe("control-plane mock — compat", () => {
   test("compat agents returns stub character", async () => {
-    const res = await cpFetch("/api/compat/agents/abc-123", {}, { auth: "none", org: false });
+    const res = await cpFetch(
+      "/api/compat/agents/abc-123",
+      {},
+      { auth: "none", org: false },
+    );
     expect(res.ok).toBe(true);
     const body = (await res.json()) as { data: { id: string; name: string } };
     expect(body.data.id).toBe("abc-123");

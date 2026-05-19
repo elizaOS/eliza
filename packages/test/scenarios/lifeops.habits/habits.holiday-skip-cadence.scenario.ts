@@ -8,7 +8,10 @@
  * definition and rely on the runtime's holiday-aware cadence.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { seedLifeOpsDefinition } from "../_helpers/lifeops-seeds.ts";
 
 export default scenario({

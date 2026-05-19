@@ -69,10 +69,7 @@
         "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
         "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
       ],
-      "must_remain_blocked": [
-        "rva23_claim",
-        "phone_2028_claim"
-      ]
+      "must_remain_blocked": ["rva23_claim", "phone_2028_claim"]
     },
     {
       "id": "L3_rva23_profile_candidate",
@@ -92,9 +89,7 @@
         "future ISA compliance logs",
         "future cache/MMU/coherency stress logs"
       ],
-      "must_remain_blocked": [
-        "phone_2028_claim"
-      ]
+      "must_remain_blocked": ["phone_2028_claim"]
     },
     {
       "id": "L4_phone_2028_ap",

@@ -184,8 +184,7 @@ export function resolveLifeOpsRelativeTime(args: {
   schedule: RelativeTimeScheduleFields;
   dayBoundary?: Pick<LifeOpsDayBoundary, "startOfDayAt" | "endOfDayAt">;
 }): LifeOpsRelativeTime {
-  const awakeProbability =
-    args.schedule.awakeProbability;
+  const awakeProbability = args.schedule.awakeProbability;
   const dayBoundary =
     args.dayBoundary ??
     localDayBoundary({ nowMs: args.nowMs, timezone: args.timezone });

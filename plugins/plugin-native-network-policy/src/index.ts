@@ -17,8 +17,8 @@ export * from "./definitions";
 const loadWeb = () => import("./web").then((m) => new m.NetworkPolicyWeb());
 
 export const NetworkPolicy = registerPlugin<NetworkPolicyPlugin>(
-	"ElizaNetworkPolicy",
-	{ web: loadWeb },
+  "ElizaNetworkPolicy",
+  { web: loadWeb },
 );
 
 /**
@@ -30,8 +30,9 @@ export const NetworkPolicy = registerPlugin<NetworkPolicyPlugin>(
  * `NetworkPolicy` instance.
  */
 export function installNetworkPolicyGlobal(): void {
-	(globalThis as unknown as { ElizaNetworkPolicy?: NetworkPolicyPlugin }).ElizaNetworkPolicy =
-		NetworkPolicy;
+  (
+    globalThis as unknown as { ElizaNetworkPolicy?: NetworkPolicyPlugin }
+  ).ElizaNetworkPolicy = NetworkPolicy;
 }
 
 // Side-effect: install on import so callers that simply

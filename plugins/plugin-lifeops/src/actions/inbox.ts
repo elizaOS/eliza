@@ -111,15 +111,16 @@ export type InboxFetchers = Record<InboxPlatform, InboxFetcher>;
 
 const noopFetcher: InboxFetcher = async () => [];
 
-const PLATFORM_TO_MESSAGE_SOURCE: Partial<Record<InboxPlatform, MessageSource>> =
-  {
-    gmail: "gmail",
-    discord: "discord",
-    telegram: "telegram",
-    signal: "signal",
-    imessage: "imessage",
-    whatsapp: "whatsapp",
-  };
+const PLATFORM_TO_MESSAGE_SOURCE: Partial<
+  Record<InboxPlatform, MessageSource>
+> = {
+  gmail: "gmail",
+  discord: "discord",
+  telegram: "telegram",
+  signal: "signal",
+  imessage: "imessage",
+  whatsapp: "whatsapp",
+};
 
 function mapMessageRefToInboxItem(ref: MessageRef): InboxItem | null {
   const platform = normalizePlatform(ref.source);

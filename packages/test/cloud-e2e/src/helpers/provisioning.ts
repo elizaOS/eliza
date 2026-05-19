@@ -17,16 +17,13 @@ export interface ProvisioningEndpoints {
 export async function tickProvisioning(
   endpoints: ProvisioningEndpoints,
 ): Promise<Response> {
-  return fetch(
-    `${endpoints.apiUrl}/api/v1/cron/process-provisioning-jobs`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${CRON_SECRET}`,
-        "Content-Type": "application/json",
-      },
+  return fetch(`${endpoints.apiUrl}/api/v1/cron/process-provisioning-jobs`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${CRON_SECRET}`,
+      "Content-Type": "application/json",
     },
-  );
+  });
 }
 
 export async function tickCleanupStuck(
@@ -65,7 +62,11 @@ export async function pollSandboxStatus(
   apiKey: string,
   sandboxId: string,
   expected: string,
-  opts: { timeoutMs?: number; intervalMs?: number; onTick?: () => Promise<void> } = {},
+  opts: {
+    timeoutMs?: number;
+    intervalMs?: number;
+    onTick?: () => Promise<void>;
+  } = {},
 ): Promise<void> {
   const timeoutMs = opts.timeoutMs ?? 30_000;
   await expect

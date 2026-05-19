@@ -31,13 +31,7 @@
       "gate": "rv64gc_isa",
       "status": "blocked",
       "evidence": "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log",
-      "pass_requires": [
-        "ISA profile",
-        "RV64GC",
-        "misa",
-        "Zicsr",
-        "Zifencei"
-      ],
+      "pass_requires": ["ISA profile", "RV64GC", "misa", "Zicsr", "Zifencei"],
       "fail_if": [
         "missing generated AP transcript",
         "qemu-virt software reference only",
@@ -48,13 +42,7 @@
       "gate": "s_mode_privilege",
       "status": "blocked",
       "evidence": "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log",
-      "pass_requires": [
-        "mstatus",
-        "medeleg",
-        "mideleg",
-        "satp",
-        "sret"
-      ],
+      "pass_requires": ["mstatus", "medeleg", "mideleg", "satp", "sret"],
       "fail_if": [
         "missing CSR/trap transcript",
         "M-mode only transcript",
@@ -114,11 +102,7 @@
       "gate": "uart_console",
       "status": "blocked",
       "evidence": "build/evidence/cpu_ap/eliza_e1_linux_boot.log",
-      "pass_requires": [
-        "UART console",
-        "Linux early console",
-        "UART node"
-      ],
+      "pass_requires": ["UART console", "Linux early console", "UART node"],
       "fail_if": [
         "missing serial transcript",
         "disabled UART node",
@@ -179,11 +163,7 @@
     "status": "software_reference_only_not_linux_capable_cpu_evidence",
     "attempt_log": "build/reports/qemu_os_boot_attempt.log",
     "capture_command": "scripts/run_qemu.sh --check-os",
-    "allowed_results": [
-      "BLOCKED",
-      "FAIL",
-      "PASS"
-    ],
+    "allowed_results": ["BLOCKED", "FAIL", "PASS"],
     "claim_limit": "QEMU virt may exercise software payloads but cannot satisfy generated Chipyard/Rocket AP evidence gates."
   },
   "generated_artifacts": {
@@ -200,9 +180,7 @@
       "sha256_key": "verilog_sha256",
       "kind": "file",
       "min_bytes": 1024,
-      "required_strings": [
-        "module eliza_rocket_ap"
-      ],
+      "required_strings": ["module eliza_rocket_ap"],
       "claim": "Generated Rocket RV64GC AP wrapper Verilog."
     },
     "dts": {

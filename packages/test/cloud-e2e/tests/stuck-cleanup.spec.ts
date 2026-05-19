@@ -1,5 +1,5 @@
-import { test, expect } from "../src/helpers/test-fixtures";
 import { getSandboxState, tickCleanupStuck } from "../src/helpers/provisioning";
+import { expect, test } from "../src/helpers/test-fixtures";
 
 test.describe("stuck-cleanup", () => {
   test("provisioning sandbox without a job transitions to error after timeout", async ({

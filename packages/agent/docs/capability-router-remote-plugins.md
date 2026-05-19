@@ -435,6 +435,10 @@ Current focused tests cover:
   provisioning, including token redaction in API responses,
 - endpoint persistence that preserves restart reload without serializing
   endpoint tokens into `eliza.json`,
+- restart hydration through the real `config.env` secret channel: after
+  `loadElizaConfig()` repopulates `process.env`, bootstrap registers the router
+  service, syncs remote modules, and sends the persisted bearer token on
+  `plugin.modules.list`,
 - CLI payload construction for direct endpoint and Cloud provisioning flows,
 - duplicate module ID rejection,
 - real localhost HTTP capability-server integration,
@@ -456,7 +460,8 @@ Current focused tests cover:
   registration,
 - focused Playwright app-shell smoke that starts a real remote
   capability-style HTTP endpoint, derives `/api/views` metadata from
-  `plugin.modules.list`, and imports the view bundle from that endpoint.
+  `plugin.modules.list`, and imports the view bundle from that endpoint
+  (`bun run test:remote-capabilities:ui`).
 
 Run the no-credential CI slice with:
 
@@ -487,8 +492,8 @@ This is not complete until the following are true:
   paths; the opt-in Docker smoke proves local container isolation when enabled.
 - The agent can create or connect to that sandbox from normal product flows.
   The agent-side provisioner, API route, and CLI can now connect/sync returned
-  endpoints into a runtime with restart persistence; product UI wiring still
-  needs to expose the flow.
+  endpoints into a runtime with verified restart persistence through
+  `config.env`; product UI wiring still needs to expose the flow.
 - Auth is specified and enforced for endpoint registration, invocation, and
   frontend asset access.
 - Endpoint identity, module identity, and route namespace collision rules are

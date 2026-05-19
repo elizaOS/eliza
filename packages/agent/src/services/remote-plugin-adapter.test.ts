@@ -1,4 +1,4 @@
-import { execFile, spawn, type ChildProcessByStdio } from "node:child_process";
+import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -11,24 +11,26 @@ import {
   CapabilityError,
   type ElizaCapabilityRouter,
   type IAgentRuntime,
-  type PluginCallAppBridgeResult,
   type Plugin,
+  type PluginCallAppBridgeResult,
   type RemotePluginModuleManifest,
   type UUID,
 } from "@elizaos/core";
 import { build as esbuild } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { persistConfigEnv } from "../api/config-env.ts";
 import { dispatchRoute } from "../api/dispatch-route.ts";
 import {
   getView,
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
+import { loadElizaConfig } from "../config/config.ts";
+import { importAppRouteModule } from "./app-package-modules.ts";
 import {
   createRemoteCapabilityFetchHandler,
   RemoteCapabilityRouterService,
 } from "./remote-capability-router.ts";
-import { importAppRouteModule } from "./app-package-modules.ts";
 import {
   bootstrapRemoteCapabilityPlugins,
   createRemoteCapabilityPlugin,
@@ -986,8 +988,9 @@ describe("remote plugin adapter", () => {
         null) as IAgentRuntime["getService"],
       hasService: (serviceType) => services.has(serviceType),
       registerService: async (ServiceClass) => {
-        const service =
-          new (ServiceClass as typeof RemoteCapabilityRouterService)(runtime);
+        const service = new (
+          ServiceClass as typeof RemoteCapabilityRouterService
+        )(runtime);
         services.set(ServiceClass.serviceType, service);
       },
       getServiceLoadPromise: async (serviceType) => {
@@ -1012,6 +1015,127 @@ describe("remote plugin adapter", () => {
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
       "@remote/demo",
     ]);
+  });
+
+  it("bootstraps from persisted config.env endpoint JSON after restart", async () => {
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+    const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+    const stateDir = await mkdtemp(
+      join(tmpdir(), "remote-capability-restart-"),
+    );
+    const httpCalls: Array<{ url: string; authorization: string | null }> = [];
+
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+
+      await persistConfigEnv("ELIZA_CAPABILITY_ROUTER_ENABLED", "true");
+      await persistConfigEnv(
+        "ELIZA_CAPABILITY_ROUTER_URLS",
+        JSON.stringify([
+          {
+            id: "persisted-device",
+            baseUrl: "https://persisted-device.example",
+            token: "persisted-token",
+          },
+        ]),
+      );
+
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      loadElizaConfig();
+
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_ENABLED).toBe("true");
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_URLS).toContain(
+        "persisted-token",
+      );
+
+      globalThis.fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(input, init);
+          const body =
+            request.method === "POST" ? await request.json() : undefined;
+          httpCalls.push({
+            url: request.url,
+            authorization: request.headers.get("authorization"),
+          });
+          if (isInvokeBody(body, "plugin.modules.list")) {
+            return jsonResponse({
+              ok: true,
+              result: { modules: [remoteModule] },
+            });
+          }
+          return jsonResponse({
+            ok: false,
+            error: { message: `unexpected request ${request.url}` },
+          });
+        },
+      ) as unknown as typeof fetch;
+
+      const services = new Map<string, RemoteCapabilityRouterService>();
+      const runtime = makeRuntime(null, {
+        plugins: [],
+        actions: [],
+        providers: [],
+        evaluators: [],
+        routes: [],
+        getSetting: () => null,
+        getService: (<T>(serviceType: string): T | null =>
+          (services.get(serviceType) as T | undefined) ??
+          null) as IAgentRuntime["getService"],
+        hasService: (serviceType) => services.has(serviceType),
+        registerService: async (ServiceClass) => {
+          const service = new (
+            ServiceClass as typeof RemoteCapabilityRouterService
+          )(runtime);
+          services.set(ServiceClass.serviceType, service);
+        },
+        getServiceLoadPromise: async (serviceType) => {
+          const service = services.get(serviceType);
+          if (!service) throw new Error("service not registered");
+          return service as never;
+        },
+        registerPlugin: async (plugin: Plugin) => {
+          runtime.plugins.push(plugin);
+          runtime.actions.push(...(plugin.actions ?? []));
+          runtime.providers.push(...(plugin.providers ?? []));
+          runtime.evaluators.push(...(plugin.evaluators ?? []));
+          runtime.routes.push(...(plugin.routes ?? []));
+        },
+      });
+
+      await expect(bootstrapRemoteCapabilityPlugins(runtime)).resolves.toEqual({
+        registered: [expect.objectContaining({ name: "@remote/demo" })],
+        unloaded: [],
+        skipped: [],
+      });
+      expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+        "@remote/demo",
+      ]);
+      expect(httpCalls).toContainEqual({
+        url: "https://persisted-device.example/v1/capabilities/invoke",
+        authorization: "Bearer persisted-token",
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      if (previousEnabled === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ENABLED = previousEnabled;
+      }
+      if (previousUrls === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_URLS = previousUrls;
+      }
+      await rm(stateDir, { force: true, recursive: true });
+    }
   });
 
   it("syncs multiple remote servers into executable runtime plugin components", async () => {

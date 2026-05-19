@@ -19,50 +19,53 @@ function pluginAlias(name: string, srcPath?: string) {
 export default defineConfig({
   root: here,
   resolve: {
-		alias: [
-			{
-				find: /^react$/,
-				replacement: path.join(repoRoot, "node_modules/react"),
-			},
-			{
-				find: /^react\/jsx-runtime$/,
-				replacement: path.join(repoRoot, "node_modules/react/jsx-runtime.js"),
-			},
-			{
-				find: /^react-dom$/,
-				replacement: path.join(repoRoot, "node_modules/react-dom"),
-			},
-			{
-				find: /^react-dom\/client$/,
-				replacement: path.join(repoRoot, "node_modules/react-dom/client.js"),
-			},
-			{
-				find: /^@elizaos\/shared\/local-inference$/,
-				replacement: path.join(
-					repoRoot,
-					"packages/shared/src/local-inference/index.ts",
-				),
-			},
-				{
-					find: /^@elizaos\/app-core$/,
-					replacement: path.join(here, "__tests__/app-core-shim.ts"),
-				},
-				{
-					find: /^@elizaos\/app-core\/registry$/,
-					replacement: path.join(repoRoot, "packages/app-core/src/registry/index.ts"),
-				},
-	      {
-	        find: /^@elizaos\/app-core\/(.+)$/,
-	        replacement: path.join(repoRoot, "packages/app-core/src/$1.ts"),
-				},
-			{
-				find: /^@elizaos\/core$/,
-				replacement: path.join(repoRoot, "packages/core/src/index.ts"),
-			},
-			{
-				find: /^@elizaos\/shared$/,
-				replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
-			},
+    alias: [
+      {
+        find: /^react$/,
+        replacement: path.join(repoRoot, "node_modules/react"),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: path.join(repoRoot, "node_modules/react/jsx-runtime.js"),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: path.join(repoRoot, "node_modules/react-dom"),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: path.join(repoRoot, "node_modules/react-dom/client.js"),
+      },
+      {
+        find: /^@elizaos\/shared\/local-inference$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/shared/src/local-inference/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-core$/,
+        replacement: path.join(here, "__tests__/app-core-shim.ts"),
+      },
+      {
+        find: /^@elizaos\/app-core\/registry$/,
+        replacement: path.join(
+          repoRoot,
+          "packages/app-core/src/registry/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/app-core\/(.+)$/,
+        replacement: path.join(repoRoot, "packages/app-core/src/$1.ts"),
+      },
+      {
+        find: /^@elizaos\/core$/,
+        replacement: path.join(repoRoot, "packages/core/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/shared$/,
+        replacement: path.join(repoRoot, "packages/shared/src/index.ts"),
+      },
       // All plugins in plugins/ that have no pre-built dist — point vitest at
       // source so it can resolve without built artifacts.
       pluginAlias("plugin-agent-orchestrator"),
@@ -191,15 +194,15 @@ export default defineConfig({
         "plugin-openrouter",
         path.join(repoRoot, "plugins/plugin-openrouter/index.ts"),
       ),
-	      pluginAlias(
-	        "plugin-pdf",
-	        path.join(repoRoot, "plugins/plugin-pdf/index.ts"),
-	      ),
-	      pluginAlias("plugin-registry"),
-	      pluginAlias(
-	        "plugin-rlm",
-	        path.join(repoRoot, "plugins/plugin-rlm/index.ts"),
-	      ),
+      pluginAlias(
+        "plugin-pdf",
+        path.join(repoRoot, "plugins/plugin-pdf/index.ts"),
+      ),
+      pluginAlias("plugin-registry"),
+      pluginAlias(
+        "plugin-rlm",
+        path.join(repoRoot, "plugins/plugin-rlm/index.ts"),
+      ),
       pluginAlias(
         "plugin-roblox",
         path.join(repoRoot, "plugins/plugin-roblox/index.ts"),
@@ -242,7 +245,11 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx", "__tests__/**/*.test.ts"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "__tests__/**/*.test.ts",
+    ],
     exclude: ["dist/**", "node_modules/**"],
   },
 });

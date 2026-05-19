@@ -1141,8 +1141,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
       ) {
         return noResponse;
       }
-      const attemptedAt =
-        args.attempt.attemptedAt ?? args.attempt.scheduledFor;
+      const attemptedAt = args.attempt.attemptedAt ?? args.attempt.scheduledFor;
       const attemptedMs = attemptedAt ? Date.parse(attemptedAt) : Number.NaN;
       if (!Number.isFinite(attemptedMs)) {
         return noResponse;
@@ -5108,9 +5107,7 @@ export function withReminders<TBase extends Constructor<LifeOpsServiceBase>>(
           circadianState: currentSchedule.circadianState,
           stateConfidence: currentSchedule.stateConfidence,
           uncertaintyReason: currentSchedule.uncertaintyReason,
-          enteredAt: stateChanged
-            ? now.toISOString()
-            : (priorState.enteredAt),
+          enteredAt: stateChanged ? now.toISOString() : priorState.enteredAt,
           sinceSleepDetectedAt:
             currentSchedule.circadianState === "sleeping" ||
             currentSchedule.circadianState === "napping"

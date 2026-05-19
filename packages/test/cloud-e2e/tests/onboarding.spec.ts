@@ -1,4 +1,4 @@
-import { test, expect } from "../src/helpers/test-fixtures";
+import { expect, test } from "../src/helpers/test-fixtures";
 
 test.describe("onboarding", () => {
   test("seeded user reaches dashboard with test-auth session", async ({

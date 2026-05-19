@@ -1,7 +1,15 @@
-import { AlertTriangle, Loader2 } from "lucide-react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { AlertTriangle, Loader2, PlugZap } from "lucide-react";
+import {
+  type FormEvent,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import { client } from "../../api/client";
 import { useApp } from "../../state";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { Switch } from "../ui/switch";
 
 interface AutoTrainingConfig {
@@ -19,6 +27,20 @@ interface AutoTrainingStatusResponse {
   serviceRegistered?: boolean;
 }
 
+type CapabilityRouterConnectResponse = {
+  success?: boolean;
+  endpoint?: {
+    id?: string;
+    baseUrl?: string;
+    hasToken?: boolean;
+  };
+  sync?: {
+    registered?: string[];
+    unloaded?: string[];
+    skipped?: string[];
+  };
+};
+
 export function CapabilitiesSection() {
   const { walletEnabled, browserEnabled, computerUseEnabled, setState, t } =
     useApp();
@@ -29,6 +51,16 @@ export function CapabilitiesSection() {
   >(null);
   const [autoTrainingLoading, setAutoTrainingLoading] = useState(true);
   const [autoTrainingSaving, setAutoTrainingSaving] = useState(false);
+  const [capabilityEndpointUrl, setCapabilityEndpointUrl] = useState("");
+  const [capabilityEndpointId, setCapabilityEndpointId] = useState("");
+  const [capabilityEndpointToken, setCapabilityEndpointToken] = useState("");
+  const [capabilityConnectLoading, setCapabilityConnectLoading] =
+    useState(false);
+  const [capabilityConnectError, setCapabilityConnectError] = useState<
+    string | null
+  >(null);
+  const [capabilityConnectResult, setCapabilityConnectResult] =
+    useState<CapabilityRouterConnectResponse | null>(null);
 
   const refreshAutoTraining = useCallback(async () => {
     setAutoTrainingLoading(true);
@@ -87,6 +119,53 @@ export function CapabilitiesSection() {
       : autoTrainingAvailable === false
         ? "unavailable"
         : null;
+
+  const handleCapabilityConnect = useCallback(
+    async (event: FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      const baseUrl = capabilityEndpointUrl.trim();
+      if (!baseUrl) {
+        setCapabilityConnectError("Endpoint URL is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+
+      setCapabilityConnectLoading(true);
+      setCapabilityConnectError(null);
+      setCapabilityConnectResult(null);
+      try {
+        const response = await client.fetch<CapabilityRouterConnectResponse>(
+          "/api/capability-router/connect",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              endpoint: {
+                baseUrl,
+                ...(capabilityEndpointId.trim()
+                  ? { id: capabilityEndpointId.trim() }
+                  : {}),
+                ...(capabilityEndpointToken.trim()
+                  ? { token: capabilityEndpointToken.trim() }
+                  : {}),
+              },
+              persist: true,
+              unloadMissing: false,
+            }),
+          },
+        );
+        setCapabilityConnectResult(response);
+      } catch (err) {
+        setCapabilityConnectError(
+          err instanceof Error
+            ? err.message
+            : "Failed to connect capability router endpoint.",
+        );
+      } finally {
+        setCapabilityConnectLoading(false);
+      }
+    },
+    [capabilityEndpointId, capabilityEndpointToken, capabilityEndpointUrl],
+  );
 
   return (
     <div className="space-y-4">
@@ -158,6 +237,79 @@ export function CapabilitiesSection() {
           })}
         />
       </CapabilityRow>
+      <form
+        className="space-y-3 border-border border-t pt-4"
+        onSubmit={handleCapabilityConnect}
+      >
+        <div className="flex items-start gap-3">
+          <PlugZap className="mt-0.5 h-4 w-4 text-accent" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <div className="font-medium text-sm">
+              {t("settings.sections.capabilities.capabilityRouterName", {
+                defaultValue: "Capability Router",
+              })}
+            </div>
+            <div className="mt-1 text-2xs text-muted">
+              {t("settings.sections.capabilities.capabilityRouterHint", {
+                defaultValue:
+                  "Connect a remote endpoint that contributes plugin actions, providers, routes, apps, and views.",
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem]">
+          <Input
+            value={capabilityEndpointUrl}
+            onChange={(event) => setCapabilityEndpointUrl(event.target.value)}
+            placeholder="https://capability.example"
+            aria-label="Capability router endpoint URL"
+            autoComplete="url"
+            inputMode="url"
+          />
+          <Input
+            value={capabilityEndpointId}
+            onChange={(event) => setCapabilityEndpointId(event.target.value)}
+            placeholder="device"
+            aria-label="Capability router endpoint ID"
+            autoComplete="off"
+          />
+        </div>
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+          <Input
+            value={capabilityEndpointToken}
+            onChange={(event) => setCapabilityEndpointToken(event.target.value)}
+            placeholder="Bearer token"
+            aria-label="Capability router endpoint token"
+            type="password"
+            autoComplete="off"
+          />
+          <Button type="submit" disabled={capabilityConnectLoading}>
+            {capabilityConnectLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+            ) : (
+              <PlugZap className="h-4 w-4" aria-hidden />
+            )}
+            {t("settings.sections.capabilities.capabilityRouterConnect", {
+              defaultValue: "Connect",
+            })}
+          </Button>
+        </div>
+        {capabilityConnectError ? (
+          <div className="text-2xs text-danger" role="alert">
+            {capabilityConnectError}
+          </div>
+        ) : null}
+        {capabilityConnectResult?.success ? (
+          <div className="text-2xs text-muted-strong" role="status">
+            {t("settings.sections.capabilities.capabilityRouterConnected", {
+              defaultValue: "Connected remote capability endpoint.",
+            })}{" "}
+            {capabilityConnectResult.sync?.registered?.length
+              ? capabilityConnectResult.sync.registered.join(", ")
+              : capabilityConnectResult.endpoint?.baseUrl}
+          </div>
+        ) : null}
+      </form>
     </div>
   );
 }

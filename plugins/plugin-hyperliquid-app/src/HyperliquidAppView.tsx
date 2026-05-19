@@ -271,8 +271,9 @@ export function HyperliquidAppView({ exitToApps }: OverlayAppContext) {
 }
 
 export function HyperliquidTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadHyperliquidTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadHyperliquidTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -330,8 +331,12 @@ export function HyperliquidTuiView() {
         elizaos://hyperliquid --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.status.publicReadReady ? "read-ready" : "read-blocked"} |{" "}
-        {state?.markets?.markets.length ?? 0} markets |{" "}
+        {loading
+          ? "loading"
+          : state?.status.publicReadReady
+            ? "read-ready"
+            : "read-blocked"}{" "}
+        | {state?.markets?.markets.length ?? 0} markets |{" "}
         {state?.positions?.positions.length ?? 0} positions |{" "}
         {state?.orders?.orders.length ?? 0} orders | {lastAction}
       </div>
@@ -394,7 +399,9 @@ export function HyperliquidTuiView() {
               <span style={{ color: "#64748b" }}>
                 {String(index + 1).padStart(2, "0")}
               </span>
-              <span style={{ color: market.isDelisted ? "#64748b" : "#e2e8f0" }}>
+              <span
+                style={{ color: market.isDelisted ? "#64748b" : "#e2e8f0" }}
+              >
                 {market.name}
               </span>
               <span style={{ color: "#a7f3d0" }}>
@@ -446,7 +453,9 @@ export function HyperliquidTuiView() {
               {state.positions.readBlockedReason}
             </div>
           )}
-          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>positions</div>
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+            positions
+          </div>
           {(state?.positions?.positions ?? []).slice(0, 10).map((position) => (
             <div key={position.coin} style={{ padding: "4px 0" }}>
               {position.coin} size {position.size}

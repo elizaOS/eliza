@@ -217,7 +217,12 @@ function resolveDependencyPackageDir(packageName, baseDirs = [repoRoot]) {
       .map((baseDir) =>
         path.relative(
           repoRoot,
-          path.join(baseDir, "node_modules", ...packageSegments, "package.json"),
+          path.join(
+            baseDir,
+            "node_modules",
+            ...packageSegments,
+            "package.json",
+          ),
         ),
       )
       .join(" or ")}`,

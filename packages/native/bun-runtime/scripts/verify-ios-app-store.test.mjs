@@ -4,14 +4,14 @@ import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 import {
+  findForbiddenRuntimeImportGroups,
+  findForbiddenRuntimeStrings,
+} from "./ios-app-store-runtime-policy.mjs";
+import {
   findUnsafeNetworkPolicyFindings,
   isUnsafeAllowNavigationEntry,
   isUnsafeNetworkUrlLiteral,
 } from "./verify-ios-app-store.mjs";
-import {
-  findForbiddenRuntimeImportGroups,
-  findForbiddenRuntimeStrings,
-} from "./ios-app-store-runtime-policy.mjs";
 
 function makeAppFixture(files) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-ios-policy-"));

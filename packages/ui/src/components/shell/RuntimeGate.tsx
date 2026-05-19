@@ -23,7 +23,6 @@ import { Capacitor } from "@capacitor/core";
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api";
-import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import type {
   CloudCompatAgent,
   CloudCompatJob,
@@ -33,6 +32,7 @@ import {
   type GatewayDiscoveryEndpoint,
   gatewayEndpointToApiBase,
 } from "../../bridge/gateway-discovery";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import { APP_RESUME_EVENT } from "../../events";
 import { useRenderGuard } from "../../hooks/useRenderGuard";
 import { normalizeLanguage } from "../../i18n";
@@ -2182,8 +2182,7 @@ function WelcomeChooser({
         >
           {t("runtimegate.welcomeSubtitle", {
             ...brandVars,
-            defaultValue:
-              "Your personal AI. Ready in seconds, hosted by us.",
+            defaultValue: "Your personal AI. Ready in seconds, hosted by us.",
           })}
         </p>
       </div>

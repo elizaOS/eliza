@@ -1,12 +1,13 @@
 import { buildControlPlaneApp, type ControlPlaneMockOptions } from "./server";
-import { ControlPlaneStore } from "./store";
+import type { ControlPlaneStore } from "./store";
 
-export { ControlPlaneStore } from "./store";
-export type { Job, JobStatus, JobType, Sandbox, SandboxStatus } from "./store";
-export { buildControlPlaneApp } from "./server";
 export type { ControlPlaneMockOptions } from "./server";
+export { buildControlPlaneApp } from "./server";
+export type { Job, JobStatus, JobType, Sandbox, SandboxStatus } from "./store";
+export { ControlPlaneStore } from "./store";
 
-export interface StartControlPlaneMockOptions extends Omit<ControlPlaneMockOptions, "hetznerUrl"> {
+export interface StartControlPlaneMockOptions
+  extends Omit<ControlPlaneMockOptions, "hetznerUrl"> {
   /** Listen port. 0 = auto. */
   port?: number;
   /** Listen hostname. Default 127.0.0.1. */
@@ -22,7 +23,9 @@ export interface RunningControlPlaneMock {
   url: string;
   port: number;
   store: ControlPlaneStore;
-  tick(limit?: number): Promise<{ processed: number; failed: number; skipped: number }>;
+  tick(
+    limit?: number,
+  ): Promise<{ processed: number; failed: number; skipped: number }>;
   cleanupStuck(): Promise<{ failed: number }>;
 }
 
@@ -30,7 +33,9 @@ export async function startControlPlaneMock(
   options: StartControlPlaneMockOptions = {},
 ): Promise<RunningControlPlaneMock> {
   const hetznerUrl =
-    options.hetznerUrl ?? process.env.HCLOUD_API_BASE_URL ?? "https://api.hetzner.cloud/v1";
+    options.hetznerUrl ??
+    process.env.HCLOUD_API_BASE_URL ??
+    "https://api.hetzner.cloud/v1";
 
   const { app, store, tick, cleanupStuck } = buildControlPlaneApp({
     ...options,

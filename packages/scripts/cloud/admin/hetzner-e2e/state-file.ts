@@ -8,9 +8,14 @@
  * crashed step never leaves a half-written file behind.
  */
 
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  writeFileSync,
+} from "node:fs";
 import { dirname } from "node:path";
-import { mkdirSync } from "node:fs";
 
 export interface HetznerE2EState {
   server_id?: number;
@@ -34,7 +39,9 @@ export function readState(): HetznerE2EState {
   return JSON.parse(raw) as HetznerE2EState;
 }
 
-export function appendStateAtomic(patch: Partial<HetznerE2EState>): HetznerE2EState {
+export function appendStateAtomic(
+  patch: Partial<HetznerE2EState>,
+): HetznerE2EState {
   const path = stateFilePath();
   mkdirSync(dirname(path), { recursive: true });
   const current = readState();

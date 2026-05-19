@@ -7,7 +7,7 @@ import {
   GameOperatorShell,
   useApp,
 } from "@elizaos/ui";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 const PRIMARY_COMMANDS = [
   {
@@ -300,9 +300,12 @@ export function ClawvilleTuiView() {
   const run = useMemo(
     () =>
       [...(Array.isArray(appRuns) ? appRuns : [])]
-        .filter((candidate) => candidate.appName === "@elizaos/plugin-clawville")
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
-      null,
+        .filter(
+          (candidate) => candidate.appName === "@elizaos/plugin-clawville",
+        )
+        .sort((left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt),
+        )[0] ?? null,
     [appRuns],
   );
   const [draft, setDraft] = useState("");
@@ -342,7 +345,11 @@ export function ClawvilleTuiView() {
       if (response.run) {
         setState("appRuns", replaceRun(appRuns, response.run));
       }
-      setActionNotice(response.message, response.success ? "success" : "error", 2600);
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
       setDraft("");
     } catch (error) {
       setActionNotice(
@@ -359,16 +366,21 @@ export function ClawvilleTuiView() {
     <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
       <div style={tuiRouteStyle}>elizaos://clawville --type=tui</div>
       <div style={tuiMetaStyle}>
-        {run?.status ?? "idle"} | near {nearestBuilding} |{" "}
-        {knowledgeCount ?? 0} learned
+        {run?.status ?? "idle"} | near {nearestBuilding} | {knowledgeCount ?? 0}{" "}
+        learned
       </div>
       <section style={tuiPanelStyle} aria-label="ClawVille state">
         <strong style={tuiTitleStyle}>ClawVille</strong>
         <div>run {run?.runId ?? "none"}</div>
         <div>commands {canSend ? "available" : "unavailable"}</div>
-        <div>objective {run?.session?.goalLabel ?? `Near ${nearestBuilding}`}</div>
+        <div>
+          objective {run?.session?.goalLabel ?? `Near ${nearestBuilding}`}
+        </div>
         <div style={tuiSubtleStyle}>suggested prompts</div>
-        {(suggestedPrompts.length ? suggestedPrompts : PRIMARY_COMMANDS.map((item) => item.command))
+        {(suggestedPrompts.length
+          ? suggestedPrompts
+          : PRIMARY_COMMANDS.map((item) => item.command)
+        )
           .slice(0, 6)
           .map((prompt) => (
             <button

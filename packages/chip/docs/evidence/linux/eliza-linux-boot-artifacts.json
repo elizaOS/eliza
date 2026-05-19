@@ -5,11 +5,7 @@
   "preflight": [
     {
       "id": "host_tools",
-      "required_tools": [
-        "make",
-        "sh",
-        "grep"
-      ]
+      "required_tools": ["make", "sh", "grep"]
     },
     {
       "id": "external_linux_tree",

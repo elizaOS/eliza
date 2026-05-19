@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -33,7 +39,8 @@ vi.mock("@elizaos/ui", () => ({
     elizaCloudConnected: false,
     setActionNotice: vi.fn(),
     startupCoordinator: null,
-    t: (_key: string, options?: { defaultValue?: string }) => options?.defaultValue ?? "",
+    t: (_key: string, options?: { defaultValue?: string }) =>
+      options?.defaultValue ?? "",
   }),
   useMediaQuery: () => false,
 }));
@@ -186,7 +193,9 @@ describe("LifeOpsTuiView", () => {
   it("supports terminal capabilities through existing LifeOps APIs", async () => {
     mockClient();
 
-    await expect(interact("terminal-lifeops-state", { limit: 1 })).resolves.toMatchObject({
+    await expect(
+      interact("terminal-lifeops-state", { limit: 1 }),
+    ).resolves.toMatchObject({
       viewType: "tui",
       appState: { enabled: true },
       summary: overview.summary,
@@ -216,8 +225,11 @@ describe("LifeOpsTuiView", () => {
         minutes: 45,
       }),
     ).resolves.toEqual({ viewType: "tui", result: { ok: true } });
-    expect(lifeOpsClient.snoozeLifeOpsOccurrence).toHaveBeenCalledWith("occ-1", {
-      minutes: 45,
-    });
+    expect(lifeOpsClient.snoozeLifeOpsOccurrence).toHaveBeenCalledWith(
+      "occ-1",
+      {
+        minutes: 45,
+      },
+    );
   });
 });

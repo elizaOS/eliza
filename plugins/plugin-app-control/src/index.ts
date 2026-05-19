@@ -28,107 +28,107 @@ export type { ViewSummary } from "./actions/views-client.js";
 export type { AppControlClient } from "./client/api.js";
 export { createAppControlClient } from "./client/api.js";
 export {
-  APP_REGISTRY_SERVICE_TYPE,
-  type AppRegistryEntry,
-  AppRegistryService,
+	APP_REGISTRY_SERVICE_TYPE,
+	type AppRegistryEntry,
+	AppRegistryService,
 } from "./services/app-registry-service.js";
 export {
-  APP_WORKER_HOST_SERVICE_TYPE,
-  AppWorkerHostService,
-  type SpawnedWorkerSnapshot,
+	APP_WORKER_HOST_SERVICE_TYPE,
+	AppWorkerHostService,
+	type SpawnedWorkerSnapshot,
 } from "./services/app-worker-host-service.js";
 export {
-  AppVerificationService,
-  type CheckResult,
-  type VerificationCheck,
-  type VerificationCheckKind,
-  type VerificationProfile,
-  type VerificationResult,
-  type VerifyOptions,
+	AppVerificationService,
+	type CheckResult,
+	type VerificationCheck,
+	type VerificationCheckKind,
+	type VerificationProfile,
+	type VerificationResult,
+	type VerifyOptions,
 } from "./services/index.js";
 export {
-  VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE,
-  VerificationRoomBridgeService,
+	VERIFICATION_ROOM_BRIDGE_SERVICE_TYPE,
+	VerificationRoomBridgeService,
 } from "./services/verification-room-bridge.js";
 export type {
-  AppLaunchResult,
-  AppRunSummary,
-  AppStopResult,
-  InstalledAppInfo,
+	AppLaunchResult,
+	AppRunSummary,
+	AppStopResult,
+	InstalledAppInfo,
 } from "./types.js";
 export { appAction, availableAppsProvider, createAppAction };
 
 export const appControlPlugin: Plugin = {
-  name: "app-control",
-  description:
-    "Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
-  actions: [appAction, viewsAction],
-  providers: [availableAppsProvider],
-  services: [
-    AppRegistryService,
-    AppVerificationService,
-    AppWorkerHostService,
-    VerificationRoomBridgeService,
-  ],
-  async dispose(runtime) {
-    await runtime
-      .getService<VerificationRoomBridgeService>(
-        VerificationRoomBridgeService.serviceType,
-      )
-      ?.stop();
-    await runtime
-      .getService<AppWorkerHostService>(AppWorkerHostService.serviceType)
-      ?.stop();
-    await runtime
-      .getService<AppVerificationService>(AppVerificationService.serviceType)
-      ?.stop();
-    await runtime
-      .getService<AppRegistryService>(AppRegistryService.serviceType)
-      ?.stop();
-  },
-  views: [
-    {
-      id: "views-manager",
-      label: "Views",
-      description: "Browse and open available views contributed by plugins",
-      icon: "LayoutGrid",
-      path: "/views",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ViewManagerView",
-      visibleInManager: true,
-      desktopTabEnabled: true,
-    },
-    {
-      id: "views-manager",
-      label: "Views TUI",
-      description:
-        "Terminal view for browsing and opening available plugin views",
-      icon: "Terminal",
-      path: "/views/tui",
-      viewType: "tui",
-      bundlePath: "dist/views/bundle.js",
-      componentExport: "ViewManagerTuiView",
-      visibleInManager: true,
-      desktopTabEnabled: true,
-      capabilities: [
-        {
-          id: "terminal-open-view",
-          description: "Open a listed view from the terminal view manager",
-          params: {
-            viewId: {
-              type: "string",
-              description: "Stable id of the view to open",
-              required: true,
-            },
-          },
-        },
-        {
-          id: "terminal-list-views",
-          description: "Return the TUI-mode view list as structured data",
-        },
-      ],
-    },
-  ],
+	name: "app-control",
+	description:
+		"Launch, close, list, relaunch, load, and create Eliza apps from agent chat. Backed by the Eliza dashboard /api/apps/* HTTP surface. Also manages UI views via the VIEWS action.",
+	actions: [appAction, viewsAction],
+	providers: [availableAppsProvider],
+	services: [
+		AppRegistryService,
+		AppVerificationService,
+		AppWorkerHostService,
+		VerificationRoomBridgeService,
+	],
+	async dispose(runtime) {
+		await runtime
+			.getService<VerificationRoomBridgeService>(
+				VerificationRoomBridgeService.serviceType,
+			)
+			?.stop();
+		await runtime
+			.getService<AppWorkerHostService>(AppWorkerHostService.serviceType)
+			?.stop();
+		await runtime
+			.getService<AppVerificationService>(AppVerificationService.serviceType)
+			?.stop();
+		await runtime
+			.getService<AppRegistryService>(AppRegistryService.serviceType)
+			?.stop();
+	},
+	views: [
+		{
+			id: "views-manager",
+			label: "Views",
+			description: "Browse and open available views contributed by plugins",
+			icon: "LayoutGrid",
+			path: "/views",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "ViewManagerView",
+			visibleInManager: true,
+			desktopTabEnabled: true,
+		},
+		{
+			id: "views-manager",
+			label: "Views TUI",
+			description:
+				"Terminal view for browsing and opening available plugin views",
+			icon: "Terminal",
+			path: "/views/tui",
+			viewType: "tui",
+			bundlePath: "dist/views/bundle.js",
+			componentExport: "ViewManagerTuiView",
+			visibleInManager: true,
+			desktopTabEnabled: true,
+			capabilities: [
+				{
+					id: "terminal-open-view",
+					description: "Open a listed view from the terminal view manager",
+					params: {
+						viewId: {
+							type: "string",
+							description: "Stable id of the view to open",
+							required: true,
+						},
+					},
+				},
+				{
+					id: "terminal-list-views",
+					description: "Return the TUI-mode view list as structured data",
+				},
+			],
+		},
+	],
 };
 
 export default appControlPlugin;

@@ -33,13 +33,7 @@
             "eliza-evidence: ended_utc=",
             "eliza-evidence: status=PASS"
           ],
-          "at_least_one": [
-            [
-              "Image",
-              "vmlinux",
-              "rootfs"
-            ]
-          ],
+          "at_least_one": [["Image", "vmlinux", "rootfs"]],
           "validation_command": "python3 scripts/check_software_bsp.py buildroot --require-evidence"
         },
         {

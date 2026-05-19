@@ -21,9 +21,8 @@
  *   bun run ensure-plugin-test-conventions --check     # exit 1 if any would change (CI)
  */
 
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { readdirSync } from "node:fs";
 
 const ROOT = resolve(import.meta.dirname, "../..");
 const DRY_RUN = process.argv.includes("--dry-run");

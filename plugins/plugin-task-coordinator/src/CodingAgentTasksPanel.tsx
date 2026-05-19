@@ -1,10 +1,10 @@
 import {
   Badge,
   Button,
-  client,
   type CodingAgentSession,
   type CodingAgentTaskThread,
   type CodingAgentTaskThreadDetail,
+  client,
   EmptyWidgetState,
   useApp,
   WidgetSection,

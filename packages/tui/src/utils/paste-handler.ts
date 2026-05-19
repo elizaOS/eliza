@@ -18,12 +18,12 @@ export const PASTE_END = "\x1b[201~";
  * Result of processing input through the paste handler.
  */
 export interface PasteHandlerResult {
-	/** Whether input was consumed by paste buffering */
-	consumed: boolean;
-	/** Remaining input to process after paste handling */
-	remaining: string;
-	/** Complete paste content if a paste was just finished */
-	pasteContent: string | null;
+  /** Whether input was consumed by paste buffering */
+  consumed: boolean;
+  /** Remaining input to process after paste handling */
+  remaining: string;
+  /** Complete paste content if a paste was just finished */
+  pasteContent: string | null;
 }
 
 /**
@@ -52,77 +52,77 @@ export interface PasteHandlerResult {
  * ```
  */
 export class PasteHandler {
-	private buffer = "";
-	private isInPaste = false;
+  private buffer = "";
+  private isInPaste = false;
 
-	/**
-	 * Process input data for bracketed paste mode.
-	 *
-	 * @param data - Raw input data
-	 * @returns Result indicating whether input was consumed and any paste content
-	 */
-	handleInput(data: string): PasteHandlerResult {
-		// Check if we're starting a bracketed paste
-		if (data.includes(PASTE_START)) {
-			this.isInPaste = true;
-			this.buffer = "";
-			data = data.replace(PASTE_START, "");
-		}
+  /**
+   * Process input data for bracketed paste mode.
+   *
+   * @param data - Raw input data
+   * @returns Result indicating whether input was consumed and any paste content
+   */
+  handleInput(data: string): PasteHandlerResult {
+    // Check if we're starting a bracketed paste
+    if (data.includes(PASTE_START)) {
+      this.isInPaste = true;
+      this.buffer = "";
+      data = data.replace(PASTE_START, "");
+    }
 
-		// If we're in a paste, buffer the data
-		if (this.isInPaste) {
-			this.buffer += data;
+    // If we're in a paste, buffer the data
+    if (this.isInPaste) {
+      this.buffer += data;
 
-			const endIndex = this.buffer.indexOf(PASTE_END);
-			if (endIndex !== -1) {
-				// Extract the pasted content
-				const pasteContent = this.buffer.substring(0, endIndex);
+      const endIndex = this.buffer.indexOf(PASTE_END);
+      if (endIndex !== -1) {
+        // Extract the pasted content
+        const pasteContent = this.buffer.substring(0, endIndex);
 
-				// Reset paste state
-				this.isInPaste = false;
+        // Reset paste state
+        this.isInPaste = false;
 
-				// Get any remaining input after the paste marker
-				const remaining = this.buffer.substring(endIndex + PASTE_END.length);
-				this.buffer = "";
+        // Get any remaining input after the paste marker
+        const remaining = this.buffer.substring(endIndex + PASTE_END.length);
+        this.buffer = "";
 
-				return {
-					consumed: true,
-					remaining,
-					pasteContent,
-				};
-			}
+        return {
+          consumed: true,
+          remaining,
+          pasteContent,
+        };
+      }
 
-			// Still buffering, waiting for end marker
-			return {
-				consumed: true,
-				remaining: "",
-				pasteContent: null,
-			};
-		}
+      // Still buffering, waiting for end marker
+      return {
+        consumed: true,
+        remaining: "",
+        pasteContent: null,
+      };
+    }
 
-		// Not in a paste - return input unchanged
-		return {
-			consumed: false,
-			remaining: data,
-			pasteContent: null,
-		};
-	}
+    // Not in a paste - return input unchanged
+    return {
+      consumed: false,
+      remaining: data,
+      pasteContent: null,
+    };
+  }
 
-	/**
-	 * Reset the paste handler state.
-	 * Useful if paste sequence is interrupted or needs to be cancelled.
-	 */
-	reset(): void {
-		this.buffer = "";
-		this.isInPaste = false;
-	}
+  /**
+   * Reset the paste handler state.
+   * Useful if paste sequence is interrupted or needs to be cancelled.
+   */
+  reset(): void {
+    this.buffer = "";
+    this.isInPaste = false;
+  }
 
-	/**
-	 * Check if currently buffering a paste.
-	 */
-	isBuffering(): boolean {
-		return this.isInPaste;
-	}
+  /**
+   * Check if currently buffering a paste.
+   */
+  isBuffering(): boolean {
+    return this.isInPaste;
+  }
 }
 
 /**
@@ -133,7 +133,7 @@ export class PasteHandler {
  * @returns Cleaned text suitable for single-line input
  */
 export function cleanPasteForSingleLine(text: string): string {
-	return text.replace(/\r\n/g, "").replace(/\r/g, "").replace(/\n/g, "");
+  return text.replace(/\r\n/g, "").replace(/\r/g, "").replace(/\n/g, "");
 }
 
 /**
@@ -144,5 +144,5 @@ export function cleanPasteForSingleLine(text: string): string {
  * @returns Cleaned text with normalized line endings
  */
 export function cleanPasteForMultiLine(text: string): string {
-	return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  return text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
 }

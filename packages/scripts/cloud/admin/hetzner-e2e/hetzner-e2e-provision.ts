@@ -123,7 +123,9 @@ async function main(): Promise<void> {
   const token = requireEnv("HCLOUD_TOKEN_CI");
   const sshKeyId = Number.parseInt(requireEnv("CI_SSH_PUBLIC_KEY_ID"), 10);
   if (!Number.isFinite(sshKeyId)) {
-    throw new Error("CI_SSH_PUBLIC_KEY_ID must be a numeric Hetzner SSH key id");
+    throw new Error(
+      "CI_SSH_PUBLIC_KEY_ID must be a numeric Hetzner SSH key id",
+    );
   }
 
   const runId = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
@@ -203,10 +205,7 @@ async function main(): Promise<void> {
         // (missing or stale HCLOUD_TOKEN_CI, project disabled). Without
         // this, the workflow log just shows the bare HetznerCloudError
         // and the operator has to guess.
-        if (
-          err instanceof HetznerCloudError &&
-          err.code === "missing_token"
-        ) {
+        if (err instanceof HetznerCloudError && err.code === "missing_token") {
           console.error(
             "[hetzner-e2e-provision] Hetzner rejected the token (HTTP 401/403). " +
               "Refresh HCLOUD_TOKEN_CI in the ci-hetzner-e2e GitHub environment, or verify the project is active.",

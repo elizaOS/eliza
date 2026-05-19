@@ -269,7 +269,7 @@ const OWNER_ROUTINES_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
     agent: {
       name: "{{agentName}}",
       content: {
-        text: "Posso criar um hábito \"Escovar os dentes\" às 8h e 21h todos os dias. Confirma que eu salvo.",
+        text: 'Posso criar um hábito "Escovar os dentes" às 8h e 21h todos os dias. Confirma que eu salvo.',
         actions: ["OWNER_ROUTINES"],
       },
     },
@@ -286,7 +286,7 @@ const OWNER_ROUTINES_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
     agent: {
       name: "{{agentName}}",
       content: {
-        text: "Pwede kong i-set ang \"Magsipilyo\" araw-araw alas 8 ng umaga at alas 9 ng gabi. Confirm mo lang at ise-save ko na.",
+        text: 'Pwede kong i-set ang "Magsipilyo" araw-araw alas 8 ng umaga at alas 9 ng gabi. Confirm mo lang at ise-save ko na.',
         actions: ["OWNER_ROUTINES"],
       },
     },
@@ -303,7 +303,7 @@ const OWNER_ROUTINES_EXAMPLES: ReadonlyArray<PromptExampleEntry> = [
     agent: {
       name: "{{agentName}}",
       content: {
-        text: "Mình sẽ tạo thói quen \"Đánh răng\" lúc 8h sáng và 9h tối mỗi ngày. Bạn xác nhận thì mình lưu lại nhé.",
+        text: 'Mình sẽ tạo thói quen "Đánh răng" lúc 8h sáng và 9h tối mỗi ngày. Bạn xác nhận thì mình lưu lại nhé.',
         actions: ["OWNER_ROUTINES"],
       },
     },

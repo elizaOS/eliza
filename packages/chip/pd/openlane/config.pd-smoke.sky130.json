@@ -3,9 +3,7 @@
   "PDK": "sky130A",
   "STD_CELL_LIBRARY": "sky130_fd_sc_hd",
   "STD_CELL_LIBRARY_OPT": "sky130_fd_sc_hd",
-  "VERILOG_FILES": [
-    "dir::../../rtl/top/e1_pd_smoke_top.sv"
-  ],
+  "VERILOG_FILES": ["dir::../../rtl/top/e1_pd_smoke_top.sv"],
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 20,
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_pd_smoke.sdc",

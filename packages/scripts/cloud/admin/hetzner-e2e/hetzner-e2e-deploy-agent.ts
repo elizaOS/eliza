@@ -26,7 +26,10 @@ function sleep(ms: number): Promise<void> {
 
 type JsonObject = Record<string, unknown>;
 
-const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
+const baseUrl = (process.env.CLOUD_SMOKE_BASE_URL ?? DEFAULT_BASE_URL).replace(
+  /\/+$/,
+  "",
+);
 const apiKey = requireEnv("CLOUD_E2E_API_KEY");
 const runId = `${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
 const timeoutMs = 240_000;
@@ -52,7 +55,9 @@ async function requestJson(
   const text = await response.text();
   const body = text ? (JSON.parse(text) as JsonObject) : {};
   if (!expected.includes(response.status)) {
-    throw new Error(`${init.method ?? "GET"} ${path} returned ${response.status}: ${text.slice(0, 300)}`);
+    throw new Error(
+      `${init.method ?? "GET"} ${path} returned ${response.status}: ${text.slice(0, 300)}`,
+    );
   }
   return { status: response.status, body };
 }
@@ -111,7 +116,11 @@ async function waitForJob(jobId: string): Promise<void> {
       last = status;
     }
     if (status === "completed") return;
-    if (status === "failed" || status === "cancelled" || status === "canceled") {
+    if (
+      status === "failed" ||
+      status === "cancelled" ||
+      status === "canceled"
+    ) {
       throw new Error(`Job ${jobId} ended in ${status}`);
     }
     await sleep(pollIntervalMs);

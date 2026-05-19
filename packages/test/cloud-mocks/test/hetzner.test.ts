@@ -1,12 +1,15 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { startHetznerMock, type RunningHetznerMock } from "../src/hetzner";
+import { type RunningHetznerMock, startHetznerMock } from "../src/hetzner";
 
 // Speed up tests
 process.env.MOCK_HETZNER_LATENCY = "0";
 
 let mock: RunningHetznerMock;
 
-const AUTH = { Authorization: "Bearer test-token", "Content-Type": "application/json" };
+const AUTH = {
+  Authorization: "Bearer test-token",
+  "Content-Type": "application/json",
+};
 
 beforeAll(async () => {
   mock = await startHetznerMock({ port: 0, actionMs: 50 });
@@ -35,7 +38,11 @@ describe("Hetzner mock", () => {
     const r = await fetch(`${mock.url}/servers`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: "n", server_type: "cx22", location: "fsn1" }),
+      body: JSON.stringify({
+        name: "n",
+        server_type: "cx22",
+        location: "fsn1",
+      }),
     });
     expect(r.status).toBe(401);
     const body = (await r.json()) as { error: { code: string } };
@@ -56,7 +63,11 @@ describe("Hetzner mock", () => {
     });
     expect(createRes.status).toBe(201);
     const created = (await createRes.json()) as {
-      server: { id: number; status: string; public_net: { ipv4: { ip: string } | null } };
+      server: {
+        id: number;
+        status: string;
+        public_net: { ipv4: { ip: string } | null };
+      };
       action: { id: number; status: string };
     };
     expect(created.action.status).toBe("running");
@@ -66,16 +77,21 @@ describe("Hetzner mock", () => {
     expect(await pollAction(created.action.id)).toBe("success");
 
     // After create action completes, server should be running.
-    const getRes = await fetch(`${mock.url}/servers/${serverId}`, { headers: AUTH });
+    const getRes = await fetch(`${mock.url}/servers/${serverId}`, {
+      headers: AUTH,
+    });
     expect(getRes.status).toBe(200);
     const getBody = (await getRes.json()) as { server: { status: string } };
     expect(getBody.server.status).toBe("running");
 
     // Poweroff
-    const offRes = await fetch(`${mock.url}/servers/${serverId}/actions/poweroff`, {
-      method: "POST",
-      headers: AUTH,
-    });
+    const offRes = await fetch(
+      `${mock.url}/servers/${serverId}/actions/poweroff`,
+      {
+        method: "POST",
+        headers: AUTH,
+      },
+    );
     expect(offRes.status).toBe(200);
     const offBody = (await offRes.json()) as { action: { id: number } };
     expect(await pollAction(offBody.action.id)).toBe("success");
@@ -94,7 +110,9 @@ describe("Hetzner mock", () => {
     expect(await pollAction(delBody.action.id)).toBe("success");
 
     // Now should 404
-    const afterDel = await fetch(`${mock.url}/servers/${serverId}`, { headers: AUTH });
+    const afterDel = await fetch(`${mock.url}/servers/${serverId}`, {
+      headers: AUTH,
+    });
     expect(afterDel.status).toBe(404);
   });
 

@@ -1,19 +1,19 @@
 import {
+  type AppPackageRouteContext,
   CAPABILITY_ROUTER_SERVICE_TYPE,
   CapabilityError,
   type ElizaCapabilityRouter,
-  type AppPackageRouteContext,
   getCapabilityRouter,
   type IAgentRuntime,
   type JsonObject,
   type JsonValue,
+  type ModelTypeName,
   type Plugin,
+  type PluginAppBridge,
   type PluginCallRouteParams,
   type PluginEvents,
-  type PluginAppBridge,
-  type PluginWidgetDeclaration,
   type PluginInvokeActionParams,
-  type ModelTypeName,
+  type PluginWidgetDeclaration,
   type ProviderResult,
   type RegisteredEvaluator,
   type RemotePluginModuleManifest,
@@ -23,14 +23,14 @@ import {
   type ViewDeclaration,
 } from "@elizaos/core";
 import {
+  type AppRouteModule,
+  registerRuntimeAppRouteModule,
+  unregisterRuntimeAppRouteModule,
+} from "./app-package-modules.ts";
+import {
   RemoteCapabilityRouterService,
   resolveRemoteCapabilityRouterConfig,
 } from "./remote-capability-router.ts";
-import {
-  registerRuntimeAppRouteModule,
-  type AppRouteModule,
-  unregisterRuntimeAppRouteModule,
-} from "./app-package-modules.ts";
 
 export type RemotePluginAdapterOptions = {
   modules?: RemotePluginModuleManifest[];

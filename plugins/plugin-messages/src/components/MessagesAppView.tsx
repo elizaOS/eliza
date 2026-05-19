@@ -616,8 +616,12 @@ export function MessagesTuiView() {
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
         {loading ? "loading" : `${threads.length} threads`} | sms{" "}
-        {ownsSmsRole ? "owned" : smsRoleHolder ? `held:${smsRoleHolder}` : "unclaimed"} |{" "}
-        {lastAction}
+        {ownsSmsRole
+          ? "owned"
+          : smsRoleHolder
+            ? `held:${smsRoleHolder}`
+            : "unclaimed"}{" "}
+        | {lastAction}
       </div>
 
       <div
@@ -697,7 +701,9 @@ export function MessagesTuiView() {
               <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
                 {thread.address}
               </span>
-              <span style={{ color: thread.unreadCount ? "#fca5a5" : "#64748b" }}>
+              <span
+                style={{ color: thread.unreadCount ? "#fca5a5" : "#64748b" }}
+              >
                 {thread.unreadCount ? `${thread.unreadCount} new` : "read"}
               </span>
               <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
@@ -855,7 +861,8 @@ export async function interact(
   }
 
   if (capability === "terminal-send-sms") {
-    const address = typeof params?.address === "string" ? params.address.trim() : "";
+    const address =
+      typeof params?.address === "string" ? params.address.trim() : "";
     const body = typeof params?.body === "string" ? params.body.trim() : "";
     if (!address) throw new Error("address is required");
     if (!body) throw new Error("body is required");

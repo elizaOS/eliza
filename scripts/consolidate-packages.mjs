@@ -3,7 +3,16 @@
 // Usage: node scripts/consolidate-packages.mjs [--dry-run]
 
 import { execSync } from "node:child_process";
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync, rmSync, cpSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -75,7 +84,8 @@ function readJson(p) {
 }
 function writeJson(p, obj) {
   log(`write ${p}`);
-  if (!DRY) writeFileSync(path.join(ROOT, p), JSON.stringify(obj, null, 2) + "\n");
+  if (!DRY)
+    writeFileSync(path.join(ROOT, p), JSON.stringify(obj, null, 2) + "\n");
 }
 function writeText(p, content) {
   log(`write ${p}`);
@@ -95,7 +105,10 @@ rmPath("packages/ui/stories/package.json");
 // 1b. shared-brand -> shared/src/brand + shared/assets + shared/scripts/sync-to-public.mjs
 mvDir("packages/shared-brand/src", "packages/shared/src/brand");
 mvDir("packages/shared-brand/assets", "packages/shared/assets");
-mvFile("packages/shared-brand/scripts/sync-to-public.mjs", "packages/shared/scripts/sync-to-public.mjs");
+mvFile(
+  "packages/shared-brand/scripts/sync-to-public.mjs",
+  "packages/shared/scripts/sync-to-public.mjs",
+);
 mvDir("packages/shared-brand/public", "packages/shared/src/brand-public");
 rmPath("packages/shared-brand");
 
@@ -105,8 +118,14 @@ mvDir("packages/brand/assets", "packages/shared/assets-classic");
 rmPath("packages/brand");
 
 // 1d. scenario-schema -> scenario-runner/schema
-mvFile("packages/scenario-schema/index.js", "packages/scenario-runner/schema/index.js");
-mvFile("packages/scenario-schema/index.d.ts", "packages/scenario-runner/schema/index.d.ts");
+mvFile(
+  "packages/scenario-schema/index.js",
+  "packages/scenario-runner/schema/index.js",
+);
+mvFile(
+  "packages/scenario-schema/index.d.ts",
+  "packages/scenario-runner/schema/index.d.ts",
+);
 rmPath("packages/scenario-schema");
 
 // 1e. native consolidation
@@ -115,7 +134,10 @@ mvDir("packages/native-plugins", "packages/native/plugins");
 mvDir("packages/bun-ios-runtime", "packages/native/bun-runtime");
 
 // 1f. hardware-catalog -> shared/src/hardware-catalog
-mvFile("packages/hardware-catalog/src/index.ts", "packages/shared/src/hardware-catalog/index.ts");
+mvFile(
+  "packages/hardware-catalog/src/index.ts",
+  "packages/shared/src/hardware-catalog/index.ts",
+);
 rmPath("packages/hardware-catalog");
 
 // 1g. os-usb-installer -> os/usb-installer
@@ -129,11 +151,17 @@ mvDir("packages/cloud-test-mocks", "packages/test/cloud-mocks");
 mvDir("packages/cloud-e2e", "packages/test/cloud-e2e");
 
 // 1j. checkout-shared -> shared/src/checkout
-mvFile("packages/checkout-shared/src/index.ts", "packages/shared/src/checkout/index.ts");
+mvFile(
+  "packages/checkout-shared/src/index.ts",
+  "packages/shared/src/checkout/index.ts",
+);
 rmPath("packages/checkout-shared");
 
 // 1k. steward-session-client -> shared/src/steward-session-client
-mvFile("packages/steward-session-client/src/index.ts", "packages/shared/src/steward-session-client/index.ts");
+mvFile(
+  "packages/steward-session-client/src/index.ts",
+  "packages/shared/src/steward-session-client/index.ts",
+);
 rmPath("packages/steward-session-client");
 
 // ---------------- Phase 2: update root package.json (workspaces + devDependencies) ----------------
@@ -178,11 +206,17 @@ if (!DRY) {
 
 if (!DRY) {
   const shared = readJson("packages/shared/package.json");
-  const wantedFiles = new Set([...(shared.files || []), "dist", "assets", "assets-classic"]);
+  const wantedFiles = new Set([
+    ...(shared.files || []),
+    "dist",
+    "assets",
+    "assets-classic",
+  ]);
   shared.files = [...wantedFiles];
   // sync script lives in scripts/ now
   shared.scripts = shared.scripts || {};
-  if (!shared.scripts.sync) shared.scripts.sync = "node scripts/sync-to-public.mjs";
+  if (!shared.scripts.sync)
+    shared.scripts.sync = "node scripts/sync-to-public.mjs";
   // include brand.css and brand-classic css in exports if not already covered by glob
   shared.exports = shared.exports || {};
   if (!shared.exports["./brand.css"]) {
@@ -196,7 +230,9 @@ if (!DRY) {
   }
   writeJson("packages/shared/package.json", shared);
 } else {
-  log("would update packages/shared/package.json (files, exports, sync script)");
+  log(
+    "would update packages/shared/package.json (files, exports, sync script)",
+  );
 }
 
 // ---------------- Phase 4: update scenario-runner/package.json ----------------
@@ -213,7 +249,9 @@ if (!DRY) {
   };
   writeJson("packages/scenario-runner/package.json", sr);
 } else {
-  log("would update scenario-runner/package.json (drop schema dep, add schema export)");
+  log(
+    "would update scenario-runner/package.json (drop schema dep, add schema export)",
+  );
 }
 
 // ---------------- Phase 5: update UI package.json (stories scripts) ----------------
@@ -221,11 +259,15 @@ if (!DRY) {
 if (!DRY && existsSync(path.join(ROOT, "packages/ui/package.json"))) {
   const ui = readJson("packages/ui/package.json");
   ui.scripts = ui.scripts || {};
-  if (!ui.scripts["stories:dev"]) ui.scripts["stories:dev"] = "vite --config stories/vite.config.ts";
-  if (!ui.scripts["stories:build"]) ui.scripts["stories:build"] = "vite build --config stories/vite.config.ts";
+  if (!ui.scripts["stories:dev"])
+    ui.scripts["stories:dev"] = "vite --config stories/vite.config.ts";
+  if (!ui.scripts["stories:build"])
+    ui.scripts["stories:build"] = "vite build --config stories/vite.config.ts";
   writeJson("packages/ui/package.json", ui);
 } else {
-  log("would add stories:dev/stories:build scripts to packages/ui/package.json");
+  log(
+    "would add stories:dev/stories:build scripts to packages/ui/package.json",
+  );
 }
 
 // ---------------- Phase 6: rewrite imports ----------------
@@ -243,7 +285,10 @@ const IMPORT_RENAMES = [
   ["@elizaos/checkout-shared", "@elizaos/shared/checkout"],
   ["@elizaos/steward-session-client", "@elizaos/shared/steward-session-client"],
   // relative refs to sync-to-public.mjs from packages/* (predev/prebuild)
-  ["../shared-brand/scripts/sync-to-public.mjs", "../shared/scripts/sync-to-public.mjs"],
+  [
+    "../shared-brand/scripts/sync-to-public.mjs",
+    "../shared/scripts/sync-to-public.mjs",
+  ],
   // os-usb-installer / elizaos-setup paths used in scripts (best-effort)
   ["packages/os-usb-installer", "packages/os/usb-installer"],
   ["packages/elizaos-setup", "packages/os/setup"],
@@ -262,30 +307,75 @@ const IMPORT_RENAMES = [
 ];
 
 const EXT_OK = new Set([
-  ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts",
-  ".json", ".md", ".yml", ".yaml", ".sh", ".html", ".css", ".scss",
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".cts",
+  ".json",
+  ".md",
+  ".yml",
+  ".yaml",
+  ".sh",
+  ".html",
+  ".css",
+  ".scss",
 ]);
 
 const SKIP_DIRS = new Set([
-  "node_modules", ".git", "dist", "build", ".next", ".turbo",
-  ".cache", ".vite", "out", "coverage", ".pnpm-store",
-  ".claude", "worktrees", "eliza", ".venv", "venv", "__pycache__",
-  ".husky", ".vscode", ".idea", "target", "vendor",
+  "node_modules",
+  ".git",
+  "dist",
+  "build",
+  ".next",
+  ".turbo",
+  ".cache",
+  ".vite",
+  "out",
+  "coverage",
+  ".pnpm-store",
+  ".claude",
+  "worktrees",
+  "eliza",
+  ".venv",
+  "venv",
+  "__pycache__",
+  ".husky",
+  ".vscode",
+  ".idea",
+  "target",
+  "vendor",
 ]);
 
 function walk(dir, files = []) {
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
     if (SKIP_DIRS.has(entry.name)) continue;
     // skip any dist-* and build-* output dirs
-    if (entry.isDirectory() && (entry.name.startsWith("dist-") || entry.name.startsWith("build-"))) continue;
+    if (
+      entry.isDirectory() &&
+      (entry.name.startsWith("dist-") || entry.name.startsWith("build-"))
+    )
+      continue;
     // skip platform output dirs
-    if (entry.name === "ios" && existsSync(path.join(dir, entry.name, "App"))) continue;
-    if (entry.name === "android" && existsSync(path.join(dir, entry.name, "build.gradle"))) continue;
+    if (entry.name === "ios" && existsSync(path.join(dir, entry.name, "App")))
+      continue;
+    if (
+      entry.name === "android" &&
+      existsSync(path.join(dir, entry.name, "build.gradle"))
+    )
+      continue;
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) walk(full, files);
     else if (entry.isFile()) {
       const ext = path.extname(entry.name);
-      if (EXT_OK.has(ext) || entry.name === "package.json" || entry.name === "tsconfig.json") {
+      if (
+        EXT_OK.has(ext) ||
+        entry.name === "package.json" ||
+        entry.name === "tsconfig.json"
+      ) {
         files.push(full);
       }
     }
@@ -301,9 +391,17 @@ let changedCount = 0;
 for (const file of allFiles) {
   if (file === __filename) continue;
   // never rewrite the lockfile
-  if (path.basename(file) === "bun.lock" || path.basename(file) === "package-lock.json") continue;
+  if (
+    path.basename(file) === "bun.lock" ||
+    path.basename(file) === "package-lock.json"
+  )
+    continue;
   let txt;
-  try { txt = readFileSync(file, "utf8"); } catch { continue; }
+  try {
+    txt = readFileSync(file, "utf8");
+  } catch {
+    continue;
+  }
   let out = txt;
   for (const [from, to] of IMPORT_RENAMES) {
     if (out.includes(from)) {

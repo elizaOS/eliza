@@ -94,14 +94,7 @@ const smokeViewDeclarations = [
     "tui",
   ],
   ["phone", "Phone", "plugin-phone", "/phone", "PhoneAppView"],
-  [
-    "phone",
-    "Phone TUI",
-    "plugin-phone",
-    "/phone/tui",
-    "PhoneTuiView",
-    "tui",
-  ],
+  ["phone", "Phone TUI", "plugin-phone", "/phone/tui", "PhoneTuiView", "tui"],
   [
     "polymarket",
     "Polymarket",
@@ -168,13 +161,7 @@ const smokeViewDeclarations = [
     "TwoThousandFourScapeTuiView",
     "tui",
   ],
-  [
-    "views-manager",
-    "Views",
-    "plugin-app-control",
-    "/views",
-    "ViewManagerView",
-  ],
+  ["views-manager", "Views", "plugin-app-control", "/views", "ViewManagerView"],
   [
     "views-manager",
     "Views TUI",
@@ -272,11 +259,22 @@ const smokeViews = smokeViewDeclarations.map(
       bundleUrl: `/api/views/${encodedId}/bundle.js${query}`,
       componentExport,
       available: existsSync(
-        path.join(repoRoot, "plugins", pluginDirName, "dist", "views", "bundle.js"),
+        path.join(
+          repoRoot,
+          "plugins",
+          pluginDirName,
+          "dist",
+          "views",
+          "bundle.js",
+        ),
       ),
       visibleInManager: true,
       capabilities: [
-        { id: "get-state", label: "Get state", inputSchema: { type: "object" } },
+        {
+          id: "get-state",
+          label: "Get state",
+          inputSchema: { type: "object" },
+        },
       ],
       _smokePluginDirName: pluginDirName,
     };
@@ -1357,9 +1355,11 @@ function sendBinary(req, res, status, contentType, body) {
 
 function contentTypeForSmokeViewAsset(assetPath) {
   const ext = path.extname(assetPath).toLowerCase();
-  if (ext === ".js" || ext === ".mjs") return "application/javascript; charset=utf-8";
+  if (ext === ".js" || ext === ".mjs")
+    return "application/javascript; charset=utf-8";
   if (ext === ".css") return "text/css; charset=utf-8";
-  if (ext === ".map" || ext === ".json") return "application/json; charset=utf-8";
+  if (ext === ".map" || ext === ".json")
+    return "application/json; charset=utf-8";
   if (ext === ".svg") return "image/svg+xml";
   if (ext === ".png") return "image/png";
   if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
@@ -1460,7 +1460,11 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
   );
   const assetPath = path.resolve(bundleDir, decodeURIComponent(subResource));
   const relative = path.relative(bundleDir, assetPath);
-  if (relative.startsWith("..") || path.isAbsolute(relative) || relative === "") {
+  if (
+    relative.startsWith("..") ||
+    path.isAbsolute(relative) ||
+    relative === ""
+  ) {
     sendJson(req, res, 400, { error: "Malformed view asset path" });
     return;
   }
@@ -1481,13 +1485,7 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
           "utf8",
         )
       : rawBody;
-  sendBinary(
-    req,
-    res,
-    200,
-    contentTypeForSmokeViewAsset(assetPath),
-    body,
-  );
+  sendBinary(req, res, 200, contentTypeForSmokeViewAsset(assetPath), body);
 }
 
 function sendSseHeaders(req, res) {
@@ -1603,8 +1601,10 @@ const server = http.createServer(async (req, res) => {
   ) {
     const afterPrefix = url.pathname.slice("/api/views/".length);
     const slashIndex = afterPrefix.indexOf("/");
-    const rawId = slashIndex === -1 ? afterPrefix : afterPrefix.slice(0, slashIndex);
-    const subResource = slashIndex === -1 ? "" : afterPrefix.slice(slashIndex + 1);
+    const rawId =
+      slashIndex === -1 ? afterPrefix : afterPrefix.slice(0, slashIndex);
+    const subResource =
+      slashIndex === -1 ? "" : afterPrefix.slice(slashIndex + 1);
     const id = decodeURIComponent(rawId);
     const view = smokeViewByRequest(id, url.searchParams.get("viewType"));
     if (!view) {

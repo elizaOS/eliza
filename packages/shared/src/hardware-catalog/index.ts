@@ -15,7 +15,7 @@
  * cloud-api currently builds `price_data` inline from `priceUsd`.
  */
 
-import { CONCEPT_PRODUCT_IMAGES } from "@elizaos/shared/brand";
+import { CONCEPT_PRODUCT_IMAGES } from "../brand/index.js";
 
 export type ProductKind = "phone" | "box" | "usb" | "chibi" | "mini";
 

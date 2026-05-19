@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
-import path from "node:path";
 import { spawnSync } from "node:child_process";
+import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { it as test } from "vitest";
 
@@ -28,8 +28,14 @@ test("mobile fused targets fail closed with explicit diagnostics", () => {
   const cases = [
     ["android-arm64-cpu-fused", /Android fused FFI is not wired/],
     ["android-arm64-vulkan-fused", /Android fused FFI is not wired/],
-    ["android-x86_64-cpu-fused", /Android x86_64 fused FFI is not a dflash target/],
-    ["android-x86_64-vulkan-fused", /Android x86_64 fused FFI is not a dflash target/],
+    [
+      "android-x86_64-cpu-fused",
+      /Android x86_64 fused FFI is not a dflash target/,
+    ],
+    [
+      "android-x86_64-vulkan-fused",
+      /Android x86_64 fused FFI is not a dflash target/,
+    ],
     ["ios-arm64-metal-fused", /iOS fused FFI is not wired or verifier-covered/],
   ];
 

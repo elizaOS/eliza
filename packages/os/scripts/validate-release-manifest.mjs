@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-import { defaultManifestPath, parseArgs, readJson, validateManifest } from "./os-release-lib.mjs";
+import {
+  defaultManifestPath,
+  parseArgs,
+  readJson,
+  validateManifest,
+} from "./os-release-lib.mjs";
 
 const args = parseArgs(process.argv.slice(2));
 const manifestPath = args.manifest || defaultManifestPath;

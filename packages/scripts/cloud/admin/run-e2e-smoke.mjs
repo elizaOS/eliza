@@ -4,10 +4,20 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+);
 const truthyValues = new Set(["1", "true", "yes", "on"]);
-const defaultServerPort = Number.parseInt(process.env.TEST_SERVER_PORT?.trim() || "8787", 10);
-const defaultBaseUrl = process.env.TEST_BASE_URL?.trim() || `http://localhost:${defaultServerPort}`;
+const defaultServerPort = Number.parseInt(
+  process.env.TEST_SERVER_PORT?.trim() || "8787",
+  10,
+);
+const defaultBaseUrl =
+  process.env.TEST_BASE_URL?.trim() || `http://localhost:${defaultServerPort}`;
 
 function envFlagEnabled(name) {
   const value = process.env[name]?.trim().toLowerCase();
@@ -16,7 +26,9 @@ function envFlagEnabled(name) {
 
 function skip(reason) {
   if (envFlagEnabled("CLOUD_FULL_SUITE")) {
-    console.error(`[cloud] e2e smoke is required (CLOUD_FULL_SUITE) but cannot run: ${reason}`);
+    console.error(
+      `[cloud] e2e smoke is required (CLOUD_FULL_SUITE) but cannot run: ${reason}`,
+    );
     process.exit(1);
   }
   console.log(`[cloud] Skipping e2e smoke because ${reason}.`);
@@ -41,11 +53,18 @@ if (envFlagEnabled("AGENT_SKIP_CLOUD_LIVE_SMOKE")) {
   skip("AGENT_SKIP_CLOUD_LIVE_SMOKE=1");
 }
 
-if (!fs.existsSync(path.join(repoRoot, "packages", "cloud-api", "test", "e2e", "preload.ts"))) {
+if (
+  !fs.existsSync(
+    path.join(repoRoot, "packages", "cloud-api", "test", "e2e", "preload.ts"),
+  )
+) {
   skip("the cloud e2e harness is not available in this checkout");
 }
 
-if (!process.env.TEST_BASE_URL?.trim() && (await isPortBusy(defaultServerPort))) {
+if (
+  !process.env.TEST_BASE_URL?.trim() &&
+  (await isPortBusy(defaultServerPort))
+) {
   skip(`port ${defaultServerPort} is already in use`);
 }
 

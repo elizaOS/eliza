@@ -63,18 +63,12 @@
         "build/chipyard/eliza_rocket/eliza-e1.dts",
         "build/chipyard/eliza_rocket/simulator"
       ],
-      "required_manifest_entries": [
-        "verilog",
-        "dts",
-        "simulator"
-      ]
+      "required_manifest_entries": ["verilog", "dts", "simulator"]
     },
     "opensbi_boot_transcript": {
       "status": "missing",
       "claim_level": "required_for_ap_completion",
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_opensbi_boot.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_opensbi_boot.log"],
       "required_markers": [
         "Reset PC",
         "hart ID",
@@ -91,9 +85,7 @@
     "linux_boot_transcript": {
       "status": "missing",
       "claim_level": "required_for_ap_completion",
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_linux_boot.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_linux_boot.log"],
       "required_markers": [
         "Linux early console",
         "generated DTS hash",
@@ -109,9 +101,7 @@
     "trap_timer_irq_evidence": {
       "status": "missing",
       "claim_level": "required_for_ap_completion",
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_trap_timer_irq.log"],
       "required_markers": [
         "mcause",
         "mepc",
@@ -126,9 +116,7 @@
     "isa_cache_mmu_evidence": {
       "status": "missing",
       "claim_level": "required_for_ap_completion",
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_isa_cache_mmu.log"],
       "required_markers": [
         "ISA profile",
         "misa",
@@ -147,9 +135,7 @@
     "ap_benchmark_evidence": {
       "status": "missing",
       "claim_level": "required_for_ap_completion",
-      "artifacts": [
-        "build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"
-      ],
+      "artifacts": ["build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log"],
       "required_markers": [
         "claim_level=L3",
         "benchmark report sha256",

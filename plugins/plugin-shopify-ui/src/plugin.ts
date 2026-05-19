@@ -115,7 +115,8 @@ export const shopifyPlugin: Plugin = {
     {
       id: "shopify",
       label: "Shopify",
-      description: "Shopify store management — orders, products, customers, and inventory",
+      description:
+        "Shopify store management — orders, products, customers, and inventory",
       icon: "ShoppingBag",
       path: "/shopify",
       bundlePath: "dist/views/bundle.js",
@@ -127,7 +128,8 @@ export const shopifyPlugin: Plugin = {
     {
       id: "shopify",
       label: "Shopify TUI",
-      description: "Terminal Shopify orders, products, customers, and inventory",
+      description:
+        "Terminal Shopify orders, products, customers, and inventory",
       icon: "ShoppingBag",
       path: "/shopify/tui",
       viewType: "tui",

@@ -5,33 +5,33 @@
 import {
   CharacterEditor,
   ChatModalView,
-  dispatchAppEvent,
   dispatchAppEmoteEvent,
+  dispatchAppEvent,
   STOP_EMOTE_EVENT,
   useApp,
   usePtySessions,
   useRenderGuard,
 } from "@elizaos/ui";
 import {
+  type CSSProperties,
   memo,
   Suspense,
   useCallback,
   useMemo,
   useState,
-  type CSSProperties,
 } from "react";
+import {
+  AGENT_EMOTE_CATALOG,
+  EMOTE_CATALOG,
+  type EmoteCategory,
+  getEmote,
+} from "../../emotes/catalog";
 import { CompanionHeader, type CompanionShellView } from "./CompanionHeader";
 import { CompanionSceneHost } from "./CompanionSceneHost";
 import { CompanionSettingsPanel } from "./CompanionSettingsPanel";
 import { EmotePicker } from "./EmotePicker";
 import { InferenceCloudAlertButton } from "./InferenceCloudAlertButton";
 import { resolveCompanionInferenceNotice } from "./resolve-companion-inference-notice";
-import {
-  AGENT_EMOTE_CATALOG,
-  EMOTE_CATALOG,
-  getEmote,
-  type EmoteCategory,
-} from "../../emotes/catalog";
 
 const COMPANION_DOCK_HEIGHT = "min(42vh, 24rem)";
 
@@ -542,7 +542,8 @@ export async function interact(
   }
 
   if (capability === "terminal-companion-play-emote") {
-    const emoteId = typeof params?.emote === "string" ? params.emote.trim() : "";
+    const emoteId =
+      typeof params?.emote === "string" ? params.emote.trim() : "";
     if (!emoteId) throw new Error("emote is required");
     const emote = getEmote(emoteId);
     if (!emote) throw new Error(`Unknown emote: ${emoteId}`);

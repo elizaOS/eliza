@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -67,7 +73,9 @@ function mockBridge() {
   phoneBridge.listRecentCalls.mockResolvedValue({ calls: sampleCalls });
   phoneBridge.placeCall.mockResolvedValue(undefined);
   phoneBridge.openDialer.mockResolvedValue(undefined);
-  phoneBridge.saveCallTranscript.mockResolvedValue({ updatedAt: 1_700_000_300_000 });
+  phoneBridge.saveCallTranscript.mockResolvedValue({
+    updatedAt: 1_700_000_300_000,
+  });
 }
 
 afterEach(() => {
@@ -87,16 +95,16 @@ describe("PhoneTuiView", () => {
     expect(phoneBridge.listRecentCalls).toHaveBeenCalledWith({ limit: 50 });
 
     const stateElement = container.querySelector("[data-view-state]");
-    expect(JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}")).toMatchObject(
-      {
-        viewType: "tui",
-        viewId: "phone",
-        callCount: 2,
-        canPlaceCalls: true,
-        isDefaultDialer: false,
-        defaultDialerPackage: "com.android.dialer",
-      },
-    );
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({
+      viewType: "tui",
+      viewId: "phone",
+      callCount: 2,
+      canPlaceCalls: true,
+      isDefaultDialer: false,
+      defaultDialerPackage: "com.android.dialer",
+    });
 
     fireEvent.change(screen.getByRole("textbox", { name: "number" }), {
       target: { value: "+1 (555) 777-8888" },
@@ -113,7 +121,9 @@ describe("PhoneTuiView", () => {
   it("supports terminal capabilities for state, dialing, dialer, and transcripts", async () => {
     mockBridge();
 
-    await expect(interact("terminal-phone-state", { limit: 2 })).resolves.toMatchObject({
+    await expect(
+      interact("terminal-phone-state", { limit: 2 }),
+    ).resolves.toMatchObject({
       viewType: "tui",
       status: sampleStatus,
       calls: [

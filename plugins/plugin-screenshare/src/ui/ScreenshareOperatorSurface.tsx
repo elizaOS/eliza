@@ -473,8 +473,9 @@ export function ScreenshareOperatorSurface({
 }
 
 export function ScreenshareTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadScreenshareTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadScreenshareTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -489,7 +490,9 @@ export function ScreenshareTuiView() {
     } catch (caught) {
       setState(null);
       setError(
-        caught instanceof Error ? caught.message : "Screen share refresh failed",
+        caught instanceof Error
+          ? caught.message
+          : "Screen share refresh failed",
       );
     } finally {
       setLoading(false);
@@ -537,7 +540,7 @@ export function ScreenshareTuiView() {
         elizaos://screenshare --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.capabilities.platform ?? "unknown"} |{" "}
+        {loading ? "loading" : (state?.capabilities.platform ?? "unknown")} |{" "}
         {activeSessions.length} active sessions | {lastAction}
       </div>
 
@@ -627,7 +630,11 @@ export function ScreenshareTuiView() {
           {Object.entries(state?.capabilities.capabilities ?? {}).map(
             ([name, capability]) => (
               <div key={name} style={{ padding: "6px 0" }}>
-                <span style={{ color: capability.available ? "#a7f3d0" : "#fca5a5" }}>
+                <span
+                  style={{
+                    color: capability.available ? "#a7f3d0" : "#fca5a5",
+                  }}
+                >
                   {capability.available ? "ok" : "off"}
                 </span>{" "}
                 {name} via {capability.tool}
@@ -662,12 +669,16 @@ export async function interact(
   if (capability === "terminal-screenshare-start") {
     return {
       viewType: "tui",
-      ...(await fetchJson<StartSessionResponse>("/api/apps/screenshare/session", {
-        method: "POST",
-        body: JSON.stringify({
-          label: typeof params?.label === "string" ? params.label : "Terminal",
-        }),
-      })),
+      ...(await fetchJson<StartSessionResponse>(
+        "/api/apps/screenshare/session",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            label:
+              typeof params?.label === "string" ? params.label : "Terminal",
+          }),
+        },
+      )),
     };
   }
 

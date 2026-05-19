@@ -3,9 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { expect, test } from "vitest";
 
-import {
-  writeCapabilities,
-} from "./build-llama-cpp-dflash.mjs";
+import { writeCapabilities } from "./build-llama-cpp-dflash.mjs";
 
 function makeTempTree() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-cuda-evidence-"));
@@ -54,7 +52,7 @@ function stageDflashDraftSources(cacheDir) {
   );
   fs.writeFileSync(
     path.join(cacheDir, "common", "arg.cpp"),
-    '--spec-type common_speculative_types_from_names\n',
+    "--spec-type common_speculative_types_from_names\n",
   );
 }
 
@@ -144,9 +142,9 @@ test("CUDA object/source scans fail closed when runtime evidence does not match 
       "turbo3_tcq",
       "turbo4",
     ]);
-    expect(
-      capabilities.runtimeDispatch.kernels.turbo3.requiredSmoke,
-    ).toMatch(/cuda_runner\.sh --report <path>/);
+    expect(capabilities.runtimeDispatch.kernels.turbo3.requiredSmoke).toMatch(
+      /cuda_runner\.sh --report <path>/,
+    );
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

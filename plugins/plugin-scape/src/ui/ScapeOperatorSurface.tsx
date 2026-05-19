@@ -16,7 +16,7 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import { Button, Input } from "@elizaos/ui";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────
 // Telemetry shape — a partial view of what buildScapeSessionState emits.
@@ -1024,11 +1024,17 @@ export function ScapeTuiView() {
     setSending(true);
     try {
       const response = await client.sendAppRunMessage(run.runId, trimmed);
-      setActionNotice(response.message, response.success ? "success" : "error", 2600);
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
       setDraft("");
     } catch (error) {
       setActionNotice(
-        error instanceof Error ? error.message : "Failed to send operator message.",
+        error instanceof Error
+          ? error.message
+          : "Failed to send operator message.",
         "error",
         3200,
       );
@@ -1050,12 +1056,17 @@ export function ScapeTuiView() {
         <div>agent {agent?.name ?? "unknown"}</div>
         <div>
           position{" "}
-          {agent?.position ? `${agent.position.x}, ${agent.position.z}` : "unknown"}
+          {agent?.position
+            ? `${agent.position.x}, ${agent.position.z}`
+            : "unknown"}
         </div>
         <div>goal {activeGoal?.title ?? telemetry.operatorGoal ?? "none"}</div>
         <div>commands {canSend ? "available" : "unavailable"}</div>
         <div style={tuiSubtleStyle}>suggested prompts</div>
-        {(suggestedPrompts.length ? suggestedPrompts : ["check status", "set goal", "pause"])
+        {(suggestedPrompts.length
+          ? suggestedPrompts
+          : ["check status", "set goal", "pause"]
+        )
           .slice(0, 6)
           .map((prompt) => (
             <button

@@ -12,7 +12,8 @@ export interface StackUrls {
   pglitePort: number;
 }
 
-export const PLAYWRIGHT_TEST_AUTH_SECRET = "playwright-local-auth-secret-32bytes";
+export const PLAYWRIGHT_TEST_AUTH_SECRET =
+  "playwright-local-auth-secret-32bytes";
 
 /**
  * Strip env vars that announce the current process was launched via bun

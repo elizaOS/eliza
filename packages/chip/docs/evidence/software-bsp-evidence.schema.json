@@ -39,7 +39,14 @@
     },
     "evidence_item": {
       "type": "object",
-      "required": ["artifact", "path", "capture_command", "validation_command", "min_bytes", "required_strings"],
+      "required": [
+        "artifact",
+        "path",
+        "capture_command",
+        "validation_command",
+        "min_bytes",
+        "required_strings"
+      ],
       "additionalProperties": false,
       "properties": {
         "artifact": { "type": "string", "minLength": 1 },

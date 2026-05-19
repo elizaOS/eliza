@@ -15,7 +15,10 @@ const appState = vi.hoisted(() => ({
   setState,
 }));
 
-function latestRunForApp(appName: string, appRuns: Array<Record<string, unknown>>) {
+function latestRunForApp(
+  appName: string,
+  appRuns: Array<Record<string, unknown>>,
+) {
   const matchingRuns = appRuns
     .filter((run) => run.appName === appName)
     .sort((left, right) =>
@@ -53,6 +56,10 @@ vi.mock("@elizaos/ui", () => uiMock);
 vi.mock("@elizaos/app-core", () => uiMock);
 
 import {
+  interact as interact2004scape,
+  TwoThousandFourScapeTuiView,
+} from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
+import {
   ClawvilleTuiView,
   interact as interactClawville,
 } from "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface";
@@ -65,13 +72,9 @@ import {
   interact as interactHyperscape,
 } from "../../../../plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface";
 import {
-  ScapeTuiView,
   interact as interactScape,
+  ScapeTuiView,
 } from "../../../../plugins/plugin-scape/src/ui/ScapeOperatorSurface";
-import {
-  TwoThousandFourScapeTuiView,
-  interact as interact2004scape,
-} from "../../../../plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface";
 
 const baseRun = {
   runId: "run-1",
@@ -155,7 +158,13 @@ describe("game TUI mounted surfaces", () => {
           status: "running",
           suggestedPrompts: ["continue tutorial"],
           telemetry: {
-            player: { name: "bot", worldX: 3200, worldZ: 3201, hp: 9, maxHp: 10 },
+            player: {
+              name: "bot",
+              worldX: 3200,
+              worldZ: 3201,
+              hp: 9,
+              maxHp: 10,
+            },
             tutorial: { active: true },
           },
         },
@@ -171,7 +180,9 @@ describe("game TUI mounted surfaces", () => {
     });
     cleanup();
 
-    expect(renderState(React.createElement(DefenseAgentsTuiView))).toMatchObject({
+    expect(
+      renderState(React.createElement(DefenseAgentsTuiView)),
+    ).toMatchObject({
       viewId: "defense-of-the-agents",
       heroLane: "mid",
       canSend: true,
@@ -237,7 +248,9 @@ describe("game TUI mounted surfaces", () => {
       })),
     );
 
-    await expect(interactClawville("terminal-clawville-state")).resolves.toMatchObject({
+    await expect(
+      interactClawville("terminal-clawville-state"),
+    ).resolves.toMatchObject({
       viewType: "tui",
       appName: "@elizaos/plugin-clawville",
     });

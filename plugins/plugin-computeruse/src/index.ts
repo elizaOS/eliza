@@ -73,7 +73,9 @@ export const computerUsePlugin: Plugin = {
   services: [ComputerUseService, VisionContextProvider],
 
   async dispose(runtime) {
-    const svc = runtime.getService<ComputerUseService>(ComputerUseService.serviceType);
+    const svc = runtime.getService<ComputerUseService>(
+      ComputerUseService.serviceType,
+    );
     await svc?.stop();
   },
 
@@ -169,15 +171,6 @@ export type {
   DesktopWindowInfo,
 } from "./services/desktop-control.js";
 export {
-  type VisionContext,
-  type VisionContextBBox,
-  type VisionContextFocusedWindow,
-  type VisionContextRecentAction,
-  VisionContextProvider,
-  VISION_CONTEXT_SERVICE_TYPE,
-  VISION_CONTEXT_TASK_GOAL_CACHE_KEY,
-} from "./services/vision-context-provider.js";
-export {
   captureDesktopScreenshot,
   commandExists,
   detectDesktopControlCapabilities,
@@ -191,6 +184,15 @@ export {
   performDesktopScroll,
   performDesktopTextInput,
 } from "./services/desktop-control.js";
+export {
+  VISION_CONTEXT_SERVICE_TYPE,
+  VISION_CONTEXT_TASK_GOAL_CACHE_KEY,
+  type VisionContext,
+  type VisionContextBBox,
+  type VisionContextFocusedWindow,
+  VisionContextProvider,
+  type VisionContextRecentAction,
+} from "./services/vision-context-provider.js";
 // Re-export types for consumers
 export type {
   ActionHistoryEntry,

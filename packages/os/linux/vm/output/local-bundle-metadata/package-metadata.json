@@ -12,9 +12,7 @@
     "quickstarts/utm.md",
     "quickstarts/virtualbox.md"
   ],
-  "missing_image_files": [
-    "disk-base.qcow2"
-  ],
+  "missing_image_files": ["disk-base.qcow2"],
   "schema_version": 1,
   "version": "dev"
 }

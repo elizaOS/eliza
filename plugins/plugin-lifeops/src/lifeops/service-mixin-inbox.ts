@@ -77,7 +77,7 @@ function deriveThreadId(
     return message.xConversationId;
   }
   if (channel === "gmail") {
-    const subject = (message.channelName)
+    const subject = message.channelName
       .replace(/^Email from\s+/i, "")
       .replace(SUBJECT_REPLY_PREFIX, "")
       .trim();
@@ -107,7 +107,7 @@ export function toInboxMessage(
     channel === "gmail"
       ? message.channelName.startsWith("Email from ")
         ? message.channelName.slice("Email from ".length)
-        : (message.channelName)
+        : message.channelName
       : null;
 
   // Gmail triage exposes `likelyReplyNeeded`/`isImportant` but the shared

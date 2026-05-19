@@ -16,9 +16,15 @@
   "additionalProperties": false,
   "properties": {
     "schema_version": { "const": 1 },
-    "claim_boundary": { "const": "android_external_logs_only_not_boot_or_compatibility_evidence" },
-    "compatibility_claim": { "const": "none_without_full_external_compatibility_evidence" },
-    "android_boot_claim": { "const": "blocked_until_all_required_evidence_passes" },
+    "claim_boundary": {
+      "const": "android_external_logs_only_not_boot_or_compatibility_evidence"
+    },
+    "compatibility_claim": {
+      "const": "none_without_full_external_compatibility_evidence"
+    },
+    "android_boot_claim": {
+      "const": "blocked_until_all_required_evidence_passes"
+    },
     "required_for_android_boot_claim": {
       "type": "array",
       "minItems": 6,
@@ -46,7 +52,13 @@
       "minItems": 6,
       "items": {
         "type": "object",
-        "required": ["path", "claim", "capture_command", "validation_command", "external_artifacts"],
+        "required": [
+          "path",
+          "claim",
+          "capture_command",
+          "validation_command",
+          "external_artifacts"
+        ],
         "additionalProperties": false,
         "properties": {
           "path": {

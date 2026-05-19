@@ -12,8 +12,9 @@ const MIGRATIONS_DIR =
   [
     path.join(process.cwd(), "packages/cloud-shared/src/db/migrations"),
     path.join(process.cwd(), "src/db/migrations"),
-  ].find((candidate) => existsSync(path.join(candidate, "meta/_journal.json"))) ??
-  path.join(process.cwd(), "packages/cloud-shared/src/db/migrations");
+  ].find((candidate) =>
+    existsSync(path.join(candidate, "meta/_journal.json")),
+  ) ?? path.join(process.cwd(), "packages/cloud-shared/src/db/migrations");
 const JOURNAL_PATH = path.join(MIGRATIONS_DIR, "meta/_journal.json");
 
 interface JournalEntry {
@@ -76,7 +77,9 @@ async function readMigration(entry: JournalEntry): Promise<Migration> {
   };
 }
 
-function createdAtValue(migration: AppliedMigration | undefined): number | null {
+function createdAtValue(
+  migration: AppliedMigration | undefined,
+): number | null {
   if (!migration?.created_at) return null;
 
   const value = Number(migration.created_at);
@@ -132,10 +135,15 @@ async function getLastAppliedMigration(
   return result.rows[0];
 }
 
-async function applyMigration(client: MigrationClient, migration: Migration): Promise<void> {
+async function applyMigration(
+  client: MigrationClient,
+  migration: Migration,
+): Promise<void> {
   const { entry, statements, hash } = migration;
 
-  console.log(`[db:migrate] applying ${entry.tag} (${statements.length} statements)`);
+  console.log(
+    `[db:migrate] applying ${entry.tag} (${statements.length} statements)`,
+  );
   await client.query("BEGIN");
 
   try {
@@ -208,7 +216,9 @@ async function main(): Promise<void> {
   }
 
   const journal = await readJournal();
-  const migrations = await Promise.all(journal.entries.map((entry) => readMigration(entry)));
+  const migrations = await Promise.all(
+    journal.entries.map((entry) => readMigration(entry)),
+  );
 
   const client: MigrationClient = databaseUrl.startsWith("pglite://")
     ? await createPGliteClient(databaseUrl)
@@ -228,7 +238,9 @@ async function main(): Promise<void> {
     );
 
     const pending = migrations.filter(
-      (migration) => lastAppliedCreatedAt === null || migration.entry.when > lastAppliedCreatedAt,
+      (migration) =>
+        lastAppliedCreatedAt === null ||
+        migration.entry.when > lastAppliedCreatedAt,
     );
     console.log(`[db:migrate] pending migrations: ${pending.length}`);
 

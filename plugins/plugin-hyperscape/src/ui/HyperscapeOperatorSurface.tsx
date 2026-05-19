@@ -16,7 +16,7 @@ import {
   useApp,
 } from "@elizaos/app-core";
 import { Button, Input } from "@elizaos/ui";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 interface HyperscapeActivityEntry {
   id: string;
@@ -180,9 +180,7 @@ export function HyperscapeOperatorSurface({
       setStatusMessage(null);
       try {
         const response = await client.controlAppRun(run.runId, action);
-        setStatusMessage(
-          response.message,
-        );
+        setStatusMessage(response.message);
       } catch (error) {
         setStatusMessage(
           error instanceof Error
@@ -443,7 +441,8 @@ export function HyperscapeTuiView() {
     activeRunCount: matchingRuns.length,
     sessionId: session?.sessionId ?? null,
     canSend,
-    followEntity: session?.followEntity ?? run?.viewer?.authMessage?.followEntity ?? null,
+    followEntity:
+      session?.followEntity ?? run?.viewer?.authMessage?.followEntity ?? null,
     characterId: session?.characterId ?? null,
     recentActivityCount: recentActivity.length,
     suggestedPromptCount: suggestedPrompts.length,
@@ -455,7 +454,11 @@ export function HyperscapeTuiView() {
     setSending(true);
     try {
       const response = await client.sendAppRunMessage(run.runId, trimmed);
-      setActionNotice(response.message, response.success ? "success" : "error", 2600);
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
       setDraft("");
     } catch (error) {
       setActionNotice(
@@ -484,7 +487,10 @@ export function HyperscapeTuiView() {
         <div>follow {viewState.followEntity ?? "none"}</div>
         <div>commands {canSend ? "available" : "unavailable"}</div>
         <div style={tuiSubtleStyle}>suggested prompts</div>
-        {(suggestedPrompts.length ? suggestedPrompts : ["look around", "follow target", "pause"])
+        {(suggestedPrompts.length
+          ? suggestedPrompts
+          : ["look around", "follow target", "pause"]
+        )
           .slice(0, 6)
           .map((prompt) => (
             <button

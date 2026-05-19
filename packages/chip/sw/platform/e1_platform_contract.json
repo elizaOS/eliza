@@ -518,12 +518,7 @@
         "description": "Small debug-visible SRAM-backed DRAM aperture used by top-level DMA integration tests."
       }
     ],
-    "interrupts": [
-      "IRQ_TIMER",
-      "IRQ_DMA",
-      "IRQ_NPU",
-      "IRQ_VSYNC"
-    ]
+    "interrupts": ["IRQ_TIMER", "IRQ_DMA", "IRQ_NPU", "IRQ_VSYNC"]
   },
   "qemu_virt": {
     "target_kind": "software_reference_only",

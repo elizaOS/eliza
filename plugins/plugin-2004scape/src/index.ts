@@ -16,7 +16,8 @@ const rawRs2004scapePlugin: Plugin = {
     {
       id: "2004scape",
       label: "2004scape",
-      description: "2004scape game operator surface — agent controls and session management",
+      description:
+        "2004scape game operator surface — agent controls and session management",
       icon: "Gamepad2",
       path: "/2004scape",
       bundlePath: "dist/views/bundle.js",
@@ -40,7 +41,9 @@ const rawRs2004scapePlugin: Plugin = {
     },
   ],
   async dispose(runtime: IAgentRuntime) {
-    const svc = runtime.getService<RsSdkGameService>(RsSdkGameService.serviceType);
+    const svc = runtime.getService<RsSdkGameService>(
+      RsSdkGameService.serviceType,
+    );
     await svc?.stop();
   },
 };

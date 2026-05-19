@@ -25,7 +25,8 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
       {
         id: "defense-of-the-agents",
         label: "Defense of the Agents",
-        description: "Defense of the Agents spectator and operator surface — strategy and telemetry",
+        description:
+          "Defense of the Agents spectator and operator surface — strategy and telemetry",
         icon: "Gamepad2",
         path: "/defense-of-the-agents",
         bundlePath: "dist/views/bundle.js",

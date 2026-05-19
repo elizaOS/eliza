@@ -124,8 +124,10 @@ function mockFetch() {
       if (url === "/api/shopify/products" && init?.method === "POST") {
         return jsonResponse({ product: sampleProducts.products[0] });
       }
-      if (url.startsWith("/api/shopify/orders")) return jsonResponse(sampleOrders);
-      if (url === "/api/shopify/inventory") return jsonResponse(sampleInventory);
+      if (url.startsWith("/api/shopify/orders"))
+        return jsonResponse(sampleOrders);
+      if (url === "/api/shopify/inventory")
+        return jsonResponse(sampleInventory);
       if (url.includes("/api/shopify/inventory/") && init?.method === "POST") {
         return jsonResponse({ adjusted: true });
       }
@@ -150,7 +152,9 @@ describe("ShopifyTuiView", () => {
     const { container } = render(React.createElement(ShopifyTuiView));
 
     await screen.findByText("Milady Store");
-    expect(screen.getByText("Terminal Hoodie / Black / M @ Main: 3")).toBeTruthy();
+    expect(
+      screen.getByText("Terminal Hoodie / Black / M @ Main: 3"),
+    ).toBeTruthy();
     expect(fetch).toHaveBeenCalledWith("/api/shopify/status");
 
     const stateElement = container.querySelector("[data-view-state]");
@@ -195,10 +199,12 @@ describe("ShopifyTuiView", () => {
       orders: sampleOrders,
     });
 
-    await expect(interact("terminal-shopify-inventory")).resolves.toMatchObject({
-      viewType: "tui",
-      inventory: sampleInventory,
-    });
+    await expect(interact("terminal-shopify-inventory")).resolves.toMatchObject(
+      {
+        viewType: "tui",
+        inventory: sampleInventory,
+      },
+    );
 
     await expect(
       interact("terminal-shopify-customers", { query: "ada", limit: 5 }),

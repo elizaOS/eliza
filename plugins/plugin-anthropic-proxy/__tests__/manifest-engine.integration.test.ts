@@ -13,56 +13,56 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import {
-	evaluatePluginManifest,
-	type PluginManifestCandidate,
+  evaluatePluginManifest,
+  type PluginManifestCandidate,
 } from "../../../packages/shared/src/config/plugin-manifest";
 
 const candidate: PluginManifestCandidate = {
-	packageName: "@elizaos/plugin-anthropic-proxy",
-	packageRoot: path.resolve(__dirname, ".."),
+  packageName: "@elizaos/plugin-anthropic-proxy",
+  packageRoot: path.resolve(__dirname, ".."),
 };
 
 function ctxFromEnv(env: Record<string, string | undefined>) {
-	return { env, config: {}, isNativePlatform: false };
+  return { env, config: {}, isNativePlatform: false };
 }
 
 describe("manifest engine integration: plugin-anthropic-proxy", () => {
-	it("reads the manifest and reports enabled=true for CLAUDE_MAX_PROXY_MODE=inline", async () => {
-		const verdict = await evaluatePluginManifest(
-			candidate,
-			ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "inline" }),
-		);
-		expect(verdict).not.toBeNull();
-		expect(verdict?.enabled).toBe(true);
-		expect(verdict?.error).toBeNull();
-	});
+  it("reads the manifest and reports enabled=true for CLAUDE_MAX_PROXY_MODE=inline", async () => {
+    const verdict = await evaluatePluginManifest(
+      candidate,
+      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "inline" }),
+    );
+    expect(verdict).not.toBeNull();
+    expect(verdict?.enabled).toBe(true);
+    expect(verdict?.error).toBeNull();
+  });
 
-	it("reads the manifest and reports enabled=true for CLAUDE_MAX_PROXY_MODE=shared", async () => {
-		const verdict = await evaluatePluginManifest(
-			candidate,
-			ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "shared" }),
-		);
-		expect(verdict?.enabled).toBe(true);
-	});
+  it("reads the manifest and reports enabled=true for CLAUDE_MAX_PROXY_MODE=shared", async () => {
+    const verdict = await evaluatePluginManifest(
+      candidate,
+      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "shared" }),
+    );
+    expect(verdict?.enabled).toBe(true);
+  });
 
-	it("reads the manifest and reports enabled=false for CLAUDE_MAX_PROXY_MODE=off", async () => {
-		const verdict = await evaluatePluginManifest(
-			candidate,
-			ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "off" }),
-		);
-		expect(verdict?.enabled).toBe(false);
-		expect(verdict?.error).toBeNull();
-	});
+  it("reads the manifest and reports enabled=false for CLAUDE_MAX_PROXY_MODE=off", async () => {
+    const verdict = await evaluatePluginManifest(
+      candidate,
+      ctxFromEnv({ CLAUDE_MAX_PROXY_MODE: "off" }),
+    );
+    expect(verdict?.enabled).toBe(false);
+    expect(verdict?.error).toBeNull();
+  });
 
-	it("reads the manifest and reports enabled=false when CLAUDE_MAX_PROXY_MODE is unset", async () => {
-		const verdict = await evaluatePluginManifest(candidate, ctxFromEnv({}));
-		expect(verdict?.enabled).toBe(false);
-	});
+  it("reads the manifest and reports enabled=false when CLAUDE_MAX_PROXY_MODE is unset", async () => {
+    const verdict = await evaluatePluginManifest(candidate, ctxFromEnv({}));
+    expect(verdict?.enabled).toBe(false);
+  });
 
-	it("the manifest engine sees our package.json elizaos.plugin block (not null)", async () => {
-		// If the manifest were missing or malformed, evaluate would return null.
-		const verdict = await evaluatePluginManifest(candidate, ctxFromEnv({}));
-		expect(verdict).not.toBeNull();
-		expect(verdict?.error).toBeNull();
-	});
+  it("the manifest engine sees our package.json elizaos.plugin block (not null)", async () => {
+    // If the manifest were missing or malformed, evaluate would return null.
+    const verdict = await evaluatePluginManifest(candidate, ctxFromEnv({}));
+    expect(verdict).not.toBeNull();
+    expect(verdict?.error).toBeNull();
+  });
 });

@@ -16,19 +16,19 @@
 
 import type { IAgentRuntime } from "@elizaos/core";
 import { ComputerUseService } from "../services/computer-use-service.js";
-import {
-  type ComputerUseMode,
-  type SandboxBackendName,
-  type SandboxBackendOptions,
-  type SandboxConfig,
+import type {
+  ComputerUseMode,
+  SandboxBackendName,
+  SandboxBackendOptions,
+  SandboxConfig,
 } from "../types.js";
 import { DockerBackend, type DockerBackendOptions } from "./docker-backend.js";
 import { QemuBackend } from "./qemu-backend.js";
 import { SandboxDriver } from "./sandbox-driver.js";
 import {
-  SandboxBackendUnavailableError,
   type Driver,
   type SandboxBackend,
+  SandboxBackendUnavailableError,
 } from "./types.js";
 
 export interface CreateSandboxDriverOptions {
@@ -114,26 +114,16 @@ export function getCurrentDriver(runtime: IAgentRuntime): Driver | null {
 }
 
 /** Resolve the `ComputerUseMode` from raw env input. Exported for testing. */
-export function resolveModeFromEnv(
-  raw: string | undefined,
-): ComputerUseMode {
+export function resolveModeFromEnv(raw: string | undefined): ComputerUseMode {
   if (raw === "sandbox") return "sandbox";
   return "yolo";
 }
 
-export { DockerBackend } from "./docker-backend.js";
 export type { DockerBackendOptions } from "./docker-backend.js";
-export { QemuBackend } from "./qemu-backend.js";
+export { DockerBackend } from "./docker-backend.js";
 export type { QemuBackendOptions } from "./qemu-backend.js";
+export { QemuBackend } from "./qemu-backend.js";
 export { SandboxDriver } from "./sandbox-driver.js";
-export {
-  SandboxBackendUnavailableError,
-  SandboxInvocationError,
-  type Driver,
-  type SandboxBackend,
-  type SandboxOp,
-  type ScrollDirection,
-} from "./types.js";
 export type {
   FileActionResult,
   ProcessInfoLite,
@@ -141,4 +131,12 @@ export type {
   TerminalActionResult,
   WindowInfo,
 } from "./surface-types.js";
+export {
+  type Driver,
+  type SandboxBackend,
+  SandboxBackendUnavailableError,
+  SandboxInvocationError,
+  type SandboxOp,
+  type ScrollDirection,
+} from "./types.js";
 export type { SandboxConfig };

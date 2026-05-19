@@ -275,8 +275,9 @@ async function postPolymarketCommand(
 }
 
 export function PolymarketTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadPolymarketTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadPolymarketTuiState>
+  > | null>(null);
   const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(
     null,
   );
@@ -290,7 +291,9 @@ export function PolymarketTuiView() {
     try {
       const next = await loadPolymarketTuiState();
       setState(next);
-      setSelectedMarket((current) => current ?? next.markets.markets[0] ?? null);
+      setSelectedMarket(
+        (current) => current ?? next.markets.markets[0] ?? null,
+      );
       setLastAction("refresh");
     } catch (caught) {
       setState(null);
@@ -337,8 +340,12 @@ export function PolymarketTuiView() {
         elizaos://polymarket --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.status.publicReads.ready ? "read-ready" : "read-blocked"} |{" "}
-        {state?.markets.markets.length ?? 0} markets | trading{" "}
+        {loading
+          ? "loading"
+          : state?.status.publicReads.ready
+            ? "read-ready"
+            : "read-blocked"}{" "}
+        | {state?.markets.markets.length ?? 0} markets | trading{" "}
         {state?.status.trading.ready ? "ready" : "disabled"} | {lastAction}
       </div>
 
@@ -444,7 +451,9 @@ export function PolymarketTuiView() {
                 {selectedMarket.question ?? selectedMarket.slug}
               </div>
               <div style={{ color: "#94a3b8", marginBottom: 12 }}>
-                {selectedMarket.description ?? selectedMarket.category ?? "No description"}
+                {selectedMarket.description ??
+                  selectedMarket.category ??
+                  "No description"}
               </div>
               <div style={{ color: "#a7f3d0", marginBottom: 8 }}>outcomes</div>
               {selectedMarket.outcomes.map((outcome) => (
@@ -458,7 +467,9 @@ export function PolymarketTuiView() {
                   }}
                 >
                   <span>{outcome.name}</span>
-                  <span style={{ color: "#94a3b8" }}>{outcome.price ?? "n/a"}</span>
+                  <span style={{ color: "#94a3b8" }}>
+                    {outcome.price ?? "n/a"}
+                  </span>
                 </div>
               ))}
               <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>

@@ -156,8 +156,12 @@ describe("PolymarketTuiView", () => {
     const { container } = render(React.createElement(PolymarketTuiView));
 
     await screen.findAllByText("Will BTC be above 100k?");
-    expect(screen.getByText("Trading and order management are disabled.")).toBeTruthy();
-    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledWith({ limit: 25 });
+    expect(
+      screen.getByText("Trading and order management are disabled."),
+    ).toBeTruthy();
+    expect(polymarketClient.polymarketMarkets).toHaveBeenCalledWith({
+      limit: 25,
+    });
     expect(polymarketClient.polymarketOrders).toHaveBeenCalled();
 
     const stateElement = container.querySelector("[data-view-state]");

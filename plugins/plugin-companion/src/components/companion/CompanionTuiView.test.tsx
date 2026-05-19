@@ -64,7 +64,8 @@ vi.mock("./EmotePicker", () => ({
 }));
 
 vi.mock("./InferenceCloudAlertButton", () => ({
-  InferenceCloudAlertButton: () => React.createElement("button"),
+  InferenceCloudAlertButton: () =>
+    React.createElement("button", { type: "button" }),
 }));
 
 import { CompanionTuiView, interact } from "./CompanionView";
@@ -106,10 +107,7 @@ describe("CompanionTuiView", () => {
     render(React.createElement(CompanionTuiView));
 
     fireEvent.click(screen.getByText("toggle voice"));
-    expect(appState.setState).toHaveBeenCalledWith(
-      "chatAgentVoiceMuted",
-      true,
-    );
+    expect(appState.setState).toHaveBeenCalledWith("chatAgentVoiceMuted", true);
 
     fireEvent.click(screen.getByText("new chat"));
     expect(appState.handleNewConversation).toHaveBeenCalled();
@@ -149,9 +147,10 @@ describe("CompanionTuiView", () => {
       expect.objectContaining({ emoteId: "wave", showOverlay: true }),
     );
 
-    await expect(
-      interact("terminal-companion-stop-emote"),
-    ).resolves.toEqual({ viewType: "tui", stopped: true });
+    await expect(interact("terminal-companion-stop-emote")).resolves.toEqual({
+      viewType: "tui",
+      stopped: true,
+    });
     expect(eventDispatchers.dispatchAppEvent).toHaveBeenCalledWith(
       "eliza:stop-emote",
     );

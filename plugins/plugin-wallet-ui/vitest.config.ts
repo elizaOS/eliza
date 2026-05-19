@@ -8,7 +8,10 @@ export default defineConfig({
   resolve: {
     alias: {
       react: resolve(rootDir, "../../node_modules/react"),
-      "react/jsx-runtime": resolve(rootDir, "../../node_modules/react/jsx-runtime.js"),
+      "react/jsx-runtime": resolve(
+        rootDir,
+        "../../node_modules/react/jsx-runtime.js",
+      ),
       "react-dom": resolve(rootDir, "../../node_modules/react-dom"),
     },
   },

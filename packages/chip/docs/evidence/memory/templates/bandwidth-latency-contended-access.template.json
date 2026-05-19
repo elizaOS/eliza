@@ -56,14 +56,7 @@
       "worst_process_corner_p95_random_read_latency_ns": "__REQUIRED_NUMBER__"
     },
     "contention_workload": {
-      "clients": [
-        "CPU",
-        "DMA",
-        "NPU",
-        "display",
-        "camera_or_isp",
-        "GPU_or_2D"
-      ],
+      "clients": ["CPU", "DMA", "NPU", "display", "camera_or_isp", "GPU_or_2D"],
       "duration_seconds": "__REQUIRED_NUMBER__",
       "raw_trace_path": "__REQUIRED_RELATIVE_TRACE_PATH__"
     },

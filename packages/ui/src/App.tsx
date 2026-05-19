@@ -820,6 +820,33 @@ export function App() {
   useSecretsManagerShortcut();
 
   useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (event.key !== "/" || event.ctrlKey || event.metaKey || event.altKey) {
+        return;
+      }
+      const target = event.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target?.isContentEditable
+      ) {
+        return;
+      }
+      const composer = document.querySelector<HTMLTextAreaElement>(
+        '[data-testid="chat-composer-textarea"]',
+      );
+      if (!composer) return;
+      event.preventDefault();
+      composer.focus();
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
+
+  useEffect(() => {
     if (startupCoordinator.phase !== "ready") return;
     if (backendConnection?.state !== "connected") return;
 

@@ -42,7 +42,10 @@ async function seedCreditPacks() {
 
   for (const pack of creditPacks) {
     try {
-      const [result] = await db.insert(creditPacksTable).values(pack).returning();
+      const [result] = await db
+        .insert(creditPacksTable)
+        .values(pack)
+        .returning();
       console.log(`✓ Created: ${pack.name} (${result.id})`);
     } catch (error) {
       console.error(`✗ Failed to create ${pack.name}:`, error);

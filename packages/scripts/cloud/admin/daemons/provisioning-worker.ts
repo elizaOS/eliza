@@ -99,7 +99,9 @@ async function loadDeps(): Promise<WorkerDeps> {
       import("@elizaos/cloud-shared/lib/services/docker-node-manager"),
       import("@elizaos/cloud-shared/lib/services/containers/node-autoscaler"),
       import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool"),
-      import("@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator"),
+      import(
+        "@elizaos/cloud-shared/lib/services/containers/agent-warm-pool-creator"
+      ),
       import("@elizaos/cloud-shared/lib/config/containers-env"),
     ]).then(
       ([
@@ -125,9 +127,8 @@ async function loadDeps(): Promise<WorkerDeps> {
   return depsPromise;
 }
 
-let cachedWarmPoolManagerInstance:
-  | InstanceType<WorkerWarmPoolManager>
-  | null = null;
+let cachedWarmPoolManagerInstance: InstanceType<WorkerWarmPoolManager> | null =
+  null;
 async function getWarmPoolManager(): Promise<
   InstanceType<WorkerWarmPoolManager>
 > {
@@ -174,7 +175,13 @@ interface PrePullImagesSummary {
 }
 
 interface NodeAutoscaleSummary {
-  action: "noop" | "scale_up" | "scale_down" | "scale_up_skipped" | "scale_up_failed" | "drain_failed";
+  action:
+    | "noop"
+    | "scale_up"
+    | "scale_down"
+    | "scale_up_skipped"
+    | "scale_up_failed"
+    | "drain_failed";
   detail?: string;
 }
 
@@ -224,7 +231,8 @@ async function processPrePullImagesCycle(): Promise<PrePullImagesSummary | null>
   if (process.env.ELIZA_AGENT_HOT_POOL_PREPULL === "false") return null;
   const { dockerNodeManager, containersEnv } = await loadDeps();
   const image = containersEnv.defaultAgentImage();
-  const result = await dockerNodeManager.prePullAgentImageOnAvailableNodes(image);
+  const result =
+    await dockerNodeManager.prePullAgentImageOnAvailableNodes(image);
   const failed = result.filter((n) => n.status === "failed").length;
   return { attempted: result.length, failed };
 }

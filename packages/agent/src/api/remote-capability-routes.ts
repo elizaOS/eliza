@@ -6,19 +6,19 @@ import type {
   RouteRequestMeta,
 } from "@elizaos/core";
 import {
-  connectCloudCapabilitySandbox,
-  installRemoteCapabilityEndpoint,
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
+  connectCloudCapabilitySandbox,
+  installRemoteCapabilityEndpoint,
 } from "../services/remote-capability-cloud-sandbox.ts";
-import {
-  syncRemoteCapabilityPlugins,
-  type RemotePluginSyncResult,
-} from "../services/remote-plugin-adapter.ts";
 import type {
   RemoteCapabilityEndpointConfig,
   RemoteCapabilityRouterConfig,
 } from "../services/remote-capability-router.ts";
+import {
+  type RemotePluginSyncResult,
+  syncRemoteCapabilityPlugins,
+} from "../services/remote-plugin-adapter.ts";
 
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,

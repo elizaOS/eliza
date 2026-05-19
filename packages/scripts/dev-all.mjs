@@ -1,6 +1,5 @@
 #!/usr/bin/env node
-import { spawn } from "node:child_process";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import net from "node:net";
 import process from "node:process";
@@ -14,8 +13,7 @@ const skipPrepare =
 const skipCloudDb =
   args.has("--no-cloud-db") || process.env.DEV_ALL_SKIP_CLOUD_DB === "1";
 const enableTestAuth =
-  args.has("--test-auth") ||
-  process.env.DEV_ALL_ENABLE_TEST_AUTH !== "0";
+  args.has("--test-auth") || process.env.DEV_ALL_ENABLE_TEST_AUTH !== "0";
 
 const repoRoot = process.cwd();
 const bunBin =
@@ -350,11 +348,9 @@ async function waitForPort(label, host, port) {
 
 function describePortOwner(port) {
   try {
-    return execFileSync(
-      "lsof",
-      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"],
-      { encoding: "utf8" },
-    ).trim();
+    return execFileSync("lsof", ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN"], {
+      encoding: "utf8",
+    }).trim();
   } catch {
     return "";
   }
@@ -471,13 +467,13 @@ async function main() {
   await assertPortsAvailable();
   const children = [];
 
-  const cloudDbService = services.find((service) => service.name === "cloud-db");
+  const cloudDbService = services.find(
+    (service) => service.name === "cloud-db",
+  );
   if (cloudDbService) {
     const cloudDb = startService(cloudDbService);
     if (cloudDb) children.push(cloudDb);
-    console.log(
-      `[dev:all] waiting for cloud DB on 127.0.0.1:${ports.cloudDb}`,
-    );
+    console.log(`[dev:all] waiting for cloud DB on 127.0.0.1:${ports.cloudDb}`);
     await waitForPort("cloud DB", "127.0.0.1", ports.cloudDb);
   }
 

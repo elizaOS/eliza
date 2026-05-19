@@ -15,11 +15,11 @@ import {
 } from "@elizaos/app-core";
 import {
   type ButtonHTMLAttributes,
+  type CSSProperties,
   type InputHTMLAttributes,
   useCallback,
   useMemo,
   useState,
-  type CSSProperties,
 } from "react";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -111,7 +111,11 @@ export function TwoThousandFourScapeTuiView() {
       const response = await postAppRunCommand(run.runId, "message", {
         content: trimmed,
       });
-      setActionNotice(response.message, response.success ? "success" : "error", 2600);
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
       setDraft("");
     } catch (error) {
       setActionNotice(
@@ -137,7 +141,9 @@ export function TwoThousandFourScapeTuiView() {
         <strong style={tuiTitleStyle}>2004scape</strong>
         <div>run {run?.runId ?? "none"}</div>
         <div>session {session?.sessionId ?? "none"}</div>
-        <div>commands {session?.canSendCommands ? "available" : "unavailable"}</div>
+        <div>
+          commands {session?.canSendCommands ? "available" : "unavailable"}
+        </div>
         <div>nearby targets {nearbyTargets.length}</div>
         <div style={tuiSubtleStyle}>suggested prompts</div>
         {(suggestedPrompts.length

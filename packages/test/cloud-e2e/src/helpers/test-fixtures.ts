@@ -5,14 +5,11 @@
  * playwright-test-session cookie before the page navigates.
  */
 
-import { test as base, expect, type Page } from "@playwright/test";
-import {
-  startCloudStack,
-  type StackHandle,
-} from "../fixtures/stack";
-import { seedTestUser, type SeededUser } from "../fixtures/seed";
-import { PLAYWRIGHT_TEST_AUTH_SECRET } from "../fixtures/env";
 import crypto from "node:crypto";
+import { test as base, expect, type Page } from "@playwright/test";
+import { PLAYWRIGHT_TEST_AUTH_SECRET } from "../fixtures/env";
+import { type SeededUser, seedTestUser } from "../fixtures/seed";
+import { type StackHandle, startCloudStack } from "../fixtures/stack";
 
 function buildPlaywrightSessionToken(
   userId: string,

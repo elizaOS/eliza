@@ -42,7 +42,12 @@ export function scheduleActionSuccess(
     onComplete?.();
   }, ms);
   // Allow process exit even if timers are pending.
-  if (typeof timer === "object" && timer && "unref" in timer && typeof timer.unref === "function") {
+  if (
+    typeof timer === "object" &&
+    timer &&
+    "unref" in timer &&
+    typeof timer.unref === "function"
+  ) {
     timer.unref();
   }
 }

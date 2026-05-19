@@ -209,7 +209,12 @@ export class ControlPlaneStore {
   updateContainer(id: string, patch: Partial<Container>): Container {
     const existing = this.containers.get(id);
     if (!existing) throw new Error(`container '${id}' not found`);
-    const next: Container = { ...existing, ...patch, id, updatedAt: this.now() };
+    const next: Container = {
+      ...existing,
+      ...patch,
+      id,
+      updatedAt: this.now(),
+    };
     this.containers.set(id, next);
     return next;
   }
@@ -341,7 +346,8 @@ export class ControlPlaneStore {
   /** Sandboxes still in `provisioning` whose `createdAt` is older than the cutoff. */
   stuckProvisioningSandboxes(cutoff: Date): Sandbox[] {
     return [...this.sandboxes.values()].filter(
-      (s) => s.status === "provisioning" && s.createdAt.getTime() < cutoff.getTime(),
+      (s) =>
+        s.status === "provisioning" && s.createdAt.getTime() < cutoff.getTime(),
     );
   }
 

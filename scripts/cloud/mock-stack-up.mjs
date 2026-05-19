@@ -9,7 +9,13 @@
  */
 
 import { spawn } from "node:child_process";
-import { existsSync, mkdirSync, createWriteStream, rmSync, writeSync } from "node:fs";
+import {
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  rmSync,
+  writeSync,
+} from "node:fs";
 import net from "node:net";
 import path from "node:path";
 import process from "node:process";
@@ -52,17 +58,37 @@ function parseFlags(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     switch (a) {
-      case "--no-frontend": flags.noFrontend = true; break;
-      case "--no-cp": flags.noCp = true; break;
-      case "--no-hetzner": flags.noHetzner = true; break;
-      case "--no-migrations": flags.noMigrations = true; break;
-      case "--reset": flags.reset = true; break;
+      case "--no-frontend":
+        flags.noFrontend = true;
+        break;
+      case "--no-cp":
+        flags.noCp = true;
+        break;
+      case "--no-hetzner":
+        flags.noHetzner = true;
+        break;
+      case "--no-migrations":
+        flags.noMigrations = true;
+        break;
+      case "--reset":
+        flags.reset = true;
+        break;
       case "--help":
-      case "-h": flags.help = true; break;
-      case "--port-frontend": flags.portFrontend = Number.parseInt(argv[++i], 10); break;
-      case "--port-api": flags.portApi = Number.parseInt(argv[++i], 10); break;
-      case "--port-cp": flags.portCp = Number.parseInt(argv[++i], 10); break;
-      case "--port-hetzner": flags.portHetzner = Number.parseInt(argv[++i], 10); break;
+      case "-h":
+        flags.help = true;
+        break;
+      case "--port-frontend":
+        flags.portFrontend = Number.parseInt(argv[++i], 10);
+        break;
+      case "--port-api":
+        flags.portApi = Number.parseInt(argv[++i], 10);
+        break;
+      case "--port-cp":
+        flags.portCp = Number.parseInt(argv[++i], 10);
+        break;
+      case "--port-hetzner":
+        flags.portHetzner = Number.parseInt(argv[++i], 10);
+        break;
       default:
         return { error: `Unknown flag: ${a}` };
     }
@@ -106,7 +132,9 @@ async function waitForHttp(url, { timeoutMs = 60_000, intervalMs = 500 } = {}) {
     }
     await new Promise((r) => setTimeout(r, intervalMs));
   }
-  throw new Error(`Timeout waiting for ${url}: ${lastErr?.message ?? "no response"}`);
+  throw new Error(
+    `Timeout waiting for ${url}: ${lastErr?.message ?? "no response"}`,
+  );
 }
 
 const services = [];
@@ -143,13 +171,17 @@ async function shutdown(code = 0) {
   process.stdout.write(`${color("gray", "[stack]")} shutting down...\n`);
   for (const svc of [...services].reverse()) {
     if (svc.proc.exitCode === null && svc.proc.signalCode === null) {
-      try { svc.proc.kill("SIGTERM"); } catch {}
+      try {
+        svc.proc.kill("SIGTERM");
+      } catch {}
     }
   }
   const grace = setTimeout(() => {
     for (const svc of services) {
       if (svc.proc.exitCode === null && svc.proc.signalCode === null) {
-        try { svc.proc.kill("SIGKILL"); } catch {}
+        try {
+          svc.proc.kill("SIGKILL");
+        } catch {}
       }
     }
   }, 5_000);
@@ -157,7 +189,8 @@ async function shutdown(code = 0) {
     services.map(
       (svc) =>
         new Promise((resolve) => {
-          if (svc.proc.exitCode !== null || svc.proc.signalCode !== null) return resolve();
+          if (svc.proc.exitCode !== null || svc.proc.signalCode !== null)
+            return resolve();
           svc.proc.once("exit", () => resolve());
         }),
     ),
@@ -188,27 +221,42 @@ async function main() {
 
   mkdirSync(LOG_DIR, { recursive: true });
   if (flags.reset && existsSync(PGDATA_DIR)) {
-    process.stdout.write(`${color("gray", "[stack]")} --reset: wiping ${PGDATA_DIR}\n`);
+    process.stdout.write(
+      `${color("gray", "[stack]")} --reset: wiping ${PGDATA_DIR}\n`,
+    );
     rmSync(PGDATA_DIR, { recursive: true, force: true });
   }
   mkdirSync(PGDATA_DIR, { recursive: true });
 
-  const pickIfFalsy = async (v) => (v && Number.isFinite(v) ? v : await pickPort());
-  const hetznerPort = await pickIfFalsy(flags.portHetzner ?? Number(process.env.HETZNER_PORT));
+  const pickIfFalsy = async (v) =>
+    v && Number.isFinite(v) ? v : await pickPort();
+  const hetznerPort = await pickIfFalsy(
+    flags.portHetzner ?? Number(process.env.HETZNER_PORT),
+  );
   const cpPort = await pickIfFalsy(flags.portCp ?? Number(process.env.CP_PORT));
-  const apiPort = await pickIfFalsy(flags.portApi ?? Number(process.env.API_PORT));
-  const frontendPort = await pickIfFalsy(flags.portFrontend ?? Number(process.env.FRONTEND_PORT));
+  const apiPort = await pickIfFalsy(
+    flags.portApi ?? Number(process.env.API_PORT),
+  );
+  const frontendPort = await pickIfFalsy(
+    flags.portFrontend ?? Number(process.env.FRONTEND_PORT),
+  );
 
   process.on("SIGINT", () => void shutdown(0));
   process.on("SIGTERM", () => void shutdown(0));
 
   if (!flags.noMigrations) {
-    process.stdout.write(`${color("gray", "[stack]")} running cloud-shared db:migrate...\n`);
-    const migrate = spawn("bun", ["run", "--cwd", "packages/cloud-shared", "db:migrate"], {
-      cwd: REPO_ROOT,
-      env: { ...process.env, DATABASE_URL: `pglite://${PGDATA_DIR}` },
-      stdio: "inherit",
-    });
+    process.stdout.write(
+      `${color("gray", "[stack]")} running cloud-shared db:migrate...\n`,
+    );
+    const migrate = spawn(
+      "bun",
+      ["run", "--cwd", "packages/cloud-shared", "db:migrate"],
+      {
+        cwd: REPO_ROOT,
+        env: { ...process.env, DATABASE_URL: `pglite://${PGDATA_DIR}` },
+        stdio: "inherit",
+      },
+    );
     const code = await new Promise((res) => migrate.on("exit", (c) => res(c)));
     if (code !== 0) {
       process.stderr.write(`migrations failed (exit ${code})\n`);
@@ -236,23 +284,43 @@ async function main() {
     if (!flags.noHetzner) {
       const proc = spawn(
         "bun",
-        ["run", "packages/test/cloud-mocks/bin/hetzner-mock.ts", "--port", String(hetznerPort)],
+        [
+          "run",
+          "packages/test/cloud-mocks/bin/hetzner-mock.ts",
+          "--port",
+          String(hetznerPort),
+        ],
         { cwd: REPO_ROOT, env: baseEnv },
       );
       streamProcess("hetzner", "cyan", proc);
-      try { await waitForHttp(`${tHetzner}/`, { timeoutMs: 30_000 }); }
-      catch (e) { dumpTail("hetzner"); throw new Error(`hetzner mock failed to start: ${e.message}`); }
+      try {
+        await waitForHttp(`${tHetzner}/`, { timeoutMs: 30_000 });
+      } catch (e) {
+        dumpTail("hetzner");
+        throw new Error(`hetzner mock failed to start: ${e.message}`);
+      }
     }
 
     if (!flags.noCp) {
       const proc = spawn(
         "bun",
         ["run", "packages/test/cloud-mocks/bin/control-plane-mock.ts"],
-        { cwd: REPO_ROOT, env: { ...baseEnv, PORT: String(cpPort), HCLOUD_API_BASE_URL: `${tHetzner}/v1` } },
+        {
+          cwd: REPO_ROOT,
+          env: {
+            ...baseEnv,
+            PORT: String(cpPort),
+            HCLOUD_API_BASE_URL: `${tHetzner}/v1`,
+          },
+        },
       );
       streamProcess("cp", "magenta", proc);
-      try { await waitForHttp(`${tCp}/`, { timeoutMs: 30_000 }); }
-      catch (e) { dumpTail("cp"); throw new Error(`control-plane mock failed to start: ${e.message}`); }
+      try {
+        await waitForHttp(`${tCp}/`, { timeoutMs: 30_000 });
+      } catch (e) {
+        dumpTail("cp");
+        throw new Error(`control-plane mock failed to start: ${e.message}`);
+      }
     }
 
     {
@@ -261,19 +329,36 @@ async function main() {
         env: { ...baseEnv, API_DEV_PORT: String(apiPort) },
       });
       streamProcess("api", "yellow", proc);
-      try { await waitForHttp(`${tApi}/`, { timeoutMs: 60_000 }); }
-      catch (e) { dumpTail("api"); throw new Error(`cloud-api failed to start: ${e.message}`); }
+      try {
+        await waitForHttp(`${tApi}/`, { timeoutMs: 60_000 });
+      } catch (e) {
+        dumpTail("api");
+        throw new Error(`cloud-api failed to start: ${e.message}`);
+      }
     }
 
     if (!flags.noFrontend) {
       const proc = spawn(
         "bun",
-        ["run", "--cwd", "packages/cloud-frontend", "dev", "--", "--port", String(frontendPort), "--strictPort"],
+        [
+          "run",
+          "--cwd",
+          "packages/cloud-frontend",
+          "dev",
+          "--",
+          "--port",
+          String(frontendPort),
+          "--strictPort",
+        ],
         { cwd: REPO_ROOT, env: { ...baseEnv, VITE_API_URL: tApi } },
       );
       streamProcess("fe", "green", proc);
-      try { await waitForHttp(`${tFrontend}/`, { timeoutMs: 60_000 }); }
-      catch (e) { dumpTail("fe"); throw new Error(`cloud-frontend failed to start: ${e.message}`); }
+      try {
+        await waitForHttp(`${tFrontend}/`, { timeoutMs: 60_000 });
+      } catch (e) {
+        dumpTail("fe");
+        throw new Error(`cloud-frontend failed to start: ${e.message}`);
+      }
     }
   } catch (e) {
     process.stderr.write(`\n${color("red", "[stack]")} ${e.message}\n`);

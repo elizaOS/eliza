@@ -31,12 +31,7 @@ import path from "node:path";
 
 import { expandHome } from "./local-llama-cpp.ts";
 
-export const ELIZA_ONE_MODEL_SIZES = [
-  "0.8b",
-  "2b",
-  "9b",
-  "27b",
-] as const;
+export const ELIZA_ONE_MODEL_SIZES = ["0.8b", "2b", "9b", "27b"] as const;
 export type ElizaOneModelSize = (typeof ELIZA_ONE_MODEL_SIZES)[number];
 
 export const ELIZA_ONE_RELEASE_STATES = [

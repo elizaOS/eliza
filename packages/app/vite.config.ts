@@ -1158,6 +1158,13 @@ export default defineConfig({
         find: /^@elizaos\/ui\/(.+)$/,
         replacement: path.join(uiPkgRoot, "src/$1"),
       },
+      {
+        find: /^@elizaos\/shared\/brand$/,
+        replacement: path.resolve(
+          elizaRoot,
+          "packages/shared/src/brand/index.ts",
+        ),
+      },
       // The LifeOps package root also exports server/service internals.
       // The renderer only needs the UI facade; keep it off Discord/native deps.
       {
@@ -1198,15 +1205,16 @@ export default defineConfig({
         const sharedPkg = JSON.parse(fs.readFileSync(sharedPkgPath, "utf8"));
         const aliases = [];
         for (const [key, value] of Object.entries(sharedPkg.exports || {})) {
-          if (key !== ".") continue;
+          if (!key.startsWith(".") || key.includes("*")) continue;
           const exportTarget = resolveSharedSourceExportTarget(
             sharedPkgDir,
             key,
             value,
           );
           if (!exportTarget) continue;
+          const subpath = key === "." ? "" : key.slice(1);
           aliases.push({
-            find: new RegExp(`^${escapeRegExp("@elizaos/shared")}$`),
+            find: new RegExp(`^${escapeRegExp(`@elizaos/shared${subpath}`)}$`),
             replacement: exportTarget,
           });
         }

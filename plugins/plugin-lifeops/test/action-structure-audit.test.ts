@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { appLifeOpsPlugin } from "../src/plugin.js";
 import { isDarwin } from "../src/platform/host.js";
+import { appLifeOpsPlugin } from "../src/plugin.js";
 
 // OWNER_SCREENTIME is only registered on darwin because the native activity
 // tracker is macOS-only. See `platformGatedActionUmbrellas` in src/plugin.ts

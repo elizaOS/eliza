@@ -7,7 +7,7 @@ import {
   GameOperatorShell,
   useApp,
 } from "@elizaos/app-core";
-import { useCallback, useMemo, useState, type CSSProperties } from "react";
+import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;
 
@@ -354,8 +354,9 @@ export function DefenseAgentsTuiView() {
           (candidate) =>
             candidate.appName === "@elizaos/plugin-defense-of-the-agents",
         )
-        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
-      null,
+        .sort((left, right) =>
+          right.updatedAt.localeCompare(left.updatedAt),
+        )[0] ?? null,
     [appRuns],
   );
   const [draft, setDraft] = useState("");
@@ -395,7 +396,11 @@ export function DefenseAgentsTuiView() {
       if (response.run) {
         setState("appRuns", replaceRun(appRuns, response.run));
       }
-      setActionNotice(response.message, response.success ? "success" : "error", 2600);
+      setActionNotice(
+        response.message,
+        response.success ? "success" : "error",
+        2600,
+      );
       setDraft("");
     } catch (error) {
       setActionNotice(
@@ -414,7 +419,8 @@ export function DefenseAgentsTuiView() {
         elizaos://defense-of-the-agents --type=tui
       </div>
       <div style={tuiMetaStyle}>
-        {run?.status ?? "idle"} | {heroLine} | autoplay {autoPlay ? "on" : "off"}
+        {run?.status ?? "idle"} | {heroLine} | autoplay{" "}
+        {autoPlay ? "on" : "off"}
       </div>
       <section style={tuiPanelStyle} aria-label="Defense of the Agents state">
         <strong style={tuiTitleStyle}>Defense of the Agents</strong>
@@ -515,7 +521,13 @@ export async function interact(
       viewType: "tui",
       appName: "@elizaos/plugin-defense-of-the-agents",
       lanes: [...LANES],
-      primaryCommands: ["review strategy", "move to top", "move to mid", "move to bot", "recall"],
+      primaryCommands: [
+        "review strategy",
+        "move to top",
+        "move to mid",
+        "move to bot",
+        "recall",
+      ],
     };
   }
   if (capability === "terminal-defense-command") {

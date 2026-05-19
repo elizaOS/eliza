@@ -64,38 +64,40 @@ describe("agent terminal tui", () => {
   it("starts in prod-compatible terminal mode and supports keyboard view/chat actions", async () => {
     const terminal = new TestTerminal();
     const calls: Array<{ url: string; init?: RequestInit }> = [];
-    const fetchImpl = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
-      const url = String(input);
-      calls.push({ url, init });
-      if (url.endsWith("/api/views?viewType=tui")) {
-        return response({
-          views: [
-            {
-              id: "messages",
-              label: "Messages TUI",
-              path: "/messages/tui",
-              viewType: "tui",
-            },
-            {
-              id: "wallet",
-              label: "Wallet TUI",
-              path: "/wallet/tui",
-              viewType: "tui",
-            },
-          ],
-        });
-      }
-      if (url.endsWith("/api/views/wallet/navigate?viewType=tui")) {
-        return response({ ok: true });
-      }
-      if (url.endsWith("/api/conversations")) {
-        return response({ conversation: { id: "conv-terminal" } });
-      }
-      if (url.endsWith("/api/conversations/conv-terminal/messages")) {
-        return response({ ok: true });
-      }
-      return new Response("not found", { status: 404 });
-    }) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(
+      async (input: URL | RequestInfo, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, init });
+        if (url.endsWith("/api/views?viewType=tui")) {
+          return response({
+            views: [
+              {
+                id: "messages",
+                label: "Messages TUI",
+                path: "/messages/tui",
+                viewType: "tui",
+              },
+              {
+                id: "wallet",
+                label: "Wallet TUI",
+                path: "/wallet/tui",
+                viewType: "tui",
+              },
+            ],
+          });
+        }
+        if (url.endsWith("/api/views/wallet/navigate?viewType=tui")) {
+          return response({ ok: true });
+        }
+        if (url.endsWith("/api/conversations")) {
+          return response({ conversation: { id: "conv-terminal" } });
+        }
+        if (url.endsWith("/api/conversations/conv-terminal/messages")) {
+          return response({ ok: true });
+        }
+        return new Response("not found", { status: 404 });
+      },
+    ) as unknown as typeof fetch;
 
     const handle = startAgentTerminalTui({
       apiBaseUrl: "http://127.0.0.1:2138",
@@ -115,15 +117,20 @@ describe("agent terminal tui", () => {
     terminal.send("/");
     terminal.send("wal");
     await flushTicks();
-    expect(terminal.text()).toContain("filter: wal");
-    expect(terminal.text()).toContain("2. Wallet TUI");
-    expect(terminal.text()).not.toContain("1. Messages TUI");
+    const searchRender = terminal
+      .text()
+      .slice(terminal.text().lastIndexOf("search views"));
+    expect(searchRender).toContain("filter: wal");
+    expect(searchRender).toContain("2. Wallet TUI");
+    expect(searchRender).not.toContain("1. Messages TUI");
 
     terminal.send("\r");
     await flushTicks();
-    expect(calls.some((call) => call.url.endsWith("/api/views/wallet/navigate?viewType=tui"))).toBe(
-      true,
-    );
+    expect(
+      calls.some((call) =>
+        call.url.endsWith("/api/views/wallet/navigate?viewType=tui"),
+      ),
+    ).toBe(true);
 
     terminal.send("c");
     terminal.send("hello over ssh");

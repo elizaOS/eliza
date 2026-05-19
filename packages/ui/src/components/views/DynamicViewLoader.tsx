@@ -36,6 +36,15 @@ interface ViewBundleModule {
 // component unmounts.
 const bundleModuleCache = new Map<string, Promise<ViewBundleModule>>();
 
+function isReactComponentExport(
+  value: unknown,
+): value is ComponentType<Record<string, unknown>> {
+  return (
+    typeof value === "function" ||
+    (Boolean(value) && typeof value === "object" && "$$typeof" in value)
+  );
+}
+
 type HostExternalImporter = () => Promise<Record<string, unknown>>;
 
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
@@ -153,7 +162,7 @@ function loadBundleModule(
   const promise = importViewBundle(bundleUrl).then(
     (mod: Record<string, unknown>) => {
       const exported = mod[componentExport] ?? mod.default;
-      if (typeof exported !== "function") {
+      if (!isReactComponentExport(exported)) {
         throw new Error(
           `DynamicViewLoader: bundle at ${bundleUrl} did not export a React component as "${componentExport}"`,
         );

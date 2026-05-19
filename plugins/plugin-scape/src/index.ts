@@ -50,7 +50,8 @@ export function createAppScapePlugin(): Plugin {
       {
         id: "scape",
         label: "'scape",
-        description: "RuneScape-alike agent — operator controls and game journal",
+        description:
+          "RuneScape-alike agent — operator controls and game journal",
         icon: "Gamepad2",
         path: "/scape",
         bundlePath: "dist/views/bundle.js",
@@ -74,7 +75,9 @@ export function createAppScapePlugin(): Plugin {
       },
     ],
     async dispose(runtime: IAgentRuntime) {
-      const svc = runtime.getService<ScapeGameService>(ScapeGameService.serviceType);
+      const svc = runtime.getService<ScapeGameService>(
+        ScapeGameService.serviceType,
+      );
       await svc?.stop();
     },
   };

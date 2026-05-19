@@ -57,7 +57,9 @@ function parseArgs(argv: string[]): Args {
       }
       const parsed = Number(next);
       if (!Number.isFinite(parsed) || parsed < 0) {
-        throw new Error(`--tolerance must be a non-negative number, got ${JSON.stringify(next)}`);
+        throw new Error(
+          `--tolerance must be a non-negative number, got ${JSON.stringify(next)}`,
+        );
       }
       args.tolerance = parsed;
       i++;
@@ -134,7 +136,9 @@ async function main(): Promise<number> {
   try {
     await client.connect();
   } catch (err) {
-    console.error(`[reconcile-earnings] failed to connect: ${(err as Error).message}`);
+    console.error(
+      `[reconcile-earnings] failed to connect: ${(err as Error).message}`,
+    );
     return 2;
   }
 
@@ -142,7 +146,9 @@ async function main(): Promise<number> {
   try {
     rows = await fetchDrift(client);
   } catch (err) {
-    console.error(`[reconcile-earnings] query failed: ${(err as Error).message}`);
+    console.error(
+      `[reconcile-earnings] query failed: ${(err as Error).message}`,
+    );
     await client.end();
     return 2;
   }
@@ -164,12 +170,16 @@ async function main(): Promise<number> {
       ),
     );
   } else {
-    console.log(`[reconcile-earnings] Checked ${rows.length} app_earnings rows`);
+    console.log(
+      `[reconcile-earnings] Checked ${rows.length} app_earnings rows`,
+    );
     console.log(`[reconcile-earnings] Tolerance: ${args.tolerance}`);
     if (drifted.length === 0) {
       console.log("[reconcile-earnings] ✓ no drift detected");
     } else {
-      console.log(`[reconcile-earnings] ✗ ${drifted.length} app(s) with drift over tolerance:`);
+      console.log(
+        `[reconcile-earnings] ✗ ${drifted.length} app(s) with drift over tolerance:`,
+      );
       for (const row of drifted) {
         console.log(formatDriftRow(row));
       }

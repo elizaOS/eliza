@@ -10,24 +10,7 @@
       "parsed_pins": 106,
       "loads": 105,
       "drivers": 1,
-      "ports": [
-        [
-          "RESET_B",
-          53
-        ],
-        [
-          "DIODE",
-          50
-        ],
-        [
-          "A",
-          2
-        ],
-        [
-          "X",
-          1
-        ]
-      ],
+      "ports": [["RESET_B", 53], ["DIODE", 50], ["A", 2], ["X", 1]],
       "classification": "reset_distribution",
       "note": "Large routed reset branch. Likely driven by rst_n_sync through OpenROAD-inserted max-cap buffers."
     }

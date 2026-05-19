@@ -11,9 +11,9 @@
  * Implements the OverlayApp Component contract.
  */
 
+import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
-import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import {
   ArrowLeft,
   RefreshCw,
@@ -22,17 +22,17 @@ import {
   Wallet,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { vincentClient } from "./client";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";
-import { vincentClient } from "./client";
+import { VincentConnectionCard } from "./VincentConnectionCard";
 import type {
   VincentStatusResponse,
   VincentStrategyResponse,
   VincentStrategyUpdateRequest,
   VincentTradingProfileResponse,
 } from "./vincent-contracts";
-import { VincentConnectionCard } from "./VincentConnectionCard";
 import { WalletStatusCard } from "./WalletStatusCard";
 
 export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
@@ -227,8 +227,9 @@ async function loadVincentTuiState(): Promise<{
 }
 
 export function VincentTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadVincentTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadVincentTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -242,7 +243,9 @@ export function VincentTuiView() {
       setLastAction("refresh");
     } catch (caught) {
       setState(null);
-      setError(caught instanceof Error ? caught.message : "Vincent refresh failed");
+      setError(
+        caught instanceof Error ? caught.message : "Vincent refresh failed",
+      );
     } finally {
       setLoading(false);
     }
@@ -295,8 +298,13 @@ export function VincentTuiView() {
         elizaos://vincent --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.status.connected ? "connected" : "disconnected"} |{" "}
-        {(state?.status.tradingVenues ?? []).join(",") || "no venues"} | {lastAction}
+        {loading
+          ? "loading"
+          : state?.status.connected
+            ? "connected"
+            : "disconnected"}{" "}
+        | {(state?.status.tradingVenues ?? []).join(",") || "no venues"} |{" "}
+        {lastAction}
       </div>
 
       <div
@@ -387,18 +395,25 @@ export function VincentTuiView() {
           </div>
           <div>
             <span style={{ color: "#64748b" }}>dryRun</span>{" "}
-            {typeof strategy?.dryRun === "boolean" ? String(strategy.dryRun) : "n/a"}
+            {typeof strategy?.dryRun === "boolean"
+              ? String(strategy.dryRun)
+              : "n/a"}
           </div>
           <div>
             <span style={{ color: "#64748b" }}>running</span>{" "}
-            {typeof strategy?.running === "boolean" ? String(strategy.running) : "n/a"}
+            {typeof strategy?.running === "boolean"
+              ? String(strategy.running)
+              : "n/a"}
           </div>
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>profile</div>
           <div>pnl {profile?.totalPnl ?? "n/a"}</div>
           <div>winRate {profile?.winRate ?? "n/a"}</div>
           <div>swaps {profile?.totalSwaps ?? "n/a"}</div>
           {(profile?.tokenBreakdown ?? []).map((token) => (
-            <div key={token.symbol} style={{ color: "#94a3b8", padding: "4px 0" }}>
+            <div
+              key={token.symbol}
+              style={{ color: "#94a3b8", padding: "4px 0" }}
+            >
               {token.symbol} pnl {token.pnl} swaps {token.swaps}
             </div>
           ))}
@@ -435,7 +450,8 @@ export async function interact(
   if (capability === "terminal-vincent-update-strategy") {
     const request: VincentStrategyUpdateRequest = {};
     if (typeof params?.strategy === "string") {
-      request.strategy = params.strategy as VincentStrategyUpdateRequest["strategy"];
+      request.strategy =
+        params.strategy as VincentStrategyUpdateRequest["strategy"];
     }
     if (params?.params && typeof params.params === "object") {
       request.params = params.params as Record<string, unknown>;

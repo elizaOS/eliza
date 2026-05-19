@@ -17,7 +17,10 @@ async function main(): Promise<void> {
     return;
   }
   const client = HetznerCloudClient.withToken(token);
-  const servers = await client.listServers({ ci: "true", workflow: "hetzner-e2e" });
+  const servers = await client.listServers({
+    ci: "true",
+    workflow: "hetzner-e2e",
+  });
   const now = Date.now();
   let deleted = 0;
   for (const server of servers) {
@@ -33,10 +36,14 @@ async function main(): Promise<void> {
       deleted++;
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      console.warn(`[hetzner-e2e-reaper] delete ${server.id} failed: ${message}`);
+      console.warn(
+        `[hetzner-e2e-reaper] delete ${server.id} failed: ${message}`,
+      );
     }
   }
-  console.log(`[hetzner-e2e-reaper] swept ${deleted}/${servers.length} servers`);
+  console.log(
+    `[hetzner-e2e-reaper] swept ${deleted}/${servers.length} servers`,
+  );
 }
 
 await main();

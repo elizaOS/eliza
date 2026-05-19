@@ -406,7 +406,10 @@ function buildMockActions(): Action[] {
       const params = options.parameters as Record<string, unknown>;
       const to = (params?.to as string) ?? "unknown@example.com";
       const subject = (params?.subject as string) ?? "(no subject)";
-      printStage("TOOL", `EMAIL_DRAFT called: to="${to}", subject="${subject}"`);
+      printStage(
+        "TOOL",
+        `EMAIL_DRAFT called: to="${to}", subject="${subject}"`,
+      );
       return {
         success: true,
         text: `Email draft created: to=${to}, subject="${subject}".`,
@@ -633,7 +636,11 @@ async function buildRuntime(
       "Bundled umbrella research workflows that combine web lookup with saving findings as a document. Distinct from raw web search.",
     selectionGuidance:
       "Select when the user explicitly asks for a titled or labeled research artifact (e.g. 'with title X', 'save findings as Y', 'research and store under name Z'). Do NOT select for plain 'search and save' requests.",
-    covers: ["RESEARCH", "titled research output", "umbrella research workflow"],
+    covers: [
+      "RESEARCH",
+      "titled research output",
+      "umbrella research workflow",
+    ],
     sensitivity: "public",
     cacheStable: true,
     cacheScope: "global",

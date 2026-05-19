@@ -275,7 +275,9 @@ export function createFetchHandler(
   };
 }
 
-export function createServer(options: CreateServerOptions = {}): Server<undefined> {
+export function createServer(
+  options: CreateServerOptions = {},
+): Server<undefined> {
   const port = options.port ?? Number(process.env.ELIZA_SETUP_PORT ?? 3743);
   const deps: CreateFetchHandlerDeps = {};
   if (options.backend) deps.backend = options.backend;
@@ -286,7 +288,9 @@ export function createServer(options: CreateServerOptions = {}): Server<undefine
   // Use Bun.serve via the global so this file can be imported by toolchains
   // (vitest/node) that don't resolve the bare "bun" module specifier. The
   // factory still requires the Bun runtime to actually call it.
-  const bunGlobal = (globalThis as { Bun?: { serve: typeof import("bun").serve } }).Bun;
+  const bunGlobal = (
+    globalThis as { Bun?: { serve: typeof import("bun").serve } }
+  ).Bun;
   if (!bunGlobal) {
     throw new Error("createServer requires the Bun runtime (globalThis.Bun)");
   }

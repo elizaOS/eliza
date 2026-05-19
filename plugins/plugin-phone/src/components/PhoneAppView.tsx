@@ -628,9 +628,9 @@ export function PhoneAppView({ exitToApps, t }: OverlayAppContext) {
 }
 
 export function PhoneTuiView() {
-  const [status, setStatus] = useState<Awaited<ReturnType<typeof Phone.getStatus>> | null>(
-    null,
-  );
+  const [status, setStatus] = useState<Awaited<
+    ReturnType<typeof Phone.getStatus>
+  > | null>(null);
   const [calls, setCalls] = useState<CallLogEntry[]>([]);
   const [dialed, setDialed] = useState("");
   const [transcriptCallId, setTranscriptCallId] = useState("");
@@ -824,7 +824,9 @@ export function PhoneTuiView() {
           <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
             <button
               type="button"
-              onClick={() => setDialed((prev) => (prev ? prev.slice(0, -1) : ""))}
+              onClick={() =>
+                setDialed((prev) => (prev ? prev.slice(0, -1) : ""))
+              }
               style={{
                 background: "transparent",
                 color: "#94a3b8",
@@ -862,7 +864,10 @@ export function PhoneTuiView() {
                 border: "1px solid rgba(125,211,252,0.45)",
                 borderRadius: 4,
                 padding: "6px 10px",
-                cursor: !normalizeNumber(dialed) || calling ? "not-allowed" : "pointer",
+                cursor:
+                  !normalizeNumber(dialed) || calling
+                    ? "not-allowed"
+                    : "pointer",
                 fontFamily: "inherit",
               }}
             >
@@ -945,7 +950,9 @@ export function PhoneTuiView() {
           <button
             type="button"
             onClick={() => void saveTranscript()}
-            disabled={!transcriptCallId.trim() || !transcript.trim() || savingTranscript}
+            disabled={
+              !transcriptCallId.trim() || !transcript.trim() || savingTranscript
+            }
             style={{
               background: "transparent",
               color: "#a7f3d0",
@@ -953,7 +960,9 @@ export function PhoneTuiView() {
               borderRadius: 4,
               padding: "6px 10px",
               cursor:
-                !transcriptCallId.trim() || !transcript.trim() || savingTranscript
+                !transcriptCallId.trim() ||
+                !transcript.trim() ||
+                savingTranscript
                   ? "not-allowed"
                   : "pointer",
               fontFamily: "inherit",
@@ -1029,11 +1038,16 @@ export function PhoneTuiView() {
               <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
                 {callLabelFor(call)}
               </span>
-              <span style={{ color: call.type === "missed" ? "#fca5a5" : "#94a3b8" }}>
+              <span
+                style={{
+                  color: call.type === "missed" ? "#fca5a5" : "#94a3b8",
+                }}
+              >
                 {call.type}
               </span>
               <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
-                {call.number} | {formatTimestamp(call.date)} | {call.durationSeconds}s
+                {call.number} | {formatTimestamp(call.date)} |{" "}
+                {call.durationSeconds}s
               </span>
               {(call.agentSummary || call.agentTranscript) && (
                 <span style={{ gridColumn: "2 / 4", color: "#a7f3d0" }}>
@@ -1093,10 +1107,12 @@ export async function interact(
   }
 
   if (capability === "terminal-save-call-transcript") {
-    const callId = typeof params?.callId === "string" ? params.callId.trim() : "";
+    const callId =
+      typeof params?.callId === "string" ? params.callId.trim() : "";
     const transcript =
       typeof params?.transcript === "string" ? params.transcript.trim() : "";
-    const summary = typeof params?.summary === "string" ? params.summary.trim() : "";
+    const summary =
+      typeof params?.summary === "string" ? params.summary.trim() : "";
     if (!callId) throw new Error("callId is required");
     if (!transcript) throw new Error("transcript is required");
     const result = await Phone.saveCallTranscript({

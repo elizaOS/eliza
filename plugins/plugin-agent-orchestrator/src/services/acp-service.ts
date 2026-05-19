@@ -9,12 +9,12 @@ import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
-import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   type AcpEventCallback,
   type AcpJsonRpcMessage,

@@ -13,7 +13,12 @@ const filter =
   filterArg === "--filter"
     ? args[args.indexOf(filterArg) + 1]
     : filterArg?.slice("--filter=".length);
-const hostViewExternals = ["react", "react/jsx-dev-runtime", "lucide-react"];
+const hostViewExternals = [
+  "react",
+  "react/jsx-dev-runtime",
+  "react/jsx-runtime",
+  "lucide-react",
+];
 
 async function findViewConfigs() {
   const pluginsDir = path.join(repoRoot, "plugins");

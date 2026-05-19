@@ -1,10 +1,17 @@
 #!/usr/bin/env node
+
 // Updates a release manifest JSON with sha256 checksums and file sizes after artifacts are built.
 // Usage: node update-manifest-checksums.mjs --manifest <path> --artifacts-dir <dir>
 
-import { createReadStream, readFileSync, writeFileSync, statSync, existsSync } from "fs";
 import { createHash } from "crypto";
-import { resolve, join } from "path";
+import {
+  createReadStream,
+  existsSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "fs";
+import { join, resolve } from "path";
 
 function parseArgs(argv) {
   const args = {};
@@ -31,7 +38,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   if (!args.manifest || !args["artifacts-dir"]) {
     console.error(
-      "Usage: node update-manifest-checksums.mjs --manifest <path> --artifacts-dir <dir>"
+      "Usage: node update-manifest-checksums.mjs --manifest <path> --artifacts-dir <dir>",
     );
     process.exit(1);
   }
@@ -74,7 +81,7 @@ async function main() {
 
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + "\n");
   console.log(
-    `\nDone: ${updated} updated, ${skipped} already set, ${missing} missing/errored`
+    `\nDone: ${updated} updated, ${skipped} already set, ${missing} missing/errored`,
   );
 }
 

@@ -8,7 +8,13 @@ import { existsSync } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..", "..");
+const repoRoot = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+  "..",
+  "..",
+);
 
 function main() {
   if (!existsSync(join(repoRoot, ".git"))) {
@@ -47,7 +53,9 @@ function main() {
   }
 
   if (bad.length > 0) {
-    console.error("[check-secret-hygiene] Tracked env files that must not be in git:");
+    console.error(
+      "[check-secret-hygiene] Tracked env files that must not be in git:",
+    );
     for (const p of bad) console.error(`  ${p}`);
     process.exit(1);
   }

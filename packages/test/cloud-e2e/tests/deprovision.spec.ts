@@ -1,8 +1,8 @@
-import { test, expect } from "../src/helpers/test-fixtures";
 import {
   pollSandboxStatus,
   tickProvisioning,
 } from "../src/helpers/provisioning";
+import { expect, test } from "../src/helpers/test-fixtures";
 
 test.describe("deprovision", () => {
   test("DELETE agent transitions to deleted via async job", async ({

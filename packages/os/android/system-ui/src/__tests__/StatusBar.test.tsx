@@ -13,7 +13,11 @@ describe("StatusBar", () => {
         initialBattery={{ percent: 78, charging: true }}
         initialWifi={{ connected: true, ssid: "eliza-home" }}
         initialAudio={{ level: 0.55, muted: false }}
-        initialCell={{ strengthBars: 4, carrier: "T-Mobile", airplaneMode: false }}
+        initialCell={{
+          strengthBars: 4,
+          carrier: "T-Mobile",
+          airplaneMode: false,
+        }}
       >
         <StatusBar />
       </MockSystemProvider>,

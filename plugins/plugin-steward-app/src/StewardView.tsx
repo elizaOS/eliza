@@ -261,8 +261,9 @@ async function loadStewardTuiState(): Promise<{
 }
 
 export function StewardTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadStewardTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadStewardTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -276,7 +277,9 @@ export function StewardTuiView() {
       setLastAction("refresh");
     } catch (caught) {
       setState(null);
-      setError(caught instanceof Error ? caught.message : "Steward refresh failed");
+      setError(
+        caught instanceof Error ? caught.message : "Steward refresh failed",
+      );
     } finally {
       setLoading(false);
     }
@@ -317,8 +320,13 @@ export function StewardTuiView() {
         elizaos://steward --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.status.connected ? "connected" : "not-connected"} |{" "}
-        {state?.pending.length ?? 0} pending | {recent.length} history | {lastAction}
+        {loading
+          ? "loading"
+          : state?.status.connected
+            ? "connected"
+            : "not-connected"}{" "}
+        | {state?.pending.length ?? 0} pending | {recent.length} history |{" "}
+        {lastAction}
       </div>
 
       <div
@@ -399,7 +407,8 @@ export function StewardTuiView() {
               </div>
               <div style={{ color: "#94a3b8" }}>
                 chain {item.transaction.request.chainId} to{" "}
-                {item.transaction.request.to} value {item.transaction.request.value}
+                {item.transaction.request.to} value{" "}
+                {item.transaction.request.value}
               </div>
               <div style={{ color: "#64748b" }}>{item.requestedAt}</div>
             </div>
@@ -488,12 +497,11 @@ export async function interact(
     return {
       viewType: "tui",
       result: await postStewardJson<StewardApprovalActionResponse>(
-        deny
-          ? "/api/wallet/steward-deny-tx"
-          : "/api/wallet/steward-approve-tx",
+        deny ? "/api/wallet/steward-deny-tx" : "/api/wallet/steward-approve-tx",
         {
           txId,
-          reason: typeof params?.reason === "string" ? params.reason : undefined,
+          reason:
+            typeof params?.reason === "string" ? params.reason : undefined,
         },
       ),
     };

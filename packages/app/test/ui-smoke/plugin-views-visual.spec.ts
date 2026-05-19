@@ -1,7 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { installDefaultAppRoutes, openAppPath, seedAppStorage } from "./helpers";
+import {
+  installDefaultAppRoutes,
+  openAppPath,
+  seedAppStorage,
+} from "./helpers";
 
 type ViewCase = {
   id: string;
@@ -101,7 +105,9 @@ test.describe("registered plugin views visual coverage", () => {
       ).toBeVisible();
       if (view.viewType === "tui") {
         await expect(page.locator("[data-view-state]").first()).toBeVisible();
-        await expect(page.locator("main").getByText("elizaos://").first()).toBeVisible();
+        await expect(
+          page.locator("main").getByText("elizaos://").first(),
+        ).toBeVisible();
       }
 
       await page.screenshot({
@@ -109,7 +115,24 @@ test.describe("registered plugin views visual coverage", () => {
         path: path.join(screenshotDir, `${view.id}-${view.viewType}.png`),
       });
 
+      await page.keyboard.press("/");
       const focusedAfterTabs: string[] = [];
+      focusedAfterTabs.push(
+        await page.evaluate(() => {
+          const element = document.activeElement as HTMLElement | null;
+          if (!element) return "";
+          return [
+            element.tagName.toLowerCase(),
+            element.getAttribute("role") ?? "",
+            element.getAttribute("aria-label") ?? "",
+            element.getAttribute("data-testid") ?? "",
+            element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
+              "",
+          ]
+            .filter(Boolean)
+            .join(":");
+        }),
+      );
       for (let index = 0; index < 30; index += 1) {
         await page.keyboard.press("Tab");
         focusedAfterTabs.push(
@@ -120,6 +143,7 @@ test.describe("registered plugin views visual coverage", () => {
               element.tagName.toLowerCase(),
               element.getAttribute("role") ?? "",
               element.getAttribute("aria-label") ?? "",
+              element.getAttribute("data-testid") ?? "",
               element.textContent?.trim().replace(/\s+/g, " ").slice(0, 80) ??
                 "",
             ]
@@ -198,7 +222,10 @@ test.describe("registered plugin views visual coverage", () => {
         `${JSON.stringify(audit, null, 2)}\n`,
       );
 
-      expect(pageErrors, `${view.id} ${view.viewType} console/page errors`).toEqual([]);
+      expect(
+        pageErrors,
+        `${view.id} ${view.viewType} console/page errors`,
+      ).toEqual([]);
     });
   }
 });

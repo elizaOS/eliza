@@ -250,11 +250,7 @@ test("resolveCapacitorCli supports hoisted workspace installs", () => {
       "@capacitor",
       "cli",
     );
-    const capacitorCli = path.join(
-      capacitorPackage,
-      "bin",
-      "capacitor",
-    );
+    const capacitorCli = path.join(capacitorPackage, "bin", "capacitor");
     fs.mkdirSync(path.dirname(capacitorCli), { recursive: true });
     fs.mkdirSync(tempAppDir, { recursive: true });
     fs.writeFileSync(capacitorCli, "#!/usr/bin/env node\n", "utf8");

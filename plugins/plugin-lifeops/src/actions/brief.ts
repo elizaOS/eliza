@@ -153,7 +153,10 @@ function asRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function readString(record: Record<string, unknown>, key: string): string | null {
+function readString(
+  record: Record<string, unknown>,
+  key: string,
+): string | null {
   const value = record[key];
   return typeof value === "string" && value.trim().length > 0
     ? value.trim()
@@ -175,7 +178,9 @@ function messageUrgency(ref: MessageRef): LifeOpsBriefingInboxItem["urgency"] {
   }
 }
 
-function mapMessageRefToBriefingItem(ref: MessageRef): LifeOpsBriefingInboxItem {
+function mapMessageRefToBriefingItem(
+  ref: MessageRef,
+): LifeOpsBriefingInboxItem {
   return {
     id: ref.id,
     channel: ref.source,
@@ -183,14 +188,11 @@ function mapMessageRefToBriefingItem(ref: MessageRef): LifeOpsBriefingInboxItem 
     snippet: ref.snippet,
     urgency: messageUrgency(ref),
     classification:
-      ref.triageScore?.suggestedAction ??
-      (ref.isRead ? "read" : "unread"),
+      ref.triageScore?.suggestedAction ?? (ref.isRead ? "read" : "unread"),
   };
 }
 
-function normalizeLifeKind(
-  value: unknown,
-): LifeOpsBriefingLifeItem["kind"] {
+function normalizeLifeKind(value: unknown): LifeOpsBriefingLifeItem["kind"] {
   return value === "todo" ||
     value === "reminder" ||
     value === "habit" ||

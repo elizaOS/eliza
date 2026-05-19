@@ -315,7 +315,7 @@ export function withXRead<TBase extends Constructor<LifeOpsServiceBase>>(
       query: string,
       opts: XReadOpts = {},
     ): Promise<LifeOpsXFeedItem[]> {
-      const trimmed = (query).trim();
+      const trimmed = query.trim();
       if (trimmed.length === 0) {
         fail(400, "searchXPosts requires a non-empty query.");
       }

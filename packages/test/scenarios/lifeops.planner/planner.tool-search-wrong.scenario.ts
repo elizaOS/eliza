@@ -17,7 +17,10 @@
  * listed NONE; no scenario covers this.
  */
 
-import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { judgeRubric } from "../_helpers/action-assertions.ts";
 
 const FORBIDDEN_BLOCKER_ACTIONS = new Set<string>([

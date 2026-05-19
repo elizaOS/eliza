@@ -345,9 +345,7 @@ async function handleLifeOpsMessageAction(
     }) ?? unresolved[0];
 
   const recipient =
-    match?.sourceRoomId ??
-    match?.sourceEntityId ??
-    match?.channelName;
+    match?.sourceRoomId ?? match?.sourceEntityId ?? match?.channelName;
   const body =
     match?.suggestedResponse ??
     (hint
@@ -940,7 +938,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     {
       id: "lifeops",
       label: "LifeOps",
-      description: "Owner operations dashboard — routines, goals, inbox, calendar, and health",
+      description:
+        "Owner operations dashboard — routines, goals, inbox, calendar, and health",
       icon: "LayoutDashboard",
       path: "/lifeops",
       bundlePath: "dist/views/bundle.js",
@@ -952,7 +951,8 @@ const rawAppLifeOpsPlugin: Plugin = {
     {
       id: "lifeops",
       label: "LifeOps TUI",
-      description: "Terminal LifeOps routines, goals, inbox, calendar, and health",
+      description:
+        "Terminal LifeOps routines, goals, inbox, calendar, and health",
       icon: "LayoutDashboard",
       path: "/lifeops/tui",
       viewType: "tui",

@@ -31,7 +31,10 @@ import {
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
+const repoRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../..",
+);
 const pluginsRoot = path.join(repoRoot, "plugins");
 const nodeModulesRoots = [
   path.join(repoRoot, "node_modules"),

@@ -4,7 +4,10 @@
  */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import {
   executeRawSql,
   sqlQuote,

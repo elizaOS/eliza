@@ -1,18 +1,18 @@
 import {
-  Input,
-  ProcessTerminal,
-  SelectList,
-  type SelectItem,
-  TUI,
-  type Component,
-  type Terminal,
-  ansi,
-} from "@elizaos/tui";
-import {
   resolveApiBindHost,
   resolveDesktopApiPort,
   resolveServerOnlyPort,
 } from "@elizaos/shared";
+import {
+  ansi,
+  type Component,
+  Input,
+  ProcessTerminal,
+  type SelectItem,
+  SelectList,
+  type Terminal,
+  TUI,
+} from "@elizaos/tui";
 
 interface ViewEntry {
   id: string;
@@ -123,9 +123,7 @@ class AgentTerminalView implements Component {
         this.apiBaseUrl,
         "/api/views?viewType=tui",
       );
-      this.views = (data.views ?? []).filter(
-        (view) => view.viewType === "tui",
-      );
+      this.views = (data.views ?? []).filter((view) => view.viewType === "tui");
       const items: SelectItem[] = this.views.map((view, index) => ({
         value: view.id,
         label: `${index + 1}. ${view.label}`,
@@ -320,7 +318,9 @@ class AgentTerminalView implements Component {
       this.lastChatLine = `sent: ${text}`;
     } catch (error) {
       this.lastChatLine =
-        error instanceof Error ? `chat failed: ${error.message}` : "chat failed";
+        error instanceof Error
+          ? `chat failed: ${error.message}`
+          : "chat failed";
     } finally {
       this.tui.requestRender();
     }

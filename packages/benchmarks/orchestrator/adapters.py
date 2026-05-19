@@ -2492,7 +2492,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "scenarios": [
                     "friend_supporter_tarot_01",
-                    "repeat_customer_tarot_01",
                 ],
                 "concurrency": 1,
                 "evaluator": "heuristic",

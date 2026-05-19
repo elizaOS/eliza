@@ -33,7 +33,9 @@
         "channel": { "enum": ["alpha", "beta", "stable"] },
         "version": { "type": "string" },
         "availableDate": { "type": "string", "format": "date" },
-        "status": { "enum": ["planned", "candidate", "available", "withdrawn"] },
+        "status": {
+          "enum": ["planned", "candidate", "available", "withdrawn"]
+        },
         "tag": { "type": ["string", "null"] },
         "commit": { "type": ["string", "null"] },
         "summary": { "type": "string", "minLength": 1 },
@@ -123,7 +125,9 @@
           },
           "filename": { "type": "string", "minLength": 1 },
           "downloadUrl": { "type": "string", "minLength": 1 },
-          "status": { "enum": ["planned", "candidate", "published", "withdrawn"] },
+          "status": {
+            "enum": ["planned", "candidate", "published", "withdrawn"]
+          },
           "sizeBytes": { "type": ["integer", "null"], "minimum": 1 },
           "sha256": {
             "type": ["string", "null"],

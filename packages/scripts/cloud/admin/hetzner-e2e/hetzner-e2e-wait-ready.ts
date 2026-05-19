@@ -6,7 +6,7 @@
  */
 
 import { spawnSync } from "node:child_process";
-import { chmodSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { readState } from "./state-file";
@@ -33,15 +33,24 @@ async function main(): Promise<void> {
 
   const dir = mkdtempSync(join(tmpdir(), "hetzner-e2e-"));
   const keyPath = join(dir, "id_ed25519");
-  writeFileSync(keyPath, privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`, "utf8");
+  writeFileSync(
+    keyPath,
+    privateKey.endsWith("\n") ? privateKey : `${privateKey}\n`,
+    "utf8",
+  );
   chmodSync(keyPath, 0o600);
 
   const sshArgs = [
-    "-i", keyPath,
-    "-o", "StrictHostKeyChecking=no",
-    "-o", "UserKnownHostsFile=/dev/null",
-    "-o", "ConnectTimeout=10",
-    "-o", "BatchMode=yes",
+    "-i",
+    keyPath,
+    "-o",
+    "StrictHostKeyChecking=no",
+    "-o",
+    "UserKnownHostsFile=/dev/null",
+    "-o",
+    "ConnectTimeout=10",
+    "-o",
+    "BatchMode=yes",
     `root@${state.ip}`,
   ];
 
@@ -51,7 +60,10 @@ async function main(): Promise<void> {
     while (Date.now() < deadline) {
       const result = spawnSync(
         "ssh",
-        [...sshArgs, "test -f /var/lib/cloud/instance/e2e-ready && docker info >/dev/null 2>&1"],
+        [
+          ...sshArgs,
+          "test -f /var/lib/cloud/instance/e2e-ready && docker info >/dev/null 2>&1",
+        ],
         { encoding: "utf8" },
       );
       if (result.status === 0) {

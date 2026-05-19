@@ -606,9 +606,7 @@ export function withSubscriptions<
           auditId: "",
           serviceSlug: playbook.key,
           serviceName: playbook.serviceName,
-          provider:
-            bestMessage.fromEmail ??
-            bestMessage.from,
+          provider: bestMessage.fromEmail ?? bestMessage.from,
           cadence,
           state,
           confidence,

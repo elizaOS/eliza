@@ -6,8 +6,8 @@ import type {
   RouteRequestMeta,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { handleRemoteCapabilityRoutes } from "./remote-capability-routes";
 import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter";
+import { handleRemoteCapabilityRoutes } from "./remote-capability-routes";
 
 const originalEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
 const originalUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;

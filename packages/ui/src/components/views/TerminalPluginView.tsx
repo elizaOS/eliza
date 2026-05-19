@@ -50,13 +50,14 @@ export function TerminalPluginView({
         }}
       >
         <div style={{ color: "#a7f3d0", marginBottom: 10 }}>capabilities</div>
-        {(commands.length ? commands : ["get-state", "get-text", "refresh"]).map(
-          (command) => (
-            <div key={command} style={{ padding: "4px 0" }}>
-              <span style={{ color: "#475569" }}>$</span> {command}
-            </div>
-          ),
-        )}
+        {(commands.length
+          ? commands
+          : ["get-state", "get-text", "refresh"]
+        ).map((command) => (
+          <div key={command} style={{ padding: "4px 0" }}>
+            <span style={{ color: "#475569" }}>$</span> {command}
+          </div>
+        ))}
         {endpoints.length > 0 && (
           <>
             <div style={{ color: "#a7f3d0", margin: "18px 0 10px" }}>

@@ -422,8 +422,7 @@ export function tabFromPath(pathname: string, basePath = ""): Tab | null {
   // Companion disabled unless explicitly feature-flagged
   if (
     !COMPANION_ENABLED &&
-    (normalized === "/character-select" ||
-      normalized === "/character/select")
+    (normalized === "/character-select" || normalized === "/character/select")
   ) {
     return "chat";
   }

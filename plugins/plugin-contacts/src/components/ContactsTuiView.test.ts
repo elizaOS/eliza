@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -73,15 +79,15 @@ describe("ContactsTuiView", () => {
     expect(contactsBridge.listContacts).toHaveBeenCalledWith({});
 
     const stateElement = container.querySelector("[data-view-state]");
-    expect(JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}")).toMatchObject(
-      {
-        viewType: "tui",
-        viewId: "contacts",
-        contactCount: 2,
-        query: "",
-        loading: false,
-      },
-    );
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toMatchObject({
+      viewType: "tui",
+      viewId: "contacts",
+      contactCount: 2,
+      query: "",
+      loading: false,
+    });
 
     fireEvent.click(screen.getByText("Ada Lovelace"));
     expect(screen.getByText("ada@example.com")).toBeTruthy();

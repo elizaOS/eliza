@@ -11,22 +11,21 @@
  * Returns a handle with URLs and a `stop()` that tears everything down.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
-import { createConnection, createServer, type AddressInfo } from "node:net";
-import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { type ChildProcess, spawn } from "node:child_process";
 import { createWriteStream, type WriteStream } from "node:fs";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { type AddressInfo, createConnection, createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
-
 import {
-  startHetznerMock,
-  type RunningHetznerMock,
-} from "@elizaos/cloud-test-mocks/hetzner";
-import {
-  startControlPlaneMock,
   type RunningControlPlaneMock,
+  startControlPlaneMock,
 } from "@elizaos/cloud-test-mocks/control-plane";
+import {
+  type RunningHetznerMock,
+  startHetznerMock,
+} from "@elizaos/cloud-test-mocks/hetzner";
 
 import { buildSharedEnv } from "./env";
 

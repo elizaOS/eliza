@@ -69,7 +69,9 @@ async function clearWithUpstash(url: string, token: string) {
   const redis = new UpstashRedis({ url, token });
 
   if (pattern) {
-    console.log("Pattern-based clearing not fully supported with Upstash REST API.");
+    console.log(
+      "Pattern-based clearing not fully supported with Upstash REST API.",
+    );
     console.log("Use FLUSHALL for full clear or switch to local Redis.");
     process.exit(1);
   }
@@ -94,10 +96,15 @@ async function main() {
     await clearWithUpstash(restUrl, restToken);
   } else if (redisUrl) {
     console.log("Using Upstash via REDIS_URL\n");
-    await clearWithUpstash(process.env.KV_REST_API_URL || "", process.env.KV_REST_API_TOKEN || "");
+    await clearWithUpstash(
+      process.env.KV_REST_API_URL || "",
+      process.env.KV_REST_API_TOKEN || "",
+    );
   } else {
     console.error("No Redis configuration found!");
-    console.error("Set REDIS_URL=redis://localhost:6379 for local or configure Upstash.");
+    console.error(
+      "Set REDIS_URL=redis://localhost:6379 for local or configure Upstash.",
+    );
     process.exit(1);
   }
 }

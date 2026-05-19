@@ -119,9 +119,13 @@ type LifeOpsTuiDefinitionRecord = {
 
 const lifeOpsClient = client as typeof client & {
   getLifeOpsAppState?: () => Promise<{ enabled: boolean }>;
-  updateLifeOpsAppState?: (data: { enabled: boolean }) => Promise<{ enabled: boolean }>;
+  updateLifeOpsAppState?: (data: {
+    enabled: boolean;
+  }) => Promise<{ enabled: boolean }>;
   getLifeOpsOverview?: () => Promise<LifeOpsTuiOverview>;
-  listLifeOpsDefinitions?: () => Promise<{ definitions: LifeOpsTuiDefinitionRecord[] }>;
+  listLifeOpsDefinitions?: () => Promise<{
+    definitions: LifeOpsTuiDefinitionRecord[];
+  }>;
   completeLifeOpsOccurrence?: (
     occurrenceId: string,
     data?: Record<string, unknown>,
@@ -135,8 +139,10 @@ const lifeOpsClient = client as typeof client & {
 
 async function loadLifeOpsTuiState() {
   const [appState, overview, definitions] = await Promise.all([
-    lifeOpsClient.getLifeOpsAppState?.().catch(() => null) ?? Promise.resolve(null),
-    lifeOpsClient.getLifeOpsOverview?.().catch(() => null) ?? Promise.resolve(null),
+    lifeOpsClient.getLifeOpsAppState?.().catch(() => null) ??
+      Promise.resolve(null),
+    lifeOpsClient.getLifeOpsOverview?.().catch(() => null) ??
+      Promise.resolve(null),
     lifeOpsClient.listLifeOpsDefinitions?.().catch(() => null) ??
       Promise.resolve(null),
   ]);
@@ -512,8 +518,9 @@ export function LifeOpsPageView() {
 }
 
 export function LifeOpsTuiView() {
-  const [lifeOpsState, setLifeOpsState] =
-    useState<Awaited<ReturnType<typeof loadLifeOpsTuiState>> | null>(null);
+  const [lifeOpsState, setLifeOpsState] = useState<Awaited<
+    ReturnType<typeof loadLifeOpsTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [lastAction, setLastAction] = useState("boot");
@@ -575,7 +582,8 @@ export function LifeOpsTuiView() {
   );
 
   const overview = lifeOpsState?.overview ?? null;
-  const occurrences = overview?.occurrences ?? overview?.owner?.occurrences ?? [];
+  const occurrences =
+    overview?.occurrences ?? overview?.owner?.occurrences ?? [];
   const definitions = lifeOpsState?.definitions ?? [];
   const state = {
     viewType: "tui",
@@ -610,8 +618,8 @@ export function LifeOpsTuiView() {
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
         {loading ? "loading" : state.enabled ? "enabled" : "paused"} |{" "}
-        {state.activeOccurrenceCount} active | {state.overdueOccurrenceCount} overdue |{" "}
-        {lastAction}
+        {state.activeOccurrenceCount} active | {state.overdueOccurrenceCount}{" "}
+        overdue | {lastAction}
       </div>
 
       <div
@@ -694,7 +702,9 @@ export function LifeOpsTuiView() {
               <span style={{ color: "#64748b" }}>
                 {String(index + 1).padStart(2, "0")}
               </span>
-              <span style={{ color: "#e2e8f0" }}>{occurrence.title ?? occurrence.id}</span>
+              <span style={{ color: "#e2e8f0" }}>
+                {occurrence.title ?? occurrence.id}
+              </span>
               <span
                 style={{
                   color: occurrence.state === "overdue" ? "#fca5a5" : "#94a3b8",
@@ -750,21 +760,26 @@ export function LifeOpsTuiView() {
               }}
             >
               <span style={{ color: "#a7f3d0" }}>
-                {record.definition?.title ?? record.definition?.id ?? "definition"}
+                {record.definition?.title ??
+                  record.definition?.id ??
+                  "definition"}
               </span>{" "}
               <span style={{ color: "#94a3b8" }}>
-                {record.definition?.kind ?? "task"} / {record.definition?.status ?? "unknown"}
+                {record.definition?.kind ?? "task"} /{" "}
+                {record.definition?.status ?? "unknown"}
               </span>
             </div>
           ))}
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>goals</div>
-          {(overview?.owner?.goals ?? overview?.goals ?? []).slice(0, 8).map((goal) => (
-            <div key={goal.id} style={{ padding: "4px 0" }}>
-              {goal.title ?? goal.id}{" "}
-              <span style={{ color: "#94a3b8" }}>{goal.status ?? ""}</span>
-            </div>
-          ))}
+          {(overview?.owner?.goals ?? overview?.goals ?? [])
+            .slice(0, 8)
+            .map((goal) => (
+              <div key={goal.id} style={{ padding: "4px 0" }}>
+                {goal.title ?? goal.id}{" "}
+                <span style={{ color: "#94a3b8" }}>{goal.status ?? ""}</span>
+              </div>
+            ))}
         </section>
       </div>
     </div>
@@ -778,7 +793,8 @@ export async function interact(
   if (capability === "terminal-lifeops-state") {
     const state = await loadLifeOpsTuiState();
     const overview = state.overview;
-    const occurrences = overview?.occurrences ?? overview?.owner?.occurrences ?? [];
+    const occurrences =
+      overview?.occurrences ?? overview?.owner?.occurrences ?? [];
     return {
       viewType: "tui",
       appState: state.appState,
@@ -807,7 +823,9 @@ export async function interact(
 
   if (capability === "terminal-lifeops-complete") {
     const occurrenceId =
-      typeof params?.occurrenceId === "string" ? params.occurrenceId.trim() : "";
+      typeof params?.occurrenceId === "string"
+        ? params.occurrenceId.trim()
+        : "";
     if (!occurrenceId) throw new Error("occurrenceId is required");
     if (!lifeOpsClient.completeLifeOpsOccurrence) {
       throw new Error("LifeOps occurrence client is unavailable");
@@ -820,7 +838,9 @@ export async function interact(
 
   if (capability === "terminal-lifeops-skip") {
     const occurrenceId =
-      typeof params?.occurrenceId === "string" ? params.occurrenceId.trim() : "";
+      typeof params?.occurrenceId === "string"
+        ? params.occurrenceId.trim()
+        : "";
     if (!occurrenceId) throw new Error("occurrenceId is required");
     if (!lifeOpsClient.skipLifeOpsOccurrence) {
       throw new Error("LifeOps occurrence client is unavailable");
@@ -833,7 +853,9 @@ export async function interact(
 
   if (capability === "terminal-lifeops-snooze") {
     const occurrenceId =
-      typeof params?.occurrenceId === "string" ? params.occurrenceId.trim() : "";
+      typeof params?.occurrenceId === "string"
+        ? params.occurrenceId.trim()
+        : "";
     if (!occurrenceId) throw new Error("occurrenceId is required");
     if (!lifeOpsClient.snoozeLifeOpsOccurrence) {
       throw new Error("LifeOps occurrence client is unavailable");

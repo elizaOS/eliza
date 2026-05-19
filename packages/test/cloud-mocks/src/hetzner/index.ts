@@ -1,9 +1,9 @@
 import { buildHetznerMockApp } from "./server";
-import { HetznerStore } from "./store";
+import type { HetznerStore } from "./store";
 
-export { HetznerStore } from "./store";
-export { buildHetznerMockApp } from "./server";
 export type { HetznerMockAppOptions } from "./server";
+export { buildHetznerMockApp } from "./server";
+export { HetznerStore } from "./store";
 export * from "./types";
 
 export interface StartHetznerMockOptions {

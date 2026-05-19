@@ -12,9 +12,21 @@
       "primary_metric": "CoreMark/MHz",
       "units": "score_per_mhz",
       "parser": "coremark_v1",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["coremark_per_mhz"],
-      "required_calibration_assets": ["clock_source", "power_meter", "coremark_binary"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "coremark_binary"
+      ],
       "timeout_seconds": 300
     },
     {
@@ -28,9 +40,22 @@
       "primary_metric": "Triad bandwidth",
       "units": "MB/s",
       "parser": "stream_v5",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["triad_mb_per_s"],
-      "required_calibration_assets": ["clock_source", "power_meter", "stream_binary", "memory_model"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "stream_binary",
+        "memory_model"
+      ],
       "timeout_seconds": 300
     },
     {
@@ -44,9 +69,22 @@
       "primary_metric": "memory bandwidth",
       "units": "MB/s",
       "parser": "lmbench_bw_mem",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["bandwidth_mb_per_s"],
-      "required_calibration_assets": ["clock_source", "power_meter", "lmbench_binary", "memory_model"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "lmbench_binary",
+        "memory_model"
+      ],
       "timeout_seconds": 300
     },
     {
@@ -60,16 +98,33 @@
       "primary_metric": "memory latency",
       "units": "ns",
       "parser": "lmbench_lat_mem_rd",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["max_latency_ns"],
-      "required_calibration_assets": ["clock_source", "power_meter", "lmbench_binary", "memory_model"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "lmbench_binary",
+        "memory_model"
+      ],
       "timeout_seconds": 300
     },
     {
       "name": "fio_seq_read",
       "suite": "fio",
       "version": "upstream/local",
-      "command": ["fio", "--output-format=json", "benchmarks/configs/fio-seq-read.fio"],
+      "command": [
+        "fio",
+        "--output-format=json",
+        "benchmarks/configs/fio-seq-read.fio"
+      ],
       "requires": ["fio"],
       "required_files": ["benchmarks/configs/fio-seq-read.fio"],
       "install": "Install fio from the target OS package manager or build it for the target and place fio on PATH.",
@@ -77,16 +132,33 @@
       "primary_metric": "read bandwidth",
       "units": "KiB/s",
       "parser": "fio_json_v3",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["read_bw_kib_s"],
-      "required_calibration_assets": ["clock_source", "power_meter", "fio_binary", "storage_target"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "fio_binary",
+        "storage_target"
+      ],
       "timeout_seconds": 600
     },
     {
       "name": "fio_rand_rw",
       "suite": "fio",
       "version": "upstream/local",
-      "command": ["fio", "--output-format=json", "benchmarks/configs/fio-rand-rw.fio"],
+      "command": [
+        "fio",
+        "--output-format=json",
+        "benchmarks/configs/fio-rand-rw.fio"
+      ],
       "requires": ["fio"],
       "required_files": ["benchmarks/configs/fio-rand-rw.fio"],
       "install": "Install fio from the target OS package manager or build it for the target and place fio on PATH.",
@@ -94,9 +166,22 @@
       "primary_metric": "IOPS",
       "units": "iops",
       "parser": "fio_json_v3",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["read_iops", "write_iops"],
-      "required_calibration_assets": ["clock_source", "power_meter", "fio_binary", "storage_target"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "fio_binary",
+        "storage_target"
+      ],
       "timeout_seconds": 600
     },
     {
@@ -188,9 +273,22 @@
       "primary_metric": "inference latency",
       "units": "us",
       "parser": "tflite_benchmark_model",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
       "required_metrics": ["avg_latency_us"],
-      "required_calibration_assets": ["clock_source", "power_meter", "tflite_benchmark_model", "tflite_model"],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "tflite_benchmark_model",
+        "tflite_model"
+      ],
       "timeout_seconds": 600
     },
     {
@@ -285,12 +383,30 @@
       "primary_metric": "inference latency",
       "units": "us",
       "parser": "tflite_benchmark_model",
-      "required_metadata": ["software", "clocks", "memory", "thermal", "power", "process", "calibration"],
-      "required_metrics": ["avg_latency_us", "unsupported_op_count", "cpu_fallback_percent"],
-      "required_calibration_assets": ["clock_source", "power_meter", "tflite_benchmark_model", "tflite_model", "nnapi_driver"],
+      "required_metadata": [
+        "software",
+        "clocks",
+        "memory",
+        "thermal",
+        "power",
+        "process",
+        "calibration"
+      ],
+      "required_metrics": [
+        "avg_latency_us",
+        "unsupported_op_count",
+        "cpu_fallback_percent"
+      ],
+      "required_calibration_assets": [
+        "clock_source",
+        "power_meter",
+        "tflite_benchmark_model",
+        "tflite_model",
+        "nnapi_driver"
+      ],
       "metric_gates": [
-        {"metric": "unsupported_op_count", "op": "==", "value": 0},
-        {"metric": "cpu_fallback_percent", "op": "<=", "value": 0}
+        { "metric": "unsupported_op_count", "op": "==", "value": 0 },
+        { "metric": "cpu_fallback_percent", "op": "<=", "value": 0 }
       ],
       "timeout_seconds": 600
     },

@@ -3762,11 +3762,9 @@ function probeCudaShippedKernelSymbols(buildDir, outDir, cacheDir) {
     .join("\n");
   const symbols = {
     turbo3:
-      sourceFiles.turbo3 ||
-      /turboquant|convert|cpy|tbq3/.test(artifactNames),
+      sourceFiles.turbo3 || /turboquant|convert|cpy|tbq3/.test(artifactNames),
     turbo4:
-      sourceFiles.turbo4 ||
-      /turboquant|convert|cpy|tbq4/.test(artifactNames),
+      sourceFiles.turbo4 || /turboquant|convert|cpy|tbq4/.test(artifactNames),
     turbo3_tcq:
       sourceFiles.turbo3_tcq ||
       /turbo[-_]?tcq|tbq3[-_]?tcq/.test(artifactNames),

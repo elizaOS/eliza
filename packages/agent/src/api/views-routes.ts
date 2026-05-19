@@ -479,7 +479,8 @@ export async function handleViewsRoutes(
     const hostExternalSpecifiers = parseHostExternalSpecifiers(url);
     let data: Buffer;
     try {
-      data = method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(bundlePath);
+      data =
+        method === "HEAD" ? Buffer.alloc(0) : await fs.readFile(bundlePath);
     } catch (err) {
       logger.error(
         { src: "ViewsRoutes", viewId: id, bundlePath, err },
@@ -506,7 +507,10 @@ export async function handleViewsRoutes(
 
     if (hostExternalSpecifiers.length > 0 && method !== "HEAD") {
       data = Buffer.from(
-        rewriteHostExternalImports(data.toString("utf8"), hostExternalSpecifiers),
+        rewriteHostExternalImports(
+          data.toString("utf8"),
+          hostExternalSpecifiers,
+        ),
         "utf8",
       );
     }

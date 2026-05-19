@@ -10,17 +10,17 @@
 import type { Plugin } from "@elizaos/core";
 
 const anthropicProxyPluginBrowserNoop: Plugin = {
-	name: "anthropic-proxy",
-	description:
-		"Anthropic proxy (no-op in browser; only functional in Node environments)",
-	services: [],
-	actions: [],
-	providers: [],
-	routes: [],
-	tests: [],
-	init: async () => {
-		/* noop in browser */
-	},
+  name: "anthropic-proxy",
+  description:
+    "Anthropic proxy (no-op in browser; only functional in Node environments)",
+  services: [],
+  actions: [],
+  providers: [],
+  routes: [],
+  tests: [],
+  init: async () => {
+    /* noop in browser */
+  },
 };
 
 export default anthropicProxyPluginBrowserNoop;

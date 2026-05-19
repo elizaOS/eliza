@@ -10,7 +10,9 @@ function parseFlag(name: string): string | undefined {
 const portArg = parseFlag("port");
 const actionMsArg = parseFlag("action-ms");
 
-const port = portArg ? Number.parseInt(portArg, 10) : Number(process.env.PORT ?? 4567);
+const port = portArg
+  ? Number.parseInt(portArg, 10)
+  : Number(process.env.PORT ?? 4567);
 const actionMs = actionMsArg ? Number.parseInt(actionMsArg, 10) : undefined;
 
 const running = await startHetznerMock({ port, actionMs });

@@ -109,7 +109,8 @@ function mockFetch() {
     "fetch",
     vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
-      if (url === "/api/wallet/steward-status") return jsonResponse(sampleStatus);
+      if (url === "/api/wallet/steward-status")
+        return jsonResponse(sampleStatus);
       if (url === "/api/wallet/steward-pending-approvals") {
         return jsonResponse(samplePending);
       }

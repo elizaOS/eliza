@@ -281,8 +281,8 @@ import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
-import { handleRemoteCapabilityRoutes } from "./remote-capability-routes.ts";
 import { handleRelationshipsRoutes } from "./relationships-routes.ts";
+import { handleRemoteCapabilityRoutes } from "./remote-capability-routes.ts";
 import {
   isPublicRuntimePluginRoute,
   tryHandleRuntimePluginRoute,

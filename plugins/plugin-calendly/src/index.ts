@@ -54,7 +54,9 @@ export const calendlyPlugin: Plugin = {
     ],
   },
   async dispose(runtime: IAgentRuntime) {
-    const svc = runtime.getService<CalendlyService>(CalendlyService.serviceType);
+    const svc = runtime.getService<CalendlyService>(
+      CalendlyService.serviceType,
+    );
     await svc?.stop();
   },
   init: async (_config: Record<string, string>, runtime: IAgentRuntime) => {

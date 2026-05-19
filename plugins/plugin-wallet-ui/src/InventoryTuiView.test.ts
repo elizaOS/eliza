@@ -32,7 +32,7 @@ vi.mock("@elizaos/ui", () => ({
   useApp: () => ({}),
 }));
 
-import { interact, InventoryTuiView } from "./InventoryView";
+import { InventoryTuiView, interact } from "./InventoryView";
 
 const balances = {
   evm: {
@@ -141,25 +141,27 @@ describe("InventoryTuiView", () => {
 
     const stateElement = container.querySelector("[data-view-state]");
     await waitFor(() =>
-      expect(JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}")).toMatchObject(
-        {
-          viewType: "tui",
-          viewId: "wallet",
-          totalUsd: 1150,
-          tokenCount: 3,
-          nftCount: 1,
-          evmAddress: "0xabc",
-          solanaAddress: "So111",
-          marketMoverCount: 1,
-        },
-      ),
+      expect(
+        JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+      ).toMatchObject({
+        viewType: "tui",
+        viewId: "wallet",
+        totalUsd: 1150,
+        tokenCount: 3,
+        nftCount: 1,
+        evmAddress: "0xabc",
+        solanaAddress: "So111",
+        marketMoverCount: 1,
+      }),
     );
   });
 
   it("supports terminal capabilities for wallet state, market overview, and trading profile", async () => {
     mockWalletClient();
 
-    await expect(interact("terminal-wallet-state", { limit: 2 })).resolves.toMatchObject({
+    await expect(
+      interact("terminal-wallet-state", { limit: 2 }),
+    ).resolves.toMatchObject({
       viewType: "tui",
       addresses: {
         evmAddress: "0xabc",

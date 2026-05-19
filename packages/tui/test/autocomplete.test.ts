@@ -1,8 +1,8 @@
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { CombinedAutocompleteProvider } from "../src/autocomplete.js";
 
 const resolveFdPath = (): string | null => {

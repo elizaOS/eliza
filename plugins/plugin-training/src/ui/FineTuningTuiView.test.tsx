@@ -139,7 +139,11 @@ function mockState() {
   trainingClient.getTrainingStatus.mockResolvedValue(sampleStatus);
   trainingClient.listTrainingTrajectories.mockResolvedValue(sampleTrajectories);
   trainingClient.getTrainingTrajectory.mockResolvedValue({
-    trajectory: { ...sampleTrajectories.trajectories[0], stepsJson: "[]", aiJudgeReasoning: null },
+    trajectory: {
+      ...sampleTrajectories.trajectories[0],
+      stepsJson: "[]",
+      aiJudgeReasoning: null,
+    },
   });
   trainingClient.listTrainingDatasets.mockResolvedValue({
     datasets: [sampleDataset],
@@ -150,7 +154,9 @@ function mockState() {
   trainingClient.listTrainingJobs.mockResolvedValue({ jobs: [sampleJob] });
   trainingClient.startTrainingJob.mockResolvedValue({ job: sampleJob });
   trainingClient.cancelTrainingJob.mockResolvedValue({ ok: true });
-  trainingClient.listTrainingModels.mockResolvedValue({ models: [sampleModel] });
+  trainingClient.listTrainingModels.mockResolvedValue({
+    models: [sampleModel],
+  });
   trainingClient.importTrainingModelToOllama.mockResolvedValue({
     model: sampleModel,
   });
@@ -177,7 +183,9 @@ describe("FineTuningTuiView", () => {
 
     await screen.findByText(/trajectory-1 calls 3 reward 0.9/);
     expect(screen.getByText(/job-1/)).toBeTruthy();
-    expect(screen.getByText(/model-1 cpu active ollama eliza-model/)).toBeTruthy();
+    expect(
+      screen.getByText(/model-1 cpu active ollama eliza-model/),
+    ).toBeTruthy();
     expect(trainingClient.listTrainingJobs).toHaveBeenCalled();
 
     const stateElement = container.querySelector("[data-view-state]");
@@ -208,7 +216,9 @@ describe("FineTuningTuiView", () => {
     });
 
     await expect(
-      interact("terminal-training-trajectory", { trajectoryId: "trajectory-1" }),
+      interact("terminal-training-trajectory", {
+        trajectoryId: "trajectory-1",
+      }),
     ).resolves.toMatchObject({
       viewType: "tui",
       trajectory: { trajectoryId: "trajectory-1" },

@@ -27,7 +27,10 @@
  */
 
 import type { AgentRuntime } from "@elizaos/core";
-import { type ScenarioContext, scenario } from "@elizaos/scenario-runner/schema";
+import {
+  type ScenarioContext,
+  scenario,
+} from "@elizaos/scenario-runner/schema";
 import { LifeOpsRepository } from "../../../plugins/plugin-lifeops/src/lifeops/repository.ts";
 import { seedGoogleConnectorGrant } from "../../mocks/helpers/seed-grants.ts";
 import {

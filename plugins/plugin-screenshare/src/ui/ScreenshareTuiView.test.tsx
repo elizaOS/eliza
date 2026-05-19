@@ -125,7 +125,9 @@ describe("ScreenshareTuiView", () => {
     expect(fetch).toHaveBeenCalledWith(
       "/api/apps/screenshare/capabilities",
       expect.objectContaining({
-        headers: expect.objectContaining({ Authorization: "Bearer rest-token" }),
+        headers: expect.objectContaining({
+          Authorization: "Bearer rest-token",
+        }),
       }),
     );
 
@@ -149,11 +151,13 @@ describe("ScreenshareTuiView", () => {
   it("supports terminal capabilities for state, session lifecycle, input, and viewer URLs", async () => {
     mockFetch();
 
-    await expect(interact("terminal-screenshare-state")).resolves.toMatchObject({
-      viewType: "tui",
-      capabilities: sampleCapabilities,
-      sessions: { sessions: [sampleSession] },
-    });
+    await expect(interact("terminal-screenshare-state")).resolves.toMatchObject(
+      {
+        viewType: "tui",
+        capabilities: sampleCapabilities,
+        sessions: { sessions: [sampleSession] },
+      },
+    );
 
     await expect(
       interact("terminal-screenshare-start", { label: "Terminal" }),

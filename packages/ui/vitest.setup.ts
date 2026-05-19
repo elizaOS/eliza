@@ -1,10 +1,10 @@
 import { Buffer } from "node:buffer";
-import { TextDecoder } from "node:util";
 import {
-  TransformStream,
   ReadableStream,
+  TransformStream,
   WritableStream,
 } from "node:stream/web";
+import { TextDecoder } from "node:util";
 
 // Polyfill Web Streams API for jsdom (eventsource-parser, AI SDK, etc. use
 // TransformStream at module-load time; jsdom does not include it).

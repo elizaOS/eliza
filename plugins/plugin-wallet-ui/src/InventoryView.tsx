@@ -267,14 +267,19 @@ function summarizeWalletBalances(
 }
 
 async function loadWalletTuiState() {
-  const [walletAddresses, walletConfig, walletBalances, walletNfts, marketOverview] =
-    await Promise.all([
-      client.getWalletAddresses().catch(() => null),
-      client.getWalletConfig().catch(() => null),
-      client.getWalletBalances().catch(() => null),
-      client.getWalletNfts().catch(() => null),
-      client.getWalletMarketOverview().catch(() => null),
-    ]);
+  const [
+    walletAddresses,
+    walletConfig,
+    walletBalances,
+    walletNfts,
+    marketOverview,
+  ] = await Promise.all([
+    client.getWalletAddresses().catch(() => null),
+    client.getWalletConfig().catch(() => null),
+    client.getWalletBalances().catch(() => null),
+    client.getWalletNfts().catch(() => null),
+    client.getWalletMarketOverview().catch(() => null),
+  ]);
   const summary = summarizeWalletBalances(walletBalances);
   return {
     walletAddresses,
@@ -2523,8 +2528,9 @@ export function InventoryView() {
 }
 
 export function InventoryTuiView() {
-  const [walletState, setWalletState] =
-    useState<Awaited<ReturnType<typeof loadWalletTuiState>> | null>(null);
+  const [walletState, setWalletState] = useState<Awaited<
+    ReturnType<typeof loadWalletTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -2697,25 +2703,38 @@ export function InventoryTuiView() {
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
             commands: state | trading-profile | market-overview
           </div>
-          {(walletState?.marketOverview?.movers ?? []).slice(0, 8).map((mover) => (
-            <div key={mover.id} style={{ padding: "4px 0" }}>
-              <span style={{ color: "#a7f3d0" }}>{mover.symbol}</span>{" "}
-              <span style={{ color: "#94a3b8" }}>{formatUsd(mover.priceUsd)}</span>{" "}
-              {mover.change24hPct}%
-            </div>
-          ))}
+          {(walletState?.marketOverview?.movers ?? [])
+            .slice(0, 8)
+            .map((mover) => (
+              <div key={mover.id} style={{ padding: "4px 0" }}>
+                <span style={{ color: "#a7f3d0" }}>{mover.symbol}</span>{" "}
+                <span style={{ color: "#94a3b8" }}>
+                  {formatUsd(mover.priceUsd)}
+                </span>{" "}
+                {mover.change24hPct}%
+              </div>
+            ))}
 
           <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>nfts</div>
           {nfts.slice(0, 10).map((nft, index) => (
-            <div key={`${nft.chain}:${nft.name}:${index}`} style={{ padding: "4px 0" }}>
+            <div
+              key={`${nft.chain}:${nft.name}:${index}`}
+              style={{ padding: "4px 0" }}
+            >
               <span style={{ color: "#64748b" }}>{nft.chain}</span> {nft.name}
               {nft.collectionName ? (
-                <span style={{ color: "#94a3b8" }}> / {nft.collectionName}</span>
+                <span style={{ color: "#94a3b8" }}>
+                  {" "}
+                  / {nft.collectionName}
+                </span>
               ) : null}
             </div>
           ))}
           {walletState?.summary.chainErrors.map((chainError) => (
-            <div key={chainError.chain} style={{ color: "#fca5a5", padding: "4px 0" }}>
+            <div
+              key={chainError.chain}
+              style={{ color: "#fca5a5", padding: "4px 0" }}
+            >
               {chainError.chain}: {chainError.error}
             </div>
           ))}
@@ -2744,8 +2763,7 @@ export async function interact(
         (state.walletNfts?.evm?.reduce(
           (sum, collection) => sum + collection.nfts.length,
           0,
-        ) ?? 0) +
-        (state.walletNfts?.solana?.nfts.length ?? 0),
+        ) ?? 0) + (state.walletNfts?.solana?.nfts.length ?? 0),
       chainErrors: state.summary.chainErrors,
       tokens: state.summary.tokens.slice(
         0,
@@ -2763,7 +2781,9 @@ export async function interact(
 
   if (capability === "terminal-wallet-trading-profile") {
     const window =
-      params?.window === "24h" || params?.window === "7d" || params?.window === "30d"
+      params?.window === "24h" ||
+      params?.window === "7d" ||
+      params?.window === "30d"
         ? params.window
         : "30d";
     return {

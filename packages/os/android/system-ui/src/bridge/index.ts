@@ -1,20 +1,20 @@
 export {
   ANDROID_BRIDGE_CHANNELS,
   type AndroidBridgeChannelMap,
-  type AndroidBridgeStateChannel,
   type AndroidBridgeCommandChannel,
   type AndroidBridgeCommandPayloadMap,
   type AndroidBridgeCommandResponseMap,
+  type AndroidBridgeStateChannel,
   type AndroidBridgeStatePayloadMap,
   type AudioSetLevelPayload,
   type AudioSetMutedPayload,
-  type ConnectivityState,
-  type LockscreenState,
-  type EmptyPayload,
   type CommandAck,
+  type ConnectivityState,
+  type EmptyPayload,
+  type LockscreenState,
 } from "./bridge-contract";
-export { type BridgeTransport, getBridgeTransport } from "./transport";
 export {
   type AndroidBridgeClient,
   createAndroidBridgeClient,
 } from "./client";
+export { type BridgeTransport, getBridgeTransport } from "./transport";

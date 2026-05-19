@@ -27,7 +27,7 @@
   },
   "openlane_post_route": {
     "internal_power_w": 0.0036992093082517385,
-    "leakage_power_w": 7.258969958456873e-07,
+    "leakage_power_w": 7.258969958456873e-7,
     "nominal_core_current_a": 0.0030855932790372106,
     "selected_run": "pd/openlane/runs/RUN_2026-05-18_05-41-42",
     "switching_power_w": 0.001854132511653006,
@@ -35,7 +35,7 @@
     "two_x_current_budget_a": 0.006171186558074421,
     "vddcore_voltage_v": 1.8,
     "vgnd_worst_bounce_v": 0.00010598,
-    "vpwr_worst_ir_drop_v": 8.76137e-05
+    "vpwr_worst_ir_drop_v": 8.76137e-5
   },
   "release_use": "prohibited",
   "schema": "eliza.local_power_estimates.v1",

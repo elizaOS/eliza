@@ -759,8 +759,9 @@ export function FineTuningView({
 }
 
 export function FineTuningTuiView() {
-  const [state, setState] =
-    useState<Awaited<ReturnType<typeof loadTrainingTuiState>> | null>(null);
+  const [state, setState] = useState<Awaited<
+    ReturnType<typeof loadTrainingTuiState>
+  > | null>(null);
   const [loading, setLoading] = useState(true);
   const [lastAction, setLastAction] = useState("boot");
   const [error, setError] = useState<string | null>(null);
@@ -774,7 +775,9 @@ export function FineTuningTuiView() {
       setLastAction("refresh");
     } catch (caught) {
       setState(null);
-      setError(caught instanceof Error ? caught.message : "Training refresh failed");
+      setError(
+        caught instanceof Error ? caught.message : "Training refresh failed",
+      );
     } finally {
       setLoading(false);
     }
@@ -819,8 +822,13 @@ export function FineTuningTuiView() {
         elizaos://training --type=tui
       </div>
       <div style={{ color: "#475569", marginBottom: 16 }}>
-        {loading ? "loading" : state?.status.runtimeAvailable ? "runtime-ready" : "runtime-offline"} |{" "}
-        {activeJobs.length} active jobs | {state?.datasets.datasets.length ?? 0} datasets |{" "}
+        {loading
+          ? "loading"
+          : state?.status.runtimeAvailable
+            ? "runtime-ready"
+            : "runtime-offline"}{" "}
+        | {activeJobs.length} active jobs |{" "}
+        {state?.datasets.datasets.length ?? 0} datasets |{" "}
         {state?.models.models.length ?? 0} models | {lastAction}
       </div>
 
@@ -867,7 +875,9 @@ export function FineTuningTuiView() {
             </button>
           </div>
           {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
-          <div>runtime {state?.status.runtimeAvailable ? "ready" : "offline"}</div>
+          <div>
+            runtime {state?.status.runtimeAvailable ? "ready" : "offline"}
+          </div>
           <div>running {state?.status.runningJobs ?? 0}</div>
           <div>queued {state?.status.queuedJobs ?? 0}</div>
           <div>completed {state?.status.completedJobs ?? 0}</div>
@@ -880,14 +890,16 @@ export function FineTuningTuiView() {
             {state?.trajectories.available ? "available" : "unavailable"} total{" "}
             {state?.trajectories.total ?? 0}
           </div>
-          {(state?.trajectories.trajectories ?? []).slice(0, 8).map((trajectory) => (
-            <div key={trajectory.id} style={{ padding: "5px 0" }}>
-              {trajectory.trajectoryId} calls {trajectory.llmCallCount}
-              {typeof trajectory.totalReward === "number"
-                ? ` reward ${trajectory.totalReward}`
-                : ""}
-            </div>
-          ))}
+          {(state?.trajectories.trajectories ?? [])
+            .slice(0, 8)
+            .map((trajectory) => (
+              <div key={trajectory.id} style={{ padding: "5px 0" }}>
+                {trajectory.trajectoryId} calls {trajectory.llmCallCount}
+                {typeof trajectory.totalReward === "number"
+                  ? ` reward ${trajectory.totalReward}`
+                  : ""}
+              </div>
+            ))}
         </section>
 
         <section
@@ -901,7 +913,8 @@ export function FineTuningTuiView() {
         >
           <strong style={{ color: "#e2e8f0" }}>jobs and models</strong>
           <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
-            commands: state | build-dataset | start-job | cancel-job | import-model | activate-model | benchmark-model
+            commands: state | build-dataset | start-job | cancel-job |
+            import-model | activate-model | benchmark-model
           </div>
           <div style={{ color: "#a7f3d0", marginBottom: 8 }}>jobs</div>
           {(state?.jobs.jobs ?? []).slice(0, 10).map((job) => (
@@ -918,7 +931,8 @@ export function FineTuningTuiView() {
               <span style={{ color: "#e2e8f0" }}>{job.id}</span>
               <span style={{ color: "#a7f3d0" }}>{job.status}</span>
               <span style={{ gridColumn: "1 / 3", color: "#94a3b8" }}>
-                {job.phase} {Math.round(job.progress * 100)}% dataset {job.datasetId}
+                {job.phase} {Math.round(job.progress * 100)}% dataset{" "}
+                {job.datasetId}
               </span>
             </div>
           ))}
@@ -969,7 +983,9 @@ export async function interact(
 
   if (capability === "terminal-training-trajectory") {
     const trajectoryId =
-      typeof params?.trajectoryId === "string" ? params.trajectoryId.trim() : "";
+      typeof params?.trajectoryId === "string"
+        ? params.trajectoryId.trim()
+        : "";
     if (!trajectoryId) throw new Error("trajectoryId is required");
     return {
       viewType: "tui",
@@ -992,7 +1008,8 @@ export async function interact(
 
   if (capability === "terminal-training-start-job") {
     const options: StartTrainingOptions = {};
-    if (typeof params?.datasetId === "string") options.datasetId = params.datasetId;
+    if (typeof params?.datasetId === "string")
+      options.datasetId = params.datasetId;
     if (
       params?.backend === "mlx" ||
       params?.backend === "cuda" ||
@@ -1001,8 +1018,10 @@ export async function interact(
       options.backend = params.backend;
     }
     if (typeof params?.model === "string") options.model = params.model;
-    if (typeof params?.iterations === "number") options.iterations = params.iterations;
-    if (typeof params?.batchSize === "number") options.batchSize = params.batchSize;
+    if (typeof params?.iterations === "number")
+      options.iterations = params.iterations;
+    if (typeof params?.batchSize === "number")
+      options.batchSize = params.batchSize;
     if (typeof params?.learningRate === "number") {
       options.learningRate = params.learningRate;
     }

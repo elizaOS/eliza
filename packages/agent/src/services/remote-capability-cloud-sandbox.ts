@@ -4,12 +4,12 @@ import {
 } from "@elizaos/core";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 import {
-  RemoteCapabilityRouterService,
   type RemoteCapabilityRouterConfig,
+  RemoteCapabilityRouterService,
 } from "./remote-capability-router.ts";
 import {
-  syncRemoteCapabilityPlugins,
   type RemotePluginSyncResult,
+  syncRemoteCapabilityPlugins,
 } from "./remote-plugin-adapter.ts";
 
 const DEFAULT_CLOUD_PROVISION_TIMEOUT_MS = 120_000;

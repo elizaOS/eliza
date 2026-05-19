@@ -137,7 +137,9 @@ describe("HyperliquidTuiView", () => {
     const { container } = render(React.createElement(HyperliquidTuiView));
 
     await screen.findByText("BTC");
-    expect(screen.getByText(/Signed Hyperliquid exchange mutations/)).toBeTruthy();
+    expect(
+      screen.getByText(/Signed Hyperliquid exchange mutations/),
+    ).toBeTruthy();
     expect(hyperliquidClient.hyperliquidStatus).toHaveBeenCalled();
     expect(hyperliquidClient.hyperliquidMarkets).toHaveBeenCalled();
 

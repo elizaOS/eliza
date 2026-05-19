@@ -1,12 +1,12 @@
-import { Hono, type Context } from "hono";
+import { type Context, Hono } from "hono";
 import { injectLatency } from "./latency";
 import {
   createAction,
+  type ProgressionOptions,
   scheduleActionSuccess,
   schedulePowerTransition,
   scheduleServerCreationProgression,
   scheduleServerDeletion,
-  type ProgressionOptions,
 } from "./progression";
 import { HetznerStore } from "./store";
 import type { ErrorEnvelope, MockServer, MockVolume } from "./types";
@@ -24,7 +24,9 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
   progression: ProgressionOptions;
 } {
   const store = options.store ?? new HetznerStore();
-  const progression: ProgressionOptions = { actionMs: options.actionMs ?? 2000 };
+  const progression: ProgressionOptions = {
+    actionMs: options.actionMs ?? 2000,
+  };
   const app = new Hono();
 
   // ---- Auth middleware --------------------------------------------------
@@ -32,7 +34,12 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     const auth = c.req.header("authorization") ?? c.req.header("Authorization");
     if (!auth || !auth.startsWith("Bearer ") || auth.slice(7).trim() === "") {
       return c.json<ErrorEnvelope>(
-        { error: { code: "unauthorized", message: "Missing or invalid bearer token" } },
+        {
+          error: {
+            code: "unauthorized",
+            message: "Missing or invalid bearer token",
+          },
+        },
         401,
       );
     }
@@ -44,8 +51,10 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     await injectLatency("POST /servers");
     const body = await safeJson(c);
     const name = typeof body.name === "string" ? body.name : null;
-    const serverType = typeof body.server_type === "string" ? body.server_type : null;
-    const locationName = typeof body.location === "string" ? body.location : null;
+    const serverType =
+      typeof body.server_type === "string" ? body.server_type : null;
+    const locationName =
+      typeof body.location === "string" ? body.location : null;
     if (!name || !serverType || !locationName) {
       return c.json<ErrorEnvelope>(
         {
@@ -92,7 +101,9 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     };
     store.servers.set(id, server);
 
-    const action = createAction(store, "create_server", [{ id, type: "server" }]);
+    const action = createAction(store, "create_server", [
+      { id, type: "server" },
+    ]);
     scheduleServerCreationProgression(store, server, action.id, progression);
 
     return c.json(
@@ -128,7 +139,9 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     const server = store.servers.get(id);
     if (!server) return notFound(c, "server", id);
     server.status = "deleting";
-    const action = createAction(store, "delete_server", [{ id, type: "server" }]);
+    const action = createAction(store, "delete_server", [
+      { id, type: "server" },
+    ]);
     server._deletePendingActionId = action.id;
     scheduleServerDeletion(store, id, action.id, progression);
     return c.json({ action });
@@ -156,7 +169,12 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
         break;
       default:
         return c.json<ErrorEnvelope>(
-          { error: { code: "invalid_input", message: `Unsupported action: ${cmd}` } },
+          {
+            error: {
+              code: "invalid_input",
+              message: `Unsupported action: ${cmd}`,
+            },
+          },
           422,
         );
     }
@@ -180,7 +198,8 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
     const body = await safeJson(c);
     const name = typeof body.name === "string" ? body.name : null;
     const size = typeof body.size === "number" ? body.size : null;
-    const locationName = typeof body.location === "string" ? body.location : null;
+    const locationName =
+      typeof body.location === "string" ? body.location : null;
     if (!name || !size || !locationName) {
       return c.json<ErrorEnvelope>(
         {
@@ -213,7 +232,9 @@ export function buildHetznerMockApp(options: HetznerMockAppOptions = {}): {
       created: new Date().toISOString(),
     };
     store.volumes.set(id, volume);
-    const action = createAction(store, "create_volume", [{ id, type: "volume" }]);
+    const action = createAction(store, "create_volume", [
+      { id, type: "volume" },
+    ]);
     scheduleActionSuccess(store, action.id, progression, () => {
       const v = store.volumes.get(id);
       if (v) v.status = "available";

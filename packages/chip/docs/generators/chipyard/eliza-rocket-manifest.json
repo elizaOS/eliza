@@ -49,12 +49,7 @@
     "external_interrupts": "PLIC-compatible external interrupt controller",
     "console": "UART with Linux earlycon binding",
     "dram": "DRAM model sized for OpenSBI plus Linux initramfs smoke",
-    "mmio": [
-      "e1 DMA",
-      "e1 NPU",
-      "e1 display",
-      "e1 peripherals"
-    ]
+    "mmio": ["e1 DMA", "e1 NPU", "e1 display", "e1 peripherals"]
   },
   "expected_generated_artifacts": [
     "build/chipyard/eliza_rocket/ElizaRocketConfig.manifest.json",

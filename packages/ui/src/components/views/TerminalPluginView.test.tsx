@@ -30,15 +30,15 @@ describe("TerminalPluginView", () => {
 
     const stateElement = container.querySelector("[data-view-state]");
     expect(stateElement).toBeTruthy();
-    expect(JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}")).toEqual(
-      {
-        viewType: "tui",
-        viewId: "wallet",
-        label: "Wallet",
-        commandCount: 2,
-        endpointCount: 1,
-      },
-    );
+    expect(
+      JSON.parse(stateElement?.getAttribute("data-view-state") ?? "{}"),
+    ).toEqual({
+      viewType: "tui",
+      viewId: "wallet",
+      label: "Wallet",
+      commandCount: 2,
+      endpointCount: 1,
+    });
   });
 
   it("uses default terminal commands when none are provided", () => {

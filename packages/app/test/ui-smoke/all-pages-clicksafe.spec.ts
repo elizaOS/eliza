@@ -163,7 +163,9 @@ const MOBILE_PROBE: ViewportProbe = {
     CORE_ROUTE_PROBES[2],
     CORE_ROUTE_PROBES[3],
     CORE_ROUTE_PROBES[6],
-    ...APP_TOOL_ROUTE_PROBES.filter((route) => new Set<string>().has(route.path)),
+    ...APP_TOOL_ROUTE_PROBES.filter((route) =>
+      new Set<string>().has(route.path),
+    ),
   ],
 };
 

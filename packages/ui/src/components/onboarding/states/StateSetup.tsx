@@ -1,4 +1,7 @@
-import { appNameInterpolationVars, useBranding } from "../../../config/branding";
+import {
+  appNameInterpolationVars,
+  useBranding,
+} from "../../../config/branding";
 import { t } from "../../../i18n";
 import type { RuntimeChoice } from "../../../onboarding/state-machine";
 import { type DeviceProfile, deviceProfileCopy } from "./device-profiles";

@@ -17,6 +17,10 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
     "@elizaos/app-core",
     "@elizaos/shared",
     "@elizaos/ui",
+    "lucide-react",
+    "react",
+    "react/jsx-dev-runtime",
+    "react/jsx-runtime",
     ...(options.additionalExternals ?? []),
   ]);
 
@@ -44,7 +48,9 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
         process.env.NODE_ENV ?? "production",
       ),
       __ELIZA_VIEW_ID__: JSON.stringify(options.viewId),
-      __ELIZA_VIEW_EXPORT__: JSON.stringify(options.componentExport ?? "default"),
+      __ELIZA_VIEW_EXPORT__: JSON.stringify(
+        options.componentExport ?? "default",
+      ),
     },
   });
 }

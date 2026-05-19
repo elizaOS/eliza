@@ -15,9 +15,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Scene, SceneFocusedWindow } from "../scene/scene-types.js";
 import { ComputerUseService } from "./computer-use-service.js";
 import {
-  VisionContextProvider,
   VISION_CONTEXT_SERVICE_TYPE,
   VISION_CONTEXT_TASK_GOAL_CACHE_KEY,
+  VisionContextProvider,
 } from "./vision-context-provider.js";
 
 vi.mock("../platform/process-list.js", () => ({
@@ -25,7 +25,9 @@ vi.mock("../platform/process-list.js", () => ({
 }));
 
 vi.mock("../platform/windows-list.js", () => ({
-  listWindows: vi.fn(() => [] as Array<{ id: string; title: string; app: string }>),
+  listWindows: vi.fn(
+    () => [] as Array<{ id: string; title: string; app: string }>,
+  ),
 }));
 
 import { listProcesses } from "../platform/process-list.js";
@@ -37,10 +39,9 @@ interface RuntimeStub {
   runtime: IAgentRuntime;
 }
 
-function makeRuntime(opts: {
-  taskGoal?: unknown;
-  scene?: Scene | null;
-} = {}): RuntimeStub {
+function makeRuntime(
+  opts: { taskGoal?: unknown; scene?: Scene | null } = {},
+): RuntimeStub {
   const cache = new Map<string, unknown>();
   if (opts.taskGoal !== undefined) {
     cache.set(VISION_CONTEXT_TASK_GOAL_CACHE_KEY, opts.taskGoal);
@@ -132,7 +133,10 @@ describe("VisionContextProvider — open apps", () => {
 
   it("caps openApps at 50 entries even when listProcesses returns more", async () => {
     vi.mocked(listProcesses).mockReturnValue(
-      Array.from({ length: 120 }, (_, i) => ({ pid: i + 1, name: `proc-${i}` })),
+      Array.from({ length: 120 }, (_, i) => ({
+        pid: i + 1,
+        name: `proc-${i}`,
+      })),
     );
     const { runtime } = makeRuntime();
     const provider = new VisionContextProvider(runtime);
@@ -235,10 +239,14 @@ describe("VisionContextProvider — task goal", () => {
 
   it("treats whitespace-only and non-string cache values as null", async () => {
     const { runtime: r1 } = makeRuntime({ taskGoal: "   " });
-    expect((await new VisionContextProvider(r1).getContext()).currentTaskGoal).toBeNull();
+    expect(
+      (await new VisionContextProvider(r1).getContext()).currentTaskGoal,
+    ).toBeNull();
 
     const { runtime: r2 } = makeRuntime({ taskGoal: 42 });
-    expect((await new VisionContextProvider(r2).getContext()).currentTaskGoal).toBeNull();
+    expect(
+      (await new VisionContextProvider(r2).getContext()).currentTaskGoal,
+    ).toBeNull();
   });
 });
 

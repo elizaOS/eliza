@@ -117,8 +117,7 @@ async function handleStart(
   }
 
   const requesterIdentity =
-    coerceString(params.requesterIdentity) ??
-    String(message.entityId);
+    coerceString(params.requesterIdentity) ?? String(message.entityId);
 
   try {
     const result = await getRemoteSessionService().startSession({

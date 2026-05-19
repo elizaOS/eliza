@@ -1,3 +1,4 @@
+import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
   StripeCheckoutError,
   startStripeCheckout,
@@ -6,7 +7,6 @@ import {
   HARDWARE_PRODUCTS as hardwareProducts,
   type Product,
 } from "@elizaos/shared/hardware-catalog";
-import { BRAND_COLORS, BRAND_PATHS, LOGO_FILES } from "@elizaos/shared/brand";
 import {
   exchangeStewardCode,
   hasStewardAuthedCookie,

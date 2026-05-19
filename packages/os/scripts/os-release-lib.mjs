@@ -3,7 +3,9 @@ import { createReadStream } from "node:fs";
 import { access, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const repoRoot = path.resolve(new URL("../../..", import.meta.url).pathname);
+export const repoRoot = path.resolve(
+  new URL("../../..", import.meta.url).pathname,
+);
 export const defaultManifestPath = path.join(
   repoRoot,
   "packages/os/release/beta-2026-05-16/manifest.json",
@@ -24,8 +26,18 @@ const artifactKinds = new Set([
   "checksum-manifest",
   "usb-installer",
 ]);
-const releaseStatuses = new Set(["planned", "candidate", "available", "withdrawn"]);
-const artifactStatuses = new Set(["planned", "candidate", "published", "withdrawn"]);
+const releaseStatuses = new Set([
+  "planned",
+  "candidate",
+  "available",
+  "withdrawn",
+]);
+const artifactStatuses = new Set([
+  "planned",
+  "candidate",
+  "published",
+  "withdrawn",
+]);
 
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !isoDatePattern.test(value)) {
@@ -116,7 +128,9 @@ function requireDate(errors, value, field) {
 export function validateManifest(manifest, options = {}) {
   const errors = [];
   const warnings = [];
-  const requirePublishableChecksums = Boolean(options.requirePublishableChecksums);
+  const requirePublishableChecksums = Boolean(
+    options.requirePublishableChecksums,
+  );
 
   if (manifest?.schemaVersion !== 1) {
     errors.push("schemaVersion must be 1");
@@ -129,7 +143,11 @@ export function validateManifest(manifest, options = {}) {
     );
   }
   requireString(errors, manifest?.release?.version, "release.version");
-  requireDate(errors, manifest?.release?.availableDate, "release.availableDate");
+  requireDate(
+    errors,
+    manifest?.release?.availableDate,
+    "release.availableDate",
+  );
   if (
     typeof manifest?.release?.availableDate === "string" &&
     !isValidIsoDate(manifest.release.availableDate)
@@ -151,10 +169,14 @@ export function validateManifest(manifest, options = {}) {
     errors.push("commerce.usbKeyPresale.saleStarts must be a valid ISO date");
   }
   if (!isValidIsoDate(presale?.estimatedShipWindow?.starts)) {
-    errors.push("commerce.usbKeyPresale.estimatedShipWindow.starts must be a valid ISO date");
+    errors.push(
+      "commerce.usbKeyPresale.estimatedShipWindow.starts must be a valid ISO date",
+    );
   }
   if (!isValidIsoDate(presale?.estimatedShipWindow?.ends)) {
-    errors.push("commerce.usbKeyPresale.estimatedShipWindow.ends must be a valid ISO date");
+    errors.push(
+      "commerce.usbKeyPresale.estimatedShipWindow.ends must be a valid ISO date",
+    );
   }
 
   if (!Array.isArray(manifest?.artifacts) || manifest.artifacts.length === 0) {
@@ -182,8 +204,16 @@ export function validateManifest(manifest, options = {}) {
     if (!artifactStatuses.has(artifact?.status)) {
       errors.push(`${prefix}.status is invalid`);
     }
-    requireString(errors, artifact?.target?.platform, `${prefix}.target.platform`);
-    requireString(errors, artifact?.target?.architecture, `${prefix}.target.architecture`);
+    requireString(
+      errors,
+      artifact?.target?.platform,
+      `${prefix}.target.platform`,
+    );
+    requireString(
+      errors,
+      artifact?.target?.architecture,
+      `${prefix}.target.architecture`,
+    );
     requireString(errors, artifact?.filename, `${prefix}.filename`);
     if (seenFilenames.has(artifact?.filename)) {
       errors.push(`${prefix}.filename duplicates ${artifact.filename}`);
@@ -191,23 +221,36 @@ export function validateManifest(manifest, options = {}) {
     seenFilenames.add(artifact?.filename);
     requireString(errors, artifact?.downloadUrl, `${prefix}.downloadUrl`);
 
-    if (artifact?.sha256 !== null && !sha256Pattern.test(artifact?.sha256 ?? "")) {
-      errors.push(`${prefix}.sha256 must be null or 64 lowercase hex characters`);
+    if (
+      artifact?.sha256 !== null &&
+      !sha256Pattern.test(artifact?.sha256 ?? "")
+    ) {
+      errors.push(
+        `${prefix}.sha256 must be null or 64 lowercase hex characters`,
+      );
     }
     if (isPlaceholderSha256(artifact?.sha256)) {
       errors.push(
         `${prefix}.sha256 is an all-zero placeholder; use null until a real checksum is generated`,
       );
     }
-    if (artifact?.sizeBytes !== null && (!Number.isInteger(artifact?.sizeBytes) || artifact.sizeBytes <= 0)) {
+    if (
+      artifact?.sizeBytes !== null &&
+      (!Number.isInteger(artifact?.sizeBytes) || artifact.sizeBytes <= 0)
+    ) {
       errors.push(`${prefix}.sizeBytes must be null or a positive integer`);
     }
     if (requirePublishableChecksums && artifact?.status !== "withdrawn") {
-      if (!sha256Pattern.test(artifact?.sha256 ?? "") || isPlaceholderSha256(artifact?.sha256)) {
+      if (
+        !sha256Pattern.test(artifact?.sha256 ?? "") ||
+        isPlaceholderSha256(artifact?.sha256)
+      ) {
         errors.push(`${prefix}.sha256 is required for publishable validation`);
       }
       if (!Number.isInteger(artifact?.sizeBytes) || artifact.sizeBytes <= 0) {
-        errors.push(`${prefix}.sizeBytes is required for publishable validation`);
+        errors.push(
+          `${prefix}.sizeBytes is required for publishable validation`,
+        );
       }
     }
     if (!Array.isArray(artifact?.validation?.requiredEvidence)) {
@@ -216,7 +259,12 @@ export function validateManifest(manifest, options = {}) {
     if (!Array.isArray(artifact?.validation?.evidence)) {
       errors.push(`${prefix}.validation.evidence must be an array`);
     }
-    if ((artifact?.validation?.requiredEvidence ?? []).includes("sha256-generated") && !artifact.sha256) {
+    if (
+      (artifact?.validation?.requiredEvidence ?? []).includes(
+        "sha256-generated",
+      ) &&
+      !artifact.sha256
+    ) {
       warnings.push(`${artifact.id} is awaiting sha256 generation`);
     }
   }
@@ -230,9 +278,21 @@ export function validateManifest(manifest, options = {}) {
   if (manifest?.checksumPolicy?.algorithm !== "sha256") {
     errors.push("checksumPolicy.algorithm must be sha256");
   }
-  requireString(errors, manifest?.checksumPolicy?.generatedFile, "checksumPolicy.generatedFile");
-  requireString(errors, manifest?.checksumPolicy?.verificationScript, "checksumPolicy.verificationScript");
-  requireString(errors, manifest?.validation?.evidenceDirectory, "validation.evidenceDirectory");
+  requireString(
+    errors,
+    manifest?.checksumPolicy?.generatedFile,
+    "checksumPolicy.generatedFile",
+  );
+  requireString(
+    errors,
+    manifest?.checksumPolicy?.verificationScript,
+    "checksumPolicy.verificationScript",
+  );
+  requireString(
+    errors,
+    manifest?.validation?.evidenceDirectory,
+    "validation.evidenceDirectory",
+  );
   if (!Array.isArray(manifest?.validation?.promotionGates)) {
     errors.push("validation.promotionGates must be an array");
   }

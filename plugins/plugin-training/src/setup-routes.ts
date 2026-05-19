@@ -325,7 +325,8 @@ export const trainingPlugin: Plugin = {
     {
       id: "training",
       label: "Training",
-      description: "Fine-tuning jobs, datasets, trained models, and trajectory management",
+      description:
+        "Fine-tuning jobs, datasets, trained models, and trajectory management",
       icon: "BrainCircuit",
       path: "/training",
       bundlePath: "dist/views/bundle.js",

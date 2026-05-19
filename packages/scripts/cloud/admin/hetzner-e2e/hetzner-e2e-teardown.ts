@@ -17,7 +17,10 @@ function requireEnv(name: string): string {
   return value;
 }
 
-async function deleteOne(client: HetznerCloudClient, serverId: number): Promise<void> {
+async function deleteOne(
+  client: HetznerCloudClient,
+  serverId: number,
+): Promise<void> {
   try {
     await client.deleteServer(serverId);
     console.log(`[hetzner-e2e-teardown] deleted server ${serverId}`);
@@ -43,11 +46,15 @@ async function main(): Promise<void> {
 
   const runId = process.env.GITHUB_RUN_ID;
   if (!runId) {
-    console.log("[hetzner-e2e-teardown] no state file and no GITHUB_RUN_ID; nothing to do");
+    console.log(
+      "[hetzner-e2e-teardown] no state file and no GITHUB_RUN_ID; nothing to do",
+    );
     return;
   }
 
-  console.log(`[hetzner-e2e-teardown] state file missing; sweeping by label run=${runId}`);
+  console.log(
+    `[hetzner-e2e-teardown] state file missing; sweeping by label run=${runId}`,
+  );
   const servers = await client.listServers({
     ci: "true",
     workflow: "hetzner-e2e",

@@ -296,8 +296,14 @@ function buildAttempts(args: {
 function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
   return {
     async chatCompletions(req) {
-      const maxAttempts = envInt("CEREBRAS_BENCH_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS);
-      const baseMs = envInt("CEREBRAS_BENCH_RETRY_BASE_MS", DEFAULT_RETRY_BASE_MS);
+      const maxAttempts = envInt(
+        "CEREBRAS_BENCH_MAX_ATTEMPTS",
+        DEFAULT_MAX_ATTEMPTS,
+      );
+      const baseMs = envInt(
+        "CEREBRAS_BENCH_RETRY_BASE_MS",
+        DEFAULT_RETRY_BASE_MS,
+      );
       const maxMs = envInt("CEREBRAS_BENCH_RETRY_MAX_MS", DEFAULT_RETRY_MAX_MS);
       let lastError: Error | null = null;
       for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -313,7 +319,9 @@ function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
           return (await res.json()) as CerebrasResponse;
         }
         const detail = await res.text().catch(() => "");
-        lastError = new Error(`cerebras ${res.status}: ${detail.slice(0, 240)}`);
+        lastError = new Error(
+          `cerebras ${res.status}: ${detail.slice(0, 240)}`,
+        );
         if (!isRetryableStatus(res.status) || attempt >= maxAttempts) {
           throw lastError;
         }

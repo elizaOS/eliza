@@ -11,8 +11,11 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { startHetznerMock, type RunningHetznerMock } from "../src/hetzner";
-import { startControlPlaneMock, type RunningControlPlaneMock } from "../src/control-plane";
+import {
+  type RunningControlPlaneMock,
+  startControlPlaneMock,
+} from "../src/control-plane";
+import { type RunningHetznerMock, startHetznerMock } from "../src/hetzner";
 
 process.env.MOCK_HETZNER_LATENCY = "0";
 
@@ -60,7 +63,11 @@ function fetchOn(
   server: RunningControlPlaneMock,
   path: string,
   init: RequestInit = {},
-  opts: { auth?: "user" | "admin" | "none"; org?: boolean; aux?: string | null } = {},
+  opts: {
+    auth?: "user" | "admin" | "none";
+    org?: boolean;
+    aux?: string | null;
+  } = {},
 ): Promise<Response> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
@@ -68,7 +75,8 @@ function fetchOn(
   };
   const authMode = opts.auth ?? "user";
   if (authMode === "user") headers.authorization = `Bearer ${TOKEN}`;
-  else if (authMode === "admin") headers.authorization = `Bearer ${ADMIN_TOKEN}`;
+  else if (authMode === "admin")
+    headers.authorization = `Bearer ${ADMIN_TOKEN}`;
   if (opts.org !== false) {
     headers["x-eliza-user-id"] = "user-1";
     headers["x-eliza-organization-id"] = "org-1";
@@ -166,7 +174,10 @@ describe("Gap 3: GET variants of all crons", () => {
     test(`GET ${path} → 200`, async () => {
       const res = await fetchOn(single, path);
       expect(res.ok).toBe(true);
-      const body = (await res.json()) as { success: boolean; data: Record<string, unknown> };
+      const body = (await res.json()) as {
+        success: boolean;
+        data: Record<string, unknown>;
+      };
       expect(body.success).toBe(true);
       expect(body.data).toBeDefined();
     });
@@ -178,11 +189,16 @@ describe("Gap 4: DELETE /api/compat/agents/:id", () => {
     // First seed a sandbox via /jobs (POST agent_provision) with an agentId.
     const provisionRes = await fetchOn(single, "/jobs", {
       method: "POST",
-      body: JSON.stringify({ type: "agent_provision", agent_id: "agent-del-1" }),
+      body: JSON.stringify({
+        type: "agent_provision",
+        agent_id: "agent-del-1",
+      }),
     });
     expect(provisionRes.status).toBe(201);
 
-    const delRes = await fetchOn(single, "/api/compat/agents/agent-del-1", { method: "DELETE" });
+    const delRes = await fetchOn(single, "/api/compat/agents/agent-del-1", {
+      method: "DELETE",
+    });
     expect(delRes.ok).toBe(true);
     const body = (await delRes.json()) as { ok: boolean; jobId: string };
     expect(body.ok).toBe(true);
@@ -190,7 +206,9 @@ describe("Gap 4: DELETE /api/compat/agents/:id", () => {
   });
 
   test("unknown agent → 404 with error agent_not_found", async () => {
-    const res = await fetchOn(single, "/api/compat/agents/nonexistent-xyz", { method: "DELETE" });
+    const res = await fetchOn(single, "/api/compat/agents/nonexistent-xyz", {
+      method: "DELETE",
+    });
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: string };
     expect(body.error).toBe("agent_not_found");

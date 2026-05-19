@@ -1,7 +1,7 @@
+import { EventEmitter } from "node:events";
 import { readFileSync } from "node:fs";
 import type http from "node:http";
 import { resolve } from "node:path";
-import { EventEmitter } from "node:events";
 import type { Plugin, ViewDeclaration } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
@@ -321,12 +321,10 @@ describe("plugin TUI view coverage", () => {
               capability?: string;
             }
           | undefined;
-        const result = resultBody as
-          | {
-              success?: boolean;
-              result?: { viewId?: string; viewType?: string; state?: string };
-            }
-          | null;
+        const result = resultBody as {
+          success?: boolean;
+          result?: { viewId?: string; viewType?: string; state?: string };
+        } | null;
         if (
           errorBody ||
           event?.type !== "view:interact" ||

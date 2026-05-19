@@ -32,7 +32,11 @@ function trimTrailingSlash(url: string): string {
   return url.endsWith("/") ? url.slice(0, -1) : url;
 }
 
-async function postChat(baseUrl: string, apiKey: string, model: string): Promise<ChatResponse> {
+async function postChat(
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+): Promise<ChatResponse> {
   const started = performance.now();
   const response = await fetch(`${baseUrl}/v1/chat/completions`, {
     method: "POST",
@@ -42,11 +46,15 @@ async function postChat(baseUrl: string, apiKey: string, model: string): Promise
     },
     body: JSON.stringify({
       model,
-      messages: [{ role: "user", content: "Reply with exactly: eliza-vast-smoke-ok" }],
+      messages: [
+        { role: "user", content: "Reply with exactly: eliza-vast-smoke-ok" },
+      ],
       max_tokens: 16,
       temperature: 0,
     }),
-    signal: AbortSignal.timeout(Number(readEnv("VAST_SMOKE_TIMEOUT_MS", "180000"))),
+    signal: AbortSignal.timeout(
+      Number(readEnv("VAST_SMOKE_TIMEOUT_MS", "180000")),
+    ),
   });
   const elapsedMs = Math.round(performance.now() - started);
   const text = await response.text();
@@ -59,7 +67,9 @@ async function postChat(baseUrl: string, apiKey: string, model: string): Promise
     );
   }
   if (!response.ok) {
-    throw new Error(`Vast smoke failed status=${response.status}: ${body.error?.message ?? text}`);
+    throw new Error(
+      `Vast smoke failed status=${response.status}: ${body.error?.message ?? text}`,
+    );
   }
   console.log(
     JSON.stringify(
@@ -86,7 +96,9 @@ export async function main(): Promise<void> {
   const body = await postChat(baseUrl, apiKey, model);
   const content = body.choices?.[0]?.message?.content ?? "";
   if (!content.toLowerCase().includes("eliza-vast-smoke-ok")) {
-    throw new Error(`Vast smoke response did not contain expected marker: ${content}`);
+    throw new Error(
+      `Vast smoke response did not contain expected marker: ${content}`,
+    );
   }
 }
 

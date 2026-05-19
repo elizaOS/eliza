@@ -142,7 +142,9 @@ for (const pluginName of plugins) {
     const relFile = path.relative(repoRoot, realFile);
     for (const key of required) {
       if (!envTestKeys.has(key)) {
-        envVarIssues.push(`${relFile} requires ${key} (not in .env.test.example)`);
+        envVarIssues.push(
+          `${relFile} requires ${key} (not in .env.test.example)`,
+        );
         envVarViolations++;
       }
     }
@@ -193,10 +195,12 @@ for (const row of rows) {
 console.log();
 console.log(
   `[lint-lane-coverage] ${totalPlugins} plugins scanned.` +
-  ` ${pluginsWithNoTests} without base test coverage (warn-only).` +
-  ` ${envVarViolations} env-var documentation gap(s).`,
+    ` ${pluginsWithNoTests} without base test coverage (warn-only).` +
+    ` ${envVarViolations} env-var documentation gap(s).`,
 );
-console.log("[lint-lane-coverage] (warn-only mode — will become exit 1 in Phase 4)");
+console.log(
+  "[lint-lane-coverage] (warn-only mode — will become exit 1 in Phase 4)",
+);
 
 // Warn-only: always exit 0
 process.exit(0);

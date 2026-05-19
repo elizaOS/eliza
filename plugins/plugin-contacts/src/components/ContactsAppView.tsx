@@ -872,7 +872,9 @@ export function ContactsTuiView() {
           )}
           {contacts.map((contact, index) => {
             const subtitle =
-              contact.phoneNumbers[0] ?? contact.emailAddresses[0] ?? "no contact method";
+              contact.phoneNumbers[0] ??
+              contact.emailAddresses[0] ??
+              "no contact method";
             return (
               <button
                 key={contact.id}
@@ -906,7 +908,9 @@ export function ContactsTuiView() {
                 <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
                   {contact.displayName || "Unnamed"}
                 </span>
-                <span style={{ color: contact.starred ? "#facc15" : "#64748b" }}>
+                <span
+                  style={{ color: contact.starred ? "#facc15" : "#64748b" }}
+                >
                   {contact.starred ? "*" : "-"}
                 </span>
                 <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
@@ -949,7 +953,9 @@ export function ContactsTuiView() {
                   <span style={{ color: "#64748b" }}>mail</span> {email}
                 </div>
               ))}
-              {selected.starred && <div style={{ color: "#facc15" }}>starred</div>}
+              {selected.starred && (
+                <div style={{ color: "#facc15" }}>starred</div>
+              )}
             </div>
           )}
 
@@ -1032,7 +1038,8 @@ export function ContactsTuiView() {
               border: "1px solid rgba(125,211,252,0.45)",
               borderRadius: 4,
               padding: "6px 10px",
-              cursor: !displayName.trim() || submitting ? "not-allowed" : "pointer",
+              cursor:
+                !displayName.trim() || submitting ? "not-allowed" : "pointer",
               fontFamily: "inherit",
               marginBottom: 18,
             }}
@@ -1075,7 +1082,8 @@ export function ContactsTuiView() {
               border: "1px solid rgba(167,243,208,0.45)",
               borderRadius: 4,
               padding: "6px 10px",
-              cursor: !vcardText.trim() || submitting ? "not-allowed" : "pointer",
+              cursor:
+                !vcardText.trim() || submitting ? "not-allowed" : "pointer",
               fontFamily: "inherit",
             }}
           >
@@ -1119,7 +1127,9 @@ export async function interact(
     const phoneNumber =
       typeof params?.phoneNumber === "string" ? params.phoneNumber.trim() : "";
     const emailAddress =
-      typeof params?.emailAddress === "string" ? params.emailAddress.trim() : "";
+      typeof params?.emailAddress === "string"
+        ? params.emailAddress.trim()
+        : "";
     if (phoneNumber) payload.phoneNumber = phoneNumber;
     if (emailAddress) payload.emailAddress = emailAddress;
     const result = await Contacts.createContact(payload);

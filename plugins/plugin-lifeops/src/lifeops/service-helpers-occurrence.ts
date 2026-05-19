@@ -53,9 +53,7 @@ export function occurrenceAnchorIso(
   occurrence: LifeOpsOccurrence,
 ): string | null {
   return (
-    occurrence.dueAt ??
-    occurrence.scheduledAt ??
-    occurrence.relevanceStartAt
+    occurrence.dueAt ?? occurrence.scheduledAt ?? occurrence.relevanceStartAt
   );
 }
 
