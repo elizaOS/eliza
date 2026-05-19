@@ -15,25 +15,27 @@ enterprise release.
 6419dbee227317983ff2c6d02c3fd4bf97c6699ac1d26f0c98476f2ba58cfc10
 ```
 
-- The current HEAD source has now been rebuilt into a fresh canonical ISO at
-  `out/binary.iso`. Do not use older named ISO copies in `out/` for
-  validation; they can be stale.
+- This branch has produced a fresh canonical ISO at `out/binary.iso`. Do
+  not use older named ISO copies in `out/` for validation; they can be
+  stale. If the branch moves after this artifact, rebuild and validate the
+  exact release commit before publishing or flashing it as final.
 
 ```text
 fb706edd7016b415e53fc263c37d09ed26d7f0d8d3bced250bde5b1b3ea9bec8
 ```
 
-- Normal QEMU boot of that exact current-HEAD artifact reached the elizaOS
+- Normal QEMU boot of that exact validated artifact reached the elizaOS
   greeter, started a normal GNOME desktop, and showed the elizaOS app
   onboarding screen. This specifically proves the previous app backend
   timeout is gone for the packaged runtime in this artifact.
 
 ## Current HEAD Caveat
 
-Current HEAD has QEMU visual evidence for boot, greeter, desktop, and app
-onboarding startup. It has not yet been flashed/readback-tested to USB,
-booted on real hardware, or validated for real USB Persistent Storage
-create/unlock/delete behavior.
+The latest validated artifact has QEMU visual evidence for boot, greeter,
+desktop, and app onboarding startup. The exact release commit must be
+rebuilt and revalidated if HEAD moves. It has not yet been
+flashed/readback-tested to USB, booted on real hardware, or validated for
+real USB Persistent Storage create/unlock/delete behavior.
 
 ## Fixed Tonight
 
@@ -42,7 +44,7 @@ opened but the backend timed out because `@elizaos/plugin-app-manager` and
 `@elizaos/plugin-registry` were copied as package folders without runtime
 `dist/index.js` artifacts.
 
-The current artifact contains the fix:
+The latest validated artifact contains the fix:
 
 - `just milady-app` now builds runtime JS for those first-party plugin
   packages when their `dist/index.js` files are absent.

@@ -54,7 +54,7 @@ sealed.
 
 The target contract is that all four combinations work with the same
 feature surface, except for speed and persistence. QEMU has proven the
-normal branded greeter/desktop/app path on the current HEAD artifact, but
+normal branded greeter/desktop/app path on the latest validated artifact, but
 real-USB boot, real-USB persistence, and Privacy Mode network behavior still
 need validation before those rows can be treated as production evidence. See
 [`docs/user-experience.md`](./docs/user-experience.md) for the boot-time
@@ -113,12 +113,13 @@ Apache-2.0 where possible, dual-licensed under both where required.
 
 ## Status: Demo Branch Versus Production
 
-**Current branch status, 2026-05-19:** the elizaOS Live source tree has
-passed a fresh ISO build and QEMU greeter/desktop/app onboarding validation
-on the current HEAD artifact. A prior artifact passed guarded USB
-flash/readback, but the current artifact still needs repeat USB
-flash/readback, real hardware USB boot, and real USB Persistent Storage
-validation before it is called final USB-ready.
+**Current branch status, 2026-05-19:** this branch has produced a fresh
+local ISO artifact that passed QEMU greeter/desktop/app onboarding
+validation. A prior artifact passed guarded USB flash/readback, but the
+latest validated artifact still needs repeat USB flash/readback, real
+hardware USB boot, and real USB Persistent Storage validation before it is
+called final USB-ready. Release promotion must rebuild and validate the
+exact release commit if the branch moves after the latest tested artifact.
 See [`docs/current-status.md`](./docs/current-status.md) for the exact
 validation state.
 
@@ -126,8 +127,8 @@ validation state.
 base ISO, and Tails' normal live-OS boot path was verified through QEMU
 using `-cdrom`.
 
-**Phases 2–7 — implemented in source, QEMU demo path proven on current
-HEAD.** Branding, Privacy Mode plumbing, bundled elizaOS app
+**Phases 2–7 — implemented in source, QEMU demo path proven on the latest
+validated artifact.** Branding, Privacy Mode plumbing, bundled elizaOS app
 install/autostart, the conservative elizaOS capability broker, and elizaOS
 Persistent Storage rows/hooks are in the tree. The current gate is USB
 flash/readback, real hardware boot, privacy, and persistence validation.

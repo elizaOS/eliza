@@ -8,7 +8,7 @@ No optimism inflation. Where something is risky or unknown, it says so.
 
 ---
 
-## Where we are right now (2026-05-17)
+## Where we are right now (2026-05-19)
 
 **Done and proven:**
 - The **containerized build pipeline** works. A full elizaOS ISO
@@ -23,15 +23,15 @@ No optimism inflation. Where something is risky or unknown, it says so.
 - Local overlays now exist for elizaOS branding, Privacy Mode, elizaOS app
   install/systemd launch, a conservative elizaOS capability broker, elizaOS
   Persistent Storage, and a checked signed-runtime verifier foundation.
-- A prior full ISO artifact passed QEMU through the branded greeter,
-  desktop, and app-service path. The same artifact was flashed to a
+- A recent full ISO artifact passed QEMU through the branded greeter,
+  desktop, and app-service path. A prior artifact was flashed to a
   removable USB with guarded write/readback verification.
 - The old root-level usbeliza prototype has been removed from this branch;
   the active Linux distro work now lives under this live-build variant.
 
 **Not done:**
-- Current HEAD includes source-only branding/docs polish after the last
-  validated artifact. Rebuild and re-run QEMU before calling that exact
+- Rebuild and re-run QEMU if the branch moves after the latest validated
+  artifact; exact release-commit traceability is required before calling an
   artifact final USB-ready.
 - Privacy/direct networking and real USB Persistent Storage behavior still
   need proof inside the rebuilt live OS.
@@ -42,7 +42,8 @@ No optimism inflation. Where something is risky or unknown, it says so.
 
 So: the *build machine* is mostly complete. The *product* — elizaOS Live
 — has the core overlays in place, but the next heavy gate is still a
-fresh HEAD rebuild + QEMU + real USB boot + mode/persistence validation.
+exact release-commit rebuild if needed + QEMU + real USB boot +
+mode/persistence validation.
 
 Product identity rule: the boot, greeter, and desktop should read as
 elizaOS Live. Tails remains the underlying live-OS plumbing and is credited

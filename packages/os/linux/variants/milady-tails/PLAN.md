@@ -22,10 +22,10 @@ turn-by-turn directions.
 |---|---|
 | **Phase 0 — Scaffold** | ✅ Done |
 | **Phase 1 — Base ISO builds + boots** | ✅ Done — base image builds and boots through QEMU via `-cdrom` |
-| **Phase 2 — elizaOS system branding** | ✅ Source implemented; current HEAD QEMU visual path passed |
-| **Phase 3 — Privacy mode** | 🔨 Source implemented; needs current-HEAD network/Tor validation |
-| **Phase 4 — Bake elizaOS app** | ✅ App payload/install path QEMU-passed on current HEAD; clean checkout still must run `just milady-app` before a full build |
-| **Phase 5 — Autolaunch** | ✅ Desktop/systemd wrapper QEMU-passed on current HEAD |
+| **Phase 2 — elizaOS system branding** | ✅ Source implemented; latest validated artifact QEMU visual path passed |
+| **Phase 3 — Privacy mode** | 🔨 Source implemented; needs exact-release network/Tor validation |
+| **Phase 4 — Bake elizaOS app** | ✅ App payload/install path QEMU-passed on latest validated artifact; clean checkout still must run `just milady-app` before a full build |
+| **Phase 5 — Autolaunch** | ✅ Desktop/systemd wrapper QEMU-passed on latest validated artifact |
 | **Phase 6 — Agent/broker** | 🔨 OS broker/env path implemented; approval-gated privileged actions still need hardening |
 | **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented; real USB persistence validation still pending |
 | **Phases 8–9** | 📋 Spec/backlog ([`docs/specs/`](./docs/specs/)), not release-complete |
@@ -56,9 +56,10 @@ What exists right now:
   approval-gated policy layer exists.
 - Privacy-mode, autolaunch, and `~/.eliza` Persistent Storage overlays are
   implemented locally. QEMU has proven the normal greeter/desktop/app path
-  on the current HEAD ISO, and USB flash/readback passed on a prior
-  artifact. The current gate is repeat USB flash/readback for this artifact,
-  then real USB boot, persistence, and privacy behavior.
+  on the latest validated local ISO artifact, and USB flash/readback passed
+  on a prior artifact. The current gate is rebuilding/validating the exact
+  release commit if the branch moves, then repeat USB flash/readback, real
+  USB boot, persistence, and privacy behavior.
 - The old root-level usbeliza Linux prototype was removed from this branch;
   this variant is the active Linux distro path.
 

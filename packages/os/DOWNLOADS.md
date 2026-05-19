@@ -13,10 +13,11 @@ gaps, and a hardware-support matrix.
 
 Current hardening status:
 
-- A prior live-USB ISO passed QEMU greeter/desktop/app-service validation
-  and guarded USB flash/readback. Current HEAD still needs rebuild,
-  repeat QEMU, repeat flash/readback, real hardware boot, and real USB
-  persistence validation before stable release.
+- A recent live-USB ISO artifact passed QEMU greeter/desktop/app-service
+  validation, and a prior artifact passed guarded USB flash/readback. The
+  exact release commit still needs rebuild/repeat QEMU if HEAD moves,
+  repeat flash/readback, real hardware boot, and real USB persistence
+  validation before stable release.
 - v1 is USB-only; internal-disk install is deferred.
 - A guarded developer writer exists in the live-USB variant. Production
   still needs a signed GUI/CLI flasher for macOS, Windows, and Linux.
