@@ -4698,22 +4698,31 @@ export class AgentRuntime implements IAgentRuntime {
 				usage?: unknown;
 				providerMetadata?: unknown;
 			};
+			// Only wrap into a GenerateText-shape result when the provider
+			// actually surfaced native tool calls; otherwise preserve the
+			// historical bare-string return so plain text streams keep matching
+			// the documented `result === text` contract.
 			const hasToolCallsField = "toolCalls" in streamRaw;
-			const hasFinishReasonField = "finishReason" in streamRaw;
-			if (hasToolCallsField || hasFinishReasonField) {
-				const resolvedToolCalls = hasToolCallsField
-					? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
-					: [];
-				const resolvedFinishReason = hasFinishReasonField
-					? await Promise.resolve(streamRaw.finishReason).catch(() => undefined)
-					: undefined;
+			const resolvedToolCalls = hasToolCallsField
+				? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+				: [];
+			const toolCallsArr = Array.isArray(resolvedToolCalls)
+				? resolvedToolCalls
+				: [];
+			if (toolCallsArr.length > 0) {
+				const resolvedFinishReason =
+					"finishReason" in streamRaw
+						? await Promise.resolve(streamRaw.finishReason).catch(
+								() => undefined,
+							)
+						: undefined;
 				const resolvedUsage =
 					"usage" in streamRaw
 						? await Promise.resolve(streamRaw.usage).catch(() => undefined)
 						: undefined;
 				resultRef.current = {
 					text: streamedText,
-					toolCalls: Array.isArray(resolvedToolCalls) ? resolvedToolCalls : [],
+					toolCalls: toolCallsArr,
 					finishReason: resolvedFinishReason,
 					usage: resolvedUsage,
 					providerMetadata: streamRaw.providerMetadata,
