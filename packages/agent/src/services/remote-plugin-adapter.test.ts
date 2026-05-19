@@ -236,7 +236,11 @@ describe("remote plugin adapter", () => {
         calls.push({ method: "route", params });
         return {
           status: 202,
-          headers: { "x-remote": "yes" },
+          headers: {
+            "x-remote": "yes",
+            "set-cookie": "remote_session=secret",
+            authorization: "Bearer remote-secret",
+          },
           body: { accepted: true },
         };
       },
@@ -349,7 +353,11 @@ describe("remote plugin adapter", () => {
             result: {
               handled: true,
               status: 201,
-              headers: { "x-remote-app-route": "yes" },
+              headers: {
+                "x-remote-app-route": "yes",
+                "set-cookie": "remote_app_session=secret",
+                "x-auth-token": "remote-auth-token",
+              },
               body: {
                 ok: true,
                 method:
@@ -526,6 +534,8 @@ describe("remote plugin adapter", () => {
       "x-remote-app-route": "yes",
       "content-type": "application/json",
     });
+    expect(routeResponse.headers).not.toHaveProperty("set-cookie");
+    expect(routeResponse.headers).not.toHaveProperty("x-auth-token");
     expect(JSON.parse(routeResponse.ended)).toEqual({
       ok: true,
       method: "POST",
@@ -1411,6 +1421,40 @@ describe("remote plugin adapter", () => {
       method: "plugin.modules.list",
       message:
         'Remote route collision for "POST /remote/demo" between modules "remote-demo" and "remote-route-copy".',
+    });
+  });
+
+  it("rejects remote STATIC routes until a remote static mount contract exists", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            services: [],
+            models: [],
+            routes: [
+              {
+                method: "STATIC",
+                path: "/remote/static",
+                public: true,
+              },
+            ],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" route "/remote/static" uses STATIC, which is not supported by the remote plugin adapter. Use plugin assets or a dynamic HTTP route instead.',
     });
   });
 

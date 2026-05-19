@@ -86,6 +86,7 @@ export async function registerRemoteCapabilityPlugins(
   validateRemotePluginComponentCollisions(runtime, modules, options);
   validateRemotePluginServiceCollisions(runtime, modules, options);
   validateRemotePluginModelDeclarations(modules);
+  validateRemotePluginRouteDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
   const plugins = modules
     .map((module) => createRemoteCapabilityPlugin(module))
@@ -131,6 +132,7 @@ export async function syncRemoteCapabilityPlugins(
   validateRemotePluginComponentCollisions(runtime, modules, options);
   validateRemotePluginServiceCollisions(runtime, modules, options);
   validateRemotePluginModelDeclarations(modules);
+  validateRemotePluginRouteDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
   const nextPlugins = modules.map((module) =>
     createRemoteCapabilityPlugin(module),
@@ -197,7 +199,9 @@ export function createRemoteCapabilityPlugin(
         } satisfies PluginCallRouteParams);
         return {
           status: result.status,
-          ...(result.headers === undefined ? {} : { headers: result.headers }),
+          ...(result.headers === undefined
+            ? {}
+            : { headers: sanitizeRemoteRouteResponseHeaders(result.headers) }),
           ...(result.body === undefined ? {} : { body: result.body }),
         };
       },
@@ -761,7 +765,9 @@ async function callRemoteAppRoutes(
     return false;
   }
 
-  const headers = toStringRecord(response.headers);
+  const headers = sanitizeRemoteRouteResponseHeaders(
+    toStringRecord(response.headers),
+  );
   for (const [key, value] of Object.entries(headers)) {
     ctx.res.setHeader(key, value);
   }
@@ -1218,6 +1224,22 @@ function validateRemotePluginModelDeclarations(
   }
 }
 
+function validateRemotePluginRouteDeclarations(
+  modules: RemotePluginModuleManifest[],
+): void {
+  for (const module of modules) {
+    for (const route of module.routes ?? []) {
+      if (route.method !== "STATIC") continue;
+      throw new CapabilityError({
+        code: "CAPABILITY_DECODE_FAILED",
+        message: `Remote plugin "${module.id}" route "${route.path}" uses STATIC, which is not supported by the remote plugin adapter. Use plugin assets or a dynamic HTTP route instead.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+      });
+    }
+  }
+}
+
 function validateRemotePluginRouteCollisions(
   runtime: IAgentRuntime,
   modules: RemotePluginModuleManifest[],
@@ -1558,6 +1580,17 @@ function sanitizeForwardedRouteHeaders<
 >(headers: T | undefined): T {
   const result: Record<string, string | string[] | undefined> = {};
   for (const [key, value] of Object.entries(headers ?? {})) {
+    if (SENSITIVE_FORWARDED_ROUTE_HEADERS.has(key.toLowerCase())) continue;
+    result[key] = value;
+  }
+  return result as T;
+}
+
+function sanitizeRemoteRouteResponseHeaders<
+  T extends Record<string, string | undefined>,
+>(headers: T): T {
+  const result: Record<string, string | undefined> = {};
+  for (const [key, value] of Object.entries(headers)) {
     if (SENSITIVE_FORWARDED_ROUTE_HEADERS.has(key.toLowerCase())) continue;
     result[key] = value;
   }

@@ -11,6 +11,7 @@ export { KokoroTtsBackend } from "./kokoro-backend";
 export type {
 	KokoroGgufRuntimeOptions,
 	KokoroMockRuntimeOptions,
+	KokoroOnnxRuntimeOptions,
 	KokoroPythonRuntimeOptions,
 	KokoroRuntime,
 	KokoroRuntimeChunk,
@@ -21,6 +22,7 @@ export {
 	KOKORO_VOICES_BASE_URL,
 	KokoroGgufRuntime,
 	KokoroMockRuntime,
+	KokoroOnnxRuntime,
 	KokoroPythonRuntime,
 } from "./kokoro-runtime";
 export type {

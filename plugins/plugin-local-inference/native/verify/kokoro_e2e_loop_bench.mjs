@@ -74,6 +74,7 @@ function parseArgs(argv) {
     saveAudio: process.env.ELIZA_KOKORO_E2E_SAVE_AUDIO !== "0",
     skipEmbedding: process.env.ELIZA_KOKORO_E2E_SKIP_EMBEDDING === "1",
     disableDflash: process.env.ELIZA_KOKORO_E2E_DISABLE_DFLASH === "1",
+    kokoroRuntime: process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx",
     preflightOnly: false,
     json: false,
     quiet: false,
@@ -104,6 +105,7 @@ function parseArgs(argv) {
     else if (a === "--audio-dir") args.audioDir = next();
     else if (a === "--skip-embedding") args.skipEmbedding = true;
     else if (a === "--disable-dflash") args.disableDflash = true;
+    else if (a === "--kokoro-runtime") args.kokoroRuntime = next();
     else if (a === "--no-save-audio") args.saveAudio = false;
     else if (a === "--preflight-only") args.preflightOnly = true;
     else if (a === "--json") args.json = true;
@@ -128,6 +130,8 @@ Options:
   --ref "text|text"       References for WER. Without --wav, used as Kokoro mic seed text.
   --skip-embedding        Do not run the optional embedding probe.
   --disable-dflash        Do not attach the DFlash drafter; records optimization as inactive.
+  --kokoro-runtime onnx|fork
+                           Kokoro TTS runtime. Default: onnx.
   --audio-dir DIR         Directory for generated mic/response WAV evidence.
   --preflight-only        Resolve artifacts/builds and write a non-gating preflight report.
   --report out.json       Report path. Default: native/reports/local-e2e/<date>/e2e-loop-kokoro-*.json
@@ -647,11 +651,17 @@ async function createKokoro(files, voiceId, serverUrl) {
     voicesDir: files.kokoro.voicesDir,
     sampleRate: 24000,
   };
-  const runtime = new kokoro.KokoroGgufRuntime({
-    serverUrl,
-    modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
-    sampleRate: layout.sampleRate,
-  });
+  const runtime =
+    (process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx") === "fork"
+      ? new kokoro.KokoroGgufRuntime({
+          serverUrl,
+          modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
+          sampleRate: layout.sampleRate,
+        })
+      : new kokoro.KokoroOnnxRuntime({
+          layout,
+          expectedSha256: files.kokoro.modelSha256,
+        });
   const backend = new kokoro.KokoroTtsBackend({
     layout,
     defaultVoiceId: voiceId,
@@ -1409,6 +1419,7 @@ function baseReport(args, bundleDir, files, engine) {
       refs: args.refs.length,
       skipEmbedding: args.skipEmbedding,
       disableDflash: args.disableDflash,
+      kokoroRuntime: args.kokoroRuntime,
       audioDir: args.audioDir || null,
     },
     bundle: {
@@ -1549,7 +1560,11 @@ async function run() {
     ffiState = await loadFfi(engine.dylib, engine.dir);
     ffiCtx = createFfiContext(ffiState, bundleDir);
     textServer = await startTextServer(engine, files, args, log);
+    const oldRuntimeEnv = process.env.ELIZA_KOKORO_E2E_RUNTIME;
+    process.env.ELIZA_KOKORO_E2E_RUNTIME = args.kokoroRuntime;
     const kokoro = await createKokoro(files, voiceId, `http://127.0.0.1:${textServer.port}`);
+    if (oldRuntimeEnv === undefined) delete process.env.ELIZA_KOKORO_E2E_RUNTIME;
+    else process.env.ELIZA_KOKORO_E2E_RUNTIME = oldRuntimeEnv;
     kokoroRuntime = kokoro.runtime;
     const micInputs = await prepareMicInputs(args, kokoro.backend, audioDir, voiceId);
 

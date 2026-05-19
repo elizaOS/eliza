@@ -265,7 +265,10 @@ Manifest decoding is strict at the capability-router boundary:
   `modelType`, widget `id`, widget `label`, route `path`, view `id`, and view
   `label` must be non-empty strings.
 - Route `method` must be one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, or
-  `STATIC`.
+  `STATIC`. The remote plugin adapter currently rejects remote `STATIC` routes
+  because local route dispatch skips static routes and there is no remote static
+  mount contract yet; compiled frontend bundles and other remote files should
+  use `views` plus `plugin.asset.get`.
 - View `viewType`, when present, must be `gui` or `tui`.
 - `actions`, `providers`, `evaluators`, `events`, `models`, `widgets`,
   `routes`, and `views`, when present, must be arrays.
@@ -405,6 +408,10 @@ When multiple endpoints are configured:
   advertised the module. The aggregating router stamps each module with
   `capabilityEndpointId`, and the materialized plugin carries that endpoint id
   on every remote plugin RPC.
+- Remote route and app-bridge route calls do not copy local or remote
+  authorization, cookie, API-key, or auth-token headers across the boundary.
+  Endpoint authentication stays in the capability-router transport layer instead
+  of being copied from inbound user requests or remote route responses.
 - low-level `fs`, `pty`, `git`, and `model.status` calls use the primary
   endpoint by default, or a specific endpoint when callers pass `endpointId`.
 
@@ -590,6 +597,9 @@ Current focused tests cover:
   plugin ownership,
 - authenticated agent route for direct endpoint connection or Cloud
   provisioning, including token redaction in API responses,
+- remote route and app-bridge route header sanitization so local user/agent
+  secrets are not forwarded to remote capability endpoints, and remote route
+  responses cannot set sensitive headers back onto the agent origin,
 - same-origin remote asset proxy for token-bearing endpoint bundles, so browser
   dynamic imports do not receive or need bearer tokens,
 - endpoint persistence that preserves restart reload without serializing
@@ -612,6 +622,8 @@ Current focused tests cover:
   endpoint/module allowlist, and consumed through the same runtime path
   (`bun run test:remote-capabilities:docker`),
 - remote route dispatch through the actual API route dispatcher,
+- remote `STATIC` route rejection until a dedicated remote static mount
+  contract exists,
 - remote frontend bundle URL normalization,
 - browser-facing view registry and `/api/views` metadata for remote absolute
   bundle URLs,
