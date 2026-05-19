@@ -134,7 +134,7 @@ milady-app:
     test -x "${app_out}/bin/launcher" || { echo "missing ${app_out}/bin/launcher"; exit 1; }
     ensure_plugin_runtime_dist "plugins/plugin-health" package-js
     ensure_plugin_runtime_dist "plugins/plugin-calendly" tsup-index
-    ensure_plugin_runtime_dist "plugins/plugin-registry" bun-runtime-index
+    ensure_plugin_runtime_dist "plugins/plugin-registry" package-js
     ensure_plugin_runtime_dist "plugins/plugin-app-manager" bun-runtime-index
     if [ -e "${stage}" ] && ! rm -rf "${stage}"; then
         sudo -n rm -rf "${stage}"

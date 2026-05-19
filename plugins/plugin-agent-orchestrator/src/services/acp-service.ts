@@ -920,18 +920,15 @@ export class AcpService extends Service {
     let finalText = "";
     let stopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
-    if (this.cliPath.includes("/") && !existsSync(this.cliPath)) {
-      const message = `acpx CLI is not available at ${this.cliPath}. Set ELIZA_ACP_CLI or install acpx.`;
+    const missingCliMessage = this.missingCliMessage();
+    if (missingCliMessage) {
       if (opts.sessionId) {
-        this.emitSessionEvent(opts.sessionId, "error", {
-          message,
-          failureKind: "not_found",
-        });
+        this.emitMissingCli(opts.sessionId, missingCliMessage);
       }
       return Promise.resolve({
         code: 127,
         signal: null,
-        stderr: message,
+        stderr: missingCliMessage,
         finalText: "",
         durationMs: Date.now() - startedAt,
       });
@@ -1485,14 +1482,25 @@ export class AcpService extends Service {
     return configured === true;
   }
 
-  private assertTransportAvailable(sessionId: string): void {
-    if (process.env.ELIZA_PLATFORM !== "android") return;
-    if (!this.cliPath.includes("/") || existsSync(this.cliPath)) return;
-    const message = `acpx CLI is not available at ${this.cliPath}. Install the ACP transport or set ELIZA_ACP_CLI to a valid executable.`;
+  private missingCliMessage(): string | undefined {
+    if (!this.cliPath.includes("/") || existsSync(this.cliPath)) {
+      return undefined;
+    }
+    return `acpx CLI is not available at ${this.cliPath}. Install the ACP transport or set ELIZA_ACP_CLI to a valid executable.`;
+  }
+
+  private emitMissingCli(sessionId: string, message: string): void {
     this.emitSessionEvent(sessionId, "error", {
       message,
       failureKind: "not_found",
     });
+  }
+
+  private assertTransportAvailable(sessionId: string): void {
+    if (process.env.ELIZA_PLATFORM !== "android") return;
+    const message = this.missingCliMessage();
+    if (!message) return;
+    this.emitMissingCli(sessionId, message);
     throw new Error(message);
   }
 }
