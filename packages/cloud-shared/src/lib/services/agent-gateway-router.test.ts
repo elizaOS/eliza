@@ -10,10 +10,10 @@ const runOnboardingChat = mock();
 
 let phoneContactsResult: Array<Record<string, unknown>> = [];
 let selectCalls = 0;
-let updateCalls = 0;
 
 const selectBuilder = {
   from: mock(() => selectBuilder),
+  innerJoin: mock(() => selectBuilder),
   where: mock(() => selectBuilder),
   orderBy: mock(() => selectBuilder),
   limit: mock(async () => {
@@ -22,19 +22,11 @@ const selectBuilder = {
   }),
 };
 
-const updateBuilder = {
-  set: mock(() => updateBuilder),
-  where: mock(async () => {
-    updateCalls += 1;
-  }),
-};
-
 mock.module("../../db/client", () => ({
   db: {},
   dbRead: {},
   dbWrite: {
     select: mock(() => selectBuilder),
-    update: mock(() => updateBuilder),
   },
   getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
   runWithDbCache: (fn: () => unknown) => fn(),
@@ -61,14 +53,17 @@ mock.module("../../db/repositories/agent-sandboxes", () => ({
 }));
 
 mock.module("../../db/schemas", () => ({
-  agentPhoneContacts: {
+  agentPhoneNumbers: {
     id: "id",
-    provider: "provider",
-    contact_identifier: "contact_identifier",
+    agent_id: "agent_id",
+    organization_id: "organization_id",
     is_active: "is_active",
-    last_contacted_at: "last_contacted_at",
-    last_inbound_at: "last_inbound_at",
-    updated_at: "updated_at",
+  },
+  phoneMessageLog: {
+    phone_number_id: "phone_number_id",
+    direction: "direction",
+    to_number: "to_number",
+    created_at: "created_at",
   },
 }));
 
@@ -122,14 +117,12 @@ describe("AgentGatewayRouterService phone routing", () => {
     bridge.mockReset();
     runOnboardingChat.mockReset();
     selectBuilder.from.mockClear();
+    selectBuilder.innerJoin.mockClear();
     selectBuilder.where.mockClear();
     selectBuilder.orderBy.mockClear();
     selectBuilder.limit.mockClear();
-    updateBuilder.set.mockClear();
-    updateBuilder.where.mockClear();
     phoneContactsResult = [];
     selectCalls = 0;
-    updateCalls = 0;
   });
 
   test("routes to the sender's own active agent before checking friend contacts", async () => {
@@ -166,10 +159,8 @@ describe("AgentGatewayRouterService phone routing", () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
     phoneContactsResult = [
       {
-        id: "contact-row",
-        organization_id: "owner-org",
-        user_id: "owner-user",
-        agent_id: "friend-agent",
+        organizationId: "owner-org",
+        agentId: "friend-agent",
       },
     ];
     listOwnerSessions.mockResolvedValue([]);
@@ -196,7 +187,6 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "owner-user",
     });
     expect(findRunningSandbox).toHaveBeenCalledWith("friend-agent", "owner-org");
-    expect(updateCalls).toBe(1);
   });
 
   test("starts onboarding for phone numbers with no owner or contact relationship", async () => {
@@ -346,10 +336,8 @@ describe("AgentGatewayRouterService phone routing", () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
     phoneContactsResult = [
       {
-        id: "contact-row",
-        organization_id: "owner-org",
-        user_id: "owner-user",
-        agent_id: "friend-agent",
+        organizationId: "owner-org",
+        agentId: "friend-agent",
       },
     ];
     listOwnerSessions.mockResolvedValue([]);

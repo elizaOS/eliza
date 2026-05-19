@@ -2727,27 +2727,19 @@ function formatRoleGateForPrompt(
 }
 
 /**
- * The Stage-1 `messageHandlerTemplate` covers three optimized-prompt tasks:
+ * The Stage-1 `messageHandlerTemplate` covers two optimized-prompt tasks:
  *
- *   - `context_routing` — when the role-filtered context catalog is non-empty
- *     the prompt asks the model to pick which contexts to consume. Optimizing
- *     this task tunes the routing instructions.
- *   - `should_respond` — when no contexts are available (direct messages, or
- *     callers that haven't registered any) the prompt collapses to a respond
- *     /ignore decision. Optimizing this task tunes that classifier.
+ *   - `should_respond` — the prompt asks the model to decide whether to
+ *     respond or ignore the message. Optimizing this task tunes the classifier.
  *   - `response` — Stage-1 also emits the assistant's draft reply when it
  *     decides to respond, so a separately-trained `response` artifact
  *     replaces the same baseline when present and the operator wants that
  *     variant active.
- *
- * The dispatch here is keyed on call-site state (whether contexts are
- * available), not on an `if (task === 'X')` branch — we ask the resolver for
- * one task name per call.
  */
 function selectMessageHandlerTask(
-	availableContexts: readonly ContextDefinition[],
+	_availableContexts: readonly ContextDefinition[],
 ): OptimizedPromptTask {
-	return availableContexts.length > 0 ? "context_routing" : "should_respond";
+	return "should_respond";
 }
 
 function renderMessageHandlerInstructions(
