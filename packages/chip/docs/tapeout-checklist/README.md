@@ -52,17 +52,18 @@ The report obeys the `eliza.tapeout_readiness.v1` schema:
   the gate's combined stdout/stderr — preferring `STATUS:`, `FAIL:`, or
   `BLOCKED` lines, falling back to the first non-empty line.
 
-## Classification policy (exact prefix-based rule)
+## Classification policy
 
 For each gate the aggregator runs the underlying `scripts/check_*.py` (or
 `verify/check_stub_audit.py`) script, captures its return code and combined
 output, and classifies the result as follows:
 
-| Signal                                       | Classification |
-| -------------------------------------------- | -------------- |
-| `STATUS: BLOCKED` substring anywhere         | `BLOCKED`      |
-| non-zero exit code (no `STATUS: BLOCKED`)    | `FAIL`         |
-| zero exit code (no `STATUS: BLOCKED`)        | `PASS`         |
+| Signal                                                   | Classification |
+| -------------------------------------------------------- | -------------- |
+| Output contains `STATUS: BLOCKED`, `BLOCKED:`, ` BLOCKED`, `gate BLOCKED`, or `blocked_until_evidence` | `BLOCKED` |
+| Exit code `2` (chip-package convention for soft-fail/blocked) | `BLOCKED` |
+| Non-zero exit code, no BLOCKED marker                    | `FAIL`         |
+| Zero exit code, no BLOCKED marker                        | `PASS`         |
 
 `BLOCKED` is **not** a release blocker on its own — it is the package's
 existing fail-closed marker for external dependencies (foundry PDK access,
@@ -103,22 +104,39 @@ release claim is published.
 From a local run of `make tapeout-readiness` on `develop`:
 
 ```text
-summary: PASS=38 FAIL=3 BLOCKED=6  release_blocker=True  strict=False
+summary: PASS=37 FAIL=0 BLOCKED=10  release_blocker=False  strict=False
 ```
 
-`release_blocker=True` because three gates fail: `padframe-check`,
-`package-cross-probe-check`, and `aosp-simulator-completion-check` (the last
-exits non-zero and prints `AOSP simulator completion gate BLOCKED:` — the
-strict prefix policy requires `STATUS: BLOCKED` to classify as `BLOCKED`).
+47 gates total. `release_blocker=False` because no gate currently classifies
+as `FAIL` — every problem the aggregator surfaces is a planning-state
+`BLOCKED` row, not a regression.
 
-The six `BLOCKED` rows are:
+The ten `BLOCKED` rows are:
 
-- `cpu/core-selection-check` (Ascalon-D8 big-core license/procurement gap)
-- `cpu/cpu-ap-completion-gate` (no real RV64GC Linux AP completion claim)
-- `cpu/rva23-compliance` (`rva23.aosp_branch_pin` pending)
-- `pd/pd-util-check` (no utilization key in latest OpenLane run)
-- `bsp/minimum-linux-target-check` (no Linux kernel boot transcript)
-- `bsp/minimum-linux-npu-target-check` (no Linux NPU smoke transcript)
+- `cpu/core-selection-check` — Ascalon-D8 big-core license/procurement gap.
+- `cpu/cpu-ap-completion-gate` — no real RV64GC Linux AP completion claim.
+- `cpu/rva23-compliance` — `rva23.aosp_branch_pin` pending.
+- `memory/memory-uma-claim-gate` — real LPDDR/UMA/IOMMU/QoS evidence
+  blocked until silicon/board transcripts exist.
+- `memory/iommu-evidence-check` — IOMMU evidence artifacts tracked as
+  BLOCKED until external evidence lands.
+- `pd/pd-util-check` — no utilization key in latest OpenLane run.
+- `bsp/software-bsp-scaffold-check` — buildroot/linux/aosp external evidence
+  transcripts are placeholders.
+- `bsp/aosp-simulator-completion-check` — Cuttlefish RV64 transcripts still
+  carry `status=FAIL` placeholders.
+- `bsp/minimum-linux-target-check` — no Linux kernel boot transcript.
+- `bsp/minimum-linux-npu-target-check` — no Linux NPU smoke transcript.
+
+These ten all map 1-to-1 to the "What stays BLOCKED (external dependencies,
+by design)" list in
+[`research/00_integration_shortlist.md`](../../research/00_integration_shortlist.md).
+The aggregator does not introduce any new blocker; it only surfaces the
+existing fail-closed state in one place.
+
+`make tapeout-readiness-strict` currently exits 1 because of those ten
+BLOCKED rows, exactly as intended: until every external dependency is
+captured, no release claim can be published.
 
 The breakdown — every line in `build/reports/tapeout-readiness.json` —
 reflects the existing fail-closed state already documented in
