@@ -381,7 +381,14 @@ export async function runFirstTimeSetup(
     const { runCloudOnboarding, ClackObserver } = await import(
       "@elizaos/plugin-elizacloud"
     );
-    const observer = new ClackObserver(clack);
+    // Cast to `unknown` first to bridge the two @clack/prompts module
+    // identities that show up under workspace tsconfig roots (plugin-registry
+    // pulls in packages/agent source with a different resolution path for
+    // @clack/prompts than plugin-elizacloud uses). The runtime object is
+    // identical — only TS sees them as distinct module instances.
+    const observer = new ClackObserver(
+      clack as unknown as ConstructorParameters<typeof ClackObserver>[0],
+    );
     cloudOnboardingResult = await runCloudOnboarding(
       observer,
       name,
