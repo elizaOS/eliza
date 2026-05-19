@@ -41,14 +41,12 @@ def find_stream_binary() -> str | None:
 def parse_stream_output(text: str) -> dict[str, dict]:
     """Parse the canonical STREAM table:
 
-      Function    Best Rate MB/s  Avg time     Min time     Max time
-      Copy:               12345.6     0.012345     0.012000     0.013000
-      ...
+    Function    Best Rate MB/s  Avg time     Min time     Max time
+    Copy:               12345.6     0.012345     0.012000     0.013000
+    ...
     """
     out: dict[str, dict] = {}
-    line_re = re.compile(
-        r"^\s*(Copy|Scale|Add|Triad):\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)"
-    )
+    line_re = re.compile(r"^\s*(Copy|Scale|Add|Triad):\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)")
     for line in text.splitlines():
         m = line_re.match(line)
         if not m:
@@ -62,7 +60,7 @@ def parse_stream_output(text: str) -> dict[str, dict]:
     return out
 
 
-def build_artifact(measurements: dict, source: str, binary: str | None) -> dict:
+def build_artifact(measurements: object, source: str, binary: str | None) -> dict:
     return {
         "schema": "eliza.cache.stream_bandwidth.v1",
         "status": "host_scaffold_only_not_target_evidence",
@@ -113,8 +111,9 @@ def main() -> int:
             print("STREAM binary not found in tools/bin, oss-cad-suite, or PATH", file=sys.stderr)
             return 2
         artifact = build_artifact(
-            measurements={"status": "blocked", "reason": "stream binary missing"} if not args.dry_run else
-                         {"status": "dry_run", "reason": "methodology stub"},
+            measurements={"status": "blocked", "reason": "stream binary missing"}
+            if not args.dry_run
+            else {"status": "dry_run", "reason": "methodology stub"},
             source="blocked_missing_tool" if not args.dry_run else "host_dry_run",
             binary=binary,
         )
@@ -123,9 +122,7 @@ def main() -> int:
         return 0
 
     try:
-        proc = subprocess.run(
-            [binary], capture_output=True, text=True, timeout=120, check=False
-        )
+        proc = subprocess.run([binary], capture_output=True, text=True, timeout=120, check=False)
     except subprocess.TimeoutExpired:
         artifact = build_artifact(
             measurements={"status": "timeout"},
@@ -138,7 +135,13 @@ def main() -> int:
 
     measurements = parse_stream_output(proc.stdout + proc.stderr)
     artifact = build_artifact(
-        measurements=measurements or {"status": "no_parsed_rows", "raw_lines": len(proc.stdout.splitlines())},
+        measurements=measurements
+        or {
+            "_parse_status": {
+                "status": "no_parsed_rows",
+                "raw_lines": len(proc.stdout.splitlines()),
+            }
+        },
         source="host_local_run",
         binary=binary,
     )

@@ -122,6 +122,8 @@ package e1_cache_pkg;
     // is corrected, double-bit error is detected and surfaced as an error.
     // Standard (72,64) SEC-DED Hsiao matrix is used; see Hsiao (1970).
     // -----------------------------------------------------------------------
+    // Implicit-return form (function-name = value) is used so the yosys
+    // SystemVerilog frontend can parse these helpers alongside verilator.
     function automatic logic [7:0] secded_encode(input logic [63:0] d);
         logic [7:0] c;
         // Hsiao parity bits over odd-weight columns.
@@ -136,23 +138,23 @@ package e1_cache_pkg;
         c[5] = ^(d & 64'h3333_3333_3333_3333);
         c[6] = ^(d & 64'hAAAA_AAAA_AAAA_AAAA);
         c[7] = ^(d & 64'h5555_5555_5555_5555);
-        return c;
+        secded_encode = c;
     endfunction
 
     // Returns 8-bit syndrome. Zero => no error.
     function automatic logic [7:0] secded_syndrome(input logic [63:0] d,
                                                    input logic [7:0]  c);
-        return secded_encode(d) ^ c;
+        secded_syndrome = secded_encode(d) ^ c;
     endfunction
 
     // Single-bit error iff syndrome non-zero AND syndrome has odd parity.
     function automatic logic secded_is_single(input logic [7:0] s);
-        return (s != 8'h00) && ^s;
+        secded_is_single = (s != 8'h00) && ^s;
     endfunction
 
     // Double-bit error iff syndrome non-zero AND syndrome has even parity.
     function automatic logic secded_is_double(input logic [7:0] s);
-        return (s != 8'h00) && !(^s);
+        secded_is_double = (s != 8'h00) && !(^s);
     endfunction
 
     // -----------------------------------------------------------------------

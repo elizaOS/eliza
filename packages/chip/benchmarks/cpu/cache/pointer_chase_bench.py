@@ -73,9 +73,7 @@ def build_artifact(measurements: list[dict], emit_stub: bool) -> dict:
     return {
         "schema": "eliza.cache.pointer_chase.v1",
         "status": (
-            "methodology_stub_python"
-            if emit_stub
-            else "host_python_run_not_target_evidence"
+            "methodology_stub_python" if emit_stub else "host_python_run_not_target_evidence"
         ),
         "captured_utc": dt.datetime.now(dt.UTC).isoformat(),
         "language": "python",
@@ -129,10 +127,7 @@ def main() -> int:
     out_path.write_text(json.dumps(artifact, indent=2) + "\n")
     print(f"pointer-chase artifact written to {out_path}")
     for row in measurements:
-        print(
-            f"  set={row['set_bytes']:>10} B  "
-            f"ns/hop={row['ns_per_hop']:.2f}"
-        )
+        print(f"  set={row['set_bytes']:>10} B  ns/hop={row['ns_per_hop']:.2f}")
     return 0
 
 

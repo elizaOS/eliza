@@ -481,10 +481,11 @@ module e1_l1d_cache
 
             // ------ Receive grant ------
             if (l2_grant_valid && l2_grant_ready) begin
-                // Fill the MSHR's victim slot
+                // Fill the MSHR's victim slot. Tag is the high TAG_W bits of
+                // the granted physical address (matching addr_tag()).
                 automatic mshr_t m = mshr[acq_mshr_q];
                 tag_array[m.victim_way][m.set_idx] <=
-                    l2_grant_paddr_line[PADDR_W-1:OFFSET_W][TAG_W-1:0];
+                    addr_tag(l2_grant_paddr_line);
                 state_array[m.victim_way][m.set_idx] <= l2_grant_state;
                 for (int wd = 0; wd < WORDS_PER_LINE; wd++) begin
                     automatic logic [63:0] w = l2_grant_data[wd*64 +: 64];
