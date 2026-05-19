@@ -140,6 +140,9 @@ jobs:
       - name: Run client tests
         run: bun run test:client
 
+      - name: Install Playwright Chromium
+        run: bunx playwright install --with-deps chromium
+
       - name: Remote capability UI smoke
         run: bun run test:remote-capabilities:ui
 
