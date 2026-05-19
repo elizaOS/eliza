@@ -714,9 +714,12 @@ def _publication_warnings(
         "eliza_replay",
         "evm",
         "framework",
+        "hermes_yc_bench",
         "personality_bench",
         "social_alpha",
         "solana",
+        "vision_language",
+        "voiceagentbench",
     }
     estimate_source = tokens.get("token_estimate_source")
     if estimate_source is not None or any(str(key).startswith("estimated_") for key in tokens):
@@ -1213,6 +1216,14 @@ def _rebuild_latest_result_snapshots(
             continue
         if agent not in LATEST_SNAPSHOT_AGENTS or _is_synthetic_agent(agent):
             continue
+        if adapters is not None:
+            adapter = adapters.get(benchmark_id)
+            if (
+                adapter is not None
+                and agent in CANONICAL_REAL_HARNESSES
+                and agent not in adapter.agent_compatibility
+            ):
+                continue
         if str(payload.get("status") or "") != "succeeded" or not _is_numeric_score(
             payload.get("score")
         ):
@@ -1345,6 +1356,28 @@ def _rebuild_latest_result_snapshots(
         preserved_latest.items()
     ):
         expected_by_dir[latest_dir].add(snapshot_path)
+        metrics = payload.get("metrics") or {}
+        if not isinstance(metrics, dict):
+            metrics = {}
+        token_metrics = _complete_token_metrics(
+            payload.get("token_metrics") if isinstance(payload.get("token_metrics"), dict) else {},
+            trajectory_summary=payload.get("trajectory_summary") or {},
+            result_json_path=payload.get("result_json_path"),
+        )
+        publication_warnings = _publication_warnings(
+            benchmark_id=benchmark_id,
+            status=str(payload.get("status") or ""),
+            token_metrics=token_metrics,
+            metrics=metrics,
+        )
+        payload["token_metrics"] = token_metrics
+        payload.pop("publication_warnings", None)
+        if publication_warnings:
+            payload["publication_warnings"] = publication_warnings
+        snapshot_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
+            encoding="utf-8",
+        )
         comparison_signature = str(payload.get("comparison_signature") or "")
         if not comparison_signature:
             comparison_signature = _comparison_signature_from_parts(

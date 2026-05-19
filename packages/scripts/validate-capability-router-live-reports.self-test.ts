@@ -114,6 +114,14 @@ async function main(): Promise<void> {
     );
     const missingProviderIdDir = join(workspace, "missing-provider-id");
     const mismatchedProviderIdDir = join(workspace, "mismatched-provider-id");
+    const missingProviderEvidenceDir = join(
+      workspace,
+      "missing-provider-evidence",
+    );
+    const mismatchedProviderEvidenceDir = join(
+      workspace,
+      "mismatched-provider-evidence",
+    );
     const missingEndpointUrlFingerprintDir = join(
       workspace,
       "missing-endpoint-url-fingerprint",
@@ -258,6 +266,8 @@ async function main(): Promise<void> {
     await mkdir(duplicateEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(missingProviderIdDir, { recursive: true });
     await mkdir(mismatchedProviderIdDir, { recursive: true });
+    await mkdir(missingProviderEvidenceDir, { recursive: true });
+    await mkdir(mismatchedProviderEvidenceDir, { recursive: true });
     await mkdir(missingEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(malformedEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(leakedSecretDir, { recursive: true });
@@ -648,6 +658,16 @@ async function main(): Promise<void> {
     await writeFile(
       join(mismatchedProviderIdDir, "provider.json"),
       `${JSON.stringify(makeMismatchedProviderIdReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingProviderEvidenceDir, "provider.json"),
+      `${JSON.stringify(makeMissingProviderEvidenceReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedProviderEvidenceDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedProviderEvidenceReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1170,6 +1190,40 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `mismatched providerId failed for the wrong reason: ${mismatchedProviderId.output}`,
+      );
+    }
+    const missingProviderEvidence = await runValidator(
+      missingProviderEvidenceDir,
+      "--kind=provider",
+    );
+    if (missingProviderEvidence.exitCode === 0) {
+      throw new Error("missing providerEvidence report unexpectedly passed.");
+    }
+    if (
+      !missingProviderEvidence.output.includes(
+        "providerEvidence must be an object",
+      )
+    ) {
+      throw new Error(
+        `missing providerEvidence failed for the wrong reason: ${missingProviderEvidence.output}`,
+      );
+    }
+    const mismatchedProviderEvidence = await runValidator(
+      mismatchedProviderEvidenceDir,
+      "--kind=provider",
+    );
+    if (mismatchedProviderEvidence.exitCode === 0) {
+      throw new Error(
+        "mismatched providerEvidence report unexpectedly passed.",
+      );
+    }
+    if (
+      !mismatchedProviderEvidence.output.includes(
+        'providerEvidence.endpointRuntime must be "mobile-companion"',
+      )
+    ) {
+      throw new Error(
+        `mismatched providerEvidence failed for the wrong reason: ${mismatchedProviderEvidence.output}`,
       );
     }
     const missingEndpointUrlFingerprint = await runValidator(
@@ -2287,6 +2341,7 @@ function makeCompleteReport(
       : {
           provider,
           providerId: provider,
+          providerEvidence: makeProviderEvidence(provider),
           endpointUrlSha256: makeEndpointUrlSha256(endpointId, provider),
         }),
     endpointId,
@@ -2655,6 +2710,7 @@ function makePartialReport() {
     kind: "provider",
     provider: "e2b",
     providerId: "e2b",
+    providerEvidence: makeProviderEvidence("e2b"),
     endpointUrlSha256: makeEndpointUrlSha256("partial-endpoint", "e2b"),
     endpointId: "partial-endpoint",
     observedAt: new Date(0).toISOString(),
@@ -3096,6 +3152,54 @@ function makeMismatchedProviderIdReport() {
     ...makeCompleteReport("provider", "mismatched-provider-id-endpoint", "e2b"),
     providerId: "home-machine",
   };
+}
+
+function makeMissingProviderEvidenceReport() {
+  const report = {
+    ...makeCompleteReport("provider", "missing-provider-evidence-endpoint", "e2b"),
+  } as Record<string, unknown>;
+  delete report.providerEvidence;
+  return report;
+}
+
+function makeMismatchedProviderEvidenceReport() {
+  return {
+    ...makeCompleteReport(
+      "provider",
+      "mismatched-provider-evidence-endpoint",
+      "mobile-companion",
+    ),
+    providerEvidence: {
+      provider: "mobile-companion",
+      endpointRuntime: "home-machine",
+      agentRuntime: "github-actions",
+      connection: "url-backed-provider",
+    },
+  };
+}
+
+function makeProviderEvidence(provider: string) {
+  return {
+    provider,
+    endpointRuntime: providerEndpointRuntime(provider),
+    agentRuntime: "github-actions",
+    connection: "url-backed-provider",
+  };
+}
+
+function providerEndpointRuntime(provider: string): string {
+  switch (provider) {
+    case "e2b":
+      return "e2b-sandbox";
+    case "home-machine":
+      return "home-machine";
+    case "mobile-companion":
+      return "mobile-companion";
+    case "desktop-companion":
+      return "desktop-companion";
+    default:
+      return `${provider}-endpoint`;
+  }
 }
 
 function makeMalformedEndpointUrlFingerprintReport() {

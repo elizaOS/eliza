@@ -30,6 +30,7 @@ type ProviderLiveTarget = {
   provider: RemoteCapabilityEndpointProvider<UrlRemoteCapabilityEndpointProviderOptions>;
   envPrefix: string;
   defaultEndpointId: string;
+  endpointRuntime: string;
 };
 
 const providerTargets: ProviderLiveTarget[] = [
@@ -38,24 +39,28 @@ const providerTargets: ProviderLiveTarget[] = [
     provider: e2bCapabilityEndpointProvider,
     envPrefix: "E2B",
     defaultEndpointId: "e2b-live-capability",
+    endpointRuntime: "e2b-sandbox",
   },
   {
     label: "home-machine",
     provider: homeMachineCapabilityEndpointProvider,
     envPrefix: "HOME_MACHINE",
     defaultEndpointId: "home-machine-live-capability",
+    endpointRuntime: "home-machine",
   },
   {
     label: "mobile-companion",
     provider: mobileCompanionCapabilityEndpointProvider,
     envPrefix: "MOBILE_COMPANION",
     defaultEndpointId: "mobile-companion-live-capability",
+    endpointRuntime: "mobile-companion",
   },
   {
     label: "desktop-companion",
     provider: desktopCompanionCapabilityEndpointProvider,
     envPrefix: "DESKTOP_COMPANION",
     defaultEndpointId: "desktop-companion-live-capability",
+    endpointRuntime: "desktop-companion",
   },
 ];
 
@@ -138,6 +143,12 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
           kind: "provider",
           provider: target.label,
           providerId: result.providerId,
+          providerEvidence: {
+            provider: target.label,
+            endpointRuntime: target.endpointRuntime,
+            agentRuntime: "github-actions",
+            connection: "url-backed-provider",
+          },
           endpointUrlSha256: summarizeRemoteCapabilityEndpointUrlFingerprint(
             options.baseUrl,
           ),

@@ -605,8 +605,16 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count == 0
+    assert report.incompatible_cell_count == 2
     assert report.error_count == 0
+    incompatible = [cell for cell in report.cells if not cell.compatible]
+    assert {
+        (cell.benchmark_id, cell.harness, cell.reason)
+        for cell in incompatible
+    } == {
+        ("vision_language", "hermes", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
+        ("vision_language", "openclaw", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
+    }
 
     compatible = [cell for cell in report.cells if cell.compatible]
     assert compatible
@@ -837,9 +845,14 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("vision_language", harness)]
-        assert cell.compatible is True
-        assert cell.command
-        assert "src/runner.ts" in cell.command_display
+        if harness == "eliza":
+            assert cell.compatible is True
+            assert cell.command
+            assert "src/runner.ts" in cell.command_display
+        else:
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON
 
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True
@@ -2862,6 +2875,32 @@ def test_terminalbench_no_docker_uses_local_sandbox_not_dry_run(tmp_path: Path) 
     assert "--dry-run" not in command
     assert "--model-provider" not in command
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
+
+
+def test_terminalbench_default_allows_real_corpus_test_bootstrap(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+    adapter = discover_adapters(_workspace_root()).adapters["terminal_bench"]
+
+    request = _effective_request(
+        adapter,
+        RunRequest(
+            benchmarks=["terminal_bench"],
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config={},
+        ),
+    )
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        request.extra_config,
+    )
+
+    assert request.extra_config["network_mode"] == "bridge"
+    assert command[command.index("--network-mode") + 1] == "bridge"
 
 
 def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:

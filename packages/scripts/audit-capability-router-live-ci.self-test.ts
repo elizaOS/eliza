@@ -47,6 +47,14 @@ assertFails(
   ),
 );
 
+assertFails(
+  "GitHub live evidence validator self-test is a CI gate",
+  workflow.replace(
+    "      - name: Remote capability GitHub live evidence self-test\n        run: bun run test:remote-capabilities:github-live-evidence:self-test\n\n",
+    "",
+  ),
+);
+
 const rootPackageFailure = assertFails(
   "live report validator self-test script exists",
   workflow,
@@ -81,6 +89,22 @@ assertRootPackageFailure(
   "live CI audit self-test script exists",
   rootPackageJson.replace(
     '    "test:remote-capabilities:live-ci-audit:self-test": "bun packages/scripts/audit-capability-router-live-ci.self-test.ts",\n',
+    "",
+  ),
+);
+
+assertRootPackageFailure(
+  "GitHub live evidence validator script exists",
+  rootPackageJson.replace(
+    '    "test:remote-capabilities:github-live-evidence": "bun packages/scripts/validate-capability-router-github-live-evidence.ts",\n',
+    "",
+  ),
+);
+
+assertRootPackageFailure(
+  "GitHub live evidence validator self-test script exists",
+  rootPackageJson.replace(
+    '    "test:remote-capabilities:github-live-evidence:self-test": "bun packages/scripts/validate-capability-router-github-live-evidence.self-test.ts",\n',
     "",
   ),
 );
@@ -394,8 +418,8 @@ assertFails(
 assertFails(
   "provider live job is required by test-status",
   workflow.replace(
-    "strict_results=\"${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}\"",
-    "strict_results=\"${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}\"",
+    "strict_results=\"${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}\"",
+    "strict_results=\"${{ github.event_name == 'workflow_dispatch' }}\"",
   ),
 );
 
@@ -462,6 +486,53 @@ if (
     `provider-smoke failure reported wrong source path: ${providerSmokeFailure.sourcePath}`,
   );
 }
+
+const providerRuntimeEvidenceFailure = assertFails(
+  "provider live reports include endpoint runtime evidence",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource.replace(
+    "            endpointRuntime: target.endpointRuntime,\n",
+    "",
+  ),
+);
+if (
+  providerRuntimeEvidenceFailure.sourcePath !==
+  "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts"
+) {
+  throw new Error(
+    `provider runtime evidence failure reported wrong source path: ${providerRuntimeEvidenceFailure.sourcePath}`,
+  );
+}
+
+const validatorProviderEvidenceFailure = assertFails(
+  "live report validator requires provider runtime evidence",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    'providerEvidence.agentRuntime must be "github-actions"',
+    'providerEvidence.agentRuntime disabled',
+  ),
+);
+if (
+  validatorProviderEvidenceFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `validator provider evidence failure reported wrong source path: ${validatorProviderEvidenceFailure.sourcePath}`,
+  );
+}
+
+assertValidatorSelfTestFailure(
+  "live report validator self-test covers provider runtime evidence",
+  liveReportValidatorSelfTestSource.replace(
+    "providerEvidence must be an object",
+    "providerEvidence disabled check",
+  ),
+);
 
 assertFails(
   "provider live smoke is observed only on manual or scheduled runs",

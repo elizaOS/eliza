@@ -167,10 +167,10 @@ For more information, visit: https://tbench.ai
     parser.add_argument(
         "--network-mode",
         type=str,
-        default=os.environ.get("TERMINAL_BENCH_NETWORK_MODE", "none"),
+        default=os.environ.get("TERMINAL_BENCH_NETWORK_MODE", "bridge"),
         help=(
             "Docker network mode for tasks that do not explicitly request "
-            "network access (default: TERMINAL_BENCH_NETWORK_MODE or none)."
+            "network access (default: TERMINAL_BENCH_NETWORK_MODE or bridge)."
         ),
     )
 

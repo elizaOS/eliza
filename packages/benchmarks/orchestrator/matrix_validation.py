@@ -9,6 +9,8 @@ from typing import Any
 from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_FIXED_RUNTIME_REASON,
+    VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     discover_adapters,
 )
 from .runner import (
@@ -117,6 +119,10 @@ def _incompatibility_reason(adapter_id: str, harness: str, allowed_harnesses: tu
         return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
     if adapter_id == "hyperliquid_bench" and not allowed_harnesses:
         return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+    if adapter_id == "vision_language":
+        if not allowed_harnesses:
+            return VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON
+        return VISION_LANGUAGE_FIXED_RUNTIME_REASON
     allowed = ", ".join(allowed_harnesses) or "none"
     return f"harness '{harness}' not in adapter compatibility ({allowed})"
 

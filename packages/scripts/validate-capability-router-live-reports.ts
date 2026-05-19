@@ -66,6 +66,13 @@ const REQUIRED_SURFACE_RPC_METHODS: Record<RequiredSurface, string[]> = {
 const EMPTY_SHA256 =
   "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
 
+const CANONICAL_PROVIDER_ENDPOINT_RUNTIMES = new Map([
+  ["e2b", "e2b-sandbox"],
+  ["home-machine", "home-machine"],
+  ["mobile-companion", "mobile-companion"],
+  ["desktop-companion", "desktop-companion"],
+]);
+
 type RequiredSurface = (typeof REQUIRED_SURFACES)[number];
 type RequiredRemoteModuleCountField =
   (typeof REQUIRED_REMOTE_MODULE_COUNT_FIELDS)[number];
@@ -431,6 +438,7 @@ function validateReportFile(
     if (providerId !== provider) {
       throw new Error("providerId must match provider.");
     }
+    validateProviderEvidence(report.providerEvidence, provider);
   }
   const endpointUrlSha256 =
     kind === "provider"
@@ -817,6 +825,47 @@ function validateCiEvidence(value: unknown, matchGithubEnv: boolean): void {
   assertMatchesEnv(repository, "GITHUB_REPOSITORY", "ci.repository");
   assertMatchesEnv(sha, "GITHUB_SHA", "ci.sha");
   assertMatchesEnv(ref, "GITHUB_REF", "ci.ref");
+}
+
+function validateProviderEvidence(value: unknown, provider: string): void {
+  const evidence = requireObject(value, "providerEvidence");
+  const evidenceProvider = requireProviderName(
+    evidence.provider,
+    "providerEvidence.provider",
+  );
+  if (evidenceProvider !== provider) {
+    throw new Error("providerEvidence.provider must match provider.");
+  }
+  const endpointRuntime = requireString(
+    evidence.endpointRuntime,
+    "providerEvidence.endpointRuntime",
+  );
+  const expectedEndpointRuntime =
+    CANONICAL_PROVIDER_ENDPOINT_RUNTIMES.get(provider);
+  if (
+    expectedEndpointRuntime !== undefined &&
+    endpointRuntime !== expectedEndpointRuntime
+  ) {
+    throw new Error(
+      `providerEvidence.endpointRuntime must be "${expectedEndpointRuntime}" for provider "${provider}".`,
+    );
+  }
+  const agentRuntime = requireString(
+    evidence.agentRuntime,
+    "providerEvidence.agentRuntime",
+  );
+  if (agentRuntime !== "github-actions") {
+    throw new Error('providerEvidence.agentRuntime must be "github-actions".');
+  }
+  const connection = requireString(
+    evidence.connection,
+    "providerEvidence.connection",
+  );
+  if (connection !== "url-backed-provider") {
+    throw new Error(
+      'providerEvidence.connection must be "url-backed-provider".',
+    );
+  }
 }
 
 function requirePattern(value: string, pattern: RegExp, field: string): void {

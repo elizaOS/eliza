@@ -178,3 +178,56 @@ def test_build_queue_can_use_explicit_eval_python() -> None:
     assert items[0].command.startswith(
         "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 /opt/miniconda3/bin/python3 -m scripts.eval.eliza1_eval_suite"
     )
+
+
+def test_build_queue_expands_imagegen_hardware_evidence() -> None:
+    summary = {
+        "ok": False,
+        "failuresByCategory": {
+            "imagegenEvidence": [
+                {
+                    "name": "imagegen runtime evidence passed",
+                    "detail": (
+                        "status: 'blocked', probe.accelerators.cuda: missing, "
+                        "probe.accelerators.vulkan: missing, smoke.status: 'partial', "
+                        "smoke.platforms.cuda.status: 'not-run', "
+                        "smoke.platforms.vulkan.status: 'not-run'"
+                    ),
+                }
+            ],
+        },
+    }
+
+    items = build_queue(summary, bundle_root="/bundles", eval_python="python3")
+
+    assert [item.id for item in items] == ["imagegen:vulkan", "imagegen:cuda"]
+    assert all(item.requires_hardware for item in items)
+    assert all(item.category == "imagegenEvidence" for item in items)
+    assert "plugins/plugin-local-inference/scripts/probe-sd-cpp.mjs --json" in items[0].command
+    assert "evidence/imagegen/sd-cpp-runtime.json" in items[0].evidence
+    assert "evidence/imagegen/vulkan.json" in items[0].evidence
+
+
+def test_filter_queue_can_select_imagegen_hardware_category() -> None:
+    summary = {
+        "ok": False,
+        "failuresByCategory": {
+            "backendVerification": [
+                {
+                    "name": "0_8b required backend verification passed",
+                    "detail": "vulkan: fail",
+                }
+            ],
+            "imagegenEvidence": [
+                {
+                    "name": "imagegen runtime evidence passed",
+                    "detail": "probe.accelerators.cuda: missing, smoke.platforms.cuda.status: 'not-run'",
+                }
+            ],
+        },
+    }
+    items = build_queue(summary, bundle_root="/bundles", eval_python="python3")
+
+    selected = filter_queue(items, category="imagegenEvidence", hardware_only=True)
+
+    assert [item.id for item in selected] == ["imagegen:cuda"]

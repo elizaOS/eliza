@@ -947,11 +947,24 @@ The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
 `bun run test:remote-capabilities:naming-audit`,
 `bun run test:remote-capabilities:source-build`,
 `bun run test:remote-capabilities:fixture-server`, and
-`bun run test:remote-capabilities:validate-live-reports:self-test`, and
+`bun run test:remote-capabilities:validate-live-reports:self-test`,
+`bun run test:remote-capabilities:github-live-evidence:self-test`, and
 `bun run test:remote-capabilities:docker` in the server job for pull requests
-and pushes. The validator self-test generates complete and partial live report
-fixtures so the artifact validator is itself covered without external
-credentials. The source-build smoke builds a temporary remote plugin source tree
+and pushes. The live Cloud/provider artifact smokes are observed only on
+`workflow_dispatch` and `schedule`, where the final `test-status` gate treats
+the live jobs as strict. Use
+`gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun run
+test:remote-capabilities:github-live-evidence -` to prove a scheduled/manual
+run actually observed Cloud and provider live smoke, validation, and artifact
+upload steps. Push runs intentionally fail that evidence validator unless
+`--allow-unobserved` is passed, because skipped-success live jobs are not live
+artifact evidence. Provider live reports must include `providerEvidence`
+showing the provider family, canonical endpoint runtime (`e2b-sandbox`,
+`home-machine`, `mobile-companion`, or `desktop-companion`), `github-actions`
+as the observing agent runtime, and the `url-backed-provider` adapter path.
+The validator self-test generates complete and partial live report fixtures so
+the artifact validator is itself covered without external credentials. The
+source-build smoke builds a temporary remote plugin source tree
 and consumes it only through the capability protocol, then repeats the same
 runtime path across a child-process endpoint. The fixture-server smoke builds a
 temporary remote view bundle, starts the runnable reference endpoint with that
@@ -1226,29 +1239,33 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 - `bun run test:remote-capabilities:live-ci-audit` passes and statically
   enforces that the workflow keeps the Cloud and provider live jobs wired to
   strict scheduled/manual observation, and that the final `test-status` gate
-  treats scheduled runs as strict, with required provider endpoints, strict
+  treats observed live runs (`workflow_dispatch` and `schedule`) as strict,
+  with required provider endpoints, strict
   live report validation, required artifact upload, and matching live report
   directories between smoke producers, validators, and uploaded artifacts. It
   also audits the package-level `test:remote-capabilities` script so live report
   writer safety remains in the canonical remote-capability suite, audits the
-  provider live smoke source so provider reports keep recording `providerId`,
-  audits the live report writer so runtime remote plugin entries keep
-  per-module surface counts, audits the live report validator so those runtime
-  counts keep matching `sync.registeredModules`, audits the endpoint
-  conformance harness and live report validator so route evidence keeps
+  provider live smoke source so provider reports keep recording `providerId`
+  plus provider runtime evidence, audits the live report writer so runtime
+  remote plugin entries keep per-module surface counts, audits the live report
+  validator so those runtime counts keep matching `sync.registeredModules` and
+  so provider artifacts keep proving their canonical endpoint runtime and
+  URL-backed adapter path, audits the endpoint conformance harness and live
+  report validator so route evidence keeps
   requiring non-empty JSON body payloads, and audits endpoint conformance so
   view assets keep being fetched as non-empty bytes with SHA-256 evidence and
   integrity checks against those bytes, and audits the live report validator so
   uploaded artifacts keep rejecting non-JavaScript, manifest-mismatched,
   missing-digest, empty-digest, malformed-digest, and integrity-mismatched view
   asset evidence. It also audits the validator self-test source so route-body
-  and asset failure fixtures and assertions stay present,
+  asset, and provider runtime-evidence failure fixtures and assertions stay present,
   requires the live report validator self-test to stay in CI, and audits the
   root package scripts that invoke the live report validator, the validator
   self-test, the live CI audit, and the live CI audit self-test.
 - `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
   report-directory env vars, artifact upload paths, provider live report
-  `providerId` evidence, runtime remote plugin per-module count evidence, route
+  `providerId` evidence, provider runtime evidence, runtime remote plugin
+  per-module count evidence, route
   body evidence in both source conformance and report validation, view asset
   byte/digest/integrity evidence in endpoint conformance and live report
   validation, validator self-test route-body and asset fixture coverage, root
