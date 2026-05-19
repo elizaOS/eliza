@@ -339,6 +339,29 @@ task copyForkLlamaLib {
   assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
 });
 
+test("Android app template resolves BackgroundRunner AARs from hoisted workspace installs", () => {
+  const template = fs.readFileSync(
+    path.join(
+      import.meta.dirname,
+      "..",
+      "platforms",
+      "android",
+      "app",
+      "build.gradle",
+    ),
+    "utf8",
+  );
+
+  assert.match(
+    template,
+    /\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@capacitor\/background-runner\/android\/src\/main\/libs/,
+  );
+  assert.match(
+    template,
+    /\.\.\/\.\.\/\.\.\/\.\.\/node_modules\/@capacitor-community\/background-runner\/android\/src\/main\/libs/,
+  );
+});
+
 test("iOS background runner pod resolves through the official package", () => {
   assert.equal(
     IOS_OFFICIAL_PODS.find(
