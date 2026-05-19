@@ -7,7 +7,7 @@
  *   CI_SSH_PUBLIC_KEY_ID       - Numeric Hetzner SSH key id (one-time uploaded)
  *   GITHUB_RUN_ID              - run id, embedded in labels
  *   HETZNER_E2E_LOCATION       - default fsn1
- *   HETZNER_E2E_SERVER_TYPE    - default cpx11
+ *   HETZNER_E2E_SERVER_TYPE    - default cx22 (cpx11 was deprecated)
  *   HETZNER_E2E_IMAGE          - default ubuntu-24.04
  *
  * On success: prints `{id, ip}` JSON to stdout AND writes the server id
@@ -44,12 +44,23 @@ const SERVER_TYPE_FALLBACKS: ReadonlyArray<{
   { serverType: "cax11", location: "nbg1" },
 ];
 
-function isUnsupportedLocation(err: unknown): boolean {
+// Conditions under which we should try the next fallback combo. Covers
+// Hetzner's "this server type can't be created here" and "this server
+// type is going away" responses — both render the requested combo
+// unusable and a different shared-cpu type / location is the natural
+// remediation. Auth / quota / billing failures (HTTP 401/402/403) are
+// NOT in this list — those are surfaced unchanged so the operator
+// fixes the underlying account issue.
+function isRetryableCombo(err: unknown): boolean {
   const message = err instanceof Error ? err.message.toLowerCase() : "";
   return (
     message.includes("unsupported_server_type_for_location") ||
     message.includes("unsupported location for server type") ||
-    message.includes("unsupported_location_for_server_type")
+    message.includes("unsupported_location_for_server_type") ||
+    message.includes("is deprecated") ||
+    message.includes("server_type_deprecated") ||
+    message.includes("resource_unavailable") ||
+    message.includes("not_found") // Hetzner returns 404 when a deprecated type is fully removed
   );
 }
 
@@ -62,7 +73,10 @@ async function main(): Promise<void> {
 
   const runId = process.env.GITHUB_RUN_ID ?? `local-${Date.now()}`;
   const requestedLocation = process.env.HETZNER_E2E_LOCATION ?? "fsn1";
-  const requestedServerType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cpx11";
+  // cpx11 was deprecated in 2026Q2; cx22 is the current shared-cpu x86
+  // successor (similar 2 vCPU / 4 GB footprint, same fsn1/hel1/nbg1
+  // availability). Operators can still pin a specific type via env.
+  const requestedServerType = process.env.HETZNER_E2E_SERVER_TYPE ?? "cx22";
   const image = process.env.HETZNER_E2E_IMAGE ?? "ubuntu-24.04";
   const createdAt = new Date().toISOString();
 
@@ -127,9 +141,10 @@ async function main(): Promise<void> {
       break;
     } catch (err) {
       lastError = err;
-      if (!isUnsupportedLocation(err)) throw err;
+      if (!isRetryableCombo(err)) throw err;
+      const reason = err instanceof Error ? err.message : String(err);
       console.error(
-        `[hetzner-e2e-provision] ${attempt.serverType}@${attempt.location} unsupported, trying next fallback`,
+        `[hetzner-e2e-provision] ${attempt.serverType}@${attempt.location} unavailable (${reason}); trying next fallback`,
       );
     }
   }
