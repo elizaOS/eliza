@@ -498,7 +498,7 @@ function shouldWriteLiveFallbackPackage(packageName) {
   return !packageJson || isLiveStubPackage(packageJson);
 }
 
-function sourcePackageManifest(packageName, packageJson) {
+function sourcePackageManifest(_packageName, packageJson) {
   const rewrite = (value) => {
     if (typeof value === "string") {
       return value.replace(/^\.\/dist\//, "./src/").replace(/\.js$/, ".ts");
@@ -701,7 +701,9 @@ function syncSourceRuntimePackage(packageName, relativeSource, { checkOnly }) {
 
   const sourcePackageJson = path.join(packageSource, "package.json");
   if (fs.existsSync(sourcePackageJson)) {
-    const sourceManifest = JSON.parse(fs.readFileSync(sourcePackageJson, "utf8"));
+    const sourceManifest = JSON.parse(
+      fs.readFileSync(sourcePackageJson, "utf8"),
+    );
     const targetPackageJson = path.join(targetDir, "package.json");
     const targetManifest = `${JSON.stringify(
       sourcePackageManifest(packageName, sourceManifest),
@@ -880,25 +882,36 @@ function agentApiLazyWalletWrites() {
   if (!fs.existsSync(filePath)) return [];
 
   const sourcePath = workspacePackagePath("packages/agent/src/api/index.ts");
+  const walletExportBlock = [
+    "export {",
+    "  handleWalletRoutes,",
+    "  type WalletAddressesSnapshot,",
+    "  type WalletRouteContext,",
+    "  type WalletRouteDependencies,",
+    "  type WalletRpcReadinessSnapshot,",
+    '} from "@elizaos/plugin-wallet";',
+  ].join("\n");
   const content =
     sourcePath && fs.existsSync(sourcePath)
       ? fs.readFileSync(sourcePath, "utf8")
-      : fs.readFileSync(filePath, "utf8").replace(
-          /export \{\n  handleWalletRoutes,\n  type WalletAddressesSnapshot,\n  type WalletRouteContext,\n  type WalletRouteDependencies,\n  type WalletRpcReadinessSnapshot,\n\} from "@elizaos\/plugin-wallet";/,
-          [
-            "export type {",
-            "  WalletAddressesSnapshot,",
-            "  WalletRouteContext,",
-            "  WalletRouteDependencies,",
-            "  WalletRpcReadinessSnapshot,",
-            '} from "@elizaos/plugin-wallet";',
-            'export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleWalletRoutes =',
-            "  async (context) => {",
-            '    const walletApi = await import("@elizaos/plugin-wallet");',
-            "    return walletApi.handleWalletRoutes(context);",
-            "  };",
-          ].join("\n"),
-        );
+      : fs
+          .readFileSync(filePath, "utf8")
+          .replace(
+            walletExportBlock,
+            [
+              "export type {",
+              "  WalletAddressesSnapshot,",
+              "  WalletRouteContext,",
+              "  WalletRouteDependencies,",
+              "  WalletRpcReadinessSnapshot,",
+              '} from "@elizaos/plugin-wallet";',
+              'export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleWalletRoutes =',
+              "  async (context) => {",
+              '    const walletApi = await import("@elizaos/plugin-wallet");',
+              "    return walletApi.handleWalletRoutes(context);",
+              "  };",
+            ].join("\n"),
+          );
 
   if (
     !content.includes("export const handleWalletRoutes") ||
@@ -1175,19 +1188,19 @@ function liveOverlayManifestWrite() {
                 behavior:
                   "live launcher may enable zero-vector embedding fallback when no local inference backend is active",
               },
-      {
-        packageName: "@elizaos/core",
-        behavior:
-          "test-only exports are stripped from the packaged node entrypoint",
-      },
-      {
-        packageName: "@elizaos/app-core",
-        path: "Resources/app/eliza-dist/entry.js",
-        behavior:
-          "live runtime entry imports the bundled app-core dist entry instead of source-checkout paths",
-      },
-    ],
-  },
+              {
+                packageName: "@elizaos/core",
+                behavior:
+                  "test-only exports are stripped from the packaged node entrypoint",
+              },
+              {
+                packageName: "@elizaos/app-core",
+                path: "Resources/app/eliza-dist/entry.js",
+                behavior:
+                  "live runtime entry imports the bundled app-core dist entry instead of source-checkout paths",
+              },
+            ],
+          },
           entrypoints: [
             entrypoint(
               "Electrobun launcher",
@@ -1856,7 +1869,10 @@ function patchRendererHtml(content) {
     .replaceAll('content="#FF5800"', 'content="#F7F9FF"')
     .replaceAll('content="#ff5800"', 'content="#F7F9FF"')
     .replaceAll("background-color: #08080a;", "background-color: #F7F9FF;")
-    .replaceAll("background-color: var(--bg, #000000);", "background-color: var(--bg, #F7F9FF);")
+    .replaceAll(
+      "background-color: var(--bg, #000000);",
+      "background-color: var(--bg, #F7F9FF);",
+    )
     .replaceAll("color: var(--text, #e8e8ec);", "color: var(--text, #0B35F1);")
     .replaceAll(
       "orange #FF5800. The dark chat shell takes over once React mounts.",
