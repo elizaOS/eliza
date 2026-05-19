@@ -1041,8 +1041,9 @@ export class EngineVoiceBridge {
 		if (opts.profileStore) {
 			const bundleRootForEncoder = opts.bundleRoot;
 			// Lazy encoder: resolves on first encode() call.
-			let resolvedEncoder: import("./speaker/encoder-ggml").SpeakerEncoderGgml | null =
-				null;
+			let resolvedEncoder:
+				| import("./speaker/encoder-ggml").SpeakerEncoderGgml
+				| null = null;
 			let encoderLoadError: Error | null = null;
 			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
 				embeddingDim: 256,

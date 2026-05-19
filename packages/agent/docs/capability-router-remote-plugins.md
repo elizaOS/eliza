@@ -434,6 +434,9 @@ modules stamped by the installed endpoint can enter the runtime. Connect
 requests may also provide `allowedModuleIds` to pin the exact remote modules
 that are allowed to register from that endpoint; the CLI exposes this as
 `elizaos capability-router connect --allowed-module <module-id...>`.
+Cloud connect requests accept module allowlists either at the top level or
+inside the `cloud` object. Supplying both is rejected so a trust policy cannot
+silently prefer one source over another.
 When endpoint connection is persisted, the redacted local config also stores
 module allowlists in `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES` as a JSON object
 keyed by endpoint id. On restart, `bootstrapRemoteCapabilityPlugins` derives a
@@ -662,6 +665,20 @@ Run the browser app-shell remote view smoke:
 ```text
 bun run test:remote-capabilities:ui
 ```
+
+## Requirement Matrix
+
+| Requirement | Current evidence | Status |
+| --- | --- | --- |
+| Canonical abstraction is not `satellite` | Core/API/CLI/docs use `capability-router`; satellite remains compatibility/provider vocabulary only. | Implemented |
+| Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, widgets, app metadata, app bridge hooks, and views. | Implemented |
+| Runs across machines/processes/containers | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate. | Implemented for local/container isolation |
+| Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints; API/CLI/Settings support Cloud provisioning payloads. | Implemented with focused smokes |
+| Frontend bundles load from remote plugins | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles. | Implemented |
+| Endpoint and module trust is explicit | Connect flows use endpoint allowlists, optional module allowlists, duplicate/colliding identities are rejected, and restart bootstrap derives trust from persisted endpoint/module config. | Implemented |
+| Real CI exercises the path | Server CI runs focused remote-capability tests and Docker smoke; UI smoke is available through `bun run test:remote-capabilities:ui`; live Cloud smoke is scheduled/manual with secret. | Implemented, live Cloud observation pending |
+| Real Cloud sandbox provider | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/route when `ELIZAOS_CLOUD_API_KEY` is present. | Implemented but must be observed green |
+| E2B/home-machine/mobile provider coverage | Architecture treats these as endpoint providers behind the protocol; provider-specific live smokes are not yet present. | Pending |
 
 ## Implementation Plan
 

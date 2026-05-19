@@ -16,13 +16,12 @@ import {
 	SPEAKER_GGML_SAMPLE_RATE,
 	SpeakerEncoderGgmlImpl,
 	SpeakerEncoderGgmlUnavailableError,
-	type SpeakerEncoderGgmlOptions,
 } from "./encoder-ggml";
 
 export {
 	SpeakerEncoderGgmlImpl,
-	SpeakerEncoderGgmlUnavailableError,
 	type SpeakerEncoderGgmlOptions,
+	SpeakerEncoderGgmlUnavailableError,
 } from "./encoder-ggml";
 
 // ---------------------------------------------------------------------------
@@ -57,10 +56,7 @@ export class SpeakerEncoderUnavailableError extends Error {
 		| "model-shape-mismatch"
 		| "forward-not-implemented"
 		| "invalid-input";
-	constructor(
-		code: SpeakerEncoderUnavailableError["code"],
-		message: string,
-	) {
+	constructor(code: SpeakerEncoderUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "SpeakerEncoderUnavailableError";
 		this.code = code;

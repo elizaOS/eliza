@@ -273,4 +273,3 @@ function makeEmptyScoresRecord(): Record<ExpressiveEmotion, number> {
 		whisper: 0,
 	};
 }
-

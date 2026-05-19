@@ -247,15 +247,15 @@ export {
 	type PyannoteDiarizerModelId,
 } from "./speaker/diarizer";
 export {
-	DiarizerGgml,
-	DiarizerGgmlUnavailableError,
 	DIARIZER_GGML_FRAMES_PER_WINDOW,
 	DIARIZER_GGML_MIN_SAMPLES,
 	DIARIZER_GGML_NUM_CLASSES,
 	DIARIZER_GGML_SAMPLE_RATE,
 	DIARIZER_GGML_WINDOW_SAMPLES,
+	DiarizerGgml,
 	type DiarizerGgmlOptions,
 	type DiarizerGgmlOutput,
+	DiarizerGgmlUnavailableError,
 } from "./speaker/diarizer-ggml";
 export {
 	averageEmbeddings,
@@ -270,13 +270,13 @@ export {
 	type WespeakerModelId,
 } from "./speaker/encoder";
 export {
-	SpeakerEncoderGgmlImpl,
-	SpeakerEncoderGgmlUnavailableError,
 	SPEAKER_GGML_EMBEDDING_DIM,
 	SPEAKER_GGML_MIN_SAMPLES,
 	SPEAKER_GGML_SAMPLE_RATE,
 	type SpeakerEncoderGgml,
+	SpeakerEncoderGgmlImpl,
 	type SpeakerEncoderGgmlOptions,
+	SpeakerEncoderGgmlUnavailableError,
 	voiceSpeakerDistance,
 } from "./speaker/encoder-ggml";
 export {

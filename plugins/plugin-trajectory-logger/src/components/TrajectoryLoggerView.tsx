@@ -121,9 +121,7 @@ export async function interact(
 
   if (capability === "filter-phase") {
     const requestedPhase =
-      typeof params?.phase === "string"
-        ? params.phase.toUpperCase()
-        : "HANDLE";
+      typeof params?.phase === "string" ? params.phase.toUpperCase() : "HANDLE";
     const list = await fetchTrajectoryList({ limit: 10 });
     const details = await Promise.all(
       list.trajectories
