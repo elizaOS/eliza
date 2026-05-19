@@ -572,16 +572,25 @@ jobs:
           git add -A
           git diff --staged --quiet || git commit -m "chore: replace workspace references for publishing [skip ci]"
 
-          # --concurrency 1 + --loglevel verbose: previous runs failed with
-          # "lerna ERR! Not all tasks were run" which masks the underlying
-          # build error from a single package. Serializing publishes and
-          # raising log level surfaces the real failure in CI logs.
+          # --no-sort: the workspace contains a known dependency cycle
+          # (@elizaos/agent <-> @elizaos/plugin-capacitor-bridge) which trips a
+          # bug in lerna 9.0.7's topological queue. The cycle is reported as a
+          # warning ("ECYCLE Dependency cycles detected"), and lerna then
+          # aborts the pack/publish step partway through with the generic
+          # "Not all tasks were run. This is likely a bug in Lerna." error.
+          # Disabling the topological sort makes lerna iterate via p-map over
+          # the full publish set, bypassing the broken queue. Combined with
+          # --concurrency 1 this still produces a serial, deterministic order.
+          #
+          # --concurrency 1 + --loglevel verbose: serialize publishes so a
+          # single failure is not masked by parallel output.
           if ! bunx lerna publish from-package \
             --dist-tag ${DIST_TAG} \
             --force-publish \
             --yes \
             --no-verify-access \
             --no-git-reset \
+            --no-sort \
             --concurrency 1 \
             --loglevel verbose; then
             
