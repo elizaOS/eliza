@@ -33,6 +33,14 @@
 // does NOT apply to arm64 — that kernel ABI omits those numbers
 // entirely, so musl's aarch64 wrappers never invoke them.
 //
+// riscv64 uses the same generic Linux syscall ABI as arm64
+// (`<asm-generic/unistd.h>` — no legacy non-AT numbers), so it ships
+// the same narrow `epoll_pwait2 → epoll_pwait` translation in
+// `sigsys-handler-riscv64.c`. The ucontext register-access pattern
+// differs (`uc_mcontext.__gregs[REG_A0]` instead of arm64's
+// `uc_mcontext.regs[0]`) and the syscall trap instruction is `ecall`
+// rather than `svc 0`, which is why riscv64 needs its own source file.
+//
 // Staging:
 //   `stage-android-agent.mjs` reads from <cacheDir>/seccomp-shim/x86_64/
 //   when present and:
@@ -61,11 +69,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 /**
  * Each target has its own SIGSYS-handler source file because the shim
  * decodes trapped registers from arch-specific `ucontext_t.uc_mcontext`
- * layouts (x86_64's `gregs[REG_RAX]` vs arm64's `regs[0]`) and re-issues
- * the replacement syscall via arch-specific inline `svc 0` / `syscall`
- * asm. The shim sources `#error` on the wrong arch to prevent silent
- * miscompiles. The loader-wrap binary is portable across ABIs (only
- * AT-form syscalls).
+ * layouts (x86_64's `gregs[REG_RAX]`, arm64's `regs[0]`, riscv64's
+ * `__gregs[REG_A0]`) and re-issues the replacement syscall via
+ * arch-specific inline `syscall` / `svc 0` / `ecall` asm. The shim
+ * sources `#error` on the wrong arch to prevent silent miscompiles.
+ * The loader-wrap binary is portable across ABIs (only AT-form
+ * syscalls).
  */
 export const SHIM_ABI_TARGETS = [
   {
@@ -79,6 +88,12 @@ export const SHIM_ABI_TARGETS = [
     zigTarget: "aarch64-linux-musl",
     realLoaderName: "ld-musl-aarch64.so.1",
     shimSource: "sigsys-handler-arm64.c",
+  },
+  {
+    androidAbi: "riscv64",
+    zigTarget: "riscv64-linux-musl",
+    realLoaderName: "ld-musl-riscv64.so.1",
+    shimSource: "sigsys-handler-riscv64.c",
   },
 ];
 
@@ -127,7 +142,7 @@ export function parseArgs(argv) {
     } else if (arg === "-h" || arg === "--help") {
       console.log(
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-shim.mjs " +
-          "[--cache-dir <PATH>] [--abi <x86_64|arm64-v8a>] [--skip-if-present]",
+          "[--cache-dir <PATH>] [--abi <x86_64|arm64-v8a|riscv64>] [--skip-if-present]",
       );
       process.exit(0);
     } else {
