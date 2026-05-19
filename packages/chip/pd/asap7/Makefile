@@ -78,10 +78,14 @@ endef
 # ---------------------------------------------------------------------------
 # Each block target follows the same shape:
 #   1. Ensure evidence directory exists.
-#   2. Verify ASAP7 PDK + ORFS reachable.
-#   3. Invoke ORFS for the block (Make-based ORFS flow) with ASAP7 platform.
-#   4. Copy the post-route shape JSON into docs/evidence/process/asap7/.
-#   5. Tag the output with evidence_class=predictive_finfet_shape_only.
+#   2. Verify ASAP7 PDK reachable. (ORFS is opt-in per block; the runner
+#      dispatches to ORFS only for blocks that omit flow_mode in the YAML.)
+#   3. Invoke scripts/run_asap7_block.sh which dispatches per-block to
+#      either yosys+ABC (synth-only) or ORFS post-route based on
+#      config.asap7.yaml flow_mode.
+#   4. Verify the emitted shape JSON exists in docs/evidence/process/asap7/.
+#   5. Verify the JSON is tagged evidence_class=predictive_finfet_shape_only_not_signoff
+#      with the correct pdk + block_id.
 
 big_core_shell-shape:
 	@mkdir -p $(EVIDENCE_DIR)
@@ -105,8 +109,9 @@ slc_slice-shape:
 	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 # leaf-shape: when MODULE is set, dispatch to the yosys+ABC synth-only driver
-# (works without ORFS). When MODULE is empty, fall back to the legacy ORFS
-# per-leaf list which currently contains only npu_tile_rf_leaf (ORFS gated).
+# for that specific module (works without ORFS). When MODULE is empty,
+# iterate the LEAF_BLOCKS list and run each per-leaf -shape target. Both
+# paths run through the per-block flow_mode in config.asap7.yaml.
 leaf-shape:
 	@if [ -n "$(MODULE)" ]; then \
 	    $(MAKE) --no-print-directory -C . leaf-synth MODULE="$(MODULE)"; \
