@@ -105,6 +105,17 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 		return this.active?.adapter.loadedDrafterPath() ?? null;
 	}
 
+	/** Active parallel slot count (size of the ctx pool). */
+	parallelSlots(): number {
+		return this.active?.adapter.parallelSlots() ?? 1;
+	}
+
+	/** Grow/shrink the ctx pool. No-op when no model is loaded. */
+	async resizeParallel(target: number): Promise<boolean> {
+		if (!this.active) return false;
+		return this.active.adapter.resizeParallel(target);
+	}
+
 	async release(): Promise<void> {
 		if (!this.active) return;
 		this.active.adapter.close();

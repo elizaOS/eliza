@@ -106,38 +106,54 @@ implementation plan is preserved at the bottom for archival.
 
 ## What's still on the subprocess `dflash-server` fallback
 
-These four features have no FFI equivalent and call through the
-dispatcher's optional methods — when the active backend is FFI, the
-dispatcher throws an actionable error pointing at
-`ELIZA_INFERENCE_BACKEND=http`:
+### Vision describe (mmproj) — the only remaining feature blocker
 
-### Vision describe (mmproj)
+- **Why subprocess**: requires C wrappers in
+  `packages/app-core/scripts/desktop-llama-shim/eliza_llama_shim.c` for
+  llama.cpp's llava / mtmd integration. Vision involves loading an
+  mmproj GGUF, running clip-vision over an image to produce embeddings,
+  then injecting those embeddings into the decode pipeline. The shim
+  today only includes `llama.h`; it does not include `llava.h` /
+  `mtmd.h`. The desktop dylib build script also currently sets
+  `LLAMA_BUILD_EXAMPLES=OFF` which excludes the llava sublibrary from
+  the build.
+- **Effort to unblock**:
+  - Modify `packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs`
+    to additionally build the llava + clip sublibraries (or vendor only
+    the source files we need under `desktop-llama-shim/`).
+  - Add C wrappers to `eliza_llama_shim.c`: `eliza_llava_image_embed_load`
+    (file or bytes → embed handle), `eliza_llava_image_embed_eval`
+    (embed handle + ctx → KV state update), `eliza_llava_image_embed_free`.
+  - Add the matching headers to `eliza_llama_shim.h`.
+  - Bind the new symbols in `desktop-llama-adapter.ts` (`ShimSymbols`,
+    `bindShim`).
+  - Implement `describeImage(args)` on the adapter: base64-decode the
+    image, call the embed load, eval into the ctx, run a constrained
+    generate loop for the description.
+  - Wire `FfiStreamingBackend.describeImage`.
+  - **Total**: ~3–4 days of native C + ~250 lines of JS. Cannot be
+    done from a JS-only session because the C side needs build/test
+    cycles against the actual upstream llava ABI.
+- **Blast radius**: this is the ONLY feature still blocking Step F
+  (retire `dflash-server.ts`). All other features have FFI parity.
 
-- **Why subprocess**: requires `llava_eval_image_embed` / mtmd-equivalent
-  C wrappers in `packages/app-core/scripts/desktop-llama-shim/eliza_llama_shim.c`.
-  Vision involves loading an mmproj GGUF, running clip-vision over an
-  image to produce embeddings, then injecting those embeddings into the
-  decode pipeline. None of that exists in the shim today.
-- **Effort to unblock**: ~3 days of native C work (port llava.cpp's
-  embed path to a pointer-style shim wrapper), plus ~200 lines of JS to
-  bind it in the desktop adapter.
-- **Blast radius**: if FFI gains vision parity, Step F (retire
-  `dflash-server.ts`) becomes unblocked on this axis.
+### Done since the original plan
 
-### Parallel-slot resize
-
-- **Why subprocess**: `dflash-server`'s `resizeParallel(N)` relaunches
-  the spawned binary with `--parallel N`, which rebuilds the slot pool
-  at the C level. The FFI runner has one `llama_context`; rebuilding
-  the slot pool means either (a) creating multiple contexts per model
-  and routing batches to the right one (architectural change to the
-  adapter), or (b) accepting that FFI mode is single-slot.
-- **Effort to unblock**: 1–2 days for multi-context pooling at the
-  adapter level. Affects every code path that holds a session handle.
-- **Note**: the conversation registry's slot accounting already
-  tolerates `parallelSlots() === 1` — it just won't grow the pool when
-  high-water mark exceeds 1. FFI as single-slot is functional, just
-  not throughput-optimal under concurrent conversations.
+- **Parallel-slot resize** — DONE. Adapter now has a `ctxPool: Pointer[]`
+  with per-ctx `hasDecodedFlags` and `drafterAttached` tracking arrays.
+  `resizeParallel(N)` allocates (or frees) ctx instances against the
+  same loaded model. Sessions pin to a specific ctx via
+  `config.slotId % pool.length`. Drafter is per-ctx, attached lazily
+  on first session that requests it on that ctx. The shared drafter
+  model is loaded once and reused across ctxs.
+  Wired through:
+  - `DesktopLlamaAdapter.resizeParallel(N)` / `.parallelSlots()`
+  - `DesktopFfiBackendRuntime.resizeParallel` / `.parallelSlots`
+  - `FfiBackendRuntime` interface (optional methods)
+  - `FfiStreamingBackend.resizeParallel` / `.parallelSlots`
+  - The dispatcher's `resizeParallel` forwarder routes here when the
+    FFI backend is active; engine's `maybeAutoResizeParallel` (which
+    already called through the dispatcher) gets the new behavior for free.
 
 ---
 

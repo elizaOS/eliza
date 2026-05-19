@@ -510,6 +510,8 @@ export interface DesktopLlamaLoadOptions {
 interface DesktopSession {
 	stream: bigint;
 	sampler: Pointer;
+	/** Which pool slot (ctx index) this session is pinned to. */
+	ctxIdx: number;
 	abort: { cancelled: boolean };
 	finished: boolean;
 	// Reusable single-token buffer for stepwise decode.
@@ -519,25 +521,153 @@ interface DesktopSession {
 }
 
 /**
- * Loaded desktop adapter. Holds the dlopen handles, model + ctx pointers,
- * and a per-session table for the streaming-LLM contract.
+ * Loaded desktop adapter. Holds the dlopen handles, model + ctx pool, and
+ * a per-session table for the streaming-LLM contract.
+ *
+ * Multi-context pool: the adapter maintains an array of `llama_context`
+ * instances (one per parallel slot). Sessions pin to a specific ctx via
+ * `slotId` in `LlmStreamConfig`. `resizeParallel(N)` grows or shrinks
+ * the pool — growing allocates new ctxs against the same model
+ * (`eliza_llama_init_from_model`), shrinking frees the excess. Default
+ * pool size is 1 (single-conversation mode); the engine's
+ * `maybeAutoResizeParallel` grows it when conversation high-water mark
+ * exceeds 1.
+ *
+ * Drafter (speculative decoding) is per-ctx: each ctx in the pool can
+ * have its own drafter attached. v1 attaches lazily on the first
+ * session opened against a ctx that requests one — the same drafter
+ * model is loaded once and re-used for subsequent ctxs in the pool.
  */
 export class DesktopLlamaAdapter {
 	private modelPtr: Pointer | null = null;
-	private ctxPtr: Pointer | null = null;
+	/** Pool of `llama_context` instances. Index 0 is allocated by `loadModel()`. */
+	private ctxPool: Pointer[] = [];
+	/** Per-ctx KV-decoded flag (drives the `memory_clear` guard between sessions). */
+	private hasDecodedFlags: boolean[] = [];
+	/** Per-ctx attached drafter — `null` when no drafter on that ctx. */
+	private drafterAttached: boolean[] = [];
 	private vocabPtr: Pointer | null = null;
-	private hasDecoded = false;
 	private nextStreamId = 1n;
 	private readonly sessions = new Map<bigint, DesktopSession>();
-	/** Loaded drafter model (DFlash speculative decoding). Null when no drafter is attached. */
+	/** Loaded drafter model (DFlash speculative decoding) — shared across ctxs in the pool. */
 	private drafterModelPtr: Pointer | null = null;
 	private drafterModelPath: string | null = null;
+	/**
+	 * `loadModel()` records its ctx params here so `resizeParallel()` can
+	 * recreate ctxs with the same shape when growing the pool.
+	 */
+	private loadOpts: DesktopLlamaLoadOptions | null = null;
 
 	constructor(
 		private readonly ffi: BunFFIModule,
 		private readonly llama: LlamaSymbols,
 		private readonly shim: ShimSymbols,
 	) {}
+
+	/**
+	 * Backward-compat alias for the primary ctx (pool index 0). Non-session
+	 * operations (model load, drafter attach, slot save/restore, stats)
+	 * operate on the primary ctx; session-specific methods use
+	 * `this.ctxPool[session.ctxIdx]` directly.
+	 */
+	private get ctxPtr(): Pointer | null {
+		return this.ctxPool[0] ?? null;
+	}
+	private set ctxPtr(v: Pointer | null) {
+		if (v === null) {
+			this.ctxPool = [];
+			this.hasDecodedFlags = [];
+			this.drafterAttached = [];
+		} else {
+			this.ctxPool[0] = v;
+			this.hasDecodedFlags[0] = false;
+			this.drafterAttached[0] = false;
+		}
+	}
+	private get hasDecoded(): boolean {
+		return this.hasDecodedFlags[0] ?? false;
+	}
+	private set hasDecoded(v: boolean) {
+		if (this.ctxPool[0] !== undefined) this.hasDecodedFlags[0] = v;
+	}
+
+	/** Live parallel-slot count. Default 1; `resizeParallel(N)` grows/shrinks. */
+	parallelSlots(): number {
+		return this.ctxPool.length;
+	}
+
+	/**
+	 * Grow or shrink the ctx pool to `target` slots. Growing allocates
+	 * additional `llama_context` instances against the loaded model with
+	 * the same parameters as the primary ctx (recorded in `loadOpts`).
+	 * Shrinking frees the excess ctxs after first ensuring no session is
+	 * still pinned to them. Throws when shrinking would orphan an active
+	 * session; callers should drain those sessions first.
+	 *
+	 * Returns true when the pool size actually changed, false on no-op.
+	 */
+	async resizeParallel(target: number): Promise<boolean> {
+		if (!this.modelPtr || !this.loadOpts) {
+			throw new Error("[desktop-llama] resizeParallel before model load");
+		}
+		if (target < 1) {
+			throw new Error(
+				`[desktop-llama] resizeParallel target must be >= 1, got ${target}`,
+			);
+		}
+		const current = this.ctxPool.length;
+		if (target === current) return false;
+		if (target < current) {
+			// Refuse to shrink while sessions are still pinned to outgoing slots.
+			for (const sess of this.sessions.values()) {
+				if (sess.ctxIdx >= target) {
+					throw new Error(
+						`[desktop-llama] cannot shrink pool to ${target}: session pinned to ctxIdx=${sess.ctxIdx}`,
+					);
+				}
+			}
+			for (let i = current - 1; i >= target; i--) {
+				const ctx = this.ctxPool[i];
+				if (ctx !== undefined) this.llama.llama_free(ctx);
+				this.ctxPool.pop();
+				this.hasDecodedFlags.pop();
+				this.drafterAttached.pop();
+			}
+			return true;
+		}
+		// Grow: allocate (target - current) additional ctxs.
+		for (let i = current; i < target; i++) {
+			const cp = this.shim.eliza_llama_context_params_default();
+			let nextCtx: Pointer;
+			try {
+				const ctxSize = this.loadOpts.contextSize ?? 4096;
+				const nBatch = this.loadOpts.nBatch ?? 256;
+				const threads = this.loadOpts.threads ?? defaultThreads();
+				this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
+				this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
+				this.shim.eliza_llama_context_params_set_n_ubatch(
+					cp,
+					this.loadOpts.nUBatch ?? nBatch,
+				);
+				this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
+				this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
+				this.shim.eliza_llama_context_params_set_embeddings(cp, false);
+				this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
+				nextCtx = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
+			} finally {
+				this.shim.eliza_llama_context_params_free(cp);
+			}
+			if (!nextCtx) {
+				throw new Error(
+					`[desktop-llama] llama_init_from_model failed when growing pool to ${target}`,
+				);
+			}
+			this.ctxPool.push(nextCtx);
+			this.hasDecodedFlags.push(false);
+			this.drafterAttached.push(false);
+		}
+		return true;
+	}
 
 	/**
 	 * Load a DFlash drafter model and attach it to the main context. Once
@@ -552,75 +682,25 @@ export class DesktopLlamaAdapter {
 	 * path matches, returns without reloading. Different path => detach +
 	 * reload + reattach.
 	 */
+	/**
+	 * Public attach-drafter API. Targets the primary ctx (pool slot 0).
+	 * Per-ctx attach for other pool slots happens lazily inside
+	 * `openSession()` when the session's config specifies a drafter path.
+	 */
 	attachDrafter(opts: {
 		drafterPath: string;
-		contextSize?: number;
-		gpuLayers?: number;
-		nParallel?: number;
 		draftMin?: number;
 		draftMax?: number;
 	}): void {
-		if (!this.ctxPtr || !this.modelPtr) {
-			throw new Error("[desktop-llama] attachDrafter before main model load");
-		}
-		if (
-			this.drafterModelPath === opts.drafterPath &&
-			this.shim.eliza_llama_context_has_drafter(this.ctxPtr) === 1
-		) {
-			return;
-		}
-		this.detachDrafter();
-		const mp = this.shim.eliza_llama_model_params_default();
-		try {
-			this.shim.eliza_llama_model_params_set_n_gpu_layers(
-				mp,
-				opts.gpuLayers ?? 999,
-			);
-			this.shim.eliza_llama_model_params_set_use_mmap(mp, true);
-			const pathBuf = encodeCString(opts.drafterPath);
-			this.drafterModelPtr = this.shim.eliza_llama_model_load_from_file(
-				this.ffi.ptr(pathBuf),
-				mp,
-			);
-		} finally {
-			this.shim.eliza_llama_model_params_free(mp);
-		}
-		if (!this.drafterModelPtr) {
-			throw new Error(
-				`[desktop-llama] drafter model load failed for ${opts.drafterPath}`,
-			);
-		}
-		const rc = this.shim.eliza_llama_context_attach_drafter(
-			this.ctxPtr,
-			this.drafterModelPtr,
-			opts.contextSize ?? 4096,
-			opts.gpuLayers ?? 999,
-			opts.nParallel ?? 1,
-		);
-		if (rc !== 0) {
-			this.llama.llama_model_free(this.drafterModelPtr);
-			this.drafterModelPtr = null;
-			throw new Error(
-				`[desktop-llama] eliza_llama_context_attach_drafter rc=${rc}`,
-			);
-		}
-		// spec_mode = 1 (auto) with the caller's draft-len bounds. mode=0
-		// disables speculation even with a drafter attached (useful for
-		// A/B benchmarking against the same model load).
-		this.shim.eliza_llama_context_set_spec_mode(
-			this.ctxPtr,
-			1,
-			opts.draftMin ?? 4,
-			opts.draftMax ?? 16,
-		);
-		this.drafterModelPath = opts.drafterPath;
+		this.attachDrafterToCtx(0, opts);
 	}
 
-	/** Detach + free any attached drafter. Idempotent. */
+	/** Detach + free any drafter on the primary ctx (pool slot 0). */
 	detachDrafter(): void {
-		if (!this.ctxPtr) return;
-		if (this.shim.eliza_llama_context_has_drafter(this.ctxPtr) === 1) {
-			this.shim.eliza_llama_context_detach_drafter(this.ctxPtr);
+		// Detach from every ctx in the pool that has one, then free the
+		// shared drafter model.
+		for (let i = 0; i < this.ctxPool.length; i++) {
+			if (this.drafterAttached[i]) this.detachDrafterFromCtx(i);
 		}
 		if (this.drafterModelPtr !== null) {
 			this.llama.llama_model_free(this.drafterModelPtr);
@@ -644,6 +724,7 @@ export class DesktopLlamaAdapter {
 			throw new Error("[desktop-llama] model already loaded — unload first");
 		}
 		this.initBackend();
+		this.loadOpts = opts;
 		// --- model params ---
 		const mp = this.shim.eliza_llama_model_params_default();
 		try {
@@ -702,20 +783,26 @@ export class DesktopLlamaAdapter {
 			this.llama.llama_sampler_free(sess.sampler);
 		}
 		this.sessions.clear();
-		// Detach + free the drafter BEFORE the main ctx — the drafter is
-		// borrowed via the main ctx's shim slot. `llama_free` on the main
-		// ctx is otherwise unsafe while a drafter ctx references it.
+		// Detach + free the drafter BEFORE freeing any main ctx — the
+		// drafter is borrowed via the primary ctx's shim slot. `llama_free`
+		// on the main ctx is otherwise unsafe while a drafter ctx
+		// references it.
 		this.detachDrafter();
-		if (this.ctxPtr !== null) {
-			this.llama.llama_free(this.ctxPtr);
-			this.ctxPtr = null;
+		// Free every ctx in the pool. The pool is in allocation order;
+		// freeing back-to-front keeps the implicit slot ordering stable.
+		for (let i = this.ctxPool.length - 1; i >= 0; i--) {
+			const ctx = this.ctxPool[i];
+			if (ctx !== undefined) this.llama.llama_free(ctx);
 		}
+		this.ctxPool = [];
+		this.hasDecodedFlags = [];
+		this.drafterAttached = [];
 		if (this.modelPtr !== null) {
 			this.llama.llama_model_free(this.modelPtr);
 			this.modelPtr = null;
 		}
 		this.vocabPtr = null;
-		this.hasDecoded = false;
+		this.loadOpts = null;
 	}
 
 	close(): void {
@@ -770,28 +857,31 @@ export class DesktopLlamaAdapter {
 				this.nextStep(args.stream, args.maxTokensPerStep, args.maxTextBytes),
 			llmStreamCancel: (stream) => this.cancelSession(stream),
 			llmStreamClose: (stream) => this.closeSession(stream),
-			llmStreamSaveSlot: (args) => this.saveSlot(args.filename),
-			llmStreamRestoreSlot: (args) => this.restoreSlot(args.filename),
+			llmStreamSaveSlot: (args) => this.saveSlotForStream(args.stream, args.filename),
+			llmStreamRestoreSlot: (args) =>
+				this.restoreSlotForStream(args.stream, args.filename),
 		};
 	}
 
 	/**
-	 * Persist the current ctx's seq_id=0 KV state to `filename`. v1 uses a
-	 * single seq per ctx — the engine's conversation registry handles
-	 * cross-conversation slot pinning above this layer by creating a fresh
-	 * adapter per active conversation. Multi-seq pooling (one ctx serving
-	 * N concurrent conversations) is tracked under Step E.
+	 * Persist the ctx's KV state to `filename`. The ctx is the one this
+	 * `stream` is pinned to (via `session.ctxIdx`) — multi-slot pools route
+	 * save/restore to the session's specific ctx so concurrent conversations
+	 * persist independently.
 	 */
-	saveSlot(filename: string): void {
-		if (!this.ctxPtr) {
-			throw new Error("[desktop-llama] saveSlot before model load");
-		}
+	private saveSlotForStream(
+		stream: LlmStreamHandle,
+		filename: string,
+	): void {
+		const sess = this.requireSession(stream);
+		const ctx = this.ctxPool[sess.ctxIdx];
+		if (!ctx) throw new Error("[desktop-llama] saveSlot ctx gone");
 		const pathBuf = encodeCString(filename);
 		const written = this.llama.llama_state_seq_save_file(
-			this.ctxPtr,
+			ctx,
 			this.ffi.ptr(pathBuf),
-			0, // seq_id — v1 uses single seq per ctx
-			this.ffi.ptr(new Int32Array(1)), // tokens — NULL placeholder; engine owns prompt bookkeeping
+			0, // seq_id — single seq per ctx; multi-ctx covers parallel use
+			this.ffi.ptr(new Int32Array(1)),
 			0,
 		);
 		if (written <= 0) {
@@ -801,15 +891,17 @@ export class DesktopLlamaAdapter {
 		}
 	}
 
-	/** Restore the seq_id=0 KV state from `filename` into the current ctx. */
-	restoreSlot(filename: string): void {
-		if (!this.ctxPtr) {
-			throw new Error("[desktop-llama] restoreSlot before model load");
-		}
+	private restoreSlotForStream(
+		stream: LlmStreamHandle,
+		filename: string,
+	): void {
+		const sess = this.requireSession(stream);
+		const ctx = this.ctxPool[sess.ctxIdx];
+		if (!ctx) throw new Error("[desktop-llama] restoreSlot ctx gone");
 		const pathBuf = encodeCString(filename);
 		const countOut = new Int32Array(1);
 		const read = this.llama.llama_state_seq_load_file(
-			this.ctxPtr,
+			ctx,
 			this.ffi.ptr(pathBuf),
 			0,
 			this.ffi.ptr(new Int32Array(1)),
@@ -821,9 +913,53 @@ export class DesktopLlamaAdapter {
 				`[desktop-llama] llama_state_seq_load_file returned ${read} for ${filename}`,
 			);
 		}
-		// Mark hasDecoded so future openSession calls clear KV between turns
-		// even though the prefill happened off-line.
-		this.hasDecoded = true;
+		// Mark hasDecoded on this ctx so future openSession calls clear KV.
+		this.hasDecodedFlags[sess.ctxIdx] = true;
+	}
+
+	/**
+	 * Top-level slot save/restore for callers that don't have a session
+	 * handle. Always targets ctx pool slot 0 — the primary conversation
+	 * slot used by single-conversation mode. Kept for backward-compat with
+	 * earlier wiring that called these without a stream context.
+	 */
+	saveSlot(filename: string): void {
+		const ctx = this.ctxPool[0];
+		if (!ctx) throw new Error("[desktop-llama] saveSlot before model load");
+		const pathBuf = encodeCString(filename);
+		const written = this.llama.llama_state_seq_save_file(
+			ctx,
+			this.ffi.ptr(pathBuf),
+			0,
+			this.ffi.ptr(new Int32Array(1)),
+			0,
+		);
+		if (written <= 0) {
+			throw new Error(
+				`[desktop-llama] llama_state_seq_save_file returned ${written} for ${filename}`,
+			);
+		}
+	}
+
+	restoreSlot(filename: string): void {
+		const ctx = this.ctxPool[0];
+		if (!ctx) throw new Error("[desktop-llama] restoreSlot before model load");
+		const pathBuf = encodeCString(filename);
+		const countOut = new Int32Array(1);
+		const read = this.llama.llama_state_seq_load_file(
+			ctx,
+			this.ffi.ptr(pathBuf),
+			0,
+			this.ffi.ptr(new Int32Array(1)),
+			0,
+			this.ffi.ptr(countOut),
+		);
+		if (read <= 0) {
+			throw new Error(
+				`[desktop-llama] llama_state_seq_load_file returned ${read} for ${filename}`,
+			);
+		}
+		this.hasDecodedFlags[0] = true;
 	}
 
 	getCtxHandle(): LlmCtxHandle {
@@ -834,31 +970,43 @@ export class DesktopLlamaAdapter {
 	}
 
 	private openSession(config: LlmStreamConfig): LlmStreamHandle {
-		if (!this.ctxPtr) {
+		if (this.ctxPool.length === 0) {
 			throw new Error("[desktop-llama] llmStreamOpen before model load");
 		}
-		// Wipe KV between sessions if we've decoded — first session leaves
-		// the cache pristine, otherwise we'd hit the seq_id_max segv path.
-		if (this.hasDecoded) {
-			const mem = this.llama.llama_get_memory(this.ctxPtr);
+		// Route this session to a ctx in the pool. `slotId` is the caller's
+		// explicit pin (e.g. conversation registry); modulo by pool size so
+		// the assignment is stable + safe regardless of how N relates to
+		// slot id. slotId < 0 (any-free-slot) round-robins via stream id.
+		const ctxIdx =
+			config.slotId >= 0
+				? config.slotId % this.ctxPool.length
+				: Number(this.nextStreamId % BigInt(this.ctxPool.length));
+		const ctx = this.ctxPool[ctxIdx];
+		if (ctx === undefined) {
+			throw new Error(
+				`[desktop-llama] ctx pool index ${ctxIdx} missing (pool size ${this.ctxPool.length})`,
+			);
+		}
+		// Wipe KV between sessions if this ctx has decoded — first session
+		// per ctx leaves the cache pristine, otherwise we'd hit the
+		// seq_id_max segv path.
+		if (this.hasDecodedFlags[ctxIdx]) {
+			const mem = this.llama.llama_get_memory(ctx);
 			this.llama.llama_memory_clear(mem, true);
 		}
-		// Speculative decoding: if the caller supplies a drafter path,
-		// load + attach it (idempotent on the same path) and set the
-		// spec mode for this session's draft-len bounds. Subsequent
-		// `decode_unified` calls in `nextStep` will run the verify/rewind
-		// loop internally; stats land on the LlmStreamStep counters.
+		// Speculative decoding: drafter attach is per-ctx. Attach lazily
+		// when this session requests one. We track per-ctx attachment in
+		// `drafterAttached[ctxIdx]` so we don't re-attach unnecessarily.
 		if (config.dflashDrafterPath) {
-			this.attachDrafter({
+			this.attachDrafterToCtx(ctxIdx, {
 				drafterPath: config.dflashDrafterPath,
 				draftMin: config.draftMin,
 				draftMax: config.draftMax,
 			});
-		} else if (this.drafterModelPtr !== null) {
-			// No drafter requested but one is attached from a prior session —
-			// detach so plain `decode` runs. Cheap; the model load is the
-			// expensive part.
-			this.detachDrafter();
+		} else if (this.drafterAttached[ctxIdx]) {
+			// No drafter requested but this ctx still has one — detach so
+			// plain decode runs.
+			this.detachDrafterFromCtx(ctxIdx);
 		}
 		// Sampler chain.
 		const sp = this.shim.eliza_llama_sampler_chain_params_default();
@@ -901,6 +1049,7 @@ export class DesktopLlamaAdapter {
 		this.sessions.set(stream, {
 			stream,
 			sampler,
+			ctxIdx,
 			abort: { cancelled: false },
 			finished: false,
 			tokenBuf: new Int32Array(1),
@@ -910,9 +1059,97 @@ export class DesktopLlamaAdapter {
 		return stream;
 	}
 
+	/**
+	 * Per-ctx drafter attach. Loads the drafter model once (shared across
+	 * all ctxs in the pool) and attaches it to `ctxPool[ctxIdx]` via the
+	 * shim. Idempotent on same path + same ctx.
+	 */
+	private attachDrafterToCtx(
+		ctxIdx: number,
+		opts: {
+			drafterPath: string;
+			draftMin?: number;
+			draftMax?: number;
+		},
+	): void {
+		const ctx = this.ctxPool[ctxIdx];
+		if (!ctx) {
+			throw new Error(`[desktop-llama] attachDrafter: no ctx at ${ctxIdx}`);
+		}
+		if (
+			this.drafterAttached[ctxIdx] &&
+			this.drafterModelPath === opts.drafterPath
+		) {
+			return;
+		}
+		// Load model once if not already loaded.
+		if (
+			this.drafterModelPtr === null ||
+			this.drafterModelPath !== opts.drafterPath
+		) {
+			// Detach any drafter still attached anywhere (the shared model
+			// changes), then free the old model + load the new one.
+			for (let i = 0; i < this.ctxPool.length; i++) {
+				if (this.drafterAttached[i]) this.detachDrafterFromCtx(i);
+			}
+			if (this.drafterModelPtr !== null) {
+				this.llama.llama_model_free(this.drafterModelPtr);
+				this.drafterModelPtr = null;
+			}
+			const mp = this.shim.eliza_llama_model_params_default();
+			try {
+				this.shim.eliza_llama_model_params_set_n_gpu_layers(mp, 999);
+				this.shim.eliza_llama_model_params_set_use_mmap(mp, true);
+				const pathBuf = encodeCString(opts.drafterPath);
+				this.drafterModelPtr = this.shim.eliza_llama_model_load_from_file(
+					this.ffi.ptr(pathBuf),
+					mp,
+				);
+			} finally {
+				this.shim.eliza_llama_model_params_free(mp);
+			}
+			if (!this.drafterModelPtr) {
+				throw new Error(
+					`[desktop-llama] drafter model load failed for ${opts.drafterPath}`,
+				);
+			}
+			this.drafterModelPath = opts.drafterPath;
+		}
+		// Attach the (shared) model to this ctx.
+		const rc = this.shim.eliza_llama_context_attach_drafter(
+			ctx,
+			this.drafterModelPtr,
+			(this.loadOpts?.contextSize ?? 4096) as number,
+			999,
+			1,
+		);
+		if (rc !== 0) {
+			throw new Error(
+				`[desktop-llama] eliza_llama_context_attach_drafter rc=${rc}`,
+			);
+		}
+		this.shim.eliza_llama_context_set_spec_mode(
+			ctx,
+			1,
+			opts.draftMin ?? 4,
+			opts.draftMax ?? 16,
+		);
+		this.drafterAttached[ctxIdx] = true;
+	}
+
+	private detachDrafterFromCtx(ctxIdx: number): void {
+		const ctx = this.ctxPool[ctxIdx];
+		if (!ctx) return;
+		if (this.shim.eliza_llama_context_has_drafter(ctx) === 1) {
+			this.shim.eliza_llama_context_detach_drafter(ctx);
+		}
+		this.drafterAttached[ctxIdx] = false;
+	}
+
 	private prefillSession(stream: LlmStreamHandle, tokens: Int32Array): void {
-		const _sess = this.requireSession(stream);
-		if (!this.ctxPtr) throw new Error("[desktop-llama] ctx gone mid-prefill");
+		const sess = this.requireSession(stream);
+		const ctx = this.ctxPool[sess.ctxIdx];
+		if (!ctx) throw new Error("[desktop-llama] ctx gone mid-prefill");
 		// Copy into a session-owned buffer so the FFI batch ptr stays valid
 		// for the lifetime of `eliza_llama_decode`.
 		const owned = new Int32Array(tokens.length);
@@ -922,11 +1159,11 @@ export class DesktopLlamaAdapter {
 			owned.length,
 		);
 		try {
-			const rc = this.shim.eliza_llama_decode(this.ctxPtr, batch);
+			const rc = this.shim.eliza_llama_decode(ctx, batch);
 			if (rc !== 0) {
 				throw new Error(`[desktop-llama] prefill decode rc=${rc}`);
 			}
-			this.hasDecoded = true;
+			this.hasDecodedFlags[sess.ctxIdx] = true;
 		} finally {
 			this.shim.eliza_llama_batch_free(batch);
 		}
@@ -938,30 +1175,28 @@ export class DesktopLlamaAdapter {
 		maxTextBytes = 1024,
 	): LlmStreamStep {
 		const sess = this.requireSession(stream);
-		if (!this.ctxPtr || !this.vocabPtr) {
+		const ctx = this.ctxPool[sess.ctxIdx];
+		if (!ctx || !this.vocabPtr) {
 			throw new Error("[desktop-llama] ctx gone mid-step");
 		}
 		const out: number[] = [];
 		let text = "";
 		let done = false;
-		// When a drafter is attached, `eliza_llama_decode_unified` runs the
-		// verify-and-rewind cycle internally and accumulates drafter
-		// counters on the ctx. We snapshot before/after and diff to report
-		// per-step `drafterDrafted` / `drafterAccepted` on the LlmStreamStep.
+		// When a drafter is attached to this session's ctx,
+		// `eliza_llama_decode_unified` runs the verify-and-rewind cycle
+		// internally and accumulates drafter counters on the ctx. We
+		// snapshot before/after and diff to report per-step
+		// `drafterDrafted` / `drafterAccepted` on the LlmStreamStep.
 		const usingDrafter =
-			this.shim.eliza_llama_context_has_drafter(this.ctxPtr) === 1;
-		const statsBefore = usingDrafter ? this.readDflashStats() : null;
+			this.shim.eliza_llama_context_has_drafter(ctx) === 1;
+		const statsBefore = usingDrafter ? this.readDflashStats(ctx) : null;
 
 		for (let i = 0; i < maxTokensPerStep; i++) {
 			if (sess.abort.cancelled) {
 				done = true;
 				break;
 			}
-			const next = this.llama.llama_sampler_sample(
-				sess.sampler,
-				this.ctxPtr,
-				-1,
-			);
+			const next = this.llama.llama_sampler_sample(sess.sampler, ctx, -1);
 			if (this.llama.llama_vocab_is_eog(this.vocabPtr, next)) {
 				done = true;
 				break;
@@ -990,8 +1225,8 @@ export class DesktopLlamaAdapter {
 			);
 			try {
 				const rc = usingDrafter
-					? this.shim.eliza_llama_decode_unified(this.ctxPtr, batch)
-					: this.shim.eliza_llama_decode(this.ctxPtr, batch);
+					? this.shim.eliza_llama_decode_unified(ctx, batch)
+					: this.shim.eliza_llama_decode(ctx, batch);
 				if (rc !== 0) {
 					throw new Error(`[desktop-llama] decode rc=${rc}`);
 				}
@@ -1006,7 +1241,7 @@ export class DesktopLlamaAdapter {
 		let drafted = 0;
 		let accepted = 0;
 		if (usingDrafter && statsBefore) {
-			const statsAfter = this.readDflashStats();
+			const statsAfter = this.readDflashStats(ctx);
 			drafted = Math.max(0, statsAfter.drafted - statsBefore.drafted);
 			accepted = Math.max(0, statsAfter.accepted - statsBefore.accepted);
 		}
@@ -1020,20 +1255,18 @@ export class DesktopLlamaAdapter {
 	}
 
 	/**
-	 * Read the legacy 4-int32 DFlash telemetry block.
-	 * Returns zero counters when no drafter is attached.
+	 * Read the legacy 4-int32 DFlash telemetry block for a specific ctx.
+	 * Counters are per-ctx since each ctx in the pool has its own drafter
+	 * state. Returns zero counters when no drafter is attached.
 	 */
-	private readDflashStats(): {
+	private readDflashStats(ctx: Pointer): {
 		drafted: number;
 		accepted: number;
 		rejected: number;
 		lastStatus: number;
 	} {
-		if (!this.ctxPtr) {
-			return { drafted: 0, accepted: 0, rejected: 0, lastStatus: 0 };
-		}
 		const buf = new Int32Array(4);
-		this.shim.eliza_llama_dflash_stats(this.ctxPtr, this.ffi.ptr(buf));
+		this.shim.eliza_llama_dflash_stats(ctx, this.ffi.ptr(buf));
 		return {
 			drafted: buf[0] ?? 0,
 			accepted: buf[1] ?? 0,
