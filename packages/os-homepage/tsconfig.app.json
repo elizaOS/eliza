@@ -19,6 +19,14 @@
     "esModuleInterop": true,
     "paths": {
       "@/*": ["./src/*"],
+      "@elizaos/shared/brand": ["../shared/src/brand/index.ts"],
+      "@elizaos/shared/checkout": ["../shared/src/checkout/index.ts"],
+      "@elizaos/shared/hardware-catalog": [
+        "../shared/src/hardware-catalog/index.ts"
+      ],
+      "@elizaos/shared/steward-session-client": [
+        "../shared/src/steward-session-client/index.ts"
+      ],
       "@elizaos/ui": ["../ui/src/backgrounds/CloudVideoBackground.tsx"],
       "@elizaos/ui/button": ["../ui/src/cloud-ui/components/button.tsx"],
       "@elizaos/ui/card": ["../ui/src/components/ui/card.tsx"],
