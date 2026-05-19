@@ -31,7 +31,7 @@ IMAGE_TAG ?= elizaos-debian-riscv64-builder
 CHECK_SCRIPT := $(SCRIPTS)/check_release_manifest.py
 
 .PHONY: help build-image build \
-        qemu-boot qemu-virt-boot qemu-virt-boot-evidence qemu-virt-boot-test \
+        qemu-boot qemu-virt-boot qemu-virt-boot-docker qemu-virt-boot-evidence qemu-virt-boot-test \
         release-check release-check-strict release-check-test
 
 help:
@@ -41,6 +41,7 @@ help:
 	@echo "  build                  Run the builder to produce out/elizaos-debian-riscv64-<ts>.iso."
 	@echo "  qemu-boot              Boot the newest ISO under qemu-system-riscv64 -M virt."
 	@echo "  qemu-virt-boot         Same as qemu-boot but with explicit ISO=<path>."
+	@echo "  qemu-virt-boot-docker  Run qemu-virt-boot inside the builder image."
 	@echo "  qemu-virt-boot-evidence Validate an existing qemu-virt evidence JSON."
 	@echo "  qemu-virt-boot-test    Run the qemu_virt_smoke unit tests."
 	@echo "  release-check          Fail-closed release-manifest gate (BLOCKED is informational)."
@@ -70,13 +71,42 @@ qemu-virt-boot:
 	    echo "qemu-virt-boot: ISO=<path-to-live.iso> is required" >&2; \
 	    exit 2; \
 	fi
-	@$(PYTHON) $(SCRIPTS)/qemu_virt_smoke.py \
-	    --iso "$(ISO)" \
-	    --memory $(MEMORY) \
-	    --cpus $(CPUS) \
-	    --timeout $(TIMEOUT) \
-	    --evidence "$(EVIDENCE)" \
-	    --transcript "$(TRANSCRIPT)"
+	@if command -v qemu-system-riscv64 >/dev/null 2>&1; then \
+	    $(PYTHON) $(SCRIPTS)/qemu_virt_smoke.py \
+	        --iso "$(ISO)" \
+	        --memory $(MEMORY) \
+	        --cpus $(CPUS) \
+	        --timeout $(TIMEOUT) \
+	        --evidence "$(EVIDENCE)" \
+	        --transcript "$(TRANSCRIPT)"; \
+	else \
+	    $(MAKE) qemu-virt-boot-docker ISO="$(ISO)" MEMORY="$(MEMORY)" CPUS="$(CPUS)" TIMEOUT="$(TIMEOUT)" EVIDENCE="$(EVIDENCE)" TRANSCRIPT="$(TRANSCRIPT)" OUT_DIR="$(OUT_DIR)"; \
+	fi
+
+qemu-virt-boot-docker: build-image
+	@if [ -z "$(ISO)" ]; then \
+	    echo "qemu-virt-boot-docker: ISO=<path-to-live.iso> is required" >&2; \
+	    exit 2; \
+	fi
+	@iso_abs=$$(realpath "$(ISO)"); \
+	evidence_abs=$$(realpath -m "$(EVIDENCE)"); \
+	transcript_abs=$$(realpath -m "$(TRANSCRIPT)"); \
+	mkdir -p "$$(dirname "$$evidence_abs")" "$$(dirname "$$transcript_abs")"; \
+	$(DOCKER) run --rm --privileged \
+	    -v "$(HERE):/build" \
+	    -v "$$(dirname "$$iso_abs"):/iso:ro" \
+	    -v "$$(dirname "$$evidence_abs"):/evidence" \
+	    -v "$$(dirname "$$transcript_abs"):/transcript" \
+	    -w /build \
+	    --entrypoint python3 \
+	    $(IMAGE_TAG) \
+	    /build/scripts/qemu_virt_smoke.py \
+	        --iso "/iso/$$(basename "$$iso_abs")" \
+	        --memory "$(MEMORY)" \
+	        --cpus "$(CPUS)" \
+	        --timeout "$(TIMEOUT)" \
+	        --evidence "/evidence/$$(basename "$$evidence_abs")" \
+	        --transcript "/transcript/$$(basename "$$transcript_abs")"
 
 qemu-boot:
 	@iso="$(ISO)"; \

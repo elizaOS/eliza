@@ -525,6 +525,17 @@ def is_sha256(value: Any) -> bool:
     return isinstance(value, str) and bool(SHA256_RE.fullmatch(value))
 
 
+def is_utc_timestamp(value: Any) -> bool:
+    if not isinstance(value, str) or not value.strip() or is_blocked_value(value):
+        return False
+    normalized = value[:-1] + "+00:00" if value.endswith("Z") else value
+    try:
+        parsed = dt.datetime.fromisoformat(normalized)
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed.utcoffset() == dt.timedelta(0)
+
+
 def record_artifact_hash(result: dict[str, Any], key: str, path: Path) -> None:
     if not path.is_file():
         return
@@ -1151,6 +1162,15 @@ def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dic
                     "resolution": "Set calibration.status to calibrated only after clock, power, workload, and simulator evidence assets are recorded.",
                 }
             )
+        if not is_utc_timestamp(calibration.get("last_calibrated_utc")):
+            blockers.append(
+                {
+                    "name": "calibration.last_calibrated_utc",
+                    "kind": "calibration",
+                    "reason": "invalid_calibration_timestamp",
+                    "resolution": "Record calibration.last_calibrated_utc as an ISO-8601 UTC timestamp tied to the target evidence.",
+                }
+            )
         assets = calibration.get("assets") if isinstance(calibration.get("assets"), dict) else {}
         for asset_name in bench.get("required_calibration_assets", []):
             asset = assets.get(asset_name) if isinstance(assets, dict) else None
@@ -1184,6 +1204,16 @@ def metadata_blockers(report: dict[str, Any], bench: dict[str, Any]) -> list[dic
                             "resolution": f"Populate calibration.assets.{asset_name}.{field} with immutable evidence.",
                         }
                     )
+            digest = asset.get("sha256")
+            if digest is not None and not is_blocked_value(digest) and not is_sha256(digest):
+                blockers.append(
+                    {
+                        "name": f"calibration.assets.{asset_name}.sha256",
+                        "kind": "calibration",
+                        "reason": "invalid_calibration_asset_hash",
+                        "resolution": f"Record a lowercase SHA-256 digest for calibration.assets.{asset_name}.sha256.",
+                    }
+                )
     return blockers
 
 
@@ -1462,6 +1492,8 @@ def check_calibration_requirements(report: dict[str, Any], result: dict[str, Any
         value = calibration.get(field)
         if not isinstance(value, str) or not value.strip() or value.startswith("blocked-"):
             errors.append(f"calibration.{field} must be populated with non-blocked evidence")
+    if not is_utc_timestamp(calibration.get("last_calibrated_utc")):
+        errors.append("calibration.last_calibrated_utc must be an ISO-8601 UTC timestamp")
     assets = calibration.get("assets")
     if not isinstance(assets, dict):
         errors.append("calibration.assets must be object")
@@ -1480,6 +1512,8 @@ def check_calibration_requirements(report: dict[str, Any], result: dict[str, Any
                 errors.append(
                     f"calibration asset {asset_name}.{field} must be populated with non-blocked evidence"
                 )
+        if not is_sha256(asset.get("sha256")):
+            errors.append(f"calibration asset {asset_name}.sha256 must be lowercase SHA-256 hex")
     return errors
 
 

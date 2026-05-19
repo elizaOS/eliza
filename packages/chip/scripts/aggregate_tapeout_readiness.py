@@ -93,6 +93,13 @@ GATES: tuple[GateSpec, ...] = (
         tier="rtl",
     ),
     GateSpec(
+        name="chipyard-generated-linux-contract-check",
+        script="scripts/check_chipyard_generated_linux_contract.py",
+        subsystem="cpu",
+        tier="silicon",
+        args=("--require-boot-evidence",),
+    ),
+    GateSpec(
         name="rva23-compliance",
         script="scripts/check_rva23_compliance.py",
         subsystem="cpu",

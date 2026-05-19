@@ -455,6 +455,12 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_or_asset_review
     allowed_current_use: citation_reference_only
+  - source_id: inf-atpg
+    asset_type: rl_gnn_atpg_method
+    asset_url: https://arxiv.org/abs/2512.00079
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_fault_model_pattern_replay_and_dft_review
+    allowed_current_use: citation_reference_only
   - source_id: lite-scan-instrumentation
     asset_type: scan_instrumentation_paper
     asset_url: https://arxiv.org/abs/2505.19418
@@ -1025,6 +1031,12 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_specific_paper_code_and_asset_review
     allowed_current_use: watchlist_only
+  - source_id: ai-driven-noc-dse-2512
+    asset_type: inverse_ml_noc_dse_method
+    asset_url: https://arxiv.org/abs/2512.07877
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_dataset_generation_booksim_replay_and_architecture_review
+    allowed_current_use: citation_reference_only
   - source_id: booksim2
     asset_type: noc_simulator
     asset_url: https://github.com/booksim/booksim2

@@ -126,6 +126,23 @@ power, and manufacturing preparation.
 - E1 fit: wrap NPU/cache/interconnect parameters around existing simulator and
   benchmark scripts before committing RTL changes.
 
+### Memory, Interconnect, and NoC DSE
+
+- AI-driven NoC DSE: https://arxiv.org/abs/2512.07877
+- BookSim2: https://github.com/booksim/booksim2
+- Ramulator2: https://github.com/CMU-SAFARI/ramulator2
+- DRAMsim3: https://github.com/umd-memsys/DRAMsim3
+- DRAMSys: https://github.com/tukl-msd/DRAMSys
+- gem5-Aladdin: https://github.com/harvard-acc/gem5-aladdin
+- Gem5-AcceSys: https://arxiv.org/abs/2502.12273
+- Use: wrap memory/fabric knobs as simulator-backed DSE tasks; generate or
+  replay NoC/DRAM datasets; evaluate inverse MLP/CVAE/diffusion NoC parameter
+  predictors against BookSim; and study accelerator-system memory contention.
+- E1 fit: target capture only. The current E1 fabric is AXI-Lite and
+  SRAM-backed, so any NoC, QoS, DRAM, coherency, or generated parameter claim
+  needs topology constraints, traffic traces, pinned simulator revisions,
+  replay logs, benchmark evidence, RTL feasibility, and architecture/PD review.
+
 ### DOSA
 
 - Repo: https://github.com/ucb-bar/dosa
@@ -713,8 +730,14 @@ power, and manufacturing preparation.
 - InF-ATPG: https://arxiv.org/abs/2512.00079
 - AI ATPG survey:
   https://blog.wangxm.com/wp-content/uploads/2024/12/ATPG_via_AI__A_Survey_for_Machine_Learning_in_Test_Generation.pdf
-- Use: RL/ML approaches for ATPG search.
-- E1 fit: roadmap item after conventional DFT artifacts exist.
+- Use: RL/ML approaches for ATPG search, including InF-ATPG-style
+  fanout-free-region partitioning and ATPG-specific circuit features for
+  QGNN/RL policy guidance.
+- E1 fit: roadmap item after conventional DFT artifacts exist; no training,
+  generated patterns, backtrack-reduction claims, or fault-coverage claims
+  until netlist and fault-list hashes, FFR feature manifests, model-training
+  logs, pattern hashes, deterministic replay, baseline ATPG comparison, and DFT
+  review exist.
 
 ## Post-silicon validation, bring-up, and lab debug
 

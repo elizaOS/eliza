@@ -107,6 +107,7 @@ def main() -> int:
         "source_ids": [
             "archgym",
             "ai-noc-dse",
+            "ai-driven-noc-dse-2512",
             "booksim2",
             "ramulator2",
             "dramsim3",
@@ -149,6 +150,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "noc-inverse-ml-dse-watch",
+                "status": "CAPTURED_NOT_TRAINED",
+                "target": "future BookSim-generated NoC datasets, inverse MLP/CVAE/diffusion models, or target-latency/throughput parameter predictors require topology constraints, traffic traces, replayed simulator logs, and architecture review",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make memory-uma-claim-gate",
+                    "make benchmark-sim-metrics",
+                ],
+            },
+            {
                 "id": "lpddr-dram-simulator-watch",
                 "status": "CAPTURED_NOT_MODELED",
                 "target": "future Ramulator2/DRAMsim3/DRAMSys LPDDR timing and bandwidth exploration",
@@ -171,6 +182,7 @@ def main() -> int:
             "current RTL is an AXI-Lite SRAM-backed scaffold",
             "no cache hierarchy, coherent fabric, IOMMU/SMMU, LPDDR PHY, or QoS implementation",
             "no executable BookSim/Ramulator/gem5 backend selected or pinned",
+            "no approved NoC inverse-ML dataset generation manifest, topology constraints, traffic trace corpus, or BookSim replay evidence",
             "no real target bandwidth, latency, Android shared-buffer, or contention evidence",
         ],
     }

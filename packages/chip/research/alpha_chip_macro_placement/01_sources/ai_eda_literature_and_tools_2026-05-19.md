@@ -231,6 +231,18 @@ candidate inputs to reproducible gates, not as standalone evidence.
   evaluation-method reference only until exact assets, license, benchmark
   non-overlap, synthesis setup hashes, before/after PPA logs, and reviewer
   disposition are pinned.
+- AI-driven NoC DSE: <https://arxiv.org/abs/2512.07877>. Current inverse-ML
+  NoC design-space exploration method using BookSim-generated data and MLP,
+  CVAE, and conditional-diffusion models for topology/parameter prediction.
+  E1 status: paper-only target capture until code/assets, dataset-generation
+  manifests, topology constraints, traffic traces, BookSim replay logs,
+  train/test splits, and architecture/PD review are available.
+- InF-ATPG: <https://arxiv.org/abs/2512.00079>. Current RL/GNN ATPG method
+  using fanout-free-region partitioning and ATPG-specific circuit features to
+  guide test-pattern generation. E1 status: paper-only target capture until
+  implementation/assets, fault models, feature manifests, training logs,
+  generated-pattern hashes, deterministic fault-simulation replay, and DFT
+  review are available.
 
 ## E1 integration ranking
 
@@ -276,3 +288,16 @@ candidate inputs to reproducible gates, not as standalone evidence.
     UPF, or claim power savings without pinned revisions, license review,
     feature maps, calibration labels, equivalence/formal evidence, synthesis,
     STA, CDC/RDC, DFT, power reports, and review.
+12. Use memory/interconnect target capture for AI-driven NoC DSE, ArchGym,
+    BookSim2, Ramulator2, DRAMsim3, DRAMSys, gem5-Aladdin, and Gem5-AcceSys.
+    Do not train NoC inverse models, generate fabric parameters, run external
+    simulators, change memory maps, or claim bandwidth/latency/QoS improvements
+    without pinned simulator revisions, topology constraints, traffic traces,
+    replay logs, local memory-contract gates, RTL feasibility, and review.
+13. Use DFT/ATPG target capture for Fault DFT, VeriRAG/LLM4DFT, DeepTPI,
+    DEFT, InF-ATPG, LITE scan instrumentation, DRL ATPG, ATPG Toolkit, and
+    NN-for-ATPG. Do not insert scan, rank or insert test points, repair RTL
+    testability, train RL/GNN ATPG policies, generate patterns, or claim
+    coverage without pinned backends, netlist and fault-list hashes, scan
+    policy, feature manifests, pattern replay, manufacturing gates, signoff,
+    and review.

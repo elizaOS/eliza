@@ -21,7 +21,7 @@ Cuttlefish riscv64 instance, and polls until the guest reports
 sys.boot_completed=1.
 
 options:
-  --clean                 stop_cvd + pkill crosvm + rm -rf ~/cuttlefish_runtime
+  --clean                 stop any running Cuttlefish instance and rm ~/cuttlefish_runtime
   --cpus=N                guest vCPU count (default: 8)
   --memory-mb=N           guest RAM in MiB (default: 12288)
   --gpu-mode=MODE         launch_cvd --gpu_mode (default: none;
@@ -29,7 +29,11 @@ options:
   --boot-timeout-seconds=N
                           max wait for sys.boot_completed=1 (default: 1800)
   --launcher=PATH         override launch_cvd binary (default: auto-discover
-                          launch_cvd then cvd start)
+                          launch_cvd then cvd create)
+  --host-path=PATH        Cuttlefish host tools directory (default: auto-detect
+                          from /usr/lib/cuttlefish-common/bin or ANDROID_HOST_OUT)
+  --product-path=PATH     AOSP product images directory (default: $ANDROID_PRODUCT_OUT
+                          or <aosp>/out/target/product/eliza_ai_soc)
   --aosp=PATH             optional AOSP tree; if provided, build/envsetup.sh
                           will be sourced so launch_cvd and adb are on PATH
   --help                  this message
@@ -48,6 +52,8 @@ memory_mb=12288
 gpu_mode=none
 boot_timeout_seconds=1800
 launcher=
+host_path=
+product_path=
 aosp=
 
 while [ "$#" -gt 0 ]; do
@@ -74,6 +80,14 @@ while [ "$#" -gt 0 ]; do
 			;;
 		--launcher=*)
 			launcher=${1#*=}
+			shift
+			;;
+		--host-path=*)
+			host_path=${1#*=}
+			shift
+			;;
+		--product-path=*)
+			product_path=${1#*=}
 			shift
 			;;
 		--aosp=*)
@@ -150,8 +164,8 @@ fi
 log "preflight: qemu-system-riscv64 $qemu_version"
 
 if [ "$clean" -eq 1 ]; then
-	log "cleanup: stop_cvd and stale crosvm + ~/cuttlefish_runtime"
-	stop_cvd >/dev/null 2>&1 || true
+	log "cleanup: stop any running Cuttlefish instances + ~/cuttlefish_runtime"
+	cvd reset -y >/dev/null 2>&1 || stop_cvd >/dev/null 2>&1 || true
 	pkill -f crosvm >/dev/null 2>&1 || true
 	rm -rf "$HOME/cuttlefish_runtime"
 fi
@@ -166,11 +180,40 @@ if [ -z "$launcher" ]; then
 	fi
 fi
 
+# Auto-detect host_path and product_path for the system cvd.
+if [ "$launcher" = cvd ]; then
+	if [ -z "$host_path" ]; then
+		if [ -d /usr/lib/cuttlefish-common/bin ]; then
+			host_path=/usr/lib/cuttlefish-common/bin
+		elif [ -n "${ANDROID_HOST_OUT:-}" ] && [ -d "$ANDROID_HOST_OUT/bin" ]; then
+			host_path=$ANDROID_HOST_OUT/bin
+		fi
+	fi
+	if [ -z "$product_path" ]; then
+		if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
+			product_path=$ANDROID_PRODUCT_OUT
+		elif [ -n "$aosp" ]; then
+			product_path="$aosp/out/target/product/eliza_ai_soc"
+		fi
+	fi
+fi
+
 log "launcher: $launcher"
 log "launch: --cpus=$cpus --memory_mb=$memory_mb --gpu_mode=$gpu_mode"
+[ -n "$host_path" ] && log "host_path: $host_path"
+[ -n "$product_path" ] && log "product_path: $product_path"
 
 if [ "$launcher" = cvd ]; then
-	cvd start \
+	cvd_host_arg=
+	cvd_product_arg=
+	[ -n "$host_path" ] && cvd_host_arg="--host_path=$host_path"
+	[ -n "$product_path" ] && cvd_product_arg="--product_path=$product_path"
+	# cvd create creates a new device group and starts it; unlike the legacy
+	# launch_cvd, it requires host_path when run outside an AOSP build environment.
+	# shellcheck disable=SC2086
+	cvd create \
+		${cvd_host_arg:+$cvd_host_arg} \
+		${cvd_product_arg:+$cvd_product_arg} \
 		--cpus="$cpus" \
 		--memory_mb="$memory_mb" \
 		--gpu_mode="$gpu_mode" \

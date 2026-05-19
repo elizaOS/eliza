@@ -66,14 +66,13 @@ if docker image inspect "$IMAGE" >/dev/null 2>&1; then
                 --out-json /compare/alphachip_proxy.json
     fi
 else
+    echo "Missing Docker image: $IMAGE — skipping CT proxy step." >&2
     if [ -z "$OPENROAD_RUN_DIR" ]; then
-        echo "Missing Docker image: $IMAGE and no OPENROAD_RUN_DIR set; nothing to do." >&2
-        echo "Either build the alphachip image (scripts/alphachip/build_container.sh) or" >&2
-        echo "export OPENROAD_RUN_DIR=<pd/openlane/runs/RUN_...> to capture post-route PPA only." >&2
-        exit 1
+        echo "Without the CT image AND without OPENROAD_RUN_DIR there is no post-route PPA truth target," >&2
+        echo "but DREAMPlace HPWL three-way comparison can still run if external/DREAMPlace/install exists." >&2
+    else
+        echo "Proceeding to post-route PPA capture (OPENROAD_RUN_DIR=$OPENROAD_RUN_DIR)." >&2
     fi
-    echo "Missing Docker image: $IMAGE — skipping proxy step." >&2
-    echo "Proceeding to post-route PPA capture only (OPENROAD_RUN_DIR=$OPENROAD_RUN_DIR)." >&2
 fi
 
 echo "Proxy comparison artifacts:"

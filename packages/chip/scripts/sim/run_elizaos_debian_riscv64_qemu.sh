@@ -31,6 +31,7 @@ if [ -z "${ISO}" ] || [ ! -f "${ISO}" ]; then
     echo "ERROR: no elizaOS Debian riscv64 ISO found; set ELIZAOS_RISCV64_ISO=/path/to.iso or allow the build target to produce one" >&2
     exit 2
 fi
+ISO="$(realpath "${ISO}")"
 
 make -C "${VARIANT}" qemu-virt-boot \
     ISO="${ISO}" \

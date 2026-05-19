@@ -149,6 +149,39 @@ async def _run(args) -> int:
     try:
         for prompt in prompts:
             print(f"[e2e] >>> {prompt!r}")
+
+            # --- Sync step ---
+            # Both real and sim need to start from the same pose for the
+            # sim2real divergence metric to be meaningful. Command stand
+            # to dual-target, wait for the real robot to settle, then
+            # copy the real robot's measured joint angles into the sim's
+            # qpos so they start aligned.
+            from eliza_robot.bridge.protocol import CommandEnvelope, utc_now_iso
+            stand_env = CommandEnvelope(
+                request_id=f"e2e-sync-{time.time_ns()}",
+                timestamp=utc_now_iso(),
+                command="action.play", payload={"name": "stand"},
+            )
+            await backend.handle_command(stand_env)
+            await asyncio.sleep(2.0)  # let real settle to stand
+            try:
+                real_now = await real_inner.read_joint_positions()
+            except Exception:
+                real_now = {}
+            if real_now:
+                # Push the real pose into the sim env's actuator targets
+                # so the next mj_step starts from a matching state.
+                try:
+                    for jname, val in real_now.items():
+                        act_idx = sim_env._act_name_to_idx.get(jname)
+                        if act_idx is not None:
+                            sim_env.data.ctrl[act_idx] = float(val)
+                    import mujoco
+                    mujoco.mj_step(sim_env.model, sim_env.data)
+                    print(f"[e2e]   synced sim → real on {len(real_now)} joints")
+                except Exception:
+                    pass
+
             t0 = time.time()
             cfg = InferenceLoopConfig(
                 hz=args.policy_hz,
@@ -236,17 +269,43 @@ async def _run(args) -> int:
         "host": f"{args.host}:{args.port}",
         "policy_hz": args.policy_hz,
         "episode_s": args.episode_s,
+        "calibrated_joints": sorted(calibrated_joints),
         "prompts": per_prompt,
         "divergence_samples": len(divergence_log),
-        "divergence_mean_rms_mrad": float(np.mean([d["rms_joint_rad"]*1000 for d in divergence_log])) if divergence_log else None,
-        "divergence_max_rms_mrad": float(max([d["rms_joint_rad"]*1000 for d in divergence_log])) if divergence_log else None,
+        "divergence_mean_rms_mrad_all": float(
+            np.mean([d["rms_joint_rad"] * 1000 for d in divergence_log])
+        ) if divergence_log else None,
+        "divergence_max_rms_mrad_all": float(
+            max([d["rms_joint_rad"] * 1000 for d in divergence_log])
+        ) if divergence_log else None,
+        "divergence_mean_rms_mrad_calibrated_joints_only": float(
+            np.mean([d["rms_joint_rad_in_cal"] * 1000 for d in divergence_log if d.get("n_in_cal", 0) > 0])
+        ) if (divergence_log and calibrated_joints) else None,
+        "divergence_max_rms_mrad_calibrated_joints_only": float(
+            max([d["rms_joint_rad_in_cal"] * 1000 for d in divergence_log if d.get("n_in_cal", 0) > 0])
+        ) if (divergence_log and calibrated_joints) else None,
+        # Backwards-compatible aliases for the older report format.
+        "divergence_mean_rms_mrad": float(
+            np.mean([d["rms_joint_rad"] * 1000 for d in divergence_log])
+        ) if divergence_log else None,
+        "divergence_max_rms_mrad": float(
+            max([d["rms_joint_rad"] * 1000 for d in divergence_log])
+        ) if divergence_log else None,
     }
     (out / "report.json").write_text(json.dumps(summary, indent=2))
     print(f"[e2e] wrote {out / 'report.json'}")
-    if summary["divergence_mean_rms_mrad"] is not None:
+    if summary["divergence_mean_rms_mrad_all"] is not None:
         print(
-            f"[e2e] sim2real divergence — mean {summary['divergence_mean_rms_mrad']:.1f} mrad, "
-            f"max {summary['divergence_max_rms_mrad']:.1f} mrad"
+            f"[e2e] divergence — all joints mean {summary['divergence_mean_rms_mrad_all']:.1f} mrad, "
+            f"max {summary['divergence_max_rms_mrad_all']:.1f} mrad"
+        )
+    cal_metric = summary["divergence_mean_rms_mrad_calibrated_joints_only"]
+    if cal_metric is not None:
+        print(
+            f"[e2e] divergence — calibrated joints only "
+            f"({len(calibrated_joints)} joints) "
+            f"mean {cal_metric:.1f} mrad, "
+            f"max {summary['divergence_max_rms_mrad_calibrated_joints_only']:.1f} mrad"
         )
     return 0
 

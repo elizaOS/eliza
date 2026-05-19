@@ -31,38 +31,38 @@
   "prompts": [
     {
       "prompt": "stand still",
-      "duration_s": 16.85,
+      "duration_s": 15.11,
       "matched_task": "stand_up",
       "similarity": 0.711,
       "steps_completed": 32
     },
     {
       "prompt": "wave hello",
-      "duration_s": 9.89,
+      "duration_s": 9.95,
       "matched_task": "wave_right",
       "similarity": 0.714,
       "steps_completed": 32
     },
     {
       "prompt": "turn left",
-      "duration_s": 9.55,
+      "duration_s": 9.27,
       "matched_task": "turn_left",
       "similarity": 0.826,
       "steps_completed": 32
     },
     {
       "prompt": "walk forward",
-      "duration_s": 10.53,
+      "duration_s": 9.23,
       "matched_task": "walk_forward",
       "similarity": 0.751,
       "steps_completed": 32
     }
   ],
   "divergence_samples": 4,
-  "divergence_mean_rms_mrad_all": 426.75666089665253,
-  "divergence_max_rms_mrad_all": 572.2195779812702,
-  "divergence_mean_rms_mrad_calibrated_joints_only": 427.09020417144393,
-  "divergence_max_rms_mrad_calibrated_joints_only": 583.0594479038576,
-  "divergence_mean_rms_mrad": 426.75666089665253,
-  "divergence_max_rms_mrad": 572.2195779812702
+  "divergence_mean_rms_mrad_all": 910.1689814489303,
+  "divergence_max_rms_mrad_all": 929.9134656318151,
+  "divergence_mean_rms_mrad_calibrated_joints_only": 941.0686361527771,
+  "divergence_max_rms_mrad_calibrated_joints_only": 962.1897562068566,
+  "divergence_mean_rms_mrad": 910.1689814489303,
+  "divergence_max_rms_mrad": 929.9134656318151
 }

@@ -707,6 +707,7 @@ stages:
     source_ids:
       - archgym
       - ai-noc-dse
+      - ai-driven-noc-dse-2512
       - booksim2
       - ramulator2
       - dramsim3
@@ -720,10 +721,11 @@ stages:
     next_gate: make memory-interconnect-contract-check
     critical_review: >
       Architecture DSE, NoC simulation, and DRAM simulation can guide future
-      memory/fabric work, but E1 currently has an AXI-Lite SRAM-backed scaffold
-      without cache coherence, IOMMU/SMMU, QoS, LPDDR, or real contention
-      evidence. Keep this lane as target capture until local simulator and
-      memory-contract gates define the design space.
+      memory/fabric work, and inverse ML/diffusion NoC DSE can reduce BookSim
+      sweeps once topology and traffic constraints are valid. E1 currently has
+      an AXI-Lite SRAM-backed scaffold without cache coherence, IOMMU/SMMU,
+      QoS, LPDDR, or real contention evidence. Keep this lane as target capture
+      until local simulator and memory-contract gates define the design space.
   - id: memory_macro_library_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -754,6 +756,7 @@ stages:
       - verirag-llm4dft
       - deeptpi
       - deft-atpg
+      - inf-atpg
       - lite-scan-instrumentation
       - drl-atpg
       - atpg-via-ai-survey
@@ -767,10 +770,11 @@ stages:
     critical_review: >
       Open DFT tooling and AI-assisted ATPG/testability methods can improve
       scan, pattern generation, hard-to-detect faults, testability repair, and
-      test-point ranking, but E1 still needs a scan architecture, fault model,
-      pinned ATPG backend, DFT-rule oracle, tester interface, generated-repair
-      quarantine, and downstream timing/signoff evidence before any DFT
-      insertion, RTL repair, or fault-coverage claim.
+      test-point ranking, including FFR/QGNN/RL-guided ATPG exploration, but E1
+      still needs a scan architecture, fault model, pinned ATPG backend,
+      DFT-rule oracle, tester interface, generated-repair quarantine, pattern
+      replay, and downstream timing/signoff evidence before any DFT insertion,
+      RTL repair, generated pattern, or fault-coverage claim.
   - id: power_thermal_prediction
     rating: READY_DRY_RUN
     source_ids:

@@ -931,6 +931,7 @@ work_items:
     source_ids:
       - archgym
       - ai-noc-dse
+      - ai-driven-noc-dse-2512
       - booksim2
       - ramulator2
       - dramsim3
@@ -941,13 +942,15 @@ work_items:
       - memory_system
       - interconnect
       - network_on_chip
+      - noc_inverse_ml
       - simulator
       - architecture_dse
     owner_scope: dry-run target capture only; no memory map, RTL fabric, coherency, or QoS changes
     objective: >
       Track AI-assisted architecture DSE, NoC simulation, DRAM simulation, and
-      accelerator-system simulation sources while tying any future E1 use to the
-      existing memory/interconnect contract gates.
+      accelerator-system simulation sources, including inverse ML and diffusion
+      NoC parameter prediction, while tying any future E1 use to the existing
+      memory/interconnect contract gates.
     deliverables:
       - scripts/ai_eda/capture_memory_interconnect_targets.py
       - build/ai_eda/memory_interconnect_targets/<run-id>/targets_report.json
@@ -955,6 +958,8 @@ work_items:
       Memory/interconnect automation reports may only hash local specs, RTL,
       and checker inputs; fabric, memory-map, coherency, QoS, simulator, and
       product claims require deterministic gates and pinned backend evidence.
+      NoC ML datasets and models require topology constraints, traffic trace
+      hashes, BookSim replay logs, train/test split manifests, and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_memory_interconnect_targets.py --run-id validation
@@ -963,11 +968,13 @@ work_items:
       - Current E1 fabric is an AXI-Lite SRAM-backed scaffold
       - No cache hierarchy, coherent fabric, IOMMU/SMMU, LPDDR PHY, or QoS implementation
       - No pinned BookSim, Ramulator, DRAMsim3, DRAMSys, gem5-Aladdin, or AcceSys backend
+      - No approved NoC inverse-ML dataset-generation manifest, topology constraints, traffic traces, or BookSim replay evidence
       - No local bandwidth, latency, Android shared-buffer, or contention evidence
     acceptance_criteria:
       - Report hashes local memory, interconnect, DMA, and checker inputs.
       - Report states no RTL, memory map, coherency policy, or fabric is changed.
       - Candidate tasks list deterministic memory, UMA, benchmark, and runtime gates.
+      - NoC ML-DSE candidates remain metadata-only until replay and review gates pass.
   - id: p2-dft-atpg-watch
     title: DFT And ATPG Watch Lane
     priority: P2
@@ -1006,6 +1013,7 @@ work_items:
       - verirag-llm4dft
       - deeptpi
       - deft-atpg
+      - inf-atpg
       - lite-scan-instrumentation
       - drl-atpg
       - atpg-via-ai-survey
@@ -1016,13 +1024,14 @@ work_items:
       - atpg
       - scan_insertion
       - test_point_insertion
+      - rl_atpg
       - manufacturing_test
     owner_scope: dry-run target capture only; no scan insertion, test-point insertion, RTL testability repair, ATPG execution, or pattern generation
     objective: >
       Track open DFT tooling and AI-assisted ATPG/testability methods,
-      including retrieval-augmented RTL testability repair, while tying any
-      future E1 use to scan-policy, netlist, DFT-rule oracle, manufacturing,
-      and downstream signoff gates.
+      including retrieval-augmented RTL testability repair and FFR/QGNN-guided
+      RL ATPG, while tying any future E1 use to scan-policy, netlist, DFT-rule
+      oracle, manufacturing, and downstream signoff gates.
     deliverables:
       - scripts/ai_eda/capture_dft_atpg_targets.py
       - build/ai_eda/dft_atpg_targets/<run-id>/targets_report.json
@@ -1030,7 +1039,8 @@ work_items:
       DFT/ATPG automation reports may only hash local RTL, constraints, and
       manufacturing/signoff inputs; scan, test-point, RTL repair, ATPG,
       pattern, and fault coverage claims require pinned backends and
-      deterministic evidence.
+      deterministic evidence. RL/GNN ATPG methods require fault-list hashes,
+      feature manifests, training logs, pattern hashes, replay logs, and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation
@@ -1041,12 +1051,14 @@ work_items:
       - No reviewed gate-level DFT netlist flow
       - No ATPG backend selected, pinned, or license-reviewed
       - No license-reviewed LLM4DFT/VeriDFT revision, local testability-rule oracle, or generated-repair quarantine workflow
+      - No approved InF-ATPG implementation/assets, FFR feature manifest, RL training log, generated-pattern quarantine, or deterministic replay oracle
       - No fault model, pattern format, coverage target, or tester interface contract
       - No before/after timing, area, power, or signoff evidence for scan/test-point insertion
     acceptance_criteria:
       - Report hashes local RTL, constraints, signoff, manufacturing, and checker inputs.
       - Report states no scan, test points, RTL, netlist, ATPG, or patterns are generated.
       - Candidate tasks list deterministic synthesis, RTL, formal, cocotb, and manufacturing gates.
+      - RL/GNN ATPG candidates remain metadata-only until code/assets, fault model, replay, and review gates pass.
   - id: p2-power-thermal-ai-watch
     title: Power And Thermal AI Watch Lane
     priority: P2

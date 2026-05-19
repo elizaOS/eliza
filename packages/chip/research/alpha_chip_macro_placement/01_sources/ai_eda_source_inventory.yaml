@@ -3166,6 +3166,41 @@ entries:
     risk:
       - Paper reports may rely on industrial benchmarks and proprietary tools.
       - Gradient-generated patterns are not manufacturing evidence by themselves.
+  - id: inf-atpg
+    name: InF-ATPG
+    kind: rl_gnn_atpg_method
+    stage:
+      - design_for_test
+      - atpg
+      - reinforcement_learning
+      - graph_neural_networks
+      - fault_simulation
+    priority: P2
+    source_url: https://arxiv.org/abs/2512.00079
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Relevant current ATPG SOTA because it uses fanout-free-region partitioning
+      and ATPG-specific circuit features to guide an RL/QGNN policy for test
+      pattern generation.
+    integration_action: >
+      Track as paper-level ATPG method only; E1 cannot train policies, generate
+      patterns, or claim backtrack/fault-coverage improvements until a pinned
+      implementation and deterministic fault-simulation oracle exist.
+    evidence_gate: >
+      Use requires exact code/assets if released, netlist and fault-list hashes,
+      FFR partition manifests, circuit-feature extraction provenance, model
+      training logs, generated pattern hashes, fault-simulation replay logs,
+      deterministic ATPG baseline comparison, and human DFT review.
+    risk:
+      - RL reward and circuit-representation choices can overfit benchmark
+        fault sets and pattern budgets.
+      - Generated patterns are not manufacturing evidence without a reviewed
+        scan architecture, tester format, and independent fault simulation.
   - id: lite-scan-instrumentation
     name: LITE ATPG-Aware Lightweight Scan Instrumentation
     kind: scan_instrumentation_method
@@ -6827,6 +6862,40 @@ entries:
       - NoC benchmark traffic can be far from E1 CPU, DMA, NPU, display, and GPU
         contention.
       - Learned topology choices can conflict with physical-design constraints.
+  - id: ai-driven-noc-dse-2512
+    name: AI-Driven Network-on-Chip DSE
+    kind: inverse_ml_noc_dse_method
+    stage:
+      - network_on_chip
+      - architecture_dse
+      - machine_learning
+      - simulator_optimization
+    priority: P1
+    source_url: https://arxiv.org/abs/2512.07877
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Relevant current method for using BookSim-generated data and inverse
+      neural models, including conditional diffusion, to predict NoC parameters
+      from throughput and latency targets.
+    integration_action: >
+      Track as specific NoC ML-DSE context; do not train models, generate
+      topology parameters, or claim fabric improvements until E1 has traffic
+      traces, topology constraints, BookSim config hashes, and local replay.
+    evidence_gate: >
+      Use requires exact paper/code assets if released, dataset generation
+      manifests, BookSim revision and config hashes, target metric definitions,
+      traffic traces, topology constraints, model training logs, replayed
+      simulator outputs, and human architecture/PD review.
+    risk:
+      - Reverse-predicting parameters from target metrics can produce invalid or
+        physically impractical topologies without hard constraints.
+      - BookSim mesh datasets may not match E1's AXI-Lite scaffold, mobile SoC
+        traffic, or physical floorplan constraints.
   - id: booksim2
     name: BookSim2
     kind: noc_simulator

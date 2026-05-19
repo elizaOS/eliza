@@ -109,6 +109,7 @@ def main() -> int:
             "verirag-llm4dft",
             "deeptpi",
             "deft-atpg",
+            "inf-atpg",
             "lite-scan-instrumentation",
             "drl-atpg",
             "atpg-via-ai-survey",
@@ -170,6 +171,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "rl-gnn-atpg-pattern-watch",
+                "status": "CAPTURED_NOT_TRAINED",
+                "target": "future InF-ATPG-style FFR partitioning, QGNN/RL training, and generated test patterns require netlist, fault-list, feature, training, pattern, replay, and deterministic ATPG baseline evidence",
+                "acceptance_gates": [
+                    "make synth",
+                    "make manufacturing-artifacts-check",
+                    "python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation",
+                ],
+            },
+            {
                 "id": "llm-dft-repair-quarantine-watch",
                 "status": "CAPTURED_NOT_REPAIRED",
                 "target": "future VeriRAG/LLM4DFT-style testability repairs must remain quarantined until DFT, synthesis, formal, simulation, and signoff gates pass",
@@ -185,6 +196,7 @@ def main() -> int:
             "no reviewed gate-level DFT netlist flow",
             "no ATPG backend selected, pinned, or license-reviewed",
             "no license-reviewed LLM4DFT/VeriDFT revision, local testability-rule oracle, or generated-repair quarantine workflow",
+            "no approved InF-ATPG implementation/assets, FFR feature manifest, RL training log, generated-pattern quarantine, or deterministic replay oracle",
             "Fault may bundle proprietary/noncommercial ATPG engines that cannot be assumed release-safe",
             "no fault model, pattern format, coverage target, or tester interface contract",
             "no before/after timing, area, power, or signoff evidence for scan/test-point insertion",

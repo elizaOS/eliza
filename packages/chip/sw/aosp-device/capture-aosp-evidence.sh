@@ -300,7 +300,15 @@ case "$mode" in
 				fi &&
 				echo "CUTTLEFISH_LAUNCHER=$cuttlefish_launcher" &&
 				if [ "$cuttlefish_launcher" = cvd ]; then
-					cvd start $AOSP_CUTTLEFISH_ARGS --daemon
+					cvd_host_arg=
+					cvd_product_arg=
+					if [ -d /usr/lib/cuttlefish-common/bin ]; then
+						cvd_host_arg="--host_path=/usr/lib/cuttlefish-common/bin"
+					fi
+					if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
+						cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
+					fi
+					cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
 				else
 					"$cuttlefish_launcher" $AOSP_CUTTLEFISH_ARGS -daemon
 				fi &&

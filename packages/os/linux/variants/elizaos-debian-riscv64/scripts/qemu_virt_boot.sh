@@ -37,6 +37,8 @@ VARIANT_DIR="$(cd "${HERE}/.." && pwd)"
 EVIDENCE_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.json"
 TRANSCRIPT_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.transcript.log"
 UBOOT_CHIP_DEFAULT="${VARIANT_DIR}/../../../../chip/build/u-boot/u-boot.elf"
+UEFI_CODE_DEFAULT="/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd"
+UEFI_VARS_DEFAULT="/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd"
 
 ISO=""
 MEMORY_MB=4096
@@ -134,12 +136,28 @@ fi
 
 ISO_SHA256="$(sha256sum "${ISO}" | awk '{ print $1 }')"
 
+UEFI_VARS_RUNTIME=""
+QEMU_FIRMWARE_DESC="opensbi-default"
 QEMU_CMD=(qemu-system-riscv64
     -machine virt
     -nographic
     -m "${MEMORY_MB}"
     -smp "${CPUS}"
-    -bios default
+)
+
+if [ -f "${UEFI_CODE_DEFAULT}" ] && [ -f "${UEFI_VARS_DEFAULT}" ]; then
+    UEFI_VARS_RUNTIME="$(mktemp)"
+    cp "${UEFI_VARS_DEFAULT}" "${UEFI_VARS_RUNTIME}"
+    QEMU_FIRMWARE_DESC="${UEFI_CODE_DEFAULT}"
+    QEMU_CMD+=(
+        -drive "if=pflash,format=raw,unit=0,readonly=on,file=${UEFI_CODE_DEFAULT}"
+        -drive "if=pflash,format=raw,unit=1,file=${UEFI_VARS_RUNTIME}"
+    )
+else
+    QEMU_CMD+=( -bios default )
+fi
+
+QEMU_CMD+=(
     -drive "file=${ISO},if=virtio,format=raw,media=cdrom,readonly=on"
     -netdev user,id=net0
     -device virtio-net-device,netdev=net0
@@ -163,6 +181,7 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '## memory_mb: %s\n' "${MEMORY_MB}"
     printf '## cpus: %s\n' "${CPUS}"
     printf '## timeout_secs: %s\n' "${TIMEOUT_SECS}"
+    printf '## firmware: %s\n' "${QEMU_FIRMWARE_DESC}"
     printf '## u_boot: %s\n' "${UBOOT_PATH:-<built-in>}"
     printf '## cmd: %s\n' "${QEMU_CMD[*]}"
     printf '##\n'
@@ -173,6 +192,9 @@ set +e
     >> "${TRANSCRIPT_PATH}" 2>&1
 QEMU_RC=$?
 set -e
+if [ -n "${UEFI_VARS_RUNTIME}" ]; then
+    rm -f "${UEFI_VARS_RUNTIME}"
+fi
 
 END_EPOCH="$(date -u +%s)"
 DURATION_S=$(( END_EPOCH - START_EPOCH ))

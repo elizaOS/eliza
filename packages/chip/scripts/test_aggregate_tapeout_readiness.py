@@ -179,6 +179,14 @@ class GateInventoryTests(unittest.TestCase):
         missing = required - present
         self.assertFalse(missing, f"missing subsystem coverage: {missing}")
 
+    def test_chipyard_generated_linux_contract_gate_requires_boot_evidence(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("chipyard-generated-linux-contract-check", specs)
+        self.assertEqual(
+            specs["chipyard-generated-linux-contract-check"].args,
+            ("--require-boot-evidence",),
+        )
+
 
 class MainExitCodeTests(unittest.TestCase):
     def test_main_returns_zero_when_no_fail(self) -> None:
