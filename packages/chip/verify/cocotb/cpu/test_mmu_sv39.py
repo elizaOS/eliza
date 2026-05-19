@@ -31,7 +31,23 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
+
+_ROOT = Path(__file__).resolve().parents[3]
+_CVA6_CHIPYARD_RTL = _ROOT / "external/chipyard/generators/cva6/src/main/resources/cva6/vsrc/cva6"
+_CVA6_STANDALONE_RTL = _ROOT / "external/cva6/cva6"
+
+
+def _cva6_rtl_present() -> tuple[bool, str]:
+    """Return (present, source_path) when CVA6 core RTL is checked out."""
+    for candidate in (_CVA6_CHIPYARD_RTL, _CVA6_STANDALONE_RTL):
+        if not candidate.is_dir():
+            continue
+        for entry in candidate.rglob("*"):
+            if entry.is_file() and entry.suffix in (".sv", ".v"):
+                return True, str(candidate.relative_to(_ROOT))
+    return False, ""
 
 _cocotb: Any
 try:
@@ -180,9 +196,26 @@ if cocotb is not None:
 def main(argv: list[str] | None = None) -> int:
     host_self_check()
     if os.environ.get("E1_REQUIRE_REAL_MMU_DUT"):
+        present, source = _cva6_rtl_present()
+        if not present:
+            print(
+                "STATUS: FAIL cpu.mmu_sv39_evidence - E1_REQUIRE_REAL_MMU_DUT set "
+                "but no CVA6 RTL is checked out."
+            )
+            print(
+                "  next: git -C external/chipyard submodule update --init "
+                "--recursive generators/cva6"
+            )
+            print(
+                "  alt:  git clone https://github.com/openhwgroup/cva6.git "
+                "external/cva6/cva6"
+            )
+            return 1
         print(
-            "STATUS: FAIL cpu.mmu_sv39_evidence - E1_REQUIRE_REAL_MMU_DUT set "
-            "but no real MMU DUT is available."
+            "STATUS: BLOCKED cpu.mmu_sv39_evidence - "
+            f"CVA6 RTL detected at {source}; positive-path Sv39 walk TB "
+            "(verify/cocotb/cpu/e1_cva6_mmu_tb.sv) has not been ported. "
+            "Wire up before flipping E1_REQUIRE_REAL_MMU_DUT to PASS."
         )
         return 1
     print(

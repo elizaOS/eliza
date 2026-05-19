@@ -13,13 +13,48 @@ This file is dual-purpose:
 
 The cocotb skip path explicitly records BLOCKED in the evidence YAML so
 the gate cannot silently flip green when the big-core RTL lands.
+
+The ``E1_REQUIRE_REAL_CSR_DUT`` environment switch forces this gate to
+FAIL when the CVA6 RTL is not present in the checkout. Presence is
+detected by inspecting the two pin-manifest checkout paths:
+
+  - ``external/chipyard/generators/cva6/src/main/resources/cva6/vsrc/cva6``
+    (chipyard recursive submodule); or
+  - ``external/cva6/cva6`` (standalone clone of openhwgroup/cva6).
+
+When either path contains real ``*.sv``/``*.v`` sources the gate flips
+to a positive-path test that exercises the e1_cva6_wrapper instead of
+the tiny stub. The wrapper TB does not yet exist; the env switch is the
+hand-off point.
 """
 
 from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 from typing import Any
+
+_ROOT = Path(__file__).resolve().parents[3]
+_CVA6_CHIPYARD_RTL = _ROOT / "external/chipyard/generators/cva6/src/main/resources/cva6/vsrc/cva6"
+_CVA6_STANDALONE_RTL = _ROOT / "external/cva6/cva6"
+
+
+def _cva6_rtl_present() -> tuple[bool, str]:
+    """Return (present, source_path) when CVA6 core RTL is checked out.
+
+    A directory is "present" when it exists and contains at least one
+    ``*.sv`` or ``*.v`` file. An empty submodule placeholder does not
+    count, which avoids declaring the gate satisfied by a wrapper without
+    its recursive submodule.
+    """
+    for candidate in (_CVA6_CHIPYARD_RTL, _CVA6_STANDALONE_RTL):
+        if not candidate.is_dir():
+            continue
+        for entry in candidate.rglob("*"):
+            if entry.is_file() and entry.suffix in (".sv", ".v"):
+                return True, str(candidate.relative_to(_ROOT))
+    return False, ""
 
 _cocotb: Any
 try:
@@ -233,10 +268,28 @@ def main(argv: list[str] | None = None) -> int:
     assert _csr_rs(1, 0x300, 0) == (0x300 << 20) | (2 << 12) | (1 << 7) | 0x73
     assert _csr_rwi(1, 0x300, 5) == (0x300 << 20) | (5 << 15) | (5 << 12) | (1 << 7) | 0x73
     if os.environ.get("E1_REQUIRE_REAL_CSR_DUT"):
+        present, source = _cva6_rtl_present()
+        if not present:
+            print(
+                "STATUS: FAIL cpu.csr_trap_evidence - E1_REQUIRE_REAL_CSR_DUT set "
+                "but no CVA6 RTL is checked out."
+            )
+            print(
+                "  next: git -C external/chipyard submodule update --init "
+                "--recursive generators/cva6"
+            )
+            print(
+                "  alt:  git clone https://github.com/openhwgroup/cva6.git "
+                "external/cva6/cva6"
+            )
+            return 1
         print(
-            "STATUS: FAIL cpu.csr_trap_evidence - E1_REQUIRE_REAL_CSR_DUT set "
-            "but stub-only path is the current DUT."
+            "STATUS: BLOCKED cpu.csr_trap_evidence - "
+            f"CVA6 RTL detected at {source}; positive-path TB harness "
+            "(verify/cocotb/cpu/e1_cva6_csr_tb.sv) has not been ported yet. "
+            "Wire up before flipping E1_REQUIRE_REAL_CSR_DUT to PASS."
         )
+        print("evidence_yaml:", evidence_yaml_path())
         return 1
     print("STATUS: BLOCKED cpu.csr_trap_evidence -", csr_trap_evidence_blocked_note())
     print("evidence_yaml:", evidence_yaml_path())
