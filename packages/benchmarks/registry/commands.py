@@ -512,8 +512,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         ]
         provider_name = (model.provider or "").strip().lower()
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"hermes", "openclaw"}:
-            raise ValueError(f"gaia: native {agent} harness adapter is not implemented")
+        if agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--harness", agent])
         # Route LLM-backed providers through the eliza TS bridge.
         bridge_providers = {
             "cerebras",
@@ -562,8 +562,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]
     ) -> list[str]:
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"hermes", "openclaw"}:
-            raise ValueError(f"gaia_orchestrated: native {agent} harness adapter is not implemented")
         args = [
             python,
             "-m",
@@ -580,8 +578,17 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         if isinstance(max_q, int) and max_q > 0:
             args.extend(["--max-questions", str(max_q)])
         providers = extra.get("providers")
-        if isinstance(providers, list) and all(isinstance(x, str) for x in providers):
+        legacy_defaults = ["claude-code", "swe-agent", "codex"]
+        if (
+            agent in {"eliza", "hermes", "openclaw"}
+            and isinstance(providers, list)
+            and [str(x) for x in providers] == legacy_defaults
+        ):
+            args.extend(["--providers", agent])
+        elif isinstance(providers, list) and all(isinstance(x, str) for x in providers):
             args.extend(["--providers", *cast(list[str], providers)])
+        elif agent in {"eliza", "hermes", "openclaw"}:
+            args.extend(["--providers", agent])
         required_capabilities = extra.get("required_capabilities")
         if isinstance(required_capabilities, list) and all(isinstance(x, str) for x in required_capabilities):
             args.extend(["--required-capabilities", *cast(list[str], required_capabilities)])
@@ -1603,8 +1610,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             str(output_dir),
         ]
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
-        if agent in {"hermes", "openclaw"}:
-            raise ValueError(f"webshop: native {agent} harness adapter is not implemented")
         provider_lower = (model.provider or "").strip().lower()
         if extra.get("mock") is True or provider_lower == "mock":
             args.append("--mock")

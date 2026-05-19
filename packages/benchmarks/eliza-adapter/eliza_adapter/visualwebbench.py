@@ -97,6 +97,9 @@ class ElizaVisualWebBenchAgent:
                 "bbox": "[x1,y1,x2,y2]|null normalized 0..1",
             },
         }
+        visual_description = task.metadata.get("visual_description")
+        if isinstance(visual_description, str) and visual_description.strip():
+            context["visual_description"] = visual_description.strip()
 
         message = (
             "Answer this VisualWebBench task. The screenshot is provided as an "
@@ -105,6 +108,15 @@ class ElizaVisualWebBenchAgent:
             "answer_text, choice_index, and bbox.\n\n"
             f"{task.prompt}"
         )
+        if not attachments and isinstance(visual_description, str) and visual_description.strip():
+            message = (
+                "Answer this VisualWebBench task. This bundled smoke fixture has "
+                "no screenshot file; use the provided visual_description as the "
+                "screenshot content. Return a compact JSON object with answer_text, "
+                "choice_index, and bbox.\n\n"
+                f"visual_description: {visual_description.strip()}\n\n"
+                f"{task.prompt}"
+            )
         response = self._client.send_message(text=message, context=context)
         parsed = _parse_response(response.params, response.text)
 
@@ -410,7 +422,12 @@ def _parse_response(params: dict[str, object], text: str) -> dict[str, object]:
     if json_obj:
         merged.update(json_obj)
     elif text:
-        merged["answer_text"] = text.strip()
+        meta = re.search(
+            r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']*)["\']',
+            text.strip(),
+            flags=re.IGNORECASE,
+        )
+        merged["answer_text"] = meta.group(1).strip() if meta else text.strip()
     return merged
 
 

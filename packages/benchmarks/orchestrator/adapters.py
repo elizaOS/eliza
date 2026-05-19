@@ -142,11 +142,6 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     "openclaw_bench": (),
     "interrupt_bench": (),
     "scambench": (),
-    # GAIA and WebShop are bridge-backed Eliza integrations in this checkout;
-    # Hermes/OpenClaw labels would still exercise the Eliza path.
-    "gaia": ("eliza",),
-    "gaia_orchestrated": ("eliza",),
-    "webshop": ("eliza",),
 }
 
 
@@ -2492,6 +2487,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "scenarios": [
                     "friend_supporter_tarot_01",
+                    "repeat_customer_tarot_01",
                 ],
                 "concurrency": 1,
                 "evaluator": "heuristic",

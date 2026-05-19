@@ -332,20 +332,21 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
         else to_float(metrics.get("avg_incremental_revenue"))
     )
     avg_profit = (total_profit / run_count) if run_count else to_float(metrics.get("avg_profit"))
+    avg_net_worth = to_float(metrics.get("avg_net_worth"))
     max_net_worth = to_float(metrics.get("max_net_worth"))
     return ScoreExtraction(
-        score=avg_incremental_revenue,
-        unit="usd_incremental_revenue_per_run",
+        score=avg_net_worth,
+        unit="usd_avg_net_worth",
         higher_is_better=True,
         metrics={
-            "primary_score_note": "Average incremental revenue over the no-op starter-inventory baseline; raw revenue and net worth are diagnostic secondary metrics.",
+            "primary_score_note": "Average final net worth. Incremental revenue over the no-op starter-inventory baseline is retained as a diagnostic metric.",
             "avg_incremental_revenue": avg_incremental_revenue,
             "total_incremental_revenue": total_incremental_revenue,
             "avg_revenue": avg_revenue,
             "total_revenue": total_revenue,
             "avg_profit": avg_profit,
             "max_net_worth": max_net_worth,
-            "avg_net_worth": metrics.get("avg_net_worth") or "0",
+            "avg_net_worth": avg_net_worth,
             "profitability_rate": metrics.get("profitability_rate") or 0,
             "coherence_score": metrics.get("coherence_score") or 0,
             "avg_items_sold": (total_items_sold / run_count) if run_count else (metrics.get("avg_items_sold") or 0),

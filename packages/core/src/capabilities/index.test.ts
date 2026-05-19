@@ -354,6 +354,13 @@ describe("capability router", () => {
 				if (method === "plugin.appBridge.call") {
 					return { result: { launchUrl: "https://weather.example/prepared" } };
 				}
+				if (method === "plugin.route.call") {
+					return {
+						status: 203,
+						headers: { "x-weather": "clear" },
+						body: { ok: true },
+					};
+				}
 				return {
 					text: "Weather is clear.",
 					actions: ["WEATHER_LOOKUP"],
@@ -493,6 +500,18 @@ describe("capability router", () => {
 		).resolves.toEqual({
 			result: { launchUrl: "https://weather.example/prepared" },
 		});
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+				headers: { accept: "application/json" },
+			}),
+		).resolves.toEqual({
+			status: 203,
+			headers: { "x-weather": "clear" },
+			body: { ok: true },
+		});
 		expect(calls).toEqual([
 			{ method: "plugin.modules.list", params: {} },
 			{
@@ -542,6 +561,15 @@ describe("capability router", () => {
 					moduleId: "remote-weather",
 					hook: "prepareLaunch",
 					context: { appName: "@remote/weather" },
+				},
+			},
+			{
+				method: "plugin.route.call",
+				params: {
+					moduleId: "remote-weather",
+					method: "GET",
+					path: "/weather/sf",
+					headers: { accept: "application/json" },
 				},
 			},
 		]);
@@ -633,6 +661,189 @@ describe("capability router", () => {
 			code: "CAPABILITY_DECODE_FAILED",
 			method: "plugin.asset.get",
 			message: "bodyBase64 must be valid base64.",
+		});
+	});
+
+	it("rejects remote plugin assets with unsafe integrity metadata", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				path: "/assets/weather.js",
+				contentType: "text/javascript",
+				bodyBase64: Buffer.from("export default {};").toString("base64"),
+				integrity: "sha256-ok\r\nx-injected: yes",
+			}),
+		});
+
+		await expect(
+			router.plugin.getAsset({
+				moduleId: "remote-weather",
+				path: "/assets/weather.js",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.asset.get",
+			message: "integrity must not contain control characters.",
+		});
+	});
+
+	it("rejects outbound remote plugin route calls with invalid methods", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return { status: 200 };
+			},
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "STATIC",
+				path: "/weather/sf",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "method must be a valid plugin route method.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin route calls with unsafe paths", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return { status: 200 };
+			},
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/../secret",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message:
+				"path must not contain empty, current-directory, or parent-directory segments.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin route calls with unsafe headers", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return { status: 200 };
+			},
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+				headers: { "x-weather": "clear\r\nx-injected: yes" },
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "headers must not contain control characters.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin asset requests with unsafe paths", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {
+					path: "/assets/weather.js",
+					contentType: "text/javascript",
+					bodyBase64: "",
+				};
+			},
+		});
+
+		await expect(
+			router.plugin.getAsset({
+				moduleId: "remote-weather",
+				path: "https://weather.example/assets/weather.js",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.asset.get",
+			message:
+				"path must be an asset path without query, hash, URL scheme, or backslash.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects remote plugin route responses with invalid status codes", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				status: 99,
+				body: { ok: false },
+			}),
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "status must be an integer HTTP status code.",
+		});
+	});
+
+	it("rejects remote plugin route responses with invalid header names", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				status: 200,
+				headers: { "x-weather\r\nx-injected": "clear" },
+			}),
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "headers must contain valid header names.",
+		});
+	});
+
+	it("rejects remote plugin route responses with unsafe header values", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				status: 200,
+				headers: { "x-weather": "clear\r\nx-injected: yes" },
+			}),
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "headers must not contain control characters.",
 		});
 	});
 

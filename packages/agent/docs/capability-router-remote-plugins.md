@@ -426,10 +426,16 @@ When multiple endpoints are configured:
   advertised the module. The aggregating router stamps each module with
   `capabilityEndpointId`, and the materialized plugin carries that endpoint id
   on every remote plugin RPC.
+- Outbound remote route RPC calls validate callable HTTP methods, local absolute
+  app paths, and safe request headers before crossing the capability boundary.
+  Outbound remote asset RPC calls validate safe asset paths before dispatch.
 - Remote route and app-bridge route calls do not copy local or remote
   authorization, cookie, API-key, or auth-token headers across the boundary.
   Endpoint authentication stays in the capability-router transport layer instead
   of being copied from inbound user requests or remote route responses.
+- Remote route RPC results must use integer HTTP status codes and valid HTTP
+  response header names and values before they are exposed through local plugin
+  route dispatch.
 - low-level `fs`, `pty`, `git`, and `model.status` calls use the primary
   endpoint by default, or a specific endpoint when callers pass `endpointId`.
 
@@ -646,6 +652,10 @@ Current focused tests cover:
   endpoint/module allowlist, and consumed through the same runtime path
   (`bun run test:remote-capabilities:docker`),
 - remote route dispatch through the actual API route dispatcher,
+- remote route RPC response validation before status/header metadata is exposed
+  through local route dispatch,
+- outbound remote route and asset RPC request validation before endpoint
+  dispatch,
 - remote `STATIC` route rejection until a dedicated remote static mount
   contract exists,
 - remote frontend bundle URL normalization,

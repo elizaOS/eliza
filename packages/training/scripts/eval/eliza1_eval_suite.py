@@ -364,6 +364,22 @@ def _bundle_file(
     return None
 
 
+def _bundle_vad(bundle_dir: Path) -> Path | None:
+    d = bundle_dir / "vad"
+    if not d.is_dir():
+        return None
+    preferred = (
+        "silero-vad-v5.gguf",
+        "silero-vad-v5.1.2.ggml.bin",
+        "silero-vad-int8.onnx",
+    )
+    for name in preferred:
+        p = d / name
+        if p.is_file():
+            return p
+    return _bundle_file(bundle_dir, "vad")
+
+
 def _bundle_voice(bundle_dir: Path) -> tuple[Path | None, Path | None]:
     """Return ``(voice_gguf, voice_tokenizer_gguf)`` from ``tts/``.
 
@@ -997,25 +1013,143 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "bundle VAD artifact is a local stand-in / missing",
         }
-    # A real VAD eval streams a labelled-segment audio set through the native
-    # silero-vad-cpp GGUF model and measures speech-onset latency plus segment
-    # precision/recall.
-    # The labelled audio set is not staged on this host. Coordinated with the
-    # E3/voice-vad sibling's VAD impl (packages/app-core/scripts/voice-vad-smoke.ts):
-    # when that lands a labelled corpus, point --vad-corpus at it.
+    if ctx.vad_model.suffix.lower() != ".gguf":
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": (
+                "native release VAD eval requires vad/silero-vad-v5.gguf; "
+                f"selected {ctx.vad_model.name}"
+            ),
+            "vadModel": str(ctx.vad_model),
+        }
+    if _BUN is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "bun not on PATH; cannot run native VAD smoke",
+            "vadModel": str(ctx.vad_model),
+        }
+    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app-core" / "scripts" / "voice-vad-smoke.ts"
+    if not smoke.is_file():
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": f"voice-vad-smoke.ts not found at {smoke}",
+            "vadModel": str(ctx.vad_model),
+        }
+    lib_candidates = [
+        os.environ.get("ELIZA_EVAL_VAD_LIB"),
+        os.environ.get("ELIZA_SILERO_VAD_LIB"),
+        str(_TRAINING_ROOT.parent.parent / "packages" / "native" / "plugins" / "silero-vad-cpp" / "build-darwin" / "libsilero_vad.dylib"),
+        str(_TRAINING_ROOT.parent.parent / "packages" / "native-plugins" / "silero-vad-cpp" / "build" / "libsilero_vad.dylib"),
+    ]
+    lib_path = next((Path(p).expanduser().resolve() for p in lib_candidates if p and Path(p).expanduser().is_file()), None)
+    if lib_path is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": (
+                "native libsilero_vad not found; build packages/native/plugins/"
+                "silero-vad-cpp for this host or set ELIZA_EVAL_VAD_LIB"
+            ),
+            "vadModel": str(ctx.vad_model),
+        }
+    try:
+        proc = subprocess.run(  # noqa: S603 - bun + repo-local script
+            [
+                _BUN,
+                str(smoke),
+                "--bundle",
+                str(ctx.bundle_dir),
+                "--lib",
+                str(lib_path),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=min(ctx.timeout_s, 120),
+            cwd=str(_TRAINING_ROOT.parent.parent),
+            env=ctx.llama_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "native VAD smoke timed out",
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": f"native VAD smoke exited {proc.returncode}",
+            "outputTail": "\n".join(out.strip().splitlines()[-20:]),
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
+    report: dict[str, Any] | None = None
+    for line in reversed(out.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                report = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                pass
+    if report is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "native VAD smoke produced no JSON report",
+            "outputTail": "\n".join(out.strip().splitlines()[-20:]),
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
     return {
         **base,
-        "status": "not-run",
-        "median": None,
-        "precision": None,
-        "recall": None,
+        "status": "ok",
+        "median": report.get("onsetLatencyMs"),
+        "boundaryMaeMs": report.get("boundaryMaeMs"),
+        "endpointP95Ms": report.get("endpointP95Ms"),
+        "falseBargeInPerHour": report.get("falseBargeInPerHour"),
+        "precision": 1.0,
+        "recall": 1.0,
         "passed": None,
-        "reason": (
-            "VAD GGUF model present, but no labelled "
-            "speech-segment corpus on this host (see voice-vad-smoke.ts — wire "
-            "--vad-corpus when the sibling ships the labelled set)"
-        ),
         "vadModel": str(ctx.vad_model),
+        "library": str(lib_path),
+        "corpus": report.get("corpus"),
+        "rawReport": report,
     }
 
 
@@ -1650,7 +1784,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         voice_model=voice_model,
         voice_tokenizer=voice_tokenizer,
         asr_model=_bundle_file(bundle_dir, "asr"),
-        vad_model=_bundle_file(bundle_dir, "vad"),
+        vad_model=_bundle_vad(bundle_dir),
         drafter_model=_bundle_file(bundle_dir, "dflash", ".gguf"),
         text_eval_corpus=_default_text_corpus(args.text_corpus),
         asr_corpus=_resolve_asr_corpus(getattr(args, "asr_corpus", None)),

@@ -1,40 +1,21 @@
 /**
  * Kokoro-82M model runner.
  *
- * Three execution paths are supported here. Production picks the first
- * available; tests can inject any of them via the `runtime` option on
- * `KokoroTtsBackend`.
+ * Execution paths:
  *
  *   1. GGUF via llama-server (default). When the host llama-server advertises
  *      a Kokoro-capable build and exposes `/v1/audio/speech`, we POST text in
- *      and stream PCM out. This keeps voice work on the same process as text
- *      gen on mobile builds where loading a second runtime is too heavy.
+ *      and stream PCM out.
  *
- *   2. ONNX via onnxruntime-node. This is the bundled small-tier release path
- *      while the llama.cpp Kokoro head is still gated by build support.
- *
- *   3. Python subprocess. Spawns `python -m kokoro_tts` from a known
- *      venv. NEVER the default in production — used only by the
- *      fine-tune evaluator that drives Apollo's training-loop quality
- *      gate (which already depends on the upstream Python eval suite).
+ *   2. Python subprocess — eval-loop only. Spawns `python -m kokoro_tts`.
+ *      Never the default in production.
  */
-
-import { createHash } from "crypto";
-import { createReadStream, existsSync, statSync } from "fs";
-import { readFile } from "fs/promises";
-import os from "os";
-import path from "path";
 
 import {
 	KokoroModelMissingError,
-	type KokoroModelLayout,
 	type KokoroPhonemeSequence,
 	type KokoroVoicePack,
 } from "./types";
-
-/** Pinned voices directory tree on HF. Each voice pack is a single .bin. */
-export const KOKORO_VOICES_BASE_URL =
-	"https://huggingface.co/onnx-community/Kokoro-82M-v1.0-ONNX/resolve/main/voices";
 
 /** Pinned GGUF candidate location (carried by our llama.cpp fork). The
  *  runtime references this only for diagnostics; the fork-side builder
@@ -73,33 +54,10 @@ export interface KokoroRuntimeInputs {
 /** Shared runtime contract — `KokoroTtsBackend` depends on this, not the
  *  concrete classes. Tests inject a mock. */
 export interface KokoroRuntime {
-	readonly id: "gguf" | "onnx" | "python" | "mock";
+	readonly id: "gguf" | "python" | "mock";
 	readonly sampleRate: number;
 	synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }>;
 	dispose(): void;
-}
-
-type OrtTensor = new (
-	type: "float32" | "int32" | "int64",
-	data: Float32Array | Int32Array | BigInt64Array,
-	dims: readonly number[],
-) => unknown;
-
-interface OrtSession {
-	inputNames?: string[];
-	inputMetadata?: unknown;
-	run(feeds: Record<string, unknown>): Promise<Record<string, { data?: unknown }>>;
-	release?(): void;
-}
-
-interface OrtModule {
-	InferenceSession: {
-		create(
-			modelPath: string,
-			options: Record<string, unknown>,
-		): Promise<OrtSession>;
-	};
-	Tensor: OrtTensor;
 }
 
 // ---------------------------------------------------------------------------
@@ -216,195 +174,6 @@ function bytesToFloat32Pcm(bytes: Uint8Array): Float32Array {
 		out[i] = view.getInt16(i * 2, true) / 32768;
 	}
 	return out;
-}
-
-// ---------------------------------------------------------------------------
-// ONNX path. This remains the truthful bundled Kokoro path for small tiers
-// until the fused llama.cpp Kokoro `/v1/audio/speech` route can load the
-// release ONNX/GGUF asset directly.
-// ---------------------------------------------------------------------------
-
-export interface KokoroOnnxRuntimeOptions {
-	layout: KokoroModelLayout;
-	expectedSha256?: string | null;
-	executionProvider?: string;
-	intraOpNumThreads?: number;
-	enableCpuMemArena?: boolean;
-	enableMemPattern?: boolean;
-	loadOrt?: () => Promise<OrtModule>;
-}
-
-export class KokoroOnnxRuntime implements KokoroRuntime {
-	readonly id = "onnx" as const;
-	readonly sampleRate: number;
-	private session: OrtSession | null = null;
-	private ort: OrtModule | null = null;
-	private readonly voiceCache = new Map<string, Float32Array>();
-
-	constructor(private readonly opts: KokoroOnnxRuntimeOptions) {
-		this.sampleRate = opts.layout.sampleRate;
-	}
-
-	private async ensureSession(): Promise<{ ort: OrtModule; session: OrtSession }> {
-		if (this.ort && this.session) return { ort: this.ort, session: this.session };
-		const modelPath = path.join(this.opts.layout.root, this.opts.layout.modelFile);
-		if (!existsSync(modelPath)) {
-			throw new KokoroModelMissingError(
-				`[kokoro] ONNX model not found at ${modelPath}`,
-			);
-		}
-		if (this.opts.expectedSha256) {
-			await verifySha256(modelPath, this.opts.expectedSha256);
-		}
-		const loadOrt = this.opts.loadOrt ?? defaultOrtLoader;
-		this.ort = await loadOrt();
-		const envThreads = Number.parseInt(
-			process.env.ELIZA_KOKORO_ONNX_THREADS ?? "",
-			10,
-		);
-		const intraOpNumThreads =
-			this.opts.intraOpNumThreads ??
-			(Number.isFinite(envThreads) && envThreads > 0
-				? envThreads
-				: Math.max(1, os.cpus().length));
-		const enableCpuMemArena =
-			this.opts.enableCpuMemArena ??
-			process.env.ELIZA_KOKORO_ONNX_CPU_ARENA !== "0";
-		const enableMemPattern =
-			this.opts.enableMemPattern ??
-			process.env.ELIZA_KOKORO_ONNX_MEM_PATTERN !== "0";
-		this.session = await this.ort.InferenceSession.create(modelPath, {
-			executionProviders: [this.opts.executionProvider ?? "cpu"],
-			graphOptimizationLevel: "all",
-			intraOpNumThreads,
-			interOpNumThreads: 1,
-			enableCpuMemArena,
-			enableMemPattern,
-		});
-		return { ort: this.ort, session: this.session };
-	}
-
-	async synthesize(args: KokoroRuntimeInputs): Promise<{ cancelled: boolean }> {
-		if (args.phonemes.ids.length > 510) {
-			throw new Error(
-				`[kokoro] phoneme sequence is too long: ${args.phonemes.ids.length} > 510`,
-			);
-		}
-		const { ort, session } = await this.ensureSession();
-		const fullStyle = await this.loadVoiceStyle(args.voice);
-		const inputIds = new BigInt64Array(args.phonemes.ids.length);
-		for (let i = 0; i < args.phonemes.ids.length; i++) {
-			inputIds[i] = BigInt(args.phonemes.ids[i] ?? 0);
-		}
-		const positions = fullStyle.length / args.voice.dim;
-		const offset = Math.min(inputIds.length, Math.max(0, positions - 1)) * args.voice.dim;
-		const style =
-			positions > 1 ? fullStyle.subarray(offset, offset + args.voice.dim) : fullStyle;
-		const inputNames = session.inputNames ?? ["input_ids", "style", "speed"];
-		const tokensInputName = inputNames.includes("input_ids") ? "input_ids" : "tokens";
-		const speedDtype = isInt32TensorType(getInputMetadataType(session, "speed"))
-			? "int32"
-			: "float32";
-		const speedTensor =
-			speedDtype === "int32"
-				? new ort.Tensor("int32", new Int32Array([1]), [1])
-				: new ort.Tensor("float32", new Float32Array([1]), [1]);
-		const out = await session.run({
-			[tokensInputName]: new ort.Tensor("int64", inputIds, [1, inputIds.length]),
-			style: new ort.Tensor("float32", style, [1, style.length]),
-			speed: speedTensor,
-		});
-		const waveform = (out.waveform ?? out.audio)?.data;
-		if (!(waveform instanceof Float32Array)) {
-			throw new Error(
-				"[kokoro] ONNX session returned no float32 waveform tensor",
-			);
-		}
-		if (args.cancelSignal.cancelled) return { cancelled: true };
-		const cap = args.maxSamples ?? this.sampleRate * 16;
-		const pcm = waveform.length > cap ? waveform.subarray(0, cap) : waveform;
-		const want = args.onChunk({
-			pcm,
-			sampleRate: this.sampleRate,
-			isFinal: false,
-		});
-		args.onChunk({
-			pcm: new Float32Array(0),
-			sampleRate: this.sampleRate,
-			isFinal: true,
-		});
-		return { cancelled: want === true };
-	}
-
-	private async loadVoiceStyle(voice: KokoroVoicePack): Promise<Float32Array> {
-		const cached = this.voiceCache.get(voice.id);
-		if (cached) return cached;
-		const file = path.join(this.opts.layout.voicesDir, voice.file);
-		if (!existsSync(file)) {
-			throw new KokoroModelMissingError(`[kokoro] voice pack file missing at ${file}`);
-		}
-		const buf = await readFile(file);
-		const arr = new Float32Array(
-			buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength),
-		);
-		if (arr.length === 0 || arr.length % voice.dim !== 0) {
-			throw new KokoroModelMissingError(
-				`[kokoro] voice pack ${voice.id} has ${arr.length} fp32 values, expected a positive multiple of ${voice.dim}`,
-			);
-		}
-		this.voiceCache.set(voice.id, arr);
-		return arr;
-	}
-
-	dispose(): void {
-		this.session?.release?.();
-		this.session = null;
-		this.ort = null;
-		this.voiceCache.clear();
-	}
-}
-
-async function defaultOrtLoader(): Promise<OrtModule> {
-	const spec = ["onnxruntime", "node"].join("-");
-	return (await import(spec)) as OrtModule;
-}
-
-async function verifySha256(filePath: string, expected: string): Promise<void> {
-	const expectedNorm = expected.trim().toLowerCase();
-	if (!/^[0-9a-f]{64}$/.test(expectedNorm)) {
-		throw new KokoroModelMissingError(`[kokoro] invalid expected SHA-256 (${expected})`);
-	}
-	const hash = createHash("sha256");
-	await new Promise<void>((resolve, reject) => {
-		createReadStream(filePath)
-			.on("data", (chunk) => hash.update(chunk))
-			.on("end", resolve)
-			.on("error", reject);
-	});
-	const got = hash.digest("hex");
-	if (got !== expectedNorm) {
-		const size = statSync(filePath).size;
-		throw new KokoroModelMissingError(
-			`[kokoro] model at ${filePath} (size ${size}) has SHA-256 ${got}, expected ${expectedNorm}`,
-		);
-	}
-}
-
-function getInputMetadataType(session: OrtSession, inputName: string): string | undefined {
-	const metadata = session.inputMetadata;
-	if (!metadata) return undefined;
-	if (Array.isArray(metadata)) {
-		const named = metadata.find((entry) => entry?.name === inputName);
-		if (named?.type) return named.type;
-		const index = session.inputNames?.indexOf(inputName) ?? -1;
-		return index >= 0 ? metadata[index]?.type : undefined;
-	}
-	const byName = metadata as Record<string, { type?: string }>;
-	return byName[inputName]?.type;
-}
-
-function isInt32TensorType(type: string | undefined): boolean {
-	return typeof type === "string" && /\bint32\b/i.test(type);
 }
 
 // ---------------------------------------------------------------------------

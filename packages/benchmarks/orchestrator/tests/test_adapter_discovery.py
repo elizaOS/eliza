@@ -288,16 +288,18 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == harness
 
     for benchmark_id in ("gaia", "gaia_orchestrated", "webshop"):
-        eliza_cell = cells[(benchmark_id, "eliza")]
-        assert eliza_cell.compatible is True
-        assert eliza_cell.command
-        for harness in ("hermes", "openclaw"):
+        for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
-            assert cell.compatible is False
-            assert cell.command is None
-            assert cell.reason == (
-                f"harness '{harness}' not in adapter compatibility (eliza)"
-            )
+            assert cell.compatible is True
+            assert cell.command
+            assert cell.propagated_env["BENCHMARK_HARNESS"] == harness
+            assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == harness
+            if benchmark_id == "gaia":
+                assert "--harness" in cell.command
+                assert cell.command[cell.command.index("--harness") + 1] == harness
+            if benchmark_id == "gaia_orchestrated":
+                assert "--providers" in cell.command
+                assert cell.command[cell.command.index("--providers") + 1] == harness
 
     for benchmark_id in (
         "hermes_tblite",
@@ -609,9 +611,6 @@ def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -
         "configbench",
         "framework",
         "eliza_1",
-        "gaia",
-        "gaia_orchestrated",
-        "webshop",
     ):
         adapter = adapters[benchmark_id]
         assert adapter.agent_compatibility == ("eliza",)
@@ -703,24 +702,32 @@ def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path)
     ]
     assert "--strict-capabilities" in command
     assert entry.locate_result(tmp_path) == tmp_path / "gaia-orchestrated-latest.json"
-    with pytest.raises(ValueError, match="native hermes harness adapter"):
-        entry.build_command(
-            tmp_path,
-            ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-            {"agent": "hermes"},
-        )
+
+    hermes_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "hermes"},
+    )
+    assert hermes_command[hermes_command.index("--providers") + 1] == "hermes"
 
 
-def test_gaia_and_webshop_registry_block_mislabeled_harnesses(tmp_path: Path) -> None:
+def test_gaia_and_webshop_registry_route_cross_harnesses(tmp_path: Path) -> None:
     entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
 
-    for benchmark_id in ("gaia", "webshop"):
-        with pytest.raises(ValueError, match="native openclaw harness adapter"):
-            entries[benchmark_id].build_command(
-                tmp_path,
-                ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-                {"agent": "openclaw"},
-            )
+    gaia_command = entries["gaia"].build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw"},
+    )
+    assert gaia_command[gaia_command.index("--harness") + 1] == "openclaw"
+
+    webshop_command = entries["webshop"].build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "openclaw"},
+    )
+    assert "--bridge" in webshop_command
+    assert "--mock" not in webshop_command
 
 
 def test_mint_registry_distinguishes_harness_bridge_from_direct_provider(
