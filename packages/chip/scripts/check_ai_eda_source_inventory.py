@@ -330,6 +330,8 @@ REQUIRED_SOURCES = {
     "nettag",
     "deepgate4",
     "chiplingo",
+    "agentictcad",
+    "tcadgpt",
     "litho-aware-ml-hotspot",
     "dlhsd-hotspot-detection",
     "lithohod",

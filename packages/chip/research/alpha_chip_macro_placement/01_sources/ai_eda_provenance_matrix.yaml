@@ -665,6 +665,18 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_feature_extractor_dataset_and_explanation_review
     allowed_current_use: explanation_quality_reference_only
+  - source_id: agentictcad
+    asset_type: llm_agent_tcad_code_generation_and_device_optimization
+    asset_url: https://arxiv.org/abs/2512.23742
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_tcad_assets_license_process_authority_and_replay_review
+    allowed_current_use: dtco_method_reference_only
+  - source_id: tcadgpt
+    asset_type: executable_domain_specific_tcad_llm
+    asset_url: https://arxiv.org/abs/2601.10128
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_dataset_license_and_tcad_deck_review
+    allowed_current_use: dtco_model_governance_reference_only
   - source_id: accellera-cdc-rdc-standard
     asset_type: cdc_rdc_intent_standard
     asset_url: https://www.accellera.org/downloads/standards/clock-domain-crossing
