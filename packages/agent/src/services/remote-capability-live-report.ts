@@ -23,12 +23,37 @@ export async function writeRemoteCapabilityLiveReport(
 ): Promise<void> {
   const outputDir = process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR?.trim();
   if (!outputDir) return;
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    throw new Error(
+      "Remote capability live report name must use lowercase letters, numbers, or hyphens.",
+    );
+  }
+  validateRemoteCapabilityLiveReportName(name, report);
   await mkdir(outputDir, { recursive: true });
   await writeFile(
     join(outputDir, `${name}.json`),
     `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
+    { encoding: "utf8", flag: "wx" },
   );
+}
+
+function validateRemoteCapabilityLiveReportName(
+  name: string,
+  report: Record<string, unknown>,
+): void {
+  if (report.kind !== "cloud" && report.kind !== "provider") {
+    throw new Error(
+      'Remote capability live report kind must be either "cloud" or "provider".',
+    );
+  }
+  if (report.kind === "cloud" && name !== "cloud") {
+    throw new Error('Remote capability cloud live report name must be "cloud".');
+  }
+  if (report.kind === "provider" && report.provider !== name) {
+    throw new Error(
+      "Remote capability provider live report name must match provider.",
+    );
+  }
 }
 
 export function summarizeRemoteCapabilityLiveCi():

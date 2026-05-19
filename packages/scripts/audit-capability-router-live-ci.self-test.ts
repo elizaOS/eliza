@@ -6,6 +6,7 @@ import {
 
 const workflowPath = ".github/workflows/test.yml";
 const workflow = readFileSync(workflowPath, "utf8");
+const agentPackageJson = readFileSync("packages/agent/package.json", "utf8");
 
 assertPasses("current workflow", workflow);
 
@@ -13,6 +14,29 @@ assertFails(
   "live CI audit self-test is a CI gate",
   workflow.replace(
     "      - name: Remote capability live CI audit self-test\n        run: bun run test:remote-capabilities:live-ci-audit:self-test\n\n",
+    "",
+  ),
+);
+
+const packageFailure = assertFails(
+  "canonical remote capability suite covers live report writer",
+  workflow,
+  agentPackageJson.replace(
+    " packages/agent/src/services/remote-capability-live-report.test.ts",
+    "",
+  ),
+);
+if (packageFailure.sourcePath !== "packages/agent/package.json") {
+  throw new Error(
+    `package-level failure reported wrong source path: ${packageFailure.sourcePath}`,
+  );
+}
+
+assertFails(
+  "canonical remote capability suite covers live report writer",
+  `${workflow}\n# packages/agent/src/services/remote-capability-live-report.test.ts`,
+  agentPackageJson.replace(
+    " packages/agent/src/services/remote-capability-live-report.test.ts",
     "",
   ),
 );
@@ -146,8 +170,13 @@ console.log(
   `Capability-router live CI audit self-test passed (${checks.length} checks).`,
 );
 
-function assertPasses(name: string, candidate: string): void {
+function assertPasses(
+  name: string,
+  candidate: string,
+  candidateAgentPackageJson = agentPackageJson,
+): void {
   const failures = validateCapabilityRouterLiveCi(candidate, {
+    agentPackageJson: candidateAgentPackageJson,
     workflowPath: `${name}.yml`,
   });
   if (failures.length > 0) {
@@ -159,15 +188,24 @@ function assertPasses(name: string, candidate: string): void {
   }
 }
 
-function assertFails(expectedCheckName: string, candidate: string): void {
+function assertFails(
+  expectedCheckName: string,
+  candidate: string,
+  candidateAgentPackageJson = agentPackageJson,
+): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
   const failures = validateCapabilityRouterLiveCi(candidate, {
+    agentPackageJson: candidateAgentPackageJson,
     workflowPath: "mutated-workflow.yml",
   });
-  if (!failures.some((failure) => failure.name === expectedCheckName)) {
+  const expectedFailure = failures.find(
+    (failure) => failure.name === expectedCheckName,
+  );
+  if (!expectedFailure) {
     throw new Error(
       `mutated workflow did not fail "${expectedCheckName}"; failures: ${failures
         .map((failure) => failure.name)
         .join(", ")}`,
     );
   }
+  return expectedFailure;
 }

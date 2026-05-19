@@ -1,9 +1,13 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   summarizeRemoteCapabilityEndpointUrlFingerprint,
   summarizeRemoteCapabilityLiveRuntime,
   summarizeRemoteCapabilityLiveSync,
+  writeRemoteCapabilityLiveReport,
 } from "./remote-capability-live-report.ts";
 
 describe("remote capability live report summaries", () => {
@@ -108,6 +112,55 @@ describe("remote capability live report summaries", () => {
         "https://user:password@provider.example.test/capability",
       ),
     ).toThrow("must not include embedded credentials");
+  });
+
+  it("writes live report artifacts once with safe names", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "remote-capability-live-report-"));
+    const previousDir = process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR;
+    process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR = dir;
+    try {
+      await writeRemoteCapabilityLiveReport("home-machine", {
+        kind: "provider",
+        provider: "home-machine",
+      });
+      await expect(
+        readFile(join(dir, "home-machine.json"), "utf8"),
+      ).resolves.toContain('"kind": "provider"');
+      await expect(
+        writeRemoteCapabilityLiveReport("home-machine", {
+          kind: "provider",
+          provider: "home-machine",
+        }),
+      ).rejects.toThrow();
+      await expect(
+        writeRemoteCapabilityLiveReport("../home-machine", {
+          kind: "provider",
+        }),
+      ).rejects.toThrow("must use lowercase letters");
+      await expect(
+        writeRemoteCapabilityLiveReport("e2b", {
+          kind: "provider",
+          provider: "home-machine",
+        }),
+      ).rejects.toThrow("must match provider");
+      await expect(
+        writeRemoteCapabilityLiveReport("cloud-live", {
+          kind: "cloud",
+        }),
+      ).rejects.toThrow('must be "cloud"');
+      await expect(
+        writeRemoteCapabilityLiveReport("e2b", {
+          kind: "other",
+        }),
+      ).rejects.toThrow('kind must be either "cloud" or "provider"');
+    } finally {
+      if (previousDir === undefined) {
+        delete process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR;
+      } else {
+        process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR = previousDir;
+      }
+      await rm(dir, { force: true, recursive: true });
+    }
   });
 });
 

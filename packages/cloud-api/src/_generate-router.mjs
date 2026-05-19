@@ -55,7 +55,7 @@ function joinHttpPath(segments) {
 }
 
 export function fileToHttpPaths(filePath, apiRoot = API_ROOT) {
-  const rel = relative(apiRoot, filePath);
+  const rel = relative(apiRoot, filePath).replace(/\\/g, "/");
   const segments = rel.split("/").slice(0, -1);
   const out = ["/api"];
   for (const seg of segments) {
@@ -77,7 +77,9 @@ export function fileToHttpPaths(filePath, apiRoot = API_ROOT) {
 }
 
 export function importIdent(filePath, apiRoot = API_ROOT) {
-  const rel = relative(apiRoot, filePath).replace(/\.tsx?$/, "");
+  const rel = relative(apiRoot, filePath)
+    .replace(/\\/g, "/")
+    .replace(/\.tsx?$/, "");
   return (
     "_route_" +
     rel
@@ -91,7 +93,9 @@ export function importIdent(filePath, apiRoot = API_ROOT) {
 }
 
 export function importPath(filePath) {
-  const rel = relative(__dirname, filePath).replace(/\.tsx?$/, "");
+  const rel = relative(__dirname, filePath)
+    .replace(/\\/g, "/")
+    .replace(/\.tsx?$/, "");
   return rel.startsWith(".") ? rel : `./${rel}`;
 }
 
