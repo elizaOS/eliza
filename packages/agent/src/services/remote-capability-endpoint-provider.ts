@@ -3,8 +3,8 @@ import {
   type IAgentRuntime,
   type RemotePluginModuleManifest,
 } from "@elizaos/core";
-import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 import {
+  type RemoteCapabilityEndpointConfig,
   type RemoteCapabilityRouterConfig,
   RemoteCapabilityRouterService,
 } from "./remote-capability-router.ts";
@@ -14,6 +14,9 @@ import {
   type RemotePluginTrustPolicy,
   syncRemoteCapabilityPlugins,
 } from "./remote-plugin-adapter.ts";
+
+const DEFAULT_REMOTE_ENDPOINT_ID = "direct";
+const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 
 export type RemoteCapabilityEndpointProviderId =
   | "direct"
@@ -33,25 +36,84 @@ export type ProvisionedRemoteCapabilityEndpoint = {
   metadata?: Record<string, unknown>;
 };
 
-export type RemoteCapabilityEndpointProvider<TOptions> = {
+export type RemoteCapabilityEndpointProvider<TOptions = unknown> = {
   id: RemoteCapabilityEndpointProviderId;
   provision: (
     options: TOptions,
   ) => Promise<ProvisionedRemoteCapabilityEndpoint>;
 };
 
-export type ConnectRemoteCapabilityEndpointProviderOptions<TOptions> = {
-  provider: RemoteCapabilityEndpointProvider<TOptions>;
-  provisionOptions: TOptions;
-  unloadMissing?: boolean;
-  requestTimeoutMs?: number;
+export type DirectRemoteCapabilityEndpointProviderOptions = {
+  endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
 };
+
+export type ConnectRemoteCapabilityEndpointProviderOptions<TOptions = unknown> =
+  {
+    provider: RemoteCapabilityEndpointProvider<TOptions>;
+    provisionOptions: TOptions;
+    unloadMissing?: boolean;
+    requestTimeoutMs?: number;
+    allowedModuleIds?: string[];
+  };
 
 export type ConnectRemoteCapabilityEndpointProviderResult =
   ProvisionedRemoteCapabilityEndpoint & {
     sync: RemotePluginSyncResult;
   };
+
+export function directRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpointProvider<DirectRemoteCapabilityEndpointProviderOptions> {
+  return {
+    id: "direct",
+    provision: async ({ endpoint, allowedModuleIds }) => ({
+      providerId: "direct",
+      endpoint: normalizeEndpoint(endpoint),
+      ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    }),
+  };
+}
+
+export function buildRemoteCapabilityEndpointTrustPolicy(
+  endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds?: string[],
+): RemotePluginTrustPolicy {
+  const nextAllowedModuleIds = uniqueNonEmptyStrings(allowedModuleIds);
+  return {
+    allowedEndpointIds: [endpoint.id],
+    ...(nextAllowedModuleIds.length === 0
+      ? {}
+      : { allowedModuleIds: nextAllowedModuleIds }),
+    requireEndpointId: true,
+  };
+}
+
+export function installRemoteCapabilityEndpoint(
+  runtime: IAgentRuntime,
+  config: Partial<RemoteCapabilityRouterConfig> &
+    Pick<RemoteCapabilityRouterConfig, "environment">,
+): RemoteCapabilityRouterService {
+  const endpoints = mergeEndpointConfigs(
+    existingEndpointConfigs(runtime),
+    config.endpoints ?? [],
+  );
+  const router = new RemoteCapabilityRouterService(runtime, {
+    enabled: config.enabled ?? true,
+    environment: config.environment,
+    requestTimeoutMs: config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+    ...(config.baseUrl === undefined ? {} : { baseUrl: config.baseUrl }),
+    ...(config.token === undefined ? {} : { token: config.token }),
+    ...(endpoints.length === 0 ? {} : { endpoints }),
+  });
+
+  const runtimeWithServices = runtime as IAgentRuntime & {
+    services?: Map<string, unknown[]>;
+  };
+  const services = runtimeWithServices.services;
+  if (services instanceof Map) {
+    services.set(CAPABILITY_ROUTER_SERVICE_TYPE, [router]);
+  }
+  return router;
+}
 
 export async function connectRemoteCapabilityEndpointProvider<TOptions>(
   runtime: IAgentRuntime,
@@ -60,35 +122,40 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
   const provisioned = await options.provider.provision(
     options.provisionOptions,
   );
-  const service = installRemoteCapabilityEndpoint(runtime, {
-    enabled: true,
-    endpoints: [provisioned.endpoint],
-    environment: "server",
-    requestTimeoutMs: options.requestTimeoutMs ?? 60_000,
-  });
+  const endpoint = normalizeEndpoint(provisioned.endpoint);
   const allowedModuleIds =
-    options.allowedModuleIds ?? provisioned.allowedModuleIds;
-  const modules = (
-    await service.plugin.listModules({ endpointId: provisioned.endpoint.id })
-  ).modules;
+    options.allowedModuleIds ??
+    provisioned.allowedModuleIds ??
+    allowedModuleIdsFromProvisionOptions(options.provisionOptions);
+
+  const router = installRemoteCapabilityEndpoint(runtime, {
+    enabled: true,
+    environment: "server",
+    endpoints: [endpoint],
+    requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
+  });
+  const modules = (await router.plugin.listModules({ endpointId: endpoint.id }))
+    .modules;
   const { trustedModules, skipped, skippedTrustDecisions } =
     selectAllowedRemoteCapabilityModules(
       modules,
-      provisioned.endpoint.id,
+      endpoint.id,
       allowedModuleIds,
     );
   const sync = await syncRemoteCapabilityPlugins(runtime, {
-    unloadMissing: options.unloadMissing,
-    unloadMissingEndpointIds: [provisioned.endpoint.id],
     modules: trustedModules,
+    unloadMissing: options.unloadMissing,
+    unloadMissingEndpointIds: [endpoint.id],
     trustPolicy: buildRemoteCapabilityEndpointTrustPolicy(
-      provisioned.endpoint.id,
+      endpoint,
       allowedModuleIds,
     ),
   });
+
   return {
     ...provisioned,
-    allowedModuleIds,
+    endpoint,
+    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
     sync: {
       ...sync,
       skipped: mergeSkippedRemoteCapabilityPlugins(sync.skipped, skipped, {
@@ -102,83 +169,78 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
   };
 }
 
-export function directRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpointProvider<{
-  endpoint: RemoteCapabilityEndpointConfig;
-  allowedModuleIds?: string[];
-}> {
-  return {
-    id: "direct",
-    provision: async (options) => ({
-      providerId: "direct",
-      endpoint: options.endpoint,
-      ...(options.allowedModuleIds === undefined
-        ? {}
-        : { allowedModuleIds: options.allowedModuleIds }),
-    }),
-  };
-}
-
-export function buildRemoteCapabilityEndpointTrustPolicy(
-  endpointId: string,
-  allowedModuleIds?: string[],
-): RemotePluginTrustPolicy {
-  return {
-    allowedEndpointIds: [endpointId],
-    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
-    requireEndpointId: true,
-  };
-}
-
-export function installRemoteCapabilityEndpoint(
-  runtime: IAgentRuntime,
-  config: RemoteCapabilityRouterConfig,
-): RemoteCapabilityRouterService {
-  const service = new RemoteCapabilityRouterService(runtime, {
-    ...config,
-    endpoints: mergeRemoteCapabilityEndpoints(
-      getInstalledRemoteCapabilityEndpoints(runtime),
-      config.endpoints ?? [],
-    ),
-  });
-  runtime.services.set(CAPABILITY_ROUTER_SERVICE_TYPE as never, [service]);
-  return service;
-}
-
-function getInstalledRemoteCapabilityEndpoints(
+function existingEndpointConfigs(
   runtime: IAgentRuntime,
 ): RemoteCapabilityEndpointConfig[] {
-  const existing = runtime.getService?.(
-    CAPABILITY_ROUTER_SERVICE_TYPE,
-  ) as unknown as
+  const service = runtime.getService?.(CAPABILITY_ROUTER_SERVICE_TYPE) as
     | { getEndpointConfigs?: () => RemoteCapabilityEndpointConfig[] }
     | null
     | undefined;
-  return existing?.getEndpointConfigs?.() ?? [];
+  if (typeof service?.getEndpointConfigs !== "function") return [];
+  return service.getEndpointConfigs().map(normalizeEndpoint);
 }
 
-function mergeRemoteCapabilityEndpoints(
+function mergeEndpointConfigs(
   existing: RemoteCapabilityEndpointConfig[],
   incoming: RemoteCapabilityEndpointConfig[],
 ): RemoteCapabilityEndpointConfig[] {
   const merged: RemoteCapabilityEndpointConfig[] = [];
   for (const endpoint of [...existing, ...incoming]) {
+    const next = normalizeEndpoint(endpoint);
     const index = merged.findIndex(
-      (item) =>
-        item.id === endpoint.id ||
-        stripTrailingSlash(item.baseUrl) ===
-          stripTrailingSlash(endpoint.baseUrl),
+      (item) => item.id === next.id || item.baseUrl === next.baseUrl,
     );
     if (index >= 0) {
-      merged[index] = endpoint;
+      merged[index] = next;
     } else {
-      merged.push(endpoint);
+      merged.push(next);
     }
   }
   return merged;
 }
 
-function stripTrailingSlash(value: string): string {
-  return value.replace(/\/+$/, "");
+function normalizeEndpoint(
+  endpoint: RemoteCapabilityEndpointConfig,
+): RemoteCapabilityEndpointConfig {
+  return {
+    id: endpoint.id.trim() || DEFAULT_REMOTE_ENDPOINT_ID,
+    baseUrl: normalizeBaseUrl(endpoint.baseUrl),
+    ...(endpoint.token === undefined || !endpoint.token.trim()
+      ? {}
+      : { token: endpoint.token.trim() }),
+  };
+}
+
+function normalizeBaseUrl(value: string): string {
+  const url = new URL(value.trim());
+  if (url.protocol !== "http:" && url.protocol !== "https:") {
+    throw new Error("Remote capability endpoint baseUrl must be http(s).");
+  }
+  url.hash = "";
+  url.search = "";
+  return url.toString().replace(/\/+$/, "");
+}
+
+function allowedModuleIdsFromProvisionOptions(
+  value: unknown,
+): string[] | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const allowedModuleIds = (value as { allowedModuleIds?: unknown })
+    .allowedModuleIds;
+  const normalized = uniqueNonEmptyStrings(allowedModuleIds);
+  return normalized.length === 0 ? undefined : normalized;
+}
+
+function uniqueNonEmptyStrings(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [
+    ...new Set(
+      value
+        .filter((item): item is string => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ];
 }
 
 function selectAllowedRemoteCapabilityModules(
