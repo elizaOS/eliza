@@ -468,6 +468,18 @@ pd-util-check:
 spec-check-tests:
 	@$(PYTHON) -m unittest scripts.test_check_cpu_2028_target scripts.test_check_memory_2028_target scripts.test_check_security_2028_target scripts.test_check_pd_utilization
 
+npu-regmap-cross-check:
+	@$(PYTHON) scripts/check_e1_npu_regmap_cross_check.py
+
+power-thermal-projection:
+	@$(PYTHON) scripts/power_thermal_model.py --report
+
+power-thermal-projection-check:
+	@$(PYTHON) scripts/power_thermal_model.py --check
+
+power-thermal-projection-test:
+	@$(PYTHON) -m unittest scripts.test_power_thermal_model
+
 npu-runtime-contract-check:
 	@$(PYTHON) scripts/check_e1_npu_runtime_contract.py
 
