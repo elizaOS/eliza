@@ -132,6 +132,23 @@ function insertAfter(
   return source.replace(anchor, `${anchor}${insertion}`);
 }
 
+function insertAfterAny(
+  source,
+  anchors,
+  insertion,
+  rel,
+  present = insertion.trim(),
+) {
+  if (source.includes(present)) return source;
+  const anchor = anchors.find((candidate) => source.includes(candidate));
+  if (!anchor) {
+    throw new Error(
+      `[dflash-build] dflash-drafter-arch: anchor not found in ${rel}: ${anchors.join(" | ")}`,
+    );
+  }
+  return source.replace(anchor, `${anchor}${insertion}`);
+}
+
 function insertBefore(
   source,
   anchor,
@@ -208,9 +225,14 @@ function patchArchCpp(source, rel) {
     '    { LLM_ARCH_DFLASH_DRAFT,     "dflash"           },\n',
     rel,
   );
-  out = insertAfter(
+  out = insertAfterAny(
     out,
-    "llm_arch llm_arch_from_string(const std::string & name) {\n",
+    [
+      "llm_arch llm_arch_from_string(const std::string & name) {\n",
+      "llm_arch llm_arch_from_string(std::string_view name) {\n",
+      "static llm_arch llm_arch_from_string(const std::string & name) {\n",
+      "static llm_arch llm_arch_from_string(std::string_view name) {\n",
+    ],
     `    if (name == "dflash-draft") {
         return LLM_ARCH_DFLASH_DRAFT;
     }

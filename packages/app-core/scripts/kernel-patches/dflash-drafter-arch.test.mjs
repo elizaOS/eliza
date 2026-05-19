@@ -39,6 +39,12 @@ function makeLlamaCppFixture() {
     "src/llama-arch.cpp",
     [
       '    { LLM_ARCH_QWEN35MOE,        "qwen35moe"        },',
+      "llm_arch llm_arch_from_string(const std::string & name) {",
+      '    if (name == "qwen35moe") {',
+      "        return LLM_ARCH_QWEN35MOE;",
+      "    }",
+      "    return LLM_ARCH_UNKNOWN;",
+      "}",
       '    { LLM_KV_WKV_HEAD_SIZE, "%s.wkv.head_size" },',
       '    { LLM_TENSOR_OUTPUT,                                 "output" },',
       "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},",
