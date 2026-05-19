@@ -83,7 +83,10 @@ describe("resolveRuntime", () => {
   });
 
   it("still allows explicit stub smoke runtime", async () => {
-    const runtime = await resolveRuntime({ tier: "missing-real-tier", forceStub: true });
+    const runtime = await resolveRuntime({
+      tier: "missing-real-tier",
+      forceStub: true,
+    });
     expect(runtime.id).toBe("missing-real-tier-stub");
   });
 });

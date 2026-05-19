@@ -1275,7 +1275,8 @@ function validateRemotePluginModelCollisions(
 
   if (options.reloadExisting) return;
 
-  const existingRemoteOwners = getRegisteredRemoteCapabilityModelOwners(runtime);
+  const existingRemoteOwners =
+    getRegisteredRemoteCapabilityModelOwners(runtime);
   const localModelTypes = getLocalRuntimeModelTypes(runtime);
   for (const module of modules) {
     for (const model of module.models ?? []) {

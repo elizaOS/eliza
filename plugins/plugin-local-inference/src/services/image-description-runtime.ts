@@ -74,7 +74,9 @@ function resolveTextModelPath(
 	tier: string,
 ): string {
 	const textFiles = manifest.files?.text ?? [];
-	const selected = [...textFiles].sort((a, b) => (a.ctx ?? 0) - (b.ctx ?? 0))[0];
+	const selected = [...textFiles].sort(
+		(a, b) => (a.ctx ?? 0) - (b.ctx ?? 0),
+	)[0];
 	if (selected?.path) return path.join(bundleRoot, selected.path);
 	const slug = tier.replace(/^eliza-1-/, "");
 	return path.join(bundleRoot, "text", `eliza-1-${slug}-64k.gguf`);

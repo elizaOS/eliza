@@ -569,9 +569,9 @@ Keep `satellite` for a concrete deployment target when useful. Use
 `capability-router` for the runtime abstraction and protocol.
 This is now CI-enforced by
 `bun run test:remote-capabilities:naming-audit`, which scans the current
-capability-router source, docs, app, core, shared, and workflow roots and only
-allows `satellite` in the legacy `ELIZA_SATELLITE_RUNNER_*` compatibility alias
-path and its precedence test.
+capability-router source, architecture docs, app, core, shared, and workflow
+roots. It only allows `satellite` in this historical naming analysis and in the
+legacy `ELIZA_SATELLITE_RUNNER_*` compatibility alias path and precedence test.
 
 ## Critical Assessment Of PR #7779
 
@@ -683,7 +683,8 @@ Current local implementation includes:
   `packages/scripts/audit-capability-router-naming.ts`, exposed as
   `bun run test:remote-capabilities:naming-audit`, which fails if the canonical
   source/docs/workflow roots reintroduce `satellite` as runtime abstraction
-  vocabulary outside the legacy env-alias compatibility path.
+  vocabulary outside this architecture record's historical naming analysis and
+  the legacy env-alias compatibility path.
 - Runnable reference endpoint in
   `packages/scripts/capability-router-fixture-server.ts`, exposed as
   `bun run capability-router:fixture-server`, that serves the canonical fixture
@@ -988,9 +989,13 @@ and credential-shaped field names or string values such as tokens,
 authorization headers, API keys, passwords, secrets, bearer/basic auth values,
 and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
-and that same module id must also appear in the
-trusted registered module set, so full-surface evidence is tied back to endpoint
-modules that actually materialized locally. The report is written only after
+and that same module id must also appear in the trusted registered module set.
+`sync.registered` and `sync.registeredModules` must not contain duplicate
+materialized plugin/module identities, and every registered module must have a
+unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied
+back to unique endpoint modules that actually materialized locally.
+`sync.skipped` and `sync.unloaded` must be unique plugin-name lists and cannot
+contradict `sync.registered` or each other. The report is written only after
 remote modules sync into the runtime and includes
 registered plugin names, registered plugin-to-module-to-endpoint identities,
 per-registered-module surface counts, trust decisions, and runtime counts for
@@ -999,10 +1004,10 @@ response-handler field evaluators, routes, models, services, app bridges,
 lifecycle hooks, widgets, component types, and views. In GitHub Actions it also
 includes workflow/run id, run attempt, event name, repository, ref, and commit
 SHA. The validator requires the trusted module decisions to match registered
-runtime plugin identities, requires the registered remote modules themselves to
-have positive aggregate counts for each required surface, and requires the
-runtime counts to prove remote surfaces materialized locally, not only that RPC
-calls succeeded.
+runtime plugin identities, requires every registered remote module to have
+positive counts for each required surface, and requires the runtime counts to
+prove the registered plugin count and remote surfaces materialized locally, not
+only that RPC calls succeeded.
 When the workflow event is not `workflow_dispatch` or `schedule`, the job writes
 an explicit notice and step summary saying the remote capability cloud smoke was
 not observed for that run.
@@ -1097,9 +1102,9 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   for the capability-router protocol.
 - `bun run test:remote-capabilities:naming-audit` passed, confirming the
   audited source/docs/workflow roots do not use `satellite` as canonical runtime
-  abstraction vocabulary; the only allowed hits are the legacy
-  `ELIZA_SATELLITE_RUNNER_*` aliases and the precedence test that proves
-  canonical env names win.
+  abstraction vocabulary; the only allowed hits are this architecture record's
+  historical naming analysis, the legacy `ELIZA_SATELLITE_RUNNER_*` aliases,
+  and the precedence test that proves canonical env names win.
 - `bun run capability-router:fixture-server --token fixture-token` started the
   runnable reference endpoint on localhost, and
   the local app-core CLI entrypoint
@@ -1137,8 +1142,11 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   observations, exercised RPC targets without `moduleId:target` syntax,
   exercised RPC targets that reference unobserved module ids, exercised RPC
   targets from manifest-only modules that did not register locally, duplicate
-  manifest module ids, sync trust decisions for unobserved modules,
-  trusted modules that did not register as runtime plugins, missing
+  manifest module ids, duplicate materialized plugin/module registration
+  identities, duplicate trust decisions, sync trust decisions for unobserved
+  modules, and reports that claim a plugin was both registered and
+  skipped/unloaded or both skipped and unloaded,
+  trusted modules that did not register as runtime plugins, zero
   per-registered-module surface counts, and missing
   evaluator/service/response-handler materialization.
 - `bun run --cwd packages/agent test:remote-capabilities:docker` passed with
@@ -1179,7 +1187,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 
 | Requirement                                                | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status                                                                                                          |
 | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Canonical abstraction is not `satellite`                   | Core/API/CLI/docs use `capability-router`; `bun run test:remote-capabilities:naming-audit` CI-enforces that `satellite` only appears in the legacy env-alias compatibility path and its precedence test within audited runtime/docs/workflow roots.                                                                                                                                                                                                                               | Implemented                                                                                                     |
+| Canonical abstraction is not `satellite`                   | Core/API/CLI/docs use `capability-router`; `bun run test:remote-capabilities:naming-audit` CI-enforces that `satellite` only appears in this architecture record's historical naming analysis, the legacy env-alias compatibility path, and its precedence test within audited runtime/docs/workflow roots.                                                                                                                                                                      | Implemented                                                                                                     |
 | Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, component types, contexts, priority, widgets, app metadata, app bridge hooks, and views. A CI surface audit classifies every local `Plugin` field.                                                                                                                                                                              | Implemented                                                                                                     |
 | Runs across machines/processes/containers                  | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate.                                                                                                                                                                                                                                                                                                                                                       | Implemented for local/container isolation                                                                       |
 | Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |
@@ -1205,7 +1213,7 @@ The target architecture should converge in this order:
    registration or execution path before they are added to the protocol.
 2. Endpoint-provider adapters.
    Treat E2B, Eliza Cloud, home-machine runners, mobile companion processes,
-   and Electrobun satellites as endpoint providers. Each provider can expose
+   and Electrobun desktop companions as endpoint providers. Each provider can expose
    low-level `fs`/`pty`/`git` primitives and may also run a plugin-module server
    that speaks `GET /v1/capabilities`, `POST /v1/capabilities/invoke`, and
    asset fetches. Provider-specific runner contracts must not leak into the

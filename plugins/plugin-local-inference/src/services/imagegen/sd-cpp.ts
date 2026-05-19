@@ -336,7 +336,7 @@ function runCollect(
 			execFile(binary, [...args], (error, stdout, stderr) => {
 				const code =
 					typeof (error as { code?: unknown } | null)?.code === "number"
-						? ((error as { code: number }).code)
+						? (error as { code: number }).code
 						: error
 							? null
 							: 0;
@@ -346,8 +346,14 @@ function runCollect(
 				}
 				resolve({
 					code,
-					stdout: typeof stdout === "string" ? stdout : stdout.toString("utf8"),
-					stderr: typeof stderr === "string" ? stderr : stderr.toString("utf8"),
+					stdout:
+						typeof stdout === "string"
+							? stdout
+							: (stdout as Buffer).toString("utf8"),
+					stderr:
+						typeof stderr === "string"
+							? stderr
+							: (stderr as Buffer).toString("utf8"),
 				});
 			});
 		});
@@ -515,7 +521,9 @@ function hasPositiveCudaEvidence(text: string): boolean {
 	) {
 		return false;
 	}
-	return /(^|[^a-z0-9])(sd_cuda|ggml_cuda|cublas|cudart)([^a-z0-9]|$)/.test(lower);
+	return /(^|[^a-z0-9])(sd_cuda|ggml_cuda|cublas|cudart)([^a-z0-9]|$)/.test(
+		lower,
+	);
 }
 
 function hasPositiveVulkanEvidence(text: string): boolean {

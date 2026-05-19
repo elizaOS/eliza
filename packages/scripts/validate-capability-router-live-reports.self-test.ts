@@ -62,12 +62,36 @@ async function main(): Promise<void> {
       workspace,
       "duplicate-registered-module",
     );
+    const duplicateRegisteredPluginDir = join(
+      workspace,
+      "duplicate-registered-plugin",
+    );
+    const duplicateTrustDecisionDir = join(
+      workspace,
+      "duplicate-trust-decision",
+    );
+    const registeredSkippedDir = join(workspace, "registered-skipped");
+    const registeredUnloadedDir = join(workspace, "registered-unloaded");
+    const skippedUnloadedOverlapDir = join(
+      workspace,
+      "skipped-unloaded-overlap",
+    );
+    const duplicateSkippedDir = join(workspace, "duplicate-skipped");
+    const duplicateUnloadedDir = join(workspace, "duplicate-unloaded");
     const exercisedUnregisteredDir = join(workspace, "exercised-unregistered");
+    const registeredUnexercisedDir = join(
+      workspace,
+      "registered-unexercised",
+    );
     const manifestOnlyUnregisteredDir = join(
       workspace,
       "manifest-only-unregistered",
     );
     const runtimeUndercountDir = join(workspace, "runtime-undercount");
+    const runtimePluginUndercountDir = join(
+      workspace,
+      "runtime-plugin-undercount",
+    );
     const missingRegisteredServiceDir = join(
       workspace,
       "missing-registered-service",
@@ -112,9 +136,18 @@ async function main(): Promise<void> {
     await mkdir(bogusRegistrationDir, { recursive: true });
     await mkdir(duplicateModuleDir, { recursive: true });
     await mkdir(duplicateRegisteredModuleDir, { recursive: true });
+    await mkdir(duplicateRegisteredPluginDir, { recursive: true });
+    await mkdir(duplicateTrustDecisionDir, { recursive: true });
+    await mkdir(registeredSkippedDir, { recursive: true });
+    await mkdir(registeredUnloadedDir, { recursive: true });
+    await mkdir(skippedUnloadedOverlapDir, { recursive: true });
+    await mkdir(duplicateSkippedDir, { recursive: true });
+    await mkdir(duplicateUnloadedDir, { recursive: true });
     await mkdir(exercisedUnregisteredDir, { recursive: true });
+    await mkdir(registeredUnexercisedDir, { recursive: true });
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
+    await mkdir(runtimePluginUndercountDir, { recursive: true });
     await mkdir(missingRegisteredServiceDir, { recursive: true });
     await mkdir(missingEvaluatorDir, { recursive: true });
     await mkdir(missingServiceDir, { recursive: true });
@@ -335,8 +368,48 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(duplicateRegisteredPluginDir, "provider.json"),
+      `${JSON.stringify(makeDuplicateRegisteredPluginReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(duplicateTrustDecisionDir, "provider.json"),
+      `${JSON.stringify(makeDuplicateTrustDecisionReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(registeredSkippedDir, "provider.json"),
+      `${JSON.stringify(makeRegisteredSkippedReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(registeredUnloadedDir, "provider.json"),
+      `${JSON.stringify(makeRegisteredUnloadedReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(skippedUnloadedOverlapDir, "provider.json"),
+      `${JSON.stringify(makeSkippedUnloadedOverlapReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(duplicateSkippedDir, "provider.json"),
+      `${JSON.stringify(makeDuplicateSkippedReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(duplicateUnloadedDir, "provider.json"),
+      `${JSON.stringify(makeDuplicateUnloadedReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(exercisedUnregisteredDir, "provider.json"),
       `${JSON.stringify(makeExercisedUnregisteredReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(registeredUnexercisedDir, "provider.json"),
+      `${JSON.stringify(makeRegisteredUnexercisedReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -347,6 +420,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(runtimeUndercountDir, "provider.json"),
       `${JSON.stringify(makeRuntimeUndercountReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(runtimePluginUndercountDir, "provider.json"),
+      `${JSON.stringify(makeRuntimePluginUndercountReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -892,6 +970,113 @@ async function main(): Promise<void> {
         `duplicate registered module failed for the wrong reason: ${duplicateRegisteredModule.output}`,
       );
     }
+    const duplicateRegisteredPlugin = await runValidator(
+      duplicateRegisteredPluginDir,
+    );
+    if (duplicateRegisteredPlugin.exitCode === 0) {
+      throw new Error(
+        "duplicate registered plugin report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !duplicateRegisteredPlugin.output.includes(
+        "sync.registered must not contain duplicates",
+      )
+    ) {
+      throw new Error(
+        `duplicate registered plugin failed for the wrong reason: ${duplicateRegisteredPlugin.output}`,
+      );
+    }
+    const duplicateTrustDecision = await runValidator(
+      duplicateTrustDecisionDir,
+    );
+    if (duplicateTrustDecision.exitCode === 0) {
+      throw new Error(
+        "duplicate trust decision report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !duplicateTrustDecision.output.includes(
+        "sync.trustDecisions must not contain duplicates",
+      )
+    ) {
+      throw new Error(
+        `duplicate trust decision failed for the wrong reason: ${duplicateTrustDecision.output}`,
+      );
+    }
+    const registeredSkipped = await runValidator(registeredSkippedDir);
+    if (registeredSkipped.exitCode === 0) {
+      throw new Error(
+        "registered skipped report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !registeredSkipped.output.includes(
+        "sync.skipped must not include plugins that are also registered",
+      )
+    ) {
+      throw new Error(
+        `registered skipped failed for the wrong reason: ${registeredSkipped.output}`,
+      );
+    }
+    const registeredUnloaded = await runValidator(registeredUnloadedDir);
+    if (registeredUnloaded.exitCode === 0) {
+      throw new Error(
+        "registered unloaded report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !registeredUnloaded.output.includes(
+        "sync.unloaded must not include plugins that are also registered",
+      )
+    ) {
+      throw new Error(
+        `registered unloaded failed for the wrong reason: ${registeredUnloaded.output}`,
+      );
+    }
+    const skippedUnloadedOverlap = await runValidator(
+      skippedUnloadedOverlapDir,
+    );
+    if (skippedUnloadedOverlap.exitCode === 0) {
+      throw new Error(
+        "skipped/unloaded overlap report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !skippedUnloadedOverlap.output.includes(
+        "sync.skipped must not include plugins that are also unloaded",
+      )
+    ) {
+      throw new Error(
+        `skipped/unloaded overlap failed for the wrong reason: ${skippedUnloadedOverlap.output}`,
+      );
+    }
+    const duplicateSkipped = await runValidator(duplicateSkippedDir);
+    if (duplicateSkipped.exitCode === 0) {
+      throw new Error("duplicate skipped report unexpectedly passed.");
+    }
+    if (
+      !duplicateSkipped.output.includes(
+        "sync.skipped must not contain duplicates",
+      )
+    ) {
+      throw new Error(
+        `duplicate skipped failed for the wrong reason: ${duplicateSkipped.output}`,
+      );
+    }
+    const duplicateUnloaded = await runValidator(duplicateUnloadedDir);
+    if (duplicateUnloaded.exitCode === 0) {
+      throw new Error("duplicate unloaded report unexpectedly passed.");
+    }
+    if (
+      !duplicateUnloaded.output.includes(
+        "sync.unloaded must not contain duplicates",
+      )
+    ) {
+      throw new Error(
+        `duplicate unloaded failed for the wrong reason: ${duplicateUnloaded.output}`,
+      );
+    }
     const exercisedUnregistered = await runValidator(exercisedUnregisteredDir);
     if (exercisedUnregistered.exitCode === 0) {
       throw new Error(
@@ -900,11 +1085,26 @@ async function main(): Promise<void> {
     }
     if (
       !exercisedUnregistered.output.includes(
-        "exercised targets must belong to trusted registered modules",
+        "every sync.registeredModules entry must have a trusted sync.trustDecisions entry",
       )
     ) {
       throw new Error(
         `exercised unregistered failed for the wrong reason: ${exercisedUnregistered.output}`,
+      );
+    }
+    const registeredUnexercised = await runValidator(registeredUnexercisedDir);
+    if (registeredUnexercised.exitCode === 0) {
+      throw new Error(
+        "registered unexercised report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !registeredUnexercised.output.includes(
+        "every sync.registeredModules moduleId must be exercised by conformance.exercised",
+      )
+    ) {
+      throw new Error(
+        `registered unexercised failed for the wrong reason: ${registeredUnexercised.output}`,
       );
     }
     const manifestOnlyUnregistered = await runValidator(
@@ -933,6 +1133,17 @@ async function main(): Promise<void> {
         `runtime undercount failed for the wrong reason: ${runtimeUndercount.output}`,
       );
     }
+    const runtimePluginUndercount = await runValidator(
+      runtimePluginUndercountDir,
+    );
+    if (runtimePluginUndercount.exitCode === 0) {
+      throw new Error("runtime plugin undercount report unexpectedly passed.");
+    }
+    if (!runtimePluginUndercount.output.includes("runtime.pluginCount")) {
+      throw new Error(
+        `runtime plugin undercount failed for the wrong reason: ${runtimePluginUndercount.output}`,
+      );
+    }
     const missingRegisteredService = await runValidator(
       missingRegisteredServiceDir,
     );
@@ -943,7 +1154,7 @@ async function main(): Promise<void> {
     }
     if (
       !missingRegisteredService.output.includes(
-        "sync.registeredModules must include a positive aggregate serviceCount",
+        "sync.registeredModules[0].serviceCount must be greater than zero",
       )
     ) {
       throw new Error(
@@ -1382,7 +1593,7 @@ function makeDuplicateRegisteredModuleReport() {
     ...report,
     sync: {
       ...report.sync,
-      registered: ["@remote/sample", "@remote/sample"],
+      registered: ["@remote/sample", "@remote/alias"],
       registeredModules: [
         {
           pluginName: "@remote/sample",
@@ -1414,6 +1625,95 @@ function makeDuplicateRegisteredModuleReport() {
       widgetCount: 2,
       componentTypeCount: 2,
       viewCount: 2,
+    },
+  };
+}
+
+function makeDuplicateRegisteredPluginReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      registered: ["@remote/sample", "@remote/sample"],
+    },
+    runtime: {
+      ...report.runtime,
+      pluginCount: 2,
+    },
+  };
+}
+
+function makeDuplicateTrustDecisionReport() {
+  const report = makeCompleteReport("provider");
+  const trustDecision = {
+    moduleId: "sample-module",
+    pluginName: "@remote/sample",
+    endpointId: "sample-endpoint",
+    trusted: true,
+    reason: "allowed",
+  };
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      trustDecisions: [trustDecision, trustDecision],
+    },
+  };
+}
+
+function makeRegisteredSkippedReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      skipped: ["@remote/sample"],
+    },
+  };
+}
+
+function makeRegisteredUnloadedReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      unloaded: ["@remote/sample"],
+    },
+  };
+}
+
+function makeSkippedUnloadedOverlapReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      skipped: ["@remote/old"],
+      unloaded: ["@remote/old"],
+    },
+  };
+}
+
+function makeDuplicateSkippedReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      skipped: ["@remote/old", "@remote/old"],
+    },
+  };
+}
+
+function makeDuplicateUnloadedReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      unloaded: ["@remote/old", "@remote/old"],
     },
   };
 }
@@ -1508,6 +1808,68 @@ function makeRuntimeUndercountReport() {
     runtime: {
       ...report.runtime,
       actionCount: 1,
+    },
+  };
+}
+
+function makeRuntimePluginUndercountReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleCount: 2,
+      moduleIds: ["sample-module", "second-module"],
+    },
+    sync: {
+      ...report.sync,
+      registered: ["@remote/sample", "@remote/second"],
+      registeredModules: [
+        {
+          pluginName: "@remote/sample",
+          moduleId: "sample-module",
+          endpointId: "sample-endpoint",
+          ...makeRegisteredModuleCounts(),
+        },
+        {
+          pluginName: "@remote/second",
+          moduleId: "second-module",
+          endpointId: "sample-endpoint",
+          ...makeRegisteredModuleCounts(),
+        },
+      ],
+      trustDecisions: [
+        {
+          moduleId: "sample-module",
+          pluginName: "@remote/sample",
+          endpointId: "sample-endpoint",
+          trusted: true,
+          reason: "allowed",
+        },
+        {
+          moduleId: "second-module",
+          pluginName: "@remote/second",
+          endpointId: "sample-endpoint",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    },
+    runtime: {
+      ...report.runtime,
+      actionCount: 2,
+      providerCount: 2,
+      evaluatorCount: 2,
+      responseHandlerEvaluatorCount: 2,
+      responseHandlerFieldEvaluatorCount: 2,
+      routeCount: 2,
+      modelCount: 2,
+      serviceCount: 2,
+      appBridgeCount: 2,
+      lifecycleCount: 2,
+      widgetCount: 2,
+      componentTypeCount: 2,
+      viewCount: 2,
     },
   };
 }

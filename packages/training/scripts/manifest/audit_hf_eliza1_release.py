@@ -53,7 +53,9 @@ DATASET_VIEWER_JSONL_SPLIT_FILES = ("train.jsonl", "val.jsonl", "test.jsonl")
 DATASET_REQUIRED_PIPELINE_DOCS = (
     "pipeline/docs/training/eliza1-smallest-finetunes.md",
 )
+DATASET_LIVE_AUDIT_PATH = "validation/eliza1-training-live-audit-2026-05-19.json"
 DATASET_VALIDATION_SCHEMA = "eliza.eliza1_trajectory_validation_report.v1"
+DATASET_LIVE_AUDIT_SCHEMA = "eliza.eliza1_training_dataset_live_audit.v1"
 DATASET_PRIVACY_ATTESTATION_SOURCES = frozenset(
     {
         "cli_flag",
@@ -1031,6 +1033,62 @@ def _dataset_validation_blockers(
     return blockers
 
 
+def _dataset_live_audit_blockers(
+    manifest: Mapping[str, Any],
+    audit: Mapping[str, Any],
+    *,
+    dataset_repo: str,
+) -> list[str]:
+    blockers: list[str] = []
+    if audit.get("schema") != DATASET_LIVE_AUDIT_SCHEMA:
+        blockers.append(f"schema: {audit.get('schema')!r}")
+    if audit.get("datasetRepo") != dataset_repo:
+        blockers.append(f"datasetRepo: {audit.get('datasetRepo')!r}")
+    if audit.get("passed") is not True:
+        blockers.append(f"passed: {audit.get('passed')!r}")
+
+    validation = audit.get("validation")
+    if not isinstance(validation, Mapping):
+        blockers.append("validation: missing")
+    else:
+        blockers.extend(
+            f"validation.{blocker}"
+            for blocker in _dataset_validation_blockers(manifest, validation)
+        )
+
+    if audit.get("hashMismatches") not in ([], None):
+        blockers.append("hashMismatches: non-empty")
+
+    legacy = audit.get("legacy27b1m")
+    if not isinstance(legacy, Mapping):
+        blockers.append("legacy27b1m: missing")
+    elif legacy.get("passed") is not True:
+        blockers.append(f"legacy27b1m.passed: {legacy.get('passed')!r}")
+
+    secret_scan = audit.get("secretScan")
+    if not isinstance(secret_scan, Mapping):
+        blockers.append("secretScan: missing")
+    elif secret_scan.get("passed") is not True:
+        blockers.append(f"secretScan.passed: {secret_scan.get('passed')!r}")
+
+    manifest_validation = manifest.get("validation")
+    expected_total = (
+        manifest_validation.get("totalRecords")
+        if isinstance(manifest_validation, Mapping)
+        else None
+    )
+    row_counts = audit.get("rowCounts")
+    if isinstance(row_counts, Mapping) and isinstance(expected_total, int):
+        observed_total = sum(
+            value for value in row_counts.values() if isinstance(value, int)
+        )
+        if observed_total != expected_total:
+            blockers.append(f"rowCounts total: {observed_total!r} != manifest {expected_total!r}")
+    else:
+        blockers.append("rowCounts: missing")
+    return blockers
+
+
 def _dataset_privacy_blockers(manifest: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     privacy = manifest.get("privacy")
@@ -1381,6 +1439,11 @@ def audit_hf_release(
         not legacy_dataset_paths,
         ", ".join(legacy_dataset_paths[:8]),
     )
+    report.check(
+        "dataset live validation audit present",
+        DATASET_LIVE_AUDIT_PATH in dataset_paths,
+        DATASET_LIVE_AUDIT_PATH,
+    )
 
     try:
         dataset_readme = fetch_text(_raw_dataset_url(dataset_repo, "README.md"))
@@ -1445,6 +1508,30 @@ def audit_hf_release(
                     ", ".join(validation_blockers[:8])
                     + (f" (+{len(validation_blockers) - 8} more)" if len(validation_blockers) > 8 else ""),
                 )
+        if DATASET_LIVE_AUDIT_PATH in dataset_paths:
+            try:
+                live_audit_text = fetch_text(_raw_dataset_url(dataset_repo, DATASET_LIVE_AUDIT_PATH))
+                live_audit = json.loads(live_audit_text)
+            except (RuntimeError, json.JSONDecodeError) as exc:
+                report.check("dataset live validation audit passed", False, str(exc))
+            else:
+                live_audit_blockers = _dataset_live_audit_blockers(
+                    dataset_manifest,
+                    live_audit,
+                    dataset_repo=dataset_repo,
+                )
+                report.check(
+                    "dataset live validation audit passed",
+                    not live_audit_blockers,
+                    ", ".join(live_audit_blockers[:8])
+                    + (f" (+{len(live_audit_blockers) - 8} more)" if len(live_audit_blockers) > 8 else ""),
+                )
+        else:
+            report.check(
+                "dataset live validation audit passed",
+                False,
+                DATASET_LIVE_AUDIT_PATH,
+            )
 
     try:
         splits_payload = fetch_json(_repo_api_url(DATASET_SPLITS_API, dataset_repo))

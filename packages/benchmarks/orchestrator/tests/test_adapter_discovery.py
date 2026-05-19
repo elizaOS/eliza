@@ -1493,7 +1493,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
     assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
 
 
-def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None:
+def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["tau_bench"]
     effective = _effective_request(
         adapter,
@@ -1519,7 +1519,7 @@ def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None
     command = adapter.command_builder(ctx, adapter)
 
     assert command[command.index("--max-tasks-per-domain") + 1] == "1"
-    assert "--use-sample-tasks" in command
+    assert "--use-sample-tasks" not in command
     assert command[command.index("--agent-harness") + 1] == "eliza"
     assert command[command.index("--agent-provider") + 1] == "cerebras"
     assert command[command.index("--agent-model") + 1] == "gpt-oss-120b"
@@ -1539,7 +1539,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         "lifeops_bench": ("--limit", "2"),
         "mint": ("--max-tasks", "1"),
         "realm": ("--max-tasks", "1"),
-        "bfcl": ("--sample", "2"),
+        "bfcl": ("--max-per-category", "1"),
         "hyperliquid_bench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
         "loca_bench": ("--max-tool-uses", "40"),

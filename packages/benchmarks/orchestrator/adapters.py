@@ -951,8 +951,16 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         split = ctx.request.extra_config.get("split")
         if isinstance(split, str) and split.strip():
             args.extend(["--split", split.strip()])
-    elif bool(ctx.request.extra_config.get("sample", True)):
+    elif (
+        ctx.request.extra_config.get("sample") is True
+        or ctx.request.extra_config.get("use_sample_tasks") is True
+        or ctx.request.extra_config.get("mock") is True
+        or provider_lower == "mock"
+    ):
         args.append("--sample")
+    profile = ctx.request.extra_config.get("profile")
+    if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+        args.extend(["--profile", profile.strip()])
 
     if bool(ctx.request.extra_config.get("trajectories", False)):
         args.append("--trajectories")
@@ -2318,8 +2326,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_new_tokens": 512,
         },
         "bfcl": {
-            "sample": 2,
-            "seed": 0,
+            "categories": ["multiple", "parallel"],
+            "max_per_category": 1,
         },
         "context_bench": {
             "quick": True,
@@ -2400,13 +2408,10 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "num_trials": 1,
             "pass_k_values": [1],
-            "sample": True,
         },
         "terminal_bench": {
             "max_tasks": 1,
-            "sample": True,
             "timeout": 180,
-            "no_docker": True,
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,
@@ -2433,11 +2438,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "swe_bench": {
             "max_instances": 1,
-            "no_docker": True,
         },
         "swe_bench_orchestrated": {
             "max_instances": 1,
-            "no_docker": True,
             "execution_mode": "orchestrated",
             "providers": ["claude-code", "swe-agent", "codex"],
             "strict_capabilities": True,
@@ -2782,7 +2785,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "max_tasks": 1,
                 "max_turns": 6,
-                "sample": True,
+                "profile": "small",
             },
         ),
         _make_extra_adapter(

@@ -78,6 +78,7 @@ def _complete_dataset_paths() -> list[str]:
         "data/test-00000-of-00001.parquet",
         "pipeline/docs/training/eliza1-smallest-finetunes.md",
         "validation/eliza1-trajectories-20260513-root-validation.json",
+        "validation/eliza1-training-live-audit-2026-05-19.json",
     ]
 
 
@@ -119,6 +120,7 @@ def _text_fetcher(
     readme: str = "Eliza-1 training dataset\n",
     manifest: str | None = None,
     validation_report: str | None = None,
+    dataset_live_audit: str | None = None,
     model_manifests: Mapping[str, str] | None = None,
     dflash_target_meta: Mapping[str, str] | None = None,
     release_evidence: Mapping[str, str] | None = None,
@@ -146,6 +148,9 @@ def _text_fetcher(
         "https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/validation/eliza1-trajectories-20260513-root-validation.json": validation_report
         if validation_report is not None
         else _passing_dataset_validation_report(),
+        "https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/validation/eliza1-training-live-audit-2026-05-19.json": dataset_live_audit
+        if dataset_live_audit is not None
+        else _passing_dataset_live_audit(),
     }
     for tier in ELIZA_1_TIERS:
         payloads[
@@ -387,6 +392,37 @@ def _passing_dataset_validation_report() -> str:
             "errorsByFile": {},
             "errorsBySourceKind": {},
             "firstFailures": [],
+        }
+    )
+
+
+def _passing_dataset_live_audit() -> str:
+    return __import__("json").dumps(
+        {
+            "schema": "eliza.eliza1_training_dataset_live_audit.v1",
+            "datasetRepo": DATASET_REPO,
+            "passed": True,
+            "validation": __import__("json").loads(_passing_dataset_validation_report()),
+            "rowCounts": {
+                "train.jsonl": 1140,
+                "val.jsonl": 143,
+                "test.jsonl": 143,
+            },
+            "hashMismatches": [],
+            "legacy27b1m": {
+                "passed": True,
+                "pathOrRowHits": [],
+                "readmeHits": [],
+            },
+            "secretScan": {
+                "passed": True,
+                "hits": {
+                    "hf_token": 0,
+                    "openai_key": 0,
+                    "aws_access_key": 0,
+                    "private_key_header": 0,
+                },
+            },
         }
     )
 
@@ -1343,6 +1379,48 @@ def test_hf_release_audit_blocks_dirty_dataset_validation_report() -> None:
         and "validRecords: 1425 != manifest 1426" in check["detail"]
         and "invalidRecords: 1" in check["detail"]
         and "errorsByCode: 1" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_dataset_live_audit_file() -> None:
+    paths = _complete_dataset_paths()
+    paths.remove("validation/eliza1-training-live-audit-2026-05-19.json")
+    report = audit_hf_release(fetch_json=_fetcher(dataset_paths=paths), fetch_text=_text_fetcher())
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset live validation audit present"
+        and "validation/eliza1-training-live-audit-2026-05-19.json" in check["detail"]
+        for check in failed
+    )
+    assert any(
+        check["name"] == "dataset live validation audit passed"
+        and "validation/eliza1-training-live-audit-2026-05-19.json" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_dirty_dataset_live_audit() -> None:
+    dirty = __import__("json").loads(_passing_dataset_live_audit())
+    dirty["passed"] = False
+    dirty["hashMismatches"] = [{"split": "train"}]
+    dirty["secretScan"]["passed"] = False
+    dirty["rowCounts"]["train.jsonl"] = 1139
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(dataset_live_audit=__import__("json").dumps(dirty)),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset live validation audit passed"
+        and "passed: False" in check["detail"]
+        and "hashMismatches: non-empty" in check["detail"]
+        and "secretScan.passed: False" in check["detail"]
+        and "rowCounts total: 1425 != manifest 1426" in check["detail"]
         for check in failed
     )
 

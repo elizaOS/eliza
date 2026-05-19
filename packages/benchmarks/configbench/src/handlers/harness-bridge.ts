@@ -28,7 +28,9 @@ function harnessName(): string {
     process.env.BENCHMARK_HARNESS ||
     process.env.ELIZA_BENCH_HARNESS ||
     "hermes"
-  ).trim().toLowerCase();
+  )
+    .trim()
+    .toLowerCase();
 }
 
 function pythonExecutable(): string {
@@ -41,7 +43,9 @@ function extractJsonObject(raw: string): Record<string, unknown> {
   const start = candidate.indexOf("{");
   const end = candidate.lastIndexOf("}");
   if (start < 0 || end <= start) {
-    throw new Error(`harness response did not contain JSON: ${raw.slice(0, 500)}`);
+    throw new Error(
+      `harness response did not contain JSON: ${raw.slice(0, 500)}`,
+    );
   }
   const parsed = JSON.parse(candidate.slice(start, end + 1));
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
@@ -100,7 +104,10 @@ function secretFromUserMessage(message: string): Record<string, string> {
   return out;
 }
 
-function decisionFromPlainText(text: string, userMessage: string): HarnessDecision | null {
+function decisionFromPlainText(
+  text: string,
+  userMessage: string,
+): HarnessDecision | null {
   const lower = text.toLowerCase();
   if (!/\b(set|stored|saved|configured|updated)\b/.test(lower)) return null;
   const setSecrets = secretFromUserMessage(userMessage);
@@ -147,7 +154,9 @@ function decisionFromPayload(
   };
 }
 
-function decisionFromParsedObject(parsed: Record<string, unknown>): HarnessDecision {
+function decisionFromParsedObject(
+  parsed: Record<string, unknown>,
+): HarnessDecision {
   const setSecretsRaw = parsed.setSecrets;
   const setSecrets: Record<string, string> = {};
   if (
@@ -160,7 +169,9 @@ function decisionFromParsedObject(parsed: Record<string, unknown>): HarnessDecis
     }
   }
   const deleteSecrets = Array.isArray(parsed.deleteSecrets)
-    ? parsed.deleteSecrets.filter((item): item is string => typeof item === "string")
+    ? parsed.deleteSecrets.filter(
+        (item): item is string => typeof item === "string",
+      )
     : [];
   return {
     replyText: typeof parsed.replyText === "string" ? parsed.replyText : "",
@@ -169,9 +180,13 @@ function decisionFromParsedObject(parsed: Record<string, unknown>): HarnessDecis
     activatePlugin:
       typeof parsed.activatePlugin === "string" ? parsed.activatePlugin : null,
     deactivatePlugin:
-      typeof parsed.deactivatePlugin === "string" ? parsed.deactivatePlugin : null,
+      typeof parsed.deactivatePlugin === "string"
+        ? parsed.deactivatePlugin
+        : null,
     refusedInPublic:
-      typeof parsed.refusedInPublic === "boolean" ? parsed.refusedInPublic : false,
+      typeof parsed.refusedInPublic === "boolean"
+        ? parsed.refusedInPublic
+        : false,
   };
 }
 
@@ -226,20 +241,21 @@ function parseBridgePayload(stdout: string): HarnessPayload {
       // Keep scanning; benchmark server logs can precede the helper payload.
     }
   }
-  throw new Error(`harness bridge returned no JSON payload: ${stdout.slice(-1000)}`);
+  throw new Error(
+    `harness bridge returned no JSON payload: ${stdout.slice(-1000)}`,
+  );
 }
 
-function callHarness(prompt: string, context: Record<string, unknown>): HarnessPayload {
-  const completed = spawnSync(
-    pythonExecutable(),
-    [BRIDGE_SCRIPT],
-    {
-      input: JSON.stringify({ prompt, context }),
-      encoding: "utf8",
-      env: process.env,
-      maxBuffer: 2 * 1024 * 1024,
-    },
-  );
+function callHarness(
+  prompt: string,
+  context: Record<string, unknown>,
+): HarnessPayload {
+  const completed = spawnSync(pythonExecutable(), [BRIDGE_SCRIPT], {
+    input: JSON.stringify({ prompt, context }),
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 2 * 1024 * 1024,
+  });
   if (completed.error) throw completed.error;
   if (completed.status !== 0) {
     throw new Error(
@@ -263,7 +279,9 @@ export function createHarnessBridgeHandler(name = harnessName()): Handler {
       let pluginDeactivated: string | null = null;
       let refusedInPublic = false;
 
-      for (const msg of scenario.messages.filter((item) => item.from === "user")) {
+      for (const msg of scenario.messages.filter(
+        (item) => item.from === "user",
+      )) {
         try {
           const prompt = buildPrompt({
             scenario,
@@ -278,7 +296,9 @@ export function createHarnessBridgeHandler(name = harnessName()): Handler {
             channel: scenario.channel,
           });
           const decision = decisionFromPayload(payload, msg.text);
-          for (const [key, value] of Object.entries(decision.setSecrets ?? {})) {
+          for (const [key, value] of Object.entries(
+            decision.setSecrets ?? {},
+          )) {
             secretsInStorage[key] = value;
           }
           for (const key of decision.deleteSecrets ?? []) {
@@ -295,12 +315,14 @@ export function createHarnessBridgeHandler(name = harnessName()): Handler {
             const index = pluginsLoaded.indexOf(decision.deactivatePlugin);
             if (index >= 0) pluginsLoaded.splice(index, 1);
           }
-          refusedInPublic = refusedInPublic || decision.refusedInPublic === true;
+          refusedInPublic =
+            refusedInPublic || decision.refusedInPublic === true;
           agentResponses.push(decision.replyText ?? "");
           traces.push(`User: ${msg.text.slice(0, 80)}`);
           traces.push(`Harness: ${(decision.replyText ?? "").slice(0, 120)}`);
         } catch (error) {
-          const message = error instanceof Error ? error.message : String(error);
+          const message =
+            error instanceof Error ? error.message : String(error);
           agentResponses.push("");
           traces.push(`ERROR: ${message}`);
         }

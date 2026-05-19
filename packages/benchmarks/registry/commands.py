@@ -1630,9 +1630,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _webshop_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for WebShop benchmark.
 
-        Defaults to the bundled sample task set and disables trajectory logging
-        unless the caller opts in. Non-mock runs route through the Eliza
-        TypeScript benchmark bridge; ``--mock`` bypasses it for smoke tests.
+        Real harness rows use the upstream WebShop data loader (small profile
+        by default, auto-fetched when absent). The bundled sample catalog is
+        smoke-only and must be requested explicitly or via mock mode.
         """
         args = [
             python,
@@ -1663,12 +1663,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         trials = extra.get("trials")
         if isinstance(trials, int) and trials > 0:
             args.extend(["--trials", str(trials)])
+        profile = extra.get("profile")
+        if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+            args.extend(["--profile", profile.strip()])
         if extra.get("hf") is True:
             args.append("--hf")
             split = extra.get("split")
             if isinstance(split, str) and split.strip():
                 args.extend(["--split", split.strip()])
-        else:
+        elif (
+            extra.get("sample") is True
+            or extra.get("use_sample_tasks") is True
+            or extra.get("mock") is True
+            or provider_name == "mock"
+        ):
             args.append("--sample")
         if extra.get("trajectories") is True:
             args.append("--trajectories")
