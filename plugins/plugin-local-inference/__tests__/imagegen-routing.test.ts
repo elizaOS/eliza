@@ -28,7 +28,12 @@ const EXTRAS_PATH = resolve(__dirname, "../../../docs/ELIZA_1_BUNDLE_EXTRAS.json
 interface ExtrasShape {
 	imagegen?: {
 		perTier?: Record<string, {
-			default?: { id?: string; file?: string };
+			default?: {
+				id?: string;
+				file?: string;
+				splitDiffusionModel?: boolean;
+				companionAssets?: { role?: string; file?: string }[];
+			};
 		}>;
 	};
 }
@@ -84,6 +89,12 @@ describe("WS3 routing — tier → default image-gen model", () => {
 			const planned = perTier[tier]?.default;
 			expect(planned?.id).toBe(entry.modelId);
 			expect(planned?.file).toBe(entry.file);
+			expect(planned?.splitDiffusionModel).toBe(entry.splitDiffusionModel);
+			const companionFiles = new Set(
+				(planned?.companionAssets ?? []).map((asset) => asset.file),
+			);
+			if (entry.vae) expect(companionFiles.has(entry.vae)).toBe(true);
+			if (entry.llm) expect(companionFiles.has(entry.llm)).toBe(true);
 		}
 		// And every tier in the extras file is represented in the
 		// in-code map (no drift the other way).

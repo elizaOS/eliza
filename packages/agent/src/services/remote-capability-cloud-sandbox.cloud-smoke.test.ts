@@ -1,3 +1,5 @@
+import { mkdir, writeFile } from "node:fs/promises";
+import { join } from "node:path";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
@@ -52,7 +54,7 @@ describe("cloud capability sandbox live smoke", () => {
           name: `Remote Capability Live ${Date.now()}`,
           bio: [
             "Live CI smoke for capability-router remote plugin modules.",
-            "Expose at least one action, provider, route, and compiled view.",
+            "Expose at least one action, provider, route, JSON model handler, lifecycle hook, event handler, service method, app bridge hook, evaluator, response-handler evaluator, response-handler field evaluator, and compiled view.",
           ],
           endpointId,
           timeoutMs: 180_000,
@@ -70,14 +72,13 @@ describe("cloud capability sandbox live smoke", () => {
           requestTimeoutMs: 60_000,
         });
 
-        await expect(
-          assertRemoteCapabilityEndpointConformance({
-            endpoint: provisioned.endpoint,
-            requestTimeoutMs: 60_000,
-            actionContent: { text: "remote capability cloud live conformance" },
-            routeBody: { live: true, provider: "cloud" },
-          }),
-        ).resolves.toMatchObject({
+        const conformance = await assertRemoteCapabilityEndpointConformance({
+          endpoint: provisioned.endpoint,
+          requestTimeoutMs: 60_000,
+          actionContent: { text: "remote capability cloud live conformance" },
+          routeBody: { live: true, provider: "cloud" },
+        });
+        expect(conformance).toMatchObject({
           endpointId,
           moduleCount: expect.any(Number),
           exercised: {
@@ -85,9 +86,16 @@ describe("cloud capability sandbox live smoke", () => {
             provider: expect.any(String),
             route: expect.any(String),
             viewAsset: expect.any(String),
+            model: expect.any(String),
+            lifecycle: expect.any(String),
+            event: expect.any(String),
+            service: expect.any(String),
+            appBridge: expect.any(String),
+            evaluator: expect.any(String),
+            responseHandlerEvaluator: expect.any(String),
+            responseHandlerFieldEvaluator: expect.any(String),
           },
         });
-
         const sync = await syncRemoteCapabilityPlugins(runtime, {
           trustPolicy: {
             allowedEndpointIds: [endpointId],
@@ -108,6 +116,18 @@ describe("cloud capability sandbox live smoke", () => {
         expect(runtime.actions.length).toBeGreaterThan(0);
         expect(runtime.providers.length).toBeGreaterThan(0);
         expect(runtime.routes.length).toBeGreaterThan(0);
+        await writeLiveReport("cloud", {
+          schemaVersion: 1,
+          kind: "cloud",
+          cloudApiBase,
+          endpointId,
+          agentId,
+          observedAt: new Date().toISOString(),
+          conformance,
+          sync: summarizeSync(sync),
+          runtime: summarizeRuntime(runtime),
+          ci: summarizeCi(),
+        });
       } finally {
         if (agentId) {
           await deleteCloudAgent(cloudApiBase, authToken, agentId).catch(
@@ -125,6 +145,139 @@ describe("cloud capability sandbox live smoke", () => {
     240_000,
   );
 });
+
+async function writeLiveReport(
+  name: string,
+  report: Record<string, unknown>,
+): Promise<void> {
+  const outputDir = process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR?.trim();
+  if (!outputDir) return;
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(
+    join(outputDir, `${name}.json`),
+    `${JSON.stringify(report, null, 2)}\n`,
+    "utf8",
+  );
+}
+
+function summarizeCi(): Record<string, string> | undefined {
+  const runId = process.env.GITHUB_RUN_ID?.trim();
+  if (!runId) return undefined;
+  return {
+    runId,
+    runAttempt: process.env.GITHUB_RUN_ATTEMPT?.trim() ?? "",
+    workflow: process.env.GITHUB_WORKFLOW?.trim() ?? "",
+    eventName: process.env.GITHUB_EVENT_NAME?.trim() ?? "",
+    repository: process.env.GITHUB_REPOSITORY?.trim() ?? "",
+    sha: process.env.GITHUB_SHA?.trim() ?? "",
+    ref: process.env.GITHUB_REF?.trim() ?? "",
+  };
+}
+
+function summarizeSync(sync: {
+  registered: Plugin[];
+  unloaded: string[];
+  skipped: string[];
+  trustDecisions: Array<Record<string, unknown>>;
+}): Record<string, unknown> {
+  return {
+    registered: sync.registered.map((plugin) => plugin.name),
+    registeredModules: sync.registered.map((plugin) => ({
+      pluginName: plugin.name,
+      moduleId: plugin.config?.remoteCapabilityModuleId,
+      endpointId: plugin.config?.remoteCapabilityEndpointId,
+      actionCount: plugin.actions?.length ?? 0,
+      providerCount: plugin.providers?.length ?? 0,
+      evaluatorCount: plugin.evaluators?.length ?? 0,
+      responseHandlerEvaluatorCount:
+        plugin.responseHandlerEvaluators?.length ?? 0,
+      responseHandlerFieldEvaluatorCount:
+        plugin.responseHandlerFieldEvaluators?.length ?? 0,
+      routeCount: plugin.routes?.length ?? 0,
+      modelCount: Object.keys(plugin.models ?? {}).length,
+      serviceCount: plugin.services?.length ?? 0,
+      appBridgeCount: plugin.appBridge ? 1 : 0,
+      lifecycleCount:
+        (plugin.init ? 1 : 0) +
+        (plugin.dispose ? 1 : 0) +
+        (plugin.applyConfig ? 1 : 0),
+      widgetCount: plugin.widgets?.length ?? 0,
+      componentTypeCount: plugin.componentTypes?.length ?? 0,
+      viewCount: plugin.views?.length ?? 0,
+    })),
+    unloaded: sync.unloaded,
+    skipped: sync.skipped,
+    trustDecisions: sync.trustDecisions,
+  };
+}
+
+function summarizeRuntime(
+  runtime: IAgentRuntime & {
+    actions: NonNullable<Plugin["actions"]>;
+    providers: NonNullable<Plugin["providers"]>;
+    evaluators: NonNullable<Plugin["evaluators"]>;
+    routes: NonNullable<Plugin["routes"]>;
+  },
+): Record<string, unknown> {
+  return {
+    pluginCount: runtime.plugins?.length ?? 0,
+    actionCount: runtime.actions.length,
+    providerCount: runtime.providers.length,
+    evaluatorCount: runtime.evaluators.length,
+    responseHandlerEvaluatorCount:
+      runtime.plugins?.reduce(
+        (count, plugin) =>
+          count + (plugin.responseHandlerEvaluators?.length ?? 0),
+        0,
+      ) ?? 0,
+    responseHandlerFieldEvaluatorCount:
+      runtime.plugins?.reduce(
+        (count, plugin) =>
+          count + (plugin.responseHandlerFieldEvaluators?.length ?? 0),
+        0,
+      ) ?? 0,
+    routeCount: runtime.routes.length,
+    modelCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + Object.keys(plugin.models ?? {}).length,
+        0,
+      ) ?? 0,
+    serviceCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + (plugin.services?.length ?? 0),
+        0,
+      ) ?? 0,
+    appBridgeCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + (plugin.appBridge ? 1 : 0),
+        0,
+      ) ?? 0,
+    lifecycleCount:
+      runtime.plugins?.reduce(
+        (count, plugin) =>
+          count +
+          (plugin.init ? 1 : 0) +
+          (plugin.dispose ? 1 : 0) +
+          (plugin.applyConfig ? 1 : 0),
+        0,
+      ) ?? 0,
+    widgetCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + (plugin.widgets?.length ?? 0),
+        0,
+      ) ?? 0,
+    componentTypeCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + (plugin.componentTypes?.length ?? 0),
+        0,
+      ) ?? 0,
+    viewCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + (plugin.views?.length ?? 0),
+        0,
+      ) ?? 0,
+  };
+}
 
 function makeRuntime(): IAgentRuntime {
   const runtime = {

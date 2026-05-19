@@ -678,6 +678,11 @@ function requireHttpUrl(value: unknown, field: string): string {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`${field} must use http or https.`);
   }
+  if (parsed.username || parsed.password) {
+    throw new Error(`${field} must not include embedded credentials.`);
+  }
+  parsed.hash = "";
+  parsed.search = "";
   return parsed.toString().replace(/\/+$/, "");
 }
 

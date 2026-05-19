@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
@@ -18,7 +19,11 @@ describe("remote capability endpoint conformance", () => {
             params?: Record<string, unknown>;
           })
         : undefined;
-      calls.push({ url: String(url), method: body?.method, params: body?.params });
+      calls.push({
+        url: String(url),
+        method: body?.method,
+        params: body?.params,
+      });
       if (String(url) === "https://remote.example.test/v1/capabilities") {
         return jsonResponse({
           environment: "server",
@@ -33,8 +38,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.modules.list"
       ) {
         return jsonResponse({
@@ -45,8 +49,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.action.invoke"
       ) {
         return jsonResponse({
@@ -55,8 +58,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.provider.get"
       ) {
         return jsonResponse({
@@ -65,8 +67,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.route.call"
       ) {
         return jsonResponse({
@@ -75,8 +76,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.asset.get"
       ) {
         return jsonResponse({
@@ -85,8 +85,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.model.invoke"
       ) {
         return jsonResponse({
@@ -95,8 +94,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.lifecycle.call"
       ) {
         return jsonResponse({
@@ -105,8 +103,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.event.handle"
       ) {
         return jsonResponse({
@@ -115,8 +112,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.service.call"
       ) {
         return jsonResponse({
@@ -125,8 +121,7 @@ describe("remote capability endpoint conformance", () => {
         });
       }
       if (
-        String(url) ===
-          "https://remote.example.test/v1/capabilities/invoke" &&
+        String(url) === "https://remote.example.test/v1/capabilities/invoke" &&
         body?.method === "plugin.appBridge.call"
       ) {
         return jsonResponse({
@@ -161,7 +156,10 @@ describe("remote capability endpoint conformance", () => {
               .responseHandlerFieldEvaluatorHandle,
         };
         if (body?.method && body.method in resultByMethod) {
-          return jsonResponse({ ok: true, result: resultByMethod[body.method] });
+          return jsonResponse({
+            ok: true,
+            result: resultByMethod[body.method],
+          });
         }
       }
       return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
@@ -205,6 +203,14 @@ describe("remote capability endpoint conformance", () => {
           CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.bodyBase64,
           "base64",
         ).byteLength,
+        sha256: createHash("sha256")
+          .update(
+            Buffer.from(
+              CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.bodyBase64,
+              "base64",
+            ),
+          )
+          .digest("hex"),
       },
       modelResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model,
       lifecycleResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle,
@@ -212,7 +218,8 @@ describe("remote capability endpoint conformance", () => {
       serviceResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service,
       appBridgeResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge,
       evaluatorResult: {
-        shouldRun: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
+        shouldRun:
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
         prepare: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare,
         prompt: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt,
         process: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess,
@@ -302,7 +309,85 @@ describe("remote capability endpoint conformance", () => {
       'Capability endpoint "remote-endpoint" did not expose a remote action.',
     );
   });
+
+  it("fails when remote route conformance returns a non-2xx status", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route,
+        status: 500,
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned a non-2xx route status.',
+    );
+  });
+
+  it("fails when remote view conformance returns a non-JavaScript asset", async () => {
+    installMinimalFixtureFetch({
+      "plugin.asset.get": {
+        ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+        path: "/assets/fixture-view.css",
+        contentType: "text/css",
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["viewAsset"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned a non-JavaScript view asset path.',
+    );
+  });
 });
+
+function installMinimalFixtureFetch(
+  resultsByMethod: Record<string, unknown>,
+): void {
+  globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+    const body = init?.body
+      ? (JSON.parse(String(init.body)) as { method?: string })
+      : undefined;
+    if (String(url) === "https://remote.example.test/v1/capabilities") {
+      return jsonResponse({
+        environment: "server",
+        available: true,
+        capabilities: {
+          fs: false,
+          pty: false,
+          git: false,
+          model: false,
+          plugin: true,
+        },
+      });
+    }
+    if (body?.method === "plugin.modules.list") {
+      return jsonResponse({
+        ok: true,
+        result: {
+          modules: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
+        },
+      });
+    }
+    if (body?.method && body.method in resultsByMethod) {
+      return jsonResponse({ ok: true, result: resultsByMethod[body.method] });
+    }
+    return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+  }) as unknown as typeof fetch;
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

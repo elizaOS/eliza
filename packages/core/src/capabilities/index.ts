@@ -869,6 +869,56 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 			contentType: "text/javascript",
 			bodyBase64: "ZXhwb3J0IGNvbnN0IGZpeHR1cmVWaWV3ID0gdHJ1ZTsK",
 		},
+		model: {
+			result: { text: "fixture model", fixture: true },
+		},
+		lifecycle: {
+			ok: true,
+		},
+		event: {
+			handled: true,
+		},
+		service: {
+			result: { text: "fixture service", fixture: true },
+		},
+		appBridge: {
+			result: {
+				handled: true,
+				status: 208,
+				headers: { "x-capability-fixture-bridge": "yes" },
+				body: { fixtureAppBridge: true },
+			},
+		},
+		evaluatorShouldRun: {
+			shouldRun: true,
+		},
+		evaluatorPrepare: {
+			prepared: { fixturePrepared: true },
+		},
+		evaluatorPrompt: {
+			prompt: "fixture evaluator prompt",
+		},
+		evaluatorProcess: {
+			result: { fixtureProcessed: true },
+		},
+		responseHandlerEvaluatorShouldRun: {
+			shouldRun: true,
+		},
+		responseHandlerEvaluatorEvaluate: {
+			patch: { fixtureResponsePatch: true },
+		},
+		responseHandlerFieldEvaluatorShouldRun: {
+			shouldRun: true,
+		},
+		responseHandlerFieldEvaluatorParse: {
+			value: { fixtureParsed: true },
+		},
+		responseHandlerFieldEvaluatorHandle: {
+			effect: {
+				patch: { fixtureHandled: true },
+				debug: ["fixture field handled"],
+			},
+		},
 	},
 } as const satisfies {
 	availability: CapabilityAvailability;
@@ -878,6 +928,20 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 		provider: PluginGetProviderResult;
 		route: PluginCallRouteResult;
 		asset: PluginGetAssetResult;
+		model: PluginInvokeModelResult;
+		lifecycle: PluginLifecycleCallResult;
+		event: PluginHandleEventResult;
+		service: PluginCallServiceResult;
+		appBridge: PluginCallAppBridgeResult;
+		evaluatorShouldRun: PluginEvaluatorShouldRunResult;
+		evaluatorPrepare: PluginEvaluatorPrepareResult;
+		evaluatorPrompt: PluginEvaluatorPromptResult;
+		evaluatorProcess: PluginEvaluatorProcessResult;
+		responseHandlerEvaluatorShouldRun: PluginResponseHandlerEvaluatorShouldRunResult;
+		responseHandlerEvaluatorEvaluate: PluginResponseHandlerEvaluatorEvaluateResult;
+		responseHandlerFieldEvaluatorShouldRun: PluginResponseHandlerFieldEvaluatorShouldRunResult;
+		responseHandlerFieldEvaluatorParse: PluginResponseHandlerFieldEvaluatorParseResult;
+		responseHandlerFieldEvaluatorHandle: PluginResponseHandlerFieldEvaluatorHandleResult;
 	};
 };
 

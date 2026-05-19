@@ -72,6 +72,11 @@ export {
 	resolveMaxConcurrentSpeculativeResponses,
 } from "./engine";
 export {
+	createImageDescriptionRuntime,
+	type ImageDescriptionRuntime,
+	type ImageDescriptionRuntimeOptions,
+} from "./image-description-runtime";
+export {
 	type HandlerRegistration,
 	handlerRegistry,
 	type PublicRegistration,

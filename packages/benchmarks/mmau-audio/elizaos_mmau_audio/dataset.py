@@ -95,7 +95,14 @@ class MMAUDataset:
                 "Install elizaos-mmau[hf] or pass --fixture."
             ) from exc
 
-        stream = load_dataset(self.hf_repo, split=_hf_split_name(self.split), streaming=True)
+        # Bounded benchmark cells should materialise the parquet shard instead
+        # of leaving a streaming iterator alive; otherwise the HF downloader can
+        # keep retrying after results are written and hold the process open.
+        stream = load_dataset(
+            self.hf_repo,
+            split=_hf_split_name(self.split),
+            streaming=max_samples is None,
+        )
         try:
             from datasets import Audio  # type: ignore[import-not-found]
 

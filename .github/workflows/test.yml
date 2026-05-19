@@ -332,7 +332,7 @@ jobs:
 
       - name: Validate remote capability cloud live report
         if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --match-github-env reports/remote-capabilities/cloud
+        run: bun run test:remote-capabilities:validate-live-reports --kind cloud --expect-count 1 --max-age-minutes 90 --max-future-minutes 5 --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud
 
       - name: Upload remote capability cloud live report
         if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
@@ -457,7 +457,7 @@ jobs:
 
       - name: Validate remote capability provider live reports
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --match-github-env reports/remote-capabilities/providers
+        run: bun run test:remote-capabilities:validate-live-reports --kind provider --expect-count 3..4 --max-age-minutes 90 --max-future-minutes 5 --allowed-providers e2b,home-machine,mobile-companion,desktop-companion --require-providers e2b,home-machine,mobile-companion --require-ci --require-file-identity --match-github-env reports/remote-capabilities/providers
 
       - name: Upload remote capability provider live report
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')

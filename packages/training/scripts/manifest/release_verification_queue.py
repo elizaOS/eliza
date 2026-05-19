@@ -102,41 +102,51 @@ def _default_eval_python() -> str:
     return "python3"
 
 
+def _eval_suite_command(eval_python: str, bundle: str, tier: str, *extra: str) -> str:
+    args = [
+        "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0",
+        eval_python,
+        "-m",
+        "scripts.eval.eliza1_eval_suite",
+        "--bundle-dir",
+        bundle,
+        "--tier",
+        tier,
+        *extra,
+    ]
+    return " ".join(args)
+
+
 def _backend_command(bundle_root: str, verify_dir: str, tier: str, backend: str, eval_python: str) -> str:
     bundle = _bundle_dir(bundle_root, tier)
     if backend == "cpu":
         return (
             f"make -C {verify_dir} reference-test && "
-            f"{eval_python} -m scripts.eval.eliza1_eval_suite --bundle-dir {bundle} "
-            f"--tier {tier} --backend cpu --threads 8"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cpu', '--threads', '8')}"
         )
     if backend == "metal":
         return (
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target darwin-arm64-metal && "
             f"make -C {verify_dir} metal-verify dispatch-smoke && "
-            f"{eval_python} -m scripts.eval.eliza1_eval_suite --bundle-dir {bundle} "
-            f"--tier {tier} --backend metal"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'metal')}"
         )
     if backend == "vulkan":
         return (
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-vulkan && "
             f"make -C {verify_dir} vulkan_verify vulkan-dispatch-smoke && "
-            f"{eval_python} -m scripts.eval.eliza1_eval_suite --bundle-dir {bundle} "
-            f"--tier {tier} --backend vulkan"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'vulkan')}"
         )
     if backend == "cuda":
         return (
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-cuda && "
             f"{verify_dir}/cuda_runner.sh && "
-            f"{eval_python} -m scripts.eval.eliza1_eval_suite --bundle-dir {bundle} "
-            f"--tier {tier} --backend cuda"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'cuda')}"
         )
     if backend == "rocm":
         return (
             "node packages/app-core/scripts/build-llama-cpp-dflash.mjs --target linux-x64-rocm && "
             f"make -C {verify_dir} rocm_verify rocm-dispatch-smoke && "
-            f"{eval_python} -m scripts.eval.eliza1_eval_suite --bundle-dir {bundle} "
-            f"--tier {tier} --backend rocm"
+            f"{_eval_suite_command(eval_python, bundle, tier, '--backend', 'rocm')}"
         )
     raise ValueError(f"unsupported backend {backend!r}")
 
@@ -221,8 +231,15 @@ def build_queue(
                 priority=200 + _tier_sort_key(tier),
                 requires_hardware=False,
                 command=(
-                    f"{eval_python} -m scripts.eval.eliza1_eval_suite --bundle-dir {bundle} "
-                    f"--tier {tier} --threads 8 --timeout 600"
+                    _eval_suite_command(
+                        eval_python,
+                        bundle,
+                        tier,
+                        "--threads",
+                        "8",
+                        "--timeout",
+                        "600",
+                    )
                 ),
                 evidence=(
                     f"bundles/{tier}/evals/aggregate.json",

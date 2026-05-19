@@ -444,6 +444,20 @@ def _required_env_for_request(adapter: BenchmarkAdapter, request: RunRequest) ->
             return (provider_key or "CEREBRAS_API_KEY",)
         return ()
 
+    if adapter.id == "voicebench_quality":
+        stt_provider = str(
+            request.extra_config.get("stt_provider")
+            or os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+            or os.environ.get("VOICEBENCH_STT_PROVIDER")
+            or "groq"
+        ).strip().lower()
+        required = ["CEREBRAS_API_KEY"]
+        if stt_provider == "groq":
+            required.append("GROQ_API_KEY")
+        elif stt_provider == "eliza-runtime":
+            required.append("ELIZA_BENCH_URL" if os.environ.get("ELIZA_BENCH_URL") else "ELIZA_API_BASE")
+        return tuple(required)
+
     provider = request.provider.strip().lower()
     required = list(adapter.required_env)
     provider_key = PROVIDER_KEY_ENV.get(provider)

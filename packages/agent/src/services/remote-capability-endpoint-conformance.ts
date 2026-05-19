@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type CapabilityAvailability,
@@ -63,8 +64,12 @@ export type RemoteCapabilityEndpointConformanceReport = {
   actionResult?: PluginInvokeActionResult;
   providerResult?: PluginGetProviderResult;
   routeResult?: PluginCallRouteResult;
-  assetResult?: Pick<PluginGetAssetResult, "path" | "contentType" | "integrity"> & {
+  assetResult?: Pick<
+    PluginGetAssetResult,
+    "path" | "contentType" | "integrity"
+  > & {
     byteLength: number;
+    sha256: string;
   };
   modelResult?: PluginInvokeModelResult;
   lifecycleResult?: PluginLifecycleCallResult;
@@ -186,11 +191,11 @@ export async function assertRemoteCapabilityEndpointConformance(
     });
     if (
       typeof report.routeResult.status !== "number" ||
-      report.routeResult.status < 100 ||
-      report.routeResult.status > 599
+      report.routeResult.status < 200 ||
+      report.routeResult.status > 299
     ) {
       throw new Error(
-        `Capability endpoint "${options.endpoint.id}" returned an invalid route status.`,
+        `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
       );
     }
     exercised.route = `${target.module.id}:${target.route.method} ${target.route.path}`;
@@ -208,10 +213,21 @@ export async function assertRemoteCapabilityEndpointConformance(
       moduleId: target.module.id,
       path: target.bundlePath,
     });
-    const byteLength = Buffer.from(assetResult.bodyBase64, "base64").byteLength;
+    const assetBytes = Buffer.from(assetResult.bodyBase64, "base64");
+    const byteLength = assetBytes.byteLength;
     if (byteLength === 0) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" returned an empty view asset.`,
+      );
+    }
+    if (!/\.(?:js|mjs)$/i.test(assetResult.path)) {
+      throw new Error(
+        `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset path.`,
+      );
+    }
+    if (!/(?:java|ecma)script/i.test(assetResult.contentType)) {
+      throw new Error(
+        `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset content type.`,
       );
     }
     report.assetResult = {
@@ -219,6 +235,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       contentType: assetResult.contentType,
       ...(assetResult.integrity ? { integrity: assetResult.integrity } : {}),
       byteLength,
+      sha256: createHash("sha256").update(assetBytes).digest("hex"),
     };
     exercised.viewAsset = `${target.module.id}:${target.bundlePath}`;
   }
@@ -383,7 +400,10 @@ export async function assertRemoteCapabilityEndpointConformance(
     const handle = await router.plugin.handleResponseHandlerFieldEvaluator({
       ...common,
       value: { raw: true },
-      ...(parse.value === undefined || typeof parse.value !== "object" || parse.value === null || Array.isArray(parse.value)
+      ...(parse.value === undefined ||
+      typeof parse.value !== "object" ||
+      parse.value === null ||
+      Array.isArray(parse.value)
         ? {}
         : { parsed: parse.value }),
     });
@@ -477,7 +497,9 @@ function findEventTarget(modules: RemotePluginModuleManifest[]) {
 
 function findServiceTarget(modules: RemotePluginModuleManifest[]) {
   for (const module of modules) {
-    const service = module.services?.find((candidate) => candidate.methods?.[0]);
+    const service = module.services?.find(
+      (candidate) => candidate.methods?.[0],
+    );
     const method = service?.methods?.[0];
     if (service && method) return { module, service, method };
   }

@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -185,6 +186,75 @@ def test_normalize_backend_for_harness_strips_fused_build_suffix() -> None:
     assert suite._normalize_backend_for_harness("vulkan-fused") == "vulkan"
     assert suite._normalize_backend_for_harness("cuda.release") == "cuda"
     assert suite._normalize_backend_for_harness(None) == "cpu"
+
+
+def test_concurrent_llm_guard_detects_live_llama_process(monkeypatch) -> None:
+    ps_out = (
+        " 111 /Applications/Ollama.app/Contents/Resources/ollama serve\n"
+        " 222 /tmp/bin/llama-server /tmp/bin/llama-server --model model.gguf\n"
+        " 333 /usr/bin/python pytest\n"
+    )
+
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=ps_out, stderr="")
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+    monkeypatch.delenv(suite._CONCURRENT_LLM_OVERRIDE_ENV, raising=False)
+
+    reason = suite._concurrent_llm_guard_reason()
+
+    assert reason is not None
+    assert "llama.cpp model process" in reason
+    assert "222" in reason
+    assert "Ollama" not in reason
+
+
+def test_concurrent_llm_guard_honors_override(monkeypatch) -> None:
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=" 222 /tmp/bin/llama-server /tmp/bin/llama-server --model model.gguf\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+    monkeypatch.setenv(suite._CONCURRENT_LLM_OVERRIDE_ENV, "1")
+
+    assert suite._concurrent_llm_guard_reason() is None
+
+
+def test_e2e_bench_guard_records_not_run_before_launch(tmp_path: Path, monkeypatch) -> None:
+    bundle = _make_real_bundle(tmp_path)
+    ctx = suite.EvalContext(
+        bundle_dir=bundle,
+        tier="0_8b",
+        engine=_fake_engine(tmp_path / "bin"),
+        text_model=None,
+        text_eval_model=None,
+        voice_model=None,
+        voice_tokenizer=None,
+        asr_model=None,
+        vad_model=None,
+        drafter_model=None,
+        text_eval_corpus=("hello",),
+        asr_corpus=None,
+        threads=2,
+        timeout_s=30,
+    )
+    monkeypatch.setattr(suite, "_BUN", "/bin/false")
+    monkeypatch.setattr(suite, "_kokoro_e2e_loop_bench_path", lambda: tmp_path / "bench.mjs")
+    (tmp_path / "bench.mjs").write_text("// fake\n")
+    monkeypatch.setattr(suite, "_concurrent_llm_guard_reason", lambda: "one LLM at a time")
+
+    def fake_run(*args, **kwargs):
+        raise AssertionError("bench should not launch when guard is active")
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    report = suite._run_e2e_loop_bench(ctx, 1)
+
+    assert report["status"] == "not-run"
+    assert report["reason"] == "one LLM at a time"
 
 
 def test_dispatch_targets_for_metal_include_runtime_smoke() -> None:

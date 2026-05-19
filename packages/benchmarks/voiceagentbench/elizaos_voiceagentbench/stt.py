@@ -10,6 +10,8 @@ Direct-audio adapters (future work) bypass this shim entirely.
 from __future__ import annotations
 
 import os
+import tempfile
+from pathlib import Path
 from typing import Protocol
 
 from .types import AudioQuery
@@ -133,6 +135,51 @@ class ElizaRuntimeSTT:
         return text
 
 
+class FasterWhisperSTT:
+    """Local faster-whisper backend over real audio bytes."""
+
+    def __init__(self, *, model: str | None = None) -> None:
+        self._model_name = (
+            model
+            or os.environ.get("VOICEAGENTBENCH_FASTER_WHISPER_MODEL")
+            or os.environ.get("FASTER_WHISPER_MODEL")
+            or "base.en"
+        )
+        self._model = None
+
+    def _ensure_model(self):
+        if self._model is not None:
+            return self._model
+        from faster_whisper import WhisperModel  # type: ignore[import-not-found]
+
+        self._model = WhisperModel(self._model_name, device="auto", compute_type="auto")
+        return self._model
+
+    def transcribe(self, query: AudioQuery) -> str:
+        if query.audio_bytes is None:
+            raise RuntimeError(
+                "VoiceAgentBench task is missing audio bytes; refusing to use "
+                "ground-truth transcript as STT output."
+            )
+        model = self._ensure_model()
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as fh:
+            fh.write(query.audio_bytes)
+            audio_path = Path(fh.name)
+        try:
+            segments, _info = model.transcribe(
+                str(audio_path),
+                language=query.language or None,
+                beam_size=1,
+                vad_filter=False,
+            )
+            text = " ".join(segment.text.strip() for segment in segments).strip()
+        finally:
+            audio_path.unlink(missing_ok=True)
+        if not text:
+            raise RuntimeError("faster-whisper returned no transcript")
+        return text
+
+
 def build_stt(*, mock: bool = False, provider: str = "groq") -> STTBackend:
     """Build the real STT backend."""
     if mock:
@@ -142,6 +189,9 @@ def build_stt(*, mock: bool = False, provider: str = "groq") -> STTBackend:
         return GroqWhisperSTT()
     if selected == "eliza-runtime":
         return ElizaRuntimeSTT()
+    if selected in {"faster-whisper", "local-whisper"}:
+        return FasterWhisperSTT()
     raise ValueError(
-        f"unsupported STT provider {provider!r}; expected 'groq' or 'eliza-runtime'"
+        f"unsupported STT provider {provider!r}; expected 'groq', "
+        "'eliza-runtime', or 'faster-whisper'"
     )

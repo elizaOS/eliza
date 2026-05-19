@@ -98,6 +98,7 @@ def _recover_text_tool_calls(
             source = function if isinstance(function, dict) else record
             name_raw = (
                 source.get("name")
+                or source.get("action")
                 or source.get("tool")
                 or source.get("tool_name")
                 or source.get("function_name")

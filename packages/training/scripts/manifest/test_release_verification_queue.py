@@ -51,6 +51,7 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
     assert "bundles/4b/evals/cuda_verify.json" in missing.evidence
     cpu = items[1]
     assert cpu.requires_hardware is False
+    assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0" in cpu.command
     assert "--bundle-dir /bundles/eliza-1-0_8b.bundle" in cpu.command
     assert "make -C plugins/plugin-local-inference/native/verify reference-test" in cpu.command
     assert "evals/cpu_reference.json" in cpu.evidence[1]
@@ -79,7 +80,7 @@ def test_render_markdown_names_commands_and_evidence() -> None:
     assert "# Eliza-1 Verification Queue" in text
     assert "## 2b:eval-suite" in text
     assert "bundles/2b/evals/aggregate.json" in text
-    assert "python3 -m scripts.eval.eliza1_eval_suite" in text
+    assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 python3 -m scripts.eval.eliza1_eval_suite" in text
 
 
 def test_filter_queue_selects_next_local_item() -> None:
@@ -174,4 +175,6 @@ def test_build_queue_can_use_explicit_eval_python() -> None:
 
     items = build_queue(summary, bundle_root="/bundles", eval_python="/opt/miniconda3/bin/python3")
 
-    assert items[0].command.startswith("/opt/miniconda3/bin/python3 -m scripts.eval.eliza1_eval_suite")
+    assert items[0].command.startswith(
+        "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 /opt/miniconda3/bin/python3 -m scripts.eval.eliza1_eval_suite"
+    )

@@ -51,6 +51,9 @@ def _eliza_post(path: str, body: dict[str, object]) -> dict[str, object]:
         method="POST",
         headers={"Content-Type": "application/json"},
     )
+    token = os.environ.get("ELIZA_BENCH_TOKEN", "").strip()
+    if token:
+        req.add_header("Authorization", f"Bearer {token}")
     timeout = float(os.environ.get("ELIZA_BENCH_HTTP_TIMEOUT", str(_HTTP_TIMEOUT_S)))
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
@@ -94,6 +97,14 @@ class _ElizaHttpAgent:
 
     def __init__(self, *, tool_inject_system: bool = True) -> None:
         self._tool_inject = tool_inject_system
+        self._server_mgr: Any | None = None
+        if not os.environ.get("ELIZA_API_BASE") and not os.environ.get("ELIZA_BENCH_URL"):
+            from eliza_adapter.server_manager import ElizaServerManager  # noqa: WPS433
+
+            self._server_mgr = ElizaServerManager()
+            self._server_mgr.start()
+            os.environ["ELIZA_BENCH_TOKEN"] = self._server_mgr.token
+            os.environ["ELIZA_BENCH_URL"] = self._server_mgr.client.base_url
         # Eagerly verify the runtime is reachable (fast path — raises quickly
         # if it isn't so CI fails loudly rather than timing out per-task).
         _wait_for_eliza(timeout=float(os.environ.get("ELIZA_WAIT_TIMEOUT", "60")))

@@ -67,6 +67,10 @@ from benchmarks.eliza1_gates import (  # noqa: E402
 )
 
 SCHEMA_VERSION = 1
+_CONCURRENT_LLM_OVERRIDE_ENV = "ELIZA_EVAL_ALLOW_CONCURRENT_LLM"
+_LLAMA_PROCESS_RE = re.compile(
+    r"(^|/)(llama-(?:server|cli|perplexity|speculative-simple|omnivoice-server)|main)(\s|$)"
+)
 
 # Held-out text-eval corpus.
 #
@@ -504,6 +508,69 @@ class EvalContext:
             pass
 
 
+class ConcurrentLLMError(RuntimeError):
+    """Raised when a live local llama.cpp process would make an eval unsafe."""
+
+
+def _active_llama_processes() -> list[dict[str, Any]]:
+    """Return live llama.cpp-like model processes owned by the local host."""
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,comm=,args="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if proc.returncode != 0:
+        return []
+    current = os.getpid()
+    found: list[dict[str, Any]] = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if pid == current:
+            continue
+        args = parts[2]
+        if "Codex" in args or "pytest" in args:
+            continue
+        if _LLAMA_PROCESS_RE.search(args):
+            found.append({"pid": pid, "command": args})
+    return found
+
+
+def _concurrent_llm_guard_reason() -> str | None:
+    if os.environ.get(_CONCURRENT_LLM_OVERRIDE_ENV) == "1":
+        return None
+    active = _active_llama_processes()
+    if not active:
+        return None
+    sample = "; ".join(f"{p['pid']} {p['command']}" for p in active[:3])
+    more = f"; +{len(active) - 3} more" if len(active) > 3 else ""
+    return (
+        "refusing to launch another local llama.cpp model process because "
+        f"{len(active)} is already running ({sample}{more}); set "
+        f"{_CONCURRENT_LLM_OVERRIDE_ENV}=1 only when concurrent LLM memory use "
+        "is intentional"
+    )
+
+
+def _assert_no_concurrent_llm() -> None:
+    reason = _concurrent_llm_guard_reason()
+    if reason:
+        raise ConcurrentLLMError(reason)
+
+
 def _run_llama(
     ctx: EvalContext, bin_path: Path, args: list[str], timeout_s: int | None = None
 ) -> tuple[int, str]:
@@ -518,6 +585,7 @@ def _run_llama(
     own = str(bin_path.parent)
     for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
         env[var] = f"{own}:{env[var]}" if env.get(var) else own
+    _assert_no_concurrent_llm()
     proc = subprocess.run(  # noqa: S603 - bin_path is a discovered local binary
         [str(bin_path), *args],
         capture_output=True,
@@ -618,6 +686,18 @@ def _eval_text_with_llama_perplexity(ctx: EvalContext, model: Path) -> dict[str,
         args += ["--chunks", chunks]
     try:
         rc, out = _run_llama(ctx, binary, args, timeout_s=min(ctx.timeout_s, 900))
+    except ConcurrentLLMError as exc:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": str(exc),
+            "binary": str(binary),
+            "model": str(model),
+        }
     except subprocess.TimeoutExpired:
         return {
             "schemaVersion": SCHEMA_VERSION,
@@ -857,6 +937,11 @@ def _run_e2e_loop_bench(
     # An endurance run on CPU is many minutes; give it room (the harness has
     # its own per-turn timeout, this is just the outer wall-clock cap).
     timeout_s = max(ctx.timeout_s, 90 * max(1, turns))
+    reason = _concurrent_llm_guard_reason()
+    if reason:
+        result = {"status": "not-run", "reason": reason}
+        cache[cache_key] = result
+        return result
     try:
         proc = subprocess.run(  # noqa: S603 - bun + a repo-local script
             args,

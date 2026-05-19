@@ -67,8 +67,11 @@ async function tryLoadPluginVision(
   let mod: AppCoreVisionLike | null = null;
   for (const spec of candidates) {
     try {
-      mod = (await import(spec)) as AppCoreVisionLike;
-      break;
+      const candidate = (await import(spec)) as AppCoreVisionLike;
+      if (typeof candidate.createImageDescriptionRuntime === "function") {
+        mod = candidate;
+        break;
+      }
     } catch {
       // try next
     }

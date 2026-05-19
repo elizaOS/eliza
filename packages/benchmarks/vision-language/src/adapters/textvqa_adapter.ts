@@ -16,7 +16,7 @@
  * Scoring: VQA soft-score (`min(matches/3, 1)`) over the 10 reference
  * answers. We also expose the binary exact-match for leaderboard parity.
  */
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { exactMatch, vqaSoftScore } from "../scorers/index.ts";
@@ -47,6 +47,8 @@ interface OfficialAnnotation {
   question_id: number | string;
   question: string;
   image_id: string;
+  flickr_original_url?: string;
+  flickr_300k_url?: string;
   answers: string[];
 }
 
@@ -114,14 +116,9 @@ function loadSmoke(n: number): Sample<TextVqaPayload>[] {
   }));
 }
 
-function loadOfficial(n: number): Sample<TextVqaPayload>[] {
+async function loadOfficial(n: number): Promise<Sample<TextVqaPayload>[]> {
   const dir = process.env.TEXTVQA_DATA_DIR;
-  if (!dir) {
-    throw new Error(
-      "TEXTVQA_DATA_DIR is not set. Point it at a local TextVQA mirror " +
-        "with `val/TextVQA_0.5.1_val.json` and `images/`, or pass --smoke.",
-    );
-  }
+  if (!dir) return loadHfTextVqa(n);
   const annPath = path.join(dir, "TextVQA_0.5.1_val.json");
   if (!existsSync(annPath)) {
     throw new Error(
@@ -138,4 +135,63 @@ function loadOfficial(n: number): Sample<TextVqaPayload>[] {
     question: entry.question,
     payload: { answers: entry.answers },
   }));
+}
+
+async function loadHfTextVqa(n: number): Promise<Sample<TextVqaPayload>[]> {
+  const annotationUrl =
+    process.env.TEXTVQA_HF_ANNOTATION_URL ||
+    "https://huggingface.co/datasets/redactable-llm/TextVQA/resolve/main/TextVQA_0.5.1_val.json";
+  const response = await fetch(annotationUrl);
+  if (!response.ok) {
+    throw new Error(
+      `failed to download TextVQA annotations (${response.status}): ${annotationUrl}`,
+    );
+  }
+  const raw = (await response.json()) as { data: OfficialAnnotation[] };
+  const cacheDir = path.join(PACKAGE_ROOT, "samples", ".cache", "textvqa-hf");
+  mkdirSync(cacheDir, { recursive: true });
+  const samples: Sample<TextVqaPayload>[] = [];
+  for (const entry of raw.data) {
+    if (samples.length >= n) break;
+    const url = entry.flickr_300k_url || entry.flickr_original_url;
+    if (!url) continue;
+    try {
+      const imagePath = await downloadImage(url, cacheDir, entry.image_id);
+      samples.push({
+        id: String(entry.question_id),
+        imagePath,
+        question: entry.question,
+        payload: { answers: entry.answers },
+      });
+    } catch {
+      // Some original Flickr URLs disappear over time; keep walking the real
+      // annotation set until we have the requested number of downloadable rows.
+    }
+  }
+  if (samples.length === 0) {
+    throw new Error(
+      "TextVQA HF annotations loaded, but no image URLs were downloadable",
+    );
+  }
+  return samples;
+}
+
+async function downloadImage(
+  url: string,
+  cacheDir: string,
+  imageId: string,
+): Promise<string> {
+  const ext = path.extname(new URL(url).pathname) || ".jpg";
+  const target = path.join(cacheDir, `${imageId}${ext}`);
+  if (existsSync(target)) return target;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`failed to download TextVQA image ${imageId}`);
+  }
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  if (bytes.byteLength === 0) {
+    throw new Error(`empty TextVQA image ${imageId}`);
+  }
+  writeFileSync(target, bytes);
+  return target;
 }

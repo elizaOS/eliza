@@ -80,9 +80,12 @@ describe("buildCapabilityRouterConnectPayload", () => {
 
   it("rejects unknown provider modes", () => {
     expect(() =>
-      buildCapabilityRouterConnectPayload("https://satellite.example.test", {
-        provider: "satellite" as never,
-      }),
+      buildCapabilityRouterConnectPayload(
+        "https://unknown-provider.example.test",
+        {
+          provider: "unknown-provider" as never,
+        },
+      ),
     ).toThrow(
       "provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.",
     );
@@ -259,7 +262,7 @@ describe("buildCapabilityRouterConnectPayload", () => {
   it("rejects conformance checks with unknown required surfaces", async () => {
     await expect(
       runCapabilityRouterConformance("https://remote.example.test", {
-        require: ["satellite"],
+        require: ["unknown-surface"],
       }),
     ).rejects.toThrow(
       "require must be one of action, provider, route, view-asset, model, lifecycle, event, service, app-bridge, evaluator, response-handler-evaluator, or response-handler-field-evaluator.",
