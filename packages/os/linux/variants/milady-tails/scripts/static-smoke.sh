@@ -8,6 +8,69 @@ REPO_ROOT="$(cd "${ROOT}/../../../../.." && pwd)"
 SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
+rg() {
+    local rg_bin
+    rg_bin="$(type -P rg || true)"
+    if [ -n "${rg_bin}" ]; then
+        "${rg_bin}" "$@"
+        return
+    fi
+
+    local show_line_numbers=0
+    local pattern
+    local glob_pattern=""
+    local paths=()
+
+    if [ "${1:-}" = "-n" ]; then
+        show_line_numbers=1
+        shift
+    fi
+    pattern="${1:-}"
+    if [ -z "${pattern}" ]; then
+        return 2
+    fi
+    shift
+
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --glob)
+                glob_pattern="${2:-}"
+                shift 2
+                ;;
+            --)
+                shift
+                ;;
+            *)
+                paths+=("$1")
+                shift
+                ;;
+        esac
+    done
+
+    if [ "${#paths[@]}" -eq 0 ]; then
+        paths=(.)
+    fi
+
+    local grep_flags="-RE"
+    if [ "${show_line_numbers}" = "1" ]; then
+        grep_flags="${grep_flags}n"
+    fi
+
+    if [ -n "${glob_pattern}" ]; then
+        local matches=()
+        while IFS= read -r -d '' match; do
+            matches+=("${match}")
+        done < <(find "${paths[@]}" -type f -name "${glob_pattern}" -print0 2>/dev/null)
+        if [ "${#matches[@]}" -eq 0 ]; then
+            return 1
+        fi
+        grep ${grep_flags} -- "${pattern}" "${matches[@]}"
+        return
+    fi
+
+    grep ${grep_flags} -- "${pattern}" "${paths[@]}"
+}
+
 stat_mode() {
     local path="$1"
     local index_mode
