@@ -839,7 +839,8 @@ export class LocalInferenceEngine {
 		// the actual dlopen happens lazily in `acquire()` and falls
 		// through cleanly on failure.
 		() => {
-			const override = process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase();
+			const override =
+				process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase();
 			if (override === "http") return false;
 			return desktopFfiBackendRuntime.supported();
 		},
