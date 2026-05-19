@@ -498,7 +498,12 @@ describe("remote plugin adapter", () => {
     await expect(
       routeModule?.handleAppRoutes?.({
         req: {
-          headers: { authorization: "Bearer local" },
+          headers: {
+            accept: "application/json",
+            authorization: "Bearer local",
+            cookie: "sid=local-session",
+            "x-auth-token": "local-auth-token",
+          },
         },
         res: routeResponse,
         method: "POST",
@@ -622,7 +627,12 @@ describe("remote plugin adapter", () => {
         body: { input: "value" },
         params: {},
         query: { q: "1" },
-        headers: { accept: "application/json" },
+        headers: {
+          accept: "application/json",
+          authorization: "Bearer local-agent-secret",
+          cookie: "sid=local-session",
+          "x-api-key": "local-api-key",
+        },
         inProcess: false,
       }),
     ).resolves.toEqual({
@@ -954,6 +964,7 @@ describe("remote plugin adapter", () => {
               method: "POST",
               pathname: "/api/apps/remote-demo/command",
               query: { runId: "run-1" },
+              headers: { accept: "application/json" },
               body: { command: "ping" },
             }),
           }),

@@ -193,7 +193,7 @@ export function createRemoteCapabilityPlugin(
           path: ctx.path,
           body: toJsonValue(ctx.body),
           query: ctx.query,
-          headers: ctx.headers,
+          headers: sanitizeForwardedRouteHeaders(ctx.headers),
         } satisfies PluginCallRouteParams);
         return {
           status: result.status,
@@ -744,7 +744,9 @@ async function callRemoteAppRoutes(
         pathname: ctx.pathname,
         path: ctx.url.pathname,
         query: routeQueryToJsonObject(ctx.url),
-        headers: routeHeadersToJsonObject(ctx.req.headers),
+        headers: routeHeadersToJsonObject(
+          sanitizeForwardedRouteHeaders(ctx.req.headers),
+        ),
         ...(body === undefined ? {} : { body: toJsonValue(body) ?? null }),
       },
     })
@@ -1539,6 +1541,27 @@ function routeHeadersToJsonObject(
     }
   }
   return result;
+}
+
+const SENSITIVE_FORWARDED_ROUTE_HEADERS = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "set-cookie",
+  "x-api-key",
+  "x-auth-token",
+  "x-eliza-agent-token",
+]);
+
+function sanitizeForwardedRouteHeaders<
+  T extends Record<string, string | string[] | undefined>,
+>(headers: T | undefined): T {
+  const result: Record<string, string | string[] | undefined> = {};
+  for (const [key, value] of Object.entries(headers ?? {})) {
+    if (SENSITIVE_FORWARDED_ROUTE_HEADERS.has(key.toLowerCase())) continue;
+    result[key] = value;
+  }
+  return result as T;
 }
 
 function toStringRecord(value: JsonValue | undefined): Record<string, string> {

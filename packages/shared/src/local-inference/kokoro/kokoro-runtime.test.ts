@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  KokoroGgufRuntime,
-  KokoroMockRuntime,
-} from "./kokoro-runtime.js";
+import { KokoroGgufRuntime, KokoroMockRuntime } from "./kokoro-runtime.js";
 import type { KokoroVoicePack } from "./types.js";
 
 function makeVoice(): KokoroVoicePack {

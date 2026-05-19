@@ -337,6 +337,7 @@ export function CapabilitiesSection() {
         </div>
         <div
           className="inline-flex rounded-md border border-border p-0.5"
+          role="group"
           aria-label="Capability router connection mode"
         >
           <button
