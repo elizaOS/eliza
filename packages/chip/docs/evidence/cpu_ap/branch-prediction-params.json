@@ -7,7 +7,7 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-19T10:29:05.389843+00:00",
+  "generated_at_utc": "2026-05-19T10:59:43.521965+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
@@ -54,11 +54,11 @@
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "e922635cec91aaf98d296a56c625450b4a0330f0",
+  "source_revision": "ad12ed987a20c300f8ac6ba8a36313954d1553fe",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "362a6bd1b67355fb27bb7659b0f763e25a54cbb9e9655311113f3666ac895d49"
+      "sha256": "20de46ce561f1fb91e8b8d059256e521f703acd6edc58bdbfccba210dd0ad5a9"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",

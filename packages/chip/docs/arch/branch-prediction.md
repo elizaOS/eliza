@@ -114,21 +114,83 @@ The local cocotb MPKI harness (`benchmarks/cpu/branch/run_mpki.py`) measures
 the BPU against synthetic and trace-replay workloads. Real-workload numbers
 remain BLOCKED until SPEC/AOSP/JS evidence is in place.
 
+## Cross-domain contracts
+
+Two interfaces leave the BPU domain.
+
+### PMU → Zihpm
+
+The BPU emits one strobe per cycle into `pmu_strb[PMU_EVENTS-1:0]`. The OoO
+domain consumes it through `rtl/cpu/csr/bpu_to_zihpm_remap.sv`, which lands
+each strobe into its Zihpm-event-bus slot. The BPU enum is locked so the
+mapping is a pure `+1` offset, with the helper `bpu_pkg::bpu_pmu_to_hpm()`
+encoding the rule.
+
+| BPU side | OoO side |
+| --- | --- |
+| `rtl/cpu/bpu/bpu_pkg.sv` (`pmu_event_e`, `bpu_pmu_to_hpm()`) | `rtl/cpu/csr/zihpm.sv` (`hpm_event_e`) |
+| 20-bit `pmu_strb` from `bpu_top.pmu_strb` | 256-bit zihpm event bus driven by `bpu_to_zihpm_remap` |
+| Counter readout: `csr_addr` 0..19 → 64-bit counter | OS-visible Zihpm CSRs `mhpmcounter3..15` |
+
+Coordination evidence is produced by
+`scripts/check_pmu_event_alignment.py` (writes
+`docs/evidence/cpu_ap/pmu-event-alignment.json`).
+
+### FTQ → L1I
+
+The BPU writes predicted fetch blocks into the FTQ and emits a downstream
+prefetch request via `rtl/cpu/bpu/ftq_to_l1i_shim.sv`. The cache domain
+consumes `e1_ftq_to_l1i_pkg::ftq_prefetch_req_t` (40-bit physical line +
+3-bit confidence + branch-target hint) on a single-cycle valid/ready
+handshake with a separate flush strobe for misprediction recovery.
+
+The shim performs three translations:
+
+1. 39-bit Sv39 virtual `target_pc` → 40-bit physical line address (assumes
+   identity V→P at this stage; real translation lives on the cache side).
+2. `br_kind_e` → 3-bit confidence (`BR_NONE=0`, `BR_COND=4`, `BR_CALL=5`,
+   `BR_RET=6`).
+3. `branch_target` = `fetch_entry.taken`.
+
+The cluster top (`rtl/cpu/cluster/e1_cluster_top.sv`) wires the shim
+between `bpu_top.fetch_entry` and the cache domain.
+
 ## Blockers
 
 1. **XiangShan upstream licensing** — Mulan PSL v2; resolved by adoption,
-   tracked via `docs/generators/xiangshan/eliza-kunminghu-manifest.json`.
+   tracked via `generators/xiangshan/eliza-kunminghu-manifest.json`
+   (BPU IP pin) and `generators/chipyard/eliza-kunminghu-manifest.json`
+   (whole-core selection, owned by the OoO domain).
 2. **Two-taken-per-cycle** — current geometry parameterises
    `MAX_BR_PER_BLOCK = 2` but the prediction pipeline only emits one taken
    branch per cycle. Lifting this to two requires a dual-port FTB read path
    and a non-contiguous fetch contract.
-3. **L1I prefetch path** — FDIP is the design intent but the BPU only emits
-   the uFTB next-PC hint; the L1I prefetch engine is not in this domain.
+3. **L1I prefetch path** — `ftq_to_l1i_shim` lands the prefetch request on
+   the cache agent's interface, but the cache-side prefetch engine and the
+   iTLB-on-receive translation remain in the cache domain.
 4. **Real-trace MPKI evidence** — see Accuracy targets.
 5. **Verilator/Yosys/SBY hosting** — the chip package has historically relied
-   on Docker/Nix shells for these tools; locally they are
-   `STATUS: BLOCKED rtl.check` until installed. The MVP cocotb / synth /
-   formal gates fall back accordingly.
+   on Docker/Nix shells for these tools; the local oss-cad-suite checkout
+   under `external/oss-cad-suite/` resolves them. `make bpu-lint`,
+   `make cocotb-bpu`, and `make formal-bpu` fail closed with `STATUS: BLOCKED`
+   when the suite is missing.
+6. **Formal coverage for the FTQ and RAS** — yosys 0.64 (oss-cad-suite) does
+   not accept struct typedefs in module port lists, and its async-reset
+   handling lets the BMC pick arbitrary initial values for reset-driven
+   flops. Both formal harnesses fail closed with named yosys limitations and
+   the cocotb regression (33/33 across 9 modules) carries functional
+   coverage in the interim.
+
+## Verification surface
+
+| Gate | Command | Output |
+| --- | --- | --- |
+| Parameter geometry | `make branch-prediction-check` | `docs/evidence/cpu_ap/branch-prediction-params.json` |
+| Cross-domain PMU IDs | `make pmu-event-alignment-check` | `docs/evidence/cpu_ap/pmu-event-alignment.json` |
+| Verilator strict lint | `make bpu-lint` | `build/reports/bpu/lint-status.yaml` |
+| Cocotb regression | `make cocotb-bpu` | `verify/cocotb/bpu/results/*.xml` |
+| SymbiYosys formal | `make formal-bpu` | `build/reports/bpu/formal-status.yaml` |
+| MPKI eval | `make mpki-eval` | `benchmarks/results/branch-prediction-mpki.json` |
 
 ## Files
 
@@ -142,9 +204,18 @@ remain BLOCKED until SPEC/AOSP/JS evidence is in place.
 - `rtl/cpu/bpu/ftq.sv` — fetch target queue.
 - `rtl/cpu/bpu/bpu_csr.sv` — PMU counters and useful-bit reset.
 - `rtl/cpu/bpu/bpu_top.sv` — integration top.
-- `verify/cocotb/bpu/` — cocotb unit and integration tests.
+- `rtl/cpu/bpu/ftq_to_l1i_shim.sv` — translation to the cache domain's
+  L1I-prefetch interface.
+- `verify/cocotb/bpu/` — cocotb unit and integration tests
+  (9 wrappers / 33 tests).
 - `verify/formal/bpu/` — SymbiYosys formal harnesses.
-- `benchmarks/cpu/branch/` — MPKI harness and synthetic traces.
-- `docs/generators/xiangshan/eliza-kunminghu-manifest.json` — upstream pin.
+- `benchmarks/cpu/branch/` — MPKI harness and synthetic traces
+  (8 synthetic generators).
+- `generators/xiangshan/eliza-kunminghu-manifest.json` — BPU IP-pin manifest.
+- `docs/generators/xiangshan/eliza-kunminghu-manifest.json` — historical
+  manifest predating the IP-pin/whole-core split; both files are kept in
+  lockstep via `scripts/check_branch_prediction.py`.
 - `docs/evidence/cpu_ap/branch-prediction-params.json` — evidence emitted by
   `scripts/check_branch_prediction.py`.
+- `docs/evidence/cpu_ap/pmu-event-alignment.json` — cross-domain PMU
+  alignment evidence.
