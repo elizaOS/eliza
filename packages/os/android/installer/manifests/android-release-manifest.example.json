@@ -19,24 +19,24 @@
     {
       "partition": "boot",
       "filename": "boot.img",
-      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
-      "sizeBytes": 1,
+      "sha256": "adc7cf0cbb58ab51520a1fa874a80fb0735a4464fd9b1988096761b4c11d8677",
+      "sizeBytes": 19,
       "required": true,
       "fastbootMode": "bootloader"
     },
     {
       "partition": "vendor_boot",
       "filename": "vendor_boot.img",
-      "sha256": "1111111111111111111111111111111111111111111111111111111111111111",
-      "sizeBytes": 1,
+      "sha256": "dbbb45447bdde07766a48c299ade9573b28bb45c2a81db370ddb3516e95e03ab",
+      "sizeBytes": 26,
       "required": true,
       "fastbootMode": "bootloader"
     },
     {
       "partition": "super",
       "filename": "super.img",
-      "sha256": "2222222222222222222222222222222222222222222222222222222222222222",
-      "sizeBytes": 1,
+      "sha256": "fb5500dfc6572b380682d824fb84662cfd39c8bb834e5604f3d4772462987628",
+      "sizeBytes": 20,
       "required": true,
       "fastbootMode": "fastbootd"
     }

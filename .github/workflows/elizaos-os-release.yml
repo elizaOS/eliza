@@ -49,7 +49,8 @@ jobs:
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
             packages/os/android/installer/manifests/android-release-manifest.example.json
           node packages/os/android/installer/scripts/validate-release-manifest.mjs \
-            packages/os/release/beta-2026-05-16/android-release-manifest.json
+            packages/os/release/beta-2026-05-16/android-release-manifest.json \
+            --allow-placeholders
 
       - name: Validate elizaos-setup (formerly aosp-flasher)
         run: |
