@@ -1,12 +1,6 @@
 import { spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import {
-  mkdir,
-  mkdtemp,
-  readFile,
-  symlink,
-  writeFile,
-} from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { Writable } from "node:stream";
@@ -100,7 +94,11 @@ function emitJson(p: MockProc, message: Record<string, unknown>): void {
   p.stdout.emit("data", Buffer.from(`${JSON.stringify(message)}\n`));
 }
 
-function closeProc(p: MockProc, code = 0, signal: NodeJS.Signals | null = null) {
+function closeProc(
+  p: MockProc,
+  code = 0,
+  signal: NodeJS.Signals | null = null,
+) {
   p.exitCode = code;
   p.signalCode = signal;
   p.emit("close", code, signal);
@@ -282,13 +280,18 @@ describe("NativeAcpClient permission requests", () => {
   it("selects allow options for approved operations", async () => {
     const { p } = await startClient({ approvalPreset: "autonomous" });
 
-    const response = await request(p, "permission-allow", "session/request_permission", {
-      toolCall: { kind: "edit" },
-      options: [
-        { optionId: "deny", kind: "reject_once" },
-        { optionId: "allow", kind: "allow_once" },
-      ],
-    });
+    const response = await request(
+      p,
+      "permission-allow",
+      "session/request_permission",
+      {
+        toolCall: { kind: "edit" },
+        options: [
+          { optionId: "deny", kind: "reject_once" },
+          { optionId: "allow", kind: "allow_once" },
+        ],
+      },
+    );
 
     expect(response).toMatchObject({
       id: "permission-allow",
@@ -299,13 +302,18 @@ describe("NativeAcpClient permission requests", () => {
   it("selects deny options for rejected operations", async () => {
     const { p } = await startClient({ approvalPreset: "readonly" });
 
-    const response = await request(p, "permission-deny", "session/request_permission", {
-      toolCall: { kind: "edit" },
-      options: [
-        { optionId: "allow", kind: "allow_once" },
-        { optionId: "deny", kind: "reject_once" },
-      ],
-    });
+    const response = await request(
+      p,
+      "permission-deny",
+      "session/request_permission",
+      {
+        toolCall: { kind: "edit" },
+        options: [
+          { optionId: "allow", kind: "allow_once" },
+          { optionId: "deny", kind: "reject_once" },
+        ],
+      },
+    );
 
     expect(response).toMatchObject({
       id: "permission-deny",
@@ -316,10 +324,15 @@ describe("NativeAcpClient permission requests", () => {
   it("returns cancelled when no compatible permission option exists", async () => {
     const { p } = await startClient({ approvalPreset: "readonly" });
 
-    const response = await request(p, "permission-cancel", "session/request_permission", {
-      toolCall: { kind: "edit" },
-      options: [{ optionId: "allow", kind: "allow_once" }],
-    });
+    const response = await request(
+      p,
+      "permission-cancel",
+      "session/request_permission",
+      {
+        toolCall: { kind: "edit" },
+        options: [{ optionId: "allow", kind: "allow_once" }],
+      },
+    );
 
     expect(response).toMatchObject({
       id: "permission-cancel",
@@ -377,9 +390,9 @@ describe("NativeAcpClient workspace file actions", () => {
         }
       ).writeTextFile({ path: "nested/new.txt", content: "fresh" }),
     ).resolves.toEqual({});
-    await expect(readFile(path.join(cwd, "nested/new.txt"), "utf8")).resolves.toBe(
-      "fresh",
-    );
+    await expect(
+      readFile(path.join(cwd, "nested/new.txt"), "utf8"),
+    ).resolves.toBe("fresh");
   });
 
   it("rejects path traversal for reads and writes", async () => {
@@ -411,8 +424,14 @@ describe("NativeAcpClient workspace file actions", () => {
     await mkdir(cwd);
     await mkdir(outside);
     await writeFile(path.join(outside, "secret.txt"), "secret", "utf8");
-    await symlink(path.join(outside, "secret.txt"), path.join(cwd, "read-link"));
-    await symlink(path.join(outside, "secret.txt"), path.join(cwd, "write-link"));
+    await symlink(
+      path.join(outside, "secret.txt"),
+      path.join(cwd, "read-link"),
+    );
+    await symlink(
+      path.join(outside, "secret.txt"),
+      path.join(cwd, "write-link"),
+    );
     const client = clientForWorkspace(cwd);
 
     await expect(
@@ -486,15 +505,19 @@ describe("NativeAcpClient terminal actions", () => {
     });
     terminalProc.emit("spawn");
     const created = await waitForResponse(agentProc, "terminal-create");
-    const terminalId = (
-      created.result as { terminalId: string } | undefined
-    )?.terminalId;
+    const terminalId = (created.result as { terminalId: string } | undefined)
+      ?.terminalId;
     expect(terminalId).toEqual(expect.any(String));
 
     terminalProc.stdout.emit("data", Buffer.from("v20\n"));
-    const running = await request(agentProc, "terminal-running", "terminal/output", {
-      terminalId,
-    });
+    const running = await request(
+      agentProc,
+      "terminal-running",
+      "terminal/output",
+      {
+        terminalId,
+      },
+    );
     expect(running).toMatchObject({
       id: "terminal-running",
       result: { output: "v20\n", truncated: false },
@@ -502,9 +525,14 @@ describe("NativeAcpClient terminal actions", () => {
     expect(running.result).not.toHaveProperty("exitStatus");
 
     closeProc(terminalProc, 7, null);
-    const exited = await request(agentProc, "terminal-exited", "terminal/output", {
-      terminalId,
-    });
+    const exited = await request(
+      agentProc,
+      "terminal-exited",
+      "terminal/output",
+      {
+        terminalId,
+      },
+    );
     expect(exited).toMatchObject({
       id: "terminal-exited",
       result: {
