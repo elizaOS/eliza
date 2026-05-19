@@ -42,11 +42,15 @@ test("checkout product picker, color swatches, and email login are wired", async
   await installCheckoutMocks(page);
 
   await page.goto("/checkout?sku=elizaos-usb");
-  await expect(page.getByRole("heading", { name: "ElizaOS USB" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "ElizaOS USB" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: /ElizaOS Phone/i }).click();
   await expect(page).toHaveURL(/\/checkout\?sku=elizaos-phone$/);
-  await expect(page.getByRole("heading", { name: "ElizaOS Phone" })).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "ElizaOS Phone" }),
+  ).toBeVisible();
 
   await page.getByRole("button", { name: "Select Blue glass" }).click();
 
