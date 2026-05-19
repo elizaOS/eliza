@@ -284,10 +284,34 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "speaker-encoder",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-19T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    preferredBackend: "ffi",
+    deprecatedBackends: ["onnx"],
+    ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "voice/speaker-encoder/wespeaker-resnet34-lm.gguf",
+        quant: "gguf-fp32",
+        expectedSizeBytes: 27_000_000,
+        reason: "missing-from-hf-repo",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "0.2.0 — GGUF conversion via voice_speaker_to_gguf.py; ONNX file removed from HF.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "speaker-encoder",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/speaker-encoder/wespeaker-resnet34-lm.onnx",
@@ -298,7 +322,31 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — WeSpeaker ResNet34-LM 256-dim int8.",
+    changelogEntry:
+      "Initial release — WeSpeaker ResNet34-LM 256-dim ONNX (deprecated; GGUF in 0.2.0).",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "diarizer",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-19T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    preferredBackend: "ffi",
+    deprecatedBackends: ["onnx"],
+    ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "voice/diarizer/pyannote-segmentation-3.0.gguf",
+        quant: "gguf-fp32",
+        expectedSizeBytes: 6_000_000,
+        reason: "missing-from-hf-repo",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "0.2.0 — GGUF conversion via voice_diarizer_to_gguf.py; ONNX files removed from HF.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -307,6 +355,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/diarizer/pyannote-segmentation-3.0-int8.onnx",
@@ -324,7 +373,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — Pyannote-segmentation-3.0 ONNX int8.",
+    changelogEntry:
+      "Initial release — Pyannote-segmentation-3.0 ONNX int8 (deprecated; GGUF in 0.2.0).",
     minBundleVersion: "0.0.0",
   },
   {
@@ -362,10 +412,34 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "voice-emotion",
+    version: "0.3.0",
+    parentVersion: "0.2.0",
+    publishedToHfAt: "2026-05-19T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    preferredBackend: "ffi",
+    deprecatedBackends: ["onnx"],
+    ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "voice/voice-emotion/wav2small-msp-dim.gguf",
+        quant: "gguf-fp32",
+        expectedSizeBytes: 1_200_000,
+        reason: "missing-from-hf-repo",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "0.3.0 — GGUF conversion via voice_emotion_to_gguf.py; ONNX files removed from HF.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "voice-emotion",
     version: "0.2.0",
     publishedToHfAt: "2026-05-15T07:20:39Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
         filename: "voice/emotion/wav2small-cls7-int8.onnx",
@@ -398,7 +472,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { f1Delta: 0.0042, netImprovement: true },
     changelogEntry:
-      "v0.2.0 — Wav2Small cls7 head shipped (macro-F1=0.355 > 0.35 gate). V-A-D projection metric on the legacy vad head capped at 0.319 due to the teacher's compressed V-A-D distribution; runtime now auto-detects the head contract by ONNX output dim.",
+      "v0.2.0 — Wav2Small cls7 head shipped (macro-F1=0.355 > 0.35 gate). ONNX files deprecated; GGUF in 0.3.0.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -492,8 +566,10 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     publishedToHfAt: "2026-05-14T00:00:00Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
+    deprecatedBackends: ["onnx"],
     ggufAssets: [
       {
+        // kokoro-v1.0-q4.onnx removed from HF; GGUF via 0.3.0 fork path.
         filename: "voice/kokoro/kokoro-v1.0-q4.onnx",
         sha256:
           "04cf570cf9c4153694f76347ed4b9a48c1b59ff1de0999e6605d123966b197c7",
@@ -510,7 +586,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     ],
     evalDeltas: { netImprovement: true },
     changelogEntry:
-      "Initial release — kokoro 82M voice-embedding af_bella preset.",
+      "Initial release — kokoro 82M voice-embedding af_bella preset (ONNX deprecated; fork GGUF path in 0.3.0).",
     minBundleVersion: "0.0.0",
   },
   {
@@ -552,13 +628,36 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
   },
   {
     id: "vad",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-19T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    // K7: VAD is fully native through silero-vad-cpp/libsilero_vad.
+    // ONNX file removed from HF in this release.
+    preferredBackend: "ffi",
+    ggufAssets: [
+      {
+        filename: "voice/vad/silero-vad-v5.gguf",
+        sha256:
+          "d348cd6d87ea53dcd3e6680698c88be326082e27dae899adef653d090bee4995",
+        sizeBytes: 620_736,
+        quant: "gguf-fp32",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry: "0.2.0 — ONNX file removed from HF; GGUF-only release.",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "vad",
     version: "0.1.0",
     publishedToHfAt: "2026-05-15T07:15:30Z",
     hfRepo: "elizaos/eliza-1",
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     // K7: VAD is fully native through silero-vad-cpp/libsilero_vad.
     // vad.ts imports SileroVadGgml only; onnxruntime-node NOT imported.
-    // ONNX file stays on HF for one release per HF asset policy.
+    // ONNX file deprecated; removed from HF in 0.2.0.
     preferredBackend: "ffi",
     deprecatedBackends: ["onnx"],
     ggufAssets: [
@@ -578,7 +677,33 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — Silero VAD v5 GGUF.",
+    changelogEntry:
+      "Initial release — Silero VAD v5 GGUF (ONNX file deprecated; removed in 0.2.0).",
+    minBundleVersion: "0.0.0",
+  },
+  {
+    id: "wakeword",
+    version: "0.2.0",
+    parentVersion: "0.1.0",
+    publishedToHfAt: "2026-05-19T00:00:00Z",
+    hfRepo: "elizaos/eliza-1",
+    hfRevision: "pending",
+    // K7: wake-word is fully on fork FFI. ONNX files removed from HF in
+    // this release; combined GGUF (mel filterbank + embedding + heads) is
+    // the canonical asset going forward.
+    preferredBackend: "ffi",
+    ggufAssets: [],
+    missingAssets: [
+      {
+        filename: "voice/wakeword/openwakeword.gguf",
+        quant: "gguf-fp32",
+        expectedSizeBytes: 3_000_000,
+        reason: "missing-from-hf-repo",
+      },
+    ],
+    evalDeltas: { netImprovement: true },
+    changelogEntry:
+      "0.2.0 — ONNX files removed from HF; combined openwakeword.gguf target.",
     minBundleVersion: "0.0.0",
   },
   {
@@ -589,7 +714,7 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
     hfRevision: "20b291b5820937e8a1e1ca9f2927f5bc64aefe7e",
     // K7: wake-word is fully on fork FFI (eliza_inference_wakeword_* in
     // libelizainference). wake-word.ts uses GgmlWakeWordModel only;
-    // onnxruntime-node NOT imported. ONNX files stay on HF for one release.
+    // onnxruntime-node NOT imported. ONNX files deprecated; removed in 0.2.0.
     preferredBackend: "ffi",
     deprecatedBackends: ["onnx"],
     ggufAssets: [
@@ -616,7 +741,8 @@ export const VOICE_MODEL_VERSIONS: ReadonlyArray<VoiceModelVersion> = [
       },
     ],
     evalDeltas: { netImprovement: true },
-    changelogEntry: "Initial release — hey-eliza wake-word head.",
+    changelogEntry:
+      "Initial release — hey-eliza wake-word head ONNX (deprecated; removed in 0.2.0).",
     minBundleVersion: "0.0.0",
   },
   {
