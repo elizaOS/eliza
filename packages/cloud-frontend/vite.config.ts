@@ -410,6 +410,18 @@ export default defineConfig(({ mode }) => {
       // Keep the build warning budget explicit so import and resolver warnings
       // still stand out in CI output.
       chunkSizeWarningLimit: 3000,
+      // Strip route-specific vendor chunks (wallet, docs, charts) from the
+      // entry's <link rel="modulepreload"> set. Rolldown otherwise lists every
+      // transitive dep of every lazy route in the entry's preload manifest,
+      // which on the landing page was 58 preloads (22 of them wallet chunks)
+      // before the user navigated anywhere. Those chunks still load on demand
+      // via Vite's __vitePreload helper at the dynamic-import callsite, so
+      // dropping them from the entry only saves the initial connection budget.
+      modulePreload: {
+        polyfill: false,
+        resolveDependencies: (_filename, deps) =>
+          deps.filter((dep) => !/vendor-(wallet|docs|charts)-/.test(dep)),
+      },
       rolldownOptions: {
         output: {
           codeSplitting: {

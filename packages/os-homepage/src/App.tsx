@@ -1,39 +1,33 @@
 import {
-  StripeCheckoutError,
-  startStripeCheckout,
-} from "@elizaos/checkout-shared";
-import {
   HARDWARE_PRODUCTS as hardwareProducts,
   type Product,
 } from "@elizaos/hardware-catalog";
 import {
-  BRAND_COLORS,
   BRAND_PATHS,
   EXTERNAL_URLS,
   LOGO_FILES,
 } from "@elizaos/shared-brand";
-import {
-  exchangeStewardCode,
-  hasStewardAuthedCookie,
-  readStoredStewardToken,
-  STEWARD_NONCE_EXCHANGE_ENDPOINT,
-  STEWARD_SESSION_ENDPOINT,
-  STEWARD_TENANT_ID,
-  syncStewardSession,
-  writeStoredStewardToken,
-} from "@elizaos/steward-session-client";
 import { CloudVideoBackground } from "@elizaos/ui";
-import { StewardAuth } from "@stwd/sdk";
-import { ArrowRight, CreditCard, Download, ShoppingBag } from "lucide-react";
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { ArrowRight, Download, ShoppingBag } from "lucide-react";
+import { lazy, type ReactNode, Suspense, useEffect, useState } from "react";
+
+const CheckoutPage = lazy(() =>
+  import("./CheckoutPage").then((module) => ({ default: module.CheckoutPage })),
+);
+const CheckoutResult = lazy(() =>
+  import("./CheckoutPage").then((module) => ({
+    default: module.CheckoutResult,
+  })),
+);
+const ProductDetail = lazy(() =>
+  import("./ProductDetail").then((module) => ({
+    default: module.ProductDetail,
+  })),
+);
 
 const appUrl = EXTERNAL_URLS.app;
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
 const checkoutBaseUrl = `${EXTERNAL_URLS.os}/checkout`;
-const cloudApiUrl =
-  import.meta.env.VITE_ELIZA_CLOUD_API_URL || "https://api.elizacloud.ai";
-const stewardApiUrl = `${cloudApiUrl.replace(/\/$/, "")}/steward`;
-const stewardTenantId = STEWARD_TENANT_ID;
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
 
 type ReleaseArtifact = {
@@ -100,124 +94,6 @@ const releaseFallback: ReleaseManifest = {
     },
   ],
 };
-
-function productCheckoutUrl(sku: string) {
-  return `${checkoutBaseUrl}?sku=${sku}`;
-}
-
-function getDefaultProduct(): Product {
-  const fallback =
-    hardwareProducts.find((product) => product.sku === "elizaos-usb") ??
-    hardwareProducts[0];
-  if (!fallback) throw new Error("Hardware catalog is empty");
-  return fallback;
-}
-
-function getCheckoutProduct(): Product {
-  const sku = new URLSearchParams(window.location.search).get("sku");
-  return (
-    hardwareProducts.find((product) => product.sku === sku) ??
-    getDefaultProduct()
-  );
-}
-
-function buildCheckoutPath(product: Product) {
-  return `/checkout?sku=${encodeURIComponent(product.sku)}`;
-}
-
-/**
- * Build the redirect_uri we hand to Steward. Kept as a single function so the
- * value we send at /authorize time exactly matches the value we send at
- * /exchange time — Steward rejects the exchange if they differ.
- */
-function buildOAuthRedirectUri(product: Product): string {
-  return `${window.location.origin}${buildCheckoutPath(product)}`;
-}
-
-function buildOAuthUrl(provider: "google" | "discord" | "github") {
-  const product = getCheckoutProduct();
-  const params = new URLSearchParams({
-    redirect_uri: buildOAuthRedirectUri(product),
-    tenant_id: stewardTenantId,
-    // Opt into the nonce-exchange flow: Steward redirects back with
-    // `?code=<nonce>` (no tokens in the URL) and we trade the code for
-    // tokens server-side via /api/auth/steward-nonce-exchange.
-    response_type: "code",
-  });
-  return `${stewardApiUrl}/auth/oauth/${provider}/authorize?${params.toString()}`;
-}
-
-function getStoredStewardToken() {
-  return readStoredStewardToken();
-}
-
-const stewardSessionEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_SESSION_ENDPOINT}`;
-const stewardNonceExchangeEndpoint = `${cloudApiUrl.replace(/\/$/, "")}${STEWARD_NONCE_EXCHANGE_ENDPOINT}`;
-
-/**
- * Read the one-time OAuth code from `?code=` (nonce-exchange flow). Steward
- * redirects to the callback with `?code=<NONCE>` and **no tokens** in the
- * URL. We pull the code, strip it from history immediately so it doesn't
- * appear in browser history / extension snapshots / shared URLs, and POST it
- * server-side. Returns null when no code is present so the caller can fall
- * through to the hash / query token fallbacks during the rollout window.
- */
-function consumeStewardCodeFromQuery(): string | null {
-  if (typeof window === "undefined") return null;
-  const params = new URLSearchParams(window.location.search);
-  const code = params.get("code");
-  if (!code) return null;
-  params.delete("code");
-  const query = params.toString();
-  window.history.replaceState(
-    null,
-    "",
-    query ? `${window.location.pathname}?${query}` : window.location.pathname,
-  );
-  return code;
-}
-
-/**
- * Parse Steward tokens from the URL hash fragment. The hash never leaves the
- * browser — it is not sent to the server, not written to access logs, not
- * passed via Referer, and not stored in browser history beyond what the SPA
- * sees on first paint. Strips the hash from `location` immediately after
- * reading so it cannot be re-read or copy-pasted out of the address bar.
- *
- * Returns null when no `#token=` is present so the caller can fall through to
- * the legacy `?token=` query parser during the rollout window.
- */
-function consumeStewardTokensFromHash(): {
-  token: string;
-  refreshToken: string | null;
-} | null {
-  // The inline pre-init script in index.html snapshots and removes any
-  // `#token=...` fragment before React mounts and stores it on
-  // window.__stewardOAuthHash. Prefer that so we never depend on the
-  // fragment still being in `location.hash` by the time React boots
-  // (analytics, Sentry, etc. may have already read `location.href`).
-  const stewardWindow = window as Window & { __stewardOAuthHash?: string };
-  const snapshotted = stewardWindow.__stewardOAuthHash;
-  const hash = snapshotted || window.location.hash;
-  if (snapshotted) {
-    delete stewardWindow.__stewardOAuthHash;
-  }
-  if (!hash || hash.length < 2) return null;
-  const params = new URLSearchParams(hash.replace(/^#/, ""));
-  const token = params.get("token");
-  if (!token) return null;
-  const refreshToken = params.get("refreshToken");
-  if (!snapshotted) {
-    // Fallback path (legacy browsers without the inline script): strip the
-    // hash now. `replaceState` keeps pathname + search intact.
-    window.history.replaceState(
-      null,
-      "",
-      `${window.location.pathname}${window.location.search}`,
-    );
-  }
-  return { token, refreshToken };
-}
 
 function ProductImage({
   product,
@@ -399,346 +275,6 @@ function Footer() {
   );
 }
 
-function ProductDetail({ product }: { product: Product }) {
-  return (
-    <div className="os-shell">
-      <Header solid />
-      <main id="main">
-        <section className="band band-blue product-detail-hero">
-          <div className="band-inner detail-grid">
-            <div>
-              <a href="/#hardware" className="text-link">
-                Hardware
-              </a>
-              <h1>{product.name}</h1>
-              <p>{product.summary}</p>
-              <p className="detail-extra">{product.detail}</p>
-              <div className="detail-meta">
-                {product.price ? <strong>{product.price}</strong> : null}
-                {product.ships ? <span>{product.ships}</span> : null}
-              </div>
-              <div className="hero-actions">
-                <a href={productCheckoutUrl(product.sku)} className="button">
-                  Pre-order on elizaos.ai
-                  <ArrowRight className="icon" />
-                </a>
-                <a href={betaManifestUrl} className="button button-dark">
-                  Download beta
-                  <Download className="icon" />
-                </a>
-              </div>
-              <p className="detail-note">Checkout stays on elizaos.ai.</p>
-            </div>
-            <ProductImage product={product} priority />
-          </div>
-        </section>
-      </main>
-      <Footer />
-    </div>
-  );
-}
-
-function CheckoutResult({
-  success,
-  canceled,
-}: {
-  success?: boolean;
-  canceled?: boolean;
-}) {
-  return (
-    <div className="os-shell">
-      <Header solid />
-      <main id="main">
-        <section className="band band-blue checkout-result">
-          <div className="band-inner">
-            <h1>{success ? "Pre-order received." : "Checkout canceled."}</h1>
-            <p>
-              {success
-                ? "Your ElizaOS hardware order is connected to your Eliza Cloud account."
-                : "No payment was completed. You can return to the store when ready."}
-            </p>
-            <a href="/#hardware" className="button">
-              {canceled ? "Return to hardware" : "Back to elizaOS"}
-            </a>
-          </div>
-        </section>
-      </main>
-      <Footer />
-    </div>
-  );
-}
-
-function CheckoutPage() {
-  const [product, setProduct] = useState(getCheckoutProduct);
-  const [selectedColor, setSelectedColor] = useState(product.colors[0]);
-  const [email, setEmail] = useState("");
-  const [status, setStatus] = useState<
-    "idle" | "syncing" | "email-sent" | "checkout"
-  >("idle");
-  const [isAuthed, setIsAuthed] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const auth = useMemo(
-    () =>
-      new StewardAuth({ baseUrl: stewardApiUrl, tenantId: stewardTenantId }),
-    [],
-  );
-
-  useEffect(() => {
-    // Preferred path: server-side nonce exchange. Steward redirects to
-    // `?code=<nonce>` (no tokens in the URL at all). We POST the code to the
-    // cloud-api server-side exchange route, which calls Steward
-    // `/auth/oauth/exchange` and sets HttpOnly cookies. Access and refresh
-    // tokens never enter this process.
-    const code = consumeStewardCodeFromQuery();
-    if (code) {
-      setStatus("syncing");
-      exchangeStewardCode(code, {
-        endpoint: stewardNonceExchangeEndpoint,
-        redirectUri: buildOAuthRedirectUri(product),
-        tenantId: stewardTenantId,
-      })
-        .then(() => {
-          setIsAuthed(true);
-        })
-        .catch((error: unknown) => {
-          setMessage(
-            error instanceof Error
-              ? error.message
-              : "Could not complete Eliza Cloud sign-in.",
-          );
-        })
-        .finally(() => setStatus("idle"));
-      return;
-    }
-
-    // Fallback (one-release rollout window): tokens in the URL hash
-    // (#token=...). Hash never leaves the browser, but the tokens still
-    // touch JS — preferred only until all consumers have moved to the
-    // nonce-exchange flow above. Legacy `?token=` query also accepted.
-    const fromHash = consumeStewardTokensFromHash();
-    const params = new URLSearchParams(window.location.search);
-    const queryToken = params.get("token");
-    const queryRefreshToken = params.get("refreshToken");
-    const token = fromHash?.token ?? queryToken;
-    const refreshToken =
-      fromHash?.refreshToken ?? queryRefreshToken ?? undefined;
-    if (!token) {
-      setIsAuthed(Boolean(getStoredStewardToken()) || hasStewardAuthedCookie());
-      return;
-    }
-
-    setStatus("syncing");
-    writeStoredStewardToken(token);
-    // Refresh token is forwarded to the server only so it can be set as the
-    // HttpOnly steward-refresh-token cookie — it is NOT persisted in
-    // localStorage (XSS-reachable). The HttpOnly cookie is the only
-    // persistence after first login.
-
-    syncStewardSession(token, refreshToken ?? null, {
-      endpoint: stewardSessionEndpoint,
-    })
-      .then(() => {
-        setIsAuthed(true);
-        if (queryToken || queryRefreshToken) {
-          params.delete("token");
-          params.delete("refreshToken");
-          const query = params.toString();
-          window.history.replaceState(
-            null,
-            "",
-            query
-              ? `${window.location.pathname}?${query}`
-              : window.location.pathname,
-          );
-        }
-      })
-      .catch((error: unknown) => {
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Could not sync Eliza Cloud session.",
-        );
-      })
-      .finally(() => setStatus("idle"));
-  }, [product]);
-
-  useEffect(() => {
-    setSelectedColor(product.colors[0]);
-  }, [product]);
-
-  async function sendMagicLink() {
-    if (!email.trim()) {
-      setMessage("Enter your email first.");
-      return;
-    }
-    setStatus("syncing");
-    setMessage(null);
-    try {
-      await auth.signInWithEmail(email.trim());
-      setStatus("email-sent");
-    } catch (error) {
-      setStatus("idle");
-      setMessage(
-        error instanceof Error ? error.message : "Could not send magic link.",
-      );
-    }
-  }
-
-  async function beginCheckout() {
-    setStatus("checkout");
-    setMessage(null);
-    try {
-      await startStripeCheckout(
-        {
-          hardwareColor: selectedColor.name,
-          hardwareSku: product.sku,
-          returnUrl: "billing",
-        },
-        {
-          apiBaseUrl: cloudApiUrl,
-          bearerToken: getStoredStewardToken(),
-        },
-      );
-    } catch (error) {
-      setStatus("idle");
-      if (error instanceof StripeCheckoutError && error.status === 401) {
-        setIsAuthed(false);
-      }
-      setMessage(
-        error instanceof Error ? error.message : "Could not start checkout.",
-      );
-    }
-  }
-
-  return (
-    <div className="os-shell">
-      <Header solid />
-      <main id="main">
-        <section className="band band-blue checkout-hero">
-          <div className="band-inner checkout-grid">
-            <div className="checkout-copy">
-              <p className="section-kicker">Pre-order</p>
-              <h1>{product.name}</h1>
-              <p>{product.detail}</p>
-              <div className="detail-meta">
-                {product.price ? <strong>{product.price}</strong> : null}
-                {product.ships ? <span>{product.ships}</span> : null}
-              </div>
-            </div>
-            <div className="checkout-product-shot">
-              <ProductImage product={product} priority />
-            </div>
-          </div>
-        </section>
-
-        <section className="band band-white checkout-flow">
-          <div className="band-inner checkout-grid">
-            <div>
-              <h2>Checkout on elizaOS.</h2>
-              <p className="section-lede">
-                Login, customer records, credits, and Stripe payments are
-                provided by Eliza Cloud.
-              </p>
-            </div>
-            <div className="checkout-panel">
-              <div className="checkout-product-picker">
-                {hardwareProducts.map((item) => (
-                  <button
-                    type="button"
-                    key={item.sku}
-                    className={
-                      item.sku === product.sku
-                        ? "picker-item picker-item-active"
-                        : "picker-item"
-                    }
-                    onClick={() => {
-                      setProduct(item);
-                      window.history.replaceState(
-                        null,
-                        "",
-                        buildCheckoutPath(item),
-                      );
-                    }}
-                  >
-                    <span>{item.name}</span>
-                    <strong>{item.price ?? "Pre-order"}</strong>
-                  </button>
-                ))}
-              </div>
-
-              <fieldset className="color-row" aria-label="Hardware color">
-                {product.colors.map((color) => (
-                  <button
-                    type="button"
-                    key={color.id}
-                    className={
-                      selectedColor.id === color.id
-                        ? "color-swatch color-swatch-active"
-                        : "color-swatch"
-                    }
-                    style={{
-                      backgroundColor:
-                        color.name === "Orange"
-                          ? BRAND_COLORS.orange
-                          : color.name.startsWith("Blue")
-                            ? BRAND_COLORS.blue
-                            : color.name === "Black"
-                              ? BRAND_COLORS.black
-                              : BRAND_COLORS.white,
-                    }}
-                    onClick={() => setSelectedColor(color)}
-                    aria-label={`Select ${color.name}`}
-                  />
-                ))}
-              </fieldset>
-
-              {isAuthed ? (
-                <button
-                  type="button"
-                  className="button checkout-button"
-                  onClick={beginCheckout}
-                  disabled={status === "checkout"}
-                >
-                  <CreditCard className="icon" />
-                  {status === "checkout" ? "Opening Stripe..." : "Pay deposit"}
-                </button>
-              ) : (
-                <div className="login-box">
-                  <div className="email-row">
-                    <input
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      placeholder="you@example.com"
-                      type="email"
-                    />
-                    <button
-                      type="button"
-                      onClick={sendMagicLink}
-                      disabled={status === "syncing"}
-                    >
-                      Email link
-                    </button>
-                  </div>
-                  <div className="oauth-row">
-                    <a href={buildOAuthUrl("google")}>Google</a>
-                    <a href={buildOAuthUrl("github")}>GitHub</a>
-                    <a href={buildOAuthUrl("discord")}>Discord</a>
-                  </div>
-                </div>
-              )}
-              {status === "email-sent" ? (
-                <p className="checkout-message">Check your inbox.</p>
-              ) : null}
-              {message ? <p className="checkout-message">{message}</p> : null}
-            </div>
-          </div>
-        </section>
-      </main>
-      <Footer />
-    </div>
-  );
-}
-
 function HomePage() {
   return (
     <div className="os-shell">
@@ -782,15 +318,55 @@ function HomePage() {
   );
 }
 
+function RouteFallback() {
+  return (
+    <div
+      className="os-shell"
+      style={{
+        minHeight: "100vh",
+        background: "var(--brand-blue, #0066ff)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        aria-label="Loading"
+        style={{
+          width: 32,
+          height: 32,
+          border: "3px solid rgba(255,255,255,0.3)",
+          borderTopColor: "#fff",
+          borderRadius: "50%",
+          animation: "spin 0.8s linear infinite",
+        }}
+      />
+      <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+    </div>
+  );
+}
+
 export function App() {
   if (window.location.pathname === "/checkout/success") {
-    return <CheckoutResult success />;
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <CheckoutResult success />
+      </Suspense>
+    );
   }
   if (window.location.pathname === "/checkout/cancel") {
-    return <CheckoutResult canceled />;
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <CheckoutResult canceled />
+      </Suspense>
+    );
   }
   if (window.location.pathname === "/checkout") {
-    return <CheckoutPage />;
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <CheckoutPage />
+      </Suspense>
+    );
   }
 
   const match = window.location.pathname.match(/^\/hardware\/([^/]+)\/?$/);
@@ -799,7 +375,11 @@ export function App() {
     : undefined;
 
   if (match && product) {
-    return <ProductDetail product={product} />;
+    return (
+      <Suspense fallback={<RouteFallback />}>
+        <ProductDetail product={product} />
+      </Suspense>
+    );
   }
 
   return <HomePage />;

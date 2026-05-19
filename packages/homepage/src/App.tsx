@@ -1,4 +1,5 @@
 import { BRAND_COLORS } from "@elizaos/shared-brand";
+import { Loader2 } from "lucide-react";
 import { lazy, Suspense } from "react";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { QueryProvider } from "@/components/providers/query-provider";
@@ -15,12 +16,12 @@ function RouteFallback() {
     <main
       className="theme-app min-h-screen flex flex-col items-center justify-center px-4"
       style={{
-        background: BRAND_COLORS.black,
-        color: BRAND_COLORS.white,
+        background: BRAND_COLORS.orange,
+        color: BRAND_COLORS.black,
         fontFamily: "Poppins",
       }}
     >
-      <div className="opacity-70">Loading…</div>
+      <Loader2 className="h-8 w-8 animate-spin opacity-80" />
     </main>
   );
 }

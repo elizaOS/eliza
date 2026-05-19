@@ -131,6 +131,8 @@ export async function runPlannerLoop(
 	const failures: FailureLike[] = [];
 	let terminalOnlyContinuations = 0;
 	let requiredToolMisses = 0;
+	let unavailableToolCallRetries = 0;
+	let silentFailedFinishRecoveries = 0;
 	const requireNonTerminalToolCall =
 		params.requireNonTerminalToolCall === true &&
 		hasExposedNonTerminalTool(params.tools);
@@ -218,27 +220,19 @@ export async function runPlannerLoop(
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					requiredToolMisses++;
-					if (requiredToolMisses > config.maxRequiredToolMisses) {
-						params.runtime.logger?.warn?.(
-							{
-								src: "planner-loop",
-								iteration,
-								misses: requiredToolMisses,
-								max: config.maxRequiredToolMisses,
-								messageToUser: plannerOutput.messageToUser,
-							},
-							"required_tool_misses budget exhausted; honoring planner's terminal reply instead of throwing",
-						);
-					} else {
-						handleRequiredToolPlannerMiss({
-							trajectory,
-							iteration,
-							plannerOutput,
-							reason: "no_tool_calls",
-							logger: params.runtime.logger,
-						});
-						continue;
-					}
+					assertTrajectoryLimit({
+						kind: "required_tool_misses",
+						max: config.maxRequiredToolMisses,
+						observed: requiredToolMisses,
+					});
+					handleRequiredToolPlannerMiss({
+						trajectory,
+						iteration,
+						plannerOutput,
+						reason: "no_tool_calls",
+						logger: params.runtime.logger,
+					});
+					continue;
 				}
 				trajectory.steps.push({
 					iteration,
@@ -326,27 +320,19 @@ export async function runPlannerLoop(
 					!hasExecutedNonTerminalTool(trajectory)
 				) {
 					requiredToolMisses++;
-					if (requiredToolMisses > config.maxRequiredToolMisses) {
-						params.runtime.logger?.warn?.(
-							{
-								src: "planner-loop",
-								iteration,
-								misses: requiredToolMisses,
-								max: config.maxRequiredToolMisses,
-								messageToUser: plannerOutput.messageToUser,
-							},
-							"required_tool_misses budget exhausted; honoring planner's terminal tool-call reply instead of throwing",
-						);
-					} else {
-						handleRequiredToolPlannerMiss({
-							trajectory,
-							iteration,
-							plannerOutput,
-							reason: "terminal_only_tool_calls",
-							logger: params.runtime.logger,
-						});
-						continue;
-					}
+					assertTrajectoryLimit({
+						kind: "required_tool_misses",
+						max: config.maxRequiredToolMisses,
+						observed: requiredToolMisses,
+					});
+					handleRequiredToolPlannerMiss({
+						trajectory,
+						iteration,
+						plannerOutput,
+						reason: "terminal_only_tool_calls",
+						logger: params.runtime.logger,
+					});
+					continue;
 				}
 				const finalMessage = terminalMessageFromToolCalls(
 					plannerOutput.toolCalls,
@@ -388,12 +374,43 @@ export async function runPlannerLoop(
 			const nonTerminalCalls = plannerOutput.toolCalls
 				.filter((toolCall) => !isTerminalToolCall(toolCall))
 				.map((toolCall, index) => ensureToolCallId(toolCall, iteration, index));
-			trajectory.plannedQueue.push(...nonTerminalCalls);
+			const unavailable = splitUnavailableToolCalls(
+				nonTerminalCalls,
+				params.tools,
+			);
+			if (unavailable.invalid.length > 0) {
+				params.runtime.logger?.warn?.(
+					{
+						iteration,
+						invalidToolCalls: unavailable.invalid.map(
+							(toolCall) => toolCall.name,
+						),
+					},
+					"Planner called unavailable tools; retrying without executing them",
+				);
+				trajectory.context = appendUnavailableToolCallEvent({
+					context: trajectory.context,
+					iteration,
+					invalidToolCalls: unavailable.invalid,
+					tools: params.tools,
+				});
+				if (unavailable.valid.length === 0) {
+					unavailableToolCallRetries++;
+					assertTrajectoryLimit({
+						kind: "unavailable_tool_calls",
+						max: config.maxUnavailableToolCallRetries,
+						observed: unavailableToolCallRetries,
+					});
+					continue;
+				}
+			}
+			const validNonTerminalCalls = unavailable.valid;
+			trajectory.plannedQueue.push(...validNonTerminalCalls);
 			trajectory.context = {
 				...trajectory.context,
 				plannedQueue: [
 					...(trajectory.context.plannedQueue ?? []),
-					...nonTerminalCalls.map((toolCall) => ({
+					...validNonTerminalCalls.map((toolCall) => ({
 						id: toolCall.id,
 						name: toolCall.name,
 						args: stringifyForModel(toolCall.params ?? {}),
@@ -402,7 +419,7 @@ export async function runPlannerLoop(
 					})),
 				],
 			};
-			for (const toolCall of nonTerminalCalls) {
+			for (const toolCall of validNonTerminalCalls) {
 				trajectory.context = appendContextEvent(trajectory.context, {
 					id: `queue:${toolCall.id ?? toolCall.name}:${iteration}`,
 					type: "planned_tool_call",
@@ -503,12 +520,32 @@ export async function runPlannerLoop(
 		appendEvaluatorContextEvent(trajectory, evaluator, iteration);
 
 		if (evaluator.decision === "FINISH") {
+			if (
+				shouldRecoverSilentFailedFinish({
+					evaluator,
+					trajectory,
+					recoveryCount: silentFailedFinishRecoveries,
+				})
+			) {
+				silentFailedFinishRecoveries++;
+				trajectory.context = appendSilentFailedFinishRecoveryEvent({
+					context: trajectory.context,
+					iteration,
+					evaluator,
+					trajectory,
+				});
+				continue;
+			}
 			return {
 				status: "finished",
 				trajectory,
 				evaluator,
 				finalMessage: userSafeFinalMessage(
-					evaluator.messageToUser ?? latestToolResultText(trajectory),
+					evaluator.messageToUser ??
+						latestToolResultText(trajectory) ??
+						(evaluator.success === false
+							? failedToolFallbackMessage(trajectory)
+							: undefined),
 					trajectory,
 				),
 			};
@@ -1636,6 +1673,7 @@ async function executeQueuedToolCall(params: {
 		toolName: params.toolCall.name,
 		success: result.success,
 		error: result.error,
+		repeatKey: toolFailureRepeatKey(params.toolCall),
 	};
 	if (!result.success || result.error != null) {
 		params.failures.push(failure);

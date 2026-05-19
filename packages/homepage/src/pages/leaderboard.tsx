@@ -31,13 +31,19 @@ import type {
   HTMLAttributes,
   SVGProps,
 } from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
-import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
-import VideoCall from "@/components/VideoCall";
+
+// Heavy WebGL bundles split out so the leaderboard route shell becomes
+// interactive without waiting for the shader/canvas code. ShaderBackground is
+// opt-in via ?shader=1. VideoCall only mounts when the user opens the modal.
+const ShaderBackground = lazy(
+  () => import("@/components/ShaderBackground/ShaderBackground"),
+);
+const VideoCall = lazy(() => import("@/components/VideoCall"));
 import { buildElizaSmsHref } from "@/lib/contact";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 
@@ -735,7 +741,11 @@ export default function Leaderboard() {
         transition: "background-color 240ms ease, background 240ms ease",
       }}
     >
-      {SHADER_BACKGROUND_OPT_IN && <ShaderBackground />}
+      {SHADER_BACKGROUND_OPT_IN && (
+        <Suspense fallback={null}>
+          <ShaderBackground />
+        </Suspense>
+      )}
       <ModelB
         ref={modelRef}
         tryActive={platform === "try"}
@@ -1270,7 +1280,11 @@ export default function Leaderboard() {
           )}
         </p>
       </AnimatedDiv>
-      <VideoCall visible={showVideo} onClose={() => setShowVideo(false)} />
+      {showVideo && (
+        <Suspense fallback={null}>
+          <VideoCall visible={showVideo} onClose={() => setShowVideo(false)} />
+        </Suspense>
+      )}
       <AnimatedDiv
         className={`fixed inset-0 z-50 bg-white pointer-events-none flex items-center justify-center duration-100 ${
           introDone ? "opacity-0" : ""
