@@ -674,15 +674,11 @@ export function createKokoroTtsBackend(
 	const forkModelId =
 		process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0";
 	const decision = pickKokoroRuntimeBackend({
-		defaultBackend: kokoro.runtimeKind === "onnx" ? "onnx" : "fork",
+		defaultBackend: "fork",
 		fork: {
 			serverUrl: forkUrl,
 			modelId: forkModelId,
 			sampleRate: kokoro.layout.sampleRate,
-		},
-		onnx: {
-			layout: kokoro.layout,
-			expectedSha256: null,
 		},
 	});
 	logger.info(
@@ -1059,7 +1055,7 @@ export class EngineVoiceBridge {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
 						const { WespeakerEncoder } = await import("./speaker/encoder");
-						const modelPath = `${bundleRootForEncoder}/speaker/encoder.onnx`;
+						const modelPath = `${bundleRootForEncoder}/speaker/encoder.gguf`;
 						try {
 							resolvedEncoder = await WespeakerEncoder.load(modelPath);
 						} catch (err) {
@@ -1477,8 +1473,10 @@ export class EngineVoiceBridge {
 	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
 	 *   fused `libelizainference` streaming ASR (final path, gated on a
 	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
-	 *   only the fused path; the whisper.cpp interim fallback has been removed.
+	 *   same bundled model → whisper.cpp via the libwhisper_eliza_adapter FFI
+	 *   binding → `AsrUnavailableError`. The Eliza-1 bridge prefers the fused
+	 *   path; whisper.cpp is the cross-arch fallback (works on x86_64, arm64,
+	 *   riscv64) and replaces the previous OpenVINO Python-worker path.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1831,7 +1829,7 @@ function ensureContext(
  * model memory; nothing to mmap-acquire or evict. ASR is not served
  * from this path — callers that need ASR construct
  * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
- * supports `openvino-whisper` and `whisper.cpp` without a bundle).
+ * supports `whisper-cpp` without a bundle).
  */
 function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	const noopMmap = (id: string): MmapRegionHandle => ({

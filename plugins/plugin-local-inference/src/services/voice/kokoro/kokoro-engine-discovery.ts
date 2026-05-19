@@ -1,22 +1,19 @@
 /**
  * On-disk discovery for the Kokoro-only voice mode. Probes
  * `~/.eliza/local-inference/models/kokoro/` (or `$ELIZA_KOKORO_MODEL_DIR`)
- * for a model file (preferred order: fused-GGUF → quantized ONNX → fp32
- * ONNX) plus at least one voice `.bin` under `voices/`. Callers can pass an
- * explicit model root to probe bundle-local Kokoro artifacts first. Returns
- * null when anything is missing — no auto-download (AGENTS.md §3).
+ * for a GGUF model file plus at least one voice `.bin` under `voices/`.
+ * Callers can pass an explicit model root to probe bundle-local Kokoro
+ * artifacts first. Returns null when anything is missing — no
+ * auto-download (AGENTS.md §3).
  *
- * The fused-GGUF path is produced by the elizaOS/llama.cpp fork's
- * `omnivoice/tools/convert_kokoro_to_gguf.py` and runs through the same
- * `libelizainference` shared library that already serves OmniVoice + ASR
- * + VAD. When both an ONNX and a GGUF are staged the discovery prefers
- * the GGUF — the ONNX stays around as a fallback for bundles that
- * pre-date the port (see kokoro-llama-cpp-feasibility.md §5).
+ * The GGUF is produced by the elizaOS/llama.cpp fork's
+ * `omnivoice/tools/convert_kokoro_to_gguf.py` and runs through the
+ * `libomnivoice` SHARED library (Capacitor on mobile, Bun FFI on
+ * desktop) that already serves OmniVoice + ASR + VAD.
  *
  * Env overrides:
  *   ELIZA_KOKORO_MODEL_DIR        — directory root
- *   ELIZA_KOKORO_MODEL_FILE       — exact filename inside the root
- *                                   (ONNX or GGUF; the loader auto-detects)
+ *   ELIZA_KOKORO_MODEL_FILE       — exact GGUF filename inside the root
  *   ELIZA_KOKORO_DEFAULT_VOICE_ID — default voice id (e.g. `af_same`, `af_bella`)
  */
 
@@ -35,25 +32,19 @@ export const KOKORO_DEFAULT_SAMPLE_RATE = 24_000;
 
 /**
  * Filenames the loader will accept if `ELIZA_KOKORO_MODEL_FILE` is unset.
- * Order is preference-first: a fused-GGUF beats an ONNX of the same
- * quantization tier, and within ONNX the int8 export beats fp32.
- *
- * The Q4_K_M GGUF is what the elizaOS/llama.cpp fork's
- * `omnivoice/tools/convert_kokoro_to_gguf.py` produces for shipping
- * tiers; `kokoro-82m-v1_0.gguf` is the unquantized canonical filename
- * the runtime documents at `kokoro-runtime.ts:KOKORO_GGUF_REL_PATH`.
+ * Order is preference-first: Q4_K_M is what the elizaOS/llama.cpp
+ * fork's `omnivoice/tools/convert_kokoro_to_gguf.py` produces for
+ * shipping tiers; `kokoro-82m-v1_0.gguf` is the unquantized canonical
+ * filename documented at `kokoro-runtime.ts:KOKORO_GGUF_REL_PATH`.
  */
 const CANDIDATE_MODEL_FILES: ReadonlyArray<string> = [
 	"kokoro-82m-v1_0-Q4_K_M.gguf",
 	"kokoro-82m-v1_0.gguf",
-	"kokoro-v1.0.int8.onnx",
-	"kokoro-v1.0.onnx",
-	"model_quantized.onnx",
-	"model_q4.onnx",
-	"model.onnx",
 ];
 
-/** True iff the candidate filename routes to the fused GGUF path. */
+/** True iff the candidate filename routes to the fused GGUF path.
+ *  Every supported file is GGUF on this codepath; the helper is kept
+ *  for back-compat with callers that branched on the runtime kind. */
 export function isKokoroGgufFile(filename: string): boolean {
 	return /\.gguf$/i.test(filename);
 }
@@ -69,15 +60,12 @@ export interface KokoroEngineDiscoveryResult {
 	 */
 	defaultVoiceId: string;
 	/**
-	 * Resolved runtime kind, derived from the model filename. The engine
-	 * layer uses this to pick between `KokoroGgufRuntime` (fused FFI /
-	 * `/v1/audio/speech`) and `KokoroOnnxRuntime` (onnxruntime-node).
-	 *
-	 * `gguf` = fused-llama.cpp Kokoro engine (preferred when staged).
-	 * `onnx` = legacy onnxruntime-node path (kept for bundles published
-	 *          before the port landed).
+	 * Resolved runtime kind, derived from the model filename. Always
+	 * `gguf` on this codepath — the legacy ONNX runtime has been
+	 * retired (every on-device model loads as GGUF). The field stays
+	 * for back-compat with callers that branched on it.
 	 */
-	runtimeKind: "gguf" | "onnx";
+	runtimeKind: "gguf";
 }
 
 /** Returns the on-disk directory the discovery probes. */
@@ -115,6 +103,12 @@ export function resolveKokoroEngineConfig(
 	const defaultVoiceId = resolveDefaultVoiceId(voicesDir);
 	if (!defaultVoiceId) return null;
 
+	if (!isKokoroGgufFile(modelFile)) {
+		throw new Error(
+			`[voice/kokoro] discovery resolved a non-GGUF model file (${modelFile}); every on-device model loads as GGUF. Remove the legacy ONNX artifact and stage the GGUF produced by omnivoice/tools/convert_kokoro_to_gguf.py.`,
+		);
+	}
+
 	return {
 		layout: {
 			root,
@@ -123,7 +117,7 @@ export function resolveKokoroEngineConfig(
 			sampleRate: KOKORO_DEFAULT_SAMPLE_RATE,
 		},
 		defaultVoiceId,
-		runtimeKind: isKokoroGgufFile(modelFile) ? "gguf" : "onnx",
+		runtimeKind: "gguf",
 	};
 }
 

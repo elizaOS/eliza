@@ -400,12 +400,13 @@ export interface VerifierStreamEvent {
 //      decides "is there acoustic activity right now". A rising edge wakes
 //      the response pipeline (KV-prefill, drafter preload, first-filler
 //      pre-generation) speculatively.
-//   2. The Silero int8 ONNX VAD is the *authoritative* speech/no-speech
-//      signal. It gates ASR (skip silent frames) and drives turn-taking.
+//   2. The Silero v5 GGUF VAD (silero-vad-cpp, ggml-backed) is the
+//      *authoritative* speech/no-speech signal. It gates ASR (skip
+//      silent frames) and drives turn-taking.
 //
 // Both run on every mic frame. The RMS gate never substitutes for Silero —
-// if the ONNX runtime is unavailable that is a hard "VAD unavailable" error,
-// never a silent downgrade (AGENTS.md §3).
+// if the native VAD runtime is unavailable that is a hard "VAD unavailable"
+// error, never a silent downgrade (AGENTS.md §3).
 // ---------------------------------------------------------------------------
 
 /** A fixed-size block of mono PCM samples in [-1, 1] at a known sample rate. */
@@ -462,8 +463,8 @@ export type EnergyGateListener = (event: EnergyGateEvent) => void;
 /**
  * Subscribable VAD event stream. `VadDetector` (`voice/vad.ts`) is the
  * concrete implementation; the streaming transcriber and the barge-in
- * controller take this structural view so they don't pull in the optional
- * `onnxruntime-node` surface.
+ * controller take this structural view so they don't pull in the native
+ * silero-vad-cpp bun:ffi surface.
  */
 export interface VadEventSource {
 	onVadEvent(listener: VadEventListener): () => void;

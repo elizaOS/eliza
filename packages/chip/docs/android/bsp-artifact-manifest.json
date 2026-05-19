@@ -68,6 +68,7 @@
         "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
         "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
         "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+        "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
         "docs/evidence/android/cuttlefish_riscv64_smoke.log",
         "docs/evidence/android/qemu_riscv64_smoke.log",
         "docs/evidence/android/renode_e1_soc_smoke.log"

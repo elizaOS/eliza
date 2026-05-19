@@ -369,8 +369,8 @@
     "docs/evidence/android/eliza_ai_soc_checkvintf.log": {
       "blocker_code": "missing_aosp_checkvintf_log",
       "claim_boundary": "single_checkvintf_result_only_not_android_compatibility_evidence",
-      "producer_command": "checkvintf against out/target/product/eliza_ai_soc vendor artifacts",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append checkvintf output against the real vendor artifacts",
+      "producer_command": "checkvintf --check-compat against out/target/product vendor + system artifacts",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append checkvintf --check-compat output against the real vendor and system artifacts; final marker line must be VINTF_COMPAT=ok",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",
@@ -385,7 +385,8 @@
       ],
       "required_all": [
         "eliza_e1.xml",
-        "eliza_ai_soc"
+        "eliza_ai_soc",
+        "VINTF_COMPAT=ok"
       ],
       "forbidden_any": [
         "INCOMPATIBLE",
@@ -403,8 +404,8 @@
     "docs/evidence/android/eliza_ai_soc_sepolicy_build.log": {
       "blocker_code": "missing_aosp_sepolicy_build_log",
       "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
-      "producer_command": "m vendor_sepolicy.cil selinux_policy",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP SELinux policy build transcript",
+      "producer_command": "m vendor_sepolicy.cil selinux_policy sepolicy_neverallows",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP SELinux policy build transcript; final marker line must be SEPOLICY_BUILD=ok",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",
@@ -420,7 +421,8 @@
       ],
       "required_all": [
         "e1_npu_device",
-        "hal_e1_npu_default"
+        "hal_e1_npu_default",
+        "SEPOLICY_BUILD=ok"
       ],
       "forbidden_any": [
         "neverallow check failed",
@@ -439,7 +441,7 @@
       "blocker_code": "missing_aosp_selinux_neverallow_log",
       "claim_boundary": "expected_future_log_markers_only_not_boot_evidence",
       "producer_command": "m sepolicy_neverallows",
-      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP neverallow transcript",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP neverallow transcript; final marker line must be SEPOLICY_NEVERALLOW=ok",
       "required_metadata": [
         "EXTERNAL_TREE=",
         "COMMAND=",
@@ -453,7 +455,8 @@
         "#### build completed successfully"
       ],
       "required_all": [
-        "e1_npu"
+        "e1_npu",
+        "SEPOLICY_NEVERALLOW=ok"
       ],
       "forbidden_any": [
         "neverallow check failed",
@@ -570,6 +573,45 @@
         "Kernel panic",
         "boot timeout",
         "adb: device offline",
+        "FAILED"
+      ],
+      "forbidden_claims": [
+        "booted on e1_soc",
+        "Android compatible",
+        "CTS passed",
+        "VTS passed",
+        "certified"
+      ]
+    },
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log": {
+      "blocker_code": "missing_aosp_cvd_hal_smoke_log",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "producer_command": "sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp",
+      "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, BOOT_CLAIM=none, SCHEMA=docs/android/boot-transcript.schema.json, then append launch_cvd output and adb shell lshal -i transcript; final marker lines must be HAL_REGISTERED=true and INTERFACE_AVAILABLE=true",
+      "required_metadata": [
+        "EXTERNAL_TREE=",
+        "COMMAND=",
+        "START_UTC=",
+        "END_UTC=",
+        "RESULT=",
+        "BOOT_CLAIM=none",
+        "COMPATIBILITY_CLAIM=none",
+        "SCHEMA=docs/android/boot-transcript.schema.json"
+      ],
+      "required_any": [
+        "lshal",
+        "sys.boot_completed=1"
+      ],
+      "required_all": [
+        "vendor.eliza.e1_npu@1.0::IE1Npu/default",
+        "HAL_REGISTERED=true",
+        "INTERFACE_AVAILABLE=true"
+      ],
+      "forbidden_any": [
+        "expected_hal_missing",
+        "hal_interface_not_available",
+        "adb: device offline",
+        "boot timeout",
         "FAILED"
       ],
       "forbidden_claims": [

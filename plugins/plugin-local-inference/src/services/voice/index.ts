@@ -73,12 +73,10 @@ export {
 	type VoiceTurnEvents,
 } from "./engine-bridge";
 export {
+	bundleHasLegacyOnnxTurnDetector,
 	createBundledLiveKitTurnDetector,
-	createBundledTurnsenseEotClassifier,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_DIR,
 	DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
-	DEFAULT_TURNSENSE_DIR,
-	DEFAULT_TURNSENSE_ONNX,
 	Eliza1EotClassifier,
 	type Eliza1EotScoreResult,
 	type Eliza1EotScorerOptions,
@@ -98,9 +96,6 @@ export {
 	type LiveKitTurnDetectorOptions,
 	RemoteEotClassifier,
 	type RemoteEotClassifierOptions,
-	TURNSENSE_HF_REPO,
-	TurnsenseEotClassifier,
-	type TurnsenseEotClassifierOptions,
 	turnDetectorRevisionForTier,
 	turnSignalFromProbability,
 	type VoiceNextSpeaker,

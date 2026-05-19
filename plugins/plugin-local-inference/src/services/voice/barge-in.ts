@@ -45,7 +45,7 @@ import type {
 } from "./types";
 
 /** Minimal structural view of `VadDetector` — avoids a module dependency on
- *  `vad.ts` (which pulls in the optional onnxruntime import surface). */
+ *  `vad.ts` (which pulls in the native silero-vad-cpp bun:ffi surface). */
 interface VadEventSource {
 	onVadEvent(listener: VadEventListener): () => void;
 }

@@ -20,7 +20,8 @@
  *
  * Sessions are in-memory. They expire after 30 minutes of inactivity.
  * The encoder is loaded lazily; the route handlers return a structured
- * 503 if `onnxruntime-node` is missing.
+ * 503 if the native voice-classifier library or the WeSpeaker GGUF is
+ * missing.
  *
  * Audio storage: when the user grants `audioRefs` consent, sample WAVs
  * land under `$ELIZA_STATE_DIR/voice-profiles/audio/<profileId>/...`.
@@ -163,7 +164,8 @@ function pruneExpiredSessions(now: number): void {
 
 /**
  * Encoder factory. By default the route handlers look for the bundled
- * WeSpeaker int8 ONNX in `$ELIZA_STATE_DIR/voice-profiles/models/<model>.onnx`.
+ * WeSpeaker GGUF at
+ * `$ELIZA_STATE_DIR/voice-profiles/models/wespeaker-resnet34-lm-int8.gguf`.
  * Tests inject a stub via `setVoiceOnboardingEncoderFactory()`.
  */
 export type EncoderFactory = () => Promise<SpeakerEncoder>;
@@ -188,7 +190,7 @@ async function loadEncoder(): Promise<SpeakerEncoder> {
 		resolveStateDir(),
 		"voice-profiles",
 		"models",
-		"wespeaker-resnet34-lm-int8.onnx",
+		"wespeaker-resnet34-lm-int8.gguf",
 	);
 	cachedEncoder = await WespeakerEncoder.load(
 		modelPath,

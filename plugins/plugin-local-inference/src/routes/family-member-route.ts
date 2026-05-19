@@ -25,9 +25,10 @@
  *   2. Encode via WespeakerEncoder → 256-dim centroid.
  *   3. Store in VoiceProfileStore (non-OWNER entity binding).
  *
- * Graceful degradation: when the WeSpeaker ONNX is unavailable the route
- * returns a 503. The client-side adapter (`VoiceProfilesClient`) falls back
- * to a stub profile so the UI flow is not blocked.
+ * Graceful degradation: when the WeSpeaker GGUF / native library is
+ * unavailable the route returns a 503. The client-side adapter
+ * (`VoiceProfilesClient`) falls back to a stub profile so the UI flow
+ * is not blocked.
  *
  * The `family_of` relationship edge is recorded in profile metadata so a
  * runtime-level consumer (e.g. voice-onboarding-complete handler) can create
@@ -95,7 +96,7 @@ async function loadEncoder(): Promise<SpeakerEncoder> {
 		resolveStateDir(),
 		"voice-profiles",
 		"models",
-		"wespeaker-resnet34-lm-int8.onnx",
+		"wespeaker-resnet34-lm-int8.gguf",
 	);
 	cachedEncoder = await WespeakerEncoder.load(
 		modelPath,

@@ -55,6 +55,7 @@ required_android_evidence:
   - docs/evidence/android/eliza_ai_soc_sepolicy_build.log
   - docs/evidence/android/eliza_ai_soc_selinux_neverallow.log
   - docs/evidence/android/eliza_ai_soc_cts_vts_plan.log
+  - docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log
   - docs/evidence/android/cuttlefish_riscv64_smoke.log
   - docs/evidence/android/cuttlefish_riscv64_boot.log
   - docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
@@ -78,6 +79,34 @@ required_android_marker_evidence:
       - VAD_SEGMENTS=
       - SELF_STATUS_FINAL_HTTP=200
       - SELF_STATUS_FINAL_PLUGINS_READY=local-inference
+  - id: aosp_checkvintf_compat
+    evidence: docs/evidence/android/eliza_ai_soc_checkvintf.log
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp checkvintf
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - VINTF_COMPAT=ok
+      - Compatible
+  - id: aosp_sepolicy_build
+    evidence: docs/evidence/android/eliza_ai_soc_sepolicy_build.log
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp sepolicy-build
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - SEPOLICY_BUILD=ok
+      - hal_e1_npu_default
+  - id: aosp_selinux_neverallow
+    evidence: docs/evidence/android/eliza_ai_soc_selinux_neverallow.log
+    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp selinux-neverallow
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - SEPOLICY_NEVERALLOW=ok
+  - id: cvd_hal_smoke
+    evidence: docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log
+    producer: sw/aosp-device/check-cvd-hal-smoke.sh /path/to/aosp
+    operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
+    required_markers:
+      - HAL_REGISTERED=true
+      - INTERFACE_AVAILABLE=true
+      - vendor.eliza.e1_npu@1.0::IE1Npu/default
 required_simulated_peripherals:
   - id: rear_camera
     evidence: docs/evidence/android/peripherals/rear_camera_sim.log
