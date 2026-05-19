@@ -14,11 +14,14 @@ import { describe, expect, test } from "bun:test";
 import { JOB_TYPES, type ProvisioningJobType } from "../provisioning-job-types";
 
 describe("JOB_TYPES", () => {
-  test("includes the four registered job types", () => {
+  test("includes every registered job type", () => {
     expect(JOB_TYPES.AGENT_PROVISION).toBe("agent_provision");
     expect(JOB_TYPES.AGENT_DELETE).toBe("agent_delete");
     expect(JOB_TYPES.AGENT_SUSPEND).toBe("agent_suspend");
     expect(JOB_TYPES.AGENT_RESUME).toBe("agent_resume");
+    expect(JOB_TYPES.AGENT_RESTART).toBe("agent_restart");
+    expect(JOB_TYPES.AGENT_LOGS).toBe("agent_logs");
+    expect(JOB_TYPES.AGENT_SNAPSHOT).toBe("agent_snapshot");
   });
 
   test("wire values are unique (no two symbols share a string)", () => {
