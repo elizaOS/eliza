@@ -27,7 +27,12 @@
 #   ELIZAOS_MIN_ISO_BYTES   override the 200 MiB minimum (bytes).
 set -euo pipefail
 
-HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${PWD}/manifest.json.template" ] && [ -d "${PWD}/auto" ]; then
+    HERE="${PWD}"
+else
+    HERE="${ELIZAOS_VARIANT_DIR:-${SCRIPT_DIR}}"
+fi
 OUT="${ELIZAOS_OUT_DIR:-${HERE}/out}"
 ARCH="riscv64"
 KERNEL_FLAVOUR="riscv64"

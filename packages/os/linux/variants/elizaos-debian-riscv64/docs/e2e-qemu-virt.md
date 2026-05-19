@@ -103,35 +103,46 @@ manifest's `evidence[]` array; do **not** invent a fake ISO.
 
 ```sh
 packages/os/linux/variants/elizaos-debian-riscv64/scripts/qemu_virt_boot.sh \
-    --iso  packages/os/linux/variants/elizaos-debian-riscv64/out/elizaos-debian-riscv64-<ts>.iso \
-    --evidence packages/os/linux/variants/elizaos-debian-riscv64/out/evidence/qemu_virt_boot.json
+    --iso       packages/os/linux/variants/elizaos-debian-riscv64/out/elizaos-debian-riscv64-<ts>.iso \
+    --evidence  packages/os/linux/variants/elizaos-debian-riscv64/evidence/qemu_virt_boot.json \
+    --transcript packages/os/linux/variants/elizaos-debian-riscv64/evidence/qemu_virt_boot.transcript.log
 ```
 
-Equivalent shortcut (boots the newest ISO in `out/`):
+Equivalent shortcut (boots the newest ISO in `out/` and writes evidence
+under `<variant>/evidence/`):
 
 ```sh
 make -C packages/os/linux/variants/elizaos-debian-riscv64 qemu-boot
 ```
 
-The boot harness writes a JSON evidence file with at least:
+The boot harness writes a JSON evidence file conforming to the
+`eliza.os.linux.qemu_virt_boot.v1` schema (defined in
+`scripts/qemu_virt_smoke.py`). Required fields include:
 
 ```json
 {
-  "iso": "out/elizaos-debian-riscv64-<ts>.iso",
-  "iso_sha256": "<64 hex chars matching the .sha256 sibling>",
-  "qemu_args": ["qemu-system-riscv64", "-machine", "virt", "..."],
+  "schema": "eliza.os.linux.qemu_virt_boot.v1",
+  "claim_boundary": "qemu_virt_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+  "iso_path":          "<absolute path to .iso>",
+  "iso_sha256":        "<64 hex chars>",
+  "transcript_path":   "<absolute path to .log>",
+  "transcript_sha256": "<64 hex chars>",
+  "memory_mb": 4096, "cpus": 4, "timeout_s": 600, "duration_s": <int>,
+  "start_utc": "<ISO 8601 UTC>",
+  "qemu_exit_code": 0,
+  "u_boot_path": null,
   "boot_completed": true,
-  "elizaos_ready": true,
-  "transcript_path": "out/evidence/qemu_virt_boot.log",
-  "started_at": "<ISO 8601 UTC>",
-  "ended_at":   "<ISO 8601 UTC>",
-  "duration_s": <float>
+  "markers_found":             ["Linux version", "systemd[1]: System Initialized", ...],
+  "markers_missing":           [],
+  "forbidden_markers_present": [],
+  "provenance": "qemu_virt"
 }
 ```
 
-The transcript log must contain the literal marker `elizaos-ready` —
-the elizaOS first-boot unit prints that line once the agent is up. If
-the marker is missing the run is BLOCKED, not PASS.
+The transcript log must additionally contain the literal marker
+`elizaos-ready` — the elizaOS first-boot unit prints that line once the
+agent is up. If the marker is missing the release-manifest gate (Step 4)
+reports FAIL, not PASS.
 
 Expected duration: **2 – 6 min** for an end-to-end boot once the
 guest kernel is cached. Allocate at least 2 GB of guest RAM and one

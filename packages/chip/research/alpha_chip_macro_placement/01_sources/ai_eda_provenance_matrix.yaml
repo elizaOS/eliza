@@ -791,6 +791,30 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_or_asset_review
     allowed_current_use: citation_reference_only
+  - source_id: mpm-llm4dse
+    asset_type: multimodal_hls_qor_model_and_llm_dse
+    asset_url: https://github.com/wslcccc/MPM-LLM4DSE
+    license_status: review_required
+    release_use: blocked_pending_code_model_dataset_prompt_hls_backend_and_replay_review
+    allowed_current_use: citation_and_model_inventory_reference_only
+  - source_id: timelyhls
+    asset_type: llm_timing_aware_hls_optimization_method
+    asset_url: https://github.com/zfsadik/Bench4HLS
+    license_status: review_required
+    release_use: blocked_pending_benchmark_license_tool_timing_and_replay_review
+    allowed_current_use: method_and_benchmark_reference_only
+  - source_id: flexllm-hls
+    asset_type: composable_hls_llm_accelerator_library_method
+    asset_url: https://arxiv.org/abs/2601.15710
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_quantization_workload_runtime_and_power_review
+    allowed_current_use: architecture_reference_only
+  - source_id: tapa-rapidstream
+    asset_type: task_parallel_hls_fpga_accelerator_framework
+    asset_url: https://github.com/rapidstream-org/rapidstream-tapa
+    license_status: review_required
+    release_use: blocked_pending_tool_license_fpga_backend_and_generated_artifact_review
+    allowed_current_use: backend_watchlist_only
   - source_id: secda-dse
     asset_type: llm_accelerator_dse_framework
     asset_url: https://github.com/gicLAB/SECDA
@@ -1205,9 +1229,27 @@ entries:
     license_status: paper_and_code_review_required
     release_use: blocked_generated_decks_not_accepted_without_rule_and_tool_correlation
     allowed_current_use: citation_and_code_review_reference_only
+  - source_id: drc-coder
+    asset_type: multi_agent_llm_drc_checker_generation
+    asset_url: https://arxiv.org/abs/2412.05311
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_rule_layout_model_prompt_and_correlation_review
+    allowed_current_use: method_reference_only
+  - source_id: structural-eda-code-verification
+    asset_type: structural_contract_verifier_for_eda_code_generation
+    asset_url: https://arxiv.org/abs/2604.18834
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_dependency_schema_command_scope_and_replay_review
+    allowed_current_use: method_reference_only
+  - source_id: opendrc
+    asset_type: open_source_gpu_drc_engine
+    asset_url: https://github.com/opendrc/opendrc
+    license_status: review_required
+    release_use: blocked_pending_version_license_rule_mapping_and_tool_correlation_review
+    allowed_current_use: backend_watchlist_only
   - source_id: posteda-bench
     asset_type: post_eda_drc_ppa_optimization_benchmark
-    asset_url: https://arxiv.org/abs/2605.15669
+    asset_url: https://arxiv.org/abs/2605.06936
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_data_license_and_local_signoff_replay
     allowed_current_use: citation_reference_only
@@ -1271,6 +1313,30 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_license_package_and_output_review
     allowed_current_use: citation_reference_only
+  - source_id: rapidchiplet
+    asset_type: chiplet_design_space_exploration_code
+    asset_url: https://github.com/spcl/rapidchiplet
+    license_status: review_required
+    release_use: blocked_pending_version_license_architecture_package_and_replay_review
+    allowed_current_use: citation_reference_only
+  - source_id: placeit-chiplet-topology
+    asset_type: chiplet_interconnect_topology_method
+    asset_url: https://arxiv.org/abs/2502.01449
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_topology_package_and_review
+    allowed_current_use: method_reference_only
+  - source_id: diffchip-chiplet-placement
+    asset_type: differentiable_chiplet_placement_method
+    asset_url: https://arxiv.org/abs/2502.16633
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_package_thermal_and_review
+    allowed_current_use: method_reference_only
+  - source_id: tdpnavigator-placer
+    asset_type: multi_agent_rl_chiplet_placement_method
+    asset_url: https://arxiv.org/abs/2602.11187
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_rewards_package_thermal_and_review
+    allowed_current_use: method_reference_only
   - source_id: chipletpart
     asset_type: chiplet_partitioning_code
     asset_url: https://github.com/ABKGroup/ChipletPart

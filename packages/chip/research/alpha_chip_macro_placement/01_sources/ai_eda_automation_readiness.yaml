@@ -898,6 +898,10 @@ stages:
     rating: READY_DRY_RUN
     source_ids:
       - tap-2p5d
+      - rapidchiplet
+      - placeit-chiplet-topology
+      - diffchip-chiplet-placement
+      - tdpnavigator-placer
       - chipletpart
       - chiplet-network-sim
       - eco-chip
@@ -913,9 +917,10 @@ stages:
     next_gate: make package-cross-probe-check
     critical_review: >
       Chiplet, 2.5D, 3DIC, UCIe, and package co-design automation can explore
-      partitioning, die-to-die fabrics, cost/yield, thermal, and SI/PI
-      tradeoffs, but E1 is currently a monolithic scaffold with no chiplet
-      architecture, PHY, interposer, package stack, bump map, or vendor
+      partitioning, die-to-die fabrics, topology synthesis, package placement,
+      cost/yield, thermal, and SI/PI tradeoffs, but E1 is currently a
+      monolithic scaffold with no chiplet architecture, PHY, interposer,
+      package stack, bump map, traffic manifest, power map, or vendor
       collateral. Keep all outputs as target capture until architecture, RTL,
       memory, software, package, power/thermal, manufacturing, and review gates
       define a promotion path.
@@ -1039,6 +1044,9 @@ stages:
       - netgen-lvs
       - openroad-antenna-check
       - rule2drc
+      - drc-coder
+      - structural-eda-code-verification
+      - opendrc
       - posteda-bench
     local_lane: p1-physical-verification-target-capture
     current_artifacts:
@@ -1047,11 +1055,12 @@ stages:
     next_gate: make pd-signoff-manifest-check
     critical_review: >
       DRC, LVS, XOR, and antenna automation is on the release-critical physical
-      signoff path. AI can help triage logs and cluster violations, but E1 must
-      keep generated DRC decks, layout repairs, LVS waivers, antenna fixes,
-      Tcl, and patches advisory-only until pinned rule decks, layouts, netlists,
-      reports, before/after deterministic gates, commercial correlation where
-      applicable, and reviewer signoff exist.
+      signoff path. AI can help triage logs, cluster violations, study
+      generated-checker methods, and define structural script guardrails, but
+      E1 must keep generated DRC decks, layout repairs, LVS waivers, antenna
+      fixes, Tcl, and patches advisory-only until pinned rule decks, layouts,
+      netlists, reports, before/after deterministic gates, commercial/open-tool
+      correlation where applicable, and reviewer signoff exist.
   - id: post_silicon_validation_automation
     rating: READY_DRY_RUN
     source_ids:

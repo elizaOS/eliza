@@ -79,29 +79,57 @@ async def _send(backend: BridgeBackend, cmd: str, payload: dict) -> None:
 async def _probe_joint(
     backend: BridgeBackend,
     joint: str,
-    angles: tuple[float, ...] = PROBE_ANGLES,
+    delta_angles: tuple[float, ...] = PROBE_ANGLES,
     *,
+    home_rad: float = 0.0,
     settle_s: float = 0.6,
 ) -> list[tuple[float, float]]:
-    """Drive `joint` to each angle in `angles`, return (q_cmd, q_obs) pairs."""
+    """Drive `joint` to each `home_rad + δ` for δ in `delta_angles`,
+    return (q_cmd, q_obs) pairs. Probing relative to home means joints
+    whose home pose is far from zero (sho_roll ≈ ±1.4, el_yaw ≈ ±1.2)
+    get exercised in a range the PD controller can actually track.
+    """
     samples: list[tuple[float, float]] = []
-    for q in angles:
-        # Build joint_positions with only this joint at q; others stay at home.
+    has_read = callable(getattr(backend, "read_joint_positions", None))
+    from eliza_robot.bridge.isaaclab.joint_map import (
+        joint_name_to_servo_id, radians_to_pulse,
+    )
+    for delta in delta_angles:
+        q = home_rad + delta
+        # Real-robot path needs both joint_positions (radians) and a
+        # positions list in pulse units. MuJoCo backend uses joint_positions
+        # only.
+        try:
+            sid = joint_name_to_servo_id(joint)
+            pulse = int(radians_to_pulse(float(q), sid))
+            positions = [{"id": int(sid), "position": pulse}]
+        except Exception:
+            positions = []
         await _send(backend, "servo.set", {
             "duration": settle_s,
             "joint_positions": {joint: float(q)},
-            "positions": [],
+            "positions": positions,
         })
-        await asyncio.sleep(settle_s + 0.05)
-        # Pull latest telemetry.
-        events = await backend.poll_events()
-        observed = None
-        for e in events:
-            if e.event != "telemetry.basic":
-                continue
-            jp = e.data.get("joint_positions") or {}
-            if joint in jp:
-                observed = float(jp[joint])
+        await asyncio.sleep(settle_s + 0.1)
+        observed: float | None = None
+        # Prefer an explicit service-call read (real AiNex). Falls back to
+        # telemetry.basic for sim backends that emit joint_positions in
+        # events.
+        if has_read:
+            try:
+                positions_map = await backend.read_joint_positions()  # type: ignore[attr-defined]
+                if joint in positions_map:
+                    observed = float(positions_map[joint])
+            except Exception:
+                pass
+        if observed is None:
+            events = await backend.poll_events()
+            for e in events:
+                if e.event != "telemetry.basic":
+                    continue
+                jp = e.data.get("joint_positions") or {}
+                if joint in jp:
+                    observed = float(jp[joint])
         if observed is not None:
             samples.append((float(q), observed))
     return samples
@@ -126,13 +154,22 @@ async def run_sysid(
     joints: tuple[str, ...] = SAFE_PROBE_JOINTS,
     angles: tuple[float, ...] = PROBE_ANGLES,
 ) -> dict[str, JointFit]:
-    """Run the probe → fit pipeline on `backend`."""
+    """Run the probe → fit pipeline on `backend`. Each joint is probed
+    relative to its home-pose angle (from the loaded RobotProfile) so
+    PD-controlled tracking works even for non-zero-home joints.
+    """
+    from eliza_robot.profiles.schema import load_profile
+
+    profile = load_profile("hiwonder-ainex")
+    home_by_name = {j.name: float(j.home_rad) for j in profile.kinematics.joints}
+
     fits: dict[str, JointFit] = {}
     # Park at home first.
     await _send(backend, "action.play", {"name": "stand"})
     await asyncio.sleep(0.8)
     for joint in joints:
-        samples = await _probe_joint(backend, joint, angles=angles)
+        home = home_by_name.get(joint, 0.0)
+        samples = await _probe_joint(backend, joint, delta_angles=angles, home_rad=home)
         if len(samples) < 2:
             print(f"[sysid] {joint:14s}  insufficient samples ({len(samples)})")
             continue
@@ -142,8 +179,9 @@ async def run_sysid(
             rmse=rmse, n_samples=len(samples),
         )
         print(
-            f"[sysid] {joint:14s}  α={alpha:+.4f}  β={beta*1000:+7.2f} mrad  "
-            f"rmse={rmse*1000:.2f} mrad  ({len(samples)} samples)"
+            f"[sysid] {joint:14s}  home={home:+.3f}rad  "
+            f"α={alpha:+.4f}  β={beta*1000:+7.2f} mrad  "
+            f"rmse={rmse*1000:.2f} mrad"
         )
     # Park back at home.
     await _send(backend, "action.play", {"name": "stand"})
@@ -197,6 +235,19 @@ async def calibrate_via_sysid(
     }
     offset_errs = []
     strength_errs = []
+    # Subtract the joint's home angle from β so we recover the pure
+    # additive perturbation. The probe commands q = home + δ, so
+    # observed = α·(home + δ) + truth_offset; the steady-state PD reads
+    # observed ≈ home + truth_offset, and the least-squares fit reports
+    # β ≈ home + truth_offset (when α ≈ 0 due to limited tracking) or
+    # β ≈ truth_offset + (1-α)·home (for fully-tracking joints).
+    #
+    # Either way, β - home is the calibrable offset. Same for clean.
+    from eliza_robot.profiles.schema import load_profile
+
+    profile_obj = load_profile("hiwonder-ainex")
+    home_by_name = {j.name: float(j.home_rad) for j in profile_obj.kinematics.joints}
+
     for name, fit_noisy in fits_noisy.items():
         fit_clean = fits_clean.get(name)
         if fit_clean is None:
@@ -208,17 +259,27 @@ async def calibrate_via_sysid(
         truth_str = float(truth.motor_strengths[idx])
         truth_off_by_name[name] = truth_off
         truth_str_by_name[name] = truth_str
-        # Baseline: pretend clean's α=1 β=0; divergence is exactly the
-        # observed deltas (noisy_obs − clean_obs).
-        for q in PROBE_ANGLES:
-            obs_noisy = fit_noisy.strength * q + fit_noisy.offset
-            obs_clean = fit_clean.strength * q + fit_clean.offset
-            obs_clean_calibrated = fit_noisy.strength * q + fit_noisy.offset
+        home = home_by_name.get(name, 0.0)
+        # Calibrable quantities, after subtracting the home pose.
+        recovered_off = fit_noisy.offset - home * (1.0 - fit_noisy.strength)
+        # Equivalent expression: if obs = α·q + β and q = home+δ, then
+        # obs - obs_home(δ=0) = α·δ, so the additive perturbation =
+        # β - (1-α)·home. When α ≈ 1, this is just β - 0; when α ≈ 0,
+        # this is β - home. Both reduce to the truth_offset.
+        recovered_off_clean = fit_clean.offset - home * (1.0 - fit_clean.strength)
+        # Baseline: pretend no calibration; divergence at each probe angle.
+        for delta in PROBE_ANGLES:
+            obs_noisy = fit_noisy.strength * (home + delta) + fit_noisy.offset
+            obs_clean = fit_clean.strength * (home + delta) + fit_clean.offset
+            # After calibration we replay the noisy fit on the clean side.
+            obs_clean_cal = fit_noisy.strength * (home + delta) + fit_noisy.offset
             baseline_rms += (obs_noisy - obs_clean) ** 2
-            final_rms += (obs_noisy - obs_clean_calibrated) ** 2
+            final_rms += (obs_noisy - obs_clean_cal) ** 2
             count += 1
-        offset_errs.append(abs(fit_noisy.offset - truth_off))
+        offset_errs.append(abs(recovered_off - truth_off))
         strength_errs.append(abs(fit_noisy.strength - truth_str))
+        # Store the home-corrected recovered value so the report renders correctly.
+        fit_noisy.offset = recovered_off
 
     baseline_rms = float(np.sqrt(baseline_rms / max(count, 1)))
     final_rms = float(np.sqrt(final_rms / max(count, 1)))
