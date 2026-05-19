@@ -50,6 +50,10 @@ EXPECTED_CROSS_TESTS = (
     "pmc_mailbox_roundtrips_telemetry",
     "ftq_l1i_shim_emits_prefetch_on_taken_target",
     "ftq_l1i_shim_flushes_on_misprediction",
+    "test_iommu_programmed_fault",
+    "test_slc_passthrough",
+    "test_dram_ctrl_dfi_traffic",
+    "test_cva6_executes_from_bootrom",
 )
 
 VALID_EDGE_STATUSES = {

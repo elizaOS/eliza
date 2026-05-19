@@ -19,7 +19,7 @@ LINUX_REQUIREMENTS = [
     "Linux host with hardware virtualization enabled",
     "AOSP_DIR set to an AOSP checkout containing build/envsetup.sh and device/",
     "/dev/kvm present and readable/writable by the running user",
-    "repo and adb available on PATH",
+    "repo available on PATH for checkout sync/bootstrap; adb available on PATH for boot smoke",
     "launch_cvd or cvd available on PATH or under AOSP_DIR/out/host/linux-x86/bin",
     "user in kvm/cvdnetwork/render groups, or equivalent host permissions",
 ]
@@ -181,6 +181,11 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
     aosp_dir_text = args.aosp_dir or os.environ.get("AOSP_DIR", "")
     aosp_dir = Path(aosp_dir_text).expanduser().resolve() if aosp_dir_text else None
     repo_inputs = repo_input_state()
+    has_existing_checkout = bool(
+        aosp_dir is not None
+        and (aosp_dir / "build/envsetup.sh").is_file()
+        and (aosp_dir / "device").is_dir()
+    )
 
     if host_os != "Linux":
         blockers.append("Linux host required for AOSP/Cuttlefish execution")
@@ -216,7 +221,9 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
     if host_os == "Linux" and not ({"kvm", "cvdnetwork"} & group_set):
         warnings.append("user is not in kvm or cvdnetwork group according to id -nG")
 
-    required_tools = ["repo", "adb"]
+    required_tools = ["adb"]
+    if not has_existing_checkout:
+        required_tools.insert(0, "repo")
     if args.require_qemu:
         required_tools.append("qemu-system-riscv64")
     tool_blockers: dict[str, str] = {}
@@ -232,6 +239,12 @@ def build_report(args: argparse.Namespace) -> tuple[int, dict]:
             track_blockers["cuttlefish"].append(blocker)
         elif tool == "qemu-system-riscv64":
             track_blockers["qemu"].append(blocker)
+    if has_existing_checkout:
+        repo_blocker = command_blocker("repo")
+        if repo_blocker:
+            warnings.append(
+                f"{repo_blocker}; existing AOSP checkout is usable for import/build tracks"
+            )
 
     cuttlefish_launcher = aosp_tool(aosp_dir, "launch_cvd", "cvd")
     if cuttlefish_launcher is None:

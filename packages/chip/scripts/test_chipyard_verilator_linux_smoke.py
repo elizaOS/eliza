@@ -77,7 +77,7 @@ def test_path_repair_check_and_rewrite_modes() -> None:
 def test_smoke_progress_classification_distinguishes_stages() -> None:
     complete_log = {"raw_transcript_closed": True}
     no_trace = {"bootrom_to_payload_handoff": False}
-    payload_trace = {"bootrom_to_payload_handoff": True}
+    payload_trace = {"bootrom_to_payload_handoff": True, "fresh_for_log": True}
 
     cases = {
         "cpu_progress_to_payload": ("SimDRAM loaded ELF entry=0x80000000\n", payload_trace),
@@ -98,6 +98,27 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
         classified = smoke.classify_smoke_progress(text, trace, complete_log)
         if classified["stage"] != expected:
             raise AssertionError(f"expected {expected}, got {classified}")
+
+    timeout_progress = smoke.classify_smoke_progress(
+        "OpenSBI v1.5\nLinux version 6.6.0\n*** FAILED *** (timeout) after 200 cycles\n",
+        payload_trace,
+        {"raw_transcript_closed": True, "sim_failures": ["*** FAILED *** (timeout)"]},
+    )
+    if timeout_progress["stage"] != "linux_banner_then_max_cycles":
+        raise AssertionError(f"expected max-cycle timeout stage, got {timeout_progress}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in timeout_progress["next_step"]:
+        raise AssertionError(f"expected timeout-cycle guidance, got {timeout_progress}")
+
+    build_timeout = smoke.classify_smoke_progress(
+        "[timeout-wrapper] label=chipyard-generated-ap-linux-smoke status=timeout\n"
+        "g++ -include VTestDriver__pch.h.fast -c VTestDriver___024root__61.cpp\n",
+        no_trace,
+        {"raw_transcript_closed": True, "exit_code": "124"},
+    )
+    if build_timeout["stage"] != "simulator_model_build_timeout":
+        raise AssertionError(f"expected model-build timeout stage, got {build_timeout}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS" not in build_timeout["next_step"]:
+        raise AssertionError(f"expected wall-time guidance, got {build_timeout}")
 
 
 def main() -> int:

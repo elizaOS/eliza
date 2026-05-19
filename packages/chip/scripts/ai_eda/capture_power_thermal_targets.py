@@ -108,6 +108,8 @@ def main() -> int:
         "status": "TARGET_CAPTURE_ONLY_NO_POWER_THERMAL_CLAIM",
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
+            "agentictcad",
+            "tcadgpt",
             "deepoheat",
             "thermal-generative-ai",
             "thermedge-iredge",
@@ -158,6 +160,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "tcad-device-power-thermal-assumption-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future TCAD-derived device, leakage, self-heating, or thermal assumptions must be reviewed against process authority and measured or signoff labels",
+                "acceptance_gates": [
+                    "make process-14a-effects-check",
+                    "make power-thermal-evidence-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
                 "id": "thermal-hotspot-surrogate-watch",
                 "status": "CAPTURED_NOT_PREDICTED",
                 "target": "future thermal surrogate screening after power maps, package model, and measured traces exist",
@@ -181,6 +193,7 @@ def main() -> int:
             "no package, board, airflow, heatsink, or phone skin thermal model calibrated to E1",
             "no local OpenROAD/PDNSim IR-drop label corpus across repeated runs",
             "no activity-aligned power map or vector-based post-route power evidence",
+            "no approved TCAD/DTCO deck, device model, simulator, calibration corpus, or process authority for E1 device-level power and thermal assumptions",
             "no approved flow for AI-generated PDN, power map, thermal map, or signoff waiver",
         ],
     }

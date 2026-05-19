@@ -54,7 +54,7 @@ def main() -> int:
 
     wrapper_present = CHIPYARD_WRAPPER.is_dir()
     inner_present = CHIPYARD_CVA6_SUBMODULE.is_dir() and any(CHIPYARD_CVA6_SUBMODULE.iterdir())
-    standalone_present = STANDALONE.is_dir()
+    standalone_present = STANDALONE.is_dir() and any(STANDALONE.iterdir())
 
     if not (wrapper_present and (inner_present or standalone_present)):
         if standalone_present:
@@ -69,6 +69,36 @@ def main() -> int:
             f"or clone https://github.com/openhwgroup/cva6.git into external/cva6/cva6"
         )
         return 0
+
+    # Wrapper API drift check: the standalone wrapper
+    # rtl/cpu/e1_cva6_wrapper.sv references `ariane_pkg::ArianeDefaultConfig`
+    # and module `ariane`, both deprecated in the current CVA6 HEAD which
+    # exposes `config_pkg::cva6_cfg_t` and module `cva6`. The wrapper cannot
+    # elaborate against the present checkout until it is re-targeted. This is
+    # documented in pin-manifest.json `wrapper_api_drift`.
+    drift = manifest.get("wrapper_api_drift")
+    if standalone_present and drift and drift.get("status") == "BLOCKED":
+        wrapper_path = drift.get("wrapper_path", "rtl/cpu/e1_cva6_wrapper.sv")
+        next_step = drift.get("next_step", "re-target wrapper to current CVA6 API")
+        # Cross-check that the wrapper still references the deprecated symbol.
+        wrapper_file = ROOT / wrapper_path
+        deprecated_seen = []
+        if wrapper_file.is_file():
+            wrapper_text = wrapper_file.read_text(encoding="utf-8")
+            # Drop the parenthetical (e.g. "module ariane (renamed cva6...)" → "module ariane")
+            # and look for the leading concrete symbol or token sequence in the wrapper.
+            for symbol in drift.get("wrapper_references_deprecated_symbols", []):
+                probe = symbol.split(" (")[0].strip()
+                if probe and probe in wrapper_text:
+                    deprecated_seen.append(probe)
+        if deprecated_seen:
+            print(
+                "STATUS: BLOCKED cpu.cva6_pin.wrapper_api_drift - standalone "
+                f"checkout present (head={manifest.get('checkout_present_head_commit', '?')[:7]}) "
+                "but wrapper still references deprecated symbols: "
+                f"{', '.join(deprecated_seen)}. Next step: {next_step}"
+            )
+            return 0
 
     if wrapper_present:
         try:

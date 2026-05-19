@@ -738,7 +738,20 @@ def classify_smoke_progress(
             "stage": "linux_boot",
             "next_step": "capture the complete generated-AP Linux boot transcript",
         }
+    sim_failures = log_metadata.get("sim_failures")
+    sim_timeout = isinstance(sim_failures, list) and any(
+        "timeout" in str(failure) for failure in sim_failures
+    )
     if "Linux version" in log_text:
+        if sim_timeout:
+            return {
+                "stage": "linux_banner_then_max_cycles",
+                "next_step": (
+                    "rerun the generated AP smoke with a larger "
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
+                    "to reach Linux command line/initramfs markers"
+                ),
+            }
         return {
             "stage": "linux_banner_only",
             "next_step": "continue until Linux command line/initramfs markers appear",
@@ -850,6 +863,20 @@ def classify_smoke_progress(
                 "rerun with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC "
                 "evidence, or extend the fast timeout only after a traced run identifies "
                 "the current payload stage"
+            ),
+        }
+    if (
+        "[timeout-wrapper]" in log_text
+        and "status=timeout" in log_text
+        and not log_metadata.get("simdram_entry")
+        and "SimDRAM loaded ELF entry=" not in log_text
+    ):
+        return {
+            "stage": "simulator_model_build_timeout",
+            "next_step": (
+                "rerun after the generated Verilator model has finished compiling, "
+                "or increase CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS so the wall-clock "
+                "budget covers model build plus Linux simulation"
             ),
         }
     if log_metadata.get("simdram_entry") or "SimDRAM loaded ELF entry=" in log_text:
@@ -1009,7 +1036,12 @@ def main() -> int:
         if isinstance(sim_failures, list):
             for sim_failure in sim_failures:
                 hint = ""
-                if "timeout" in sim_failure and "max_core_cycles" not in log_text:
+                if "timeout" in sim_failure and "+max-cycles=" in log_text:
+                    hint = (
+                        "; increase CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES "
+                        "and CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS for this payload"
+                    )
+                elif "timeout" in sim_failure and "max_core_cycles" not in log_text:
                     hint = (
                         "; pass +max_core_cycles=0 or a larger value through "
                         "CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS"

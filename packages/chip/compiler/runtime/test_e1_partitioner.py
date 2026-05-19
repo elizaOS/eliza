@@ -790,6 +790,37 @@ def test_partition_report_prepares_descriptor_execution_batch() -> None:
     ]
 
 
+def test_partition_report_prepares_all_descriptor_execution_batches() -> None:
+    report = partition_module(parse_module(_mismatched_dot_batch_payload()))
+
+    prepared = report.prepared_descriptor_execution_batches(
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        descriptor_stride_bytes=0x40,
+    ).as_dict()
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_execution_batches.v1"
+    assert prepared["claim_boundary"] == (
+        "prepared_descriptor_execution_batches_metadata_only_not_descriptor_allocator"
+    )
+    assert prepared["execution_batch_count"] == 2
+    assert prepared["descriptor_stride_bytes"] == 0x40
+    assert [
+        batch["descriptor_command_buffer_image"]["execution_batch_index"]
+        for batch in prepared["prepared_execution_batches"]
+    ] == [0, 1]
+    assert [
+        batch["descriptor_command_buffer_image"]["descriptor_base"]
+        for batch in prepared["prepared_execution_batches"]
+    ] == [0x2100, 0x2140]
+    assert prepared["prepared_execution_batches"][0]["descriptor_command_buffer_image"][
+        "descriptor_words"
+    ] == [[0xD0000108, 0x8000_0010, 0x8000_0000, 0]]
+    assert prepared["prepared_execution_batches"][1]["descriptor_command_buffer_image"][
+        "descriptor_words"
+    ] == [[0xCC000108, 0x8000_0038, 0x8000_0020, 0]]
+
+
 def test_partition_report_prepared_descriptor_batch_is_fail_closed() -> None:
     mixed_report = partition_module(parse_module(_dot_add_payload()))
     ready_report = partition_module(parse_module(_dot_payload("int8")))
@@ -816,6 +847,18 @@ def test_partition_report_prepared_descriptor_batch_is_fail_closed() -> None:
             arena_base=0x8000_0000,
             descriptor_base=0x2000,
             execution_batch_index=7,
+        )
+    with pytest.raises(ValueError, match="descriptor stride must be positive"):
+        ready_report.prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            descriptor_stride_bytes=0,
+        )
+    with pytest.raises(ValueError, match="smaller than execution batch"):
+        ready_report.prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            descriptor_stride_bytes=8,
         )
 
 

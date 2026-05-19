@@ -121,6 +121,8 @@ def main() -> int:
             "qimeng-codev-r1",
             "evolve-verilog",
             "veriagent",
+            "safetune-rtl-poisoning",
+            "trojanloc",
             "codev-sva",
             "radai-wm811k-wafer-defect-model",
         ],

@@ -185,6 +185,35 @@ class E1LiteRtDelegate:
         image["module"] = module.name
         return image
 
+    def execution_command_buffer_image(
+        self,
+        module: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        execution_batch_index: int,
+    ) -> dict[str, Any]:
+        if not isinstance(module, StableHloModule):
+            raise TypeError("module must be a StableHloModule")
+        issues = validate_module(module)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot materialize descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        image = (
+            partition_module(module)
+            .descriptor_staging_plan.execution_command_buffer_image(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                execution_batch_index=execution_batch_index,
+            )
+            .as_dict()
+        )
+        image["backend_id"] = self.backend_id
+        image["module"] = module.name
+        return image
+
     def prepared_descriptor_batch(
         self,
         module: StableHloModule,
@@ -207,6 +236,64 @@ class E1LiteRtDelegate:
                 arena_base=arena_base,
                 descriptor_base=descriptor_base,
                 batch_index=batch_index,
+            )
+            .as_dict()
+        )
+        prepared["backend_id"] = self.backend_id
+        prepared["module"] = module.name
+        return prepared
+
+    def prepared_descriptor_execution_batch(
+        self,
+        module: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        execution_batch_index: int,
+    ) -> dict[str, Any]:
+        if not isinstance(module, StableHloModule):
+            raise TypeError("module must be a StableHloModule")
+        issues = validate_module(module)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot prepare descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        prepared = (
+            partition_module(module)
+            .prepared_descriptor_execution_batch(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                execution_batch_index=execution_batch_index,
+            )
+            .as_dict()
+        )
+        prepared["backend_id"] = self.backend_id
+        prepared["module"] = module.name
+        return prepared
+
+    def prepared_descriptor_execution_batches(
+        self,
+        module: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        descriptor_stride_bytes: int,
+    ) -> dict[str, Any]:
+        if not isinstance(module, StableHloModule):
+            raise TypeError("module must be a StableHloModule")
+        issues = validate_module(module)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot prepare descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        prepared = (
+            partition_module(module)
+            .prepared_descriptor_execution_batches(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                descriptor_stride_bytes=descriptor_stride_bytes,
             )
             .as_dict()
         )
@@ -263,6 +350,26 @@ def e1_litert_delegate_descriptor_command_buffer_image(
     )
 
 
+def e1_litert_delegate_execution_command_buffer_image(
+    delegate: E1LiteRtDelegate,
+    module_json: str | bytes,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    execution_batch_index: int,
+) -> dict[str, Any]:
+    """C entry-point mirror: materialize descriptor words for one execution sub-batch."""
+    if not isinstance(delegate, E1LiteRtDelegate):
+        raise TypeError("delegate must be an E1LiteRtDelegate")
+    module = parse_module(module_json)
+    return delegate.execution_command_buffer_image(
+        module,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        execution_batch_index=execution_batch_index,
+    )
+
+
 def e1_litert_delegate_prepared_descriptor_batch(
     delegate: E1LiteRtDelegate,
     module_json: str | bytes,
@@ -280,6 +387,46 @@ def e1_litert_delegate_prepared_descriptor_batch(
         arena_base=arena_base,
         descriptor_base=descriptor_base,
         batch_index=batch_index,
+    )
+
+
+def e1_litert_delegate_prepared_descriptor_execution_batch(
+    delegate: E1LiteRtDelegate,
+    module_json: str | bytes,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    execution_batch_index: int,
+) -> dict[str, Any]:
+    """C entry-point mirror: prepare metadata for one execution sub-batch."""
+    if not isinstance(delegate, E1LiteRtDelegate):
+        raise TypeError("delegate must be an E1LiteRtDelegate")
+    module = parse_module(module_json)
+    return delegate.prepared_descriptor_execution_batch(
+        module,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        execution_batch_index=execution_batch_index,
+    )
+
+
+def e1_litert_delegate_prepared_descriptor_execution_batches(
+    delegate: E1LiteRtDelegate,
+    module_json: str | bytes,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    descriptor_stride_bytes: int,
+) -> dict[str, Any]:
+    """C entry-point mirror: prepare metadata for all execution sub-batches."""
+    if not isinstance(delegate, E1LiteRtDelegate):
+        raise TypeError("delegate must be an E1LiteRtDelegate")
+    module = parse_module(module_json)
+    return delegate.prepared_descriptor_execution_batches(
+        module,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        descriptor_stride_bytes=descriptor_stride_bytes,
     )
 
 

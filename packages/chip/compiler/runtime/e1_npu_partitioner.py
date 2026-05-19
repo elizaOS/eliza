@@ -780,6 +780,39 @@ class RuntimePreparedDescriptorBatch:
 
 
 @dataclass(frozen=True)
+class RuntimePreparedDescriptorExecutionBatches:
+    """Concrete metadata packages for staging all execution sub-batches."""
+
+    arena_base: int
+    descriptor_base: int
+    descriptor_stride_bytes: int
+    batches: tuple[RuntimePreparedDescriptorBatch, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "eliza.e1_npu_prepared_descriptor_execution_batches.v1",
+            "claim_boundary": (
+                "prepared_descriptor_execution_batches_metadata_only_not_descriptor_allocator"
+            ),
+            "arena_base": self.arena_base,
+            "arena_total_bytes": self.batches[0].arena_total_bytes if self.batches else 0,
+            "arena_alignment_bytes": (
+                self.batches[0].arena_alignment_bytes if self.batches else 0
+            ),
+            "descriptor_base": self.descriptor_base,
+            "descriptor_stride_bytes": self.descriptor_stride_bytes,
+            "execution_batch_count": len(self.batches),
+            "required_runtime_steps": [
+                "populate_tensor_arena",
+                "for_each_execution_batch_program_mmio_preamble",
+                "for_each_execution_batch_stage_descriptor_image",
+                "for_each_execution_batch_submit_command_buffer",
+            ],
+            "prepared_execution_batches": [batch.as_dict() for batch in self.batches],
+        }
+
+
+@dataclass(frozen=True)
 class PartitionReport:
     """Aggregate partitioner report for a subset module."""
 
@@ -977,6 +1010,45 @@ class PartitionReport:
                 for op_name in execution_batch.op_names
             ),
             descriptor_command_buffer_image=image,
+        )
+
+    def prepared_descriptor_execution_batches(
+        self,
+        arena_base: int,
+        descriptor_base: int,
+        *,
+        descriptor_stride_bytes: int = CommandBuffer.MAX_ENTRIES * 16,
+    ) -> RuntimePreparedDescriptorExecutionBatches:
+        if descriptor_stride_bytes <= 0 or descriptor_stride_bytes & 0x3:
+            raise ValueError("descriptor stride must be positive and 32-bit aligned")
+        staging_plan = self.descriptor_staging_plan
+        execution_batches = staging_plan.descriptor_execution_batches
+        if not execution_batches:
+            raise ValueError("no descriptor execution batches")
+        for batch in execution_batches:
+            required_bytes = batch.descriptor_slots * 16
+            if descriptor_stride_bytes < required_bytes:
+                raise ValueError(
+                    "descriptor stride "
+                    f"{descriptor_stride_bytes} bytes is smaller than execution batch "
+                    f"{batch.execution_batch_index} descriptor image requirement "
+                    f"{required_bytes} bytes"
+                )
+
+        return RuntimePreparedDescriptorExecutionBatches(
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            descriptor_stride_bytes=descriptor_stride_bytes,
+            batches=tuple(
+                self.prepared_descriptor_execution_batch(
+                    arena_base=arena_base,
+                    descriptor_base=(
+                        descriptor_base + batch.execution_batch_index * descriptor_stride_bytes
+                    ),
+                    execution_batch_index=batch.execution_batch_index,
+                )
+                for batch in execution_batches
+            ),
         )
 
     def as_dict(self) -> dict[str, Any]:

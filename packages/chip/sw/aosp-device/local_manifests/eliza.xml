@@ -18,6 +18,11 @@
   The `remote` URL is intentionally a placeholder; build-aosp-riscv64.sh
   rewrites it to the actual Milady repo path at sync time when run in
   local-manifest mode (device-overlay-mode set to "local-manifest").
+
+  This file must enumerate every overlay file required by AOSP `m` for the
+  eliza_ai_soc lunch target. Missing entries here cause the local-manifest
+  overlay mode to materialize an incomplete device tree (the symlink mode
+  mirrors the whole tree with `find -type f`, so it is unaffected).
 -->
 <manifest>
   <remote name="eliza-local"
@@ -55,7 +60,47 @@
               dest="device/eliza/eliza_ai_soc/sepolicy/e1_npu.te" />
     <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp"
               dest="device/eliza/eliza_ai_soc/hal/e1_npu/Android.bp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.cpp"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.cpp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.h"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/E1Npu.h" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/IE1Npu.hal"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/IE1Npu.hal" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/service.cpp"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/service.cpp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.rc"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.rc" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.xml"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu/vendor.eliza.e1_npu@1.0-service.xml" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_hal/E1NpuDevice.h"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_hal/E1NpuDevice.h" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/Android.bp"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_sim/Android.bp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/E1NpuSim.cpp"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_sim/E1NpuSim.cpp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/E1NpuSim.h"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_sim/E1NpuSim.h" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/service.cpp"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_sim/service.cpp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.rc"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.rc" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.xml"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_sim/vendor.eliza.e1_npu@1.0-service.sim.xml" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_probe_main.cc"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_probe_main.cc" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_runtime.cc"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_runtime.cc" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/e1_npu_runtime.h"
+              dest="device/eliza/eliza_ai_soc/hal/e1_npu_runtime.h" />
     <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/Android.bp"
               dest="device/eliza/eliza_ai_soc/hal/hwcomposer/Android.bp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/android.hardware.graphics.composer@2.4-service.eliza_ai_soc.rc"
+              dest="device/eliza/eliza_ai_soc/hal/hwcomposer/android.hardware.graphics.composer@2.4-service.eliza_ai_soc.rc" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/android.hardware.graphics.composer@2.4-service.eliza_ai_soc.xml"
+              dest="device/eliza/eliza_ai_soc/hal/hwcomposer/android.hardware.graphics.composer@2.4-service.eliza_ai_soc.xml" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/hwcomposer.cpp"
+              dest="device/eliza/eliza_ai_soc/hal/hwcomposer/hwcomposer.cpp" />
+    <linkfile src="packages/chip/sw/aosp-device/device/eliza/eliza_ai_soc/hal/hwcomposer/service.cpp"
+              dest="device/eliza/eliza_ai_soc/hal/hwcomposer/service.cpp" />
   </project>
 </manifest>

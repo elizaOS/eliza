@@ -2899,6 +2899,22 @@ export const allActionsSpec = {
 				"Play a named Hiwonder action group (pre-recorded multi-servo motion). Options: name (required, must match a key in the profile's actions. groups).",
 		},
 		{
+			name: "AINEX_RUN_RL",
+			description:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text` ",
+			parameters: [],
+			similes: [
+				"RUN_RL",
+				"TEXT_COMMAND",
+				"ROBOT_DO",
+				"ROBOT_SAY",
+				"PERFORM_TASK",
+				"EXECUTE_TASK",
+			],
+			descriptionCompressed:
+				"Run a text-conditioned learned policy on the AiNex. Pass `options.text`",
+		},
+		{
 			name: "AINEX_SET_SERVO",
 			description:
 				"Drive one or more AiNex servos to target pulse positions over a duration. Options: positions=[{id, position}], duration (seconds, default 0.5).",

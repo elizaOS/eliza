@@ -34,6 +34,8 @@ dependencies = [
   "pytest-asyncio>=0.23",
   "ruff>=0.6",
   "roslibpy>=2.0.0",
+  "stable-baselines3>=2.8.0",
+  "gymnasium>=1.2.3",
 ]
 
 [project.scripts]

@@ -1,39 +1,82 @@
 # Eliza E1 2028 SOTA 14A Integration Shortlist
 
 Date: 2026-05-19
-Status: triage_complete_initial_implementation_landed
+Status: triage_complete_all_high_confidence_rows_landed
 Claim boundary: this is a research-triage planning document. Each row maps to
 implementation work tracked under the same packet's `03_implementation/` plan
 and the existing repo evidence gates. Nothing here promotes any silicon,
 boot, MLPerf, or PD claim.
 
-## Implementation snapshot (2026-05-19)
+## Implementation snapshot (2026-05-19, both waves complete)
 
-The first implementation wave is committed. Each landed item carries an
-opt-in `make` target that fails closed when its evidence is missing.
+Every High-confidence shortlist row is now on `develop`. Each item
+carries an opt-in `make` target that fails closed when its evidence is
+missing.
 
-| Item        | Status   | Artifact                                                              | Validator                                |
-| ----------- | -------- | --------------------------------------------------------------------- | ---------------------------------------- |
-| C-1..C-7    | landed   | `docs/spec-db/cpu-2028-target.yaml`                                   | `make cpu-2028-target-check`             |
-| D-1..D-9    | landed   | `docs/spec-db/memory-2028-target.yaml`                                | `make memory-2028-target-check`          |
-| E-1..E-8    | landed   | `docs/spec-db/security-2028-target.yaml`                              | `make security-2028-target-check`        |
-| I-1..I-6    | landed   | `docs/spec-db/process-14a-effects.yaml` (variant_requirements, library_variant_binding, reliability_derate_sources, sram_vmin_ecc_repair_plan, thermal_capture_phases, packaging_default) | `make process-14a-effects-check` |
-| G-1         | landed   | `verify/formal/e1_*.sby` + `verify/formal/bpu/{ras,ftq}.sby` (bitwuzla added as second SBY engine alongside z3) | `make formal` |
-| H-5         | landed   | `scripts/check_pd_utilization.py` + `pd/signoff/util_threshold.yaml`  | `make pd-util-check`                     |
-| J-1..J-6    | landed   | `package/{display,pmic,usb-pd,charger,sensors,audio}/` + `docs/board/{power-tree,pdn-budget,antenna-plan,thermal-stack}.md` + `board/kicad/e1-phone/` skeleton | manual review pending integration check |
-| F-1..F-5    | covered  | existing `docs/sw/{opensbi,u-boot,buildroot,linux}/README.md` + `sw/aosp-device/device/eliza/eliza_ai_soc/` + Makefile aosp-build targets | `make aosp-bsp-check` |
-| B-1..B-5    | partial  | `compiler/runtime/e1_npu_stablehlo.py` + extensions to `e1_npu_lowering.py` (StableHLO canonicalisation present; ExecuTorch / LiteRT delegate skeletons and partitioner still pending) | existing `make typecheck` + new pytest |
-| A-1, A-2, A-4 | partial | extensions to `docs/arch/npu.md` + `docs/spec-db/e1-npu-runtime-contract.json` (specs landed; RTL deferred) | `make npu-runtime-contract-check` |
-| A-3 RTL     | pending  | BitNet ternary mode on `DOT16_S2` — RTL + cocotb deferred             | n/a                                      |
-| A-5 RTL     | pending  | DMA writeback path — spec wiring deferred                             | n/a                                      |
-| A-8 RTL     | pending  | expanded NPU perf counters — RTL deferred                             | n/a                                      |
-| G-2..G-7    | pending  | cocotb-coverage merge, reset/CDC properties, AXI-Lite property file, Accelergy/Timeloop integration, Hypothesis property tests, MLPerf-Power schema | n/a |
-| H-1..H-4    | pending  | OpenROAD repair-timing margin tune, PSM IR-drop step, explicit PDN topology, tool-digest schema beyond `openlane_image_digest` | n/a |
-| L-tier      | tracked  | all `03_implementation/*` Low-confidence items remain deferred to v1/v2 | n/a |
+| Item        | Status | Artifact                                                                                                                                    | Validator                                |
+| ----------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- |
+| A-1, A-2, A-4 | landed | `docs/arch/npu.md` + `docs/spec-db/e1-npu-runtime-contract.json` + `docs/spec-db/npu-2028-roadmap.yaml` (MX, group INT4, sparse-tile spec) | `make npu-runtime-contract-check`        |
+| A-3 (BitNet ternary) | landed | RTL: `rtl/npu/e1_npu.sv` (`dot16_ternary_mode_q`, lane decode 00/01/10, reserved 11 rejected); cocotb: 5 cases in `verify/cocotb/test_e1_npu.py` | `make cocotb-npu`                        |
+| A-5 (DMA writeback spec) | landed | `docs/arch/npu.md` writeback semantics + `descriptor_word_template` + `command_buffer_image` + `docs/spec-db/npu-2028-roadmap.yaml` L1 TODO | `make npu-roadmap-check`                 |
+| A-8 (perf counters)  | landed | `rtl/npu/e1_npu.sv` `PERF_STALL_CYCLES`/`PERF_SCRATCH_BYTES`/`PERF_THERMAL_THROTTLE` + contract + check script                                | `make npu-runtime-contract-check`        |
+| B-1..B-5    | landed | `compiler/runtime/{e1_npu_stablehlo,e1_npu_partitioner,e1_executorch_delegate,e1_litert_delegate}.py` + `e1_litert_delegate.h` + `CommandBuffer` on `e1_npu_runtime.py` + 46 new pytest cases | `make typecheck` + `pytest compiler/runtime` |
+| C-1..C-7    | landed | `docs/spec-db/cpu-2028-target.yaml`                                                                                                          | `make cpu-2028-target-check`             |
+| D-1..D-9    | landed | `docs/spec-db/memory-2028-target.yaml`                                                                                                       | `make memory-2028-target-check`          |
+| E-1..E-8    | landed | `docs/spec-db/security-2028-target.yaml`                                                                                                     | `make security-2028-target-check`        |
+| F-1..F-5    | landed | `docs/sw/{opensbi,u-boot,buildroot,linux}/README.md` + `sw/aosp-device/device/eliza/eliza_ai_soc/` skeleton + Makefile `aosp-build-{preflight,riscv64}` | `make aosp-bsp-check`                    |
+| G-1         | landed | `verify/formal/e1_*.sby` + `verify/formal/bpu/{ras,ftq}.sby` — bitwuzla as second SBY engine alongside z3                                    | `make formal`                            |
+| G-2 (cocotb-coverage) | landed | `verify/cocotb/coverage_helpers.py` + cover-points in 5 testbenches + `scripts/check_cocotb_coverage.py` + Makefile `cocotb-coverage`         | `make cocotb-coverage`                   |
+| G-3 (reset/CDC props) | landed | `verify/properties/reset_properties.sv` + `cdc_properties.sv` referenced from all `.sby`                                                     | `make formal`                            |
+| G-4 (AXI-Lite props) | landed | `verify/properties/axi_lite_protocol.sv` + `verify/formal/e1_axi_lite_{interconnect,dram}.sby` + `*_bind.sv`                                  | `make formal`                            |
+| G-5 (Accelergy/Timeloop) | landed | `benchmarks/sim/run_npu_timeloop.py` + `benchmarks/sim/configs/e1_npu_timeloop_arch.yaml` + merge with SCALE-Sim                              | `make benchmark-sim-metrics` (BLOCKED if Timeloop not installed) |
+| G-6 (Hypothesis) | landed | `benchmarks/parsers/tests/test_parsers_hypothesis.py` + `scripts/test_check_cocotb_coverage_hypothesis.py`                                    | included in pytest run                   |
+| G-7 (MLPerf Power schema) | landed | `docs/benchmarks/report-schema.yaml` `energy_joules_per_inference` field + threaded through `benchmarks/run_benchmarks.py`                  | `make benchmark-parser-test`             |
+| H-1..H-4    | landed | `pd/openlane/config.sky130.json` (`DESIGN_REPAIR_MAX_SLEW_PCT=5`, `MAX_CAP_PCT=5`, explicit `FP_PDN_*` topology, PSM + IR-drop enabled) + `pd/signoff/run-manifest.schema.json` (psm_ir_drop_report, pdn_topology, 8 tool-digest fields) + `scripts/{check_pd_signoff.py,record_tool_digests.sh}` | `make pd-signoff-manifest-check`         |
+| H-5         | landed | `scripts/check_pd_utilization.py` + `pd/signoff/util_threshold.yaml`                                                                          | `make pd-util-check`                     |
+| I-1..I-6    | landed | `docs/spec-db/process-14a-effects.yaml` (variant_requirements, library_variant_binding, reliability_derate_sources, sram_vmin_ecc_repair_plan, thermal_capture_phases, packaging_default) | `make process-14a-effects-check`         |
+| J-1..J-6    | landed | `package/{display,pmic,usb-pd,charger,sensors,audio}/` + `docs/board/{power-tree,pdn-budget,antenna-plan,thermal-stack}.md` + `board/kicad/e1-phone/` skeleton | `make board-package-evidence-check`      |
+| L-tier      | tracked | all `03_implementation/*` Low-confidence items remain deferred to v1/v2                                                                       | n/a                                      |
 
-The "pending" items are the next wave of work; the sub-agents that owned
-them hit a global rate limit before completion. Their scope and target
-files are unchanged.
+### Locally-verified gates (chip side)
+
+After this wave the following all pass with no claim movement:
+
+```text
+make lint                              PASS
+make typecheck                         PASS
+make docs-check                        PASS
+make cpu-2028-target-check             PASS
+make memory-2028-target-check          PASS
+make security-2028-target-check        PASS
+make npu-2028-target-check             PASS
+make npu-runtime-contract-check        PASS
+make npu-roadmap-check                 PASS
+make process-14a-effects-check         PASS
+make pd-util-check                     BLOCKED (no util JSON in any local OpenLane run — fail-closed)
+make platform-contract-check           PASS
+make project-plan-check                PASS
+make prototype-status-dashboard-check  PASS
+```
+
+### What stays BLOCKED (external dependencies, by design)
+
+1. **Cuttlefish RV64 / AOSP boot transcript** — Linux host + ~600 GB AOSP
+   checkout + ART RV64 toolchain. Recipe lives in
+   `sw/aosp-device/build-aosp-riscv64.sh` and Makefile `aosp-build-{preflight,riscv64}`.
+2. **OpenSBI + U-Boot + Linux qemu-virt smoke** — RV cross-toolchain + upstream
+   trees. Recipes live in `docs/sw/{opensbi,u-boot,buildroot,linux}/README.md`.
+3. **OpenLane silicon-class signoff** — OpenLane 2 Docker + Volare PDK
+   on disk. `make openlane` runs locally, takes hours.
+4. **AOSP HAL evidence transcripts** — `docs/evidence/android/*_smoke.log`
+   carries `status=FAIL` placeholders until real device boot transcripts
+   are captured.
+5. **MLPerf Mobile / MLPerf Power closed loop** — L5/L6 evidence, requires
+   fabricated silicon + Joulescope/Monsoon. Cannot exist pre-silicon.
+6. **Foundry PDK selection** — `selected_process_option` stays
+   `blocked_until_foundry_pdk_and_library_selection_from_shortlist`; the
+   shortlist covers TSMC N2P / A14, Samsung SF2, Intel 14A, Rapidus N2.
+
+No chip claim has been promoted past its existing fail-closed status.
 
 ## Goal
 

@@ -53,6 +53,7 @@ export class DiarizerUnavailableError extends Error {
 		| "native-missing"
 		| "library-missing"
 		| "model-missing"
+		| "model-unavailable"
 		| "model-load-failed"
 		| "model-shape-mismatch"
 		| "forward-not-implemented"
@@ -69,6 +70,7 @@ const DIARIZER_UNAVAILABLE_CODES = new Set<string>([
 	"native-missing",
 	"library-missing",
 	"model-missing",
+	"model-unavailable",
 	"model-load-failed",
 	"model-shape-mismatch",
 	"forward-not-implemented",

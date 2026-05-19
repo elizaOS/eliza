@@ -1,0 +1,169 @@
+"""Text-conditioning embedding cache for curriculum tasks.
+
+Strategy (matches the unanimous research-agent recommendation):
+
+  1. For each curriculum task, gather every text variant across every
+     language from `tasks.yaml`.
+  2. Encode each variant with a small sentence-transformer (default
+     "all-MiniLM-L6-v2", 384-D, 22 MB) — cheap, CPU-friendly.
+  3. Take the mean across variants → one 384-D embedding per task.
+  4. Optionally PCA-down to `n_components` (default 32) so the policy's
+     observation stays small.
+  5. Cache the result on disk so training and inference are deterministic
+     and start-up is instant.
+
+At inference, free-form text from the agent is encoded the same way and
+matched (by cosine similarity) against the cached task embeddings; the
+nearest task's embedding is passed to the policy. The bridge's
+`CommandParser` already handles this nearest-match logic — we just give
+it the embeddings.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from pathlib import Path
+
+import numpy as np
+
+from eliza_robot.curriculum.loader import Curriculum, load_curriculum
+
+DEFAULT_MODEL = "sentence-transformers/all-MiniLM-L6-v2"
+DEFAULT_CACHE_DIR = Path.home() / ".cache" / "eliza_robot" / "text_embeddings"
+DEFAULT_DIM = 384
+DEFAULT_PCA_DIM = 32
+
+
+@dataclass
+class TaskEmbedding:
+    task_id: str
+    mean_embed: np.ndarray          # (DEFAULT_DIM,) before reduction
+    reduced_embed: np.ndarray       # (n_components,) after reduction
+    variants: list[str]
+
+
+def _hash_cache_key(model: str, pca_dim: int, curriculum_version: int) -> str:
+    return f"{model.replace('/', '__')}__pca{pca_dim}__v{curriculum_version}"
+
+
+def build_task_embeddings(
+    curriculum: Curriculum | None = None,
+    *,
+    model: str = DEFAULT_MODEL,
+    pca_dim: int = DEFAULT_PCA_DIM,
+    cache_dir: Path | None = None,
+    force_rebuild: bool = False,
+) -> dict[str, TaskEmbedding]:
+    """Build (or load) the per-task text embedding cache.
+
+    On a fresh machine this downloads the sentence-transformer (~22 MB).
+    """
+    curriculum = curriculum or load_curriculum()
+    cache_dir = cache_dir or DEFAULT_CACHE_DIR
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    key = _hash_cache_key(model, pca_dim, curriculum.version)
+    cache_path = cache_dir / f"{key}.npz"
+    meta_path = cache_dir / f"{key}.json"
+
+    if not force_rebuild and cache_path.exists() and meta_path.exists():
+        npz = np.load(cache_path)
+        meta = json.loads(meta_path.read_text())
+        out: dict[str, TaskEmbedding] = {}
+        for task_id in meta["task_ids"]:
+            out[task_id] = TaskEmbedding(
+                task_id=task_id,
+                mean_embed=npz[f"{task_id}_mean"],
+                reduced_embed=npz[f"{task_id}_reduced"],
+                variants=meta["variants"][task_id],
+            )
+        return out
+
+    # Lazy-import sentence_transformers + sklearn so the dependency only
+    # matters when we actually rebuild the cache.
+    from sentence_transformers import SentenceTransformer
+    from sklearn.decomposition import PCA
+
+    encoder = SentenceTransformer(model)
+    raw: dict[str, np.ndarray] = {}
+    variants_by_task: dict[str, list[str]] = {}
+    all_means: list[np.ndarray] = []
+    for task in curriculum.tasks:
+        variants = task.verbs.all_variants()
+        variants_by_task[task.id] = variants
+        emb = encoder.encode(variants, normalize_embeddings=True)
+        mean = emb.mean(axis=0)
+        # re-normalize after averaging
+        mean = mean / (np.linalg.norm(mean) + 1e-9)
+        raw[task.id] = mean.astype(np.float32)
+        all_means.append(mean)
+
+    stacked = np.stack(all_means, axis=0)
+    if pca_dim < stacked.shape[1] and stacked.shape[0] >= pca_dim:
+        pca = PCA(n_components=pca_dim, whiten=False)
+        reduced = pca.fit_transform(stacked).astype(np.float32)
+        pca_components = pca.components_.astype(np.float32)
+        pca_mean = pca.mean_.astype(np.float32)
+    else:
+        reduced = stacked.astype(np.float32)
+        pca_components = np.eye(stacked.shape[1], dtype=np.float32)
+        pca_mean = np.zeros(stacked.shape[1], dtype=np.float32)
+
+    task_ids = list(raw.keys())
+    out: dict[str, TaskEmbedding] = {}
+    save_dict: dict[str, np.ndarray] = {}
+    for i, tid in enumerate(task_ids):
+        out[tid] = TaskEmbedding(
+            task_id=tid,
+            mean_embed=raw[tid],
+            reduced_embed=reduced[i],
+            variants=variants_by_task[tid],
+        )
+        save_dict[f"{tid}_mean"] = raw[tid]
+        save_dict[f"{tid}_reduced"] = reduced[i]
+
+    save_dict["__pca_components"] = pca_components
+    save_dict["__pca_mean"] = pca_mean
+    np.savez(cache_path, **save_dict)
+    meta_path.write_text(json.dumps({
+        "model": model,
+        "pca_dim": pca_dim,
+        "curriculum_version": curriculum.version,
+        "task_ids": task_ids,
+        "variants": variants_by_task,
+    }, indent=2))
+    return out
+
+
+def project_text(
+    text: str,
+    embeddings: dict[str, TaskEmbedding] | None = None,
+    *,
+    model: str = DEFAULT_MODEL,
+    cache_dir: Path | None = None,
+    pca_dim: int = DEFAULT_PCA_DIM,
+) -> tuple[str, np.ndarray, float]:
+    """Encode free-form `text` and return (best_task_id, reduced_embed, similarity).
+
+    Used at inference time: agent emits "shuffle to the right" → returns
+    (sidestep_right, [pca-32 embedding], 0.92).
+    """
+    embeddings = embeddings or build_task_embeddings(
+        model=model, pca_dim=pca_dim, cache_dir=cache_dir
+    )
+    from sentence_transformers import SentenceTransformer
+
+    encoder = SentenceTransformer(model)
+    query = encoder.encode([text], normalize_embeddings=True)[0]
+    best_id, best_sim = "", -1.0
+    for tid, te in embeddings.items():
+        sim = float(np.dot(query, te.mean_embed))
+        if sim > best_sim:
+            best_id = tid
+            best_sim = sim
+    return best_id, embeddings[best_id].reduced_embed.copy(), best_sim
+
+
+def text_conditioned_obs_dim(pca_dim: int = DEFAULT_PCA_DIM) -> int:
+    """Helper for env factories: how many extra obs dims for the text channel."""
+    return pca_dim

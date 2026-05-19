@@ -3662,6 +3662,7 @@
         "@testing-library/react": "^16.3.2",
         "@types/react": "^19.0.0",
         "@types/react-dom": "^19.0.0",
+        "bun-types": "^1.3.14",
         "jsdom": "^29.0.0",
         "react": "19.2.5",
         "react-dom": "19.2.5",

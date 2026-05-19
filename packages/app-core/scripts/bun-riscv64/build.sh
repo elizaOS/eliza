@@ -32,6 +32,14 @@
 
 set -euo pipefail
 
+# ENTRYPOINT runs us under `bash -l`, which sources /etc/profile and
+# resets PATH to Debian's default — wiping the Dockerfile's
+# `ENV PATH=/opt/cross/bin:/usr/local/cargo/bin:…`. Re-prepend the
+# toolchain dirs explicitly so rustup/cargo/clang stay reachable.
+export PATH="/opt/cross/bin:/usr/local/cargo/bin:${PATH}"
+export RUSTUP_HOME="${RUSTUP_HOME:-/usr/local/rustup}"
+export CARGO_HOME="${CARGO_HOME:-/usr/local/cargo}"
+
 log() { printf '[bun-riscv64] %s\n' "$*"; }
 die() { printf '[bun-riscv64][FATAL] %s\n' "$*" >&2; exit 1; }
 

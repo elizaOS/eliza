@@ -822,9 +822,31 @@ completion proof. The runtime helper `stage_host_runtime_sequence` also replays
 the prepared-batch `host_runtime_sequence` through caller-provided MMIO and
 descriptor-memory writers and returns
 `eliza.e1_npu_host_runtime_sequence_stage_result.v1` without polling or
-executing. A userspace simulator smoke test now feeds the partitioner-produced
-prepared batch into that helper, stages the descriptor image, writes the MMIO
-sequence, and observes descriptor completion/counters in `E1NpuMmioSim`. The
+executing; it rejects sequences whose GEMM preamble, descriptor submission, or
+`completion_poll` register metadata labels/addresses do not match the runtime MMIO contract,
+and rejects completion metadata that does not require the done
+bit or reject the error bit. `stage_prepared_descriptor_batch` validates an
+`eliza.e1_npu_prepared_descriptor_batch.v1` package, checks `descriptor_base`,
+`batch_index`, `arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
+`required_runtime_steps`, `descriptor_memory_writes`, and
+`mmio_preamble_writes` against the packaged `descriptor_image` and
+`op_mmio_preamble`, then returns
+`eliza.e1_npu_prepared_descriptor_batch_stage_result.v1`.
+`stage_prepared_descriptor_execution_batches` validates an
+`eliza.e1_npu_prepared_descriptor_execution_batches.v1` package, replays each
+ordered execution-batch sequence through the same single-sequence helper, and
+returns `eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1`.
+Before writing descriptor memory or MMIO, it checks every descriptor image base
+and `DESC_BASE` submission value against the package-level `descriptor_base +
+execution_batch_index * descriptor_stride_bytes` contract, checks
+`batch_index`/`execution_batch_index` identity, `arena_base consistency` and arena sizing across the outer package, inner packages, and
+descriptor images, checks `required_runtime_steps` on the outer and inner packages, and checks
+`descriptor_memory_writes` exactly match the packaged `descriptor_image`.
+It also checks `mmio_preamble_writes` match `op_mmio_preamble`, including op
+names and GEMM register values.
+A userspace simulator smoke test now feeds the partitioner-produced prepared
+batch into that helper, stages the descriptor image, writes the MMIO sequence,
+and observes descriptor completion/counters in `E1NpuMmioSim`. The
 simulator parses staged descriptor memory when present, checks the owner bit and
 writeback constraints, and accounts descriptor fetch, tensor-stream read, and
 GEMM writeback bytes. It also copies descriptor-sourced tensor bytes into the
@@ -898,7 +920,21 @@ into materializable sub-batches that share one `shared_mmio_preamble`.
 execution_batch_index)` materializes one of those sub-batches into the same
 descriptor image schema while recording the `execution_batch_index`. Delegates
 can reject a mixed command-buffer batch before trying to emit descriptors, or
-use the execution-batch plan to split a ready run safely.
+use the execution-batch plan to split a ready run safely. The partitioner and
+delegate skeletons also expose `execution_command_buffer_image` directly, and
+LiteRT mirrors it as `e1_litert_delegate_execution_command_buffer_image`, for
+callers that only need the relocatable descriptor image. They also expose
+`prepared_descriptor_execution_batch`, and LiteRT mirrors it as
+`e1_litert_delegate_prepared_descriptor_execution_batch`, so callers can get the
+host-runtime package for one materializable sub-batch. The userspace simulator
+checks that a prepared execution batch stages and submits through its own
+descriptor base and writes back the computed output tile.
+`prepared_descriptor_execution_batches(arena_base, descriptor_base,
+descriptor_stride_bytes)` packages every execution sub-batch with deterministic
+descriptor bases derived from the execution-batch index and rejects unaligned or
+undersized descriptor strides; LiteRT mirrors it as
+`e1_litert_delegate_prepared_descriptor_execution_batches`. This is still a
+metadata package, not a descriptor memory allocator.
 ExecuTorch exposes this through `descriptor_command_buffer_image`, and LiteRT
 mirrors it through `e1_litert_delegate_descriptor_command_buffer_image`, both
 returning the same `eliza.e1_npu_descriptor_command_buffer_image.v1` shape for

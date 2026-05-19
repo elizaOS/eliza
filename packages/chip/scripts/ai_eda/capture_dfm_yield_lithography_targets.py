@@ -117,6 +117,8 @@ def main() -> int:
         "status": "TARGET_CAPTURE_ONLY_NO_DFM_YIELD_LITHOGRAPHY_EXECUTION",
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
+            "agentictcad",
+            "tcadgpt",
             "litho-aware-ml-hotspot",
             "dlhsd-hotspot-detection",
             "lithohod",
@@ -187,6 +189,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "tcad-dtco-device-optimization-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future TCAD/DTCO agents must stay outside release until TCAD decks, simulator licenses, process authority, calibration data, raw logs, and human process-device review exist",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make process-14a-effects-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "physical-signoff-feature-corpus-watch",
                 "status": "CAPTURED_NOT_EXPORTED",
                 "target": "future DFM or yield predictors need signoff feature manifests with DRC, LVS, antenna, density, fill, congestion, STA, EM, and waiver hashes",
@@ -214,6 +226,7 @@ def main() -> int:
             "no license-reviewed ICCAD, foundry, wafer-map, AOI, or E1 manufacturing dataset selected for local training or evaluation",
             "no local held-out E1 layout clips with human-reviewed hotspot, false-positive, or repair labels",
             "no wafer, lot, die, board, camera, SEM, inspection, or first-article measurement corpus for yield or defect models",
+            "no approved TCAD deck, commercial TCAD license, open TCAD backend, device calibration data, or foundry-authorized process/device authority for E1",
             "no approved flow for AI-generated layout, mask, OPC, DFM fixes, yield prediction, or signoff waivers",
         ],
     }

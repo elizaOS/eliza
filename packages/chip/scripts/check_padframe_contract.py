@@ -28,17 +28,36 @@ REQUIRED_CROSS_PROBE_SCOPE = {
 }
 
 
+_POWER_PIN_GUARDS = {"USE_POWER_PINS"}
+
+
 def parse_ports(path: Path) -> set[str]:
     text = path.read_text()
     module = re.search(r"module\s+e1_chip_top\s*\((.*?)\);", text, re.S)
     if not module:
         raise SystemExit("e1_chip_top module header not found")
     ports: set[str] = set()
+    skipping: list[str] = []
     for raw in module.group(1).splitlines():
-        raw = raw.split("//", 1)[0].strip().rstrip(",")
-        if not raw:
+        line = raw.split("//", 1)[0].strip().rstrip(",")
+        if not line:
             continue
-        ports.add(raw.split()[-1].split("[", 1)[0])
+        # Verilog preprocessor directives never appear in pin_order.cfg.
+        # Track ifdef stacks so power-pin macros guarded by USE_POWER_PINS
+        # are skipped — they belong to the PDN, not the functional pinout.
+        if line.startswith("`"):
+            tokens = line.split()
+            directive = tokens[0]
+            if directive in {"`ifdef", "`ifndef"}:
+                macro = tokens[1] if len(tokens) > 1 else ""
+                skipping.append(macro)
+            elif directive == "`endif":
+                if skipping:
+                    skipping.pop()
+            continue
+        if any(guard in _POWER_PIN_GUARDS for guard in skipping):
+            continue
+        ports.add(line.split()[-1].split("[", 1)[0])
     return ports
 
 

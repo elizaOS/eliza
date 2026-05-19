@@ -637,22 +637,38 @@ async def test_dram_ctrl_dfi_traffic(dut):
 async def test_cva6_executes_from_bootrom(dut):
     """CVA6 little-core fetch from boot ROM.
 
-    BLOCKED at this top: `external/cva6/cva6/` (the upstream CVA6 source
-    tree) is not checked out, so `+define+E1_HAVE_CVA6` cannot be set and
-    `e1_cpu_subsystem` falls back to the safe-idle stub.  The integrated
-    top deliberately keeps the cluster in lite tie-off mode under this
-    condition so the rest of the cross-domain wiring stays exercised.
+    BLOCKED at this top by a wrapper-API drift, not by a missing checkout.
+    `external/cva6/cva6/` is now present (head cfb85e7), but the standalone
+    wrapper `rtl/cpu/e1_cva6_wrapper.sv` targets the deprecated legacy CVA6
+    API (`ariane_pkg::ArianeDefaultConfig`, module `ariane`,
+    `ariane_axi::req_t/resp_t`).  None of those symbols exist in the current
+    checkout or in any tagged release from v4.0.0 onward; current CVA6
+    exposes module `cva6` with `config_pkg::cva6_cfg_t` (built from
+    `cva6_config_pkg::cva6_cfg` via `build_config_pkg::build_config`) and
+    configurable NoC structs.  Defining `+define+E1_HAVE_CVA6` therefore
+    fails elaboration; the integrated top keeps the cluster in lite tie-off
+    mode (`cluster_to_fabric.status = TIED_OFF`).
 
     This test asserts the cluster's AXI4 master surface stays quiet under
     reset (the structural proof) and is upgraded to a real four-instruction
-    execution check once `external/cva6/cva6/` is present.  The CVA6 pin
-    manifest (`external/cva6/pin-manifest.json`) describes the missing
-    dependency and the recovery command.
+    execution check once the wrapper is re-targeted.
 
-    Recovery: clone the upstream CVA6 tree to `external/cva6/cva6/` and
-    rebuild with `+define+E1_HAVE_CVA6` (see
+    Recovery (mechanically enforced by `make cva6-generator-check` →
+    `scripts/check_cva6_pin.py`):
+
+      1. Pin `external/cva6/cva6` to v5.3.0 (commit 2ef1c1b).
+      2. Initialise the cvfpu + hpdcache + cvfpu/src/common_cells +
+         cvfpu/src/fpu_div_sqrt_mvp submodules.
+      3. Rewrite the `ifdef E1_HAVE_CVA6 block in `e1_cva6_wrapper.sv`
+         to instantiate
+           cva6 #(.CVA6Cfg(build_config_pkg::build_config(
+                              cva6_config_pkg::cva6_cfg)))
+         and bridge its NoC/AXI structs to the flat AXI4 ports via a new
+         `rtl/top/adapters/e1_cva6_to_e1axi4.sv`.
+
+    See `external/cva6/pin-manifest.json` → `wrapper_api_drift` and
     `docs/evidence/integration/cross-domain-interfaces.yaml` →
-    `cluster_to_fabric.blocked_reason`).
+    `cluster_to_fabric.blocked_reason` for the full chain.
     """
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)

@@ -65,6 +65,57 @@ candidate inputs to reproducible gates, not as standalone evidence.
 - Open-LLM-ECO: <https://github.com/YiKangOY/Open-LLM-ECO>. QoR/ECO agent
   placeholder repo for retrieve/schedule/reflect optimization; blocked until
   real code/data, license, and OpenLane replay evidence exist.
+- AgenticTCAD: <https://arxiv.org/abs/2512.23742>. Multi-agent TCAD code
+  generation and device optimization research. E1 status: blocked until TCAD
+  decks, simulator licenses, process authority, calibration, replay logs, and
+  human process-device review exist.
+- TcadGPT: <https://arxiv.org/abs/2601.10128>. Domain-specific executable TCAD
+  LLM research with reported code/data/model assets. E1 status: metadata-only
+  until exact asset revisions, licenses, simulator executability, synthetic-data
+  provenance, held-out tasks, and reviewer disposition are captured.
+- AnalogAgent: <https://arxiv.org/abs/2603.23910>. Self-improving multi-agent
+  analog design framework with memory and execution feedback; blocked for E1
+  until prompts, model versions, memory snapshots, SPICE decks, simulator logs,
+  PVT sweeps, and analog review are captured.
+- AnalogMaster: <https://arxiv.org/abs/2604.20916>. End-to-end LLM analog IC
+  flow from schematic image to netlist, sizing, placement, and routing; E1 use
+  is blocked pending image/netlist/layout hashes, DRC/LVS/extraction, SI/PI,
+  and human review.
+- VLM-CAD: <https://arxiv.org/abs/2601.07315>. VLM-guided analog sizing with
+  structural parsing and explainable trust-region Bayesian optimization; target
+  capture only until simulator and sizing-label evidence exists.
+- CircuitLM: <https://arxiv.org/abs/2601.04505>. Multi-agent schematic
+  generation with CircuitJSON and deterministic ERC; code/data are reported as
+  forthcoming, so E1 use is metadata-only.
+- EEschematic: <https://arxiv.org/abs/2510.17002>. MLLM SPICE-to-schematic
+  generation reference; blocked until symbol libraries, equivalence checks, and
+  reviewer disposition exist.
+- AnalogCoder-Pro: <https://arxiv.org/abs/2508.02518>. Multimodal analog
+  topology generation and sizing with waveform feedback; blocked until assets,
+  simulator logs, PVT/layout checks, and review exist.
+- AnalogCoder: <https://github.com/laiyao1/AnalogCoder>. Code-bearing
+  training-free analog generation reference; do not import or run until license,
+  prompts, generated SPICE hashes, simulator logs, and review are pinned.
+- AMS-Net: <https://ams-net.github.io/>. Schematic/netlist dataset for
+  analog/mixed-signal circuits; dataset-governance only until exact snapshot,
+  license, non-overlap review, and parser baselines exist.
+- AI-assisted hardware security verification:
+  <https://arxiv.org/abs/2604.01572>. Useful taxonomy for asset identification,
+  threat modeling, security test planning, simulation, formal verification, and
+  countermeasure reasoning; paper-only for E1 until local security evidence
+  gates exist.
+- SafeTune: <https://arxiv.org/abs/2604.27238>. RTL fine-tuning poisoning
+  defense reference; use as a corpus-governance risk, not as an enabled
+  training or filter pipeline.
+- TrojanLoC: <https://arxiv.org/abs/2512.00591>. LLM-based line-level RTL
+  Trojan localization reference with TrojanInS dataset claims; blocked until
+  assets, labels, and local evidence are reviewed.
+- HarmChip: <https://arxiv.org/abs/2604.17093>. Hardware-security LLM jailbreak
+  benchmark; dual-use prompts must stay quarantined and out of release
+  evidence.
+- Trojan explainability comparison: <https://arxiv.org/abs/2601.18696>.
+  Useful criteria for reviewable security findings, especially circuit-aware
+  features versus opaque attribution scores.
 - PostEDA-Bench: <https://arxiv.org/abs/2605.06936>. Cautionary benchmark for
   post-route EDA agents.
 

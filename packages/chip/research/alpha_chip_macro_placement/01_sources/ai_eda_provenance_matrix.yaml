@@ -635,6 +635,48 @@ entries:
     license_status: review_required
     release_use: blocked_pending_dataset_license_and_isolation_review
     allowed_current_use: citation_reference_only
+  - source_id: ai-hardware-security-verification-survey
+    asset_type: hardware_security_verification_survey
+    asset_url: https://arxiv.org/abs/2604.01572
+    license_status: paper_only
+    release_use: blocked_pending_e1_threat_model_formal_simulation_and_review_mapping
+    allowed_current_use: methodology_reference_only
+  - source_id: safetune-rtl-poisoning
+    asset_type: rtl_llm_finetuning_poisoning_defense
+    asset_url: https://arxiv.org/abs/2604.27238
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_poisoning_detector_license_and_corpus_review
+    allowed_current_use: security_risk_reference_only
+  - source_id: trojanloc
+    asset_type: llm_rtl_trojan_localization_method
+    asset_url: https://arxiv.org/abs/2512.00591
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_model_dataset_license_line_label_and_local_review
+    allowed_current_use: method_reference_only
+  - source_id: harmchip
+    asset_type: hardware_security_llm_safety_benchmark
+    asset_url: https://arxiv.org/abs/2604.17093
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_dual_use_prompt_isolation_and_security_review
+    allowed_current_use: policy_reference_only
+  - source_id: trojan-xai-comparison
+    asset_type: hardware_trojan_explainability_comparison
+    asset_url: https://arxiv.org/abs/2601.18696
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_feature_extractor_dataset_and_explanation_review
+    allowed_current_use: explanation_quality_reference_only
+  - source_id: agentictcad
+    asset_type: llm_agent_tcad_code_generation_and_device_optimization
+    asset_url: https://arxiv.org/abs/2512.23742
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_tcad_assets_license_process_authority_and_replay_review
+    allowed_current_use: dtco_method_reference_only
+  - source_id: tcadgpt
+    asset_type: executable_domain_specific_tcad_llm
+    asset_url: https://arxiv.org/abs/2601.10128
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_model_dataset_license_and_tcad_deck_review
+    allowed_current_use: dtco_model_governance_reference_only
   - source_id: accellera-cdc-rdc-standard
     asset_type: cdc_rdc_intent_standard
     asset_url: https://www.accellera.org/downloads/standards/clock-domain-crossing
@@ -845,6 +887,72 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_or_asset_review
     allowed_current_use: citation_reference_only
+  - source_id: analogagent
+    asset_type: self_improving_llm_agent_analog_design
+    asset_url: https://arxiv.org/abs/2603.23910
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_agent_prompt_memory_spice_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: analogmaster
+    asset_type: llm_end_to_end_analog_image_to_layout
+    asset_url: https://arxiv.org/abs/2604.20916
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_image_netlist_layout_assets_and_signoff_review
+    allowed_current_use: methodology_reference_only
+  - source_id: vlm-cad
+    asset_type: vlm_explainable_analog_sizing
+    asset_url: https://arxiv.org/abs/2601.07315
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_parser_optimizer_spice_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: circuitlm
+    asset_type: multi_agent_circuit_schematic_generation
+    asset_url: https://arxiv.org/abs/2601.04505
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_data_component_library_and_erc_review
+    allowed_current_use: schematic_generation_risk_reference_only
+  - source_id: eeschematic
+    asset_type: multimodal_llm_analog_schematic_generation
+    asset_url: https://arxiv.org/abs/2510.17002
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_symbol_library_netlist_equivalence_and_review
+    allowed_current_use: schematic_visualization_method_reference_only
+  - source_id: analogcoder-pro
+    asset_type: multimodal_llm_analog_generation_optimization
+    asset_url: https://arxiv.org/abs/2508.02518
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_spice_waveform_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: analogcoder
+    asset_type: training_free_llm_analog_code_generation
+    asset_url: https://github.com/laiyao1/AnalogCoder
+    license_status: review_required
+    release_use: blocked_pending_code_license_spice_and_review_harness
+    allowed_current_use: code_reference_only
+  - source_id: ams-net
+    asset_type: analog_mixed_signal_schematic_netlist_dataset
+    asset_url: https://ams-net.github.io/
+    license_status: review_required
+    release_use: blocked_pending_dataset_license_snapshot_and_non_overlap_review
+    allowed_current_use: dataset_governance_reference_only
+  - source_id: llm4sechw-debug
+    asset_type: hardware_debug_llm_framework
+    asset_url: https://arxiv.org/abs/2401.16448
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_model_dataset_defect_patch_and_review_harness
+    allowed_current_use: hardware_debug_method_reference_only
+  - source_id: llm4sechw-oshd
+    asset_type: open_source_hardware_debug_dataset
+    asset_url: https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD
+    license_status: review_required
+    release_use: blocked_pending_dataset_snapshot_license_and_contamination_review
+    allowed_current_use: dataset_governance_reference_only
+  - source_id: chipbench-ai-aided-design
+    asset_type: llm_chip_design_debug_reference_model_benchmark
+    asset_url: https://github.com/zhongkaiyu/ChipBench
+    license_status: review_required
+    release_use: blocked_pending_benchmark_license_split_overlap_and_replay_review
+    allowed_current_use: benchmark_governance_reference_only
   - source_id: archgym
     asset_type: architecture_dse_framework
     asset_url: https://github.com/srivatsankrishnan/oss-arch-gym

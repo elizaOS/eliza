@@ -33,7 +33,9 @@ RTL_DIR := $(REPO_ROOT)/rtl
 CONFIG := $(REPO_ROOT)/pd/asap7/config.asap7.yaml
 
 # Sub-blocks under shape projection. Each block is sourced from rtl/ and run
-# through ORFS per pd/asap7/config.asap7.yaml.
+# through the per-block flow_mode in pd/asap7/config.asap7.yaml (currently
+# every block uses the yosys+ABC synth-only driver; the per-block runner
+# dispatches to ORFS when a block declares flow_mode=orfs_post_route).
 BLOCKS := big_core_shell npu_tile slc_slice
 LEAF_BLOCKS := npu_tile_rf_leaf tage_table
 
@@ -84,24 +86,21 @@ endef
 big_core_shell-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
-	$(ORFS_PRESENT)
-	@echo "[asap7] big_core_shell -> ORFS asap7 platform"
+	@echo "[asap7] big_core_shell -> dispatched per config.asap7.yaml flow_mode"
 	@$(REPO_ROOT)/scripts/run_asap7_block.sh big_core_shell $(CONFIG) $(EVIDENCE_DIR) \
 	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 npu_tile-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
-	$(ORFS_PRESENT)
-	@echo "[asap7] npu_tile -> ORFS asap7 platform"
+	@echo "[asap7] npu_tile -> dispatched per config.asap7.yaml flow_mode"
 	@$(REPO_ROOT)/scripts/run_asap7_block.sh npu_tile $(CONFIG) $(EVIDENCE_DIR) \
 	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 slc_slice-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
-	$(ORFS_PRESENT)
-	@echo "[asap7] slc_slice -> ORFS asap7 platform"
+	@echo "[asap7] slc_slice -> dispatched per config.asap7.yaml flow_mode"
 	@$(REPO_ROOT)/scripts/run_asap7_block.sh slc_slice $(CONFIG) $(EVIDENCE_DIR) \
 	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
@@ -133,8 +132,7 @@ leaf-synth:
 npu_tile_rf_leaf-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
-	$(ORFS_PRESENT)
-	@echo "[asap7] npu_tile_rf_leaf -> ORFS asap7 platform (leaf sub-block)"
+	@echo "[asap7] npu_tile_rf_leaf -> dispatched per config.asap7.yaml flow_mode (leaf sub-block)"
 	@$(REPO_ROOT)/scripts/run_asap7_block.sh npu_tile_rf_leaf $(CONFIG) $(EVIDENCE_DIR) \
 	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 

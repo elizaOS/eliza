@@ -25,8 +25,11 @@ from e1_executorch_delegate import (
     PartitionResult,
     PreprocessResult,
     descriptor_command_buffer_image,
+    execution_command_buffer_image,
     partition,
     prepared_descriptor_batch,
+    prepared_descriptor_execution_batch,
+    prepared_descriptor_execution_batches,
     preprocess,
 )
 from e1_npu_stablehlo import StableHloValidationError, parse_module
@@ -78,6 +81,23 @@ def _dot_only_payload() -> dict:
     payload = _supported_payload()
     payload["name"] = "executorch_dot_only"
     payload["ops"] = [payload["ops"][0]]
+    return payload
+
+
+def _mismatched_dot_payload() -> dict:
+    payload = _dot_only_payload()
+    payload["name"] = "executorch_mismatched_dot"
+    payload["ops"] = [
+        payload["ops"][0],
+        {
+            "op": "stablehlo.dot_general",
+            "name": "dot1",
+            "lhs_type": {"shape": [2, 2], "dtype": "int8"},
+            "rhs_type": {"shape": [2, 3], "dtype": "int8"},
+            "result_type": {"shape": [2, 3], "dtype": "int8"},
+            "precision": "int8",
+        },
+    ]
     return payload
 
 
@@ -246,6 +266,25 @@ def test_backend_descriptor_command_buffer_image_fails_closed_for_mixed_batch() 
         )
 
 
+def test_backend_materializes_execution_command_buffer_image_for_split_batch() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    image = Backend().execution_command_buffer_image(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert image["schema"] == "eliza.e1_npu_descriptor_command_buffer_image.v1"
+    assert image["backend_id"] == BACKEND_ID
+    assert image["module"] == "executorch_mismatched_dot"
+    assert image["execution_batch_index"] == 1
+    assert image["op_names"] == ["dot1"]
+    assert image["descriptor_words"] == [[0xCC000108, 0x8000_0038, 0x8000_0020, 0]]
+    assert image["submission"] == {"base": 0x2100, "head": 0, "tail": 1}
+
+
 def test_backend_prepares_descriptor_batch_for_ready_batch() -> None:
     module = parse_module(_dot_only_payload())
 
@@ -302,6 +341,44 @@ def test_backend_prepared_descriptor_batch_fails_closed_for_mixed_batch() -> Non
         )
 
 
+def test_backend_prepares_descriptor_execution_batch_for_split_batch() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    prepared = Backend().prepared_descriptor_execution_batch(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_batch.v1"
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["module"] == "executorch_mismatched_dot"
+    assert prepared["descriptor_command_buffer_image"]["execution_batch_index"] == 1
+    assert prepared["descriptor_command_buffer_image"]["op_names"] == ["dot1"]
+    assert prepared["host_runtime_sequence"]["mmio_preamble_writes"][0]["op_name"] == "dot1"
+
+
+def test_backend_prepares_all_descriptor_execution_batches() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    prepared = Backend().prepared_descriptor_execution_batches(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        descriptor_stride_bytes=0x40,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_execution_batches.v1"
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["module"] == "executorch_mismatched_dot"
+    assert prepared["execution_batch_count"] == 2
+    assert [
+        batch["descriptor_command_buffer_image"]["descriptor_base"]
+        for batch in prepared["prepared_execution_batches"]
+    ] == [0x2100, 0x2140]
+
+
 def test_prepared_descriptor_batch_wrapper_returns_prepared_dict() -> None:
     module = parse_module(_dot_only_payload())
 
@@ -315,6 +392,34 @@ def test_prepared_descriptor_batch_wrapper_returns_prepared_dict() -> None:
     assert prepared["descriptor_command_buffer_image"]["op_names"] == ["dot0"]
 
 
+def test_prepared_descriptor_execution_batch_wrapper_returns_prepared_dict() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    prepared = prepared_descriptor_execution_batch(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["descriptor_command_buffer_image"]["execution_batch_index"] == 1
+
+
+def test_prepared_descriptor_execution_batches_wrapper_returns_prepared_dict() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    prepared = prepared_descriptor_execution_batches(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        descriptor_stride_bytes=0x40,
+    )
+
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["execution_batch_count"] == 2
+
+
 def test_descriptor_command_buffer_image_wrapper_returns_image_dict() -> None:
     module = parse_module(_dot_only_payload())
 
@@ -326,3 +431,18 @@ def test_descriptor_command_buffer_image_wrapper_returns_image_dict() -> None:
 
     assert image["backend_id"] == BACKEND_ID
     assert image["op_names"] == ["dot0"]
+
+
+def test_execution_command_buffer_image_wrapper_returns_image_dict() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    image = execution_command_buffer_image(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert image["backend_id"] == BACKEND_ID
+    assert image["execution_batch_index"] == 1
+    assert image["op_names"] == ["dot1"]

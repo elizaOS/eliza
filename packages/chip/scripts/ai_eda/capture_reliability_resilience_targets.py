@@ -114,6 +114,8 @@ def main() -> int:
         "status": "TARGET_CAPTURE_ONLY_NO_RELIABILITY_RESILIENCE_EXECUTION",
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
+            "agentictcad",
+            "tcadgpt",
             "proton-em",
             "emspice2",
             "bti-hci-aging-models",
@@ -170,6 +172,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "tcad-process-device-assumption-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future TCAD-generated device, process, reliability-corner, leakage, or degradation assumptions must trace to authorized decks, calibration, and signoff evidence",
+                "acceptance_gates": [
+                    "make process-14a-effects-check",
+                    "make power-thermal-evidence-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
                 "id": "soft-error-fault-injection-watch",
                 "status": "CAPTURED_NOT_INJECTED",
                 "target": "future RTL, formal, QEMU, or workload-level fault injection must quarantine results and require deterministic fault campaigns, seeds, signatures, and review",
@@ -208,6 +220,7 @@ def main() -> int:
             "no calibrated activity, temperature, voltage, PDN current-density, or lifetime mission-profile evidence",
             "no reviewed RTL/formal/QEMU fault-injection harness for E1 with fault-site manifests, random seeds, signatures, and pass/fail taxonomy",
             "no local labels linking fault campaigns, formal traces, simulator failures, or silicon logs to approved mitigations",
+            "no approved TCAD/DTCO model, deck, simulator license, calibration corpus, or process-device authority for E1 reliability assumptions",
             "no approved workflow for AI-generated ECC, TMR, replay, redundancy, hardening, derating, or reliability ECO changes",
             "no signoff evidence showing EM/IR, aging timing, soft-error, safety, or reliability closure",
         ],
