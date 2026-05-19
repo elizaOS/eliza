@@ -121,6 +121,21 @@
       "import": "./dist/runtime/*.js",
       "default": "./dist/runtime/*.js"
     },
+    "./auth/*": {
+      "types": "./src/auth/*.ts",
+      "eliza-source": {
+        "types": "./src/auth/*.ts",
+        "import": "./src/auth/*.ts",
+        "default": "./src/auth/*.ts"
+      },
+      "bun": {
+        "types": "./src/auth/*.ts",
+        "import": "./src/auth/*.ts",
+        "default": "./src/auth/*.ts"
+      },
+      "import": "./dist/auth/*.js",
+      "default": "./dist/auth/*.js"
+    },
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",
       "eliza-source": {
