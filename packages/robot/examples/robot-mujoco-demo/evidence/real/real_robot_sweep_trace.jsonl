@@ -1,0 +1,23 @@
+{"command": "action.play", "payload": {"name": "stand"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12721}, "ts": 1779224860.8474667}
+{"command": "head.set", "payload": {"pan": 0.8, "tilt": 0.0, "duration": 0.5}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12689}, "ts": 1779224862.394975}
+{"command": "head.set", "payload": {"pan": -0.8, "tilt": 0.0, "duration": 0.5}, "ok": true, "message": "ok", "data": {"is_walking": true, "battery_mv": 12700}, "ts": 1779224863.6316075}
+{"command": "head.set", "payload": {"pan": 0.0, "tilt": 0.0, "duration": 0.4}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12704}, "ts": 1779224864.8704643}
+{"command": "action.play", "payload": {"name": "wave"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12716}, "ts": 1779224865.6908035}
+{"command": "action.play", "payload": {"name": "bow"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12636}, "ts": 1779224868.6919508}
+{"command": "action.play", "payload": {"name": "sit"}, "ok": true, "message": "ok", "data": {"is_walking": true, "battery_mv": 12685}, "ts": 1779224871.705242}
+{"command": "action.play", "payload": {"name": "stand"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12704}, "ts": 1779224874.7410562}
+{"command": "walk.set", "payload": {"speed": 1, "height": 0.036, "x": 0.02, "y": 0.0, "yaw": 0.0}, "ok": true, "message": "ok", "data": {"is_walking": true, "battery_mv": 12693}, "ts": 1779224876.807145}
+{"command": "walk.command", "payload": {"action": "start"}, "ok": true, "message": "ok", "data": {"is_walking": true, "battery_mv": 12693}, "ts": 1779224876.8246136}
+{"command": "walk.command", "payload": {"action": "stop"}, "ok": false, "message": "No service response received", "data": {}, "ts": 1779224880.8791013}
+{"command": "walk.set", "payload": {"speed": 1, "height": 0.036, "x": 0.0, "y": 0.0, "yaw": 4.0}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12604}, "ts": 1779224881.2966776}
+{"command": "walk.command", "payload": {"action": "start"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12604}, "ts": 1779224881.3132617}
+{"command": "walk.command", "payload": {"action": "stop"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12542}, "ts": 1779224884.293984}
+{"command": "walk.set", "payload": {"speed": 1, "height": 0.036, "x": 0.0, "y": 0.0, "yaw": -4.0}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12587}, "ts": 1779224884.7172134}
+{"command": "walk.command", "payload": {"action": "start"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12587}, "ts": 1779224884.734349}
+{"command": "walk.command", "payload": {"action": "stop"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12548}, "ts": 1779224887.7240434}
+{"command": "walk.command", "payload": {"action": "stop"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12604}, "ts": 1779224888.2125063}
+{"command": "servo.set", "payload": {"duration": 0.5, "positions": [{"id": 23, "position": 600}, {"id": 24, "position": 500}]}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12669}, "ts": 1779224888.949546}
+{"command": "action.play", "payload": {"name": "wave"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12704}, "ts": 1779224890.17588}
+{"command": "action.play", "payload": {"name": "stand"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12610}, "ts": 1779224893.1805246}
+{"command": "walk.command", "payload": {"action": "stop"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12667}, "ts": 1779224895.2336235}
+{"command": "action.play", "payload": {"name": "stand"}, "ok": true, "message": "ok", "data": {"is_walking": false, "battery_mv": 12667}, "ts": 1779224895.2337058}

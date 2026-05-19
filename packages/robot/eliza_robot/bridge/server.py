@@ -112,6 +112,9 @@ class RuntimeConfig:
     camera_device: int = -1
     camera_width: int = 640
     camera_height: int = 480
+    # Remote AiNex rosbridge connection (--backend ainex_remote).
+    rosbridge_host: str = "192.168.1.218"
+    rosbridge_port: int = 9090
 
 
 def _load_config_file(path: str) -> JsonDict:
@@ -162,6 +165,8 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
         camera_device=getattr(args, "camera_device", -1),
         camera_width=getattr(args, "camera_width", 640),
         camera_height=getattr(args, "camera_height", 480),
+        rosbridge_host=getattr(args, "rosbridge_host", "192.168.1.218"),
+        rosbridge_port=getattr(args, "rosbridge_port", 9090),
     )
 
 
@@ -189,6 +194,18 @@ def _build_backend_factory(name: str, config: RuntimeConfig) -> BackendFactory:
             return MuJocoBackend(env, profile_id=config.profile_id)
 
         return _build_mujoco_backend
+    if name in {"ainex_remote", "ros_remote"}:
+        # Drives a physical AiNex over its rosbridge_suite without needing
+        # rospy locally. Host/port come from RuntimeConfig.
+        def _build_remote_backend() -> BridgeBackend:
+            from eliza_robot.bridge.backends.ainex_remote import AinexRemoteBackend
+
+            return AinexRemoteBackend(
+                host=config.rosbridge_host,
+                port=config.rosbridge_port,
+            )
+
+        return _build_remote_backend
     raise ValueError(f"unsupported backend: {name}")
 
 
@@ -1057,9 +1074,24 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--backend",
         type=str,
-        choices=["mock", "mujoco", "ros", "ros_real", "ros_sim", "isaac"],
+        choices=[
+            "mock", "mujoco", "ros", "ros_real", "ros_sim", "isaac",
+            "ainex_remote", "ros_remote",
+        ],
         default="mock",
         help="target backend adapter",
+    )
+    parser.add_argument(
+        "--rosbridge-host",
+        type=str,
+        default="192.168.1.218",
+        help="rosbridge host for --backend ainex_remote (default: 192.168.1.218)",
+    )
+    parser.add_argument(
+        "--rosbridge-port",
+        type=int,
+        default=9090,
+        help="rosbridge port for --backend ainex_remote (default: 9090)",
     )
     parser.add_argument(
         "--profile",

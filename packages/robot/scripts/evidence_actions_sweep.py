@@ -256,10 +256,12 @@ async def _run(out_dir: Path, fps: float) -> int:
     serve_task = asyncio.create_task(server.serve_forever())
     await asyncio.sleep(0.15)
 
-    # Render a sample frame to learn the resolution.
-    sample = env.render_ego()
+    # Use the auto-tracking external camera so the recording shows the
+    # robot moving, not what the robot sees.
+    render_w, render_h = 1280, 720
+    sample = env.render_external(width=render_w, height=render_h)
     h, w = sample.shape[:2]
-    print(f"[sweep] bridge listening, render resolution {w}x{h}")
+    print(f"[sweep] bridge listening, third-person render {w}x{h}")
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     writer = cv2.VideoWriter(
@@ -297,7 +299,7 @@ async def _run(out_dir: Path, fps: float) -> int:
                 t_hold_start = time.time()
                 first_frame = None
                 while (time.time() - t_hold_start) < step.hold_s:
-                    rgb = env.render_ego()
+                    rgb = env.render_external(width=render_w, height=render_h)
                     ms = int((time.time() - t0) * 1000)
                     labelled = _label_frame(
                         rgb, step.label, f"{status}    t+{ms} ms"
@@ -315,7 +317,7 @@ async def _run(out_dir: Path, fps: float) -> int:
                     await _send(ws, "walk.command", {"action": "stop"}, True)
                     # short tail to capture the deceleration
                     for _ in range(int(0.4 * fps)):
-                        rgb = env.render_ego()
+                        rgb = env.render_external(width=render_w, height=render_h)
                         writer.write(_label_frame(rgb, step.label, "post-stop"))
                         await asyncio.sleep(frame_interval * 0.5)
 

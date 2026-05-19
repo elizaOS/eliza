@@ -81,6 +81,22 @@ class DemoEnv:
         # Use PRIMITIVES model — matches base_env.py training physics
         resolved_xml = xml_path or str(consts.SCENE_PRIMITIVES_XML)
         spec = mujoco.MjSpec.from_file(resolved_xml)
+        # Bump the offscreen framebuffer so render_external() can produce
+        # ≥720p frames; default in the primitives MJCF is 640×480.
+        spec.visual.global_.offwidth = max(1280, spec.visual.global_.offwidth)
+        spec.visual.global_.offheight = max(720, spec.visual.global_.offheight)
+
+        # Add an external "third-person" camera so callers can render the
+        # robot from outside its head (useful for evidence videos that
+        # need to show the robot moving, not what the robot sees).
+        ext_cam_body = spec.worldbody.add_body()
+        ext_cam_body.name = "external_cam_body"
+        ext_cam_body.pos = [-1.0, -1.2, 0.45]  # behind-left, slightly above torso
+        ext_cam = ext_cam_body.add_camera()
+        ext_cam.name = "external_cam"
+        ext_cam.fovy = 60.0
+        ext_cam.mode = mujoco.mjtCamLight.mjCAMLIGHT_TARGETBODY
+        ext_cam.targetbody = "body_link"  # always frame the torso
 
         # Add a target body with a visible geom (no collision).
         body = spec.worldbody.add_body()
@@ -162,6 +178,11 @@ class DemoEnv:
             width=camera_width,
             height=camera_height,
         )
+        # Third-person renderer used by `render_external()`. Lazily
+        # constructed so the import + GL context aren't paid unless
+        # somebody actually asks for an external frame.
+        self._external_renderer: mujoco.Renderer | None = None
+        self._external_size = (camera_width, camera_height)
 
         # --- Runtime state --------------------------------------------------
         self._is_walking = False
@@ -300,6 +321,36 @@ class DemoEnv:
         # SimCamera.render_rgb returns BGR; convert to RGB.
         bgr = self._sim_camera.render_rgb(self.data)
         return bgr[:, :, ::-1].copy()
+
+    def render_external(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> np.ndarray:
+        """Render RGB frame from the auto-tracking external/third-person camera.
+
+        Always frames the robot's torso (`body_link`) — driven by
+        `mode=mjCAMLIGHT_TARGETBODY` so the camera follows the robot as
+        it rotates or moves. Useful for evidence recordings that need to
+        show the robot moving from the outside.
+
+        Returns:
+            (H, W, 3) uint8 array in RGB order.
+        """
+        w, h = self._external_size
+        w = width or w
+        h = height or h
+        if (
+            self._external_renderer is None
+            or self._external_renderer.width != w
+            or self._external_renderer.height != h
+        ):
+            if self._external_renderer is not None:
+                self._external_renderer.close()
+            self._external_renderer = mujoco.Renderer(self.model, height=h, width=w)
+            self._external_size = (w, h)
+        self._external_renderer.update_scene(self.data, camera="external_cam")
+        return self._external_renderer.render().copy()
 
     def get_target_position(self) -> np.ndarray:
         """Get current target object position in world frame."""

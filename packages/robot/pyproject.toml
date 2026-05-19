@@ -33,6 +33,7 @@ dependencies = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
   "ruff>=0.6",
+  "roslibpy>=2.0.0",
 ]
 
 [project.scripts]

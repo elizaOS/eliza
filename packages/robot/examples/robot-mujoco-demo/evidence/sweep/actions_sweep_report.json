@@ -2,7 +2,7 @@
   "actions": [
     {
       "label": "AINEX_STAND",
-      "duration_s": 1.516,
+      "duration_s": 1.57,
       "responses": [
         {
           "command": "action.play",
@@ -14,7 +14,7 @@
     },
     {
       "label": "AINEX_WALK_FORWARD",
-      "duration_s": 3.697,
+      "duration_s": 3.255,
       "responses": [
         {
           "command": "walk.set",
@@ -31,7 +31,7 @@
     },
     {
       "label": "AINEX_WALK_BACKWARD",
-      "duration_s": 3.28,
+      "duration_s": 3.848,
       "responses": [
         {
           "command": "walk.set",
@@ -48,7 +48,7 @@
     },
     {
       "label": "AINEX_SIDE_STEP_LEFT",
-      "duration_s": 3.522,
+      "duration_s": 3.586,
       "responses": [
         {
           "command": "walk.set",
@@ -65,7 +65,7 @@
     },
     {
       "label": "AINEX_SIDE_STEP_RIGHT",
-      "duration_s": 3.116,
+      "duration_s": 3.448,
       "responses": [
         {
           "command": "walk.set",
@@ -82,7 +82,7 @@
     },
     {
       "label": "AINEX_TURN_LEFT",
-      "duration_s": 3.099,
+      "duration_s": 3.446,
       "responses": [
         {
           "command": "walk.set",
@@ -99,7 +99,7 @@
     },
     {
       "label": "AINEX_TURN_RIGHT",
-      "duration_s": 3.408,
+      "duration_s": 3.319,
       "responses": [
         {
           "command": "walk.set",
@@ -116,7 +116,7 @@
     },
     {
       "label": "AINEX_STOP",
-      "duration_s": 0.954,
+      "duration_s": 0.897,
       "responses": [
         {
           "command": "walk.command",
@@ -128,7 +128,7 @@
     },
     {
       "label": "AINEX_SIT",
-      "duration_s": 2.112,
+      "duration_s": 2.051,
       "responses": [
         {
           "command": "action.play",
@@ -140,7 +140,7 @@
     },
     {
       "label": "AINEX_WAVE",
-      "duration_s": 2.272,
+      "duration_s": 2.291,
       "responses": [
         {
           "command": "action.play",
@@ -152,7 +152,7 @@
     },
     {
       "label": "AINEX_BOW",
-      "duration_s": 2.233,
+      "duration_s": 2.225,
       "responses": [
         {
           "command": "action.play",
@@ -164,7 +164,7 @@
     },
     {
       "label": "AINEX_PICK_UP",
-      "duration_s": 1.577,
+      "duration_s": 1.567,
       "responses": [
         {
           "command": "policy.start",
@@ -181,7 +181,7 @@
     },
     {
       "label": "AINEX_PLACE_DOWN",
-      "duration_s": 1.605,
+      "duration_s": 1.625,
       "responses": [
         {
           "command": "policy.start",
@@ -198,7 +198,7 @@
     },
     {
       "label": "AINEX_SET_SERVO",
-      "duration_s": 1.602,
+      "duration_s": 1.655,
       "responses": [
         {
           "command": "servo.set",
@@ -210,7 +210,7 @@
     },
     {
       "label": "AINEX_RUN_ACTION_GROUP",
-      "duration_s": 2.209,
+      "duration_s": 2.232,
       "responses": [
         {
           "command": "action.play",
@@ -222,8 +222,8 @@
     }
   ],
   "render_size": [
-    640,
-    480
+    1280,
+    720
   ],
   "fps": 30.0
 }

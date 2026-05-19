@@ -506,6 +506,42 @@ entries:
     risk:
       - Description-code pairs can encode generated or simplified tasks that do
         not match production SoC RTL.
+  - id: deepcircuitx
+    name: DeepCircuitX
+    kind: repository_level_rtl_ppa_dataset
+    stage:
+      - rtl_generation
+      - rtl_understanding
+      - ppa_prediction
+      - model_training
+      - corpus_governance
+    priority: P1
+    source_url: https://arxiv.org/abs/2502.18297
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/zeju-0727/DeepCirCuitX_Dataset
+    license_status: review_required
+    code_status: dataset_only
+    model_status: no_model
+    e1_fit: >
+      Relevant because it preserves repository-level RTL context and includes
+      annotations, synthesized netlists, and PPA metrics, which match E1's need
+      for repo-aware RTL understanding and early PPA screening.
+    integration_action: >
+      Track as an external corpus candidate only. Do not download, import,
+      train, fine-tune, infer, or benchmark with it until exact Hugging Face
+      revision, source-repository licenses, file manifests, contamination
+      checks, and quarantine paths are approved.
+    evidence_gate: >
+      Any DeepCircuitX use requires dataset commit/file hashes, source license
+      audit, parser/lint statistics, non-overlap checks against E1 prompts,
+      synthesized-netlist/PPA label provenance, held-out E1 error analysis, and
+      reviewer disposition.
+    risk:
+      - Repository-level GitHub RTL can include incompatible licenses,
+        duplicated code, generated code, or non-production examples.
+      - Public PPA labels may not transfer to E1 process, constraints,
+        hierarchy, SRAM/macros, or OpenLane/OpenROAD configuration.
   - id: llmsanitize
     name: LLMSanitize
     kind: contamination_detection_toolkit
@@ -1022,6 +1058,42 @@ entries:
     risk:
       - Open-source assets were not yet available in the checked source path.
       - Reference-model equivalence may not cover integration-side effects.
+  - id: cktevo
+    name: CktEvo
+    kind: repository_level_rtl_evolution_benchmark
+    stage:
+      - rtl_optimization
+      - repository_level_editing
+      - ppa
+      - tool_feedback
+      - equivalence
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.08718
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: reference_framework_reported_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Strong fit for E1's long-term RTL optimization lane because it frames
+      RTL improvement as repository-level, function-preserving, PPA-driven
+      evolution with toolchain feedback across multiple files.
+    integration_action: >
+      Track as a future quarantined RTL evolution benchmark/method. Do not run
+      agents or promote generated edits until E1 has cross-file task packs,
+      rollback manifests, equivalence/cocotb/formal/synthesis/OpenLane gates,
+      and reviewer disposition.
+    evidence_gate: >
+      CktEvo-style use requires exact framework/code revision if released,
+      before/after repository hashes, changed-file manifests, toolchain logs,
+      functional simulation, formal/equivalence evidence, synthesis/OpenLane
+      PPA reports, CDC/RDC review for control logic, and human review.
+    risk:
+      - Repository-level edits can silently break firmware, MMIO, reset,
+        clock-domain, or integration contracts outside the optimized block.
+      - PPA gains on benchmark IP cores may not transfer to E1 SoC hierarchy,
+        constraints, or physical-design closure.
   - id: rtl-timing-metamorphosis
     name: Timing Logic Metamorphosis RTL Optimization Study
     kind: rtl_optimization_evaluation_method
@@ -4992,6 +5064,43 @@ entries:
       - Autonomous timing agents can overfit a single run or break other
         signoff dimensions.
       - Write-capable EDA action needs strong authorization boundaries.
+  - id: astrotune
+    name: AstroTune
+    kind: llm_cross_stage_parameter_tuner
+    stage:
+      - physical_design
+      - synthesis
+      - placement
+      - routing
+      - timing_closure
+      - parameter_tuning
+    priority: P1
+    source_url: https://doi.org/10.1145/3764386.3779579
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation_found
+    model_status: external_llm_method
+    e1_fit: >
+      Strong fit for the E1 OpenLane/OpenROAD optimization lane because it
+      combines RTL/AST-assisted design retrieval with stage-aware parameter
+      propagation and pruning across synthesis, placement, routing, and timing
+      flow stages.
+    integration_action: >
+      Track as a future advisory parameter-tuning method for E1 OpenLane
+      configs only after the repo has a repeated, held-out corpus of local RTL,
+      AST signatures, parameter manifests, metrics, logs, and signoff labels.
+    evidence_gate: >
+      Any AstroTune-style use requires exact paper/code revision if released,
+      RTL and AST hash manifests, retrieved-design provenance, prompt/model
+      logs, parameter-set replay manifests, before/after OpenLane/OpenSTA
+      metrics, power/DRC/antenna/signoff checks, and reviewer disposition.
+    risk:
+      - Public benchmark PPA gains may not transfer to E1 constraints,
+        hierarchy, memory macros, or incomplete signoff state.
+      - Cross-stage parameter search can improve one metric while degrading
+        hold timing, routability, power, area, DRC, antenna, or reproducibility.
   - id: openroad-resizer
     name: OpenROAD Gate Resizer
     kind: timing_eco_tool

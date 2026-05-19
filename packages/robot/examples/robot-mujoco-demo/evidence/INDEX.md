@@ -98,11 +98,59 @@ Latest run:
 - Detector identical to the one used on MuJoCo renders — same `ArucoDetector`,
   same `CameraIntrinsics`, same pose math. Only the pixel source differs.
 
-## 5. Real-robot status (not verified)
+## 5. Real AiNex action sweep (`real/`)
 
-Smoke check (`scripts/check_real_robot.py`) was run against ports 9090,
-9100, and 9101 on this host — **all closed**. The AiNex bridge is not
-listening. To verify motor commands on hardware:
+Driven via `scripts/evidence_real_robot_sweep.py` against the live AiNex
+at **`192.168.1.218:9090`** (rosbridge_suite). The `AinexRemoteBackend`
+(roslibpy-based, no ROS install required on the dev box) maps every
+unified bridge command to the same topics/services `ros_backend.py` uses
+with `rospy`.
+
+| Artifact | Meaning |
+| --- | --- |
+| `real_robot_sweep_robot_cam.mp4` | Live `/camera/image_raw/compressed` feed from the AiNex's head camera, recorded continuously through all 15 actions with HUD overlay. The view pans/tilts/rotates as the robot moves. |
+| `real_robot_onboard_strip.png` | Every-30th-frame strip from the onboard video. |
+| `real_robot_contact_sheet.png` | One keyframe per action. |
+| `real_robot_sweep_report.json` | Per-action telemetry deltas (battery, walking state, IMU, head, walk velocity), command results. |
+| `real_robot_sweep_trace.jsonl` | Every command/response that crossed the bridge. |
+
+Latest run: **15/15 actions returned ok**.
+
+| Action | Result | Battery (mV before → after) |
+| --- | --- | --- |
+| AINEX_STAND          | OK | 12721 → 12689 |
+| AINEX_HEAD_PAN_LEFT  | OK | 12689 → 12700 |
+| AINEX_HEAD_PAN_RIGHT | OK | 12700 → 12704 |
+| AINEX_HEAD_CENTER    | OK | 12704 → 12716 |
+| AINEX_WAVE           | OK | 12716 → 12636 |
+| AINEX_BOW            | OK | 12636 → 12685 |
+| AINEX_SIT            | OK | 12685 → 12704 |
+| AINEX_STAND_RECOVER  | OK | 12704 → 12693 |
+| AINEX_WALK_FORWARD   | OK | 12693 → 12604 |
+| AINEX_TURN_LEFT      | OK | 12604 → 12587 |
+| AINEX_TURN_RIGHT     | OK | 12587 → 12604 |
+| AINEX_STOP           | OK | 12604 → 12669 |
+| AINEX_SET_SERVO      | OK | 12669 → 12704 |
+| AINEX_RUN_ACTION_GROUP | OK | 12704 → 12610 |
+| AINEX_FINAL_STAND    | OK | 12610 → 12663 |
+
+The **external Obsbot camera disconnected from USB during this run** —
+the script skipped the external mp4 and recorded only the onboard view.
+Re-plug `/dev/video4` and re-run for a side-view recording.
+
+### Reproduce
+
+```bash
+PYTHONPATH=packages/robot python packages/robot/scripts/evidence_real_robot_sweep.py \
+  --host 192.168.1.218 --port 9090 --include-locomotion --obsbot-device 4
+```
+
+Drop `--include-locomotion` to skip walks/turns (safe default for first
+contact). Pass `--obsbot-device -1` to record only the onboard camera.
+
+---
+
+To verify against a different AiNex / topology:
 
 1. Power the AiNex Pi, launch `roslaunch ainex_bringup robot.launch`.
 2. From the dev box: `python -m eliza_robot.bridge.launch --target real --envelope`.
