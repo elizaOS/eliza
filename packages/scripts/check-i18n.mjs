@@ -16,6 +16,7 @@ const LOCALE_DIR = path.join(repoRoot, "packages/ui/src/i18n/locales");
 const SCAN_DIRS = [
   path.join(repoRoot, "packages/app-core/src"),
   path.join(repoRoot, "packages/ui/src"),
+  path.join(repoRoot, "packages/cloud-frontend/src"),
 ];
 const ALLOWLIST_PATH = path.join(repoRoot, "packages/scripts/i18n-dynamic-keys.json");
 const SOURCE_LOCALE = "en";
