@@ -437,7 +437,18 @@ jobs:
           retry_rebase_release_commit() {
             git fetch origin "${TARGET_BRANCH}"
 
-            if ! git rebase "origin/${TARGET_BRANCH}"; then
+            # `-X theirs` resolves package.json / lerna.json version conflicts
+            # in favor of our release commit (the "theirs" in rebase semantics
+            # is the patch being applied). Concurrent unrelated commits to
+            # develop that also touched version files would otherwise abort the
+            # rebase with a conflict (see run 26082989616 — packages/tui
+            # conflict on a concurrent push during a 28-min queued release).
+            # Non-version edits in the same file still merge cleanly via the
+            # 3-way recursive strategy.
+            if ! git rebase -X theirs "origin/${TARGET_BRANCH}"; then
+              # Abort any half-applied rebase before returning so the next
+              # retry starts from a clean working tree.
+              git rebase --abort 2>/dev/null || true
               echo "❌ Error: Failed to rebase release commit onto origin/${TARGET_BRANCH}"
               return 1
             fi
