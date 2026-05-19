@@ -68,6 +68,14 @@ export interface FfiBackendRuntime {
 	supported(): boolean;
 	acquire(plan: BackendPlan): Promise<FfiBackendSession>;
 	release(): Promise<void>;
+	/**
+	 * Optional parallel-slot pool surface. When the runtime exposes a
+	 * ctx pool (the desktop libllama path does), `parallelSlots()`
+	 * reports the live count and `resizeParallel(N)` grows/shrinks it.
+	 * Runtimes without a pool report 1 and treat resize as no-op.
+	 */
+	parallelSlots?(): number;
+	resizeParallel?(target: number): Promise<boolean>;
 }
 
 /**
@@ -247,11 +255,29 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		return this.session?.drafterPath ?? null;
 	}
 
-	// Deliberately still no `embed()`, `describeImage()`, or `resizeParallel()`.
-	// The dispatcher throws actionable errors when those are called against
-	// an FFI session — vision requires native llava/mtmd wrappers in the shim,
-	// and parallel-resize needs multi-context pooling at the adapter layer.
-	// See `plugins/plugin-local-inference/FFI_BACKEND_WIREUP_PLAN.md`.
+	/**
+	 * Parallel-slot pool size. Routed to the runtime's ctx pool when one
+	 * exists; defaults to 1 otherwise.
+	 */
+	parallelSlots(): number {
+		return this.runtime.parallelSlots?.() ?? 1;
+	}
+
+	/**
+	 * Grow or shrink the runtime's ctx pool to `target` slots. Returns
+	 * false when the runtime has no pool surface (in which case parallel
+	 * resize is silently a no-op — the conversation registry tolerates
+	 * fixed 1-slot operation).
+	 */
+	async resizeParallel(target: number): Promise<boolean> {
+		if (!this.runtime.resizeParallel) return false;
+		return this.runtime.resizeParallel(target);
+	}
+
+	// Deliberately still no `embed()` or `describeImage()`. Vision describe
+	// requires native llava/mtmd wrappers in eliza-llama-shim; the
+	// dispatcher throws an actionable error when describeImage is called
+	// against an FFI session today. See FFI_BACKEND_WIREUP_PLAN.md.
 }
 
 /**
