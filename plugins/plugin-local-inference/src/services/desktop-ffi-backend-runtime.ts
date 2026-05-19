@@ -37,7 +37,10 @@ import {
 	desktopLlamaDylibsPresent,
 	loadDesktopLlama,
 } from "./desktop-llama-adapter";
-import type { FfiBackendRuntime, FfiBackendSession } from "./ffi-streaming-backend";
+import type {
+	FfiBackendRuntime,
+	FfiBackendSession,
+} from "./ffi-streaming-backend";
 import { FfiStreamingRunner } from "./ffi-streaming-runner";
 
 interface ActiveSession {

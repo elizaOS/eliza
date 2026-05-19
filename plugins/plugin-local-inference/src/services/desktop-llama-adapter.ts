@@ -188,7 +188,9 @@ export function resolveDesktopBinDir(
 	env: NodeJS.ProcessEnv = process.env,
 ): string {
 	const stateDir =
-		env.ELIZA_STATE_DIR ?? env.MILADY_STATE_DIR ?? path.join(os.homedir(), ".eliza");
+		env.ELIZA_STATE_DIR ??
+		env.MILADY_STATE_DIR ??
+		path.join(os.homedir(), ".eliza");
 	const platform =
 		process.platform === "darwin"
 			? "darwin"
@@ -586,8 +588,7 @@ export class DesktopLlamaAdapter {
 		return {
 			llmStreamSupported: () => true,
 			llmStreamOpen: (args) => this.openSession(args.config),
-			llmStreamPrefill: (args) =>
-				this.prefillSession(args.stream, args.tokens),
+			llmStreamPrefill: (args) => this.prefillSession(args.stream, args.tokens),
 			llmStreamNext: (args) =>
 				this.nextStep(args.stream, args.maxTokensPerStep, args.maxTextBytes),
 			llmStreamCancel: (stream) => this.cancelSession(stream),
@@ -617,7 +618,9 @@ export class DesktopLlamaAdapter {
 		}
 		// Drafter args are ignored in v1; warn loudly once.
 		if (
-			(config.draftMin > 0 || config.draftMax > 0 || config.dflashDrafterPath) &&
+			(config.draftMin > 0 ||
+				config.draftMax > 0 ||
+				config.dflashDrafterPath) &&
 			!this.warnedDrafterIgnored
 		) {
 			console.warn(
