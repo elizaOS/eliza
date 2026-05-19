@@ -574,7 +574,7 @@ async function buildRuntime(
       name: "ElizaCerebrasTest",
       bio: ["A test agent for Cerebras validation"],
       system:
-        "You are a concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.",
+        "Concise, helpful assistant. When you use tools, use them exactly once per task. Do not loop unnecessarily.",
       templates: {},
       messageExamples: [],
       postExamples: [],

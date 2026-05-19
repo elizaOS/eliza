@@ -1,0 +1,86 @@
+{
+  "id": "smartglasses",
+  "name": "Smartglasses",
+  "description": "Even Realities G1/G2 smartglasses integration for whole-headset pairing, display text, microphone audio, side-tap mic control, bridge Wi-Fi setup, and diagnostics.",
+  "npmName": "@elizaos/plugin-smartglasses",
+  "version": "2.0.0-beta.2",
+  "source": "bundled",
+  "tags": [
+    "smartglasses",
+    "wearable",
+    "even-realities",
+    "g1",
+    "g2",
+    "display",
+    "microphone",
+    "bluetooth",
+    "wifi"
+  ],
+  "config": {
+    "SMARTGLASSES_TRANSPORT": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "auto",
+      "label": "Transport",
+      "help": "Preferred smartglasses transport: auto, even-bridge, web-bluetooth, or noble.",
+      "advanced": false
+    },
+    "SMARTGLASSES_SCAN_TIMEOUT_MS": {
+      "type": "number",
+      "required": false,
+      "sensitive": false,
+      "default": 10000,
+      "label": "Scan Timeout",
+      "help": "BLE scan timeout in milliseconds for Noble-based direct G1 connections.",
+      "advanced": true,
+      "min": 0,
+      "unit": "ms"
+    },
+    "SMARTGLASSES_AUTO_INIT": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "default": true,
+      "label": "Auto Init",
+      "help": "Send G1 connection-ready init packets after connecting.",
+      "advanced": false
+    },
+    "SMARTGLASSES_INIT_MODE": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "lens-specific",
+      "label": "Init Mode",
+      "help": "Connection-ready init mode: lens-specific or official same-init.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Glasses",
+    "group": "hardware",
+    "groupOrder": 8,
+    "actions": ["enable", "configure", "launch"]
+  },
+  "resources": {
+    "homepage": "https://elizaos.ai",
+    "repository": "https://github.com/elizaos/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "media",
+  "launch": {
+    "type": "internal-tab",
+    "target": "smartglasses",
+    "capabilities": [
+      "smartglasses",
+      "wearable-display",
+      "wearable-microphone",
+      "wifi-provisioning"
+    ],
+    "curatedSlug": "smartglasses"
+  }
+}

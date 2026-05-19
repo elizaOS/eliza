@@ -222,10 +222,12 @@ const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, {
-    params: Promise.resolve({ id: c.req.param("id")! }),
+    params: Promise.resolve({ id: c.req.param("id") as string }),
   }),
 );
 __hono_app.delete("/", async (c) =>
-  __hono_DELETE(c, { params: Promise.resolve({ id: c.req.param("id")! }) }),
+  __hono_DELETE(c, {
+    params: Promise.resolve({ id: c.req.param("id") as string }),
+  }),
 );
 export default __hono_app;

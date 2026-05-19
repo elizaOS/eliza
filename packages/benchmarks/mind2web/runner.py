@@ -308,6 +308,12 @@ class Mind2WebRunner:
             "mode": mode,
             "split": self.config.split.value,
             "model_provider": self.config.model_provider or "auto",
+            "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
+            "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
+            "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
+            "agent_selection_strategy": os.environ.get(
+                "ELIZA_AGENT_SELECTION_STRATEGY", ""
+            ),
         }
 
         # Surface the ranker mode + Recall@K in the run summary so the report

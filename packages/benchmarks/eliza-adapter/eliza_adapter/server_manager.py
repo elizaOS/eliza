@@ -137,8 +137,10 @@ def _normalize_task_agent_env(env: dict[str, str]) -> None:
         return
 
     normalized = requested.lower().replace("_", "-")
-    if normalized in {"elizaos", "eliza-os", "pi-agent", "pi agent"}:
-        acp_agent = "opencode"
+    if normalized in {"elizaos", "eliza-os", "eliza"}:
+        acp_agent = "elizaos"
+    elif normalized in {"pi-agent", "pi agent", "pi"}:
+        acp_agent = "pi-agent"
     elif normalized in {"claude-code", "claude code"}:
         acp_agent = "claude"
     elif normalized in {"openai", "openai-codex", "openai codex"}:

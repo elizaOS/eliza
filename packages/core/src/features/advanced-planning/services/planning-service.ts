@@ -538,7 +538,7 @@ export class PlanningService extends Service {
 			)
 			.join(", ");
 
-		return `You are an expert AI planning system. Create a comprehensive action plan to achieve the following goal.
+		return `Create a comprehensive action plan to achieve the following goal.
 
 GOAL: ${context.goal}
 
@@ -1083,7 +1083,7 @@ Focus on:
 		results: ActionResult[],
 		error?: Error,
 	): string {
-		return `You are an expert AI adaptation system. A plan execution has encountered an issue and needs adaptation.
+		return `Adapt the current plan to address an execution issue.
 
 ORIGINAL PLAN:
 ${formatPromptData(plan)}

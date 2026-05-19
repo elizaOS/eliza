@@ -1,6 +1,9 @@
 import { createHash, randomUUID } from "crypto";
+import { and, desc, eq } from "drizzle-orm";
+import { dbWrite } from "../../db/client";
 import { type AgentSandbox, agentSandboxesRepository } from "../../db/repositories/agent-sandboxes";
 import { usersRepository } from "../../db/repositories/users";
+import { agentPhoneContacts } from "../../db/schemas";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
 import { type AgentGatewayRelaySession, agentGatewayRelayService } from "./agent-gateway-relay";
@@ -8,6 +11,7 @@ import {
   readManagedAgentDiscordBinding,
   readManagedAgentDiscordGateway,
 } from "./eliza-agent-config";
+import { runOnboardingChat } from "./eliza-app/onboarding-chat";
 import type { BridgeRequest, BridgeResponse } from "./eliza-sandbox";
 import { elizaSandboxService } from "./eliza-sandbox";
 
@@ -49,9 +53,25 @@ type PhoneTargetResolution = {
   reason?: AgentGatewayRouteReason;
   agentId?: string;
   userId?: string;
+  organizationId?: string;
+  source?: "owner" | "contact";
 };
 
 const PHONE_TARGET_CACHE_TTL_MS = 5_000;
+
+function isUndefinedTableError(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && (error as { code?: unknown }).code === "42P01") {
+    return true;
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  if (cause && cause !== error) return isUndefinedTableError(cause);
+  const message = (error as { message?: unknown }).message;
+  return (
+    typeof message === "string" &&
+    message.includes('relation "agent_phone_contacts" does not exist')
+  );
+}
 
 function asConfigRecord(
   value: AgentSandbox["agent_config"],
@@ -272,11 +292,16 @@ export class AgentGatewayRouterService {
     return this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id, preferred);
   }
 
-  private async resolvePhoneTarget(args: { organizationId: string; senderId: string }): Promise<{
+  private async resolvePhoneTarget(args: {
+    organizationId: string;
+    provider: "twilio" | "blooio" | "whatsapp";
+    senderId: string;
+  }): Promise<{
     target?: ResolvedAgentTarget;
     reason?: AgentGatewayRouteReason;
     agentId?: string;
     userId?: string;
+    organizationId?: string;
   }> {
     const senderId = args.senderId.trim();
     if (!senderId) {
@@ -288,7 +313,7 @@ export class AgentGatewayRouterService {
     const lookupId = senderId.includes("@")
       ? senderId.toLowerCase()
       : normalizePhoneNumber(senderId);
-    const cacheKey = `${args.organizationId}:${lookupId}`;
+    const cacheKey = `${args.organizationId}:${args.provider}:${lookupId}`;
     const cached = this.phoneTargetCache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < PHONE_TARGET_CACHE_TTL_MS) {
       return cached.value;
@@ -299,6 +324,7 @@ export class AgentGatewayRouterService {
 
     const request = this.resolvePhoneTargetUncached({
       organizationId: args.organizationId,
+      provider: args.provider,
       senderId,
       lookupId,
     })
@@ -315,6 +341,7 @@ export class AgentGatewayRouterService {
 
   private async resolvePhoneTargetUncached(args: {
     organizationId: string;
+    provider: "twilio" | "blooio" | "whatsapp";
     senderId: string;
     lookupId: string;
   }): Promise<PhoneTargetResolution> {
@@ -322,19 +349,148 @@ export class AgentGatewayRouterService {
       ? await usersRepository.findByEmailWithOrganization(args.lookupId)
       : await usersRepository.findByPhoneNumberWithOrganization(args.lookupId);
 
-    if (!owner) {
-      return {
-        reason: "unknown_owner",
-      };
+    if (owner?.organization_id) {
+      let owned: Awaited<ReturnType<AgentGatewayRouterService["resolveOwnedRuntimeTarget"]>>;
+      try {
+        owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+      } catch (error) {
+        logger.error("[AgentGatewayRouter] Failed to resolve phone sender's own runtime", {
+          provider: args.provider,
+          userId: owner.id,
+          organizationId: owner.organization_id,
+          error: error instanceof Error ? error.message : String(error),
+        });
+        owned = {
+          reason: "owner_agent_not_running",
+          userId: owner.id,
+        };
+      }
+
+      if (owned.target) {
+        return {
+          ...owned,
+          organizationId: owner.organization_id,
+          source: "owner",
+        };
+      }
+
+      const contact = await this.resolvePhoneContactTarget({
+        provider: args.provider,
+        senderId: args.senderId,
+      });
+      if (contact.target) return contact;
+
+        return {
+          ...owned,
+          organizationId: owner.organization_id,
+          source: "owner",
+        };
+      }
+
+    const contact = await this.resolvePhoneContactTarget({
+      provider: args.provider,
+      senderId: args.senderId,
+    });
+    if (contact.target) return contact;
+
+    return {
+      reason: "unknown_owner",
+    };
+  }
+
+  private normalizeContactIdentifier(value: string): string {
+    const trimmed = value.trim();
+    return trimmed.includes("@") ? trimmed.toLowerCase() : normalizePhoneNumber(trimmed);
+  }
+
+  private async resolvePhoneContactTarget(args: {
+    provider: "twilio" | "blooio" | "whatsapp";
+    senderId: string;
+  }): Promise<PhoneTargetResolution> {
+    const contactIdentifier = this.normalizeContactIdentifier(args.senderId);
+    if (!contactIdentifier) {
+      return { reason: "unknown_owner" };
     }
 
-    if (owner.organization_id !== args.organizationId) {
-      return {
-        reason: "owner_org_mismatch",
-      };
+    let contacts: (typeof agentPhoneContacts.$inferSelect)[] = [];
+    try {
+      contacts = await dbWrite
+        .select()
+        .from(agentPhoneContacts)
+        .where(
+          and(
+            eq(agentPhoneContacts.provider, args.provider),
+            eq(agentPhoneContacts.contact_identifier, contactIdentifier),
+            eq(agentPhoneContacts.is_active, true),
+          ),
+        )
+        .orderBy(desc(agentPhoneContacts.last_contacted_at))
+        .limit(5);
+    } catch (error) {
+      if (isUndefinedTableError(error)) {
+        logger.warn("[AgentGatewayRouter] agent_phone_contacts table is not migrated yet");
+        return { reason: "unknown_owner" };
+      }
+      throw error;
     }
 
-    return this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+    for (const contact of contacts) {
+      const localSessions = await agentGatewayRelayService.listOwnerSessions(
+        contact.organization_id,
+        contact.user_id,
+      );
+      const matchingSession = localSessions.find(
+        (session) => session.runtimeAgentId === contact.agent_id,
+      );
+      if (matchingSession) {
+        return {
+          target: {
+            kind: "local-session",
+            session: matchingSession,
+            sessions: [matchingSession],
+          },
+          agentId: contact.agent_id,
+          userId: contact.user_id,
+          organizationId: contact.organization_id,
+          source: "contact",
+        };
+      }
+
+      const sandbox = await agentSandboxesRepository.findRunningSandbox(
+        contact.agent_id,
+        contact.organization_id,
+      );
+      if (sandbox && isNonGatewayRunningSandbox(sandbox)) {
+        await dbWrite
+          .update(agentPhoneContacts)
+          .set({
+            last_contacted_at: new Date(),
+            last_inbound_at: new Date(),
+            updated_at: new Date(),
+          })
+          .where(eq(agentPhoneContacts.id, contact.id));
+
+        return {
+          target: {
+            kind: "sandbox",
+            sandbox,
+          },
+          agentId: contact.agent_id,
+          userId: contact.user_id,
+          organizationId: contact.organization_id,
+          source: "contact",
+        };
+      }
+    }
+
+    const last = contacts[0];
+    return {
+      reason: contacts.length > 0 ? "owner_agent_not_running" : "unknown_owner",
+      agentId: last?.agent_id,
+      userId: last?.user_id,
+      organizationId: last?.organization_id,
+      source: contacts.length > 0 ? "contact" : undefined,
+    };
   }
 
   private async routeToTarget(
@@ -496,16 +652,91 @@ export class AgentGatewayRouterService {
     mediaUrls?: string[];
     metadata?: Record<string, unknown>;
   }): Promise<AgentGatewayRouteResult> {
-    const resolved = await this.resolvePhoneTarget({
-      organizationId: args.organizationId,
-      senderId: args.from,
-    });
+    let resolved: Awaited<ReturnType<AgentGatewayRouterService["resolvePhoneTarget"]>>;
+    try {
+      resolved = await this.resolvePhoneTarget({
+        organizationId: args.organizationId,
+        provider: args.provider,
+        senderId: args.from,
+      });
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Failed to resolve phone target", {
+        provider: args.provider,
+        from: args.from,
+        to: args.to,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      const onboarding = await runOnboardingChat({
+        message: args.body,
+        platform: args.provider,
+        platformUserId: args.from,
+        sessionId: `platform:${args.provider}:${args.from}`,
+        trustedPlatformIdentity: true,
+      });
+
+      return {
+        handled: true,
+        replyText: onboarding.reply,
+        reason: "bridge_failed",
+        userId: onboarding.session.userId,
+        organizationId: onboarding.session.organizationId,
+        agentId: onboarding.provisioning.agentId ?? undefined,
+      };
+    }
 
     if (!resolved.target) {
+      if (resolved.reason === "unknown_owner") {
+        const onboarding = await runOnboardingChat({
+          message: args.body,
+          platform: args.provider,
+          platformUserId: args.from,
+          sessionId: `platform:${args.provider}:${args.from}`,
+          trustedPlatformIdentity: true,
+        });
+
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: onboarding.session.userId,
+          organizationId: onboarding.session.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
+      if (
+        resolved.reason === "owner_agent_not_running" &&
+        resolved.userId &&
+        resolved.organizationId &&
+        !resolved.agentId
+      ) {
+        const onboarding = await runOnboardingChat({
+          message: args.body,
+          platform: args.provider,
+          platformUserId: args.from,
+          sessionId: `platform:${args.provider}:${args.from}`,
+          authenticatedUser: {
+            userId: resolved.userId,
+            organizationId: resolved.organizationId,
+          },
+        });
+
+        return {
+          handled: true,
+          replyText: onboarding.reply,
+          reason: resolved.reason,
+          userId: resolved.userId,
+          organizationId: resolved.organizationId,
+          agentId: onboarding.provisioning.agentId ?? undefined,
+        };
+      }
+
       return {
         handled: false,
         reason: resolved.reason,
         agentId: resolved.agentId,
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
       };
     }
 
@@ -551,10 +782,62 @@ export class AgentGatewayRouterService {
       },
     };
 
-    const routed = await this.routeToTarget(resolved.target, rpcRequest);
+    let routed: AgentGatewayRouteResult;
+    try {
+      routed = await this.routeToTarget(resolved.target, rpcRequest);
+    } catch (error) {
+      logger.error("[AgentGatewayRouter] Phone target route threw", {
+        provider: args.provider,
+        from: normalizedFrom,
+        to: normalizedTo,
+        agentId: resolved.agentId,
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
+        source: resolved.source,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      routed = {
+        handled: false,
+        reason: "bridge_failed",
+        agentId: resolved.agentId,
+        organizationId: resolved.organizationId,
+        roomId: extractRoomId(rpcRequest),
+      };
+    }
+
+    if (
+      !routed.handled &&
+      routed.reason === "bridge_failed" &&
+      resolved.source === "owner" &&
+      resolved.userId &&
+      resolved.organizationId
+    ) {
+      const onboarding = await runOnboardingChat({
+        message: args.body,
+        platform: args.provider,
+        platformUserId: args.from,
+        sessionId: `platform:${args.provider}:${args.from}`,
+        authenticatedUser: {
+          userId: resolved.userId,
+          organizationId: resolved.organizationId,
+        },
+      });
+
+      return {
+        handled: true,
+        replyText: onboarding.reply,
+        reason: "bridge_failed",
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
+        agentId: onboarding.provisioning.agentId ?? routed.agentId,
+        roomId: routed.roomId,
+      };
+    }
+
     return {
       ...routed,
       userId: resolved.userId,
+      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 
@@ -657,34 +940,42 @@ export class AgentGatewayRouterService {
         ? await usersRepository.findByPhoneNumberWithOrganization(normalizedPhone)
         : undefined);
 
-    if (!owner) {
-      return {
-        handled: false,
-        reason: "unknown_owner",
-      };
+    let resolved: PhoneTargetResolution;
+    if (owner?.organization_id) {
+      const owned = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
+      resolved = owned.target
+        ? { ...owned, organizationId: owner.organization_id }
+        : await this.resolvePhoneContactTarget({
+            provider: "whatsapp",
+            senderId: normalizedPhone || senderWhatsAppId,
+          });
+      if (!resolved.target) {
+        resolved = {
+          ...owned,
+          organizationId: owner.organization_id,
+        };
+      }
+    } else {
+      resolved = await this.resolvePhoneContactTarget({
+        provider: "whatsapp",
+        senderId: normalizedPhone || senderWhatsAppId,
+      });
     }
 
-    if (owner.organization_id !== args.organizationId) {
-      return {
-        handled: false,
-        reason: "owner_org_mismatch",
-      };
-    }
-
-    const resolved = await this.resolveOwnedRuntimeTarget(owner.organization_id, owner.id);
     if (!resolved.target) {
       return {
         handled: false,
         reason: resolved.reason,
         agentId: resolved.agentId,
-        userId: owner.id,
+        userId: resolved.userId,
+        organizationId: resolved.organizationId,
       };
     }
 
     const targetAgentId =
       resolved.target.kind === "local-session" && resolved.target.session
         ? resolved.target.session.runtimeAgentId
-        : (resolved.target.sandbox?.id ?? owner.id);
+        : (resolved.target.sandbox?.id ?? resolved.agentId ?? normalizedPhone ?? senderWhatsAppId);
     const roomId = buildDirectConversationRoomIdFromIds(
       targetAgentId,
       "whatsapp",
@@ -726,7 +1017,8 @@ export class AgentGatewayRouterService {
     const routed = await this.routeToTarget(resolved.target, rpcRequest);
     return {
       ...routed,
-      userId: owner.id,
+      userId: resolved.userId,
+      organizationId: routed.organizationId ?? resolved.organizationId,
     };
   }
 }

@@ -323,7 +323,7 @@ export function createDefaultScriptedProvider(): ScriptedLlmProvider {
               threadOps: [
                 {
                   type: "merge",
-                  workThreadId: target?.id,
+                  workThreadId: target.id,
                   sourceWorkThreadIds: rest.map((t) => t.id),
                   sourceRef: null,
                   instruction:

@@ -22,13 +22,53 @@ import {
 import { isAlreadyProcessed, markAsProcessed } from "@/lib/utils/idempotency";
 import { logger } from "@/lib/utils/logger";
 import type { AppContext, AppEnv } from "@/types/cloud-worker-env";
+import {
+  handleBlueBubblesWebhook,
+  handleBlueBubblesWebhookPayload,
+} from "../../bluebubbles/route";
+
+function isBlueBubblesBridgeRequest(
+  c: AppContext,
+  rawBody: string,
+): { payload: unknown } | null {
+  const bridge =
+    c.req.header("x-eliza-bridge") ??
+    c.req.query("bridge") ??
+    new URL(c.req.url).searchParams.get("bridge");
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody) as unknown;
+  } catch {
+    return bridge === "bluebubbles" ? { payload: null } : null;
+  }
+
+  if (bridge === "bluebubbles") {
+    return { payload: parsed };
+  }
+
+  if (
+    parsed &&
+    typeof parsed === "object" &&
+    "type" in parsed &&
+    "data" in parsed
+  ) {
+    return { payload: parsed };
+  }
+
+  return null;
+}
 
 async function handleBlooioWebhook(c: AppContext): Promise<Response> {
   const orgId = c.req.param("orgId") ?? "";
-  if (!orgId) return c.json({ error: "Organization ID is required" }, 400);
 
   try {
     const rawBody = await c.req.text();
+    const blueBubblesRequest = isBlueBubblesBridgeRequest(c, rawBody);
+    if (blueBubblesRequest) {
+      return handleBlueBubblesWebhookPayload(c, blueBubblesRequest.payload);
+    }
+
+    if (!orgId) return c.json({ error: "Organization ID is required" }, 400);
 
     const isProduction = c.env.NODE_ENV === "production";
     const skipVerification =
@@ -175,9 +215,22 @@ async function handleBlooioWebhook(c: AppContext): Promise<Response> {
 }
 
 const app = new Hono<AppEnv>();
-app.post("/", rateLimit(RateLimitPresets.AGGRESSIVE), (c) =>
-  handleBlooioWebhook(c),
+app.post(
+  "/",
+  async (c, next) => {
+    const bridge =
+      c.req.header("x-eliza-bridge") ??
+      c.req.query("bridge") ??
+      new URL(c.req.url).searchParams.get("bridge");
+    if (bridge === "bluebubbles") {
+      return handleBlueBubblesWebhook(c);
+    }
+    await next();
+  },
+  rateLimit(RateLimitPresets.AGGRESSIVE),
+  (c) => handleBlooioWebhook(c),
 );
+app.post("/bluebubbles", (c) => handleBlueBubblesWebhook(c));
 
 /**
  * Handle incoming message from Blooio
@@ -306,6 +359,9 @@ async function handleIncomingMessage(
       body: routed.replyText.trim(),
       provider: "blooio",
       organizationId: orgId,
+      agentId: routed.agentId,
+      agentOrganizationId: routed.organizationId,
+      agentUserId: routed.userId,
     });
 
     if (sent) {

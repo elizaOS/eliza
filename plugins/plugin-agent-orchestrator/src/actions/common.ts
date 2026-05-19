@@ -246,12 +246,12 @@ export async function waitForSpawnSlot(
       return;
     }
     if (active < limit) return;
-    logger(runtime).debug?.(
+    logger(runtime).debug(
       `[spawn-gate] ${active} sub-agent session(s) active (limit=${limit}); waiting for a slot`,
     );
     await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
-  logger(runtime).warn?.(
+  logger(runtime).warn(
     `[spawn-gate] still over the concurrency limit after ${Math.round(maxWaitMs / 1000)}s; proceeding anyway`,
   );
 }

@@ -36,6 +36,17 @@ public class ElizaSmsReceiver extends BroadcastReceiver {
         }
 
         Uri messageUri = persistIncomingSms(context, sender, body.toString(), timestamp);
+        boolean gatewayStarted = ElizaSmsGatewayService.start(
+                context,
+                sender,
+                body.toString(),
+                timestamp > 0L ? timestamp : System.currentTimeMillis(),
+                messageUri != null ? messageUri.getLastPathSegment() : null
+        );
+        if (gatewayStarted) {
+            return;
+        }
+
         Uri.Builder route = Uri.parse("ai.elizaos.app://messages").buildUpon()
                 .appendQueryParameter("event", "sms-deliver");
         if (!TextUtils.isEmpty(sender)) {

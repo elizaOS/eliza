@@ -24,10 +24,12 @@ class TestSWEBenchVariant:
         assert SWEBenchVariant.FULL.value == "full"
         assert SWEBenchVariant.LITE.value == "lite"
         assert SWEBenchVariant.VERIFIED.value == "verified"
+        assert SWEBenchVariant.MULTILINGUAL.value == "multilingual"
 
     def test_variant_from_string(self) -> None:
         """Test creating variant from string."""
         assert SWEBenchVariant("lite") == SWEBenchVariant.LITE
+        assert SWEBenchVariant("multilingual") == SWEBenchVariant.MULTILINGUAL
 
 
 class TestPatchStatus:

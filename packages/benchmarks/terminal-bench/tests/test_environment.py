@@ -1,5 +1,7 @@
 """Tests for Terminal-Bench environment."""
 
+import subprocess
+
 import pytest
 
 from elizaos_terminal_bench.environment import (
@@ -17,14 +19,13 @@ from elizaos_terminal_bench.types import (
 
 def _docker_daemon_available() -> bool:
     try:
-        import docker
-
-        client = docker.from_env()
-        try:
-            client.ping()
-        finally:
-            client.close()
-        return True
+        result = subprocess.run(
+            ["docker", "info"],
+            capture_output=True,
+            check=False,
+            timeout=3,
+        )
+        return result.returncode == 0
     except Exception:
         return False
 
@@ -136,6 +137,33 @@ exit 1
             )
             assert success is True, output
             assert exit_code == 0
+        finally:
+            await env.stop()
+
+    @pytest.mark.asyncio
+    async def test_stages_upstream_task_files_and_rewrites_app_paths(self, tmp_path) -> None:
+        task_dir = tmp_path / "task"
+        task_dir.mkdir()
+        (task_dir / "input.txt").write_text("ok", encoding="utf-8")
+        (task_dir / "nested").mkdir()
+        (task_dir / "nested" / "value.txt").write_text("nested", encoding="utf-8")
+        task = TerminalTask(
+            task_id="local-upstream",
+            instruction="read files",
+            category=TaskCategory.FILE_OPERATIONS,
+            difficulty=TaskDifficulty.EASY,
+            test_script="",
+            reference_solution="",
+            metadata={"task_dir": str(task_dir)},
+        )
+
+        env = LocalTerminalEnvironment(working_dir="/app", timeout_seconds=30)
+        await env.start(task)
+        try:
+            result = await env.execute("cat /app/input.txt && cat /app/nested/value.txt")
+
+            assert result.exit_code == 0
+            assert result.stdout == "oknested"
         finally:
             await env.stop()
 

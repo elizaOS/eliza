@@ -107,7 +107,7 @@ function wrapVisionImpl(
       const text = await impl.describe({
         imagePath,
         prompt: [
-          "You are a UI grounding model. Output the click coordinate as `x, y` in pixel space.",
+          "UI grounding model. Output the click coordinate as `x, y` in pixel space.",
           `Instruction: ${instruction}`,
         ].join("\n"),
         maxTokens: 32,

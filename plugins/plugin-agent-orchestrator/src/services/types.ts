@@ -1,4 +1,10 @@
-export type AgentType = "claude" | "codex" | "opencode" | string;
+export type AgentType =
+  | "elizaos"
+  | "pi-agent"
+  | "opencode"
+  | "claude"
+  | "codex"
+  | string;
 
 export type ApprovalPreset =
   | "readonly"

@@ -646,8 +646,7 @@ JSON only. Return one JSON object. No prose, fences, thinking, or markdown.
 
 export const LONG_TERM_EXTRACTION_TEMPLATE = longTermExtractionTemplate;
 
-export const memoryContextQaTemplate = `You are a concise context assistant.
-Answer only from the provided context. If context is insufficient, say so explicitly.
+export const memoryContextQaTemplate = `Answer only from the provided context. If context is insufficient, say so explicitly.
 Keep the answer under 120 words.
 
 Query: {{query}}

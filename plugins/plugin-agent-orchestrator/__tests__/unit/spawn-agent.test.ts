@@ -117,6 +117,34 @@ describe("TASKS:spawn_agent", () => {
     });
   });
 
+  it("injects focused coding and swarm coordination instructions", async () => {
+    const svc = serviceMock();
+    await spawnAgentAction.handler(
+      runtimeWith(svc),
+      memory({
+        task: "fix the failing tests",
+        agentType: "elizaos",
+        taskRoomId: TASK_ROOM,
+        worktreeRoomId: WORKTREE_ROOM,
+      }),
+      state,
+      spawnOptions,
+      callback(),
+    );
+
+    const call = svc.spawnSession.mock.calls[0]?.[0] as {
+      initialTask?: string;
+    };
+    const initialTask = call.initialTask ?? "";
+    expect(initialTask).toContain("--- Swarm Coordination ---");
+    expect(initialTask).toContain("Keep working until the task is finished");
+    expect(initialTask).toContain("read/search files, edit/apply patches");
+    expect(initialTask).toContain("QUESTION_FOR_TASK_CREATOR");
+    expect(initialTask).toContain("AGENT_COORDINATION");
+    expect(initialTask).toContain(TASK_ROOM);
+    expect(initialTask).toContain(WORKTREE_ROOM);
+  });
+
   it("keeps both swarm roles when task room and worktree room are the same", async () => {
     const svc = serviceMock();
     await spawnAgentAction.handler(

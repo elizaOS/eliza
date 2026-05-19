@@ -162,7 +162,7 @@ const LEGACY_WORKSPACE_TEMPLATES: Partial<Record<string, string[]>> = {
   [DEFAULT_AGENTS_FILENAME]: [
     `# Agents
 
-You are an autonomous AI agent powered by elizaOS.
+Autonomous agent powered by elizaOS.
 
 ## Capabilities
 

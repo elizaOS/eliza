@@ -1,9 +1,10 @@
 """Comparative coding-agent benchmark harness.
 
-This module wraps the existing SWE-bench and Terminal-Bench CLIs and writes one
-artifact directory per ``(benchmark, adapter)`` cell. It is intentionally thin:
-the benchmark CLIs remain the source of truth, while this layer handles matrix
-construction, resume/dry-run flow, redacted logs, and summary classification.
+This module wraps the existing SWE-bench, Terminal-Bench, browser/web, and
+computer-use CLIs and writes one artifact directory per ``(benchmark, adapter)``
+cell. It is intentionally thin: the benchmark CLIs remain the source of truth,
+while this layer handles matrix construction, resume/dry-run flow, redacted
+logs, and summary classification.
 """
 
 from __future__ import annotations
@@ -15,18 +16,22 @@ import re
 import shlex
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .code_agent_coverage import included_benchmark_ids
+
 DEFAULT_ADAPTERS = ("elizaos", "opencode")
-DEFAULT_BENCHMARKS = ("swe_bench",)
+DEFAULT_BENCHMARKS = included_benchmark_ids()
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_PROVIDER = "cerebras"
 DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CODE_CAPABILITIES = "code.read,code.write,code.edit,code.search,code.shell"
+DEFAULT_LOG_LIMIT_BYTES = 16 * 1024 * 1024
 
 FAILURE_CLASSES = (
     "pass",
@@ -96,6 +101,10 @@ def now_id() -> str:
     return datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
 
 
+def default_swe_bench_repo_cache_dir() -> Path:
+    return Path(tempfile.gettempdir()) / "eliza-swe-bench-repo-cache"
+
+
 def env_name(adapter: str, benchmark: str) -> str:
     adapter_key = sanitize(adapter).replace("-", "_").upper()
     benchmark_key = sanitize(benchmark).replace("-", "_").upper()
@@ -127,6 +136,8 @@ def _safe_pythonpath(root: Path) -> str:
     paths = [
         root / "packages",
         b_root / "terminal-bench",
+        b_root / "webshop",
+        b_root / "OSWorld",
         b_root / "eliza-adapter",
         b_root / "hermes-adapter",
         b_root / "openclaw-adapter",
@@ -226,7 +237,84 @@ def default_command(
             cmd.extend(["--max-tasks", str(max_tasks)])
         if smoke:
             cmd.extend(["--use-sample-tasks", "--local-sandbox", "--mock"])
+        elif no_docker:
+            cmd.append("--local-sandbox")
         return cmd, b_root / "terminal-bench"
+
+    if benchmark == "mind2web":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.mind2web",
+            "--sample",
+            "--provider",
+            "eliza",
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.append("--mock")
+        return cmd, root
+
+    if benchmark == "visualwebbench":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.visualwebbench",
+            "--provider",
+            "eliza",
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.extend(["--use-sample-tasks", "--mock"])
+        return cmd, root
+
+    if benchmark == "webshop":
+        cmd = [
+            python,
+            "-m",
+            "elizaos_webshop",
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        if smoke:
+            cmd.extend(["--use-sample-tasks", "--mock"])
+        else:
+            cmd.append("--bridge")
+        return cmd, b_root / "webshop"
+
+    if benchmark == "osworld":
+        cmd = [
+            python,
+            "scripts/python/run_multienv_eliza.py",
+            "--model",
+            model,
+            "--result_dir",
+            str(output_dir),
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max_tasks", str(max_tasks)])
+        if smoke:
+            cmd.append("--dry_run")
+        return cmd, b_root / "OSWorld"
 
     raise ValueError(f"unsupported benchmark for code-agent matrix: {benchmark}")
 
@@ -256,6 +344,13 @@ def build_cell(
         provider=provider,
         model=model,
     )
+    env_overrides["BENCHMARK_RUN_DIR"] = str(trajectory_dir)
+    env_overrides["BENCHMARK_TELEMETRY_JSONL"] = str(trajectory_dir / "telemetry.jsonl")
+    if benchmark == "swe_bench":
+        env_overrides["SWE_BENCH_REPO_CACHE_DIR"] = os.environ.get(
+            "SWE_BENCH_REPO_CACHE_DIR",
+            str(default_swe_bench_repo_cache_dir()),
+        )
     values = {
         "root": str(root),
         "benchmarks_root": str(benchmarks_root(root)),
@@ -358,7 +453,7 @@ def classify_failure(
     notes: list[str] = []
     combined = "\n".join([stdout, stderr])
     score = score_from_payload(result_payload)
-    if exit_code == 0 and score is not None and score > 0:
+    if exit_code == 0 and score is not None and score >= 1.0:
         return "pass", notes
 
     if _text_has(
@@ -398,6 +493,9 @@ def classify_failure(
     if "not_generated" in statuses or "not generated" in statuses or _text_has(errors, "no patch", "did not contain an applicable unified diff"):
         notes.append("no generated patch reported")
         return "no_patch", notes
+    if _text_has(errors, "harness did not produce a report.json", "swe-bench harness evaluation failed"):
+        notes.append("harness report failure reported")
+        return "harness_error", notes
     if "apply_failed" in statuses or _text_has(errors, "git apply", "patch does not apply", "apply failed", "patch failed"):
         notes.append("patch apply failure reported")
         return "patch_apply_failed", notes
@@ -457,6 +555,30 @@ def redact_text(text: str, env: dict[str, str]) -> str:
     redacted = SECRET_ASSIGNMENT_RE.sub(r"\1\2[REDACTED]", redacted)
     redacted = LONG_SECRET_RE.sub("[REDACTED]", redacted)
     return redacted
+
+
+def log_limit_bytes() -> int:
+    raw = os.environ.get("CODE_AGENT_MATRIX_LOG_LIMIT_BYTES", "").strip()
+    if not raw:
+        return DEFAULT_LOG_LIMIT_BYTES
+    try:
+        return max(1024, int(raw))
+    except ValueError:
+        return DEFAULT_LOG_LIMIT_BYTES
+
+
+def truncate_log_text(text: str, *, limit_bytes: int | None = None) -> str:
+    limit = log_limit_bytes() if limit_bytes is None else limit_bytes
+    encoded = text.encode("utf-8", errors="replace")
+    if len(encoded) <= limit:
+        return text
+    marker = (
+        f"\n[code-agent-matrix: log truncated to last {limit} bytes "
+        f"from {len(encoded)} bytes]\n"
+    )
+    keep = max(0, limit - len(marker.encode("utf-8")))
+    tail = encoded[-keep:].decode("utf-8", errors="replace") if keep else ""
+    return marker + tail
 
 
 def _write_cell_metadata(cell: MatrixCell) -> None:
@@ -619,8 +741,14 @@ def run_cell(
         stderr = f"Command execution failed: {exc}\n"
 
     duration = time.time() - started
-    stdout_path.write_text(redact_text(stdout, env), encoding="utf-8")
-    stderr_path.write_text(redact_text(stderr, env), encoding="utf-8")
+    stdout_path.write_text(
+        truncate_log_text(redact_text(stdout, env)),
+        encoding="utf-8",
+    )
+    stderr_path.write_text(
+        truncate_log_text(redact_text(stderr, env)),
+        encoding="utf-8",
+    )
     _redact_artifact_tree(cell_root, env)
 
     result_path = find_latest_result(Path(cell.output_dir))

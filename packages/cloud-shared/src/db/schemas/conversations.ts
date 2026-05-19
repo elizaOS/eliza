@@ -48,7 +48,7 @@ export const conversations = pgTable(
         topP: 1,
         frequencyPenalty: 0,
         presencePenalty: 0,
-        systemPrompt: "You are a helpful AI assistant.",
+        systemPrompt: "",
       }),
     status: text("status").notNull().default("active"),
     message_count: integer("message_count").notNull().default(0),

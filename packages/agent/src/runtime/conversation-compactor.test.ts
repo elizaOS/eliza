@@ -696,7 +696,7 @@ describe("hierarchicalSummaryCompactor", () => {
     let leafCalls = 0;
     let rollupCalls = 0;
     const callModel: CompactorModelCall = async ({ systemPrompt }) => {
-      if (systemPrompt.includes("aggregator")) {
+      if (systemPrompt.includes("Combine the given list")) {
         rollupCalls += 1;
         return "rolled-up";
       }
@@ -718,7 +718,7 @@ describe("hierarchicalSummaryCompactor", () => {
 
   it("recurses rollup levels until under budget", async () => {
     const callModel: CompactorModelCall = async ({ systemPrompt }) => {
-      if (systemPrompt.includes("aggregator")) return "x".repeat(8); // 2 tokens
+      if (systemPrompt.includes("Combine the given list")) return "x".repeat(8); // 2 tokens
       return "x".repeat(40); // 10 tokens per leaf
     };
     const out = await hierarchicalSummaryCompactor.compact(
@@ -1171,7 +1171,7 @@ describe("compactor degenerate inputs", () => {
     let leafCalls = 0;
     let rollupCalls = 0;
     const callModel: CompactorModelCall = async ({ systemPrompt }) => {
-      if (systemPrompt.includes("aggregator")) {
+      if (systemPrompt.includes("Combine the given list")) {
         rollupCalls += 1;
         return "rolled";
       }

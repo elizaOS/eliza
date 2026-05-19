@@ -1656,6 +1656,9 @@ lifeOpsClientPrototype.getLifeOpsInbox = async function (
   if (options.gmailAccountId) {
     params.set("gmailAccountId", options.gmailAccountId);
   }
+  if (options.phoneAccountIds && options.phoneAccountIds.length > 0) {
+    params.set("phoneAccountIds", options.phoneAccountIds.join(","));
+  }
   if (options.missedOnly === true) {
     params.set("missedOnly", "true");
   }

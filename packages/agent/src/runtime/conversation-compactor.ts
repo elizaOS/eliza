@@ -802,7 +802,7 @@ function splitTranscript(
 // ---------------------------------------------------------------------------
 
 const NAIVE_SYSTEM_PROMPT =
-  "You are a conversation summarizer. Read the supplied transcript and write" +
+  "Read the supplied transcript and write" +
   " a concise prose summary that preserves: facts established, decisions" +
   " made, latest overrides, rules, constraints, forbidden behaviors, exact" +
   " entity assignments, identifiers, and any tool calls and their outcomes." +
@@ -910,7 +910,7 @@ type StructuredState = {
 };
 
 const STRUCTURED_SYSTEM_PROMPT =
-  "You are a conversation state extractor. Read the supplied transcript and" +
+  "Read the supplied transcript and" +
   " output a JSON object with exactly these keys:\n" +
   '  - "facts": string[] — durable active facts, rules, constraints, and exact entity assignments established in the conversation\n' +
   '  - "decisions": string[] — decisions made by the user or agent, especially latest overrides that replace earlier decisions\n' +
@@ -1168,13 +1168,13 @@ export const structuredStateCompactor: Compactor = {
 const HIERARCHICAL_CHUNK_SIZE = 10;
 
 const HIERARCHICAL_LEAF_SYSTEM_PROMPT =
-  "You are a conversation summarizer. Summarize the given conversation chunk" +
+  "Summarize the given conversation chunk" +
   " in 3-6 sentences, preserving load-bearing facts, decisions, identifiers," +
   " rules, constraints, forbidden behaviors, exact entity assignments, and" +
   " tool-call outcomes. Output prose only.";
 
 const HIERARCHICAL_ROLLUP_SYSTEM_PROMPT =
-  "You are a summary aggregator. Combine the given list of chunk summaries" +
+  "Combine the given list of chunk summaries" +
   " into a single concise summary that preserves the most load-bearing facts" +
   " and decisions, including latest overrides, rules, constraints, forbidden" +
   " behaviors, and exact entity assignments. Maintain chronological" +
@@ -1327,7 +1327,7 @@ type LedgerEntry = {
 };
 
 const LEDGER_SYSTEM_PROMPT =
-  "You are a conversation ledger extractor. Read the supplied transcript and" +
+  "Read the supplied transcript and" +
   " output a JSON object with exactly these keys:\n" +
   '  - "state": { "facts": string[], "decisions": string[],' +
   ' "pending_actions": string[], "forbidden_behaviors": string[],' +

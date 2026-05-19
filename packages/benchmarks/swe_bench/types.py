@@ -12,6 +12,7 @@ class SWEBenchVariant(Enum):
     FULL = "full"
     LITE = "lite"
     VERIFIED = "verified"
+    MULTILINGUAL = "multilingual"
 
 
 class PatchStatus(Enum):

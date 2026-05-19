@@ -41,7 +41,7 @@ describe("prompt-runner TaskWorker", () => {
 			{ prompt: string },
 		];
 		expect(modelType).toBe(ModelType.TEXT_LARGE);
-		expect(params.prompt).toContain("autonomous agent");
+		expect(params.prompt).toContain("scheduled task");
 		expect(params.prompt).toContain("send the morning summary");
 	});
 

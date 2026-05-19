@@ -218,8 +218,8 @@ async function loadRoom(
   return {
     id: room.id,
     channel: room.channelId ?? room.name ?? null,
-    platform: room.source ?? null,
-    type: room.type ?? null,
+    platform: room.source,
+    type: room.type,
     worldId: room.worldId ?? null,
   };
 }
@@ -230,7 +230,7 @@ function normalizeMemoryHit(
 ): ParentMemoryHit {
   const raw = memory as Memory & { similarity?: number };
   const text =
-    typeof memory.content?.text === "string" ? memory.content.text : "";
+    typeof memory.content.text === "string" ? memory.content.text : "";
   return {
     id: typeof memory.id === "string" ? memory.id : null,
     tableName,

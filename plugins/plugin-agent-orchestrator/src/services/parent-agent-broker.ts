@@ -1137,7 +1137,7 @@ async function askParentAgent(request: {
 
   const captured: string[] = [];
   const callback: HandlerCallback = async (content) => {
-    if (typeof content?.text === "string" && content.text.trim()) {
+    if (typeof content.text === "string" && content.text.trim()) {
       captured.push(content.text.trim());
     }
     return [];
