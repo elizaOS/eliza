@@ -2764,10 +2764,17 @@ export class ElizaSandboxService {
   }
 
   /**
-   * Daemon-side handler for the `agent_resume` job. Tries `docker start`
-   * on the existing container first (fast path, ~5s). Falls back to a
-   * full `provision()` if the container is gone (daemon scrub or core
-   * eviction). The Neon DB is reused across both paths.
+   * Daemon-side handler for the `agent_resume` job. Delegates to
+   * `provision()` which restores `bridge_url` / `health_url` from the
+   * provider's sandbox handle and reuses the existing Neon DB
+   * (`sandbox_id` is retained across suspend). `provision()` acquires
+   * its own advisory lock, so two concurrent resume jobs serialize.
+   *
+   * A future fast path will `docker start` the existing container (~5s)
+   * when the provider exposes a standalone `start()` method that
+   * returns a fresh handle — today the only way to get `bridgeUrl` /
+   * `healthUrl` back is via the create-or-restart flow inside
+   * `provision()`, so we always pay that path.
    */
   async executeResume(
     agentId: string,
@@ -2789,32 +2796,6 @@ export class ElizaSandboxService {
     if (rec.status === "running")
       return { success: true, containerStarted: true, reprovisioned: false };
 
-    // Fast path: docker start existing container.
-    if (rec.sandbox_id) {
-      try {
-        const provider = await this.getProvider();
-        const start = (provider as unknown as { start?: (sandboxId: string) => Promise<void> })
-          .start;
-        if (typeof start === "function") {
-          await start.call(provider, rec.sandbox_id);
-          await dbWrite.execute(sql`
-            UPDATE ${agentSandboxes} SET status = 'running', updated_at = NOW() WHERE id = ${rec.id}
-          `);
-          return { success: true, containerStarted: true, reprovisioned: false };
-        }
-      } catch (e) {
-        logger.warn(
-          "[agent-sandbox] docker start failed during resume, falling back to provision",
-          {
-            agentId,
-            sandboxId: rec.sandbox_id,
-            error: e instanceof Error ? e.message : String(e),
-          },
-        );
-      }
-    }
-
-    // Slow path: full re-provision (reuses existing Neon DB).
     const provisionResult = await this.provision(agentId, orgId);
     if (!provisionResult.success) {
       return {

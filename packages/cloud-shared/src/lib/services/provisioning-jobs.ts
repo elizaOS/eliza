@@ -542,9 +542,12 @@ export class ProvisioningJobService {
   /**
    * Enqueue an Agent resume job.
    *
-   * Daemon-side execution: SSH `docker start <container>` to restart an
-   * existing stopped container. If the container is gone (daemon scrub,
-   * core eviction), the resume falls back to a full re-provision.
+   * Daemon-side execution re-runs `provision()` against the existing
+   * sandbox row: this restores `bridge_url` / `health_url` from a fresh
+   * sandbox handle and reuses the existing Neon DB (the `sandbox_id` is
+   * retained across suspend). A faster `docker start` path will replace
+   * the re-provision once `DockerSandboxProvider` exposes a standalone
+   * `start()` that returns the handle.
    */
   async enqueueAgentResumeOnce(params: {
     agentId: string;

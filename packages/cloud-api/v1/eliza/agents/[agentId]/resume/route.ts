@@ -173,12 +173,11 @@ async function __hono_POST(
     }
 
     try {
-      // Use the dedicated `agent_resume` job type instead of
-      // `agent_provision`. The orchestrator's `executeResume` tries
-      // `docker start <existing-container>` first (fast path, ~5s) and
-      // falls back to a full re-provision only if the container is gone
-      // (daemon scrub, core eviction). Re-provisioning every resume is
-      // 60s+ and wasteful when the original container is still on disk.
+      // Distinct from `agent_provision` so the daemon can tell a user-
+      // initiated resume from a fresh provision in audit logs, and so a
+      // future `docker start` fast path can hook in without touching
+      // the route. Today executeResume always re-provisions to restore
+      // bridge/health URLs via the sandbox handle.
       const { job, created } =
         await provisioningJobService.enqueueAgentResumeOnce({
           agentId,
@@ -205,7 +204,7 @@ async function __hono_POST(
               jobId: job.id,
               status: job.status,
               message: created
-                ? "Resume job created. Container will be docker-started (fast path) or re-provisioned if gone."
+                ? "Resume job created. Poll the job endpoint for status."
                 : "Resume is already in progress.",
             },
             polling: {
