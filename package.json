@@ -165,6 +165,8 @@
     "verify:cloud": "bun run --cwd packages/cloud-shared lint && bun run typecheck:cloud",
     "verify:riscv64": "bash scripts/verify-riscv64-buildpaths.sh",
     "verify:riscv64:e2e": "bash scripts/verify-riscv64-end-to-end.sh",
+    "build:riscv64-artifacts": "bash scripts/build-riscv64-artifacts.sh",
+    "check:riscv64-artifacts": "bash scripts/check-riscv64-artifacts.sh",
     "db:cloud:generate": "bun run --cwd packages/cloud-shared db:generate",
     "db:cloud:migrate": "bun run packages/scripts/cloud/admin/migrate-with-diagnostics.ts",
     "db:cloud:studio": "bun run --cwd packages/cloud-shared db:studio",

@@ -1,0 +1,80 @@
+name: riscv64 cross-build smoke
+
+# Opt-in smoke: builds every riscv64 cross-compiled native artifact and
+# exercises each under qemu-riscv64-static. NOT a required check on
+# develop PRs — the full build takes ~30-60 min on a standard runner.
+#
+# Triggers:
+#   - workflow_dispatch (manual)
+#   - PRs labeled `riscv64`
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'riscv64') }}
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      MILADY_RISCV64_SMOKE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install QEMU + base tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            qemu-user-static binfmt-support \
+            cmake build-essential file binutils python3 jq
+
+      - name: Install Zig 0.14
+        run: |
+          set -e
+          ZIG_VERSION=0.14.0
+          curl -fsSL "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz" \
+            -o /tmp/zig.tar.xz
+          sudo tar -C /opt -xJf /tmp/zig.tar.xz
+          sudo ln -sf "/opt/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig
+          zig version
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install workspace deps
+        run: bun install --frozen-lockfile
+
+      - name: Build every riscv64 artifact (linux only; android skipped)
+        run: |
+          bun run build:riscv64-artifacts -- --skip-android
+
+      - name: QEMU smoke every riscv64 artifact
+        run: |
+          bun run check:riscv64-artifacts
+
+      - name: Upload JSON report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: riscv64-artifacts-report
+          path: build/reports/riscv64_artifacts.json
+          if-no-files-found: warn
+
+      - name: Print summary
+        if: always()
+        run: |
+          if [ -f build/reports/riscv64_artifacts.json ]; then
+            jq '.summary, .final_status' build/reports/riscv64_artifacts.json
+          else
+            echo "no report produced"
+          fi
