@@ -48,6 +48,18 @@ export interface AgentDeleteJobData {
   userId: string;
 }
 
+export interface AgentSuspendJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
+export interface AgentResumeJobData {
+  agentId: string;
+  organizationId: string;
+  userId: string;
+}
+
 // ---------------------------------------------------------------------------
 // Job result shapes (stored in jobs.result JSONB)
 // ---------------------------------------------------------------------------
@@ -67,6 +79,19 @@ export interface AgentDeleteJobResult {
   error?: string;
 }
 
+export interface AgentSuspendJobResult {
+  cloudAgentId: string;
+  containerStopped: boolean;
+  error?: string;
+}
+
+export interface AgentResumeJobResult {
+  cloudAgentId: string;
+  containerStarted: boolean;
+  reprovisioned: boolean;
+  error?: string;
+}
+
 function agentProvisionJobDataToRecord(data: AgentProvisionJobData): Record<string, unknown> {
   return { ...data };
 }
@@ -80,6 +105,22 @@ function agentDeleteJobDataToRecord(data: AgentDeleteJobData): Record<string, un
 }
 
 function agentDeleteJobResultToRecord(result: AgentDeleteJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentSuspendJobDataToRecord(data: AgentSuspendJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentSuspendJobResultToRecord(result: AgentSuspendJobResult): Record<string, unknown> {
+  return { ...result };
+}
+
+function agentResumeJobDataToRecord(data: AgentResumeJobData): Record<string, unknown> {
+  return { ...data };
+}
+
+function agentResumeJobResultToRecord(result: AgentResumeJobResult): Record<string, unknown> {
   return { ...result };
 }
 
@@ -118,12 +159,56 @@ function readAgentDeleteJobData(job: Job): AgentDeleteJobData {
   return job.data;
 }
 
+function isAgentSuspendJobData(value: unknown): value is AgentSuspendJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string"
+  );
+}
+
+function readAgentSuspendJobData(job: Job): AgentSuspendJobData {
+  if (!isAgentSuspendJobData(job.data)) {
+    throw new Error(`Invalid agent suspend job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
+function isAgentResumeJobData(value: unknown): value is AgentResumeJobData {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { agentId?: unknown }).agentId === "string" &&
+    typeof (value as { organizationId?: unknown }).organizationId === "string" &&
+    typeof (value as { userId?: unknown }).userId === "string"
+  );
+}
+
+function readAgentResumeJobData(job: Job): AgentResumeJobData {
+  if (!isAgentResumeJobData(job.data)) {
+    throw new Error(`Invalid agent resume job data for job ${job.id}`);
+  }
+  return job.data;
+}
+
 export interface EnqueueAgentProvisionResult {
   job: Job;
   created: boolean;
 }
 
 export interface EnqueueAgentDeleteResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentSuspendResult {
+  job: Job;
+  created: boolean;
+}
+
+export interface EnqueueAgentResumeResult {
   job: Job;
   created: boolean;
 }
@@ -348,6 +433,197 @@ export class ProvisioningJobService {
         .returning();
 
       logger.info("[provisioning-jobs] Enqueued agent_delete job", {
+        jobId: job.id,
+        agentId: params.agentId,
+        orgId: params.organizationId,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
+  /**
+   * Enqueue an Agent suspend job.
+   *
+   * Daemon-side execution: SSH `docker stop` on the assigned core, flip
+   * `agent_sandboxes.status` to "stopped", clear `bridge_url`/`health_url`,
+   * keep `sandbox_id` so the same container can be resumed.
+   *
+   * The Cloudflare Worker code path (cloud-api PATCH /eliza/agents/[id])
+   * cannot SSH the Hetzner cores; this queue-based path moves the actual
+   * docker stop off the Worker so the container is reliably stopped instead
+   * of silently leaking with a stale DB row.
+   */
+  async enqueueAgentSuspendOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentSuspendResult> {
+    if (params.webhookUrl) {
+      await assertSafeOutboundUrl(params.webhookUrl);
+    }
+
+    const jobData: AgentSuspendJobData = {
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    };
+
+    const newJob: NewJob = {
+      type: JOB_TYPES.AGENT_SUSPEND,
+      status: "pending",
+      data: agentSuspendJobDataToRecord(jobData),
+      data_storage: "inline",
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      webhook_url: params.webhookUrl,
+      max_attempts: 3,
+      // Same timing as delete: SSH stop is fast.
+      estimated_completion_at: new Date(Date.now() + 30_000),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
+
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.agentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_SUSPEND),
+            eq(jobs.organization_id, params.organizationId),
+            eq(jobs.agent_id, params.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      if (existing) {
+        logger.info("[provisioning-jobs] Reusing active agent_suspend job", {
+          jobId: existing.id,
+          agentId: params.agentId,
+          orgId: params.organizationId,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info("[provisioning-jobs] Enqueued agent_suspend job", {
+        jobId: job.id,
+        agentId: params.agentId,
+        orgId: params.organizationId,
+      });
+
+      return { job: await hydrateJob(job), created: true };
+    });
+  }
+
+  /**
+   * Enqueue an Agent resume job.
+   *
+   * Daemon-side execution: SSH `docker start <container>` to restart an
+   * existing stopped container. If the container is gone (daemon scrub,
+   * core eviction), the resume falls back to a full re-provision.
+   */
+  async enqueueAgentResumeOnce(params: {
+    agentId: string;
+    organizationId: string;
+    userId: string;
+    webhookUrl?: string;
+  }): Promise<EnqueueAgentResumeResult> {
+    if (params.webhookUrl) {
+      await assertSafeOutboundUrl(params.webhookUrl);
+    }
+
+    const jobData: AgentResumeJobData = {
+      agentId: params.agentId,
+      organizationId: params.organizationId,
+      userId: params.userId,
+    };
+
+    const newJob: NewJob = {
+      type: JOB_TYPES.AGENT_RESUME,
+      status: "pending",
+      data: agentResumeJobDataToRecord(jobData),
+      data_storage: "inline",
+      organization_id: params.organizationId,
+      user_id: params.userId,
+      webhook_url: params.webhookUrl,
+      max_attempts: 3,
+      // docker start is fast (~5s) unless the resume falls back to a full
+      // re-provision; budget the longer path so the UI doesn't show a
+      // misleading "stuck" estimate.
+      estimated_completion_at: new Date(Date.now() + 90_000),
+    };
+
+    return await dbWrite.transaction(async (tx) => {
+      await tx.execute(elizaProvisionAdvisoryLockSql(params.organizationId, params.agentId));
+
+      const [sandbox] = await tx
+        .select({ id: agentSandboxes.id, status: agentSandboxes.status })
+        .from(agentSandboxes)
+        .where(
+          and(
+            eq(agentSandboxes.id, params.agentId),
+            eq(agentSandboxes.organization_id, params.organizationId),
+          ),
+        )
+        .limit(1);
+
+      if (!sandbox) {
+        throw new Error("Agent not found");
+      }
+
+      const [existing] = await tx
+        .select()
+        .from(jobs)
+        .where(
+          and(
+            eq(jobs.type, JOB_TYPES.AGENT_RESUME),
+            eq(jobs.organization_id, params.organizationId),
+            eq(jobs.agent_id, params.agentId),
+            sql`${jobs.status} IN ('pending', 'in_progress')`,
+          ),
+        )
+        .orderBy(desc(jobs.created_at))
+        .limit(1);
+
+      if (existing) {
+        logger.info("[provisioning-jobs] Reusing active agent_resume job", {
+          jobId: existing.id,
+          agentId: params.agentId,
+          orgId: params.organizationId,
+        });
+        return { job: await hydrateJob(existing), created: false };
+      }
+
+      const [job] = await tx
+        .insert(jobs)
+        .values(await prepareJobInsertData(newJob))
+        .returning();
+
+      logger.info("[provisioning-jobs] Enqueued agent_resume job", {
         jobId: job.id,
         agentId: params.agentId,
         orgId: params.organizationId,
@@ -585,9 +861,114 @@ export class ProvisioningJobService {
       case JOB_TYPES.AGENT_DELETE:
         await this.executeAgentDelete(job);
         break;
+      case JOB_TYPES.AGENT_SUSPEND:
+        await this.executeAgentSuspend(job);
+        break;
+      case JOB_TYPES.AGENT_RESUME:
+        await this.executeAgentResume(job);
+        break;
       default:
         throw new Error(`Unknown job type: ${job.type}`);
     }
+  }
+
+  private async executeAgentSuspend(job: Job): Promise<void> {
+    const data = readAgentSuspendJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_suspend", {
+      jobId: job.id,
+      agentId: data.agentId,
+    });
+
+    const result = await elizaSandboxService.executeSuspend(data.agentId, data.organizationId);
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentSuspendJobResultToRecord({
+          cloudAgentId: data.agentId,
+          containerStopped: result.containerStopped,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_suspend failure");
+    }
+
+    const jobResult: AgentSuspendJobResult = {
+      cloudAgentId: data.agentId,
+      containerStopped: result.containerStopped,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentSuspendJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_suspend completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      containerStopped: result.containerStopped,
+    });
+  }
+
+  private async executeAgentResume(job: Job): Promise<void> {
+    const data = readAgentResumeJobData(job);
+
+    if (data.organizationId !== job.organization_id) {
+      throw new Error(
+        `Organization ID mismatch: job.data.organizationId (${data.organizationId}) !== job.organization_id (${job.organization_id})`,
+      );
+    }
+
+    logger.info("[provisioning-jobs] Executing agent_resume", {
+      jobId: job.id,
+      agentId: data.agentId,
+    });
+
+    const result = await elizaSandboxService.executeResume(data.agentId, data.organizationId);
+
+    if (!result.success) {
+      await jobsRepository.update(job.id, {
+        result: agentResumeJobResultToRecord({
+          cloudAgentId: data.agentId,
+          containerStarted: result.containerStarted,
+          reprovisioned: result.reprovisioned,
+          error: result.error,
+        }),
+      });
+      throw new Error(result.error ?? "Unknown agent_resume failure");
+    }
+
+    const jobResult: AgentResumeJobResult = {
+      cloudAgentId: data.agentId,
+      containerStarted: result.containerStarted,
+      reprovisioned: result.reprovisioned,
+    };
+
+    await jobsRepository.updateStatus(job.id, "completed", {
+      result: agentResumeJobResultToRecord(jobResult),
+      completed_at: new Date(),
+    });
+
+    if (job.webhook_url) {
+      await this.fireWebhook(job, jobResult);
+    }
+
+    logger.info("[provisioning-jobs] agent_resume completed", {
+      jobId: job.id,
+      agentId: data.agentId,
+      containerStarted: result.containerStarted,
+      reprovisioned: result.reprovisioned,
+    });
   }
 
   private async executeAgentDelete(job: Job): Promise<void> {
@@ -753,7 +1134,11 @@ export class ProvisioningJobService {
 
   private async fireWebhook(
     job: Job,
-    result: AgentProvisionJobResult | AgentDeleteJobResult,
+    result:
+      | AgentProvisionJobResult
+      | AgentDeleteJobResult
+      | AgentSuspendJobResult
+      | AgentResumeJobResult,
   ): Promise<void> {
     if (!job.webhook_url) return;
 

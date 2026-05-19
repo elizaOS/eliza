@@ -173,15 +173,25 @@ async function __hono_POST(
     }
 
     try {
+      // Use the dedicated `agent_resume` job type instead of
+      // `agent_provision`. The orchestrator's `executeResume` tries
+      // `docker start <existing-container>` first (fast path, ~5s) and
+      // falls back to a full re-provision only if the container is gone
+      // (daemon scrub, core eviction). Re-provisioning every resume is
+      // 60s+ and wasteful when the original container is still on disk.
       const { job, created } =
-        await provisioningJobService.enqueueAgentProvisionOnce({
+        await provisioningJobService.enqueueAgentResumeOnce({
           agentId,
           organizationId: user.organization_id,
           userId: user.id,
-          agentName: agent.agent_name ?? agentId,
           webhookUrl,
-          expectedUpdatedAt: agent.updated_at,
         });
+
+      // Best-effort wake of the orchestrator so the user does not wait for
+      // the next cron tick. Same pattern as provision/delete/suspend.
+      void provisioningJobService.triggerImmediate().catch(() => {
+        // Logged inside the service; nothing actionable here.
+      });
 
       return applyCorsHeaders(
         Response.json(
@@ -195,7 +205,7 @@ async function __hono_POST(
               jobId: job.id,
               status: job.status,
               message: created
-                ? "Resume job created. Agent will restore from latest snapshot."
+                ? "Resume job created. Container will be docker-started (fast path) or re-provisioned if gone."
                 : "Resume is already in progress.",
             },
             polling: {

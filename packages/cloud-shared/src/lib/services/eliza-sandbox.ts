@@ -2703,6 +2703,130 @@ export class ElizaSandboxService {
     return result;
   }
 
+  /**
+   * Daemon-side handler for the `agent_suspend` job. SSH-stops the
+   * container, flips the DB row to `stopped`, clears bridge/health URLs
+   * but keeps `sandbox_id` for a subsequent `agent_resume` to docker
+   * start. Replaces the Worker-callable `shutdown()` path which silently
+   * failed to stop the container (Workers can't SSH).
+   */
+  async executeSuspend(
+    agentId: string,
+    orgId: string,
+  ): Promise<{ success: boolean; containerStopped: boolean; error?: string }> {
+    return await dbWrite.transaction(async (tx) => {
+      await this.lockLifecycle(tx, agentId, orgId);
+      const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
+      if (!rec)
+        return { success: false, containerStopped: false, error: "Agent not found" } as const;
+
+      const hasActiveProvisionJob = await this.hasActiveProvisionJobTx(tx, agentId, orgId);
+      if (rec.status === "provisioning" || hasActiveProvisionJob) {
+        return {
+          success: false,
+          containerStopped: false,
+          error: "Agent provisioning is in progress",
+        } as const;
+      }
+      if (rec.status === "stopped") return { success: true, containerStopped: true } as const;
+
+      let containerStopped = false;
+      if (rec.sandbox_id) {
+        try {
+          await (await this.getProvider()).stop(rec.sandbox_id);
+          containerStopped = true;
+        } catch (e) {
+          if (this.isIgnorableSandboxStopError(e)) {
+            containerStopped = true;
+            logger.info("[agent-sandbox] Sandbox already absent during suspend", {
+              sandboxId: rec.sandbox_id,
+              error: e instanceof Error ? e.message : String(e),
+            });
+          } else {
+            return {
+              success: false,
+              containerStopped: false,
+              error: e instanceof Error ? e.message : String(e),
+            } as const;
+          }
+        }
+      } else {
+        containerStopped = true;
+      }
+
+      await tx.execute(sql`
+        UPDATE ${agentSandboxes}
+        SET status = 'stopped', bridge_url = NULL, health_url = NULL, updated_at = NOW()
+        WHERE id = ${rec.id}
+      `);
+      return { success: true, containerStopped } as const;
+    });
+  }
+
+  /**
+   * Daemon-side handler for the `agent_resume` job. Tries `docker start`
+   * on the existing container first (fast path, ~5s). Falls back to a
+   * full `provision()` if the container is gone (daemon scrub or core
+   * eviction). The Neon DB is reused across both paths.
+   */
+  async executeResume(
+    agentId: string,
+    orgId: string,
+  ): Promise<{
+    success: boolean;
+    containerStarted: boolean;
+    reprovisioned: boolean;
+    error?: string;
+  }> {
+    const rec = await agentSandboxesRepository.findByIdAndOrg(agentId, orgId);
+    if (!rec)
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: false,
+        error: "Agent not found",
+      };
+    if (rec.status === "running")
+      return { success: true, containerStarted: true, reprovisioned: false };
+
+    // Fast path: docker start existing container.
+    if (rec.sandbox_id) {
+      try {
+        const provider = await this.getProvider();
+        const start = (provider as unknown as { start?: (sandboxId: string) => Promise<void> })
+          .start;
+        if (typeof start === "function") {
+          await start.call(provider, rec.sandbox_id);
+          await dbWrite.execute(sql`
+            UPDATE ${agentSandboxes} SET status = 'running', updated_at = NOW() WHERE id = ${rec.id}
+          `);
+          return { success: true, containerStarted: true, reprovisioned: false };
+        }
+      } catch (e) {
+        logger.warn(
+          "[agent-sandbox] docker start failed during resume, falling back to provision",
+          {
+            agentId,
+            sandboxId: rec.sandbox_id,
+            error: e instanceof Error ? e.message : String(e),
+          },
+        );
+      }
+    }
+
+    // Slow path: full re-provision (reuses existing Neon DB).
+    const provisionResult = await this.provision(agentId, orgId);
+    if (!provisionResult.success) {
+      return {
+        success: false,
+        containerStarted: false,
+        reprovisioned: true,
+        error: provisionResult.error,
+      };
+    }
+    return { success: true, containerStarted: true, reprovisioned: true };
+  }
+
   // Private helpers
 
   private async lockLifecycle(tx: LifecycleTx, agentId: string, orgId: string): Promise<void> {
