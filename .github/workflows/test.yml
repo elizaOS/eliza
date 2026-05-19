@@ -98,6 +98,9 @@ jobs:
       - name: Remote capability plugin surface audit
         run: bun run test:remote-capabilities:surface-audit
 
+      - name: Remote capability live CI audit
+        run: bun run test:remote-capabilities:live-ci-audit
+
       - name: Remote capability naming audit
         run: bun run test:remote-capabilities:naming-audit
 
@@ -150,7 +153,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --linker=isolated --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -194,7 +197,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --linker=isolated --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -235,7 +238,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --linker=isolated --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
 
       - name: Build workspace packages for Vitest resolution
@@ -288,7 +291,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --linker=isolated --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
@@ -424,7 +427,7 @@ jobs:
         uses: ./.github/actions/setup-bun-workspace
         with:
           bun-version: ${{ env.BUN_VERSION }}
-          install-command: bun install --linker=isolated --ignore-scripts
+          install-command: bun install
           install-native-deps: "false"
           skip-avatar-clone: "true"
           no-vision-deps: "true"
