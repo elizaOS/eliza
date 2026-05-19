@@ -76,11 +76,35 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] reg_rx_head_q;
     logic [PMC_MBOX_DW-1:0] reg_rx_data_q;
 
-    // Aggregate droop telemetry
+    // Aggregate droop telemetry. `droop_total_q` is the present-cycle sum
+    // across all rails (combinational behavior across sample periods).
+    // `droop_sticky_q` accumulates the *increase* in droop_total_q since the
+    // last clk_aon mailbox W1C clear, so firmware can drain events without
+    // races against the per-rail counters.
     logic [31:0] droop_total_q;
+    logic [31:0] droop_total_prev_q;
+    logic [31:0] droop_sticky_q;
+    // Cross-domain pulse: the AON mailbox decode produces a W1C mask, which is
+    // sampled into the sample-clock domain through the simple two-flop synch
+    // pattern shown in droop_sensor.sv for the same direction.
+    logic [31:0] droop_sticky_w1c_mask_aon;
+    logic [31:0] droop_sticky_w1c_mask_sample;
+    logic [31:0] droop_sticky_w1c_mask_sample_q;
     always_ff @(posedge clk_sample or negedge rst_n) begin
         if (!rst_n) begin
-            droop_total_q <= 32'h0;
+            droop_sticky_w1c_mask_sample_q <= 32'h0;
+            droop_sticky_w1c_mask_sample   <= 32'h0;
+        end else begin
+            droop_sticky_w1c_mask_sample_q <= droop_sticky_w1c_mask_aon;
+            droop_sticky_w1c_mask_sample   <= droop_sticky_w1c_mask_sample_q;
+        end
+    end
+
+    always_ff @(posedge clk_sample or negedge rst_n) begin
+        if (!rst_n) begin
+            droop_total_q      <= 32'h0;
+            droop_total_prev_q <= 32'h0;
+            droop_sticky_q     <= 32'h0;
         end else begin
             droop_total_q <= droop_event_count_i[0]
                           + droop_event_count_i[1]
@@ -88,6 +112,16 @@ module pmc_top
                           + droop_event_count_i[3]
                           + droop_event_count_i[4]
                           + droop_event_count_i[5];
+            droop_total_prev_q <= droop_total_q;
+            // Accumulate the rising delta only; per-rail counters are
+            // monotone-increasing telemetry, so a negative delta means a
+            // wraparound or an upstream reset and is ignored.
+            if (droop_total_q > droop_total_prev_q) begin
+                droop_sticky_q <= (droop_sticky_q & ~droop_sticky_w1c_mask_sample)
+                                + (droop_total_q - droop_total_prev_q);
+            end else begin
+                droop_sticky_q <= droop_sticky_q & ~droop_sticky_w1c_mask_sample;
+            end
         end
     end
 
@@ -112,60 +146,68 @@ module pmc_top
     logic [PMC_MBOX_DW-1:0] rdata_q;
     always_ff @(posedge clk_aon or negedge rst_n) begin
         if (!rst_n) begin
-            rdata_q       <= '0;
-            reg_ctrl_q    <= '0;
-            reg_tx_head_q <= '0;
-            reg_tx_data_q <= '0;
-            reg_rx_head_q <= '0;
-            reg_rx_data_q <= '0;
+            rdata_q                     <= '0;
+            reg_ctrl_q                  <= '0;
+            reg_tx_head_q               <= '0;
+            reg_tx_data_q               <= '0;
+            reg_rx_head_q               <= '0;
+            reg_rx_data_q               <= '0;
+            droop_sticky_w1c_mask_aon   <= '0;
             for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
                 reg_dvfs_q[i] <= '0;
             end
-        end else if (mbox_valid_i) begin
-            if (mbox_write_i) begin
-                case (mbox_addr_i)
-                    PMC_REG_CTRL:         reg_ctrl_q    <= mbox_wdata_i;
-                    PMC_REG_MBOX_TX_HEAD: reg_tx_head_q <= mbox_wdata_i;
-                    PMC_REG_MBOX_TX_DATA: begin
-                        // Host posts a 32b word into TX; Ibex (or the
-                        // loopback path below) consumes it and produces an
-                        // RX_DATA word. Until the Ibex is bound, TX_DATA
-                        // loops back into RX_DATA on the same cycle so a
-                        // cocotb harness can verify the mailbox surface.
-                        reg_tx_data_q <= mbox_wdata_i;
-                        reg_rx_data_q <= mbox_wdata_i;
-                        reg_rx_head_q <= reg_tx_head_q;
-                    end
-                    PMC_REG_MBOX_RX_HEAD: reg_rx_head_q <= mbox_wdata_i;
-                    default: begin
-                        for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
-                            if (mbox_addr_i == (PMC_REG_DVFS_BASE +
-                                                PMC_MBOX_AW'(i * 4))) begin
-                                reg_dvfs_q[i] <= mbox_wdata_i;
+        end else begin
+            // W1C mask is a single-cycle pulse; clear unless the host writes
+            // it again on this clk_aon edge.
+            droop_sticky_w1c_mask_aon <= '0;
+            if (mbox_valid_i) begin
+                if (mbox_write_i) begin
+                    case (mbox_addr_i)
+                        PMC_REG_CTRL:         reg_ctrl_q    <= mbox_wdata_i;
+                        PMC_REG_DROOP_STICKY: droop_sticky_w1c_mask_aon <= mbox_wdata_i;
+                        PMC_REG_MBOX_TX_HEAD: reg_tx_head_q <= mbox_wdata_i;
+                        PMC_REG_MBOX_TX_DATA: begin
+                            // Host posts a 32b word into TX; Ibex (or the
+                            // loopback path below) consumes it and produces an
+                            // RX_DATA word. Until the Ibex is bound, TX_DATA
+                            // loops back into RX_DATA on the same cycle so a
+                            // cocotb harness can verify the mailbox surface.
+                            reg_tx_data_q <= mbox_wdata_i;
+                            reg_rx_data_q <= mbox_wdata_i;
+                            reg_rx_head_q <= reg_tx_head_q;
+                        end
+                        PMC_REG_MBOX_RX_HEAD: reg_rx_head_q <= mbox_wdata_i;
+                        default: begin
+                            for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
+                                if (mbox_addr_i == (PMC_REG_DVFS_BASE +
+                                                    PMC_MBOX_AW'(i * 4))) begin
+                                    reg_dvfs_q[i] <= mbox_wdata_i;
+                                end
                             end
                         end
-                    end
-                endcase
-            end else begin
-                case (mbox_addr_i)
-                    PMC_REG_STATUS:       rdata_q <= reg_status_q;
-                    PMC_REG_CTRL:         rdata_q <= reg_ctrl_q;
-                    PMC_REG_DROOP_COUNT:  rdata_q <= droop_total_q;
-                    PMC_REG_AVFS_STATUS:  rdata_q <= {28'h0, avfs_fault_i};
-                    PMC_REG_MBOX_TX_HEAD: rdata_q <= reg_tx_head_q;
-                    PMC_REG_MBOX_TX_DATA: rdata_q <= reg_tx_data_q;
-                    PMC_REG_MBOX_RX_HEAD: rdata_q <= reg_rx_head_q;
-                    PMC_REG_MBOX_RX_DATA: rdata_q <= reg_rx_data_q;
-                    default: begin
-                        rdata_q <= '0;
-                        for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
-                            if (mbox_addr_i == (PMC_REG_DVFS_BASE +
-                                                PMC_MBOX_AW'(i * 4))) begin
-                                rdata_q <= reg_dvfs_q[i];
+                    endcase
+                end else begin
+                    case (mbox_addr_i)
+                        PMC_REG_STATUS:       rdata_q <= reg_status_q;
+                        PMC_REG_CTRL:         rdata_q <= reg_ctrl_q;
+                        PMC_REG_DROOP_COUNT:  rdata_q <= droop_total_q;
+                        PMC_REG_AVFS_STATUS:  rdata_q <= {28'h0, avfs_fault_i};
+                        PMC_REG_DROOP_STICKY: rdata_q <= droop_sticky_q;
+                        PMC_REG_MBOX_TX_HEAD: rdata_q <= reg_tx_head_q;
+                        PMC_REG_MBOX_TX_DATA: rdata_q <= reg_tx_data_q;
+                        PMC_REG_MBOX_RX_HEAD: rdata_q <= reg_rx_head_q;
+                        PMC_REG_MBOX_RX_DATA: rdata_q <= reg_rx_data_q;
+                        default: begin
+                            rdata_q <= '0;
+                            for (int i = 0; i < DVFS_RAIL_COUNT; i++) begin
+                                if (mbox_addr_i == (PMC_REG_DVFS_BASE +
+                                                    PMC_MBOX_AW'(i * 4))) begin
+                                    rdata_q <= reg_dvfs_q[i];
+                                end
                             end
                         end
-                    end
-                endcase
+                    endcase
+                end
             end
         end
     end

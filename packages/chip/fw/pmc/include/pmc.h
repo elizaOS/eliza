@@ -44,6 +44,9 @@ enum pmc_corner {
 #define PMC_REG_CTRL             (PMC_REG_BASE + 0x014u)
 #define PMC_REG_DROOP_COUNT      (PMC_REG_BASE + 0x020u)
 #define PMC_REG_AVFS_STATUS      (PMC_REG_BASE + 0x024u)
+/* Sticky droop event counter; reads return the running sum since last clear.
+ * Writes are write-1-to-clear masks (write 0xFFFFFFFF for a full clear). */
+#define PMC_REG_DROOP_STICKY     (PMC_REG_BASE + 0x028u)
 #define PMC_REG_DVFS_BASE        (PMC_REG_BASE + 0x040u)
 
 #define PMC_STATUS_TX_FULL       0u

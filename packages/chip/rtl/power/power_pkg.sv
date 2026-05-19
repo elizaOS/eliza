@@ -74,6 +74,10 @@ package power_pkg;
     parameter logic [PMC_MBOX_AW-1:0] PMC_REG_CTRL         = 12'h014;
     parameter logic [PMC_MBOX_AW-1:0] PMC_REG_DROOP_COUNT  = 12'h020;
     parameter logic [PMC_MBOX_AW-1:0] PMC_REG_AVFS_STATUS  = 12'h024;
+    // Sticky aggregated droop-event count. Reads return the latched count
+    // accumulated since last clear. Write a bitmask of '1' bits to clear the
+    // corresponding bits (write-1-to-clear). A full clear is `0xFFFFFFFF`.
+    parameter logic [PMC_MBOX_AW-1:0] PMC_REG_DROOP_STICKY = 12'h028;
     parameter logic [PMC_MBOX_AW-1:0] PMC_REG_DVFS_BASE    = 12'h040;  // 6 rails x 4 B
 
     // PMC status bits

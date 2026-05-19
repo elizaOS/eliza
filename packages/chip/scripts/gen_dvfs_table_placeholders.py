@@ -45,6 +45,11 @@ PROCESS_DERATE_LSB = {"ss": 1, "tt": 0, "ff": -1}
 TEMP_DERATE_LSB = {0: 0, 25: 0, 85: 0, 105: 1}
 
 
+class IndentedSafeDumper(yaml.SafeDumper):
+    def increase_indent(self, flow: bool = False, indentless: bool = False):
+        return super().increase_indent(flow, False)
+
+
 def code_to_volts(code: int) -> float:
     return code * 6.25e-3
 
@@ -63,10 +68,7 @@ def main() -> int:
 
     anchor = yaml.safe_load(TT_25C.read_text())
     plan = yaml.safe_load(RAIL_PLAN.read_text())
-    rail_window = {
-        rail["id"]: (rail["dvfs_min_v"], rail["dvfs_max_v"])
-        for rail in plan["rails"]
-    }
+    rail_window = {rail["id"]: (rail["dvfs_min_v"], rail["dvfs_max_v"]) for rail in plan["rails"]}
 
     for corner in CORNERS:
         for temp in TEMPS_C:
@@ -132,14 +134,20 @@ def main() -> int:
             out_path = OUT_DIR / f"dvfs-table-{tag}.yaml"
             _write(out_path, payload)
 
-    print(f"wrote {len(CORNERS) * len(TEMPS_C)} corner placeholders under "
-          f"{OUT_DIR.relative_to(ROOT)}")
+    print(
+        f"wrote {len(CORNERS) * len(TEMPS_C)} corner placeholders under {OUT_DIR.relative_to(ROOT)}"
+    )
     return 0
 
 
 def _write(path: Path, payload: dict) -> None:
     # Stable key order for diffability.
-    yaml_text = yaml.safe_dump(payload, sort_keys=False, default_flow_style=False)
+    yaml_text = yaml.dump(
+        payload,
+        Dumper=IndentedSafeDumper,
+        sort_keys=False,
+        default_flow_style=False,
+    )
     path.write_text(yaml_text)
 
 

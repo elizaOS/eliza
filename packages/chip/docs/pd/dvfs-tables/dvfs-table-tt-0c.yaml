@@ -11,87 +11,87 @@ claim_boundary: Per-corner placeholder for the TT process / 0 C thermal corner. 
   and is not a signed-off operating point. Replace with STA-corner-bin output from
   pd/signoff/sta/tt-0c/ before signoff.
 source_artifacts:
-- docs/pd/rail-plan-2028.yaml
-- docs/architecture-optimization/soc-optimized-operating-point.yaml
+  - docs/pd/rail-plan-2028.yaml
+  - docs/architecture-optimization/soc-optimized-operating-point.yaml
 rails:
   VDD_CPU_BIG:
     operating_points:
-    - frequency_hz: 800000000
-      nominal_code: 96
-      min_code: 92
-      max_code: 100
-    - frequency_hz: 1600000000
-      nominal_code: 112
-      min_code: 108
-      max_code: 116
-    - frequency_hz: 2400000000
-      nominal_code: 132
-      min_code: 128
-      max_code: 136
-    - frequency_hz: 3200000000
-      nominal_code: 148
-      min_code: 144
-      max_code: 152
+      - frequency_hz: 800000000
+        nominal_code: 96
+        min_code: 92
+        max_code: 100
+      - frequency_hz: 1600000000
+        nominal_code: 112
+        min_code: 108
+        max_code: 116
+      - frequency_hz: 2400000000
+        nominal_code: 132
+        min_code: 128
+        max_code: 136
+      - frequency_hz: 3200000000
+        nominal_code: 148
+        min_code: 144
+        max_code: 152
   VDD_CPU_LITTLE:
     operating_points:
-    - frequency_hz: 600000000
-      nominal_code: 84
-      min_code: 80
-      max_code: 88
-    - frequency_hz: 1200000000
-      nominal_code: 104
-      min_code: 100
-      max_code: 108
-    - frequency_hz: 1800000000
-      nominal_code: 128
-      min_code: 124
-      max_code: 132
+      - frequency_hz: 600000000
+        nominal_code: 84
+        min_code: 80
+        max_code: 88
+      - frequency_hz: 1200000000
+        nominal_code: 104
+        min_code: 100
+        max_code: 108
+      - frequency_hz: 1800000000
+        nominal_code: 128
+        min_code: 124
+        max_code: 132
   VDD_NPU:
     operating_points:
-    - frequency_hz: 800000000
-      nominal_code: 96
-      min_code: 92
-      max_code: 100
-    - frequency_hz: 1200000000
-      nominal_code: 116
-      min_code: 112
-      max_code: 120
-    - frequency_hz: 1600000000
-      nominal_code: 136
-      min_code: 132
-      max_code: 140
+      - frequency_hz: 800000000
+        nominal_code: 96
+        min_code: 92
+        max_code: 100
+      - frequency_hz: 1200000000
+        nominal_code: 116
+        min_code: 112
+        max_code: 120
+      - frequency_hz: 1600000000
+        nominal_code: 136
+        min_code: 132
+        max_code: 140
   VDD_GPU:
     operating_points:
-    - frequency_hz: 600000000
-      nominal_code: 96
-      min_code: 92
-      max_code: 100
-    - frequency_hz: 1000000000
-      nominal_code: 128
-      min_code: 124
-      max_code: 132
+      - frequency_hz: 600000000
+        nominal_code: 96
+        min_code: 92
+        max_code: 100
+      - frequency_hz: 1000000000
+        nominal_code: 128
+        min_code: 124
+        max_code: 132
   VDD_SOC_FABRIC:
     operating_points:
-    - frequency_hz: 1000000000
-      nominal_code: 112
-      min_code: 108
-      max_code: 116
-    - frequency_hz: 1500000000
-      nominal_code: 128
-      min_code: 124
-      max_code: 132
+      - frequency_hz: 1000000000
+        nominal_code: 112
+        min_code: 108
+        max_code: 116
+      - frequency_hz: 1500000000
+        nominal_code: 128
+        min_code: 124
+        max_code: 132
   VDD_SRAM:
     operating_points:
-    - frequency_hz: 1600000000
-      nominal_code: 124
-      min_code: 120
-      max_code: 128
-    - frequency_hz: 2400000000
-      nominal_code: 132
-      min_code: 128
-      max_code: 136
+      - frequency_hz: 1600000000
+        nominal_code: 124
+        min_code: 120
+        max_code: 128
+      - frequency_hz: 2400000000
+        nominal_code: 132
+        min_code: 128
+        max_code: 136
 release_blockers:
-- Silicon characterization data not available; values are planning derates only.
-- PDK selection not finalized; STA corner sweep not run.
-- Voltage guardband policy not formally adopted; placeholder uses 1 DVFS LSB (6.25
-  mV) per direction.
+  - Silicon characterization data not available; values are planning derates only.
+  - PDK selection not finalized; STA corner sweep not run.
+  - Voltage guardband policy not formally adopted; placeholder uses 1 DVFS LSB (6.25
+    mV) per direction.

@@ -11,87 +11,87 @@ claim_boundary: Per-corner placeholder for the FF process / 0 C thermal corner. 
   and is not a signed-off operating point. Replace with STA-corner-bin output from
   pd/signoff/sta/ff-0c/ before signoff.
 source_artifacts:
-- docs/pd/rail-plan-2028.yaml
-- docs/architecture-optimization/soc-optimized-operating-point.yaml
+  - docs/pd/rail-plan-2028.yaml
+  - docs/architecture-optimization/soc-optimized-operating-point.yaml
 rails:
   VDD_CPU_BIG:
     operating_points:
-    - frequency_hz: 800000000
-      nominal_code: 95
-      min_code: 91
-      max_code: 99
-    - frequency_hz: 1600000000
-      nominal_code: 111
-      min_code: 107
-      max_code: 115
-    - frequency_hz: 2400000000
-      nominal_code: 131
-      min_code: 127
-      max_code: 135
-    - frequency_hz: 3200000000
-      nominal_code: 147
-      min_code: 143
-      max_code: 151
+      - frequency_hz: 800000000
+        nominal_code: 95
+        min_code: 91
+        max_code: 99
+      - frequency_hz: 1600000000
+        nominal_code: 111
+        min_code: 107
+        max_code: 115
+      - frequency_hz: 2400000000
+        nominal_code: 131
+        min_code: 127
+        max_code: 135
+      - frequency_hz: 3200000000
+        nominal_code: 147
+        min_code: 143
+        max_code: 151
   VDD_CPU_LITTLE:
     operating_points:
-    - frequency_hz: 600000000
-      nominal_code: pending_silicon_corner_sta
-      min_code: pending_silicon_corner_sta
-      max_code: pending_silicon_corner_sta
-    - frequency_hz: 1200000000
-      nominal_code: 103
-      min_code: 99
-      max_code: 107
-    - frequency_hz: 1800000000
-      nominal_code: 127
-      min_code: 123
-      max_code: 131
+      - frequency_hz: 600000000
+        nominal_code: pending_silicon_corner_sta
+        min_code: pending_silicon_corner_sta
+        max_code: pending_silicon_corner_sta
+      - frequency_hz: 1200000000
+        nominal_code: 103
+        min_code: 99
+        max_code: 107
+      - frequency_hz: 1800000000
+        nominal_code: 127
+        min_code: 123
+        max_code: 131
   VDD_NPU:
     operating_points:
-    - frequency_hz: 800000000
-      nominal_code: 95
-      min_code: 91
-      max_code: 99
-    - frequency_hz: 1200000000
-      nominal_code: 115
-      min_code: 111
-      max_code: 119
-    - frequency_hz: 1600000000
-      nominal_code: 135
-      min_code: 131
-      max_code: 139
+      - frequency_hz: 800000000
+        nominal_code: 95
+        min_code: 91
+        max_code: 99
+      - frequency_hz: 1200000000
+        nominal_code: 115
+        min_code: 111
+        max_code: 119
+      - frequency_hz: 1600000000
+        nominal_code: 135
+        min_code: 131
+        max_code: 139
   VDD_GPU:
     operating_points:
-    - frequency_hz: 600000000
-      nominal_code: 95
-      min_code: 91
-      max_code: 99
-    - frequency_hz: 1000000000
-      nominal_code: 127
-      min_code: 123
-      max_code: 131
+      - frequency_hz: 600000000
+        nominal_code: 95
+        min_code: 91
+        max_code: 99
+      - frequency_hz: 1000000000
+        nominal_code: 127
+        min_code: 123
+        max_code: 131
   VDD_SOC_FABRIC:
     operating_points:
-    - frequency_hz: 1000000000
-      nominal_code: 111
-      min_code: 107
-      max_code: 115
-    - frequency_hz: 1500000000
-      nominal_code: 127
-      min_code: 123
-      max_code: 131
+      - frequency_hz: 1000000000
+        nominal_code: 111
+        min_code: 107
+        max_code: 115
+      - frequency_hz: 1500000000
+        nominal_code: 127
+        min_code: 123
+        max_code: 131
   VDD_SRAM:
     operating_points:
-    - frequency_hz: 1600000000
-      nominal_code: 123
-      min_code: 119
-      max_code: 127
-    - frequency_hz: 2400000000
-      nominal_code: 131
-      min_code: 127
-      max_code: 135
+      - frequency_hz: 1600000000
+        nominal_code: 123
+        min_code: 119
+        max_code: 127
+      - frequency_hz: 2400000000
+        nominal_code: 131
+        min_code: 127
+        max_code: 135
 release_blockers:
-- Silicon characterization data not available; values are planning derates only.
-- PDK selection not finalized; STA corner sweep not run.
-- Voltage guardband policy not formally adopted; placeholder uses 1 DVFS LSB (6.25
-  mV) per direction.
+  - Silicon characterization data not available; values are planning derates only.
+  - PDK selection not finalized; STA corner sweep not run.
+  - Voltage guardband policy not formally adopted; placeholder uses 1 DVFS LSB (6.25
+    mV) per direction.

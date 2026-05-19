@@ -7,8 +7,8 @@
  */
 
 #include "pmc.h"
+#include "spmi.h"
 
-int spmi_master_write(uint8_t sid, uint16_t reg, uint8_t value);
 int i2c_master_write(uint8_t addr, uint8_t reg, uint8_t value);
 
 /*
@@ -37,11 +37,11 @@ int pmc_pmic_power_up(enum pmc_rail rail)
     }
     const struct pmic_rail_map *map = &g_rail_map[rail];
     /* Default to nominal mid-code at power-up; AVFS narrows from there. */
-    int r = spmi_master_write(map->spmi_sid, map->voltage_reg, 0x60);
+    int r = pmc_spmi_write_byte(map->spmi_sid, map->voltage_reg, 0x60);
     if (r != 0) {
         return r;
     }
-    return spmi_master_write(map->spmi_sid, map->enable_reg, 0x01);
+    return pmc_spmi_write_byte(map->spmi_sid, map->enable_reg, 0x01);
 }
 
 int pmc_pmic_power_down(enum pmc_rail rail)
@@ -50,7 +50,7 @@ int pmc_pmic_power_down(enum pmc_rail rail)
         return -1;
     }
     const struct pmic_rail_map *map = &g_rail_map[rail];
-    return spmi_master_write(map->spmi_sid, map->enable_reg, 0x00);
+    return pmc_spmi_write_byte(map->spmi_sid, map->enable_reg, 0x00);
 }
 
 int pmc_pmic_set_code(enum pmc_rail rail, uint8_t code)
@@ -59,5 +59,5 @@ int pmc_pmic_set_code(enum pmc_rail rail, uint8_t code)
         return -1;
     }
     const struct pmic_rail_map *map = &g_rail_map[rail];
-    return spmi_master_write(map->spmi_sid, map->voltage_reg, code);
+    return pmc_spmi_write_byte(map->spmi_sid, map->voltage_reg, code);
 }

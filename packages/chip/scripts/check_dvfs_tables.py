@@ -22,7 +22,6 @@ values left.
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
 import yaml
@@ -115,8 +114,7 @@ def main() -> int:
 
     plan = yaml.safe_load(RAIL_PLAN.read_text())
     rail_window = {
-        rail["id"]: (float(rail["dvfs_min_v"]), float(rail["dvfs_max_v"]))
-        for rail in plan["rails"]
+        rail["id"]: (float(rail["dvfs_min_v"]), float(rail["dvfs_max_v"])) for rail in plan["rails"]
     }
 
     failures: list[str] = []
