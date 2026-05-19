@@ -195,6 +195,24 @@ def build_evidence(
             "ITTAGE_HIST_LEN",
         }
     }
+    synthetic_mpki_path = ROOT / "docs/evidence/cpu_ap/mpki_results_synthetic.json"
+    synthetic_mpki_ref: dict[str, str | bool] = {
+        "path": str(synthetic_mpki_path.relative_to(ROOT)),
+        "schema": "eliza.bpu_mpki.v1",
+        "harness": "cocotb-rtl-bpu_top",
+        "command": "make mpki-eval-rtl",
+        "comparison_table": "docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md",
+        "trace_class": "synthetic_planning_only",
+        "spec2017_claim": False,
+        "android_claim": False,
+        "cbp5_claim": False,
+    }
+    if synthetic_mpki_path.is_file():
+        synthetic_mpki_ref["sha256"] = sha256_path(synthetic_mpki_path)
+        synthetic_mpki_ref["present"] = True
+    else:
+        synthetic_mpki_ref["present"] = False
+
     return {
         "schema": "eliza.bpu_params.v1",
         "status": status,
@@ -222,6 +240,7 @@ def build_evidence(
                 "sha256": sha256_path(MANIFEST_PATH),
             },
         },
+        "synthetic_mpki_results_ref": synthetic_mpki_ref,
         "claim_policy": {
             "spec2017_mpki_claim": False,
             "android_mpki_claim": False,

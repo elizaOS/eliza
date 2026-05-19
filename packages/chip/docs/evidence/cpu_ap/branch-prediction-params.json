@@ -7,7 +7,7 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-19T10:59:43.521965+00:00",
+  "generated_at_utc": "2026-05-19T20:24:05.988695+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
@@ -54,11 +54,11 @@
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "ad12ed987a20c300f8ac6ba8a36313954d1553fe",
+  "source_revision": "d28cbd6f344ad67d8935528552df174dd8528266",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "20de46ce561f1fb91e8b8d059256e521f703acd6edc58bdbfccba210dd0ad5a9"
+      "sha256": "49b3dc90357c9d8c247b52217d4a5a600dc1aae938d051d64e00d9c7e56b92e1"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -74,6 +74,19 @@
     }
   },
   "status": "clean",
+  "synthetic_mpki_results_ref": {
+    "android_claim": false,
+    "cbp5_claim": false,
+    "command": "make mpki-eval-rtl",
+    "comparison_table": "docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md",
+    "harness": "cocotb-rtl-bpu_top",
+    "path": "docs/evidence/cpu_ap/mpki_results_synthetic.json",
+    "present": true,
+    "schema": "eliza.bpu_mpki.v1",
+    "sha256": "ba90218ad3b60efc461f9d26f52e62b647231bb6780733b7658d4ca25f13eb3b",
+    "spec2017_claim": false,
+    "trace_class": "synthetic_planning_only"
+  },
   "thresholds": {
     "BIM_ENTRIES": 8192,
     "FETCH_BLOCK_BYTES": 32,

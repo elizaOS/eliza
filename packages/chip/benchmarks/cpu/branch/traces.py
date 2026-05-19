@@ -62,6 +62,19 @@ def synthetic_always_taken_loop(iterations: int = 1_000) -> Iterator[BranchEvent
         yield BranchEvent(pc=pc, target=target, taken=True, kind=BR_COND)
 
 
+def synthetic_always_not_taken(iterations: int = 1_000) -> Iterator[BranchEvent]:
+    """Forward-going conditional that never resolves taken.
+
+    Models the canonical fall-through branch (e.g. an early-exit guard that
+    is almost never triggered). TAGE+bimodal should converge to a stable
+    not-taken prediction after a small training window.
+    """
+    pc = 0x8000_1800
+    target = 0x8000_1880
+    for _ in range(iterations):
+        yield BranchEvent(pc=pc, target=target, taken=False, kind=BR_COND)
+
+
 def synthetic_alternating(iterations: int = 1_000) -> Iterator[BranchEvent]:
     pc = 0x8000_2000
     target = 0x8000_2080
@@ -137,20 +150,32 @@ def synthetic_mixed_workload(rounds: int = 64) -> Iterator[BranchEvent]:
     per round. Approximates a phase-rich application pattern."""
     base_loop = 0x8001_0000
     base_call = 0x8001_2000
-    base_ind  = 0x8001_4000
+    base_ind = 0x8001_4000
     for r in range(rounds):
         for i in range(8):
             yield BranchEvent(
-                pc=base_loop, target=base_loop - 0x40, taken=i < 7, kind=BR_COND,
+                pc=base_loop,
+                target=base_loop - 0x40,
+                taken=i < 7,
+                kind=BR_COND,
             )
         yield BranchEvent(
-            pc=base_call, target=base_call + 0x200, taken=True, kind=BR_CALL,
+            pc=base_call,
+            target=base_call + 0x200,
+            taken=True,
+            kind=BR_CALL,
         )
         yield BranchEvent(
-            pc=base_call + 0x208, target=base_call + 0x40, taken=True, kind=BR_RET,
+            pc=base_call + 0x208,
+            target=base_call + 0x40,
+            taken=True,
+            kind=BR_RET,
         )
         yield BranchEvent(
-            pc=base_ind, target=base_ind + 0x100 * (r % 3), taken=True, kind=BR_CALL,
+            pc=base_ind,
+            target=base_ind + 0x100 * (r % 3),
+            taken=True,
+            kind=BR_CALL,
         )
 
 
@@ -182,12 +207,18 @@ def synthetic_jit_dispatch_warmup(
 
 
 SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
-    "always_taken_loop": synthetic_always_taken_loop,
+    "always_taken": synthetic_always_taken_loop,
+    "always_not_taken": synthetic_always_not_taken,
     "alternating": synthetic_alternating,
-    "loop_known_count": synthetic_loop_known_count,
-    "recursive_call_return": synthetic_recursive_call_return,
-    "irregular_calls": synthetic_irregular_calls,
-    "indirect_dispatch": synthetic_indirect_dispatch,
+    "loop_with_known_trip": synthetic_loop_known_count,
+    "deep_recursion": synthetic_recursive_call_return,
+    "v8_indirect_dispatch": synthetic_indirect_dispatch,
     "mixed_workload": synthetic_mixed_workload,
     "jit_dispatch_warmup": synthetic_jit_dispatch_warmup,
+}
+
+# Stress test on RAS overflow — kept available for direct invocation by the
+# RAS regression but not part of the canonical 8-workload MPKI suite.
+EXTENDED_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
+    "irregular_calls": synthetic_irregular_calls,
 }

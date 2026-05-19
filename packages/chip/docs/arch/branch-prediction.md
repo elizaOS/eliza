@@ -190,7 +190,9 @@ between `bpu_top.fetch_entry` and the cache domain.
 | Verilator strict lint | `make bpu-lint` | `build/reports/bpu/lint-status.yaml` |
 | Cocotb regression | `make cocotb-bpu` | `verify/cocotb/bpu/results/*.xml` |
 | SymbiYosys formal | `make formal-bpu` | `build/reports/bpu/formal-status.yaml` |
-| MPKI eval | `make mpki-eval` | `benchmarks/results/branch-prediction-mpki.json` |
+| MPKI eval (RTL, cocotb) | `make mpki-eval-rtl` | `docs/evidence/cpu_ap/mpki_results_synthetic.json` |
+| MPKI eval (model only) | `make mpki-eval-model` | `benchmarks/results/branch-prediction-mpki-model.json` |
+| MPKI vs CBP-5 table | — | `docs/evidence/cpu_ap/mpki_synthetic_vs_cbp5_reference.md` |
 
 ## Files
 

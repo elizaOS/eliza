@@ -43,7 +43,7 @@ INPUT_ARTIFACTS = (
     "benchmarks/cpu/branch/run_mpki.py",
     "benchmarks/cpu/branch/bpu_model.py",
     "benchmarks/cpu/cache/lmbench_cache_curve.py",
-    "benchmarks/results/branch-prediction-mpki.json",
+    "docs/evidence/cpu_ap/mpki_results_synthetic.json",
     "build/reports/cache/champsim_sweep.json",
     "build/reports/cache/lmbench_host_curve.json",
 )
