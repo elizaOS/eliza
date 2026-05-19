@@ -634,6 +634,8 @@ def _run_e2e_loop_bench(
             args += ["--skip-embedding"]
         if os.environ.get("ELIZA_EVAL_E2E_NO_SAVE_AUDIO") == "1":
             args += ["--no-save-audio"]
+        if os.environ.get("ELIZA_EVAL_E2E_DISABLE_DFLASH") == "1":
+            args += ["--disable-dflash"]
     if ctx.engine is not None:
         args += ["--bin-dir", str(ctx.engine.bin_dir)]
         if use_kokoro and ctx.engine.eliza_lib is not None:

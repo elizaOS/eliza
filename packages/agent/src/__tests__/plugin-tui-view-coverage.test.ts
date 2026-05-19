@@ -139,10 +139,8 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-clawville-state",
     "terminal-clawville-command",
   ],
-  "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx": [
-    "terminal-defense-state",
-    "terminal-defense-command",
-  ],
+  "plugins/plugin-defense-of-the-agents/src/ui/DefenseAgentsOperatorSurface.tsx":
+    ["terminal-defense-state", "terminal-defense-command"],
   "plugins/plugin-hyperscape/src/ui/HyperscapeOperatorSurface.tsx": [
     "terminal-hyperscape-state",
     "terminal-hyperscape-command",

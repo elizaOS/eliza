@@ -73,6 +73,7 @@ function parseArgs(argv) {
     audioDir: process.env.ELIZA_KOKORO_E2E_AUDIO_DIR || "",
     saveAudio: process.env.ELIZA_KOKORO_E2E_SAVE_AUDIO !== "0",
     skipEmbedding: process.env.ELIZA_KOKORO_E2E_SKIP_EMBEDDING === "1",
+    disableDflash: process.env.ELIZA_KOKORO_E2E_DISABLE_DFLASH === "1",
     preflightOnly: false,
     json: false,
     quiet: false,
@@ -102,6 +103,7 @@ function parseArgs(argv) {
     else if (a === "--report") args.report = next();
     else if (a === "--audio-dir") args.audioDir = next();
     else if (a === "--skip-embedding") args.skipEmbedding = true;
+    else if (a === "--disable-dflash") args.disableDflash = true;
     else if (a === "--no-save-audio") args.saveAudio = false;
     else if (a === "--preflight-only") args.preflightOnly = true;
     else if (a === "--json") args.json = true;
@@ -125,6 +127,7 @@ Options:
   --wav a.wav[,b.wav]     External mic WAV(s). Pair with --ref "text|text".
   --ref "text|text"       References for WER. Without --wav, used as Kokoro mic seed text.
   --skip-embedding        Do not run the optional embedding probe.
+  --disable-dflash        Do not attach the DFlash drafter; records optimization as inactive.
   --audio-dir DIR         Directory for generated mic/response WAV evidence.
   --preflight-only        Resolve artifacts/builds and write a non-gating preflight report.
   --report out.json       Report path. Default: native/reports/local-e2e/<date>/e2e-loop-kokoro-*.json
@@ -978,7 +981,7 @@ async function startTextServer(engine, files, args, log) {
     "--no-warmup",
     "--metrics",
   ];
-  const drafterReady = isRealGguf(files.drafter, 10_000_000);
+  const drafterReady = !args.disableDflash && isRealGguf(files.drafter, 10_000_000);
   if (drafterReady) {
     serverArgs.push(
       "-md",
@@ -1405,6 +1408,7 @@ function baseReport(args, bundleDir, files, engine) {
       wavs: args.wavs.length,
       refs: args.refs.length,
       skipEmbedding: args.skipEmbedding,
+      disableDflash: args.disableDflash,
       audioDir: args.audioDir || null,
     },
     bundle: {

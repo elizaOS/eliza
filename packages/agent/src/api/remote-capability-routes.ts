@@ -143,7 +143,11 @@ export async function handleRemoteCapabilityRoutes(
     return true;
   }
   if (body.endpoint !== undefined && body.cloud !== undefined) {
-    error(res, "Request body must include only one of 'endpoint' or 'cloud'.", 400);
+    error(
+      res,
+      "Request body must include only one of 'endpoint' or 'cloud'.",
+      400,
+    );
     return true;
   }
 
