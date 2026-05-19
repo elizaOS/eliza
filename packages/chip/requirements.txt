@@ -1,4 +1,6 @@
 cocotb>=1.9,<2
+cocotb-coverage>=2,<3
+hypothesis>=6,<7
 pytest>=9,<10
 numpy>=2,<3
 pyyaml>=6,<7

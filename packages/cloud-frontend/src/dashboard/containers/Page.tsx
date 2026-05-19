@@ -9,6 +9,7 @@ import {
 } from "@elizaos/ui";
 import { Activity, AlertCircle, Server, TrendingUp } from "lucide-react";
 import { Helmet } from "react-helmet-async";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useContainers } from "../../lib/data/containers";
 import { ContainersTable } from "./_components/containers-table";
@@ -16,6 +17,7 @@ import { DeployFromCLI } from "./_components/deploy-from-cli";
 
 /** /dashboard/containers — list of containers deployed by the caller's organization. */
 export default function ContainersPage() {
+  const t = useT();
   const session = useRequireAuth();
   const { data, isLoading, error } = useContainers();
 
@@ -41,10 +43,15 @@ export default function ContainersPage() {
   return (
     <>
       <Helmet>
-        <title>Containers</title>
+        <title>
+          {t("cloud.containers.metaTitle", { defaultValue: "Containers" })}
+        </title>
         <meta
           name="description"
-          content="Deploy and manage elizaOS containers. Monitor health, view logs, and scale your AI agent deployments with our cloud infrastructure."
+          content={t("cloud.containers.metaDescription", {
+            defaultValue:
+              "Deploy and manage elizaOS containers. Monitor health, view logs, and scale your AI agent deployments with our cloud infrastructure.",
+          })}
         />
       </Helmet>
       <ContainersPageWrapper>
@@ -59,25 +66,33 @@ export default function ContainersPage() {
             <>
               <DashboardStatGrid>
                 <DashboardStatCard
-                  label="Total Containers"
+                  label={t("cloud.containers.stat.total", {
+                    defaultValue: "Total Containers",
+                  })}
                   value={stats.total}
                   accent="orange"
                   icon={<Server className="h-5 w-5 text-[#FF5800]" />}
                 />
                 <DashboardStatCard
-                  label="Running"
+                  label={t("cloud.containers.stat.running", {
+                    defaultValue: "Running",
+                  })}
                   value={stats.running}
                   accent="emerald"
                   icon={<Activity className="h-5 w-5 text-green-400" />}
                 />
                 <DashboardStatCard
-                  label="Building"
+                  label={t("cloud.containers.stat.building", {
+                    defaultValue: "Building",
+                  })}
                   value={stats.building}
                   accent="amber"
                   icon={<TrendingUp className="h-5 w-5 text-orange-400" />}
                 />
                 <DashboardStatCard
-                  label="Issues"
+                  label={t("cloud.containers.stat.issues", {
+                    defaultValue: "Issues",
+                  })}
                   value={stats.failed}
                   accent="red"
                   icon={<AlertCircle className="h-5 w-5 text-red-400" />}

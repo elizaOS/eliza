@@ -390,7 +390,11 @@ public class ElizaAgentService extends Service {
         String[] supported = Build.SUPPORTED_ABIS;
         if (supported != null) {
             for (String abi : supported) {
-                if ("arm64-v8a".equals(abi) || "x86_64".equals(abi)) return abi;
+                if (
+                    "arm64-v8a".equals(abi) ||
+                    "x86_64".equals(abi) ||
+                    "riscv64".equals(abi)
+                ) return abi;
             }
             if (supported.length > 0) return supported[0];
         }
@@ -689,6 +693,7 @@ public class ElizaAgentService extends Service {
     private String packagedMuslLoaderName(String abi) {
         if ("arm64-v8a".equals(abi)) return "libeliza_ld_musl_aarch64.so";
         if ("x86_64".equals(abi)) return "libeliza_ld_musl_x86_64.so";
+        if ("riscv64".equals(abi)) return "libeliza_ld_musl_riscv64.so";
         return null;
     }
 

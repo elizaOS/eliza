@@ -489,6 +489,151 @@ describe("remote capability endpoint conformance", () => {
     );
   });
 
+  it("fails when remote route conformance does not return a body", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        status: 204,
+        headers: { "x-capability-fixture": "yes" },
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned an empty route result.',
+    );
+  });
+
+  it("fails when remote route conformance returns an empty body", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        status: 200,
+        headers: { "x-capability-fixture": "yes" },
+        body: {},
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned an empty route result.',
+    );
+  });
+
+  it.each([
+    [
+      "plugin.action.invoke",
+      "action",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty action result.',
+    ],
+    [
+      "plugin.provider.get",
+      "provider",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty provider result.',
+    ],
+    [
+      "plugin.model.invoke",
+      "model",
+      {},
+      "result is required.",
+    ],
+    [
+      "plugin.lifecycle.call",
+      "lifecycle",
+      { ok: false },
+      'Capability endpoint "remote-endpoint" returned a failed lifecycle result.',
+    ],
+    [
+      "plugin.event.handle",
+      "event",
+      { handled: false },
+      'Capability endpoint "remote-endpoint" returned an unhandled event result.',
+    ],
+    [
+      "plugin.service.call",
+      "service",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty service result.',
+    ],
+    [
+      "plugin.appBridge.call",
+      "appBridge",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty app bridge result.',
+    ],
+  ] as const)(
+    "fails when %s returns weak conformance evidence",
+    async (method, surface, result, message) => {
+      installMinimalFixtureFetch({ [method]: result });
+
+      await expect(
+        assertRemoteCapabilityEndpointConformance({
+          endpoint: {
+            id: "remote-endpoint",
+            baseUrl: "https://remote.example.test",
+          },
+          requiredSurfaces: [surface],
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
+
+  it.each([
+    [
+      "plugin.evaluator.process",
+      "evaluator",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty evaluator process result.',
+    ],
+    [
+      "plugin.responseHandlerEvaluator.evaluate",
+      "responseHandlerEvaluator",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty response-handler evaluator result.',
+    ],
+    [
+      "plugin.responseHandlerFieldEvaluator.parse",
+      "responseHandlerFieldEvaluator",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty response-handler field evaluator parse result.',
+    ],
+    [
+      "plugin.responseHandlerFieldEvaluator.handle",
+      "responseHandlerFieldEvaluator",
+      {},
+      'Capability endpoint "remote-endpoint" returned an empty response-handler field evaluator handle result.',
+    ],
+  ] as const)(
+    "fails when %s returns weak staged conformance evidence",
+    async (method, surface, result, message) => {
+      installMinimalFixtureFetch({ [method]: result });
+
+      await expect(
+        assertRemoteCapabilityEndpointConformance({
+          endpoint: {
+            id: "remote-endpoint",
+            baseUrl: "https://remote.example.test",
+          },
+          requiredSurfaces: [surface],
+        }),
+      ).rejects.toThrow(message);
+    },
+  );
+
   it("fails when remote view conformance returns a non-JavaScript asset", async () => {
     installMinimalFixtureFetch({
       "plugin.asset.get": {
@@ -567,6 +712,83 @@ describe("remote capability endpoint conformance", () => {
       'Capability endpoint "remote-endpoint" returned a view asset integrity value that does not match its manifest.',
     );
   });
+
+  it("fails when remote view asset integrity does not match the returned bytes", async () => {
+    installMinimalFixtureFetch(
+      {
+        "plugin.asset.get": {
+          ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+          integrity: "sha256-deadbeef",
+        },
+      },
+      {
+        modules: [
+          {
+            ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+            views: [
+              {
+                ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0],
+                integrity: "sha256-deadbeef",
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["viewAsset"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned a view asset integrity value that does not match its bytes.',
+    );
+  });
+
+  it("fails when remote view asset integrity lacks a sha256 token", async () => {
+    const assetBytes = Buffer.from(
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.bodyBase64,
+      "base64",
+    );
+    const integrity = `sha384-${createHash("sha384").update(assetBytes).digest("base64")}`;
+    installMinimalFixtureFetch(
+      {
+        "plugin.asset.get": {
+          ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+          integrity,
+        },
+      },
+      {
+        modules: [
+          {
+            ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+            views: [
+              {
+                ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0],
+                integrity,
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["viewAsset"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned a view asset integrity value without a sha256 digest.',
+    );
+  });
 });
 
 function installMinimalFixtureFetch(
@@ -575,6 +797,43 @@ function installMinimalFixtureFetch(
     modules?: unknown[];
   } = {},
 ): void {
+  const results: Record<string, unknown> = {
+    "plugin.action.invoke": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
+    "plugin.provider.get": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider,
+    "plugin.route.call": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route,
+    "plugin.asset.get": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+    "plugin.model.invoke": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model,
+    "plugin.lifecycle.call":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle,
+    "plugin.event.handle": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.event,
+    "plugin.service.call": CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service,
+    "plugin.appBridge.call":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge,
+    "plugin.evaluator.shouldRun":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
+    "plugin.evaluator.prepare":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare,
+    "plugin.evaluator.prompt":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt,
+    "plugin.evaluator.process":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess,
+    "plugin.responseHandlerEvaluator.shouldRun":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+        .responseHandlerEvaluatorShouldRun,
+    "plugin.responseHandlerEvaluator.evaluate":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+        .responseHandlerEvaluatorEvaluate,
+    "plugin.responseHandlerFieldEvaluator.shouldRun":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+        .responseHandlerFieldEvaluatorShouldRun,
+    "plugin.responseHandlerFieldEvaluator.parse":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+        .responseHandlerFieldEvaluatorParse,
+    "plugin.responseHandlerFieldEvaluator.handle":
+      CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+        .responseHandlerFieldEvaluatorHandle,
+    ...resultsByMethod,
+  };
   globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const body = init?.body
       ? (JSON.parse(String(init.body)) as { method?: string })
@@ -600,8 +859,8 @@ function installMinimalFixtureFetch(
         },
       });
     }
-    if (body?.method && body.method in resultsByMethod) {
-      return jsonResponse({ ok: true, result: resultsByMethod[body.method] });
+    if (body?.method && body.method in results) {
+      return jsonResponse({ ok: true, result: results[body.method] });
     }
     return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
   }) as unknown as typeof fetch;

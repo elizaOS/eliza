@@ -4,6 +4,7 @@ depth 4
 
 [engines]
 smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -formal e1_bootrom.sv
@@ -16,6 +17,8 @@ read -formal e1_cpu_axi_bridge.sv
 read -formal e1_cpu_subsystem_stub.sv
 read -formal e1_soc_top.sv
 read -formal e1_soc_top_formal.sv
+read -formal -sv reset_properties.sv
+read -formal -sv cdc_properties.sv
 prep -top e1_soc_top_formal
 
 [files]
@@ -29,3 +32,5 @@ rtl/cpu/e1_cpu_axi_bridge.sv
 rtl/cpu/e1_cpu_subsystem_stub.sv
 rtl/top/e1_soc_top.sv
 verify/formal/e1_soc_top_formal.sv
+verify/properties/reset_properties.sv
+verify/properties/cdc_properties.sv

@@ -1,0 +1,11 @@
+{
+  "schema": "eliza.memory.stream_blocked.v1",
+  "status": "built_blocked_no_runtime",
+  "reason": "RV64 STREAM binary cross-compiled; refused to run on x86_64 host because qemu-user emulation cannot honestly satisfy the bandwidth gate.",
+  "expected_command": "make stream && # run on real RV64 target",
+  "cross_compiler": "../../../external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc",
+  "binary_path": "benchmarks/memory/stream/stream",
+  "binary_sha256": "e3b10c827b92fbbc2eb7287e62eb6a6deaa90041f31234c43da61976fb8257bc",
+  "binary_size_bytes": 560360,
+  "binary_file_type": "ELF 64-bit LSB executable, UCB RISC-V, RVC, double-float ABI, version 1 (SYSV), statically linked, BuildID[sha1]=761aeaaca0b861b17e6f0efd0d056d183b8af584, for GNU/Linux 4.15.0, not stripped"
+}

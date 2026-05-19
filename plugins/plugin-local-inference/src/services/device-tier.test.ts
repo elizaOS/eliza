@@ -17,7 +17,7 @@ const baseProbe: HardwareProbe = {
 	arch: "x64",
 	appleSilicon: false,
 	recommendedBucket: "mid",
-	source: "node-llama-cpp",
+	source: "capacitor-llama",
 };
 
 function probe(overrides: Partial<HardwareProbe>): HardwareProbe {

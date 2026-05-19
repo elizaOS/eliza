@@ -181,6 +181,7 @@ export async function assertRemoteCapabilityEndpointConformance(
         text: "capability-router conformance action",
       },
     });
+    assertActionResult(options.endpoint.id, report.actionResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -206,6 +207,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       provider: target.provider.name,
       state: {},
     });
+    assertProviderResult(options.endpoint.id, report.providerResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -233,15 +235,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       headers: {},
       body: options.routeBody ?? { conformance: true },
     });
-    if (
-      typeof report.routeResult.status !== "number" ||
-      report.routeResult.status < 200 ||
-      report.routeResult.status > 299
-    ) {
-      throw new Error(
-        `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
-      );
-    }
+    assertRouteResult(options.endpoint.id, report.routeResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -299,6 +293,13 @@ export async function assertRemoteCapabilityEndpointConformance(
         `Capability endpoint "${options.endpoint.id}" returned a view asset integrity value that does not match its manifest.`,
       );
     }
+    if (assetResult.integrity) {
+      assertAssetIntegrity(
+        options.endpoint.id,
+        assetResult.integrity,
+        assetBytes,
+      );
+    }
     report.assetResult = {
       path: assetResult.path,
       contentType: assetResult.contentType,
@@ -337,6 +338,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       modelType: target.model.modelType,
       params: { prompt: "capability-router conformance model" },
     });
+    assertModelResult(options.endpoint.id, report.modelResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -362,6 +364,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       hook: target.hook,
       context: { conformance: true },
     });
+    assertLifecycleResult(options.endpoint.id, report.lifecycleResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -387,6 +390,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       eventName: target.event.eventName,
       payload: { conformance: true },
     });
+    assertEventResult(options.endpoint.id, report.eventResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -413,6 +417,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       method: target.method,
       args: [{ conformance: true }],
     });
+    assertServiceResult(options.endpoint.id, report.serviceResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -444,6 +449,7 @@ export async function assertRemoteCapabilityEndpointConformance(
         headers: {},
       },
     });
+    assertAppBridgeResult(options.endpoint.id, report.appBridgeResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -503,6 +509,12 @@ export async function assertRemoteCapabilityEndpointConformance(
       ...(prepare.prepared === undefined ? {} : { prepared: prepare.prepared }),
       output: { prompt: prompt.prompt },
     });
+    assertEvaluatorResult(options.endpoint.id, {
+      shouldRun,
+      prepare,
+      prompt,
+      process,
+    });
     report.evaluatorResult = { shouldRun, prepare, prompt, process };
     recordExercise(
       report,
@@ -540,6 +552,10 @@ export async function assertRemoteCapabilityEndpointConformance(
     );
     const evaluate =
       await router.plugin.evaluateResponseHandlerEvaluator(common);
+    assertResponseHandlerEvaluatorResult(options.endpoint.id, {
+      shouldRun,
+      evaluate,
+    });
     report.responseHandlerEvaluatorResult = { shouldRun, evaluate };
     recordExercise(
       report,
@@ -596,6 +612,11 @@ export async function assertRemoteCapabilityEndpointConformance(
         ? {}
         : { parsed: parse.value }),
     });
+    assertResponseHandlerFieldEvaluatorResult(options.endpoint.id, {
+      shouldRun,
+      parse,
+      handle,
+    });
     report.responseHandlerFieldEvaluatorResult = { shouldRun, parse, handle };
     recordExercise(
       report,
@@ -618,6 +639,232 @@ export async function assertRemoteCapabilityEndpointConformance(
   return report;
 }
 
+function assertActionResult(
+  endpointId: string,
+  result: PluginInvokeActionResult,
+): void {
+  if (
+    !hasOwn(result, "text") &&
+    !hasOwn(result, "actions") &&
+    !hasOwn(result, "values") &&
+    !hasOwn(result, "data")
+  ) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty action result.`,
+    );
+  }
+}
+
+function assertProviderResult(
+  endpointId: string,
+  result: PluginGetProviderResult,
+): void {
+  if (
+    !hasOwn(result, "text") &&
+    !hasOwn(result, "values") &&
+    !hasOwn(result, "data")
+  ) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty provider result.`,
+    );
+  }
+}
+
+function assertRouteResult(
+  endpointId: string,
+  result: PluginCallRouteResult,
+): void {
+  if (
+    typeof result.status !== "number" ||
+    result.status < 200 ||
+    result.status > 299
+  ) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned a non-2xx route status.`,
+    );
+  }
+  if (!hasMeaningfulRouteBody(result.body)) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty route result.`,
+    );
+  }
+}
+
+function hasMeaningfulRouteBody(value: JsonValue | undefined): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
+function assertModelResult(
+  endpointId: string,
+  result: PluginInvokeModelResult,
+): void {
+  if (!hasOwn(result, "result")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty model result.`,
+    );
+  }
+}
+
+function assertLifecycleResult(
+  endpointId: string,
+  result: PluginLifecycleCallResult,
+): void {
+  if (result.ok !== true) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned a failed lifecycle result.`,
+    );
+  }
+}
+
+function assertEventResult(
+  endpointId: string,
+  result: PluginHandleEventResult,
+): void {
+  if (result.handled !== true) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an unhandled event result.`,
+    );
+  }
+}
+
+function assertServiceResult(
+  endpointId: string,
+  result: PluginCallServiceResult,
+): void {
+  if (!hasOwn(result, "result")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty service result.`,
+    );
+  }
+}
+
+function assertAppBridgeResult(
+  endpointId: string,
+  result: PluginCallAppBridgeResult,
+): void {
+  if (!hasOwn(result, "result")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty app bridge result.`,
+    );
+  }
+}
+
+function assertEvaluatorResult(
+  endpointId: string,
+  result: NonNullable<RemoteCapabilityEndpointConformanceReport["evaluatorResult"]>,
+): void {
+  if (typeof result.shouldRun.shouldRun !== "boolean") {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an invalid evaluator shouldRun result.`,
+    );
+  }
+  if (!result.prompt.prompt) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty evaluator prompt result.`,
+    );
+  }
+  if (!hasOwn(result.process, "result")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty evaluator process result.`,
+    );
+  }
+}
+
+function assertResponseHandlerEvaluatorResult(
+  endpointId: string,
+  result: NonNullable<
+    RemoteCapabilityEndpointConformanceReport["responseHandlerEvaluatorResult"]
+  >,
+): void {
+  if (typeof result.shouldRun.shouldRun !== "boolean") {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an invalid response-handler evaluator shouldRun result.`,
+    );
+  }
+  if (!hasOwn(result.evaluate, "patch")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty response-handler evaluator result.`,
+    );
+  }
+}
+
+function assertResponseHandlerFieldEvaluatorResult(
+  endpointId: string,
+  result: NonNullable<
+    RemoteCapabilityEndpointConformanceReport["responseHandlerFieldEvaluatorResult"]
+  >,
+): void {
+  if (typeof result.shouldRun.shouldRun !== "boolean") {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an invalid response-handler field evaluator shouldRun result.`,
+    );
+  }
+  if (!hasOwn(result.parse, "value") && !hasOwn(result.parse, "softFail")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty response-handler field evaluator parse result.`,
+    );
+  }
+  if (!hasOwn(result.handle, "effect")) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty response-handler field evaluator handle result.`,
+    );
+  }
+}
+
+function hasOwn(value: object, key: string): boolean {
+  return Object.hasOwn(value, key);
+}
+
+function assertAssetIntegrity(
+  endpointId: string,
+  integrity: string,
+  bytes: Buffer,
+): void {
+  const supportedAlgorithms = ["sha256", "sha384", "sha512"] as const;
+  const expectedDigests = new Map(
+    supportedAlgorithms.map((algorithm) => [
+      algorithm,
+      createHash(algorithm).update(bytes).digest("base64"),
+    ]),
+  );
+  const tokens = integrity.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length === 0) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty view asset integrity value.`,
+    );
+  }
+  if (!tokens.some((token) => token.startsWith("sha256-"))) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned a view asset integrity value without a sha256 digest.`,
+    );
+  }
+  let sawSupportedToken = false;
+  for (const token of tokens) {
+    const [algorithm, digest] = token.split("-", 2);
+    if (!isSupportedIntegrityAlgorithm(algorithm)) continue;
+    sawSupportedToken = true;
+    if (digest && digest === expectedDigests.get(algorithm)) return;
+  }
+  if (!sawSupportedToken) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an unsupported view asset integrity algorithm.`,
+    );
+  }
+  throw new Error(
+    `Capability endpoint "${endpointId}" returned a view asset integrity value that does not match its bytes.`,
+  );
+}
+
+function isSupportedIntegrityAlgorithm(
+  value: string | undefined,
+): value is "sha256" | "sha384" | "sha512" {
+  return value === "sha256" || value === "sha384" || value === "sha512";
+}
+
 function assertModuleList(
   endpointId: string,
   result: PluginListModulesResult,
@@ -629,9 +876,9 @@ function assertModuleList(
   }
   const seen = new Set<string>();
   for (const module of result.modules) {
-    if (!module.id || !module.name) {
+    if (!isValidRemotePluginModuleId(module.id) || !module.name) {
       throw new Error(
-        `Capability endpoint "${endpointId}" returned a module without id or name.`,
+        `Capability endpoint "${endpointId}" returned a module with invalid id or missing name.`,
       );
     }
     if (seen.has(module.id)) {
@@ -641,6 +888,10 @@ function assertModuleList(
     }
     seen.add(module.id);
   }
+}
+
+function isValidRemotePluginModuleId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value);
 }
 
 function orderModulesByExercise(
@@ -702,7 +953,7 @@ async function exerciseUncoveredModules(
     if ((exerciseCounts.get(module.id) ?? 0) > 0) continue;
     const action = module.actions?.[0];
     if (action) {
-      await router.plugin.invokeAction({
+      const result = await router.plugin.invokeAction({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         action: action.name,
@@ -710,6 +961,7 @@ async function exerciseUncoveredModules(
           text: "capability-router conformance action",
         },
       });
+      assertActionResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -723,12 +975,13 @@ async function exerciseUncoveredModules(
     }
     const provider = module.providers?.[0];
     if (provider) {
-      await router.plugin.getProvider({
+      const result = await router.plugin.getProvider({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         provider: provider.name,
         state: {},
       });
+      assertProviderResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -750,15 +1003,7 @@ async function exerciseUncoveredModules(
         headers: {},
         body: options.routeBody ?? { conformance: true },
       });
-      if (
-        typeof result.status !== "number" ||
-        result.status < 200 ||
-        result.status > 299
-      ) {
-        throw new Error(
-          `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
-        );
-      }
+      assertRouteResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -793,6 +1038,18 @@ async function exerciseUncoveredModules(
           `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset content type.`,
         );
       }
+      if (view.integrity !== undefined && assetResult.integrity !== view.integrity) {
+        throw new Error(
+          `Capability endpoint "${options.endpoint.id}" returned a view asset integrity value that does not match its manifest.`,
+        );
+      }
+      if (assetResult.integrity) {
+        assertAssetIntegrity(
+          options.endpoint.id,
+          assetResult.integrity,
+          assetBytes,
+        );
+      }
       recordExercise(
         report,
         exerciseCounts,
@@ -806,12 +1063,13 @@ async function exerciseUncoveredModules(
     }
     const model = module.models?.[0];
     if (model) {
-      await router.plugin.invokeModel({
+      const result = await router.plugin.invokeModel({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         modelType: model.modelType,
         params: { prompt: "capability-router conformance model" },
       });
+      assertModelResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -825,12 +1083,13 @@ async function exerciseUncoveredModules(
     }
     const hook = module.lifecycle?.hooks?.[0];
     if (hook) {
-      await router.plugin.callLifecycle({
+      const result = await router.plugin.callLifecycle({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         hook,
         context: { conformance: true },
       });
+      assertLifecycleResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -844,12 +1103,13 @@ async function exerciseUncoveredModules(
     }
     const event = module.events?.[0];
     if (event) {
-      await router.plugin.handleEvent({
+      const result = await router.plugin.handleEvent({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         eventName: event.eventName,
         payload: { conformance: true },
       });
+      assertEventResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -866,13 +1126,14 @@ async function exerciseUncoveredModules(
     );
     const method = service?.methods?.[0];
     if (service && method) {
-      await router.plugin.callService({
+      const result = await router.plugin.callService({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         serviceType: service.serviceType,
         method,
         args: [{ conformance: true }],
       });
+      assertServiceResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -886,7 +1147,7 @@ async function exerciseUncoveredModules(
     }
     const appBridgeHook = module.appBridge?.hooks?.[0];
     if (appBridgeHook) {
-      await router.plugin.callAppBridge({
+      const result = await router.plugin.callAppBridge({
         endpointId: options.endpoint.id,
         moduleId: module.id,
         hook: appBridgeHook,
@@ -898,6 +1159,7 @@ async function exerciseUncoveredModules(
           headers: {},
         },
       });
+      assertAppBridgeResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,
@@ -919,7 +1181,7 @@ async function exerciseUncoveredModules(
         state: {},
         options: {},
       };
-      await router.plugin.shouldRunEvaluator(common);
+      const shouldRun = await router.plugin.shouldRunEvaluator(common);
       recordRpcCall(
         report,
         "evaluator",
@@ -948,12 +1210,18 @@ async function exerciseUncoveredModules(
         module.id,
         evaluator.name,
       );
-      await router.plugin.processEvaluator({
+      const process = await router.plugin.processEvaluator({
         ...common,
         ...(prepare.prepared === undefined
           ? {}
           : { prepared: prepare.prepared }),
         output: { prompt: prompt.prompt },
+      });
+      assertEvaluatorResult(options.endpoint.id, {
+        shouldRun,
+        prepare,
+        prompt,
+        process,
       });
       recordExercise(
         report,
@@ -974,7 +1242,8 @@ async function exerciseUncoveredModules(
         evaluator: responseEvaluator.name,
         context: { conformance: true },
       };
-      await router.plugin.shouldRunResponseHandlerEvaluator(common);
+      const shouldRun =
+        await router.plugin.shouldRunResponseHandlerEvaluator(common);
       recordRpcCall(
         report,
         "responseHandlerEvaluator",
@@ -982,7 +1251,12 @@ async function exerciseUncoveredModules(
         module.id,
         responseEvaluator.name,
       );
-      await router.plugin.evaluateResponseHandlerEvaluator(common);
+      const evaluate =
+        await router.plugin.evaluateResponseHandlerEvaluator(common);
+      assertResponseHandlerEvaluatorResult(options.endpoint.id, {
+        shouldRun,
+        evaluate,
+      });
       recordExercise(
         report,
         exerciseCounts,
@@ -1002,7 +1276,8 @@ async function exerciseUncoveredModules(
         field: responseField.name,
         context: { conformance: true },
       };
-      await router.plugin.shouldRunResponseHandlerFieldEvaluator(common);
+      const shouldRun =
+        await router.plugin.shouldRunResponseHandlerFieldEvaluator(common);
       recordRpcCall(
         report,
         "responseHandlerFieldEvaluator",
@@ -1021,7 +1296,7 @@ async function exerciseUncoveredModules(
         module.id,
         responseField.name,
       );
-      await router.plugin.handleResponseHandlerFieldEvaluator({
+      const handle = await router.plugin.handleResponseHandlerFieldEvaluator({
         ...common,
         value: { raw: true },
         ...(parse.value === undefined ||
@@ -1030,6 +1305,11 @@ async function exerciseUncoveredModules(
         Array.isArray(parse.value)
           ? {}
           : { parsed: parse.value }),
+      });
+      assertResponseHandlerFieldEvaluatorResult(options.endpoint.id, {
+        shouldRun,
+        parse,
+        handle,
       });
       recordExercise(
         report,

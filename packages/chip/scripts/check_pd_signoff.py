@@ -87,6 +87,14 @@ REQUIRED_RUN_MANIFEST_FIELDS = {
     "std_cell_library",
     "openlane_image",
     "openlane_image_digest",
+    "volare_pdk_digest",
+    "klayout_digest",
+    "magic_digest",
+    "netgen_digest",
+    "openroad_digest",
+    "yosys_digest",
+    "abc_digest",
+    "antenna_deck_digest",
     "started_at",
     "completed_at",
     "status",
@@ -94,6 +102,47 @@ REQUIRED_RUN_MANIFEST_FIELDS = {
     "inputs",
     "outputs",
     "checks",
+    "psm_ir_drop_report",
+    "pdn_topology",
+}
+
+# Tool-digest fields that must each be either a `sha256:<hex>` string OR the
+# literal `unavailable` with a paired `<tool>_unavailable_reason` string.
+# Closes Workstream E reproducibility blocker (research/00_integration_shortlist.md H-4).
+TOOL_DIGEST_FIELDS = {
+    "volare_pdk_digest",
+    "klayout_digest",
+    "magic_digest",
+    "netgen_digest",
+    "openroad_digest",
+    "yosys_digest",
+    "abc_digest",
+    "antenna_deck_digest",
+}
+
+SHA256_DIGEST_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
+
+REQUIRED_PDN_TOPOLOGY_FIELDS = {
+    "vertical_layer",
+    "horizontal_layer",
+    "vpitch_um",
+    "hpitch_um",
+    "vwidth_um",
+    "hwidth_um",
+    "vspacing_um",
+    "hspacing_um",
+    "core_ring",
+    "report",
+}
+
+REQUIRED_PDN_CORE_RING_FIELDS = {
+    "enabled",
+    "vwidth_um",
+    "hwidth_um",
+    "voffset_um",
+    "hoffset_um",
+    "vspacing_um",
+    "hspacing_um",
 }
 
 REQUIRED_RUN_CHECKS = {
@@ -438,6 +487,134 @@ def validate_manifest(manifest_path: Path, manifest: dict) -> list[str]:
     return failures
 
 
+def _validate_tool_digests(rel_manifest: Path, payload: dict) -> list[str]:
+    failures: list[str] = []
+    for field in sorted(TOOL_DIGEST_FIELDS):
+        value = payload.get(field)
+        if not isinstance(value, str) or not value:
+            failures.append(
+                f"run_manifest: {rel_manifest} {field} must be a sha256 digest or the literal 'unavailable'"
+            )
+            continue
+        if value == "unavailable":
+            reason_field = field.removesuffix("_digest") + "_unavailable_reason"
+            reason = payload.get(reason_field)
+            if not isinstance(reason, str) or not reason.strip():
+                failures.append(
+                    f"run_manifest: {rel_manifest} {field}='unavailable' requires {reason_field} (non-empty string)"
+                )
+            continue
+        if not SHA256_DIGEST_RE.match(value):
+            failures.append(
+                f"run_manifest: {rel_manifest} {field} must match sha256:<64 hex chars>"
+            )
+    return failures
+
+
+def _validate_psm_ir_drop_report(run_dir: Path, rel_manifest: Path, payload: dict) -> list[str]:
+    failures: list[str] = []
+    report = payload.get("psm_ir_drop_report")
+    if not isinstance(report, str) or not report:
+        failures.append(
+            f"run_manifest: {rel_manifest} psm_ir_drop_report must be a non-empty path inside the run directory"
+        )
+        return failures
+    report_path = (run_dir / report).resolve()
+    try:
+        report_path.relative_to(run_dir.resolve())
+    except ValueError:
+        failures.append(
+            f"run_manifest: {rel_manifest} psm_ir_drop_report must stay inside the run directory: {report}"
+        )
+        return failures
+    if not report_path.is_file():
+        failures.append(
+            f"run_manifest: {rel_manifest} psm_ir_drop_report missing PSM static IR-drop report: {report}"
+        )
+    return failures
+
+
+def _validate_pdn_topology(run_dir: Path, rel_manifest: Path, payload: dict) -> list[str]:
+    failures: list[str] = []
+    topology = payload.get("pdn_topology")
+    if not isinstance(topology, dict):
+        failures.append(
+            f"run_manifest: {rel_manifest} pdn_topology must be a mapping describing the PDN topology"
+        )
+        return failures
+    missing = sorted(REQUIRED_PDN_TOPOLOGY_FIELDS - set(topology))
+    if missing:
+        failures.append(
+            f"run_manifest: {rel_manifest} pdn_topology missing fields: {', '.join(missing)}"
+        )
+    for field in ("vertical_layer", "horizontal_layer"):
+        value = topology.get(field)
+        if not isinstance(value, str) or not value:
+            failures.append(
+                f"run_manifest: {rel_manifest} pdn_topology.{field} must be a non-empty string"
+            )
+    for field in (
+        "vpitch_um",
+        "hpitch_um",
+        "vwidth_um",
+        "hwidth_um",
+        "vspacing_um",
+        "hspacing_um",
+    ):
+        value = topology.get(field)
+        if not isinstance(value, (int, float)) or value <= 0:
+            failures.append(
+                f"run_manifest: {rel_manifest} pdn_topology.{field} must be a positive number"
+            )
+    core_ring = topology.get("core_ring")
+    if not isinstance(core_ring, dict):
+        failures.append(f"run_manifest: {rel_manifest} pdn_topology.core_ring must be a mapping")
+    else:
+        missing_ring = sorted(REQUIRED_PDN_CORE_RING_FIELDS - set(core_ring))
+        if missing_ring:
+            failures.append(
+                f"run_manifest: {rel_manifest} pdn_topology.core_ring missing fields: "
+                + ", ".join(missing_ring)
+            )
+        if "enabled" in core_ring and not isinstance(core_ring["enabled"], bool):
+            failures.append(
+                f"run_manifest: {rel_manifest} pdn_topology.core_ring.enabled must be a boolean"
+            )
+        for field in (
+            "vwidth_um",
+            "hwidth_um",
+            "voffset_um",
+            "hoffset_um",
+            "vspacing_um",
+            "hspacing_um",
+        ):
+            if field in core_ring and (
+                not isinstance(core_ring[field], (int, float)) or core_ring[field] < 0
+            ):
+                failures.append(
+                    f"run_manifest: {rel_manifest} pdn_topology.core_ring.{field} must be a non-negative number"
+                )
+    report = topology.get("report")
+    if isinstance(report, str) and report:
+        report_path = (run_dir / report).resolve()
+        try:
+            report_path.relative_to(run_dir.resolve())
+        except ValueError:
+            failures.append(
+                f"run_manifest: {rel_manifest} pdn_topology.report must stay inside the run directory: {report}"
+            )
+        else:
+            if not report_path.is_file():
+                failures.append(
+                    f"run_manifest: {rel_manifest} pdn_topology.report missing pdngen topology dump: {report}"
+                )
+    elif "report" not in REQUIRED_PDN_TOPOLOGY_FIELDS or report is not None:
+        failures.append(
+            f"run_manifest: {rel_manifest} pdn_topology.report must be a non-empty path inside the run directory"
+        )
+    return failures
+
+
 def validate_run_manifest(root: Path, run_dir: Path, run_manifest: Path) -> list[str]:
     failures: list[str] = []
     rel_manifest = run_manifest.relative_to(root)
@@ -463,10 +640,13 @@ def validate_run_manifest(root: Path, run_dir: Path, run_manifest: Path) -> list
     if payload.get("status") != "complete":
         failures.append(f"run_manifest: {rel_manifest} status must be complete")
     digest = payload.get("openlane_image_digest")
-    if not isinstance(digest, str) or not digest.startswith("sha256:"):
+    if not isinstance(digest, str) or not SHA256_DIGEST_RE.match(digest):
         failures.append(
             f"run_manifest: {rel_manifest} openlane_image_digest must be a sha256 digest"
         )
+    failures.extend(_validate_tool_digests(rel_manifest, payload))
+    failures.extend(_validate_psm_ir_drop_report(run_dir, rel_manifest, payload))
+    failures.extend(_validate_pdn_topology(run_dir, rel_manifest, payload))
     if not isinstance(payload.get("corners"), list) or not payload["corners"]:
         failures.append(f"run_manifest: {rel_manifest} corners must be a non-empty list")
 
@@ -486,15 +666,25 @@ def validate_run_manifest(root: Path, run_dir: Path, run_manifest: Path) -> list
                     f"run_manifest: {rel_manifest} checks.{check_name} must be a mapping"
                 )
                 continue
-            if check.get("status") not in {"clean", "waived"}:
+            if check.get("status") not in {"blocked", "clean", "waived"}:
                 failures.append(
-                    f"run_manifest: {rel_manifest} checks.{check_name}.status must be clean or waived"
+                    f"run_manifest: {rel_manifest} checks.{check_name}.status must be blocked, clean, or waived"
                 )
             if check.get("status") == "waived":
                 waiver = check.get("waiver")
                 if not isinstance(waiver, str) or not waiver:
                     failures.append(
                         f"run_manifest: {rel_manifest} checks.{check_name}.waiver is required for waived checks"
+                    )
+            if check.get("status") == "blocked":
+                reason = check.get("reason")
+                if not isinstance(reason, str) or not reason:
+                    failures.append(
+                        f"run_manifest: {rel_manifest} checks.{check_name}.reason is required for blocked checks"
+                    )
+                else:
+                    failures.append(
+                        f"run_manifest: {rel_manifest} checks.{check_name} is blocked: {reason}"
                     )
             report = check.get("report")
             if not isinstance(report, str) or not report:

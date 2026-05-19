@@ -77,20 +77,10 @@
       "import": "./dist/onboarding-presets.js",
       "default": "./dist/onboarding-presets.js"
     },
-    "./runtime-env": {
-      "types": "./dist/runtime-env.d.ts",
-      "import": "./dist/runtime-env.js",
-      "default": "./dist/runtime-env.js"
-    },
     "./brand": {
       "types": "./dist/brand/index.d.ts",
       "import": "./dist/brand/index.js",
       "default": "./dist/brand/index.js"
-    },
-    "./brand-classic": {
-      "types": "./dist/brand-classic/index.d.ts",
-      "import": "./dist/brand-classic/index.js",
-      "default": "./dist/brand-classic/index.js"
     },
     "./checkout": {
       "types": "./dist/checkout/index.d.ts",
@@ -106,6 +96,16 @@
       "types": "./dist/steward-session-client/index.d.ts",
       "import": "./dist/steward-session-client/index.js",
       "default": "./dist/steward-session-client/index.js"
+    },
+    "./runtime-env": {
+      "types": "./dist/runtime-env.d.ts",
+      "import": "./dist/runtime-env.js",
+      "default": "./dist/runtime-env.js"
+    },
+    "./brand-classic": {
+      "types": "./dist/brand-classic/index.d.ts",
+      "import": "./dist/brand-classic/index.js",
+      "default": "./dist/brand-classic/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {

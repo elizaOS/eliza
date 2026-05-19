@@ -751,6 +751,24 @@ def test_hf_release_audit_blocks_incomplete_native_upstream_review() -> None:
     )
 
 
+def test_hf_release_audit_blocks_unresolved_native_upstream_placeholders() -> None:
+    bad = _passing_upstream_review().replace(
+        "Upstream HEAD checked: def456",
+        "Upstream HEAD checked: {omni_upstream}",
+    )
+
+    report = audit_hf_release(fetch_json=_fetcher(), fetch_text=_text_fetcher(upstream_review=bad))
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "native upstream review content passed"
+        and "unresolved template placeholders" in check["detail"]
+        and "{omni_upstream}" in check["detail"]
+        for check in failed
+    )
+
+
 def test_hf_release_audit_requires_text_context_variant_evidence_file() -> None:
     paths = _complete_model_paths()
     paths.remove(TEXT_CONTEXT_VARIANT_EVIDENCE_PATH)

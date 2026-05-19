@@ -1,0 +1,131 @@
+schema: eliza.pd_macros_manifest.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: hard_macro_inventory_per_pdk_for_alphachip_and_floorplan
+description: |
+  Per-PDK hard macro inventory used by the e1 floorplan, AlphaChip macro
+  placement, DREAMPlace evaluation, and OpenROAD detailed routing. Each macro
+  entry must reference real LEF/GDS/Liberty artifacts before AlphaChip can
+  produce meaningful candidates. The first hard macro now in the release path
+  is the Sky130 OpenRAM pre-built `sky130_sram_2kbyte_1rw1r_32x512_8` block,
+  instantiated as `e1_weight_buffer_sram` in `e1_soc_top` so OpenLane carries
+  it through synthesis, floorplan, PDN, placement, CTS, and routing.
+pdks:
+  sky130A:
+    description: |
+      SkyWater Sky130 130 nm open PDK. Hard SRAM macros come from two sources:
+      pre-built OpenRAM macros shipped with `sky130_sram_macros` (available in
+      `external/pdks/volare/sky130/versions/...`) and, when needed, freshly
+      generated OpenRAM macros built from this repo (Docker recipe in
+      `pd/macros/sky130/README.md`). OpenRAM is the canonical open SRAM
+      compiler for Sky130.
+    generator: OpenRAM
+    generator_repo: https://github.com/VLSIDA/OpenRAM
+    generator_pinned_commit: BLOCKED_pin_after_first_local_openram_run
+    prebuilt_pdk_macro_root: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros
+    target_macros:
+      - name: sky130_sram_2kbyte_1rw1r_32x512_8
+        kind: SRAM_1RW1R
+        words: 512
+        word_size_bits: 32
+        size_bytes: 2048
+        source: pdk_prebuilt
+        instantiated_in: rtl/memory/e1_weight_buffer_sram.sv
+        instance_path: u_soc/u_weight_buffer/u_sram
+        intended_use:
+          - npu_weight_buffer_scaffold_first_hard_macro_on_release_floorplan
+        lef: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef
+        gds: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds
+        lib: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib
+        spice: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice
+        verilog_model: external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/verilog/sky130_sram_2kbyte_1rw1r_32x512_8.v
+      - name: e1_sram_4kb_1rw
+        kind: SRAM_1RW
+        words: 1024
+        word_size_bits: 32
+        source: openram_generated
+        intended_use:
+          - cpu_l1_dcache_data_bank
+          - cpu_l1_icache_data_bank
+        lef: BLOCKED_run_openram
+        gds: BLOCKED_run_openram
+        lib: BLOCKED_run_openram
+        spice: BLOCKED_run_openram
+      - name: e1_sram_16kb_1rw
+        kind: SRAM_1RW
+        words: 4096
+        word_size_bits: 32
+        intended_use:
+          - npu_weight_buffer_scaffold
+          - cpu_l2_slice_bank
+        lef: BLOCKED_run_openram
+        gds: BLOCKED_run_openram
+        lib: BLOCKED_run_openram
+        spice: BLOCKED_run_openram
+      - name: e1_sram_64kb_1rw
+        kind: SRAM_1RW
+        words: 16384
+        word_size_bits: 32
+        intended_use:
+          - cpu_l3_slice_scaffold
+          - npu_activation_buffer_scaffold
+        lef: BLOCKED_run_openram
+        gds: BLOCKED_run_openram
+        lib: BLOCKED_run_openram
+        spice: BLOCKED_run_openram
+    mbist:
+      strategy: per_bank_mbist_controller
+      controller_rtl: BLOCKED_generate_with_openram
+      jtag_access: via_e1_chip_top_jtag_tap
+    blockers:
+      - OpenRAM not yet executed locally for e1 banks. See pd/macros/sky130/README.md.
+      - No Sky130 SRAM macro produces verified LVS clean GDS in this repo today.
+  ihp-sg13g2:
+    description: |
+      IHP SG13G2 130 nm BiCMOS open PDK. SRAM macros come from the IHP
+      open_pdk_sg13g2 distribution (selectable compiler-generated blocks),
+      not OpenRAM. Treated as second-source PDK for portability evidence;
+      not the primary advanced-node path.
+    generator: ihp_open_pdk_sram_compiler
+    generator_repo: https://github.com/IHP-GmbH/IHP-Open-PDK
+    generator_pinned_commit: BLOCKED_pin_after_first_local_run
+    target_macros:
+      - name: e1_sram_4kb_1rw_sg13g2
+        kind: SRAM_1RW
+        words: 1024
+        word_size_bits: 32
+        intended_use:
+          - portability_smoke_only
+        lef: BLOCKED_run_ihp_compiler
+        gds: BLOCKED_run_ihp_compiler
+        lib: BLOCKED_run_ihp_compiler
+      - name: e1_sram_16kb_1rw_sg13g2
+        kind: SRAM_1RW
+        words: 4096
+        word_size_bits: 32
+        intended_use:
+          - portability_smoke_only
+        lef: BLOCKED_run_ihp_compiler
+        gds: BLOCKED_run_ihp_compiler
+        lib: BLOCKED_run_ihp_compiler
+    mbist:
+      strategy: per_bank_mbist_controller
+      controller_rtl: BLOCKED_generate_with_ihp_compiler
+      jtag_access: via_e1_chip_top_jtag_tap
+    blockers:
+      - IHP open PDK SRAM compiler has not been run locally.
+      - SG13G2 is a portability target only; primary closure remains Sky130 at MVP.
+verification_required_before_unblock:
+  - OpenLane run that places at least one hard macro from this manifest and
+    completes Magic DRC, Netgen LVS, and antenna checks clean.
+  - AlphaChip benchmark protobuf regenerated from the new netlist showing
+    NUM_HARD_MACROS > 0 in the PLC (today the smoke handoff reports zero).
+  - Post-route PPA validator JSON captured under
+    research/alpha_chip_macro_placement/07_post_route_ppa/.
+release_blockers:
+  - OpenRAM-generated 4 KB / 16 KB / 64 KB SRAMs are unbuilt; only the
+    PDK-shipped 2 KB sky130_sram_2kbyte_1rw1r_32x512_8 macro is in the flow.
+  - AlphaChip macro-placement value demonstration on the 1-hard-macro
+    release netlist (post-route PPA delta vs OpenROAD analytical placer)
+    pending Nebius H200 RL training and re-run of run_post_route_ppa.py.
+  - MBIST controller RTL is not generated.

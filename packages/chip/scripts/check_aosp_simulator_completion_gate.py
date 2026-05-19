@@ -94,13 +94,36 @@ def check_spec_floor(data: dict[str, Any], errors: list[str]) -> None:
         numeric_gt(target, baseline, key, errors, allow_equal=True)
 
 
-def require_text_markers(path: Path, markers: list[str], blockers: list[str]) -> None:
+def require_text_markers(
+    path: Path,
+    markers: list[str],
+    blockers: list[str],
+    *,
+    status_prefixes: tuple[str, ...] = ("eliza-evidence",),
+) -> None:
     if not path.is_file():
         blockers.append(f"missing evidence: {rel(path)}")
         return
     text = path.read_text(encoding="utf-8", errors="replace")
-    common_markers = ("RESULT=0", "eliza-evidence: status=PASS")
-    for marker in (*common_markers, *markers):
+    forbidden_markers = (
+        "eliza-evidence: status=FAIL",
+        "eliza-evidence: status=BLOCKED",
+        "status=FAIL",
+        "status=BLOCKED",
+        "STATUS: FAIL",
+        "STATUS: BLOCKED",
+        "RESULT=1",
+        "RESULT=2",
+        "RESULT=127",
+    )
+    for marker in forbidden_markers:
+        if marker in text:
+            blockers.append(f"{rel(path)} contains forbidden failure marker: {marker}")
+    if "RESULT=0" not in text:
+        blockers.append(f"{rel(path)} missing marker: RESULT=0")
+    if not any(f"{prefix}: status=PASS" in text for prefix in status_prefixes):
+        blockers.append(f"{rel(path)} missing PASS status marker")
+    for marker in markers:
         if marker not in text:
             blockers.append(f"{rel(path)} missing marker: {marker}")
 
@@ -147,6 +170,36 @@ def check_android_evidence(data: dict[str, Any], blockers: list[str]) -> None:
             require_text_markers(ROOT / item, [], blockers)
         else:
             blockers.append("required_android_evidence entries must be paths")
+
+
+def check_android_marker_evidence(data: dict[str, Any], blockers: list[str]) -> None:
+    values = data.get("required_android_marker_evidence")
+    if values is None:
+        return
+    if not isinstance(values, list):
+        blockers.append("required_android_marker_evidence must be a list")
+        return
+    seen: set[str] = set()
+    for item in values:
+        if not isinstance(item, dict):
+            blockers.append("required_android_marker_evidence entries must be mappings")
+            continue
+        ident = item.get("id")
+        evidence = item.get("evidence")
+        markers = item.get("required_markers")
+        if not isinstance(ident, str) or not ident:
+            blockers.append("required_android_marker_evidence entry missing id")
+            continue
+        if ident in seen:
+            blockers.append(f"{ident}: duplicate required_android_marker_evidence id")
+        seen.add(ident)
+        if not isinstance(evidence, str):
+            blockers.append(f"{ident}: missing evidence path")
+            continue
+        if not isinstance(markers, list) or not all(isinstance(marker, str) for marker in markers):
+            blockers.append(f"{ident}: required_markers must be a string list")
+            continue
+        require_text_markers(ROOT / evidence, markers, blockers)
 
 
 def check_peripherals(data: dict[str, Any], blockers: list[str]) -> None:
@@ -205,7 +258,12 @@ def check_npu_tasks(data: dict[str, Any], blockers: list[str]) -> None:
             ):
                 blockers.append(f"{name}: markers must be a string list")
             else:
-                require_text_markers(ROOT / transcript, markers, blockers)
+                require_text_markers(
+                    ROOT / transcript,
+                    markers,
+                    blockers,
+                    status_prefixes=("eliza-evidence",),
+                )
         if isinstance(report, str):
             report_path = ROOT / report
             payload = load_json(report_path, blockers)
@@ -226,6 +284,7 @@ def main() -> int:
         check_mvp_report(data, blockers)
         check_android_report(data, blockers)
         check_android_evidence(data, blockers)
+        check_android_marker_evidence(data, blockers)
         check_peripherals(data, blockers)
         check_npu_tasks(data, blockers)
 

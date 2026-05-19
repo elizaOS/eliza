@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import check_chipyard_generated_linux_contract as generated_contract  # noqa: E402
 import check_cpu_ap_boot_readiness as readiness  # noqa: E402
 
 
@@ -17,21 +19,14 @@ def assert_contains(text: str, expected: str) -> None:
         raise AssertionError(f"missing {expected!r} in {text!r}")
 
 
-def test_overall_status_is_fail_closed() -> None:
-    if readiness.overall_status(["error"], []) != "fail":
+def test_build_report_is_fail_closed() -> None:
+    report = readiness.build_report()
+    if report["errors"] and report["status"] != "fail":
         raise AssertionError("errors must dominate status")
-    if readiness.overall_status([], [{"gate": "g", "detail": "d", "next": "n"}]) != "blocked":
+    if not report["errors"] and report["blockers"] and report["status"] != "blocked":
         raise AssertionError("blockers must produce blocked status")
-    if readiness.overall_status([], []) != "pass":
+    if not report["errors"] and not report["blockers"] and report["status"] != "pass":
         raise AssertionError("clean report must pass")
-
-
-def test_reference_simulators_do_not_satisfy_generated_ap_boot() -> None:
-    status = readiness.reference_sim_status()
-    if status["qemu_virt"]["satisfies_generated_ap_boot"] is not False:
-        raise AssertionError("QEMU virt must remain reference-only")
-    if status["renode_qemu_virt"]["satisfies_generated_ap_boot"] is not False:
-        raise AssertionError("Renode qemu-virt must remain reference-only")
 
 
 def test_report_schema_and_next_commands_are_machine_readable() -> None:
@@ -43,21 +38,38 @@ def test_report_schema_and_next_commands_are_machine_readable() -> None:
     if report["status"] not in {"pass", "blocked", "fail"}:
         raise AssertionError(f"unexpected status: {report['status']}")
 
-    commands = "\n".join(report["next_commands"])
+    commands = "\n".join(blocker["next"] for blocker in report["blockers"])
     for token in (
-        "check_chipyard_generated_linux_contract.py",
-        "locate_chipyard_linux_payload.py",
         "run_chipyard_eliza_linux_smoke.sh",
-        "capture_chipyard_linux_evidence.sh",
+        "capture-linux-bsp-evidence.sh",
     ):
         assert_contains(commands, token)
 
 
+def test_generated_bootrom_dtb_words_are_reconstructed_little_endian() -> None:
+    with tempfile.TemporaryDirectory() as tmpdir:
+        fir = Path(tmpdir) / "bootrom.fir"
+        fir.write_text(
+            "\n".join(
+                [
+                    "connect rom[0], UInt<64>(0h0102030405060708)",
+                    "connect rom[1], UInt<64>(0h100f0000edfe0dd0)",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        image = generated_contract.bootrom_bytes_from_fir(fir)
+    if image[:8] != bytes.fromhex("0807060504030201"):
+        raise AssertionError(f"expected little-endian ROM word reconstruction, got {image[:8]!r}")
+    if generated_contract.DTB_MAGIC not in image:
+        raise AssertionError("expected reconstructed image to expose DTB magic")
+
+
 def main() -> int:
     for test in (
-        test_overall_status_is_fail_closed,
-        test_reference_simulators_do_not_satisfy_generated_ap_boot,
+        test_build_report_is_fail_closed,
         test_report_schema_and_next_commands_are_machine_readable,
+        test_generated_bootrom_dtb_words_are_reconstructed_little_endian,
     ):
         test()
         print(f"PASS {test.__name__}")

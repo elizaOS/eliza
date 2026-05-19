@@ -77,5 +77,4 @@ export * from "./services/steward-sidecar.ts";
 export * from "./services/task-host-capabilities";
 export * from "./services/vault-bootstrap";
 export * from "./services/vault-mirror";
-// UI-side compat surfaces intentionally stay out of the Node/runtime barrel.
-// Import them from @elizaos/ui or ./ui-compat directly in browser bundles.
+export * from "./ui-compat";

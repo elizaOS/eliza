@@ -3,7 +3,7 @@
  *
  * Implements the `StreamingTranscriber` contract from `voice/types.ts`:
  * PCM frames in (`feed`), running partial-transcript events out, `flush()`
- * to force-finalize on `speech-end`. Two adapters, resolved in priority
+ * to force-finalize on `speech-end`. Three adapters, resolved in priority
  * order by `createStreamingTranscriber()`:
  *
  *   1. `FfiStreamingTranscriber` — the FINAL path. Drives the fused
@@ -24,22 +24,22 @@
  *      Selected whenever a `libelizainference` handle + bundled ASR model are
  *      present (which is always true when the fused build is loaded).
  *
- * If neither fused ASR nor OpenVINO Whisper is available,
- * `createStreamingTranscriber()` throws `AsrUnavailableError` — a real
- * failure, never a silent empty-transcript degrade (AGENTS.md §3 + §9).
- * There is no whisper.cpp fallback path: that dependency vendored a second
- * GGML, mismatched the Qwen2-BPE vocab, and is not the local-inference
- * contract we ship.
+ *   3. `WhisperCppStreamingTranscriber` — whisper.cpp via ggml-backend, loaded
+ *      through the `libwhisper_eliza_adapter` flat C ABI (built by
+ *      `plugins/plugin-local-inference/native/build-whisper.mjs`). Replaces
+ *      the previous OpenVINO Whisper subprocess path. Available on every arch
+ *      we ship to (x86_64, arm64, riscv64) — the underlying GGML/whisper.cpp
+ *      build uses the same cross-compile matrix `compile-libllama.mjs` uses.
+ *
+ * If no ASR backend can be resolved, `createStreamingTranscriber()` throws
+ * `AsrUnavailableError` — a real failure, never a silent empty-transcript
+ * degrade (AGENTS.md §3 + §9).
  */
 
 import type {
 	ElizaInferenceContextHandle,
 	ElizaInferenceFfi,
 } from "./ffi-bindings";
-import {
-	makeOpenVinoWhisperDecoder,
-	resolveOpenVinoWhisperRuntime,
-} from "./openvino-whisper-asr";
 import type {
 	PcmFrame,
 	StreamingTranscriber,
@@ -52,6 +52,10 @@ import type {
 	VoiceSpeaker,
 	VoiceTurnMetadata,
 } from "./types";
+import {
+	makeWhisperCppDecoder,
+	resolveWhisperCppRuntime,
+} from "./whisper-cpp-asr";
 
 /** The local voice runtime resamples mic input to 16 kHz mono for ASR. */
 export const ASR_SAMPLE_RATE = 16_000;
@@ -73,7 +77,7 @@ export type AsrBackendPreference =
 	| "auto"
 	| "fused"
 	| "ffi-batch"
-	| "openvino-whisper";
+	| "whisper-cpp";
 
 function normalizeBooleanEnv(value: string | undefined): boolean {
 	const normalized = value?.trim().toLowerCase();
@@ -101,10 +105,10 @@ export function normalizeAsrBackendPreference(
 		case "ffi-batch":
 		case "fused-batch":
 			return "ffi-batch";
-		case "openvino":
-		case "openvino-whisper":
-		case "whisper-openvino":
-			return "openvino-whisper";
+		case "whisper":
+		case "whisper-cpp":
+		case "whisper.cpp":
+			return "whisper-cpp";
 		default:
 			return null;
 	}
@@ -116,11 +120,11 @@ export function readAsrBackendPreferenceFromEnv(
 	return normalizeAsrBackendPreference(env.ELIZA_LOCAL_ASR_BACKEND);
 }
 
-function allowOpenVinoWhisperFromEnv(
+function allowWhisperCppFromEnv(
 	env: NodeJS.ProcessEnv = process.env,
 ): boolean | null {
-	if (env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO === undefined) return null;
-	return normalizeBooleanEnv(env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO);
+	if (env.ELIZA_LOCAL_ASR_ALLOW_WHISPER_CPP === undefined) return null;
+	return normalizeBooleanEnv(env.ELIZA_LOCAL_ASR_ALLOW_WHISPER_CPP);
 }
 
 /* ==================================================================== *
@@ -632,14 +636,14 @@ function joinTranscriptParts(head: string, tail: string): string {
 }
 
 /* ==================================================================== *
- * OpenVINO Whisper streaming transcriber.
+ * whisper.cpp (and other PCM-decoder-driven) streaming transcribers.
  * ==================================================================== */
 
 export type { StreamingPcmDecoder } from "./types.js";
 
 import type { StreamingPcmDecoder } from "./types.js";
 
-export interface OpenVinoStreamingTranscriberOptions {
+export interface WhisperCppStreamingTranscriberOptions {
 	vad?: VadEventSource;
 	/** Optional attribution metadata stamped onto emitted transcript updates. */
 	metadata?: TranscriptMetadataDefaults;
@@ -651,12 +655,12 @@ export interface OpenVinoStreamingTranscriberOptions {
 	overlapSeconds?: number;
 	/** Minimum new audio (seconds) accumulated before the next decode pass. Default 0.7. */
 	stepSeconds?: number;
-	/** The decoder. Required — the OpenVINO adapter supplies its python-worker decoder here. */
+	/** The decoder. Required — the whisper.cpp adapter supplies its FFI-bound decoder here. */
 	decoder: StreamingPcmDecoder;
 	/**
 	 * Extra cleanup invoked from `dispose()` after segment buffers are reset.
-	 * Used when the injected `decoder` owns a persistent subprocess (the
-	 * OpenVINO whisper worker) that needs to be torn down with the
+	 * Used when the injected `decoder` owns a persistent native handle (the
+	 * libwhisper_eliza_adapter session) that must be torn down with the
 	 * transcriber.
 	 */
 	onDispose?: () => void;
@@ -664,12 +668,10 @@ export interface OpenVinoStreamingTranscriberOptions {
 
 /**
  * Sliding-window streaming transcriber driven by an injected decoder. The
- * OpenVINO Whisper adapter is the only consumer today: it supplies a decoder
- * function bound to its persistent Python worker. The previous whisper.cpp
- * adapter has been removed (it vendored a second GGML + mismatched the
- * Qwen2-BPE vocab).
+ * whisper.cpp adapter is the consumer today: it supplies a decoder function
+ * bound to a persistent libwhisper_eliza_adapter FFI session.
  */
-export class OpenVinoStreamingTranscriber extends BaseStreamingTranscriber {
+export class WhisperCppStreamingTranscriber extends BaseStreamingTranscriber {
 	private readonly windowSamples: number;
 	private readonly overlapSamples: number;
 	private readonly stepSamples: number;
@@ -685,7 +687,7 @@ export class OpenVinoStreamingTranscriber extends BaseStreamingTranscriber {
 	private lastDecodeAt = 0;
 	private decodeChain: Promise<void> = Promise.resolve();
 
-	constructor(opts: OpenVinoStreamingTranscriberOptions) {
+	constructor(opts: WhisperCppStreamingTranscriberOptions) {
 		super(opts.vad, {
 			...opts.metadata,
 			source: opts.metadata?.source ?? opts.source,
@@ -794,21 +796,21 @@ export interface CreateStreamingTranscriberOptions {
 	ffiBatch?: Omit<FfiBatchTranscriberOptions, "ffi" | "getContext">;
 	/**
 	 * Force a specific backend.
-	 *   `"fused"`            → fused streaming ASR only (throws if unavailable),
-	 *   `"ffi-batch"`        → fused batch (interim) only (throws if unavailable),
-	 *   `"openvino-whisper"` → OpenVINO Whisper (NPU→CPU autoprobe) only,
-	 *   `"auto"`             (default) → fused streaming → fused batch →
-	 *                                    OpenVINO whisper (when enabled) → throw.
+	 *   `"fused"`       → fused streaming ASR only (throws if unavailable),
+	 *   `"ffi-batch"`   → fused batch (interim) only (throws if unavailable),
+	 *   `"whisper-cpp"` → whisper.cpp via libwhisper_eliza_adapter only,
+	 *   `"auto"`        (default) → fused streaming → fused batch →
+	 *                               whisper.cpp (when enabled) → throw.
 	 */
 	prefer?: AsrBackendPreference;
 	/**
-	 * Permit the OpenVINO Whisper adapter (NPU→CPU autoprobe). Enabled by
-	 * default when worker/model artifacts are installed so auto mode can fall
-	 * back after fused streaming/batch ASR. Set to false to require fused ASR
-	 * only, or use `prefer: "openvino-whisper"` /
-	 * `ELIZA_LOCAL_ASR_BACKEND=openvino-whisper` to require OpenVINO.
+	 * Permit the whisper.cpp adapter. Enabled by default when
+	 * libwhisper_eliza_adapter + a GGML/GGUF whisper model are present on
+	 * disk so auto mode can fall back after fused streaming/batch ASR. Set
+	 * to false to require fused ASR only, or use `prefer: "whisper-cpp"` /
+	 * `ELIZA_LOCAL_ASR_BACKEND=whisper-cpp` to require whisper.cpp.
 	 */
-	allowOpenVinoWhisper?: boolean;
+	allowWhisperCpp?: boolean;
 }
 
 /**
@@ -817,22 +819,22 @@ export interface CreateStreamingTranscriberOptions {
  *      path, W7),
  *   2. fused batch (interim) — windowed `eliza_inference_asr_transcribe` (ABI
  *      v1); contract-clean (one ggml, shared text vocab) and available now,
- *   3. OpenVINO Whisper — Intel NPU→CPU autoprobe via the persistent Python
- *      worker (`scripts/openvino-whisper-asr-worker.py`). Selected only when
- *      enabled and the OpenVINO runtime + Whisper IR are present on disk.
+ *   3. whisper.cpp via the `libwhisper_eliza_adapter` flat C ABI loaded
+ *      through `bun:ffi`. Selected when libwhisper_eliza_adapter + a
+ *      GGML/GGUF whisper model are present on disk. Works on every arch
+ *      we ship to (x86_64, arm64, riscv64).
  *
  * No silent fallback to an empty transcript — if nothing is available the
- * caller gets a hard, actionable failure (AGENTS.md §3 + §9). The whisper.cpp
- * interim fallback has been removed.
+ * caller gets a hard, actionable failure (AGENTS.md §3 + §9).
  */
 export function createStreamingTranscriber(
 	opts: CreateStreamingTranscriberOptions = {},
 ): StreamingTranscriber {
 	const prefer = opts.prefer ?? readAsrBackendPreferenceFromEnv() ?? "auto";
-	const envAllowsOpenVinoWhisper = allowOpenVinoWhisperFromEnv();
-	const allowOpenVinoWhisper =
-		prefer === "openvino-whisper" ||
-		(opts.allowOpenVinoWhisper ?? envAllowsOpenVinoWhisper ?? true);
+	const envAllowsWhisperCpp = allowWhisperCppFromEnv();
+	const allowWhisperCpp =
+		prefer === "whisper-cpp" ||
+		(opts.allowWhisperCpp ?? envAllowsWhisperCpp ?? true);
 
 	const tryFusedStreaming = (): StreamingTranscriber | null => {
 		if (!opts.ffi || !opts.getContext) return null;
@@ -861,12 +863,12 @@ export function createStreamingTranscriber(
 		});
 	};
 
-	const tryOpenVinoWhisper = (): StreamingTranscriber | null => {
-		const runtime = resolveOpenVinoWhisperRuntime();
+	const tryWhisperCpp = (): StreamingTranscriber | null => {
+		const runtime = resolveWhisperCppRuntime();
 		if (!runtime) return null;
-		const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
+		const { decoder, dispose } = makeWhisperCppDecoder(runtime);
 		try {
-			return new OpenVinoStreamingTranscriber({
+			return new WhisperCppStreamingTranscriber({
 				vad: opts.vad,
 				metadata: opts.metadata,
 				source: opts.source,
@@ -897,11 +899,11 @@ export function createStreamingTranscriber(
 			"[asr] fused batch ASR was requested but is not available (no libelizainference handle, no bundled ASR model, or the build does not export eliza_inference_asr_transcribe)",
 		);
 	}
-	if (prefer === "openvino-whisper") {
-		const ov = tryOpenVinoWhisper();
-		if (ov) return ov;
+	if (prefer === "whisper-cpp") {
+		const w = tryWhisperCpp();
+		if (w) return w;
 		throw new AsrUnavailableError(
-			"[asr] OpenVINO whisper ASR was requested but is not available (no openvino python venv, no whisper IR model, or worker script missing — set ELIZA_OPENVINO_PYTHON / ELIZA_OPENVINO_WHISPER_MODEL / ELIZA_OPENVINO_WHISPER_WORKER)",
+			"[asr] whisper.cpp ASR was requested but is not available (no libwhisper_eliza_adapter found on disk, or no ggml-*.bin whisper model present — set ELIZA_WHISPER_LIBRARY / ELIZA_WHISPER_MODEL, or run `bash packages/app-core/platforms/electrobun/scripts/ensure-whisper-gguf.sh base.en` and rebuild via `node plugins/plugin-local-inference/native/build-whisper.mjs`)",
 		);
 	}
 
@@ -910,12 +912,12 @@ export function createStreamingTranscriber(
 	if (fused) return fused;
 	const batch = tryFusedBatch();
 	if (batch) return batch;
-	if (allowOpenVinoWhisper) {
-		const ov = tryOpenVinoWhisper();
-		if (ov) return ov;
+	if (allowWhisperCpp) {
+		const w = tryWhisperCpp();
+		if (w) return w;
 	}
 
 	throw new AsrUnavailableError(
-		"[asr] no fused ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* or eliza_inference_asr_transcribe). The whisper.cpp interim fallback has been removed; the local-inference path requires the fused omnivoice build.",
+		"[asr] no ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* / eliza_inference_asr_transcribe), or install libwhisper_eliza_adapter + a ggml-*.bin whisper model on disk so the whisper.cpp fallback can resolve.",
 	);
 }

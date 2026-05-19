@@ -1,5 +1,6 @@
 import { Ban, Loader2, Shield } from "lucide-react";
 import { Navigate, Outlet } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 import { useAdminModerationStatus } from "../../lib/data/admin";
 import { useUserProfile } from "../../lib/data/user";
 
@@ -8,6 +9,7 @@ import { useUserProfile } from "../../lib/data/user";
  * enforces auth; this layout enforces the admin-or-better moderation role.
  */
 export default function AdminLayout() {
+  const t = useT();
   const { isReady, isAuthenticated } = useUserProfile();
   const { data, isLoading, isError } = useAdminModerationStatus();
   const localDevAdmin =
@@ -34,8 +36,16 @@ export default function AdminLayout() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <Shield className="h-16 w-16 text-muted-foreground" />
-        <h1 className="text-2xl font-bold">Admin status unavailable</h1>
-        <p className="text-muted-foreground">Could not verify admin role.</p>
+        <h1 className="text-2xl font-bold">
+          {t("cloud.admin.gate.unavailableTitle", {
+            defaultValue: "Admin status unavailable",
+          })}
+        </h1>
+        <p className="text-muted-foreground">
+          {t("cloud.admin.gate.unavailableBody", {
+            defaultValue: "Could not verify admin role.",
+          })}
+        </p>
       </div>
     );
   }
@@ -44,9 +54,13 @@ export default function AdminLayout() {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4">
         <Ban className="h-16 w-16 text-destructive" />
-        <h1 className="text-2xl font-bold">Access Denied</h1>
+        <h1 className="text-2xl font-bold">
+          {t("cloud.admin.gate.deniedTitle", { defaultValue: "Access Denied" })}
+        </h1>
         <p className="text-muted-foreground">
-          You don&apos;t have admin privileges.
+          {t("cloud.admin.gate.deniedBody", {
+            defaultValue: "You don't have admin privileges.",
+          })}
         </p>
       </div>
     );

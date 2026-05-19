@@ -1719,10 +1719,10 @@ describe("applyUnsupportedKernelEnv — OpenVINO opt-out at spawn", () => {
 		expect(result.GGML_OPENVINO_DEVICE).toBeUndefined();
 	});
 
-	it("overrides a pre-existing GGML_OPENVINO_DEVICE the user set to keep ASR routing for text spawns", () => {
-		// A user who set GGML_OPENVINO_DEVICE=NPU for their ASR worker shouldn't
-		// leak that selection into the text llama-server spawn — the text path
-		// owns this env on its own child env.
+	it("overrides a pre-existing GGML_OPENVINO_DEVICE the user set in the parent env", () => {
+		// A user who set GGML_OPENVINO_DEVICE=NPU for some other purpose
+		// shouldn't leak that selection into the text llama-server spawn —
+		// the text path owns this env on its own child env.
 		const env: NodeJS.ProcessEnv = { GGML_OPENVINO_DEVICE: "NPU" };
 		const result = applyUnsupportedKernelEnv(env, {
 			unsupportedKernels: ["openvino"],

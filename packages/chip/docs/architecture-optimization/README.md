@@ -27,5 +27,22 @@ area/size, manufacturability, verification evidence, and release blockers.
 | Platform and product IO | `phone-platform.md` |
 | Physical, power, package, thermal | `physical-power-thermal.md` |
 | Software, benchmarks, CI | `software-ci.md` |
+| 2028 SOTA integrated report | `2028-sota-integrated-report.md` |
+| 2028 SOTA sub-reports | `sota-2028/` (8 per-domain artifacts) |
 
 These files are work orders, not evidence of implementation.
+
+## 2028 SOTA Research
+
+The `2028-sota-integrated-report.md` synthesizes cross-domain SOTA research into
+target envelopes, risks, IP walls, and a prioritized P0-P3 work order. Per-domain
+sub-reports under `sota-2028/` carry full citations and detail:
+
+- [Branch predictors](sota-2028/branch-predictors.md)
+- [Cache hierarchies](sota-2028/cache-hierarchies.md)
+- [Memory subsystem](sota-2028/memory-subsystem.md)
+- [OoO execution](sota-2028/ooo-execution.md)
+- [Process nodes](sota-2028/process-nodes.md)
+- [Power delivery](sota-2028/power-delivery.md)
+- [Physical design](sota-2028/physical-design.md)
+- [Compiler tuning](sota-2028/compiler-tuning.md)

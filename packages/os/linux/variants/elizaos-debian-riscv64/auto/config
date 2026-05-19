@@ -1,0 +1,25 @@
+#!/bin/sh
+# live-build auto/config for elizaOS Debian RISC-V 64.
+#
+# Pins architecture / kernel flavour / bootloader so the variant is
+# reproducible from a clean check-out — the parallel of milady-tails'
+# auto/config, but stripped to a plain Debian Trixie live system on
+# riscv64. No Tails-specific apt-snapshot, branding, or Tor plumbing
+# lives here.
+#
+# STATUS_LATER: Wave 4 will extend this with the elizaOS package list
+# (config/package-lists/elizaos.list.chroot), the greeter/agent hooks
+# (config/hooks/), and the U-Boot / grub-efi-riscv64 boot configuration.
+set -e
+set -u
+
+lb config noauto \
+    --distribution trixie \
+    --architecture riscv64 \
+    --linux-flavours riscv64 \
+    --bootloaders grub-efi \
+    --binary-image iso-hybrid \
+    --apt-recommends false \
+    --debian-installer none \
+    --bootappend-live "boot=live components" \
+    "${@}"

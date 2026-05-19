@@ -674,9 +674,10 @@ def _publication_quarantine_reason(
     ``latest/`` is the source of truth for the most recent successful real
     benchmark result. Telemetry and sample-size weaknesses are recorded as
     publication warnings, not quarantine reasons, because hiding successful
-    rows makes the matrix look missing and breaks idempotent tracking.
+    rows makes the matrix look missing and breaks idempotent tracking. Explicit
+    sample/mock datasets are not publishable real-agent results.
     """
-    del token_metrics, metrics
+    del token_metrics
     if _is_synthetic_agent(agent):
         return None
     if status == "incompatible":
@@ -685,6 +686,15 @@ def _publication_quarantine_reason(
         return "unsucceeded_run"
     if not _is_numeric_score(score):
         return "missing_score"
+    dataset_source = metrics.get("dataset_source")
+    if metrics.get("sample") is True or (
+        isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample"
+    ):
+        return "sample_task_set"
+    if metrics.get("use_sample_tasks") is True:
+        return "sample_task_set"
+    if metrics.get("demo_mode") is True or metrics.get("demoMode") is True:
+        return "demo_mode"
     return None
 
 
@@ -704,9 +714,12 @@ def _publication_warnings(
         "eliza_replay",
         "evm",
         "framework",
+        "hermes_yc_bench",
         "personality_bench",
         "social_alpha",
         "solana",
+        "vision_language",
+        "voiceagentbench",
     }
     estimate_source = tokens.get("token_estimate_source")
     if estimate_source is not None or any(str(key).startswith("estimated_") for key in tokens):
@@ -743,6 +756,10 @@ def _publication_warnings(
         isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample"
     ):
         warnings.append("sample_task_set")
+    if metrics.get("use_sample_tasks") is True:
+        warnings.append("sample_task_set")
+    if metrics.get("demo_mode") is True or metrics.get("demoMode") is True:
+        warnings.append("demo_mode")
     if metrics.get("interrupted") is True:
         warnings.append("interrupted_run")
     return warnings
@@ -1199,8 +1216,33 @@ def _rebuild_latest_result_snapshots(
             continue
         if agent not in LATEST_SNAPSHOT_AGENTS or _is_synthetic_agent(agent):
             continue
+        if adapters is not None:
+            adapter = adapters.get(benchmark_id)
+            if (
+                adapter is not None
+                and agent in CANONICAL_REAL_HARNESSES
+                and agent not in adapter.agent_compatibility
+            ):
+                continue
         if str(payload.get("status") or "") != "succeeded" or not _is_numeric_score(
             payload.get("score")
+        ):
+            continue
+        metrics = payload.get("metrics") or {}
+        if not isinstance(metrics, dict):
+            metrics = {}
+        token_metrics = payload.get("token_metrics") or {}
+        if not isinstance(token_metrics, dict):
+            token_metrics = {}
+        if (
+            _publication_quarantine_reason(
+                status=str(payload.get("status") or ""),
+                agent=agent,
+                score=payload.get("score"),
+                token_metrics=token_metrics,
+                metrics=metrics,
+            )
+            is not None
         ):
             continue
         key = (benchmark_id, agent)
@@ -1314,6 +1356,28 @@ def _rebuild_latest_result_snapshots(
         preserved_latest.items()
     ):
         expected_by_dir[latest_dir].add(snapshot_path)
+        metrics = payload.get("metrics") or {}
+        if not isinstance(metrics, dict):
+            metrics = {}
+        token_metrics = _complete_token_metrics(
+            payload.get("token_metrics") if isinstance(payload.get("token_metrics"), dict) else {},
+            trajectory_summary=payload.get("trajectory_summary") or {},
+            result_json_path=payload.get("result_json_path"),
+        )
+        publication_warnings = _publication_warnings(
+            benchmark_id=benchmark_id,
+            status=str(payload.get("status") or ""),
+            token_metrics=token_metrics,
+            metrics=metrics,
+        )
+        payload["token_metrics"] = token_metrics
+        payload.pop("publication_warnings", None)
+        if publication_warnings:
+            payload["publication_warnings"] = publication_warnings
+        snapshot_path.write_text(
+            json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
+            encoding="utf-8",
+        )
         comparison_signature = str(payload.get("comparison_signature") or "")
         if not comparison_signature:
             comparison_signature = _comparison_signature_from_parts(
@@ -1381,6 +1445,12 @@ def _rebuild_latest_result_snapshots(
             token_metrics=token_metrics,
             metrics=metrics,
         ) or "unsucceeded_run"
+        publication_warnings = _publication_warnings(
+            benchmark_id=benchmark_id,
+            status=str(row.get("status") or ""),
+            token_metrics=token_metrics,
+            metrics=metrics,
+        )
         snapshot_path = quarantine_dir / f"{_sanitize_name(benchmark_id)}__{_sanitize_name(agent)}.json"
         expected_by_dir[quarantine_dir].add(snapshot_path)
         payload = {
@@ -1412,6 +1482,8 @@ def _rebuild_latest_result_snapshots(
             "error": row.get("error"),
             "quarantine_reason": quarantine_reason,
         }
+        if publication_warnings:
+            payload["publication_warnings"] = publication_warnings
         snapshot_path.write_text(
             json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=True),
             encoding="utf-8",

@@ -25,32 +25,76 @@ async function main(): Promise<void> {
     );
     const cloudOnlyDir = join(workspace, "cloud-only");
     const ciDir = join(workspace, "ci");
+    const providerCiDir = join(workspace, "provider-ci");
     const malformedCiDir = join(workspace, "malformed-ci");
+    const pushCiDir = join(workspace, "push-ci");
     const providerOnlyDir = join(workspace, "provider-only");
     const requiredProvidersDir = join(workspace, "required-providers");
+    const fourProvidersDir = join(workspace, "four-providers");
     const expectedCountDir = join(workspace, "expected-count");
     const unknownProviderDir = join(workspace, "unknown-provider");
     const freshDir = join(workspace, "fresh");
     const staleDir = join(workspace, "stale");
     const nearFutureDir = join(workspace, "near-future");
     const farFutureDir = join(workspace, "far-future");
+    const malformedObservedAtDir = join(workspace, "malformed-observed-at");
     const wrongSchemaDir = join(workspace, "wrong-schema");
     const partialDir = join(workspace, "partial");
     const failedRouteDir = join(workspace, "failed-route");
+    const missingRouteBodyDir = join(workspace, "missing-route-body");
+    const emptyRouteBodyDir = join(workspace, "empty-route-body");
+    const missingModelResultDir = join(workspace, "missing-model-result");
+    const emptyActionResultDir = join(workspace, "empty-action-result");
+    const emptyProviderResultDir = join(workspace, "empty-provider-result");
+    const failedLifecycleDir = join(workspace, "failed-lifecycle");
+    const unhandledEventDir = join(workspace, "unhandled-event");
+    const missingServiceResultDir = join(workspace, "missing-service-result");
+    const missingAppBridgeResultDir = join(
+      workspace,
+      "missing-app-bridge-result",
+    );
+    const emptyEvaluatorProcessDir = join(
+      workspace,
+      "empty-evaluator-process",
+    );
+    const emptyResponseHandlerEvaluateDir = join(
+      workspace,
+      "empty-response-handler-evaluate",
+    );
+    const emptyFieldEvaluatorParseDir = join(
+      workspace,
+      "empty-field-evaluator-parse",
+    );
+    const emptyFieldEvaluatorHandleDir = join(
+      workspace,
+      "empty-field-evaluator-handle",
+    );
     const nonJavascriptAssetDir = join(workspace, "non-javascript-asset");
     const mismatchedAssetManifestDir = join(
       workspace,
       "mismatched-asset-manifest",
     );
+    const mismatchedAssetIntegrityDir = join(
+      workspace,
+      "mismatched-asset-integrity",
+    );
+    const missingSha256AssetIntegrityDir = join(
+      workspace,
+      "missing-sha256-asset-integrity",
+    );
     const missingAssetDigestDir = join(workspace, "missing-asset-digest");
     const malformedAssetDigestDir = join(workspace, "malformed-asset-digest");
+    const emptyAssetDigestDir = join(workspace, "empty-asset-digest");
     const mismatchDir = join(workspace, "mismatch");
     const malformedEndpointIdDir = join(workspace, "malformed-endpoint-id");
+    const malformedModuleIdDir = join(workspace, "malformed-module-id");
     const malformedProviderDir = join(workspace, "malformed-provider");
     const malformedCloudApiBaseDir = join(
       workspace,
       "malformed-cloud-api-base",
     );
+    const cloudProviderFieldDir = join(workspace, "cloud-provider-field");
+    const providerCloudFieldDir = join(workspace, "provider-cloud-field");
     const cloudApiBaseQueryDir = join(workspace, "cloud-api-base-query");
     const cloudApiBaseFragmentDir = join(workspace, "cloud-api-base-fragment");
     const matchingFileIdentityDir = join(workspace, "matching-file-identity");
@@ -67,6 +111,24 @@ async function main(): Promise<void> {
     const duplicateEndpointUrlFingerprintDir = join(
       workspace,
       "duplicate-endpoint-url-fingerprint",
+    );
+    const missingProviderIdDir = join(workspace, "missing-provider-id");
+    const mismatchedProviderIdDir = join(workspace, "mismatched-provider-id");
+    const missingProviderEvidenceDir = join(
+      workspace,
+      "missing-provider-evidence",
+    );
+    const mismatchedProviderEvidenceDir = join(
+      workspace,
+      "mismatched-provider-evidence",
+    );
+    const missingEndpointUrlFingerprintDir = join(
+      workspace,
+      "missing-endpoint-url-fingerprint",
+    );
+    const malformedEndpointUrlFingerprintDir = join(
+      workspace,
+      "malformed-endpoint-url-fingerprint",
     );
     const leakedSecretDir = join(workspace, "leaked-secret");
     const leakedSecretValueDir = join(workspace, "leaked-secret-value");
@@ -136,6 +198,10 @@ async function main(): Promise<void> {
       workspace,
       "stale-runtime-remote-plugin",
     );
+    const mismatchedRuntimeRemotePluginCountDir = join(
+      workspace,
+      "mismatched-runtime-remote-plugin-count",
+    );
     const missingRegisteredServiceDir = join(
       workspace,
       "missing-registered-service",
@@ -150,26 +216,49 @@ async function main(): Promise<void> {
     await mkdir(completePartialModuleDir, { recursive: true });
     await mkdir(cloudOnlyDir, { recursive: true });
     await mkdir(ciDir, { recursive: true });
+    await mkdir(providerCiDir, { recursive: true });
     await mkdir(malformedCiDir, { recursive: true });
+    await mkdir(pushCiDir, { recursive: true });
     await mkdir(providerOnlyDir, { recursive: true });
     await mkdir(requiredProvidersDir, { recursive: true });
+    await mkdir(fourProvidersDir, { recursive: true });
     await mkdir(expectedCountDir, { recursive: true });
     await mkdir(unknownProviderDir, { recursive: true });
     await mkdir(freshDir, { recursive: true });
     await mkdir(staleDir, { recursive: true });
     await mkdir(nearFutureDir, { recursive: true });
     await mkdir(farFutureDir, { recursive: true });
+    await mkdir(malformedObservedAtDir, { recursive: true });
     await mkdir(wrongSchemaDir, { recursive: true });
     await mkdir(partialDir, { recursive: true });
     await mkdir(failedRouteDir, { recursive: true });
+    await mkdir(missingRouteBodyDir, { recursive: true });
+    await mkdir(emptyRouteBodyDir, { recursive: true });
+    await mkdir(missingModelResultDir, { recursive: true });
+    await mkdir(emptyActionResultDir, { recursive: true });
+    await mkdir(emptyProviderResultDir, { recursive: true });
+    await mkdir(failedLifecycleDir, { recursive: true });
+    await mkdir(unhandledEventDir, { recursive: true });
+    await mkdir(missingServiceResultDir, { recursive: true });
+    await mkdir(missingAppBridgeResultDir, { recursive: true });
+    await mkdir(emptyEvaluatorProcessDir, { recursive: true });
+    await mkdir(emptyResponseHandlerEvaluateDir, { recursive: true });
+    await mkdir(emptyFieldEvaluatorParseDir, { recursive: true });
+    await mkdir(emptyFieldEvaluatorHandleDir, { recursive: true });
     await mkdir(nonJavascriptAssetDir, { recursive: true });
     await mkdir(mismatchedAssetManifestDir, { recursive: true });
+    await mkdir(mismatchedAssetIntegrityDir, { recursive: true });
+    await mkdir(missingSha256AssetIntegrityDir, { recursive: true });
     await mkdir(missingAssetDigestDir, { recursive: true });
     await mkdir(malformedAssetDigestDir, { recursive: true });
+    await mkdir(emptyAssetDigestDir, { recursive: true });
     await mkdir(mismatchDir, { recursive: true });
     await mkdir(malformedEndpointIdDir, { recursive: true });
+    await mkdir(malformedModuleIdDir, { recursive: true });
     await mkdir(malformedProviderDir, { recursive: true });
     await mkdir(malformedCloudApiBaseDir, { recursive: true });
+    await mkdir(cloudProviderFieldDir, { recursive: true });
+    await mkdir(providerCloudFieldDir, { recursive: true });
     await mkdir(cloudApiBaseQueryDir, { recursive: true });
     await mkdir(cloudApiBaseFragmentDir, { recursive: true });
     await mkdir(matchingFileIdentityDir, { recursive: true });
@@ -178,6 +267,12 @@ async function main(): Promise<void> {
     await mkdir(duplicateEndpointDir, { recursive: true });
     await mkdir(duplicateProviderDir, { recursive: true });
     await mkdir(duplicateEndpointUrlFingerprintDir, { recursive: true });
+    await mkdir(missingProviderIdDir, { recursive: true });
+    await mkdir(mismatchedProviderIdDir, { recursive: true });
+    await mkdir(missingProviderEvidenceDir, { recursive: true });
+    await mkdir(mismatchedProviderEvidenceDir, { recursive: true });
+    await mkdir(missingEndpointUrlFingerprintDir, { recursive: true });
+    await mkdir(malformedEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(leakedSecretDir, { recursive: true });
     await mkdir(leakedSecretValueDir, { recursive: true });
     await mkdir(bogusTargetDir, { recursive: true });
@@ -207,6 +302,7 @@ async function main(): Promise<void> {
     await mkdir(runtimePluginUndercountDir, { recursive: true });
     await mkdir(missingRuntimeRemotePluginDir, { recursive: true });
     await mkdir(staleRuntimeRemotePluginDir, { recursive: true });
+    await mkdir(mismatchedRuntimeRemotePluginCountDir, { recursive: true });
     await mkdir(missingRegisteredServiceDir, { recursive: true });
     await mkdir(missingEvaluatorDir, { recursive: true });
     await mkdir(missingEventDir, { recursive: true });
@@ -244,8 +340,18 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(providerCiDir, "provider.json"),
+      `${JSON.stringify(makeProviderCiReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(malformedCiDir, "cloud.json"),
       `${JSON.stringify(makeMalformedCiReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(pushCiDir, "cloud.json"),
+      `${JSON.stringify(makePushCiReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -266,6 +372,26 @@ async function main(): Promise<void> {
     await writeFile(
       join(requiredProvidersDir, "mobile-companion.json"),
       `${JSON.stringify(makeCompleteReport("provider", "required-mobile-endpoint", "mobile-companion"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "e2b.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-e2b-endpoint", "e2b"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "home-machine.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-home-endpoint", "home-machine"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "mobile-companion.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-mobile-endpoint", "mobile-companion"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "desktop-companion.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-desktop-endpoint", "desktop-companion"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -304,6 +430,11 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(malformedObservedAtDir, "provider.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "malformed-observed-at-endpoint", "e2b", "not-a-timestamp"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(wrongSchemaDir, "provider.json"),
       `${JSON.stringify(makeWrongSchemaReport(), null, 2)}\n`,
       "utf8",
@@ -319,6 +450,16 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(missingRouteBodyDir, "provider.json"),
+      `${JSON.stringify(makeMissingRouteBodyReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyRouteBodyDir, "provider.json"),
+      `${JSON.stringify(makeEmptyRouteBodyReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(nonJavascriptAssetDir, "provider.json"),
       `${JSON.stringify(makeNonJavascriptAssetReport(), null, 2)}\n`,
       "utf8",
@@ -326,6 +467,16 @@ async function main(): Promise<void> {
     await writeFile(
       join(mismatchedAssetManifestDir, "provider.json"),
       `${JSON.stringify(makeMismatchedAssetManifestReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedAssetIntegrityDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedAssetIntegrityReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingSha256AssetIntegrityDir, "provider.json"),
+      `${JSON.stringify(makeMissingSha256AssetIntegrityReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -339,6 +490,66 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(emptyAssetDigestDir, "provider.json"),
+      `${JSON.stringify(makeEmptyAssetDigestReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingModelResultDir, "provider.json"),
+      `${JSON.stringify(makeMissingModelResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyActionResultDir, "provider.json"),
+      `${JSON.stringify(makeEmptyActionResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyProviderResultDir, "provider.json"),
+      `${JSON.stringify(makeEmptyProviderResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(failedLifecycleDir, "provider.json"),
+      `${JSON.stringify(makeFailedLifecycleReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(unhandledEventDir, "provider.json"),
+      `${JSON.stringify(makeUnhandledEventReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingServiceResultDir, "provider.json"),
+      `${JSON.stringify(makeMissingServiceResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingAppBridgeResultDir, "provider.json"),
+      `${JSON.stringify(makeMissingAppBridgeResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyEvaluatorProcessDir, "provider.json"),
+      `${JSON.stringify(makeEmptyEvaluatorProcessReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyResponseHandlerEvaluateDir, "provider.json"),
+      `${JSON.stringify(makeEmptyResponseHandlerEvaluateReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyFieldEvaluatorParseDir, "provider.json"),
+      `${JSON.stringify(makeEmptyFieldEvaluatorParseReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyFieldEvaluatorHandleDir, "provider.json"),
+      `${JSON.stringify(makeEmptyFieldEvaluatorHandleReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(mismatchDir, "provider.json"),
       `${JSON.stringify(makeEndpointMismatchReport(), null, 2)}\n`,
       "utf8",
@@ -349,6 +560,11 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(malformedModuleIdDir, "provider.json"),
+      `${JSON.stringify(makeMalformedModuleIdReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(malformedProviderDir, "provider.json"),
       `${JSON.stringify(makeMalformedProviderReport(), null, 2)}\n`,
       "utf8",
@@ -356,6 +572,16 @@ async function main(): Promise<void> {
     await writeFile(
       join(malformedCloudApiBaseDir, "cloud.json"),
       `${JSON.stringify(makeMalformedCloudApiBaseReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(cloudProviderFieldDir, "cloud.json"),
+      `${JSON.stringify(makeCloudProviderFieldReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(providerCloudFieldDir, "provider.json"),
+      `${JSON.stringify(makeProviderCloudFieldReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -425,6 +651,36 @@ async function main(): Promise<void> {
         null,
         2,
       )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingProviderIdDir, "provider.json"),
+      `${JSON.stringify(makeMissingProviderIdReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedProviderIdDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedProviderIdReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingProviderEvidenceDir, "provider.json"),
+      `${JSON.stringify(makeMissingProviderEvidenceReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedProviderEvidenceDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedProviderEvidenceReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingEndpointUrlFingerprintDir, "provider.json"),
+      `${JSON.stringify(makeMissingEndpointUrlFingerprintReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(malformedEndpointUrlFingerprintDir, "provider.json"),
+      `${JSON.stringify(makeMalformedEndpointUrlFingerprintReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -573,6 +829,11 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(mismatchedRuntimeRemotePluginCountDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedRuntimeRemotePluginCountReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(missingRegisteredServiceDir, "provider.json"),
       `${JSON.stringify(makeMissingRegisteredServiceReport(), null, 2)}\n`,
       "utf8",
@@ -659,6 +920,16 @@ async function main(): Promise<void> {
         `ci report should validate, got ${ci.exitCode}: ${ci.output}`,
       );
     }
+    const providerCi = await runValidator(
+      providerCiDir,
+      "--kind=provider",
+      "--require-ci",
+    );
+    if (providerCi.exitCode !== 0) {
+      throw new Error(
+        `provider ci report should validate, got ${providerCi.exitCode}: ${providerCi.output}`,
+      );
+    }
     const matchedCi = await runValidator(
       ciDir,
       "--kind=cloud",
@@ -676,6 +947,53 @@ async function main(): Promise<void> {
     if (matchedCi.exitCode !== 0) {
       throw new Error(
         `matched ci report should validate, got ${matchedCi.exitCode}: ${matchedCi.output}`,
+      );
+    }
+    const matchedProviderCi = await runValidator(
+      providerCiDir,
+      "--kind=provider",
+      "--match-github-env",
+      {
+        GITHUB_RUN_ID: "654321",
+        GITHUB_RUN_ATTEMPT: "2",
+        GITHUB_WORKFLOW: "Tests",
+        GITHUB_EVENT_NAME: "schedule",
+        GITHUB_REPOSITORY: "elizaOS/eliza",
+        GITHUB_SHA: "89abcdef0123456789abcdef0123456789abcdef",
+        GITHUB_REF: "refs/heads/main",
+      },
+    );
+    if (matchedProviderCi.exitCode !== 0) {
+      throw new Error(
+        `matched provider ci report should validate, got ${matchedProviderCi.exitCode}: ${matchedProviderCi.output}`,
+      );
+    }
+    const mismatchedProviderCi = await runValidator(
+      providerCiDir,
+      "--kind=provider",
+      "--match-github-env",
+      {
+        GITHUB_RUN_ID: "654321",
+        GITHUB_RUN_ATTEMPT: "3",
+        GITHUB_WORKFLOW: "Tests",
+        GITHUB_EVENT_NAME: "schedule",
+        GITHUB_REPOSITORY: "elizaOS/eliza",
+        GITHUB_SHA: "89abcdef0123456789abcdef0123456789abcdef",
+        GITHUB_REF: "refs/heads/main",
+      },
+    );
+    if (mismatchedProviderCi.exitCode === 0) {
+      throw new Error(
+        "mismatched provider ci report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !mismatchedProviderCi.output.includes(
+        "ci.runAttempt must match GITHUB_RUN_ATTEMPT",
+      )
+    ) {
+      throw new Error(
+        `mismatched provider ci failed for the wrong reason: ${mismatchedProviderCi.output}`,
       );
     }
     const mismatchedCi = await runValidator(
@@ -700,6 +1018,30 @@ async function main(): Promise<void> {
         `mismatched ci failed for the wrong reason: ${mismatchedCi.output}`,
       );
     }
+    const missingGithubEnv = await runValidator(
+      ciDir,
+      "--kind=cloud",
+      "--match-github-env",
+      {
+        GITHUB_RUN_ID: "123456",
+        GITHUB_RUN_ATTEMPT: "1",
+        GITHUB_WORKFLOW: "Tests",
+        GITHUB_EVENT_NAME: "workflow_dispatch",
+        GITHUB_REPOSITORY: "elizaOS/eliza",
+        GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+        GITHUB_REF: "",
+      },
+    );
+    if (missingGithubEnv.exitCode === 0) {
+      throw new Error(
+        "missing GitHub env report unexpectedly passed validation.",
+      );
+    }
+    if (!missingGithubEnv.output.includes("GITHUB_REF must be set")) {
+      throw new Error(
+        `missing GitHub env failed for the wrong reason: ${missingGithubEnv.output}`,
+      );
+    }
     const malformedCi = await runValidator(
       malformedCiDir,
       "--kind=cloud",
@@ -712,6 +1054,21 @@ async function main(): Promise<void> {
       throw new Error(
         `malformed ci failed for the wrong reason: ${malformedCi.output}`,
       );
+    }
+    const pushCi = await runValidator(
+      pushCiDir,
+      "--kind=cloud",
+      "--require-ci",
+    );
+    if (pushCi.exitCode === 0) {
+      throw new Error("push ci report unexpectedly passed validation.");
+    }
+    if (
+      !pushCi.output.includes(
+        "ci.eventName must be workflow_dispatch or schedule",
+      )
+    ) {
+      throw new Error(`push ci failed for the wrong reason: ${pushCi.output}`);
     }
     const missingCi = await runValidator(
       cloudOnlyDir,
@@ -742,6 +1099,18 @@ async function main(): Promise<void> {
     if (requiredProviders.exitCode !== 0) {
       throw new Error(
         `required provider reports should validate, got ${requiredProviders.exitCode}: ${requiredProviders.output}`,
+      );
+    }
+    const fourProviders = await runValidator(
+      fourProvidersDir,
+      "--kind=provider",
+      "--expect-count=3..4",
+      "--allowed-providers=e2b,home-machine,mobile-companion,desktop-companion",
+      "--require-providers=e2b,home-machine,mobile-companion",
+    );
+    if (fourProviders.exitCode !== 0) {
+      throw new Error(
+        `four provider reports should validate, got ${fourProviders.exitCode}: ${fourProviders.output}`,
       );
     }
     const missingRequiredProvider = await runValidator(
@@ -794,6 +1163,106 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `duplicate endpoint URL fingerprint failed for the wrong reason: ${duplicateEndpointUrlFingerprint.output}`,
+      );
+    }
+    const missingProviderId = await runValidator(
+      missingProviderIdDir,
+      "--kind=provider",
+    );
+    if (missingProviderId.exitCode === 0) {
+      throw new Error("missing providerId report unexpectedly passed.");
+    }
+    if (
+      !missingProviderId.output.includes(
+        "providerId must be a non-empty string",
+      )
+    ) {
+      throw new Error(
+        `missing providerId failed for the wrong reason: ${missingProviderId.output}`,
+      );
+    }
+    const mismatchedProviderId = await runValidator(
+      mismatchedProviderIdDir,
+      "--kind=provider",
+    );
+    if (mismatchedProviderId.exitCode === 0) {
+      throw new Error("mismatched providerId report unexpectedly passed.");
+    }
+    if (
+      !mismatchedProviderId.output.includes("providerId must match provider")
+    ) {
+      throw new Error(
+        `mismatched providerId failed for the wrong reason: ${mismatchedProviderId.output}`,
+      );
+    }
+    const missingProviderEvidence = await runValidator(
+      missingProviderEvidenceDir,
+      "--kind=provider",
+    );
+    if (missingProviderEvidence.exitCode === 0) {
+      throw new Error("missing providerEvidence report unexpectedly passed.");
+    }
+    if (
+      !missingProviderEvidence.output.includes(
+        "providerEvidence must be an object",
+      )
+    ) {
+      throw new Error(
+        `missing providerEvidence failed for the wrong reason: ${missingProviderEvidence.output}`,
+      );
+    }
+    const mismatchedProviderEvidence = await runValidator(
+      mismatchedProviderEvidenceDir,
+      "--kind=provider",
+    );
+    if (mismatchedProviderEvidence.exitCode === 0) {
+      throw new Error(
+        "mismatched providerEvidence report unexpectedly passed.",
+      );
+    }
+    if (
+      !mismatchedProviderEvidence.output.includes(
+        'providerEvidence.endpointRuntime must be "mobile-companion"',
+      )
+    ) {
+      throw new Error(
+        `mismatched providerEvidence failed for the wrong reason: ${mismatchedProviderEvidence.output}`,
+      );
+    }
+    const missingEndpointUrlFingerprint = await runValidator(
+      missingEndpointUrlFingerprintDir,
+      "--kind=provider",
+    );
+    if (missingEndpointUrlFingerprint.exitCode === 0) {
+      throw new Error(
+        "missing endpoint URL fingerprint unexpectedly passed validation.",
+      );
+    }
+    if (
+      !missingEndpointUrlFingerprint.output.includes(
+        "endpointUrlSha256 must be a non-empty string",
+      )
+    ) {
+      throw new Error(
+        `missing endpoint URL fingerprint failed for the wrong reason: ${missingEndpointUrlFingerprint.output}`,
+      );
+    }
+    const malformedEndpointUrlFingerprint = await runValidator(
+      malformedEndpointUrlFingerprintDir,
+      "--kind=provider",
+    );
+    if (malformedEndpointUrlFingerprint.exitCode === 0) {
+      throw new Error(
+        "malformed endpoint URL fingerprint unexpectedly passed validation.",
+      );
+    }
+    if (
+      !malformedEndpointUrlFingerprint.output.includes(
+        "endpointUrlSha256 has invalid format",
+      )
+    ) {
+      throw new Error(
+        `malformed endpoint URL fingerprint failed for the wrong reason: ${malformedEndpointUrlFingerprint.output}`,
       );
     }
     const kindMismatch = await runValidator(providerOnlyDir, "--kind", "cloud");
@@ -853,6 +1322,15 @@ async function main(): Promise<void> {
         `far-future report failed for the wrong reason: ${farFuture.output}`,
       );
     }
+    const malformedObservedAt = await runValidator(malformedObservedAtDir);
+    if (malformedObservedAt.exitCode === 0) {
+      throw new Error("malformed observedAt report unexpectedly passed.");
+    }
+    if (!malformedObservedAt.output.includes("observedAt must be an ISO timestamp")) {
+      throw new Error(
+        `malformed observedAt failed for the wrong reason: ${malformedObservedAt.output}`,
+      );
+    }
     const wrongSchema = await runValidator(wrongSchemaDir);
     if (wrongSchema.exitCode === 0) {
       throw new Error("wrong schema report unexpectedly passed validation.");
@@ -882,6 +1360,32 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `failed route report failed for the wrong reason: ${failedRoute.output}`,
+      );
+    }
+    const missingRouteBody = await runValidator(missingRouteBodyDir);
+    if (missingRouteBody.exitCode === 0) {
+      throw new Error("missing route body report unexpectedly passed.");
+    }
+    if (
+      !missingRouteBody.output.includes(
+        "conformance.routeResult.body must be a non-empty JSON value",
+      )
+    ) {
+      throw new Error(
+        `missing route body report failed for the wrong reason: ${missingRouteBody.output}`,
+      );
+    }
+    const emptyRouteBody = await runValidator(emptyRouteBodyDir);
+    if (emptyRouteBody.exitCode === 0) {
+      throw new Error("empty route body report unexpectedly passed.");
+    }
+    if (
+      !emptyRouteBody.output.includes(
+        "conformance.routeResult.body must be a non-empty JSON value",
+      )
+    ) {
+      throw new Error(
+        `empty route body report failed for the wrong reason: ${emptyRouteBody.output}`,
       );
     }
     const nonJavascriptAsset = await runValidator(nonJavascriptAssetDir);
@@ -916,6 +1420,40 @@ async function main(): Promise<void> {
         `mismatched asset manifest failed for the wrong reason: ${mismatchedAssetManifest.output}`,
       );
     }
+    const mismatchedAssetIntegrity = await runValidator(
+      mismatchedAssetIntegrityDir,
+    );
+    if (mismatchedAssetIntegrity.exitCode === 0) {
+      throw new Error(
+        "mismatched asset integrity report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !mismatchedAssetIntegrity.output.includes(
+        "conformance.assetResult.integrity must match conformance.assetResult.sha256",
+      )
+    ) {
+      throw new Error(
+        `mismatched asset integrity failed for the wrong reason: ${mismatchedAssetIntegrity.output}`,
+      );
+    }
+    const missingSha256AssetIntegrity = await runValidator(
+      missingSha256AssetIntegrityDir,
+    );
+    if (missingSha256AssetIntegrity.exitCode === 0) {
+      throw new Error(
+        "missing sha256 asset integrity report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !missingSha256AssetIntegrity.output.includes(
+        "conformance.assetResult.integrity must include a sha256 digest",
+      )
+    ) {
+      throw new Error(
+        `missing sha256 asset integrity failed for the wrong reason: ${missingSha256AssetIntegrity.output}`,
+      );
+    }
     const missingAssetDigest = await runValidator(missingAssetDigestDir);
     if (missingAssetDigest.exitCode === 0) {
       throw new Error("missing asset digest report unexpectedly passed.");
@@ -942,6 +1480,174 @@ async function main(): Promise<void> {
         `malformed asset digest failed for the wrong reason: ${malformedAssetDigest.output}`,
       );
     }
+    const emptyAssetDigest = await runValidator(emptyAssetDigestDir);
+    if (emptyAssetDigest.exitCode === 0) {
+      throw new Error("empty asset digest report unexpectedly passed.");
+    }
+    if (
+      !emptyAssetDigest.output.includes(
+        "conformance.assetResult.sha256 must not be the empty SHA-256 digest",
+      )
+    ) {
+      throw new Error(
+        `empty asset digest failed for the wrong reason: ${emptyAssetDigest.output}`,
+      );
+    }
+    const missingModelResult = await runValidator(missingModelResultDir);
+    if (missingModelResult.exitCode === 0) {
+      throw new Error("missing model result report unexpectedly passed.");
+    }
+    if (
+      !missingModelResult.output.includes(
+        "conformance.modelResult.result is required",
+      )
+    ) {
+      throw new Error(
+        `missing model result failed for the wrong reason: ${missingModelResult.output}`,
+      );
+    }
+    const emptyActionResult = await runValidator(emptyActionResultDir);
+    if (emptyActionResult.exitCode === 0) {
+      throw new Error("empty action result report unexpectedly passed.");
+    }
+    if (
+      !emptyActionResult.output.includes(
+        "conformance.actionResult must include at least one result field",
+      )
+    ) {
+      throw new Error(
+        `empty action result failed for the wrong reason: ${emptyActionResult.output}`,
+      );
+    }
+    const emptyProviderResult = await runValidator(emptyProviderResultDir);
+    if (emptyProviderResult.exitCode === 0) {
+      throw new Error("empty provider result report unexpectedly passed.");
+    }
+    if (
+      !emptyProviderResult.output.includes(
+        "conformance.providerResult must include at least one result field",
+      )
+    ) {
+      throw new Error(
+        `empty provider result failed for the wrong reason: ${emptyProviderResult.output}`,
+      );
+    }
+    const failedLifecycle = await runValidator(failedLifecycleDir);
+    if (failedLifecycle.exitCode === 0) {
+      throw new Error("failed lifecycle report unexpectedly passed.");
+    }
+    if (
+      !failedLifecycle.output.includes(
+        "conformance.lifecycleResult.ok must be true",
+      )
+    ) {
+      throw new Error(
+        `failed lifecycle failed for the wrong reason: ${failedLifecycle.output}`,
+      );
+    }
+    const unhandledEvent = await runValidator(unhandledEventDir);
+    if (unhandledEvent.exitCode === 0) {
+      throw new Error("unhandled event report unexpectedly passed.");
+    }
+    if (
+      !unhandledEvent.output.includes(
+        "conformance.eventResult.handled must be true",
+      )
+    ) {
+      throw new Error(
+        `unhandled event failed for the wrong reason: ${unhandledEvent.output}`,
+      );
+    }
+    const missingServiceResult = await runValidator(missingServiceResultDir);
+    if (missingServiceResult.exitCode === 0) {
+      throw new Error("missing service result report unexpectedly passed.");
+    }
+    if (
+      !missingServiceResult.output.includes(
+        "conformance.serviceResult.result is required",
+      )
+    ) {
+      throw new Error(
+        `missing service result failed for the wrong reason: ${missingServiceResult.output}`,
+      );
+    }
+    const missingAppBridgeResult = await runValidator(
+      missingAppBridgeResultDir,
+    );
+    if (missingAppBridgeResult.exitCode === 0) {
+      throw new Error("missing app bridge result report unexpectedly passed.");
+    }
+    if (
+      !missingAppBridgeResult.output.includes(
+        "conformance.appBridgeResult.result is required",
+      )
+    ) {
+      throw new Error(
+        `missing app bridge result failed for the wrong reason: ${missingAppBridgeResult.output}`,
+      );
+    }
+    const emptyEvaluatorProcess = await runValidator(emptyEvaluatorProcessDir);
+    if (emptyEvaluatorProcess.exitCode === 0) {
+      throw new Error("empty evaluator process report unexpectedly passed.");
+    }
+    if (
+      !emptyEvaluatorProcess.output.includes(
+        "conformance.evaluatorResult.process.result is required",
+      )
+    ) {
+      throw new Error(
+        `empty evaluator process failed for the wrong reason: ${emptyEvaluatorProcess.output}`,
+      );
+    }
+    const emptyResponseHandlerEvaluate = await runValidator(
+      emptyResponseHandlerEvaluateDir,
+    );
+    if (emptyResponseHandlerEvaluate.exitCode === 0) {
+      throw new Error(
+        "empty response handler evaluate report unexpectedly passed.",
+      );
+    }
+    if (
+      !emptyResponseHandlerEvaluate.output.includes(
+        "conformance.responseHandlerEvaluatorResult.evaluate.patch is required",
+      )
+    ) {
+      throw new Error(
+        `empty response handler evaluate failed for the wrong reason: ${emptyResponseHandlerEvaluate.output}`,
+      );
+    }
+    const emptyFieldEvaluatorParse = await runValidator(
+      emptyFieldEvaluatorParseDir,
+    );
+    if (emptyFieldEvaluatorParse.exitCode === 0) {
+      throw new Error("empty field evaluator parse report unexpectedly passed.");
+    }
+    if (
+      !emptyFieldEvaluatorParse.output.includes(
+        "conformance.responseHandlerFieldEvaluatorResult.parse must include at least one result field",
+      )
+    ) {
+      throw new Error(
+        `empty field evaluator parse failed for the wrong reason: ${emptyFieldEvaluatorParse.output}`,
+      );
+    }
+    const emptyFieldEvaluatorHandle = await runValidator(
+      emptyFieldEvaluatorHandleDir,
+    );
+    if (emptyFieldEvaluatorHandle.exitCode === 0) {
+      throw new Error(
+        "empty field evaluator handle report unexpectedly passed.",
+      );
+    }
+    if (
+      !emptyFieldEvaluatorHandle.output.includes(
+        "conformance.responseHandlerFieldEvaluatorResult.handle.effect is required",
+      )
+    ) {
+      throw new Error(
+        `empty field evaluator handle failed for the wrong reason: ${emptyFieldEvaluatorHandle.output}`,
+      );
+    }
     const mismatch = await runValidator(mismatchDir);
     if (mismatch.exitCode === 0) {
       throw new Error(
@@ -964,6 +1670,15 @@ async function main(): Promise<void> {
         `malformed endpoint id failed for the wrong reason: ${malformedEndpointId.output}`,
       );
     }
+    const malformedModuleId = await runValidator(malformedModuleIdDir);
+    if (malformedModuleId.exitCode === 0) {
+      throw new Error("malformed module id unexpectedly passed validation.");
+    }
+    if (!malformedModuleId.output.includes("moduleIds[0] must use letters")) {
+      throw new Error(
+        `malformed module id failed for the wrong reason: ${malformedModuleId.output}`,
+      );
+    }
     const malformedProvider = await runValidator(malformedProviderDir);
     if (malformedProvider.exitCode === 0) {
       throw new Error("malformed provider unexpectedly passed validation.");
@@ -984,6 +1699,32 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `malformed cloudApiBase failed for the wrong reason: ${malformedCloudApiBase.output}`,
+      );
+    }
+    const cloudProviderField = await runValidator(cloudProviderFieldDir);
+    if (cloudProviderField.exitCode === 0) {
+      throw new Error("cloud provider field report unexpectedly passed.");
+    }
+    if (
+      !cloudProviderField.output.includes(
+        "provider must not be present for cloud reports",
+      )
+    ) {
+      throw new Error(
+        `cloud provider field failed for the wrong reason: ${cloudProviderField.output}`,
+      );
+    }
+    const providerCloudField = await runValidator(providerCloudFieldDir);
+    if (providerCloudField.exitCode === 0) {
+      throw new Error("provider cloud field report unexpectedly passed.");
+    }
+    if (
+      !providerCloudField.output.includes(
+        "cloudApiBase must not be present for provider reports",
+      )
+    ) {
+      throw new Error(
+        `provider cloud field failed for the wrong reason: ${providerCloudField.output}`,
       );
     }
     const cloudApiBaseQuery = await runValidator(cloudApiBaseQueryDir);
@@ -1450,6 +2191,23 @@ async function main(): Promise<void> {
         `stale runtime remote plugin failed for the wrong reason: ${staleRuntimeRemotePlugin.output}`,
       );
     }
+    const mismatchedRuntimeRemotePluginCount = await runValidator(
+      mismatchedRuntimeRemotePluginCountDir,
+    );
+    if (mismatchedRuntimeRemotePluginCount.exitCode === 0) {
+      throw new Error(
+        "mismatched runtime remote plugin count report unexpectedly passed.",
+      );
+    }
+    if (
+      !mismatchedRuntimeRemotePluginCount.output.includes(
+        "runtime.remotePlugins[0].routeCount must match sync.registeredModules",
+      )
+    ) {
+      throw new Error(
+        `mismatched runtime remote plugin count failed for the wrong reason: ${mismatchedRuntimeRemotePluginCount.output}`,
+      );
+    }
     const manifestOnlyUnregistered = await runValidator(
       manifestOnlyUnregisteredDir,
     );
@@ -1585,6 +2343,8 @@ function makeCompleteReport(
         }
       : {
           provider,
+          providerId: provider,
+          providerEvidence: makeProviderEvidence(provider),
           endpointUrlSha256: makeEndpointUrlSha256(endpointId, provider),
         }),
     endpointId,
@@ -1619,6 +2379,7 @@ function makeCompleteReport(
           pluginName: "@remote/sample",
           moduleId: "sample-module",
           endpointId,
+          ...makeRegisteredModuleCounts(),
         },
       ],
       actionCount: 1,
@@ -1703,6 +2464,7 @@ function makeCompleteExtraExercisesReport() {
           pluginName: "@remote/second",
           moduleId: "second-module",
           endpointId: report.endpointId,
+          ...makeRegisteredModuleCounts(),
         },
       ],
       actionCount: 2,
@@ -1796,6 +2558,22 @@ function makeCompletePartialModuleReport() {
           pluginName: "@remote/partial",
           moduleId: "partial-module",
           endpointId: report.endpointId,
+          ...makeRegisteredModuleCounts({
+            providerCount: 0,
+            evaluatorCount: 0,
+            responseHandlerEvaluatorCount: 0,
+            responseHandlerFieldEvaluatorCount: 0,
+            routeCount: 0,
+            modelCount: 0,
+            eventCount: 0,
+            serviceCount: 0,
+            appCount: 0,
+            appBridgeCount: 0,
+            lifecycleCount: 0,
+            widgetCount: 0,
+            componentTypeCount: 0,
+            viewCount: 0,
+          }),
         },
       ],
       pluginCount: 2,
@@ -1852,9 +2630,9 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
     exercised,
     moduleExercises,
     rpcCalls,
-    actionResult: {},
-    providerResult: {},
-    routeResult: { status: 200 },
+    actionResult: { text: "sample action result" },
+    providerResult: { text: "sample provider result" },
+    routeResult: { status: 200, body: { sampleRoute: true } },
     assetResult: {
       path: "/assets/sample.js",
       contentType: "text/javascript",
@@ -1863,25 +2641,25 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
       sha256:
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     },
-    modelResult: {},
-    lifecycleResult: {},
-    eventResult: {},
-    serviceResult: {},
-    appBridgeResult: {},
+    modelResult: { result: { text: "sample model result" } },
+    lifecycleResult: { ok: true },
+    eventResult: { handled: true },
+    serviceResult: { result: { text: "sample service result" } },
+    appBridgeResult: { result: { handled: true } },
     evaluatorResult: {
       shouldRun: { shouldRun: true },
       prepare: {},
       prompt: { prompt: "sample prompt" },
-      process: {},
+      process: { result: { text: "sample evaluator result" } },
     },
     responseHandlerEvaluatorResult: {
       shouldRun: { shouldRun: true },
-      evaluate: {},
+      evaluate: { patch: { text: "sample response patch" } },
     },
     responseHandlerFieldEvaluatorResult: {
       shouldRun: { shouldRun: true },
-      parse: {},
-      handle: {},
+      parse: { value: { text: "sample parsed field" } },
+      handle: { effect: { patch: { text: "sample field patch" } } },
     },
   };
 }
@@ -1934,6 +2712,8 @@ function makePartialReport() {
     schemaVersion: 1,
     kind: "provider",
     provider: "e2b",
+    providerId: "e2b",
+    providerEvidence: makeProviderEvidence("e2b"),
     endpointUrlSha256: makeEndpointUrlSha256("partial-endpoint", "e2b"),
     endpointId: "partial-endpoint",
     observedAt: new Date(0).toISOString(),
@@ -1957,6 +2737,28 @@ function makeFailedRouteReport() {
     conformance: {
       ...report.conformance,
       routeResult: { status: 500 },
+    },
+  };
+}
+
+function makeMissingRouteBodyReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      routeResult: { status: 204 },
+    },
+  };
+}
+
+function makeEmptyRouteBodyReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      routeResult: { status: 200, body: {} },
     },
   };
 }
@@ -1987,6 +2789,36 @@ function makeMismatchedAssetManifestReport() {
       assetResult: {
         ...report.conformance.assetResult,
         manifestContentType: "application/javascript",
+      },
+    },
+  };
+}
+
+function makeMismatchedAssetIntegrityReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        integrity: "sha256-deadbeef",
+        manifestIntegrity: "sha256-deadbeef",
+      },
+    },
+  };
+}
+
+function makeMissingSha256AssetIntegrityReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        integrity: "sha384-deadbeef",
+        manifestIntegrity: "sha384-deadbeef",
       },
     },
   };
@@ -2023,6 +2855,154 @@ function makeMalformedAssetDigestReport() {
   };
 }
 
+function makeEmptyAssetDigestReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        sha256:
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      },
+    },
+  };
+}
+
+function makeMissingModelResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      modelResult: {},
+    },
+  };
+}
+
+function makeEmptyActionResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      actionResult: {},
+    },
+  };
+}
+
+function makeEmptyProviderResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      providerResult: {},
+    },
+  };
+}
+
+function makeFailedLifecycleReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      lifecycleResult: { ok: false },
+    },
+  };
+}
+
+function makeUnhandledEventReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      eventResult: { handled: false },
+    },
+  };
+}
+
+function makeMissingServiceResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      serviceResult: {},
+    },
+  };
+}
+
+function makeMissingAppBridgeResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      appBridgeResult: {},
+    },
+  };
+}
+
+function makeEmptyEvaluatorProcessReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      evaluatorResult: {
+        ...report.conformance.evaluatorResult,
+        process: {},
+      },
+    },
+  };
+}
+
+function makeEmptyResponseHandlerEvaluateReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      responseHandlerEvaluatorResult: {
+        ...report.conformance.responseHandlerEvaluatorResult,
+        evaluate: {},
+      },
+    },
+  };
+}
+
+function makeEmptyFieldEvaluatorParseReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      responseHandlerFieldEvaluatorResult: {
+        ...report.conformance.responseHandlerFieldEvaluatorResult,
+        parse: {},
+      },
+    },
+  };
+}
+
+function makeEmptyFieldEvaluatorHandleReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      responseHandlerFieldEvaluatorResult: {
+        ...report.conformance.responseHandlerFieldEvaluatorResult,
+        handle: {},
+      },
+    },
+  };
+}
+
 function makeCiReport() {
   return {
     ...makeCompleteReport("cloud", "ci-cloud-endpoint"),
@@ -2038,6 +3018,21 @@ function makeCiReport() {
   };
 }
 
+function makeProviderCiReport() {
+  return {
+    ...makeCompleteReport("provider", "ci-provider-endpoint"),
+    ci: {
+      runId: "654321",
+      runAttempt: "2",
+      workflow: "Tests",
+      eventName: "schedule",
+      repository: "elizaOS/eliza",
+      sha: "89abcdef0123456789abcdef0123456789abcdef",
+      ref: "refs/heads/main",
+    },
+  };
+}
+
 function makeMalformedCiReport() {
   const report = makeCiReport();
   return {
@@ -2045,6 +3040,17 @@ function makeMalformedCiReport() {
     ci: {
       ...report.ci,
       sha: "not-a-sha",
+    },
+  };
+}
+
+function makePushCiReport() {
+  const report = makeCiReport();
+  return {
+    ...report,
+    ci: {
+      ...report.ci,
+      eventName: "push",
     },
   };
 }
@@ -2075,6 +3081,17 @@ function makeMalformedEndpointIdReport() {
   };
 }
 
+function makeMalformedModuleIdReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleIds: ["bad:module"],
+    },
+  };
+}
+
 function makeMalformedProviderReport() {
   return {
     ...makeCompleteReport("provider"),
@@ -2089,6 +3106,20 @@ function makeMalformedCloudApiBaseReport() {
   };
 }
 
+function makeCloudProviderFieldReport() {
+  return {
+    ...makeCompleteReport("cloud", "cloud-provider-field-endpoint"),
+    provider: "e2b",
+  };
+}
+
+function makeProviderCloudFieldReport() {
+  return {
+    ...makeCompleteReport("provider", "provider-cloud-field-endpoint", "e2b"),
+    cloudApiBase: "https://api.example.test",
+  };
+}
+
 function makeCloudApiBaseQueryReport() {
   return {
     ...makeCompleteReport("cloud", "query-cloud-endpoint"),
@@ -2100,6 +3131,84 @@ function makeCloudApiBaseFragmentReport() {
   return {
     ...makeCompleteReport("cloud", "fragment-cloud-endpoint"),
     cloudApiBase: "https://api.example.test#fragment",
+  };
+}
+
+function makeMissingEndpointUrlFingerprintReport() {
+  const report = {
+    ...makeCompleteReport("provider", "missing-fingerprint-endpoint", "e2b"),
+  } as Record<string, unknown>;
+  delete report.endpointUrlSha256;
+  return report;
+}
+
+function makeMissingProviderIdReport() {
+  const report = {
+    ...makeCompleteReport("provider", "missing-provider-id-endpoint", "e2b"),
+  } as Record<string, unknown>;
+  delete report.providerId;
+  return report;
+}
+
+function makeMismatchedProviderIdReport() {
+  return {
+    ...makeCompleteReport("provider", "mismatched-provider-id-endpoint", "e2b"),
+    providerId: "home-machine",
+  };
+}
+
+function makeMissingProviderEvidenceReport() {
+  const report = {
+    ...makeCompleteReport("provider", "missing-provider-evidence-endpoint", "e2b"),
+  } as Record<string, unknown>;
+  delete report.providerEvidence;
+  return report;
+}
+
+function makeMismatchedProviderEvidenceReport() {
+  return {
+    ...makeCompleteReport(
+      "provider",
+      "mismatched-provider-evidence-endpoint",
+      "mobile-companion",
+    ),
+    providerEvidence: {
+      provider: "mobile-companion",
+      endpointRuntime: "home-machine",
+      agentRuntime: "github-actions",
+      connection: "url-backed-provider",
+    },
+  };
+}
+
+function makeProviderEvidence(provider: string) {
+  return {
+    provider,
+    endpointRuntime: providerEndpointRuntime(provider),
+    agentRuntime: "github-actions",
+    connection: "url-backed-provider",
+  };
+}
+
+function providerEndpointRuntime(provider: string): string {
+  switch (provider) {
+    case "e2b":
+      return "e2b-sandbox";
+    case "home-machine":
+      return "home-machine";
+    case "mobile-companion":
+      return "mobile-companion";
+    case "desktop-companion":
+      return "desktop-companion";
+    default:
+      return `${provider}-endpoint`;
+  }
+}
+
+function makeMalformedEndpointUrlFingerprintReport() {
+  return {
+    ...makeCompleteReport("provider", "malformed-fingerprint-endpoint", "e2b"),
+    endpointUrlSha256: "not-a-sha256-digest",
   };
 }
 
@@ -2645,6 +3754,9 @@ function makeRuntimeUndercountReport() {
     },
     runtime: {
       ...report.runtime,
+      remotePlugins: report.runtime.remotePlugins.map((plugin, index) =>
+        index === 0 ? { ...plugin, actionCount: 2 } : plugin,
+      ),
       actionCount: 1,
     },
   };
@@ -2724,6 +3836,7 @@ function makeRuntimePluginUndercountReport() {
           pluginName: "@remote/second",
           moduleId: "second-module",
           endpointId: "sample-endpoint",
+          ...makeRegisteredModuleCounts(),
         },
       ],
       actionCount: 2,
@@ -2741,6 +3854,19 @@ function makeRuntimePluginUndercountReport() {
       widgetCount: 2,
       componentTypeCount: 2,
       viewCount: 2,
+    },
+  };
+}
+
+function makeMismatchedRuntimeRemotePluginCountReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    runtime: {
+      ...report.runtime,
+      remotePlugins: report.runtime.remotePlugins.map((plugin, index) =>
+        index === 0 ? { ...plugin, routeCount: 0 } : plugin,
+      ),
     },
   };
 }

@@ -19,6 +19,7 @@ export type {
 } from "./aosp-llama-adapter.js";
 export {
   __resetForTests,
+  isAospEnabled,
   kvCacheTypeNameToEnum,
   readEnvKvCacheType,
   registerAospLlamaLoader,
@@ -42,6 +43,7 @@ export {
 // when a consumer dereferences a re-exported binding at runtime.
 import {
   __resetForTests as _bs_1___resetForTests,
+  isAospEnabled as _bs_9_isAospEnabled,
   kvCacheTypeNameToEnum as _bs_2_kvCacheTypeNameToEnum,
   readEnvKvCacheType as _bs_3_readEnvKvCacheType,
   registerAospLlamaLoader as _bs_4_registerAospLlamaLoader,
@@ -69,6 +71,7 @@ const __bundle_safety_PLUGINS_PLUGIN_AOSP_LOCAL_INFERENCE_SRC_INDEX__ = [
   _bs_6_resolveLibllamaPath,
   _bs_7_resolveLlamaShimPath,
   _bs_8_resolveThreads,
+  _bs_9_isAospEnabled,
   _bs_10_activateAospLocalInferenceModel,
   _bs_11_buildAospLoadModelArgs,
   _bs_12_clearAospLocalInferenceModel,

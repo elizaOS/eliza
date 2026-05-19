@@ -33,6 +33,13 @@ elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(aarch64|arm64)")
     list(APPEND QJL_SRCS
         src/qjl_quantize_neon.c src/qjl_score_neon.c src/qjl_score_dotprod.c)
     set(QJL_ARM ON)
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "(riscv64|riscv|rv64)")
+    # Wave 3 RVV 1.0 kernels. The dispatcher selects QJL_SIMD_RVV at
+    # runtime when riscv_hwprobe / AT_HWCAP reports the V extension is
+    # present; otherwise it falls back to the scalar reference.
+    list(APPEND QJL_SRCS
+        src/qjl_quantize_rvv.c src/qjl_score_rvv.c src/qjl_score_i8_rvv.c)
+    set(QJL_RISCV ON)
 endif()
 
 add_library(qjl STATIC ${QJL_SRCS})
@@ -60,6 +67,30 @@ if(QJL_X86)
         set_source_files_properties(
             src/qjl_score_avxvnni.c PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
     endif()
+endif()
+
+# riscv64 RVV 1.0 path. The new TUs (qjl_*_rvv.c) compile with an
+# explicit `-march=rv64gcv1p0` so the V extension intrinsics are
+# available without forcing the whole library build to require V at
+# baseline. The dispatcher reads has_rvv at runtime (qjl_cpu_features.h)
+# and picks the scalar reference on non-V hardware. Zvfh is left off
+# because QJL's basic kernels operate in fp32 -- no half-precision math
+# is needed.
+#
+# Toolchain note: the compile flags below assume a recent gcc / clang
+# (gcc 14+, clang 17+) or zig cc >= 0.14 that accepts the GCC-style
+# rv64gcv1p0 march. For older toolchains the CMake user can override
+# QJL_RVV_COMPILE_OPTIONS at configure time (e.g. set it to
+# "-mcpu=sifive_p670" for zig 0.13).
+if(QJL_RISCV)
+    if(NOT DEFINED QJL_RVV_COMPILE_OPTIONS)
+        set(QJL_RVV_COMPILE_OPTIONS "-march=rv64gcv1p0;-mabi=lp64d")
+    endif()
+    set_source_files_properties(
+        src/qjl_quantize_rvv.c src/qjl_score_rvv.c src/qjl_score_i8_rvv.c
+        PROPERTIES COMPILE_OPTIONS "${QJL_RVV_COMPILE_OPTIONS}")
+    target_compile_definitions(qjl PUBLIC QJL_HAVE_RVV=1)
+    target_compile_definitions(qjl PRIVATE QJL_ARCH_RISCV=1)
 endif()
 
 # arm64 gcc/clang has NEON on by default; -mfpu=neon would be wrong on

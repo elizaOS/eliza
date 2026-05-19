@@ -958,6 +958,36 @@ describe("remote capability router", () => {
     });
   });
 
+  it("rejects ambiguous remote plugin module ids before routing", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "bad:plugin",
+              name: "@remote/bad",
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        "Remote endpoint device returned a plugin module with invalid id.",
+    });
+  });
+
   it("throws a structured startup error when disabled", async () => {
     await expect(
       RemoteCapabilityRouterService.start(makeRuntime()),

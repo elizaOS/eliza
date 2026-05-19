@@ -19,6 +19,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/cpu/e1_cpu_subsystem_stub.sv \
 	$(REPO)/rtl/interconnect/e1_axi_lite_interconnect.sv \
 	$(REPO)/rtl/memory/e1_axi_lite_dram.sv \
+	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
 	$(REPO)/rtl/interrupts/e1_interrupt_controller.sv \
 	$(REPO)/rtl/interconnect/e1_linux_soc_contract.sv \
 	$(REPO)/verify/cocotb/e1_tiny_cpu_contract_tb.sv

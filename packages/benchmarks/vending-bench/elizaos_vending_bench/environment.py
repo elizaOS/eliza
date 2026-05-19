@@ -719,6 +719,12 @@ Net Worth: ${self.get_net_worth():.2f}
         items: dict[str, int],
     ) -> str:
         """Place an order with a supplier."""
+        if self._successful_order_placed_today():
+            return (
+                "Error: A successful order has already been placed today. "
+                "Advance the day before placing another order."
+            )
+
         supplier = self.get_supplier(supplier_id)
         if not supplier:
             available_suppliers = ", ".join(s.supplier_id for s in self.suppliers)
@@ -790,6 +796,10 @@ Net Worth: ${self.get_net_worth():.2f}
             f"Total cost: ${total_cost:.2f}\n"
             f"Expected delivery: {order.expected_delivery}"
         )
+
+    def _successful_order_placed_today(self) -> bool:
+        current_date = self.state.current_date
+        return any(order.order_date == current_date for order in self.state.pending_orders)
 
     def _resolve_product_id(self, product_id: str) -> str | None:
         """Resolve a product ID, attempting fuzzy matching if exact match fails.

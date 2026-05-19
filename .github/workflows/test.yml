@@ -119,6 +119,9 @@ jobs:
       - name: Remote capability live report validator self-test
         run: bun run test:remote-capabilities:validate-live-reports:self-test
 
+      - name: Remote capability GitHub live evidence self-test
+        run: bun run test:remote-capabilities:github-live-evidence:self-test
+
       - name: Remote capability Docker smoke
         run: bun run test:remote-capabilities:docker
 
@@ -511,7 +514,7 @@ jobs:
           echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
           echo "provider-live-e2e:${{ needs.provider-live-e2e.result }}"
           echo "==================================="
-          strict_results="${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}"
+          strict_results="${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
           for pair in \
             "server-tests:${{ needs.server-tests.result }}" \

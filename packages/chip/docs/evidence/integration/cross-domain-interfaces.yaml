@@ -1,0 +1,124 @@
+# Cross-domain interfaces evidence gate
+#
+# Verifies that every cross-domain edge documented in
+# docs/arch/soc-integration.md is wired through `e1_soc_integrated`.
+# Fail-closed on any edge that the cocotb harness cannot exercise.
+
+contract:
+  module: e1_soc_integrated
+  testbench: e1_soc_integrated_tb
+  cocotb_dir: verify/cocotb/integration
+  cocotb_module: test_cross_domain_interfaces
+  expected_tests:
+    - bpu_pmu_strobe_increments_zihpm_counter
+    - bpu_resolve_does_not_increment_unrelated_event
+    - cluster_lite_tieoff_drives_axi_to_quiet
+    - iommu_fault_count_initially_zero
+    - pmc_mailbox_roundtrips_telemetry
+    - ftq_l1i_shim_emits_prefetch_on_taken_target
+    - ftq_l1i_shim_flushes_on_misprediction
+  expected_pass_count: 7
+  expected_fail_count: 0
+
+edges:
+  - name: bpu_to_zihpm
+    description: BPU PMU strobes → bpu_to_zihpm_remap → zihpm event bus
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - bpu_pmu_strobe_increments_zihpm_counter
+      - bpu_resolve_does_not_increment_unrelated_event
+    status: WIRED
+
+  - name: bpu_to_l1i_prefetch
+    description: BPU FTQ entry → ftq_to_l1i_shim → SoC L1I prefetch port
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - ftq_l1i_shim_emits_prefetch_on_taken_target
+      - ftq_l1i_shim_flushes_on_misprediction
+    status: WIRED
+
+  - name: cluster_to_fabric
+    description: e1_cluster_top 8 AXI4 masters → e1_axi4_interconnect
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - cluster_lite_tieoff_drives_axi_to_quiet
+    status: TIED_OFF
+    blocked_reason: |
+      Cluster is in lite tie-off mode.  Per-core wrappers
+      (E1_HAVE_ASCALON / E1_HAVE_KUNMINGHU / E1_HAVE_BOOM /
+      E1_HAVE_CVA6) are not linked.  When a real core wrapper is
+      compiled in, the cluster's AXI4 masters drive the fabric and
+      this test gets upgraded from a "stays quiet" check to a
+      real fabric traffic check.
+
+  - name: chi_to_axi4_bridge
+    description: TL-C → CHI → AXI4 cache south-side bridge
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by: []
+    status: TIED_OFF
+    blocked_reason: |
+      The CHI bridge is structurally instantiated and its master port
+      attaches to fabric master[0].  The CHI request side is tied off
+      because the SLC instance is not in this top.  CHI → AXI4 burst
+      translation has its own cocotb under verify/cocotb/axi4/.
+
+  - name: iommu_translation
+    description: IOMMU upstream masters → translation → fabric master[1]
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - iommu_fault_count_initially_zero
+    status: WIRED_OBSERVABILITY_ONLY
+    blocked_reason: |
+      IOMMU fault telemetry is observable at the SoC boundary.  Driving
+      an actual unmapped DMA requires programming the IOMMU MMIO from a
+      master, which requires the IOMMU's MMIO bridge to be wired to the
+      v0 debug aperture.  This is the next P1 item.
+
+  - name: pmc_mailbox
+    description: PMC AON Ibex mailbox ↔ main-rail MMIO bridge
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by:
+      - pmc_mailbox_roundtrips_telemetry
+    status: WIRED
+
+  - name: dram_south
+    description: fabric → e1_dram_ctrl → e1_axi4_dram_model
+    wired_at: rtl/top/e1_soc_integrated.sv
+    tested_by: []
+    status: WIRED_STRUCTURAL_ONLY
+    blocked_reason: |
+      Because the cluster and CHI bridge sides are tied off, no AXI4
+      traffic currently reaches the DRAM model.  When either side is
+      wired (cluster real core or SLC CHI request driver) the DRAM
+      gets exercised.  Burst-level DRAM traffic is verified under
+      verify/cocotb/axi4/test_axi4_burst.py.
+
+  - name: dfi_phy_south
+    description: DRAM controller DFI 5.0 → licensed PHY
+    wired_at: rtl/memory/dram_ctrl/e1_dram_ctrl.sv
+    tested_by: []
+    status: BLOCKED
+    blocked_reason: |
+      LPDDR5X / LPDDR6 PHY is closed IP — see
+      docs/evidence/memory/lpddr-phy-procurement.yaml.  The controller
+      models the DFI 5.0 north side and forwards to the behavioural
+      DRAM model in simulation.
+
+command:
+  invoke: "make cocotb-cross-domain"
+  result_xml: "verify/cocotb/results/e1_soc_integrated_tb_test_cross_domain_interfaces.xml"
+
+gate:
+  fail_closed_when_missing: true
+  blocked_reason: |
+    If any of the cross-domain edges with status `WIRED` is not exercised
+    by a passing cocotb test, the gate fails.  Edges with status
+    TIED_OFF / BLOCKED / WIRED_STRUCTURAL_ONLY / WIRED_OBSERVABILITY_ONLY
+    are documented above with a blocked_reason and do not flip the gate.
+
+last_known_pass:
+  date: 2026-05-19
+  verilator_version: "5.049 devel rev v5.048-46-g7c5069c7d (mod)"
+  cocotb_version: "1.9.2"
+  pass_count: 7
+  fail_count: 0

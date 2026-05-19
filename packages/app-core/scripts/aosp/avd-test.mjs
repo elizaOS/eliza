@@ -122,6 +122,26 @@ function parseArgs(argv) {
     throw new Error("--avd or --serial is required");
   }
   args.variant = loadVariantOrThrow(args.appConfigPath);
+  // riscv64 is not addressable from this script: Google ships no public
+  // riscv64 system image in sdkmanager (no `system-images;android-35;
+  // google_apis;riscv64`), so the stock `emulator` cannot boot one and
+  // `avdmanager create` has no source to pick. The riscv64 lane runs
+  // through Cuttlefish (cf_riscv64_phone / vsoc_riscv64_only) — point
+  // `sim.mjs` at it instead.
+  const variantArch =
+    typeof args.variant.targetArch === "string"
+      ? args.variant.targetArch
+      : (args.variant.productLunch ?? "").includes("riscv64")
+        ? "riscv64"
+        : null;
+  if (variantArch === "riscv64") {
+    throw new Error(
+      "[avd-test] riscv64 variants have no public AVD path; run " +
+        "`node packages/app-core/scripts/aosp/sim.mjs --device-dir vsoc_riscv64_only` " +
+        "against a Cuttlefish cf_riscv64_phone build instead. " +
+        "See packages/chip/docs/android/cuttlefish-riscv64-bringup.md.",
+    );
+  }
   if (!args.apk) args.apk = defaultApkPath(args.variant);
   if (!fs.existsSync(args.apk)) {
     throw new Error(

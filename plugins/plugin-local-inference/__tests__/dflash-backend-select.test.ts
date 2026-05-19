@@ -4,7 +4,7 @@
  * Every Eliza-1 tier declares `runtime.preferredBackend = "llama-server"`.
  * Tiers with a distilled DFlash companion additionally require the `dflash`
  * kernel. The dispatcher MUST honour both: the speculative-decoding fork ships
- * in llama-server, not in the in-process node-llama-cpp binding.
+ * in llama-server, not in the in-process capacitor-llama binding.
  *
  * This test proves the catalog → dispatcher round-trip per tier:
  *   - catalog tier resolves to a catalog entry,
@@ -77,7 +77,7 @@ describe("DFlash backend selection (catalog tiers → dispatcher)", () => {
 				// The dispatcher routes to llama-server when DFlash is required
 				// even if the availability probe is false — the load itself is
 				// expected to fail with a clear "rebuild your binary" surface;
-				// silently falling back to node-llama-cpp would drop DFlash and
+				// silently falling back to capacitor-llama would drop DFlash and
 				// the KV-cache kernels.
 				const decision = decideForTier(tierId, {
 					llamaServerAvailable: false,
@@ -132,9 +132,9 @@ describe("DFlash backend selection (catalog tiers → dispatcher)", () => {
 });
 
 describe("DFlash backend selection — env override sanity", () => {
-	it("ELIZA_LOCAL_BACKEND=node-llama-cpp is still overridden by the required kernel set", () => {
+	it("ELIZA_LOCAL_BACKEND=capacitor-llama is still overridden by the required kernel set", () => {
 		const decision = decideBackend({
-			override: "node-llama-cpp",
+			override: "capacitor-llama",
 			catalog: findCatalogModel("eliza-1-2b"),
 			llamaServerAvailable: true,
 			dflashRequired: false,

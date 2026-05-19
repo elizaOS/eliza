@@ -18,6 +18,11 @@ The 2026 public SOTA direction is clear:
 | Qualcomm Snapdragon X2 family | Laptop-class integrated NPU listings show 80 TOPS and 152 GB/s LPDDR5x bandwidth. | A large-battery phone should target laptop-adjacent burst AI while enforcing mobile sustained-power gates. |
 | Apple A19 Pro | A 16-core Neural Engine is paired with GPU Neural Accelerators. | The AP should expose cooperative GPU/NPU scheduling for graphics-plus-AI workloads. |
 
+Current runtime evidence includes host-generated causal and sliding-window
+prefill masks plus recent-token decode cache-window materialization, so
+long-context transformer work can be tested without claiming paged KV cache or
+flash-attention hardware.
+
 Sources are recorded in
 `docs/spec-db/npu-2028-target.yaml`.
 
@@ -73,23 +78,105 @@ The NPU is only real when the software stack can use it:
 ## Current Repo Gap
 
 `rtl/npu/e1_npu.sv` is currently a scalar datapath plus a 64-byte scratchpad
-GEMM prototype. It now includes a packed signed INT4 dot-product opcode as the
-first low-precision primitive, but it is still missing the actual tensor NPU
-structure:
+GEMM prototype. It now includes packed INT4, INT2, scalar FP8, descriptor read
+streaming into scratchpad, and a streamed `GEMM_S8` descriptor writeback smoke
+path. The userspace runtime also has a `CommandBuffer` descriptor-batching
+abstraction with deterministic descriptor-image staging and single-completion
+submit plus a `stage_host_runtime_sequence` helper that replays prepared-batch
+MMIO and descriptor-memory writes and returns
+`eliza.e1_npu_host_runtime_sequence_stage_result.v1`. The simulator gate feeds
+the partitioner-produced prepared batch through this helper and observes
+descriptor completion/counters in `E1NpuMmioSim`, including memory-backed
+descriptor parsing, tensor-byte scratchpad streaming, GEMM execution, and
+computed output writeback accounting, but this remains bounded RTL/runtime evidence rather than a tensor
+command processor. The StableHLO subset partitioner reports contiguous
+`command_buffer_batches` for supported op runs and splits them at the local
+seven-entry ring window, but it still does not provide dependency scheduling or
+memory planning. The prototype ExecuTorch and LiteRT delegate blobs now carry
+those batches alongside descriptor specs, but they are still metadata-only
+skeletons rather than binary kernels or Android delegate integration. The same
+blobs include a linear `tensor_arena_plan` with deterministic 4-byte aligned
+offsets, byte sizes, and explicit `storage_dtype`; descriptor-backed INT8/INT4
+matmul result storage is sized as `int32_accumulator` for RTL GEMM writeback,
+but this is not lifetime reuse, DMA placement, or a production memory planner.
+They also include a metadata-only
+`runtime_binding_plan` that maps lowering `required_graph_fields` and result
+tensors to arena offsets and command-buffer batch indexes. The plan now marks
+`descriptor_codegen_ready` ops and records `unresolved_inputs` for required
+sparse/group-scale metadata that is not yet represented in the arena, but this
+is not DMA address assignment, binary descriptor codegen, dependency scheduling,
+or Android delegate integration. A new `descriptor_staging_plan` derives the
+current RTL opcode, input stream span, scratch offsets, output scratch offset,
+and GEMM MMIO preamble for ready matmul bindings, including writeback-ready
+INT8/INT4 matmul templates where the arena has int32 accumulator storage. Those
+ready entries now include a relocatable `descriptor_word_template` and a checked
+`descriptor_words(arena_base)` materialization path. Ready batches can also
+materialize a `command_buffer_image(arena_base, descriptor_base, batch_index)`
+that matches the runtime `CommandBuffer.descriptor_image()` layout and fails
+closed when ready ops in the same batch require different GEMM MMIO preambles.
+The blob also reports `descriptor_batches` with batch-level blocked op reasons
+and `descriptor_execution_batches` split by `shared_mmio_preamble`, and the
+`execution_command_buffer_image` helper materializes those sub-batches with an
+`execution_batch_index`. The
+ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
+wrappers for ready-batch descriptor image materialization. The partitioner and
+delegates also expose `prepared_descriptor_batch`/
+`e1_litert_delegate_prepared_descriptor_batch` wrappers that package arena
+sizing, GEMM MMIO preamble values, and the descriptor image under
+`eliza.e1_npu_prepared_descriptor_batch.v1`. Those prepared batches now include
+`host_runtime_sequence` metadata (`eliza.e1_npu_host_runtime_sequence.v1`) for
+GEMM preamble writes, descriptor-memory staging writes, descriptor submission
+MMIO writes, and the `DESC_STATUS` completion-poll condition. However,
+arena-base assignment, tensor data population, DMA runtime ownership, and
+Android delegate integration remain unimplemented. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
+scalar-dot sparse INT4 2:4, scalar Q8.8 group-scaled INT4, INT2, FP8 E4M3,
+and scalar Q8.8 FP16/BF16 matmul, im2col Conv2D, direct depthwise/grouped Conv2D, attention
+QK/softmax/AV plus composed multi-head attention with host-generated causal and
+sliding-window masks, append-only KV-cache update, packed-QKV projection, decode attention over
+the updated cache, RoPE, RMSNorm, SwiGLU, scalar SiLU/GELU approximation,
+scalar SiLU-gated SwiGLU, and a single-head modern decoder-block smoke path
+with explicit non-production compiler boundaries. The checked StableHLO subset
+accepts bounded rank-2 `stablehlo.dot_general` and `stablehlo.dot` records for
+those low-precision matmul smoke modes and emits parser-only `LoweringPlan`
+records plus checked smoke graph materialization for the matching runtime smoke
+APIs. `lower_stablehlo_module_smoke` dispatches those materialized records
+through the covered smoke lowerers without CPU fallback and records
+`dispatch_order`, `lowering_plans`, and `all_npu_dispatch` metadata while
+rejecting empty modules and duplicate op names before lowering. The same path
+now accepts bounded INT8/INT4 rank-4 `stablehlo.batch_matmul` records and
+dispatches them through `lower_batch_matmul_smoke`, which host-iterates
+batch/head slices and reuses the tiled matmul smoke lowerer without CPU
+fallback. It also maps checked INT8/INT4 batch-1 NHWC/HWIO
+`stablehlo.convolution` records into `lower_conv2d_smoke`, preserving the static
+VALID/stride-1/dilation-1 attributes and dispatching im2col-backed GEMM without
+CPU fallback. Checked INT8 `stablehlo.add`, `stablehlo.residual_add`, and
+`stablehlo.bias_add` records are also materialized into scalar OP_ADD-backed
+residual/bias smoke lowerers without CPU fallback. Checked INT8 ReLU
+`stablehlo.mlp` records are materialized into `lower_mlp_smoke`, which dispatches
+GEMM/VRELU/GEMM through the existing smoke ABIs without CPU fallback. Checked
+INT8/INT4 rank-4 `stablehlo.attention_qk` and `stablehlo.attention_av` records
+are materialized into `lower_attention_qk_smoke` and
+`lower_attention_av_smoke`, preserving the existing split QK/AV smoke
+boundaries without claiming fused attention or production compiler coverage. The
+design is still missing the actual tensor NPU structure:
 
 - no tensor command queue,
-- no DMA-fed scratchpad,
+- no production DMA-fed scratchpad or coherent tensor memory system,
 - no large SRAM,
 - no systolic array,
 - no sparse INT4 GEMM,
-- no INT2 or FP8 execution,
+- no INT2, FP8, FP16, or BF16 tensor execution,
 - no compiler backend,
 - no Android accelerator delegate,
-- no area or power model,
+- no measured area or power model,
 - no sustained hardware benchmark evidence.
 
-The next implementation move is to replace the scalar GEMM prototype with a
-parameterized INT8/INT4 tile model and feed it through a descriptor-ring ABI.
+The deterministic scale model now reports cycle, memory, energy, and TOPS/W
+estimates for open 2028 targets, including a modeled SOTA point above 160 dense
+INT8 TOPS and 18 TOPS/W on a large GEMM. That is planning evidence only. The
+next implementation move remains replacing the scalar GEMM prototype with a
+parameterized INT8/INT4 tile RTL model and proving it through descriptor-fed
+runtime tests.
 
 ## Evidence Gate
 

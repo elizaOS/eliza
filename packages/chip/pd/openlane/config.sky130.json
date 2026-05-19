@@ -18,30 +18,104 @@
     "dir::../../rtl/interrupts/e1_interrupt_controller.sv",
     "dir::../../rtl/interconnect/e1_axi_lite_interconnect.sv",
     "dir::../../rtl/interconnect/e1_linux_soc_contract.sv",
-    "dir::../../rtl/memory/e1_axi_lite_dram.sv"
+    "dir::../../rtl/memory/e1_axi_lite_dram.sv",
+    "dir::../../rtl/memory/e1_weight_buffer_sram.sv"
   ],
+  "EXTRA_LEFS": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+  ],
+  "EXTRA_LIBS": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+  ],
+  "EXTRA_GDS_FILES": [
+    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+  ],
+  "EXTRA_VERILOG_MODELS": [
+    "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
+  ],
+  "MACROS": {
+    "sky130_sram_2kbyte_1rw1r_32x512_8": {
+      "gds": [
+        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+      ],
+      "lef": [
+        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+      ],
+      "lib": {
+        "*": [
+          "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+        ]
+      },
+      "nl": [
+        "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
+      ],
+      "spice": [
+        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice"
+      ],
+      "instances": {
+        "u_soc.u_weight_buffer.u_sram": {
+          "location": [150, 150],
+          "orientation": "N"
+        }
+      }
+    }
+  },
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 100,
-  "VERILOG_DEFINES": ["E1_PD_SMALL_DRAM"],
+  "VERILOG_DEFINES": [
+    "E1_PD_SMALL_DRAM",
+    "E1_HAVE_HARD_SRAM"
+  ],
   "PNR_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc.sdc",
   "FP_PIN_ORDER_CFG": "dir::../pin_order.cfg",
   "FP_SIZING": "absolute",
-  "DIE_AREA": "0 0 1800 1800",
-  "CORE_AREA": "90 90 1710 1710",
+  "DIE_AREA": "0 0 2500 2500",
+  "CORE_AREA": "100 100 2400 2400",
   "FP_CORE_UTIL": 20,
-  "PL_TARGET_DENSITY": 0.3,
+  "PL_TARGET_DENSITY": 0.25,
+  "FP_MACRO_HORIZONTAL_HALO": 30,
+  "FP_MACRO_VERTICAL_HALO": 30,
   "STA_THREADS": 1,
   "RT_MAX_LAYER": "met5",
+  "GRT_OVERFLOW_ITERS": 50,
+  "SYNTH_STRATEGY": "AREA 0",
+  "SYNTH_BUFFERING": 1,
+  "SYNTH_SIZING": 0,
+  "MAX_FANOUT_CONSTRAINT": 12,
+  "MAX_TRANSITION_CONSTRAINT": 0.75,
   "RUN_POST_GRT_DESIGN_REPAIR": true,
   "RUN_POST_GRT_RESIZER_TIMING": true,
-  "GRT_ANTENNA_ITERS": 20,
-  "GRT_ANT_ITERS": 20,
-  "GRT_ANTENNA_MARGIN": 40,
-  "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.15,
+  "DESIGN_REPAIR_MAX_WIRE_LENGTH": 600,
+  "DESIGN_REPAIR_MAX_SLEW_PCT": 5,
+  "DESIGN_REPAIR_MAX_CAP_PCT": 5,
+  "FP_PDN_VPITCH": 153.6,
+  "FP_PDN_HPITCH": 153.6,
+  "FP_PDN_VWIDTH": 3.1,
+  "FP_PDN_HWIDTH": 3.1,
+  "FP_PDN_VSPACING": 17.84,
+  "FP_PDN_HSPACING": 17.84,
+  "FP_PDN_CORE_RING": true,
+  "FP_PDN_CORE_RING_VWIDTH": 3.1,
+  "FP_PDN_CORE_RING_HWIDTH": 3.1,
+  "FP_PDN_CORE_RING_VOFFSET": 14,
+  "FP_PDN_CORE_RING_HOFFSET": 14,
+  "FP_PDN_CORE_RING_VSPACING": 1.7,
+  "FP_PDN_CORE_RING_HSPACING": 1.7,
+  "FP_PDN_VERTICAL_LAYER": "met4",
+  "FP_PDN_HORIZONTAL_LAYER": "met5",
+  "RUN_IRDROP_REPORT": true,
+  "PSM_ENABLED": true,
+  "PSM_CORNER": "nom_tt_025C_1v80",
+  "GRT_ANTENNA_ITERS": 40,
+  "GRT_ANT_ITERS": 40,
+  "GRT_ANTENNA_MARGIN": 80,
+  "GRT_RESIZER_HOLD_SLACK_MARGIN": 0.25,
   "GRT_RESIZER_SETUP_SLACK_MARGIN": 0.05,
-  "GRT_RESIZER_HOLD_MAX_BUFFER_PCT": 80,
+  "GRT_RESIZER_HOLD_MAX_BUFFER_PCT": 120,
   "GRT_RESIZER_SETUP_MAX_BUFFER_PCT": 80,
+  "GRT_RESIZER_GATE_CLONING": true,
+  "GRT_RESIZER_FIX_HOLD_FIRST": true,
   "DRT_THREADS": 4,
   "KLAYOUT_XOR_THREADS": 1,
   "KLAYOUT_DRC_THREADS": 1,

@@ -79,6 +79,16 @@ STALE_ABSOLUTE_ROOTS = ("/work/", "/workspace/", "/__w/")
 TRACE_LINE_RE = re.compile(
     r"^C(?P<hart>\d+):\s+(?P<cycle>\d+)\s+\[(?P<valid>[01])\]\s+pc=\[(?P<pc>[0-9a-fA-F]+)\]"
 )
+OBJDUMP_CANDIDATES = (
+    ROOT / "build/riscv-chipyard-prefix/bin/riscv64-unknown-elf-objdump",
+    ROOT / "tools/bin/riscv64-linux-gnu-objdump",
+    ROOT / "tools/bin/llvm-objdump",
+    ROOT / "external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-objdump",
+)
+SYMBOL_LINE_RE = re.compile(
+    r"^(?P<addr>[0-9a-fA-F]{8,16})\s+\S+\s+\S+\s+(?P<section>\S+)\s+"
+    r"(?P<size>[0-9a-fA-F]{8,16})\s+(?P<name>\S+)$"
+)
 
 
 def rel(path: Path) -> str:
@@ -123,6 +133,88 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def find_objdump() -> Path | None:
+    for candidate in OBJDUMP_CANDIDATES:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    for name in (
+        "riscv64-unknown-elf-objdump",
+        "riscv64-linux-gnu-objdump",
+        "llvm-objdump",
+    ):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
+
+
+def resolve_payload_symbol(payload: str | None, pc: int | None) -> dict[str, object]:
+    result: dict[str, object] = {
+        "objdump": "",
+        "symbol": None,
+        "symbol_offset": None,
+        "symbol_address": None,
+    }
+    if not payload or pc is None:
+        return result
+    payload_path = Path(payload)
+    if not payload_path.is_file():
+        return result
+    objdump = find_objdump()
+    if objdump is None:
+        return result
+    result["objdump"] = rel(objdump)
+    try:
+        proc = subprocess.run(
+            [str(objdump), "-t", str(payload_path)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return result
+    best: tuple[int, int, str] | None = None
+    for line in proc.stdout.splitlines():
+        text = line.strip()
+        match = SYMBOL_LINE_RE.match(text)
+        if match:
+            section = match.group("section")
+            addr_text = match.group("addr")
+            size_text = match.group("size")
+            name = match.group("name")
+        else:
+            parts = text.split()
+            if len(parts) >= 6 and parts[3] == ".text":
+                addr_text, section, size_text, name = parts[0], parts[3], parts[4], parts[5]
+            elif len(parts) >= 5 and parts[2] == ".text":
+                addr_text, section, size_text, name = parts[0], parts[2], parts[3], parts[4]
+            else:
+                continue
+        if section != ".text" or name.startswith("."):
+            continue
+        addr = int(addr_text, 16)
+        size = int(size_text, 16)
+        if addr > pc:
+            continue
+        if size and pc >= addr + size:
+            continue
+        if best is None or addr > best[0]:
+            best = (addr, size, name)
+    if best is None:
+        return result
+    addr, _size, name = best
+    result.update(
+        {
+            "symbol": name,
+            "symbol_offset": pc - addr,
+            "symbol_address": f"0x{addr:016x}",
+        }
+    )
+    return result
+
+
 def generated_metadata_files() -> list[Path]:
     files = [path for path in (*GENERATED_FILELISTS, GENERATED_DRIVER_MAKEFILE) if path.is_file()]
     if GENERATED_CONFIG_DIR.exists():
@@ -153,7 +245,7 @@ def generated_path_blockers() -> list[str]:
             "`CHIPYARD_LINUX_SMOKE_USE_DOCKER=1 scripts/run_chipyard_eliza_linux_smoke.sh` "
             "inside the /work-mounted container path"
         )
-    elif GENERATED_CONFIG_DIR.exists() or GENERATED_SIMULATOR.exists():
+    elif partial_generated:
         blockers.append(
             "partial generated Verilator output is missing the driver makefile after generation: "
             f"{rel(GENERATED_DRIVER_MAKEFILE)}; remove the generated config directory and rerun "
@@ -462,6 +554,7 @@ def parse_log_metadata() -> dict[str, object]:
         "fatal_errors": [],
         "exceptions": [],
         "sim_failures": [],
+        "sim_passes": [],
         "simdram_entry": None,
         "simdram_load_range": None,
         "last_progress_marker": "",
@@ -528,6 +621,11 @@ def parse_log_metadata() -> dict[str, object]:
             sim_failures = metadata["sim_failures"]
             if isinstance(sim_failures, list):
                 sim_failures.append(line.strip())
+        if "*** PASSED ***" in line:
+            sim_passes = metadata["sim_passes"]
+            if isinstance(sim_passes, list):
+                sim_passes.append(line.strip())
+            last_progress = line
     metadata["last_progress_marker"] = last_progress
     metadata["lines_after_raw_transcript_end"] = lines_after_raw_transcript_end
     return metadata
@@ -539,7 +637,24 @@ def output_stem_for_payload(payload: str | None) -> str:
     return Path(payload).name
 
 
-def parse_instruction_trace(payload: str | None) -> dict[str, object]:
+def trace_fresh_for_log(trace: Path, log_metadata: dict[str, object] | None = None) -> bool:
+    if not LOG.is_file():
+        return True
+    trace_mtime = trace.stat().st_mtime
+    log_mtime = LOG.stat().st_mtime
+    if trace_mtime >= log_mtime:
+        return True
+    timeout_after = None if log_metadata is None else log_metadata.get("timeout_after_seconds")
+    try:
+        timeout_window = float(str(timeout_after)) if timeout_after is not None else 0.0
+    except ValueError:
+        timeout_window = 0.0
+    return timeout_window > 0.0 and trace_mtime >= log_mtime - timeout_window - 30.0
+
+
+def parse_instruction_trace(
+    payload: str | None, log_metadata: dict[str, object] | None = None
+) -> dict[str, object]:
     trace = (
         SIM_DIR
         / "output"
@@ -553,6 +668,10 @@ def parse_instruction_trace(payload: str | None) -> dict[str, object]:
         "retired_instruction_count": 0,
         "first_pc": None,
         "last_pc": None,
+        "last_symbol": None,
+        "last_symbol_offset": None,
+        "last_symbol_address": None,
+        "last_symbol_objdump": "",
         "last_cycle": None,
         "entered_bootrom": False,
         "entered_payload": False,
@@ -560,7 +679,7 @@ def parse_instruction_trace(payload: str | None) -> dict[str, object]:
     }
     if not trace.is_file():
         return metadata
-    metadata["fresh_for_log"] = not LOG.is_file() or trace.stat().st_mtime >= LOG.stat().st_mtime
+    metadata["fresh_for_log"] = trace_fresh_for_log(trace, log_metadata)
 
     first_pc: int | None = None
     last_pc: int | None = None
@@ -594,6 +713,15 @@ def parse_instruction_trace(payload: str | None) -> dict[str, object]:
             "bootrom_to_payload_handoff": entered_bootrom and entered_payload,
         }
     )
+    symbol = resolve_payload_symbol(payload, last_pc)
+    metadata.update(
+        {
+            "last_symbol": symbol["symbol"],
+            "last_symbol_offset": symbol["symbol_offset"],
+            "last_symbol_address": symbol["symbol_address"],
+            "last_symbol_objdump": symbol["objdump"],
+        }
+    )
     return metadata
 
 
@@ -615,6 +743,15 @@ def classify_smoke_progress(
             "stage": "linux_banner_only",
             "next_step": "continue until Linux command line/initramfs markers appear",
         }
+    if "*** PASSED ***" in log_text:
+        return {
+            "stage": "sim_pass_no_linux_console",
+            "next_step": (
+                "treat the simulator pass marker as non-Linux evidence; rerun with "
+                "cycle-accurate UART serial enabled or a Linux boot marker source "
+                "before claiming generated AP Linux boot"
+            ),
+        }
     if has_accepted_opensbi_markers(log_text):
         return {
             "stage": "opensbi_boot",
@@ -625,10 +762,95 @@ def classify_smoke_progress(
             "stage": "opensbi_banner_only",
             "next_step": "continue until OpenSBI handoff markers and the Linux banner appear",
         }
-    if instruction_trace.get("bootrom_to_payload_handoff"):
+    if instruction_trace.get("bootrom_to_payload_handoff") and instruction_trace.get(
+        "fresh_for_log"
+    ):
+        last_symbol = str(instruction_trace.get("last_symbol") or "")
+        retired_raw = instruction_trace.get("retired_instruction_count")
+        cycle_raw = instruction_trace.get("last_cycle")
+        retired_count = int(retired_raw) if isinstance(retired_raw, int | str) else 0
+        last_cycle = int(cycle_raw) if isinstance(cycle_raw, int | str) else 0
+        if last_symbol.startswith("fdt_") or last_symbol in {
+            "sbi_memchr",
+            "sbi_memcmp",
+            "sbi_strncmp",
+        }:
+            if retired_count < 1_000_000 or last_cycle < 2_000_000:
+                return {
+                    "stage": "payload_fdt_parse_in_progress",
+                    "next_step": (
+                        "continue the generated AP traced smoke beyond early OpenSBI "
+                        "FDT traversal before treating DTS or console compatibility as failed"
+                    ),
+                }
+            return {
+                "stage": "payload_fdt_parse_no_console",
+                "next_step": (
+                    "debug the boot ROM FDT handoff and generated DTS stdout/serial "
+                    "compatibility before OpenSBI console initialization"
+                ),
+            }
+        if last_symbol == "sifive_uart_putc":
+            return {
+                "stage": "payload_uart_tx_full_poll",
+                "next_step": (
+                    "debug the generated SiFive UART TXDATA full-bit behavior, "
+                    "TX enable path, and UART host bridge before OpenSBI banner output"
+                ),
+            }
+        if last_symbol in {
+            "_bss_zero",
+            "_scratch_init",
+            "_fdt_reloc_again",
+            "_fdt_reloc_done",
+            "_relocate_done",
+            "_try_lottery",
+            "_wait_for_boot_hart",
+            "_wait_relocate_copy_done",
+        }:
+            return {
+                "stage": "payload_opensbi_early_init",
+                "next_step": (
+                    "continue the generated AP trace beyond OpenSBI early assembly "
+                    "initialization, then classify the first console or FDT failure"
+                ),
+            }
+        if "serial" in last_symbol or "console" in last_symbol or "uart" in last_symbol:
+            return {
+                "stage": "payload_console_init_no_banner",
+                "next_step": (
+                    "debug generated UART compatibility and OpenSBI console init before "
+                    "expecting banner output"
+                ),
+            }
         return {
             "stage": "cpu_progress_to_payload",
             "next_step": "debug why the payload runs after boot ROM handoff but emits no OpenSBI/Linux UART markers",
+        }
+    if instruction_trace.get("bootrom_to_payload_handoff") and not instruction_trace.get(
+        "fresh_for_log"
+    ):
+        return {
+            "stage": "stale_instruction_trace",
+            "next_step": (
+                "rerun with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC "
+                "evidence, or rely on UART-only log evidence from run-binary-fast"
+            ),
+        }
+    if (
+        log_metadata.get("run_target") == "run-binary-fast"
+        and log_metadata.get("exit_code")
+        and log_metadata.get("exit_code") != "0"
+        and not instruction_trace.get("exists")
+        and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS)
+    ):
+        return {
+            "stage": "fast_timeout_no_trace",
+            "next_step": (
+                "rerun with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC "
+                "evidence, or extend the fast timeout only after a traced run identifies "
+                "the current payload stage"
+            ),
         }
     if log_metadata.get("simdram_entry") or "SimDRAM loaded ELF entry=" in log_text:
         return {
@@ -654,7 +876,7 @@ def classify_smoke_progress(
 def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     allow_container_paths = os.environ.get(CONTAINER_PATH_ENV) == "1"
     log_metadata = parse_log_metadata()
-    instruction_trace = parse_instruction_trace(payload)
+    instruction_trace = parse_instruction_trace(payload, log_metadata)
     simulator_artifact = simulator_artifact_metadata()
     log_text = LOG.read_text(encoding="utf-8", errors="replace") if LOG.is_file() else ""
     progress = classify_smoke_progress(log_text, instruction_trace, log_metadata)
@@ -755,7 +977,7 @@ def main() -> int:
             f"{PAYLOAD_ENV} {payload_source} payload does not point to a file: {payload}"
         )
 
-    instruction_trace = parse_instruction_trace(payload)
+    instruction_trace = parse_instruction_trace(payload, log_metadata)
     log_text = ""
     if not LOG.is_file():
         blockers.append(f"missing Verilator OpenSBI/Linux smoke log: {rel(LOG)}")
@@ -819,6 +1041,7 @@ def main() -> int:
                 "instruction trace proves CPU forward progress through boot ROM "
                 f"to payload: first_pc={instruction_trace.get('first_pc')} "
                 f"last_pc={instruction_trace.get('last_pc')} "
+                f"last_symbol={instruction_trace.get('last_symbol') or 'unknown'} "
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )

@@ -4,11 +4,16 @@ depth 16
 
 [engines]
 smtbmc z3
+smtbmc bitwuzla
 
 [script]
 read -formal -sv e1_dbg_mmio_bridge.sv e1_dbg_mmio_bridge_formal.sv
+read -formal -sv reset_properties.sv
+read -formal -sv cdc_properties.sv
 prep -top e1_dbg_mmio_bridge_formal
 
 [files]
 rtl/debug/e1_dbg_mmio_bridge.sv
 verify/formal/e1_dbg_mmio_bridge_formal.sv
+verify/properties/reset_properties.sv
+verify/properties/cdc_properties.sv

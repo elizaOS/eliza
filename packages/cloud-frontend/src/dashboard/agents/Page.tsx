@@ -5,6 +5,7 @@ import {
   ElizaAgentsPageWrapper,
 } from "@elizaos/ui";
 import { Helmet } from "react-helmet-async";
+import { useT } from "@/providers/I18nProvider";
 import { useRequireAuth } from "../../lib/auth-hooks";
 import { useCreditsBalance } from "../../lib/data/credits";
 import { type AgentListItem, useAgents } from "../../lib/data/eliza-agents";
@@ -36,6 +37,7 @@ function toAgentRow(a: AgentListItem): ElizaAgentRow {
 }
 
 export default function AgentDashboardPage() {
+  const t = useT();
   const session = useRequireAuth();
   const enabled = session.ready && session.authenticated;
   const agentsQuery = useAgents();
@@ -45,10 +47,15 @@ export default function AgentDashboardPage() {
   // this, the homepage <title> bleeds through while auth resolves.
   const head = (
     <Helmet>
-      <title>Instances</title>
+      <title>
+        {t("cloud.agents.metaTitle", { defaultValue: "Instances" })}
+      </title>
       <meta
         name="description"
-        content="View, launch, and manage your instances backed by Eliza Cloud."
+        content={t("cloud.agents.metaDescription", {
+          defaultValue:
+            "View, launch, and manage your instances backed by Eliza Cloud.",
+        })}
       />
     </Helmet>
   );
@@ -57,7 +64,11 @@ export default function AgentDashboardPage() {
     return (
       <>
         {head}
-        <DashboardLoadingState label="Loading instances" />
+        <DashboardLoadingState
+          label={t("cloud.agents.loading", {
+            defaultValue: "Loading instances",
+          })}
+        />
       </>
     );
 
@@ -80,11 +91,11 @@ export default function AgentDashboardPage() {
             <div className="flex items-center gap-2">
               <span className="inline-block size-2 bg-[#FF5800]" />
               <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
-                Instances
+                {t("cloud.agents.eyebrow", { defaultValue: "Instances" })}
               </p>
             </div>
             <h1 className="text-xl font-semibold text-white md:text-2xl">
-              Instances
+              {t("cloud.agents.title", { defaultValue: "Instances" })}
             </h1>
           </div>
 

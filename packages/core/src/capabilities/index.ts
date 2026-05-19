@@ -2220,6 +2220,16 @@ function requireNonEmptyString(
 	throw decodeError(method, `${key} must be a non-empty string.`);
 }
 
+function requireRemotePluginModuleId(
+	object: JsonObject,
+	key: string,
+	method: string,
+): string {
+	const value = requireNonEmptyString(object, key, method);
+	validateRemotePluginModuleId(value, key, method);
+	return value;
+}
+
 function optionalString(
 	object: JsonObject,
 	key: string,
@@ -2645,7 +2655,7 @@ function requireRemotePluginModule(
 	const views = optionalArray(object, "views", method, requireRemotePluginView);
 	const metadata = optionalJsonObject(object, "metadata", method);
 	return {
-		id: requireNonEmptyString(object, "id", method),
+		id: requireRemotePluginModuleId(object, "id", method),
 		name: requireNonEmptyString(object, "name", method),
 		...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
 		...(version === undefined ? {} : { version }),
@@ -2946,6 +2956,22 @@ function validateRemotePluginCallTarget(
 ): void {
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw decodeError(method, `${key} must be a non-empty string.`);
+	}
+	if (key === "moduleId") {
+		validateRemotePluginModuleId(value, key, method);
+	}
+}
+
+function validateRemotePluginModuleId(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+		throw decodeError(
+			method,
+			`${key} must use letters, numbers, dots, underscores, or hyphens.`,
+		);
 	}
 }
 

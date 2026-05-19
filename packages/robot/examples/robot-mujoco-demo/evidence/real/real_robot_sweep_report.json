@@ -1,0 +1,766 @@
+{
+  "host": "192.168.1.218:9090",
+  "obsbot_device": "/dev/video-1",
+  "include_locomotion": true,
+  "fps": 15.0,
+  "external_size": [
+    0,
+    0
+  ],
+  "actions": [
+    {
+      "label": "AINEX_STAND",
+      "duration_s": 1.548,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "stand"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12721
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12721,
+        "is_walking": false,
+        "imu_roll": 1.515881702863262,
+        "imu_pitch": 0.07677160400052206,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12689,
+        "is_walking": false,
+        "imu_roll": 1.606797685095742,
+        "imu_pitch": 0.08255826611613609,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_HEAD_PAN_LEFT",
+      "duration_s": 1.237,
+      "commands": [
+        {
+          "cmd": "head.set",
+          "payload": {
+            "pan": 0.8,
+            "tilt": 0.0,
+            "duration": 0.5
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12689
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12689,
+        "is_walking": false,
+        "imu_roll": 1.606797685095742,
+        "imu_pitch": 0.08255826611613609,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12700,
+        "is_walking": true,
+        "imu_roll": 1.624990968110192,
+        "imu_pitch": 0.09253895257166933,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.8,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_HEAD_PAN_RIGHT",
+      "duration_s": 1.239,
+      "commands": [
+        {
+          "cmd": "head.set",
+          "payload": {
+            "pan": -0.8,
+            "tilt": 0.0,
+            "duration": 0.5
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": true,
+            "battery_mv": 12700
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12700,
+        "is_walking": true,
+        "imu_roll": 1.624990968110192,
+        "imu_pitch": 0.09253895257166933,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.8,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12704,
+        "is_walking": false,
+        "imu_roll": 1.514398325672982,
+        "imu_pitch": 0.07891755103742219,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": -0.8,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_HEAD_CENTER",
+      "duration_s": 0.82,
+      "commands": [
+        {
+          "cmd": "head.set",
+          "payload": {
+            "pan": 0.0,
+            "tilt": 0.0,
+            "duration": 0.4
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12704
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12704,
+        "is_walking": false,
+        "imu_roll": 1.514398325672982,
+        "imu_pitch": 0.07891755103742219,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": -0.8,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12716,
+        "is_walking": false,
+        "imu_roll": 1.516739145645444,
+        "imu_pitch": 0.07888750056285175,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_WAVE",
+      "duration_s": 3.001,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "wave"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12716
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12716,
+        "is_walking": false,
+        "imu_roll": 1.516739145645444,
+        "imu_pitch": 0.07888750056285175,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12636,
+        "is_walking": false,
+        "imu_roll": 1.4701400357329595,
+        "imu_pitch": 0.07408695495247442,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_BOW",
+      "duration_s": 3.013,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "bow"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12636
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12636,
+        "is_walking": false,
+        "imu_roll": 1.4701400357329595,
+        "imu_pitch": 0.07408695495247442,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12685,
+        "is_walking": true,
+        "imu_roll": 1.5677788551723704,
+        "imu_pitch": 0.08521851195837647,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_SIT",
+      "duration_s": 3.036,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "sit"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": true,
+            "battery_mv": 12685
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12685,
+        "is_walking": true,
+        "imu_roll": 1.5677788551723704,
+        "imu_pitch": 0.08521851195837647,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12704,
+        "is_walking": false,
+        "imu_roll": 1.5109633225164687,
+        "imu_pitch": 0.07442090365695136,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_STAND_RECOVER",
+      "duration_s": 2.066,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "stand"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12704
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12704,
+        "is_walking": false,
+        "imu_roll": 1.5109633225164687,
+        "imu_pitch": 0.07442090365695136,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12693,
+        "is_walking": true,
+        "imu_roll": 1.7547466545206865,
+        "imu_pitch": 0.08610413211710036,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_WALK_FORWARD",
+      "duration_s": 4.49,
+      "commands": [
+        {
+          "cmd": "walk.set",
+          "payload": {
+            "speed": 1,
+            "height": 0.036,
+            "x": 0.02,
+            "y": 0.0,
+            "yaw": 0.0
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": true,
+            "battery_mv": 12693
+          }
+        },
+        {
+          "cmd": "walk.command",
+          "payload": {
+            "action": "start"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": true,
+            "battery_mv": 12693
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12693,
+        "is_walking": true,
+        "imu_roll": 1.7547466545206865,
+        "imu_pitch": 0.08610413211710036,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 0,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12604,
+        "is_walking": false,
+        "imu_roll": 1.3510420486950292,
+        "imu_pitch": 0.08255908245341258,
+        "walk_x": 0.02,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_TURN_LEFT",
+      "duration_s": 3.421,
+      "commands": [
+        {
+          "cmd": "walk.set",
+          "payload": {
+            "speed": 1,
+            "height": 0.036,
+            "x": 0.0,
+            "y": 0.0,
+            "yaw": 4.0
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12604
+          }
+        },
+        {
+          "cmd": "walk.command",
+          "payload": {
+            "action": "start"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12604
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12604,
+        "is_walking": false,
+        "imu_roll": 1.3510420486950292,
+        "imu_pitch": 0.08255908245341258,
+        "walk_x": 0.02,
+        "walk_y": 0.0,
+        "walk_yaw": 0.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12587,
+        "is_walking": false,
+        "imu_roll": 1.584903722020542,
+        "imu_pitch": 0.12260753966492322,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_TURN_RIGHT",
+      "duration_s": 3.484,
+      "commands": [
+        {
+          "cmd": "walk.set",
+          "payload": {
+            "speed": 1,
+            "height": 0.036,
+            "x": 0.0,
+            "y": 0.0,
+            "yaw": -4.0
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12587
+          }
+        },
+        {
+          "cmd": "walk.command",
+          "payload": {
+            "action": "start"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12587
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12587,
+        "is_walking": false,
+        "imu_roll": 1.584903722020542,
+        "imu_pitch": 0.12260753966492322,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": 4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12604,
+        "is_walking": false,
+        "imu_roll": 1.5391606166699054,
+        "imu_pitch": 0.07660042656474758,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_STOP",
+      "duration_s": 0.748,
+      "commands": [
+        {
+          "cmd": "walk.command",
+          "payload": {
+            "action": "stop"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12604
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12604,
+        "is_walking": false,
+        "imu_roll": 1.5391606166699054,
+        "imu_pitch": 0.07660042656474758,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12669,
+        "is_walking": false,
+        "imu_roll": 1.5146083943244177,
+        "imu_pitch": 0.08384178281519128,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_SET_SERVO",
+      "duration_s": 1.226,
+      "commands": [
+        {
+          "cmd": "servo.set",
+          "payload": {
+            "duration": 0.5,
+            "positions": [
+              {
+                "id": 23,
+                "position": 600
+              },
+              {
+                "id": 24,
+                "position": 500
+              }
+            ]
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12669
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12669,
+        "is_walking": false,
+        "imu_roll": 1.5146083943244177,
+        "imu_pitch": 0.08384178281519128,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12704,
+        "is_walking": false,
+        "imu_roll": 1.514542489246285,
+        "imu_pitch": 0.0841461486245277,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_RUN_ACTION_GROUP",
+      "duration_s": 3.005,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "wave"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12704
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12704,
+        "is_walking": false,
+        "imu_roll": 1.514542489246285,
+        "imu_pitch": 0.0841461486245277,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12610,
+        "is_walking": false,
+        "imu_roll": 1.4676745121940824,
+        "imu_pitch": 0.06101942585471011,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    },
+    {
+      "label": "AINEX_FINAL_STAND",
+      "duration_s": 2.044,
+      "commands": [
+        {
+          "cmd": "action.play",
+          "payload": {
+            "name": "stand"
+          },
+          "ok": true,
+          "message": "ok",
+          "data": {
+            "is_walking": false,
+            "battery_mv": 12610
+          }
+        }
+      ],
+      "telemetry_before": {
+        "battery_mv": 12610,
+        "is_walking": false,
+        "imu_roll": 1.4676745121940824,
+        "imu_pitch": 0.06101942585471011,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      },
+      "telemetry_after": {
+        "battery_mv": 12663,
+        "is_walking": false,
+        "imu_roll": 1.578325551904466,
+        "imu_pitch": 0.07831216101559275,
+        "walk_x": 0.0,
+        "walk_y": 0.0,
+        "walk_yaw": -4.0,
+        "walk_speed": 1,
+        "walk_height": 0.036,
+        "head_pan": 0.0,
+        "head_tilt": 0.0,
+        "joint_positions": {}
+      }
+    }
+  ]
+}

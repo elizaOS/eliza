@@ -1,0 +1,66 @@
+{
+  "schema": "eliza.cpu_ap_core_selection_evidence.v1",
+  "generated_at": "2026-05-19T20:33:59Z",
+  "manifest_dir": "generators/chipyard",
+  "target_topology": "1_ultra_3_premium_4_pro",
+  "roles": {
+    "big": [
+      {
+        "manifest": "eliza-ascalon-manifest.json",
+        "core_role": "big_core_e1_ultra",
+        "status": "BLOCKED_until_license_and_procurement_resolved",
+        "isa": "RVA23 + V + Zfh + Zvfh + Zvbb + Zvkt + Zicbom + Zicboz + Zicond + Sv57",
+        "decode_width": 8,
+        "rob_entries": 480,
+        "has_real_pin": false
+      }
+    ],
+    "mid": [
+      {
+        "manifest": "eliza-kunminghu-manifest.json",
+        "core_role": "mid_core_e1_premium",
+        "status": "selected_pending_chipyard_or_standalone_integration",
+        "isa": "RV64GCB + V + H",
+        "decode_width": 6,
+        "rob_entries": 256,
+        "has_real_pin": false
+      }
+    ],
+    "mid_fallback": [
+      {
+        "manifest": "eliza-boom-manifest.json",
+        "core_role": "mid_core_fallback",
+        "status": "selected_via_chipyard_boom_generator",
+        "isa": "RV64GC",
+        "decode_width": 3,
+        "rob_entries": 128,
+        "has_real_pin": true
+      }
+    ],
+    "little": [
+      {
+        "manifest": "eliza-cva6-manifest.json",
+        "core_role": "little_core_e1_pro",
+        "status": "selected_via_chipyard_cva6_wrapper",
+        "isa": "RV64GC",
+        "decode_width": 1,
+        "rob_entries": 0,
+        "has_real_pin": true
+      }
+    ],
+    "linux_bringup": [
+      {
+        "manifest": "eliza-rocket-manifest.json",
+        "core_role": "linux_bringup_application_hart",
+        "status": "selected_not_generated",
+        "isa": "RV64GC",
+        "decode_width": 1,
+        "rob_entries": 0,
+        "has_real_pin": true
+      }
+    ],
+    "unknown": []
+  },
+  "errors": [],
+  "verdict": "blocked_big_core"
+}

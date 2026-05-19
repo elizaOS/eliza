@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+DEFAULT_PROBE_DIR = ROOT / "sw/aosp-device/peripherals"
 
 
 def configured_out_dir() -> Path:
@@ -25,6 +26,12 @@ class PeripheralSpec:
     env_var: str
     log_name: str
     markers: tuple[str, ...]
+    default_probe: str
+
+
+def _probe(relpath: str) -> str:
+    """Return the shell command that runs a canonical probe script."""
+    return f'"{(DEFAULT_PROBE_DIR / relpath).as_posix()}"'
 
 
 SPECS = (
@@ -33,42 +40,49 @@ SPECS = (
         env_var="ELIZA_REAR_CAMERA_SIM_COMMAND",
         log_name="rear_camera_sim.log",
         markers=("COMPONENT=rear_camera", "FRAME_SOURCE=simulated_sensor", "CAPTURE_COUNT=2"),
+        default_probe=_probe("probe-rear-camera.sh"),
     ),
     PeripheralSpec(
         component="front_camera",
         env_var="ELIZA_FRONT_CAMERA_SIM_COMMAND",
         log_name="front_camera_sim.log",
         markers=("COMPONENT=front_camera", "FRAME_SOURCE=simulated_sensor", "CAPTURE_COUNT=2"),
+        default_probe=_probe("probe-front-camera.sh"),
     ),
     PeripheralSpec(
         component="microphone",
         env_var="ELIZA_MICROPHONE_SIM_COMMAND",
         log_name="microphone_input_sim.log",
         markers=("COMPONENT=microphone", "AUDIO_CAPTURE=pcm_s16le", "INPUT_RMS_DBFS="),
+        default_probe=_probe("probe-microphone.sh"),
     ),
     PeripheralSpec(
         component="speakers",
         env_var="ELIZA_SPEAKERS_SIM_COMMAND",
         log_name="speaker_output_sim.log",
         markers=("COMPONENT=speakers", "AUDIO_OUTPUT=stereo_pcm", "LOOPBACK_VERIFIED=true"),
+        default_probe=_probe("probe-speakers.sh"),
     ),
     PeripheralSpec(
         component="wifi",
         env_var="ELIZA_WIFI_SIM_COMMAND",
         log_name="wifi_sim.log",
         markers=("COMPONENT=wifi", "IP_CONNECTIVITY=pass", "ANDROID_DUMPSYS_WIFI=pass"),
+        default_probe=_probe("probe-wifi.sh"),
     ),
     PeripheralSpec(
         component="bluetooth",
         env_var="ELIZA_BLUETOOTH_SIM_COMMAND",
         log_name="bluetooth_sim.log",
         markers=("COMPONENT=bluetooth", "HCI_ATTACH=pass", "BLE_SCAN=pass"),
+        default_probe=_probe("probe-bluetooth.sh"),
     ),
     PeripheralSpec(
         component="cellular_5g_lte",
         env_var="ELIZA_CELLULAR_5G_LTE_SIM_COMMAND",
         log_name="cellular_5g_lte_sim.log",
         markers=("COMPONENT=cellular_5g_lte", "LTE_REGISTRATION=pass", "NR5G_REGISTRATION=pass"),
+        default_probe=_probe("probe-cellular-5g.sh"),
     ),
 )
 
@@ -134,18 +148,38 @@ def write_log(
     return path
 
 
+def resolve_command(spec: PeripheralSpec) -> tuple[str, str]:
+    """Return (command, source) for the peripheral.
+
+    Precedence:
+      1. ``ELIZA_<NAME>_SIM_COMMAND`` set to a non-empty value → use it (source=env).
+      2. ``ELIZA_<NAME>_SIM_COMMAND`` set to empty string → no command (source=blocked).
+      3. Env var unset → fall back to the canonical default probe script (source=default).
+    """
+    raw = os.environ.get(spec.env_var)
+    if raw is None:
+        return spec.default_probe, "default"
+    command = raw.strip()
+    if not command:
+        return "", "blocked"
+    return command, "env"
+
+
 def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tuple[str, Path]:
-    command = os.environ.get(spec.env_var, "").strip()
+    command, source = resolve_command(spec)
     if dry_run:
         path = configured_out_dir() / spec.log_name
         return "blocked", path
-    if not command:
+    if source == "blocked":
         path = write_log(
             spec,
             command="",
             status="BLOCKED",
             result=2,
-            body=f"{spec.env_var} is unset; configure a real adb-backed smoke command.",
+            body=(
+                f"{spec.env_var} is set to an empty value; export it unset to use the default "
+                f"probe script ({spec.default_probe}) or set it to a custom adb-backed command."
+            ),
             missing_markers=list(spec.markers),
         )
         return "blocked", path
@@ -166,7 +200,12 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
         )
         return "blocked", path
     missing = [marker for marker in spec.markers if marker not in output]
-    status = "PASS" if result == 0 and not missing else "FAIL"
+    if result == 0 and not missing:
+        status = "PASS"
+    elif result == 2:
+        status = "BLOCKED"
+    else:
+        status = "FAIL"
     path = write_log(
         spec,
         command=command,
@@ -175,7 +214,11 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
         body=output,
         missing_markers=missing,
     )
-    return ("pass" if status == "PASS" else "fail"), path
+    if status == "PASS":
+        return "pass", path
+    if status == "BLOCKED":
+        return "blocked", path
+    return "fail", path
 
 
 def selected_specs(names: list[str]) -> list[PeripheralSpec]:
@@ -199,7 +242,11 @@ def main() -> int:
     if args.dry_run:
         for spec in specs:
             path = configured_out_dir() / spec.log_name
-            print(f"{spec.component}: set {spec.env_var}; log={rel(path)}")
+            command, source = resolve_command(spec)
+            print(
+                f"{spec.component}: source={source} command={command or '<unset>'} "
+                f"env={spec.env_var} log={rel(path)}"
+            )
             for marker in spec.markers:
                 print(f"  requires: {marker}")
         return 0

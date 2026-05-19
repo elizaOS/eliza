@@ -1,0 +1,78 @@
+schema: eliza.pd_macro_placement_evidence.v1
+status: draft_local_evidence
+release_use: prohibited_until_external_review
+scope: alphachip_dreamplace_openroad_macro_placement_head_to_head
+description: |
+  Macro-placement evidence gate. Fail-closed until AlphaChip and DREAMPlace
+  candidate placements are head-to-head compared against the OpenROAD
+  baseline on both proxy AND routed PPA truth (run_post_route_ppa.py).
+source_artifacts:
+  - pd/macros/manifest.yaml
+  - scripts/alphachip/compare_proxy_costs.sh
+  - scripts/run_post_route_ppa.py
+  - scripts/dreamplace_eval.py
+  - docs/pd/macro-placement.md
+  - research/alpha_chip_macro_placement/06_e1_notes/openlane_full_release_2026-05-19.md
+  - research/alpha_chip_macro_placement/06_e1_notes/openlane_smoke_baseline_2026-05-19.md
+local_findings:
+  hard_macros_in_release:
+    status: integrated_pending_release_re_run
+    count_baseline: 0
+    count_after_re_run: 1
+    evidence_boundary: |
+      The most recent completed OpenLane Sky130 release (RUN_2026-05-19_05-08-54)
+      reports Macros: 0, MacroArea: 0. The release config has been updated
+      to instantiate sky130_sram_2kbyte_1rw1r_32x512_8 as `u_soc/u_weight_buffer/u_sram`
+      via EXTRA_LEFS / EXTRA_LIBS / EXTRA_GDS_FILES / EXTRA_VERILOG_MODELS
+      and a `MACROS` entry in pd/openlane/config.sky130.json. Next release
+      run will flip the macros count from 0 -> 1, unblocking AlphaChip /
+      DREAMPlace / OpenROAD post-route PPA comparisons. A run is currently
+      in flight (RUN_2026-05-19_10-00-34) using the BEFORE config.
+  alphachip_proxy_smoke_16_macros:
+    status: ran_locally
+    openroad_proxy: 0.499
+    alphachip_proxy: 0.761
+    interpretation: AlphaChip worse than OpenROAD on toy training run.
+  alphachip_proxy_full_256_macros:
+    status: ran_locally
+    openroad_proxy: 0.2379
+    alphachip_proxy: 0.2308
+    delta_pct: -3.01
+    interpretation: AlphaChip 3 % better on proxy; PPA truth not yet captured.
+  dreamplace_head_to_head:
+    status: dry_run_validated_gpu_visible
+    evidence_boundary: |
+      DREAMPlace 4.0 evaluation harness (scripts/dreamplace_eval.py)
+      validates against /tmp/e1-alphachip/e1_softmacro_full/ benchmark
+      with --dry-run. RTX 5080 16 GB is visible on the host. Full run
+      BLOCKED on external/DREAMPlace clone + container build via
+      scripts/alphachip/build_dreamplace_from_source.sh. After that, a
+      real GPU placement run is a single command:
+      python3 scripts/dreamplace_eval.py
+        --bench-dir /tmp/e1-alphachip/e1_softmacro_full
+        --out-dir build/pd/dreamplace/e1_softmacro_full --use-gpu
+  openroad_autotuner_sweep:
+    status: dry_run_validated_optuna_missing
+    evidence_boundary: |
+      scripts/openroad_autotuner.py emits the dry-run grid under
+      build/pd/autotuner/sky130_dry_001/. Full sweep BLOCKED on
+      `pip install optuna` (not installed on this host).
+  post_route_ppa_truth:
+    status: blocked
+    evidence_boundary: |
+      run_post_route_ppa.py exists and is ready. BLOCKED until the next
+      release run with EXTRA_LEFS finishes, at which point both AlphaChip
+      and OpenROAD candidate .plc files can be re-placed with the macro
+      pinned, and the routed wirelength / TNS / DRC / power delta will
+      land under research/alpha_chip_macro_placement/07_post_route_ppa/.
+required_validators:
+  - scripts/run_post_route_ppa.py --plc <alphachip.plc> --netlist <bench>.pb.txt --openroad-run-dir <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/alphachip.json
+  - scripts/run_post_route_ppa.py --plc <openroad.plc> --netlist <bench>.pb.txt --openroad-run-dir <run> --openlane-config pd/openlane/config.sky130.json --out-json research/alpha_chip_macro_placement/07_post_route_ppa/openroad.json
+  - scripts/dreamplace_eval.py --bench-dir /tmp/e1-alphachip/e1_softmacro --out-dir build/pd/dreamplace/e1 --use-gpu
+release_blockers:
+  - "OpenRAM-generated SRAM macros (4 KB, 16 KB, 64 KB) are not built. The PDK-shipped 2 KB sky130_sram_2kbyte_1rw1r_32x512_8 is now in the OpenLane release config but the OpenRAM 4/16/64 KB variants needed for the L1/L2 cache slices and the larger NPU buffers are still BLOCKED on `pip install openram` or the Docker recipe in pd/macros/sky130/README.md."
+  - "DREAMPlace 4.0 evaluation: external/DREAMPlace not cloned. GPU visible (RTX 5080 16 GB), recipe ready in scripts/alphachip/build_dreamplace_from_source.sh."
+  - "AlphaChip post-route PPA truth (run_post_route_ppa.py output) requires a release run with the new macros config to finish first."
+  - "False Dawn controversy (arXiv 2302.11014) requires post-route PPA, not proxy cost, as the final acceptance metric."
+  - "PPO RL training pending H200 GPU access. Nebius runbook ready at scripts/alphachip/nebius_h200_runbook.md. Local RTX 5080 has only 16 GB VRAM and is not sufficient for the full PPO trajectory buffer."
+  - "OpenROAD AutoTuner Optuna sweep requires `pip install optuna`."

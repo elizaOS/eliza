@@ -88,6 +88,23 @@ export interface Diarizer {
 	dispose(): Promise<void>;
 }
 
+/**
+ * Stub class kept for back-compat with code that still imports
+ * `PyannoteDiarizer`. The ONNX-backed implementation was removed when
+ * `onnxruntime-node` became optional; the static `load()` always rejects
+ * with `DiarizerUnavailableError`. Callers should select a different
+ * `Diarizer` implementation.
+ */
+// biome-ignore lint/complexity/noStaticOnlyClass: legacy API surface
+export class PyannoteDiarizer {
+	static async load(_path: string): Promise<never> {
+		throw new DiarizerUnavailableError(
+			"model-unavailable",
+			"[pyannote] ONNX backend is no longer bundled with plugin-local-inference",
+		);
+	}
+}
+
 /** Numerically-stable softmax over the last axis. */
 function softmax(row: Float32Array): Float32Array {
 	let max = -Infinity;

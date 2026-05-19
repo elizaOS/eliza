@@ -30,6 +30,7 @@ verilator -Wall --cc --exe --build \
     "$repo_dir/rtl/cpu/e1_cpu_subsystem_stub.sv" \
     "$repo_dir/rtl/interconnect/e1_axi_lite_interconnect.sv" \
     "$repo_dir/rtl/memory/e1_axi_lite_dram.sv" \
+    "$repo_dir/rtl/memory/e1_weight_buffer_sram.sv" \
     "$repo_dir/rtl/interrupts/e1_interrupt_controller.sv" \
     "$repo_dir/rtl/interconnect/e1_linux_soc_contract.sv" \
     "$repo_dir/sim/verilator/sim_main.cpp" \
@@ -50,6 +51,7 @@ verilator -Wall --cc --exe --build \
     "$repo_dir/rtl/cpu/e1_cpu_subsystem_stub.sv" \
     "$repo_dir/rtl/interconnect/e1_axi_lite_interconnect.sv" \
     "$repo_dir/rtl/memory/e1_axi_lite_dram.sv" \
+    "$repo_dir/rtl/memory/e1_weight_buffer_sram.sv" \
     "$repo_dir/rtl/interrupts/e1_interrupt_controller.sv" \
     "$repo_dir/rtl/interconnect/e1_linux_soc_contract.sv" \
     "$repo_dir/verify/verilator/test_npu_gemm.cpp" \

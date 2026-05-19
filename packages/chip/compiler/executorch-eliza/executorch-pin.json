@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "eliza.executorch_pin.v1",
+  "as_of": "2026-05-19",
+  "claim_boundary": "pinned_recipe_only_not_executable_evidence_of_a_built_backend",
+  "blocked_until_built": true,
+  "blocked_reason": "ExecuTorch elizanpu backend requires IREE elizanpu build per compiler/iree-eliza-npu/iree-pin.json",
+  "upstream": {
+    "project": "pytorch/executorch",
+    "url": "https://github.com/pytorch/executorch.git",
+    "branch": "main",
+    "commit_sha": "5eb84927cb9380f2a56d1f39f28d799dd7573254",
+    "commit_resolved_via": "git ls-remote https://github.com/pytorch/executorch.git HEAD on 2026-05-19",
+    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
+    "refresh_policy": "quarterly, paired with IREE pin"
+  },
+  "python_requirements": [
+    "torch>=2.5,<3",
+    "executorch>=0.4,<1"
+  ],
+  "backend_registration": {
+    "name": "elizanpu",
+    "module": "compiler.executorch_eliza.backend",
+    "class": "ElizaBackend"
+  },
+  "evidence_outputs": {
+    "manifest": "docs/evidence/compiler/executorch-evidence.yaml",
+    "partition_dump": "build/reports/compiler/executorch-partition.json",
+    "pte_artifact": "build/reports/compiler/eliza-2layer-mlp.pte"
+  }
+}

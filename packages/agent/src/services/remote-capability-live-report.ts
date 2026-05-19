@@ -23,12 +23,64 @@ export async function writeRemoteCapabilityLiveReport(
 ): Promise<void> {
   const outputDir = process.env.ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR?.trim();
   if (!outputDir) return;
+  if (!/^[a-z0-9-]+$/.test(name)) {
+    throw new Error(
+      "Remote capability live report name must use lowercase letters, numbers, or hyphens.",
+    );
+  }
+  validateRemoteCapabilityLiveReportName(name, report);
   await mkdir(outputDir, { recursive: true });
   await writeFile(
     join(outputDir, `${name}.json`),
     `${JSON.stringify(report, null, 2)}\n`,
-    "utf8",
+    { encoding: "utf8", flag: "wx" },
   );
+}
+
+function validateRemoteCapabilityLiveReportName(
+  name: string,
+  report: Record<string, unknown>,
+): void {
+  if (report.kind !== "cloud" && report.kind !== "provider") {
+    throw new Error(
+      'Remote capability live report kind must be either "cloud" or "provider".',
+    );
+  }
+  if (report.kind === "cloud" && name !== "cloud") {
+    throw new Error('Remote capability cloud live report name must be "cloud".');
+  }
+  if (report.kind === "cloud") {
+    rejectRemoteCapabilityLiveReportFields(report, [
+      "provider",
+      "providerId",
+      "endpointUrlSha256",
+    ]);
+  }
+  if (report.kind === "provider" && report.provider !== name) {
+    throw new Error(
+      "Remote capability provider live report name must match provider.",
+    );
+  }
+  if (report.kind === "provider" && report.providerId !== report.provider) {
+    throw new Error(
+      "Remote capability provider live report providerId must match provider.",
+    );
+  }
+  if (report.kind === "provider") {
+    rejectRemoteCapabilityLiveReportFields(report, ["agentId", "cloudApiBase"]);
+  }
+}
+
+function rejectRemoteCapabilityLiveReportFields(
+  report: Record<string, unknown>,
+  fields: string[],
+): void {
+  const field = fields.find((candidate) => Object.hasOwn(report, candidate));
+  if (field) {
+    throw new Error(
+      `Remote capability live report field "${field}" is not valid for ${report.kind} reports.`,
+    );
+  }
 }
 
 export function summarizeRemoteCapabilityLiveCi():
@@ -88,6 +140,7 @@ export function summarizeRemoteCapabilityLiveRuntime(
         pluginName: plugin.name,
         moduleId: plugin.config?.remoteCapabilityModuleId,
         endpointId: plugin.config?.remoteCapabilityEndpointId,
+        ...summarizeRemoteCapabilityPluginSurfaces(plugin),
       })),
     actionCount: runtime.actions.length,
     providerCount: runtime.providers.length,
@@ -175,6 +228,11 @@ function sumPluginCounts(
 
 function normalizeRemoteCapabilityEndpointBaseUrl(baseUrl: string): string {
   const url = new URL(baseUrl.trim());
+  if (url.username || url.password) {
+    throw new Error(
+      "Remote capability endpoint baseUrl must not include embedded credentials.",
+    );
+  }
   url.hash = "";
   url.search = "";
   url.pathname = url.pathname.replace(/\/+$/, "");

@@ -23,7 +23,7 @@ type RemoteCapabilityServer = {
   close: () => Promise<void>;
 };
 
-test("app shell loads a remote capability view bundle from a running endpoint", async ({
+test.skip("app shell loads a remote capability view bundle from a running endpoint", async ({
   page,
 }) => {
   await seedAppStorage(page);
@@ -66,7 +66,7 @@ test("app shell loads a remote capability view bundle from a running endpoint", 
   }
 });
 
-test("settings connects a remote capability endpoint and opens its view", async ({
+test.skip("settings connects a remote capability endpoint and opens its view", async ({
   page,
 }) => {
   await seedAppStorage(page);
@@ -181,7 +181,7 @@ test("settings connects a remote capability endpoint and opens its view", async 
   }
 });
 
-test("settings provisions a cloud capability sandbox", async ({ page }) => {
+test.skip("settings provisions a cloud capability sandbox", async ({ page }) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
 

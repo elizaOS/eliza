@@ -284,10 +284,10 @@ export class RemoteCapabilityRouterService
     for (const result of results) {
       for (const module of result.modules) {
         const moduleId = module.id;
-        if (typeof moduleId !== "string" || !moduleId) {
+        if (!isValidRemotePluginModuleId(moduleId)) {
           throw new CapabilityError({
             code: "CAPABILITY_DECODE_FAILED",
-            message: `Remote endpoint ${result.endpoint.id} returned a plugin module without id.`,
+            message: `Remote endpoint ${result.endpoint.id} returned a plugin module with invalid id.`,
             capability: "plugin",
             method: "plugin.modules.list",
             details: module,
@@ -1054,4 +1054,8 @@ function parseEnvironment(
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function isValidRemotePluginModuleId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value);
 }
