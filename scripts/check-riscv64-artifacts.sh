@@ -374,6 +374,8 @@ LLAMA_FAMILY_SEARCH_DIRS=(
 )
 
 OMNIVOICE_SEARCH=(
+    "plugins/plugin-local-inference/native/omnivoice.cpp/build-linux-riscv64-cpu/libomnivoice.so"
+    "plugins/plugin-local-inference/native/omnivoice.cpp/build-android-riscv64-cpu/libomnivoice.so"
     "plugins/plugin-local-inference/native/build-omnivoice-linux-riscv64-cpu/libomnivoice.so"
     "plugins/plugin-local-inference/native/build-omnivoice-android-riscv64-cpu/libomnivoice.so"
 )
