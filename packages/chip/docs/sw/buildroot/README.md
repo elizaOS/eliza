@@ -102,7 +102,7 @@ sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot defconfig
 sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot image-manifest
 E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' \
   sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot smoke
-E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' \
+E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' \
   sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke
 make software-bsp-evidence-check
 ```
@@ -112,5 +112,5 @@ The `image-manifest` mode records SHA-256 hashes for files already present in
 unless `E1_SMOKE_CMD` exits zero on the external target. The `ml-smoke` mode
 is separate and fails unless `E1_NPU_ML_SMOKE_CMD` exits zero and the target
 transcript includes `e1-npu-ml-smoke: PASS`,
-`workload=gemm_s8_int8_2x2x3`, `/dev/e1-npu`, and
+`workload=gemm_s8_int8_2x2x3`, `--require-npu`, `/dev/e1-npu`, and
 `claim_boundary=driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark`.

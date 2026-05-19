@@ -8,7 +8,7 @@ counter fields. It rejects CPU-only fallback.
 Exact target capture command:
 
 ```sh
-E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke' \
+E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' \
   sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke
 ```
 
