@@ -994,7 +994,11 @@ metadata, duplicate endpoint ids, duplicate provider reports, malformed endpoint
 ids, non-lowercase provider names, invalid Cloud API base URLs, Cloud API base
 URLs with query or fragment components, non-2xx route results, non-JavaScript
 view asset paths/content types, missing, malformed, or empty-content view asset
-SHA-256 digests, and credential-shaped field names or string values such as tokens,
+SHA-256 digests, missing model results, failed lifecycle calls, unhandled event
+calls, asset integrity values that do not match the recorded asset digest,
+empty action/provider/evaluator/response-handler outputs, missing
+service/app-bridge results, and credential-shaped field names or string values
+such as tokens,
 authorization headers, API keys, passwords, secrets, bearer/basic auth values,
 and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
@@ -1004,6 +1008,16 @@ target recorded in `conformance.moduleExercises`. The conformance harness keeps
 the required surface summary in `conformance.exercised`, then performs
 additional cheap RPC calls for untouched modules so multi-module endpoints still
 produce per-module exercise evidence without overwriting the summary target.
+The harness fails at observation time when action, provider, evaluator,
+response-handler evaluator, response-handler field evaluator, service, or app
+bridge calls return empty success-shaped payloads, and when lifecycle or event
+calls do not report success.
+When a view asset includes subresource integrity metadata, the harness verifies
+that value against the fetched bundle bytes before recording the observation.
+The live report writer rejects unknown report kinds before writing, only accepts
+lowercase hyphenated report names, enforces `cloud.json` for Cloud and
+`<provider>.json` for provider reports, and writes with exclusive create so a
+second artifact cannot overwrite the first observation.
 `sync.registered` and `sync.registeredModules` must not contain duplicate
 materialized plugin/module identities, and every registered module must have a
 unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied
@@ -1132,11 +1146,13 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   building a temporary remote view bundle, starting the reference endpoint,
   running CLI conformance against it with bearer auth, importing the returned
   bundle as JavaScript, and tearing it down.
-- `bun run --cwd packages/agent test:remote-capabilities` passed with 158
-  tests passing and 1 skipped after adding registered-remote component
-  ownership checks, cross-module/local model collision checks, and stale
-  contribution cleanup coverage for disappearing remote modules, plus runtime
-  app route-module collision protection for remote app bridges.
+- `bun run --cwd packages/agent test:remote-capabilities` passed with 188
+  tests passing and 3 skipped. The canonical suite covers registered-remote
+  component ownership checks, cross-module/local model collision checks, stale
+  contribution cleanup coverage for disappearing remote modules, runtime app
+  route-module collision protection for remote app bridges, and live report
+  writer safety for report names, identity, duplicate artifacts, and weak
+  conformance result rejection.
 - `bun run --cwd packages/agent test:remote-capabilities:source-build` passed
   with 2 focused tests passing and 35 adapter tests skipped by name filter.
 - `bun run --cwd packages/agent test:remote-capabilities:provider-live` found
@@ -1207,10 +1223,13 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   strict scheduled/manual observation, and that the final `test-status` gate
   treats scheduled runs as strict, with required provider endpoints, strict
   live report validation, required artifact upload, and matching live report
-  directories between smoke producers, validators, and uploaded artifacts.
+  directories between smoke producers, validators, and uploaded artifacts. It
+  also audits the package-level `test:remote-capabilities` script so live report
+  writer safety remains in the canonical remote-capability suite.
 - `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
-  report-directory env vars, artifact upload paths, final `test-status` live
-  job gating, scheduled/manual live observation gates, Cloud
+  report-directory env vars, artifact upload paths, package-level remote
+  capability suite membership, final `test-status` live job gating,
+  scheduled/manual live observation gates, Cloud
   freshness/identity validation flags, provider primary endpoint secret
   enforcement, provider allowed/required lists, and provider GitHub-env
   matching, and proves the live-CI audit fails when smoke output no longer
@@ -1223,6 +1242,11 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   configured transport URL. The fingerprint helper also strips query/fragment
   components and rejects embedded URL credentials before hashing, matching the
   URL-backed endpoint provider's accepted base URL shape.
+- Live report writers only accept lowercase report names with numbers or
+  hyphens, require Cloud reports to be named `cloud`, require provider reports
+  to be named after their provider, and create report files with exclusive
+  writes, so a duplicate Cloud or provider report cannot silently overwrite an
+  earlier artifact before validation/upload.
 - Conformance reports include an `rpcCalls` ledger that records every canonical
   protocol method used for each exercised surface and module. The live report
   validator requires this ledger to cover every `moduleExercises` entry, every
@@ -1230,11 +1254,18 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   `prepare`, `prompt`, `process`, response-handler `evaluate`, and field
   `parse`/`handle`), so live evidence proves the endpoint was exercised through
   the standard RPC-like protocol, not only materialized in a manifest.
+- Model, lifecycle, event, service, and app-bridge conformance results must
+  carry their required protocol success fields: `modelResult.result`,
+  `lifecycleResult.ok: true`, `eventResult.handled: true`,
+  `serviceResult.result`, and `appBridgeResult.result`.
 - View-asset conformance now preserves manifest-declared asset metadata and
   rejects fetched bundles whose content type or integrity value contradicts the
-  manifest. The live report validator also rejects artifacts whose recorded
-  manifest asset metadata disagrees with the fetched asset metadata or whose
-  fetched JavaScript bundle digest is the empty SHA-256 digest.
+  manifest, whose integrity value does not include a SHA-256 token, or whose
+  integrity value does not match the fetched bytes. The live report validator
+  also rejects artifacts whose recorded manifest asset metadata disagrees with
+  the fetched asset metadata, whose integrity value lacks or does not match the
+  recorded SHA-256 digest, or whose fetched JavaScript bundle digest is the empty
+  SHA-256 digest.
 - Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
   endpoint id, and module id. The validator requires this runtime identity list
   to match `sync.registeredModules` exactly, so count totals cannot stand in for

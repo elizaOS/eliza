@@ -41,10 +41,44 @@ async function main(): Promise<void> {
     const wrongSchemaDir = join(workspace, "wrong-schema");
     const partialDir = join(workspace, "partial");
     const failedRouteDir = join(workspace, "failed-route");
+    const missingModelResultDir = join(workspace, "missing-model-result");
+    const emptyActionResultDir = join(workspace, "empty-action-result");
+    const emptyProviderResultDir = join(workspace, "empty-provider-result");
+    const failedLifecycleDir = join(workspace, "failed-lifecycle");
+    const unhandledEventDir = join(workspace, "unhandled-event");
+    const missingServiceResultDir = join(workspace, "missing-service-result");
+    const missingAppBridgeResultDir = join(
+      workspace,
+      "missing-app-bridge-result",
+    );
+    const emptyEvaluatorProcessDir = join(
+      workspace,
+      "empty-evaluator-process",
+    );
+    const emptyResponseHandlerEvaluateDir = join(
+      workspace,
+      "empty-response-handler-evaluate",
+    );
+    const emptyFieldEvaluatorParseDir = join(
+      workspace,
+      "empty-field-evaluator-parse",
+    );
+    const emptyFieldEvaluatorHandleDir = join(
+      workspace,
+      "empty-field-evaluator-handle",
+    );
     const nonJavascriptAssetDir = join(workspace, "non-javascript-asset");
     const mismatchedAssetManifestDir = join(
       workspace,
       "mismatched-asset-manifest",
+    );
+    const mismatchedAssetIntegrityDir = join(
+      workspace,
+      "mismatched-asset-integrity",
+    );
+    const missingSha256AssetIntegrityDir = join(
+      workspace,
+      "missing-sha256-asset-integrity",
     );
     const missingAssetDigestDir = join(workspace, "missing-asset-digest");
     const malformedAssetDigestDir = join(workspace, "malformed-asset-digest");
@@ -180,8 +214,21 @@ async function main(): Promise<void> {
     await mkdir(wrongSchemaDir, { recursive: true });
     await mkdir(partialDir, { recursive: true });
     await mkdir(failedRouteDir, { recursive: true });
+    await mkdir(missingModelResultDir, { recursive: true });
+    await mkdir(emptyActionResultDir, { recursive: true });
+    await mkdir(emptyProviderResultDir, { recursive: true });
+    await mkdir(failedLifecycleDir, { recursive: true });
+    await mkdir(unhandledEventDir, { recursive: true });
+    await mkdir(missingServiceResultDir, { recursive: true });
+    await mkdir(missingAppBridgeResultDir, { recursive: true });
+    await mkdir(emptyEvaluatorProcessDir, { recursive: true });
+    await mkdir(emptyResponseHandlerEvaluateDir, { recursive: true });
+    await mkdir(emptyFieldEvaluatorParseDir, { recursive: true });
+    await mkdir(emptyFieldEvaluatorHandleDir, { recursive: true });
     await mkdir(nonJavascriptAssetDir, { recursive: true });
     await mkdir(mismatchedAssetManifestDir, { recursive: true });
+    await mkdir(mismatchedAssetIntegrityDir, { recursive: true });
+    await mkdir(missingSha256AssetIntegrityDir, { recursive: true });
     await mkdir(missingAssetDigestDir, { recursive: true });
     await mkdir(malformedAssetDigestDir, { recursive: true });
     await mkdir(emptyAssetDigestDir, { recursive: true });
@@ -386,6 +433,16 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(mismatchedAssetIntegrityDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedAssetIntegrityReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingSha256AssetIntegrityDir, "provider.json"),
+      `${JSON.stringify(makeMissingSha256AssetIntegrityReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(missingAssetDigestDir, "provider.json"),
       `${JSON.stringify(makeMissingAssetDigestReport(), null, 2)}\n`,
       "utf8",
@@ -398,6 +455,61 @@ async function main(): Promise<void> {
     await writeFile(
       join(emptyAssetDigestDir, "provider.json"),
       `${JSON.stringify(makeEmptyAssetDigestReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingModelResultDir, "provider.json"),
+      `${JSON.stringify(makeMissingModelResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyActionResultDir, "provider.json"),
+      `${JSON.stringify(makeEmptyActionResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyProviderResultDir, "provider.json"),
+      `${JSON.stringify(makeEmptyProviderResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(failedLifecycleDir, "provider.json"),
+      `${JSON.stringify(makeFailedLifecycleReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(unhandledEventDir, "provider.json"),
+      `${JSON.stringify(makeUnhandledEventReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingServiceResultDir, "provider.json"),
+      `${JSON.stringify(makeMissingServiceResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingAppBridgeResultDir, "provider.json"),
+      `${JSON.stringify(makeMissingAppBridgeResultReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyEvaluatorProcessDir, "provider.json"),
+      `${JSON.stringify(makeEmptyEvaluatorProcessReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyResponseHandlerEvaluateDir, "provider.json"),
+      `${JSON.stringify(makeEmptyResponseHandlerEvaluateReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyFieldEvaluatorParseDir, "provider.json"),
+      `${JSON.stringify(makeEmptyFieldEvaluatorParseReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyFieldEvaluatorHandleDir, "provider.json"),
+      `${JSON.stringify(makeEmptyFieldEvaluatorHandleReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1146,6 +1258,40 @@ async function main(): Promise<void> {
         `mismatched asset manifest failed for the wrong reason: ${mismatchedAssetManifest.output}`,
       );
     }
+    const mismatchedAssetIntegrity = await runValidator(
+      mismatchedAssetIntegrityDir,
+    );
+    if (mismatchedAssetIntegrity.exitCode === 0) {
+      throw new Error(
+        "mismatched asset integrity report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !mismatchedAssetIntegrity.output.includes(
+        "conformance.assetResult.integrity must match conformance.assetResult.sha256",
+      )
+    ) {
+      throw new Error(
+        `mismatched asset integrity failed for the wrong reason: ${mismatchedAssetIntegrity.output}`,
+      );
+    }
+    const missingSha256AssetIntegrity = await runValidator(
+      missingSha256AssetIntegrityDir,
+    );
+    if (missingSha256AssetIntegrity.exitCode === 0) {
+      throw new Error(
+        "missing sha256 asset integrity report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !missingSha256AssetIntegrity.output.includes(
+        "conformance.assetResult.integrity must include a sha256 digest",
+      )
+    ) {
+      throw new Error(
+        `missing sha256 asset integrity failed for the wrong reason: ${missingSha256AssetIntegrity.output}`,
+      );
+    }
     const missingAssetDigest = await runValidator(missingAssetDigestDir);
     if (missingAssetDigest.exitCode === 0) {
       throw new Error("missing asset digest report unexpectedly passed.");
@@ -1183,6 +1329,161 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `empty asset digest failed for the wrong reason: ${emptyAssetDigest.output}`,
+      );
+    }
+    const missingModelResult = await runValidator(missingModelResultDir);
+    if (missingModelResult.exitCode === 0) {
+      throw new Error("missing model result report unexpectedly passed.");
+    }
+    if (
+      !missingModelResult.output.includes(
+        "conformance.modelResult.result is required",
+      )
+    ) {
+      throw new Error(
+        `missing model result failed for the wrong reason: ${missingModelResult.output}`,
+      );
+    }
+    const emptyActionResult = await runValidator(emptyActionResultDir);
+    if (emptyActionResult.exitCode === 0) {
+      throw new Error("empty action result report unexpectedly passed.");
+    }
+    if (
+      !emptyActionResult.output.includes(
+        "conformance.actionResult must include at least one result field",
+      )
+    ) {
+      throw new Error(
+        `empty action result failed for the wrong reason: ${emptyActionResult.output}`,
+      );
+    }
+    const emptyProviderResult = await runValidator(emptyProviderResultDir);
+    if (emptyProviderResult.exitCode === 0) {
+      throw new Error("empty provider result report unexpectedly passed.");
+    }
+    if (
+      !emptyProviderResult.output.includes(
+        "conformance.providerResult must include at least one result field",
+      )
+    ) {
+      throw new Error(
+        `empty provider result failed for the wrong reason: ${emptyProviderResult.output}`,
+      );
+    }
+    const failedLifecycle = await runValidator(failedLifecycleDir);
+    if (failedLifecycle.exitCode === 0) {
+      throw new Error("failed lifecycle report unexpectedly passed.");
+    }
+    if (
+      !failedLifecycle.output.includes(
+        "conformance.lifecycleResult.ok must be true",
+      )
+    ) {
+      throw new Error(
+        `failed lifecycle failed for the wrong reason: ${failedLifecycle.output}`,
+      );
+    }
+    const unhandledEvent = await runValidator(unhandledEventDir);
+    if (unhandledEvent.exitCode === 0) {
+      throw new Error("unhandled event report unexpectedly passed.");
+    }
+    if (
+      !unhandledEvent.output.includes(
+        "conformance.eventResult.handled must be true",
+      )
+    ) {
+      throw new Error(
+        `unhandled event failed for the wrong reason: ${unhandledEvent.output}`,
+      );
+    }
+    const missingServiceResult = await runValidator(missingServiceResultDir);
+    if (missingServiceResult.exitCode === 0) {
+      throw new Error("missing service result report unexpectedly passed.");
+    }
+    if (
+      !missingServiceResult.output.includes(
+        "conformance.serviceResult.result is required",
+      )
+    ) {
+      throw new Error(
+        `missing service result failed for the wrong reason: ${missingServiceResult.output}`,
+      );
+    }
+    const missingAppBridgeResult = await runValidator(
+      missingAppBridgeResultDir,
+    );
+    if (missingAppBridgeResult.exitCode === 0) {
+      throw new Error("missing app bridge result report unexpectedly passed.");
+    }
+    if (
+      !missingAppBridgeResult.output.includes(
+        "conformance.appBridgeResult.result is required",
+      )
+    ) {
+      throw new Error(
+        `missing app bridge result failed for the wrong reason: ${missingAppBridgeResult.output}`,
+      );
+    }
+    const emptyEvaluatorProcess = await runValidator(emptyEvaluatorProcessDir);
+    if (emptyEvaluatorProcess.exitCode === 0) {
+      throw new Error("empty evaluator process report unexpectedly passed.");
+    }
+    if (
+      !emptyEvaluatorProcess.output.includes(
+        "conformance.evaluatorResult.process.result is required",
+      )
+    ) {
+      throw new Error(
+        `empty evaluator process failed for the wrong reason: ${emptyEvaluatorProcess.output}`,
+      );
+    }
+    const emptyResponseHandlerEvaluate = await runValidator(
+      emptyResponseHandlerEvaluateDir,
+    );
+    if (emptyResponseHandlerEvaluate.exitCode === 0) {
+      throw new Error(
+        "empty response handler evaluate report unexpectedly passed.",
+      );
+    }
+    if (
+      !emptyResponseHandlerEvaluate.output.includes(
+        "conformance.responseHandlerEvaluatorResult.evaluate.patch is required",
+      )
+    ) {
+      throw new Error(
+        `empty response handler evaluate failed for the wrong reason: ${emptyResponseHandlerEvaluate.output}`,
+      );
+    }
+    const emptyFieldEvaluatorParse = await runValidator(
+      emptyFieldEvaluatorParseDir,
+    );
+    if (emptyFieldEvaluatorParse.exitCode === 0) {
+      throw new Error("empty field evaluator parse report unexpectedly passed.");
+    }
+    if (
+      !emptyFieldEvaluatorParse.output.includes(
+        "conformance.responseHandlerFieldEvaluatorResult.parse must include at least one result field",
+      )
+    ) {
+      throw new Error(
+        `empty field evaluator parse failed for the wrong reason: ${emptyFieldEvaluatorParse.output}`,
+      );
+    }
+    const emptyFieldEvaluatorHandle = await runValidator(
+      emptyFieldEvaluatorHandleDir,
+    );
+    if (emptyFieldEvaluatorHandle.exitCode === 0) {
+      throw new Error(
+        "empty field evaluator handle report unexpectedly passed.",
+      );
+    }
+    if (
+      !emptyFieldEvaluatorHandle.output.includes(
+        "conformance.responseHandlerFieldEvaluatorResult.handle.effect is required",
+      )
+    ) {
+      throw new Error(
+        `empty field evaluator handle failed for the wrong reason: ${emptyFieldEvaluatorHandle.output}`,
       );
     }
     const mismatch = await runValidator(mismatchDir);
@@ -2104,8 +2405,8 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
     exercised,
     moduleExercises,
     rpcCalls,
-    actionResult: {},
-    providerResult: {},
+    actionResult: { text: "sample action result" },
+    providerResult: { text: "sample provider result" },
     routeResult: { status: 200 },
     assetResult: {
       path: "/assets/sample.js",
@@ -2115,25 +2416,25 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
       sha256:
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     },
-    modelResult: {},
-    lifecycleResult: {},
-    eventResult: {},
-    serviceResult: {},
-    appBridgeResult: {},
+    modelResult: { result: { text: "sample model result" } },
+    lifecycleResult: { ok: true },
+    eventResult: { handled: true },
+    serviceResult: { result: { text: "sample service result" } },
+    appBridgeResult: { result: { handled: true } },
     evaluatorResult: {
       shouldRun: { shouldRun: true },
       prepare: {},
       prompt: { prompt: "sample prompt" },
-      process: {},
+      process: { result: { text: "sample evaluator result" } },
     },
     responseHandlerEvaluatorResult: {
       shouldRun: { shouldRun: true },
-      evaluate: {},
+      evaluate: { patch: { text: "sample response patch" } },
     },
     responseHandlerFieldEvaluatorResult: {
       shouldRun: { shouldRun: true },
-      parse: {},
-      handle: {},
+      parse: { value: { text: "sample parsed field" } },
+      handle: { effect: { patch: { text: "sample field patch" } } },
     },
   };
 }
@@ -2244,6 +2545,36 @@ function makeMismatchedAssetManifestReport() {
   };
 }
 
+function makeMismatchedAssetIntegrityReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        integrity: "sha256-deadbeef",
+        manifestIntegrity: "sha256-deadbeef",
+      },
+    },
+  };
+}
+
+function makeMissingSha256AssetIntegrityReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        integrity: "sha384-deadbeef",
+        manifestIntegrity: "sha384-deadbeef",
+      },
+    },
+  };
+}
+
 function makeMissingAssetDigestReport() {
   const report = makeCompleteReport("provider");
   return {
@@ -2285,6 +2616,139 @@ function makeEmptyAssetDigestReport() {
         ...report.conformance.assetResult,
         sha256:
           "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      },
+    },
+  };
+}
+
+function makeMissingModelResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      modelResult: {},
+    },
+  };
+}
+
+function makeEmptyActionResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      actionResult: {},
+    },
+  };
+}
+
+function makeEmptyProviderResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      providerResult: {},
+    },
+  };
+}
+
+function makeFailedLifecycleReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      lifecycleResult: { ok: false },
+    },
+  };
+}
+
+function makeUnhandledEventReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      eventResult: { handled: false },
+    },
+  };
+}
+
+function makeMissingServiceResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      serviceResult: {},
+    },
+  };
+}
+
+function makeMissingAppBridgeResultReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      appBridgeResult: {},
+    },
+  };
+}
+
+function makeEmptyEvaluatorProcessReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      evaluatorResult: {
+        ...report.conformance.evaluatorResult,
+        process: {},
+      },
+    },
+  };
+}
+
+function makeEmptyResponseHandlerEvaluateReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      responseHandlerEvaluatorResult: {
+        ...report.conformance.responseHandlerEvaluatorResult,
+        evaluate: {},
+      },
+    },
+  };
+}
+
+function makeEmptyFieldEvaluatorParseReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      responseHandlerFieldEvaluatorResult: {
+        ...report.conformance.responseHandlerFieldEvaluatorResult,
+        parse: {},
+      },
+    },
+  };
+}
+
+function makeEmptyFieldEvaluatorHandleReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      responseHandlerFieldEvaluatorResult: {
+        ...report.conformance.responseHandlerFieldEvaluatorResult,
+        handle: {},
       },
     },
   };

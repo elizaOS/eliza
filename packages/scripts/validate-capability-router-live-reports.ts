@@ -558,8 +558,8 @@ function validateReportFile(
     observedModuleIds,
   );
 
-  requireObject(conformance.actionResult, "conformance.actionResult");
-  requireObject(conformance.providerResult, "conformance.providerResult");
+  validateActionResult(conformance.actionResult);
+  validateProviderResult(conformance.providerResult);
   const routeResult = requireObject(
     conformance.routeResult,
     "conformance.routeResult",
@@ -642,11 +642,14 @@ function validateReportFile(
       "conformance.assetResult.sha256 must not be the empty SHA-256 digest.",
     );
   }
-  requireObject(conformance.modelResult, "conformance.modelResult");
-  requireObject(conformance.lifecycleResult, "conformance.lifecycleResult");
-  requireObject(conformance.eventResult, "conformance.eventResult");
-  requireObject(conformance.serviceResult, "conformance.serviceResult");
-  requireObject(conformance.appBridgeResult, "conformance.appBridgeResult");
+  if (assetIntegrity !== undefined) {
+    validateAssetIntegritySha256(assetIntegrity, assetSha256.toLowerCase());
+  }
+  validateModelResult(conformance.modelResult);
+  validateLifecycleResult(conformance.lifecycleResult);
+  validateEventResult(conformance.eventResult);
+  validateServiceResult(conformance.serviceResult);
+  validateAppBridgeResult(conformance.appBridgeResult);
   validateEvaluatorResult(conformance.evaluatorResult);
   validateResponseHandlerEvaluatorResult(
     conformance.responseHandlerEvaluatorResult,
@@ -1331,6 +1334,80 @@ function assertNoSensitiveFields(value: unknown, path: string): void {
   }
 }
 
+function validateAssetIntegritySha256(
+  integrity: string,
+  assetSha256: string,
+): void {
+  const sha256Tokens = integrity
+    .trim()
+    .split(/\s+/)
+    .filter((token) => token.startsWith("sha256-"));
+  if (sha256Tokens.length === 0) {
+    throw new Error(
+      "conformance.assetResult.integrity must include a sha256 digest.",
+    );
+  }
+  const expectedDigest = Buffer.from(assetSha256, "hex").toString("base64");
+  if (!sha256Tokens.includes(`sha256-${expectedDigest}`)) {
+    throw new Error(
+      "conformance.assetResult.integrity must match conformance.assetResult.sha256.",
+    );
+  }
+}
+
+function validateModelResult(value: unknown): void {
+  const result = requireObject(value, "conformance.modelResult");
+  if (!Object.hasOwn(result, "result")) {
+    throw new Error("conformance.modelResult.result is required.");
+  }
+}
+
+function validateActionResult(value: unknown): void {
+  const result = requireObject(value, "conformance.actionResult");
+  requireAtLeastOneOwnProperty(
+    result,
+    ["text", "actions", "values", "data"],
+    "conformance.actionResult",
+  );
+}
+
+function validateProviderResult(value: unknown): void {
+  const result = requireObject(value, "conformance.providerResult");
+  requireAtLeastOneOwnProperty(
+    result,
+    ["text", "values", "data"],
+    "conformance.providerResult",
+  );
+}
+
+function validateLifecycleResult(value: unknown): void {
+  const result = requireObject(value, "conformance.lifecycleResult");
+  if (result.ok !== true) {
+    throw new Error("conformance.lifecycleResult.ok must be true.");
+  }
+}
+
+function validateEventResult(value: unknown): void {
+  const result = requireObject(value, "conformance.eventResult");
+  if (result.handled !== true) {
+    throw new Error("conformance.eventResult.handled must be true.");
+  }
+}
+
+function validateServiceResult(value: unknown): void {
+  const result = requireObject(value, "conformance.serviceResult");
+  if (!Object.hasOwn(result, "result")) {
+    throw new Error("conformance.serviceResult.result is required.");
+  }
+}
+
+function validateAppBridgeResult(value: unknown): void {
+  const result = requireObject(value, "conformance.appBridgeResult");
+  if (!Object.hasOwn(result, "result")) {
+    throw new Error("conformance.appBridgeResult.result is required.");
+  }
+}
+
 function validateEvaluatorResult(value: unknown): void {
   const result = requireObject(value, "conformance.evaluatorResult");
   const shouldRun = requireObject(
@@ -1348,7 +1425,13 @@ function validateEvaluatorResult(value: unknown): void {
     "conformance.evaluatorResult.prompt",
   );
   requireString(prompt.prompt, "conformance.evaluatorResult.prompt.prompt");
-  requireObject(result.process, "conformance.evaluatorResult.process");
+  const process = requireObject(
+    result.process,
+    "conformance.evaluatorResult.process",
+  );
+  if (!Object.hasOwn(process, "result")) {
+    throw new Error("conformance.evaluatorResult.process.result is required.");
+  }
 }
 
 function validateResponseHandlerEvaluatorResult(value: unknown): void {
@@ -1365,10 +1448,15 @@ function validateResponseHandlerEvaluatorResult(value: unknown): void {
       "conformance.responseHandlerEvaluatorResult.shouldRun.shouldRun must be boolean.",
     );
   }
-  requireObject(
+  const evaluate = requireObject(
     result.evaluate,
     "conformance.responseHandlerEvaluatorResult.evaluate",
   );
+  if (!Object.hasOwn(evaluate, "patch")) {
+    throw new Error(
+      "conformance.responseHandlerEvaluatorResult.evaluate.patch is required.",
+    );
+  }
 }
 
 function validateResponseHandlerFieldEvaluatorResult(value: unknown): void {
@@ -1385,14 +1473,34 @@ function validateResponseHandlerFieldEvaluatorResult(value: unknown): void {
       "conformance.responseHandlerFieldEvaluatorResult.shouldRun.shouldRun must be boolean.",
     );
   }
-  requireObject(
+  const parse = requireObject(
     result.parse,
     "conformance.responseHandlerFieldEvaluatorResult.parse",
   );
-  requireObject(
+  requireAtLeastOneOwnProperty(
+    parse,
+    ["value", "softFail"],
+    "conformance.responseHandlerFieldEvaluatorResult.parse",
+  );
+  const handle = requireObject(
     result.handle,
     "conformance.responseHandlerFieldEvaluatorResult.handle",
   );
+  if (!Object.hasOwn(handle, "effect")) {
+    throw new Error(
+      "conformance.responseHandlerFieldEvaluatorResult.handle.effect is required.",
+    );
+  }
+}
+
+function requireAtLeastOneOwnProperty(
+  value: Record<string, unknown>,
+  keys: string[],
+  field: string,
+): void {
+  if (!keys.some((key) => Object.hasOwn(value, key))) {
+    throw new Error(`${field} must include at least one result field.`);
+  }
 }
 
 function parseJson(source: string, file: string): Record<string, unknown> {

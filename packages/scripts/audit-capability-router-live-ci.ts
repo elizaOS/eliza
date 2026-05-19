@@ -1,14 +1,17 @@
 import { readFileSync } from "node:fs";
 
 const workflowPath = ".github/workflows/test.yml";
+const agentPackagePath = "packages/agent/package.json";
 
 type Check = {
   name: string;
   pattern: RegExp;
+  source?: "agent-package" | "workflow";
   message: string;
 };
 
 export type LiveCiAuditFailure = {
+  sourcePath: string;
   workflowPath: string;
   name: string;
   message: string;
@@ -25,6 +28,14 @@ export const checks: Check[] = [
     pattern:
       /Remote capability live CI audit self-test[\s\S]*test:remote-capabilities:live-ci-audit:self-test/,
     message: "server CI must run the live CI audit self-test.",
+  },
+  {
+    name: "canonical remote capability suite covers live report writer",
+    pattern:
+      /"test:remote-capabilities"[\s\S]*packages\/agent\/src\/services\/remote-capability-live-report\.test\.ts/,
+    source: "agent-package",
+    message:
+      "test:remote-capabilities must include the live report writer safety test.",
   },
   {
     name: "provider live job is required by test-status",
@@ -98,12 +109,19 @@ export const checks: Check[] = [
 
 export function validateCapabilityRouterLiveCi(
   workflow: string,
-  options: { workflowPath?: string } = {},
+  options: { agentPackageJson?: string; workflowPath?: string } = {},
 ): LiveCiAuditFailure[] {
   const path = options.workflowPath ?? workflowPath;
   return checks
-    .filter((check) => !check.pattern.test(workflow))
+    .filter((check) => {
+      const content =
+        check.source === "agent-package"
+          ? (options.agentPackageJson ?? "")
+          : workflow;
+      return !check.pattern.test(content);
+    })
     .map((check) => ({
+      sourcePath: check.source === "agent-package" ? agentPackagePath : path,
       workflowPath: path,
       name: check.name,
       message: check.message,
@@ -112,12 +130,16 @@ export function validateCapabilityRouterLiveCi(
 
 if (import.meta.main) {
   const workflow = readFileSync(workflowPath, "utf8");
-  const failures = validateCapabilityRouterLiveCi(workflow, { workflowPath });
+  const agentPackageJson = readFileSync(agentPackagePath, "utf8");
+  const failures = validateCapabilityRouterLiveCi(workflow, {
+    agentPackageJson,
+    workflowPath,
+  });
 
   if (failures.length > 0) {
     for (const failure of failures) {
       console.error(
-        `${failure.workflowPath}: ${failure.name}: ${failure.message}`,
+        `${failure.sourcePath}: ${failure.name}: ${failure.message}`,
       );
     }
     process.exit(1);
