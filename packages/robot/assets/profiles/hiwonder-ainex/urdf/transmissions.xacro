@@ -1,0 +1,47 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://ros.org/wiki/xacro">
+  <xacro:macro name="insert_transmission" params="name">
+    <transmission name="${name}_tran">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="${name}">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="${name}_motor">
+        <hardwareInterface>hardware_interface/EffortJointInterface</hardwareInterface>
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+  </xacro:macro>
+
+  <!--leg-->
+  <xacro:insert_transmission name="l_hip_roll" />
+  <xacro:insert_transmission name="l_hip_pitch" />
+  <xacro:insert_transmission name="r_hip_roll" />
+  <xacro:insert_transmission name="r_hip_pitch" />
+  <xacro:insert_transmission name="l_hip_yaw" />
+  <xacro:insert_transmission name="r_hip_yaw" />
+
+  <xacro:insert_transmission name="l_knee" />
+  <xacro:insert_transmission name="l_ank_pitch" />
+  <xacro:insert_transmission name="l_ank_roll" />
+  <xacro:insert_transmission name="r_knee" />
+  <xacro:insert_transmission name="r_ank_pitch" />
+  <xacro:insert_transmission name="r_ank_roll" />
+
+  <!--arm-->
+  <xacro:insert_transmission name="l_sho_roll" />
+  <xacro:insert_transmission name="l_sho_pitch" />
+  <xacro:insert_transmission name="r_sho_roll" />
+  <xacro:insert_transmission name="r_sho_pitch" />
+  <xacro:insert_transmission name="l_el_yaw" />
+  <xacro:insert_transmission name="r_el_yaw" />
+
+  <xacro:insert_transmission name="l_el_pitch" />
+  <xacro:insert_transmission name="l_gripper" />
+  <xacro:insert_transmission name="r_el_pitch" />
+  <xacro:insert_transmission name="r_gripper" />
+
+  <!--head-->
+  <xacro:insert_transmission name="head_pan" />
+  <xacro:insert_transmission name="head_tilt" />
+</robot>

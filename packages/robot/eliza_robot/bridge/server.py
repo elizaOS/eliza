@@ -1,0 +1,925 @@
+"""Unified websocket server for AiNex real/sim backends."""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import json
+from collections.abc import Callable
+from dataclasses import dataclass
+from pathlib import Path
+
+from websockets.asyncio.server import ServerConnection, serve
+from websockets.exceptions import ConnectionClosed
+
+from eliza_robot.bridge.backends.base import BridgeBackend
+from eliza_robot.bridge.backends.mock_backend import MockBackend
+# isaac_backend and ros_backend may pull lazy ROS/IsaacLab modules at call-time;
+# their top-level imports are safe. mujoco_backend is resolved lazily so the
+# bridge can boot without mujoco installed.
+from eliza_robot.bridge.backends.isaac_backend import IsaacBackend
+from eliza_robot.bridge.backends.ros_backend import RosBridgeBackend
+from eliza_robot.bridge.protocol import CommandEnvelope, EventEnvelope, ResponseEnvelope, parse_command, utc_now_iso
+from eliza_robot.bridge.safety import (
+    CommandRateLimiter,
+    PolicyGuardResult,
+    PolicyHeartbeatMonitor,
+    check_policy_motion_bounds,
+    is_deadman_heartbeat_command,
+)
+from eliza_robot.bridge.trace_log import TraceLogger, safe_to_record
+from eliza_robot.bridge.types import JsonDict, JsonValue
+from eliza_robot.bridge.validation import validate_command_payload
+
+
+BackendFactory = Callable[[], BridgeBackend]
+
+
+@dataclass
+class PolicyLoopState:
+    """Tracks the state of an active policy loop within a session."""
+    active: bool = False
+    task: str = ""
+    trace_id: str = ""
+    planner_step_id: str = ""
+    canonical_action: str = ""
+    target_entity_id: str = ""
+    target_label: str = ""
+    hz: float = 10.0
+    max_steps: int = 10000
+    step: int = 0
+    heartbeat: PolicyHeartbeatMonitor | None = None
+    _loop_task: asyncio.Task[None] | None = None
+
+
+@dataclass
+class RuntimeConfig:
+    queue_size: int
+    max_commands_per_sec: int
+    deadman_timeout_sec: float
+    trace_log_path: str
+
+
+def _load_config_file(path: str) -> JsonDict:
+    if path == "":
+        return {}
+    file_path = Path(path)
+    raw = json.loads(file_path.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict):
+        raise ValueError("config file must contain a JSON object")
+    return raw
+
+
+def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> RuntimeConfig:
+    queue_size = args.queue_size
+    max_commands_per_sec = args.max_commands_per_sec
+    deadman_timeout_sec = args.deadman_timeout_sec
+    trace_log_path = args.trace_log_path
+
+    safety_value = config_obj.get("safety")
+    if isinstance(safety_value, dict):
+        queue_size_value = safety_value.get("queue_size")
+        if isinstance(queue_size_value, int):
+            queue_size = queue_size_value
+        rate_value = safety_value.get("command_rate_limit_hz")
+        if isinstance(rate_value, int):
+            max_commands_per_sec = rate_value
+        deadman_value = safety_value.get("deadman_timeout_sec")
+        if isinstance(deadman_value, int | float):
+            deadman_timeout_sec = float(deadman_value)
+
+    logging_value = config_obj.get("logging")
+    if isinstance(logging_value, dict):
+        trace_log_value = logging_value.get("trace_log_path")
+        if isinstance(trace_log_value, str):
+            trace_log_path = trace_log_value
+
+    return RuntimeConfig(
+        queue_size=queue_size,
+        max_commands_per_sec=max_commands_per_sec,
+        deadman_timeout_sec=deadman_timeout_sec,
+        trace_log_path=trace_log_path,
+    )
+
+
+def _build_backend_factory(name: str) -> BackendFactory:
+    if name == "mock":
+        return MockBackend
+    if name == "ros":
+        return lambda: RosBridgeBackend("ros_real")
+    if name == "ros_real":
+        return lambda: RosBridgeBackend("ros_real")
+    if name == "ros_sim":
+        return lambda: RosBridgeBackend("ros_sim")
+    if name == "isaac":
+        return IsaacBackend
+    if name == "mujoco":
+        # Lazy import so the bridge can boot without mujoco installed.
+        # MuJocoBackend requires a concrete demo_env; the W7.1 wave provides
+        # a CLI factory that constructs and injects the env. For now, raise
+        # a clear error rather than silently fall through.
+        raise NotImplementedError(
+            "--backend mujoco requires a demo env factory; wiring lands in W7.1"
+        )
+    raise ValueError(f"unsupported backend: {name}")
+
+
+def _json_error(message: str, request_id: str = "unknown") -> JsonDict:
+    envelope = ResponseEnvelope(
+        request_id=request_id,
+        timestamp=utc_now_iso(),
+        ok=False,
+        backend="bridge",
+        message=message,
+        data={},
+    )
+    return envelope.to_json()
+
+
+async def _safe_send(ws: ServerConnection, payload: JsonValue) -> None:
+    if not isinstance(payload, dict):
+        raise ValueError("websocket send payload must be dict")
+    await ws.send(json.dumps(payload))
+
+
+async def _event_pump(ws: ServerConnection, backend: BridgeBackend, hz: float) -> None:
+    period = 1.0 / hz
+    while True:
+        events = await backend.poll_events()
+        for event in events:
+            await _safe_send(ws, event.to_json())
+        await asyncio.sleep(period)
+
+
+async def _command_worker(
+    ws: ServerConnection,
+    backend: BridgeBackend,
+    command_queue: asyncio.Queue[CommandEnvelope],
+    trace_logger: TraceLogger | None,
+) -> None:
+    while True:
+        command = await command_queue.get()
+        try:
+            response = await backend.handle_command(command)
+        except Exception as exc:
+            response = ResponseEnvelope(
+                request_id=command.request_id,
+                timestamp=utc_now_iso(),
+                ok=False,
+                backend=backend.backend_name,
+                message=f"backend error: {exc}",
+                data={},
+            )
+        await _safe_send(ws, response.to_json())
+        if trace_logger is not None:
+            trace_logger.write(
+                {
+                    "kind": "command_response",
+                    "timestamp": utc_now_iso(),
+                    "backend": backend.backend_name,
+                    "request_id": command.request_id,
+                    "command": command.command,
+                    "response": safe_to_record(response.to_json()),
+                }
+            )
+        command_queue.task_done()
+
+
+async def _deadman_pump(
+    ws: ServerConnection,
+    backend: BridgeBackend,
+    get_last_heartbeat: Callable[[], float],
+    deadman_timeout_sec: float,
+) -> None:
+    fired = False
+    while True:
+        await asyncio.sleep(0.1)
+        age = asyncio.get_running_loop().time() - get_last_heartbeat()
+        if age < deadman_timeout_sec:
+            fired = False
+            continue
+        if fired:
+            continue
+
+        stop_cmd = CommandEnvelope(
+            request_id=f"deadman-{int(age * 1000)}",
+            timestamp=utc_now_iso(),
+            command="walk.command",
+            payload={"action": "stop"},
+            preempt=True,
+        )
+        response = await backend.handle_command(stop_cmd)
+        fired = True
+        await _safe_send(
+            ws,
+            EventEnvelope(
+                event="safety.deadman_triggered",
+                timestamp=utc_now_iso(),
+                backend=backend.backend_name,
+                data={"response_ok": response.ok, "age_sec": age},
+            ).to_json(),
+        )
+
+
+async def _handle_policy_command(
+    ws: ServerConnection,
+    backend: BridgeBackend,
+    command: CommandEnvelope,
+    policy_state: PolicyLoopState,
+    trace_logger: TraceLogger | None,
+) -> ResponseEnvelope:
+    """Handle policy lifecycle commands (policy.start/stop/tick/status)."""
+
+    if command.command == "policy.start":
+        if policy_state.active:
+            return ResponseEnvelope(
+                request_id=command.request_id,
+                timestamp=utc_now_iso(),
+                ok=False,
+                backend=backend.backend_name,
+                message="policy already active",
+                data={"task": policy_state.task},
+            )
+        policy_state.active = True
+        policy_state.task = str(command.payload.get("task", ""))
+        policy_state.trace_id = str(command.payload.get("trace_id", ""))
+        policy_state.planner_step_id = str(command.payload.get("planner_step_id", ""))
+        policy_state.canonical_action = str(command.payload.get("canonical_action", ""))
+        policy_state.target_entity_id = str(command.payload.get("target_entity_id", ""))
+        policy_state.target_label = str(command.payload.get("target_label", ""))
+        policy_state.hz = float(command.payload.get("hz", 10.0))
+        policy_state.max_steps = int(command.payload.get("max_steps", 10000))
+        policy_state.step = 0
+        policy_state.heartbeat = PolicyHeartbeatMonitor(timeout_sec=2.0)
+        policy_state.heartbeat.record_tick()
+
+        # Ensure walking is started for policy mode
+        start_cmd = CommandEnvelope(
+            request_id=f"{command.request_id}-walk-start",
+            timestamp=utc_now_iso(),
+            command="walk.command",
+            payload={"action": "start"},
+        )
+        await backend.handle_command(start_cmd)
+
+        await _safe_send(
+            ws,
+            EventEnvelope(
+                event="policy.status",
+                timestamp=utc_now_iso(),
+                backend=backend.backend_name,
+                data={
+                    "state": "running",
+                    "task": policy_state.task,
+                    "step": 0,
+                    "trace_id": policy_state.trace_id,
+                    "planner_step_id": policy_state.planner_step_id,
+                    "canonical_action": policy_state.canonical_action,
+                    "target_entity_id": policy_state.target_entity_id,
+                    "target_label": policy_state.target_label,
+                },
+            ).to_json(),
+        )
+
+        if trace_logger is not None:
+            trace_logger.write({
+                "kind": "policy_start",
+                "timestamp": utc_now_iso(),
+                "task": policy_state.task,
+                "trace_id": policy_state.trace_id,
+                "planner_step_id": policy_state.planner_step_id,
+                "canonical_action": policy_state.canonical_action,
+                "target_entity_id": policy_state.target_entity_id,
+                "target_label": policy_state.target_label,
+                "hz": policy_state.hz,
+                "max_steps": policy_state.max_steps,
+            })
+
+        return ResponseEnvelope(
+            request_id=command.request_id,
+            timestamp=utc_now_iso(),
+            ok=True,
+            backend=backend.backend_name,
+            message="policy started",
+            data={
+                "task": policy_state.task,
+                "trace_id": policy_state.trace_id,
+                "planner_step_id": policy_state.planner_step_id,
+                "canonical_action": policy_state.canonical_action,
+                "target_entity_id": policy_state.target_entity_id,
+                "target_label": policy_state.target_label,
+                "hz": policy_state.hz,
+            },
+        )
+
+    if command.command == "policy.stop":
+        reason = str(command.payload.get("reason", "explicit_stop"))
+        was_active = policy_state.active
+        policy_state.active = False
+
+        # Stop walking
+        stop_cmd = CommandEnvelope(
+            request_id=f"{command.request_id}-walk-stop",
+            timestamp=utc_now_iso(),
+            command="walk.command",
+            payload={"action": "stop"},
+            preempt=True,
+        )
+        await backend.handle_command(stop_cmd)
+
+        await _safe_send(
+            ws,
+            EventEnvelope(
+                event="policy.status",
+                timestamp=utc_now_iso(),
+                backend=backend.backend_name,
+                data={
+                    "state": "idle",
+                    "reason": reason,
+                    "steps_completed": policy_state.step,
+                    "trace_id": policy_state.trace_id,
+                    "planner_step_id": policy_state.planner_step_id,
+                    "canonical_action": policy_state.canonical_action,
+                    "target_entity_id": policy_state.target_entity_id,
+                    "target_label": policy_state.target_label,
+                },
+            ).to_json(),
+        )
+
+        if trace_logger is not None:
+            trace_logger.write({
+                "kind": "policy_stop",
+                "timestamp": utc_now_iso(),
+                "trace_id": policy_state.trace_id,
+                "planner_step_id": policy_state.planner_step_id,
+                "canonical_action": policy_state.canonical_action,
+                "target_entity_id": policy_state.target_entity_id,
+                "target_label": policy_state.target_label,
+                "reason": reason,
+                "steps_completed": policy_state.step,
+            })
+
+        return ResponseEnvelope(
+            request_id=command.request_id,
+            timestamp=utc_now_iso(),
+            ok=True,
+            backend=backend.backend_name,
+            message="policy stopped" if was_active else "policy was not active",
+            data={
+                "reason": reason,
+                "steps_completed": policy_state.step,
+                "trace_id": policy_state.trace_id,
+                "planner_step_id": policy_state.planner_step_id,
+                "canonical_action": policy_state.canonical_action,
+                "target_entity_id": policy_state.target_entity_id,
+                "target_label": policy_state.target_label,
+            },
+        )
+
+    if command.command == "policy.tick":
+        if not policy_state.active:
+            return ResponseEnvelope(
+                request_id=command.request_id,
+                timestamp=utc_now_iso(),
+                ok=False,
+                backend=backend.backend_name,
+                message="policy not active",
+                data={},
+            )
+
+        # Record heartbeat
+        if policy_state.heartbeat is not None:
+            policy_state.heartbeat.record_tick()
+
+        # Check step limit
+        policy_state.step += 1
+        if policy_state.step > policy_state.max_steps:
+            policy_state.active = False
+            await _safe_send(
+                ws,
+                EventEnvelope(
+                    event="policy.status",
+                    timestamp=utc_now_iso(),
+                    backend=backend.backend_name,
+                    data={
+                        "state": "idle",
+                        "reason": "max_steps_reached",
+                        "steps_completed": policy_state.step,
+                        "trace_id": policy_state.trace_id,
+                        "planner_step_id": policy_state.planner_step_id,
+                        "canonical_action": policy_state.canonical_action,
+                        "target_entity_id": policy_state.target_entity_id,
+                        "target_label": policy_state.target_label,
+                    },
+                ).to_json(),
+            )
+            return ResponseEnvelope(
+                request_id=command.request_id,
+                timestamp=utc_now_iso(),
+                ok=False,
+                backend=backend.backend_name,
+                message="max steps reached, policy stopped",
+                data={"step": policy_state.step},
+            )
+
+        # Safety-gate the action payload
+        action_payload = command.payload.get("action", {})
+        if isinstance(action_payload, dict):
+            guard = check_policy_motion_bounds(action_payload)
+            if not guard.allowed:
+                # Emergency stop
+                policy_state.active = False
+                stop_cmd = CommandEnvelope(
+                    request_id=f"{command.request_id}-safety-stop",
+                    timestamp=utc_now_iso(),
+                    command="walk.command",
+                    payload={"action": "stop"},
+                    preempt=True,
+                )
+                await backend.handle_command(stop_cmd)
+                await _safe_send(
+                    ws,
+                    EventEnvelope(
+                        event="safety.policy_guard",
+                        timestamp=utc_now_iso(),
+                        backend=backend.backend_name,
+                        data={"reason": guard.reason, "step": policy_state.step},
+                    ).to_json(),
+                )
+                return ResponseEnvelope(
+                    request_id=command.request_id,
+                    timestamp=utc_now_iso(),
+                    ok=False,
+                    backend=backend.backend_name,
+                    message=f"safety guard blocked: {guard.reason}",
+                    data={"step": policy_state.step},
+                )
+
+            # Apply clamped action
+            clamped = guard.clamped
+
+            # Direct joint control mode: dispatch servo.set with joint positions
+            if "joint_positions" in action_payload:
+                from eliza_robot.bridge.isaaclab.joint_map import joint_name_to_servo_id, radians_to_pulse
+
+                jp = action_payload["joint_positions"]
+                duration = action_payload.get("duration", 20)
+
+                # Convert joint_positions dict (name→radians) to servo
+                # positions list ({id, position} in pulse) for ROS backend.
+                positions: list[dict] = []
+                if isinstance(jp, dict):
+                    for name, rad in jp.items():
+                        sid = joint_name_to_servo_id(name)
+                        positions.append({"id": sid, "position": radians_to_pulse(float(rad), sid)})
+                elif isinstance(jp, list):
+                    # Already in [{id, position}] format
+                    positions = jp
+
+                servo_cmd = CommandEnvelope(
+                    request_id=f"{command.request_id}-servo",
+                    timestamp=utc_now_iso(),
+                    command="servo.set",
+                    payload={
+                        "positions": positions,
+                        "joint_positions": jp,  # keep original for mock backend
+                        "duration": duration,
+                    },
+                )
+                response = await backend.handle_command(servo_cmd)
+            else:
+                # Legacy walk.set mode
+                walk_cmd = CommandEnvelope(
+                    request_id=f"{command.request_id}-walk",
+                    timestamp=utc_now_iso(),
+                    command="walk.set",
+                    payload={
+                        "speed": clamped.get("walk_speed", 2),
+                        "height": clamped.get("walk_height", 0.036),
+                        "x": clamped.get("walk_x", 0.0),
+                        "y": clamped.get("walk_y", 0.0),
+                        "yaw": clamped.get("walk_yaw", 0.0),
+                    },
+                )
+                response = await backend.handle_command(walk_cmd)
+
+            # Apply head if present
+            if "head_pan" in clamped or "head_tilt" in clamped:
+                head_cmd = CommandEnvelope(
+                    request_id=f"{command.request_id}-head",
+                    timestamp=utc_now_iso(),
+                    command="head.set",
+                    payload={
+                        "pan": clamped.get("head_pan", 0.0),
+                        "tilt": clamped.get("head_tilt", 0.0),
+                        "duration": 0.1,
+                    },
+                )
+                await backend.handle_command(head_cmd)
+
+            if guard.reason and trace_logger is not None:
+                trace_logger.write({
+                    "kind": "policy_tick_clamped",
+                    "timestamp": utc_now_iso(),
+                    "trace_id": policy_state.trace_id,
+                    "step": policy_state.step,
+                    "reason": guard.reason,
+                })
+
+            # Emit telemetry
+            await _safe_send(
+                ws,
+                EventEnvelope(
+                    event="telemetry.policy",
+                    timestamp=utc_now_iso(),
+                    backend=backend.backend_name,
+                    data={
+                        "step": policy_state.step,
+                    "trace_id": policy_state.trace_id,
+                    "planner_step_id": policy_state.planner_step_id,
+                    "canonical_action": policy_state.canonical_action,
+                    "target_entity_id": policy_state.target_entity_id,
+                    "target_label": policy_state.target_label,
+                        "clamped": clamped,
+                        "guard_reason": guard.reason,
+                    },
+                ).to_json(),
+            )
+
+            if trace_logger is not None:
+                trace_logger.write({
+                    "kind": "policy_tick",
+                    "timestamp": utc_now_iso(),
+                    "trace_id": policy_state.trace_id,
+                    "planner_step_id": policy_state.planner_step_id,
+                    "canonical_action": policy_state.canonical_action,
+                    "target_entity_id": policy_state.target_entity_id,
+                    "target_label": policy_state.target_label,
+                    "step": policy_state.step,
+                    "action": safe_to_record(action_payload),
+                    "clamped": safe_to_record(clamped),
+                    "response_ok": response.ok,
+                })
+
+            return ResponseEnvelope(
+                request_id=command.request_id,
+                timestamp=utc_now_iso(),
+                ok=response.ok,
+                backend=backend.backend_name,
+                message="policy tick applied",
+                data={
+                    "step": policy_state.step,
+                    "trace_id": policy_state.trace_id,
+                    "planner_step_id": policy_state.planner_step_id,
+                    "canonical_action": policy_state.canonical_action,
+                    "target_entity_id": policy_state.target_entity_id,
+                    "target_label": policy_state.target_label,
+                    "clamped": clamped,
+                    **response.data,
+                },
+            )
+
+        return ResponseEnvelope(
+            request_id=command.request_id,
+            timestamp=utc_now_iso(),
+            ok=False,
+            backend=backend.backend_name,
+            message="policy.tick requires action dict in payload",
+            data={},
+        )
+
+    if command.command == "policy.status":
+        return ResponseEnvelope(
+            request_id=command.request_id,
+            timestamp=utc_now_iso(),
+            ok=True,
+            backend=backend.backend_name,
+            message="ok",
+            data={
+                "active": policy_state.active,
+                "task": policy_state.task,
+                "trace_id": policy_state.trace_id,
+                "planner_step_id": policy_state.planner_step_id,
+                "canonical_action": policy_state.canonical_action,
+                "target_entity_id": policy_state.target_entity_id,
+                "target_label": policy_state.target_label,
+                "step": policy_state.step,
+                "hz": policy_state.hz,
+            },
+        )
+
+    return ResponseEnvelope(
+        request_id=command.request_id,
+        timestamp=utc_now_iso(),
+        ok=False,
+        backend=backend.backend_name,
+        message=f"unknown policy command: {command.command}",
+        data={},
+    )
+
+
+async def _policy_heartbeat_pump(
+    ws: ServerConnection,
+    backend: BridgeBackend,
+    policy_state: PolicyLoopState,
+) -> None:
+    """Monitor policy heartbeat and trigger fallback if stale."""
+    while True:
+        await asyncio.sleep(0.5)
+        if not policy_state.active:
+            continue
+        if policy_state.heartbeat is not None and policy_state.heartbeat.is_stale():
+            # Policy tick heartbeat timeout - emergency stop
+            policy_state.active = False
+            stop_cmd = CommandEnvelope(
+                request_id=f"policy-heartbeat-timeout-{policy_state.step}",
+                timestamp=utc_now_iso(),
+                command="walk.command",
+                payload={"action": "stop"},
+                preempt=True,
+            )
+            await backend.handle_command(stop_cmd)
+            await _safe_send(
+                ws,
+                EventEnvelope(
+                    event="safety.policy_guard",
+                    timestamp=utc_now_iso(),
+                    backend=backend.backend_name,
+                    data={
+                        "reason": "policy_heartbeat_timeout",
+                        "age_sec": policy_state.heartbeat.age_sec(),
+                        "step": policy_state.step,
+                    },
+                ).to_json(),
+            )
+            await _safe_send(
+                ws,
+                EventEnvelope(
+                    event="policy.status",
+                    timestamp=utc_now_iso(),
+                    backend=backend.backend_name,
+                    data={
+                        "state": "idle",
+                        "reason": "heartbeat_timeout",
+                        "steps_completed": policy_state.step,
+                        "trace_id": policy_state.trace_id,
+                        "planner_step_id": policy_state.planner_step_id,
+                        "canonical_action": policy_state.canonical_action,
+                        "target_entity_id": policy_state.target_entity_id,
+                        "target_label": policy_state.target_label,
+                    },
+                ).to_json(),
+            )
+
+
+async def _handler(
+    ws: ServerConnection, backend_factory: BackendFactory, config: RuntimeConfig
+) -> None:
+    backend = backend_factory()
+    await backend.connect()
+    loop = asyncio.get_running_loop()
+    last_heartbeat = loop.time()
+    limiter = CommandRateLimiter(max_commands_per_sec=config.max_commands_per_sec)
+    command_queue: asyncio.Queue[CommandEnvelope] = asyncio.Queue(maxsize=config.queue_size)
+    policy_state = PolicyLoopState()
+    trace_logger: TraceLogger | None = None
+    if config.trace_log_path != "":
+        trace_logger = TraceLogger(path=Path(config.trace_log_path))
+
+    def _get_last_heartbeat() -> float:
+        return last_heartbeat
+
+    await _safe_send(
+        ws,
+        EventEnvelope(
+            event="session.hello",
+            timestamp=utc_now_iso(),
+            backend=backend.backend_name,
+            data={
+                "capabilities": backend.capabilities(),
+                "queue_size": config.queue_size,
+                "max_commands_per_sec": config.max_commands_per_sec,
+                "deadman_timeout_sec": config.deadman_timeout_sec,
+                "trace_log_path": config.trace_log_path,
+            },
+        ).to_json(),
+    )
+
+    event_task = asyncio.create_task(_event_pump(ws, backend, hz=2.0))
+    worker_task = asyncio.create_task(
+        _command_worker(ws, backend, command_queue, trace_logger=trace_logger)
+    )
+    deadman_task = asyncio.create_task(
+        _deadman_pump(
+            ws,
+            backend,
+            get_last_heartbeat=_get_last_heartbeat,
+            deadman_timeout_sec=config.deadman_timeout_sec,
+        )
+    )
+    policy_heartbeat_task = asyncio.create_task(
+        _policy_heartbeat_pump(ws, backend, policy_state)
+    )
+    try:
+        async for raw_message in ws:
+            request_id = "unknown"
+            try:
+                parsed = json.loads(raw_message)
+                if not isinstance(parsed, dict):
+                    raise ValueError("payload must be a JSON object")
+                request_id_value = parsed.get("request_id")
+                if isinstance(request_id_value, str):
+                    request_id = request_id_value
+                command = parse_command(parsed)
+                validate_command_payload(command)
+                limit_result = limiter.check()
+                if not limit_result.allowed:
+                    await _safe_send(
+                        ws,
+                        _json_error(
+                            f"rate limit exceeded, retry_after_sec={limit_result.retry_after_sec:.3f}",
+                            request_id=request_id,
+                        ),
+                    )
+                    continue
+
+                if is_deadman_heartbeat_command(command):
+                    last_heartbeat = loop.time()
+
+                # Policy commands are handled directly (not queued)
+                if command.command.startswith("policy."):
+                    # Preempt manual command queue when entering policy mode
+                    if command.command == "policy.start":
+                        while not command_queue.empty():
+                            _ = command_queue.get_nowait()
+                            command_queue.task_done()
+
+                    response = await _handle_policy_command(
+                        ws, backend, command, policy_state, trace_logger
+                    )
+                    await _safe_send(ws, response.to_json())
+                    continue
+
+                # Manual commands preempt policy mode
+                if policy_state.active and command.command in {
+                    "walk.set", "walk.command", "head.set", "action.play",
+                }:
+                    # Auto-stop policy when manual command arrives
+                    policy_state.active = False
+                    await _safe_send(
+                        ws,
+                        EventEnvelope(
+                            event="policy.status",
+                            timestamp=utc_now_iso(),
+                            backend=backend.backend_name,
+                            data={
+                                "state": "idle",
+                                "reason": "manual_preempt",
+                                "steps_completed": policy_state.step,
+                                "trace_id": policy_state.trace_id,
+                                "planner_step_id": policy_state.planner_step_id,
+                                "canonical_action": policy_state.canonical_action,
+                                "target_entity_id": policy_state.target_entity_id,
+                                "target_label": policy_state.target_label,
+                            },
+                        ).to_json(),
+                    )
+
+                if command.preempt:
+                    while not command_queue.empty():
+                        _ = command_queue.get_nowait()
+                        command_queue.task_done()
+                try:
+                    command_queue.put_nowait(command)
+                except asyncio.QueueFull:
+                    await _safe_send(
+                        ws,
+                        _json_error("command queue is full", request_id=request_id),
+                    )
+                    continue
+                if trace_logger is not None:
+                    trace_logger.write(
+                        {
+                            "kind": "command_enqueued",
+                            "timestamp": utc_now_iso(),
+                            "backend": backend.backend_name,
+                            "request_id": command.request_id,
+                            "command": command.command,
+                            "preempt": command.preempt,
+                            "payload": safe_to_record(command.payload),
+                            "queue_size": command_queue.qsize(),
+                        }
+                    )
+            except Exception as exc:
+                await _safe_send(ws, _json_error(str(exc), request_id=request_id))
+    except ConnectionClosed:
+        pass
+    finally:
+        event_task.cancel()
+        worker_task.cancel()
+        deadman_task.cancel()
+        policy_heartbeat_task.cancel()
+        # Ensure policy is stopped on disconnect
+        if policy_state.active:
+            policy_state.active = False
+            stop_cmd = CommandEnvelope(
+                request_id="disconnect-policy-stop",
+                timestamp=utc_now_iso(),
+                command="walk.command",
+                payload={"action": "stop"},
+                preempt=True,
+            )
+            await backend.handle_command(stop_cmd)
+        await backend.shutdown()
+
+
+async def _run_server(host: str, port: int, backend: str, config: RuntimeConfig) -> None:
+    backend_factory = _build_backend_factory(backend)
+    async with serve(
+        lambda ws: _handler(ws, backend_factory, config),
+        host=host,
+        port=port,
+    ):
+        print(
+            "bridge websocket listening on "
+            f"ws://{host}:{port} backend={backend} "
+            f"queue_size={config.queue_size} "
+            f"max_commands_per_sec={config.max_commands_per_sec} "
+            f"deadman_timeout_sec={config.deadman_timeout_sec}"
+        )
+        await asyncio.Future()
+
+
+def _parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="AiNex unified websocket bridge")
+    parser.add_argument(
+        "--host",
+        type=str,
+        default="0.0.0.0",
+        help="listen host",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=9100,
+        help="listen port",
+    )
+    parser.add_argument(
+        "--backend",
+        type=str,
+        choices=["mock", "mujoco", "ros", "ros_real", "ros_sim", "isaac"],
+        default="mock",
+        help="target backend adapter",
+    )
+    parser.add_argument(
+        "--profile",
+        type=str,
+        default="hiwonder-ainex",
+        help="robot profile id (resolves URDF, calibration, safety from "
+             "packages/robot/profiles/<id>/)",
+    )
+    parser.add_argument(
+        "--queue-size",
+        type=int,
+        default=256,
+        help="max queued commands per websocket session",
+    )
+    parser.add_argument(
+        "--max-commands-per-sec",
+        type=int,
+        default=30,
+        help="rate limit for inbound commands per session",
+    )
+    parser.add_argument(
+        "--deadman-timeout-sec",
+        type=float,
+        default=1.0,
+        help="auto-stop timeout if no heartbeat command is received",
+    )
+    parser.add_argument(
+        "--trace-log-path",
+        type=str,
+        default="",
+        help="optional JSONL path for command/response trace logging",
+    )
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="",
+        help="optional JSON config path (bridge/config/default_bridge_config.json style)",
+    )
+    return parser.parse_args()
+
+
+def main() -> None:
+    args = _parse_args()
+    config_obj = _load_config_file(args.config)
+    config = _coerce_runtime_config(args, config_obj)
+    asyncio.run(
+        _run_server(host=args.host, port=args.port, backend=args.backend, config=config)
+    )
+
+
+if __name__ == "__main__":
+    main()
+

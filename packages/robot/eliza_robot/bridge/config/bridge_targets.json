@@ -1,0 +1,61 @@
+{
+  "targets": {
+    "real": {
+      "description": "Real AiNex robot via ROS1",
+      "backend": "ros_real",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9090,
+      "envelope_port": 9100,
+      "publish_hz": 15.0,
+      "max_commands_per_sec": 30,
+      "deadman_timeout_sec": 1.0,
+      "requires_ros": true,
+      "camera_url": "http://{robot_ip}:8080/stream?topic=/camera/image_raw&type=mjpeg&quality=70"
+    },
+    "sim": {
+      "description": "Gazebo simulation via ROS1",
+      "backend": "ros_sim",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9090,
+      "envelope_port": 9100,
+      "publish_hz": 15.0,
+      "max_commands_per_sec": 60,
+      "deadman_timeout_sec": 5.0,
+      "requires_ros": true,
+      "camera_url": ""
+    },
+    "isaac": {
+      "description": "IsaacLab simulation",
+      "backend": "isaac",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9090,
+      "envelope_port": 9100,
+      "publish_hz": 15.0,
+      "max_commands_per_sec": 60,
+      "deadman_timeout_sec": 5.0,
+      "requires_ros": false,
+      "camera_url": ""
+    },
+    "mock": {
+      "description": "In-memory mock for development",
+      "backend": "mock",
+      "host": "0.0.0.0",
+      "rosbridge_port": 9091,
+      "envelope_port": 9101,
+      "publish_hz": 30.0,
+      "max_commands_per_sec": 100,
+      "deadman_timeout_sec": 60.0,
+      "requires_ros": false,
+      "camera_url": ""
+    }
+  },
+  "env_overrides": {
+    "AINEX_BRIDGE_HOST": "host",
+    "AINEX_ROSBRIDGE_PORT": "rosbridge_port",
+    "AINEX_ENVELOPE_PORT": "envelope_port",
+    "AINEX_PUBLISH_HZ": "publish_hz",
+    "AINEX_MAX_CMD_SEC": "max_commands_per_sec",
+    "AINEX_DEADMAN_SEC": "deadman_timeout_sec",
+    "AINEX_CAMERA_URL": "camera_url"
+  }
+}

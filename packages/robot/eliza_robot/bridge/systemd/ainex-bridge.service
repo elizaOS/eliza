@@ -1,0 +1,16 @@
+[Unit]
+Description=AiNex Unified Websocket Bridge
+After=network.target
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=2
+User=ubuntu
+WorkingDirectory=/home/ubuntu/ainex-robot-code
+Environment=PYTHONPATH=/home/ubuntu/ainex-robot-code
+ExecStart=/usr/bin/python3 -m bridge.server --backend ros_real --host 0.0.0.0 --port 9100 --queue-size 256 --max-commands-per-sec 30 --deadman-timeout-sec 1.0
+
+[Install]
+WantedBy=multi-user.target
+

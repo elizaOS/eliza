@@ -1,0 +1,65 @@
+# Tracking Visualizer Configuration
+#
+# Marker assignment (DICT_6X6_250, 2-inch markers):
+#   ID 0  -- Robot Body       (back-right shoulder)
+#   ID 1  -- Robot Head       (forehead)
+#   ID 2  -- Ground Origin    (0, 0, 0)
+#   ID 3  -- Ground +X        (1, 0, 0)
+#   ID 4  -- Ground +X +Y     (1, 1, 0)
+#   ID 5  -- Ground +Y        (0, 1, 0)
+#   ID 6+ -- Object markers
+#
+# Floor markers define the world coordinate frame.  Place them flat on
+# the floor.  They don't have to form perfect right angles -- the PnP
+# solver is robust to small placement error.
+
+camera:
+  width: 640
+  height: 480
+  fps: 30
+  device: 0  # robot head camera (ignored when --robot-url is set)
+
+detector:
+  face_confidence: 0.5
+  object_confidence: 0.5
+  skeleton_confidence: 0.3
+  depth_enabled: false
+
+external_camera:
+  enabled: true
+  device: 4   # USB camera device number (override with --usb-device)
+  width: 640
+  height: 480
+  fps: 30
+  # Approximate intrinsics for 640x480
+  fx: 500.0
+  fy: 500.0
+  cx: 320.0
+  cy: 240.0
+
+markers:
+  dictionary: DICT_6X6_250
+  marker_size_m: 0.0508  # 2 inches
+
+  # Floor markers -- adjust positions to match your actual layout (metres)
+  world_markers:
+    2: [0.0, 0.0, 0.0]
+    3: [1.0, 0.0, 0.0]
+    4: [1.0, 1.0, 0.0]
+    5: [0.0, 1.0, 0.0]
+
+  robot_marker_ids: [0]
+  robot_head_marker_id: 1
+
+  object_markers:
+    6: red_ball
+    7: blue_cube
+    8: green_cylinder
+
+entity_slots:
+  num_slots: 8
+  slot_dim: 19
+  max_distance: 3.0
+  max_velocity: 1.0
+
+stale_timeout_sec: 3.0
