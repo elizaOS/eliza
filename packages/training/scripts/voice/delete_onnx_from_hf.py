@@ -44,9 +44,14 @@ COMMIT_MESSAGE: Final[str] = (
 # Full list of ONNX files to delete from the repo.
 # Every entry here has a GGUF replacement already published.
 ONNX_FILES_TO_DELETE: Final[tuple[str, ...]] = (
-    # VAD — replaced by voice/vad/silero-vad-v5.gguf
+    # VAD — replaced by silero-vad-v5.gguf in each bundle
     "bundles/0_6b/vad/silero-vad-int8.onnx",
+    "bundles/0_8b/vad/silero-vad-int8.onnx",
+    "bundles/1_7b/vad/silero-vad-int8.onnx",
     "bundles/2b/vad/silero-vad-int8.onnx",
+    "bundles/4b/vad/silero-vad-int8.onnx",
+    "bundles/9b/vad/silero-vad-int8.onnx",
+    "bundles/27b/vad/silero-vad-int8.onnx",
     "bundles/27b-256k/vad/silero-vad-int8.onnx",
     "voice/vad/silero-vad-int8.onnx",
     # TTS (Kokoro) — replaced by omnivoice GGUF
