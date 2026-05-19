@@ -287,9 +287,7 @@ export class VoiceEmotionClassifier {
 			});
 		} catch (err) {
 			if (err instanceof VoiceEmotionGgmlUnavailableError) {
-				throw new VoiceEmotionClassifierError(
-					`[voice-emotion] ${err.message}`,
-				);
+				throw new VoiceEmotionClassifierError(`[voice-emotion] ${err.message}`);
 			}
 			throw err;
 		}
@@ -355,9 +353,7 @@ export class VoiceEmotionClassifier {
 			};
 		} catch (err) {
 			if (err instanceof VoiceEmotionGgmlUnavailableError) {
-				throw new VoiceEmotionClassifierError(
-					`[voice-emotion] ${err.message}`,
-				);
+				throw new VoiceEmotionClassifierError(`[voice-emotion] ${err.message}`);
 			}
 			throw err;
 		}

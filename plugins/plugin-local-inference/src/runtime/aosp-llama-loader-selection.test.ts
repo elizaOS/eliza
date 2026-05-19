@@ -41,10 +41,7 @@ describe("shouldAttemptAospLlamaLoader", () => {
 
 	it("ELIZA_DISABLE_FFI_LLAMA=1 hard-disables the riscv64 auto-fire", () => {
 		expect(
-			shouldAttemptAospLlamaLoader(
-				{ ELIZA_DISABLE_FFI_LLAMA: "1" },
-				"riscv64",
-			),
+			shouldAttemptAospLlamaLoader({ ELIZA_DISABLE_FFI_LLAMA: "1" }, "riscv64"),
 		).toBe(false);
 	});
 
@@ -70,9 +67,9 @@ describe("shouldAttemptAospLlamaLoader", () => {
 		expect(
 			shouldAttemptAospLlamaLoader({ ELIZA_LOCAL_LLAMA: "true" }, "x64"),
 		).toBe(false);
-		expect(
-			shouldAttemptAospLlamaLoader({ ELIZA_LOCAL_LLAMA: "" }, "x64"),
-		).toBe(false);
+		expect(shouldAttemptAospLlamaLoader({ ELIZA_LOCAL_LLAMA: "" }, "x64")).toBe(
+			false,
+		);
 	});
 
 	it("trims whitespace around ELIZA_LOCAL_LLAMA before matching '1'", () => {

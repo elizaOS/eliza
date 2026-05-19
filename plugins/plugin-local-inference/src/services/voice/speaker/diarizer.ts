@@ -21,10 +21,7 @@
  * `models/voice/manifest.json`.
  */
 
-import {
-	DiarizerGgml,
-	DiarizerGgmlUnavailableError,
-} from "./diarizer-ggml";
+import { DiarizerGgml, DiarizerGgmlUnavailableError } from "./diarizer-ggml";
 
 export const PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID =
 	"pyannote-segmentation-3.0-int8" as const;

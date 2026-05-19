@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { pickKokoroRuntimeBackend, readKokoroBackendFromEnv } from "./pick-runtime";
+import {
+	pickKokoroRuntimeBackend,
+	readKokoroBackendFromEnv,
+} from "./pick-runtime";
 
 describe("pickKokoroRuntimeBackend", () => {
 	it("defaults to the fork (GGUF) backend when no env override is set", () => {
@@ -34,14 +37,14 @@ describe("pickKokoroRuntimeBackend", () => {
 	});
 
 	it("throws on the retired KOKORO_BACKEND=onnx value (no silent downgrade)", () => {
-		expect(() =>
-			readKokoroBackendFromEnv({ KOKORO_BACKEND: "onnx" }),
-		).toThrow(/no longer supported/);
+		expect(() => readKokoroBackendFromEnv({ KOKORO_BACKEND: "onnx" })).toThrow(
+			/no longer supported/,
+		);
 	});
 
 	it("throws on an unrecognized KOKORO_BACKEND value", () => {
-		expect(() =>
-			readKokoroBackendFromEnv({ KOKORO_BACKEND: "wat" }),
-		).toThrow(/must be one of/);
+		expect(() => readKokoroBackendFromEnv({ KOKORO_BACKEND: "wat" })).toThrow(
+			/must be one of/,
+		);
 	});
 });

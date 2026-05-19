@@ -554,6 +554,7 @@ def parse_log_metadata() -> dict[str, object]:
         "fatal_errors": [],
         "exceptions": [],
         "sim_failures": [],
+        "sim_passes": [],
         "simdram_entry": None,
         "simdram_load_range": None,
         "last_progress_marker": "",
@@ -620,6 +621,11 @@ def parse_log_metadata() -> dict[str, object]:
             sim_failures = metadata["sim_failures"]
             if isinstance(sim_failures, list):
                 sim_failures.append(line.strip())
+        if "*** PASSED ***" in line:
+            sim_passes = metadata["sim_passes"]
+            if isinstance(sim_passes, list):
+                sim_passes.append(line.strip())
+            last_progress = line
     metadata["last_progress_marker"] = last_progress
     metadata["lines_after_raw_transcript_end"] = lines_after_raw_transcript_end
     return metadata
@@ -736,6 +742,15 @@ def classify_smoke_progress(
         return {
             "stage": "linux_banner_only",
             "next_step": "continue until Linux command line/initramfs markers appear",
+        }
+    if "*** PASSED ***" in log_text:
+        return {
+            "stage": "sim_pass_no_linux_console",
+            "next_step": (
+                "treat the simulator pass marker as non-Linux evidence; rerun with "
+                "cycle-accurate UART serial enabled or a Linux boot marker source "
+                "before claiming generated AP Linux boot"
+            ),
         }
     if has_accepted_opensbi_markers(log_text):
         return {

@@ -950,6 +950,78 @@ entries:
     risk:
       - Model card reports limited standalone pass rate and requires iteration.
       - Proprietary training data may restrict release confidence.
+  - id: chipseek
+    name: ChipSeek
+    kind: eda_feedback_rl_rtl_generation_framework
+    stage:
+      - rtl_generation
+      - reinforcement_learning
+      - ppa_optimization
+      - simulator_feedback
+      - synthesis_feedback
+    priority: P1
+    source_url: https://arxiv.org/abs/2507.04736
+    code_url: https://github.com/rong-hash/chipseek
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: external_base_models_required
+    e1_fit: >
+      Strong RTL-generation SOTA candidate because it integrates simulator and
+      synthesis/PPA feedback into reinforcement learning rather than relying on
+      syntax-only generation.
+    integration_action: >
+      Track as an external framework candidate for dry-run RTL evaluation only.
+      Do not train, run inference, import datasets, build Docker images, or
+      promote generated RTL until revisions, model dependencies, EDA tools,
+      prompts, outputs, and local gates are pinned.
+    evidence_gate: >
+      Any ChipSeek use requires exact code revision, dependency and model
+      manifest, training/evaluation data provenance, prompt/output hashes,
+      generated RTL quarantine, lint, simulation, synthesis, OpenLane/PPA
+      evidence where applicable, benchmark non-overlap, and human review.
+    risk:
+      - RL rewards can overfit public RTLLM/VerilogEval tasks or optimize proxy
+        PPA while missing E1 protocol, reset, MMIO, or integration contracts.
+      - Docker/GPU/model dependencies are too heavy for release evidence unless
+        fully pinned and replayed locally.
+  - id: rtlseek
+    name: RTLSeek
+    kind: diversity_oriented_rl_rtl_generation_method
+    stage:
+      - rtl_generation
+      - reinforcement_learning
+      - diversity_search
+      - eda_feedback
+      - benchmark_evaluation
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.27630
+    code_url: https://anonymous.4open.science/r/DAC2026ID71-ACB4/
+    model_url: https://anonymous.4open.science/r/DAC2026ID71-ACB4/
+    dataset_url: https://anonymous.4open.science/r/DAC2026ID71-ACB4/
+    license_status: review_required
+    code_status: anonymous_artifacts_to_review
+    model_status: model_weights_reported_to_review
+    e1_fit: >
+      Relevant because it explicitly rewards RTL correctness and diversity with
+      EDA feedback, which could help explore multiple E1 implementation
+      candidates once deterministic local oracles exist.
+    integration_action: >
+      Track as a blocked external model/code/dataset candidate. Do not download
+      anonymous artifacts, run post-training, generate RTL, or claim quality
+      until artifact identity, license, revisions, benchmark overlap, and local
+      gates are resolved.
+    evidence_gate: >
+      RTLSeek-style use requires artifact revision and license review, model
+      weight hashes, dataset manifests, reward definitions, simulator/synthesis
+      logs, generated RTL quarantine, lint/formal/cocotb/synthesis evidence,
+      contamination checks, and reviewer disposition.
+    risk:
+      - Diversity-oriented sampling can produce many plausible but subtly
+        incorrect RTL variants without strong local oracles.
+      - Anonymous model/data artifacts are not release-suitable until identity,
+        terms, and reproducibility are resolved.
   - id: rtl-repocoder
     name: RTLRepoCoder
     kind: code_model_method

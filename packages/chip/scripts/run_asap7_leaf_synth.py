@@ -210,17 +210,13 @@ def write_yosys_script(
             "techmap",
             "opt -fast",
             f"dfflibmap -liberty {seq_lib}",
-            # `-fast` selects ABC's simple combinational mapper, which avoids
-            # the segfaulting `&nf` pass that the default ABC script hits on
-            # the ASAP7 merged SCL.
-            #
-            # We add an explicit `-script` that runs the same fast map and
-            # then calls `stime -c` so the arrival time (critical path delay)
-            # is printed to the yosys log. The runner parses it into the
-            # `abc_critical_path_delay_ps` field of the shape JSON.
-            f"abc -liberty {abc_lib} {dont_use_args}{abc_clock_arg}"
-            f" -script +strash;dretime;retime,-o,-D,{abc_clock_ps or 1000};"
-            f"map,-D,{abc_clock_ps or 1000};topo;stime,-c",
+            # `-fast` selects ABC's simple combinational mapper. The default
+            # ABC script segfaults on the ASAP7 merged SCL inside the `&nf`
+            # mapper, so we use `-fast` instead. ABC `-fast` does not emit a
+            # `Delay = ...` line, so `abc_critical_path_delay_ps` is left
+            # null in the shape JSON; the downstream projection already null-
+            # checks this field.
+            f"abc -liberty {abc_lib} -fast {dont_use_args}{abc_clock_arg}",
             "opt_clean",
             f"tee -o {stat_log_path} stat -liberty {merged_lib}",
             f"tee -o {json_stat_path} stat -liberty {merged_lib} -json",

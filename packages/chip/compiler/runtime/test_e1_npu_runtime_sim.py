@@ -136,6 +136,21 @@ class E1NpuMmioSim:
     def _scratch_write_s32(self, offset: int, value: int) -> None:
         self.regs[self.runtime.SCRATCH + offset] = value & 0xFFFF_FFFF
 
+    def _scratch_read_u32(self, offset: int) -> int:
+        return self.regs[self.runtime.SCRATCH + offset] & 0xFFFF_FFFF
+
+    def _memory_read_u8(self, address: int) -> int:
+        word_address = address & ~3
+        if word_address not in self.memory:
+            raise KeyError(word_address)
+        return (self.memory[word_address] >> (8 * (address & 3))) & 0xFF
+
+    def _scratch_write_u8(self, offset: int, value: int) -> None:
+        word_addr = self.runtime.SCRATCH + (offset & ~3)
+        shift = 8 * (offset & 3)
+        mask = 0xFF << shift
+        self.regs[word_addr] = (self.regs[word_addr] & ~mask) | ((value & 0xFF) << shift)
+
     def _scratch_write_s8(self, offset: int, value: int) -> None:
         word_addr = self.runtime.SCRATCH + (offset & ~3)
         shift = 8 * (offset & 3)
@@ -293,6 +308,9 @@ class E1NpuMmioSim:
             self.regs[self.runtime.CTRL_STATUS] = 0x6
             return
 
+        self._execute_gemm_from_scratch(opcode)
+
+    def _execute_gemm_from_scratch(self, opcode: int) -> int:
         cfg = self.regs[self.runtime.GEMM_CFG]
         bases = self.regs[self.runtime.GEMM_BASE]
         strides = self.regs[self.runtime.GEMM_STRIDE]
@@ -323,6 +341,7 @@ class E1NpuMmioSim:
         self.regs[self.runtime.PERF_CYCLES] += macs
         self.regs[self.runtime.PERF_MACS] += macs
         self.regs[self.runtime.CTRL_STATUS] = 0x2
+        return macs
 
     def _execute_memory_backed_descriptors(self, head: int, queued: int) -> bool:
         desc_base = self.regs.get(self.runtime.DESC_BASE, 0)
@@ -358,8 +377,21 @@ class E1NpuMmioSim:
                 if byte_count == 0 or byte_count & 0x3:
                     self._descriptor_error(self.runtime.DESC_STATUS_STREAM_ERROR, slot)
                     return True
+                scratch_offset = (word0 >> 16) & 0x3F
+                try:
+                    for offset in range(byte_count):
+                        self._scratch_write_u8(
+                            scratch_offset + offset,
+                            self._memory_read_u8(word1 + offset),
+                        )
+                except KeyError:
+                    self._descriptor_error(self.runtime.DESC_STATUS_MEM_ERROR, slot)
+                    return True
                 bytes_read += byte_count
                 read_beats += byte_count // 4
+            self.regs[self.runtime.OPCODE] = opcode
+            if opcode in (self.runtime.OP_GEMM_S8, self.runtime.OP_GEMM_S4):
+                self._execute_gemm_from_scratch(opcode)
             if writeback_request:
                 if opcode not in (self.runtime.OP_GEMM_S8, self.runtime.OP_GEMM_S4) or word2 & 0x3:
                     self._descriptor_error(self.runtime.DESC_STATUS_WRITEBACK_UNSUPPORTED, slot)
@@ -371,13 +403,19 @@ class E1NpuMmioSim:
                     return True
                 bytes_written += writeback_bytes
                 write_beats += writeback_bytes // 4
+                c_base = (self.regs.get(self.runtime.GEMM_BASE, 0) >> 16) & 0x3F
+                c_stride = (self.regs.get(self.runtime.GEMM_STRIDE, 0) >> 16) & 0xF
+                n = (cfg >> 8) & 0x3
                 for offset in range(0, writeback_bytes, 4):
-                    self.memory[word2 + offset] = self.regs.get(self.runtime.SCRATCH + offset, 0)
+                    row = offset // max(1, n * 4)
+                    col = (offset // 4) % max(1, n)
+                    self.memory[word2 + offset] = self._scratch_read_u32(
+                        c_base + row * c_stride + col * 4
+                    )
             if not stream_to_scratch:
                 self.regs[self.runtime.OP_A] = word1
                 self.regs[self.runtime.OP_B] = word2
                 self.regs[self.runtime.ACC] = self.memory[base + 12]
-            self.regs[self.runtime.OPCODE] = opcode
 
         self.regs[self.runtime.DESC_BYTES_READ] += bytes_read
         self.regs[self.runtime.DESC_BYTES_WRITTEN] += bytes_written

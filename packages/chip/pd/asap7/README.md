@@ -38,21 +38,70 @@ project those shapes to TSMC N2P / A14 / Intel 14A class using
 
 ## Flow
 
-The expected flow is OpenROAD ORFS (OpenROAD-flow-scripts), not OpenLane 2.
-ORFS supports ASAP7 natively. The flow consumes the same `rtl/` source set as
-the OpenLane lanes; only the PDK + cell library + clock target differ.
+Two flow modes coexist in this lane:
+
+1. **ORFS post-route** (full PnR) — drives `big_core_shell`, `npu_tile`,
+   `slc_slice`, `npu_tile_rf_leaf`. Gated by an ORFS local checkout or docker
+   image. The operator runs ORFS for the block and copies the post-route
+   shape JSON into `docs/evidence/process/asap7/<block>_shape.json`.
+2. **Yosys + ABC synth-only** (no ORFS dependency) — drives `tage_table` and
+   any other leaf block whose `config.asap7.yaml` entry sets
+   `flow_mode: yosys_abc_synth_only`. The runner invokes
+   `scripts/run_asap7_leaf_synth.py`, which:
+     1. unpacks the ASAP7 7p5t RVT TT NLDM libraries from
+        `external/pdks/asap7/asap7sc7p5t_27/LIB/NLDM/*.lib.7z` into
+        `build/asap7/lib/` (via `scripts/extract_asap7_libs.py` + the
+        bundled `py7zr`),
+     2. runs `yosys 0.64 + slang` with the per-block `synth_params`
+        overrides,
+     3. ABC-maps the design with `abc -fast` and the ORFS-published
+        `DONT_USE_CELLS` exclusion set
+        (`*x1p*_ASAP7*`, `*xp*_ASAP7*`, `SDF*`, `ICG*`),
+     4. emits a shape JSON tagged
+        `evidence_class: predictive_finfet_shape_only_not_signoff` that the
+        downstream `scripts/project_ppa_to_n2p.py` ingests verbatim.
 
 ```sh
-make -C pd/asap7 check         # preflight: PDK + ORFS reachable?
-make -C pd/asap7 clone-asap7   # one-shot ASAP7 PDK clone
-make -C pd/asap7 clone-orfs    # one-shot OpenROAD-flow-scripts clone
-make -C pd/asap7 all           # run all blocks + leaf
-make -C pd/asap7 leaf-shape    # run only the leaf sub-block (npu_tile_rf_leaf)
+make -C pd/asap7 check                          # preflight: PDK reachable?
+make -C pd/asap7 clone-asap7                    # one-shot ASAP7 PDK clone
+make -C pd/asap7 clone-orfs                     # one-shot ORFS clone (tier-1 blocks)
+make -C pd/asap7 all                            # run every ORFS block
+make -C pd/asap7 leaf-shape MODULE=tage_table   # yosys+ABC synth-only leaf shape
+make ppa-projection                             # project all shapes to N2P/A14/Intel-14A/SF2P
 ```
 
 The block list is defined in `config.asap7.yaml` and mirrors the OpenLane
 top-level RTL set. Each block is run separately because ASAP7 is intended for
 per-block shape characterization, not flat top-down closure.
+
+### Reproducing the round-3 `tage_table` leaf shape
+
+```sh
+make -C pd/asap7 clone-asap7                   # ~1 min net, ~1.3 GB disk
+make -C pd/asap7 leaf-shape MODULE=tage_table  # ~10 s yosys+ABC
+make ppa-projection                            # ~3 s per-block Monte Carlo
+```
+
+Outputs:
+
+- `docs/evidence/process/asap7/tage_table_shape.json` — ABC-mapped gate
+  count, std-cell area, cell histogram. Tagged
+  `evidence_class=predictive_finfet_shape_only_not_signoff`.
+- `docs/evidence/process/asap7/tage_table_projection_n2p.json` — Monte
+  Carlo p10 / p50 / p90 area bands across N2P, A14, Intel 14A, Samsung SF2P
+  (1-sigma scaling-factor uncertainty from `ppa-projection.yaml`).
+- `docs/evidence/process/ppa-projection.json` — aggregated multi-block
+  projection report.
+
+Wall-clock budget on a single workstation: ~10 s for the synth, ~3 s for
+projection (dominated by 4096-sample Monte Carlo × four targets).
+The 4096-entry production geometry of `tage_table` is approximated by the
+128-entry leaf-shape (`synth_params.ENTRIES=128`) so the lookup/update
+control path is the same while the flat-flop storage cost stays tractable.
+Storage area scales linearly with `ENTRIES`; consumers projecting the full
+production geometry should multiply `sequential_cells × area-per-DFF` by
+`(production / leaf)` and add it to the (entry-count-invariant) combina-
+tional logic area.
 
 ### Block tiers
 

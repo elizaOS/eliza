@@ -95,9 +95,9 @@ describe("createStreamingTranscriber — whisper.cpp tier", () => {
 
 	it("prefer:'whisper-cpp' throws when no runtime is resolvable", () => {
 		mockState.runtimeFixture = null;
-		expect(() =>
-			createStreamingTranscriber({ prefer: "whisper-cpp" }),
-		).toThrow(AsrUnavailableError);
+		expect(() => createStreamingTranscriber({ prefer: "whisper-cpp" })).toThrow(
+			AsrUnavailableError,
+		);
 	});
 
 	it("prefer:'whisper-cpp' returns the whisper.cpp tier when artifacts present", () => {

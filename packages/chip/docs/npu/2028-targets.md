@@ -82,7 +82,12 @@ GEMM prototype. It now includes packed INT4, INT2, scalar FP8, descriptor read
 streaming into scratchpad, and a streamed `GEMM_S8` descriptor writeback smoke
 path. The userspace runtime also has a `CommandBuffer` descriptor-batching
 abstraction with deterministic descriptor-image staging and single-completion
-submit, but this remains bounded RTL/runtime evidence rather than a tensor
+submit plus a `stage_host_runtime_sequence` helper that replays prepared-batch
+MMIO and descriptor-memory writes and returns
+`eliza.e1_npu_host_runtime_sequence_stage_result.v1`. The simulator gate feeds
+the partitioner-produced prepared batch through this helper and observes
+descriptor completion/counters in `E1NpuMmioSim`, including memory-backed
+descriptor parsing for stream/read/writeback accounting, but this remains bounded RTL/runtime evidence rather than a tensor
 command processor. The StableHLO subset partitioner reports contiguous
 `command_buffer_batches` for supported op runs and splits them at the local
 seven-entry ring window, but it still does not provide dependency scheduling or

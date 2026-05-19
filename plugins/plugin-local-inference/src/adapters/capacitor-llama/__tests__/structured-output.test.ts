@@ -32,7 +32,10 @@ describe("capacitor-llama / structured-output", () => {
 
 		it("emits json_schema response_format for responseSchema", () => {
 			const plan = planStructuredRequest({
-				responseSchema: { type: "object", properties: { x: { type: "string" } } },
+				responseSchema: {
+					type: "object",
+					properties: { x: { type: "string" } },
+				},
 			});
 			expect(plan.kind).toBe("schema");
 			expect(plan.responseFormat?.type).toBe("json_schema");

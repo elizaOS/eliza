@@ -237,6 +237,25 @@ def test_progress_classifies_fast_timeout_without_trace() -> None:
         raise AssertionError(f"expected traced rerun guidance, got {progress}")
 
 
+def test_progress_rejects_sim_pass_without_linux_console() -> None:
+    progress = smoke.classify_smoke_progress(
+        log_text=(
+            "eliza-evidence: raw_transcript_begin\n"
+            "*** PASSED *** Completed after 2058946 simulation cycles\n"
+        ),
+        instruction_trace={"exists": False},
+        log_metadata={
+            "raw_transcript_closed": True,
+            "run_target": "run-binary-fast",
+            "exit_code": "124",
+        },
+    )
+    if progress["stage"] != "sim_pass_no_linux_console":
+        raise AssertionError(f"expected non-Linux simulator pass stage, got {progress}")
+    if "non-Linux evidence" not in progress["next_step"]:
+        raise AssertionError(f"expected claim-boundary guidance, got {progress}")
+
+
 def test_local_smoke_defaults_to_uart_diagnostics() -> None:
     wrapper = ROOT / "scripts" / "run_chipyard_eliza_linux_smoke.sh"
     text = wrapper.read_text(encoding="utf-8")
@@ -259,6 +278,7 @@ def main() -> int:
         test_progress_classifies_opensbi_early_init,
         test_progress_classifies_early_fdt_as_in_progress,
         test_progress_classifies_fast_timeout_without_trace,
+        test_progress_rejects_sim_pass_without_linux_console,
         test_local_smoke_defaults_to_uart_diagnostics,
     )
     for test in tests:

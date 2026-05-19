@@ -70,13 +70,35 @@ predictive_lanes:
     library_manifest: pd/library-manifests/asap7.yaml
     corner_manifest: pd/corner-manifests/asap7.yaml
     evidence_class: predictive_finfet_shape_only_not_signoff
-    status: orfs_flow_not_yet_executed
-    last_run_artifact: null
+    status: leaf_block_shape_captured
+    asap7_predictive_status: leaf_block_shape_captured
+    last_run_artifact: docs/evidence/process/asap7/tage_table_shape.json
     flagship_class: false
     forbidden_uses:
       - cite_asap7_as_n2p_signoff
       - cite_asap7_as_a14_signoff
       - cite_asap7_as_14a_signoff
+    captured_leaf_blocks:
+      - block_id: tage_table
+        flow_mode: yosys_abc_synth_only
+        scope: >
+          One BPU TAGE tagged-table primitive (128-entry leaf-shape proxy of
+          the production 4096-entry geometry; 14-bit valid+tag+ctr+useful
+          struct) synthesized standalone with yosys 0.64 + ABC -fast, mapped
+          to asap7sc7p5t_27 RVT TT (0.70 V, 25 C) stdcells with the ORFS
+          DONT_USE_CELLS exclusion list applied.
+        shape_report: docs/evidence/process/asap7/tage_table_shape.json
+        projection_report: docs/evidence/process/asap7/tage_table_projection_n2p.json
+        evidence_class: predictive_finfet_shape_only_not_signoff
+    pending_leaf_blocks:
+      - id: npu_tile_rf_leaf
+        status: orfs_post_route_required
+      - id: big_core_shell
+        status: orfs_post_route_required
+      - id: npu_tile
+        status: orfs_post_route_required
+      - id: slc_slice
+        status: orfs_post_route_required
 
 advanced_lanes_blocked:
   - id: tsmc_n2p

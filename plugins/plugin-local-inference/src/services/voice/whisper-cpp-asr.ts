@@ -82,9 +82,25 @@ function resolveLibraryPath(): string | null {
 	const libName = platformLibName();
 	return firstExisting([
 		// Repo-local host build via plugin-local-inference/native/build-whisper.mjs.
-		path.resolve(here, "..", "..", "..", "..", "native", "build-whisper", libName),
+		path.resolve(
+			here,
+			"..",
+			"..",
+			"..",
+			"..",
+			"native",
+			"build-whisper",
+			libName,
+		),
 		// User-installed location populated by ensure-whisper-gguf.sh / installer.
-		path.join(os.homedir(), ".eliza", "local-inference", "bin", "whisper", libName),
+		path.join(
+			os.homedir(),
+			".eliza",
+			"local-inference",
+			"bin",
+			"whisper",
+			libName,
+		),
 		// Linux per-host packaged location.
 		`/usr/local/lib/${libName}`,
 		`/usr/lib/${libName}`,
@@ -100,7 +116,13 @@ function resolveModelPath(): string | null {
 	const candidates: string[] = [];
 	if (cache) candidates.push(path.join(cache, `ggml-${modelName}.bin`));
 	candidates.push(
-		path.join(os.homedir(), ".cache", "eliza", "whisper", `ggml-${modelName}.bin`),
+		path.join(
+			os.homedir(),
+			".cache",
+			"eliza",
+			"whisper",
+			`ggml-${modelName}.bin`,
+		),
 		path.join(
 			os.homedir(),
 			".eliza",
@@ -328,7 +350,9 @@ export function makeWhisperCppDecoder(runtime: WhisperCppRuntime): {
 	// unnecessary contention and keeps deterministic ordering for callers.
 	let chain: Promise<void> = Promise.resolve();
 
-	const decoder: StreamingPcmDecoder = (pcm16k: Float32Array): Promise<string> => {
+	const decoder: StreamingPcmDecoder = (
+		pcm16k: Float32Array,
+	): Promise<string> => {
 		if (state.disposed) {
 			return Promise.reject(
 				new Error("[whisper-cpp-asr] decoder has been disposed"),

@@ -68,9 +68,7 @@ export interface SpeakerEncoder {
 	dispose(): Promise<void>;
 }
 
-function translateError(
-	err: unknown,
-): SpeakerEncoderUnavailableError | Error {
+function translateError(err: unknown): SpeakerEncoderUnavailableError | Error {
 	if (err instanceof SpeakerEncoderGgmlUnavailableError) {
 		return new SpeakerEncoderUnavailableError(err.code, err.message);
 	}

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
+from typing import Any
 
 Read32 = Callable[[int], int]
 Write32 = Callable[[int, int], None]
@@ -217,6 +218,83 @@ class CommandBuffer:
             raise ValueError("command buffer staging requires at least one descriptor")
         for address, word in self.descriptor_image().items():
             write_word32(address, word)
+
+
+def stage_host_runtime_sequence(
+    sequence: Mapping[str, Any],
+    *,
+    write_mmio32: Write32,
+    write_mem32: Write32,
+) -> dict[str, int | str]:
+    """Replay a prepared-batch host staging sequence through caller-provided writers."""
+    if not isinstance(sequence, Mapping):
+        raise TypeError("host runtime sequence must be a mapping")
+    if not callable(write_mmio32):
+        raise TypeError("host runtime sequence MMIO writer must be callable")
+    if not callable(write_mem32):
+        raise TypeError("host runtime sequence memory writer must be callable")
+    if sequence.get("schema") != "eliza.e1_npu_host_runtime_sequence.v1":
+        raise ValueError("unsupported host runtime sequence schema")
+
+    mmio_writes = 0
+    memory_writes = 0
+    for op in _required_sequence_list(sequence, "mmio_preamble_writes"):
+        if not isinstance(op, Mapping):
+            raise TypeError("host runtime sequence preamble entry must be a mapping")
+        for write in _required_sequence_list(op, "writes"):
+            address, value = _sequence_write_address_value(write)
+            write_mmio32(address, value)
+            mmio_writes += 1
+
+    for write in _required_sequence_list(sequence, "descriptor_memory_writes"):
+        address, value = _sequence_write_address_value(write)
+        write_mem32(address, value)
+        memory_writes += 1
+
+    for write in _required_sequence_list(sequence, "submission_mmio_writes"):
+        address, value = _sequence_write_address_value(write)
+        write_mmio32(address, value)
+        mmio_writes += 1
+
+    completion_poll = sequence.get("completion_poll")
+    if not isinstance(completion_poll, Mapping):
+        raise ValueError("host runtime sequence requires completion_poll metadata")
+    _sequence_address(completion_poll.get("address"))
+
+    return {
+        "schema": "eliza.e1_npu_host_runtime_sequence_stage_result.v1",
+        "mmio_writes": mmio_writes,
+        "memory_writes": memory_writes,
+    }
+
+
+def _required_sequence_list(sequence: Mapping[str, Any], key: str) -> list[Any]:
+    value = sequence.get(key)
+    if not isinstance(value, list) or not value:
+        raise ValueError(f"host runtime sequence requires non-empty {key}")
+    return value
+
+
+def _sequence_write_address_value(write: Any) -> tuple[int, int]:
+    if not isinstance(write, Mapping):
+        raise TypeError("host runtime sequence write entry must be a mapping")
+    address = _sequence_address(write.get("address"))
+    value = write.get("value")
+    if not isinstance(value, int) or value < 0 or value > 0xFFFF_FFFF:
+        raise ValueError("host runtime sequence write value must be a uint32")
+    return address, value
+
+
+def _sequence_address(address: Any) -> int:
+    if isinstance(address, str):
+        parsed = int(address, 0)
+    elif isinstance(address, int):
+        parsed = address
+    else:
+        raise ValueError("host runtime sequence write address must be an integer or string")
+    if parsed < 0 or parsed > 0xFFFF_FFFF or parsed & 0x3:
+        raise ValueError("host runtime sequence write address must be aligned uint32")
+    return parsed
 
 
 class NpuRuntimeError(RuntimeError):

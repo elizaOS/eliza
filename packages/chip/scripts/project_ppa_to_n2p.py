@@ -437,10 +437,43 @@ def main() -> int:
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    # Also emit a per-block projection JSON next to each input shape, so the
+    # downstream Monte Carlo bands are co-located with the shape that drove
+    # them. The per-block schema is `eliza.pd_asap7_per_block_projection.v1`.
+    per_block_written: list[Path] = []
+    for blk in asap7_projection:
+        block_id = blk.get("block_id")
+        input_src = blk.get("input_source")
+        if not (isinstance(block_id, str) and isinstance(input_src, str)):
+            continue
+        per_block = {
+            "schema": "eliza.pd_asap7_per_block_projection.v1",
+            "block_id": block_id,
+            "evidence_class": OUTPUT_MARKER,
+            "source_shape": input_src,
+            "advanced_targets": list(ADVANCED_TARGETS),
+            "monte_carlo": report["monte_carlo"],
+            "asap7_baseline": blk.get("asap7"),
+            "projections": blk.get("projections"),
+            "claim_boundary": (
+                "ASAP7 predictive shape scaled to advanced-node envelope via "
+                "published vendor scaling factors. Projection only, never "
+                "signoff. Per-block bands are co-located with the shape that "
+                "drove them so reviewers can audit one block at a time."
+            ),
+            "forbidden_uses": report["forbidden_uses"],
+        }
+        per_block_path = ASAP7_SHAPES_DIR / f"{block_id}_projection_n2p.json"
+        per_block_path.write_text(json.dumps(per_block, indent=2) + "\n", encoding="utf-8")
+        per_block_written.append(per_block_path)
     print(
         f"PPA projection emitted: {rel(OUT)} (projection_only, "
         f"{len(ADVANCED_TARGETS)} targets, monte_carlo={MONTE_CARLO_SAMPLES})"
     )
+    if per_block_written:
+        print("per-block projections:")
+        for p in per_block_written:
+            print(f"  {rel(p)}")
     return 0
 
 

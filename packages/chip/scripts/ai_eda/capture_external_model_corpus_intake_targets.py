@@ -107,6 +107,7 @@ def main() -> int:
         "source_ids": [
             "openrtlset",
             "mg-verilog",
+            "deepcircuitx",
             "metrex",
             "circuitnet-3",
             "veriforge-deepseek-coder",
@@ -115,6 +116,8 @@ def main() -> int:
             "llm4verilog-dataset",
             "siliconmind-v1",
             "chipcraftx-rtlgen-7b",
+            "chipseek",
+            "rtlseek",
             "codev-sva",
             "radai-wm811k-wafer-defect-model",
         ],
@@ -146,7 +149,7 @@ def main() -> int:
             {
                 "id": "hf-rtl-model-candidate-watch",
                 "status": "CAPTURED_NOT_DOWNLOADED",
-                "target": "future SiliconMind, ChipCraftX, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, prompts, outputs, and evaluator logs",
+                "target": "future SiliconMind, ChipCraftX, ChipSeek, RTLSeek, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, prompts, outputs, and evaluator logs",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
@@ -157,7 +160,7 @@ def main() -> int:
             {
                 "id": "rtl-corpus-license-contamination-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "future OpenRTLSet, MG-Verilog, OpenCores, VerilogEval, CVDP, and LLM4Verilog corpus use must prove license compatibility, provenance, de-duplication, and contamination checks",
+                "target": "future OpenRTLSet, MG-Verilog, DeepCircuitX, OpenCores, VerilogEval, CVDP, and LLM4Verilog corpus use must prove license compatibility, provenance, de-duplication, and contamination checks",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
@@ -192,6 +195,8 @@ def main() -> int:
             "no approved external model or corpus license review for release use",
             "no pinned HuggingFace dataset/model revisions, file manifests, or storage quarantine policy",
             "no contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts",
+            "no DeepCircuitX dataset manifest, source-repository license audit, or PPA-label transfer analysis for E1",
+            "no ChipSeek or RTLSeek revision, model-weight manifest, EDA-feedback reward audit, or local benchmark non-overlap report",
             "no local evaluator allowed to download weights, import datasets, train, fine-tune, run inference, or generate source",
             "no held-out E1 task suite with lint, simulation, synthesis, formal, and reviewer disposition for external models",
             "no technology-matched label corpus proving MetRex, CircuitNet 3.0, or other public labels transfer to E1",

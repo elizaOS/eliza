@@ -18,7 +18,9 @@ RUNTIME = ROOT / "compiler/runtime/e1_npu_runtime.py"
 LOWERING = ROOT / "compiler/runtime/e1_npu_lowering.py"
 STABLEHLO = ROOT / "compiler/runtime/e1_npu_stablehlo.py"
 RUNTIME_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime.py"
+RUNTIME_SIM_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_sim.py"
 COMMAND_BUFFER_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_commandbuffer.py"
+RUNTIME_SIM_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_sim.py"
 STABLEHLO_TEST = ROOT / "compiler/runtime/test_e1_npu_stablehlo.py"
 PARTITIONER = ROOT / "compiler/runtime/e1_npu_partitioner.py"
 PARTITIONER_TEST = ROOT / "compiler/runtime/test_e1_partitioner.py"
@@ -457,7 +459,9 @@ def main() -> int:
     runtime_text = RUNTIME.read_text()
     lowering_text = LOWERING.read_text()
     runtime_test_text = RUNTIME_TEST.read_text()
+    runtime_sim_text = RUNTIME_SIM_TEST.read_text()
     command_buffer_test_text = COMMAND_BUFFER_TEST.read_text()
+    runtime_sim_text = RUNTIME_SIM_TEST.read_text()
     stablehlo_text = STABLEHLO.read_text()
     stablehlo_test_text = STABLEHLO_TEST.read_text()
     partitioner_text = PARTITIONER.read_text()
@@ -535,6 +539,8 @@ def main() -> int:
         ("CommandBuffer", runtime_text, RUNTIME),
         ("descriptor_image", runtime_text, RUNTIME),
         ("stage", runtime_text, RUNTIME),
+        ("stage_host_runtime_sequence", runtime_text, RUNTIME),
+        ("eliza.e1_npu_host_runtime_sequence_stage_result.v1", runtime_text, RUNTIME),
         ("NpuStreamDescriptor", runtime_text, RUNTIME),
         (
             "test_command_buffer_descriptor_image_is_word_addressed_and_contiguous",
@@ -546,6 +552,34 @@ def main() -> int:
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
         ),
+        (
+            "test_stage_host_runtime_sequence_replays_memory_and_mmio_writes",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_stage_host_runtime_sequence_is_fail_closed",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_prepared_batch_host_runtime_sequence_stages_and_submits_in_sim",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_memory_backed_sim_descriptor_rejects_missing_owner_bit",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        ("DESC_STATUS_OWNER_ERROR", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("bytes_written", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("partition_module", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("prepared_descriptor_batch", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("E1NpuMmioSim", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("_execute_memory_backed_descriptors", runtime_sim_text, RUNTIME_SIM_TEST),
+        ("write_mem32", runtime_sim_text, RUNTIME_SIM_TEST),
+        ("DESC_STATUS_WRITEBACK_UNSUPPORTED", runtime_sim_text, RUNTIME_SIM_TEST),
         (
             "test_runtime_submit_dispatches_multi_entry_buffer_with_one_completion_wait",
             command_buffer_test_text,
@@ -591,6 +625,17 @@ def main() -> int:
             partitioner_text,
             PARTITIONER,
         ),
+        ("host_runtime_sequence", partitioner_text, PARTITIONER),
+        ("eliza.e1_npu_host_runtime_sequence.v1", partitioner_text, PARTITIONER),
+        (
+            "host_runtime_sequence_metadata_only_not_tensor_population_or_execution",
+            partitioner_text,
+            PARTITIONER,
+        ),
+        ("mmio_preamble_writes", partitioner_text, PARTITIONER),
+        ("descriptor_memory_writes", partitioner_text, PARTITIONER),
+        ("submission_mmio_writes", partitioner_text, PARTITIONER),
+        ("completion_poll", partitioner_text, PARTITIONER),
         (
             "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population",
             partitioner_text,
@@ -661,6 +706,7 @@ def main() -> int:
             partitioner_test_text,
             PARTITIONER_TEST,
         ),
+        ("host_runtime_sequence", partitioner_test_text, PARTITIONER_TEST),
         (
             "test_descriptor_staging_plan_reports_batch_level_blockers",
             partitioner_test_text,
@@ -693,6 +739,7 @@ def main() -> int:
             executorch_test_text,
             EXECUTORCH_DELEGATE_TEST,
         ),
+        ("host_runtime_sequence", executorch_test_text, EXECUTORCH_DELEGATE_TEST),
         (
             "test_backend_prepared_descriptor_batch_fails_closed_for_mixed_batch",
             executorch_test_text,
@@ -729,6 +776,7 @@ def main() -> int:
             litert_test_text,
             LITERT_DELEGATE_TEST,
         ),
+        ("host_runtime_sequence", litert_test_text, LITERT_DELEGATE_TEST),
         (
             "test_delegate_prepared_descriptor_batch_fails_closed_for_mixed_batch",
             litert_test_text,
@@ -1109,6 +1157,14 @@ def main() -> int:
         ("descriptor_image", arch_text, ARCH),
         ("CommandBuffer", doc_text, DOC),
         ("descriptor-image staging", doc_text, DOC),
+        ("stage_host_runtime_sequence", arch_text, ARCH),
+        ("stage_host_runtime_sequence", doc_text, DOC),
+        ("eliza.e1_npu_host_runtime_sequence_stage_result.v1", arch_text, ARCH),
+        ("eliza.e1_npu_host_runtime_sequence_stage_result.v1", doc_text, DOC),
+        ("E1NpuMmioSim", arch_text, ARCH),
+        ("E1NpuMmioSim", doc_text, DOC),
+        ("memory-backed", doc_text, DOC),
+        ("staged descriptor memory", arch_text, ARCH),
         ("command_buffer_batches", doc_text, DOC),
         ("command_buffer_batches", arch_text, ARCH),
         ("ExecuTorch", arch_text, ARCH),
@@ -1135,6 +1191,10 @@ def main() -> int:
         ("prepared_descriptor_batch", doc_text, DOC),
         ("eliza.e1_npu_prepared_descriptor_batch.v1", arch_text, ARCH),
         ("eliza.e1_npu_prepared_descriptor_batch.v1", doc_text, DOC),
+        ("host_runtime_sequence", arch_text, ARCH),
+        ("host_runtime_sequence", doc_text, DOC),
+        ("eliza.e1_npu_host_runtime_sequence.v1", arch_text, ARCH),
+        ("eliza.e1_npu_host_runtime_sequence.v1", doc_text, DOC),
         ("unresolved_inputs", arch_text, ARCH),
         ("unresolved_inputs", doc_text, DOC),
         ("StableHLO subset", arch_text, ARCH),

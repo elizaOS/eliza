@@ -277,7 +277,7 @@ if [ "$status" -ne 0 ]; then
 	printf '  simulator_path: external/chipyard/sims/verilator\n'
 	printf '  log: build/chipyard/eliza_rocket/verilator-linux-smoke.log\n'
 	printf '  next_command: CHIPYARD_LINUX_SMOKE_RETRY_GENERATED=1 %s\n' "${0#"$repo_dir"/}"
-	printf '  - generated AP run-binary exited with status %s\n' "$status"
+	printf '  - generated AP %s exited with status %s\n' "$run_target" "$status"
 	exit 2
 fi
 

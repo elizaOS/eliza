@@ -125,6 +125,20 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
     git config user.email "bun-riscv64@milady.local"
     git config user.name "bun-riscv64 build"
     for p in $(ls /opt/webkit-patches/*.patch | sort); do
+        # In C_LOOP mode, the 0003-disable-dfg-ftl-on-riscv64 patch is
+        # unnecessary — ENABLE_C_LOOP=ON in CMake forcibly disables every
+        # JIT tier, so the upstream PlatformEnable.h ifdefs never reach
+        # the DFG/FTL paths regardless of what the patch toggles. Skip
+        # it to dodge context-drift conflicts against the upstream
+        # PlatformEnable.h header.
+        case "${p##*/}" in
+            0003-disable-dfg-ftl-on-riscv64.patch)
+                if [ "$FORCE_CLOOP" = "1" ]; then
+                    log "  -> $p (SKIPPED — C_LOOP build does not need DFG/FTL ifdefs)"
+                    continue
+                fi
+                ;;
+        esac
         log "  -> $p"
         # 3-way merge is tolerant of context drift; on hard conflict, fail
         # rather than silently skipping.

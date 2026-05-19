@@ -38,6 +38,20 @@ MODELS = (
         "release_use": "blocked",
     },
     {
+        "id": "chipseek",
+        "source_id": "chipseek",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
+        "id": "rtlseek",
+        "source_id": "rtlseek",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
         "id": "rtl-llm-hf",
         "source_id": "chipcraftx-rtlgen-7b",
         "license_status": "review_required",

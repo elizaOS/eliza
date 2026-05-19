@@ -72,6 +72,7 @@ stages:
       - cvdp
       - openrtlset
       - mg-verilog
+      - deepcircuitx
       - metrex
       - circuitnet-3
       - veriforge-deepseek-coder
@@ -104,6 +105,8 @@ stages:
       - llm4verilog-dataset
       - siliconmind-v1
       - chipcraftx-rtlgen-7b
+      - chipseek
+      - rtlseek
       - codev-sva
       - radai-wm811k-wafer-defect-model
     local_lane: p1-external-model-corpus-intake-target-capture
@@ -113,6 +116,7 @@ stages:
     next_gate: python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation
     critical_review: >
       HuggingFace and GitHub now contain useful RTL models, Verilog corpora,
+      repository-level RTL/PPA datasets, RTL RL/code/model artifacts,
       metric-reasoning datasets, CircuitNet-style PD corpora, SVA datasets, and
       wafer-defect models. E1 should treat them as metadata-only candidates
       until exact revisions, licenses, file manifests, contamination checks,
@@ -222,6 +226,8 @@ stages:
     source_ids:
       - rtl-coder
       - chipcraftx-rtlgen-7b
+      - chipseek
+      - rtlseek
       - openllm-rtl
       - verilog-eval
       - cvdp
@@ -231,9 +237,10 @@ stages:
       - build/ai_eda/rtl_model_eval/validation/eval_report.json
     next_gate: make rtl-check
     critical_review: >
-      Public RTL models and benchmarks are useful for candidate generation, but
-      generated RTL remains outside source until lint, simulation, synthesis,
-      and review pass.
+      Public RTL models, EDA-feedback RL frameworks, and benchmarks are useful
+      for candidate generation, but generated RTL remains outside source until
+      lint, simulation, synthesis, formal where applicable, contamination
+      checks, and review pass.
   - id: rtl_repository_completion
     rating: BLOCKED_NEEDS_EVIDENCE
     source_ids:
@@ -252,6 +259,7 @@ stages:
       - symrtlo
       - rtlrewriter-bench
       - formalrtl
+      - cktevo
       - rtl-timing-metamorphosis
       - openabc-d
       - rocketppa
@@ -265,9 +273,9 @@ stages:
       RTL rewrite remains too risky for source changes, but E1 can now capture
       the exact equivalence, simulation, synthesis, and before/after PPA gates
       needed before any generated rewrite is even evaluated. SymRTLO,
-      FormalRTL, and related benchmarks show SOTA direction, while timing-logic
-      metamorphosis highlights that clocked/control RTL is especially unsafe
-      without formal and regression evidence.
+      FormalRTL, CktEvo, and related benchmarks show SOTA direction, while
+      timing-logic metamorphosis highlights that clocked/control RTL is
+      especially unsafe without formal and regression evidence.
   - id: verification_stimulus
     rating: READY_ADVISORY
     source_ids:
@@ -610,6 +618,7 @@ stages:
       - e2eslack
       - timingllm
       - fluxeda
+      - astrotune
       - openroad-resizer
       - openphysyn
       - learning-driven-gate-sizing
@@ -622,10 +631,11 @@ stages:
       - build/ai_eda/timing_closure_targets/validation/targets_report.json
     next_gate: python3 scripts/check_pd_closure.py
     critical_review: >
-      Timing-prediction, report-triage, gate-sizing, buffer-insertion, and
-      ECO-search methods can prioritize closure work, but they cannot waive
-      STA. E1 must keep outputs advisory until before/after OpenSTA/OpenLane,
-      power, DRC, antenna, manufacturing, and signoff evidence exists.
+      Timing-prediction, report-triage, AST/retrieval-assisted cross-stage
+      parameter tuning, gate-sizing, buffer-insertion, and ECO-search methods
+      can prioritize closure work, but they cannot waive STA. E1 must keep
+      outputs advisory until before/after OpenSTA/OpenLane, power, DRC,
+      antenna, manufacturing, and signoff evidence exists.
   - id: analog_mixed_signal_automation
     rating: READY_DRY_RUN
     source_ids:

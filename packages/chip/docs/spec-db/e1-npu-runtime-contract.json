@@ -786,7 +786,7 @@
       "empty_encoding": "0",
       "full_ring_encoding": "not represented by the current 3-bit head/tail register interface"
     },
-    "implemented": "Four-word descriptor fetch requires word0 valid_owner[31], advances a 3-bit head/tail ring only after accepted execution, launches existing scalar/GEMM datapath operations, optionally streams aligned descriptor-sourced DRAM words into the 64-byte scratchpad, counts read beats/bytes, supports aligned streamed GEMM output writeback through word2 when writeback_request[30] is set, counts write beats/bytes, rejects malformed or scalar writeback requests fail-closed, and faults autonomously on descriptor timeout",
+    "implemented": "Four-word descriptor fetch requires word0 valid_owner[31], advances a 3-bit head/tail ring only after accepted execution, launches existing scalar/GEMM datapath operations, optionally streams aligned descriptor-sourced DRAM words into the 64-byte scratchpad, counts read beats/bytes, supports aligned streamed GEMM output writeback through word2 when writeback_request[30] is set, counts write beats/bytes, rejects malformed or scalar writeback requests fail-closed, faults autonomously on descriptor timeout, and has userspace simulator evidence that staged descriptor memory is parsed for prepared-batch stream/read/writeback accounting",
     "not_claimed": "This is a local RTL prototype path only; it is not an Android NNAPI, coherent IOMMU, production queue-depth, production DMA engine, vector writeback, scalar writeback, or phone-class accelerator proof"
   },
   "command_buffer_submission": {

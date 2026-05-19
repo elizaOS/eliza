@@ -818,7 +818,16 @@ descriptor ABI. It accepts up to seven `NpuStreamDescriptor` entries, produces a
 deterministic word-addressed `descriptor_image`, can stage that image through a
 caller-provided 32-bit memory writer, then calls `submit` to arm
 `DESC_BASE`/`DESC_HEAD`/`DESC_TAIL` once and wait for a single descriptor
-completion proof. This is command-buffer staging evidence only; dependency
+completion proof. The runtime helper `stage_host_runtime_sequence` also replays
+the prepared-batch `host_runtime_sequence` through caller-provided MMIO and
+descriptor-memory writers and returns
+`eliza.e1_npu_host_runtime_sequence_stage_result.v1` without polling or
+executing. A userspace simulator smoke test now feeds the partitioner-produced
+prepared batch into that helper, stages the descriptor image, writes the MMIO
+sequence, and observes descriptor completion/counters in `E1NpuMmioSim`. The
+simulator parses staged descriptor memory when present, checks the owner bit and
+writeback constraints, and accounts descriptor fetch, tensor-stream read, and
+GEMM writeback bytes. This is command-buffer staging evidence only; dependency
 scheduling, coherent IOMMU staging, production DMA allocation, Android delegate
 command streams, and deeper queue-depth proofs remain blocked.
 

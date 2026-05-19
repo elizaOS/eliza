@@ -113,6 +113,7 @@ def main() -> int:
             "symrtlo",
             "rtlrewriter-bench",
             "formalrtl",
+            "cktevo",
             "rtl-timing-metamorphosis",
             "openabc-d",
             "rocketppa",
@@ -143,6 +144,17 @@ def main() -> int:
                 "acceptance_gates": [
                     "make rtl-check",
                     "make cocotb-npu",
+                    "make synth",
+                ],
+            },
+            {
+                "id": "repo-level-rtl-evolution-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future CktEvo-style repository-level RTL evolution must preserve behavior across cross-file dependencies and keep generated edits quarantined until toolchain feedback, equivalence, simulation, synthesis, and PPA evidence pass",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make cocotb-contract",
+                    "make formal",
                     "make synth",
                 ],
             },
@@ -181,6 +193,7 @@ def main() -> int:
             "no local before/after equivalence harness for AI-rewritten RTL",
             "no approved source-promotion workflow for generated RTL rewrites",
             "no held-out E1 RTL rewrite benchmark with functional and PPA labels",
+            "no repository-level E1 RTL evolution task pack with cross-file dependency, oracle, and rollback manifests",
             "no deterministic synthesis/OpenLane before-after comparison corpus",
             "no policy for timing-control, clock-domain, reset-domain, or protocol-sensitive rewrites",
             "no license-reviewed SymRTLO, RTLRewriter, FormalRTL, or RocketPPA implementation path",

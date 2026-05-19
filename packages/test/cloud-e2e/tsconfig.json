@@ -11,7 +11,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "types": ["node", "bun-types"],
-    "ignoreDeprecations": "6.0",
+    "ignoreDeprecations": "5.0",
     "baseUrl": ".",
     "paths": {
       "@elizaos/cloud-shared/*": ["../../cloud-shared/src/*"],

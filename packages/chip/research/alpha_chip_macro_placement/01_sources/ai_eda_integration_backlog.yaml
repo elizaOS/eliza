@@ -480,17 +480,22 @@ work_items:
       - rtl-coder
       - openllm-rtl
       - chipcraftx-rtlgen-7b
+      - chipseek
+      - rtlseek
       - rtl-repocoder
       - cvdp
       - verilog-eval
     target_area:
       - rtl_generation
+      - ppa_optimization
+      - reinforcement_learning
       - benchmark
       - rtl_completion
     owner_scope: evaluation harness only; generated RTL does not enter source automatically
     objective: >
-      Evaluate open RTL models and datasets against E1-style small-module tasks
-      with lint, simulation, and synthesis checks.
+      Evaluate open RTL models, EDA-feedback RL frameworks, and datasets
+      against E1-style small-module tasks with lint, simulation, synthesis, and
+      review checks.
     deliverables:
       - scripts/ai_eda/evaluate_rtl_model.py
       - research/alpha_chip_macro_placement/05_experiments/e1_rtl_model_eval_plan.md
@@ -505,6 +510,7 @@ work_items:
     blocked_by:
       - Per-model and per-dataset license review
       - Local inference or API backend decision
+      - No ChipSeek/RTLSeek model-weight, reward-definition, or benchmark-overlap review
       - Executed lint, simulation, and synthesis logs for generated artifacts
     acceptance_criteria:
       - No generated RTL is committed by the evaluator.
@@ -547,6 +553,7 @@ work_items:
       - symrtlo
       - rtlrewriter-bench
       - formalrtl
+      - cktevo
       - rtl-timing-metamorphosis
       - openabc-d
       - rocketppa
@@ -554,14 +561,15 @@ work_items:
       - rtl_optimization
       - equivalence
       - ppa
+      - repository_level_editing
       - formal_verification
       - logic_synthesis
     owner_scope: dry-run target capture only; no generated rewrites, equivalence runs, synthesis runs, or PPA claims
     objective: >
       Track LLM RTL rewrite, symbolic RTL optimization, formal RTL synthesis,
-      metamorphic RTL optimization evaluation, synthesis datasets, and PPA
-      predictors while tying any future E1 use to local lint, cocotb, formal,
-      synthesis, OpenLane, and review gates.
+      repository-level RTL evolution, metamorphic RTL optimization evaluation,
+      synthesis datasets, and PPA predictors while tying any future E1 use to
+      local lint, cocotb, formal, synthesis, OpenLane, and review gates.
     deliverables:
       - scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py
       - build/ai_eda/rtl_rewrite_equivalence_targets/<run-id>/targets_report.json
@@ -579,6 +587,7 @@ work_items:
       - No local before/after equivalence harness for AI-rewritten RTL
       - No approved source-promotion workflow for generated RTL rewrites
       - No held-out E1 RTL rewrite benchmark with functional and PPA labels
+      - No repository-level E1 RTL evolution task pack with cross-file dependency, oracle, and rollback manifests
       - No deterministic synthesis/OpenLane before-after comparison corpus
       - No policy for timing-control, clock-domain, reset-domain, or protocol-sensitive rewrites
     acceptance_criteria:
@@ -789,6 +798,7 @@ work_items:
       - e2eslack
       - timingllm
       - fluxeda
+      - astrotune
       - openroad-resizer
       - openphysyn
       - learning-driven-gate-sizing
@@ -799,13 +809,15 @@ work_items:
       - timing_closure
       - static_timing_analysis
       - constraints
+      - cross_stage_parameter_tuning
       - eco_search
     owner_scope: dry-run target capture only; no constraint, RTL, netlist, or ECO edits
     objective: >
       Capture local E1 timing constraints, OpenLane timing metrics, STA report
       hashes, resizer-log references, and blocked ECO candidate boundaries for
-      future AI-assisted timing triage, gate sizing, buffer insertion,
-      pin-swapping, gate-cloning, and localized ECO search.
+      future AI-assisted timing triage, AST/retrieval-assisted cross-stage
+      parameter tuning, gate sizing, buffer insertion, pin-swapping,
+      gate-cloning, and localized ECO search.
     deliverables:
       - scripts/ai_eda/capture_timing_closure_targets.py
       - build/ai_eda/timing_closure_targets/<run-id>/targets_report.json
@@ -824,6 +836,7 @@ work_items:
       - External timing datasets and code need license review
       - No before/after E1 ECO corpus for sizing, buffering, pin-swapping,
         cloning, routing legality, DRC, antenna, STA, and power labels
+      - No AST-derived E1 design retrieval corpus or stage-aware OpenLane parameter replay manifest
     acceptance_criteria:
       - Report hashes SDC, config, signoff, metrics, timing report, and
         physical-design evidence inputs.
@@ -1893,6 +1906,7 @@ work_items:
     source_ids:
       - openrtlset
       - mg-verilog
+      - deepcircuitx
       - metrex
       - circuitnet-3
       - veriforge-deepseek-coder
@@ -1901,6 +1915,8 @@ work_items:
       - llm4verilog-dataset
       - siliconmind-v1
       - chipcraftx-rtlgen-7b
+      - chipseek
+      - rtlseek
       - codev-sva
       - radai-wm811k-wafer-defect-model
     target_area:
@@ -1909,15 +1925,18 @@ work_items:
       - huggingface
       - github
       - rtl_generation
+      - rtl_ppa_optimization
+      - reinforcement_learning
       - physical_design_prediction
       - dataset_license_review
     owner_scope: dry-run target capture only; no external asset import, dataset/model download, local corpus export, training, fine-tuning, inference, evaluation, generated source, or release use
     objective: >
       Track HuggingFace and GitHub models/datasets for RTL generation,
-      verification, metric reasoning, physical-design prediction, SVA datasets,
-      and wafer-defect modeling while keeping every external asset behind exact
-      revision pins, license review, contamination checks, quarantine paths,
-      deterministic local gates, and reviewer disposition.
+      repository-level RTL/PPA modeling, EDA-feedback RTL reinforcement
+      learning, verification, metric reasoning, physical-design prediction, SVA
+      datasets, and wafer-defect modeling while keeping every external asset
+      behind exact revision pins, license review, contamination checks,
+      quarantine paths, deterministic local gates, and reviewer disposition.
     deliverables:
       - scripts/ai_eda/capture_external_model_corpus_intake_targets.py
       - build/ai_eda/external_model_corpus_intake_targets/<run-id>/targets_report.json
@@ -1937,6 +1956,8 @@ work_items:
       - No approved external model or corpus license review for release use
       - No pinned HuggingFace dataset/model revisions, file manifests, or storage quarantine policy
       - No contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts
+      - No DeepCircuitX dataset manifest, source-repository license audit, or PPA-label transfer analysis for E1
+      - No ChipSeek or RTLSeek revision, model-weight manifest, EDA-feedback reward audit, or local benchmark non-overlap report
       - No local evaluator allowed to download weights, import datasets, train, fine-tune, run inference, or generate source
       - No held-out E1 task suite with lint, simulation, synthesis, formal, and reviewer disposition for external models
       - No technology-matched label corpus proving MetRex, CircuitNet 3.0, or other public labels transfer to E1

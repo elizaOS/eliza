@@ -38,7 +38,14 @@ export {
 	type LoadAospVisionBackendOptions,
 	loadAospVisionBackend,
 } from "./aosp-stub";
-
+export {
+	type CapacitorLlamaMtmdBinding,
+	type CapacitorLlamaMtmdHandle,
+	type CapacitorLlamaVisionBackendOptions,
+	loadCapacitorLlamaVisionBackend,
+	VisionBackendUnavailableError,
+	type VisionManagerLike,
+} from "./capacitor-llama";
 export {
 	classifyLocalVisionError,
 	type LocalImageDescriptionHandler,
@@ -58,14 +65,6 @@ export {
 	createLlamaServerVisionBackend,
 	type LlamaServerVisionBackendOptions,
 } from "./llama-server";
-export {
-	loadCapacitorLlamaVisionBackend,
-	type CapacitorLlamaMtmdBinding,
-	type CapacitorLlamaMtmdHandle,
-	type CapacitorLlamaVisionBackendOptions,
-	VisionBackendUnavailableError,
-	type VisionManagerLike,
-} from "./capacitor-llama";
 export type {
 	VisionDescribeBackend,
 	VisionDescribeBackendLoader,

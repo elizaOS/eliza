@@ -145,6 +145,8 @@ power, and manufacturing preparation.
   https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
 - OpenRTLSet: https://huggingface.co/datasets/ESCAD/OpenRTLSet
 - MG-Verilog: https://huggingface.co/datasets/GaTech-EIC/MG-Verilog
+- DeepCircuitX:
+  https://huggingface.co/datasets/zeju-0727/DeepCirCuitX_Dataset
 - LLM-EDA OpenCores: https://huggingface.co/datasets/LLM-EDA/opencores
 - Hardware VerilogEval v2:
   https://huggingface.co/datasets/AbiralArch/hardware-verilogeval-v2
@@ -155,6 +157,17 @@ power, and manufacturing preparation.
   needs exact revision pins, file manifests, license review, quarantine paths,
   benchmark de-duplication, prompt/output hashes, local lint/sim/synth/formal
   gates, and human disposition before any use.
+
+### Repository-Level RTL Evolution
+
+- CktEvo: https://arxiv.org/abs/2603.08718
+- DeepCircuitX paper: https://arxiv.org/abs/2502.18297
+- Use: repository-level RTL context, code understanding/completion, PPA labels,
+  and closed-loop function-preserving RTL evolution with toolchain feedback.
+- E1 fit: high-value direction for long-term SoC-level optimization, but every
+  generated cross-file edit stays quarantined until changed-file manifests,
+  equivalence, cocotb/formal, synthesis/OpenLane, CDC/RDC, PPA, and review
+  evidence exist.
 
 ### ChatEDA and EDA Corpus
 
@@ -417,6 +430,7 @@ power, and manufacturing preparation.
 - E2ESlack: https://arxiv.org/abs/2501.07564
 - TimingLLM: https://arxiv.org/abs/2604.23602
 - FluxEDA: https://arxiv.org/abs/2603.25243
+- AstroTune: https://doi.org/10.1145/3764386.3779579
 - OpenROAD Resizer:
   https://openroad.readthedocs.io/en/latest/main/src/rsz/README.html
 - OpenPhySyn: https://github.com/scale-lab/OpenPhySyn
@@ -426,12 +440,14 @@ power, and manufacturing preparation.
 - 2024 ICCAD gate-sizing benchmark:
   https://github.com/ASU-VDA-Lab/2024_ICCAD_Contest_Gate_Sizing_Benchmark
 - IR-aware ECO RL: https://dl.acm.org/doi/10.1145/3670474.3685945
-- Use: predict timing risk, triage STA reports, and study gate-sizing,
-  buffer-insertion, pin-swapping, gate-cloning, and localized ECO search.
+- Use: predict timing risk, triage STA reports, study AST/retrieval-assisted
+  cross-stage parameter tuning, and study gate-sizing, buffer-insertion,
+  pin-swapping, gate-cloning, and localized ECO search.
 - E1 fit: advisory capture only. The local lane hashes SDC, OpenLane metrics,
   STA/resizer reports, PD signoff manifests, and known blockers, while every
-  write-capable ECO remains blocked until before/after netlist, DEF/ODB,
-  timing, power, DRC, antenna, manufacturing, and signoff evidence exists.
+  write-capable config, Tcl, or ECO remains blocked until before/after netlist,
+  DEF/ODB, timing, power, DRC, antenna, manufacturing, and signoff evidence
+  exists.
 
 ### Routing, Congestion, and DRC
 

@@ -264,21 +264,24 @@ function emitModelUsed(
 	model: string,
 	usage: NormalizedUsage,
 ): void {
-	void runtime.emitEvent(EventType.MODEL_USED as string, {
-		runtime,
-		source: "local-ai",
-		provider: "local-ai",
-		type,
-		model,
-		modelName: model,
-		tokens: {
-			prompt: usage.promptTokens,
-			completion: usage.completionTokens,
-			total: usage.totalTokens,
-			...(usage.estimated ? { estimated: true } : {}),
-		},
-		...(usage.estimated ? { usageEstimated: true } : {}),
-	} as EventPayload);
+	void runtime.emitEvent(
+		EventType.MODEL_USED as string,
+		{
+			runtime,
+			source: "local-ai",
+			provider: "local-ai",
+			type,
+			model,
+			modelName: model,
+			tokens: {
+				prompt: usage.promptTokens,
+				completion: usage.completionTokens,
+				total: usage.totalTokens,
+				...(usage.estimated ? { estimated: true } : {}),
+			},
+			...(usage.estimated ? { usageEstimated: true } : {}),
+		} as EventPayload,
+	);
 }
 
 /**
@@ -440,7 +443,9 @@ class LocalAIManager {
 		if (!this.embeddingCtx) {
 			throw new Error("Failed to initialize embedding context");
 		}
-		const result = await this.embeddingCtx.embedding(text, { embd_normalize: 2 });
+		const result = await this.embeddingCtx.embedding(text, {
+			embd_normalize: 2,
+		});
 		return result.embedding;
 	}
 
@@ -496,7 +501,11 @@ class LocalAIManager {
 		if (plan.kind === "schema" || plan.kind === "json_object") {
 			const result = await entry.ctx.completion(fullParams);
 			const text = stripThinkTags(result.content || result.text);
-			return { text, toolCalls: [], finishReason: result.stopped_eos ? "stop" : undefined };
+			return {
+				text,
+				toolCalls: [],
+				finishReason: result.stopped_eos ? "stop" : undefined,
+			};
 		}
 
 		const streamParams = params as GenerateTextParams & {

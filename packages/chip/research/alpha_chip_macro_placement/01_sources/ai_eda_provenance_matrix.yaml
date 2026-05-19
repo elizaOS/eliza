@@ -22,6 +22,18 @@ entries:
     release_use: blocked_pending_review
     allowed_current_use: dry_run_reference_only
     risk: proprietary training data reported by model card
+  - source_id: chipseek
+    asset_type: eda_feedback_rl_rtl_generation_code
+    asset_url: https://github.com/rong-hash/chipseek
+    license_status: Apache-2.0_reported_review_required
+    release_use: blocked_pending_revision_model_dependency_reward_eval_and_generated_rtl_review
+    allowed_current_use: metadata_reference_only
+  - source_id: rtlseek
+    asset_type: diversity_oriented_rl_rtl_generation_code_model_dataset
+    asset_url: https://anonymous.4open.science/r/DAC2026ID71-ACB4/
+    license_status: review_required
+    release_use: blocked_pending_artifact_identity_license_revision_model_dataset_and_eval_review
+    allowed_current_use: metadata_reference_only
   - source_id: cvdp
     asset_type: benchmark_dataset
     asset_url: https://github.com/NVlabs/cvdp_benchmark
@@ -190,6 +202,12 @@ entries:
     license_status: MIT_reported_review_required
     release_use: blocked_pending_revision_license_manifest_and_contamination_review
     allowed_current_use: metadata_reference_only
+  - source_id: deepcircuitx
+    asset_type: huggingface_repository_level_rtl_ppa_dataset
+    asset_url: https://huggingface.co/datasets/zeju-0727/DeepCirCuitX_Dataset
+    license_status: review_required
+    release_use: blocked_pending_revision_license_manifest_contamination_and_ppa_transfer_review
+    allowed_current_use: metadata_reference_only
   - source_id: metrex
     asset_type: metric_reasoning_dataset
     asset_url: https://huggingface.co/datasets/scale-lab/MetRex
@@ -273,6 +291,12 @@ entries:
     asset_url: https://arxiv.org/abs/2603.08738
     license_status: paper_assets_review_required
     release_use: blocked_pending_open_source_assets_and_formal_spec_review
+    allowed_current_use: method_reference_only
+  - source_id: cktevo
+    asset_type: repository_level_rtl_evolution_benchmark
+    asset_url: https://arxiv.org/abs/2603.08718
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_framework_assets_equivalence_ppa_and_review
     allowed_current_use: method_reference_only
   - source_id: rtl-timing-metamorphosis
     asset_type: rtl_optimization_evaluation_method
@@ -706,6 +730,12 @@ entries:
     asset_url: https://arxiv.org/abs/2603.25243
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_or_asset_review
+    allowed_current_use: citation_reference_only
+  - source_id: astrotune
+    asset_type: llm_cross_stage_parameter_tuning_method
+    asset_url: https://doi.org/10.1145/3764386.3779579
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_assets_ast_corpus_replay_signoff_and_review
     allowed_current_use: citation_reference_only
   - source_id: openroad-resizer
     asset_type: timing_eco_tool

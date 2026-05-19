@@ -131,39 +131,40 @@ export function streamCapacitorPrompt(
 	};
 
 	let completionFinishReason: string | undefined;
-	const completionPromise: Promise<CapacitorLlamaCompletionResult> = (async () => {
-		try {
-			const result = await args.ctx.completion(args.params, (tok) => {
-				const piece = tok.token ?? tok.content ?? "";
-				if (!piece) return;
-				rawAccumulated += piece;
-				const visibleChunks = streamFilter.push(piece);
-				for (const visibleChunk of visibleChunks) {
+	const completionPromise: Promise<CapacitorLlamaCompletionResult> =
+		(async () => {
+			try {
+				const result = await args.ctx.completion(args.params, (tok) => {
+					const piece = tok.token ?? tok.content ?? "";
+					if (!piece) return;
+					rawAccumulated += piece;
+					const visibleChunks = streamFilter.push(piece);
+					for (const visibleChunk of visibleChunks) {
+						if (!visibleChunk) continue;
+						args.onChunk?.(visibleChunk);
+						queue.push(visibleChunk);
+					}
+					drain();
+				});
+				const tailChunks = streamFilter.flush();
+				for (const visibleChunk of tailChunks) {
 					if (!visibleChunk) continue;
 					args.onChunk?.(visibleChunk);
 					queue.push(visibleChunk);
 				}
+				if (result.stopped_eos) completionFinishReason = "stop";
+				else if (result.stopped_word) completionFinishReason = "stop";
+				else if (result.stopped_limit) completionFinishReason = "length";
+				else if (result.interrupted) completionFinishReason = "abort";
+				return result;
+			} catch (err) {
+				promptError = err;
+				throw err;
+			} finally {
+				promptDone = true;
 				drain();
-			});
-			const tailChunks = streamFilter.flush();
-			for (const visibleChunk of tailChunks) {
-				if (!visibleChunk) continue;
-				args.onChunk?.(visibleChunk);
-				queue.push(visibleChunk);
 			}
-			if (result.stopped_eos) completionFinishReason = "stop";
-			else if (result.stopped_word) completionFinishReason = "stop";
-			else if (result.stopped_limit) completionFinishReason = "length";
-			else if (result.interrupted) completionFinishReason = "abort";
-			return result;
-		} catch (err) {
-			promptError = err;
-			throw err;
-		} finally {
-			promptDone = true;
-			drain();
-		}
-	})();
+		})();
 
 	completionPromise.catch(() => {
 		/* surfaced through textStream */

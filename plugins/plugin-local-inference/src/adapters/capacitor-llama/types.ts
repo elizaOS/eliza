@@ -297,7 +297,12 @@ export interface CapacitorLlamaContext {
 		params?: { embd_normalize?: number },
 	): Promise<CapacitorLlamaEmbeddingResult>;
 
-	bench(pp: number, tg: number, pl: number, nr: number): Promise<CapacitorLlamaBenchResult>;
+	bench(
+		pp: number,
+		tg: number,
+		pl: number,
+		nr: number,
+	): Promise<CapacitorLlamaBenchResult>;
 
 	release(): Promise<void>;
 }
@@ -309,7 +314,10 @@ export class CapacitorLlamaUnsupportedError extends Error {
 		readonly backend: "mobile" | "desktop-ffi",
 		message?: string,
 	) {
-		super(message ?? `[capacitor-llama] ${method} is not supported on ${backend} yet`);
+		super(
+			message ??
+				`[capacitor-llama] ${method} is not supported on ${backend} yet`,
+		);
 		this.name = "CapacitorLlamaUnsupportedError";
 	}
 }

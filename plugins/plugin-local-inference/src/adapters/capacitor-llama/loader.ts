@@ -133,7 +133,7 @@ class DesktopCapacitorLlamaContext implements CapacitorLlamaContext {
 
 	constructor(
 		private readonly adapter: DesktopLlamaAdapter,
-		private readonly params: CapacitorLlamaContextParams,
+		readonly params: CapacitorLlamaContextParams,
 	) {
 		this.id = Math.floor(Math.random() * 0x7fffffff);
 		this.gpu = (params.n_gpu_layers ?? 0) > 0 && !params.no_gpu_devices;
@@ -318,7 +318,9 @@ export interface InitCapacitorLlamaOptions extends CapacitorLlamaContextParams {
 	backend?: "mobile" | "desktop";
 }
 
-function detectBackend(env: NodeJS.ProcessEnv = process.env): "mobile" | "desktop" {
+function detectBackend(
+	env: NodeJS.ProcessEnv = process.env,
+): "mobile" | "desktop" {
 	const platform = env.ELIZA_PLATFORM?.trim().toLowerCase();
 	if (platform === "android" || platform === "ios") return "mobile";
 	return "desktop";

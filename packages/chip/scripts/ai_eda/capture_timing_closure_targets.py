@@ -177,6 +177,7 @@ def main() -> int:
             "e2eslack",
             "timingllm",
             "fluxeda",
+            "astrotune",
             "openroad-resizer",
             "openphysyn",
             "learning-driven-gate-sizing",
@@ -262,6 +263,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "ast-assisted-cross-stage-parameter-tuning-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future AstroTune-style RTL/AST-assisted retrieval and stage-aware parameter pruning for synthesis, placement, routing, and timing knobs must remain advisory until repeated E1 OpenLane labels exist",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_timing_closure_targets.py --run-id validation",
+                    "python3 scripts/check_pd_closure.py",
+                    "make openlane-run-preflight-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
                 "id": "metal-only-and-post-route-eco-watch",
                 "status": "CAPTURED_NOT_MODIFIED",
                 "target": "future post-route or metal-only ECO suggestions require localized changed-object manifests and cannot bypass DRC/LVS/antenna/STA/signoff gates",
@@ -277,6 +289,7 @@ def main() -> int:
             "no version-pinned external timing dataset or model",
             "no approved write-capable ECO command schema",
             "no before/after E1 ECO corpus with gate-sizing, buffer-insertion, pin-swapping, gate-cloning, route, DRC, antenna, STA, and power labels",
+            "no AST-derived E1 design retrieval corpus or stage-aware OpenLane parameter replay manifest",
             "no license-reviewed external gate-sizing or ECO optimizer with pinned revisions, seeds, and replay manifests",
             "current report is advisory and cannot waive STA or signoff failures",
         ],
