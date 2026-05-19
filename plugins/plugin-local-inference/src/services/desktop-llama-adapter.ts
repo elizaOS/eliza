@@ -41,6 +41,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { performance } from "node:perf_hooks";
 
 import type {
 	LlmCtxHandle,
@@ -226,6 +227,30 @@ interface ShimSymbols {
 	eliza_llama_decode_unified: (ctx: Pointer, batch: Pointer) => number;
 	/** Legacy 4-int32 telemetry: [drafted, accepted, rejected, last_status]. */
 	eliza_llama_dflash_stats: (ctx: Pointer, out: Pointer) => void;
+}
+
+/**
+ * Vision (mmproj) shim symbols. Present only when the shim was built with
+ * `-DELIZA_ENABLE_VISION=1`. Bound separately in a try/catch so the absence
+ * of these symbols on a non-vision shim degrades gracefully to
+ * `describeImage` throwing "vision build flag not set".
+ */
+interface VisionShimSymbols {
+	eliza_clip_load: (path: Pointer) => Pointer;
+	eliza_clip_free: (ctx_clip: Pointer) => void;
+	eliza_llava_image_embed_load: (
+		ctx_clip: Pointer,
+		n_threads: number,
+		image_bytes: Pointer,
+		image_bytes_length: number,
+	) => Pointer;
+	eliza_llava_image_embed_free: (embed: Pointer) => void;
+	eliza_llava_image_embed_eval: (
+		ctx_llama: Pointer,
+		embed: Pointer,
+		n_batch: number,
+		n_past: Pointer,
+	) => number;
 }
 
 // === Path resolution =======================================================
@@ -468,6 +493,39 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 	return handle.symbols;
 }
 
+/**
+ * Bind the vision-only symbols. Returns null when the shim wasn't built
+ * with `ELIZA_ENABLE_VISION=1` (dlopen rejects unresolved symbols on the
+ * second pass; we attempt the bind in a try/catch and degrade to
+ * "vision unavailable" on failure).
+ */
+function bindVision(
+	ffi: BunFFIModule,
+	libPath: string,
+): VisionShimSymbols | null {
+	const T = ffi.FFIType;
+	try {
+		const handle = ffi.dlopen<VisionShimSymbols>(libPath, {
+			eliza_clip_load: { args: [T.ptr], returns: T.ptr },
+			eliza_clip_free: { args: [T.ptr], returns: T.void },
+			eliza_llava_image_embed_load: {
+				args: [T.ptr, T.i32, T.ptr, T.i32],
+				returns: T.ptr,
+			},
+			eliza_llava_image_embed_free: { args: [T.ptr], returns: T.void },
+			eliza_llava_image_embed_eval: {
+				args: [T.ptr, T.ptr, T.i32, T.ptr],
+				returns: T.i32,
+			},
+		});
+		return handle.symbols;
+	} catch {
+		// Symbols absent — the shim was built without vision support.
+		// `describeImage` will throw an actionable error.
+		return null;
+	}
+}
+
 // === Helpers ===============================================================
 
 function encodeCString(text: string): Uint8Array {
@@ -558,11 +616,222 @@ export class DesktopLlamaAdapter {
 	 */
 	private loadOpts: DesktopLlamaLoadOptions | null = null;
 
+	/** Loaded clip context for the active mmproj GGUF, or null when unset. */
+	private clipCtxPtr: Pointer | null = null;
+	private clipMmprojPath: string | null = null;
+
 	constructor(
 		private readonly ffi: BunFFIModule,
 		private readonly llama: LlamaSymbols,
 		private readonly shim: ShimSymbols,
+		/**
+		 * Vision symbols. Null when the shim wasn't built with
+		 * `ELIZA_ENABLE_VISION=1` — `describeImage` then throws an
+		 * actionable error pointing at the build flag.
+		 */
+		private readonly vision: VisionShimSymbols | null = null,
 	) {}
+
+	visionSupported(): boolean {
+		return this.vision !== null;
+	}
+
+	currentMmprojPath(): string | null {
+		return this.clipMmprojPath;
+	}
+
+	/**
+	 * Lazily load a clip / mmproj GGUF. Idempotent on the same path —
+	 * repeated calls with the same `mmprojPath` are no-ops. Switching
+	 * paths frees the old clip ctx and loads the new one.
+	 */
+	loadMmproj(mmprojPath: string): void {
+		if (!this.vision) {
+			throw new Error(
+				"[desktop-llama] vision requested but the shim was not built with " +
+					"-DELIZA_ENABLE_VISION=1. Rebuild via " +
+					"`ELIZA_ENABLE_VISION=1 bun run --cwd packages/app-core scripts/build-llama-cpp-desktop-dylib.mjs`.",
+			);
+		}
+		if (this.clipMmprojPath === mmprojPath && this.clipCtxPtr !== null) {
+			return;
+		}
+		if (this.clipCtxPtr !== null) {
+			this.vision.eliza_clip_free(this.clipCtxPtr);
+			this.clipCtxPtr = null;
+			this.clipMmprojPath = null;
+		}
+		const pathBuf = encodeCString(mmprojPath);
+		const clipPtr = this.vision.eliza_clip_load(this.ffi.ptr(pathBuf));
+		if (!clipPtr) {
+			throw new Error(
+				`[desktop-llama] eliza_clip_load failed for ${mmprojPath}`,
+			);
+		}
+		this.clipCtxPtr = clipPtr;
+		this.clipMmprojPath = mmprojPath;
+	}
+
+	/**
+	 * Describe an image. Loads the mmproj if needed, embeds the image
+	 * into the primary ctx's KV state, then generates a description.
+	 *
+	 * `args.imageBytes` is the raw image (PNG/JPEG/WebP). `args.mmprojPath`
+	 * is the path to the multimodal projector GGUF (e.g. mmproj-eliza-1.gguf).
+	 */
+	async describeImage(args: {
+		imageBytes: Uint8Array;
+		mmprojPath: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
+		if (!this.vision) {
+			throw new Error(
+				"[desktop-llama] describeImage: vision build flag not set. " +
+					"Rebuild the shim with ELIZA_ENABLE_VISION=1.",
+			);
+		}
+		const ctx = this.ctxPool[0];
+		if (!ctx || !this.vocabPtr) {
+			throw new Error("[desktop-llama] describeImage before model load");
+		}
+		this.loadMmproj(args.mmprojPath);
+		if (!this.clipCtxPtr) {
+			throw new Error("[desktop-llama] clip ctx unexpectedly null");
+		}
+
+		// Clear KV between image-describe turns so each call starts fresh.
+		if (this.hasDecodedFlags[0]) {
+			const mem = this.llama.llama_get_memory(ctx);
+			this.llama.llama_memory_clear(mem, true);
+		}
+
+		// 1) Embed the image via clip + llava.
+		const projectorStart = performance.now();
+		const imageHeap = new Uint8Array(args.imageBytes.length);
+		imageHeap.set(args.imageBytes);
+		const threads = this.loadOpts?.threads ?? defaultThreads();
+		const embedPtr = this.vision.eliza_llava_image_embed_load(
+			this.clipCtxPtr,
+			threads,
+			this.ffi.ptr(imageHeap),
+			imageHeap.length,
+		);
+		const projectorMs = performance.now() - projectorStart;
+		if (!embedPtr) {
+			throw new Error("[desktop-llama] llava_image_embed_make_with_bytes failed");
+		}
+
+		try {
+			// 2) Feed the image embed into ctx KV. n_past tracks position.
+			const nPastBuf = new Int32Array(1);
+			nPastBuf[0] = 0;
+			const nBatch = this.loadOpts?.nBatch ?? 256;
+			const evalRc = this.vision.eliza_llava_image_embed_eval(
+				ctx,
+				embedPtr,
+				nBatch,
+				this.ffi.ptr(nPastBuf),
+			);
+			if (evalRc !== 0) {
+				throw new Error(
+					`[desktop-llama] eliza_llava_image_embed_eval rc=${evalRc}`,
+				);
+			}
+			this.hasDecodedFlags[0] = true;
+
+			// 3) Prefill the text prompt-prefix (the user's question about
+			// the image), then run a constrained generate loop.
+			const promptText = args.prompt?.trim() || "Describe this image.";
+			const promptTokens = this.tokenize(promptText);
+			if (promptTokens.length > 0) {
+				const owned = new Int32Array(promptTokens.length);
+				owned.set(promptTokens);
+				const batch = this.shim.eliza_llama_batch_get_one(
+					this.ffi.ptr(owned),
+					owned.length,
+				);
+				try {
+					const rc = this.shim.eliza_llama_decode(ctx, batch);
+					if (rc !== 0) {
+						throw new Error(`[desktop-llama] describe prefill rc=${rc}`);
+					}
+				} finally {
+					this.shim.eliza_llama_batch_free(batch);
+				}
+			}
+
+			// 4) Greedy generate (vision describe doesn't benefit from
+			// temperature sampling) until EOS or maxTokens.
+			const decodeStart = performance.now();
+			const sp = this.shim.eliza_llama_sampler_chain_params_default();
+			let sampler: Pointer;
+			try {
+				sampler = this.shim.eliza_llama_sampler_chain_init(sp);
+			} finally {
+				this.shim.eliza_llama_sampler_chain_params_free(sp);
+			}
+			if ((args.temperature ?? 0) > 0) {
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_temp(args.temperature ?? 0.2),
+				);
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_dist(0xdeadbeef),
+				);
+			} else {
+				this.llama.llama_sampler_chain_add(
+					sampler,
+					this.llama.llama_sampler_init_greedy(),
+				);
+			}
+			let text = "";
+			const tokenBuf = new Int32Array(1);
+			const pieceBuf = new Uint8Array(256);
+			const maxTokens = args.maxTokens ?? 256;
+			try {
+				for (let i = 0; i < maxTokens; i++) {
+					if (args.signal?.aborted) break;
+					const tok = this.llama.llama_sampler_sample(sampler, ctx, -1);
+					if (this.llama.llama_vocab_is_eog(this.vocabPtr, tok)) break;
+					this.llama.llama_sampler_accept(sampler, tok);
+					const wrote = this.llama.llama_token_to_piece(
+						this.vocabPtr,
+						tok,
+						this.ffi.ptr(pieceBuf),
+						pieceBuf.length,
+						0,
+						false,
+					);
+					if (wrote > 0) {
+						text += decodeCStringBytes(pieceBuf.subarray(0, wrote));
+					}
+					tokenBuf[0] = tok;
+					const batch = this.shim.eliza_llama_batch_get_one(
+						this.ffi.ptr(tokenBuf),
+						1,
+					);
+					try {
+						const rc = this.shim.eliza_llama_decode(ctx, batch);
+						if (rc !== 0) {
+							throw new Error(`[desktop-llama] describe decode rc=${rc}`);
+						}
+					} finally {
+						this.shim.eliza_llama_batch_free(batch);
+					}
+				}
+			} finally {
+				this.llama.llama_sampler_free(sampler);
+			}
+			const decodeMs = performance.now() - decodeStart;
+			return { text, projectorMs, decodeMs };
+		} finally {
+			this.vision.eliza_llava_image_embed_free(embedPtr);
+		}
+	}
 
 	/**
 	 * Backward-compat alias for the primary ctx (pool index 0). Non-session
@@ -783,6 +1052,13 @@ export class DesktopLlamaAdapter {
 			this.llama.llama_sampler_free(sess.sampler);
 		}
 		this.sessions.clear();
+		// Free clip ctx (vision) before the main ctx — llava embeds hold
+		// pointers into the clip context.
+		if (this.clipCtxPtr !== null && this.vision) {
+			this.vision.eliza_clip_free(this.clipCtxPtr);
+			this.clipCtxPtr = null;
+			this.clipMmprojPath = null;
+		}
 		// Detach + free the drafter BEFORE freeing any main ctx — the
 		// drafter is borrowed via the primary ctx's shim slot. `llama_free`
 		// on the main ctx is otherwise unsafe while a drafter ctx
@@ -1328,7 +1604,12 @@ export async function loadDesktopLlama(
 		);
 		return null;
 	}
-	const adapter = new DesktopLlamaAdapter(ffi, llama, shim);
+	// Optional vision symbols — present only when the shim was built with
+	// `-DELIZA_ENABLE_VISION=1`. Absent symbols → `describeImage` throws an
+	// actionable "rebuild with vision flag" error instead of silently
+	// degrading.
+	const vision = bindVision(ffi, resolveDesktopShimPath());
+	const adapter = new DesktopLlamaAdapter(ffi, llama, shim, vision);
 	adapter.loadModel(opts);
 	return {
 		adapter,

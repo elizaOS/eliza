@@ -99,6 +99,12 @@ export interface FfiBackendSession {
 	 * decoding for this session.
 	 */
 	readonly drafterPath: string | null;
+	/**
+	 * Multimodal projector (mmproj) GGUF path for vision describe. Resolved
+	 * from `plan.overrides.mmprojPath` at acquire time. `null` disables
+	 * vision — `describeImage` then throws an actionable error.
+	 */
+	readonly mmprojPath: string | null;
 }
 
 /**
@@ -274,10 +280,67 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		return this.runtime.resizeParallel(target);
 	}
 
-	// Deliberately still no `embed()` or `describeImage()`. Vision describe
-	// requires native llava/mtmd wrappers in eliza-llama-shim; the
-	// dispatcher throws an actionable error when describeImage is called
-	// against an FFI session today. See FFI_BACKEND_WIREUP_PLAN.md.
+	/**
+	 * Vision describe via mmproj. Requires:
+	 *   - The shim built with `-DELIZA_ENABLE_VISION=1` (ELIZA_ENABLE_VISION=1
+	 *     at the build script env). When absent the runtime throws an
+	 *     actionable error.
+	 *   - `plan.overrides.mmprojPath` was passed at load time so the
+	 *     adapter knows which mmproj GGUF to feed clip.
+	 */
+	async describeImage(args: {
+		bytes: Uint8Array;
+		mimeType?: string;
+		prompt?: string;
+		maxTokens?: number;
+		temperature?: number;
+		signal?: AbortSignal;
+	}): Promise<{ text: string; projectorMs?: number; decodeMs?: number }> {
+		if (!this.session) {
+			throw new Error(
+				"[ffi-streaming-backend] describeImage before load — no session acquired",
+			);
+		}
+		if (!this.session.mmprojPath) {
+			throw new Error(
+				"[ffi-streaming-backend] describeImage: no mmproj GGUF loaded for this session. " +
+					"Pass `overrides.mmprojPath` in the BackendPlan when activating a vision-capable bundle.",
+			);
+		}
+		// The runtime adapter has visionSupported() + describeImage(args).
+		// We re-shape `bytes` → `imageBytes` and merge in the resolved
+		// mmprojPath; the rest of args pass through unchanged.
+		const runtime = this.runtime as unknown as {
+			describeImage?: (args: {
+				imageBytes: Uint8Array;
+				mmprojPath: string;
+				prompt?: string;
+				maxTokens?: number;
+				temperature?: number;
+				signal?: AbortSignal;
+			}) => Promise<{ text: string; projectorMs?: number; decodeMs?: number }>;
+		};
+		if (!runtime.describeImage) {
+			throw new Error(
+				"[ffi-streaming-backend] runtime does not implement describeImage",
+			);
+		}
+		return runtime.describeImage({
+			imageBytes: args.bytes,
+			mmprojPath: this.session.mmprojPath,
+			prompt: args.prompt,
+			maxTokens: args.maxTokens,
+			temperature: args.temperature,
+			signal: args.signal,
+		});
+	}
+
+	currentMmprojPath(): string | null {
+		return this.session?.mmprojPath ?? null;
+	}
+
+	// `embed` still not implemented — text-generation embeddings are a
+	// separate kernel surface that hasn't been wired through this backend.
 }
 
 /**

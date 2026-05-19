@@ -104,40 +104,51 @@ implementation plan is preserved at the bottom for archival.
 
 ---
 
+## Vision describe (mmproj) — wired, opt-in build flag
+
+The shim now exposes `eliza_clip_load` / `eliza_clip_free` /
+`eliza_llava_image_embed_{load,free,eval}` (gated by
+`#ifdef ELIZA_ENABLE_VISION` in `eliza_llama_shim.c`). The desktop dylib
+build script flips `LLAMA_BUILD_EXAMPLES=ON` and adds the llava + clip
+static libs to the shim link line when `ELIZA_ENABLE_VISION=1` is set
+in the build env. The TS adapter has `bindVision()` that returns null
+when the shim was compiled without the flag, and `DesktopLlamaAdapter.
+describeImage(...)` runs the full mmproj load → image embed → KV inject →
+constrained generate loop.
+
+**Default builds skip vision entirely.** No examples target, no shim
+vision wrappers, `bindVision()` returns null, `describeImage` throws an
+actionable "vision build flag not set" error. The subprocess
+`dflash-server` keeps the historical vision path for users who haven't
+flipped the flag yet.
+
+**To enable on a build host**:
+
+```
+ELIZA_ENABLE_VISION=1 bun run --cwd packages/app-core \
+  scripts/build-llama-cpp-desktop-dylib.mjs --host
+```
+
+The script then builds llava / clip alongside libllama (it probes
+`llava_static`, `llava`, then `mtmd` cmake targets for compatibility
+with older + newer llama.cpp checkouts) and links them into
+`libeliza-llama-shim.{dylib,so,dll}`.
+
+**Runtime contract**: the engine must pass `overrides.mmprojPath` on
+`BackendPlan` when activating a vision-capable bundle. The runtime
+records it on `FfiBackendSession.mmprojPath`; `describeImage` reads it
+back and feeds the clip ctx with it lazily on first call.
+
 ## What's still on the subprocess `dflash-server` fallback
 
-### Vision describe (mmproj) — the only remaining feature blocker
+Nothing functional. Embeddings (`embed`) are still subprocess-only
+because the kernel-required embedding model surface lives in
+`dflash-server.ts` — but that's a separate Eliza-specific kernel that
+won't be FFI-bound for compatibility reasons. Calling `dispatcher.embed`
+against an FFI session throws the existing
+`"Active backend does not implement embed"` error.
 
-- **Why subprocess**: requires C wrappers in
-  `packages/app-core/scripts/desktop-llama-shim/eliza_llama_shim.c` for
-  llama.cpp's llava / mtmd integration. Vision involves loading an
-  mmproj GGUF, running clip-vision over an image to produce embeddings,
-  then injecting those embeddings into the decode pipeline. The shim
-  today only includes `llama.h`; it does not include `llava.h` /
-  `mtmd.h`. The desktop dylib build script also currently sets
-  `LLAMA_BUILD_EXAMPLES=OFF` which excludes the llava sublibrary from
-  the build.
-- **Effort to unblock**:
-  - Modify `packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs`
-    to additionally build the llava + clip sublibraries (or vendor only
-    the source files we need under `desktop-llama-shim/`).
-  - Add C wrappers to `eliza_llama_shim.c`: `eliza_llava_image_embed_load`
-    (file or bytes → embed handle), `eliza_llava_image_embed_eval`
-    (embed handle + ctx → KV state update), `eliza_llava_image_embed_free`.
-  - Add the matching headers to `eliza_llama_shim.h`.
-  - Bind the new symbols in `desktop-llama-adapter.ts` (`ShimSymbols`,
-    `bindShim`).
-  - Implement `describeImage(args)` on the adapter: base64-decode the
-    image, call the embed load, eval into the ctx, run a constrained
-    generate loop for the description.
-  - Wire `FfiStreamingBackend.describeImage`.
-  - **Total**: ~3–4 days of native C + ~250 lines of JS. Cannot be
-    done from a JS-only session because the C side needs build/test
-    cycles against the actual upstream llava ABI.
-- **Blast radius**: this is the ONLY feature still blocking Step F
-  (retire `dflash-server.ts`). All other features have FFI parity.
-
-### Done since the original plan
+## Done since the original plan
 
 - **Parallel-slot resize** — DONE. Adapter now has a `ctxPool: Pointer[]`
   with per-ctx `hasDecodedFlags` and `drafterAttached` tracking arrays.
