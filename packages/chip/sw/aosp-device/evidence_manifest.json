@@ -11,6 +11,7 @@
     "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
     "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
     "docs/evidence/android/cuttlefish_riscv64_smoke.log",
+    "docs/evidence/android/cuttlefish_riscv64_boot.log",
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log"
   ],
@@ -20,12 +21,6 @@
     "artifact_manifest": "docs/android/bsp-artifact-manifest.json"
   },
   "backward_compatible_aliases": [
-    {
-      "alias_path": "docs/evidence/android/cuttlefish_riscv64_boot.log",
-      "current_gate_path": "docs/evidence/android/cuttlefish_riscv64_smoke.log",
-      "producer": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot",
-      "status": "legacy_alias_not_full_gate"
-    },
     {
       "alias_path": "docs/evidence/android/cts_virtual_device_subset.log",
       "current_gate_path": "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
@@ -119,6 +114,20 @@
       "external_artifacts": [
         "out/target/product/eliza_ai_soc/vendor.img",
         "Cuttlefish instance adb transport"
+      ]
+    },
+    {
+      "path": "docs/evidence/android/cuttlefish_riscv64_boot.log",
+      "claim": "Cuttlefish riscv64 launched, reached sys.boot_completed=1, and produced canonical boot markers; this is not e1-chip/AP or Android compatibility evidence",
+      "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
+      "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-boot-full",
+      "validation_command": "python3 scripts/check_aosp_simulator_completion_gate.py",
+      "external_artifacts": [
+        "out/target/product/vsoc_riscv64/system.img",
+        "out/target/product/vsoc_riscv64/vendor.img",
+        "out/host/linux-x86/bin/launch_cvd",
+        "~/cuttlefish_runtime/kernel.log",
+        "~/cuttlefish_runtime/launcher.log"
       ]
     },
     {

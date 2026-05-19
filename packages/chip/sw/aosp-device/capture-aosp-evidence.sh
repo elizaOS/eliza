@@ -3,7 +3,7 @@
 set -eu
 
 usage() {
-	echo "usage: $0 /path/to/aosp {lunch|vendorimage|checkvintf|sepolicy-build|selinux-neverallow|cts-vts-plan|cuttlefish-smoke|cuttlefish-agent-smoke|qemu-smoke|renode-smoke|cuttlefish-boot|cts-subset|vts-subset}" >&2
+	echo "usage: $0 /path/to/aosp {lunch|vendorimage|checkvintf|sepolicy-build|selinux-neverallow|cts-vts-plan|cuttlefish-smoke|cuttlefish-agent-smoke|cuttlefish-boot-full|cvd-hal-smoke|qemu-smoke|renode-smoke|cuttlefish-boot|cts-subset|vts-subset}" >&2
 }
 
 if [ "$#" -ne 2 ]; then
@@ -45,6 +45,14 @@ aosp_agent_golden_transcript=${AOSP_AGENT_GOLDEN_TRANSCRIPT:-}
 aosp_agent_stt_min_overlap=${AOSP_AGENT_STT_MIN_OVERLAP:-0.80}
 aosp_agent_sd_optin=${AOSP_AGENT_SD_OPTIN:-0}
 aosp_agent_sd_prompt=${AOSP_AGENT_SD_PROMPT:-a single red apple on a white background}
+aosp_cuttlefish_boot_cpus=${AOSP_CUTTLEFISH_BOOT_CPUS:-8}
+aosp_cuttlefish_boot_memory_mb=${AOSP_CUTTLEFISH_BOOT_MEMORY_MB:-12288}
+aosp_cuttlefish_boot_gpu_mode=${AOSP_CUTTLEFISH_BOOT_GPU_MODE:-none}
+aosp_cuttlefish_boot_timeout_seconds=${AOSP_CUTTLEFISH_BOOT_TIMEOUT_SECONDS:-1800}
+aosp_cuttlefish_boot_manifest=${AOSP_CUTTLEFISH_BOOT_MANIFEST:-}
+aosp_cuttlefish_boot_clean=${AOSP_CUTTLEFISH_BOOT_CLEAN:-0}
+launch_cuttlefish_driver="$repo_root/sw/aosp-device/launch-cuttlefish-riscv64.sh"
+cuttlefish_boot_gate="$repo_root/sw/aosp-device/cuttlefish-boot-gate.sh"
 agent_smoke_driver="$repo_root/sw/aosp-device/scripts/cuttlefish_agent_smoke.py"
 reference_only_boundary=reference_only_not_e1_chip_ap_evidence
 virtual_device_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence
@@ -146,10 +154,14 @@ case "$mode" in
 		;;
 	checkvintf)
 		# shellcheck disable=SC2016
+		# Runs checkvintf --check-one then checkvintf --check-compat
+		# against the built vendor + system images so the HAL surface
+		# declared in eliza_e1.xml is matched against the framework
+		# matrix. Emits VINTF_COMPAT=ok only when --check-compat exits 0.
 		run_capture \
 			eliza_ai_soc_checkvintf \
 			"$evidence_dir/eliza_ai_soc_checkvintf.log" \
-			"checkvintf eliza_ai_soc" \
+			"checkvintf --check-compat" \
 			compat_only \
 			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_MAKE_ARGS="$aosp_make_args" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
@@ -162,7 +174,13 @@ case "$mode" in
 				[ -n "$manifest" ] &&
 				checkvintf_bin=out/host/linux-x86/bin/checkvintf &&
 				[ -x "$checkvintf_bin" ] &&
-				"$checkvintf_bin" --check-one --dirmap /vendor:"$product_out/vendor"
+				echo "--- checkvintf --check-one ---" &&
+				"$checkvintf_bin" --check-one --dirmap /vendor:"$product_out/vendor" &&
+				echo "--- checkvintf --check-compat ---" &&
+				"$checkvintf_bin" --check-compat \
+					--dirmap /system:"$product_out/system" \
+					--dirmap /vendor:"$product_out/vendor" &&
+				echo "VINTF_COMPAT=ok"
 			'
 		;;
 	sepolicy-build)
@@ -370,6 +388,63 @@ case "$mode" in
 					fi &&
 					mkdir -p out &&
 					python3 "$AGENT_SMOKE_DRIVER" --out-dir out
+				'
+		;;
+	cuttlefish-boot-full)
+		# shellcheck disable=SC2016
+		if [ ! -x "$launch_cuttlefish_driver" ]; then
+			echo "error: launch driver missing: $launch_cuttlefish_driver" >&2
+			exit 1
+		fi
+		if [ ! -x "$cuttlefish_boot_gate" ]; then
+			echo "error: boot gate missing: $cuttlefish_boot_gate" >&2
+			exit 1
+		fi
+		command_label="launch-cuttlefish-riscv64.sh --cpus=$aosp_cuttlefish_boot_cpus --memory-mb=$aosp_cuttlefish_boot_memory_mb --gpu-mode=$aosp_cuttlefish_boot_gpu_mode && cuttlefish-boot-gate.sh"
+		run_capture \
+			cuttlefish_riscv64_boot \
+			"$evidence_dir/cuttlefish_riscv64_boot.log" \
+			"$command_label" \
+			smoke \
+			env AOSP_PRODUCT="$aosp_product" \
+				AOSP_TARGET_PRODUCT="$aosp_target_product" \
+				AOSP_ADB_SERIAL="$aosp_adb_serial" \
+				AOSP_CUTTLEFISH_BOOT_CPUS="$aosp_cuttlefish_boot_cpus" \
+				AOSP_CUTTLEFISH_BOOT_MEMORY_MB="$aosp_cuttlefish_boot_memory_mb" \
+				AOSP_CUTTLEFISH_BOOT_GPU_MODE="$aosp_cuttlefish_boot_gpu_mode" \
+				AOSP_CUTTLEFISH_BOOT_TIMEOUT_SECONDS="$aosp_cuttlefish_boot_timeout_seconds" \
+				AOSP_CUTTLEFISH_BOOT_MANIFEST="$aosp_cuttlefish_boot_manifest" \
+				AOSP_CUTTLEFISH_BOOT_CLEAN="$aosp_cuttlefish_boot_clean" \
+				LAUNCH_DRIVER="$launch_cuttlefish_driver" \
+				BOOT_GATE="$cuttlefish_boot_gate" \
+				AOSP_DIR="$aosp" \
+				"$aosp_shell" -lc '
+					source build/envsetup.sh &&
+					lunch "$AOSP_PRODUCT" >/dev/null &&
+					clean_flag= &&
+					if [ "$AOSP_CUTTLEFISH_BOOT_CLEAN" = 1 ]; then
+						clean_flag=--clean
+					fi &&
+					"$LAUNCH_DRIVER" \
+						$clean_flag \
+						"--cpus=$AOSP_CUTTLEFISH_BOOT_CPUS" \
+						"--memory-mb=$AOSP_CUTTLEFISH_BOOT_MEMORY_MB" \
+						"--gpu-mode=$AOSP_CUTTLEFISH_BOOT_GPU_MODE" \
+						"--boot-timeout-seconds=$AOSP_CUTTLEFISH_BOOT_TIMEOUT_SECONDS" \
+						"--aosp=$AOSP_DIR" &&
+					gate_tmp=$(mktemp) &&
+					gate_args="--out=$gate_tmp" &&
+					if [ -n "${AOSP_ADB_SERIAL:-}" ]; then
+						gate_args="$gate_args --adb-serial=$AOSP_ADB_SERIAL"
+					fi &&
+					if [ -n "${AOSP_CUTTLEFISH_BOOT_MANIFEST:-}" ]; then
+						gate_args="$gate_args --manifest=$AOSP_CUTTLEFISH_BOOT_MANIFEST"
+					fi &&
+					"$BOOT_GATE" $gate_args
+					gate_rc=$?
+					cat "$gate_tmp"
+					rm -f "$gate_tmp"
+					[ "$gate_rc" -eq 0 ]
 				'
 		;;
 	qemu-smoke)
