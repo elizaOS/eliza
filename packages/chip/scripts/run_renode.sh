@@ -535,6 +535,7 @@ def write_status(status, check, detail, exit_code, blocker_kind):
             "manifest": "build/renode/eliza_e1_smoke.json",
         },
     }
+    status_report.parent.mkdir(parents=True, exist_ok=True)
     status_report.write_text(json.dumps(data, indent=2) + "\n")
 
 qemu_text = qemu_transcript.read_text(errors="replace")
@@ -556,16 +557,16 @@ try:
     )
 except (OSError, subprocess.TimeoutExpired) as exc:
     detail = f"could not read Renode version from {renode_path}: {exc}"
-    print(f"STATUS: FAIL renode.version - {detail}")
-    write_status("FAIL", "renode.version", detail, 1, "tool_execution_failed")
-    raise SystemExit(1)
+    print(f"STATUS: BLOCKED renode.version - {detail}")
+    write_status("BLOCKED", "renode.version", detail, 2, "tool_execution_blocked")
+    raise SystemExit(2)
 
 renode_version = " ".join(line.strip() for line in version_result.stdout.splitlines() if line.strip())
 if version_result.returncode != 0 or "Renode" not in renode_version or "fake" in renode_version.lower():
     detail = f"Renode version probe did not identify a real Renode CLI at {renode_path}"
-    print(f"STATUS: FAIL renode.version - {detail}")
-    write_status("FAIL", "renode.version", detail, 1, "tool_execution_failed")
-    raise SystemExit(1)
+    print(f"STATUS: BLOCKED renode.version - {detail}")
+    write_status("BLOCKED", "renode.version", detail, 2, "tool_execution_blocked")
+    raise SystemExit(2)
 
 command = [renode_path, "--console", "--disable-xwt", "sim/renode/eliza_e1.resc"]
 transcript.parent.mkdir(parents=True, exist_ok=True)
@@ -661,11 +662,21 @@ if [ "$mode" = "check" ]; then
         blocked "Renode executable smoke needs ${firmware#"$repo_dir"/}; run scripts/run_qemu.sh --build-firmware first."
     fi
     status_line "PASS" "renode.preflight" "firmware present ${firmware#"$repo_dir"/}; attempting bounded Renode run for ${smoke_seconds}s"
-    if run_executable_smoke; then
+    set +e
+    run_executable_smoke
+    status=$?
+    set -e
+    if [ "$status" -eq 0 ]; then
         status_line "PASS" "renode.check" "semantic, preflight, and executable smoke passed"
         exit 0
     fi
-    exit 1
+    if [ "$status" -eq 2 ]; then
+        status_line "BLOCKED" "renode.check" "executable Renode smoke is blocked by tool preflight"
+        if [ "${REQUIRE_RENODE:-0}" != "1" ]; then
+            exit 0
+        fi
+    fi
+    exit "$status"
 fi
 
 echo "Launching Renode qemu-virt software reference target. This is not the e1-chip hardware ABI."

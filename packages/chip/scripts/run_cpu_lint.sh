@@ -78,10 +78,14 @@ run_lint e1_cluster_top  e1_cluster_top \
 # Count "%Warning-" lines that originated in OoO-owned files. The
 # `lint_off` filter excludes the waiver pragma echoes themselves so an
 # active suppression does not register as a warning.
-warns=$(grep -E '^%Warning-' "${LINT_LOG}" \
-    | grep -E 'rtl/cpu/(cluster|csr|rvv|fusion)/' \
-    | grep -cv 'lint_off' \
-    | tr -d ' ')
+warns=$(awk '
+    /^%Warning-/ && /rtl\/cpu\/(cluster|csr|rvv|fusion)\// && !/lint_off/ {
+        count += 1
+    }
+    END {
+        print count + 0
+    }
+' "${LINT_LOG}")
 
 if [ "${errors}" -gt 0 ]; then
     status="fail"

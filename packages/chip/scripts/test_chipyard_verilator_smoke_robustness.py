@@ -153,12 +153,28 @@ def test_simulator_artifact_validation_requires_executable_candidate() -> None:
             smoke.SIMULATOR_CANDIDATES = old_candidates
 
 
+def test_progress_classifies_sifive_uart_tx_full_poll() -> None:
+    progress = smoke.classify_smoke_progress(
+        log_text="eliza-evidence: raw_transcript_begin\n",
+        instruction_trace={
+            "bootrom_to_payload_handoff": True,
+            "last_symbol": "sifive_uart_putc",
+        },
+        log_metadata={"raw_transcript_closed": True},
+    )
+    if progress["stage"] != "payload_uart_tx_full_poll":
+        raise AssertionError(f"expected UART TX poll stage, got {progress}")
+    if "TXDATA full-bit" not in progress["next_step"]:
+        raise AssertionError(f"expected TXDATA guidance, got {progress}")
+
+
 def main() -> int:
     tests = (
         test_partial_generated_driver_dir_is_repairable_blocker,
         test_zero_byte_driver_outputs_are_repairable_blockers,
         test_log_metadata_records_attempt_and_closed_transcript,
         test_simulator_artifact_validation_requires_executable_candidate,
+        test_progress_classifies_sifive_uart_tx_full_poll,
     )
     for test in tests:
         test()

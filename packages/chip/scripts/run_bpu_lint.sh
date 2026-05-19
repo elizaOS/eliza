@@ -31,7 +31,7 @@ EOF
     exit 0
 fi
 
-SRCS="\
+set -- \
     rtl/cpu/bpu/bpu_pkg.sv \
     rtl/cpu/bpu/bimodal.sv \
     rtl/cpu/bpu/tage_table.sv \
@@ -44,10 +44,10 @@ SRCS="\
     rtl/cpu/bpu/ras.sv \
     rtl/cpu/bpu/ftq.sv \
     rtl/cpu/bpu/bpu_csr.sv \
-    rtl/cpu/bpu/bpu_top.sv"
+    rtl/cpu/bpu/bpu_top.sv
 
 LOG="build/reports/bpu/lint.log"
-if verilator --lint-only -Wall -Wpedantic --top-module bpu_top $SRCS >"$LOG" 2>&1; then
+if verilator --lint-only -Wall -Wpedantic --top-module bpu_top "$@" >"$LOG" 2>&1; then
     status=PASS
 else
     status=FAIL

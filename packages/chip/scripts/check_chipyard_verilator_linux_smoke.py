@@ -79,6 +79,16 @@ STALE_ABSOLUTE_ROOTS = ("/work/", "/workspace/", "/__w/")
 TRACE_LINE_RE = re.compile(
     r"^C(?P<hart>\d+):\s+(?P<cycle>\d+)\s+\[(?P<valid>[01])\]\s+pc=\[(?P<pc>[0-9a-fA-F]+)\]"
 )
+OBJDUMP_CANDIDATES = (
+    ROOT / "build/riscv-chipyard-prefix/bin/riscv64-unknown-elf-objdump",
+    ROOT / "tools/bin/riscv64-linux-gnu-objdump",
+    ROOT / "tools/bin/llvm-objdump",
+    ROOT / "external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-objdump",
+)
+SYMBOL_LINE_RE = re.compile(
+    r"^(?P<addr>[0-9a-fA-F]{8,16})\s+\S+\s+\S+\s+(?P<section>\S+)\s+"
+    r"(?P<size>[0-9a-fA-F]{8,16})\s+(?P<name>\S+)$"
+)
 
 
 def rel(path: Path) -> str:
@@ -121,6 +131,74 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def find_objdump() -> Path | None:
+    for candidate in OBJDUMP_CANDIDATES:
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return candidate
+    for name in (
+        "riscv64-unknown-elf-objdump",
+        "riscv64-linux-gnu-objdump",
+        "llvm-objdump",
+    ):
+        found = shutil.which(name)
+        if found:
+            return Path(found)
+    return None
+
+
+def resolve_payload_symbol(payload: str | None, pc: int | None) -> dict[str, object]:
+    result: dict[str, object] = {
+        "objdump": "",
+        "symbol": None,
+        "symbol_offset": None,
+        "symbol_address": None,
+    }
+    if not payload or pc is None:
+        return result
+    payload_path = Path(payload)
+    if not payload_path.is_file():
+        return result
+    objdump = find_objdump()
+    if objdump is None:
+        return result
+    result["objdump"] = rel(objdump)
+    try:
+        proc = subprocess.run(
+            [str(objdump), "-t", str(payload_path)],
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            timeout=20,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return result
+    best: tuple[int, int, str] | None = None
+    for line in proc.stdout.splitlines():
+        match = SYMBOL_LINE_RE.match(line.strip())
+        if not match or match.group("section") != ".text":
+            continue
+        addr = int(match.group("addr"), 16)
+        size = int(match.group("size"), 16)
+        if addr > pc:
+            continue
+        if size and pc >= addr + size:
+            continue
+        if best is None or addr > best[0]:
+            best = (addr, size, match.group("name"))
+    if best is None:
+        return result
+    addr, _size, name = best
+    result.update(
+        {
+            "symbol": name,
+            "symbol_offset": pc - addr,
+            "symbol_address": f"0x{addr:016x}",
+        }
+    )
+    return result
 
 
 def generated_metadata_files() -> list[Path]:
@@ -553,6 +631,10 @@ def parse_instruction_trace(payload: str | None) -> dict[str, object]:
         "retired_instruction_count": 0,
         "first_pc": None,
         "last_pc": None,
+        "last_symbol": None,
+        "last_symbol_offset": None,
+        "last_symbol_address": None,
+        "last_symbol_objdump": "",
         "last_cycle": None,
         "entered_bootrom": False,
         "entered_payload": False,
@@ -594,6 +676,15 @@ def parse_instruction_trace(payload: str | None) -> dict[str, object]:
             "bootrom_to_payload_handoff": entered_bootrom and entered_payload,
         }
     )
+    symbol = resolve_payload_symbol(payload, last_pc)
+    metadata.update(
+        {
+            "last_symbol": symbol["symbol"],
+            "last_symbol_offset": symbol["symbol_offset"],
+            "last_symbol_address": symbol["symbol_address"],
+            "last_symbol_objdump": symbol["objdump"],
+        }
+    )
     return metadata
 
 
@@ -626,6 +717,35 @@ def classify_smoke_progress(
             "next_step": "continue until OpenSBI handoff markers and the Linux banner appear",
         }
     if instruction_trace.get("bootrom_to_payload_handoff"):
+        last_symbol = str(instruction_trace.get("last_symbol") or "")
+        if last_symbol.startswith("fdt_") or last_symbol in {
+            "sbi_memchr",
+            "sbi_memcmp",
+            "sbi_strncmp",
+        }:
+            return {
+                "stage": "payload_fdt_parse_no_console",
+                "next_step": (
+                    "debug the boot ROM FDT handoff and generated DTS stdout/serial "
+                    "compatibility before OpenSBI console initialization"
+                ),
+            }
+        if last_symbol == "sifive_uart_putc":
+            return {
+                "stage": "payload_uart_tx_full_poll",
+                "next_step": (
+                    "debug the generated SiFive UART TXDATA full-bit behavior, "
+                    "TX enable path, and UART host bridge before OpenSBI banner output"
+                ),
+            }
+        if "serial" in last_symbol or "console" in last_symbol or "uart" in last_symbol:
+            return {
+                "stage": "payload_console_init_no_banner",
+                "next_step": (
+                    "debug generated UART compatibility and OpenSBI console init before "
+                    "expecting banner output"
+                ),
+            }
         return {
             "stage": "cpu_progress_to_payload",
             "next_step": "debug why the payload runs after boot ROM handoff but emits no OpenSBI/Linux UART markers",
@@ -819,6 +939,7 @@ def main() -> int:
                 "instruction trace proves CPU forward progress through boot ROM "
                 f"to payload: first_pc={instruction_trace.get('first_pc')} "
                 f"last_pc={instruction_trace.get('last_pc')} "
+                f"last_symbol={instruction_trace.get('last_symbol') or 'unknown'} "
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )

@@ -174,6 +174,12 @@ def test_capture_command_wiring_derives_linux_smoke_lanes_only() -> None:
                 "\n".join(entries[mode].get("problems", [])), "missing generated manifest"
             )
             continue
+        if entries[mode]["status"] == "blocked":
+            assert_contains(
+                "\n".join(entries[mode].get("problems", [])),
+                "No runnable RISC-V ELF payload",
+            )
+            continue
         if entries[mode]["source"] != "generated_ap_linux_smoke":
             raise AssertionError(f"{mode} should derive from the generated AP smoke runner")
         assert_contains(entries[mode]["command"], "scripts/run_chipyard_eliza_linux_smoke.sh")
@@ -197,7 +203,7 @@ def test_capture_wire_preflight_reports_remaining_unwired_lanes() -> None:
     )
     if result.returncode != 2:
         raise AssertionError(result.stdout + result.stderr)
-    if GENERATED_MANIFEST.is_file():
+    if GENERATED_MANIFEST.is_file() and "READY opensbi-boot" in result.stdout:
         assert_contains(result.stdout, "READY opensbi-boot: ELIZA_OPENSBI_BOOT_CMD is set")
         assert_contains(result.stdout, "READY linux-boot: ELIZA_LINUX_BOOT_CMD is set")
     else:

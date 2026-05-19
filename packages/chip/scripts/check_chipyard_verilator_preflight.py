@@ -22,6 +22,7 @@ REPORT = ROOT / "build/chipyard/eliza_rocket/verilator-preflight.json"
 CONFIG = "ElizaRocketConfig"
 CONFIG_PACKAGE = "eliza"
 SIM_DIR = CHECKOUT / "sims/verilator"
+MIN_FREE_GIB = int(os.environ.get("CHIPYARD_VERILATOR_MIN_FREE_GIB", "20"))
 REQUIRED_RECURSIVE_SUBMODULE_ROOTS = ("generators/rocket-chip",)
 REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS = (
     "generators/ara",
@@ -171,6 +172,20 @@ def first_line(text: str) -> str:
     return ""
 
 
+def gibibytes(byte_count: int) -> float:
+    return byte_count / (1024**3)
+
+
+def disk_space_blocker(free_bytes: int, min_free_gib: int = MIN_FREE_GIB) -> str | None:
+    if free_bytes >= min_free_gib * 1024**3:
+        return None
+    return (
+        "insufficient free disk for Chipyard setup/generation: "
+        f"{gibibytes(free_bytes):.2f} GiB free, "
+        f"{min_free_gib} GiB required by this preflight"
+    )
+
+
 def main() -> int:
     errors: list[str] = []
     blockers: list[str] = []
@@ -186,6 +201,11 @@ def main() -> int:
         "verilator_simulator": " && ".join(BUILD_COMMAND),
         "verilog_only": " && ".join(VERILOG_COMMAND),
     }
+    disk_usage = shutil.disk_usage(ROOT)
+    checks["disk_free_gib"] = round(gibibytes(disk_usage.free), 2)
+    checks["disk_required_free_gib"] = MIN_FREE_GIB
+    if blocker := disk_space_blocker(disk_usage.free):
+        blockers.append(blocker)
     checks["required_recursive_submodule_roots"] = list(REQUIRED_RECURSIVE_SUBMODULE_ROOTS)
     checks["required_top_level_submodule_roots"] = list(REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS)
 
@@ -319,7 +339,14 @@ def main() -> int:
             )
         ):
             riscv = str(default_riscv)
-        elif (ROOT / "tools/bin/riscv64-unknown-elf-gcc").is_file():
+        elif any(
+            (ROOT / f"tools/bin/{name}").is_file()
+            for name in (
+                "riscv64-unknown-elf-gcc",
+                "riscv64-elf-gcc",
+                "riscv64-linux-gnu-gcc",
+            )
+        ):
             riscv = str(ROOT / "tools")
         elif (ROOT / "external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc").is_file():
             riscv = str(ROOT / "external/riscv64-linux-gnu/usr")
