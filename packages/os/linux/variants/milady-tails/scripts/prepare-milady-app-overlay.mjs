@@ -1695,7 +1695,14 @@ const missingDependencyLinks = dependencyTargets.filter(({ linkPath, target }) =
   }
 });
 const workspacePackagesStale = syncWorkspaceRuntimePackages({ checkOnly: check });
-const runtimePackagePatchWrites = hasNodeModules
+// Runtime patch writes that mutate node_modules package.json files (and similar
+// inputs to the overlay manifest's package inventory). These must be applied
+// before computing the overlay manifest content in stage mode so the inventory
+// reflects the final on-disk state; otherwise a fresh stage run produces an
+// inventory snapshot of pre-rewrite content (e.g. `private: false` for
+// @elizaos/plugin-app-control before sourcePackageManifestWrites flips it to
+// `private: true`), which then diverges from what `--check` sees on disk.
+const preManifestRuntimeWrites = hasNodeModules
   ? [
       ...liveAgentOrchestratorWrites(),
       ...optionalStubPackageWrites(),
@@ -1703,14 +1710,11 @@ const runtimePackagePatchWrites = hasNodeModules
       ...lucideReactStubWrites(),
       ...localInferenceFallbackWrites(),
       ...sanitizedCoreRuntimeWrites(),
-      ...liveOverlayManifestWrite(),
     ]
   : [];
-const runtimePatchWrites = [
-  ...runtimePackagePatchWrites,
-  ...rendererBrandingWrites(),
-];
-const staleRuntimePatchWrites = runtimePatchWrites.filter(fileNeedsWrite);
+const rendererWrites = rendererBrandingWrites();
+const stalePreManifestRuntimeWrites = preManifestRuntimeWrites.filter(fileNeedsWrite);
+const staleRendererWrites = rendererWrites.filter(fileNeedsWrite);
 const staleRendererWallpaperTargets = rendererWallpaperTargets().filter(
   (target) => !buffersEqual(rendererWallpaperPath, target),
 );
@@ -1721,6 +1725,14 @@ const chromeSandboxModeStale =
   chromeSandboxMode !== null && chromeSandboxMode !== 0o755;
 
 if (check) {
+  // In check mode, all pre-manifest patches have already been applied by a
+  // prior stage run (otherwise they would surface as stale here). The on-disk
+  // tree therefore matches the "post-patch" view that the manifest content
+  // was computed against, so collecting the manifest write now lines up with
+  // what stage wrote.
+  const overlayManifestWrites = hasNodeModules ? liveOverlayManifestWrite() : [];
+  const staleOverlayManifestWrites = overlayManifestWrites.filter(fileNeedsWrite);
+
   const staleReasons = [];
   if (before !== after) staleReasons.push("Resources/build.json");
   if (versionBefore !== versionAfter) staleReasons.push("Resources/version.json");
@@ -1733,7 +1745,13 @@ if (check) {
     staleReasons.push(path.relative(stage, linkPath));
   }
   if (workspacePackagesStale) staleReasons.push("workspace runtime packages");
-  for (const { filePath } of staleRuntimePatchWrites) {
+  for (const { filePath } of stalePreManifestRuntimeWrites) {
+    staleReasons.push(path.relative(stage, filePath));
+  }
+  for (const { filePath } of staleRendererWrites) {
+    staleReasons.push(path.relative(stage, filePath));
+  }
+  for (const { filePath } of staleOverlayManifestWrites) {
     staleReasons.push(path.relative(stage, filePath));
   }
   for (const filePath of staleRendererWallpaperTargets) {
@@ -1765,7 +1783,15 @@ for (const { linkPath, target } of dependencyTargets) {
   fs.rmSync(linkPath, { recursive: true, force: true });
   fs.symlinkSync(target, linkPath);
 }
-for (const { filePath, content } of runtimePatchWrites) {
+// Apply all package and renderer patches BEFORE computing the overlay manifest
+// so that collectPackageInventory() and collectLucideReactNames() observe the
+// final on-disk state. This keeps stage's manifest byte-identical to what a
+// subsequent --check run would compute from the same tree.
+for (const { filePath, content } of preManifestRuntimeWrites) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  fs.writeFileSync(filePath, content);
+}
+for (const { filePath, content } of rendererWrites) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, content);
 }
@@ -1774,5 +1800,11 @@ for (const target of staleRendererWallpaperTargets) {
 }
 if (chromeSandboxModeStale) {
   fs.chmodSync(chromeSandboxPath, 0o755);
+}
+if (hasNodeModules) {
+  for (const { filePath, content } of liveOverlayManifestWrite()) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, content);
+  }
 }
 console.log(`Prepared Milady app overlay for elizaOS Live: ${buildJsonPath}`);
