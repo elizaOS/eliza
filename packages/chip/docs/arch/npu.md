@@ -827,7 +827,9 @@ prepared batch into that helper, stages the descriptor image, writes the MMIO
 sequence, and observes descriptor completion/counters in `E1NpuMmioSim`. The
 simulator parses staged descriptor memory when present, checks the owner bit and
 writeback constraints, and accounts descriptor fetch, tensor-stream read, and
-GEMM writeback bytes. This is command-buffer staging evidence only; dependency
+GEMM writeback bytes. It also copies descriptor-sourced tensor bytes into the
+scratchpad, executes the current GEMM datapath, and writes the computed output
+tile back to descriptor word-2 memory. This is command-buffer staging evidence only; dependency
 scheduling, coherent IOMMU staging, production DMA allocation, Android delegate
 command streams, and deeper queue-depth proofs remain blocked.
 
@@ -885,9 +887,15 @@ output_arena_offset`, and word3 is zero; the Python object can materialize
 level, `command_buffer_image(arena_base, descriptor_base, batch_index)` builds
 the same word-addressed descriptor image and submission tuple that
 `CommandBuffer.descriptor_image()` expects, but only when every op in the batch
-is descriptor-codegen ready. The same blob includes `descriptor_batches`, a
-batch-level readiness summary with blocked op names and reasons, so delegates
-can reject a mixed command-buffer batch before trying to emit descriptors.
+is descriptor-codegen ready and every op shares the same GEMM MMIO preamble.
+The preamble guard is required because the current descriptor ring has global
+`GEMM_CFG`/`GEMM_BASE`/`GEMM_STRIDE` registers rather than per-descriptor GEMM
+shape fields. The same blob includes `descriptor_batches`, a batch-level
+readiness summary with blocked op names and reasons, plus
+`descriptor_execution_batches`, which splits each original command-buffer batch
+into materializable sub-batches that share one `shared_mmio_preamble`.
+Delegates can reject a mixed command-buffer batch before trying to emit
+descriptors, or use the execution-batch plan to split a ready run safely.
 ExecuTorch exposes this through `descriptor_command_buffer_image`, and LiteRT
 mirrors it through `e1_litert_delegate_descriptor_command_buffer_image`, both
 returning the same `eliza.e1_npu_descriptor_command_buffer_image.v1` shape for

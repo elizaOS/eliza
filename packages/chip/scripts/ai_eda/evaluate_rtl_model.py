@@ -52,6 +52,27 @@ MODELS = (
         "release_use": "blocked",
     },
     {
+        "id": "qimeng-codev-r1",
+        "source_id": "qimeng-codev-r1",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
+        "id": "evolve-verilog",
+        "source_id": "evolve-verilog",
+        "license_status": "review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
+        "id": "veriagent",
+        "source_id": "veriagent",
+        "license_status": "paper_assets_review_required",
+        "backend_status": "not_configured",
+        "release_use": "blocked",
+    },
+    {
         "id": "rtl-llm-hf",
         "source_id": "chipcraftx-rtlgen-7b",
         "license_status": "review_required",

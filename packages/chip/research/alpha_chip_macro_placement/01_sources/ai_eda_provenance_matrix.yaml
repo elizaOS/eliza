@@ -34,6 +34,30 @@ entries:
     license_status: review_required
     release_use: blocked_pending_artifact_identity_license_revision_model_dataset_and_eval_review
     allowed_current_use: metadata_reference_only
+  - source_id: qimeng-codev-r1
+    asset_type: rlvr_verilog_generation_code_model_dataset
+    asset_url: https://github.com/iprc-dip/CodeV-R1
+    license_status: review_required
+    release_use: blocked_pending_code_model_dataset_license_contamination_and_local_eval_review
+    allowed_current_use: metadata_reference_only
+  - source_id: evolve-verilog
+    asset_type: evolutionary_verilog_generation_benchmark_and_method
+    asset_url: https://github.com/weiber2002/ICRTL
+    license_status: review_required
+    release_use: blocked_pending_benchmark_license_overlap_search_trace_and_ppa_replay_review
+    allowed_current_use: metadata_reference_only
+  - source_id: veriagent
+    asset_type: ppa_aware_multi_agent_rtl_generation_method
+    asset_url: https://arxiv.org/abs/2603.17613
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_reference_implementation_tool_schema_and_local_gate_review
+    allowed_current_use: method_reference_only
+  - source_id: open-llm-eco
+    asset_type: llm_agent_qor_eco_optimization_framework
+    asset_url: https://github.com/YiKangOY/Open-LLM-ECO
+    license_status: paper_and_repo_assets_review_required
+    release_use: blocked_pending_real_code_data_license_command_schema_and_openlane_replay_review
+    allowed_current_use: metadata_reference_only
   - source_id: cvdp
     asset_type: benchmark_dataset
     asset_url: https://github.com/NVlabs/cvdp_benchmark

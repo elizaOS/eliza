@@ -44,7 +44,7 @@ class LRUModel:
     def __init__(self, ways: int, sets: int) -> None:
         self.ways = ways
         self.sets = sets
-        # Each set is an OrderedDict tag -> dummy (LRU semantics)
+        # Each set is an OrderedDict tag -> presence marker (LRU semantics)
         self._sets: list[collections.OrderedDict[int, bool]] = [
             collections.OrderedDict() for _ in range(sets)
         ]

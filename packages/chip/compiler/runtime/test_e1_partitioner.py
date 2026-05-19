@@ -25,6 +25,7 @@ from e1_npu_partitioner import (
     RuntimeBindingPlan,
     RuntimeDescriptorBatch,
     RuntimeDescriptorCommandBufferImage,
+    RuntimeDescriptorExecutionBatch,
     RuntimeDescriptorStagingPlan,
     RuntimePreparedDescriptorBatch,
     SupportEntry,
@@ -96,6 +97,24 @@ def _many_dots_payload(count: int) -> dict:
         "name": f"{count}_dot_command_buffer_smoke",
         "ops": [
             _dot_payload("int8")["ops"][0] | {"name": f"dot_{index}"} for index in range(count)
+        ],
+    }
+
+
+def _mismatched_dot_batch_payload() -> dict:
+    return {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "mismatched_dot_command_buffer_smoke",
+        "ops": [
+            _dot_payload("int8")["ops"][0] | {"name": "dot0"},
+            {
+                "op": "stablehlo.dot_general",
+                "name": "dot1",
+                "lhs_type": {"shape": [2, 2], "dtype": "int8"},
+                "rhs_type": {"shape": [2, 3], "dtype": "int8"},
+                "result_type": {"shape": [2, 3], "dtype": "int8"},
+                "precision": "int8",
+            },
         ],
     }
 
@@ -480,17 +499,66 @@ def test_descriptor_staging_plan_materializes_ready_command_buffer_image() -> No
 def test_descriptor_staging_plan_command_buffer_image_is_fail_closed() -> None:
     mixed_plan = partition_module(parse_module(_dot_add_payload())).descriptor_staging_plan
     ready_plan = partition_module(parse_module(_dot_payload("int8"))).descriptor_staging_plan
+    mismatched_plan = partition_module(
+        parse_module(_mismatched_dot_batch_payload())
+    ).descriptor_staging_plan
 
     with pytest.raises(ValueError, match="32-bit aligned"):
         ready_plan.command_buffer_image(arena_base=0x8000_0000, descriptor_base=0x2002)
     with pytest.raises(ValueError, match="non-codegen-ready ops: add0"):
         mixed_plan.command_buffer_image(arena_base=0x8000_0000, descriptor_base=0x2000)
+    with pytest.raises(ValueError, match="incompatible GEMM MMIO preambles"):
+        mismatched_plan.command_buffer_image(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
     with pytest.raises(ValueError, match="no descriptor staging ops"):
         ready_plan.command_buffer_image(
             arena_base=0x8000_0000,
             descriptor_base=0x2000,
             batch_index=1,
         )
+
+
+def test_descriptor_staging_plan_splits_execution_batches_by_mmio_preamble() -> None:
+    staging_plan = partition_module(
+        parse_module(_mismatched_dot_batch_payload())
+    ).descriptor_staging_plan
+
+    execution_batches = staging_plan.descriptor_execution_batches
+
+    assert all(isinstance(batch, RuntimeDescriptorExecutionBatch) for batch in execution_batches)
+    assert [batch.as_dict() for batch in execution_batches] == [
+        {
+            "batch_index": 0,
+            "execution_batch_index": 0,
+            "op_names": ["dot0"],
+            "descriptor_slots": 1,
+            "descriptor_codegen_ready": True,
+            "shared_mmio_preamble": {
+                "GEMM_CFG": 0x0003_0202,
+                "GEMM_BASE": 0x0010_0800,
+                "GEMM_STRIDE": 0x0008_0203,
+            },
+            "blocked_ops": [],
+        },
+        {
+            "batch_index": 0,
+            "execution_batch_index": 1,
+            "op_names": ["dot1"],
+            "descriptor_slots": 1,
+            "descriptor_codegen_ready": True,
+            "shared_mmio_preamble": {
+                "GEMM_CFG": 0x0002_0302,
+                "GEMM_BASE": 0x000C_0400,
+                "GEMM_STRIDE": 0x000C_0302,
+            },
+            "blocked_ops": [],
+        },
+    ]
+    assert staging_plan.as_dict()["descriptor_execution_batches"] == [
+        batch.as_dict() for batch in execution_batches
+    ]
 
 
 def test_partition_report_prepares_descriptor_batch_with_mmio_preamble() -> None:
@@ -609,9 +677,15 @@ def test_partition_report_prepares_descriptor_batch_with_mmio_preamble() -> None
 def test_partition_report_prepared_descriptor_batch_is_fail_closed() -> None:
     mixed_report = partition_module(parse_module(_dot_add_payload()))
     ready_report = partition_module(parse_module(_dot_payload("int8")))
+    mismatched_report = partition_module(parse_module(_mismatched_dot_batch_payload()))
 
     with pytest.raises(ValueError, match="non-codegen-ready ops: add0"):
         mixed_report.prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+    with pytest.raises(ValueError, match="incompatible GEMM MMIO preambles"):
+        mismatched_report.prepared_descriptor_batch(
             arena_base=0x8000_0000,
             descriptor_base=0x2000,
         )

@@ -1022,6 +1022,147 @@ entries:
         incorrect RTL variants without strong local oracles.
       - Anonymous model/data artifacts are not release-suitable until identity,
         terms, and reproducibility are resolved.
+  - id: qimeng-codev-r1
+    name: QiMeng-CodeV-R1
+    kind: rlvr_verilog_generation_model_and_dataset
+    stage:
+      - rtl_generation
+      - reinforcement_learning
+      - benchmark_evaluation
+      - external_model_corpus_intake
+    priority: P1
+    source_url: https://arxiv.org/abs/2505.24183
+    code_url: https://github.com/iprc-dip/CodeV-R1
+    model_url: https://huggingface.co/zhuyaoyu/CodeV-R1-RL-Qwen-7B
+    dataset_url: https://huggingface.co/datasets/zhuyaoyu/CodeV-R1-dataset
+    license_status: review_required
+    code_status: available_to_review
+    model_status: available_to_review
+    e1_fit: >
+      Important RTL-generation baseline because it combines rule-based
+      testbench generation, round-trip data synthesis, and RL with verifiable
+      rewards for Verilog tasks.
+    integration_action: >
+      Track as a blocked external model, dataset, and training-code candidate
+      for dry-run evaluator planning only. Do not download weights or data,
+      train, fine-tune, infer, or import generated RTL until revisions,
+      licenses, contamination, and local oracles are resolved.
+    evidence_gate: >
+      Any CodeV-R1 use requires exact code/model/dataset revisions, file
+      hashes, license review, benchmark non-overlap, prompt/output hashes,
+      generated RTL quarantine, lint, simulation, synthesis, formal where
+      applicable, and reviewer disposition.
+    risk:
+      - Public Verilog benchmark results may not transfer to E1 integration,
+        reset, bus, firmware, or physical-design constraints.
+      - Round-trip synthesized data and RL rewards can encode benchmark or
+        public-corpus contamination unless checked explicitly.
+  - id: evolve-verilog
+    name: EvolVE
+    kind: evolutionary_llm_verilog_generation_and_optimization
+    stage:
+      - rtl_generation
+      - ppa_optimization
+      - benchmark_evaluation
+      - simulator_feedback
+      - synthesis_feedback
+    priority: P1
+    source_url: https://arxiv.org/abs/2601.18067
+    code_url: https://github.com/weiber2002/ICRTL
+    model_url: null
+    dataset_url: https://github.com/weiber2002/ICRTL
+    license_status: review_required
+    code_status: benchmark_code_available_to_review
+    model_status: external_llm_required
+    e1_fit: >
+      Relevant because it compares MCTS and idea-guided refinement for Verilog
+      correctness and PPA optimization, and introduces IC-RTL as a harder
+      benchmark beyond small HDL tasks.
+    integration_action: >
+      Track as an evolutionary RTL/PPA search method and benchmark source only.
+      Do not run LLM evolution, import IC-RTL, or accept optimized RTL until
+      benchmark license, task overlap, local oracles, and E1 promotion gates
+      are reviewed.
+    evidence_gate: >
+      EvolVE-style use requires exact benchmark/code revision, task manifest,
+      license review, non-overlap report, seed and search trace archive,
+      generated RTL quarantine, lint/simulation/synthesis/formal/OpenLane
+      evidence, and human review.
+    risk:
+      - Evolutionary search can optimize proxy benchmarks while missing E1
+        integration contracts or long-tail protocol behavior.
+      - PPA improvements against contest references are not E1 QoR evidence
+        without technology, constraint, and physical-design replay.
+  - id: veriagent
+    name: VeriAgent
+    kind: ppa_aware_multi_agent_rtl_generation_method
+    stage:
+      - rtl_generation
+      - ppa_optimization
+      - agentic_orchestration
+      - synthesis_feedback
+      - simulator_feedback
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.17613
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Useful SOTA method reference for a closed-loop Programmer, Correctness,
+      and PPA-agent pattern with structured evolving memory, but not directly
+      runnable in this package yet.
+    integration_action: >
+      Use only to refine local dry-run target capture for RTL/PPA agent
+      orchestration. Do not create write-capable agents or evolving memory
+      loops until command scopes, replay manifests, and local gates exist.
+    evidence_gate: >
+      Any VeriAgent-like flow requires typed tool actions, exact prompts,
+      memory-state hashes, simulator and synthesis logs, generated RTL
+      quarantine, before/after PPA evidence, equivalence/formal where
+      applicable, and reviewer disposition.
+    risk:
+      - Multi-agent memory can accumulate unsafe heuristics or hide the exact
+        reasoning path that produced a risky RTL/PPA edit.
+      - Paper-level PPA gains do not prove E1 source, OpenLane, reset, bus, or
+        software-contract correctness.
+  - id: open-llm-eco
+    name: Open-LLM-ECO
+    kind: llm_agent_qor_eco_optimization_framework
+    stage:
+      - timing_closure
+      - ppa_optimization
+      - agentic_orchestration
+      - logic_synthesis
+      - physical_design
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.13767
+    code_url: https://github.com/YiKangOY/Open-LLM-ECO
+    model_url: null
+    dataset_url: null
+    license_status: paper_and_repo_assets_review_required
+    code_status: repository_placeholder_code_and_data_coming_soon
+    model_status: external_llm_required
+    e1_fit: >
+      Highly relevant to timing, power, area, and ECO scheduling because it
+      frames chip QoR optimization as retrieve-schedule-execute-reflect over
+      EDA tool feedback.
+    integration_action: >
+      Track as blocked timing/ECO target capture only. The public repository is
+      currently a placeholder, so E1 must not depend on it for commands, data,
+      or QoR claims until real assets, licenses, and revisions are available.
+    evidence_gate: >
+      Any Open-LLM-ECO-style use requires exact code/data revision, command
+      schema, input/output hashes, before/after OpenSTA/OpenLane metrics, DRC,
+      antenna, power, manufacturing, signoff, generated Tcl/netlist quarantine,
+      and reviewer disposition.
+    risk:
+      - Direct EDA-tool interaction can make unreviewed ECO, Tcl, constraint,
+        or netlist changes if not strictly sandboxed.
+      - A placeholder repo provides no reproducible evidence today, and paper
+        QoR claims cannot substitute for E1 local replay.
   - id: rtl-repocoder
     name: RTLRepoCoder
     kind: code_model_method

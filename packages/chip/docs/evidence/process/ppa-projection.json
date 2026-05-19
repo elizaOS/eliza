@@ -20,6 +20,12 @@
   },
   "asap7_projection": [
     {
+      "status": "blocked_bad_evidence_class",
+      "input_source": "docs/evidence/process/asap7/tage_table_projection_n2p.json",
+      "evidence_class": "projection_only_never_signoff",
+      "expected": "predictive_finfet_shape_only_not_signoff"
+    },
+    {
       "block_id": "tage_table",
       "input_source": "docs/evidence/process/asap7/tage_table_shape.json",
       "asap7": {

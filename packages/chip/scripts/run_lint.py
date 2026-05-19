@@ -108,7 +108,7 @@ def main() -> int:
     if rev_parse.returncode == 0:
         ok &= run(
             "git whitespace",
-            ["git", "-c", f"safe.directory={ROOT}", "diff", "--check"],
+            ["git", "-c", f"safe.directory={ROOT}", "diff", "--check", "--", "."],
         )
     else:
         print("SKIP: git whitespace: not in a git checkout (no .git visible)")

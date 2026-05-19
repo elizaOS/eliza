@@ -14,16 +14,16 @@ Snapshot: updated after 2026-05-19 PD closure retry and local tool recovery.
 | software-bsp | `BLOCK` | `scaffold_only` | `make software-bsp-evidence-check` |
 | real-world-release-gates | `PASS` | `command_pass` | `none` |
 | rtl-source | `PASS` | `source_present` | `none` |
-| synthesis | `PASS` | `generated_artifact` | `none` |
+| synthesis | `BLOCK` | `regen_required` | `make synth` |
 | cocotb | `BLOCK` | `regen_required` | `make cocotb cocotb-npu cocotb-contract cocotb-cpu` |
 | verilator | `PASS` | `generated_artifact` | `none` |
 | formal | `PASS` | `generated_artifact` | `none` |
 | qemu | `PASS` | `generated_artifact` | `none` |
-| renode | `PASS` | `generated_artifact` | `none` |
+| renode | `BLOCK` | `tool_blocker` | `make renode-check` |
 | npu-ml-proof | `PASS` | `generated_artifact` | `none` |
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |
-| product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD release blockers or keep product claim below fabrication` |
+| product-package | `FAIL` | `command_fail` | `make product-check` |
 | benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
 | release-pipeline | `PASS` | `generated_artifact` | `none` |
 

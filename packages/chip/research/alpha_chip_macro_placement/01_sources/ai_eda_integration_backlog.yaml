@@ -482,6 +482,9 @@ work_items:
       - chipcraftx-rtlgen-7b
       - chipseek
       - rtlseek
+      - qimeng-codev-r1
+      - evolve-verilog
+      - veriagent
       - rtl-repocoder
       - cvdp
       - verilog-eval
@@ -511,6 +514,8 @@ work_items:
       - Per-model and per-dataset license review
       - Local inference or API backend decision
       - No ChipSeek/RTLSeek model-weight, reward-definition, or benchmark-overlap review
+      - No CodeV-R1/EvolVE/VeriAgent revision, search-trace, evolving-memory,
+        or PPA-replay review against held-out E1 tasks
       - Executed lint, simulation, and synthesis logs for generated artifacts
     acceptance_criteria:
       - No generated RTL is committed by the evaluator.
@@ -805,6 +810,7 @@ work_items:
       - fusionsizer
       - iccad-2024-gate-sizing-benchmark
       - ir-aware-eco-rl
+      - open-llm-eco
     target_area:
       - timing_closure
       - static_timing_analysis
@@ -817,7 +823,7 @@ work_items:
       hashes, resizer-log references, and blocked ECO candidate boundaries for
       future AI-assisted timing triage, AST/retrieval-assisted cross-stage
       parameter tuning, gate sizing, buffer insertion, pin-swapping,
-      gate-cloning, and localized ECO search.
+      gate-cloning, LLM scheduled QoR optimization, and localized ECO search.
     deliverables:
       - scripts/ai_eda/capture_timing_closure_targets.py
       - build/ai_eda/timing_closure_targets/<run-id>/targets_report.json
@@ -837,6 +843,8 @@ work_items:
       - No before/after E1 ECO corpus for sizing, buffering, pin-swapping,
         cloning, routing legality, DRC, antenna, STA, and power labels
       - No AST-derived E1 design retrieval corpus or stage-aware OpenLane parameter replay manifest
+      - Open-LLM-ECO public repository is currently a placeholder with no
+        runnable code/data, license, command schema, or local replay evidence
     acceptance_criteria:
       - Report hashes SDC, config, signoff, metrics, timing report, and
         physical-design evidence inputs.
@@ -1917,6 +1925,9 @@ work_items:
       - chipcraftx-rtlgen-7b
       - chipseek
       - rtlseek
+      - qimeng-codev-r1
+      - evolve-verilog
+      - veriagent
       - codev-sva
       - radai-wm811k-wafer-defect-model
     target_area:
@@ -1958,6 +1969,8 @@ work_items:
       - No contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts
       - No DeepCircuitX dataset manifest, source-repository license audit, or PPA-label transfer analysis for E1
       - No ChipSeek or RTLSeek revision, model-weight manifest, EDA-feedback reward audit, or local benchmark non-overlap report
+      - No CodeV-R1, EvolVE, or VeriAgent revision, model/dataset/search-trace
+        manifest, evolving-memory audit, or E1 held-out PPA replay report
       - No local evaluator allowed to download weights, import datasets, train, fine-tune, run inference, or generate source
       - No held-out E1 task suite with lint, simulation, synthesis, formal, and reviewer disposition for external models
       - No technology-matched label corpus proving MetRex, CircuitNet 3.0, or other public labels transfer to E1
@@ -1980,6 +1993,8 @@ work_items:
       - llm-eda-opencores
       - hardware-verilogeval-v2-hf
       - llm4verilog-dataset
+      - qimeng-codev-r1
+      - evolve-verilog
       - llmsanitize
       - min-k-prob-contamination
     target_area:
@@ -2015,6 +2030,8 @@ work_items:
       - No near-duplicate scanner accepted for Verilog/SystemVerilog normalization, generated prompt variants, and source-license provenance
       - No policy for preserving private E1 evaluation prompts outside training, public issue text, or generated feedback loops
       - No benchmark-score protocol tying model outputs to lint, simulation, synthesis, formal, seeds, tool versions, and reviewer disposition
+      - No CodeV-R1 or IC-RTL overlap report against public benchmark tasks,
+        external Verilog corpora, and held-out E1 prompts
       - No release gate allowing public benchmark pass rates to substitute for E1 integration evidence
     acceptance_criteria:
       - Report hashes local inventory, provenance, probe summary/report, backlog, readiness, SOTA docs, training input notes, RTL eval plan/report, external intake report, probe/eval/RAG scripts, and RAG manifest.

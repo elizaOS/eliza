@@ -107,6 +107,9 @@ stages:
       - chipcraftx-rtlgen-7b
       - chipseek
       - rtlseek
+      - qimeng-codev-r1
+      - evolve-verilog
+      - veriagent
       - codev-sva
       - radai-wm811k-wafer-defect-model
     local_lane: p1-external-model-corpus-intake-target-capture
@@ -136,6 +139,8 @@ stages:
       - llm-eda-opencores
       - hardware-verilogeval-v2-hf
       - llm4verilog-dataset
+      - qimeng-codev-r1
+      - evolve-verilog
       - llmsanitize
       - min-k-prob-contamination
     local_lane: p1-benchmark-evaluation-hygiene-target-capture
@@ -228,6 +233,9 @@ stages:
       - chipcraftx-rtlgen-7b
       - chipseek
       - rtlseek
+      - qimeng-codev-r1
+      - evolve-verilog
+      - veriagent
       - openllm-rtl
       - verilog-eval
       - cvdp
@@ -625,6 +633,7 @@ stages:
       - fusionsizer
       - iccad-2024-gate-sizing-benchmark
       - ir-aware-eco-rl
+      - open-llm-eco
     local_lane: p1-timing-closure-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_timing_closure_targets.py
@@ -883,6 +892,7 @@ stages:
       - lsoracle
       - abc-rl
       - boils
+      - open-llm-eco
     local_lane: p1-logic-synthesis-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_logic_synthesis_targets.py

@@ -87,7 +87,8 @@ MMIO and descriptor-memory writes and returns
 `eliza.e1_npu_host_runtime_sequence_stage_result.v1`. The simulator gate feeds
 the partitioner-produced prepared batch through this helper and observes
 descriptor completion/counters in `E1NpuMmioSim`, including memory-backed
-descriptor parsing for stream/read/writeback accounting, but this remains bounded RTL/runtime evidence rather than a tensor
+descriptor parsing, tensor-byte scratchpad streaming, GEMM execution, and
+computed output writeback accounting, but this remains bounded RTL/runtime evidence rather than a tensor
 command processor. The StableHLO subset partitioner reports contiguous
 `command_buffer_batches` for supported op runs and splits them at the local
 seven-entry ring window, but it still does not provide dependency scheduling or
@@ -111,8 +112,10 @@ INT8/INT4 matmul templates where the arena has int32 accumulator storage. Those
 ready entries now include a relocatable `descriptor_word_template` and a checked
 `descriptor_words(arena_base)` materialization path. Ready batches can also
 materialize a `command_buffer_image(arena_base, descriptor_base, batch_index)`
-that matches the runtime `CommandBuffer.descriptor_image()` layout. The blob
-also reports `descriptor_batches` with batch-level blocked op reasons, and the
+that matches the runtime `CommandBuffer.descriptor_image()` layout and fails
+closed when ready ops in the same batch require different GEMM MMIO preambles.
+The blob also reports `descriptor_batches` with batch-level blocked op reasons
+and `descriptor_execution_batches` split by `shared_mmio_preamble`, and the
 ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
 wrappers for ready-batch descriptor image materialization. The partitioner and
 delegates also expose `prepared_descriptor_batch`/

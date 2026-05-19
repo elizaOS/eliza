@@ -404,6 +404,55 @@ class RuntimeDescriptorStagingPlan:
             )
         return tuple(batches)
 
+    @property
+    def descriptor_execution_batches(self) -> tuple[RuntimeDescriptorExecutionBatch, ...]:
+        execution_batches: list[RuntimeDescriptorExecutionBatch] = []
+        for batch in self.descriptor_batches:
+            batch_index = batch.batch_index
+            ops = tuple(op for op in self.ops if op.command_buffer_batch_index == batch_index)
+            current_ops: list[RuntimeDescriptorStagingOp] = []
+            current_preamble: dict[str, int] | None = None
+
+            def flush(flush_batch_index: int = batch_index) -> None:
+                nonlocal current_ops, current_preamble
+                if not current_ops:
+                    return
+                blocked = tuple(
+                    RuntimeDescriptorBatchBlocker(
+                        op_name=op.op_name,
+                        blocking_reasons=op.blocking_reasons,
+                    )
+                    for op in current_ops
+                    if not op.descriptor_codegen_ready
+                )
+                execution_batches.append(
+                    RuntimeDescriptorExecutionBatch(
+                        batch_index=flush_batch_index,
+                        execution_batch_index=len(execution_batches),
+                        op_names=tuple(op.op_name for op in current_ops),
+                        descriptor_slots=len(current_ops),
+                        descriptor_codegen_ready=not blocked,
+                        shared_mmio_preamble=current_preamble or {},
+                        blocked_ops=blocked,
+                    )
+                )
+                current_ops = []
+                current_preamble = None
+
+            for op in ops:
+                if not op.descriptor_codegen_ready:
+                    flush()
+                    current_ops = [op]
+                    current_preamble = op.mmio_preamble
+                    flush()
+                    continue
+                if current_preamble is not None and op.mmio_preamble != current_preamble:
+                    flush()
+                current_ops.append(op)
+                current_preamble = op.mmio_preamble
+            flush()
+        return tuple(execution_batches)
+
     def command_buffer_image(
         self, arena_base: int, descriptor_base: int, *, batch_index: int = 0
     ) -> RuntimeDescriptorCommandBufferImage:
@@ -420,6 +469,13 @@ class RuntimeDescriptorStagingPlan:
             raise ValueError(
                 f"command-buffer batch {batch_index} contains non-codegen-ready ops: "
                 f"{', '.join(blocked)}"
+            )
+        mmio_preambles = {tuple(sorted(op.mmio_preamble.items())) for op in ops}
+        if len(mmio_preambles) > 1:
+            raise ValueError(
+                "command-buffer batch "
+                f"{batch_index} contains incompatible GEMM MMIO preambles; "
+                "split the batch before descriptor materialization"
             )
 
         command_buffer = CommandBuffer(descriptor_base)
@@ -464,6 +520,9 @@ class RuntimeDescriptorStagingPlan:
             "ready_ops": sum(1 for op in self.ops if op.descriptor_codegen_ready),
             "blocked_ops": sum(1 for op in self.ops if not op.descriptor_codegen_ready),
             "descriptor_batches": [batch.as_dict() for batch in self.descriptor_batches],
+            "descriptor_execution_batches": [
+                batch.as_dict() for batch in self.descriptor_execution_batches
+            ],
             "ops": [op.as_dict() for op in self.ops],
         }
 
@@ -498,6 +557,30 @@ class RuntimeDescriptorBatch:
             "op_names": list(self.op_names),
             "descriptor_slots": self.descriptor_slots,
             "descriptor_codegen_ready": self.descriptor_codegen_ready,
+            "blocked_ops": [blocked.as_dict() for blocked in self.blocked_ops],
+        }
+
+
+@dataclass(frozen=True)
+class RuntimeDescriptorExecutionBatch:
+    """Executable descriptor sub-batch with a single shared GEMM MMIO preamble."""
+
+    batch_index: int
+    execution_batch_index: int
+    op_names: tuple[str, ...]
+    descriptor_slots: int
+    descriptor_codegen_ready: bool
+    shared_mmio_preamble: dict[str, int]
+    blocked_ops: tuple[RuntimeDescriptorBatchBlocker, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "batch_index": self.batch_index,
+            "execution_batch_index": self.execution_batch_index,
+            "op_names": list(self.op_names),
+            "descriptor_slots": self.descriptor_slots,
+            "descriptor_codegen_ready": self.descriptor_codegen_ready,
+            "shared_mmio_preamble": self.shared_mmio_preamble,
             "blocked_ops": [blocked.as_dict() for blocked in self.blocked_ops],
         }
 
