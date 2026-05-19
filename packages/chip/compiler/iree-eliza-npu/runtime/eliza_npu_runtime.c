@@ -64,22 +64,29 @@ eliza_npu_status_t eliza_npu_submit_descriptors(
       head == tail)
     return ELIZA_NPU_ERR_RING_BOUNDS;
 
+  /* Sequence matches E1NpuRuntime.submit_descriptors in
+   * compiler/runtime/e1_npu_runtime.py: write DESC_BASE/HEAD/TAIL, set
+   * CMD_PARAM=1 (descriptor-mode launch), then ack any prior done/error via
+   * CTRL_STATUS=CLEAR_WRITE before issuing the launch via CTRL_STATUS=LAUNCH.
+   */
   mmio->write32(ELIZA_NPU_REG_DESC_BASE, descriptor_ring_base_phys, mmio->ctx);
   mmio->write32(ELIZA_NPU_REG_DESC_HEAD, head, mmio->ctx);
   mmio->write32(ELIZA_NPU_REG_DESC_TAIL, tail, mmio->ctx);
   mmio->write32(ELIZA_NPU_REG_CMD_PARAM, 1u, mmio->ctx);
-  mmio->write32(ELIZA_NPU_REG_CTRL_STATUS, 2u, mmio->ctx);
-  mmio->write32(ELIZA_NPU_REG_CTRL_STATUS, 1u, mmio->ctx);
+  mmio->write32(ELIZA_NPU_REG_CTRL_STATUS, ELIZA_NPU_CTRL_CLEAR_WRITE, mmio->ctx);
+  mmio->write32(ELIZA_NPU_REG_CTRL_STATUS, ELIZA_NPU_CTRL_LAUNCH_WRITE, mmio->ctx);
 
   for (uint32_t poll = 0; poll < timeout_polls; ++poll) {
     uint32_t status = mmio->read32(ELIZA_NPU_REG_CTRL_STATUS, mmio->ctx);
-    if (status & 0x4u) return ELIZA_NPU_ERR_REJECTED;
-    if (status & 0x2u) {
+    if (status & ELIZA_NPU_CTRL_ERROR) return ELIZA_NPU_ERR_REJECTED;
+    if (status & ELIZA_NPU_CTRL_DONE) {
       uint32_t desc_status =
           mmio->read32(ELIZA_NPU_REG_DESC_STATUS, mmio->ctx);
-      if (desc_status & 0x4u) return ELIZA_NPU_ERR_REJECTED;
-      if (desc_status & 0x80u) return ELIZA_NPU_ERR_WRITEBACK_UNSUPPORTED;
-      if (desc_status & 0x2u) return ELIZA_NPU_OK;
+      if (desc_status & ELIZA_NPU_DESC_STATUS_ERROR) return ELIZA_NPU_ERR_REJECTED;
+      if (desc_status & ELIZA_NPU_DESC_STATUS_WRITEBACK_UNSUPPORTED)
+        return ELIZA_NPU_ERR_WRITEBACK_UNSUPPORTED;
+      if (desc_status & ELIZA_NPU_DESC_STATUS_TIMEOUT) return ELIZA_NPU_ERR_TIMEOUT;
+      if (desc_status & ELIZA_NPU_DESC_STATUS_DONE) return ELIZA_NPU_OK;
     }
   }
   return ELIZA_NPU_ERR_TIMEOUT;

@@ -34,13 +34,20 @@
     ]
   },
   "compiler_target": {
-    "compiler": "LLVM RISC-V (built with RVV 1.0 autovectorization on)",
-    "compiler_pinned_version": "BLOCKED_until_compiler_agent_pins_release",
-    "march": "rv64gcv",
+    "compiler": "LLVM trunk (RVV 1.0 autovectorization on)",
+    "compiler_pin_source": "compiler/llvm-build/llvm-pin.json",
+    "compiler_pin_commit_sha": "de3ee84346d6dcf77ac20fe5c8acc95594886cbc",
+    "compiler_pin_commit_resolved_at_utc": "2026-05-19T10:15:30Z",
+    "minimum_release_floor": "llvm-21",
+    "march": "rva23u64",
     "mabi": "lp64d",
-    "optimization_baseline": "-O3 -flto",
+    "mcpu": "eliza-e1",
+    "mtune": "eliza-e1",
+    "optimization_baseline": "-O3 -flto=thin -fvectorize -mcpu=eliza-e1 -march=rva23u64 -mtune=eliza-e1",
+    "release_flags_default_source": "compiler/llvm-build/llvm-pin.json::release_flags_default",
     "rvv_intrinsics_allowed": true,
-    "spec_config_filename": "eliza-rv64gcv.cfg"
+    "spec_config_filename": "eliza-rva23u64.cfg",
+    "blocked_until_built": "build/llvm-stage2/bin/clang does not yet exist; compiler agent must run scripts/build_llvm_riscv.sh inside the canonical Linux container"
   },
   "expected_results": {
     "e1_ultra_target_4.0_ghz": {

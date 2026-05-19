@@ -52,7 +52,7 @@ def c_runtime_pack_word0(
     return word0
 
 
-@pytest.mark.parametrize("opcode", list(range(0, 9)))
+@pytest.mark.parametrize("opcode", list(range(0, 16)))
 @pytest.mark.parametrize("scratch_offset", [0, 4, 16, 32])
 @pytest.mark.parametrize("byte_count", [4, 8, 16, 32])
 @pytest.mark.parametrize("valid_owner", [True, False])

@@ -20,6 +20,7 @@ Status terms (printed as `STATUS: <status> compiler.<stage>`).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import subprocess
@@ -31,6 +32,8 @@ STAGE2 = REPO_ROOT / "build/llvm-stage2"
 IREE_INSTALL = REPO_ROOT / "build/iree/install"
 LLVM_PIN = REPO_ROOT / "compiler/llvm-build/llvm-pin.json"
 IREE_PIN = REPO_ROOT / "compiler/iree-eliza-npu/iree-pin.json"
+EXECUTORCH_PIN = REPO_ROOT / "compiler/executorch-eliza/executorch-pin.json"
+NPU_ABI_HEADER = REPO_ROOT / "compiler/iree-eliza-npu/runtime/eliza_npu_runtime.h"
 
 REPORT_DIR = REPO_ROOT / "build/reports/compiler"
 REPORT_PATH = REPORT_DIR / "compiler-versions.json"
@@ -83,10 +86,17 @@ def main() -> int:
 
     llvm_pin: dict = {}
     iree_pin: dict = {}
+    executorch_pin: dict = {}
     if LLVM_PIN.exists():
         llvm_pin = json.loads(LLVM_PIN.read_text())
     if IREE_PIN.exists():
         iree_pin = json.loads(IREE_PIN.read_text())
+    if EXECUTORCH_PIN.exists():
+        executorch_pin = json.loads(EXECUTORCH_PIN.read_text())
+
+    npu_abi_hash: str | None = None
+    if NPU_ABI_HEADER.exists():
+        npu_abi_hash = hashlib.sha256(NPU_ABI_HEADER.read_bytes()).hexdigest()
 
     def pin_sha(pin: dict) -> str | None:
         upstream = pin.get("upstream") or {}
@@ -111,6 +121,18 @@ def main() -> int:
             "iree_compile_version": iree_version,
             "install_dir": str(IREE_INSTALL),
             "pin_sha": pin_sha(iree_pin),
+        },
+        "executorch": {
+            "pin_sha": pin_sha(executorch_pin),
+        },
+        "npu_abi": {
+            "header": str(NPU_ABI_HEADER),
+            "sha256": npu_abi_hash,
+            "purpose": (
+                "single hash for the C ABI consumed by IREE codegen; drift "
+                "against compiler/runtime/e1_npu_runtime.py or rtl/npu/e1_npu.sv "
+                "is caught by compiler/iree-eliza-npu/tests/test_runtime_mmio_parity.py"
+            ),
         },
     }
     REPORT_PATH.write_text(json.dumps(record, indent=2, sort_keys=True))

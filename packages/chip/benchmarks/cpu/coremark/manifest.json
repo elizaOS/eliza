@@ -12,13 +12,27 @@
     "pinned_commit": "BLOCKED_until_first_clone_resolves_tag"
   },
   "build_target": {
-    "isa": "rv64gc",
+    "isa": "rva23u64",
     "abi": "lp64d",
-    "march": "rv64gc",
+    "march": "rva23u64",
     "mabi": "lp64d",
-    "optimization": "-O3",
-    "compiler_pinned": "riscv-none-elf-gcc 15.2.0 (xpack)",
-    "compiler_host_path": "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc"
+    "mcpu": "eliza-e1",
+    "mtune": "eliza-e1",
+    "optimization": "-O3 -flto=thin -fvectorize -mcpu=eliza-e1 -march=rva23u64 -mtune=eliza-e1",
+    "release_flags_default_source": "compiler/llvm-build/llvm-pin.json::release_flags_default",
+    "primary_compiler": {
+      "name": "LLVM trunk (clang stage-2 from compiler/llvm-build/)",
+      "pin_source": "compiler/llvm-build/llvm-pin.json",
+      "pin_commit_sha": "de3ee84346d6dcf77ac20fe5c8acc95594886cbc",
+      "pin_commit_resolved_at_utc": "2026-05-19T10:15:30Z",
+      "minimum_release_floor": "llvm-21",
+      "blocked_until_built": "build/llvm-stage2/bin/clang must exist; compiler agent runs scripts/build_llvm_riscv.sh inside the canonical Linux container"
+    },
+    "secondary_compiler_for_baseline": {
+      "name": "riscv-none-elf-gcc 15.2.0 (xpack) — bare-metal baseline only, not RVA23",
+      "host_path": "external/xpack-riscv-none-elf-gcc-15.2.0-1/bin/riscv-none-elf-gcc",
+      "usage": "kept solely to A/B against the LLVM trunk pin; not the release-grade compiler"
+    }
   },
   "iterations_target_seconds": 12,
   "iterations_minimum": 1000,

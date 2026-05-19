@@ -9,7 +9,9 @@
     "project": "pytorch/executorch",
     "url": "https://github.com/pytorch/executorch.git",
     "branch": "main",
-    "commit_sha": "TODO_PIN_EXECUTORCH_SHA",
+    "commit_sha": "5eb84927cb9380f2a56d1f39f28d799dd7573254",
+    "commit_resolved_via": "git ls-remote https://github.com/pytorch/executorch.git HEAD on 2026-05-19",
+    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
     "refresh_policy": "quarterly, paired with IREE pin"
   },
   "python_requirements": [

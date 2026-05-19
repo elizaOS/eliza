@@ -9,7 +9,9 @@
     "project": "iree-org/iree",
     "url": "https://github.com/iree-org/iree.git",
     "branch": "main",
-    "commit_sha": "TODO_PIN_IREE_SHA_FROM_CONTAINER_BUILD",
+    "commit_sha": "d9a3dd15a552cdded3bda4fcfa65f1341d2b5f92",
+    "commit_resolved_via": "git ls-remote https://github.com/iree-org/iree.git HEAD on 2026-05-19",
+    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
     "refresh_policy": "quarterly, paired with the LLVM trunk pin"
   },
   "submodules_policy": "init+update recursive; the IREE repository pulls in StableHLO, mlir-hlo, vulkan-headers, and tracy",

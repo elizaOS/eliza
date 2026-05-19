@@ -98,9 +98,14 @@ require_tool clang || require_tool gcc
 LLVM_SHA="$(jq -r '.upstream.commit_sha' "$PIN_FILE")"
 LLVM_URL="$(jq -r '.upstream.url' "$PIN_FILE")"
 
-if [ "$LLVM_SHA" = "TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD" ] || [ -z "$LLVM_SHA" ]; then
+if [ -z "$LLVM_SHA" ] || [ "$LLVM_SHA" = "null" ]; then
     emit_status "BLOCKED" "llvm.pin_sha"
-    echo "build_llvm_riscv: LLVM SHA not pinned in $PIN_FILE; refresh per docs/toolchain/llvm-trunk-pin.md" >&2
+    echo "build_llvm_riscv: LLVM SHA missing in $PIN_FILE; refresh per docs/toolchain/llvm-trunk-pin.md" >&2
+    exit 2
+fi
+if ! printf '%s' "$LLVM_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+    emit_status "BLOCKED" "llvm.pin_sha_format"
+    echo "build_llvm_riscv: LLVM SHA '$LLVM_SHA' is not a 40-character hex string" >&2
     exit 2
 fi
 

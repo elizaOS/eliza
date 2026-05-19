@@ -9,7 +9,9 @@
     "project": "llvm/llvm-project",
     "url": "https://github.com/llvm/llvm-project.git",
     "branch": "main",
-    "commit_sha": "TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD",
+    "commit_sha": "de3ee84346d6dcf77ac20fe5c8acc95594886cbc",
+    "commit_resolved_via": "git ls-remote https://github.com/llvm/llvm-project.git HEAD on 2026-05-19",
+    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
     "release_track": "trunk",
     "trunk_pin_policy": "refresh quarterly from a tested green commit; record the chosen SHA here and in docs/toolchain/llvm-trunk-pin.md in lockstep",
     "minimum_release_floor": "llvm-21"

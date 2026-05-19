@@ -5,11 +5,14 @@ claim_boundary: |
   accepted as release evidence until the canonical Linux container build
   produces all artifacts in this manifest.
 
+pinned_sha: de3ee84346d6dcf77ac20fe5c8acc95594886cbc
+pinned_sha_resolved_at_utc: 2026-05-19T10:15:30Z
+pinned_sha_source: git ls-remote https://github.com/llvm/llvm-project.git HEAD
+
 blocked_until:
-  - llvm_pin.upstream.commit_sha differs from TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD
   - build/llvm-stage2/bin/clang exists
   - build/reports/compiler/llvm-version.txt records a clang major >= 21
-  - build/reports/compiler/llvm-build-sha.txt records a 40-character SHA matching the pin
+  - build/reports/compiler/llvm-build-sha.txt records the 40-character SHA matching llvm-pin.json::upstream.commit_sha
   - build/reports/compiler/llvm-hello-rva23.dump shows RVV vector instructions
 
 required_artifacts:

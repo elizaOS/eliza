@@ -27,6 +27,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any, cast
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 AUTOVEC_DIR = REPO_ROOT / "benchmarks/compiler/autovec"
@@ -35,7 +36,10 @@ KERNELS_C = AUTOVEC_DIR / "kernels.c"
 STAGE2 = REPO_ROOT / "build/llvm-stage2"
 REPORT_DIR = REPO_ROOT / "build/reports/compiler"
 REPORT_PATH = REPORT_DIR / "autovec-results.json"
+COMPARE_PATH = REPORT_DIR / "autovec-trunk-vs-stock.json"
+COMPARE_MARKDOWN = REPORT_DIR / "autovec-trunk-vs-stock.md"
 SCHEMA = "eliza.autovec_results.v1"
+COMPARE_SCHEMA = "eliza.autovec_compare.v1"
 
 CLANG_BASELINE_FLAGS = [
     "--target=riscv64-unknown-linux-gnu",
@@ -118,10 +122,30 @@ def compile_kernel(
     }
 
 
+def geomean(values: list[float]) -> float:
+    if not values:
+        return 0.0
+    product = 1.0
+    for v in values:
+        if v <= 0:
+            # geomean is undefined for non-positive entries; skip them and
+            # apply a small floor so a single zero doesn't collapse the
+            # entire summary.
+            v = 0.5
+        product *= v
+    return product ** (1.0 / len(values))
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--strict", action="store_true")
     parser.add_argument("--clang", type=Path, default=STAGE2 / "bin/clang")
+    parser.add_argument(
+        "--stock-clang",
+        type=Path,
+        default=None,
+        help="optional second clang (apt-installed) for trunk-vs-stock comparison",
+    )
     args = parser.parse_args()
 
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -185,6 +209,96 @@ def main() -> int:
         )
     )
     emit("PASS", "summary", f"{len(results)} kernels")
+
+    # Optional stock-vs-trunk geomean comparison.
+    if args.stock_clang is not None and args.stock_clang.exists():
+        stock_out_dir = REPORT_DIR / "autovec-objs-stock"
+        if stock_out_dir.exists():
+            shutil.rmtree(stock_out_dir)
+        stock_out_dir.mkdir(parents=True, exist_ok=True)
+        stock_results: list[dict[str, object]] = []
+        for kernel in kernels:
+            name = kernel["name"]
+            obj_path = stock_out_dir / f"{name}.O3.o"
+            dump_path = stock_out_dir / f"{name}.O3.s"
+            stock_results.append(
+                {
+                    "name": name,
+                    "summary": compile_kernel(
+                        args.stock_clang,
+                        name,
+                        ["-O3"],
+                        obj_path,
+                        dump_path,
+                    ),
+                }
+            )
+
+        # Pair trunk O3 vs stock O3.
+        rows: list[dict[str, object]] = []
+        trunk_counts: list[float] = []
+        stock_counts: list[float] = []
+        for trunk_kernel, stock_kernel in zip(results, stock_results, strict=True):
+            trunk_opt_levels = cast(dict[str, dict[str, Any]], trunk_kernel["opt_levels"])
+            trunk_o3 = trunk_opt_levels["O3"]
+            stock_o3 = cast(dict[str, Any], stock_kernel["summary"])
+            t = float(trunk_o3.get("vector_instructions", 0) or 0)
+            s = float(stock_o3.get("vector_instructions", 0) or 0)
+            rows.append(
+                {
+                    "name": trunk_kernel["name"],
+                    "trunk_vec": t,
+                    "stock_vec": s,
+                    "delta": t - s,
+                    "ratio": (t / s) if s > 0 else None,
+                }
+            )
+            trunk_counts.append(t)
+            stock_counts.append(s)
+
+        geomean_trunk = geomean(trunk_counts)
+        geomean_stock = geomean(stock_counts)
+        trunk_over_stock = geomean_trunk / geomean_stock if geomean_stock > 0 else None
+        compare = {
+            "schema": COMPARE_SCHEMA,
+            "as_of_clang_trunk": str(args.clang),
+            "as_of_clang_stock": str(args.stock_clang),
+            "kernel_count": len(rows),
+            "geomean_vector_instructions": {
+                "trunk": geomean_trunk,
+                "stock": geomean_stock,
+                "trunk_over_stock_ratio": trunk_over_stock,
+            },
+            "rows": rows,
+        }
+        COMPARE_PATH.write_text(json.dumps(compare, indent=2, sort_keys=True))
+
+        lines = [
+            "# Autovec geomean comparison: LLVM trunk pin vs apt-installed clang",
+            "",
+            f"- trunk clang: `{args.clang}`",
+            f"- stock clang: `{args.stock_clang}`",
+            f"- kernels compared: {len(rows)}",
+            "",
+            f"- geomean vector instructions (trunk): {geomean_trunk:.2f}",
+            f"- geomean vector instructions (stock): {geomean_stock:.2f}",
+            "- trunk / stock ratio: "
+            + (f"{trunk_over_stock:.4f}" if trunk_over_stock is not None else "N/A"),
+            "",
+            "| kernel | trunk vec | stock vec | delta | ratio |",
+            "|--------|-----------|-----------|-------|-------|",
+        ]
+        for row in rows:
+            ratio_text = f"{row['ratio']:.3f}" if row["ratio"] is not None else "N/A"
+            lines.append(
+                f"| {row['name']} | {row['trunk_vec']:.0f} | {row['stock_vec']:.0f} | "
+                f"{row['delta']:+.0f} | {ratio_text} |"
+            )
+        COMPARE_MARKDOWN.write_text("\n".join(lines) + "\n")
+        emit("PASS", "compare", f"trunk-vs-stock written to {COMPARE_PATH.name}")
+    elif args.stock_clang is not None:
+        emit("BLOCKED", "stock_clang_missing", str(args.stock_clang))
+
     return 0
 
 

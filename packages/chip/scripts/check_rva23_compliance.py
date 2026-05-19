@@ -95,6 +95,9 @@ def check_llvm_pin(pin: dict) -> int:
     sha = upstream.get("commit_sha", "")
     if sha == "TODO_PIN_LLVM_SHA_FROM_CONTAINER_BUILD" or not sha:
         emit("BLOCKED", "llvm_pin_sha")
+    elif not re.fullmatch(r"[0-9a-f]{40}", sha):
+        emit("FAIL", "llvm_pin_sha_format", f"not a 40-char hex SHA: {sha!r}")
+        return 1
     else:
         emit("PASS", "llvm_pin_sha", sha)
     march = pin.get("march", "")
@@ -131,6 +134,8 @@ def check_iree_pin() -> None:
     sha = upstream.get("commit_sha", "") if isinstance(upstream, dict) else ""
     if sha == "TODO_PIN_IREE_SHA_FROM_CONTAINER_BUILD" or not sha:
         emit("BLOCKED", "iree_pin_sha")
+    elif not re.fullmatch(r"[0-9a-f]{40}", sha):
+        emit("FAIL", "iree_pin_sha_format", f"not a 40-char hex SHA: {sha!r}")
     else:
         emit("PASS", "iree_pin_sha", sha)
 

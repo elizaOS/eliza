@@ -59,9 +59,14 @@ require_tool jq
 IREE_SHA="$(jq -r '.upstream.commit_sha' "$PIN_FILE")"
 IREE_URL="$(jq -r '.upstream.url' "$PIN_FILE")"
 
-if [ "$IREE_SHA" = "TODO_PIN_IREE_SHA_FROM_CONTAINER_BUILD" ] || [ -z "$IREE_SHA" ]; then
+if [ -z "$IREE_SHA" ] || [ "$IREE_SHA" = "null" ]; then
     emit_status "BLOCKED" "iree.pin_sha"
-    echo "build_iree: IREE SHA not pinned in $PIN_FILE; refresh per docs/toolchain/iree-eliza-npu.md" >&2
+    echo "build_iree: IREE SHA missing in $PIN_FILE; refresh per docs/toolchain/iree-eliza-npu.md" >&2
+    exit 2
+fi
+if ! printf '%s' "$IREE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+    emit_status "BLOCKED" "iree.pin_sha_format"
+    echo "build_iree: IREE SHA '$IREE_SHA' is not a 40-character hex string" >&2
     exit 2
 fi
 

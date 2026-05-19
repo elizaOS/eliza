@@ -5,8 +5,11 @@ claim_boundary: |
   a built IREE backend is accepted until the canonical container build
   produces the elizanpu-opt binary and the matmul roundtrip dump.
 
+pinned_sha: d9a3dd15a552cdded3bda4fcfa65f1341d2b5f92
+pinned_sha_resolved_at_utc: 2026-05-19T10:15:30Z
+pinned_sha_source: git ls-remote https://github.com/iree-org/iree.git HEAD
+
 blocked_until:
-  - iree_pin.upstream.commit_sha differs from TODO_PIN_IREE_SHA_FROM_CONTAINER_BUILD
   - build/llvm-stage2/ exists
   - build/iree/install/bin/iree-compile exists
   - build/iree/install/bin/elizanpu-opt exists

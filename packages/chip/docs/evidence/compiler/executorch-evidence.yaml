@@ -5,6 +5,10 @@ claim_boundary: |
   no executable PTE generation is accepted until torch + executorch +
   IREE are built in the canonical Linux container.
 
+pinned_sha: 5eb84927cb9380f2a56d1f39f28d799dd7573254
+pinned_sha_resolved_at_utc: 2026-05-19T10:15:30Z
+pinned_sha_source: git ls-remote https://github.com/pytorch/executorch.git HEAD
+
 blocked_until:
   - torch>=2.5 and executorch installed in the canonical container
   - build/iree/install/bin/iree-compile exists
