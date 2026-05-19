@@ -622,7 +622,9 @@ export function AppAnalytics({ appId }: AppAnalyticsProps) {
                   <DashboardStatCard
                     label="Unique IPs"
                     value={requestStats.uniqueIps.toLocaleString()}
-                    icon={<Globe className="h-5 w-5 text-[var(--brand-orange)]" />}
+                    icon={
+                      <Globe className="h-5 w-5 text-[var(--brand-orange)]" />
+                    }
                   />
                   <DashboardStatCard
                     label="Unique Users"

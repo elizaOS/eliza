@@ -425,7 +425,9 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       let timer: ReturnType<typeof setTimeout> | null = null;
       const timeout = new Promise<never>((_, reject) => {
         timer = setTimeout(() => {
-          reject(new Error(`plugin ${name} timed out after ${bootTimeoutMs}ms`));
+          reject(
+            new Error(`plugin ${name} timed out after ${bootTimeoutMs}ms`),
+          );
         }, bootTimeoutMs);
         if (typeof timer.unref === "function") timer.unref();
       });

@@ -32,7 +32,10 @@ type QrOverrideEntry = {
   qrConnected?: boolean;
 };
 
-function signalAuthExists(workspaceDir: string, accountId = "default"): boolean {
+function signalAuthExists(
+  workspaceDir: string,
+  accountId = "default",
+): boolean {
   const authDir = path.join(workspaceDir, "signal-auth", accountId);
   if (!fs.existsSync(authDir)) return false;
 

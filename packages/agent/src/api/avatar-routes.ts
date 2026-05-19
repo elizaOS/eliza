@@ -14,9 +14,9 @@ type DiscordAvatarModule = {
 
 let discordAvatarPromise: Promise<DiscordAvatarModule> | null = null;
 function getDiscordAvatarApi(): Promise<DiscordAvatarModule> {
-  discordAvatarPromise ??= import("@elizaos/plugin-discord") as Promise<
-    unknown
-  > as Promise<DiscordAvatarModule>;
+  discordAvatarPromise ??= import(
+    "@elizaos/plugin-discord"
+  ) as Promise<unknown> as Promise<DiscordAvatarModule>;
   return discordAvatarPromise;
 }
 

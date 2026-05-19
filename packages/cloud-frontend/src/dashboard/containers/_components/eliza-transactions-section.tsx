@@ -26,7 +26,10 @@ const STATUS_COLORS: Record<string, { text: string; dot: string }> = {
   confirmed: { text: "text-green-400", dot: "bg-green-500" },
   approved: { text: "text-green-400", dot: "bg-green-500" },
   broadcast: { text: "text-blue-400", dot: "bg-blue-500" },
-  pending: { text: "text-[var(--brand-orange)]", dot: "bg-[var(--brand-orange)]" },
+  pending: {
+    text: "text-[var(--brand-orange)]",
+    dot: "bg-[var(--brand-orange)]",
+  },
   failed: { text: "text-red-400", dot: "bg-red-500" },
   rejected: { text: "text-red-400", dot: "bg-red-500" },
 };
