@@ -110,10 +110,7 @@ async function main(): Promise<void> {
     const duplicateSkippedDir = join(workspace, "duplicate-skipped");
     const duplicateUnloadedDir = join(workspace, "duplicate-unloaded");
     const exercisedUnregisteredDir = join(workspace, "exercised-unregistered");
-    const registeredUnexercisedDir = join(
-      workspace,
-      "registered-unexercised",
-    );
+    const registeredUnexercisedDir = join(workspace, "registered-unexercised");
     const missingSummaryModuleExerciseDir = join(
       workspace,
       "missing-summary-module-exercise",
