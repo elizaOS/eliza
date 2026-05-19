@@ -607,9 +607,10 @@ power, and manufacturing preparation.
 8. Post-silicon validation target capture with
    `scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation`.
    Do not generate or promote lab scripts, test binaries, hardware actions,
-   compliance claims, silicon bring-up claims, or lab-debug reports without
-   local QEMU/Renode, FPGA, board/package, manufacturing, real-world, and review
-   evidence.
+   compliance claims, RISC-V debug claims, silicon bring-up claims, or
+   lab-debug reports without local QEMU/Renode, FPGA, board/package, OpenOCD
+   transcripts, sigrok raw-capture hashes, manufacturing, real-world, and
+   review evidence.
 9. Circuit foundation model target capture with
    `scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation`.
    Do not export training corpora, generate embeddings, train/fine-tune models,

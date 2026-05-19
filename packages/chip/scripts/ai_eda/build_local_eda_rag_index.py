@@ -145,6 +145,11 @@ SOURCE_SET = (
         "ai_eda_runner",
     ),
     (
+        "post_silicon_validation_targets_runner",
+        "scripts/ai_eda/capture_post_silicon_validation_targets.py",
+        "ai_eda_runner",
+    ),
+    (
         "dfm_yield_lithography_targets_runner",
         "scripts/ai_eda/capture_dfm_yield_lithography_targets.py",
         "ai_eda_runner",
@@ -455,6 +460,17 @@ SMOKE_QUERIES = (
             "make kicad-artifact-check",
             "make fpga-check",
             "make manufacturing-artifacts-check",
+        ],
+    },
+    {
+        "id": "post_silicon_validation_targets",
+        "query": "Which local sources define post-silicon, RISC-V debug, lab instrumentation, and bring-up target capture?",
+        "required_source_ids": ["post_silicon_validation_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation",
+            "make no-hardware-action-check",
+            "make fpga-check",
+            "make real-world-gates-check",
         ],
     },
     {

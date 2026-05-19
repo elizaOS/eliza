@@ -1552,6 +1552,9 @@ work_items:
       - riscof
       - riscv-arch-test
       - opentitan-chip-tests
+      - riscv-debug-spec
+      - openocd
+      - sigrok-cli
       - ml-boot-failure-debug
       - llm4sechw-debug
     target_area:
@@ -1565,8 +1568,9 @@ work_items:
     objective: >
       Track post-silicon debug methods, QED/trace-analysis approaches, RISC-V
       compatibility tests, random-instruction validation, cross-target
-      on-device tests, and ML/XAI boot-failure triage while tying any future E1
-      use to QEMU/Renode, FPGA, manufacturing, real-world, and lab evidence.
+      on-device tests, RISC-V debug/lab capture tooling, and ML/XAI
+      boot-failure triage while tying any future E1 use to QEMU/Renode, FPGA,
+      manufacturing, real-world, and lab evidence.
     deliverables:
       - scripts/ai_eda/capture_post_silicon_validation_targets.py
       - build/ai_eda/post_silicon_validation_targets/<run-id>/targets_report.json
@@ -1587,12 +1591,13 @@ work_items:
       - No pinned external RISCOF, riscv-arch-test, or riscv-dv checkout executed against a buildable E1-compatible DUT
       - No RISC-V ISA compliance, random-instruction, or ISS co-simulation evidence tied to E1 CPU wrappers
       - No trace schema for reset, boot, UART, JTAG, power, thermal, FPGA, or board observations
+      - No pinned OpenOCD board configuration, RISC-V debug module transcript, probe inventory, or sigrok acquisition profile
       - No labeled boot-failure, post-silicon debug, or lab anomaly corpus for ML/XAI triage
       - No approved workflow for AI-generated lab scripts, test binaries, FPGA bitstreams, or hardware actions
     acceptance_criteria:
       - Report hashes local RISC-V compliance, QEMU/Renode, FPGA, package, board, benchmark, and release-gate inputs.
       - Report states no hardware run, FPGA flow, lab script, test binary, compliance, debug, lab measurement, or release claim is enabled.
-      - Candidate tasks list deterministic platform, QEMU, Renode, FPGA, formal, cocotb, software/BSP, power/thermal, manufacturing, real-world, and product gates.
+      - Candidate tasks list deterministic platform, QEMU, Renode, FPGA, debug-policy, lab-capture, formal, cocotb, software/BSP, power/thermal, manufacturing, real-world, and product gates.
   - id: p1-circuit-foundation-model-target-capture
     title: Circuit Foundation Model And Embedding Target Capture
     priority: P1

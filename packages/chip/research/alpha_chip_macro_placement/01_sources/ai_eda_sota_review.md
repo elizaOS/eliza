@@ -139,7 +139,7 @@ affect source, release claims, or tapeout-facing artifacts.
 | Hardware security | Hardware Trojan ML, PEARL, TrojanSAINT, GNN-MFF, SecureRAG-RTL, TrojanWhisper, TrojanGYM, GHOST Benchmarks | Capture local RTL/security target tasks only; block scanner execution, Trojan insertion, vulnerability claims, generated-RTL trust claims, and release use until labels, deterministic regressions, provenance, and human security review exist. |
 | Board, package, manufacturing, and FPGA | PCBSchemaGen, PCB-Bench, PCBAgent, NeurPCB, PCB-Migrator, PCB-PR-App, Freerouting, DREAMPlaceFPGA, RapidWright FPGA interchange, DeepPCB defect dataset | Capture local package, KiCad, FPGA, Wi-Fi/RF, and manufacturing target tasks only; block generated schematics, board placement/routing, Gerbers, package/pinout edits, FPGA output, fabrication claims, inspection claims, and release use until deterministic gates and review evidence exist. |
 | DFM, yield, lithography, and OPC | Litho-aware ML hotspot detection, DLHSD, LithoHoD, TorchLitho, OpenILT, DiffOPC, RadAI WM-811K wafer defect model, Pegasus LPA | Capture hotspot-screening, differentiable lithography, ILT/OPC, signoff-feature, and wafer-defect targets only; block layout/mask/OPC edits, lithography simulation, model execution, DFM/yield/mask/wafer-defect claims, and release use until foundry/process collateral, local layout labels, deterministic signoff gates, and review exist. |
-| Post-silicon validation and bring-up | Symbolic QED, SoC trace protocol debug, RISC-V DV, RISCOF, RISC-V architectural tests, OpenTitan chip tests, ML/XAI boot-failure debug, LLM4SecHW | Capture post-silicon, FPGA, RISC-V compliance, trace-debug, and lab-evidence targets only; block generated lab scripts, test binaries, hardware runs, compliance claims, silicon bring-up claims, and release use until local logs, traces, signatures, board/silicon IDs, and review exist. |
+| Post-silicon validation and bring-up | Symbolic QED, SoC trace protocol debug, RISC-V DV, RISCOF, RISC-V architectural tests, OpenTitan chip tests, RISC-V Debug Specification, OpenOCD, sigrok-cli, ML/XAI boot-failure debug, LLM4SecHW | Capture post-silicon, FPGA, RISC-V compliance, RISC-V debug, trace-debug, and lab-evidence targets only; block generated lab scripts, test binaries, hardware runs, compliance/debug claims, silicon bring-up claims, and release use until local logs, traces, signatures, probe identity, board/silicon IDs, and review exist. |
 | Low-power intent, DVFS, and clock gating | IEEE 1801 UPF, IEEE UPF examples, Yosys `clockgate`, CODMAS/RTLOPT, Prompting for Power, POET, RTL PPA SOG estimation, OpenROAD two-phase clocking conversion | Capture power-state, UPF, clock-gating, DVFS, retention, isolation, and low-power verification targets only; block generated UPF, RTL edits, gated clocks, DVFS policy, retention/isolation insertion, power-saving claims, and release use until platform, RTL, formal, synthesis, DFT, CDC/RDC, power/thermal, and PD gates exist. |
 
 ## Recommended Integration Order
@@ -257,11 +257,12 @@ affect source, release claims, or tapeout-facing artifacts.
     verification-closure claim is allowed.
 24. Use `scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation`
     to keep RISC-V compliance, random-instruction validation, QED/trace-debug
-    methods, cross-target on-device tests, boot-failure triage, FPGA bring-up,
-    and lab automation tied to local QEMU/Renode, FPGA, package/board,
-    manufacturing, real-world, benchmark, and release gates before any
-    generated lab script, test binary, hardware action, compliance claim, or
-    silicon bring-up claim is allowed.
+    methods, cross-target on-device tests, RISC-V debug/OpenOCD flows, sigrok
+    lab capture, boot-failure triage, FPGA bring-up, and lab automation tied to
+    local QEMU/Renode, FPGA, package/board, manufacturing, real-world,
+    benchmark, and release gates before any generated lab script, test binary,
+    hardware action, compliance/debug claim, or silicon bring-up claim is
+    allowed.
 25. Use `scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation`
     to keep circuit foundation models, graph/text/layout embeddings,
     domain-adapted EDA LLMs, and netlist-function reasoning tied to local

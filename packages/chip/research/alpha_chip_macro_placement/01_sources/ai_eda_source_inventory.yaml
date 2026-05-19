@@ -2471,6 +2471,100 @@ entries:
     risk:
       - OpenTitan-specific infrastructure does not directly map to E1.
       - Cross-target tests can hide target-specific hardware differences.
+  - id: riscv-debug-spec
+    name: RISC-V Debug Specification
+    kind: riscv_debug_standard
+    stage:
+      - post_silicon_validation
+      - silicon_bringup
+      - fpga_bringup
+      - lab_debug
+    priority: P1
+    source_url: https://docs.riscv.org/reference/debug/_attachments/riscv-debug-specification.pdf
+    code_url: https://github.com/riscv/riscv-debug-spec
+    model_url: null
+    dataset_url: null
+    license_status: spec_review_required
+    code_status: source_available_to_review
+    model_status: no_model
+    e1_fit: >
+      Required reference for future E1 debug-module, trigger, hart, abstract
+      command, and probe-compatibility claims across FPGA and silicon targets.
+    integration_action: >
+      Track as a post-silicon contract input; do not claim RISC-V debug
+      compatibility until local debug-policy, RTL, OpenOCD/GDB transcripts,
+      probe identity, and board/silicon revisions are reviewed.
+    evidence_gate: >
+      Debug claims require spec revision, E1 debug RTL/config revision,
+      OpenOCD/GDB command logs, probe and board identity, transcript hashes,
+      observed pass/fail behavior, and reviewer disposition.
+    risk:
+      - Debug spec support can vary by version, optional trigger features, and
+        hart/debug-module implementation details.
+      - A connected debugger does not prove compliance or safe lab automation.
+  - id: openocd
+    name: OpenOCD
+    kind: on_chip_debug_tool
+    stage:
+      - post_silicon_validation
+      - silicon_bringup
+      - fpga_bringup
+      - lab_debug
+    priority: P1
+    source_url: https://openocd.org/doc/html/index.html
+    code_url: https://github.com/openocd-org/openocd
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant command-line backend for future RISC-V JTAG/GDB bring-up,
+      register inspection, halt/resume, and debug-log capture on FPGA or
+      silicon.
+    integration_action: >
+      Keep as optional lab backend only; block board configs, command scripts,
+      flash/program actions, and debug claims until exact versions, hardware
+      identity, dry-run authorization, and no-hardware gates are satisfied.
+    evidence_gate: >
+      Any OpenOCD use requires tool version, config hashes, probe identity,
+      target revision, command transcript, no-destructive-action review, and
+      linked FPGA/silicon evidence.
+    risk:
+      - OpenOCD configuration can issue destructive target actions if not
+        constrained.
+      - RISC-V debug behavior depends on debug module, triggers, hart topology,
+        and probe transport details.
+  - id: sigrok-cli
+    name: sigrok-cli
+    kind: lab_capture_cli
+    stage:
+      - post_silicon_validation
+      - lab_debug
+      - board_validation
+      - trace_capture
+    priority: P2
+    source_url: https://sigrok.org/wiki/Sigrok-cli
+    code_url: https://sigrok.org/gitweb/?p=sigrok-cli.git
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful future headless capture path for UART, reset, boot-mode, SPI, I2C,
+      and GPIO timing traces once E1 debug IO and probe profiles exist.
+    integration_action: >
+      Track capture-profile requirements only; do not generate acquisition
+      scripts, invoke hardware, or classify traces until board/profile/probe
+      metadata and lab authorization exist.
+    evidence_gate: >
+      Lab-capture claims require acquisition command, probe identity, channel
+      map, sample rate, raw capture hash, decoded trace artifacts, board
+      revision, and reviewer disposition.
+    risk:
+      - Logic-analyzer captures can be incomplete, aliased, or mislabeled.
+      - Protocol decoding is not design evidence without correlated DUT logs.
   - id: ml-boot-failure-debug
     name: ML/XAI Boot Failure Debug
     kind: post_silicon_boot_failure_classifier

@@ -1205,3 +1205,21 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_search_space_and_qor_review
     allowed_current_use: citation_reference_only
+  - source_id: riscv-debug-spec
+    asset_type: riscv_debug_standard
+    asset_url: https://docs.riscv.org/reference/debug/_attachments/riscv-debug-specification.pdf
+    license_status: spec_review_required
+    release_use: blocked_pending_spec_revision_debug_rtl_probe_and_transcript_review
+    allowed_current_use: citation_reference_only
+  - source_id: openocd
+    asset_type: open_source_on_chip_debug_tool
+    asset_url: https://github.com/openocd-org/openocd
+    license_status: review_required
+    release_use: blocked_pending_version_config_probe_transcript_and_hardware_review
+    allowed_current_use: optional_tool_reference_only
+  - source_id: sigrok-cli
+    asset_type: open_source_lab_capture_cli
+    asset_url: https://sigrok.org/wiki/Sigrok-cli
+    license_status: review_required
+    release_use: blocked_pending_version_capture_profile_probe_raw_trace_and_review
+    allowed_current_use: optional_tool_reference_only

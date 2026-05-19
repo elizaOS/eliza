@@ -994,6 +994,9 @@ stages:
       - riscof
       - riscv-arch-test
       - opentitan-chip-tests
+      - riscv-debug-spec
+      - openocd
+      - sigrok-cli
       - ml-boot-failure-debug
       - llm4sechw-debug
     local_lane: p1-post-silicon-validation-target-capture
@@ -1004,9 +1007,10 @@ stages:
     critical_review: >
       Post-silicon and lab automation is essential but cannot be simulated into
       existence. RISC-V compliance tests, riscv-dv, QED-style tests,
-      trace-debug methods, cross-target on-device tests, and ML boot-failure
-      triage can guide future bring-up, but E1 currently has no silicon, no lab
-      trace corpus, no executed compliance suite, and no approved hardware
-      action workflow. Keep this lane as target capture until QEMU/Renode,
-      FPGA, board/package, manufacturing, real-world, benchmark, and lab
-      evidence exists.
+      trace-debug methods, cross-target on-device tests, RISC-V debug/OpenOCD
+      flows, sigrok lab capture, and ML boot-failure triage can guide future
+      bring-up, but E1 currently has no silicon, no lab trace corpus, no
+      executed compliance suite, and no approved hardware action workflow. Keep
+      this lane as target capture until QEMU/Renode, FPGA, board/package,
+      debug-policy, manufacturing, real-world, benchmark, and lab evidence
+      exists.
