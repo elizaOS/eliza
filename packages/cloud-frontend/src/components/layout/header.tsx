@@ -27,7 +27,7 @@ function HeaderComponent({
   const fullUrl =
     pathname + (typeof window !== "undefined" ? window.location.search : "");
   const loginUrl = `/login?returnTo=${encodeURIComponent(fullUrl)}`;
-  const { lang, setLang } = useI18n();
+  const { lang, setLang, t } = useI18n();
 
   return (
     <DashboardHeader
@@ -42,8 +42,12 @@ function HeaderComponent({
             className="h-8 gap-2 px-3 md:h-10 md:px-4"
           >
             <LogIn className="h-4 w-4" />
-            <span className="hidden md:inline">Sign Up Free</span>
-            <span className="md:hidden">Sign Up</span>
+            <span className="hidden md:inline">
+              {t("cloud.header.signUpFree", { defaultValue: "Sign Up Free" })}
+            </span>
+            <span className="md:hidden">
+              {t("cloud.header.signUp", { defaultValue: "Sign Up" })}
+            </span>
           </BrandButton>
         </Link>
       }
