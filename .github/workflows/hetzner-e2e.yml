@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 25
     env:
       HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}
-      CLOUD_E2E_API_KEY: ${{ secrets.CLOUD_E2E_API_KEY }}
+      CLOUD_E2E_API_KEY: ${{ secrets.CLOUD_E2E_API_KEY || secrets.ELIZACLOUD_API_KEY }}
       CI_SSH_PRIVATE_KEY: ${{ secrets.CI_SSH_PRIVATE_KEY }}
       CI_SSH_PUBLIC_KEY_ID: ${{ secrets.CI_SSH_PUBLIC_KEY_ID }}
       HETZNER_E2E_STATE_FILE: /tmp/hetzner-e2e-state.json
