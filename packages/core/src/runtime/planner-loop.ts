@@ -1623,6 +1623,67 @@ function appendTerminalContinuationEvent(args: {
 	});
 }
 
+function appendUnavailableToolCallEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	invalidToolCalls: readonly PlannerToolCall[];
+	tools?: ToolDefinition[];
+}): ContextObject {
+	const createdAt = Date.now();
+	const exposed = Array.from(exposedToolNameSet(args.tools) ?? []).sort();
+	const invalid = args.invalidToolCalls.map((toolCall) => toolCall.name);
+	const content = [
+		"planner_retry_instruction:",
+		`unavailable_tool_calls: ${JSON.stringify(invalid)}`,
+		`available_tools: ${JSON.stringify(exposed)}`,
+		"The previous planner output called tools that were not exposed for this turn. Retry using only available_tools, or return a terminal REPLY if no exposed tool fits.",
+	].join("\n");
+	return appendContextEvent(args.context, {
+		id: `unavailable-tool-call-retry:${args.iteration}:${createdAt}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content,
+		metadata: {
+			iteration: args.iteration,
+			invalidToolCalls: invalid,
+			availableTools: exposed,
+		},
+	});
+}
+
+function appendSilentFailedFinishRecoveryEvent(args: {
+	context: ContextObject;
+	iteration: number;
+	evaluator: EvaluatorOutput;
+	trajectory: PlannerTrajectory;
+}): ContextObject {
+	const createdAt = Date.now();
+	const failedStep = latestFailedToolStep(args.trajectory);
+	const failedToolName = failedStep?.toolCall?.name;
+	const content = [
+		"planner_retry_instruction:",
+		"silent_failed_finish: true",
+		failedToolName ? `failed_tool: ${failedToolName}` : null,
+		"The latest tool step failed, and the evaluator finished without a user-visible message. Retry once with a different available approach if possible; otherwise return a concise user-visible blocker instead of ending silently.",
+	]
+		.filter((line): line is string => line !== null)
+		.join("\n");
+	return appendContextEvent(args.context, {
+		id: `silent-failed-finish-retry:${args.iteration}:${createdAt}`,
+		type: "instruction",
+		source: "planner-loop",
+		createdAt,
+		content,
+		metadata: {
+			iteration: args.iteration,
+			evaluatorDecision: args.evaluator.decision,
+			evaluatorSuccess: args.evaluator.success,
+			failedToolName,
+		},
+	});
+}
+
 async function executeQueuedToolCall(params: {
 	params: PlannerLoopParams;
 	trajectory: PlannerTrajectory;
@@ -2103,6 +2164,65 @@ function latestToolResultText(
 		}
 	}
 	return undefined;
+}
+
+function latestFailedToolStep(
+	trajectory: PlannerTrajectory,
+): PlannerStep | undefined {
+	return [...trajectory.steps]
+		.reverse()
+		.find((step) => step.result && step.result.success === false);
+}
+
+function shouldRecoverSilentFailedFinish(args: {
+	evaluator: EvaluatorOutput;
+	trajectory: PlannerTrajectory;
+	recoveryCount: number;
+}): boolean {
+	if (args.recoveryCount >= 1) return false;
+	if (args.evaluator.success !== false) return false;
+	if (getNonEmptyString(args.evaluator.messageToUser)) return false;
+	return latestFailedToolStep(args.trajectory) !== undefined;
+}
+
+function failedToolFallbackMessage(
+	trajectory: PlannerTrajectory,
+): string | undefined {
+	if (!latestFailedToolStep(trajectory)) return undefined;
+	return "I tried to complete that, but the available runtime step failed before it produced a usable result.";
+}
+
+function exposedToolNameSet(
+	tools: ToolDefinition[] | undefined,
+): Set<string> | null {
+	if (!Array.isArray(tools) || tools.length === 0) return null;
+	const names = tools
+		.map(getToolDefinitionName)
+		.filter((name): name is string => Boolean(name))
+		.map((name) => name.toUpperCase());
+	return names.length > 0 ? new Set(names) : null;
+}
+
+function splitUnavailableToolCalls(
+	toolCalls: PlannerToolCall[],
+	tools: ToolDefinition[] | undefined,
+): { valid: PlannerToolCall[]; invalid: PlannerToolCall[] } {
+	const exposed = exposedToolNameSet(tools);
+	if (!exposed) return { valid: toolCalls, invalid: [] };
+	const valid: PlannerToolCall[] = [];
+	const invalid: PlannerToolCall[] = [];
+	for (const toolCall of toolCalls) {
+		if (exposed.has(toolCall.name.toUpperCase())) {
+			valid.push(toolCall);
+		} else {
+			invalid.push(toolCall);
+		}
+	}
+	return { valid, invalid };
+}
+
+function toolFailureRepeatKey(toolCall: PlannerToolCall): string {
+	return `${toolCall.name}:${stringifyForModel(toolCall.params ?? {})}`;
 }
 
 /**
