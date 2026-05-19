@@ -1649,6 +1649,7 @@ def main() -> int:
         "test_stage_prepared_descriptor_execution_batches_validates_descriptor_stream_bits",
         "test_stage_prepared_descriptor_execution_batches_validates_descriptor_byte_count",
         "test_stage_prepared_descriptor_execution_batches_validates_writeback_gemm_output",
+        "test_stage_prepared_descriptor_execution_batches_validates_gemm_cfg_metadata",
         "test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble",
         "test_stage_prepared_descriptor_execution_batches_validates_op_names",
         "test_prepared_batch_host_runtime_sequence_stages_and_submits_in_sim",

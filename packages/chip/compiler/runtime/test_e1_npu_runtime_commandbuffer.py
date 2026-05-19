@@ -916,6 +916,42 @@ def test_stage_prepared_descriptor_execution_batches_validates_writeback_gemm_ou
     assert memory_writes == []
 
 
+def test_stage_prepared_descriptor_execution_batches_validates_gemm_cfg_metadata() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    op_preamble = dict(first_batch["op_mmio_preamble"][0])
+    mmio_preamble = dict(op_preamble["mmio_preamble"])
+    mmio_preamble["GEMM_CFG"] = "bad"
+    op_preamble["mmio_preamble"] = mmio_preamble
+    first_batch["op_mmio_preamble"] = [op_preamble]
+
+    with pytest.raises(ValueError, match="GEMM_CFG must be a uint32"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
 def test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble() -> None:
     prepared = (
         partition_module(parse_module(_mismatched_dot_payload()))

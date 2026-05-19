@@ -756,6 +756,11 @@ def main() -> int:
             COMMAND_BUFFER_TEST,
         ),
         (
+            "test_stage_prepared_descriptor_execution_batches_validates_gemm_cfg_metadata",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
             "test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
