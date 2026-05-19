@@ -1,0 +1,9 @@
+$(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
+$(call inherit-product, $(SRC_TARGET_DIR)/product/aosp_base.mk)
+$(call inherit-product, device/eliza/eliza_ai_soc/device.mk)
+
+PRODUCT_NAME := eliza_ai_soc
+PRODUCT_DEVICE := eliza_ai_soc
+PRODUCT_BRAND := Eliza
+PRODUCT_MODEL := Eliza e1 AI SoC
+PRODUCT_MANUFACTURER := Eliza

@@ -1,0 +1,40 @@
+// e1_npu HAL v0 - fail-closed stub for vendor.eliza.e1_npu@1.0.
+//
+// Backing contract: sw/platform/e1_platform_contract.json
+// Backing kernel node: /dev/e1-npu.
+//
+// Status: stub. Service binary opens /dev/e1-npu read/write and exposes
+// a single fixed-vector smoke RPC. Returns UNSUPPORTED when the device
+// node is absent. No model loading, no DMA, no scheduler, no power.
+
+package {
+    default_applicable_licenses: ["Android-Apache-2.0"],
+}
+
+cc_binary {
+    name: "vendor.eliza.e1_npu@1.0-service",
+    relative_install_path: "hw",
+    vendor: true,
+    init_rc: ["vendor.eliza.e1_npu@1.0-service.rc"],
+    vintf_fragments: ["vendor.eliza.e1_npu@1.0-service.xml"],
+
+    srcs: [
+        "service.cpp",
+        "E1Npu.cpp",
+    ],
+
+    shared_libs: [
+        "libbase",
+        "libhidlbase",
+        "liblog",
+        "libutils",
+        "vendor.eliza.e1_npu@1.0",
+    ],
+
+    cflags: [
+        "-Wall",
+        "-Werror",
+        "-Wextra",
+        "-Wno-unused-parameter",
+    ],
+}

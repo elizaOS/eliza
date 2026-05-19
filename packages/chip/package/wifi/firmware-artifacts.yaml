@@ -1,0 +1,46 @@
+manifest: wifi_bluetooth_firmware_artifacts
+status: blocked_no_module_or_firmware
+release_gate: wifi_product_claim
+policy:
+  preflight: Track required firmware artifact names without checking in proprietary blobs.
+  release: Require selected module, redistribution rights, checksums, firmware load transcript, and regulatory data before enabling WiFi nodes.
+artifacts:
+  - name: brcmfmac_sdio_firmware
+    status: missing
+    expected_paths:
+      - /lib/firmware/brcm/brcmfmac43430-sdio.bin
+    required_metadata:
+      - source_vendor
+      - license_or_redistribution_grant
+      - sha256
+      - module_part_number
+  - name: brcmfmac_sdio_nvram
+    status: missing
+    expected_paths:
+      - /lib/firmware/brcm/brcmfmac43430-sdio.txt
+    required_metadata:
+      - board_revision
+      - antenna_path
+      - xtal_or_lpo_settings
+      - sha256
+  - name: brcmfmac_clm_blob
+    status: missing
+    expected_paths:
+      - /lib/firmware/brcm/brcmfmac43430-sdio.clm_blob
+    required_metadata:
+      - regulatory_region_source
+      - certification_scope
+      - sha256
+  - name: bluetooth_patchram
+    status: missing
+    expected_paths:
+      - /lib/firmware/brcm/BCM43430A1.hcd
+    required_metadata:
+      - source_vendor
+      - license_or_redistribution_grant
+      - sha256
+evidence_required:
+  - SDIO enumeration log showing brcmfmac function probe.
+  - Kernel log showing firmware, NVRAM, and clm_blob load result.
+  - Bluetooth HCI attach log over UART with RTS/CTS enabled.
+  - Regulatory domain log and certification boundary record.

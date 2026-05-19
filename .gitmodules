@@ -38,6 +38,3 @@
 	path = plugins/plugin-agent-orchestrator/vendor/opencode
 	url = https://github.com/elizaOS/opencode.git
 	branch = dev
-[submodule "packages/chip"]
-	path = packages/chip
-	url = https://github.com/elizaOS/openagent-e1.git

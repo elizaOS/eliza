@@ -1,0 +1,169 @@
+{
+  "schema": "eliza.e1_npu_runtime_contract.v1",
+  "as_of": "2026-05-17",
+  "claim_boundary": "prototype_mmio_runtime_contract_only_not_phone_class_ai_accelerator",
+  "current_capability": {
+    "classification": "L0_RTL_UNIT",
+    "rtl": "rtl/npu/e1_npu.sv",
+    "runtime": "compiler/runtime/e1_npu_runtime.py",
+    "software_claim": "MMIO scalar, packed-dot, bounded scratchpad GEMM, and local descriptor-driven DRAM-to-scratchpad tensor prefetch prototype only",
+    "not_claimed": [
+      "Android NNAPI acceleration",
+      "AIDL HAL acceleration",
+      "phone-class TOPS",
+      "model compiler backend",
+      "production DMA-backed tensor execution",
+      "sustained power or thermal performance"
+    ]
+  },
+  "mmio": {
+    "base": "0x10020000",
+    "registers": {
+      "OP_A": "0x00",
+      "OP_B": "0x04",
+      "RESULT": "0x08",
+      "CTRL_STATUS": "0x0c",
+      "OPCODE": "0x10",
+      "ACC": "0x14",
+      "RESULT_HI": "0x18",
+      "DEBUG": "0x1c",
+      "GEMM_CFG": "0x20",
+      "GEMM_BASE": "0x24",
+      "GEMM_STRIDE": "0x28",
+      "PERF_UNSUPPORTED_OPS": "0x2c",
+      "CMD_PARAM": "0x30",
+      "DESC_BASE": "0x40",
+      "DESC_HEAD": "0x44",
+      "DESC_TAIL": "0x48",
+      "DESC_STATUS": "0x4c",
+      "PERF_CYCLES": "0x50",
+      "PERF_MACS": "0x54",
+      "PERF_OPS": "0x58",
+      "PERF_ERRORS": "0x5c",
+      "DESC_TIMEOUT_COUNT": "0x60",
+      "DESC_BYTES_READ": "0x64",
+      "DESC_BYTES_WRITTEN": "0x68",
+      "DESC_READ_BEATS": "0x6c",
+      "DESC_WRITE_BEATS": "0x70",
+      "SCRATCH": "0x80"
+    },
+    "scratch_bytes": 64,
+    "perf_clear_register": "PERF_ERRORS",
+    "perf_clear_write_value": "0x1"
+  },
+  "opcodes": {
+    "ADD": 0,
+    "SUB": 1,
+    "MUL_LO": 2,
+    "MAC_S16": 3,
+    "DOT4_S8": 4,
+    "MAX_U32": 5,
+    "MIN_U32": 6,
+    "DOT8_S4": 7,
+    "GEMM_S8": 8
+  },
+  "gemm_s8_limits": {
+    "m_max": 3,
+    "n_max": 3,
+    "k_max": 7,
+    "input_dtype": "int8",
+    "accumulator_dtype": "int32",
+    "storage": "64-byte MMIO scratchpad"
+  },
+  "descriptor_queue_submission": {
+    "runtime_api": "submit_descriptors",
+    "state": "rtl_local_descriptor_ring",
+    "registers": [
+      "DESC_BASE",
+      "DESC_HEAD",
+      "DESC_TAIL",
+      "DESC_STATUS",
+      "CMD_PARAM",
+      "DESC_TIMEOUT_COUNT",
+      "DESC_BYTES_READ",
+      "DESC_BYTES_WRITTEN",
+      "DESC_READ_BEATS",
+      "DESC_WRITE_BEATS"
+    ],
+    "descriptor_words": [
+      "word0: opcode[3:0], stream_to_scratch[8], scratch_offset[21:16], byte_count[29:24], writeback_request[30], valid_owner[31]",
+      "word1: stream source byte address when stream_to_scratch is set; scalar OP_A otherwise",
+      "word2: scalar OP_B or reserved for streamed GEMM",
+      "word3: scalar ACC or reserved for streamed GEMM"
+    ],
+    "required_error_reporting": [
+      "timeout_polls",
+      "ctrl_status",
+      "desc_status",
+      "perf_counters",
+      "desc_timeout_count",
+      "desc_bytes_read",
+      "desc_bytes_written",
+      "desc_read_beats",
+      "desc_write_beats"
+    ],
+    "queue_depth_semantics": {
+      "desc_status_bits": "DESC_STATUS[21:19]",
+      "value": "(DESC_HEAD - DESC_TAIL) modulo 8",
+      "empty_encoding": "0",
+      "full_ring_encoding": "not represented by the current 3-bit head/tail register interface"
+    },
+    "implemented": "Read-only four-word descriptor fetch requires word0 valid_owner[31], advances a 3-bit head/tail ring only after accepted execution, launches existing scalar/GEMM datapath operations, optionally streams aligned descriptor-sourced DRAM words into the 64-byte scratchpad, counts read beats/bytes, exposes zero write beats/bytes, rejects writeback_request[30] fail-closed, and faults autonomously on descriptor timeout",
+    "not_claimed": "This is a local RTL prototype path only; it is not an Android NNAPI, coherent IOMMU, production queue-depth, implemented writeback DMA, or phone-class accelerator proof"
+  },
+  "precision_matrix": [
+    {
+      "precision": "INT8",
+      "state": "supported_prototype",
+      "path": "DOT4_S8 and bounded GEMM_S8 through 64-byte MMIO scratchpad"
+    },
+    {
+      "precision": "INT4",
+      "state": "supported_prototype",
+      "path": "DOT8_S4 packed dot only; no tensor GEMM/compiler path"
+    },
+    {
+      "precision": "FP16",
+      "state": "blocked",
+      "path": "no opcode, datapath, compiler lowering, or measured benchmark path"
+    },
+    {
+      "precision": "BF16",
+      "state": "blocked",
+      "path": "no opcode, datapath, compiler lowering, or measured benchmark path"
+    },
+    {
+      "precision": "FP8",
+      "state": "blocked",
+      "path": "no opcode, datapath, compiler lowering, or measured benchmark path"
+    }
+  ],
+  "runtime_evidence_requirements": [
+    "Runtime register constants match this manifest",
+    "BSP contract header exposes the same NPU perf offsets",
+    "Architecture documentation names each manifest perf counter",
+    "Descriptor queue registers expose only the local RTL 3-bit ring and must not be treated as production queue-depth or Android accelerator support",
+    "DMA tensor streaming evidence must include DESC_BYTES_READ from the measured NPU path and explicitly state that writeback DMA is not implemented",
+    "Precision support beyond DOT4_S8, DOT8_S4, and GEMM_S8 must remain blocked until the precision matrix and runtime tests identify the measured path",
+    "Verilator GEMM smoke test checks unsupported_ops, cycles, macs, ops, and errors counters",
+    "Android HAL/NNAPI acceleration remains blocked without e1_npu_nnapi.proof.json plus VTS/CTS/SELinux evidence",
+    "Benchmark evidence must bind model hashes, transcript hashes, perf counters, DMA traces, and CPU fallback accounting"
+  ],
+  "target_2028_delta": {
+    "target_spec": "docs/spec-db/npu-2028-target.yaml",
+    "missing_for_phone_class": [
+      "160 dense INT8 peak TOPS target evidence",
+      "80 dense INT8 sustained TOPS target evidence",
+      "512 sparse INT4 peak TOPS target evidence",
+      "FP8, BF16, FP16, and INT2 execution",
+      "64 MiB local SRAM",
+      "20 TB/s local SRAM bandwidth",
+      "180 GB/s external memory bandwidth evidence",
+      "1024-deep command queue",
+      "8 concurrent isolated contexts",
+      "AIDL HAL, VTS, CTS, and SELinux evidence",
+      "MLIR/StableHLO/TFLite/ExecuTorch compiler path",
+      "power and thermal traces"
+    ]
+  }
+}

@@ -1,0 +1,18 @@
+extends: default
+
+ignore: |
+  .venv/
+  build/
+  external/
+  tools/
+  .claude/
+  pd/openlane/runs/
+  pd/signoff/reports/
+
+rules:
+  document-start: disable
+  line-length: disable
+  truthy:
+    allowed-values: ["true", "false", "on", "off"]
+  comments:
+    min-spaces-from-content: 1

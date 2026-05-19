@@ -1,0 +1,25 @@
+[options]
+mode bmc
+depth 4
+
+[engines]
+smtbmc z3
+
+[script]
+read -formal e1_bootrom.sv
+read -formal e1_peripherals.sv
+read -formal e1_dma.sv
+read -formal e1_npu.sv
+read -formal e1_display.sv
+read -formal e1_soc_top.sv
+read -formal e1_soc_top_formal.sv
+prep -top e1_soc_top_formal
+
+[files]
+rtl/bootrom/e1_bootrom.sv
+rtl/peripherals/e1_peripherals.sv
+rtl/dma/e1_dma.sv
+rtl/npu/e1_npu.sv
+rtl/display/e1_display.sv
+rtl/top/e1_soc_top.sv
+verify/formal/e1_soc_top_formal.sv

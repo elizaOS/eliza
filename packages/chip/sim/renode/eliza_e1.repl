@@ -1,0 +1,20 @@
+cpu: CPU.RiscV64 @ sysbus
+    cpuType: "rv64gc_zicsr_zifencei"
+    privilegedArchitecture: PrivilegedArchitecture.Priv1_10
+    timeProvider: clint
+    hartId: 0
+
+mem: Memory.MappedMemory @ sysbus 0x80000000
+    size: 0x100000
+
+uart: UART.NS16550 @ sysbus 0x10000000
+    IRQ -> plic@3
+
+plic: IRQControllers.PlatformLevelInterruptController @ sysbus 0x0C000000
+    0 -> cpu@11
+    numberOfSources: 52
+    numberOfContexts: 1
+
+clint: IRQControllers.CoreLevelInterruptor @ sysbus 0x02000000
+    [0,1] -> cpu@[3,7]
+    frequency: 10000000

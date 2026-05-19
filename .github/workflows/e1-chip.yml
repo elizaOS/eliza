@@ -23,8 +23,6 @@ jobs:
         working-directory: packages/chip
     steps:
       - uses: actions/checkout@v6
-        with:
-          submodules: recursive
 
       - name: Build tool image
         run: docker build -t eliza-soc-tools .

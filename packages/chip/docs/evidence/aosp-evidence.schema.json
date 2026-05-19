@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "aosp-evidence.schema.json",
+  "title": "Eliza AOSP external evidence manifest",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "claim_boundary",
+    "compatibility_claim",
+    "android_boot_claim",
+    "required_for_android_boot_claim",
+    "forbidden_claims_without_required_evidence",
+    "evidence",
+    "blocked_until"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": 1 },
+    "claim_boundary": { "const": "android_external_logs_only_not_boot_or_compatibility_evidence" },
+    "compatibility_claim": { "const": "none_without_full_external_compatibility_evidence" },
+    "android_boot_claim": { "const": "blocked_until_all_required_evidence_passes" },
+    "required_for_android_boot_claim": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "string",
+        "pattern": "^docs/evidence/android/[^/]+\\.log$"
+      }
+    },
+    "forbidden_claims_without_required_evidence": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "strict_gate": {
+      "type": "object"
+    },
+    "backward_compatible_aliases": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "evidence": {
+      "type": "array",
+      "minItems": 6,
+      "items": {
+        "type": "object",
+        "required": ["path", "claim", "capture_command", "validation_command", "external_artifacts"],
+        "additionalProperties": false,
+        "properties": {
+          "path": {
+            "type": "string",
+            "pattern": "^docs/evidence/android/[^/]+\\.log$"
+          },
+          "claim": { "type": "string", "minLength": 1 },
+          "claim_boundary": { "type": "string", "minLength": 1 },
+          "capture_command": { "type": "string", "minLength": 1 },
+          "validation_command": {
+            "type": "string",
+            "pattern": "scripts/check_software_bsp.py aosp --require-evidence"
+          },
+          "external_artifacts": {
+            "type": "array",
+            "minItems": 1,
+            "items": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "blocked_until": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

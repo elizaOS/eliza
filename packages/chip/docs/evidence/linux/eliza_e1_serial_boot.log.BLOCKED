@@ -1,0 +1,3 @@
+reason: no real serial boot transcript shows OpenSBI handoff plus Linux kernel banner/init progress on the OpenPhone hello chip/sim path.
+required: capture complete UART output containing OpenSBI, Linux version, Kernel command line, init or login progress, and PASS provenance markers.
+producer: capture the UART transcript from the chip/sim boot command and validate with make linux-memory-platform-evidence-check

@@ -1,0 +1,235 @@
+# E1 demo preliminary ULX3S 85F ECP5 constraint scaffold.
+#
+# This file is deliberately not sufficient for bitstream release. It records
+# a defensible first-pass mapping against the public ULX3S v2.x.x/v3.0.x LPF
+# so local nextpnr experiments have real syntax, but release still requires an
+# exact board revision, final LPF, build transcript, timing report, bitstream
+# hash, and tool-version archive.
+#
+# Source for preliminary package sites:
+#   https://github.com/emard/ulx3s/blob/master/doc/constraints/ulx3s_v20.lpf
+#
+# Pin choices below are defensible defaults: clock and reset use the
+# documented on-board sources; UART uses the FT231X bridge that comes
+# pre-wired through the ESP32 bypass path; debug GPIO uses the GP/GN
+# header pins on the GPIO connector. If a future revision changes the
+# pin map these comments are the assumption to revisit.
+#
+# This file is the bring-up baseline. Pin assignments are planning defaults
+# and must be revalidated before a release bitstream is signed off.
+
+############################
+# Clock and reset
+############################
+# 25 MHz on-board oscillator. ULX3S rev F clock is on G2 (CLKIN_25).
+LOCATE COMP "CLK_IN"   SITE "G2";
+IOBUF   PORT "CLK_IN"   IO_TYPE=LVCMOS33;
+FREQUENCY PORT "CLK_IN" 25 MHz;
+
+# BTN_PWR (active low) repurposed as RST_N. Pin D6 on rev F.
+LOCATE COMP "RST_N"    SITE "D6";
+IOBUF   PORT "RST_N"    IO_TYPE=LVCMOS33 PULLMODE=UP;
+
+############################
+# UART (via FT231X bridge, ESP32 in passthrough)
+############################
+# FPGA TX -> FT231X RX  : pin L4
+# FPGA RX <- FT231X TX  : pin M1
+LOCATE COMP "UART_TX"  SITE "L4";
+IOBUF   PORT "UART_TX"  IO_TYPE=LVCMOS33 DRIVE=4;
+LOCATE COMP "UART_RX"  SITE "M1";
+IOBUF   PORT "UART_RX"  IO_TYPE=LVCMOS33 PULLMODE=UP;
+
+############################
+# Debug MMIO bridge (GP/GN header)
+# Mapped onto the GPIO 0..15 bank on the right-edge connector.
+# GP0..GP15 SITEs on rev F: B11 C11 A10 A9 B10 C10 A8 B8
+#                           C8 B9 D7 C7 E8 D8 E9 D9
+############################
+LOCATE COMP "DBG_VALID"   SITE "B11";
+LOCATE COMP "DBG_LAUNCH"  SITE "C11";
+LOCATE COMP "DBG_WRITE"   SITE "A10";
+LOCATE COMP "DBG_READY"   SITE "A9";
+
+LOCATE COMP "DBG_ADDR[0]" SITE "B10";
+LOCATE COMP "DBG_ADDR[1]" SITE "C10";
+LOCATE COMP "DBG_ADDR[2]" SITE "A8";
+LOCATE COMP "DBG_ADDR[3]" SITE "B8";
+
+LOCATE COMP "DBG_WDATA[0]" SITE "C8";
+LOCATE COMP "DBG_WDATA[1]" SITE "B9";
+LOCATE COMP "DBG_WDATA[2]" SITE "D7";
+LOCATE COMP "DBG_WDATA[3]" SITE "C7";
+
+LOCATE COMP "DBG_RDATA[0]" SITE "E8";
+LOCATE COMP "DBG_RDATA[1]" SITE "D8";
+LOCATE COMP "DBG_RDATA[2]" SITE "E9";
+LOCATE COMP "DBG_RDATA[3]" SITE "D9";
+
+IOBUF PORT "DBG_VALID"    IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_LAUNCH"   IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_WRITE"    IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_READY"    IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_ADDR[0]"  IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_ADDR[1]"  IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_ADDR[2]"  IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_ADDR[3]"  IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_WDATA[0]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_WDATA[1]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_WDATA[2]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_WDATA[3]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_RDATA[0]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_RDATA[1]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_RDATA[2]" IO_TYPE=LVCMOS33;
+IOBUF PORT "DBG_RDATA[3]" IO_TYPE=LVCMOS33;
+
+############################
+# GPIO -> 8 on-board LEDs (LED0..LED7)
+# ULX3S rev F LED sites: B2 C2 C1 D2 D1 E2 E1 H3
+############################
+LOCATE COMP "GPIO[0]" SITE "B2";
+LOCATE COMP "GPIO[1]" SITE "C2";
+LOCATE COMP "GPIO[2]" SITE "C1";
+LOCATE COMP "GPIO[3]" SITE "D2";
+LOCATE COMP "GPIO[4]" SITE "D1";
+LOCATE COMP "GPIO[5]" SITE "E2";
+LOCATE COMP "GPIO[6]" SITE "E1";
+LOCATE COMP "GPIO[7]" SITE "H3";
+IOBUF PORT "GPIO[0]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[1]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[2]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[3]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[4]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[5]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[6]" IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "GPIO[7]" IO_TYPE=LVCMOS33 DRIVE=4;
+
+############################
+# Interrupt observation pins (GP header, second bank)
+# Routed for logic-analyzer probing.
+############################
+LOCATE COMP "IRQ_TIMER" SITE "F5";
+LOCATE COMP "IRQ_DMA"   SITE "F4";
+LOCATE COMP "IRQ_NPU"   SITE "E5";
+LOCATE COMP "IRQ_VSYNC" SITE "E4";
+IOBUF PORT "IRQ_TIMER"  IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "IRQ_DMA"    IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "IRQ_NPU"    IO_TYPE=LVCMOS33 DRIVE=4;
+IOBUF PORT "IRQ_VSYNC"  IO_TYPE=LVCMOS33 DRIVE=4;
+
+############################
+# Strap / test (BTN_F1 used as TEST_MODE strap, sampled at reset only)
+############################
+LOCATE COMP "TEST_MODE" SITE "R1";
+IOBUF   PORT "TEST_MODE" IO_TYPE=LVCMOS33 PULLMODE=DOWN;
+
+############################
+# JTAG -- ECP5 dedicated JTAG is on hard pins. Do NOT re-locate.
+# Listed here as documentation only; the toolchain wires these via the
+# JTAGG primitive, not LPF LOCATE statements.
+############################
+# JTAG_TCK : dedicated
+# JTAG_TMS : dedicated
+# JTAG_TDI : dedicated
+# JTAG_TDO : dedicated
+
+############################
+# Reserved: external WiFi/BT module integration stub (no pins assigned).
+# Final constraints must place these on a 1.8 V capable bank or use level
+# translation. Do not assign RF, antenna, or module analog pins here.
+# Reserved digital host signals, not assigned to package sites in this
+# e1-demo LPF: WIFI_SDIO_CLK, WIFI_SDIO_CMD, WIFI_SDIO_D0, WIFI_SDIO_D1,
+# WIFI_SDIO_D2, WIFI_SDIO_D3, WIFI_EN, WIFI_RST_N, WIFI_HOST_WAKE, WIFI_IRQ,
+# BT_UART_TX, BT_UART_RX, BT_UART_CTS_N, BT_UART_RTS_N. These are a 1.8 V
+# external-module contract only until the board revision, bank voltage,
+# level-shifting, and regulatory evidence are selected.
+#
+# ULX3S configuration defaults for open-source ECP5 flow.
+BLOCK RESETPATHS;
+BLOCK ASYNCPATHS;
+SYSCONFIG CONFIG_IOVOLTAGE=3.3 COMPRESS_CONFIG=ON MCCLK_FREQ=62 SLAVE_SPI_PORT=DISABLE MASTER_SPI_PORT=ENABLE SLAVE_PARALLEL_PORT=DISABLE;
+
+# Board clock: ULX3S clk_25mhz at site G2.
+LOCATE COMP "CLK_IN" SITE "G2";
+IOBUF PORT "CLK_IN" IO_TYPE=LVCMOS33 PULLMODE=NONE;
+FREQUENCY PORT "CLK_IN" 25 MHz;
+
+# Reset: use BTN_PWRn, which is already active-low on ULX3S.
+LOCATE COMP "RST_N" SITE "D6";
+IOBUF PORT "RST_N" IO_TYPE=LVCMOS33 PULLMODE=UP DRIVE=4;
+
+# GPIO demo outputs: map the e1-demo GPIO bus to the 8 blink LEDs.
+LOCATE COMP "GPIO[0]" SITE "B2";
+LOCATE COMP "GPIO[1]" SITE "C2";
+LOCATE COMP "GPIO[2]" SITE "C1";
+LOCATE COMP "GPIO[3]" SITE "D2";
+LOCATE COMP "GPIO[4]" SITE "D1";
+LOCATE COMP "GPIO[5]" SITE "E2";
+LOCATE COMP "GPIO[6]" SITE "E1";
+LOCATE COMP "GPIO[7]" SITE "H3";
+IOBUF PORT "GPIO[0]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[1]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[2]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[3]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[4]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[5]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[6]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "GPIO[7]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+
+# Low-speed debug bridge on ULX3S GP/GN header pins. Inputs are pulled down so
+# an unplugged host does not accidentally issue MMIO transactions.
+LOCATE COMP "DBG_VALID" SITE "B11";  # gp[0]
+LOCATE COMP "DBG_LAUNCH" SITE "C11"; # gn[0]
+LOCATE COMP "DBG_WRITE" SITE "A10";  # gp[1]
+LOCATE COMP "DBG_ADDR[0]" SITE "A11"; # gn[1]
+LOCATE COMP "DBG_ADDR[1]" SITE "A9";  # gp[2]
+LOCATE COMP "DBG_ADDR[2]" SITE "B10"; # gn[2]
+LOCATE COMP "DBG_ADDR[3]" SITE "B9";  # gp[3]
+LOCATE COMP "DBG_WDATA[0]" SITE "C10"; # gn[3]
+LOCATE COMP "DBG_WDATA[1]" SITE "A7";  # gp[4]
+LOCATE COMP "DBG_WDATA[2]" SITE "A8";  # gn[4]
+LOCATE COMP "DBG_WDATA[3]" SITE "C8";  # gp[5]
+LOCATE COMP "DBG_RDATA[0]" SITE "B8";  # gn[5]
+LOCATE COMP "DBG_RDATA[1]" SITE "C6";  # gp[6]
+LOCATE COMP "DBG_RDATA[2]" SITE "C7";  # gn[6]
+LOCATE COMP "DBG_RDATA[3]" SITE "A6";  # gp[7]
+LOCATE COMP "DBG_READY" SITE "B6";     # gn[7]
+IOBUF PORT "DBG_VALID" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_LAUNCH" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_WRITE" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_ADDR[0]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_ADDR[1]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_ADDR[2]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_ADDR[3]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_WDATA[0]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_WDATA[1]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_WDATA[2]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_WDATA[3]" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "DBG_RDATA[0]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "DBG_RDATA[1]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "DBG_RDATA[2]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "DBG_RDATA[3]" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "DBG_READY" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+
+# IRQ observation pins on the GP/GN header for a logic analyzer or MCU host.
+LOCATE COMP "IRQ_TIMER" SITE "A4";  # gp[8]
+LOCATE COMP "IRQ_DMA" SITE "A5";    # gn[8]
+LOCATE COMP "IRQ_NPU" SITE "A2";    # gp[9]
+LOCATE COMP "IRQ_VSYNC" SITE "B1";  # gn[9]
+IOBUF PORT "IRQ_TIMER" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "IRQ_DMA" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "IRQ_NPU" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+IOBUF PORT "IRQ_VSYNC" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
+
+# Reserved test/JTAG-like user signals. These are not the ECP5 configuration
+# JTAG TAP; they are e1_chip_top user ports kept observable on header pins.
+LOCATE COMP "TEST_MODE" SITE "E8"; # SW1
+LOCATE COMP "JTAG_TCK" SITE "C4";  # gp[10]
+LOCATE COMP "JTAG_TMS" SITE "B4";  # gn[10]
+LOCATE COMP "JTAG_TDI" SITE "F4";  # gp[11]
+LOCATE COMP "JTAG_TDO" SITE "E3";  # gn[11]
+IOBUF PORT "TEST_MODE" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "JTAG_TCK" IO_TYPE=LVCMOS33 PULLMODE=DOWN DRIVE=4;
+IOBUF PORT "JTAG_TMS" IO_TYPE=LVCMOS33 PULLMODE=UP DRIVE=4;
+IOBUF PORT "JTAG_TDI" IO_TYPE=LVCMOS33 PULLMODE=UP DRIVE=4;
+IOBUF PORT "JTAG_TDO" IO_TYPE=LVCMOS33 PULLMODE=NONE DRIVE=4;
