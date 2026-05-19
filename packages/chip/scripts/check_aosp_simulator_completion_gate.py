@@ -105,6 +105,20 @@ def require_text_markers(
         blockers.append(f"missing evidence: {rel(path)}")
         return
     text = path.read_text(encoding="utf-8", errors="replace")
+    forbidden_markers = (
+        "eliza-evidence: status=FAIL",
+        "eliza-evidence: status=BLOCKED",
+        "status=FAIL",
+        "status=BLOCKED",
+        "STATUS: FAIL",
+        "STATUS: BLOCKED",
+        "RESULT=1",
+        "RESULT=2",
+        "RESULT=127",
+    )
+    for marker in forbidden_markers:
+        if marker in text:
+            blockers.append(f"{rel(path)} contains forbidden failure marker: {marker}")
     if "RESULT=0" not in text:
         blockers.append(f"{rel(path)} missing marker: RESULT=0")
     if not any(f"{prefix}: status=PASS" in text for prefix in status_prefixes):

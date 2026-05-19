@@ -214,21 +214,22 @@ evidence_json() {
 	python3 - "$mode" <<'PY'
 import json
 import sys
+from pathlib import Path
 
 mode = sys.argv[1]
-build = [
-    "docs/evidence/android/eliza_ai_soc_lunch.log",
-    "docs/evidence/android/eliza_ai_soc_vendorimage.log",
-    "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-    "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-    "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-]
-full = build + [
+root = Path.cwd()
+sys.path.insert(0, str(root / "scripts"))
+import check_software_bsp
+
+full = check_software_bsp.TARGETS["aosp"]["evidence"]
+runtime = {
     "docs/evidence/android/eliza_ai_soc_cts_vts_plan.log",
+    "docs/evidence/android/eliza_ai_soc_cvd_hal_smoke.log",
     "docs/evidence/android/cuttlefish_riscv64_smoke.log",
     "docs/evidence/android/qemu_riscv64_smoke.log",
     "docs/evidence/android/renode_e1_soc_smoke.log",
-]
+}
+build = [path for path in full if path not in runtime]
 print(json.dumps(build if mode == "build" else full, indent=2))
 PY
 }
@@ -434,6 +435,21 @@ if [ "$run_cts" -eq 1 ] || [ "$run_vts" -eq 1 ]; then
 fi
 
 if [ "$run_cuttlefish" -eq 1 ]; then
+	set +e
+	AOSP_PRODUCT="$aosp_product" \
+		AOSP_SHELL="$aosp_shell" \
+		AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" \
+		AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" \
+		AOSP_ADB_TIMEOUT_SECONDS="$aosp_adb_timeout_seconds" \
+		"$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp_dir"
+	hal_rc=$?
+	set -e
+	if [ "$hal_rc" -ne 0 ]; then
+		capture_failures=$((capture_failures + 1))
+	else
+		record_stage_result "$evidence_dir/eliza_ai_soc_cvd_hal_smoke.log" || true
+	fi
+
 	capture_aosp_shell \
 		cuttlefish_riscv64_smoke \
 		"$evidence_dir/cuttlefish_riscv64_smoke.log" \

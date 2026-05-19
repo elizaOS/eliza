@@ -14,20 +14,18 @@ tone_fixture="$here/fixtures/tone-440hz.wav"
 emit() { printf '%s\n' "$*"; }
 
 die() {
+	code=${2:-1}
 	emit "PROBE_ERROR=$*"
-	emit "eliza-evidence: status=FAIL COMPONENT=${component}"
-	exit "${2:-1}"
-}
-
-adb_cmd() {
-	if [ -n "${ADB_SERIAL:-}" ]; then
-		adb -s "$ADB_SERIAL" "$@"
+	if [ "$code" -eq 2 ]; then
+		emit "eliza-evidence: status=BLOCKED COMPONENT=${component}"
 	else
-		adb "$@"
+		emit "eliza-evidence: status=FAIL COMPONENT=${component}"
 	fi
+	exit "$code"
 }
 
-command -v adb >/dev/null 2>&1 || die "adb not on PATH" 2
+. "$here/probe-common.sh"
+require_adb_device
 command -v file >/dev/null 2>&1 || die "file(1) not on PATH" 2
 command -v python3 >/dev/null 2>&1 || die "python3 not on PATH" 2
 [ -f "$tone_fixture" ] || die "missing fixture: $tone_fixture (regenerate with fixtures/scripts/make-tone.py)" 2

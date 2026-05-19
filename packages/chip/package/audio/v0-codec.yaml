@@ -75,8 +75,8 @@ power_sequence:
   status: required_not_implemented
   rails:
     - {name: VDD_AUDIO_3V3, owner: PMIC_LDO7, status: missing, voltage_v: 3.3}
-    - {name: VDD_AMP_3V3,   owner: PMIC_LDO_audio, status: missing, voltage_v: 3.3}
-    - {name: VDDIO_1V8,     owner: PMIC_buck_peri, status: missing, voltage_v: 1.8}
+    - {name: VDD_AMP_3V3, owner: PMIC_LDO_audio, status: missing, voltage_v: 3.3}
+    - {name: VDDIO_1V8, owner: PMIC_buck_peri, status: missing, voltage_v: 1.8}
   ordered_steps:
     - Apply VDDIO_1V8 first.
     - Apply VDD_AUDIO_3V3 to codec.

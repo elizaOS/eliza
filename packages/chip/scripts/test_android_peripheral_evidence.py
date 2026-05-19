@@ -98,6 +98,23 @@ def test_component_pass_requires_command_markers() -> None:
                 raise AssertionError(f"pass log missing marker {marker!r}:\n{text}")
 
 
+def test_probe_exit_two_writes_blocked_log() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        out_dir = Path(td)
+        command = "printf '%s\\n' 'PROBE_ERROR=adb device unavailable'; exit 2"
+        result = run_capture(["wifi"], out_dir, {"ELIZA_WIFI_SIM_COMMAND": command})
+        if result.returncode != 2:
+            raise AssertionError(f"expected blocked return code, got {result.returncode}")
+        text = (out_dir / "wifi_sim.log").read_text(encoding="utf-8")
+        for marker in (
+            "eliza-evidence: status=BLOCKED",
+            "RESULT=2",
+            "PROBE_ERROR=adb device unavailable",
+        ):
+            if marker not in text:
+                raise AssertionError(f"blocked probe log missing marker {marker!r}:\n{text}")
+
+
 def test_env_override_wins_over_default_probe() -> None:
     """Operator-supplied env command must override the default probe even when
     the default probe script exists on disk."""
@@ -153,6 +170,7 @@ if __name__ == "__main__":
     test_empty_env_var_writes_blocked_log()
     test_unset_env_var_resolves_to_default_probe()
     test_component_pass_requires_command_markers()
+    test_probe_exit_two_writes_blocked_log()
     test_env_override_wins_over_default_probe()
     test_all_default_probes_exist_and_are_syntactically_valid()
     test_speaker_tone_fixture_is_valid_wav()

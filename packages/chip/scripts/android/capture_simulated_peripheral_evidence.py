@@ -200,7 +200,12 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
         )
         return "blocked", path
     missing = [marker for marker in spec.markers if marker not in output]
-    status = "PASS" if result == 0 and not missing else "FAIL"
+    if result == 0 and not missing:
+        status = "PASS"
+    elif result == 2:
+        status = "BLOCKED"
+    else:
+        status = "FAIL"
     path = write_log(
         spec,
         command=command,
@@ -209,7 +214,11 @@ def capture_one(spec: PeripheralSpec, timeout_seconds: int, dry_run: bool) -> tu
         body=output,
         missing_markers=missing,
     )
-    return ("pass" if status == "PASS" else "fail"), path
+    if status == "PASS":
+        return "pass", path
+    if status == "BLOCKED":
+        return "blocked", path
+    return "fail", path
 
 
 def selected_specs(names: list[str]) -> list[PeripheralSpec]:
