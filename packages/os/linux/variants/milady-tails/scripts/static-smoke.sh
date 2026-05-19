@@ -28,6 +28,9 @@ stat_mode() {
 }
 
 echo "==> shell syntax"
+test -f tails/data/debootstrap/scripts/debian-common.patch
+test -f tails/data/splash.png
+test -x tails/data/wrappers/apt-get
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
