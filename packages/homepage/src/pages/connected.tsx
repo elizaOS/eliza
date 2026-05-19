@@ -26,6 +26,7 @@ import {
   getWhatsAppNumber,
 } from "@/lib/contact";
 import { useAuth } from "@/lib/context/auth-context";
+import { type Translator, useT } from "@/providers/I18nProvider";
 
 function getTelegramBotUsername(): string {
   return import.meta.env.VITE_TELEGRAM_BOT_USERNAME || "ElizaCloudBot";
@@ -40,11 +41,13 @@ function CrossPlatformNote({
   discordId,
   whatsappId,
   phoneNumber,
+  t,
 }: {
   telegramId?: string | null;
   discordId?: string | null;
   whatsappId?: string | null;
   phoneNumber?: string | null;
+  t: Translator;
 }) {
   const platforms: string[] = [];
   if (telegramId) platforms.push("Telegram");
@@ -56,11 +59,26 @@ function CrossPlatformNote({
 
   let text: string;
   if (platforms.length === 2) {
-    text = `Your conversations are linked across ${platforms[0]} and ${platforms[1]}`;
+    text = t("homepage_eliza.connected.crossLink2", {
+      defaultValue: "Your conversations are linked across {{a}} and {{b}}",
+      a: platforms[0],
+      b: platforms[1],
+    });
   } else if (platforms.length === 3) {
-    text = `Your conversations are linked across ${platforms[0]}, ${platforms[1]}, and ${platforms[2]}`;
+    text = t("homepage_eliza.connected.crossLink3", {
+      defaultValue:
+        "Your conversations are linked across {{a}}, {{b}}, and {{c}}",
+      a: platforms[0],
+      b: platforms[1],
+      c: platforms[2],
+    });
   } else {
-    text = `Your conversations are linked across ${platforms.slice(0, -1).join(", ")}, and ${platforms[platforms.length - 1]}`;
+    text = t("homepage_eliza.connected.crossLinkMany", {
+      defaultValue:
+        "Your conversations are linked across {{list}}, and {{last}}",
+      list: platforms.slice(0, -1).join(", "),
+      last: platforms[platforms.length - 1],
+    });
   }
 
   return <p className="text-xs text-black/55 text-center">{text}</p>;
@@ -68,6 +86,7 @@ function CrossPlatformNote({
 
 export default function ConnectedPage() {
   const navigate = useNavigate();
+  const t = useT();
   const { user, organization, isAuthenticated, isLoading, logout, linkPhone } =
     useAuth();
   const [copiedPhone, setCopiedPhone] = useState(false);
@@ -101,23 +120,36 @@ export default function ConnectedPage() {
     } else {
       if (result.errorCode === "PHONE_ALREADY_LINKED") {
         setPhoneError(
-          "This phone number is already linked to another account. Please use a different number.",
+          t("homepage_eliza.connected.errorPhoneAlreadyLinked", {
+            defaultValue:
+              "This phone number is already linked to another account. Please use a different number.",
+          }),
         );
       } else if (result.errorCode === "PHONE_ALREADY_SET") {
-        setPhoneError("A phone number is already linked to your account.");
+        setPhoneError(
+          t("homepage_eliza.connected.errorPhoneAlreadySet", {
+            defaultValue: "A phone number is already linked to your account.",
+          }),
+        );
       } else if (result.errorCode === "INVALID_REQUEST") {
         setPhoneError(
-          "Invalid phone number format. Please check and try again.",
+          t("homepage_eliza.connected.errorInvalidRequest", {
+            defaultValue:
+              "Invalid phone number format. Please check and try again.",
+          }),
         );
       } else {
         setPhoneError(
-          result.error || "Something went wrong. Please try again.",
+          result.error ||
+            t("homepage_eliza.connected.errorGeneric", {
+              defaultValue: "Something went wrong. Please try again.",
+            }),
         );
       }
     }
 
     setIsLinkingPhone(false);
-  }, [phoneValue, getFullPhoneNumber, linkPhone]);
+  }, [phoneValue, getFullPhoneNumber, linkPhone, t]);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -176,7 +208,7 @@ export default function ConnectedPage() {
         style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
-          Loading…
+          {t("homepage_eliza.common.loading", { defaultValue: "Loading…" })}
         </div>
       </main>
     );
@@ -189,7 +221,9 @@ export default function ConnectedPage() {
         style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
-          Redirecting…
+          {t("homepage_eliza.common.redirecting", {
+            defaultValue: "Redirecting…",
+          })}
         </div>
       </main>
     );
@@ -201,7 +235,7 @@ export default function ConnectedPage() {
     user.telegram_username ||
     user.discord_global_name ||
     user.discord_username ||
-    "User";
+    t("homepage_eliza.connected.userFallback", { defaultValue: "User" });
 
   const rawCreditBalance = organization?.credit_balance || "0.00";
   const creditBalance = Number(rawCreditBalance).toLocaleString("en-US", {
@@ -216,7 +250,9 @@ export default function ConnectedPage() {
     >
       <div className="absolute top-4 right-4 flex items-center gap-3">
         <div className="bg-black text-white border border-black px-4 py-2.5 flex items-center gap-2">
-          <span className="text-xs opacity-60">Credits</span>
+          <span className="text-xs opacity-60">
+            {t("homepage_eliza.connected.credits", { defaultValue: "Credits" })}
+          </span>
           <span className="text-sm font-semibold">${creditBalance}</span>
         </div>
 
@@ -224,7 +260,9 @@ export default function ConnectedPage() {
           <DropdownMenuTrigger asChild>
             <button
               type="button"
-              aria-label="Open user menu"
+              aria-label={t("homepage_eliza.connected.userMenuAria", {
+                defaultValue: "Open user menu",
+              })}
               className="focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 focus:ring-offset-[color:var(--brand-orange)] rounded-full"
             >
               {user.avatar ? (
@@ -264,7 +302,9 @@ export default function ConnectedPage() {
               className="text-red-400 hover:text-red-300 hover:bg-red-500/10 focus:bg-red-500/10 focus:text-red-300 cursor-pointer mt-1"
             >
               <LogOut className="size-4 mr-2" />
-              Sign out
+              {t("homepage_eliza.connected.signOut", {
+                defaultValue: "Sign out",
+              })}
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -274,7 +314,9 @@ export default function ConnectedPage() {
         <div className="flex flex-col items-center">
           <img
             src="/eliza-app-profile-image.png"
-            alt="Eliza"
+            alt={t("homepage_eliza.connected.profileAlt", {
+              defaultValue: "Eliza",
+            })}
             width={145}
             height={145}
             className="rounded-full select-none pointer-events-none"
@@ -287,11 +329,15 @@ export default function ConnectedPage() {
             className="app-display"
             style={{ fontSize: "clamp(2.5rem, 7vw, 4.5rem)" }}
           >
-            Connected.
+            {t("homepage_eliza.connected.title", {
+              defaultValue: "Connected.",
+            })}
           </h1>
           <div className="inline-flex items-center gap-2 px-3 py-1.5 bg-black text-white border border-black">
             <span className="w-2 h-2 bg-[var(--brand-orange)] animate-pulse" />
-            <span className="text-xs font-semibold">Awake</span>
+            <span className="text-xs font-semibold">
+              {t("homepage_eliza.connected.awake", { defaultValue: "Awake" })}
+            </span>
           </div>
         </div>
 
@@ -307,7 +353,11 @@ export default function ConnectedPage() {
                   <TelegramIcon className="size-8 text-[#229ED9]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
-                  <span className="text-lg font-medium">Telegram</span>
+                  <span className="text-lg font-medium">
+                    {t("homepage_eliza.connected.telegramLabel", {
+                      defaultValue: "Telegram",
+                    })}
+                  </span>
                   <span className="text-sm text-black/60">
                     @{getTelegramBotUsername()}
                   </span>
@@ -322,8 +372,12 @@ export default function ConnectedPage() {
                   handleCopyTelegram();
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
-                title="Copy Telegram link"
-                aria-label="Copy Telegram link"
+                title={t("homepage_eliza.connected.copyTelegramTitle", {
+                  defaultValue: "Copy Telegram link",
+                })}
+                aria-label={t("homepage_eliza.connected.copyTelegramTitle", {
+                  defaultValue: "Copy Telegram link",
+                })}
               >
                 {copiedTelegram ? (
                   <Check className="size-5 text-green-400" />
@@ -342,7 +396,11 @@ export default function ConnectedPage() {
                 <TelegramIcon className="size-8 text-[#229ED9]" />
               </div>
               <div className="flex flex-col items-start">
-                <span className="text-lg font-medium">Connect Telegram</span>
+                <span className="text-lg font-medium">
+                  {t("homepage_eliza.connected.connectTelegram", {
+                    defaultValue: "Connect Telegram",
+                  })}
+                </span>
               </div>
             </Button>
           )}
@@ -358,7 +416,11 @@ export default function ConnectedPage() {
                   <AppleMessagesIcon className="size-8" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
-                  <span className="text-lg font-medium">iMessage</span>
+                  <span className="text-lg font-medium">
+                    {t("homepage_eliza.connected.imessageLabel", {
+                      defaultValue: "iMessage",
+                    })}
+                  </span>
                   <span className="text-sm text-black/60">
                     {ELIZA_PHONE_FORMATTED}
                   </span>
@@ -373,8 +435,12 @@ export default function ConnectedPage() {
                   handleCopyPhone();
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
-                title="Copy number"
-                aria-label="Copy phone number"
+                title={t("homepage_eliza.connected.copyNumberTitle", {
+                  defaultValue: "Copy number",
+                })}
+                aria-label={t("homepage_eliza.connected.copyPhoneAria", {
+                  defaultValue: "Copy phone number",
+                })}
               >
                 {copiedPhone ? (
                   <Check className="size-5 text-green-400" />
@@ -394,7 +460,11 @@ export default function ConnectedPage() {
                   <AppleMessagesIcon className="size-8" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
-                  <span className="text-lg font-medium">iMessage</span>
+                  <span className="text-lg font-medium">
+                    {t("homepage_eliza.connected.imessageLabel", {
+                      defaultValue: "iMessage",
+                    })}
+                  </span>
                 </div>
               </button>
 
@@ -420,7 +490,13 @@ export default function ConnectedPage() {
                       disabled={!phoneValue.trim() || isLinkingPhone}
                       className="flex-1 h-10 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-black text-sm font-semibold disabled:opacity-50"
                     >
-                      {isLinkingPhone ? "Linking..." : "Link Phone"}
+                      {isLinkingPhone
+                        ? t("homepage_eliza.connected.linking", {
+                            defaultValue: "Linking...",
+                          })
+                        : t("homepage_eliza.connected.linkPhone", {
+                            defaultValue: "Link Phone",
+                          })}
                     </Button>
                     <Button
                       type="button"
@@ -432,7 +508,9 @@ export default function ConnectedPage() {
                       }}
                       className="h-10 text-white/70 hover:text-white hover:bg-white/10 text-sm"
                     >
-                      Cancel
+                      {t("homepage_eliza.connected.cancel", {
+                        defaultValue: "Cancel",
+                      })}
                     </Button>
                   </div>
                 </div>
@@ -451,9 +529,16 @@ export default function ConnectedPage() {
                   <WhatsAppIcon className="size-8 text-[#25D366]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
-                  <span className="text-lg font-medium">WhatsApp</span>
+                  <span className="text-lg font-medium">
+                    {t("homepage_eliza.connected.whatsappLabel", {
+                      defaultValue: "WhatsApp",
+                    })}
+                  </span>
                   <span className="text-sm text-black/60">
-                    {user.whatsapp_name || "Open WhatsApp"}
+                    {user.whatsapp_name ||
+                      t("homepage_eliza.connected.openWhatsapp", {
+                        defaultValue: "Open WhatsApp",
+                      })}
                   </span>
                 </div>
               </button>
@@ -466,7 +551,9 @@ export default function ConnectedPage() {
                   handleCopyWhatsApp();
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
-                title="Copy WhatsApp link"
+                title={t("homepage_eliza.connected.copyWhatsappTitle", {
+                  defaultValue: "Copy WhatsApp link",
+                })}
               >
                 {copiedWhatsApp ? (
                   <Check className="size-5 text-green-400" />
@@ -485,7 +572,11 @@ export default function ConnectedPage() {
                 <WhatsAppIcon className="size-8 text-[#25D366]" />
               </div>
               <div className="flex flex-col items-start flex-1">
-                <span className="text-lg font-medium">WhatsApp</span>
+                <span className="text-lg font-medium">
+                  {t("homepage_eliza.connected.whatsappLabel", {
+                    defaultValue: "WhatsApp",
+                  })}
+                </span>
               </div>
             </button>
           )}
@@ -501,7 +592,11 @@ export default function ConnectedPage() {
                   <DiscordIcon className="size-8 text-[#5865F2]" />
                 </div>
                 <div className="flex flex-col items-start flex-1">
-                  <span className="text-lg font-medium">Discord</span>
+                  <span className="text-lg font-medium">
+                    {t("homepage_eliza.connected.discordLabel", {
+                      defaultValue: "Discord",
+                    })}
+                  </span>
                   <span className="text-sm text-black/60">
                     @{user.discord_username || "Eliza"}
                   </span>
@@ -516,7 +611,9 @@ export default function ConnectedPage() {
                   navigate("/get-started?guide=discord");
                 }}
                 className="shrink-0 text-black/50 hover:text-black hover:bg-black/5"
-                title="Setup guide"
+                title={t("homepage_eliza.connected.discordSetupGuideTitle", {
+                  defaultValue: "Setup guide",
+                })}
               >
                 <Info className="size-5" />
               </Button>
@@ -531,7 +628,11 @@ export default function ConnectedPage() {
                 <DiscordIcon className="size-8 text-[#5865F2]" />
               </div>
               <div className="flex flex-col items-start">
-                <span className="text-lg font-medium">Connect Discord</span>
+                <span className="text-lg font-medium">
+                  {t("homepage_eliza.connected.connectDiscord", {
+                    defaultValue: "Connect Discord",
+                  })}
+                </span>
               </div>
             </Button>
           )}
@@ -541,21 +642,25 @@ export default function ConnectedPage() {
             discordId={user.discord_id}
             whatsappId={user.whatsapp_id}
             phoneNumber={user.phone_number}
+            t={t}
           />
         </div>
       </div>
 
       <footer className="absolute bottom-6 left-0 right-0 text-center">
         <p className="text-[10px] text-black/50">
-          ElizaCloud Inc. {new Date().getFullYear()}{" "}
+          {t("homepage_eliza.common.year", {
+            defaultValue: "ElizaCloud Inc. {{year}}",
+            year: new Date().getFullYear(),
+          })}{" "}
           <a href="/terms" className="hover:text-black">
-            Terms
+            {t("homepage_eliza.common.terms", { defaultValue: "Terms" })}
           </a>{" "}
           <a href="/privacy" className="hover:text-black">
-            Privacy
+            {t("homepage_eliza.common.privacy", { defaultValue: "Privacy" })}
           </a>{" "}
           <a href="/help" className="hover:text-black">
-            Help
+            {t("homepage_eliza.common.help", { defaultValue: "Help" })}
           </a>
         </p>
       </footer>

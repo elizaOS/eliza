@@ -23,6 +23,7 @@ import {
   PhoneNumberInput,
   useCountryOptions,
 } from "@/components/login/phone-number-input";
+import { useT } from "@/providers/I18nProvider";
 
 // Defer the WebGL shader background so the form UI is interactive immediately.
 const ShaderBackground = lazy(
@@ -97,6 +98,7 @@ function getDiscordBotApplicationId(): string {
 const MONO = "Poppins, system-ui, sans-serif";
 
 function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
+  const t = useT();
   const { messages, sendMessage, containerStatus, isLoading, isReady } =
     useElizaAppProvisioningChat(true);
   const [input, setInput] = useState("");
@@ -116,10 +118,16 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
   }, [input, isLoading, sendMessage]);
 
   const statusLabel = isReady
-    ? "Ready! Connecting..."
+    ? t("homepage_eliza.getStarted.statusReady", {
+        defaultValue: "Ready! Connecting...",
+      })
     : containerStatus === "error"
-      ? "Setup failed — please refresh."
-      : "Setting up your AI space...";
+      ? t("homepage_eliza.getStarted.statusFailed", {
+          defaultValue: "Setup failed — please refresh.",
+        })
+      : t("homepage_eliza.getStarted.statusSettingUp", {
+          defaultValue: "Setting up your AI space...",
+        });
 
   const statusColor = isReady
     ? "#4ade80"
@@ -150,7 +158,9 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
             onClick={onContinue}
             className="ml-auto text-xs text-neutral-400 hover:text-neutral-600 underline underline-offset-2"
           >
-            Skip to dashboard
+            {t("homepage_eliza.getStarted.skipToDashboard", {
+              defaultValue: "Skip to dashboard",
+            })}
           </button>
         )}
       </div>
@@ -226,7 +236,15 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
         <input
           ref={inputRef}
           type="text"
-          placeholder={isReady ? "Ready!" : "Ask me anything..."}
+          placeholder={
+            isReady
+              ? t("homepage_eliza.getStarted.chatPlaceholderReady", {
+                  defaultValue: "Ready!",
+                })
+              : t("homepage_eliza.getStarted.chatPlaceholderAsk", {
+                  defaultValue: "Ask me anything...",
+                })
+          }
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => {
@@ -278,7 +296,9 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
           className="w-full h-[52px] rounded-sm bg-black text-white font-medium hover:bg-[var(--brand-orange)] hover:text-black transition-colors mt-4"
         >
           <Check className="size-4 mr-2" />
-          Continue to dashboard
+          {t("homepage_eliza.getStarted.continueToDashboard", {
+            defaultValue: "Continue to dashboard",
+          })}
         </Button>
       )}
     </div>
@@ -287,6 +307,7 @@ function ProvisioningChatStep({ onContinue }: { onContinue: () => void }) {
 
 export default function GetStartedPage() {
   const navigate = useNavigate();
+  const t = useT();
   const [searchParams] = useSearchParams();
   const {
     isAuthenticated,
@@ -372,7 +393,11 @@ export default function GetStartedPage() {
   const handleDiscordOAuthRedirect = useCallback((): boolean => {
     const clientId = getDiscordClientId();
     if (!clientId) {
-      setDiscordError("Discord not configured");
+      setDiscordError(
+        t("homepage_eliza.getStarted.errDiscordNotConfigured", {
+          defaultValue: "Discord not configured",
+        }),
+      );
       setIsRedirectingToOAuth(false);
       setStep("SELECT_METHOD");
       return false;
@@ -398,7 +423,7 @@ export default function GetStartedPage() {
 
     window.location.href = `https://discord.com/oauth2/authorize?${params.toString()}`;
     return true;
-  }, [isLinkMode]);
+  }, [isLinkMode, t]);
 
   useEffect(() => {
     if (
@@ -441,7 +466,10 @@ export default function GetStartedPage() {
       if (!storedState || storedState !== discordState) {
         setInitialMethodHandled(true);
         setDiscordError(
-          "Authentication failed: invalid state. Please try again.",
+          t("homepage_eliza.getStarted.errInvalidState", {
+            defaultValue:
+              "Authentication failed: invalid state. Please try again.",
+          }),
         );
         setSelectedMethod("discord");
         setStep("SELECT_METHOD");
@@ -482,6 +510,7 @@ export default function GetStartedPage() {
     isAuthenticated,
     isLinkMode,
     handleDiscordOAuthRedirect,
+    t,
   ]);
 
   useEffect(() => {
@@ -577,7 +606,11 @@ export default function GetStartedPage() {
   const handleTelegramClick = useCallback(() => {
     const botId = getTelegramBotId();
     if (!botId) {
-      setTelegramError("Telegram not configured");
+      setTelegramError(
+        t("homepage_eliza.getStarted.errTelegramNotConfigured", {
+          defaultValue: "Telegram not configured",
+        }),
+      );
       return;
     }
 
@@ -595,9 +628,13 @@ export default function GetStartedPage() {
         },
       );
     } else {
-      setTelegramError("Telegram widget not loaded. Please refresh the page.");
+      setTelegramError(
+        t("homepage_eliza.getStarted.errTelegramWidget", {
+          defaultValue: "Telegram widget not loaded. Please refresh the page.",
+        }),
+      );
     }
-  }, [handleTelegramAuthCallback]);
+  }, [handleTelegramAuthCallback, t]);
 
   const handlePhoneSubmit = useCallback(async () => {
     if (!pendingTelegramData || !hasPhoneNumber) return;
@@ -625,23 +662,39 @@ export default function GetStartedPage() {
     } else {
       if (result.errorCode === "PHONE_ALREADY_LINKED") {
         setPhoneError(
-          "This phone number is already linked to another account. Please use a different number.",
+          t("homepage_eliza.connected.errorPhoneAlreadyLinked", {
+            defaultValue:
+              "This phone number is already linked to another account. Please use a different number.",
+          }),
         );
       } else if (result.errorCode === "PHONE_MISMATCH") {
         setPhoneError(
-          "Your Telegram account is already linked to a different phone number.",
+          t("homepage_eliza.getStarted.errPhoneMismatch", {
+            defaultValue:
+              "Your Telegram account is already linked to a different phone number.",
+          }),
         );
       } else if (result.errorCode === "TELEGRAM_ALREADY_LINKED") {
         setTelegramError(
-          "This Telegram account is already linked to another user.",
+          t("homepage_eliza.getStarted.errTelegramAlreadyLinked", {
+            defaultValue:
+              "This Telegram account is already linked to another user.",
+          }),
         );
         setStep("SELECT_METHOD");
       } else if (result.errorCode === "INVALID_AUTH") {
-        setTelegramError("Telegram authentication expired. Please try again.");
+        setTelegramError(
+          t("homepage_eliza.getStarted.errTelegramAuthExpired", {
+            defaultValue: "Telegram authentication expired. Please try again.",
+          }),
+        );
         setStep("SELECT_METHOD");
       } else {
         setPhoneError(
-          result.error || "Something went wrong. Please try again.",
+          result.error ||
+            t("homepage_eliza.connected.errorGeneric", {
+              defaultValue: "Something went wrong. Please try again.",
+            }),
         );
       }
     }
@@ -654,6 +707,7 @@ export default function GetStartedPage() {
     loginWithTelegram,
     isLinkMode,
     navigate,
+    t,
   ]);
 
   const handleDiscordAuthSubmit = useCallback(
@@ -690,19 +744,31 @@ export default function GetStartedPage() {
         setSuppressRedirect(false);
         if (result.errorCode === "PHONE_ALREADY_LINKED") {
           setPhoneError(
-            "This phone number is already linked to another account. Please use a different number.",
+            t("homepage_eliza.connected.errorPhoneAlreadyLinked", {
+              defaultValue:
+                "This phone number is already linked to another account. Please use a different number.",
+            }),
           );
         } else if (result.errorCode === "DISCORD_ALREADY_LINKED") {
           setDiscordError(
-            "This Discord account is already linked to another user. Please use a different Discord account or contact support.",
+            t("homepage_eliza.getStarted.errDiscordAlreadyLinked", {
+              defaultValue:
+                "This Discord account is already linked to another user. Please use a different Discord account or contact support.",
+            }),
           );
         } else if (result.errorCode === "INVALID_AUTH") {
           setDiscordError(
-            "Discord authentication failed or expired. Please try again.",
+            t("homepage_eliza.getStarted.errDiscordAuthFailed", {
+              defaultValue:
+                "Discord authentication failed or expired. Please try again.",
+            }),
           );
         } else {
           setDiscordError(
-            result.error || "Something went wrong. Please try again.",
+            result.error ||
+              t("homepage_eliza.connected.errorGeneric", {
+                defaultValue: "Something went wrong. Please try again.",
+              }),
           );
         }
       }
@@ -715,6 +781,7 @@ export default function GetStartedPage() {
       loginWithDiscord,
       isLinkMode,
       navigate,
+      t,
     ],
   );
 
@@ -776,7 +843,7 @@ export default function GetStartedPage() {
         style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
-          Loading…
+          {t("homepage_eliza.common.loading", { defaultValue: "Loading…" })}
         </div>
       </main>
     );
@@ -796,7 +863,9 @@ export default function GetStartedPage() {
         style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
-          Redirecting…
+          {t("homepage_eliza.common.redirecting", {
+            defaultValue: "Redirecting…",
+          })}
         </div>
       </main>
     );
@@ -809,7 +878,9 @@ export default function GetStartedPage() {
         style={{ fontFamily: "Poppins, system-ui, sans-serif" }}
       >
         <div className="text-black/70 animate-pulse font-semibold">
-          Redirecting to Discord…
+          {t("homepage_eliza.getStarted.redirectingToDiscord", {
+            defaultValue: "Redirecting to Discord…",
+          })}
         </div>
       </main>
     );
@@ -840,7 +911,9 @@ export default function GetStartedPage() {
               className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors cursor-pointer"
             >
               <ArrowLeft className="size-4" />
-              <span className="text-sm">Back</span>
+              <span className="text-sm">
+                {t("homepage_eliza.getStarted.back", { defaultValue: "Back" })}
+              </span>
             </button>
           ) : (
             <Link
@@ -848,7 +921,9 @@ export default function GetStartedPage() {
               className="inline-flex min-h-11 items-center gap-2 text-neutral-600 hover:text-neutral-900 transition-colors"
             >
               <ArrowLeft className="size-4" />
-              <span className="text-sm">Home</span>
+              <span className="text-sm">
+                {t("homepage_eliza.getStarted.home", { defaultValue: "Home" })}
+              </span>
             </Link>
           )}
         </div>
@@ -862,7 +937,9 @@ export default function GetStartedPage() {
             <>
               <animated.div style={titleSpring}>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowrap">
-                  Anywhere you want her to be.
+                  {t("homepage_eliza.getStarted.selectHeader", {
+                    defaultValue: "Anywhere you want her to be.",
+                  })}
                 </h1>
               </animated.div>
 
@@ -884,7 +961,11 @@ export default function GetStartedPage() {
                     <TelegramIcon className="size-6 text-[#229ED9]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">Telegram</p>
+                    <p className="text-neutral-900 font-medium">
+                      {t("homepage_eliza.getStarted.btnTelegram", {
+                        defaultValue: "Telegram",
+                      })}
+                    </p>
                   </div>
                 </animated.button>
 
@@ -897,7 +978,11 @@ export default function GetStartedPage() {
                     <AppleMessagesIcon className="size-12" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">iMessage</p>
+                    <p className="text-neutral-900 font-medium">
+                      {t("homepage_eliza.getStarted.btnImessage", {
+                        defaultValue: "iMessage",
+                      })}
+                    </p>
                   </div>
                 </animated.button>
 
@@ -910,7 +995,11 @@ export default function GetStartedPage() {
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">WhatsApp</p>
+                    <p className="text-neutral-900 font-medium">
+                      {t("homepage_eliza.getStarted.btnWhatsapp", {
+                        defaultValue: "WhatsApp",
+                      })}
+                    </p>
                   </div>
                 </animated.button>
 
@@ -923,7 +1012,11 @@ export default function GetStartedPage() {
                     <DiscordIcon className="size-6 text-[#5865F2]" />
                   </div>
                   <div className="flex-1 text-left">
-                    <p className="text-neutral-900 font-medium">Discord</p>
+                    <p className="text-neutral-900 font-medium">
+                      {t("homepage_eliza.getStarted.btnDiscord", {
+                        defaultValue: "Discord",
+                      })}
+                    </p>
                   </div>
                 </animated.button>
               </div>
@@ -937,10 +1030,15 @@ export default function GetStartedPage() {
               </div>
 
               <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-                Connect with Telegram
+                {t("homepage_eliza.getStarted.telegramTitle", {
+                  defaultValue: "Connect with Telegram",
+                })}
               </h1>
               <p className="text-sm text-neutral-500 text-center mb-8">
-                Sign in with your Telegram account to get started
+                {t("homepage_eliza.getStarted.telegramSubtitle", {
+                  defaultValue:
+                    "Sign in with your Telegram account to get started",
+                })}
               </p>
 
               {telegramError && (
@@ -955,11 +1053,15 @@ export default function GetStartedPage() {
                 className="w-full h-[52px] rounded-sm bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-medium gap-2"
               >
                 {isTelegramLoading ? (
-                  "Connecting..."
+                  t("homepage_eliza.getStarted.telegramConnecting", {
+                    defaultValue: "Connecting...",
+                  })
                 ) : (
                   <>
                     <TelegramIcon className="size-5" />
-                    Connect Telegram
+                    {t("homepage_eliza.getStarted.telegramConnectBtn", {
+                      defaultValue: "Connect Telegram",
+                    })}
                   </>
                 )}
               </Button>
@@ -973,10 +1075,15 @@ export default function GetStartedPage() {
               </div>
 
               <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-                Almost there!
+                {t("homepage_eliza.getStarted.phoneTitle", {
+                  defaultValue: "Almost there!",
+                })}
               </h1>
               <p className="text-sm text-neutral-500 text-center mb-8">
-                Enter your phone number to enable iMessage and prevent bots
+                {t("homepage_eliza.getStarted.phoneSubtitle", {
+                  defaultValue:
+                    "Enter your phone number to enable iMessage and prevent bots",
+                })}
               </p>
 
               <div className="w-full mb-4">
@@ -1007,7 +1114,13 @@ export default function GetStartedPage() {
                     : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                 }`}
               >
-                {isSubmittingPhone ? "Setting up..." : "Complete Setup"}
+                {isSubmittingPhone
+                  ? t("homepage_eliza.getStarted.settingUp", {
+                      defaultValue: "Setting up...",
+                    })
+                  : t("homepage_eliza.getStarted.completeSetup", {
+                      defaultValue: "Complete Setup",
+                    })}
               </Button>
             </>
           )}
@@ -1019,10 +1132,15 @@ export default function GetStartedPage() {
               </div>
 
               <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-                Ready to chat!
+                {t("homepage_eliza.getStarted.imessageReady", {
+                  defaultValue: "Ready to chat!",
+                })}
               </h1>
               <p className="text-sm text-neutral-500 text-center mb-6">
-                Just text this number to start talking with Eliza
+                {t("homepage_eliza.getStarted.imessageSubtitle", {
+                  defaultValue:
+                    "Just text this number to start talking with Eliza",
+                })}
               </p>
 
               <div className="w-full p-4 bg-white border border-black rounded-sm mb-6">
@@ -1050,7 +1168,9 @@ export default function GetStartedPage() {
                 className="w-full h-[52px] rounded-sm bg-[#34C759] hover:bg-[#2DB84D] text-white font-medium gap-2"
               >
                 <AppleMessagesIcon className="size-5" />
-                Open iMessage
+                {t("homepage_eliza.getStarted.openImessage", {
+                  defaultValue: "Open iMessage",
+                })}
               </Button>
 
               <button
@@ -1061,7 +1181,9 @@ export default function GetStartedPage() {
                 }}
                 className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700"
               >
-                I also want to use Telegram
+                {t("homepage_eliza.getStarted.alsoTelegram", {
+                  defaultValue: "I also want to use Telegram",
+                })}
               </button>
             </>
           )}
@@ -1073,10 +1195,15 @@ export default function GetStartedPage() {
               </div>
 
               <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-                Chat on WhatsApp!
+                {t("homepage_eliza.getStarted.whatsappTitle", {
+                  defaultValue: "Chat on WhatsApp!",
+                })}
               </h1>
               <p className="text-sm text-neutral-500 text-center mb-6">
-                Message our WhatsApp number to start talking with Eliza
+                {t("homepage_eliza.getStarted.whatsappSubtitle", {
+                  defaultValue:
+                    "Message our WhatsApp number to start talking with Eliza",
+                })}
               </p>
 
               <Button
@@ -1087,7 +1214,9 @@ export default function GetStartedPage() {
                 className="w-full h-[52px] rounded-sm bg-[#25D366] hover:bg-[#25D366]/90 text-white font-medium gap-2"
               >
                 <WhatsAppIcon className="size-5" />
-                Open WhatsApp
+                {t("homepage_eliza.getStarted.openWhatsapp", {
+                  defaultValue: "Open WhatsApp",
+                })}
                 <ExternalLink className="size-4 ml-1" />
               </Button>
 
@@ -1099,7 +1228,9 @@ export default function GetStartedPage() {
                 }}
                 className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700"
               >
-                I also want to use Telegram
+                {t("homepage_eliza.getStarted.alsoTelegram", {
+                  defaultValue: "I also want to use Telegram",
+                })}
               </button>
             </>
           )}
@@ -1120,17 +1251,31 @@ export default function GetStartedPage() {
 
               <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
                 {discordError
-                  ? "Connection Failed"
+                  ? t("homepage_eliza.getStarted.discordCbConnectionFailed", {
+                      defaultValue: "Connection Failed",
+                    })
                   : isLinkMode && user?.phone_number
-                    ? "Connecting Discord..."
-                    : "Discord Connected"}
+                    ? t("homepage_eliza.getStarted.discordCbConnecting", {
+                        defaultValue: "Connecting Discord...",
+                      })
+                    : t("homepage_eliza.getStarted.discordCbConnected", {
+                        defaultValue: "Discord Connected",
+                      })}
               </h1>
               <p className="text-sm text-neutral-500 text-center mb-8">
                 {discordError
-                  ? "There was a problem connecting your Discord account"
+                  ? t("homepage_eliza.getStarted.discordCbSubFailed", {
+                      defaultValue:
+                        "There was a problem connecting your Discord account",
+                    })
                   : isLinkMode && user?.phone_number
-                    ? "Linking your Discord account..."
-                    : "Add your phone number to link iMessage, or skip this step"}
+                    ? t("homepage_eliza.getStarted.discordCbSubLinking", {
+                        defaultValue: "Linking your Discord account...",
+                      })
+                    : t("homepage_eliza.getStarted.discordCbSubAddPhone", {
+                        defaultValue:
+                          "Add your phone number to link iMessage, or skip this step",
+                      })}
               </p>
 
               {discordError && (
@@ -1147,20 +1292,26 @@ export default function GetStartedPage() {
                     onClick={() => handleMethodSelect("discord")}
                     className="w-full h-[52px] rounded-sm bg-[#5865F2] text-white font-medium hover:bg-[#5865F2]/90"
                   >
-                    Try Again
+                    {t("homepage_eliza.getStarted.tryAgain", {
+                      defaultValue: "Try Again",
+                    })}
                   </Button>
                   <button
                     type="button"
                     onClick={handleBack}
                     className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700 cursor-pointer"
                   >
-                    Choose a different method
+                    {t("homepage_eliza.getStarted.chooseDifferent", {
+                      defaultValue: "Choose a different method",
+                    })}
                   </button>
                 </>
               ) : isLinkMode && user?.phone_number ? (
                 <div className="w-full flex flex-col items-center gap-3">
                   <div className="text-neutral-500 animate-pulse text-sm">
-                    Setting up...
+                    {t("homepage_eliza.getStarted.settingUp", {
+                      defaultValue: "Setting up...",
+                    })}
                   </div>
                 </div>
               ) : (
@@ -1196,8 +1347,12 @@ export default function GetStartedPage() {
                     }`}
                   >
                     {isSubmittingPhone || isDiscordLoading
-                      ? "Setting up..."
-                      : "Continue with Phone"}
+                      ? t("homepage_eliza.getStarted.settingUp", {
+                          defaultValue: "Setting up...",
+                        })
+                      : t("homepage_eliza.getStarted.continueWithPhone", {
+                          defaultValue: "Continue with Phone",
+                        })}
                   </Button>
 
                   <button
@@ -1207,12 +1362,19 @@ export default function GetStartedPage() {
                     className="w-full mt-4 text-sm text-neutral-500 hover:text-neutral-700 disabled:opacity-50 cursor-pointer disabled:cursor-not-allowed"
                   >
                     {isDiscordLoading
-                      ? "Setting up..."
-                      : "Skip — I\u2019ll add it later"}
+                      ? t("homepage_eliza.getStarted.settingUp", {
+                          defaultValue: "Setting up...",
+                        })
+                      : t("homepage_eliza.getStarted.skipAddLater", {
+                          defaultValue: "Skip — I’ll add it later",
+                        })}
                   </button>
 
                   <p className="text-xs text-neutral-400 text-center mt-4">
-                    Phone number enables cross-platform chat via iMessage
+                    {t("homepage_eliza.getStarted.phoneHelper", {
+                      defaultValue:
+                        "Phone number enables cross-platform chat via iMessage",
+                    })}
                   </p>
                 </>
               )}
@@ -1227,7 +1389,9 @@ export default function GetStartedPage() {
                     <Info className="size-8 text-[#5865F2]" />
                   </div>
                   <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-                    Discord Setup Guide
+                    {t("homepage_eliza.getStarted.guideTitleGuide", {
+                      defaultValue: "Discord Setup Guide",
+                    })}
                   </h1>
                 </>
               ) : (
@@ -1236,7 +1400,9 @@ export default function GetStartedPage() {
                     <Check className="size-8 text-[#5865F2]" />
                   </div>
                   <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
-                    You&apos;re all set!
+                    {t("homepage_eliza.getStarted.guideTitleAllSet", {
+                      defaultValue: "You’re all set!",
+                    })}
                   </h1>
                 </>
               )}
@@ -1250,7 +1416,9 @@ export default function GetStartedPage() {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
-                        Add Eliza to your server
+                        {t("homepage_eliza.getStarted.guideStep1", {
+                          defaultValue: "Add Eliza to your server",
+                        })}
                       </p>
                       <Button
                         variant="outline"
@@ -1265,7 +1433,9 @@ export default function GetStartedPage() {
                         className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-[#5865F2]/10 gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
-                        Invite to Server
+                        {t("homepage_eliza.getStarted.guideInviteToServer", {
+                          defaultValue: "Invite to Server",
+                        })}
                       </Button>
                     </div>
                   </div>
@@ -1280,7 +1450,9 @@ export default function GetStartedPage() {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
-                        Send a direct message
+                        {t("homepage_eliza.getStarted.guideStep2", {
+                          defaultValue: "Send a direct message",
+                        })}
                       </p>
                       <Button
                         variant="outline"
@@ -1295,7 +1467,9 @@ export default function GetStartedPage() {
                         className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-[#5865F2]/10 gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
-                        Open DM
+                        {t("homepage_eliza.getStarted.guideOpenDm", {
+                          defaultValue: "Open DM",
+                        })}
                       </Button>
                     </div>
                   </div>
@@ -1310,11 +1484,15 @@ export default function GetStartedPage() {
                     </div>
                     <div className="flex-1">
                       <p className="text-sm font-medium text-neutral-900">
-                        Start chatting
+                        {t("homepage_eliza.getStarted.guideStep3", {
+                          defaultValue: "Start chatting",
+                        })}
                       </p>
                       <div className="mt-2 px-3 py-2 bg-[#5865F2]/10 border border-[#5865F2]/20 rounded-lg">
                         <p className="text-sm text-[#5865F2] font-medium">
-                          &quot;Hey Eliza, what can you do?&quot;
+                          {t("homepage_eliza.getStarted.guideSampleQuote", {
+                            defaultValue: '"Hey Eliza, what can you do?"',
+                          })}
                         </p>
                       </div>
                     </div>
@@ -1326,7 +1504,9 @@ export default function GetStartedPage() {
                 onClick={handleContinueToConnected}
                 className="w-full h-[52px] rounded-sm bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-medium mt-6"
               >
-                Continue
+                {t("homepage_eliza.getStarted.guideContinue", {
+                  defaultValue: "Continue",
+                })}
               </Button>
             </>
           )}
@@ -1335,7 +1515,10 @@ export default function GetStartedPage() {
 
       <footer className="relative z-10 p-4 text-center">
         <p className="text-[10px] text-neutral-400">
-          ElizaCloud Inc. {new Date().getFullYear()}
+          {t("homepage_eliza.common.year", {
+            defaultValue: "ElizaCloud Inc. {{year}}",
+            year: new Date().getFullYear(),
+          })}
         </p>
       </footer>
     </main>
