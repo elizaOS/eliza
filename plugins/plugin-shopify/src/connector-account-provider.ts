@@ -313,9 +313,15 @@ export function createShopifyConnectorAccountProvider(
         );
       }
 
+      const requestedRoleRaw = flowMetadata.requestedRole;
+      const role: "OWNER" | "AGENT" | "TEAM" =
+        requestedRoleRaw === "AGENT" || requestedRoleRaw === "TEAM"
+          ? requestedRoleRaw
+          : "OWNER";
+
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: SHOPIFY_PROVIDER_NAME,
-        role: "OWNER",
+        role,
         purpose: DEFAULT_PURPOSES,
         accessGate: "open",
         status: "connected",
