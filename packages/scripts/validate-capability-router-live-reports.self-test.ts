@@ -18,6 +18,10 @@ async function main(): Promise<void> {
       workspace,
       "complete-extra-exercises",
     );
+    const completePartialModuleDir = join(
+      workspace,
+      "complete-partial-module",
+    );
     const cloudOnlyDir = join(workspace, "cloud-only");
     const ciDir = join(workspace, "ci");
     const malformedCiDir = join(workspace, "malformed-ci");
@@ -113,10 +117,13 @@ async function main(): Promise<void> {
       "missing-registered-service",
     );
     const missingEvaluatorDir = join(workspace, "missing-evaluator");
+    const missingEventDir = join(workspace, "missing-event");
     const missingServiceDir = join(workspace, "missing-service");
+    const missingAppDir = join(workspace, "missing-app");
     const missingFieldEvaluatorDir = join(workspace, "missing-field-evaluator");
     await mkdir(completeDir, { recursive: true });
     await mkdir(completeExtraExercisesDir, { recursive: true });
+    await mkdir(completePartialModuleDir, { recursive: true });
     await mkdir(cloudOnlyDir, { recursive: true });
     await mkdir(ciDir, { recursive: true });
     await mkdir(malformedCiDir, { recursive: true });
@@ -170,7 +177,9 @@ async function main(): Promise<void> {
     await mkdir(runtimePluginUndercountDir, { recursive: true });
     await mkdir(missingRegisteredServiceDir, { recursive: true });
     await mkdir(missingEvaluatorDir, { recursive: true });
+    await mkdir(missingEventDir, { recursive: true });
     await mkdir(missingServiceDir, { recursive: true });
+    await mkdir(missingAppDir, { recursive: true });
     await mkdir(missingFieldEvaluatorDir, { recursive: true });
     await writeFile(
       join(completeDir, "cloud.json"),
@@ -185,6 +194,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(completeExtraExercisesDir, "provider.json"),
       `${JSON.stringify(makeCompleteExtraExercisesReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(completePartialModuleDir, "provider.json"),
+      `${JSON.stringify(makeCompletePartialModuleReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -478,8 +492,18 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(missingEventDir, "provider.json"),
+      `${JSON.stringify(makeMissingEventMaterializationReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(missingServiceDir, "provider.json"),
       `${JSON.stringify(makeMissingServiceMaterializationReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingAppDir, "provider.json"),
+      `${JSON.stringify(makeMissingAppMaterializationReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -500,6 +524,12 @@ async function main(): Promise<void> {
     if (completeExtraExercises.exitCode !== 0) {
       throw new Error(
         `complete extra exercise reports should validate, got ${completeExtraExercises.exitCode}: ${completeExtraExercises.output}`,
+      );
+    }
+    const completePartialModule = await runValidator(completePartialModuleDir);
+    if (completePartialModule.exitCode !== 0) {
+      throw new Error(
+        `complete partial module reports should validate, got ${completePartialModule.exitCode}: ${completePartialModule.output}`,
       );
     }
     const cloudKind = await runValidator(cloudOnlyDir, "--kind", "cloud");
@@ -1253,7 +1283,7 @@ async function main(): Promise<void> {
     }
     if (
       !missingRegisteredService.output.includes(
-        "sync.registeredModules[0].serviceCount must be greater than zero",
+        "sync.registeredModules aggregate serviceCount must be greater than zero",
       )
     ) {
       throw new Error(
@@ -1271,6 +1301,17 @@ async function main(): Promise<void> {
         `missing evaluator materialization failed for the wrong reason: ${missingEvaluator.output}`,
       );
     }
+    const missingEvent = await runValidator(missingEventDir);
+    if (missingEvent.exitCode === 0) {
+      throw new Error(
+        "missing event materialization report unexpectedly passed.",
+      );
+    }
+    if (!missingEvent.output.includes("runtime.eventCount")) {
+      throw new Error(
+        `missing event materialization failed for the wrong reason: ${missingEvent.output}`,
+      );
+    }
     const missingService = await runValidator(missingServiceDir);
     if (missingService.exitCode === 0) {
       throw new Error(
@@ -1280,6 +1321,15 @@ async function main(): Promise<void> {
     if (!missingService.output.includes("runtime.serviceCount")) {
       throw new Error(
         `missing service materialization failed for the wrong reason: ${missingService.output}`,
+      );
+    }
+    const missingApp = await runValidator(missingAppDir);
+    if (missingApp.exitCode === 0) {
+      throw new Error("missing app materialization report unexpectedly passed.");
+    }
+    if (!missingApp.output.includes("runtime.appCount")) {
+      throw new Error(
+        `missing app materialization failed for the wrong reason: ${missingApp.output}`,
       );
     }
     const missingFieldEvaluator = await runValidator(missingFieldEvaluatorDir);
@@ -1354,7 +1404,9 @@ function makeCompleteReport(
       responseHandlerFieldEvaluatorCount: 1,
       routeCount: 1,
       modelCount: 1,
+      eventCount: 1,
       serviceCount: 1,
+      appCount: 1,
       appBridgeCount: 1,
       lifecycleCount: 1,
       widgetCount: 1,
@@ -1413,12 +1465,77 @@ function makeCompleteExtraExercisesReport() {
       responseHandlerFieldEvaluatorCount: 2,
       routeCount: 2,
       modelCount: 2,
+      eventCount: 2,
       serviceCount: 2,
+      appCount: 2,
       appBridgeCount: 2,
       lifecycleCount: 2,
       widgetCount: 2,
       componentTypeCount: 2,
       viewCount: 2,
+    },
+  };
+}
+
+function makeCompletePartialModuleReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleCount: 2,
+      moduleIds: ["sample-module", "partial-module"],
+      moduleExercises: [
+        ...report.conformance.moduleExercises,
+        {
+          surface: "action",
+          moduleId: "partial-module",
+          target: "partial-module:PARTIAL_ACTION",
+        },
+      ],
+    },
+    sync: {
+      ...report.sync,
+      registered: ["@remote/sample", "@remote/partial"],
+      registeredModules: [
+        ...report.sync.registeredModules,
+        {
+          pluginName: "@remote/partial",
+          moduleId: "partial-module",
+          endpointId: report.endpointId,
+          ...makeRegisteredModuleCounts({
+            providerCount: 0,
+            evaluatorCount: 0,
+            responseHandlerEvaluatorCount: 0,
+            responseHandlerFieldEvaluatorCount: 0,
+            routeCount: 0,
+            modelCount: 0,
+            eventCount: 0,
+            serviceCount: 0,
+            appCount: 0,
+            appBridgeCount: 0,
+            lifecycleCount: 0,
+            widgetCount: 0,
+            componentTypeCount: 0,
+            viewCount: 0,
+          }),
+        },
+      ],
+      trustDecisions: [
+        ...report.sync.trustDecisions,
+        {
+          moduleId: "partial-module",
+          pluginName: "@remote/partial",
+          endpointId: report.endpointId,
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    },
+    runtime: {
+      ...report.runtime,
+      pluginCount: 2,
+      actionCount: 2,
     },
   };
 }
@@ -1785,7 +1902,9 @@ function makeDuplicateRegisteredModuleReport() {
       responseHandlerFieldEvaluatorCount: 2,
       routeCount: 2,
       modelCount: 2,
+      eventCount: 2,
       serviceCount: 2,
+      appCount: 2,
       appBridgeCount: 2,
       lifecycleCount: 2,
       widgetCount: 2,
@@ -1943,7 +2062,9 @@ function makeExercisedUnregisteredReport() {
       responseHandlerFieldEvaluatorCount: 2,
       routeCount: 2,
       modelCount: 2,
+      eventCount: 2,
       serviceCount: 2,
+      appCount: 2,
       appBridgeCount: 2,
       lifecycleCount: 2,
       widgetCount: 2,
@@ -2006,7 +2127,9 @@ function makeRegisteredUnexercisedReport() {
       responseHandlerFieldEvaluatorCount: 2,
       routeCount: 2,
       modelCount: 2,
+      eventCount: 2,
       serviceCount: 2,
+      appCount: 2,
       appBridgeCount: 2,
       lifecycleCount: 2,
       widgetCount: 2,
@@ -2156,7 +2279,9 @@ function makeRuntimePluginUndercountReport() {
       responseHandlerFieldEvaluatorCount: 2,
       routeCount: 2,
       modelCount: 2,
+      eventCount: 2,
       serviceCount: 2,
+      appCount: 2,
       appBridgeCount: 2,
       lifecycleCount: 2,
       widgetCount: 2,
@@ -2195,7 +2320,9 @@ function makeRegisteredModuleCounts(
     responseHandlerFieldEvaluatorCount: 1,
     routeCount: 1,
     modelCount: 1,
+    eventCount: 1,
     serviceCount: 1,
+    appCount: 1,
     appBridgeCount: 1,
     lifecycleCount: 1,
     widgetCount: 1,
@@ -2216,6 +2343,17 @@ function makeMissingEvaluatorMaterializationReport() {
   };
 }
 
+function makeMissingEventMaterializationReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    runtime: {
+      ...report.runtime,
+      eventCount: 0,
+    },
+  };
+}
+
 function makeMissingServiceMaterializationReport() {
   const report = makeCompleteReport("provider");
   return {
@@ -2223,6 +2361,17 @@ function makeMissingServiceMaterializationReport() {
     runtime: {
       ...report.runtime,
       serviceCount: 0,
+    },
+  };
+}
+
+function makeMissingAppMaterializationReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    runtime: {
+      ...report.runtime,
+      appCount: 0,
     },
   };
 }

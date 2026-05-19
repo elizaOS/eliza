@@ -286,3 +286,39 @@ def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient
     tc = turn.tool_calls[0]
     assert tc["function"]["name"] == "get_weather"
     assert tc["function"]["arguments"] == {"city": "Paris", "when": "tomorrow"}
+
+
+def test_lifeops_agent_fn_promotes_calendar_availability_call(fake_client: HermesClient) -> None:
+    _install_lifeops_stub()
+    from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
+
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
+
+    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+        return MessageResponse(
+            text="",
+            thought=None,
+            actions=[],
+            params={
+                "tool_calls": [
+                    {
+                        "name": "CALENDAR",
+                        "arguments": (
+                            '{"action":"search_events","windowStart":"2026-05-14T09:00:00Z",'
+                            '"windowEnd":"2026-05-14T10:00:00Z","intent":"availability"}'
+                        ),
+                        "id": "tc1",
+                    }
+                ]
+            },
+        )
+
+    with patch.object(HermesClient, "send_message", _fake_send):
+        turn = _run(agent_fn([{"role": "user", "content": "am I free Thursday?"}], []))
+
+    assert turn.tool_calls is not None
+    tc = turn.tool_calls[0]
+    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
+    assert tc["function"]["arguments"]["subaction"] == "check_availability"
+    assert tc["function"]["arguments"]["startAt"] == "2026-05-14T09:00:00Z"

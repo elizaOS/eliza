@@ -1003,7 +1003,11 @@ produce per-module exercise evidence without overwriting the summary target.
 `sync.registered` and `sync.registeredModules` must not contain duplicate
 materialized plugin/module identities, and every registered module must have a
 unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied
-back to unique endpoint modules that actually materialized locally.
+back to unique endpoint modules that actually materialized locally. Individual
+modules may be partial plugins; the validator requires each registered module to
+materialize at least one remote plugin surface and requires the aggregate
+registered module counts to cover every required surface, including remote event
+handlers through `eventCount` and remote app metadata through `appCount`.
 `sync.skipped` and `sync.unloaded` must be unique plugin-name lists and cannot
 contradict `sync.registered` or each other. The report is written only after
 remote modules sync into the runtime and includes

@@ -23,6 +23,7 @@ import os
 import re
 import time
 from copy import deepcopy
+from hashlib import sha1
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
@@ -36,6 +37,8 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+_SAFE_TOOL_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 DEFAULT_ELIZA_ACTION_CATALOG_PATH = (
     Path(__file__).resolve().parents[2]
@@ -202,6 +205,11 @@ def _bfcl_tools_formatter():
 
 def _coerce_arguments(raw: object) -> dict[str, "ArgumentValue"]:
     """Coerce arbitrary JSON-shaped arguments into the BFCL ArgumentValue type."""
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
     if not isinstance(raw, dict):
         return {}
 
@@ -217,10 +225,40 @@ def _coerce_arguments(raw: object) -> dict[str, "ArgumentValue"]:
     return {str(k): _norm(v) for k, v in raw.items()}
 
 
+def _iter_call_records(raw: object) -> list[dict[str, object]]:
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if isinstance(raw, list):
+        return [item for item in raw if isinstance(item, dict)]
+    if isinstance(raw, dict):
+        calls = raw.get("calls") or raw.get("tool_calls")
+        if calls is not None:
+            return _iter_call_records(calls)
+        return [raw]
+    return []
+
+
+def _call_from_record(entry: dict[str, object]) -> "FunctionCall | None":
+    _, _, FunctionCall = _bfcl_types()
+    record: dict[str, object] = entry
+    function = entry.get("function")
+    if isinstance(function, dict):
+        record = function
+    name_raw = record.get("name") or record.get("tool_name") or record.get("function_name")
+    if not isinstance(name_raw, str) or not name_raw:
+        return None
+    args_raw = record.get("arguments", record.get("parameters", record.get("args", {})))
+    return FunctionCall(name=name_raw, arguments=_coerce_arguments(args_raw))
+
+
 def _extract_calls_from_response(
     text: str,
     params: dict[str, object],
     registry: ElizaBFCLFunctionRegistry | None = None,
+    name_map: dict[str, str] | None = None,
 ) -> list["FunctionCall"]:
     """Pull captured function calls out of an eliza message response.
 
@@ -232,6 +270,21 @@ def _extract_calls_from_response(
     bench_params = params.get("BENCHMARK_ACTION")
     if isinstance(bench_params, dict):
         params = {**params, **bench_params}
+
+    for key in ("tool_calls", "calls"):
+        direct_calls: list[FunctionCall] = []
+        for entry in _iter_call_records(params.get(key)):
+            call = _call_from_record(entry)
+            if call is not None:
+                direct_calls.append(call)
+        if direct_calls:
+            return _normalize_registry_calls(
+                _restore_original_call_names(
+                    _unwrap_benchmark_action_calls(direct_calls),
+                    name_map or {},
+                ),
+                registry,
+            )
 
     calls_raw: object = params.get("calls")
     arguments_raw = params.get("arguments")
@@ -280,14 +333,20 @@ def _extract_calls_from_response(
 
     if calls:
         return _normalize_registry_calls(
-            _unwrap_benchmark_action_calls(calls),
+            _restore_original_call_names(
+                _unwrap_benchmark_action_calls(calls),
+                name_map or {},
+            ),
             registry,
         )
 
     # Last resort: hand the raw text to BFCL's parser, which understands
     # several other formats (JSON blob, function-call notation, etc).
     return _normalize_registry_calls(
-        _unwrap_benchmark_action_calls(_bfcl_parser()().parse(text or "")),
+        _restore_original_call_names(
+            _unwrap_benchmark_action_calls(_bfcl_parser()().parse(text or "")),
+            name_map or {},
+        ),
         registry,
     )
 
@@ -339,6 +398,65 @@ def _normalize_registry_calls(
             )
         )
     return normalized
+
+
+def _provider_safe_tool_name(name: str, used: set[str]) -> str:
+    if _SAFE_TOOL_NAME_RE.match(name) and name not in used:
+        used.add(name)
+        return name
+
+    candidate = re.sub(r"[^A-Za-z0-9_-]", "_", name).strip("_")
+    if not candidate:
+        candidate = "bfcl_tool"
+    if not re.match(r"^[A-Za-z0-9_]", candidate):
+        candidate = f"bfcl_{candidate}"
+    if len(candidate) > 64:
+        digest = sha1(name.encode("utf-8")).hexdigest()[:8]
+        candidate = f"{candidate[:55]}_{digest}"
+
+    base = candidate
+    index = 2
+    while candidate in used:
+        suffix = f"_{index}"
+        candidate = f"{base[:64 - len(suffix)]}{suffix}"
+        index += 1
+    used.add(candidate)
+    return candidate
+
+
+def _provider_safe_tools(tools: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, str]]:
+    used: set[str] = set()
+    name_map: dict[str, str] = {}
+    patched = deepcopy(tools)
+    for tool in patched:
+        function = tool.get("function")
+        if not isinstance(function, dict):
+            continue
+        original = function.get("name")
+        if not isinstance(original, str) or not original:
+            continue
+        safe = _provider_safe_tool_name(original, used)
+        name_map[safe] = original
+        if safe == original:
+            continue
+        function["name"] = safe
+        description = str(function.get("description") or "")
+        hint = f"Original BFCL function name: {original}."
+        function["description"] = f"{description} {hint}".strip()
+    return patched, name_map
+
+
+def _restore_original_call_names(
+    calls: list["FunctionCall"],
+    name_map: dict[str, str],
+) -> list["FunctionCall"]:
+    if not name_map:
+        return calls
+    _, _, FunctionCall = _bfcl_types()
+    return [
+        FunctionCall(name=name_map.get(call.name, call.name), arguments=call.arguments)
+        for call in calls
+    ]
 
 
 def _is_live_category(category: object) -> bool:
@@ -411,7 +529,8 @@ class ElizaBFCLAgent:
                 tools = [*tools, *registry.as_openai_tools()]
             except Exception as exc:
                 logger.debug("Failed to load eliza BFCL action catalog: %s", exc)
-        tools_json = json.dumps(tools, ensure_ascii=False)
+        provider_tools, name_map = _provider_safe_tools(tools)
+        tools_json = json.dumps(provider_tools, ensure_ascii=False)
 
         prompt = (
             "You are a function-calling AI assistant being evaluated on the "
@@ -434,7 +553,7 @@ class ElizaBFCLAgent:
                 "task_id": test_case.id,
                 "category": test_case.category.value,
                 "question": test_case.question,
-                "tools": tools,
+                "tools": provider_tools,
                 "is_relevant": test_case.is_relevant,
             },
         )
@@ -444,6 +563,7 @@ class ElizaBFCLAgent:
             response.text or "",
             response.params,
             registry=registry,
+            name_map=name_map,
         )
         if (
             os.environ.get("ELIZA_BENCH_MOCK") == "true"

@@ -260,6 +260,13 @@ class ElizaBridgeExperienceRunner:
             except Exception as exc:
                 logger.debug("reset failed: %s", exc)
 
+            query_results = svc.query_experiences(
+                ExperienceQuery(query=scenario.similar_query, limit=5)
+            )
+            context_lines = [
+                f"- [{exp.domain}] {exp.context}; learned: {exp.learning}"
+                for exp in query_results[:5]
+            ]
             response = self._client.send_message(
                 text=(
                     # P2b fix (keyword-echo): the experience rubric grades
@@ -278,7 +285,9 @@ class ElizaBridgeExperienceRunner:
                     f"and phrases from the recorded learning rather than "
                     f"paraphrasing. The user's downstream tooling matches on "
                     f"keywords from the original memory.\n\n"
-                    f"User: {retrieval_message}"
+                    f"User: {retrieval_message}\n\n"
+                    "Retrieved past experiences from ExperienceService:\n"
+                    + ("\n".join(context_lines) if context_lines else "- none")
                 ),
                 context={
                     "benchmark": "experience",
@@ -292,9 +301,6 @@ class ElizaBridgeExperienceRunner:
             # plugin's evaluator: query the service Python-side and check
             # if expected keywords appear in either the retrieved
             # experiences or the agent's response.
-            query_results = svc.query_experiences(
-                ExperienceQuery(query=scenario.similar_query, limit=5)
-            )
             response_lower = (response.text or "").lower()
             keywords_in_response = bool(
                 scenario.expected_learning_keywords

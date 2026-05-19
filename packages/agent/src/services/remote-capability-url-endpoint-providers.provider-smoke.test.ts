@@ -194,7 +194,12 @@ function summarizeSync(sync: {
         plugin.responseHandlerFieldEvaluators?.length ?? 0,
       routeCount: plugin.routes?.length ?? 0,
       modelCount: Object.keys(plugin.models ?? {}).length,
+      eventCount: Object.values(plugin.events ?? {}).reduce(
+        (count, handlers) => count + handlers.length,
+        0,
+      ),
       serviceCount: plugin.services?.length ?? 0,
+      appCount: plugin.app ? 1 : 0,
       appBridgeCount: plugin.appBridge ? 1 : 0,
       lifecycleCount:
         (plugin.init ? 1 : 0) +
@@ -241,9 +246,24 @@ function summarizeRuntime(
         (count, plugin) => count + Object.keys(plugin.models ?? {}).length,
         0,
       ) ?? 0,
+    eventCount:
+      runtime.plugins?.reduce(
+        (count, plugin) =>
+          count +
+          Object.values(plugin.events ?? {}).reduce(
+            (eventCount, handlers) => eventCount + handlers.length,
+            0,
+          ),
+        0,
+      ) ?? 0,
     serviceCount:
       runtime.plugins?.reduce(
         (count, plugin) => count + (plugin.services?.length ?? 0),
+        0,
+      ) ?? 0,
+    appCount:
+      runtime.plugins?.reduce(
+        (count, plugin) => count + (plugin.app ? 1 : 0),
         0,
       ) ?? 0,
     appBridgeCount:

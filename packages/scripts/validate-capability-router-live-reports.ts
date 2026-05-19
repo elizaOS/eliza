@@ -26,7 +26,9 @@ const REQUIRED_REMOTE_MODULE_COUNT_FIELDS = [
   "responseHandlerFieldEvaluatorCount",
   "routeCount",
   "modelCount",
+  "eventCount",
   "serviceCount",
+  "appCount",
   "appBridgeCount",
   "lifecycleCount",
   "widgetCount",
@@ -823,17 +825,19 @@ function validateSyncEvidence(
         "sync.registeredModules endpointId must match report endpointId.",
       );
     }
+    let moduleSurfaceCount = 0;
     for (const field of REQUIRED_REMOTE_MODULE_COUNT_FIELDS) {
       const count = requireNonNegativeInteger(
         item[field],
         `sync.registeredModules[${index}].${field}`,
       );
-      if (count <= 0) {
-        throw new Error(
-          `sync.registeredModules[${index}].${field} must be greater than zero.`,
-        );
-      }
+      moduleSurfaceCount += count;
       registeredRemoteModuleCounts[field] += count;
+    }
+    if (moduleSurfaceCount <= 0) {
+      throw new Error(
+        `sync.registeredModules[${index}] must materialize at least one remote plugin surface.`,
+      );
     }
     registeredModuleIds.add(moduleId);
     const registeredModuleKey = `${moduleEndpointId}\0${moduleId}\0${pluginName}`;
@@ -841,6 +845,13 @@ function validateSyncEvidence(
       throw new Error("sync.registeredModules must not contain duplicates.");
     }
     registeredModuleKeys.add(registeredModuleKey);
+  }
+  for (const [field, count] of Object.entries(registeredRemoteModuleCounts)) {
+    if (count <= 0) {
+      throw new Error(
+        `sync.registeredModules aggregate ${field} must be greater than zero.`,
+      );
+    }
   }
   for (const moduleId of observedModuleIds) {
     if (!registeredModuleIds.has(moduleId)) {
@@ -980,9 +991,19 @@ function validateRuntimeEvidence(
     registeredRemoteModuleCounts.modelCount,
   );
   requirePositiveCountAtLeast(
+    runtime.eventCount,
+    "runtime.eventCount",
+    registeredRemoteModuleCounts.eventCount,
+  );
+  requirePositiveCountAtLeast(
     runtime.serviceCount,
     "runtime.serviceCount",
     registeredRemoteModuleCounts.serviceCount,
+  );
+  requirePositiveCountAtLeast(
+    runtime.appCount,
+    "runtime.appCount",
+    registeredRemoteModuleCounts.appCount,
   );
   requirePositiveCountAtLeast(
     runtime.appBridgeCount,

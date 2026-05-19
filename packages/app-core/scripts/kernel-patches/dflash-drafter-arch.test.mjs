@@ -42,6 +42,14 @@ function makeLlamaCppFixture() {
       '    { LLM_KV_WKV_HEAD_SIZE, "%s.wkv.head_size" },',
       '    { LLM_TENSOR_OUTPUT,                                 "output" },',
       "    {LLM_TENSOR_OUTPUT_NORM_LFM2,           {LLM_TENSOR_LAYER_OUTPUT,    GGML_OP_MUL}},",
+      "llm_arch llm_arch_from_string(const std::string & name) {",
+      "    for (const auto & kv : LLM_ARCH_NAMES) {",
+      "        if (kv.second == name) {",
+      "            return kv.first;",
+      "        }",
+      "    }",
+      "    return LLM_ARCH_UNKNOWN;",
+      "}",
       "",
     ].join("\n"),
   );
@@ -142,6 +150,12 @@ describe("patchDflashDrafterArch", () => {
       fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
     ).toMatch(/name == "dflash-draft"/);
     expect(
+      fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
+    ).toMatch(/LLM_TENSOR_DFLASH_FC,\s+"fc"/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
+    ).toMatch(/LLM_TENSOR_DFLASH_HIDDEN_NORM,\s+"hidden_norm"/);
+    expect(
       fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
     ).toMatch(/std::make_unique<llm_build_dflash_draft>/);
     expect(
@@ -156,6 +170,12 @@ describe("patchDflashDrafterArch", () => {
     expect(
       fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
     ).toMatch(/hparams\.n_embd_head_v;/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
+    ).toMatch(/dflash\.target_layer_ids/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
+    ).toMatch(/LLM_TENSOR_FFN_NORM/);
     expect(
       fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
     ).not.toMatch(/hparams\.n_embd_head_v\(\)/);

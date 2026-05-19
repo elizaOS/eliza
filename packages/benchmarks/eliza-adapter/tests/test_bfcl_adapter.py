@@ -43,6 +43,31 @@ def test_bfcl_unwraps_benchmark_action_params_calls() -> None:
     assert calls[0].arguments == {"controller": "mapController", "parent": "mapArea"}
 
 
+def test_bfcl_extracts_native_tool_calls_and_restores_provider_safe_names() -> None:
+    calls = _extract_calls_from_response(
+        "",
+        {
+            "tool_calls": [
+                {
+                    "name": "triangle_properties_get",
+                    "arguments": '{"side1":5,"side2":4,"side3":3}',
+                }
+            ],
+            "calls": [
+                {
+                    "name": "triangle_properties_get",
+                    "arguments": {"side1": 5, "side2": 4, "side3": 3},
+                }
+            ],
+        },
+        name_map={"triangle_properties_get": "triangle_properties.get"},
+    )
+
+    assert len(calls) == 1
+    assert calls[0].name == "triangle_properties.get"
+    assert calls[0].arguments == {"side1": 5, "side2": 4, "side3": 3}
+
+
 def test_bfcl_query_passes_structured_tools_in_context(monkeypatch) -> None:
     tools = [
         {
@@ -94,7 +119,12 @@ def test_bfcl_query_passes_structured_tools_in_context(monkeypatch) -> None:
 
     calls, _, _ = asyncio.run(agent.query(case))
 
-    assert captured["context"]["tools"] == tools
     assert isinstance(captured["context"]["tools"], list)
-    assert "recipe_info.get_calories" in captured["text"]
+    context_tools = captured["context"]["tools"]
+    assert context_tools[0]["function"]["name"] == "recipe_info_get_calories"  # type: ignore[index]
+    assert (
+        "Original BFCL function name: recipe_info.get_calories."
+        in context_tools[0]["function"]["description"]  # type: ignore[index]
+    )
+    assert "recipe_info_get_calories" in captured["text"]
     assert calls[0].name == "recipe_info.get_calories"
