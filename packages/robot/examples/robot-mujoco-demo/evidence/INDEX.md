@@ -92,8 +92,9 @@ Recorded against the **physical Obsbot Tiny SE** at `/dev/video4`,
 
 Latest run:
 - Device: `/dev/video4` (Obsbot Tiny SE), 1920×1080.
-- Markers seen: **[3]** (Ground +X from `demo_aruco.yaml`).
-- 68 frames recorded, ~4.5 s.
+- Markers seen across the run: **[0, 1, 3, 4]** — four distinct IDs from
+  `demo_aruco.yaml` (Robot Body, Robot Head, Ground +X, Ground +X +Y).
+- 104 frames recorded, ~12 s at 12 fps.
 - Detector identical to the one used on MuJoCo renders — same `ArucoDetector`,
   same `CameraIntrinsics`, same pose math. Only the pixel source differs.
 
