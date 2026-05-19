@@ -55,9 +55,15 @@ export interface WriteRequest {
   imageId: string;
   dryRun: boolean;
   acknowledgeDataLoss: boolean;
+  expectedDrive?: {
+    devicePath: string;
+    sizeBytes: number;
+    name?: string;
+  };
 }
 
 export interface WritePlan {
+  planId?: string;
   request: WriteRequest;
   drive: RemovableDrive;
   image: ElizaOsImage;

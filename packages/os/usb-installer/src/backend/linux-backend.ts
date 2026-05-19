@@ -22,6 +22,10 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./types";
+import {
+  assertDriveMatchesExpected,
+  assertWritePlanAllowed,
+} from "./write-safety";
 
 const execFileAsync = promisify(execFile);
 
@@ -387,6 +391,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
 
     const drive = drives.find((d) => d.id === request.driveId);
     if (!drive) throw new Error(`Unknown drive id: ${request.driveId}`);
+    assertDriveMatchesExpected(request, drive);
 
     const image = images.find((img) => img.id === request.imageId);
     if (!image) throw new Error(`Unknown image id: ${request.imageId}`);
@@ -433,12 +438,7 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
     plan: WritePlan,
     onProgress: (step: InstallerStepId, progress: number) => void,
   ): Promise<void> {
-    if (!plan.request.acknowledgeDataLoss) {
-      throw new Error("Data-loss acknowledgement is required.");
-    }
-    if (plan.drive.safety !== "safe-removable") {
-      throw new Error("Drive is not safe-removable; write aborted.");
-    }
+    assertWritePlanAllowed(plan);
 
     const { image, drive } = plan;
     const imagePath = path.join(INSTALLER_TMP_DIR, `${image.id}.iso`);

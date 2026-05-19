@@ -23,6 +23,44 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex] ?? "B"}`;
 }
 
+function platformTitle(platform: RemovableDrive["platform"] | undefined) {
+  if (platform === "darwin") return "macOS";
+  if (platform === "linux") return "Linux";
+  if (platform === "win32") return "Windows";
+  return "This platform";
+}
+
+function platformNotes(platform: RemovableDrive["platform"] | undefined) {
+  if (platform === "darwin") {
+    return [
+      "External USB drives are selectable; internal APFS/HFS disks are blocked.",
+      "macOS will ask for administrator approval before writing.",
+      "The drive is ejected after the write completes.",
+      "Boot by holding Option at startup and selecting the USB drive.",
+    ];
+  }
+  if (platform === "linux") {
+    return [
+      "Removable drives are detected with lsblk and system disks are blocked.",
+      "Mounted USB partitions are unmounted before writing.",
+      "A polkit, sudo, kdesu, or doas prompt may appear for raw disk access.",
+      "Boot by selecting the USB drive from your firmware boot menu.",
+    ];
+  }
+  if (platform === "win32") {
+    return [
+      "USB disks are detected with PowerShell and boot/system disks are blocked.",
+      "Windows UAC may ask for administrator approval before writing.",
+      "Do not remove the drive until the app reports completion.",
+      "Boot by selecting the USB drive from your PC boot menu.",
+    ];
+  }
+  return [
+    "Only removable media should be selected.",
+    "The selected drive will be erased before elizaOS is written.",
+  ];
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -124,6 +162,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   const [appStep, setAppStep] = useState<AppStep>("selecting-drive");
   const [specs, setSpecs] = useState<SpecItem[]>([]);
   const [acknowledgeDataLoss, setAcknowledgeDataLoss] = useState(false);
+  const [confirmTarget, setConfirmTarget] = useState("");
   const [writePlan, setWritePlan] = useState<WritePlan | null>(null);
   const [stepProgress, setStepProgress] = useState<
     Partial<Record<InstallerStepId, number>>
@@ -253,6 +292,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
 
   function goToConfirm() {
     setAcknowledgeDataLoss(false);
+    setConfirmTarget("");
     setAppStep("confirming");
   }
 
@@ -265,6 +305,11 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         imageId: selectedImage.id,
         dryRun: true,
         acknowledgeDataLoss: true,
+        expectedDrive: {
+          devicePath: selectedDrive.devicePath,
+          sizeBytes: selectedDrive.sizeBytes,
+          name: selectedDrive.name,
+        },
       });
       setWritePlan(plan);
     } catch (err) {
@@ -284,6 +329,11 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         imageId: selectedImage.id,
         dryRun: false,
         acknowledgeDataLoss: true,
+        expectedDrive: {
+          devicePath: selectedDrive.devicePath,
+          sizeBytes: selectedDrive.sizeBytes,
+          name: selectedDrive.name,
+        },
       });
       setWritePlan(plan);
 
@@ -306,6 +356,9 @@ export function InstallerApp({ backend }: InstallerAppProps) {
   const allSpecsPass =
     specs.length > 0 &&
     specs.every((s) => s.status === "pass" || s.status === "warn");
+  const confirmationText = selectedDrive?.devicePath ?? "";
+  const targetConfirmed =
+    acknowledgeDataLoss && confirmTarget.trim() === confirmationText;
 
   const overallProgress =
     writePlan && Object.keys(stepProgress).length > 0
@@ -327,7 +380,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
         <div>
           <img
             className="brand-logo"
-            src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
+            src={`${BRAND_PATHS.logos}/${LOGO_FILES.osLockupBlack}`}
             alt="elizaOS"
           />
           <p className="eyebrow">elizaOS media tool</p>
@@ -471,24 +524,11 @@ export function InstallerApp({ backend }: InstallerAppProps) {
 
           <div className="panel notes-panel">
             <h2>Platform Notes</h2>
-            <h3>macOS</h3>
+            <h3>{platformTitle(selectedDrive?.platform)}</h3>
             <ul>
-              <li>
-                Internal APFS/HFS disks are always blocked — only external USB
-                drives are selectable.
-              </li>
-              <li>
-                Writing to the drive requires administrator privileges. A macOS
-                password prompt will appear.
-              </li>
-              <li>
-                The drive will be completely erased. Back up any data on the
-                target drive first.
-              </li>
-              <li>
-                After writing, you can boot from this drive by holding{" "}
-                <kbd>Option</kbd> at startup.
-              </li>
+              {platformNotes(selectedDrive?.platform).map((note) => (
+                <li key={note}>{note}</li>
+              ))}
             </ul>
           </div>
         </section>
@@ -519,6 +559,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                       name="image"
                       value={image.id}
                       checked={image.id === selectedImageId}
+                      disabled={!fits}
                       onChange={() => setSelectedImageId(image.id)}
                     />
                     <span className="image-info">
@@ -722,6 +763,20 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                 </span>
               </label>
 
+              <label className="confirm-target-row">
+                <span>
+                  Type <code>{confirmationText}</code> to confirm the target
+                  drive.
+                </span>
+                <input
+                  type="text"
+                  value={confirmTarget}
+                  onChange={(e) => setConfirmTarget(e.target.value)}
+                  placeholder={confirmationText}
+                  spellCheck={false}
+                />
+              </label>
+
               {writePlan ? (
                 <div className="preview-plan">
                   <h3>Write Plan Preview</h3>
@@ -755,10 +810,10 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                   <button
                     type="button"
                     className="btn-danger"
-                    disabled={!acknowledgeDataLoss}
+                    disabled={!targetConfirmed}
                     title={
-                      !acknowledgeDataLoss
-                        ? "Check the acknowledgement box first"
+                      !targetConfirmed
+                        ? "Acknowledge data loss and type the target device path first"
                         : undefined
                     }
                     onClick={() => void handleWrite()}
@@ -783,14 +838,14 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                 </li>
                 <li>SHA-256 checksum is verified.</li>
                 <li>
-                  macOS will prompt for your administrator password to write the
-                  image.
+                  {platformTitle(selectedDrive.platform)} may ask for
+                  administrator approval to write the image.
                 </li>
                 <li>
-                  <code>dd</code> writes the image to{" "}
+                  The backend writes the image to{" "}
                   <code>{selectedDrive.devicePath}</code> via raw disk access.
                 </li>
-                <li>The drive is verified and ejected.</li>
+                <li>The backend verifies completion and reports when done.</li>
               </ol>
               <p className="muted">
                 Do not unplug the drive during writing. This may take several
@@ -887,8 +942,8 @@ export function InstallerApp({ backend }: InstallerAppProps) {
               image size and drive speed.
             </p>
             <p className="muted">
-              A macOS password prompt may have appeared — check your Dock if the
-              UI appears frozen.
+              If an administrator prompt appears, approve it to continue. The
+              app will keep reporting progress while the backend is active.
             </p>
           </div>
         </section>
@@ -906,8 +961,8 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             </p>
             <p className="muted">
               To boot: connect the drive to a PC and select it as the boot
-              device (usually by pressing F12, F10, or Del at startup). On a
-              Mac, hold <kbd>Option</kbd> at startup.
+              device from the firmware boot menu. On Intel Macs, hold{" "}
+              <kbd>Option</kbd> at startup.
             </p>
             <button
               type="button"
@@ -916,6 +971,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                 setWritePlan(null);
                 setStepProgress({});
                 setAcknowledgeDataLoss(false);
+                setConfirmTarget("");
                 void loadData(true);
               }}
             >
@@ -950,6 +1006,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                   setWritePlan(null);
                   setStepProgress({});
                   setAcknowledgeDataLoss(false);
+                  setConfirmTarget("");
                 }}
               >
                 Start Over
@@ -963,7 +1020,7 @@ export function InstallerApp({ backend }: InstallerAppProps) {
       <section className="footer-band">
         <img
           className="brand-logo"
-          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osWhite}`}
+          src={`${BRAND_PATHS.logos}/${LOGO_FILES.osLockupBlack}`}
           alt="elizaOS"
         />
         <a
