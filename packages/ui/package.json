@@ -294,6 +294,7 @@
     "jsdom": "^29.0.0",
     "react": "19.2.5",
     "react-dom": "19.2.5",
+    "react-plaid-link": "^4.1.1",
     "typescript": "^6.0.3",
     "vite": "^8.0.8",
     "vitest": "^4.0.18"
