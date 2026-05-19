@@ -404,7 +404,7 @@ assertValidatorSelfTestFailure(
 
 assertFails(
   "cloud live job is required by test-status",
-  workflow.replace("      - cloud-live-e2e\n", ""),
+  workflow.replaceAll("      - cloud-live-e2e\n", ""),
 );
 
 assertFails(

@@ -118,7 +118,6 @@ export const checks: Check[] = [
     name: "GitHub live artifact validator downloads and validates reports",
     pattern:
       /gh[\s\S]*run[\s\S]*download[\s\S]*remote-capability-cloud-live-report[\s\S]*remote-capability-provider-live-report[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*--kind[\s\S]*cloud[\s\S]*test:remote-capabilities:validate-live-reports[\s\S]*--kind[\s\S]*provider[\s\S]*--require-providers[\s\S]*e2b,home-machine,mobile-companion/,
-    source: "github-live-artifact-validator",
     message:
       "GitHub live artifact validation must download both artifacts and validate Cloud plus required provider report contents.",
   },

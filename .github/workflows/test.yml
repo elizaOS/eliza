@@ -490,6 +490,74 @@ jobs:
             echo "Endpoint secrets are configured, but the full-surface provider live smoke was not observed for event \`${{ github.event_name }}\`. It runs only on \`workflow_dispatch\` and \`schedule\`."
           } >> "$GITHUB_STEP_SUMMARY"
 
+  github-live-artifacts:
+    name: Remote Capability GitHub Live Artifact Validation
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+    needs:
+      - cloud-live-e2e
+      - provider-live-e2e
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      TURBO_REMOTE_ONLY: true
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup workspace dependencies
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+          install-command: bun install
+          install-native-deps: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+
+      - name: Download remote capability live artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf reports/remote-capabilities/github-live-artifacts
+          mkdir -p reports/remote-capabilities/github-live-artifacts
+          gh run download "${{ github.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --dir reports/remote-capabilities/github-live-artifacts \
+            --name remote-capability-cloud-live-report \
+            --name remote-capability-provider-live-report
+
+      - name: Validate downloaded remote capability live reports
+        run: |
+          bun run test:remote-capabilities:validate-live-reports \
+            --kind cloud \
+            --expect-count 1 \
+            --max-age-minutes 90 \
+            --max-future-minutes 5 \
+            --require-ci \
+            --require-file-identity \
+            reports/remote-capabilities/github-live-artifacts/remote-capability-cloud-live-report
+
+          bun run test:remote-capabilities:validate-live-reports \
+            --kind provider \
+            --expect-count 3..4 \
+            --max-age-minutes 90 \
+            --max-future-minutes 5 \
+            --allowed-providers e2b,home-machine,mobile-companion,desktop-companion \
+            --require-providers e2b,home-machine,mobile-companion \
+            --require-ci \
+            --require-file-identity \
+            reports/remote-capabilities/github-live-artifacts/remote-capability-provider-live-report
+
   test-status:
     name: All Tests Passed
     if: always()
@@ -500,6 +568,7 @@ jobs:
       - desktop-contract
       - cloud-live-e2e
       - provider-live-e2e
+      - github-live-artifacts
     runs-on: ubuntu-24.04
     steps:
       - name: Check test results
@@ -513,6 +582,7 @@ jobs:
           echo "desktop-contract: ${{ needs.desktop-contract.result }}"
           echo "cloud-live-e2e:   ${{ needs.cloud-live-e2e.result }}"
           echo "provider-live-e2e:${{ needs.provider-live-e2e.result }}"
+          echo "github-live-artifacts:${{ needs.github-live-artifacts.result }}"
           echo "==================================="
           strict_results="${{ github.event_name == 'workflow_dispatch' || github.event_name == 'schedule' }}"
           bad=0
@@ -522,7 +592,8 @@ jobs:
             "plugin-tests:${{ needs.plugin-tests.result }}" \
             "desktop-contract:${{ needs.desktop-contract.result }}" \
             "cloud-live-e2e:${{ needs.cloud-live-e2e.result }}" \
-            "provider-live-e2e:${{ needs.provider-live-e2e.result }}"; do
+            "provider-live-e2e:${{ needs.provider-live-e2e.result }}" \
+            "github-live-artifacts:${{ needs.github-live-artifacts.result }}"; do
             name="${pair%%:*}"
             result="${pair##*:}"
             if [ "$result" = "skipped" ] && [ "$strict_results" != "true" ]; then
