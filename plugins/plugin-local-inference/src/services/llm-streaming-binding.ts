@@ -62,10 +62,7 @@ export interface LlmStreamingBinding {
 		config: LlmStreamConfig;
 	}): LlmStreamHandle;
 	/** Feed a batch of pre-tokenized prompt tokens before the first `next`. */
-	llmStreamPrefill(args: {
-		stream: LlmStreamHandle;
-		tokens: Int32Array;
-	}): void;
+	llmStreamPrefill(args: { stream: LlmStreamHandle; tokens: Int32Array }): void;
 	/**
 	 * Pull the next streaming step. `step.done === true` is the final step.
 	 * Implementations may bound the step by `maxTokensPerStep` /
@@ -81,10 +78,7 @@ export interface LlmStreamingBinding {
 	/** Close + free a streaming-LLM session. Idempotent on already-closed handles. */
 	llmStreamClose(stream: LlmStreamHandle): void;
 	/** Optional — persist the session's slot KV state to disk. */
-	llmStreamSaveSlot?(args: {
-		stream: LlmStreamHandle;
-		filename: string;
-	}): void;
+	llmStreamSaveSlot?(args: { stream: LlmStreamHandle; filename: string }): void;
 	/** Optional — restore a previously-saved slot KV file. */
 	llmStreamRestoreSlot?(args: {
 		stream: LlmStreamHandle;

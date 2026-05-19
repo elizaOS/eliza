@@ -31,10 +31,7 @@ import type {
 	LlmCtxHandle,
 	LlmStreamingBinding,
 } from "./llm-streaming-binding";
-import type {
-	LlmStreamHandle,
-	LlmStreamStep,
-} from "./voice/ffi-bindings";
+import type { LlmStreamHandle, LlmStreamStep } from "./voice/ffi-bindings";
 import type { TextToken, VerifierStreamEvent } from "./voice/types";
 
 export interface FfiStreamingGenerateArgs {

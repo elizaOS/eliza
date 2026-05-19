@@ -6,10 +6,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 import { wrapElizaInferenceFfi } from "../llm-streaming-binding";
-import type {
-	ElizaInferenceFfi,
-	LlmStreamHandle,
-} from "../voice/ffi-bindings";
+import type { ElizaInferenceFfi, LlmStreamHandle } from "../voice/ffi-bindings";
 
 function makeFullyImplementedFfi(): ElizaInferenceFfi {
 	return {
@@ -59,18 +56,15 @@ describe("wrapElizaInferenceFfi", () => {
 
 	it("throws when llmStreamSupported() returns false (old library)", () => {
 		const ffi = makeFullyImplementedFfi();
-		(ffi as { llmStreamSupported: () => boolean }).llmStreamSupported =
-			() => false;
+		(ffi as { llmStreamSupported: () => boolean }).llmStreamSupported = () =>
+			false;
 		expect(() => wrapElizaInferenceFfi(ffi)).toThrow(
 			/does not expose the streaming-LLM symbol set/,
 		);
 	});
 
 	it("throws when a required llmStream* symbol is missing", () => {
-		const ffi = makeFullyImplementedFfi() as unknown as Record<
-			string,
-			unknown
-		>;
+		const ffi = makeFullyImplementedFfi() as unknown as Record<string, unknown>;
 		delete ffi.llmStreamOpen;
 		expect(() =>
 			wrapElizaInferenceFfi(ffi as unknown as ElizaInferenceFfi),
