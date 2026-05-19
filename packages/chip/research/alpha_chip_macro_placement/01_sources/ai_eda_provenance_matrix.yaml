@@ -791,6 +791,30 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_or_asset_review
     allowed_current_use: citation_reference_only
+  - source_id: mpm-llm4dse
+    asset_type: multimodal_hls_qor_model_and_llm_dse
+    asset_url: https://github.com/wslcccc/MPM-LLM4DSE
+    license_status: review_required
+    release_use: blocked_pending_code_model_dataset_prompt_hls_backend_and_replay_review
+    allowed_current_use: citation_and_model_inventory_reference_only
+  - source_id: timelyhls
+    asset_type: llm_timing_aware_hls_optimization_method
+    asset_url: https://github.com/zfsadik/Bench4HLS
+    license_status: review_required
+    release_use: blocked_pending_benchmark_license_tool_timing_and_replay_review
+    allowed_current_use: method_and_benchmark_reference_only
+  - source_id: flexllm-hls
+    asset_type: composable_hls_llm_accelerator_library_method
+    asset_url: https://arxiv.org/abs/2601.15710
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_quantization_workload_runtime_and_power_review
+    allowed_current_use: architecture_reference_only
+  - source_id: tapa-rapidstream
+    asset_type: task_parallel_hls_fpga_accelerator_framework
+    asset_url: https://github.com/rapidstream-org/rapidstream-tapa
+    license_status: review_required
+    release_use: blocked_pending_tool_license_fpga_backend_and_generated_artifact_review
+    allowed_current_use: backend_watchlist_only
   - source_id: secda-dse
     asset_type: llm_accelerator_dse_framework
     asset_url: https://github.com/gicLAB/SECDA

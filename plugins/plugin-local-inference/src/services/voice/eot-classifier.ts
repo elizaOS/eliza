@@ -34,11 +34,44 @@
  * suppress (via `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
+import { access } from "node:fs/promises";
+import { homedir } from "node:os";
+import path from "node:path";
+
 import type {
 	Eliza1EotScoreResult,
 	Eliza1EotScorerOptions,
 } from "./eliza1-eot-scorer";
 import { Eliza1EotScorer } from "./eliza1-eot-scorer";
+
+type OrtModule = typeof import("onnxruntime-node");
+type OrtSession = import("onnxruntime-node").InferenceSession;
+type TokenValue = number | bigint;
+type TokenTensorLike = {
+	data: BigInt64Array | BigUint64Array | Int32Array | TokenValue[];
+	dims?: number[];
+};
+type TokenizerOutputLike = {
+	input_ids?: TokenTensorLike | TokenValue[] | TokenValue[][];
+};
+type CallableTokenizer = {
+	(
+		text: string,
+		options?: {
+			add_special_tokens?: boolean;
+			max_length?: number;
+			truncation?: boolean;
+		},
+	): Promise<TokenizerOutputLike>;
+	apply_chat_template(
+		messages: Array<{ role: string; content: string }>,
+		options?: {
+			add_generation_prompt?: boolean;
+			tokenize?: boolean;
+			add_special_tokens?: boolean;
+		},
+	): string;
+};
 
 // ---------------------------------------------------------------------------
 // Interface
