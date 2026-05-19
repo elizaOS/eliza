@@ -85,7 +85,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.secret_config.outputs.configured == 'true'
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: bun install --no-save --ignore-scripts
 
       - name: Provision Hetzner server
         if: steps.secret_config.outputs.configured == 'true'
@@ -145,7 +145,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.secret_config.outputs.configured == 'true'
-        run: bun install --frozen-lockfile --ignore-scripts
+        run: bun install --no-save --ignore-scripts
 
       - name: Download state artifact
         if: steps.secret_config.outputs.configured == 'true'
