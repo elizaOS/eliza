@@ -1112,30 +1112,48 @@ export function injectNativeLibLegacyPackaging(content) {
  * Fails local builds when no path is configured or the dir doesn't exist. The
  * Android Capacitor JNI wrapper links against these DFlash libraries and cannot
  * honestly support Eliza-1/Qwen3.5 without them. Cloud builds skip the task.
+ * CI smoke builds that intentionally install no native deps can opt out with
+ * -PelizaSkipForkLlamaLib=true or ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB=1.
  *
  * Idempotent: re-runs are no-ops once the block is present.
  */
-function ensureCopyForkLlamaLibCloudGuard(content) {
+function ensureCopyForkLlamaLibGuards(content) {
   if (!/\[copyForkLlamaLib\]/.test(content)) return content;
-  if (/skipped for cloud build/.test(content)) return content;
-  return content.replace(
-    /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
-    `$1` +
+  const hasCloudGuard = /skipped for cloud build/.test(content);
+  const hasExplicitSkipGuard =
+    /elizaSkipForkLlamaLib/.test(content) ||
+    /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/.test(content);
+  if (hasCloudGuard && hasExplicitSkipGuard) return content;
+  let guards = "";
+  if (!hasCloudGuard) {
+    guards +=
       `        if (project.findProperty('elizaCloudBuild') == 'true') {\n` +
       `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
       `            return\n` +
-      `        }\n`,
+      `        }\n`;
+  }
+  if (!hasExplicitSkipGuard) {
+    guards +=
+      `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+      `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
+      `            return\n` +
+      `        }\n`;
+  }
+  return content.replace(
+    /(task copyForkLlamaLib\s*\{\s*\n\s*doLast\s*\{\s*\n)/,
+    `$1${guards}`,
   );
 }
 
 export function injectCopyForkLlamaLibTask(content) {
   if (/\[copyForkLlamaLib\]/.test(content)) {
-    return ensureCopyForkLlamaLibCloudGuard(content);
+    return ensureCopyForkLlamaLibGuards(content);
   }
   const block =
     `\n// Bundle the DFlash Android ARM64 llama.cpp stack into the APK so\n` +
     `// mobile gets Eliza-1/Qwen3.5 support. Local builds fail if these\n` +
-    `// libraries are absent; cloud builds skip this task.\n` +
+    `// libraries are absent; cloud builds and explicitly opted-out CI smoke\n` +
+    `// builds skip this task.\n` +
     `def resolveForkLlamaLibDir = { ->\n` +
     `    def fromProp = project.findProperty('eliza.dflash.android.libdir')\n` +
     `    if (fromProp) return fromProp.toString()\n` +
@@ -1189,6 +1207,10 @@ export function injectCopyForkLlamaLibTask(content) {
     `            println "[copyForkLlamaLib] skipped for cloud build"\n` +
     `            return\n` +
     `        }\n` +
+    `        if (project.findProperty('elizaSkipForkLlamaLib') == 'true' || System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1') {\n` +
+    `            println "[copyForkLlamaLib] skipped by explicit native-lib opt-out"\n` +
+    `            return\n` +
+    `        }\n` +
     `        def libDir = resolveForkLlamaLibDir()\n` +
     `        if (!libDir) {\n` +
     `            throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured. Run packages/app-core/scripts/build-llama-cpp-dflash.mjs --target android-arm64-vulkan or set -Peliza.dflash.android.libdir / ELIZA_DFLASH_ANDROID_LIBDIR.")\n` +
@@ -1230,7 +1252,7 @@ export function injectCopyForkLlamaLibTask(content) {
     `afterEvaluate {\n` +
     `    tasks.matching { it.name == 'preBuild' }.all { it.dependsOn copyForkLlamaLib }\n` +
     `}\n`;
-  const androidOpen = content.search(/\n\s*android\s*\{/);
+  const androidOpen = content.search(/(^|\n)\s*android\s*\{/);
   if (androidOpen < 0) return content;
   let depth = 0;
   let i = content.indexOf("{", androidOpen);

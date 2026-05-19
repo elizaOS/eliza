@@ -14,6 +14,7 @@ import {
   configureIosAppStoreBuildDefaults,
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
+  injectCopyForkLlamaLibTask,
   isIosAppStoreBuild,
   resolveCapacitorCli,
   resolveIosAgentRuntimeAssetPlan,
@@ -298,6 +299,44 @@ test("resolveCapacitorCli supports Bun store workspace installs", () => {
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
   }
+});
+
+test("Android DFlash Gradle hook keeps local builds honest by default", () => {
+  const patched = injectCopyForkLlamaLibTask(`android {
+    namespace "app.eliza"
+}
+`);
+
+  assert.match(patched, /task copyForkLlamaLib/);
+  assert.match(patched, /no DFlash Android lib dir configured/);
+  assert.match(patched, /elizaSkipForkLlamaLib/);
+  assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
+  assert.match(patched, /skipped by explicit native-lib opt-out/);
+});
+
+test("Android DFlash Gradle hook upgrades existing generated tasks with explicit smoke opt-out", () => {
+  const existing = `
+android {
+}
+task copyForkLlamaLib {
+    doLast {
+        if (project.findProperty('elizaCloudBuild') == 'true') {
+            println "[copyForkLlamaLib] skipped for cloud build"
+            return
+        }
+        throw new GradleException("[copyForkLlamaLib] no DFlash Android lib dir configured.")
+    }
+}
+`;
+  const patched = injectCopyForkLlamaLibTask(existing);
+
+  assert.equal(
+    patched.match(/skipped for cloud build/g)?.length,
+    1,
+    "cloud guard should stay idempotent",
+  );
+  assert.match(patched, /elizaSkipForkLlamaLib/);
+  assert.match(patched, /ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB/);
 });
 
 test("iOS background runner pod resolves through the official package", () => {
