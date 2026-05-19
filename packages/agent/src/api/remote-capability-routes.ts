@@ -12,17 +12,27 @@ import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
   connectCloudCapabilitySandbox,
-  installRemoteCapabilityEndpoint,
 } from "../services/remote-capability-cloud-sandbox.ts";
-import type {
-  RemoteCapabilityEndpointConfig,
-  RemoteCapabilityRouterConfig,
-} from "../services/remote-capability-router.ts";
 import {
-  type RemotePluginAdapterOptions,
-  type RemotePluginSyncResult,
-  syncRemoteCapabilityPlugins,
-} from "../services/remote-plugin-adapter.ts";
+  type ConnectRemoteCapabilityEndpointProviderOptions,
+  type ConnectRemoteCapabilityEndpointProviderResult,
+  connectRemoteCapabilityEndpointProvider,
+  directRemoteCapabilityEndpointProvider,
+  type RemoteCapabilityEndpointProvider,
+} from "../services/remote-capability-endpoint-provider.ts";
+import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
+import {
+  desktopCompanionCapabilityEndpointProvider,
+  e2bCapabilityEndpointProvider,
+  homeMachineCapabilityEndpointProvider,
+  mobileCompanionCapabilityEndpointProvider,
+  type UrlRemoteCapabilityEndpointProviderOptions,
+} from "../services/remote-capability-url-endpoint-providers.ts";
+import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter.ts";
+import {
+  detectClientPlatform,
+  isDynamicLoadingAllowed,
+} from "./platform-detect.ts";
 
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
@@ -38,14 +48,10 @@ export interface RemoteCapabilityRouteContext
   readJsonBody: JsonBodyReader;
   saveConfig?: (config: CapabilityRouterPersistConfig) => void;
   persistConfigEnv?: (key: string, value: string) => Promise<void>;
-  installEndpoint?: (
+  connectEndpointProvider?: <TOptions>(
     runtime: IAgentRuntime,
-    config: RemoteCapabilityRouterConfig,
-  ) => unknown;
-  syncPlugins?: (
-    runtime: IAgentRuntime,
-    options: RemotePluginAdapterOptions & { unloadMissing?: boolean },
-  ) => Promise<RemotePluginSyncResult>;
+    options: ConnectRemoteCapabilityEndpointProviderOptions<TOptions>,
+  ) => Promise<ConnectRemoteCapabilityEndpointProviderResult>;
   connectCloudSandbox?: (
     runtime: IAgentRuntime,
     options: ConnectCloudCapabilitySandboxOptions,
@@ -55,6 +61,7 @@ export interface RemoteCapabilityRouteContext
 type ConnectBody = {
   endpoint?: unknown;
   cloud?: unknown;
+  provider?: unknown;
   unloadMissing?: unknown;
   persist?: unknown;
   requestTimeoutMs?: unknown;
@@ -66,6 +73,22 @@ type DirectEndpointBody = {
   baseUrl?: unknown;
   token?: unknown;
 };
+
+type EndpointProviderMode =
+  | "direct"
+  | "e2b"
+  | "home-machine"
+  | "mobile-companion"
+  | "desktop-companion";
+
+type DirectEndpointProviderOptions = {
+  endpoint: RemoteCapabilityEndpointConfig;
+  allowedModuleIds?: string[];
+};
+
+type EndpointProviderOptions =
+  | DirectEndpointProviderOptions
+  | UrlRemoteCapabilityEndpointProviderOptions;
 
 type CloudBody = {
   cloudApiBase?: unknown;
@@ -92,6 +115,14 @@ export async function handleRemoteCapabilityRoutes(
     }
     if (method !== "GET" && method !== "HEAD") {
       error(res, "Method not allowed", 405);
+      return true;
+    }
+    if (!isDynamicLoadingAllowed(detectClientPlatform(req))) {
+      error(
+        res,
+        "Dynamic capability asset loading is not permitted on this platform.",
+        403,
+      );
       return true;
     }
     try {
@@ -153,35 +184,33 @@ export async function handleRemoteCapabilityRoutes(
 
   try {
     if (body.endpoint !== undefined) {
+      const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
-      const installEndpoint =
-        ctx.installEndpoint ?? installRemoteCapabilityEndpoint;
-      installEndpoint(runtime, {
-        enabled: true,
-        endpoints: [endpoint],
-        environment: "server",
+      const connectEndpointProvider =
+        ctx.connectEndpointProvider ?? connectRemoteCapabilityEndpointProvider;
+      const provider = getEndpointProvider(providerMode);
+      const result = await connectEndpointProvider(runtime, {
+        provider,
+        provisionOptions: buildEndpointProvisionOptions(
+          providerMode,
+          endpoint,
+          allowedModuleIds,
+        ),
+        unloadMissing,
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
       });
-      const sync = await (ctx.syncPlugins ?? syncRemoteCapabilityPlugins)(
-        runtime,
-        {
-          unloadMissing,
-          trustPolicy: {
-            allowedEndpointIds: [endpoint.id],
-            ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
-            requireEndpointId: true,
-          },
-        },
-      );
+      const persistedEndpoint = result.endpoint ?? endpoint;
       if (persist) {
-        await persistEndpoint(ctx, endpoint, allowedModuleIds);
+        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds);
       }
       json(res, {
         success: true,
-        mode: "endpoint",
-        endpoint: redactEndpoint(endpoint),
+        mode: providerMode === "direct" ? "endpoint" : providerMode,
+        ...(providerMode === "direct" ? {} : { provider: providerMode }),
+        endpoint: redactEndpoint(persistedEndpoint),
         persisted: persist,
-        sync: serializeSyncResult(sync),
+        sync: serializeSyncResult(result.sync),
       });
       return true;
     }
@@ -243,7 +272,7 @@ async function serveCapabilityRouterAssetProxy(
   ctx: RemoteCapabilityRouteContext,
   runtime: IAgentRuntime,
 ): Promise<void> {
-  const { req, res, pathname, method } = ctx;
+  const { res, pathname, method } = ctx;
   const parsed = parseAssetProxyPath(pathname);
   const router = getRuntimeCapabilityRouter(runtime);
   const asset = await router.plugin.getAsset({
@@ -509,6 +538,59 @@ function parseDirectEndpoint(value: unknown): RemoteCapabilityEndpointConfig {
   };
 }
 
+function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
+  if (value === undefined || value === null || value === "") return "direct";
+  const provider = requireNonEmptyString(value, "provider");
+  if (
+    provider === "direct" ||
+    provider === "e2b" ||
+    provider === "home-machine" ||
+    provider === "mobile-companion" ||
+    provider === "desktop-companion"
+  ) {
+    return provider;
+  }
+  throw new Error(
+    `provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.`,
+  );
+}
+
+function getEndpointProvider(
+  providerMode: EndpointProviderMode,
+): RemoteCapabilityEndpointProvider<EndpointProviderOptions> {
+  switch (providerMode) {
+    case "direct":
+      return directRemoteCapabilityEndpointProvider() as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "e2b":
+      return e2bCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "home-machine":
+      return homeMachineCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "mobile-companion":
+      return mobileCompanionCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "desktop-companion":
+      return desktopCompanionCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+  }
+}
+
+function buildEndpointProvisionOptions(
+  providerMode: EndpointProviderMode,
+  endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds: string[] | undefined,
+): EndpointProviderOptions {
+  if (providerMode === "direct") {
+    return {
+      endpoint,
+      ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    };
+  }
+  return {
+    baseUrl: endpoint.baseUrl,
+    endpointId: endpoint.id,
+    ...(endpoint.token === undefined ? {} : { token: endpoint.token }),
+    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+  };
+}
+
 function parseCloudOptions(
   value: unknown,
 ): Omit<
@@ -596,6 +678,11 @@ function requireHttpUrl(value: unknown, field: string): string {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`${field} must use http or https.`);
   }
+  if (parsed.username || parsed.password) {
+    throw new Error(`${field} must not include embedded credentials.`);
+  }
+  parsed.hash = "";
+  parsed.search = "";
   return parsed.toString().replace(/\/+$/, "");
 }
 

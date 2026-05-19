@@ -189,7 +189,7 @@ function hasPositiveCudaEvidence(text) {
 	) {
 		return false;
 	}
-	return /\b(sd_cuda|ggml_cuda|cuda|cublas|cudart)\b/.test(lower);
+	return /(^|[^a-z0-9])(sd_cuda|ggml_cuda|cublas|cudart)([^a-z0-9]|$)/.test(lower);
 }
 
 async function main() {

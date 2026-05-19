@@ -272,6 +272,8 @@ export async function runOneBenchmark(args: RunOneArgs): Promise<BenchReport> {
   return {
     schemaVersion: "vision-language-bench-v1",
     tier: args.tier,
+    runtime_id: args.runtime.id,
+    smoke: args.smoke,
     benchmark: args.benchmark,
     generatedAt: new Date().toISOString(),
     sample_count: samples.length,

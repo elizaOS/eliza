@@ -153,7 +153,12 @@ def _score_from_agentbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_success_rate", ctx="agentbench:root"),
         ctx="agentbench:overall_success_rate",
     )
-    total = root.get("total_tasks")
+    total = expect_float(
+        get_required(root, "total_tasks", ctx="agentbench:root"),
+        ctx="agentbench:total_tasks",
+    )
+    if total <= 0:
+        raise ValueError("agentbench: zero-task score is not publishable")
     passed = root.get("passed_tasks")
     return ScoreExtraction(
         score=overall,
@@ -161,7 +166,7 @@ def _score_from_agentbench_json(data: JSONValue) -> ScoreExtraction:
         higher_is_better=True,
         metrics={
             "overall_success_rate": overall,
-            "total_tasks": total if total is not None else 0,
+            "total_tasks": total,
             "passed_tasks": passed if passed is not None else 0,
         },
     )
@@ -188,6 +193,12 @@ def _score_from_contextbench_json(data: JSONValue) -> ScoreExtraction:
             get_required(metrics, "overall_accuracy", ctx="context_bench:metrics"),
             ctx="context_bench:overall_accuracy",
         )
+    total_tasks = expect_float(
+        get_required(metrics, "total_tasks", ctx="context_bench:metrics"),
+        ctx="context_bench:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("context_bench: zero-task score is not publishable")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
@@ -195,7 +206,7 @@ def _score_from_contextbench_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "overall_accuracy": overall,
             "lost_in_middle_score": metrics.get("lost_in_middle_score") or 0,
-            "total_tasks": metrics.get("total_tasks") or 0,
+            "total_tasks": total_tasks,
         },
     )
 
@@ -207,13 +218,19 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(summary, "accuracy", ctx="terminal_bench:summary"),
         ctx="terminal_bench:accuracy",
     )
+    total_tasks = expect_float(
+        get_required(summary, "total_tasks", ctx="terminal_bench:summary"),
+        ctx="terminal_bench:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("terminal_bench: zero-task score is not publishable")
     return ScoreExtraction(
         score=acc,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "accuracy": acc,
-            "total_tasks": summary.get("total_tasks") or 0,
+            "total_tasks": total_tasks,
             "passed_tasks": summary.get("passed_tasks") or 0,
         },
     )
@@ -222,6 +239,23 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="gaia:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="gaia:root"), ctx="gaia:metrics")
+    metadata = root.get("metadata")
+    metadata_dict = expect_dict(metadata, ctx="gaia:metadata") if isinstance(metadata, dict) else {}
+    dataset_source = metadata_dict.get("dataset_source") or root.get("dataset_source") or ""
+    if not dataset_source:
+        orchestrated = root.get("orchestrated")
+        if isinstance(orchestrated, dict):
+            sources: set[str] = set()
+            for payload in orchestrated.values():
+                if not isinstance(payload, dict):
+                    continue
+                payload_meta = payload.get("metadata")
+                if isinstance(payload_meta, dict) and isinstance(payload_meta.get("dataset_source"), str):
+                    sources.add(str(payload_meta["dataset_source"]))
+            if len(sources) == 1:
+                dataset_source = next(iter(sources))
+            elif sources:
+                dataset_source = ",".join(sorted(sources))
     overall = expect_float(get_required(metrics, "overall_accuracy", ctx="gaia:metrics"), ctx="gaia:overall_accuracy")
     total_questions = expect_float(
         get_required(metrics, "total_questions", ctx="gaia:metrics"),
@@ -237,6 +271,8 @@ def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
             "overall_accuracy": overall,
             "total_questions": total_questions,
             "correct_answers": metrics.get("correct_answers") or 0,
+            "dataset_source": dataset_source,
+            "benchmark_harness": metadata_dict.get("benchmark_harness") or root.get("harness") or "",
         },
     )
 
@@ -271,8 +307,13 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
         if isinstance(raw, dict):
             raw = raw.get("pass_hat_k", raw.get("pass@1", raw.get("score")))
         overall = expect_float(raw, ctx="tau_bench:pass@1")
-    num_tasks = root.get("num_tasks", root.get("total_tasks"))
-    if isinstance(num_tasks, (int, float)) and int(num_tasks) == 0:
+    num_tasks = expect_float(
+        get_required(root, "num_tasks", ctx="tau_bench:root")
+        if "num_tasks" in root
+        else get_required(root, "total_tasks", ctx="tau_bench:root"),
+        ctx="tau_bench:num_tasks",
+    )
+    if num_tasks <= 0:
         raise ValueError("tau_bench: zero-task score is not publishable")
     return ScoreExtraction(
         score=overall,
@@ -283,6 +324,7 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
             "overall_tool_accuracy": root.get("overall_tool_accuracy") or 0,
             "overall_policy_compliance": root.get("overall_policy_compliance") or 0,
             "avg_reward": root.get("avg_reward") or 0,
+            "num_tasks": num_tasks,
         },
     )
 
@@ -359,13 +401,19 @@ def _score_from_swebench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="swe_bench:root")
     summary = expect_dict(get_required(root, "summary", ctx="swe_bench:root"), ctx="swe_bench:summary")
     rr = expect_float(get_required(summary, "resolve_rate", ctx="swe_bench:summary"), ctx="swe_bench:resolve_rate")
+    total_instances = expect_float(
+        get_required(summary, "total_instances", ctx="swe_bench:summary"),
+        ctx="swe_bench:total_instances",
+    )
+    if total_instances <= 0:
+        raise ValueError("swe_bench: zero-instance score is not publishable")
     return ScoreExtraction(
         score=rr,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "resolve_rate": rr,
-            "total_instances": summary.get("total_instances") or 0,
+            "total_instances": total_instances,
             "resolved": summary.get("resolved") or 0,
             "apply_rate": summary.get("apply_rate") or 0,
         },
@@ -446,6 +494,12 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_step_accuracy", ctx="mind2web:root"),
         ctx="mind2web:overall_step_accuracy",
     )
+    total_tasks = expect_float(
+        get_required(root, "total_tasks", ctx="mind2web:root"),
+        ctx="mind2web:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("mind2web: zero-task score is not publishable")
     return ScoreExtraction(
         score=step_acc,
         unit="ratio",
@@ -455,7 +509,7 @@ def _score_from_mind2web_json(data: JSONValue) -> ScoreExtraction:
             "overall_element_accuracy": get_optional(root, "overall_element_accuracy") or 0,
             "overall_operation_accuracy": get_optional(root, "overall_operation_accuracy") or 0,
             "overall_task_success_rate": get_optional(root, "overall_task_success_rate") or 0,
-            "total_tasks": get_optional(root, "total_tasks") or 0,
+            "total_tasks": total_tasks,
         },
     )
 
@@ -466,6 +520,12 @@ def _score_from_visualwebbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_accuracy", ctx="visualwebbench:root"),
         ctx="visualwebbench:overall_accuracy",
     )
+    total_tasks = expect_float(
+        get_required(root, "total_tasks", ctx="visualwebbench:root"),
+        ctx="visualwebbench:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("visualwebbench: zero-task score is not publishable")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
@@ -475,8 +535,47 @@ def _score_from_visualwebbench_json(data: JSONValue) -> ScoreExtraction:
             "exact_accuracy": get_optional(root, "exact_accuracy") or 0,
             "choice_accuracy": get_optional(root, "choice_accuracy") or 0,
             "bbox_accuracy": get_optional(root, "bbox_accuracy") or 0,
-            "total_tasks": get_optional(root, "total_tasks") or 0,
+            "total_tasks": total_tasks,
             "average_latency_ms": get_optional(root, "average_latency_ms") or 0,
+        },
+    )
+
+
+def _score_from_vision_language_json(data: JSONValue) -> ScoreExtraction:
+    """Extract Vision-Language Bench scores from real runtime reports."""
+    root = expect_dict(data, ctx="vision_language:root")
+    if root.get("smoke") is True:
+        raise ValueError("vision_language: smoke report is not publishable as a real harness score")
+    tier = str(get_required(root, "tier", ctx="vision_language:root")).strip().lower()
+    runtime_id = str(get_required(root, "runtime_id", ctx="vision_language:root")).strip().lower()
+    if tier == "stub" or not runtime_id or runtime_id == "stub" or runtime_id.endswith("-stub"):
+        raise ValueError("vision_language: stub runtime report is not publishable as a real harness score")
+    sample_count = expect_float(
+        get_required(root, "sample_count", ctx="vision_language:root"),
+        ctx="vision_language:sample_count",
+    )
+    if sample_count <= 0:
+        raise ValueError("vision_language: zero-sample report is not publishable")
+    error_count = expect_float(root.get("error_count") or 0, ctx="vision_language:error_count")
+    if error_count >= sample_count:
+        raise ValueError("vision_language: all samples errored")
+    score = expect_float(
+        get_required(root, "score", ctx="vision_language:root"),
+        ctx="vision_language:score",
+    )
+    return ScoreExtraction(
+        score=score,
+        unit="ratio",
+        higher_is_better=True,
+        metrics={
+            "score": score,
+            "tier": root.get("tier") or "",
+            "runtime_id": root.get("runtime_id") or "",
+            "benchmark": root.get("benchmark") or "",
+            "sample_count": sample_count,
+            "error_count": error_count,
+            "baseline_score": root.get("baseline_score") if root.get("baseline_score") is not None else "",
+            "delta": root.get("delta") if root.get("delta") is not None else "",
         },
     )
 
@@ -495,6 +594,12 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "overall_accuracy", ctx="rlm_bench:metrics"),
         ctx="rlm_bench:overall_accuracy",
     )
+    total_tasks = expect_float(
+        get_required(metrics, "total_tasks", ctx="rlm_bench:metrics"),
+        ctx="rlm_bench:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("rlm_bench: zero-task score is not publishable")
     results_raw = root.get("results")
     if isinstance(results_raw, list) and results_raw:
         if all(isinstance(item, dict) and item.get("error") for item in results_raw):
@@ -514,7 +619,7 @@ def _score_from_rlmbench_json(data: JSONValue) -> ScoreExtraction:
         higher_is_better=True,
         metrics={
             "overall_accuracy": overall_acc,
-            "total_tasks": get_optional(metrics, "total_tasks") or 0,
+            "total_tasks": total_tasks,
             "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
             "s_niah_avg_accuracy": s_niah_avg,  # Computed from s_niah_by_length dict
             "oolong_accuracy": get_optional(metrics, "oolong_accuracy") or 0,
@@ -595,13 +700,19 @@ def _score_from_osworld_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_success_rate", ctx="osworld:root"),
         ctx="osworld:overall_success_rate",
     )
+    total_tasks = expect_float(
+        get_required(root, "total_tasks", ctx="osworld:root"),
+        ctx="osworld:total_tasks",
+    )
+    if total_tasks <= 0:
+        raise ValueError("osworld: zero-task score is not publishable")
     return ScoreExtraction(
         score=overall,
         unit="ratio",
         higher_is_better=True,
         metrics={
             "overall_success_rate": overall,
-            "total_tasks": root.get("total_tasks") or 0,
+            "total_tasks": total_tasks,
             "passed_tasks": root.get("passed_tasks") or 0,
             "model": root.get("model") or "",
             "agent": root.get("agent") or "eliza",
@@ -656,6 +767,20 @@ def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
     reporting convention). Higher is better.
     """
     root = expect_dict(data, ctx="voicebench_quality:root")
+    agent = str(root.get("agent") or "").strip().lower()
+    judge_model = str(root.get("judge_model") or "").strip().lower()
+    stt_provider = str(root.get("stt_provider") or "").strip().lower()
+    is_fixture_result = (
+        root.get("mock") is True
+        or root.get("fixtures") is True
+        or agent == "echo"
+        or judge_model == "fixture"
+        or stt_provider == "fixture"
+    )
+    if is_fixture_result:
+        raise ValueError(
+            "voicebench_quality: mock or fixture result is not publishable as a real harness score"
+        )
     score = expect_float(
         get_required(root, "score", ctx="voicebench_quality:root"),
         ctx="voicebench_quality:score",
@@ -670,6 +795,7 @@ def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
         "agent": root.get("agent") or "",
         "judge_model": root.get("judge_model") or "",
         "stt_provider": root.get("stt_provider") or "",
+        "mock": root.get("mock") or False,
         "n": root.get("n") or 0,
         "elapsed_s": root.get("elapsed_s") or 0,
     }
@@ -700,6 +826,15 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
         get_required(root, "overall_accuracy", ctx="mmau:root"),
         ctx="mmau:overall_accuracy",
     )
+    total_samples = expect_float(
+        get_required(root, "total_samples", ctx="mmau:root"),
+        ctx="mmau:total_samples",
+    )
+    if total_samples <= 0:
+        raise ValueError("mmau: zero-sample score is not publishable")
+    error_count = expect_float(root.get("error_count") or 0, ctx="mmau:error_count")
+    if error_count >= total_samples:
+        raise ValueError("mmau: all samples errored")
     by_cat_raw = root.get("accuracy_by_category")
     by_cat = by_cat_raw if isinstance(by_cat_raw, dict) else {}
     summary_raw = root.get("summary")
@@ -713,8 +848,8 @@ def _score_from_mmau_json(data: JSONValue) -> ScoreExtraction:
             "speech_accuracy": by_cat.get("speech") or 0,
             "sound_accuracy": by_cat.get("sound") or 0,
             "music_accuracy": by_cat.get("music") or 0,
-            "total_samples": root.get("total_samples") or 0,
-            "error_count": root.get("error_count") or 0,
+            "total_samples": total_samples,
+            "error_count": error_count,
             "split": summary.get("split") or "",
             "agent": summary.get("agent") or "",
         },
@@ -730,6 +865,27 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     rest of the matrix. Latency stays in metrics for performance comparison.
     """
     root = expect_dict(data, ctx="voicebench:root")
+    profile = str(root.get("profile") or "").strip().lower()
+    if profile == "mock":
+        raise ValueError("voicebench: mock profile result is not publishable as a real harness score")
+    if profile != "synthetic-calibration":
+        runtime = str(root.get("runtime") or "").strip().lower()
+        if runtime != "typescript":
+            raise ValueError("voicebench: real score requires the TypeScript runtime artifact")
+        if profile not in {"groq", "elevenlabs", "local-cerebras"}:
+            raise ValueError("voicebench: real score requires a groq, elevenlabs, or local-cerebras profile")
+        sample_count = expect_float(
+            get_required(root, "sampleCount", ctx="voicebench:root"),
+            ctx="voicebench:sampleCount",
+        )
+        if sample_count <= 0:
+            raise ValueError("voicebench: zero-sample result is not publishable")
+        results = expect_list(get_required(root, "results", ctx="voicebench:root"), ctx="voicebench:results")
+        if not results:
+            raise ValueError("voicebench: result records are required for a real harness score")
+        dataset_name = str(root.get("datasetName") or "").strip().lower()
+        if "mock" in dataset_name or "fixture" in dataset_name:
+            raise ValueError("voicebench: mock/fixture dataset result is not publishable")
     summary = expect_dict(get_required(root, "summary", ctx="voicebench:root"), ctx="voicebench:summary")
     if not summary:
         raise ValueError("voicebench: empty summary block")
@@ -739,6 +895,9 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
         get_required(mode_summary, "avgEndToEndMs", ctx=f"voicebench:summary.{mode_key}"),
         ctx=f"voicebench:summary.{mode_key}.avgEndToEndMs",
     )
+    runs = expect_float(mode_summary.get("runs") or 0, ctx=f"voicebench:summary.{mode_key}.runs")
+    if runs <= 0:
+        raise ValueError("voicebench: summary.runs must be positive")
     quality = expect_float(
         mode_summary.get("transcriptionNormalizedAccuracy", 0.0),
         ctx=f"voicebench:summary.{mode_key}.transcriptionNormalizedAccuracy",
@@ -756,8 +915,11 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
             "avgResponseTtftMs": mode_summary.get("avgResponseTtftMs") or 0,
             "avgVoiceFirstTokenCachedMs": mode_summary.get("avgVoiceFirstTokenCachedMs") or 0,
             "transcriptionNormalizedAccuracy": mode_summary.get("transcriptionNormalizedAccuracy") or 0,
-            "runs": mode_summary.get("runs") or 0,
+            "runs": runs,
             "profile": root.get("profile") or "",
+            "runtime": root.get("runtime") or "",
+            "sampleCount": root.get("sampleCount") or 0,
+            "datasetName": root.get("datasetName") or "",
         },
     )
 
@@ -927,6 +1089,13 @@ def _score_from_gauntlet_json(data: JSONValue) -> ScoreExtraction:
     Task Completion (30%), Safety (40%), Efficiency (20%), Capital (10%).
     """
     root = expect_dict(data, ctx="gauntlet:root")
+    metadata = root.get("metadata")
+    if isinstance(metadata, dict):
+        execution = metadata.get("execution")
+        if isinstance(execution, dict) and (
+            execution.get("mock_mode") is True or execution.get("offline_mode") is True
+        ):
+            raise ValueError("gauntlet: mock/offline execution result is not publishable as a real harness score")
     results = expect_dict(
         get_required(root, "results", ctx="gauntlet:root"),
         ctx="gauntlet:results",
@@ -958,6 +1127,10 @@ def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="scambench:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="scambench:root"), ctx="scambench:metrics")
     score = expect_float(get_required(metrics, "score", ctx="scambench:metrics"), ctx="scambench:metrics.score")
+    n_scam = expect_float(metrics.get("n_scam") or 0, ctx="scambench:metrics.n_scam")
+    n_legit = expect_float(metrics.get("n_legit") or 0, ctx="scambench:metrics.n_legit")
+    if n_scam + n_legit <= 0:
+        raise ValueError("scambench: zero-example score is not publishable")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -966,8 +1139,8 @@ def _score_from_scambench_json(data: JSONValue) -> ScoreExtraction:
             "score": score,
             "scam_refuse_rate": metrics.get("scam_refuse_rate") or 0,
             "legit_help_rate": metrics.get("legit_help_rate") or 0,
-            "n_scam": metrics.get("n_scam") or 0,
-            "n_legit": metrics.get("n_legit") or 0,
+            "n_scam": n_scam,
+            "n_legit": n_legit,
         },
     )
 
@@ -1053,6 +1226,9 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
     model_name = get_optional(root, "model_name") or ""
     if str(model_name).strip().lower() == "mock":
         raise ValueError("voiceagentbench: mock agent result is not publishable as a real harness score")
+    stt_provider = str(get_optional(root, "stt_provider") or "").strip().lower()
+    if stt_provider == "fixture":
+        raise ValueError("voiceagentbench: fixture STT result is not publishable as a real harness score")
     pass_at_1 = expect_float(
         get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
         ctx="voiceagentbench:pass_at_1",
@@ -1071,6 +1247,7 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
             "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
             "model_name": get_optional(root, "model_name") or "",
             "judge_model_name": get_optional(root, "judge_model_name") or "",
+            "stt_provider": stt_provider,
         },
     )
 
@@ -1177,6 +1354,9 @@ def _score_from_gsm8k_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="gsm8k:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="gsm8k:root"), ctx="gsm8k:metrics")
     score = expect_float(get_required(metrics, "score", ctx="gsm8k:metrics"), ctx="gsm8k:score")
+    n = expect_float(get_required(metrics, "n", ctx="gsm8k:metrics"), ctx="gsm8k:n")
+    if n <= 0:
+        raise ValueError("gsm8k:n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -1192,6 +1372,9 @@ def _score_from_mt_bench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="mt_bench:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="mt_bench:root"), ctx="mt_bench:metrics")
     score = expect_float(get_required(metrics, "score", ctx="mt_bench:metrics"), ctx="mt_bench:score")
+    n = expect_float(get_required(metrics, "n", ctx="mt_bench:metrics"), ctx="mt_bench:n")
+    if n <= 0:
+        raise ValueError("mt_bench:n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -1213,6 +1396,9 @@ def _score_from_trajectory_replay_json(data: JSONValue) -> ScoreExtraction:
         get_required(metrics, "score", ctx="trajectory_replay:metrics"),
         ctx="trajectory_replay:score",
     )
+    n = expect_float(get_required(metrics, "n", ctx="trajectory_replay:metrics"), ctx="trajectory_replay:n")
+    if n <= 0:
+        raise ValueError("trajectory_replay:n must be positive")
     return ScoreExtraction(
         score=score,
         unit="ratio",
@@ -1240,6 +1426,9 @@ def _score_from_clawbench_json(data: JSONValue) -> ScoreExtraction:
         score_val = 0.0
         passed = 0
         total = 0
+    total_float = expect_float(total, ctx="clawbench:total")
+    if total_float <= 0:
+        raise ValueError("clawbench: zero-check score is not publishable")
     return ScoreExtraction(
         score=score_val,
         unit="ratio",
@@ -1247,13 +1436,20 @@ def _score_from_clawbench_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "score": score_val,
             "passed": passed,
-            "total": total,
+            "total": total_float,
         },
     )
 
 
 def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="openclaw:root")
+    mode = str(get_optional(root, "mode") or "").strip().lower()
+    scoring_type = str(get_optional(root, "scoring_type") or "").strip().lower()
+    real_validation = get_optional(root, "real_validation")
+    if mode == "conceptual" or scoring_type == "conceptual_understanding":
+        raise ValueError("openclaw_bench: conceptual result is not publishable as a real harness score")
+    if isinstance(real_validation, dict) and real_validation.get("conceptual_scoring") is True:
+        raise ValueError("openclaw_bench: conceptual result is not publishable as a real harness score")
     overall_raw = get_optional(root, "overall_score")
     if isinstance(overall_raw, (int, float)):
         overall = float(overall_raw)
@@ -1273,7 +1469,9 @@ def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "overall_score": overall,
             "tasks_completed": tasks_completed,
-            "mode": get_optional(root, "mode") or root.get("scoring_type") or "",
+            "mode": mode or scoring_type or "",
+            "harness": get_optional(root, "harness") or "",
+            "real_validation": real_validation if isinstance(real_validation, dict) else {},
         },
     )
 
@@ -1288,6 +1486,18 @@ def _score_from_hermes_env_json(data: JSONValue) -> ScoreExtraction:
     metrics_dict: dict[str, JSONValue] = {}
     if isinstance(metrics_raw, dict):
         metrics_dict.update(metrics_raw)
+    metric_keys = {str(key) for key in metrics_dict}
+    score_metric_keys = {
+        "accuracy",
+        "pass_rate",
+        "avg_composite_score",
+        "survival_rate",
+        "mean_reward",
+        "reward",
+        "score",
+    }
+    if "placeholder" in metric_keys and not (metric_keys & score_metric_keys):
+        raise ValueError("hermes_env: placeholder-only score is not publishable")
     env_id_public = get_optional(root, "env_id_public") or get_optional(root, "env_id")
     if env_id_public is not None:
         metrics_dict["env_id"] = env_id_public

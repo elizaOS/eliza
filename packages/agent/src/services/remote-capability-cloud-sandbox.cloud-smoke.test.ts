@@ -5,7 +5,6 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { dispatchRoute } from "../api/dispatch-route.ts";
 import {
   registerPluginViews,
   unregisterPluginViews,
@@ -14,7 +13,13 @@ import {
   installRemoteCapabilityEndpoint,
   provisionCloudCapabilitySandbox,
 } from "./remote-capability-cloud-sandbox.ts";
-import type { RemoteCapabilityRouterService } from "./remote-capability-router.ts";
+import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
+import {
+  summarizeRemoteCapabilityLiveCi,
+  summarizeRemoteCapabilityLiveRuntime,
+  summarizeRemoteCapabilityLiveSync,
+  writeRemoteCapabilityLiveReport,
+} from "./remote-capability-live-report.ts";
 import { syncRemoteCapabilityPlugins } from "./remote-plugin-adapter.ts";
 
 const cloudLive =
@@ -53,7 +58,7 @@ describe("cloud capability sandbox live smoke", () => {
           name: `Remote Capability Live ${Date.now()}`,
           bio: [
             "Live CI smoke for capability-router remote plugin modules.",
-            "Expose at least one action, provider, route, and compiled view.",
+            "Expose at least one action, provider, route, JSON model handler, lifecycle hook, event handler, service method, app bridge hook, evaluator, response-handler evaluator, response-handler field evaluator, and compiled view.",
           ],
           endpointId,
           timeoutMs: 180_000,
@@ -64,35 +69,37 @@ describe("cloud capability sandbox live smoke", () => {
         });
         agentId = provisioned.agentId;
 
-        const router = installRemoteCapabilityEndpoint(runtime, {
+        installRemoteCapabilityEndpoint(runtime, {
           enabled: true,
           endpoints: [provisioned.endpoint],
           environment: "server",
           requestTimeoutMs: 60_000,
-        }) as RemoteCapabilityRouterService;
+        });
 
-        const listed = await router.plugin.listModules();
-        expect(listed.modules.length).toBeGreaterThan(0);
-        const moduleWithView = listed.modules.find(
-          (module) => (module.views ?? []).length > 0,
-        );
-        expect(moduleWithView).toBeDefined();
-        const view = moduleWithView?.views?.[0];
-        expect(view?.bundlePath || view?.bundleUrl).toBeTruthy();
-        if (moduleWithView && view?.bundlePath) {
-          const asset = await router.plugin.getAsset({
-            endpointId,
-            moduleId: moduleWithView.id,
-            path: view.bundlePath,
-          });
-          expect(asset.contentType).toMatch(
-            /javascript|ecmascript|text\/plain/,
-          );
-          expect(
-            Buffer.from(asset.bodyBase64, "base64").byteLength,
-          ).toBeGreaterThan(0);
-        }
-
+        const conformance = await assertRemoteCapabilityEndpointConformance({
+          endpoint: provisioned.endpoint,
+          requestTimeoutMs: 60_000,
+          actionContent: { text: "remote capability cloud live conformance" },
+          routeBody: { live: true, provider: "cloud" },
+        });
+        expect(conformance).toMatchObject({
+          endpointId,
+          moduleCount: expect.any(Number),
+          exercised: {
+            action: expect.any(String),
+            provider: expect.any(String),
+            route: expect.any(String),
+            viewAsset: expect.any(String),
+            model: expect.any(String),
+            lifecycle: expect.any(String),
+            event: expect.any(String),
+            service: expect.any(String),
+            appBridge: expect.any(String),
+            evaluator: expect.any(String),
+            responseHandlerEvaluator: expect.any(String),
+            responseHandlerFieldEvaluator: expect.any(String),
+          },
+        });
         const sync = await syncRemoteCapabilityPlugins(runtime, {
           trustPolicy: {
             allowedEndpointIds: [endpointId],
@@ -113,27 +120,17 @@ describe("cloud capability sandbox live smoke", () => {
         expect(runtime.actions.length).toBeGreaterThan(0);
         expect(runtime.providers.length).toBeGreaterThan(0);
         expect(runtime.routes.length).toBeGreaterThan(0);
-
-        await expect(
-          runtime.actions[0]?.handler(runtime, {
-            content: { text: "remote capability live smoke" },
-          } as never),
-        ).resolves.toBeTruthy();
-        await expect(
-          runtime.providers[0]?.get(runtime, {} as never, {} as never),
-        ).resolves.toBeTruthy();
-        await expect(
-          dispatchRoute({
-            runtime,
-            method: runtime.routes[0]?.type ?? "GET",
-            path: runtime.routes[0]?.path ?? "/",
-            headers: {},
-            body: { live: true },
-            inProcess: false,
-            isAuthorized: () => false,
-          }),
-        ).resolves.toMatchObject({
-          status: expect.any(Number),
+        await writeRemoteCapabilityLiveReport("cloud", {
+          schemaVersion: 1,
+          kind: "cloud",
+          cloudApiBase,
+          endpointId,
+          agentId,
+          observedAt: new Date().toISOString(),
+          conformance,
+          sync: summarizeRemoteCapabilityLiveSync(sync),
+          runtime: summarizeRemoteCapabilityLiveRuntime(runtime),
+          ci: summarizeRemoteCapabilityLiveCi(),
         });
       } finally {
         if (agentId) {

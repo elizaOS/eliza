@@ -205,8 +205,18 @@ function patchArchCpp(source, rel) {
   out = insertAfter(
     out,
     '    { LLM_ARCH_QWEN35MOE,        "qwen35moe"        },\n',
-    '    { LLM_ARCH_DFLASH_DRAFT,     "dflash-draft"     },\n',
+    '    { LLM_ARCH_DFLASH_DRAFT,     "dflash"           },\n',
     rel,
+  );
+  out = insertAfter(
+    out,
+    "llm_arch llm_arch_from_string(const std::string & name) {\n",
+    `    if (name == "dflash-draft") {
+        return LLM_ARCH_DFLASH_DRAFT;
+    }
+`,
+    rel,
+    'if (name == "dflash-draft")',
   );
   out = insertAfter(
     out,
@@ -222,7 +232,7 @@ function patchArchCpp(source, rel) {
   out = insertAfter(
     out,
     '    { LLM_TENSOR_OUTPUT,                                 "output" },\n',
-    '    { LLM_TENSOR_DFLASH_FC,                              "dflash_fc" },\n    { LLM_TENSOR_DFLASH_HIDDEN_NORM,                     "dflash_hidden_norm" },\n',
+    '    { LLM_TENSOR_DFLASH_FC,                              "fc" },\n    { LLM_TENSOR_DFLASH_HIDDEN_NORM,                     "hidden_norm" },\n',
     rel,
   );
   // Older llama.cpp pins kept the per-architecture tensor set in
@@ -383,8 +393,12 @@ function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
                 ml.get_key(LLM_KV_DFLASH_MASK_TOKEN_ID,        hparams.dflash_mask_token_id, false);
                 ml.get_key(LLM_KV_DFLASH_N_TARGET_FEATURES,    hparams.dflash_n_target_features, false);
 
-                const std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
-                const int kid = gguf_find_key(${metadataExpr}, key.c_str());
+                std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
+                int kid = gguf_find_key(${metadataExpr}, key.c_str());
+                if (kid < 0) {
+                    key = "dflash.target_layer_ids";
+                    kid = gguf_find_key(${metadataExpr}, key.c_str());
+                }
                 if (kid >= 0 && gguf_get_kv_type(${metadataExpr}, kid) == GGUF_TYPE_ARRAY) {
                     const enum gguf_type arr_type = gguf_get_arr_type(${metadataExpr}, kid);
                     const size_t n = gguf_get_arr_n(${metadataExpr}, kid);
@@ -396,6 +410,13 @@ function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
                         } else if (arr_type == GGUF_TYPE_INT32) {
                             hparams.dflash_target_layer_ids[i] = (uint32_t) ((const int32_t *) data)[i];
                         }
+                    }
+                }
+                if (hparams.dflash_n_target_layers > 0) {
+                    const uint32_t derived_n_target_features =
+                        hparams.n_embd * hparams.dflash_n_target_layers;
+                    if (hparams.dflash_n_target_features == 25600) {
+                        hparams.dflash_n_target_features = derived_n_target_features;
                     }
                 }
 
@@ -427,7 +448,7 @@ function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
                         auto & layer = layers[i];
 
                         layer.attn_norm      = create_tensor(tn(LLM_TENSOR_ATTN_NORM,      "weight", i), {n_embd}, 0);
-                        layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_ATTN_POST_NORM, "weight", i), {n_embd}, 0);
+                        layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM,       "weight", i), {n_embd}, 0);
 
                         layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q,   "weight", i), {n_embd, n_embd_head_k * n_head}, 0);
                         layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), {n_embd, n_embd_gqa}, 0);
@@ -472,12 +493,177 @@ function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
   return out;
 }
 
+function patchModelLoader(source, rel) {
+  let out = source;
+  out = insertAfter(
+    out,
+    "    template<typename T>\n    bool llama_model_loader::get_key(enum llm_kv kid, T & result, bool required) {\n",
+    `        const std::string key = llm_kv(kid);
+        if (get_key(key, result, false)) {
+            return true;
+        }
+        if (arch_name == "dflash" || arch_name == "dflash-draft") {
+            std::string alt = key;
+            if (alt.rfind("dflash.", 0) == 0) {
+                alt.replace(0, strlen("dflash"), "dflash-draft");
+            } else if (alt.rfind("dflash-draft.", 0) == 0) {
+                alt.replace(0, strlen("dflash-draft"), "dflash");
+            }
+            if (alt != key && get_key(alt, result, false)) {
+                return true;
+            }
+        }
+        if (required) {
+            throw std::runtime_error(format("key not found in model: %s", key.c_str()));
+        }
+        return false;
+`,
+    rel,
+    'if (arch_name == "dflash" || arch_name == "dflash-draft")',
+  );
+  out = out.replace(
+    "        return get_key(llm_kv(kid), result, required);\n",
+    "",
+  );
+  out = insertAfter(
+    out,
+    "    template<typename T>\n    bool llama_model_loader::get_key_or_arr(enum llm_kv kid, T & result, uint32_t n, bool required) {\n",
+    `        const std::string key = llm_kv(kid);
+        if (get_key_or_arr(key, result, n, false)) {
+            return true;
+        }
+        if (arch_name == "dflash" || arch_name == "dflash-draft") {
+            std::string alt = key;
+            if (alt.rfind("dflash.", 0) == 0) {
+                alt.replace(0, strlen("dflash"), "dflash-draft");
+            } else if (alt.rfind("dflash-draft.", 0) == 0) {
+                alt.replace(0, strlen("dflash-draft"), "dflash");
+            }
+            if (alt != key && get_key_or_arr(alt, result, n, false)) {
+                return true;
+            }
+        }
+        if (required) {
+            throw std::runtime_error(format("key not found in model: %s", key.c_str()));
+        }
+        return false;
+`,
+    rel,
+    "get_key_or_arr(alt, result, n, false)",
+  );
+  out = out.replace(
+    "        return get_key_or_arr(llm_kv(kid), result, n, required);\n",
+    "",
+  );
+  out = out.replace(
+    `        const std::string key = llm_kv(kid);
+
+        const int id = gguf_find_key(metadata, key.c_str());
+
+        if (id < 0) {
+            if (required) {
+                throw std::runtime_error(format("key not found in model: %s", key.c_str()));
+            }
+            return false;
+        }
+
+        // throw and error if type is an array
+        if (gguf_get_kv_type(metadata, id) == GGUF_TYPE_ARRAY) {
+            if (required) {
+                throw std::runtime_error(format("expected scalar, found array for key: %s", key.c_str()));
+            }
+            return false;
+        }
+
+        return get_key(key, result, required);
+`,
+    `        const std::string key = llm_kv(kid);
+
+        auto get_scalar = [&](const std::string & cur_key, bool cur_required) {
+            const int id = gguf_find_key(metadata, cur_key.c_str());
+
+            if (id < 0) {
+                if (cur_required) {
+                    throw std::runtime_error(format("key not found in model: %s", cur_key.c_str()));
+                }
+                return false;
+            }
+
+            // throw and error if type is an array
+            if (gguf_get_kv_type(metadata, id) == GGUF_TYPE_ARRAY) {
+                if (cur_required) {
+                    throw std::runtime_error(format("expected scalar, found array for key: %s", cur_key.c_str()));
+                }
+                return false;
+            }
+
+            return get_key(cur_key, result, cur_required);
+        };
+
+        if (get_scalar(key, false)) {
+            return true;
+        }
+        if (arch_name == "dflash" || arch_name == "dflash-draft") {
+            std::string alt = key;
+            if (alt.rfind("dflash.", 0) == 0) {
+                alt.replace(0, strlen("dflash"), "dflash-draft");
+            } else if (alt.rfind("dflash-draft.", 0) == 0) {
+                alt.replace(0, strlen("dflash-draft"), "dflash");
+            }
+            if (alt != key && get_scalar(alt, false)) {
+                return true;
+            }
+        }
+        if (required) {
+            throw std::runtime_error(format("key not found in model: %s", key.c_str()));
+        }
+        return false;
+`,
+  );
+  out = insertAfter(
+    out,
+    "    if (pos != weights_map.end()) {\n        return &pos->second;\n    }\n",
+    `    if (arch_name == "dflash" || arch_name == "dflash-draft") {
+        const std::string name_str(name);
+        if (name_str == "fc.weight") {
+            pos = weights_map.find("dflash_fc.weight");
+        } else if (name_str == "hidden_norm.weight") {
+            pos = weights_map.find("dflash_hidden_norm.weight");
+        } else if (name_str == "dflash_fc.weight") {
+            pos = weights_map.find("fc.weight");
+        } else if (name_str == "dflash_hidden_norm.weight") {
+            pos = weights_map.find("hidden_norm.weight");
+        } else if (name_str.find(".ffn_norm.") != std::string::npos) {
+            std::string alt = name_str;
+            const size_t at = alt.find(".ffn_norm.");
+            alt.replace(at, strlen(".ffn_norm."), ".post_attention_norm.");
+            pos = weights_map.find(alt);
+        } else if (name_str.find(".post_attention_norm.") != std::string::npos) {
+            std::string alt = name_str;
+            const size_t at = alt.find(".post_attention_norm.");
+            alt.replace(at, strlen(".post_attention_norm."), ".ffn_norm.");
+            pos = weights_map.find(alt);
+        }
+        if (pos != weights_map.end()) {
+            return &pos->second;
+        }
+    }
+`,
+    rel,
+    'name_str == "fc.weight"',
+  );
+  return out;
+}
+
 function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
   const requiredMarkers = [
     ["src/llama-arch.h", "LLM_ARCH_DFLASH_DRAFT"],
-    ["src/llama-arch.cpp", '"dflash-draft"'],
+    ["src/llama-arch.cpp", '"dflash"'],
+    ["src/llama-arch.cpp", 'if (name == "dflash-draft")'],
     ["src/llama-hparams.h", "dflash_n_target_features"],
     ["src/llama-model.h", "dflash_hidden_norm"],
+    ["src/llama-model-loader.cpp", 'name_str == "fc.weight"'],
+    ["src/llama-model-loader.cpp", 'get_key_or_arr(alt, result, n, false)'],
     ["src/models/models.h", "llm_build_dflash_draft"],
     [modelRel, "llm_build_dflash_draft::llm_build_dflash_draft"],
   ];
@@ -572,6 +758,7 @@ export function patchDflashDrafterArch(llamaCppRoot, { dryRun = false } = {}) {
     ["src/llama-arch.cpp", patchArchCpp],
     ["src/llama-hparams.h", patchHparams],
     ["src/llama-model.h", patchModelHeader],
+    ["src/llama-model-loader.cpp", patchModelLoader],
     ["src/models/models.h", patchModelsHeader],
     [
       "src/llama-model.cpp",

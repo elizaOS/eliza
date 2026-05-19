@@ -271,6 +271,20 @@ export type RemotePluginServiceManifest = {
 	config?: JsonObject;
 };
 
+export type RemotePluginJsonSchemaDefinition = {
+	type: string;
+	properties?: Record<string, RemotePluginJsonSchemaDefinition>;
+	items?: RemotePluginJsonSchemaDefinition;
+	required?: string[];
+	enumValues?: string[];
+	description?: string;
+};
+
+export type RemotePluginComponentTypeManifest = {
+	name: string;
+	schema: RemotePluginJsonSchemaDefinition;
+};
+
 export type RemotePluginWidgetManifest = {
 	id: string;
 	pluginId?: string;
@@ -369,6 +383,8 @@ export type RemotePluginModuleManifest = {
 	capabilityEndpointId?: string;
 	version?: string;
 	description?: string;
+	priority?: number;
+	contexts?: string[];
 	config?: RemotePluginConfig;
 	schema?: JsonObject;
 	actions?: RemotePluginActionManifest[];
@@ -379,6 +395,7 @@ export type RemotePluginModuleManifest = {
 	events?: RemotePluginEventManifest[];
 	models?: RemotePluginModelManifest[];
 	services?: RemotePluginServiceManifest[];
+	componentTypes?: RemotePluginComponentTypeManifest[];
 	widgets?: RemotePluginWidgetManifest[];
 	app?: RemotePluginAppManifest;
 	appBridge?: RemotePluginAppBridgeManifest;
@@ -388,7 +405,7 @@ export type RemotePluginModuleManifest = {
 	metadata?: JsonObject;
 };
 
-export type PluginListModulesParams = {
+export type PluginListModulesParams = CapabilityEndpointSelection & {
 	traceSessionId?: string;
 };
 
@@ -687,6 +704,246 @@ export interface ElizaCapabilityRouter {
 	readonly model: LocalModelCapability;
 	readonly plugin: RemotePluginCapability;
 }
+
+export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION = "2026-05-19" as const;
+
+export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
+	availability: {
+		environment: "server",
+		available: true,
+		capabilities: {
+			fs: false,
+			pty: false,
+			git: false,
+			model: false,
+			plugin: true,
+		},
+	},
+	module: {
+		id: "fixture-remote-plugin",
+		name: "@remote/fixture-plugin",
+		version: "1.0.0",
+		description: "Canonical capability-router remote plugin fixture.",
+		priority: 25,
+		contexts: ["developer", "remote-fixture"],
+		config: { fixtureMode: true },
+		schema: {
+			remote_fixture_records: {
+				id: "uuid",
+				label: "text",
+			},
+		},
+		actions: [
+			{
+				name: "FIXTURE_ACTION",
+				description: "Exercise a remote action through the protocol.",
+			},
+		],
+		providers: [
+			{
+				name: "FIXTURE_CONTEXT",
+				description: "Exercise a remote provider through the protocol.",
+			},
+		],
+		evaluators: [
+			{
+				name: "FIXTURE_EVALUATOR",
+				description: "Exercise a remote evaluator through the protocol.",
+				prompt: "Evaluate the fixture response.",
+				schema: { type: "object" },
+				hasPrepare: true,
+				hasProcessor: true,
+			},
+		],
+		responseHandlerEvaluators: [
+			{
+				name: "FIXTURE_RESPONSE_EVALUATOR",
+				description: "Exercise a response-handler evaluator.",
+			},
+		],
+		responseHandlerFieldEvaluators: [
+			{
+				name: "FIXTURE_FIELD_EVALUATOR",
+				description: "Exercise a response-handler field evaluator.",
+				schema: { type: "object" },
+				hasParse: true,
+				hasHandle: true,
+			},
+		],
+		events: [{ eventName: "fixture.event" }],
+		models: [{ modelType: "TEXT_SMALL", priority: 1 }],
+		services: [
+			{
+				serviceType: "fixture-service",
+				capabilityDescription: "Fixture remote service.",
+				methods: ["ping"],
+				config: { fixture: true },
+			},
+		],
+		componentTypes: [
+			{
+				name: "fixture.component",
+				schema: {
+					type: "object",
+					properties: {
+						label: { type: "string", description: "Fixture label." },
+						count: { type: "number" },
+					},
+					required: ["label"],
+				},
+			},
+		],
+		widgets: [
+			{
+				id: "fixture-widget",
+				slot: "chat-sidebar",
+				label: "Fixture Widget",
+				componentExport: "FixtureWidget",
+			},
+		],
+		app: {
+			displayName: "Fixture Remote App",
+			category: "developer",
+			launchType: "remote",
+			launchUrl: "https://fixture.example.test/app",
+			viewer: {
+				url: "https://fixture.example.test/viewer",
+				postMessageAuth: true,
+			},
+			session: {
+				mode: "spectate-and-steer",
+				features: ["commands", "telemetry"],
+			},
+			navTabs: [
+				{
+					id: "fixture-tab",
+					label: "Fixture",
+					path: "/apps/fixture",
+					componentExport: "FixtureTab",
+				},
+			],
+		},
+		appBridge: {
+			hooks: ["prepareLaunch", "handleAppRoutes"],
+		},
+		lifecycle: {
+			hooks: ["init", "dispose", "applyConfig"],
+		},
+		routes: [
+			{
+				method: "POST",
+				path: "/fixture/route",
+				public: true,
+				name: "fixture-route",
+			},
+		],
+		views: [
+			{
+				id: "fixture.view",
+				label: "Fixture View",
+				viewType: "gui",
+				bundlePath: "/assets/fixture-view.js",
+				contentType: "text/javascript",
+			},
+		],
+		metadata: {
+			fixtureVersion: CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
+		},
+	},
+	results: {
+		action: {
+			text: "fixture action",
+			data: { fixture: true },
+		},
+		provider: {
+			text: "fixture provider",
+			values: { fixture: true },
+		},
+		route: {
+			status: 209,
+			headers: { "x-capability-fixture": "yes" },
+			body: { fixtureRoute: true },
+		},
+		asset: {
+			path: "/assets/fixture-view.js",
+			contentType: "text/javascript",
+			bodyBase64: "ZXhwb3J0IGNvbnN0IGZpeHR1cmVWaWV3ID0gdHJ1ZTsK",
+		},
+		model: {
+			result: { text: "fixture model", fixture: true },
+		},
+		lifecycle: {
+			ok: true,
+		},
+		event: {
+			handled: true,
+		},
+		service: {
+			result: { text: "fixture service", fixture: true },
+		},
+		appBridge: {
+			result: {
+				handled: true,
+				status: 208,
+				headers: { "x-capability-fixture-bridge": "yes" },
+				body: { fixtureAppBridge: true },
+			},
+		},
+		evaluatorShouldRun: {
+			shouldRun: true,
+		},
+		evaluatorPrepare: {
+			prepared: { fixturePrepared: true },
+		},
+		evaluatorPrompt: {
+			prompt: "fixture evaluator prompt",
+		},
+		evaluatorProcess: {
+			result: { fixtureProcessed: true },
+		},
+		responseHandlerEvaluatorShouldRun: {
+			shouldRun: true,
+		},
+		responseHandlerEvaluatorEvaluate: {
+			patch: { fixtureResponsePatch: true },
+		},
+		responseHandlerFieldEvaluatorShouldRun: {
+			shouldRun: true,
+		},
+		responseHandlerFieldEvaluatorParse: {
+			value: { fixtureParsed: true },
+		},
+		responseHandlerFieldEvaluatorHandle: {
+			effect: {
+				patch: { fixtureHandled: true },
+				debug: ["fixture field handled"],
+			},
+		},
+	},
+} as const satisfies {
+	availability: CapabilityAvailability;
+	module: RemotePluginModuleManifest;
+	results: {
+		action: PluginInvokeActionResult;
+		provider: PluginGetProviderResult;
+		route: PluginCallRouteResult;
+		asset: PluginGetAssetResult;
+		model: PluginInvokeModelResult;
+		lifecycle: PluginLifecycleCallResult;
+		event: PluginHandleEventResult;
+		service: PluginCallServiceResult;
+		appBridge: PluginCallAppBridgeResult;
+		evaluatorShouldRun: PluginEvaluatorShouldRunResult;
+		evaluatorPrepare: PluginEvaluatorPrepareResult;
+		evaluatorPrompt: PluginEvaluatorPromptResult;
+		evaluatorProcess: PluginEvaluatorProcessResult;
+		responseHandlerEvaluatorShouldRun: PluginResponseHandlerEvaluatorShouldRunResult;
+		responseHandlerEvaluatorEvaluate: PluginResponseHandlerEvaluatorEvaluateResult;
+		responseHandlerFieldEvaluatorShouldRun: PluginResponseHandlerFieldEvaluatorShouldRunResult;
+		responseHandlerFieldEvaluatorParse: PluginResponseHandlerFieldEvaluatorParseResult;
+		responseHandlerFieldEvaluatorHandle: PluginResponseHandlerFieldEvaluatorHandleResult;
+	};
+};
 
 export type RuntimeBrokerCapabilityMethod =
 	| "fs.list"
@@ -1174,6 +1431,9 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginListModulesParams = {},
 	): Promise<PluginListModulesResult> {
 		const result = await this.request("plugin", "plugin.modules.list", {
+			...(params.endpointId === undefined
+				? {}
+				: { endpointId: params.endpointId }),
 			...(params.traceSessionId === undefined
 				? {}
 				: { traceSessionId: params.traceSessionId }),
@@ -2300,6 +2560,8 @@ function requireRemotePluginModule(
 	);
 	const version = optionalString(object, "version", method);
 	const description = optionalString(object, "description", method);
+	const priority = optionalNumber(object, "priority", method);
+	const contexts = optionalStringArray(object, "contexts", method);
 	const config = optionalRemotePluginConfig(object, "config", method);
 	const schema = optionalJsonObject(object, "schema", method);
 	const actions = optionalArray(
@@ -2350,6 +2612,12 @@ function requireRemotePluginModule(
 		method,
 		requireRemotePluginService,
 	);
+	const componentTypes = optionalArray(
+		object,
+		"componentTypes",
+		method,
+		requireRemotePluginComponentType,
+	);
 	const widgets = optionalArray(
 		object,
 		"widgets",
@@ -2382,6 +2650,8 @@ function requireRemotePluginModule(
 		...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
 		...(version === undefined ? {} : { version }),
 		...(description === undefined ? {} : { description }),
+		...(priority === undefined ? {} : { priority }),
+		...(contexts === undefined ? {} : { contexts }),
 		...(config === undefined ? {} : { config }),
 		...(schema === undefined ? {} : { schema }),
 		...(actions === undefined ? {} : { actions }),
@@ -2396,6 +2666,7 @@ function requireRemotePluginModule(
 		...(events === undefined ? {} : { events }),
 		...(models === undefined ? {} : { models }),
 		...(services === undefined ? {} : { services }),
+		...(componentTypes === undefined ? {} : { componentTypes }),
 		...(widgets === undefined ? {} : { widgets }),
 		...(app === undefined ? {} : { app }),
 		...(appBridge === undefined ? {} : { appBridge }),
@@ -2562,6 +2833,65 @@ function requireRemotePluginService(
 		...(methods === undefined ? {} : { methods }),
 		...(config === undefined ? {} : { config }),
 	};
+}
+
+function requireRemotePluginComponentType(
+	value: JsonValue,
+	method: string,
+): RemotePluginComponentTypeManifest {
+	const object = requireObject(value, method);
+	return {
+		name: requireNonEmptyString(object, "name", method),
+		schema: requireRemotePluginJsonSchemaDefinition(
+			object.schema,
+			`${method}.schema`,
+		),
+	};
+}
+
+function requireRemotePluginJsonSchemaDefinition(
+	value: JsonValue,
+	method: string,
+): RemotePluginJsonSchemaDefinition {
+	const object = requireObject(value, method);
+	const propertiesValue = object.properties;
+	const properties =
+		propertiesValue === undefined
+			? undefined
+			: requireRemotePluginJsonSchemaProperties(propertiesValue, method);
+	const items =
+		object.items === undefined
+			? undefined
+			: requireRemotePluginJsonSchemaDefinition(
+					object.items,
+					`${method}.items`,
+				);
+	const required = optionalStringArray(object, "required", method);
+	const enumValues = optionalStringArray(object, "enumValues", method);
+	const description = optionalString(object, "description", method);
+	return {
+		type: requireNonEmptyString(object, "type", method),
+		...(properties === undefined ? {} : { properties }),
+		...(items === undefined ? {} : { items }),
+		...(required === undefined ? {} : { required }),
+		...(enumValues === undefined ? {} : { enumValues }),
+		...(description === undefined ? {} : { description }),
+	};
+}
+
+function requireRemotePluginJsonSchemaProperties(
+	value: JsonValue,
+	method: string,
+): Record<string, RemotePluginJsonSchemaDefinition> {
+	const object = requireObject(value, `${method}.properties`);
+	const properties: Record<string, RemotePluginJsonSchemaDefinition> = {};
+	for (const [key, property] of Object.entries(object)) {
+		properties[key] = requireRemotePluginJsonSchemaDefinition(
+			property,
+			`${method}.properties.${key}`,
+		);
+	}
+	return properties;
 }
 
 const REMOTE_SERVICE_RESERVED_METHODS = new Set([

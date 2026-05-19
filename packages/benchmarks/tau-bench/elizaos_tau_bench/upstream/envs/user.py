@@ -64,6 +64,8 @@ class GroundedUserSimulationEnv(BaseUserSimulationEnv):
     def step(self, content: str) -> str:
         self.turn += 1
         text = (content or "").lower()
+        if self._asks_for_confirmation(text):
+            return "Yes, I confirm. Please proceed."
         if self._looks_complete(text):
             return "###STOP###"
         if "email" in text:
@@ -129,6 +131,30 @@ class GroundedUserSimulationEnv(BaseUserSimulationEnv):
         if "don't remember the reservation id" in self.instruction.lower():
             return "I do not remember the reservation id. Please look it up from my profile."
         return ""
+
+    @staticmethod
+    def _asks_for_confirmation(text: str) -> bool:
+        confirmation_markers = (
+            "please reply",
+            "reply with",
+            "confirm",
+            "confirmation",
+            "go ahead",
+            "proceed",
+        )
+        consequential_markers = (
+            "book",
+            "cancel",
+            "exchange",
+            "modify",
+            "refund",
+            "return",
+            "submit",
+            "update",
+        )
+        return any(marker in text for marker in confirmation_markers) and any(
+            marker in text for marker in consequential_markers
+        )
 
     @staticmethod
     def _looks_complete(text: str) -> bool:

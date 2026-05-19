@@ -29,7 +29,14 @@ interface AutoTrainingStatusResponse {
 
 type CapabilityRouterConnectResponse = {
   success?: boolean;
-  mode?: "endpoint" | "cloud";
+  mode?:
+    | "endpoint"
+    | "cloud"
+    | "e2b"
+    | "home-machine"
+    | "mobile-companion"
+    | "desktop-companion";
+  provider?: "e2b" | "home-machine" | "mobile-companion" | "desktop-companion";
   agentId?: string;
   endpoint?: {
     id?: string;
@@ -56,6 +63,9 @@ export function CapabilitiesSection() {
   const [capabilityConnectMode, setCapabilityConnectMode] = useState<
     "endpoint" | "cloud"
   >("endpoint");
+  const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
+    "direct" | "e2b" | "home-machine" | "mobile-companion" | "desktop-companion"
+  >("direct");
   const [capabilityEndpointUrl, setCapabilityEndpointUrl] = useState("");
   const [capabilityEndpointId, setCapabilityEndpointId] = useState("");
   const [capabilityEndpointToken, setCapabilityEndpointToken] = useState("");
@@ -177,6 +187,9 @@ export function CapabilitiesSection() {
             body: JSON.stringify(
               capabilityConnectMode === "endpoint"
                 ? {
+                    ...(capabilityEndpointProvider === "direct"
+                      ? {}
+                      : { provider: capabilityEndpointProvider }),
                     endpoint: {
                       baseUrl,
                       ...(capabilityEndpointId.trim()
@@ -240,6 +253,7 @@ export function CapabilitiesSection() {
       capabilityCloudName,
       capabilityConnectMode,
       capabilityEndpointId,
+      capabilityEndpointProvider,
       capabilityEndpointToken,
       capabilityEndpointUrl,
     ],
@@ -404,6 +418,29 @@ export function CapabilitiesSection() {
               autoComplete="off"
             />
           </div>
+        ) : null}
+        {capabilityConnectMode === "endpoint" ? (
+          <label className="block min-w-0">
+            <span className="mb-1 block text-2xs text-muted">
+              Capability endpoint provider
+            </span>
+            <select
+              value={capabilityEndpointProvider}
+              onChange={(event) =>
+                setCapabilityEndpointProvider(
+                  event.target.value as typeof capabilityEndpointProvider,
+                )
+              }
+              aria-label="Capability endpoint provider"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="direct">Direct endpoint</option>
+              <option value="e2b">E2B sandbox</option>
+              <option value="home-machine">Home machine</option>
+              <option value="mobile-companion">Mobile companion</option>
+              <option value="desktop-companion">Desktop companion</option>
+            </select>
+          </label>
         ) : null}
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem]">
           <Input

@@ -44,9 +44,11 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -65,6 +67,10 @@ from benchmarks.eliza1_gates import (  # noqa: E402
 )
 
 SCHEMA_VERSION = 1
+_CONCURRENT_LLM_OVERRIDE_ENV = "ELIZA_EVAL_ALLOW_CONCURRENT_LLM"
+_LLAMA_PROCESS_RE = re.compile(
+    r"(^|/)(llama-(?:server|cli|perplexity|speculative-simple|omnivoice-server)|main)(\s|$)"
+)
 
 # Held-out text-eval corpus.
 #
@@ -294,6 +300,30 @@ def _read_caps(bin_dir: Path) -> dict | None:
 
 
 def discover_engine(prefer_backend: str | None = None) -> Engine | None:
+    override = os.environ.get("ELIZA_EVAL_ENGINE_BIN_DIR")
+    if override:
+        best = Path(override).expanduser().resolve()
+        if not best.is_dir():
+            return None
+        backend = prefer_backend or best.name
+
+        def _bin(directory: Path, name: str) -> Path | None:
+            p = directory / name
+            return p if p.is_file() and os.access(p, os.X_OK) else None
+
+        lib_override = os.environ.get("ELIZA_EVAL_ENGINE_DYLIB")
+        lib = Path(lib_override).expanduser().resolve() if lib_override else best / _eliza_lib_name()
+        return Engine(
+            backend=backend,
+            bin_dir=best,
+            llama_cli=_bin(best, "llama-cli"),
+            speculative=_bin(best, "llama-speculative-simple"),
+            omnivoice_server=_bin(best, "llama-omnivoice-server"),
+            llama_server=_bin(best, "llama-server"),
+            eliza_lib=lib if lib.is_file() else None,
+            is_fused=True,
+        )
+
     root = _engine_bin_root()
     if not root.is_dir():
         return None
@@ -478,6 +508,69 @@ class EvalContext:
             pass
 
 
+class ConcurrentLLMError(RuntimeError):
+    """Raised when a live local llama.cpp process would make an eval unsafe."""
+
+
+def _active_llama_processes() -> list[dict[str, Any]]:
+    """Return live llama.cpp-like model processes owned by the local host."""
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,comm=,args="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if proc.returncode != 0:
+        return []
+    current = os.getpid()
+    found: list[dict[str, Any]] = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if pid == current:
+            continue
+        args = parts[2]
+        if "Codex" in args or "pytest" in args:
+            continue
+        if _LLAMA_PROCESS_RE.search(args):
+            found.append({"pid": pid, "command": args})
+    return found
+
+
+def _concurrent_llm_guard_reason() -> str | None:
+    if os.environ.get(_CONCURRENT_LLM_OVERRIDE_ENV) == "1":
+        return None
+    active = _active_llama_processes()
+    if not active:
+        return None
+    sample = "; ".join(f"{p['pid']} {p['command']}" for p in active[:3])
+    more = f"; +{len(active) - 3} more" if len(active) > 3 else ""
+    return (
+        "refusing to launch another local llama.cpp model process because "
+        f"{len(active)} is already running ({sample}{more}); set "
+        f"{_CONCURRENT_LLM_OVERRIDE_ENV}=1 only when concurrent LLM memory use "
+        "is intentional"
+    )
+
+
+def _assert_no_concurrent_llm() -> None:
+    reason = _concurrent_llm_guard_reason()
+    if reason:
+        raise ConcurrentLLMError(reason)
+
+
 def _run_llama(
     ctx: EvalContext, bin_path: Path, args: list[str], timeout_s: int | None = None
 ) -> tuple[int, str]:
@@ -492,6 +585,7 @@ def _run_llama(
     own = str(bin_path.parent)
     for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
         env[var] = f"{own}:{env[var]}" if env.get(var) else own
+    _assert_no_concurrent_llm()
     proc = subprocess.run(  # noqa: S603 - bin_path is a discovered local binary
         [str(bin_path), *args],
         capture_output=True,
@@ -516,6 +610,156 @@ def _run_llama(
 # ---------------------------------------------------------------------------
 
 _BUN = shutil.which("bun")
+
+
+def _llama_perplexity_bin(ctx: EvalContext) -> Path | None:
+    override = os.environ.get("ELIZA_EVAL_TEXT_PERPLEXITY_BIN")
+    if override:
+        p = Path(override).expanduser().resolve()
+        return p if p.is_file() and os.access(p, os.X_OK) else None
+    candidates: list[Path] = []
+    if ctx.engine is not None:
+        candidates.append(ctx.engine.bin_dir / "llama-perplexity")
+        root = ctx.engine.bin_dir.parent
+        candidates.extend(d / "llama-perplexity" for d in sorted(root.iterdir()) if d.is_dir())
+    candidates.extend(
+        [
+            _TRAINING_ROOT.parent.parent
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
+            / "llama.cpp"
+            / "build-codex-merge"
+            / "bin"
+            / "llama-perplexity",
+            _TRAINING_ROOT.parent.parent
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
+            / "llama.cpp"
+            / "build"
+            / "darwin-arm64-metal-fused"
+            / "bin"
+            / "llama-perplexity",
+        ]
+    )
+    seen: set[Path] = set()
+    for p in candidates:
+        p = p.expanduser().resolve()
+        if p in seen:
+            continue
+        seen.add(p)
+        if p.is_file() and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+_PPL_RE = re.compile(r"Final estimate:\s+PPL\s*=\s*([0-9]+(?:\.[0-9]+)?)", re.I)
+
+
+def _eval_text_with_llama_perplexity(ctx: EvalContext, model: Path) -> dict[str, Any] | None:
+    binary = _llama_perplexity_bin(ctx)
+    if binary is None:
+        return None
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as fh:
+        corpus_path = Path(fh.name)
+        fh.write("\n\n".join(ctx.text_eval_corpus))
+        fh.write("\n")
+    args = [
+        "-m",
+        str(model),
+        "-f",
+        str(corpus_path),
+        "-c",
+        os.environ.get("ELIZA_EVAL_TEXT_PPL_CTX", "512"),
+        "-b",
+        os.environ.get("ELIZA_EVAL_TEXT_PPL_BATCH", "512"),
+        "-ngl",
+        os.environ.get(
+            "ELIZA_EVAL_TEXT_PPL_NGL",
+            "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
+        ),
+        "--no-warmup",
+    ]
+    chunks = os.environ.get("ELIZA_EVAL_TEXT_PPL_CHUNKS")
+    if chunks:
+        args += ["--chunks", chunks]
+    try:
+        rc, out = _run_llama(ctx, binary, args, timeout_s=min(ctx.timeout_s, 900))
+    except ConcurrentLLMError as exc:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": str(exc),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": f"llama-perplexity timed out after {min(ctx.timeout_s, 900)}s",
+            "binary": str(binary),
+            "model": str(model),
+        }
+    finally:
+        try:
+            corpus_path.unlink()
+        except OSError:
+            pass
+    if rc != 0:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": f"llama-perplexity exited {rc}",
+            "outputTail": "\n".join(out.strip().splitlines()[-30:]),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    m = _PPL_RE.search(out)
+    if not m:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": "could not parse final PPL from llama-perplexity output",
+            "outputTail": "\n".join(out.strip().splitlines()[-30:]),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    ppl = float(m.group(1))
+    mean_nll = math.log(ppl)
+    score = round(math.exp(-_NLL_DECAY * mean_nll), 4)
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "metric": "text_eval",
+        "op": ">=",
+        "status": "ok",
+        "score": score,
+        "perplexity": round(ppl, 4),
+        "meanNllNats": round(mean_nll, 4),
+        "tokens": None,
+        "model": str(model),
+        "modelIsBundleText": model == ctx.text_model,
+        "corpusRecords": len(ctx.text_eval_corpus),
+        "binary": str(binary),
+        "scoring": f"score = exp(-{_NLL_DECAY} * ln(PPL)); PPL from llama-perplexity over extracted held-out assistant corpus",
+    }
 
 
 def _e2e_loop_bench_path() -> Path | None:
@@ -590,6 +834,27 @@ def _run_e2e_loop_bench(
         return cache[cache_key]
     if not hasattr(ctx, "_e2e_cache"):
         ctx._e2e_cache = cache  # type: ignore[attr-defined]
+    precomputed = (
+        os.environ.get("ELIZA_EVAL_ENDURANCE_REPORT")
+        if turns >= 30
+        else os.environ.get("ELIZA_EVAL_E2E_REPORT")
+    )
+    if precomputed:
+        source = Path(precomputed)
+        try:
+            report = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            result: dict[str, Any] = {
+                "status": "not-run",
+                "reason": f"could not load precomputed e2e report {source}: {exc}",
+            }
+            cache[cache_key] = result
+            return result
+        report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
+        out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
+        _json_write(out_json, report)
+        cache[cache_key] = report
+        return report
     if _BUN is None:
         result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
         cache[cache_key] = result
@@ -672,6 +937,11 @@ def _run_e2e_loop_bench(
     # An endurance run on CPU is many minutes; give it room (the harness has
     # its own per-turn timeout, this is just the outer wall-clock cap).
     timeout_s = max(ctx.timeout_s, 90 * max(1, turns))
+    reason = _concurrent_llm_guard_reason()
+    if reason:
+        result = {"status": "not-run", "reason": reason}
+        cache[cache_key] = result
+        return result
     try:
         proc = subprocess.run(  # noqa: S603 - bun + a repo-local script
             args,
@@ -734,6 +1004,9 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
                 "and no --text-eval-model override given)"
             ),
         }
+    binary_result = _eval_text_with_llama_perplexity(ctx, model)
+    if binary_result is not None:
+        return binary_result
     try:
         from llama_cpp import Llama
     except ImportError:

@@ -42,6 +42,16 @@ logger = logging.getLogger(__name__)
 _TOOL_DESCRIPTION_LIMIT = 280
 _OBSERVATION_LIMIT = 2400
 
+_TAU_RETAIL_TOOL_NUDGE = (
+    "TauBench execution hint: after get_order_details for an exchange, do not "
+    "ask the customer for replacement item ids. Use get_product_details on "
+    "each relevant product_id from the order, choose matching available "
+    "item_ids yourself, then ask for explicit yes confirmation before calling "
+    "exchange_delivered_order_items. If a price difference needs a payment "
+    "method and the original payment method is available in the order, ask to "
+    "confirm using that original payment method."
+)
+
 
 _CEREBRAS_PRICING: Final[dict[str, dict[str, float]]] = {
     "gpt-oss-120b": {"input_per_million_usd": 0.35, "output_per_million_usd": 0.75},
@@ -171,6 +181,43 @@ def _recent_tool_calls(messages: list[dict[str, Any]]) -> str:
     return "\n".join(calls[-8:])
 
 
+def _exchange_already_requested(messages: list[dict[str, Any]]) -> bool:
+    for m in reversed(messages):
+        if m.get("role") != "tool":
+            continue
+        if m.get("name") != "exchange_delivered_order_items":
+            continue
+        content = str(m.get("content") or "")
+        return '"status": "exchange requested"' in content
+    return False
+
+
+def _asks_for_confirmation_before_tool(message: dict[str, Any]) -> bool:
+    if not message.get("tool_calls"):
+        return False
+    content = str(message.get("content") or "").lower()
+    if not content:
+        return False
+    confirmation_markers = (
+        "please confirm",
+        "reply \"yes\"",
+        "reply “yes”",
+        "reply yes",
+        "confirm that",
+        "confirmation",
+        "go ahead",
+    )
+    consequential_markers = (
+        "exchange",
+        "refund",
+        "proceed",
+        "submit",
+    )
+    return any(marker in content for marker in confirmation_markers) and any(
+        marker in content for marker in consequential_markers
+    )
+
+
 def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
     """Build the prompt text for Eliza's stateful benchmark endpoint.
 
@@ -183,11 +230,23 @@ def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
     """
 
     latest = _latest_observation_content(messages)
+    if _exchange_already_requested(messages):
+        return (
+            "The tau-bench exchange mutation has already succeeded.\n\n"
+            "Original customer request:\n"
+            f"{_initial_user_content(messages)}\n\n"
+            "Final tool observation:\n"
+            f"{latest}\n\n"
+            "Reply only with a final customer-facing confirmation that the exchange "
+            "request is complete, including the selected replacement items and refund. "
+            "Do not call any tools. Do not ask for confirmation again."
+        ).strip()
     if len(messages) <= 2:
         system = _initial_system_content(messages)
         return (
             "Domain rules:\n"
             f"{system}\n\n"
+            f"{_TAU_RETAIL_TOOL_NUDGE}\n\n"
             "Customer message:\n"
             f"{latest}"
         ).strip()
@@ -207,6 +266,7 @@ def _build_eliza_turn_text(messages: list[dict[str, Any]]) -> str:
         "facts to fetch the next missing fact, ask the customer for required "
         "confirmation with REPLY when policy requires it, then call the final "
         "mutation tool after confirmation.\n\n"
+        f"{_TAU_RETAIL_TOOL_NUDGE}\n\n"
         "Latest customer/tool observation:\n"
         f"{latest}"
     ).strip()
@@ -337,6 +397,8 @@ class ElizaTauAgent(BaseTauAgent):
                 response = self._one_turn(messages, tools_info)
                 next_message = self._response_to_assistant_message(response)
                 _strip_cerebras_quirks(next_message)
+                if _asks_for_confirmation_before_tool(next_message):
+                    next_message.pop("tool_calls", None)
 
                 usage = response.params.get("usage") if isinstance(response.params, dict) else None
                 if isinstance(usage, dict):
@@ -422,7 +484,7 @@ class ElizaTauAgent(BaseTauAgent):
             "task_id": self._session_id,
             "tau_mode": "stateful_eliza_compact",
         }
-        if tools_info:
+        if tools_info and not _exchange_already_requested(messages):
             context["tools"] = _compact_tool_schemas_for_eliza(tools_info)
             context["tool_choice"] = "auto"
         if self.temperature is not None:

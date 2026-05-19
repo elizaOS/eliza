@@ -1,21 +1,25 @@
 import type http from "node:http";
-import type {
-  ElizaCapabilityRouter,
-  IAgentRuntime,
-  Plugin,
-  RouteHelpers,
-  RouteRequestMeta,
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type ElizaCapabilityRouter,
+  type IAgentRuntime,
+  type Plugin,
+  type RouteHelpers,
+  type RouteRequestMeta,
+  type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter";
 import { handleRemoteCapabilityRoutes } from "./remote-capability-routes";
 
+const originalFetch = globalThis.fetch;
 const originalEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
 const originalUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
 const originalAllowedModules =
   process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
 
 afterEach(() => {
+  globalThis.fetch = originalFetch;
   if (originalEnabled === undefined) {
     delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
   } else {
@@ -40,6 +44,53 @@ function makeRuntime(): IAgentRuntime {
   } as unknown as IAgentRuntime;
 }
 
+function makePluginRuntime(): IAgentRuntime {
+  const runtime = {
+    agentId: "44444444-4444-4444-4444-444444444444" as UUID,
+    character: { name: "Remote Capability Route Test" },
+    plugins: [] as Plugin[],
+    actions: [] as NonNullable<Plugin["actions"]>,
+    providers: [] as NonNullable<Plugin["providers"]>,
+    evaluators: [] as NonNullable<Plugin["evaluators"]>,
+    routes: [] as NonNullable<Plugin["routes"]>,
+    services: new Map() as IAgentRuntime["services"],
+    getService: (serviceType: string) =>
+      runtime.services.get(serviceType as never)?.[0] ?? null,
+    getServicesByType: (serviceType: string) =>
+      runtime.services.get(serviceType as never) ?? [],
+    hasService: (serviceType: string) =>
+      runtime.services.has(serviceType as never) ||
+      serviceType === CAPABILITY_ROUTER_SERVICE_TYPE,
+    registerPlugin: async (plugin: Plugin) => {
+      runtime.plugins.push(plugin);
+      runtime.actions.push(...(plugin.actions ?? []));
+      runtime.providers.push(...(plugin.providers ?? []));
+      runtime.evaluators.push(...(plugin.evaluators ?? []));
+      runtime.routes.push(...(plugin.routes ?? []));
+    },
+    reloadPlugin: async (plugin: Plugin) => {
+      await runtime.registerPlugin(plugin);
+    },
+    unloadPlugin: async () => null,
+    getAllPluginOwnership: () =>
+      runtime.plugins.map((plugin) => ({
+        pluginName: plugin.name,
+        plugin,
+        actions: plugin.actions ?? [],
+        providers: plugin.providers ?? [],
+        evaluators: plugin.evaluators ?? [],
+        services: [],
+        routes: plugin.routes ?? [],
+      })),
+  } as unknown as IAgentRuntime & {
+    actions: NonNullable<Plugin["actions"]>;
+    providers: NonNullable<Plugin["providers"]>;
+    evaluators: NonNullable<Plugin["evaluators"]>;
+    routes: NonNullable<Plugin["routes"]>;
+  };
+  return runtime;
+}
+
 function makeCtx(
   body: Record<string, unknown>,
   overrides: Partial<Parameters<typeof handleRemoteCapabilityRoutes>[0]> = {},
@@ -51,7 +102,7 @@ function makeCtx(
   const json = vi.fn();
   const error = vi.fn();
   const ctx = {
-    req: {} as http.IncomingMessage,
+    req: { headers: {} } as http.IncomingMessage,
     res: {} as http.ServerResponse,
     method: "POST",
     pathname: "/api/capability-router/connect",
@@ -174,6 +225,38 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(error).not.toHaveBeenCalled();
   });
 
+  it("blocks remote dynamic assets for restricted mobile platforms", async () => {
+    const getAsset = vi.fn();
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const { ctx, json, error } = makeCtx(
+      {},
+      {
+        method: "GET",
+        pathname:
+          "/api/capability-router/assets/device/remote-demo/assets/remote-view.js",
+        runtime,
+        req: {
+          headers: { "x-eliza-platform": "ios" },
+        } as unknown as http.IncomingMessage,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Dynamic capability asset loading is not permitted on this platform.",
+      403,
+    );
+    expect(getAsset).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("rejects remote asset proxy paths with traversal segments", async () => {
     const getAsset = vi.fn();
     const router = {
@@ -204,8 +287,15 @@ describe("handleRemoteCapabilityRoutes", () => {
   });
 
   it("installs a direct endpoint, syncs plugins, and redacts tokens", async () => {
-    const installEndpoint = vi.fn();
-    const syncPlugins = vi.fn().mockResolvedValue(syncResult);
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "direct",
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://capability.example.test",
+        token: "secret-token",
+      },
+      sync: syncResult,
+    });
     const { ctx, json, error } = makeCtx(
       {
         endpoint: {
@@ -216,30 +306,37 @@ describe("handleRemoteCapabilityRoutes", () => {
         requestTimeoutMs: 15_000,
         allowedModuleIds: ["remote-plugin"],
       },
-      { installEndpoint, syncPlugins },
+      { connectEndpointProvider },
     );
 
     await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
 
-    expect(installEndpoint).toHaveBeenCalledWith(ctx.runtime, {
-      enabled: true,
-      endpoints: [
-        {
+    expect(connectEndpointProvider).toHaveBeenCalledWith(
+      ctx.runtime,
+      expect.objectContaining({
+        provider: expect.objectContaining({ id: "direct" }),
+        provisionOptions: {
+          endpoint: {
+            id: "tools",
+            baseUrl: "https://capability.example.test",
+            token: "secret-token",
+          },
+          allowedModuleIds: ["remote-plugin"],
+        },
+      }),
+    );
+    expect(connectEndpointProvider.mock.calls[0]?.[1]).toMatchObject({
+      provisionOptions: {
+        endpoint: {
           id: "tools",
           baseUrl: "https://capability.example.test",
           token: "secret-token",
         },
-      ],
-      environment: "server",
-      requestTimeoutMs: 15_000,
-    });
-    expect(syncPlugins).toHaveBeenCalledWith(ctx.runtime, {
-      unloadMissing: true,
-      trustPolicy: {
-        allowedEndpointIds: ["tools"],
         allowedModuleIds: ["remote-plugin"],
-        requireEndpointId: true,
       },
+      unloadMissing: true,
+      requestTimeoutMs: 15_000,
+      allowedModuleIds: ["remote-plugin"],
     });
     expect(error).not.toHaveBeenCalled();
     expect(json).toHaveBeenCalledWith(ctx.res, {
@@ -298,6 +395,313 @@ describe("handleRemoteCapabilityRoutes", () => {
     );
     expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
       JSON.stringify({ tools: ["remote-plugin"] }),
+    );
+  });
+
+  it("keeps multiple direct endpoint connects live through the product route", async () => {
+    const runtime = makePluginRuntime();
+    const calls: Array<{ url: string; method?: string; moduleId?: string }> =
+      [];
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as {
+            method?: string;
+            params?: { moduleId?: string };
+          })
+        : undefined;
+      calls.push({
+        url: String(url),
+        method: body?.method,
+        moduleId: body?.params?.moduleId,
+      });
+      if (body?.method === "plugin.modules.list") {
+        if (String(url).startsWith("https://device-a.example.test/")) {
+          return jsonResponse({
+            ok: true,
+            result: {
+              modules: [
+                {
+                  id: "device-a-plugin",
+                  name: "@remote/device-a",
+                  actions: [
+                    {
+                      name: "DEVICE_A_ACTION",
+                      description: "Run on device A.",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+        if (String(url).startsWith("https://device-b.example.test/")) {
+          return jsonResponse({
+            ok: true,
+            result: {
+              modules: [
+                {
+                  id: "device-b-plugin",
+                  name: "@remote/device-b",
+                  actions: [
+                    {
+                      name: "DEVICE_B_ACTION",
+                      description: "Run on device B.",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+      }
+      if (body?.method === "plugin.action.invoke") {
+        return jsonResponse({
+          ok: true,
+          result: {
+            text:
+              body.params?.moduleId === "device-a-plugin"
+                ? "device a action"
+                : "device b action",
+          },
+        });
+      }
+      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+    }) as unknown as typeof fetch;
+
+    const first = makeCtx(
+      {
+        endpoint: {
+          id: "device-a",
+          baseUrl: "https://device-a.example.test",
+          token: "device-a-token",
+        },
+        persist: false,
+      },
+      { runtime },
+    );
+    const second = makeCtx(
+      {
+        endpoint: {
+          id: "device-b",
+          baseUrl: "https://device-b.example.test",
+          token: "device-b-token",
+        },
+        persist: false,
+      },
+      { runtime },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(first.ctx)).resolves.toBe(true);
+    await expect(handleRemoteCapabilityRoutes(second.ctx)).resolves.toBe(true);
+
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/device-a",
+      "@remote/device-b",
+    ]);
+    const router = runtime.getService?.(
+      CAPABILITY_ROUTER_SERVICE_TYPE,
+    ) as unknown as {
+      getEndpointConfigs: () => Array<{ id: string; baseUrl: string }>;
+    };
+    expect(
+      router.getEndpointConfigs().map(({ id, baseUrl }) => ({
+        id,
+        baseUrl,
+      })),
+    ).toEqual([
+      { id: "device-a", baseUrl: "https://device-a.example.test" },
+      { id: "device-b", baseUrl: "https://device-b.example.test" },
+    ]);
+    await expect(
+      runtime.actions
+        .find((action) => action.name === "DEVICE_A_ACTION")
+        ?.handler(runtime, {} as never),
+    ).resolves.toMatchObject({ text: "device a action" });
+    await expect(
+      runtime.actions
+        .find((action) => action.name === "DEVICE_B_ACTION")
+        ?.handler(runtime, {} as never),
+    ).resolves.toMatchObject({ text: "device b action" });
+    expect(
+      calls
+        .filter((call) => call.method === "plugin.modules.list")
+        .map((call) => call.url),
+    ).toEqual([
+      "https://device-a.example.test/v1/capabilities/invoke",
+      "https://device-b.example.test/v1/capabilities/invoke",
+    ]);
+    expect(first.json.mock.calls[0]?.[1]).toMatchObject({
+      success: true,
+      mode: "endpoint",
+      endpoint: { id: "device-a", hasToken: true },
+      persisted: false,
+      sync: { registered: ["@remote/device-a"], unloaded: [] },
+    });
+    expect(second.json.mock.calls[0]?.[1]).toMatchObject({
+      success: true,
+      mode: "endpoint",
+      endpoint: { id: "device-b", hasToken: true },
+      persisted: false,
+      sync: { registered: ["@remote/device-b"], unloaded: [] },
+    });
+  });
+
+  it("keeps direct and cloud endpoint connects live through the product route", async () => {
+    const runtime = makePluginRuntime();
+    const calls: Array<{ url: string; method?: string; moduleId?: string }> =
+      [];
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const href = String(url);
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as {
+            method?: string;
+            params?: { moduleId?: string };
+          })
+        : undefined;
+      calls.push({
+        url: href,
+        method: body?.method,
+        moduleId: body?.params?.moduleId,
+      });
+      if (href === "https://api.elizacloud.ai/api/v1/eliza/agents") {
+        return jsonResponse({ data: { id: "cloud-agent-1" } });
+      }
+      if (
+        href ===
+        "https://api.elizacloud.ai/api/v1/eliza/agents/cloud-agent-1/provision"
+      ) {
+        return jsonResponse({
+          data: {
+            capabilityRouterUrl: "https://cloud-capability.example.test",
+            capabilityRouterToken: "cloud-capability-token",
+          },
+        });
+      }
+      if (body?.method === "plugin.modules.list") {
+        if (href.startsWith("https://device-local.example.test/")) {
+          return jsonResponse({
+            ok: true,
+            result: {
+              modules: [
+                {
+                  id: "local-device-plugin",
+                  name: "@remote/local-device",
+                  actions: [
+                    {
+                      name: "LOCAL_DEVICE_ACTION",
+                      description: "Run on the local device.",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+        if (href.startsWith("https://cloud-capability.example.test/")) {
+          return jsonResponse({
+            ok: true,
+            result: {
+              modules: [
+                {
+                  id: "cloud-plugin",
+                  name: "@remote/cloud-plugin",
+                  actions: [
+                    {
+                      name: "CLOUD_ACTION",
+                      description: "Run in the cloud capability sandbox.",
+                    },
+                  ],
+                },
+              ],
+            },
+          });
+        }
+      }
+      if (body?.method === "plugin.action.invoke") {
+        return jsonResponse({
+          ok: true,
+          result: {
+            text:
+              body.params?.moduleId === "local-device-plugin"
+                ? "local device action"
+                : "cloud action",
+          },
+        });
+      }
+      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+    }) as unknown as typeof fetch;
+
+    const direct = makeCtx(
+      {
+        endpoint: {
+          id: "local-device",
+          baseUrl: "https://device-local.example.test",
+          token: "local-device-token",
+        },
+        persist: false,
+      },
+      { runtime },
+    );
+    const cloud = makeCtx(
+      {
+        cloud: {
+          cloudApiBase: "https://www.elizacloud.ai",
+          authToken: "cloud-auth-token",
+          name: "Cloud Dynamic Plugin",
+          endpointId: "cloud-capability",
+        },
+        persist: false,
+      },
+      { runtime },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(direct.ctx)).resolves.toBe(true);
+    await expect(handleRemoteCapabilityRoutes(cloud.ctx)).resolves.toBe(true);
+
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/local-device",
+      "@remote/cloud-plugin",
+    ]);
+    const router = runtime.getService?.(
+      CAPABILITY_ROUTER_SERVICE_TYPE,
+    ) as unknown as {
+      getEndpointConfigs: () => Array<{ id: string; baseUrl: string }>;
+    };
+    expect(
+      router.getEndpointConfigs().map(({ id, baseUrl }) => ({
+        id,
+        baseUrl,
+      })),
+    ).toEqual([
+      {
+        id: "local-device",
+        baseUrl: "https://device-local.example.test",
+      },
+      {
+        id: "cloud-capability",
+        baseUrl: "https://cloud-capability.example.test",
+      },
+    ]);
+    await expect(
+      runtime.actions
+        .find((action) => action.name === "LOCAL_DEVICE_ACTION")
+        ?.handler(runtime, {} as never),
+    ).resolves.toMatchObject({ text: "local device action" });
+    await expect(
+      runtime.actions
+        .find((action) => action.name === "CLOUD_ACTION")
+        ?.handler(runtime, {} as never),
+    ).resolves.toMatchObject({ text: "cloud action" });
+    expect(cloud.json.mock.calls[0]?.[1]).toMatchObject({
+      success: true,
+      mode: "cloud",
+      agentId: "cloud-agent-1",
+      endpoint: { id: "cloud-capability", hasToken: true },
+      persisted: false,
+      sync: { registered: ["@remote/cloud-plugin"], unloaded: [] },
+    });
+    expect(JSON.stringify(cloud.json.mock.calls[0]?.[1])).not.toContain(
+      "cloud-capability-token",
     );
   });
 
@@ -403,8 +807,14 @@ describe("handleRemoteCapabilityRoutes", () => {
   });
 
   it("can connect without persisting the endpoint", async () => {
-    const installEndpoint = vi.fn();
-    const syncPlugins = vi.fn().mockResolvedValue(syncResult);
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "direct",
+      endpoint: {
+        id: "ephemeral",
+        baseUrl: "https://capability.example.test",
+      },
+      sync: syncResult,
+    });
     const { ctx, json } = makeCtx(
       {
         endpoint: {
@@ -413,7 +823,7 @@ describe("handleRemoteCapabilityRoutes", () => {
         },
         persist: false,
       },
-      { installEndpoint, syncPlugins },
+      { connectEndpointProvider },
     );
 
     await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
@@ -426,9 +836,79 @@ describe("handleRemoteCapabilityRoutes", () => {
     });
   });
 
+  it("connects URL-backed provider endpoints through the product route", async () => {
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "home-machine",
+      endpoint: {
+        id: "home-runner",
+        baseUrl: "https://home.example.test/capability",
+        token: "home-secret",
+      },
+      sync: syncResult,
+    });
+    const { ctx, json } = makeCtx(
+      {
+        provider: "home-machine",
+        endpoint: {
+          id: "home-runner",
+          baseUrl: "https://home.example.test/capability/",
+          token: "home-secret",
+        },
+        allowedModuleIds: ["remote-plugin"],
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(connectEndpointProvider).toHaveBeenCalledWith(
+      ctx.runtime,
+      expect.objectContaining({
+        provider: expect.objectContaining({ id: "home-machine" }),
+        provisionOptions: {
+          baseUrl: "https://home.example.test/capability",
+          endpointId: "home-runner",
+          token: "home-secret",
+          allowedModuleIds: ["remote-plugin"],
+        },
+      }),
+    );
+    expect(json.mock.calls[0]?.[1]).toMatchObject({
+      success: true,
+      mode: "home-machine",
+      provider: "home-machine",
+      endpoint: {
+        id: "home-runner",
+        baseUrl: "https://home.example.test/capability",
+        hasToken: true,
+      },
+      persisted: true,
+    });
+    expect(ctx.persistConfigEnv).toHaveBeenCalledWith(
+      "ELIZA_CAPABILITY_ROUTER_URLS",
+      JSON.stringify([
+        {
+          id: "home-runner",
+          baseUrl: "https://home.example.test/capability",
+          token: "home-secret",
+        },
+      ]),
+    );
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
+      JSON.stringify({ "home-runner": ["remote-plugin"] }),
+    );
+  });
+
   it("merges persisted endpoints by id", async () => {
-    const installEndpoint = vi.fn();
-    const syncPlugins = vi.fn().mockResolvedValue(syncResult);
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "direct",
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://new.example.test",
+        token: "new-token",
+      },
+      sync: syncResult,
+    });
     const { ctx } = makeCtx(
       {
         endpoint: {
@@ -438,8 +918,7 @@ describe("handleRemoteCapabilityRoutes", () => {
         },
       },
       {
-        installEndpoint,
-        syncPlugins,
+        connectEndpointProvider,
         config: {
           env: {
             vars: {
@@ -482,8 +961,14 @@ describe("handleRemoteCapabilityRoutes", () => {
     process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES = JSON.stringify({
       other: ["other-plugin"],
     });
-    const installEndpoint = vi.fn();
-    const syncPlugins = vi.fn().mockResolvedValue(syncResult);
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "direct",
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://new.example.test",
+      },
+      sync: syncResult,
+    });
     const { ctx } = makeCtx(
       {
         endpoint: {
@@ -492,7 +977,7 @@ describe("handleRemoteCapabilityRoutes", () => {
         },
         allowedModuleIds: ["remote-plugin", "remote-plugin", " "],
       },
-      { installEndpoint, syncPlugins },
+      { connectEndpointProvider },
     );
 
     await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
@@ -518,8 +1003,32 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("rejects unknown endpoint provider modes", async () => {
+    const connectEndpointProvider = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        provider: "unknown-provider",
+        endpoint: {
+          id: "unknown-provider",
+          baseUrl: "https://unknown-provider.example.test",
+        },
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.",
+      400,
+    );
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("rejects ambiguous endpoint and cloud connect requests", async () => {
-    const installEndpoint = vi.fn();
+    const connectEndpointProvider = vi.fn();
     const connectCloudSandbox = vi.fn();
     const { ctx, error, json } = makeCtx(
       {
@@ -530,7 +1039,7 @@ describe("handleRemoteCapabilityRoutes", () => {
           name: "Cloud Tools",
         },
       },
-      { installEndpoint, connectCloudSandbox },
+      { connectEndpointProvider, connectCloudSandbox },
     );
 
     await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
@@ -540,7 +1049,7 @@ describe("handleRemoteCapabilityRoutes", () => {
       "Request body must include only one of 'endpoint' or 'cloud'.",
       400,
     );
-    expect(installEndpoint).not.toHaveBeenCalled();
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
     expect(connectCloudSandbox).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
   });
@@ -586,6 +1095,97 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("rejects endpoint URLs with embedded credentials", async () => {
+    const connectEndpointProvider = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        endpoint: { baseUrl: "https://user:pass@capability.example.test" },
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "endpoint.baseUrl must not include embedded credentials.",
+      400,
+    );
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("normalizes endpoint URL query and fragment out of persisted identity", async () => {
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "direct",
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://capability.example.test/root",
+        token: "explicit-token",
+      },
+      sync: syncResult,
+    });
+    const { ctx, error, json } = makeCtx(
+      {
+        endpoint: {
+          id: "tools",
+          baseUrl: "https://capability.example.test/root?token=leak#debug",
+          token: "explicit-token",
+        },
+        persist: false,
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).not.toHaveBeenCalled();
+    expect(connectEndpointProvider).toHaveBeenCalledWith(
+      ctx.runtime,
+      expect.objectContaining({
+        provisionOptions: {
+          endpoint: {
+            id: "tools",
+            baseUrl: "https://capability.example.test/root",
+            token: "explicit-token",
+          },
+        },
+      }),
+    );
+    expect(json.mock.calls[0]?.[1]).toMatchObject({
+      endpoint: {
+        id: "tools",
+        baseUrl: "https://capability.example.test/root",
+        hasToken: true,
+      },
+      persisted: false,
+    });
+  });
+
+  it("rejects cloud API URLs with embedded credentials", async () => {
+    const connectCloudSandbox = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        cloud: {
+          cloudApiBase: "https://user:pass@api.elizacloud.ai",
+          authToken: "cloud-auth",
+          name: "Cloud Tools",
+        },
+      },
+      { connectCloudSandbox },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "cloud.cloudApiBase must not include embedded credentials.",
+      400,
+    );
+    expect(connectCloudSandbox).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("returns unavailable when no runtime is active", async () => {
     const { ctx, error } = makeCtx(
       { endpoint: { baseUrl: "https://capability.example.test" } },
@@ -612,3 +1212,10 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(error).not.toHaveBeenCalled();
   });
 });
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}

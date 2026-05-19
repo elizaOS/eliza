@@ -123,6 +123,10 @@ export class RemoteCapabilityRouterService
 
   async stop(): Promise<void> {}
 
+  getEndpointConfigs(): RemoteCapabilityEndpointConfig[] {
+    return this.endpoints.map((endpoint) => ({ ...endpoint }));
+  }
+
   async availability(): Promise<CapabilityAvailability> {
     if (this.endpoints.length === 0) {
       return unavailableAvailability(this.environment, "Missing remote URL.");
@@ -253,8 +257,13 @@ export class RemoteCapabilityRouterService
   private async listRemotePluginModules(
     params?: JsonObject,
   ): Promise<JsonValue | undefined> {
+    const endpointId =
+      typeof params?.endpointId === "string" ? params.endpointId : "";
+    const endpoints = endpointId
+      ? [this.requireEndpointForParams("plugin.modules.list", params)]
+      : this.endpoints;
     const results = await Promise.all(
-      this.endpoints.map(async (endpoint) => {
+      endpoints.map(async (endpoint) => {
         const result = await this.requestJson(
           endpoint,
           "POST",

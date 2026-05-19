@@ -41,7 +41,6 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { performance } from "node:perf_hooks";
 
 import type {
 	LlmCtxHandle,
@@ -247,11 +246,7 @@ interface VisionShimSymbols {
 		n_threads: number,
 	) => Pointer;
 	eliza_mtmd_free: (ctx: Pointer) => void;
-	eliza_mtmd_bitmap_init_rgb: (
-		nx: number,
-		ny: number,
-		rgb: Pointer,
-	) => Pointer;
+	eliza_mtmd_bitmap_init_rgb: (nx: number, ny: number, rgb: Pointer) => Pointer;
 	eliza_mtmd_bitmap_free: (bm: Pointer) => void;
 	eliza_mtmd_input_chunks_init: () => Pointer;
 	eliza_mtmd_input_chunks_free: (c: Pointer) => void;

@@ -11,7 +11,7 @@
  * run in parallel, but multiple messages on the SAME room serialize.
  */
 
-import { RoomHandlerQueue } from "@elizaos/core";
+import { RoomHandlerQueue } from "./core-lite.ts";
 import type { FakeClock } from "./clock.ts";
 import type { Trace } from "./trace.ts";
 import type { Scenario, ScenarioScriptStep, TraceEvent } from "./types.ts";

@@ -245,6 +245,20 @@ describe("composeBenchmarkPrompt", () => {
     expect(prompt).not.toContain("prior assistant text");
     expect(prompt).not.toContain('"messages"');
   });
+
+  it("adds lifecycle-specific guidance for orchestrator lifecycle prompts", () => {
+    const prompt = composeBenchmarkPrompt({
+      text: "The current approach failed. Replan and continue.",
+      context: {
+        benchmark: "orchestrator_lifecycle",
+        task_id: "lifecycle-a",
+      },
+    });
+
+    expect(prompt).toContain("orchestrator lifecycle benchmark");
+    expect(prompt).toContain("updated plan has been applied");
+    expect(prompt).toContain("active subagent status or progress");
+  });
 });
 
 describe("benchmark plugin LOCA tool capture", () => {
@@ -365,6 +379,32 @@ describe("benchmark plugin LifeOps tool capture", () => {
       "MEMORY is not a LifeOpsBench executor tool",
     );
     expect(rendered?.text).toContain("ARCHIVE_THREAD with threadId");
+
+    setBenchmarkContext(null);
+  });
+
+  it("renders orchestrator lifecycle-specific reply instructions", async () => {
+    setBenchmarkContext({
+      benchmark: "orchestrator_lifecycle",
+      taskId: "lifecycle-a",
+      expected_behaviors: ["ack_scope_change", "apply_scope_change_to_task"],
+    });
+
+    const plugin = createBenchmarkPlugin();
+    const provider = plugin.providers?.find(
+      (candidate) => candidate.name === "ELIZA_BENCHMARK",
+    );
+    const rendered = await provider?.get?.(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+
+    expect(rendered?.text).toContain(
+      "This is an orchestrator lifecycle benchmark",
+    );
+    expect(rendered?.text).toContain("updated plan has been applied");
+    expect(rendered?.text).toContain("active subagent");
 
     setBenchmarkContext(null);
   });

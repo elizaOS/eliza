@@ -57,13 +57,13 @@ describe("KokoroGgufRuntime", () => {
       serverUrl: "http://127.0.0.1:18789",
       modelId: "kokoro-v1.0",
       sampleRate: 24_000,
-      fetchImpl: async () =>
+      fetchImpl: (async () =>
         ({
           ok: false,
           status: 503,
           statusText: "Service Unavailable",
           body: null,
-        }) as unknown as Response,
+        }) as unknown as Response) as unknown as typeof fetch,
     });
     await expect(
       runtime.synthesize({

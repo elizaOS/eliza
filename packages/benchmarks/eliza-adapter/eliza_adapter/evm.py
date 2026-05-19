@@ -74,6 +74,11 @@ class ElizaBridgeEVMExplorer:
         self._max_messages = max_messages
         self._run_index = run_index
         self._chain = chain
+        self._harness = (
+            os.environ.get("ELIZA_BENCH_HARNESS")
+            or os.environ.get("BENCHMARK_HARNESS")
+            or "eliza"
+        ).strip().lower() or "eliza"
         self._verbose = verbose
         self._code_file = code_file or mods["DEFAULT_CODE_FILE"]
         self._run_typescript_skill = mods["run_typescript_skill"]
@@ -103,7 +108,8 @@ class ElizaBridgeEVMExplorer:
             "run_index": run_index,
             "run_id": self._run_id,
             "chain": chain,
-            "agent_type": "eliza-ts-bridge",
+            "harness": self._harness,
+            "agent_type": f"{self._harness}-benchmark-bridge",
             "start_time": datetime.now().isoformat(),
             "environment_config": environment_config,
             "messages": [],
@@ -341,8 +347,8 @@ class ElizaBridgeEVMExplorer:
     async def run(self, env: "AnvilEnv") -> dict[str, object]:
         """Main exploration loop — same shape as the in-process EVMExplorerAgent."""
         logger.info(
-            "ElizaBridgeEVMExplorer  model=%s  chain=%s  max=%d  id=%s  agent_type=eliza-ts-bridge",
-            self._model_name, self._chain, self._max_messages, self._run_id,
+            "ElizaBridgeEVMExplorer  harness=%s  model=%s  chain=%s  max=%d  id=%s",
+            self._harness, self._model_name, self._chain, self._max_messages, self._run_id,
         )
 
         is_first_llm_step = True

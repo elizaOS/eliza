@@ -53,6 +53,6 @@ class GroqWhisperClient:
         resp.raise_for_status()
         payload = resp.json()
         text = payload.get("text") if isinstance(payload, dict) else None
-        if not isinstance(text, str):
+        if not isinstance(text, str) or not text.strip():
             raise RuntimeError(f"Groq STT returned no text: {payload!r}")
         return text

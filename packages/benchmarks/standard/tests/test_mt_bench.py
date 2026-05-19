@@ -34,6 +34,8 @@ def test_extract_rating_handles_two_digit() -> None:
 def test_extract_rating_accepts_common_judge_variants() -> None:
     assert _extract_rating("Final rating: 8/10") == 8.0
     assert _extract_rating("Score = [6]") == 6.0
+    assert _extract_rating("I would give it a 9/10.") == 9.0
+    assert _extract_rating("7") == 7.0
 
 
 def test_extract_rating_rejects_out_of_range() -> None:
@@ -174,6 +176,38 @@ def test_mt_bench_runner_raises_when_all_candidate_outputs_empty(tmp_path: Path)
 def test_mt_bench_default_token_budgets_allow_reasoning_models() -> None:
     assert DEFAULT_MAX_TOKENS >= 4096
     assert DEFAULT_JUDGE_MAX_TOKENS >= 1024
+
+
+def test_mt_bench_candidate_temperature_is_configurable(tmp_path: Path) -> None:
+    class RecordingCandidate(MockClient):
+        temperatures: list[float]
+
+        def __init__(self) -> None:
+            super().__init__(["x", "y"])
+            self.temperatures = []
+
+        def generate(self, messages, config):  # type: ignore[no-untyped-def]
+            self.temperatures.append(config.temperature)
+            return super().generate(messages, config)
+
+    candidate = RecordingCandidate()
+    judge = MockClient(["Rating: [[8]]", "Rating: [[8]]"])
+    runner = MTBenchRunner(
+        judge=judge,
+        judge_model="judge",
+        questions=list(SMOKE_QUESTIONS[:1]),
+        temperature=0.0,
+    )
+
+    runner.run(
+        client=candidate,
+        model="cand",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+
+    assert candidate.temperatures == [0.0, 0.0]
 
 
 def test_mt_bench_cli_end_to_end(tmp_path: Path) -> None:

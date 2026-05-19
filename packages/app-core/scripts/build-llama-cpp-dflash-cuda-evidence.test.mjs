@@ -65,6 +65,18 @@ function stageRunnableHelp(outDir) {
   fs.chmodSync(server, 0o755);
 }
 
+function stageCudaObjects(buildDir) {
+  for (const file of [
+    "dflash.cu.o",
+    "turboquant.cu.o",
+    "turbo-tcq.cu.o",
+    "qjl.cu.o",
+    "polarquant.cu.o",
+  ]) {
+    fs.writeFileSync(path.join(buildDir, file), "");
+  }
+}
+
 function withEnv(name, value, fn) {
   const previous = process.env[name];
   process.env[name] = value;
@@ -85,6 +97,7 @@ test("linux CUDA capabilities require target-matching runtime dispatch evidence 
     stageCudaSources(cacheDir);
     stageDflashDraftSources(cacheDir);
     stageRunnableHelp(outDir);
+    stageCudaObjects(buildDir);
 
     const capabilities = writeCapabilities({
       outDir,
@@ -112,11 +125,7 @@ test("CUDA object/source scans fail closed when runtime evidence does not match 
   try {
     stageCudaSources(cacheDir);
     stageDflashDraftSources(cacheDir);
-    fs.writeFileSync(path.join(buildDir, "dflash.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "turboquant.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "turbo-tcq.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "qjl.cu.o"), "");
-    fs.writeFileSync(path.join(buildDir, "polarquant.cu.o"), "");
+    stageCudaObjects(buildDir);
 
     const capabilities = withEnv(
       "ELIZA_DFLASH_ALLOW_INCOMPLETE_KERNELS_FOR_SMOKE",

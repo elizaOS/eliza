@@ -30,6 +30,45 @@ NON_LEADERBOARD_AGENTS: set[str] = {
     "smoke-default",
     "full-sweep",
 }
+NON_REAL_WARNING_TOKENS: tuple[str, ...] = (
+    "smoke",
+    "mock",
+    "stub",
+    "fixture",
+    "larp",
+)
+
+
+def _publication_warnings_for_run(run: dict[str, Any] | None) -> list[str]:
+    if not run:
+        return []
+    raw = run.get("publication_warnings")
+    if isinstance(raw, list):
+        return [str(item) for item in raw if str(item).strip()]
+    return []
+
+
+def _non_real_publication_warnings(run: dict[str, Any] | None) -> list[str]:
+    warnings = _publication_warnings_for_run(run)
+    blockers = [
+        warning
+        for warning in warnings
+        if warning.lower() == "sample_task_set"
+        or any(token in warning.lower() for token in NON_REAL_WARNING_TOKENS)
+    ]
+    if blockers:
+        return blockers
+    metrics = dict(run.get("metrics") or {}) if run else {}
+    dataset_source = metrics.get("dataset_source")
+    if isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample":
+        blockers.append("sample_dataset_source")
+    if metrics.get("sample") is True:
+        blockers.append("sample_task_set")
+    if metrics.get("mock") is True:
+        blockers.append("mock_run")
+    if metrics.get("stub") is True:
+        blockers.append("stub_run")
+    return blockers
 
 
 def _latest_by_benchmark_agent(conn) -> dict[tuple[str, str], dict[str, Any]]:
@@ -300,23 +339,33 @@ def build_calibration_report(
             for agent, run in real_runs.items()
         }
         real_score_map = {
-            agent: (float(run["score"]) if run and isinstance(run.get("score"), (int, float)) else None)
+            agent: (
+                float(run["score"])
+                if agent in supported_real_harnesses and run and isinstance(run.get("score"), (int, float))
+                else None
+            )
             for agent, run in real_runs.items()
         }
         real_cells: dict[str, dict[str, Any]] = {}
         missing_required_real: list[str] = []
         failed_required_real: list[str] = []
+        warned_required_real: dict[str, list[str]] = {}
         succeeded_required_real: list[str] = []
         for agent in REAL_HARNESSES:
             run = real_runs.get(agent)
             required = agent in supported_real_harnesses
+            non_real_warnings = _non_real_publication_warnings(run)
             if not required:
                 state = "unsupported"
             elif run is None:
                 state = "missing"
                 missing_required_real.append(agent)
             elif run.get("status") == "succeeded" and isinstance(run.get("score"), (int, float)):
-                state = "succeeded"
+                if non_real_warnings:
+                    state = "warned"
+                    warned_required_real[agent] = non_real_warnings
+                else:
+                    state = "succeeded"
                 succeeded_required_real.append(agent)
             else:
                 state = str(run.get("status") or "missing")
@@ -327,6 +376,8 @@ def build_calibration_report(
                 "status": real_statuses[agent],
                 "score": real_score_map[agent],
                 "run_id": run.get("run_id") if run else None,
+                "publication_warnings": _publication_warnings_for_run(run),
+                "non_real_warnings": non_real_warnings,
             }
         real_comparison_signatures = {
             agent: _comparison_signature_for_run(run)
@@ -349,7 +400,9 @@ def build_calibration_report(
         matrix_summary["succeeded_required_real_cells"] += len(succeeded_required_real)
         matrix_summary["missing_required_real_cells"] += len(missing_required_real)
         matrix_summary["failed_required_real_cells"] += len(failed_required_real)
-        if missing_required_real or failed_required_real:
+        matrix_summary["warned_required_real_cells"] += len(warned_required_real)
+        no_required_real_harnesses = not supported_real_harnesses
+        if no_required_real_harnesses or missing_required_real or failed_required_real or warned_required_real:
             matrix_summary["incomplete_benchmarks"] += 1
         else:
             matrix_summary["complete_benchmarks"] += 1
@@ -374,6 +427,7 @@ def build_calibration_report(
                 "real_unsupported_harnesses": unsupported_real_harnesses,
                 "missing_required_real_harnesses": missing_required_real,
                 "failed_required_real_harnesses": failed_required_real,
+                "warned_required_real_harnesses": warned_required_real,
                 "real_comparison_signatures": real_comparison_signatures,
                 "calibration": calibration,
                 "non_leaderboard_db_labels": extra_db_agents,
@@ -411,8 +465,16 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         if row.get("calibration_status") not in {"valid"}
         or row.get("missing_required_real_harnesses")
         or row.get("failed_required_real_harnesses")
+        or row.get("warned_required_real_harnesses")
         or row.get("real_pattern")
-        in {"all_real_zero", "all_real_one", "all_real_equal", "single_real_zero"}
+        in {
+            "all_real_zero",
+            "all_real_one",
+            "all_real_equal",
+            "incomplete",
+            "no_required_real_harnesses",
+            "single_real_zero",
+        }
         or str(row.get("real_pattern") or "").endswith("_mixed_config")
         or row.get("non_leaderboard_db_labels")
     ]
@@ -428,11 +490,18 @@ def print_calibration_report(report: dict[str, Any]) -> None:
         )
         missing = row.get("missing_required_real_harnesses") or []
         failed = row.get("failed_required_real_harnesses") or []
+        warned = row.get("warned_required_real_harnesses") or {}
         unsupported = row.get("real_unsupported_harnesses") or []
         if missing:
             print(f"  missing required real harnesses: {', '.join(missing)}")
         if failed:
             print(f"  failed required real harnesses: {', '.join(failed)}")
+        if warned:
+            formatted = {
+                agent: warnings
+                for agent, warnings in sorted(warned.items())
+            }
+            print(f"  warned required real harnesses: {json.dumps(formatted, sort_keys=True)}")
         if unsupported:
             print(f"  unsupported real harnesses: {', '.join(unsupported)}")
         extras = row.get("non_leaderboard_db_labels") or []

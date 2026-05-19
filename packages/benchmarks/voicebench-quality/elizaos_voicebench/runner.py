@@ -112,6 +112,7 @@ async def run(
         suite_details=suite_details,
         judge_model=getattr(judge, "model", ""),
         stt_provider=stt_provider,
+        mock=mock,
     )
     _persist(result, output_dir)
     return result

@@ -22,9 +22,18 @@ already understands:
 
 - actions
 - providers
+- evaluators
+- response-handler evaluators
+- response-handler field evaluators
+- lifecycle hooks
+- event handlers
+- JSON-safe model handlers
+- JSON-safe service methods
 - HTTP routes
+- app bridge hooks
 - compiled frontend views
-- route/view metadata sufficient for discovery and unload
+- component type, context, widget, app, route, view, config, schema, priority,
+  and metadata sufficient for discovery, registration, reload, and unload
 
 The local runtime remains responsible for plugin ownership, registration,
 unload/reload, provider/action selection, route dispatch, and view registry
@@ -92,27 +101,35 @@ or:
 
 The standard methods currently implemented in core are:
 
-| Method                       | Purpose                                                   |
-| ---------------------------- | --------------------------------------------------------- |
-| `fs.list`                    | List files in a routed workspace or device namespace.     |
-| `fs.readText`                | Read a text file through the provider.                    |
-| `fs.writeText`               | Write a text file through the provider.                   |
-| `pty.command.run`            | Run a command through a routed terminal provider.         |
-| `git.status`                 | Get repository status through the provider.               |
-| `git.diff`                   | Get repository diff through the provider.                 |
-| `git.command.run`            | Run a git command through the provider.                   |
-| `model.status`               | Report local model availability where supported.          |
-| `plugin.modules.list`        | List remote plugin module manifests.                      |
-| `plugin.action.invoke`       | Invoke a remote action contribution.                      |
-| `plugin.provider.get`        | Invoke a remote provider contribution.                    |
-| `plugin.evaluator.shouldRun` | Invoke a remote evaluator activation check.               |
-| `plugin.evaluator.prepare`   | Prepare remote evaluator prompt context.                  |
-| `plugin.evaluator.process`   | Process remote evaluator model output.                    |
-| `plugin.event.handle`        | Invoke a remote plugin event handler.                     |
-| `plugin.model.invoke`        | Invoke a remote JSON-serializable model handler.          |
-| `plugin.appBridge.call`      | Invoke a JSON-safe remote app bridge hook.                |
-| `plugin.route.call`          | Invoke a remote route contribution.                       |
-| `plugin.asset.get`           | Fetch remote plugin assets when direct URLs are not used. |
+| Method                                           | Purpose                                                   |
+| ------------------------------------------------ | --------------------------------------------------------- |
+| `fs.list`                                        | List files in a routed workspace or device namespace.     |
+| `fs.readText`                                    | Read a text file through the provider.                    |
+| `fs.writeText`                                   | Write a text file through the provider.                   |
+| `pty.command.run`                                | Run a command through a routed terminal provider.         |
+| `git.status`                                     | Get repository status through the provider.               |
+| `git.diff`                                       | Get repository diff through the provider.                 |
+| `git.command.run`                                | Run a git command through the provider.                   |
+| `model.status`                                   | Report local model availability where supported.          |
+| `plugin.modules.list`                            | List remote plugin module manifests.                      |
+| `plugin.action.invoke`                           | Invoke a remote action contribution.                      |
+| `plugin.provider.get`                            | Invoke a remote provider contribution.                    |
+| `plugin.evaluator.shouldRun`                     | Invoke a remote evaluator activation check.               |
+| `plugin.evaluator.prepare`                       | Prepare remote evaluator prompt context.                  |
+| `plugin.evaluator.prompt`                        | Resolve the remote evaluator model prompt.                |
+| `plugin.evaluator.process`                       | Process remote evaluator model output.                    |
+| `plugin.responseHandlerEvaluator.shouldRun`      | Invoke a response-handler evaluator activation check.     |
+| `plugin.responseHandlerEvaluator.evaluate`       | Evaluate a response-handler event remotely.               |
+| `plugin.responseHandlerFieldEvaluator.shouldRun` | Invoke a response-handler field activation check.         |
+| `plugin.responseHandlerFieldEvaluator.parse`     | Parse a response-handler field value remotely.            |
+| `plugin.responseHandlerFieldEvaluator.handle`    | Apply a parsed response-handler field remotely.           |
+| `plugin.lifecycle.call`                          | Invoke a remote plugin lifecycle hook.                    |
+| `plugin.event.handle`                            | Invoke a remote plugin event handler.                     |
+| `plugin.model.invoke`                            | Invoke a remote JSON-serializable model handler.          |
+| `plugin.service.call`                            | Invoke a JSON-safe remote service method.                 |
+| `plugin.appBridge.call`                          | Invoke a JSON-safe remote app bridge hook.                |
+| `plugin.route.call`                              | Invoke a remote route contribution.                       |
+| `plugin.asset.get`                               | Fetch remote plugin assets when direct URLs are not used. |
 
 ## Remote Module Manifest
 
@@ -162,6 +179,28 @@ The standard methods currently implemented in core are:
           },
           "hasPrepare": true,
           "hasProcessor": true
+        }
+      ],
+      "responseHandlerEvaluators": [
+        {
+          "name": "DEVICE_RESPONSE_CHECK",
+          "description": "Evaluate whether a response handler should run.",
+          "priority": 20
+        }
+      ],
+      "responseHandlerFieldEvaluators": [
+        {
+          "name": "device_status",
+          "description": "Parse and apply device status fields.",
+          "priority": 20,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "status": { "type": "string" }
+            }
+          },
+          "hasParse": true,
+          "hasHandle": true
         }
       ],
       "events": [
@@ -232,6 +271,9 @@ The standard methods currently implemented in core are:
           "stopRun",
           "handleAppRoutes"
         ]
+      },
+      "lifecycle": {
+        "hooks": ["init", "dispose", "applyConfig"]
       },
       "routes": [
         {
@@ -322,6 +364,20 @@ Manifest decoding is strict at the capability-router boundary:
   collide with existing local runtime views outside a reload of an adapter-owned
   remote plugin, so compiled frontend entries are not silently dropped by the
   view registry.
+- Remote widget ids are registry keys scoped by `pluginId/id`, where omitted
+  `pluginId` defaults to the remote plugin name. The adapter rejects duplicate
+  remote widget keys in a sync batch and rejects remote widgets that would
+  collide with existing local runtime widgets outside a reload of an
+  adapter-owned remote plugin.
+- Remote app nav tab ids are shell navigation keys. The adapter rejects
+  duplicate remote nav tab ids in a sync batch and rejects remote nav tabs that
+  would collide with existing local runtime nav tabs outside a reload of an
+  adapter-owned remote plugin.
+- Remote app bridge identifiers are registered under normalized app route keys.
+  The adapter rejects duplicate remote app bridge keys in a sync batch and
+  rejects remote bridge keys that would collide with existing runtime app route
+  modules before plugin initialization, so one remote app bridge cannot replace
+  another route module in the runtime app route-module registry.
 - Evaluator `schema` is required and must be a JSON object. Evaluator `prompt`
   is manifest data because the current core evaluator interface expects
   synchronous prompt generation; async remote work belongs in `shouldRun`,
@@ -336,8 +392,8 @@ Manifest decoding is strict at the capability-router boundary:
   adapter registers them on the normal `plugin.responseHandlerFieldEvaluators`
   field, proxies JSON-safe `shouldRun`/`parse`/`handle` calls, and maps remote
   handle effects to JSON result patches, preempt directives, and debug traces.
-- Lifecycle hooks can be declared with `lifecycle.hooks: ["init", "dispose",
-  "applyConfig"]`. The local adapter exposes normal plugin `init`, `dispose`,
+- Lifecycle hooks can be declared with `lifecycle.hooks: ["init", "dispose", "applyConfig"]`.
+  The local adapter exposes normal plugin `init`, `dispose`,
   and `applyConfig` hooks that proxy `plugin.lifecycle.call`; this keeps runtime
   registration, unload, reload, and hot config paths on the existing plugin
   lifecycle primitive. Static remote `config` is passed through the same normal
@@ -377,6 +433,13 @@ is decoded before an HTTP response is built: returned asset paths must satisfy
 the same safe asset-path rules as `bundlePath`, `contentType` and `integrity`
 must not contain response-splitting control characters, and `bodyBase64` must
 be valid standard base64. Local plugins should continue to use `bundlePath`.
+The same-origin asset proxy is blocked for restricted mobile clients
+(`X-Eliza-Platform: ios` or `android`) because App Store and Play Store style
+builds cannot fetch and execute JavaScript that was not bundled at submission
+time. Remote actions, providers, routes, and other RPC plugin surfaces remain
+available through the capability-router protocol; dynamically imported remote
+frontend bundles are desktop/web-only until a store-compliant packaged asset
+story exists.
 
 ## Runtime Integration
 
@@ -427,7 +490,7 @@ When multiple endpoints are configured:
   must be absolute `http` or `https` URLs, are normalized without query/hash or
   trailing slash, and must be unique. This prevents silent endpoint aliasing
   where two configured identities point at the same remote server.
-- action/provider/route/asset calls are routed back to the endpoint that
+- action/provider/route/model/asset calls are routed back to the endpoint that
   advertised the module. The aggregating router stamps each module with
   `capabilityEndpointId`, and the materialized plugin carries that endpoint id
   on every remote plugin RPC.
@@ -476,6 +539,11 @@ modules stamped by the installed endpoint can enter the runtime. Connect
 requests may also provide `allowedModuleIds` to pin the exact remote modules
 that are allowed to register from that endpoint; the CLI exposes this as
 `elizaos capability-router connect --allowed-module <module-id...>`.
+Endpoint-provider connects apply module allowlists before sync, so a shared
+remote endpoint can expose multiple modules while the agent materializes only
+the trusted subset and records non-allowlisted plugin names in `sync.skipped`.
+The lower-level sync/register APIs remain strict and raise a structured trust
+error when asked to register a non-allowlisted module directly.
 Cloud connect requests accept module allowlists either at the top level or
 inside the `cloud` object. Supplying both is rejected so a trust policy cannot
 silently prefer one source over another.
@@ -504,13 +572,20 @@ all capability-router cases whether or not the provider is called a satellite.
 
 Keep `satellite` for a concrete deployment target when useful. Use
 `capability-router` for the runtime abstraction and protocol.
+This is now CI-enforced by
+`bun run test:remote-capabilities:naming-audit`, which scans the current
+capability-router source, architecture docs, app, core, shared, and workflow
+roots. It only allows `satellite` in this historical naming analysis and in the
+legacy `ELIZA_SATELLITE_RUNNER_*` compatibility alias path and precedence test.
 
 ## Critical Assessment Of PR #7779
 
 Review target: <https://github.com/elizaOS/eliza/pull/7779>, inspected on
-2026-05-19 with `gh pr view 7779 --repo elizaOS/eliza`. The PR is open on
-`codex/phase-11-event-bridge-wip` against `develop`; GitHub currently reports
-`mergeable: CONFLICTING`.
+2026-05-19 with `gh pr view 7779 --repo elizaOS/eliza`. Refreshed on
+2026-05-19 with `gh pr view 7779 --repo elizaOS/eliza --json
+number,title,state,mergeable,headRefName,baseRefName,updatedAt,author,labels,url`.
+The PR is open on `codex/phase-11-event-bridge-wip` against `develop`; GitHub
+currently reports `mergeable: UNKNOWN`, last updated `2026-05-18T13:56:20Z`.
 
 Useful ideas to keep:
 
@@ -561,9 +636,28 @@ Concrete findings from the inspected PR files:
   the objective also requires iOS, cloud-to-home, home-to-cloud, and generic
   coding-agent-created modules. The canonical abstraction must live in core and
   agent packages, with Electrobun satellites as one deployment backend.
-- The PR body says GitHub reports the branch as mergeable, but the current PR
-  metadata reports `CONFLICTING`. Treat any validation list in the PR body as
-  historical until re-run on the current head.
+- GitHub currently reports `mergeable: UNKNOWN`, so mergeability and any
+  validation list in the PR body should be treated as historical until re-run on
+  the current head.
+
+Current branch provider-adapter check:
+
+- The historical PR files above are not present in this checkout. A current
+  file scan under `packages/agent`, `packages/cloud-services`, `packages/app-core`,
+  `plugins`, and `.github` finds the canonical implementation in
+  `remote-capability-router`, `remote-plugin-adapter`, the agent API route, and
+  the Cloud provisioner only.
+- `packages/agent/src/services/remote-capability-cloud-sandbox.ts` is the only
+  concrete provider adapter currently wired to the canonical endpoint model. It
+  normalizes Cloud create/provision/job responses into a
+  `RemoteCapabilityEndpointConfig`, installs that endpoint into
+  `RemoteCapabilityRouterService`, and syncs modules through the same remote
+  plugin adapter and endpoint/module trust policy used by direct endpoints.
+- There is no current E2B, home-machine, mobile-companion, or coding-satellite
+  provider implementation to fold in. Those should be added as thin endpoint
+  providers that return the same endpoint config and serve the same
+  `plugin.modules.list`, `plugin.*`, route, and asset RPC contract, not as new
+  runtime abstractions or separate remote-plugin contracts.
 
 Current extraction strategy:
 
@@ -579,14 +673,59 @@ Current extraction strategy:
 Current local implementation includes:
 
 - Core capability-router types in `packages/core/src/capabilities`.
+- Canonical protocol fixture
+  `CAPABILITY_ROUTER_PROTOCOL_FIXTURE` in `packages/core/src/capabilities`,
+  covering availability, manifest, action, provider, route, model, lifecycle,
+  event, service, app bridge, and asset payloads with the broad plugin surfaces
+  expected from a dynamic remote plugin, including structural component type
+  definitions, plugin contexts, and top-level plugin priority.
+- Plugin surface audit in
+  `packages/scripts/audit-capability-router-plugin-surface.ts`, exposed as
+  `bun run test:remote-capabilities:surface-audit`, which fails when a new
+  local `Plugin` field is not classified as remote-supported or intentionally
+  local-only for capability-router.
+- Capability-router naming audit in
+  `packages/scripts/audit-capability-router-naming.ts`, exposed as
+  `bun run test:remote-capabilities:naming-audit`, which fails if the canonical
+  source/docs/workflow roots reintroduce `satellite` as runtime abstraction
+  vocabulary outside this architecture record's historical naming analysis and
+  the legacy env-alias compatibility path.
+- Runnable reference endpoint in
+  `packages/scripts/capability-router-fixture-server.ts`, exposed as
+  `bun run capability-router:fixture-server`, that serves the canonical fixture
+  through the same `/v1/capabilities` and `/v1/capabilities/invoke` HTTP
+  protocol expected from real remote endpoints. The endpoint can also serve a
+  built view bundle from disk, which lets the fixture-server smoke prove the
+  build-output path instead of only replaying an embedded static asset.
 - Core exports from node, browser, and edge entrypoints.
 - Agent HTTP client/server bridge in
   `packages/agent/src/services/remote-capability-router.ts`.
 - Agent cloud sandbox endpoint provisioner in
   `packages/agent/src/services/remote-capability-cloud-sandbox.ts`.
+- Shared endpoint-provider adapter contract in
+  `packages/agent/src/services/remote-capability-endpoint-provider.ts`, so
+  direct endpoints, Cloud, E2B, home-machine runners, mobile companions, and
+  future providers all converge to the same `RemoteCapabilityEndpointConfig`
+  plus endpoint/module trust policy before plugin sync.
+- Reusable endpoint conformance harness in
+  `packages/agent/src/services/remote-capability-endpoint-conformance.ts` that
+  connects to any configured endpoint through the normal
+  `RemoteCapabilityRouterService`, verifies availability and manifest shape,
+  and exercises action, provider, evaluator, response-handler evaluator,
+  response-handler field evaluator, route, model, lifecycle, event, service,
+  app bridge, and compiled view asset RPC surfaces.
+- URL-backed endpoint providers in
+  `packages/agent/src/services/remote-capability-url-endpoint-providers.ts`
+  for concrete E2B, home-machine, mobile-companion, and desktop-companion
+  endpoints. These providers normalize and validate provider URLs before the
+  generic endpoint-provider adapter installs the router and syncs plugins.
 - Agent API route `POST /api/capability-router/connect` that installs an
   already-provisioned endpoint or provisions a Cloud endpoint, then syncs remote
-  plugins without returning stored tokens.
+  plugins without returning stored tokens. Direct endpoint connect and
+  URL-backed provider modes (`e2b`, `home-machine`, `mobile-companion`, and
+  `desktop-companion`) use the same endpoint-provider adapter path as Cloud
+  provisioning, so product connect flows converge before runtime service
+  installation and plugin sync.
 - Restart persistence for connected endpoints: redacted endpoint metadata is
   saved in `eliza.json`, while token-bearing `ELIZA_CAPABILITY_ROUTER_URLS`
   lives in the existing `config.env` secret channel and is re-applied to
@@ -595,7 +734,11 @@ Current local implementation includes:
   `ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES`, with bootstrap deriving endpoint
   and module trust policy from saved configuration after restart.
 - `elizaos capability-router connect` CLI command for calling that agent API
-  against direct endpoints or Cloud provisioning flows.
+  against direct endpoints, URL-backed provider families, or Cloud provisioning
+  flows.
+- `elizaos capability-router conformance <baseUrl>` CLI command for validating
+  an arbitrary endpoint against the transport-level plugin protocol without
+  provider-specific code.
 - Remote manifest to `Plugin` adapter in
   `packages/agent/src/services/remote-plugin-adapter.ts`.
 - Startup sync in `packages/agent/src/runtime/eliza.ts`.
@@ -604,12 +747,18 @@ Current local implementation includes:
 - Materialized remote plugins preserve endpoint affinity with
   `capabilityEndpointId`, so multiple remote devices or cloud containers can
   contribute modules without later calls falling back to the primary endpoint.
+- Incremental endpoint-provider connects preserve already-installed runtime
+  endpoints. The sync path fetches only the newly connected endpoint's manifest
+  and scopes `unloadMissing` to plugins owned by that endpoint, so connecting a
+  second device or sandbox does not unload the first device's remote plugins.
 - Explicit `endpointId` routing for low-level `fs`, `pty`, `git`, and
   `model.status` capabilities.
 
 Current focused tests cover:
 
 - core method validation and error decoding,
+- canonical protocol fixture decoder validation through
+  `RuntimeBrokerCapabilityRouter`,
 - HTTP request/response round trips,
 - fetch-handler server contract,
 - remote module manifests,
@@ -618,6 +767,10 @@ Current focused tests cover:
 - remote widget declarations on the normal `plugin.widgets` field,
 - remote static config on the normal `plugin.config` field,
 - remote database schema declarations on the normal `plugin.schema` field,
+- remote entity component type declarations on the normal
+  `plugin.componentTypes` field,
+- remote plugin context declarations on the normal `plugin.contexts` field,
+- remote top-level plugin priority on the normal `plugin.priority` field,
 - remote app metadata and nav tabs on the normal `plugin.app` field,
 - remote route path and app nav path validation before runtime route/nav
   metadata is exposed,
@@ -626,16 +779,60 @@ Current focused tests cover:
 - remote service method validation before unique methods are synthesized on a
   local service prototype,
 - remote JSON-safe app bridge hooks through a runtime route-module registry,
-- skip/reload/unload sync behavior,
+- skip/reload/unload sync behavior, including removal of stale remote
+  actions, providers, routes, plugin records, and view-registry entries when a
+  module disappears from an endpoint manifest,
 - multiple remote endpoints,
-- endpoint affinity on materialized plugin config and action/provider/route RPC
+- endpoint affinity on materialized plugin config and action/provider/route/model RPC
   payloads,
+- remote component ownership checks that reject action/provider/evaluator and
+  response-handler name reuse by a different already-registered remote module,
+- remote model ownership checks that reject duplicate model types across
+  modules, against already-registered remote modules, and against local runtime
+  model handlers,
 - low-level capability routing to explicit endpoint ids,
+- generic endpoint-provider adapters that provision or resolve an endpoint,
+  install the normal `RemoteCapabilityRouterService`, and sync plugins through
+  the same endpoint/module trust policy regardless of whether the provider is
+  direct, Cloud, E2B, home-machine, or mobile-companion,
+- API connect routing for direct endpoints through the generic `direct`
+  endpoint provider rather than a separate install/sync branch,
+- API connect routing for URL-backed `e2b`, `home-machine`,
+  `mobile-companion`, and `desktop-companion` providers through the exported
+  provider implementations, so product clients can select provider families
+  without reintroducing satellite-specific runtime code,
+- sequential provider connects preserving multiple live endpoints and keeping
+  action RPC affinity for plugins from both endpoints,
+- provider-family conformance for E2B, home-machine, and mobile-companion
+  adapters using the exported URL-backed provider implementations: each
+  resolves to the same endpoint-provider contract and exposes action, provider,
+  evaluator, response-handler evaluator, response-handler field evaluator,
+  route, model, lifecycle, event, service, app bridge, view manifest, and asset
+  RPC surfaces through the normal remote plugin adapter,
+- reusable endpoint conformance for arbitrary capability-router URLs: the
+  harness validates plugin availability, nonempty/unique module manifests, and
+  end-to-end action, provider, evaluator, response-handler evaluator,
+  response-handler field evaluator, route, model, lifecycle, event, service,
+  app bridge, and view-asset RPC execution without depending on
+  provider-specific code,
+- URL-backed provider validation for E2B/home/mobile endpoint URLs, rejecting
+  non-HTTP schemes, embedded URL credentials, and unsafe endpoint ids before
+  runtime service installation,
+- product route sequential direct-connect flow preserving multiple live
+  endpoints through `/api/capability-router/connect`, with both endpoint-owned
+  plugins remaining invokable after the second connect,
+- product route mixed direct-plus-Cloud connect flow preserving a local device
+  endpoint and a Cloud-provisioned endpoint in the same running router, with
+  both endpoint-owned plugins remaining invokable and Cloud endpoint tokens
+  redacted from the API response,
 - cloud sandbox provisioning normalization from Cloud create/provision/job
   responses into capability-router endpoint configs,
 - cloud sandbox connection helper that installs the returned endpoint into the
   runtime capability-router service and syncs remote modules through normal
-  plugin ownership,
+  plugin ownership, including mocked Cloud action, provider, evaluator,
+  response-handler evaluator, response-handler field evaluator, route, model,
+  lifecycle, event, service, app bridge, and compiled view asset calls through
+  the provisioned endpoint with bearer auth,
 - authenticated agent route for direct endpoint connection or Cloud
   provisioning, including token redaction in API responses,
 - remote route and app-bridge route header sanitization so local user/agent
@@ -649,13 +846,27 @@ Current focused tests cover:
   `loadElizaConfig()` repopulates `process.env`, bootstrap registers the router
   service, syncs remote modules, and sends the persisted bearer token on
   `plugin.modules.list`,
+- product-route restart hydration: a persisted
+  `/api/capability-router/connect` direct endpoint survives a simulated
+  restart, reloads through `config.env`, preserves the endpoint/module trust
+  allowlist, and sends the bearer token from the secret channel during
+  bootstrap,
 - CLI payload construction for direct endpoint and Cloud provisioning flows,
+- CLI payload construction for URL-backed provider-family connects using the
+  same `provider` discriminator accepted by `/api/capability-router/connect`,
+- CLI endpoint conformance checks for arbitrary capability-router URLs,
+  including bearer auth, action/provider/evaluator/response-handler
+  evaluator/response-handler field evaluator/route/model/lifecycle/event/service
+  /app bridge/view-asset exercise, route status validation, and
+  required-surface validation,
 - duplicate module ID rejection,
 - real localhost HTTP capability-server integration,
 - no-credential source-build smoke: a temporary remote plugin source tree builds
-  a browser bundle, serves a manifest/action/provider/route/assets over the
-  capability protocol, then bootstraps into the runtime without local plugin
-  registration code,
+  a browser bundle, serves a manifest with action/provider/evaluator/response-
+  handler evaluator/response-handler field evaluator/route/model/lifecycle/
+  event/service/app-bridge/assets over the capability protocol, then bootstraps
+  into the runtime without local plugin registration code
+  (`bun run test:remote-capabilities:source-build`),
 - no-credential process-isolation smoke: a built remote plugin runs from a
   separate child-process capability server and is consumed through HTTP only,
 - Docker/container smoke: two built remote plugin modules are packaged into one
@@ -676,8 +887,18 @@ Current focused tests cover:
 - remote frontend bundle URL validation before browser import URL exposure,
 - remote view id collision rejection before frontend entries are handed to the
   local view registry,
+- remote widget id collision rejection before widget declarations are handed to
+  the UI widget resolver,
+- remote app nav tab id collision rejection before shell navigation metadata is
+  exposed,
+- remote app bridge route-key collision rejection against both sync-batch
+  modules and existing runtime app route modules before app route modules are
+  registered,
 - remote asset RPC response validation before decoded bytes and content-type
   metadata are exposed through the asset proxy,
+- restricted-platform guard on the same-origin remote asset proxy, so iOS and
+  Android clients cannot bypass the existing dynamic frontend bundle policy via
+  `/api/capability-router/assets/...`,
 - browser-facing view registry and `/api/views` metadata for remote absolute
   bundle URLs,
 - app-shell `DynamicViewLoader` behavior for absolute remote bundle URLs,
@@ -699,6 +920,12 @@ Run the no-credential CI slice with:
 bun run test:remote-capabilities
 ```
 
+Run the focused source-build/process-boundary smoke with:
+
+```text
+bun run test:remote-capabilities:source-build
+```
+
 Run the container-backed CI smoke with Docker available:
 
 ```text
@@ -711,19 +938,131 @@ Run the credentialed cloud sandbox live smoke with an Eliza Cloud API key:
 ELIZAOS_CLOUD_API_KEY=... bun run test:remote-capabilities:cloud-live
 ```
 
-The GitHub `Tests` workflow now runs both `bun run test:remote-capabilities`
-and `bun run test:remote-capabilities:docker` in the server job for pull
-requests and pushes. The Docker smoke builds two remote frontend bundles, builds
-and runs one containerized capability server that advertises two plugin modules,
-syncs both through the normal remote plugin adapter with endpoint/module trust
-policy, imports both compiled bundles, and executes each module's remote
-action/provider/route handlers through the protocol.
+The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
+`bun run test:remote-capabilities:surface-audit`,
+`bun run test:remote-capabilities:naming-audit`,
+`bun run test:remote-capabilities:source-build`,
+`bun run test:remote-capabilities:fixture-server`, and
+`bun run test:remote-capabilities:validate-live-reports:self-test`, and
+`bun run test:remote-capabilities:docker` in the server job for pull requests
+and pushes. The validator self-test generates complete and partial live report
+fixtures so the artifact validator is itself covered without external
+credentials. The source-build smoke builds a temporary remote plugin source tree
+and consumes it only through the capability protocol, then repeats the same
+runtime path across a child-process endpoint. The fixture-server smoke builds a
+temporary remote view bundle, starts the runnable reference endpoint with that
+bundle, validates it with the CLI conformance path, and imports the returned
+asset as JavaScript.
+The Docker smoke builds two remote frontend bundles, builds and runs one
+containerized capability server that advertises two plugin modules, syncs both
+through the normal remote plugin adapter with endpoint/module trust policy,
+imports both compiled bundles, and executes each module's remote
+action/provider/evaluator/response-handler evaluator/response-handler field
+evaluator/route/model/lifecycle/event/service/app-bridge handlers through the
+protocol.
 The same workflow also runs `bun run test:remote-capabilities:cloud-live` in
-the credentialed cloud-live job on `workflow_dispatch` and nightly schedules
-when `ELIZAOS_CLOUD_API_KEY` is configured. That live smoke provisions a real
+the credentialed cloud-live job. On `workflow_dispatch` and nightly schedules,
+the job now fails during preflight when the Cloud API key is missing, so an
+observed live run cannot silently become a green skip. That live smoke provisions a real
 Eliza Cloud capability endpoint, verifies it exposes at least one remote plugin
-module with a compiled view bundle, syncs it through the same endpoint trust
-policy, and executes remote action/provider/route surfaces.
+module with a compiled view bundle through the reusable endpoint conformance
+harness, syncs it through the same endpoint trust policy, and executes remote
+action/provider/evaluator/response-handler evaluator/response-handler field
+evaluator/route/model/lifecycle/event/service/app-bridge/view-asset surfaces
+through the canonical protocol.
+When observed, the job uploads `remote-capability-cloud-live-report`, a JSON
+artifact from `reports/remote-capabilities/cloud/*.json` containing the
+endpoint id, observed module ids, and every exercised full-surface RPC target.
+CI clears and recreates that report directory immediately before the live smoke,
+so validation and upload only see files produced by the current run.
+Before upload, CI runs
+`bun run test:remote-capabilities:validate-live-reports
+reports/remote-capabilities/cloud` so a malformed or partial live observation
+cannot become the recorded evidence for Cloud completion. The validator also
+requires `schemaVersion: 1`, `--kind cloud` or `--kind provider`,
+`--expect-count 1` for Cloud, `--expect-count 3..4` for provider reports,
+`--max-age-minutes 90`, `--max-future-minutes 5`, `--require-ci`, and
+`--require-file-identity`, and `--match-github-env` in CI, requires the
+report-level endpoint id to match the conformance endpoint id, requires
+`cloud.json` for Cloud and `<provider>.json` for provider reports, and rejects
+stale or future-dated observations, missing malformed, or mismatched GitHub run
+metadata, duplicate endpoint ids, duplicate provider reports, malformed endpoint
+ids, non-lowercase provider names, invalid Cloud API base URLs, Cloud API base
+URLs with query or fragment components, non-2xx route results, non-JavaScript
+view asset paths/content types, missing or malformed view asset SHA-256 digests,
+and credential-shaped field names or string values such as tokens,
+authorization headers, API keys, passwords, secrets, bearer/basic auth values,
+and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
+target must also start with one of the module ids observed in the live manifest,
+and that same module id must also appear in the trusted registered module set.
+Every registered module id must be exercised by at least one conformance RPC
+target recorded in `conformance.moduleExercises`. The conformance harness keeps
+the required surface summary in `conformance.exercised`, then performs
+additional cheap RPC calls for untouched modules so multi-module endpoints still
+produce per-module exercise evidence without overwriting the summary target.
+`sync.registered` and `sync.registeredModules` must not contain duplicate
+materialized plugin/module identities, and every registered module must have a
+unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied
+back to unique endpoint modules that actually materialized locally. Individual
+modules may be partial plugins; the validator requires each registered module to
+materialize at least one remote plugin surface and requires the aggregate
+registered module counts to cover every required surface, including remote event
+handlers through `eventCount` and remote app metadata through `appCount`.
+`sync.skipped` and `sync.unloaded` must be unique plugin-name lists and cannot
+contradict `sync.registered` or each other. The report is written only after
+remote modules sync into the runtime and includes
+registered plugin names, registered plugin-to-module-to-endpoint identities,
+per-registered-module surface counts, trust decisions, and runtime counts for
+plugins, actions, providers, evaluators, response-handler evaluators,
+response-handler field evaluators, routes, models, services, app bridges,
+lifecycle hooks, widgets, component types, and views. In GitHub Actions it also
+includes workflow/run id, run attempt, event name, repository, ref, and commit
+SHA. The validator requires the trusted module decisions to match registered
+runtime plugin identities, requires every registered remote module to have
+positive counts for each required surface, and requires the runtime counts to
+prove the registered plugin count and remote surfaces materialized locally, not
+only that RPC calls succeeded.
+When the workflow event is not `workflow_dispatch` or `schedule`, the job writes
+an explicit notice and step summary saying the remote capability cloud smoke was
+not observed for that run.
+The workflow also has an optional provider-live job for URL-backed E2B,
+home-machine, mobile-companion, and desktop-companion endpoints. It runs
+`bun run --cwd packages/agent test:remote-capabilities:provider-live` on
+manual/nightly workflows. The preflight allows a full no-secret skip only for
+non-observed workflow events; on manual/nightly runs it fails before setup when
+all provider endpoint secrets are absent or when any required E2B, home-machine,
+or mobile-companion URL secret is missing. Each configured provider must expose
+at least one remote action, provider, route, JSON model handler, lifecycle hook,
+event handler, service method, app bridge hook, evaluator, response-handler
+evaluator, response-handler field evaluator, and view through the
+capability-router protocol. Provider CI validation uses
+`--allowed-providers e2b,home-machine,mobile-companion,desktop-companion` and
+`--require-providers e2b,home-machine,mobile-companion` with
+`--expect-count 3..4`, so the live artifact is not accepted as provider evidence
+unless every provider report belongs to the known provider-family vocabulary,
+those three concrete provider families were observed, and only the optional
+desktop-companion report may appear beyond the required set.
+When observed, the job uploads `remote-capability-provider-live-report`, with
+one JSON file per configured provider under
+`reports/remote-capabilities/providers/*.json`. CI clears and recreates that
+report directory immediately before the provider live smoke, so validation and
+upload only see files produced by the current run. CI validates those reports with
+`bun run test:remote-capabilities:validate-live-reports
+reports/remote-capabilities/providers` before upload, requiring every full
+remote plugin surface to be present in each configured provider observation,
+requiring E2B/home/mobile provider reports, and rejecting inconsistent endpoint
+ids, malformed provider labels, leaked credential-shaped fields, or exercised
+targets that do not belong to an observed module. Provider reports also include
+the sync summary, registered remote module identities, and runtime
+materialization counts from the agent that connected to the endpoint.
+If provider endpoint secrets exist but the workflow event is not
+`workflow_dispatch` or `schedule`, the job writes an explicit notice and step
+summary saying the provider live smoke was not observed for that run.
+The non-secret Cloud provisioner test mirrors that contract with a mocked Cloud
+endpoint by syncing a module that contributes an action, provider, route, JSON
+model handler, lifecycle hook, event handler, service method, app bridge hook,
+evaluator, response-handler evaluator, response-handler field evaluator, and
+compiled view asset through the installed capability-router service.
 
 Run the browser app-shell remote view smoke:
 
@@ -731,19 +1070,197 @@ Run the browser app-shell remote view smoke:
 bun run test:remote-capabilities:ui
 ```
 
+Validate any running endpoint directly from the CLI:
+
+```text
+elizaos capability-router conformance https://remote.example.test --token ...
+```
+
+Run the local reference endpoint and validate it with the same CLI:
+
+```text
+bun run capability-router:fixture-server --token fixture-token
+elizaos capability-router conformance http://127.0.0.1:<port> --token fixture-token
+```
+
+Current local verification ledger:
+
+- `bunx vitest run packages/agent/src/api/remote-capability-routes.test.ts
+--coverage.enabled=false` passed with 19 tests passing after adding the
+  restricted-platform capability asset proxy guard and product-route provider
+  selection for URL-backed endpoint providers.
+- `bunx vitest run
+packages/app-core/src/cli/program/register.capability-router.test.ts
+--coverage.enabled=false` passed with 6 tests passing for direct,
+  URL-backed provider, Cloud, invalid-provider CLI payload construction, and
+  direct endpoint conformance validation.
+- `bunx tsc --noEmit -p packages/app-core/tsconfig.json --pretty false`
+  passed after adding the CLI conformance command.
+- `bunx tsc --noEmit -p packages/ui/tsconfig.json --pretty false` passed after
+  adding the Settings provider-family selector.
+- `bunx vitest run
+packages/agent/src/services/remote-capability-endpoint-provider.test.ts
+--coverage.enabled=false` passed with 6 tests passing after switching
+  E2B/home/mobile conformance to the exported URL-backed provider
+  implementations.
+- `bunx vitest run
+packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
+--coverage.enabled=false` passed with 2 tests passing for a conforming
+  endpoint and a missing required plugin surface.
+- `bunx vitest run packages/core/src/capabilities/index.test.ts
+--coverage.enabled=false` passed with 48 tests passing after adding the
+  canonical capability-router protocol fixture, remote component type/context
+  decoding, top-level remote priority, and decoder-validity test.
+- `bun run test:remote-capabilities:surface-audit` passed, confirming all 28
+  local `Plugin` fields are either remote-supported or intentionally local-only
+  for the capability-router protocol.
+- `bun run test:remote-capabilities:naming-audit` passed, confirming the
+  audited source/docs/workflow roots do not use `satellite` as canonical runtime
+  abstraction vocabulary; the only allowed hits are this architecture record's
+  historical naming analysis, the legacy `ELIZA_SATELLITE_RUNNER_*` aliases,
+  and the precedence test that proves canonical env names win.
+- `bun run capability-router:fixture-server --token fixture-token` started the
+  runnable reference endpoint on localhost, and
+  the local app-core CLI entrypoint
+  `capability-router conformance <fixture-url> --token fixture-token` passed
+  against it, exercising the canonical fixture through HTTP.
+- `bun run test:remote-capabilities:fixture-server` passed, automatically
+  building a temporary remote view bundle, starting the reference endpoint,
+  running CLI conformance against it with bearer auth, importing the returned
+  bundle as JavaScript, and tearing it down.
+- `bun run --cwd packages/agent test:remote-capabilities` passed with 158
+  tests passing and 1 skipped after adding registered-remote component
+  ownership checks, cross-module/local model collision checks, and stale
+  contribution cleanup coverage for disappearing remote modules, plus runtime
+  app route-module collision protection for remote app bridges.
+- `bun run --cwd packages/agent test:remote-capabilities:source-build` passed
+  with 2 focused tests passing and 35 adapter tests skipped by name filter.
+- `bun run --cwd packages/agent test:remote-capabilities:provider-live` found
+  the provider smoke file and skipped 4 provider tests locally because no
+  `ELIZA_REMOTE_CAPABILITY_*_URL` endpoints are configured.
+- `bun run test:remote-capabilities:validate-live-reports <dir>` passed against
+  generated complete Cloud/provider report samples and rejected a generated
+  partial provider report that lacked required full-surface RPC evidence.
+- `bun run test:remote-capabilities:validate-live-reports:self-test` passed and
+  is part of the normal no-credential server CI gate, so the live report
+  validator is tested even when live endpoint secrets are absent. The self-test
+  covers complete reports, wrong-schema reports, missing-surface reports,
+  endpoint-id mismatches, malformed endpoint ids, malformed provider labels,
+  invalid Cloud API base URLs, Cloud API base URLs with query or fragment
+  components, provider report filename/provider mismatches, failed route
+  responses, non-JavaScript view assets, missing or malformed view asset SHA-256
+  digests, wrong artifact report counts, stale or future-dated observations,
+  missing, malformed, or mismatched CI run metadata, duplicate artifact
+  endpoint/provider identities, accidental credential-shaped fields and string
+  values, unknown provider-family reports, missing required provider-family
+  observations, exercised RPC targets without `moduleId:target` syntax,
+  exercised RPC targets that reference unobserved module ids, exercised RPC
+  targets from manifest-only modules that did not register locally, registered
+  modules that were never exercised by conformance RPC, duplicate
+  manifest module ids, duplicate materialized plugin/module registration
+  identities, duplicate trust decisions, sync trust decisions for unobserved
+  modules, and reports that claim a plugin was both registered and
+  skipped/unloaded or both skipped and unloaded,
+  trusted modules that did not register as runtime plugins, zero
+  per-registered-module surface counts, and missing
+  evaluator/service/response-handler materialization.
+- `bun run --cwd packages/agent test:remote-capabilities:docker` passed with
+  the single real Docker container smoke passing and 36 adapter tests skipped
+  by name filter. The command now runs only the container-backed smoke.
+- `bun run --cwd packages/app test:remote-capabilities:ui` passed with 3
+  Playwright tests passing; the Settings endpoint-connect smoke selects
+  `home-machine` and asserts the `/api/capability-router/connect` payload
+  includes that provider discriminator.
+- `bunx tsc --noEmit -p packages/core/tsconfig.json --pretty false` passed
+  after the canonical protocol fixture update.
+- `bun run --cwd packages/agent build:dist` passed and emitted
+  `dist/services/remote-capability-endpoint-provider.js` plus declarations,
+  proving the shared endpoint-provider contract is included in the package
+  build.
+- `bun run --cwd packages/agent build:mobile` passed after repairing the local
+  `packages/node_modules/three` symlink; `dist-mobile/agent-bundle.js` contains
+  `RemoteCapabilityRouterService`, `bootstrapRemoteCapabilityPlugins`,
+  `remote-capability-endpoint-provider`, `/api/capability-router/connect`, and
+  the restricted-platform asset proxy guard.
+- `bun run --cwd packages/agent build:ios-jsc` passed;
+  `dist-mobile-ios-jsc/agent-bundle-ios.js` contains the same
+  capability-router service, bootstrap sync, endpoint-provider contract,
+  connect route, and restricted-platform asset proxy guard. The build warned
+  that the JSContext polyfill prefix was not present locally and must be
+  prepended at install time, which is existing mobile build behavior.
+- `bunx vitest run
+packages/agent/src/services/remote-capability-cloud-sandbox.test.ts
+packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
+--coverage.enabled=false` passed with 5 tests passing and 1 skipped after
+  moving Cloud live validation onto the reusable endpoint conformance harness.
+- `bun run test:remote-capabilities:live-ci-audit` passes and statically
+  enforces that the workflow keeps the Cloud and provider live jobs wired to
+  strict scheduled/manual observation, required provider endpoints, strict live
+  report validation, required artifact upload, and matching live report
+  directories between smoke producers, validators, and uploaded artifacts.
+- `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
+  report-directory env vars, artifact upload paths, scheduled/manual live
+  observation gates, Cloud freshness/identity validation flags, provider
+  allowed/required lists, and provider GitHub-env matching, and proves the
+  live-CI audit fails when smoke output no longer feeds the validator/artifact
+  path or when the Cloud/E2B/home/mobile observation contract is weakened.
+- Provider live reports include `endpointUrlSha256`, a SHA-256 fingerprint of
+  the normalized endpoint base URL. The live report validator requires this
+  fingerprint for provider artifacts and rejects duplicates across the provider
+  report set, so E2B/home/mobile evidence cannot silently come from the same
+  configured transport URL.
+- Conformance reports include an `rpcCalls` ledger that records every canonical
+  protocol method used for each exercised surface and module. The live report
+  validator requires this ledger to cover every `moduleExercises` entry, every
+  summarized required surface, and every evaluator phase (`shouldRun`,
+  `prepare`, `prompt`, `process`, response-handler `evaluate`, and field
+  `parse`/`handle`), so live evidence proves the endpoint was exercised through
+  the standard RPC-like protocol, not only materialized in a manifest.
+- View-asset conformance now preserves manifest-declared asset metadata and
+  rejects fetched bundles whose content type or integrity value contradicts the
+  manifest. The live report validator also rejects artifacts whose recorded
+  manifest asset metadata disagrees with the fetched asset metadata.
+- Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
+  endpoint id, and module id. The validator requires this runtime identity list
+  to match `sync.registeredModules` exactly, so count totals cannot stand in for
+  proof that the synced remote modules actually reached the runtime and stale
+  remote modules did not remain loaded.
+- Provider allowlist skips now emit rejected trust decisions (`trusted: false`,
+  `reason: "module-not-allowed"`) with endpoint, module, and plugin identity.
+  The live report validator requires every `sync.skipped` entry to have a
+  rejected trust decision, so skipped modules are auditable rather than just
+  unexplained plugin names.
+- `bun run test:remote-capabilities:surface-audit` also audits the canonical
+  plugin RPC method union. Every `plugin.*` method must be implemented by the
+  fixture server, and every non-list plugin RPC method must appear in endpoint
+  conformance plus the live report validator's required-method matrix. The
+  audit also rejects validator-required plugin methods that are not canonical
+  non-list RPC methods, and verifies endpoint conformance surfaces, validator
+  required surfaces, and validator method-matrix keys stay in exact agreement.
+  This keeps protocol expansion from bypassing the full-surface proof path.
+- Endpoint conformance reports type `rpcCalls.method` from the core
+  `RuntimeBrokerCapabilityMethod` plugin-method union, excluding only
+  `plugin.modules.list`, so conformance evidence cannot drift to ad-hoc method
+  names while the validator and surface audit enforce coverage.
+- `bun run --cwd packages/agent test:remote-capabilities:cloud-live` skipped
+  locally because no `ELIZAOS_CLOUD_API_KEY` is configured. A real Cloud run
+  remains a required live-provider observation before claiming the Cloud side
+  complete.
+
 ## Requirement Matrix
 
-| Requirement | Current evidence | Status |
-| --- | --- | --- |
-| Canonical abstraction is not `satellite` | Core/API/CLI/docs use `capability-router`; satellite remains compatibility/provider vocabulary only. | Implemented |
-| Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, widgets, app metadata, app bridge hooks, and views. | Implemented |
-| Runs across machines/processes/containers | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate. | Implemented for local/container isolation |
-| Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints; API/CLI/Settings support Cloud provisioning payloads. | Implemented with focused smokes |
-| Frontend bundles load from remote plugins | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles. | Implemented |
-| Endpoint and module trust is explicit | Connect flows use endpoint allowlists, optional module allowlists, duplicate/colliding identities are rejected, and restart bootstrap derives trust from persisted endpoint/module config. | Implemented |
-| Real CI exercises the path | Server CI runs focused remote-capability tests and Docker smoke; UI smoke is available through `bun run test:remote-capabilities:ui`; live Cloud smoke is scheduled/manual with secret. | Implemented, live Cloud observation pending |
-| Real Cloud sandbox provider | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/route when `ELIZAOS_CLOUD_API_KEY` is present. | Implemented but must be observed green |
-| E2B/home-machine/mobile provider coverage | Architecture treats these as endpoint providers behind the protocol; provider-specific live smokes are not yet present. | Pending |
+| Requirement                                                | Current evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | Status                                                                                                          |
+| ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| Canonical abstraction is not `satellite`                   | Core/API/CLI/docs use `capability-router`; `bun run test:remote-capabilities:naming-audit` CI-enforces that `satellite` only appears in this architecture record's historical naming analysis, the legacy env-alias compatibility path, and its precedence test within audited runtime/docs/workflow roots.                                                                                                                                                                      | Implemented                                                                                                     |
+| Dynamic remote plugins materialize as normal local plugins | Adapter maps remote manifests into runtime `Plugin` objects with actions, providers, routes, lifecycle, events, models, services, config, schema, component types, contexts, priority, widgets, app metadata, app bridge hooks, and views. A CI surface audit classifies every local `Plugin` field.                                                                                                                                                                              | Implemented                                                                                                     |
+| Runs across machines/processes/containers                  | Local HTTP, child-process, and Docker capability servers are consumed through the same protocol; Docker smoke is a CI gate.                                                                                                                                                                                                                                                                                                                                                       | Implemented for local/container isolation                                                                       |
+| Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |
+| Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints, URL-backed E2B/home/mobile/desktop-companion providers, and Cloud provisioning payloads.                                                                                                                                                                                                                                                                                                                                      | Implemented with focused smokes                                                                                 |
+| Frontend bundles load from remote plugins                  | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles on web/desktop. The same proxy is blocked for iOS/Android clients to respect dynamic-code-loading policy.                                                                                                                                                                                                                | Implemented for web/desktop; restricted on app-store mobile                                                     |
+| Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, duplicate/colliding identities are rejected, and restart bootstrap derives trust from persisted endpoint/module config.                                                                                                                                                                                                                                                                                        | Implemented                                                                                                     |
+| Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; a live-CI audit statically enforces that Cloud and URL-backed provider smokes stay wired to scheduled/manual observation, strict live report validation, required provider endpoints, required artifact upload, and matching report directories from smoke output through validation/upload. Provider live report validation also requires unique redacted endpoint URL fingerprints across provider artifacts. | Implemented, live provider observations pending                                                                 |
+| Real Cloud sandbox provider                                | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge when `ELIZAOS_CLOUD_API_KEY` is present.                                                                                                                                                                                            | Implemented but must be observed green                                                                          |
+| E2B/home-machine/mobile provider coverage                  | Exported URL-backed providers normalize and validate concrete E2B, home-machine, mobile-companion, and desktop-companion endpoints; focused conformance exercises E2B/home/mobile through action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge/view/asset RPC; optional scheduled/manual provider-live CI smokes use the reusable endpoint conformance harness against configured real endpoints. | Implemented for URL-backed provider layer; live endpoint observations pending                                   |
 
 ## Implementation Plan
 
@@ -754,13 +1271,13 @@ The target architecture should converge in this order:
    when the local runtime already has a real registration or execution path for
    that surface. The current remote surface covers actions, providers,
    evaluators, response-handler evaluators, response-handler field evaluators,
-   lifecycle hooks, events, models, services, routes, widgets, app metadata, app
-   bridge hooks, config, schema, and compiled views. `componentTypes` remains
-   intentionally out of scope until the runtime has a concrete registration path
-   for it.
+   lifecycle hooks, events, models, services, routes, component types, contexts,
+   widgets, app metadata, app bridge hooks, config, schema, and compiled views.
+   New remote manifest fields should still wait for a concrete local runtime
+   registration or execution path before they are added to the protocol.
 2. Endpoint-provider adapters.
    Treat E2B, Eliza Cloud, home-machine runners, mobile companion processes,
-   and Electrobun satellites as endpoint providers. Each provider can expose
+   and Electrobun desktop companions as endpoint providers. Each provider can expose
    low-level `fs`/`pty`/`git` primitives and may also run a plugin-module server
    that speaks `GET /v1/capabilities`, `POST /v1/capabilities/invoke`, and
    asset fetches. Provider-specific runner contracts must not leak into the
@@ -788,24 +1305,28 @@ The target architecture should converge in this order:
 This is not complete until the following are true:
 
 - A real isolated sandbox provider can build a plugin from source, serve its
-  manifest and compiled frontend bundle, and expose action/provider/route
-  handlers through the capability-router protocol. The no-credential local
+  manifest and compiled frontend bundle, and expose action/provider/route/model
+  plus evaluator/response-handler evaluator/response-handler field evaluator/
+  lifecycle/event/service/app-bridge handlers through the capability-router
+  protocol. The no-credential local
   source-build and child-process smokes prove the protocol and process-boundary
   paths; the Docker smoke is now a server CI gate that proves local container
-  isolation, multiple modules in one sandbox, and explicit endpoint/module trust
-  policy.
+  isolation, multiple modules in one sandbox, explicit endpoint/module trust
+  policy, and broad runtime-surface execution for each module.
 - The agent can create or connect to that sandbox from normal product flows.
   The agent-side provisioner, API route, and CLI can now connect/sync returned
   endpoints into a runtime with verified restart persistence through
   `config.env`; the product Settings UI now exposes and smoke-tests direct
-  endpoint connection and Cloud provisioning payload construction.
-  Restart-through-product-flow E2E remains.
+  endpoint connection and Cloud provisioning payload construction. Direct
+  product-route restart hydration is covered; Cloud provision, persist, restart,
+  and reopen-view E2E remains pending.
 - Auth is specified and enforced for endpoint registration, invocation, and
   frontend asset access.
 - Endpoint identity, module identity, route namespace, view registry identity,
-  action/provider/evaluator, response-handler evaluator, service type, and
-  per-module model declaration collision rules are enforced in the local
-  adapter/router. The adapter also accepts an explicit trust policy for
+  action/provider/evaluator, response-handler evaluator, service type, app
+  bridge route key, and model type collision rules are enforced in the local
+  adapter/router, including collisions against already-registered remote modules
+  and local runtime handlers. The adapter also accepts an explicit trust policy for
   endpoint/module allowlists before registration. Remaining trust work is
   attestation and operator audit records for those decisions.
 - Remote view loading is covered through the browser-facing view registry

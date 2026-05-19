@@ -62,7 +62,9 @@ function parseArgs(argv) {
     turns: intEnv("ELIZA_KOKORO_E2E_TURNS", 1),
     nPredict: intEnv("ELIZA_KOKORO_E2E_N_PREDICT", 32),
     threads: intEnv("ELIZA_KOKORO_E2E_THREADS", Math.min(os.cpus().length, 12)),
-    ctx: intEnv("ELIZA_KOKORO_E2E_CTX", 2048),
+    ctx: intEnv("ELIZA_KOKORO_E2E_CTX", 1024),
+    batch: intEnv("ELIZA_KOKORO_E2E_BATCH", 256),
+    ubatch: intEnv("ELIZA_KOKORO_E2E_UBATCH", 128),
     ngl:
       process.env.ELIZA_KOKORO_E2E_NGL ||
       (defaultBackend === "cpu" ? "0" : "99"),
@@ -98,6 +100,8 @@ function parseArgs(argv) {
     else if (a === "--n-predict") args.nPredict = Number.parseInt(next(), 10);
     else if (a === "--threads") args.threads = Number.parseInt(next(), 10);
     else if (a === "--ctx") args.ctx = Number.parseInt(next(), 10);
+    else if (a === "--batch" || a === "--batch-size") args.batch = Number.parseInt(next(), 10);
+    else if (a === "--ubatch" || a === "--ubatch-size") args.ubatch = Number.parseInt(next(), 10);
     else if (a === "--ngl") args.ngl = next();
     else if (a === "--start-timeout") args.startTimeoutS = Number.parseInt(next(), 10);
     else if (a === "--turn-timeout") args.turnTimeoutS = Number.parseInt(next(), 10);
@@ -133,6 +137,8 @@ Options:
   --skip-embedding        Do not run the optional embedding probe.
   --disable-dflash        Do not attach the DFlash drafter; records optimization as inactive.
   --draft-ngl N           Override draft model GPU layers (e.g. 0 to keep BF16 draft on CPU).
+  --batch N               llama-server logical batch size. Default: 256.
+  --ubatch N              llama-server physical batch size. Default: 128.
   --kokoro-runtime onnx|fork
                            Kokoro TTS runtime. Default: onnx.
   --audio-dir DIR         Directory for generated mic/response WAV evidence.
@@ -269,7 +275,16 @@ function resolveBundleFiles(bundleDir, tier) {
   const asrDir = path.join(bundleDir, "asr");
   const ttsRoot = path.join(bundleDir, "tts", "kokoro");
   const voicesDir = path.join(ttsRoot, "voices");
-  const kokoroModel =
+  const kokoroGgufModel =
+    firstExisting(
+      path.join(ttsRoot, "kokoro-82m-v1_0-Q4_K_M.gguf"),
+      path.join(ttsRoot, "kokoro-82m-v1_0.gguf"),
+      path.join(ttsRoot, "kokoro-82m-fp32.gguf"),
+      path.join(ttsRoot, "kokoro-v1.0.gguf"),
+      path.join(ttsRoot, "kokoro-v1.0-q4.gguf"),
+      ...ggufsIn(ttsRoot),
+    ) || null;
+  const kokoroOnnxModel =
     firstExisting(
       path.join(ttsRoot, "model_q4.onnx"),
       path.join(ttsRoot, "model_quantized.onnx"),
@@ -277,6 +292,7 @@ function resolveBundleFiles(bundleDir, tier) {
       path.join(ttsRoot, "model.onnx"),
       path.join(ttsRoot, "kokoro-v1.0.onnx"),
     ) || null;
+  const kokoroModel = kokoroGgufModel || kokoroOnnxModel;
   const embeddingDir = path.join(bundleDir, "embedding");
   const dedicatedEmbedding = ggufsIn(embeddingDir).sort()[0] || null;
   return {
@@ -296,6 +312,9 @@ function resolveBundleFiles(bundleDir, tier) {
       root: ttsRoot,
       modelPath: kokoroModel,
       modelFile: kokoroModel ? path.basename(kokoroModel) : null,
+      ggufModelPath: kokoroGgufModel,
+      onnxModelPath: kokoroOnnxModel,
+      modelKind: kokoroGgufModel ? "gguf" : kokoroOnnxModel ? "onnx" : null,
       voicesDir,
       voices: fs.existsSync(voicesDir)
         ? fs.readdirSync(voicesDir).filter((f) => f.endsWith(".bin")).sort()
@@ -362,7 +381,7 @@ function missingArtifacts(files, engine) {
   if (!isRealGguf(files.asr)) missing.push("asr/eliza-1-asr.gguf");
   if (!isRealGguf(files.asrMmproj, 1_000)) missing.push("asr/eliza-1-asr-mmproj.gguf");
   if (!files.kokoro.modelPath || !fs.existsSync(files.kokoro.modelPath)) {
-    missing.push("tts/kokoro/model_q4.onnx");
+    missing.push("tts/kokoro/{kokoro-82m-v1_0.gguf|model_q4.onnx}");
   }
   if (!fs.existsSync(files.kokoro.voicesDir) || files.kokoro.voices.length === 0) {
     missing.push("tts/kokoro/voices/*.bin");
@@ -648,14 +667,19 @@ function asrTranscribe(ffiState, ctx, samples, sampleRate) {
 
 async function createKokoro(files, voiceId, serverUrl) {
   const kokoro = await import("../../src/services/voice/kokoro/index.ts");
+  const runtimeKind = process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx";
+  const modelFile =
+    runtimeKind === "fork"
+      ? path.basename(files.kokoro.ggufModelPath || files.kokoro.modelPath || "")
+      : path.basename(files.kokoro.onnxModelPath || files.kokoro.modelPath || "");
   const layout = {
     root: files.kokoro.root,
-    modelFile: files.kokoro.modelFile,
+    modelFile,
     voicesDir: files.kokoro.voicesDir,
     sampleRate: 24000,
   };
   const runtime =
-    (process.env.ELIZA_KOKORO_E2E_RUNTIME || "onnx") === "fork"
+    runtimeKind === "fork"
       ? new kokoro.KokoroGgufRuntime({
           serverUrl,
           modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
@@ -674,8 +698,9 @@ async function createKokoro(files, voiceId, serverUrl) {
   return { backend, runtime, layout, module: kokoro };
 }
 
-async function synthesizeKokoro(backend, text, voiceId, audioPath = null) {
-  const chunks = [];
+async function synthesizeKokoro(backend, text, voiceId, audioPath = null, opts = {}) {
+  const collectSamples = opts.collectSamples !== false || audioPath != null;
+  const chunks = collectSamples ? [] : null;
   let total = 0;
   let sampleRate = backend.sampleRate;
   let firstChunkMs = null;
@@ -693,22 +718,27 @@ async function synthesizeKokoro(backend, text, voiceId, audioPath = null) {
       sampleRate = sr || sampleRate;
       if (!isFinal && pcm.length > 0) {
         if (firstChunkMs === null) firstChunkMs = performance.now() - started;
-        const copy = new Float32Array(pcm.length);
-        copy.set(pcm);
-        chunks.push(copy);
-        total += copy.length;
+        total += pcm.length;
+        if (chunks) {
+          const copy = new Float32Array(pcm.length);
+          copy.set(pcm);
+          chunks.push(copy);
+        }
       }
       return false;
     },
   });
   const wallMs = performance.now() - started;
-  const merged = new Float32Array(total);
-  let off = 0;
-  for (const chunk of chunks) {
-    merged.set(chunk, off);
-    off += chunk.length;
+  let merged = null;
+  if (chunks) {
+    merged = new Float32Array(total);
+    let off = 0;
+    for (const chunk of chunks) {
+      merged.set(chunk, off);
+      off += chunk.length;
+    }
   }
-  if (audioPath) writeWav16(audioPath, merged, sampleRate);
+  if (audioPath && merged) writeWav16(audioPath, merged, sampleRate);
   const audioSec = total / sampleRate;
   return {
     text,
@@ -718,7 +748,7 @@ async function synthesizeKokoro(backend, text, voiceId, audioPath = null) {
     wallMs,
     firstChunkMs,
     rtf: audioSec > 0 ? wallMs / 1000 / audioSec : null,
-    chunks: chunks.length,
+    chunks: chunks?.length ?? null,
     audioPath,
   };
 }
@@ -991,6 +1021,10 @@ async function startTextServer(engine, files, args, log) {
     String(args.ngl),
     "-t",
     String(args.threads),
+    "-b",
+    String(Math.max(1, args.batch)),
+    "-ub",
+    String(Math.max(1, args.ubatch)),
     "--no-warmup",
     "--metrics",
   ];
@@ -1009,6 +1043,19 @@ async function startTextServer(engine, files, args, log) {
     if (args.draftNgl) {
       serverArgs.push("--spec-draft-ngl", String(args.draftNgl));
     }
+  }
+  if (args.kokoroRuntime === "fork") {
+    if (!isRealGguf(files.kokoro.ggufModelPath, 10_000_000)) {
+      throw new Error(
+        `--kokoro-runtime fork requires a Kokoro GGUF under tts/kokoro (got ${files.kokoro.ggufModelPath || "none"})`,
+      );
+    }
+    serverArgs.push(
+      "--kokoro-model",
+      files.kokoro.ggufModelPath,
+      "--kokoro-voices-dir",
+      files.kokoro.voicesDir,
+    );
   }
   log(`starting text server port=${port} text=${path.basename(files.text)} dflash=${drafterReady}`);
   const child = spawn(engine.server, serverArgs, {
@@ -1228,7 +1275,9 @@ async function runTurn(opts, turnIndex) {
     ? path.join(audioDir, `kokoro-response-turn-${String(turnIndex).padStart(2, "0")}.wav`)
     : null;
   const ttsStartedAt = performance.now();
-  const tts = await synthesizeKokoro(kokoroBackend, ttsText, voiceId, responsePath);
+  const tts = await synthesizeKokoro(kokoroBackend, ttsText, voiceId, responsePath, {
+    collectSamples: responsePath != null,
+  });
   const firstAudioFromMicMs =
     tts.firstChunkMs == null ? null : ttsStartedAt - turnStarted + tts.firstChunkMs;
   return {
@@ -1368,6 +1417,17 @@ function currentProcessRssMb() {
   return process.memoryUsage().rss / 1024 / 1024;
 }
 
+function compactHarnessMemory() {
+  const bunGc = globalThis.Bun?.gc;
+  if (typeof bunGc === "function") {
+    bunGc(true);
+    return;
+  }
+  if (typeof globalThis.gc === "function") {
+    globalThis.gc();
+  }
+}
+
 function summarizeRss(serverSamples, harnessSamples, combinedSamples, ramBudgetRecommendedMb) {
   const serverPeakRssMb = maxFinite(serverSamples);
   const harnessPeakRssMb = maxFinite(harnessSamples);
@@ -1420,6 +1480,8 @@ function baseReport(args, bundleDir, files, engine) {
       turns: args.turns,
       nPredict: args.nPredict,
       ctx: args.ctx,
+      batch: args.batch,
+      ubatch: args.ubatch,
       ngl: args.ngl,
       wavs: args.wavs.length,
       refs: args.refs.length,
@@ -1579,6 +1641,7 @@ async function run() {
     const harnessRssSamples = [];
     const combinedRssSamples = [];
     const sampleRss = () => {
+      compactHarnessMemory();
       const serverRss = processRssMb(textServer?.child?.pid);
       const harnessRss = currentProcessRssMb();
       if (serverRss != null) serverRssSamples.push(serverRss);

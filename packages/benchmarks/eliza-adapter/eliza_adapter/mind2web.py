@@ -9,7 +9,9 @@ constructed or used.
 
 from __future__ import annotations
 
+import json
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from eliza_adapter.client import ElizaClient
@@ -22,6 +24,82 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+
+_VALID_OPERATIONS = {"CLICK", "TYPE", "SELECT", "HOVER", "ENTER"}
+
+
+def _extract_action_json(text: str) -> dict[str, object]:
+    if not text:
+        return {}
+    stripped = text.strip()
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) >= 3 and lines[-1].strip() == "```":
+            stripped = "\n".join(lines[1:-1]).strip()
+    try:
+        payload = json.loads(stripped)
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        pass
+    match = re.search(r"\{[\s\S]*\}", stripped)
+    if not match:
+        return {}
+    try:
+        payload = json.loads(match.group(0))
+        if isinstance(payload, dict):
+            return payload
+    except json.JSONDecodeError:
+        return {}
+    return {}
+
+
+def _xtag(text: str, tag: str) -> str:
+    if not text:
+        return ""
+    m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
+    return m.group(1).strip() if m else ""
+
+
+def _coerce_action_fields(
+    params: dict[str, object],
+    text: str,
+) -> dict[str, str]:
+    operation = str(params.get("operation") or "").upper().strip()
+    element_id = str(params.get("element_id") or "").strip()
+    value = str(params.get("value") or "").strip()
+
+    if not operation:
+        operation = _xtag(text, "operation").upper()
+    if not element_id:
+        element_id = _xtag(text, "element_id")
+    if not value:
+        value = _xtag(text, "value")
+
+    if not operation or not element_id or not value:
+        json_payload = _extract_action_json(text)
+        if json_payload:
+            operation = operation or str(
+                json_payload.get("operation") or json_payload.get("action") or ""
+            ).upper()
+            element_id = element_id or str(
+                json_payload.get("element_id")
+                or json_payload.get("backend_node_id")
+                or json_payload.get("node_id")
+                or ""
+            )
+            value = value or str(
+                json_payload.get("value")
+                or json_payload.get("text")
+                or json_payload.get("input")
+                or ""
+            )
+
+    if operation and operation not in _VALID_OPERATIONS:
+        operation = "CLICK"
+
+    return {"operation": operation, "element_id": element_id, "value": value}
 
 
 class ElizaMind2WebAgent:
@@ -129,14 +207,7 @@ class ElizaMind2WebAgent:
 
             response = self._client.send_message(text=message_text, context=context)
 
-            # Parse the action from response params or XML in text
-            import re
-
-            def _xtag(text: str, tag: str) -> str:
-                m = re.search(rf"<{tag}>(.*?)</{tag}>", text, re.DOTALL)
-                return m.group(1).strip() if m else ""
-
-            # Try params first, then fall back to XML tags in text. The TS
+            # Try params first, then fall back to text channels. The TS
             # benchmark server may capture multiple BENCHMARK_ACTION calls
             # from one model turn; score the first decisive action instead of
             # silently overwriting it with a later correction/extra action.
@@ -151,16 +222,10 @@ class ElizaMind2WebAgent:
             if isinstance(bench_params, dict):
                 params = {**params, **bench_params}
 
-            operation_str = str(params.get("operation", "")).upper()
-            element_id = str(params.get("element_id", ""))
-            value = str(params.get("value", ""))
-
-            if not operation_str and response.text:
-                operation_str = _xtag(response.text, "operation").upper()
-            if not element_id and response.text:
-                element_id = _xtag(response.text, "element_id")
-            if not value and response.text:
-                value = _xtag(response.text, "value")
+            action_fields = _coerce_action_fields(params, response.text or "")
+            operation_str = action_fields["operation"]
+            element_id = action_fields["element_id"]
+            value = action_fields["value"]
 
             if not operation_str and current_repr:
                 lowered_repr = current_repr.lower()

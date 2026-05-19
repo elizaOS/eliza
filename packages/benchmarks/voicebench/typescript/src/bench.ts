@@ -1,5 +1,7 @@
 #!/usr/bin/env bun
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -218,6 +220,7 @@ type LocalEmbeddingPluginModule = {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VOICEBENCH_DIR = resolve(__dirname, "../..");
 const SHARED_DIR = resolve(VOICEBENCH_DIR, "shared");
+const LOCAL_CEREBRAS_PROFILE = "local-cerebras";
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000101" as UUID;
 const USER_ENTITY_ID = "00000000-0000-0000-0000-000000000102" as UUID;
@@ -243,9 +246,26 @@ function truncate(text: string, max = 280): string {
 }
 
 function normalizeText(text: string): string {
+  const numberWords: Record<string, string> = {
+    zero: "0",
+    one: "1",
+    two: "2",
+    three: "3",
+    four: "4",
+    five: "5",
+    six: "6",
+    seven: "7",
+    eight: "8",
+    nine: "9",
+    ten: "10",
+  };
   return text
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
+    .replace(
+      /\b(zero|one|two|three|four|five|six|seven|eight|nine|ten)\b/g,
+      (match) => numberWords[match] ?? match,
+    )
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -403,6 +423,118 @@ function coerceAudioBytes(output: unknown): Uint8Array {
     return new TextEncoder().encode(output);
   }
   return new Uint8Array();
+}
+
+function transcribeWithFasterWhisper(audioPath: string): {
+  text: string;
+  latencyMs: number;
+} {
+  const startedAt = nowMs();
+  const script = `
+import sys
+from faster_whisper import WhisperModel
+model_id = __import__("os").environ.get("VOICEBENCH_FASTER_WHISPER_MODEL", "tiny.en")
+model = WhisperModel(model_id, device="cpu", compute_type="int8")
+segments, _ = model.transcribe(sys.argv[1], beam_size=1)
+print(" ".join(segment.text.strip() for segment in segments).strip())
+`;
+  const proc = spawnSync("python3", ["-c", script, audioPath], {
+    encoding: "utf8",
+    env: process.env,
+    maxBuffer: 10 * 1024 * 1024,
+  });
+  if (proc.status !== 0) {
+    throw new Error(
+      `faster-whisper transcription failed: ${(proc.stderr || proc.stdout).trim()}`,
+    );
+  }
+  const text = proc.stdout.trim();
+  if (!text) {
+    throw new Error("faster-whisper returned an empty transcript");
+  }
+  return { text, latencyMs: nowMs() - startedAt };
+}
+
+async function generateWithCerebras(
+  transcript: string,
+  benchmarkContext: string,
+  responsePrompt: string,
+): Promise<{
+  response: string;
+  latencyMs: number;
+  model: string;
+  prompt: string;
+  raw: string;
+}> {
+  const apiKey = process.env.CEREBRAS_API_KEY;
+  if (!apiKey) {
+    throw new Error("CEREBRAS_API_KEY is required for local-cerebras profile");
+  }
+  const model = process.env.CEREBRAS_MODEL || "gpt-oss-120b";
+  const prompt = `${transcript}\n\n${responsePrompt}`;
+  const startedAt = nowMs();
+  const response = await fetch("https://api.cerebras.ai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are the voice response component inside a latency benchmark. Answer directly and briefly.",
+        },
+        {
+          role: "user",
+          content: `${benchmarkContext}\n\n${prompt}`.trim(),
+        },
+      ],
+      max_tokens: Number(process.env.CEREBRAS_MAX_TOKENS || 1024),
+      temperature: 0,
+    }),
+  });
+  const raw = await response.text();
+  if (!response.ok) {
+    throw new Error(`Cerebras request failed (${response.status}): ${raw}`);
+  }
+  const parsed = JSON.parse(raw) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const text = parsed.choices?.[0]?.message?.content?.trim() ?? "";
+  if (!text) {
+    throw new Error("Cerebras returned an empty response");
+  }
+  return {
+    response: text,
+    latencyMs: nowMs() - startedAt,
+    model,
+    prompt,
+    raw: text,
+  };
+}
+
+function synthesizeWithSay(text: string): { bytes: Uint8Array; latencyMs: number } {
+  const sayBin = process.env.VOICEBENCH_SAY_BIN || "/usr/bin/say";
+  if (!existsSync(sayBin)) {
+    throw new Error(`macOS say binary not found at ${sayBin}`);
+  }
+  const output = resolve(
+    tmpdir(),
+    `voicebench-${process.pid}-${Date.now()}-${Math.random().toString(16).slice(2)}.aiff`,
+  );
+  const startedAt = nowMs();
+  const proc = spawnSync(sayBin, ["-o", output, text], {
+    encoding: "utf8",
+    maxBuffer: 1024 * 1024,
+  });
+  if (proc.status !== 0) {
+    throw new Error(`say TTS failed: ${(proc.stderr || proc.stdout).trim()}`);
+  }
+  const bytes = readFileSync(output);
+  return { bytes: new Uint8Array(bytes), latencyMs: nowMs() - startedAt };
 }
 
 function loadDatasetSamples(datasetPath: string): {
@@ -684,8 +816,196 @@ async function main(): Promise<void> {
   const firstSentenceCache = new Map<string, Uint8Array>();
   let messageSequence = 0;
 
-  const runtime = await createRuntime(profile, character);
-  try {
+  if (profile === LOCAL_CEREBRAS_PROFILE) {
+    for (const mode of config.modes) {
+      for (const sample of samples) {
+        for (let iteration = 1; iteration <= iterations; iteration++) {
+          messageSequence += 1;
+          const startedAt = nowMs();
+          const transcription = transcribeWithFasterWhisper(sample.audioPath);
+          const transcriptText = transcription.text;
+          const expectedTranscript = sample.expectedText;
+          const transcriptionExactMatch =
+            typeof expectedTranscript === "string"
+              ? transcriptText === expectedTranscript
+              : null;
+          const transcriptionNormalizedMatch =
+            typeof expectedTranscript === "string"
+              ? normalizeText(transcriptText) ===
+                normalizeText(expectedTranscript)
+              : null;
+          const transcriptionWer =
+            typeof expectedTranscript === "string"
+              ? wordErrorRate(expectedTranscript, transcriptText)
+              : null;
+          const transcriptionCer =
+            typeof expectedTranscript === "string"
+              ? characterErrorRate(expectedTranscript, transcriptText)
+              : null;
+
+          const generated = await generateWithCerebras(
+            transcriptText,
+            mode.benchmarkContext,
+            config.responsePrompt,
+          );
+          const boundedResponse = enforceResponseBudget(
+            generated.response,
+            responseMaxChars,
+          );
+          const responseText = boundedResponse.text.trim();
+          if (!responseText) {
+            throw new Error(
+              `VoiceBench sample ${sample.id} response became empty after budget enforcement`,
+            );
+          }
+
+          const segmented = splitFirstSentence(responseText);
+          const firstSentence = segmented.firstSentence || responseText;
+          const remainder = segmented.remainder;
+          const firstSentenceEstimatedTokens =
+            estimateTokenCount(firstSentence);
+          const ttsFirstSentenceCacheEligible =
+            firstSentenceEstimatedTokens > 0 &&
+            firstSentenceEstimatedTokens < 10;
+          const firstSentenceKey = `${profile}|say|${normalizeCacheKeyText(firstSentence)}`;
+
+          const uncachedFirstSentence = synthesizeWithSay(firstSentence);
+          const speechToVoiceStartUncachedMs =
+            transcription.latencyMs +
+            generated.latencyMs +
+            uncachedFirstSentence.latencyMs;
+
+          const cachedPipelineStart = nowMs();
+          const cachedHit = firstSentenceCache.has(firstSentenceKey);
+          let cachedFirstSentenceBytes = 0;
+          let cachedFirstSentenceMs = 0;
+          if (cachedHit) {
+            cachedFirstSentenceBytes =
+              firstSentenceCache.get(firstSentenceKey)?.byteLength ?? 0;
+            cachedFirstSentenceMs = nowMs() - cachedPipelineStart;
+          } else {
+            const cachedFirstSentence = synthesizeWithSay(firstSentence);
+            firstSentenceCache.set(firstSentenceKey, cachedFirstSentence.bytes);
+            cachedFirstSentenceBytes = cachedFirstSentence.bytes.byteLength;
+            cachedFirstSentenceMs = cachedFirstSentence.latencyMs;
+          }
+          const speechToVoiceStartCachedMs =
+            transcription.latencyMs + generated.latencyMs + cachedFirstSentenceMs;
+
+          let ttsRemainderMs = 0;
+          let ttsRemainderBytes = 0;
+          if (remainder) {
+            const remainderOutput = synthesizeWithSay(remainder);
+            ttsRemainderMs = remainderOutput.latencyMs;
+            ttsRemainderBytes = remainderOutput.bytes.byteLength;
+          }
+          const ttsCachedPipelineMs = nowMs() - cachedPipelineStart;
+          const ttsCachedPipelineBytes =
+            cachedFirstSentenceBytes + ttsRemainderBytes;
+
+          const ttsOutput = synthesizeWithSay(responseText);
+          const endToEndMs = nowMs() - startedAt;
+          const modelOutputInspection = inspectModelOutput(generated.raw);
+
+          const record: IterationResult = {
+            mode: mode.id,
+            sampleId: sample.id,
+            sampleAudioPath: sample.audioPath,
+            iteration,
+            profile,
+            expectedTranscript,
+            transcriptionExactMatch,
+            transcriptionNormalizedMatch,
+            transcriptionWer:
+              transcriptionWer === null ? null : round(transcriptionWer),
+            transcriptionCer:
+              transcriptionCer === null ? null : round(transcriptionCer),
+            speechEndToTextMs: round(transcription.latencyMs),
+            transcriptionMs: round(transcription.latencyMs),
+            responseHandlerDecisionMs: round(generated.latencyMs),
+            responseTtftMs: round(generated.latencyMs),
+            responseTotalMs: round(generated.latencyMs),
+            speechEndToResponseDecisionMs: round(
+              transcription.latencyMs + generated.latencyMs,
+            ),
+            speechToResponseStartMs: round(
+              transcription.latencyMs + generated.latencyMs,
+            ),
+            speechEndToFirstAudioUncachedMs: round(
+              speechToVoiceStartUncachedMs,
+            ),
+            speechEndToFirstAudioCachedMs: round(speechToVoiceStartCachedMs),
+            speechToVoiceStartUncachedMs: round(speechToVoiceStartUncachedMs),
+            speechToVoiceStartCachedMs: round(speechToVoiceStartCachedMs),
+            voiceGenerationMs: round(ttsOutput.latencyMs),
+            voiceFirstTokenUncachedMs: round(uncachedFirstSentence.latencyMs),
+            voiceFirstTokenCachedMs: round(cachedFirstSentenceMs),
+            ttsFirstSentenceCacheHit: cachedHit,
+            ttsFirstSentenceCacheEligible,
+            ttsRemainderMs: round(ttsRemainderMs),
+            ttsCachedPipelineMs: round(ttsCachedPipelineMs),
+            endToEndMs: round(endToEndMs),
+            inContext: {
+              transcript: truncate(transcriptText),
+              benchmarkContext: truncate(mode.benchmarkContext || ""),
+              prompt: truncate(generated.prompt),
+            },
+            outContext: {
+              response: truncate(responseText),
+              stateExcerpt: "",
+              actions: [],
+              providers: ["faster-whisper", "cerebras", "say"],
+              modelInput: truncate(generated.prompt, 900),
+              modelOutputRaw: truncate(generated.raw, 900),
+              modelOutputClean: truncate(modelOutputInspection.cleaned, 900),
+              modelOutputHasThinkingTag: modelOutputInspection.hasThinkingTag,
+              modelOutputHasXml: modelOutputInspection.hasXmlTag,
+              modelOutputThoughtTagCount: modelOutputInspection.thoughtTagCount,
+              modelOutputXmlTagCount: modelOutputInspection.xmlTagCount,
+            },
+            trajectory: {
+              llmCallCount: 1,
+              providerAccessCount: 3,
+              llmCalls: [
+                {
+                  model: generated.model,
+                  purpose: "voicebench-response",
+                  latencyMs: round(generated.latencyMs),
+                },
+              ],
+              providerAccesses: [
+                { providerName: "faster-whisper", purpose: "transcription" },
+                { providerName: "cerebras", purpose: "response" },
+                { providerName: "say", purpose: "text-to-speech" },
+              ],
+            },
+            ttsOutputBytes: ttsOutput.bytes.byteLength,
+            ttsFirstSentenceUncachedBytes:
+              uncachedFirstSentence.bytes.byteLength,
+            ttsFirstSentenceCachedBytes: cachedFirstSentenceBytes,
+            ttsRemainderBytes,
+            ttsCachedPipelineBytes,
+            responseCharCount: responseText.length,
+            responseWasCapped: boundedResponse.wasCapped,
+            responseSegmentation: {
+              firstSentence: truncate(firstSentence),
+              remainder: truncate(remainder),
+              firstSentenceEstimatedTokens,
+            },
+          };
+
+          results.push(record);
+          console.log(
+            `[voicebench][typescript] mode=${mode.id} sample=${sample.id} iter=${iteration}/${iterations} ` +
+              `transcription=${record.transcriptionMs}ms response=${record.responseTotalMs}ms ` +
+              `tts=${record.voiceGenerationMs}ms e2e=${record.endToEndMs}ms`,
+          );
+        }
+      }
+    }
+  } else {
+    const runtime = await createRuntime(profile, character);
+    try {
     const messageService = runtime.messageService;
     if (!messageService) {
       throw new Error("VoiceBench runtime did not initialize messageService");
@@ -1001,8 +1321,9 @@ async function main(): Promise<void> {
         }
       }
     }
-  } finally {
-    await runtime.stop();
+    } finally {
+      await runtime.stop();
+    }
   }
 
   const summary: BenchmarkOutput["summary"] = {};

@@ -12,12 +12,15 @@
  * action handler had run.
  */
 
-import type { ResponseHandlerResult } from "@elizaos/core";
-import { TurnControllerRegistry } from "@elizaos/core";
 import { ChannelSimulator } from "./channels.ts";
 import { FakeClock } from "./clock.ts";
+import {
+  type ResponseHandlerResult,
+  TurnControllerRegistry,
+} from "./core-lite.ts";
 import { runJudge } from "./judge.ts";
 import { callCerebras } from "./llm-cerebras.ts";
+import { callHarnessStage1 } from "./llm-harness.ts";
 import {
   createDefaultScriptedProvider,
   type ScriptedLlmProvider,
@@ -31,7 +34,7 @@ import type { Scenario, ScenarioResult, ScenarioScriptStep } from "./types.ts";
 
 type BenchThreadOp = Record<string, unknown>;
 
-export type EvaluatorMode = "scripted" | "cerebras";
+export type EvaluatorMode = "scripted" | "cerebras" | "harness";
 
 export interface EvaluatorOptions {
   mode: EvaluatorMode;
@@ -91,6 +94,22 @@ Rules:
       });
       parsed = out.parsed;
       llmLatency = out.latencyMs;
+    } else if (opts.mode === "harness") {
+      const conversation = renderConversation({
+        scenario,
+        history: history.slice(0, -1),
+        message: step,
+        state,
+      });
+      const result = await callHarnessStage1({
+        systemPrompt,
+        messages: [{ role: "user", content: conversation }],
+        schema,
+        scenarioId: scenario.id,
+        callIndex: stage1Calls,
+      });
+      parsed = result.parsed;
+      llmLatency = result.latencyMs;
     } else {
       const conversation = renderConversation({
         scenario,

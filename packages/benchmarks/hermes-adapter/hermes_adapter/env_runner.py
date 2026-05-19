@@ -34,6 +34,15 @@ logger = logging.getLogger(__name__)
 DEFAULT_REPO_PATH = Path.home() / ".eliza" / "agents" / "hermes-agent-src"
 
 
+_TERMINAL_ENV_SYSTEM_PROMPT = (
+    "You are running inside a live terminal repair benchmark. Do not answer "
+    "with prose instructions. Use the available terminal and file tools to "
+    "inspect the workspace, edit files when needed, and run the task tests "
+    "before finishing. If the first attempt fails, inspect the failure and "
+    "continue fixing it."
+)
+
+
 # Maps the public env_id we expose to the CLI module path inside the
 # hermes-agent repo. These are passed as the script argument to
 # ``python <module_path> evaluate``.
@@ -175,6 +184,9 @@ def run_hermes_env(
         "terminal_backend": terminal_backend,
         "use_wandb": False,
     }
+    if env_id in {"tblite", "terminalbench_2"}:
+        config_env_overrides["agent_temperature"] = 0.0
+        config_env_overrides["system_prompt"] = _TERMINAL_ENV_SYSTEM_PROMPT
     forwarded_args: list[str] = list(extra_args or [])
     if not _has_forwarded_arg(forwarded_args, "--env.terminal_backend"):
         forwarded_args.append(f"--env.terminal_backend={terminal_backend}")
@@ -263,7 +275,7 @@ def _select_terminal_backend(env_id: str) -> str:
     if override:
         return override
     _ = env_id
-    return "local"
+    return "docker" if _docker_daemon_available() else "local"
 
 
 def _docker_daemon_available() -> bool:
@@ -367,6 +379,7 @@ def parse_hermes_env_result(
 
     summary_raw = json.loads(summary_path.read_text(encoding="utf-8"))
     metrics = _coerce_metrics(summary_raw)
+    _annotate_sample_completion(metrics, samples_path)
     score, higher_is_better = _pick_score(metrics)
 
     return HermesEnvResult(
@@ -378,6 +391,32 @@ def parse_hermes_env_result(
         duration_s=float(duration_s),
         metrics=metrics,
     )
+
+
+def _annotate_sample_completion(metrics: dict[str, Any], samples_path: Path) -> None:
+    if not samples_path.exists():
+        return
+    total = 0
+    incomplete = 0
+    for line in samples_path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        total += 1
+        messages = row.get("messages")
+        if not isinstance(messages, list) or not messages:
+            continue
+        last = messages[-1]
+        if isinstance(last, dict) and last.get("role") == "tool" and not row.get("passed"):
+            incomplete += 1
+    if total:
+        metrics["sample_rows"] = total
+        metrics["incomplete_rollouts"] = incomplete
 
 
 def _find_first(root: Path, filename: str) -> Path | None:
@@ -429,7 +468,6 @@ def _pick_score(metrics: dict[str, Any]) -> tuple[float, bool]:
         "survival_rate",
         "mean_reward",
         "reward",
-        "placeholder",
         "score",
     ):
         val = metrics.get(key)

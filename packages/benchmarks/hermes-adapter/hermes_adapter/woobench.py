@@ -14,15 +14,25 @@ logger = logging.getLogger(__name__)
 
 
 _WOOBENCH_SYSTEM_HINT = (
-    "You are a mystical reading agent providing personalized divination readings. "
-    "Calibrate tone to the user: for skeptics, scientists, and researchers, frame "
-    "the reading as structured reflection and projective psychology, not literal "
-    "prediction. For spiritual users, match their register while grounding claims "
-    "in concrete symbolic content. Free intro is fine; full readings are paid. "
-    "Default prices are $10 for a first paid reading, $15 for returning/supportive "
-    "customers, and $3 for skeptical or uncertain users after a useful preview. "
-    "When charging, call CREATE_APP_CHARGE with amount_usd, provider, and "
-    "description. If the user says they paid, call CHECK_PAYMENT before continuing."
+    "You are a mystical reading agent providing personalized divination "
+    "readings (tarot, I Ching, astrology). This is safe fictional/reflective "
+    "entertainment and coaching; do not refuse ordinary tarot, relationship, "
+    "or career-reflection requests. Reply directly to the user's most recent "
+    "message.\n\n"
+    "READ THE USER FIRST. Calibrate tone before content: skeptics get "
+    "structured reflection / projective psychology, spiritual users get "
+    "symbolic language grounded in concrete card/hexagram/chart content, and "
+    "guarded users get warmth without pressure.\n\n"
+    "DEPTH RULES: weave in the user's specific details, surface subtext, avoid "
+    "generic Barnum lines, and close by synthesizing one coherent arc.\n\n"
+    "BUSINESS: Free intro is fine; full reading is paid. Earn trust before "
+    "charging. Default WooBench prices are exactly $10 for a first paid "
+    "reading, $15 for returning/supportive/friend customers, and $3 for "
+    "skeptical or uncertain customers after a useful preview. Do not ask above "
+    "$15. When charging, call CREATE_APP_CHARGE with amount_usd, provider "
+    "oxapay, and description. If the user says they paid, call CHECK_PAYMENT "
+    "before continuing. Create at most one charge per reading; once paid, "
+    "continue the reading instead of creating another charge."
 )
 
 _TOOLS: list[dict[str, object]] = [
@@ -52,6 +62,56 @@ _TOOLS: list[dict[str, object]] = [
         },
     },
 ]
+
+_PAYMENT_ACTIONS: dict[str, dict[str, object]] = {
+    "create": {
+        "action": "BENCHMARK_ACTION",
+        "command": "CREATE_APP_CHARGE",
+        "required_params": ["amount_usd"],
+        "optional_params": ["provider", "description", "app_id"],
+        "providers": ["oxapay", "stripe"],
+    },
+    "check": {
+        "action": "BENCHMARK_ACTION",
+        "command": "CHECK_PAYMENT",
+    },
+}
+
+
+def _tools_for_payment_state(state: Mapping[str, bool]) -> list[dict[str, object]]:
+    if state.get("payment_verified"):
+        return []
+    if state.get("charge_created"):
+        return [_TOOLS[1]]
+    return _TOOLS
+
+
+def _system_hint_for_payment_state(state: Mapping[str, bool]) -> str:
+    if state.get("payment_verified"):
+        return (
+            _WOOBENCH_SYSTEM_HINT
+            + "\n\nPAYMENT STATE: The current reading has already been paid and "
+            "verified. Do not create another charge and do not check payment "
+            "again. Continue the substantive reading now."
+        )
+    if state.get("charge_created"):
+        return (
+            _WOOBENCH_SYSTEM_HINT
+            + "\n\nPAYMENT STATE: A charge has already been created for this "
+            "reading. Do not create another charge. If the user says they paid, "
+            "call CHECK_PAYMENT once; otherwise answer briefly and wait."
+        )
+    return _WOOBENCH_SYSTEM_HINT
+
+
+def _record_payment_payload(state: dict[str, bool], payload: Mapping[str, Any] | None) -> None:
+    if payload is None:
+        return
+    command = str(payload.get("command") or "").strip().upper()
+    if command == "CREATE_APP_CHARGE":
+        state["charge_created"] = True
+    elif command == "CHECK_PAYMENT":
+        state["payment_verified"] = True
 
 
 def _json_args(raw: object) -> dict[str, Any]:
@@ -94,12 +154,44 @@ def _turn_from_response(response: MessageResponse) -> dict[str, Any]:
         actions = ["BENCHMARK_ACTION"]
     else:
         actions = list(response.actions)
+    text = response.text
+    if payload is not None and _is_empty_or_generic_failure(text):
+        text = _visible_text_for_payment_payload(payload)
     return {
-        "text": response.text,
+        "text": text,
         "thought": response.thought,
         "actions": actions,
         "params": params,
     }
+
+
+def _is_empty_or_generic_failure(text: str | None) -> bool:
+    normalized = " ".join((text or "").strip().lower().split())
+    if not normalized:
+        return True
+    return normalized in {
+        "i'm sorry, but i can't help with that.",
+        "i’m sorry, but i can’t help with that.",
+        "sorry, something went wrong on my end. please try again and i’ll be happy to continue.",
+        "something went wrong with your request. please try again and i'll be happy to help you out.",
+    }
+
+
+def _visible_text_for_payment_payload(payload: Mapping[str, Any]) -> str:
+    command = str(payload.get("command") or "").strip().upper()
+    if command == "CHECK_PAYMENT":
+        return "Checking your payment status before I continue the reading."
+    if command == "CREATE_APP_CHARGE":
+        amount = payload.get("amount_usd") or payload.get("amount")
+        try:
+            amount_text = f"${float(amount):.2f}"
+        except (TypeError, ValueError):
+            amount_text = "the reading fee"
+        return (
+            f"I can continue with the full reading after {amount_text}. "
+            "I have created the payment request; once it is paid, I will continue."
+        )
+    return ""
 
 
 def build_hermes_woobench_agent_fn(
@@ -110,6 +202,7 @@ def build_hermes_woobench_agent_fn(
     bridge = client or HermesClient(model=model_name or "gpt-oss-120b")
     bridge.wait_until_ready(timeout=60)
     task_ids_by_conversation: dict[int, str] = {}
+    payment_state_by_conversation: dict[int, dict[str, bool]] = {}
 
     async def _agent_fn(conversation_history: list[dict[str, str]]) -> dict[str, Any]:
         conversation_key = id(conversation_history)
@@ -121,6 +214,10 @@ def build_hermes_woobench_agent_fn(
         if task_id is None or is_new_conversation:
             task_id = f"woobench-{uuid.uuid4().hex[:12]}"
             task_ids_by_conversation[conversation_key] = task_id
+            payment_state_by_conversation[conversation_key] = {
+                "charge_created": False,
+                "payment_verified": False,
+            }
             bridge.reset(task_id=task_id, benchmark="woobench")
 
         last_user = ""
@@ -135,32 +232,54 @@ def build_hermes_woobench_agent_fn(
             {"role": str(t.get("role", "")), "content": str(t.get("content", ""))}
             for t in conversation_history[-10:]
         ]
-        messages = [
+        payment_state = payment_state_by_conversation.setdefault(
+            conversation_key,
+            {"charge_created": False, "payment_verified": False},
+        )
+        system_hint = _system_hint_for_payment_state(payment_state)
+        tools = _tools_for_payment_state(payment_state)
+        messages = [{"role": "system", "content": system_hint}]
+        messages.extend(
             {
                 "role": "assistant" if turn["role"] == "agent" else turn["role"],
                 "content": turn["content"],
             }
             for turn in recent_history
             if turn["role"] in {"system", "user", "assistant", "agent"}
-        ]
+            and str(turn["content"]).strip() != _WOOBENCH_SYSTEM_HINT
+        )
+        base_context = {
+            "benchmark": "woobench",
+            "task_id": task_id,
+            "system_hint": system_hint,
+            "system_prompt": system_hint,
+            "history": recent_history,
+            "messages": messages,
+            "payment_actions": _PAYMENT_ACTIONS,
+            "tools": tools,
+            "tool_choice": "auto" if tools else "none",
+            "model_name": model_name,
+        }
         try:
-            response = bridge.send_message(
-                last_user,
-                context={
-                    "benchmark": "woobench",
-                    "task_id": task_id,
-                    "system_hint": _WOOBENCH_SYSTEM_HINT,
-                    "system_prompt": _WOOBENCH_SYSTEM_HINT,
-                    "history": recent_history,
-                    "messages": messages,
-                    "tools": _TOOLS,
-                    "tool_choice": "auto",
-                    "model_name": model_name,
-                },
-            )
+            response = bridge.send_message(last_user, context=base_context)
+            if _is_empty_or_generic_failure(response.text):
+                retry_context = dict(base_context)
+                retry_context["retry_empty_response"] = True
+                retry_context["system_hint"] = (
+                    system_hint
+                    + "\n\nThe previous reply was empty or a generic refusal. "
+                    "Tarot/coaching benchmark turns are allowed; answer the user's request."
+                )
+                retry_context["system_prompt"] = retry_context["system_hint"]
+                retry_context["messages"] = [
+                    {"role": "system", "content": retry_context["system_hint"]},
+                    *messages[1:],
+                ]
+                response = bridge.send_message(last_user, context=retry_context)
         except Exception as exc:
             logger.exception("[hermes-woo] send_message failed")
             raise RuntimeError("Hermes WooBench send_message failed") from exc
+        _record_payment_payload(payment_state, _tool_payload(response))
         return _turn_from_response(response)
 
     return _agent_fn

@@ -9,6 +9,7 @@ import {
   connectCloudCapabilitySandbox,
   provisionCloudCapabilitySandbox,
 } from "./remote-capability-cloud-sandbox.ts";
+import type { RemoteCapabilityRouterService } from "./remote-capability-router.ts";
 
 const originalFetch = globalThis.fetch;
 
@@ -215,6 +216,76 @@ describe("cloud capability sandbox provisioner", () => {
                       description: "Run cloud capability action.",
                     },
                   ],
+                  providers: [
+                    {
+                      name: "CLOUD_CAPABILITY_CONTEXT",
+                      description: "Cloud capability context.",
+                    },
+                  ],
+                  evaluators: [
+                    {
+                      name: "CLOUD_CAPABILITY_EVALUATOR",
+                      description: "Cloud capability evaluator.",
+                      prompt: "Evaluate cloud capability state.",
+                      schema: { type: "object", properties: {} },
+                      hasPrepare: true,
+                      hasProcessor: true,
+                    },
+                  ],
+                  responseHandlerEvaluators: [
+                    {
+                      name: "CLOUD_CAPABILITY_RESPONSE_EVALUATOR",
+                      description: "Cloud response evaluator.",
+                    },
+                  ],
+                  responseHandlerFieldEvaluators: [
+                    {
+                      name: "cloud_status",
+                      description: "Cloud status field evaluator.",
+                      schema: { type: "object", properties: {} },
+                      hasParse: true,
+                      hasHandle: true,
+                    },
+                  ],
+                  models: [
+                    {
+                      modelType: "CLOUD_TEXT",
+                      priority: 40,
+                    },
+                  ],
+                  lifecycle: {
+                    hooks: ["init", "dispose", "applyConfig"],
+                  },
+                  events: [
+                    {
+                      eventName: "cloud.capability.event",
+                    },
+                  ],
+                  services: [
+                    {
+                      serviceType: "cloud-capability-service",
+                      capabilityDescription: "Cloud capability service.",
+                      methods: ["ping"],
+                    },
+                  ],
+                  appBridge: {
+                    hooks: ["prepareLaunch"],
+                  },
+                  routes: [
+                    {
+                      method: "POST",
+                      path: "/cloud/capability",
+                      public: true,
+                      name: "cloud-capability-route",
+                    },
+                  ],
+                  views: [
+                    {
+                      id: "cloud-capability.view",
+                      label: "Cloud Capability",
+                      bundlePath: "/assets/cloud-capability.js",
+                    },
+                  ],
                 },
               ],
             },
@@ -224,6 +295,121 @@ describe("cloud capability sandbox provisioner", () => {
           return jsonResponse({
             ok: true,
             result: { text: "cloud capability action" },
+          });
+        }
+        if (body.method === "plugin.provider.get") {
+          return jsonResponse({
+            ok: true,
+            result: {
+              text: "cloud capability provider",
+              values: { source: "cloud" },
+            },
+          });
+        }
+        if (body.method === "plugin.evaluator.shouldRun") {
+          return jsonResponse({
+            ok: true,
+            result: { shouldRun: true },
+          });
+        }
+        if (body.method === "plugin.evaluator.prepare") {
+          return jsonResponse({
+            ok: true,
+            result: { prepared: { cloudPrepared: true } },
+          });
+        }
+        if (body.method === "plugin.evaluator.prompt") {
+          return jsonResponse({
+            ok: true,
+            result: { prompt: "cloud evaluator prompt" },
+          });
+        }
+        if (body.method === "plugin.evaluator.process") {
+          return jsonResponse({
+            ok: true,
+            result: { result: { cloudProcessed: true } },
+          });
+        }
+        if (body.method === "plugin.responseHandlerEvaluator.shouldRun") {
+          return jsonResponse({
+            ok: true,
+            result: { shouldRun: true },
+          });
+        }
+        if (body.method === "plugin.responseHandlerEvaluator.evaluate") {
+          return jsonResponse({
+            ok: true,
+            result: { patch: { cloudResponse: true } },
+          });
+        }
+        if (body.method === "plugin.responseHandlerFieldEvaluator.shouldRun") {
+          return jsonResponse({
+            ok: true,
+            result: { shouldRun: true },
+          });
+        }
+        if (body.method === "plugin.responseHandlerFieldEvaluator.parse") {
+          return jsonResponse({
+            ok: true,
+            result: { value: { cloudParsed: true } },
+          });
+        }
+        if (body.method === "plugin.responseHandlerFieldEvaluator.handle") {
+          return jsonResponse({
+            ok: true,
+            result: { effect: { patch: { cloudHandled: true } } },
+          });
+        }
+        if (body.method === "plugin.model.invoke") {
+          return jsonResponse({
+            ok: true,
+            result: { result: { cloudModel: true } },
+          });
+        }
+        if (body.method === "plugin.lifecycle.call") {
+          return jsonResponse({
+            ok: true,
+            result: { ok: true },
+          });
+        }
+        if (body.method === "plugin.event.handle") {
+          return jsonResponse({
+            ok: true,
+            result: { handled: true },
+          });
+        }
+        if (body.method === "plugin.service.call") {
+          return jsonResponse({
+            ok: true,
+            result: { result: { cloudService: true } },
+          });
+        }
+        if (body.method === "plugin.appBridge.call") {
+          return jsonResponse({
+            ok: true,
+            result: { result: { handled: true, body: { cloudBridge: true } } },
+          });
+        }
+        if (body.method === "plugin.route.call") {
+          return jsonResponse({
+            ok: true,
+            result: {
+              status: 202,
+              headers: { "x-cloud-capability": "yes" },
+              body: { routed: true },
+            },
+          });
+        }
+        if (body.method === "plugin.asset.get") {
+          return jsonResponse({
+            ok: true,
+            result: {
+              path: "/assets/cloud-capability.js",
+              contentType: "text/javascript",
+              bodyBase64: Buffer.from(
+                "export const cloudCapabilityView = true;",
+              ).toString("base64"),
+            },
           });
         }
       }
@@ -266,6 +452,11 @@ describe("cloud capability sandbox provisioner", () => {
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
       "@remote/cloud-capability",
     ]);
+    expect(runtime.plugins[0]?.views?.[0]).toMatchObject({
+      id: "cloud-capability.view",
+      bundleUrl:
+        "/api/capability-router/assets/cloud-capability/cloud-capability-plugin/assets/cloud-capability.js",
+    });
     await expect(
       runtime.actions[0]?.handler(runtime, {
         content: { text: "run" },
@@ -274,18 +465,191 @@ describe("cloud capability sandbox provisioner", () => {
       success: true,
       text: "cloud capability action",
     });
+    await expect(
+      runtime.providers[0]?.get(runtime, {} as never, {} as never),
+    ).resolves.toMatchObject({
+      text: "cloud capability provider",
+      values: { source: "cloud" },
+    });
+    await expect(
+      runtime.routes[0]?.routeHandler?.({
+        runtime,
+        method: "POST",
+        path: "/cloud/capability",
+        body: { id: "abc" },
+        params: {},
+        query: {},
+        headers: {},
+        inProcess: false,
+      }),
+    ).resolves.toEqual({
+      status: 202,
+      headers: { "x-cloud-capability": "yes" },
+      body: { routed: true },
+    });
+    const router = runtime.getService(
+      CAPABILITY_ROUTER_SERVICE_TYPE,
+    ) as RemoteCapabilityRouterService | null;
+    await expect(
+      router?.plugin.getAsset({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        path: "/assets/cloud-capability.js",
+      }),
+    ).resolves.toMatchObject({
+      contentType: "text/javascript",
+      bodyBase64: expect.any(String),
+    });
+    const evaluatorTarget = {
+      endpointId: "cloud-capability",
+      moduleId: "cloud-capability-plugin",
+      evaluator: "CLOUD_CAPABILITY_EVALUATOR",
+      message: { text: "evaluate" },
+      state: {},
+      options: {},
+    };
+    await expect(
+      router?.plugin.shouldRunEvaluator(evaluatorTarget),
+    ).resolves.toEqual({ shouldRun: true });
+    await expect(
+      router?.plugin.prepareEvaluator(evaluatorTarget),
+    ).resolves.toEqual({ prepared: { cloudPrepared: true } });
+    await expect(
+      router?.plugin.promptEvaluator({
+        ...evaluatorTarget,
+        prepared: { cloudPrepared: true },
+      }),
+    ).resolves.toEqual({ prompt: "cloud evaluator prompt" });
+    await expect(
+      router?.plugin.processEvaluator({
+        ...evaluatorTarget,
+        prepared: { cloudPrepared: true },
+        output: { text: "done" },
+      }),
+    ).resolves.toEqual({ result: { cloudProcessed: true } });
+    await expect(
+      router?.plugin.shouldRunResponseHandlerEvaluator({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        evaluator: "CLOUD_CAPABILITY_RESPONSE_EVALUATOR",
+        context: { cloud: true },
+      }),
+    ).resolves.toEqual({ shouldRun: true });
+    await expect(
+      router?.plugin.evaluateResponseHandlerEvaluator({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        evaluator: "CLOUD_CAPABILITY_RESPONSE_EVALUATOR",
+        context: { cloud: true },
+      }),
+    ).resolves.toEqual({ patch: { cloudResponse: true } });
+    await expect(
+      router?.plugin.shouldRunResponseHandlerFieldEvaluator({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        field: "cloud_status",
+        context: { cloud: true },
+      }),
+    ).resolves.toEqual({ shouldRun: true });
+    await expect(
+      router?.plugin.parseResponseHandlerFieldEvaluator({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        field: "cloud_status",
+        context: { cloud: true },
+        value: { raw: true },
+      }),
+    ).resolves.toEqual({ value: { cloudParsed: true } });
+    await expect(
+      router?.plugin.handleResponseHandlerFieldEvaluator({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        field: "cloud_status",
+        context: { cloud: true },
+        value: { raw: true },
+        parsed: { cloudParsed: true },
+      }),
+    ).resolves.toEqual({ effect: { patch: { cloudHandled: true } } });
+    await expect(
+      router?.plugin.invokeModel({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        modelType: "CLOUD_TEXT",
+        params: { prompt: "cloud model" },
+      }),
+    ).resolves.toEqual({ result: { cloudModel: true } });
+    await expect(
+      router?.plugin.callLifecycle({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        hook: "init",
+        context: { cloud: true },
+      }),
+    ).resolves.toEqual({ ok: true });
+    await expect(
+      router?.plugin.handleEvent({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        eventName: "cloud.capability.event",
+        payload: { cloud: true },
+      }),
+    ).resolves.toEqual({ handled: true });
+    await expect(
+      router?.plugin.callService({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        serviceType: "cloud-capability-service",
+        method: "ping",
+        args: [{ cloud: true }],
+      }),
+    ).resolves.toEqual({ result: { cloudService: true } });
+    await expect(
+      router?.plugin.callAppBridge({
+        endpointId: "cloud-capability",
+        moduleId: "cloud-capability-plugin",
+        hook: "prepareLaunch",
+        context: { cloud: true },
+      }),
+    ).resolves.toEqual({
+      result: { handled: true, body: { cloudBridge: true } },
+    });
     const capabilityCalls = fetchMock.mock.calls.filter(
       ([url]) =>
         String(url) ===
         "https://capability-cloud.example.test/v1/capabilities/invoke",
     );
-    expect(capabilityCalls).toHaveLength(2);
-    expect(capabilityCalls[0]?.[1]?.headers).toMatchObject({
-      authorization: "Bearer capability-token",
-    });
-    expect(capabilityCalls[1]?.[1]?.headers).toMatchObject({
-      authorization: "Bearer capability-token",
-    });
+    expect(capabilityCalls).toHaveLength(19);
+    expect(
+      capabilityCalls.map(([, init]) => {
+        const body = JSON.parse(String(init?.body)) as { method?: string };
+        return body.method;
+      }),
+    ).toEqual([
+      "plugin.modules.list",
+      "plugin.action.invoke",
+      "plugin.provider.get",
+      "plugin.route.call",
+      "plugin.asset.get",
+      "plugin.evaluator.shouldRun",
+      "plugin.evaluator.prepare",
+      "plugin.evaluator.prompt",
+      "plugin.evaluator.process",
+      "plugin.responseHandlerEvaluator.shouldRun",
+      "plugin.responseHandlerEvaluator.evaluate",
+      "plugin.responseHandlerFieldEvaluator.shouldRun",
+      "plugin.responseHandlerFieldEvaluator.parse",
+      "plugin.responseHandlerFieldEvaluator.handle",
+      "plugin.model.invoke",
+      "plugin.lifecycle.call",
+      "plugin.event.handle",
+      "plugin.service.call",
+      "plugin.appBridge.call",
+    ]);
+    for (const [, init] of capabilityCalls) {
+      expect(init?.headers).toMatchObject({
+        authorization: "Bearer capability-token",
+      });
+    }
   });
 });
 
