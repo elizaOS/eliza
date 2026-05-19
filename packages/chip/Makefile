@@ -362,6 +362,8 @@ memory-interconnect-contract-check:
 
 memory-axi4-check:
 	@$(PYTHON) scripts/check_axi4_burst.py
+	@$(MAKE) -s cocotb-axi4
+	@$(PYTHON) scripts/write_axi4_cocotb_status.py
 
 iommu-evidence-check:
 	@$(PYTHON) scripts/check_iommu_evidence.py
@@ -635,10 +637,19 @@ cocotb-contract:
 cocotb-cpu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_tiny_cpu_execution COCOTB_TOPLEVEL=e1_tiny_cpu_contract_tb scripts/run_cocotb.sh
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop formal-bpu branch-prediction-check mpki-eval bpu-lint
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc formal-bpu branch-prediction-check mpki-eval bpu-lint
 
-cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop
+cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop cocotb-bpu-tage cocotb-bpu-ittage cocotb-bpu-sc
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
+
+cocotb-bpu-tage:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_tage COCOTB_TOPLEVEL=tage_tb scripts/run_cocotb_bpu.sh
+
+cocotb-bpu-ittage:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_ittage COCOTB_TOPLEVEL=ittage_tb scripts/run_cocotb_bpu.sh
+
+cocotb-bpu-sc:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_sc COCOTB_TOPLEVEL=sc_tb scripts/run_cocotb_bpu.sh
 
 cocotb-bpu-ras:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_ras COCOTB_TOPLEVEL=ras_tb scripts/run_cocotb_bpu.sh

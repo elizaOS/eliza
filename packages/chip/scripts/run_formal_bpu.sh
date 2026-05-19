@@ -70,7 +70,7 @@ reason: "SymbiYosys BMC properties"
 yosys_limitations:
   - "yosys 0.64 (oss-cad-suite) does not accept struct typedefs in module port lists; ftq formal is blocked until a yosys release with Slang/SystemVerilog frontend support, or until the struct ports are flattened in production RTL"
   - "yosys 0.64 async-reset domain handling allows the BMC initial state to choose arbitrary values for reset-driven flops; ras formal property harness needs additional initial-state constraints to model the asynchronous reset edge before deassertion"
-mitigation: "Functional correctness for ras and ftq is covered by verify/cocotb/bpu/ regression at 14/14 tests."
+mitigation: "Functional correctness for the BPU tree is covered by verify/cocotb/bpu/ regression at 33/33 tests across 9 modules (bpu_top, ras, ftq, ftb, uftb, loop_predictor, tage, ittage, sc)."
 properties:
 ${properties_yaml}
 EOF

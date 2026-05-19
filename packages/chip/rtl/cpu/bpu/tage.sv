@@ -90,6 +90,16 @@ module tage
             assign lkp_h_slice = lkp_hist[TAGE_HIST_LEN_MAX-1 -: HL];
             assign upd_h_slice = upd_hist[TAGE_HIST_LEN_MAX-1 -: HL];
 
+            // Per-table update gate: the table fires its counter / useful
+            // update when it is the provider, and fires the allocation
+            // path when the upper-level alloc picker selected it. Allocation
+            // must not be gated by the provider equality, otherwise no
+            // non-provider table can ever be allocated.
+            logic upd_valid_g;
+            assign upd_valid_g = upd_valid &&
+                ((upd_provider == gi[$clog2(TAGE_TABLES+1)-1:0]+1) ||
+                 tab_alloc_req[gi]);
+
             tage_table #(
                 .TABLE_ID   (gi),
                 .ENTRIES    (TAGE_ENTRIES_TABLE),
@@ -104,7 +114,7 @@ module tage
                 .lkp_taken       (tab_taken[gi]),
                 .lkp_ctr         (tab_ctr[gi]),
                 .lkp_useful      (tab_useful[gi]),
-                .upd_valid       (upd_valid && (upd_provider == gi[$clog2(TAGE_TABLES+1)-1:0]+1)),
+                .upd_valid       (upd_valid_g),
                 .upd_pc          (upd_pc),
                 .upd_hist        (upd_h_slice),
                 .upd_taken       (upd_taken),

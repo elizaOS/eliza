@@ -132,6 +132,55 @@ def synthetic_indirect_dispatch(
             )
 
 
+def synthetic_mixed_workload(rounds: int = 64) -> Iterator[BranchEvent]:
+    """Interleaved hot loops, easy calls/returns, and one cold indirect site
+    per round. Approximates a phase-rich application pattern."""
+    base_loop = 0x8001_0000
+    base_call = 0x8001_2000
+    base_ind  = 0x8001_4000
+    for r in range(rounds):
+        for i in range(8):
+            yield BranchEvent(
+                pc=base_loop, target=base_loop - 0x40, taken=i < 7, kind=BR_COND,
+            )
+        yield BranchEvent(
+            pc=base_call, target=base_call + 0x200, taken=True, kind=BR_CALL,
+        )
+        yield BranchEvent(
+            pc=base_call + 0x208, target=base_call + 0x40, taken=True, kind=BR_RET,
+        )
+        yield BranchEvent(
+            pc=base_ind, target=base_ind + 0x100 * (r % 3), taken=True, kind=BR_CALL,
+        )
+
+
+def synthetic_jit_dispatch_warmup(
+    sites: int = 12, warmup_choices: int = 5, steady_repeats: int = 128
+) -> Iterator[BranchEvent]:
+    """V8-style: a JIT-emitted dispatch site is polymorphic during warm-up
+    (rotates through `warmup_choices` targets) then becomes monomorphic for
+    the steady state. ITTAGE should converge on the monomorphic target."""
+    sticky = 0x8005_0000
+    for site in range(sites):
+        # Warm-up phase
+        for c in range(warmup_choices):
+            yield BranchEvent(
+                pc=sticky + site * 0x40,
+                target=sticky + 0x1000 + c * 0x100,
+                taken=True,
+                kind=BR_CALL,
+            )
+        # Steady-state phase on one chosen target.
+        steady_target = sticky + 0x1000 + site * 0x100
+        for _ in range(steady_repeats):
+            yield BranchEvent(
+                pc=sticky + site * 0x40,
+                target=steady_target,
+                taken=True,
+                kind=BR_CALL,
+            )
+
+
 SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "always_taken_loop": synthetic_always_taken_loop,
     "alternating": synthetic_alternating,
@@ -139,4 +188,6 @@ SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "recursive_call_return": synthetic_recursive_call_return,
     "irregular_calls": synthetic_irregular_calls,
     "indirect_dispatch": synthetic_indirect_dispatch,
+    "mixed_workload": synthetic_mixed_workload,
+    "jit_dispatch_warmup": synthetic_jit_dispatch_warmup,
 }
