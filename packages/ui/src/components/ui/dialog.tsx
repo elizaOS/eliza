@@ -1,8 +1,16 @@
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 import * as React from "react";
-import { Z_DIALOG, Z_DIALOG_OVERLAY } from "../../lib/floating-layers";
 import { cn } from "../../lib/utils";
+
+// NOTE: z-index values below are kept as literal arbitrary classes
+// (`z-[160]` / `z-[170]`) so Tailwind v4's source scanner emits them.
+// A previous revision used `` z-[${Z_DIALOG_OVERLAY}] `` template-literal
+// interpolation from the floating-layers constants, but Tailwind cannot
+// resolve classes built from runtime values — the overlay/content lost
+// `position: fixed` and stacking, leaving page chrome visible through the
+// modal. Keep these in sync with packages/ui/src/lib/floating-layers.ts
+// (Z_DIALOG_OVERLAY = 160, Z_DIALOG = 170).
 
 const Dialog = DialogPrimitive.Root;
 
@@ -19,7 +27,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      `fixed inset-0 z-[${Z_DIALOG_OVERLAY}] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0`,
+      "fixed inset-0 z-[160] bg-black/80 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0",
       className,
     )}
     {...props}
@@ -45,7 +53,7 @@ const DialogContent = React.forwardRef<
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          `fixed left-[50%] top-[50%] z-[${Z_DIALOG}] grid w-[min(calc(100vw_-_1.5rem),42rem)] max-h-[min(calc(100dvh_-_1.5rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),44rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-hidden rounded-sm border border-border bg-bg p-5 shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:p-6`,
+          "fixed left-[50%] top-[50%] z-[170] grid w-[min(calc(100vw_-_1.5rem),42rem)] max-h-[min(calc(100dvh_-_1.5rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),44rem)] translate-x-[-50%] translate-y-[-50%] gap-4 overflow-hidden rounded-sm border border-border bg-bg p-5 shadow-sm duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:p-6",
           "max-sm:left-1/2 max-sm:top-auto max-sm:bottom-[max(0.75rem,var(--safe-area-bottom,0px))] max-sm:max-h-[min(calc(100dvh_-_1rem_-_var(--safe-area-top,0px)_-_var(--safe-area-bottom,0px)),42rem)] max-sm:w-[min(calc(100vw_-_1rem),42rem)] max-sm:translate-y-0 max-sm:rounded-sm max-sm:data-[state=closed]:slide-out-to-bottom-6 max-sm:data-[state=open]:slide-in-from-bottom-6",
           className,
         )}
