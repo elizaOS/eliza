@@ -1,0 +1,4 @@
+# sby workspace artifacts
+e1_cache_coherence/
+*.vcd
+*.fst
