@@ -77,6 +77,51 @@ function makeLlamaCppFixture() {
   );
   write(
     root,
+    "src/llama-model-loader.cpp",
+    [
+      "    template<typename T>",
+      "    bool llama_model_loader::get_key(enum llm_kv kid, T & result, bool required) {",
+      "        return get_key(llm_kv(kid), result, required);",
+      "}",
+      "    template<typename T>",
+      "    bool llama_model_loader::get_key_or_arr(enum llm_kv kid, T & result, uint32_t n, bool required) {",
+      "        return get_key_or_arr(llm_kv(kid), result, n, required);",
+      "}",
+      "bool llama_model_loader::get_key_or_arr(enum llm_kv kid, uint32_t & result, bool required) {",
+      "        const std::string key = llm_kv(kid);",
+      "",
+      "        const int id = gguf_find_key(metadata, key.c_str());",
+      "",
+      "        if (id < 0) {",
+      "            if (required) {",
+      '                throw std::runtime_error(format("key not found in model: %s", key.c_str()));',
+      "            }",
+      "            return false;",
+      "        }",
+      "",
+      "        // throw and error if type is an array",
+      "        if (gguf_get_kv_type(metadata, id) == GGUF_TYPE_ARRAY) {",
+      "            if (required) {",
+      '                throw std::runtime_error(format("expected scalar, found array for key: %s", key.c_str()));',
+      "            }",
+      "            return false;",
+      "        }",
+      "",
+      "        return get_key(key, result, required);",
+      "}",
+      "const llama_model_loader::llama_tensor_weight * llama_model_loader::get_weight(const char * name) const {",
+      "    auto pos = weights_map.find(name);",
+      "    if (pos != weights_map.end()) {",
+      "        return &pos->second;",
+      "    }",
+      "",
+      "    return nullptr;",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  write(
+    root,
     "src/models/models.h",
     [
       "struct llm_build_qwen3moe : public llm_graph_context {",
@@ -176,6 +221,21 @@ describe("patchDflashDrafterArch", () => {
     expect(
       fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
     ).toMatch(/LLM_TENSOR_FFN_NORM/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model-loader.cpp"), "utf8"),
+    ).toMatch(/get_key\(alt, result, false\)/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model-loader.cpp"), "utf8"),
+    ).toMatch(/get_key_or_arr\(alt, result, n, false\)/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model-loader.cpp"), "utf8"),
+    ).toMatch(/get_scalar\(alt, false\)/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model-loader.cpp"), "utf8"),
+    ).toMatch(/name_str == "fc\.weight"/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-model-loader.cpp"), "utf8"),
+    ).toMatch(/post_attention_norm/);
     expect(
       fs.readFileSync(path.join(root, "src/models/dflash_draft.cpp"), "utf8"),
     ).not.toMatch(/hparams\.n_embd_head_v\(\)/);
