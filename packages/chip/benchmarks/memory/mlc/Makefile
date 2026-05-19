@@ -1,4 +1,4 @@
-CC      ?= riscv64-unknown-linux-gnu-gcc
+override CC := riscv64-unknown-linux-gnu-gcc
 CFLAGS  ?= -O3 -static -Wall -Wextra -pthread
 ARTIFACT_DIR ?= ../../../docs/evidence/memory
 
@@ -15,6 +15,10 @@ mlc_substitute: mlc_substitute.c
 
 run: build
 	@mkdir -p $(ARTIFACT_DIR)
+	@FILE_INFO=$$(file ./mlc_substitute); \
+	  case "$$FILE_INFO" in *RISC-V*) ;; \
+	    *) echo "mlc: refusing to run non-RISC-V binary ($$FILE_INFO)"; exit 2;; \
+	  esac
 	./mlc_substitute > $(ARTIFACT_DIR)/mlc_substitute_report.json
 
 blocked-evidence:

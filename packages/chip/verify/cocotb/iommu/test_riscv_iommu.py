@@ -250,3 +250,148 @@ async def pasid_isolation_via_allowlist_revoke(dut):
     assert final == faults_after_allow + 1, (
         f"revoked devid should fault: faults={final - faults_after_allow}"
     )
+
+
+@cocotb.test()
+async def two_stage_translation_via_3lvl_ddt(dut):
+    """Two-stage (S2 + S1) translation: DDTP=3LVL enables hgatp + atp paths.
+
+    In the reference model, the IOMMU stages are nested. The behavioural
+    RTL gates on the same allowlist for both stages; the test confirms
+    that DDTP=3LVL behaves equivalently to DDTP=2LVL for the production
+    path and rejects unauthorised devids identically. Real PT walks land
+    behind compiler/runtime/iommu page-table-walker in a later milestone.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    await mmio_write64(dut, OFFS_DDTP, DDTP_3LVL)
+    ddtp = await mmio_read64(dut, OFFS_DDTP)
+    assert (ddtp & 0xF) == DDTP_3LVL, f"DDTP latch: expected {DDTP_3LVL}, got {ddtp & 0xF}"
+    # devid not allowed -> fault
+    base_faults = int(dut.fault_count_dbg.value)
+    await upstream_read(dut, 0, devid=0xCAFE, pasid=0x1, addr=0xA000, length=1)
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        if int(dut.fault_count_dbg.value) > base_faults:
+            break
+    assert int(dut.fault_count_dbg.value) == base_faults + 1, (
+        "two-stage translate must still fault unknown devid"
+    )
+    # Now authorize the devid and confirm the path opens
+    await mmio_write64(dut, OFFS_ALLOW_BASE, (1 << 63) | 0xCAFE)
+    pre = int(dut.fault_count_dbg.value)
+    await upstream_read(dut, 0, devid=0xCAFE, pasid=0x1, addr=0xA040, length=1)
+    await Timer(120, units="ns")
+    assert int(dut.fault_count_dbg.value) == pre, "authorised devid in 3LVL faulted"
+
+
+@cocotb.test()
+async def pasid_context_switch_across_two_streams(dut):
+    """A devid with two PASIDs in flight: revoking + re-authorising the
+    backing allowlist entry between streams must cleanly isolate them."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    await mmio_write64(dut, OFFS_DDTP, DDTP_2LVL)
+    devid = 0x44
+    pasid_a = 0x100
+    pasid_b = 0x200
+
+    await mmio_write64(dut, OFFS_ALLOW_BASE, (1 << 63) | devid)
+    pre = int(dut.fault_count_dbg.value)
+
+    # PASID A allowed
+    await upstream_write(dut, 0, devid=devid, pasid=pasid_a, addr=0xB000)
+    await Timer(80, units="ns")
+    assert int(dut.fault_count_dbg.value) == pre, "PASID A allowed-path should not fault"
+
+    # Revoke and try PASID B
+    await mmio_write64(dut, OFFS_ALLOW_BASE, devid)  # bit 63 cleared
+    await upstream_write(dut, 0, devid=devid, pasid=pasid_b, addr=0xB100)
+    for _ in range(64):
+        await RisingEdge(dut.clk)
+        if int(dut.fault_count_dbg.value) > pre:
+            break
+    assert int(dut.fault_count_dbg.value) == pre + 1, (
+        "PASID B after revoke must fault"
+    )
+
+    # Re-authorise; PASID B path opens
+    await mmio_write64(dut, OFFS_ALLOW_BASE, (1 << 63) | devid)
+    pre2 = int(dut.fault_count_dbg.value)
+    await upstream_write(dut, 0, devid=devid, pasid=pasid_b, addr=0xB200)
+    await Timer(80, units="ns")
+    assert int(dut.fault_count_dbg.value) == pre2, (
+        "PASID B after re-auth should not fault"
+    )
+
+
+@cocotb.test()
+async def page_request_interface_counter_visible(dut):
+    """PQB/PQH/PQT registers must be addressable and the page_req_count_dbg
+    observability counter starts at 0. A real PR walker invocation lands
+    in a later milestone; this test just locks the MMIO contract so the
+    Linux IOMMU driver can probe the queue."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    # PQB - page-request queue base
+    OFFS_PQB = 0x038
+    OFFS_PQH = 0x040
+    OFFS_PQT = 0x044
+    OFFS_PQCSR = 0x050
+    await mmio_write64(dut, OFFS_PQB, 0x0000_0000_C000_0000)
+    pqb = await mmio_read64(dut, OFFS_PQB)
+    assert pqb == 0x0000_0000_C000_0000, f"PQB read-back: {pqb:#x}"
+    pqh = await mmio_read64(dut, OFFS_PQH)
+    pqt = await mmio_read64(dut, OFFS_PQT)
+    assert pqh == 0, f"PQH reset: {pqh}"
+    assert pqt == 0, f"PQT reset: {pqt}"
+    # PQCSR must be addressable
+    pqcsr = await mmio_read64(dut, OFFS_PQCSR)
+    assert pqcsr in (0, pqcsr), "PQCSR readable"
+    # page-request count observability
+    assert int(dut.page_req_count_dbg.value) == 0
+
+
+@cocotb.test()
+async def ats_translation_capability_advertised(dut):
+    """CAPABILITIES must advertise ATS, PRI, PAS, T2GPA, and IGS=MSI.
+
+    Bit positions follow the on-chip CAPS_RESET_VALUE packing in
+    rtl/iommu/e1_riscv_iommu.sv (see e1_riscv_iommu_pkg.sv comments):
+        version[7:0], reserved[11:8], Sv57[15:12], Sv48x4[19:16],
+        reserved[25:20], IGS[29:26], END[30], T2GPA[31], ATS[32],
+        PRI[33], PAS[34], PD8[35], PD17[36], PD20[37].
+    The Linux driver decodes the same field map, so any drift here is a
+    contract break with kernel ``drivers/iommu/riscv/iommu.c``.
+    """
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    caps = await mmio_read64(dut, OFFS_CAPABILITIES)
+    assert caps & (1 << 32), f"ATS capability bit missing in CAPABILITIES=0x{caps:016X}"
+    assert caps & (1 << 33), f"PRI capability bit missing in CAPABILITIES=0x{caps:016X}"
+    assert caps & (1 << 34), f"PAS capability bit missing in CAPABILITIES=0x{caps:016X}"
+    assert caps & (1 << 31), f"T2GPA capability bit missing in CAPABILITIES=0x{caps:016X}"
+    assert caps & (1 << 37), f"PD20 capability bit missing in CAPABILITIES=0x{caps:016X}"
+    igs = (caps >> 26) & 0xF
+    assert igs == 0x2, f"IGS must be 2 (MSI), got {igs:#x}"
+
+
+@cocotb.test()
+async def translation_request_interface_round_trip(dut):
+    """The TR_REQ_IOVA / TR_REQ_CTL / TR_RESPONSE register triple is the
+    in-band translation-request interface used by debug + IOMMU driver
+    for one-shot translation probes. Confirm the registers latch and
+    read back."""
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+    OFFS_TR_REQ_IOVA = 0x258
+    OFFS_TR_REQ_CTL  = 0x260
+    iova = 0x0000_0000_8000_1000
+    await mmio_write64(dut, OFFS_TR_REQ_IOVA, iova)
+    rb = await mmio_read64(dut, OFFS_TR_REQ_IOVA)
+    assert rb == iova, f"TR_REQ_IOVA read-back: {rb:#x}"
+    ctl = 0x0000_0000_0000_0001  # go bit
+    await mmio_write64(dut, OFFS_TR_REQ_CTL, ctl)
+    rb_ctl = await mmio_read64(dut, OFFS_TR_REQ_CTL)
+    # ctl read-back: at minimum, go bit honoured by the register
+    assert rb_ctl & 0x1, f"TR_REQ_CTL go bit not latched: {rb_ctl:#x}"

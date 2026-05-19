@@ -9,7 +9,7 @@
 # This Makefile expects the user to have placed an unpacked lmbench
 # tree under ../../external/lmbench/ before invoking `make`.  If the
 # tree is missing, the build fails closed and writes a blocker JSON.
-CC      ?= riscv64-unknown-linux-gnu-gcc
+override CC := riscv64-unknown-linux-gnu-gcc
 CFLAGS  ?= -O3 -static -Wall -Wextra
 ARTIFACT_DIR ?= ../../../docs/evidence/memory
 LMBENCH_SRC  ?= ../../external/lmbench

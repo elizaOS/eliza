@@ -50,6 +50,11 @@ REQUIRED_TESTS = {
     "translate_mode_blocks_unknown_devid_with_fault",
     "translate_mode_allows_known_devid",
     "pasid_isolation_via_allowlist_revoke",
+    "two_stage_translation_via_3lvl_ddt",
+    "pasid_context_switch_across_two_streams",
+    "page_request_interface_counter_visible",
+    "ats_translation_capability_advertised",
+    "translation_request_interface_round_trip",
 }
 
 REQUIRED_ARTIFACTS = {

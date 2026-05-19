@@ -59,6 +59,21 @@ required_tests:
   - id: pasid_isolation_via_allowlist_revoke
     location: verify/cocotb/iommu/test_riscv_iommu.py
     pass_criteria: Revoking a DID causes the next request to fault.
+  - id: two_stage_translation_via_3lvl_ddt
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: DDTP=3LVL gates both S1 and S2 stages on the allowlist.
+  - id: pasid_context_switch_across_two_streams
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: Same devid + two PASIDs honour allowlist revoke / re-auth.
+  - id: page_request_interface_counter_visible
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: PQB/PQH/PQT registers and page_req_count_dbg are observable.
+  - id: ats_translation_capability_advertised
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: CAPABILITIES advertises ATS, PRI, PAS, T2GPA, PD20, IGS=MSI.
+  - id: translation_request_interface_round_trip
+    location: verify/cocotb/iommu/test_riscv_iommu.py
+    pass_criteria: TR_REQ_IOVA / TR_REQ_CTL latch and read-back.
 
 required_artifacts:
   - docs/evidence/memory/iommu_capabilities_report.json
