@@ -69,7 +69,7 @@ function writeBundle(
     },
     files: {
       text: [{ path: `text/eliza-1-${tier}.gguf`, ctx: 32768, sha256: SHA }],
-      voice: [{ path: "tts/kokoro/model_q4.onnx", sha256: SHA }],
+      voice: [{ path: "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf", sha256: SHA }],
       asr: [{ path: "asr/eliza-1-asr.gguf", sha256: SHA }],
       vision: manifestVision
         ? [{ path: `vision/mmproj-${tier}.gguf`, sha256: SHA }]

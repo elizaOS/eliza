@@ -259,13 +259,13 @@ function resolveBundleFiles(bundleDir, tier) {
   const asrDir = path.join(bundleDir, "asr");
   const ttsRoot = path.join(bundleDir, "tts", "kokoro");
   const voicesDir = path.join(ttsRoot, "voices");
+  // Canonical Kokoro filename is now GGUF (ggml runtime). No ONNX path
+  // exists in the Eliza-1 inference stack — AGENTS.md §3, no silent
+  // fallbacks. See packages/shared/src/local-inference/kokoro/kokoro-engine-discovery.ts.
   const kokoroModel =
     firstExisting(
-      path.join(ttsRoot, "model_q4.onnx"),
-      path.join(ttsRoot, "model_quantized.onnx"),
-      path.join(ttsRoot, "kokoro-v1.0.int8.onnx"),
-      path.join(ttsRoot, "model.onnx"),
-      path.join(ttsRoot, "kokoro-v1.0.onnx"),
+      path.join(ttsRoot, "kokoro-82m-v1_0-Q4_K_M.gguf"),
+      path.join(ttsRoot, "kokoro-82m-v1_0.gguf"),
     ) || null;
   const embeddingDir = path.join(bundleDir, "embedding");
   const dedicatedEmbedding = ggufsIn(embeddingDir).sort()[0] || null;
@@ -352,7 +352,7 @@ function missingArtifacts(files, engine) {
   if (!isRealGguf(files.asr)) missing.push("asr/eliza-1-asr.gguf");
   if (!isRealGguf(files.asrMmproj, 1_000)) missing.push("asr/eliza-1-asr-mmproj.gguf");
   if (!files.kokoro.modelPath || !fs.existsSync(files.kokoro.modelPath)) {
-    missing.push("tts/kokoro/model_q4.onnx");
+    missing.push("tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf");
   }
   if (!fs.existsSync(files.kokoro.voicesDir) || files.kokoro.voices.length === 0) {
     missing.push("tts/kokoro/voices/*.bin");
@@ -1438,7 +1438,12 @@ function baseReport(args, bundleDir, files, engine) {
 
 function statusFromError(err) {
   const message = err instanceof Error ? err.message : String(err);
-  if (/onnxruntime-node|Cannot find package/i.test(message)) return "needs-kokoro-runtime";
+  // Kokoro runs through the ggml-backed `kokoro-runtime` shim now; the legacy
+  // `onnxruntime-node` package is gone. Surface the "kokoro runtime missing"
+  // status either when the C library / shim is not loadable or when the GGUF
+  // engine module is not on the resolution path.
+  if (/kokoro[-_ ]?(runtime|engine|ffi)|libkokoro|Cannot find package/i.test(message))
+    return "needs-kokoro-runtime";
   if (/kokoro/i.test(message) && /missing|not found|sha-?256/i.test(message)) return "needs-kokoro";
   if (/llama-server|health|completion|embedding/i.test(message)) return "needs-build";
   return "failed";

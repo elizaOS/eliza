@@ -499,32 +499,42 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 		runtimeSymbols.symbols.map((entry) => [entry.key, entry.status]),
 	);
 
+	// Kokoro now ships as GGUF (kokoro-82m-v1_0-Q4_K_M.gguf or .gguf). The
+	// legacy `model_q4.onnx` path is no longer accepted — the Eliza-1 stack
+	// is ggml-only (no ONNX, AGENTS.md §3, §8).
 	const ttsModel = hasManifestPath(
 		manifestFiles,
-		(p) => p === "tts/kokoro/model_q4.onnx" || /tts\/.*model.*\.onnx$/i.test(p),
+		(p) =>
+			p === "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" ||
+			p === "tts/kokoro/kokoro-82m-v1_0.gguf" ||
+			/tts\/kokoro\/kokoro-82m-v1_0.*\.gguf$/i.test(p),
 	);
 	const asrModel = hasManifestPath(manifestFiles, (p) => /asr\/.*\.gguf$/i.test(p));
 	const asrBase = asrModel.filter((entry) => !/mmproj/i.test(entry.path));
 	const asrMmproj = asrModel.filter((entry) => /mmproj/i.test(entry.path));
+	// VAD / emotion / speaker / diarizer all migrated to ggml-backed GGUF.
+	// .onnx is rejected — the runtime no longer ships an ONNX backend
+	// (AGENTS.md §3: no silent fallbacks). `.bin` remains for non-model
+	// caches (e.g. voice-preset blobs) and `.ggml.bin` for legacy converters.
 	const vad = hasManifestPath(
 		manifestFiles,
-		(p) => /vad\/.*(silero|vad).*\.(onnx|gguf|ggml\.bin|bin)$/i.test(p),
+		(p) => /vad\/.*(silero|vad).*\.(gguf|ggml\.bin)$/i.test(p),
 	);
 	const emotion = hasManifestPath(manifestFiles, (p) =>
-		/(emotion|wav2small|msp-dim).*\.(onnx|gguf|bin)$/i.test(p),
+		/(emotion|wav2small|msp-dim).*\.gguf$/i.test(p),
 	);
 	const speakerEncoder = hasManifestPath(manifestFiles, (p) =>
-		/(wespeaker|speaker.*encoder|speaker-id).*\.(onnx|gguf|bin)$/i.test(p),
+		/(wespeaker|speaker.*encoder|speaker-id).*\.gguf$/i.test(p),
 	);
 	const diarizer = hasManifestPath(manifestFiles, (p) =>
-		/(pyannote|diar|segmentation).*\.(onnx|gguf|bin)$/i.test(p),
+		/(pyannote|diar|segmentation).*\.gguf$/i.test(p),
 	);
 
 	const requirements = [
 		{
 			key: "ttsModel",
 			status: ttsModel.some((entry) => fileExists(entry.path)) ? "present" : "missing",
-			expected: "tts/kokoro/model_q4.onnx",
+			expected: "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
 			found: ttsModel.map((entry) => entry.path),
 			requiredFor: "local TTS",
 		},
@@ -542,7 +552,7 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 		{
 			key: "sileroVad",
 			status: vad.some((entry) => fileExists(entry.path)) ? "present" : "missing",
-			expected: "vad/silero-vad-v5.gguf (legacy fallback: vad/silero-vad-int8.onnx)",
+			expected: "vad/silero-vad-v5.gguf",
 			found: vad.map((entry) => entry.path),
 			requiredFor: "local VAD and barge-in gating",
 		},
@@ -583,12 +593,12 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 			key: "nativeEmotionAcousticModel",
 			status: emotion.some((entry) => fileExists(entry.path)) ? "present" : "missing",
 			expected:
-				"wav2small-msp-dim-int8 ONNX artifact, normally a manifest files.emotion entry such as voice/emotion/wav2small-msp-dim-int8.onnx",
+				"wav2small-msp-dim GGUF artifact, normally a manifest files.emotion entry such as voice/emotion/wav2small-msp-dim.gguf",
 			found: emotion.map((entry) => entry.path),
 			requiredFor: "model-native acoustic emotion attribution",
 			blocker:
 				emotion.length === 0
-					? `No wav2small-msp-dim-int8 ONNX artifact or manifest files.emotion entry is present in the ${tier} bundle.`
+					? `No wav2small-msp-dim GGUF artifact or manifest files.emotion entry is present in the ${tier} bundle.`
 					: undefined,
 		},
 		{
@@ -596,23 +606,23 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 			status: speakerEncoder.some((entry) => fileExists(entry.path))
 				? "present"
 				: "missing",
-			expected: "wespeaker-resnet34-lm-int8 ONNX artifact for 256-dim speaker embeddings",
+			expected: "wespeaker-resnet34-lm GGUF artifact for 256-dim speaker embeddings",
 			found: speakerEncoder.map((entry) => entry.path),
 			requiredFor: "sample-derived speaker embeddings and entity attribution from audio",
 			blocker:
 				speakerEncoder.length === 0
-					? `No WeSpeaker ResNet34-LM ONNX artifact is present in the ${tier} bundle.`
+					? `No WeSpeaker ResNet34-LM GGUF artifact is present in the ${tier} bundle.`
 					: undefined,
 		},
 		{
 			key: "pyannoteDiarizerModel",
 			status: diarizer.some((entry) => fileExists(entry.path)) ? "present" : "missing",
-			expected: "pyannote-segmentation-3.0-int8 ONNX artifact for local multi-speaker segmentation",
+			expected: "pyannote-segmentation-3.0 GGUF artifact for local multi-speaker segmentation",
 			found: diarizer.map((entry) => entry.path),
 			requiredFor: "local diarization DER",
 			blocker:
 				diarizer.length === 0
-					? `No pyannote-segmentation-3.0 ONNX artifact is present in the ${tier} bundle.`
+					? `No pyannote-segmentation-3.0 GGUF artifact is present in the ${tier} bundle.`
 					: undefined,
 		},
 	];

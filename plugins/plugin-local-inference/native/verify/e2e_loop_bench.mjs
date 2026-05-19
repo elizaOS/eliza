@@ -1155,7 +1155,16 @@ async function main() {
     return finish(out, args, logFn);
   }
   if (!tierUsesOmniVoice(tier)) {
-    const kokoroModel = path.join(bundleDir, "tts", "kokoro", "model_q4.onnx");
+    // Kokoro now ships as GGUF via the ggml runtime — the legacy `model_q4.onnx`
+    // path is gone (no ONNX in the Eliza-1 inference stack, AGENTS.md §3).
+    const kokoroModel = (() => {
+      const root = path.join(bundleDir, "tts", "kokoro");
+      for (const f of ["kokoro-82m-v1_0-Q4_K_M.gguf", "kokoro-82m-v1_0.gguf"]) {
+        const p = path.join(root, f);
+        if (fs.existsSync(p)) return p;
+      }
+      return path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf");
+    })();
     const out = {
       ...baseReport,
       status: "needs-harness",
