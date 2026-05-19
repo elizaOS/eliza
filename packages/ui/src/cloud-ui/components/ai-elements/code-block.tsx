@@ -1,15 +1,14 @@
-/// <reference path="../../types/react-syntax-highlighter.d.ts" />
-
 "use client";
 
 import { CheckIcon, CopyIcon } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactNode } from "react";
 import { createContext, useContext, useMemo, useState } from "react";
-import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import {
   oneDark,
   oneLight,
 } from "react-syntax-highlighter/dist/esm/styles/prism";
+
+import { SyntaxHighlighter } from "../code/prism-light";
 import { cn } from "../../lib/utils";
 import { Button } from "../button";
 

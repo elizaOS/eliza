@@ -8,22 +8,35 @@ import { tryHandleRuntimePluginRoute } from "./runtime-plugin-routes.ts";
 import type { ServerState } from "./server-types.ts";
 import { handleXRelayRoute } from "./x-relay-routes.ts";
 
-const { handleSandboxRoute } = (await import(
-  "@elizaos/plugin-computeruse"
-)) as unknown as {
+// Lazy memoized loaders — previously these were module-scope `await import`,
+// which forced @elizaos/plugin-computeruse and @elizaos/plugin-elizacloud to
+// load whenever this module was reached in the static graph (i.e. on every
+// agent boot). Now each plugin only loads when its route group is first hit.
+type ComputeUsePluginModule = {
   handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
 };
-const {
-  handleCloudBillingRoute,
-  handleCloudCompatRoute,
-  handleCloudRelayRoute,
-  handleCloudRoute,
-} = (await import("@elizaos/plugin-elizacloud")) as unknown as {
+type CloudPluginRoutesModule = {
   handleCloudBillingRoute: (...args: unknown[]) => Promise<boolean>;
   handleCloudCompatRoute: (...args: unknown[]) => Promise<boolean>;
   handleCloudRelayRoute: (...args: unknown[]) => Promise<boolean>;
   handleCloudRoute: (...args: unknown[]) => Promise<boolean>;
 };
+
+let computeUsePromise: Promise<ComputeUsePluginModule> | null = null;
+function getComputeUsePlugin(): Promise<ComputeUsePluginModule> {
+  computeUsePromise ??= import("@elizaos/plugin-computeruse") as Promise<
+    unknown
+  > as Promise<ComputeUsePluginModule>;
+  return computeUsePromise;
+}
+
+let cloudRoutesPromise: Promise<CloudPluginRoutesModule> | null = null;
+function getCloudRoutesPlugin(): Promise<CloudPluginRoutesModule> {
+  cloudRoutesPromise ??= import("@elizaos/plugin-elizacloud") as Promise<
+    unknown
+  > as Promise<CloudPluginRoutesModule>;
+  return cloudRoutesPromise;
+}
 
 type ChatRouteArg = Parameters<typeof handleChatRoutes>[0];
 type ConversationRouteArg = Parameters<typeof handleConversationRoutes>[0];
@@ -85,7 +98,7 @@ export async function handleInboxAndCloudRelayRouteGroup({
     return false;
   }
 
-  return handleCloudRelayRoute(
+  return (await getCloudRoutesPlugin()).handleCloudRelayRoute(
     req,
     res,
     pathname,
@@ -134,7 +147,8 @@ export async function handleCloudAndCoreRouteGroup({
   });
   if (xRelayHandled) return true;
 
-  const billingHandled = await handleCloudBillingRoute(
+  const cloudRoutes = await getCloudRoutesPlugin();
+  const billingHandled = await cloudRoutes.handleCloudBillingRoute(
     req,
     res,
     pathname,
@@ -143,7 +157,7 @@ export async function handleCloudAndCoreRouteGroup({
   );
   if (billingHandled) return true;
 
-  const compatHandled = await handleCloudCompatRoute(
+  const compatHandled = await cloudRoutes.handleCloudCompatRoute(
     req,
     res,
     pathname,
@@ -160,7 +174,13 @@ export async function handleCloudAndCoreRouteGroup({
     createTelemetrySpan: createIntegrationTelemetrySpan,
     restartRuntime,
   };
-  return handleCloudRoute(req, res, pathname, method, cloudState as never);
+  return cloudRoutes.handleCloudRoute(
+    req,
+    res,
+    pathname,
+    method,
+    cloudState as never,
+  );
 }
 
 export async function handleSandboxRouteGroup({
@@ -177,9 +197,13 @@ export async function handleSandboxRouteGroup({
     return false;
   }
 
-  return handleSandboxRoute(req, res, pathname, method, {
-    sandboxManager: state.sandboxManager,
-  });
+  return (await getComputeUsePlugin()).handleSandboxRoute(
+    req,
+    res,
+    pathname,
+    method,
+    { sandboxManager: state.sandboxManager },
+  );
 }
 
 export async function handleDatabaseRouteGroup({

@@ -706,7 +706,11 @@ export function renderChatToCanvas(
     );
     ctx.restore();
 
-    ctx.fillStyle = isUser ? (isTG ? BRAND_COLORS.black : BRAND_COLORS.white) : BRAND_COLORS.black;
+    ctx.fillStyle = isUser
+      ? isTG
+        ? BRAND_COLORS.black
+        : BRAND_COLORS.white
+      : BRAND_COLORS.black;
     ctx.font =
       isUser && !isTG
         ? `200 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`
@@ -858,7 +862,11 @@ export function renderChatToCanvas(
       );
       ctx.restore();
 
-      ctx.fillStyle = isUser ? (isTG2 ? BRAND_COLORS.black : BRAND_COLORS.white) : BRAND_COLORS.black;
+      ctx.fillStyle = isUser
+        ? isTG2
+          ? BRAND_COLORS.black
+          : BRAND_COLORS.white
+        : BRAND_COLORS.black;
       ctx.font =
         isUser && !isTG2
           ? `200 ${msgFontSize}px "Poppins", Arial, system-ui, sans-serif`

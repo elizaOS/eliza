@@ -1,30 +1,3 @@
-const computerUseModule = (await import(
-  "@elizaos/plugin-computeruse"
-)) as unknown as {
-  handleSandboxRoute: (...args: unknown[]) => Promise<boolean>;
-};
-const signalModule = await import("@elizaos/plugin-signal");
-const whatsAppModule = (await import(
-  "@elizaos/plugin-whatsapp"
-)) as unknown as {
-  applyWhatsAppQrOverride: (...args: unknown[]) => unknown;
-  handleWhatsAppRoute: (...args: unknown[]) => unknown;
-};
-const workflowModule = await import("@elizaos/plugin-workflow");
-
-export const { handleSandboxRoute } = computerUseModule;
-export const { applySignalQrOverride } = signalModule;
-export const { applyWhatsAppQrOverride, handleWhatsAppRoute } = whatsAppModule;
-export const { handleTriggerRoutes } = workflowModule;
-
-export type WhatsAppPairingEventLike = Record<string, unknown>;
-export interface WhatsAppPairingSessionLike {
-  stop: () => void | Promise<void>;
-}
-export type WhatsAppRouteDeps = Record<string, unknown>;
-export type WhatsAppRouteState = Record<string, unknown>;
-export type TriggerRouteContext = Parameters<typeof handleTriggerRoutes>[0];
-export type TriggerRouteHelpers = Record<string, unknown>;
 // === Phase 4G: apps routes extracted to @elizaos/plugin-app-manager ===
 // Re-export the public surface so downstream callers that imported from
 // `@elizaos/agent` keep working during the transition. New callers

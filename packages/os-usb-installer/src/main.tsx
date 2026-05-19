@@ -1,7 +1,6 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { HttpUsbInstallerBackend } from "./backend/http-backend";
-import type { UsbInstallerBackend } from "./backend/types";
 import { InstallerApp } from "./components/InstallerApp";
 import "./styles.css";
 
@@ -13,26 +12,13 @@ if (!root) {
 
 const rootElement: HTMLElement = root;
 
-// In Electrobun (desktop app) the native IPC backend is available.
-// In all browser contexts (Vite dev server or static deployment) use the
-// HTTP backend which talks to the local Bun server via the /api Vite proxy.
-const isElectrobun =
-  typeof (globalThis as Record<string, unknown>).electrobun !== "undefined";
+// Keep raw disk enumeration and write execution out of the renderer bundle.
+// The browser/Electrobun view talks to the local backend contract; platform
+// helpers stay in server.ts or a future signed privileged helper.
+const backend = new HttpUsbInstallerBackend();
 
-async function main() {
-  let backend: UsbInstallerBackend;
-  if (isElectrobun) {
-    const { createPlatformBackend } = await import("./backend/index");
-    backend = createPlatformBackend();
-  } else {
-    backend = new HttpUsbInstallerBackend();
-  }
-
-  createRoot(rootElement).render(
-    <StrictMode>
-      <InstallerApp backend={backend} />
-    </StrictMode>,
-  );
-}
-
-void main();
+createRoot(rootElement).render(
+  <StrictMode>
+    <InstallerApp backend={backend} />
+  </StrictMode>,
+);

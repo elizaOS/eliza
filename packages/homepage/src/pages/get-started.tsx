@@ -5,10 +5,10 @@ import {
   DiscordIcon,
   TelegramIcon,
   WhatsAppIcon,
-} from "@elizaos/ui/cloud-ui";
+} from "@elizaos/ui/cloud-ui/components/icons";
 import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import {
@@ -16,7 +16,11 @@ import {
   PhoneNumberInput,
   useCountryOptions,
 } from "@/components/login/phone-number-input";
-import ShaderBackground from "@/components/ShaderBackground/ShaderBackground";
+
+// Defer the WebGL shader background so the form UI is interactive immediately.
+const ShaderBackground = lazy(
+  () => import("@/components/ShaderBackground/ShaderBackground"),
+);
 import {
   buildElizaSmsHref,
   ELIZA_PHONE_FORMATTED,
@@ -805,7 +809,9 @@ export default function GetStartedPage() {
 
   return (
     <main className="min-h-screen flex flex-col relative">
-      <ShaderBackground />
+      <Suspense fallback={null}>
+        <ShaderBackground />
+      </Suspense>
       <div
         className="fixed inset-0 pointer-events-none mix-blend-overlay z-0"
         style={{

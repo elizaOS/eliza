@@ -425,6 +425,22 @@ interface RuntimeHookModule {
 
 const TRAINING_RUNTIME_HOOKS_SPECIFIER = "@elizaos/plugin-training";
 
+/**
+ * Returns true only for genuine "module is not installed" import failures.
+ * Bun raises `ResolveMessage` with `code === "ERR_MODULE_NOT_FOUND"` when a
+ * specifier cannot be resolved; Node uses the same `code`. Anything else
+ * (syntax error, runtime error during module init, tsconfig path hijack,
+ * missing transitive dependency) is a real load failure and must NOT be
+ * misreported as "not installed".
+ */
+function isModuleNotFoundError(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  const errObj = err as { code?: unknown; constructor?: { name?: string } };
+  if (errObj.code === "ERR_MODULE_NOT_FOUND") return true;
+  if (errObj.constructor?.name === "ResolveMessage") return true;
+  return false;
+}
+
 async function registerTrainingRuntimeHooks(
   runtime: AgentRuntime,
 ): Promise<void> {
@@ -434,10 +450,18 @@ async function registerTrainingRuntimeHooks(
       TRAINING_RUNTIME_HOOKS_SPECIFIER
     )) as RuntimeHookModule;
   } catch (err) {
-    logger.warn(
-      `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks: ${formatError(err)}`,
+    if (isModuleNotFoundError(err)) {
+      logger.warn(
+        `[eliza] @elizaos/plugin-training not installed, skipping runtime hooks`,
+      );
+      return;
+    }
+    // Real load failure (syntax error, broken transitive, init throw, etc.) —
+    // surface it loudly so it is not mistaken for "not installed".
+    logger.error(
+      `[eliza] @elizaos/plugin-training failed to load (not 'not installed'): ${formatErrorWithStack(err)}`,
     );
-    return;
+    throw err;
   }
 
   if (!hookMod.registerTrainingRuntimeHooks) {
@@ -915,6 +939,20 @@ function isManualResetPgliteError(err: unknown): boolean {
       normalized.includes("@elizaos/plugin-sql") &&
       normalized.includes("migrations._migrations")
     ) {
+      return true;
+    }
+
+    // PGlite is an Emscripten/WASM build of Postgres. When the embedded
+    // postmaster hits an unrecoverable internal state — most commonly a
+    // corrupt on-disk pgdata directory from a previous crash, an
+    // unsupported syscall, or pg_logical/WAL replay failure — Emscripten
+    // calls `abort()` and surfaces it as an Error whose message starts
+    // with `Aborted(). Build with -sASSERTIONS for more info.` That bare
+    // string carries no PGlite-specific marker, so the older heuristics
+    // above never matched and the dev-server retried forever against the
+    // same poisoned data dir. Treat it as a recoverable corruption signal:
+    // the auto-reset path quarantines the .elizadb dir and retries once.
+    if (normalized.includes("aborted()")) {
       return true;
     }
 

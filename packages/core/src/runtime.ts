@@ -4699,21 +4699,27 @@ export class AgentRuntime implements IAgentRuntime {
 				providerMetadata?: unknown;
 			};
 			const hasToolCallsField = "toolCalls" in streamRaw;
-			const hasFinishReasonField = "finishReason" in streamRaw;
-			if (hasToolCallsField || hasFinishReasonField) {
-				const resolvedToolCalls = hasToolCallsField
-					? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
-					: [];
-				const resolvedFinishReason = hasFinishReasonField
-					? await Promise.resolve(streamRaw.finishReason).catch(() => undefined)
-					: undefined;
+			const resolvedToolCalls = hasToolCallsField
+				? await Promise.resolve(streamRaw.toolCalls).catch(() => [])
+				: [];
+			const hasResolvedToolCalls =
+				Array.isArray(resolvedToolCalls) && resolvedToolCalls.length > 0;
+			// Only widen to a GenerateText-shape result when the stream actually
+			// surfaced tool calls. The original streaming contract returns a bare
+			// string; the wider object exists solely to preserve `toolCalls` for
+			// `parsePlannerOutput`, which is irrelevant when none were emitted.
+			if (hasResolvedToolCalls) {
+				const resolvedFinishReason =
+					"finishReason" in streamRaw
+						? await Promise.resolve(streamRaw.finishReason).catch(() => undefined)
+						: undefined;
 				const resolvedUsage =
 					"usage" in streamRaw
 						? await Promise.resolve(streamRaw.usage).catch(() => undefined)
 						: undefined;
 				resultRef.current = {
 					text: streamedText,
-					toolCalls: Array.isArray(resolvedToolCalls) ? resolvedToolCalls : [],
+					toolCalls: resolvedToolCalls,
 					finishReason: resolvedFinishReason,
 					usage: resolvedUsage,
 					providerMetadata: streamRaw.providerMetadata,

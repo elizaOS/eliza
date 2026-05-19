@@ -9,7 +9,22 @@ SOURCE_ONLY="${ELIZAOS_STATIC_SOURCE_ONLY:-0}"
 cd "${ROOT}"
 
 stat_mode() {
-    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+    local path="$1"
+    local index_mode
+    index_mode="$(
+        git -C "${ROOT}" ls-files -s -- "${path}" 2>/dev/null | awk 'NR == 1 { print $1 }'
+    )"
+    case "${index_mode}" in
+        100755)
+            printf '755\n'
+            return 0
+            ;;
+        100644)
+            printf '644\n'
+            return 0
+            ;;
+    esac
+    stat -c %a "${path}" 2>/dev/null || stat -f %Lp "${path}"
 }
 
 echo "==> shell syntax"

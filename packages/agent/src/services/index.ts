@@ -1,39 +1,3 @@
-// Signal pairing helpers live in @elizaos/plugin-signal. Re-exported here
-// for backward compatibility with code that imports them from @elizaos/agent.
-
-const codingToolsModule = await import("@elizaos/plugin-coding-tools");
-const signalModule = await import("@elizaos/plugin-signal");
-const whatsAppModule = await import("@elizaos/plugin-whatsapp");
-
-export const { CodingTaskExecutor } = codingToolsModule;
-export const {
-  classifySignalPairingErrorStatus,
-  extractSignalCliProvisioningUrl,
-  parseSignalCliAccountsOutput,
-  SignalPairingSession,
-  sanitizeSignalAccountId,
-  signalAuthExists,
-  signalLogout,
-} = signalModule;
-export const {
-  sanitizeWhatsAppAccountId,
-  WhatsAppPairingSession,
-  whatsappAuthExists,
-  whatsappLogout,
-} = whatsAppModule;
-
-export type CodingTaskExecutor = InstanceType<typeof CodingTaskExecutor>;
-export type SignalPairingEvent = Record<string, unknown>;
-export type SignalPairingOptions = Record<string, unknown>;
-export type SignalPairingSession = InstanceType<typeof SignalPairingSession>;
-export type SignalPairingSnapshot = Record<string, unknown>;
-export type SignalPairingStatus = string;
-export type WhatsAppPairingEvent = Record<string, unknown>;
-export type WhatsAppPairingOptions = Record<string, unknown>;
-export type WhatsAppPairingSession = InstanceType<
-  typeof WhatsAppPairingSession
->;
-export type WhatsAppPairingStatus = string;
 // === Phase 4G: app-manager extracted to @elizaos/plugin-app-manager ===
 // Re-export the public surface (including app-run-store helpers) so
 // downstream callers that imported from `@elizaos/agent` keep working

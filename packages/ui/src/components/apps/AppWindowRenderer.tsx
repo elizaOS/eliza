@@ -1,10 +1,4 @@
-import {
-  type ComponentType,
-  lazy,
-  Suspense,
-  useEffect,
-  useMemo,
-} from "react";
+import { type ComponentType, lazy, Suspense, useEffect, useMemo } from "react";
 import { getAppSlug } from "./helpers";
 import type { OverlayApp, OverlayAppContext } from "./overlay-app-api";
 import { getAvailableOverlayApps } from "./overlay-app-registry";

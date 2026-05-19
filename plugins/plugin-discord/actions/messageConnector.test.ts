@@ -1,6 +1,8 @@
 import type { IAgentRuntime, MessageConnectorTarget } from "@elizaos/core";
 import type { Message } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
+import { DiscordAccountClientPool } from "../account-client-pool";
+import { DEFAULT_ACCOUNT_ID } from "../accounts";
 import {
 	buildMemoryFromMessage,
 	type HistoryServiceInternals,
@@ -55,6 +57,10 @@ describe("Discord message connector adapter", () => {
 		service.listConnectorRooms = vi.fn();
 		service.getConnectorChatContext = vi.fn();
 		service.getConnectorUserContext = vi.fn();
+		Object.assign(service, {
+			accountPool: new DiscordAccountClientPool(),
+			defaultAccountId: DEFAULT_ACCOUNT_ID,
+		});
 
 		DiscordService.registerSendHandlers(runtime, service);
 
@@ -120,6 +126,8 @@ describe("Discord message connector adapter", () => {
 			runtime,
 			allowedChannelIds: undefined,
 			dynamicChannelIds: new Set<string>(),
+			accountPool: new DiscordAccountClientPool(),
+			defaultAccountId: DEFAULT_ACCOUNT_ID,
 			client: {
 				guilds: { cache: new Map([[guild.id, guild]]) },
 				channels: { fetch: vi.fn().mockResolvedValue(channel) },

@@ -2,6 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, type Plugin } from "vite";
 
 /**
@@ -26,11 +27,39 @@ function gh404Fallback(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), gh404Fallback()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    gh404Fallback(),
+    visualizer({
+      filename: "dist/stats.html",
+      gzipSize: true,
+      brotliSize: false,
+      template: "treemap",
+    }),
+  ],
   resolve: {
-    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
+    dedupe: [
+      "react",
+      "react-dom",
+      "react-router",
+      "react-router-dom",
+      "@react-three/fiber",
+      "three",
+      "zod",
+    ],
     alias: [
       { find: "@", replacement: path.resolve(__dirname, "./src") },
+      // Icon-only subpath MUST come before the cloud-ui barrel alias —
+      // the homepage onboarding pages import only icons here to avoid
+      // pulling the full barrel (which drags in hast + framer-motion).
+      {
+        find: "@elizaos/ui/cloud-ui/components/icons",
+        replacement: path.resolve(
+          __dirname,
+          "../ui/src/cloud-ui/components/icons.tsx",
+        ),
+      },
       {
         find: "@elizaos/ui/cloud-ui",
         replacement: path.resolve(__dirname, "../ui/src/cloud-ui/index.ts"),
