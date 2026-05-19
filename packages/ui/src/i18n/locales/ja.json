@@ -22,5 +22,8 @@
   "settings.sections.connectors.label": "コネクタ",
   "onboarding.setup.languageLabel": "言語",
   "onboarding.setup.setupYourApp": "{{appName}}をセットアップ",
-  "onboarding.setup.whereShouldRun": "{{appName}}をどこで実行しますか？"
+  "onboarding.setup.whereShouldRun": "{{appName}}をどこで実行しますか？",
+  "runtimegate.welcomeEyebrow": "{{appName}} — AIエージェントランタイム",
+  "runtimegate.welcomeTitle": "{{appName}}へようこそ",
+  "runtimegate.welcomeSubtitle": "あなた専用のAI。数秒で起動、ホスティングはお任せください。"
 }

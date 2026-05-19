@@ -2521,7 +2521,7 @@
   "runtimegate.waitingForProvisioningJob": "Waiting for Cloud to accept provisioning...",
   "runtimegate.welcomeAdvancedToggle": "I want to run it myself",
   "runtimegate.welcomeConnectRemote": "Connect to your agent",
-  "runtimegate.welcomeEyebrow": "elizaOS — immersion agent runtime",
+  "runtimegate.welcomeEyebrow": "{{appName}} — AI agent runtime",
   "runtimegate.welcomeGetStarted": "Get started",
   "runtimegate.welcomeLocalCta": "Set up on this machine",
   "runtimegate.welcomeLocalDesc": "Bring your own AI provider key. The agent runs on your hardware. Privacy-first.",
