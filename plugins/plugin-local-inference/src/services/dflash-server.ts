@@ -3940,7 +3940,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 			slotCacheFileName(conversationId, "long"),
 		);
 		try {
-			return this.requestSlotRestore(baseUrl, slotId, sourcePath);
+			return await this.requestSlotRestore(baseUrl, slotId, sourcePath);
 		} catch {
 			return false;
 		}
