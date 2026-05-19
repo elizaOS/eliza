@@ -101,6 +101,14 @@ describe("remote capability live report summaries", () => {
       ),
     );
   });
+
+  it("rejects credential-bearing endpoint URLs before fingerprinting", () => {
+    expect(() =>
+      summarizeRemoteCapabilityEndpointUrlFingerprint(
+        "https://user:password@provider.example.test/capability",
+      ),
+    ).toThrow("must not include embedded credentials");
+  });
 });
 
 function makeSurfacePlugin(): Plugin {

@@ -122,6 +122,8 @@ def _model_provider_for_config(harness: str | None = None) -> str:
         or ""
     ).strip().lower()
     if configured:
+        if configured == "eliza" and harness != "eliza":
+            return "openai"
         if configured == "cerebras" and harness != "eliza":
             return "openai"
         return configured
@@ -147,6 +149,33 @@ def _model_api_base_for_config(harness: str | None = None) -> str | None:
             return cerebras_base or _OPENAI_COMPATIBLE_API_BASE
         return None
     return _OPENAI_COMPATIBLE_API_BASE
+
+
+def _dotenv_value(key: str, *, start_dir: Path | None = None) -> str:
+    current = start_dir or Path.cwd()
+    if not current.exists():
+        current = current.parent
+    for candidate_dir in [current, *current.parents]:
+        env_path = candidate_dir / ".env"
+        if not env_path.exists():
+            continue
+        try:
+            raw = env_path.read_text(encoding="utf-8")
+        except OSError:
+            return ""
+        for line in raw.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
+            if stripped.startswith("export "):
+                stripped = stripped[len("export ") :].strip()
+            if "=" not in stripped:
+                continue
+            found_key, value = stripped.split("=", 1)
+            if found_key.strip() == key:
+                return value.strip().strip('"').strip("'")
+        return ""
+    return ""
 
 
 def _model_env_updates(
@@ -177,6 +206,14 @@ def _model_env_updates(
     if model_api_base:
         updates["OPENAI_BASE_URL"] = model_api_base
         updates["OPENAI_API_BASE"] = model_api_base
+    if model_provider == "openai":
+        openai_key = os.environ.get("OPENAI_API_KEY", "").strip()
+        cerebras_key = (
+            os.environ.get("CEREBRAS_API_KEY", "").strip()
+            or _dotenv_value("CEREBRAS_API_KEY")
+        )
+        if not openai_key and cerebras_key:
+            updates["OPENAI_API_KEY"] = cerebras_key
     return updates
 
 

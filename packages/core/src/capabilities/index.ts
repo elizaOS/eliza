@@ -2220,6 +2220,16 @@ function requireNonEmptyString(
 	throw decodeError(method, `${key} must be a non-empty string.`);
 }
 
+function requireRemotePluginModuleId(
+	object: JsonObject,
+	key: string,
+	method: string,
+): string {
+	const value = requireNonEmptyString(object, key, method);
+	validateRemotePluginModuleId(value, key, method);
+	return value;
+}
+
 function optionalString(
 	object: JsonObject,
 	key: string,
@@ -2645,7 +2655,7 @@ function requireRemotePluginModule(
 	const views = optionalArray(object, "views", method, requireRemotePluginView);
 	const metadata = optionalJsonObject(object, "metadata", method);
 	return {
-		id: requireNonEmptyString(object, "id", method),
+		id: requireRemotePluginModuleId(object, "id", method),
 		name: requireNonEmptyString(object, "name", method),
 		...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
 		...(version === undefined ? {} : { version }),

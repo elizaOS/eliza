@@ -30,6 +30,7 @@ async function main(): Promise<void> {
     const pushCiDir = join(workspace, "push-ci");
     const providerOnlyDir = join(workspace, "provider-only");
     const requiredProvidersDir = join(workspace, "required-providers");
+    const fourProvidersDir = join(workspace, "four-providers");
     const expectedCountDir = join(workspace, "expected-count");
     const unknownProviderDir = join(workspace, "unknown-provider");
     const freshDir = join(workspace, "fresh");
@@ -70,6 +71,14 @@ async function main(): Promise<void> {
     const duplicateEndpointUrlFingerprintDir = join(
       workspace,
       "duplicate-endpoint-url-fingerprint",
+    );
+    const missingEndpointUrlFingerprintDir = join(
+      workspace,
+      "missing-endpoint-url-fingerprint",
+    );
+    const malformedEndpointUrlFingerprintDir = join(
+      workspace,
+      "malformed-endpoint-url-fingerprint",
     );
     const leakedSecretDir = join(workspace, "leaked-secret");
     const leakedSecretValueDir = join(workspace, "leaked-secret-value");
@@ -158,6 +167,7 @@ async function main(): Promise<void> {
     await mkdir(pushCiDir, { recursive: true });
     await mkdir(providerOnlyDir, { recursive: true });
     await mkdir(requiredProvidersDir, { recursive: true });
+    await mkdir(fourProvidersDir, { recursive: true });
     await mkdir(expectedCountDir, { recursive: true });
     await mkdir(unknownProviderDir, { recursive: true });
     await mkdir(freshDir, { recursive: true });
@@ -184,6 +194,8 @@ async function main(): Promise<void> {
     await mkdir(duplicateEndpointDir, { recursive: true });
     await mkdir(duplicateProviderDir, { recursive: true });
     await mkdir(duplicateEndpointUrlFingerprintDir, { recursive: true });
+    await mkdir(missingEndpointUrlFingerprintDir, { recursive: true });
+    await mkdir(malformedEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(leakedSecretDir, { recursive: true });
     await mkdir(leakedSecretValueDir, { recursive: true });
     await mkdir(bogusTargetDir, { recursive: true });
@@ -282,6 +294,26 @@ async function main(): Promise<void> {
     await writeFile(
       join(requiredProvidersDir, "mobile-companion.json"),
       `${JSON.stringify(makeCompleteReport("provider", "required-mobile-endpoint", "mobile-companion"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "e2b.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-e2b-endpoint", "e2b"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "home-machine.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-home-endpoint", "home-machine"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "mobile-companion.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-mobile-endpoint", "mobile-companion"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(fourProvidersDir, "desktop-companion.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "four-desktop-endpoint", "desktop-companion"), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -446,6 +478,16 @@ async function main(): Promise<void> {
         null,
         2,
       )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingEndpointUrlFingerprintDir, "provider.json"),
+      `${JSON.stringify(makeMissingEndpointUrlFingerprintReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(malformedEndpointUrlFingerprintDir, "provider.json"),
+      `${JSON.stringify(makeMalformedEndpointUrlFingerprintReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -709,6 +751,53 @@ async function main(): Promise<void> {
         `matched ci report should validate, got ${matchedCi.exitCode}: ${matchedCi.output}`,
       );
     }
+    const matchedProviderCi = await runValidator(
+      providerCiDir,
+      "--kind=provider",
+      "--match-github-env",
+      {
+        GITHUB_RUN_ID: "654321",
+        GITHUB_RUN_ATTEMPT: "2",
+        GITHUB_WORKFLOW: "Tests",
+        GITHUB_EVENT_NAME: "schedule",
+        GITHUB_REPOSITORY: "elizaOS/eliza",
+        GITHUB_SHA: "89abcdef0123456789abcdef0123456789abcdef",
+        GITHUB_REF: "refs/heads/main",
+      },
+    );
+    if (matchedProviderCi.exitCode !== 0) {
+      throw new Error(
+        `matched provider ci report should validate, got ${matchedProviderCi.exitCode}: ${matchedProviderCi.output}`,
+      );
+    }
+    const mismatchedProviderCi = await runValidator(
+      providerCiDir,
+      "--kind=provider",
+      "--match-github-env",
+      {
+        GITHUB_RUN_ID: "654321",
+        GITHUB_RUN_ATTEMPT: "3",
+        GITHUB_WORKFLOW: "Tests",
+        GITHUB_EVENT_NAME: "schedule",
+        GITHUB_REPOSITORY: "elizaOS/eliza",
+        GITHUB_SHA: "89abcdef0123456789abcdef0123456789abcdef",
+        GITHUB_REF: "refs/heads/main",
+      },
+    );
+    if (mismatchedProviderCi.exitCode === 0) {
+      throw new Error(
+        "mismatched provider ci report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !mismatchedProviderCi.output.includes(
+        "ci.runAttempt must match GITHUB_RUN_ATTEMPT",
+      )
+    ) {
+      throw new Error(
+        `mismatched provider ci failed for the wrong reason: ${mismatchedProviderCi.output}`,
+      );
+    }
     const mismatchedCi = await runValidator(
       ciDir,
       "--kind=cloud",
@@ -814,6 +903,18 @@ async function main(): Promise<void> {
         `required provider reports should validate, got ${requiredProviders.exitCode}: ${requiredProviders.output}`,
       );
     }
+    const fourProviders = await runValidator(
+      fourProvidersDir,
+      "--kind=provider",
+      "--expect-count=3..4",
+      "--allowed-providers=e2b,home-machine,mobile-companion,desktop-companion",
+      "--require-providers=e2b,home-machine,mobile-companion",
+    );
+    if (fourProviders.exitCode !== 0) {
+      throw new Error(
+        `four provider reports should validate, got ${fourProviders.exitCode}: ${fourProviders.output}`,
+      );
+    }
     const missingRequiredProvider = await runValidator(
       providerOnlyDir,
       "--kind=provider",
@@ -864,6 +965,42 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `duplicate endpoint URL fingerprint failed for the wrong reason: ${duplicateEndpointUrlFingerprint.output}`,
+      );
+    }
+    const missingEndpointUrlFingerprint = await runValidator(
+      missingEndpointUrlFingerprintDir,
+      "--kind=provider",
+    );
+    if (missingEndpointUrlFingerprint.exitCode === 0) {
+      throw new Error(
+        "missing endpoint URL fingerprint unexpectedly passed validation.",
+      );
+    }
+    if (
+      !missingEndpointUrlFingerprint.output.includes(
+        "endpointUrlSha256 must be a non-empty string",
+      )
+    ) {
+      throw new Error(
+        `missing endpoint URL fingerprint failed for the wrong reason: ${missingEndpointUrlFingerprint.output}`,
+      );
+    }
+    const malformedEndpointUrlFingerprint = await runValidator(
+      malformedEndpointUrlFingerprintDir,
+      "--kind=provider",
+    );
+    if (malformedEndpointUrlFingerprint.exitCode === 0) {
+      throw new Error(
+        "malformed endpoint URL fingerprint unexpectedly passed validation.",
+      );
+    }
+    if (
+      !malformedEndpointUrlFingerprint.output.includes(
+        "endpointUrlSha256 has invalid format",
+      )
+    ) {
+      throw new Error(
+        `malformed endpoint URL fingerprint failed for the wrong reason: ${malformedEndpointUrlFingerprint.output}`,
       );
     }
     const kindMismatch = await runValidator(providerOnlyDir, "--kind", "cloud");
@@ -2205,6 +2342,21 @@ function makeCloudApiBaseFragmentReport() {
   return {
     ...makeCompleteReport("cloud", "fragment-cloud-endpoint"),
     cloudApiBase: "https://api.example.test#fragment",
+  };
+}
+
+function makeMissingEndpointUrlFingerprintReport() {
+  const report = {
+    ...makeCompleteReport("provider", "missing-fingerprint-endpoint", "e2b"),
+  } as Record<string, unknown>;
+  delete report.endpointUrlSha256;
+  return report;
+}
+
+function makeMalformedEndpointUrlFingerprintReport() {
+  return {
+    ...makeCompleteReport("provider", "malformed-fingerprint-endpoint", "e2b"),
+    endpointUrlSha256: "not-a-sha256-digest",
   };
 }
 

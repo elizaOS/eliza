@@ -23,7 +23,10 @@ from benchmarks.visualwebbench.types import (
     VisualWebBenchTask,
     VisualWebBenchTaskType,
 )
-from eliza_adapter.visualwebbench import _build_app_harness_invocation
+from eliza_adapter.visualwebbench import (
+    _build_app_harness_invocation,
+    _strip_html_entities,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -318,3 +321,12 @@ def test_app_harness_invocation_can_use_api_prompt_fallback(tmp_path: Path) -> N
     invocation = _build_app_harness_invocation(task, config, run_id="run-2")
     assert "--prompt-via-api" in invocation.command
     assert "--prompt-via-ui" not in invocation.command
+
+
+def test_visualwebbench_meta_description_context_decodes_html_entities() -> None:
+    assert (
+        _strip_html_entities(
+            "The world&#39;s largest &amp; most trusted animal facts&nbsp;site"
+        )
+        == "The world's largest & most trusted animal facts site"
+    )

@@ -1150,12 +1150,15 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   components, provider report filename/provider mismatches, failed route
   responses, non-JavaScript view assets, missing or malformed view asset SHA-256
   digests, wrong artifact report counts, stale, future-dated, or malformed
-  observations, Cloud/provider reports with valid CI metadata, missing,
-  malformed, mismatched, or non-observed-event CI run metadata, missing
-  required GitHub environment variables under `--match-github-env`, duplicate artifact
-  endpoint/provider identities, accidental credential-shaped fields and string
-  values, unknown provider-family reports, missing required provider-family
-  observations, exercised RPC targets without `moduleId:target` syntax,
+  observations, Cloud/provider reports with valid CI metadata, Cloud/provider
+  GitHub-env match and mismatch checks, missing, malformed, mismatched, or
+  non-observed-event CI run metadata, missing required GitHub environment variables under
+  `--match-github-env`, duplicate artifact endpoint/provider identities,
+  missing, malformed, or duplicate provider endpoint URL fingerprints, accidental
+  credential-shaped fields and string values, valid required-only and
+  required-plus-desktop provider report sets, unknown provider-family reports,
+  missing required provider-family observations, exercised RPC targets without
+  `moduleId:target` syntax,
   exercised RPC targets that reference unobserved module ids, exercised RPC
   targets from manifest-only modules that did not register locally, registered
   modules that were never exercised by conformance RPC, duplicate
@@ -1213,7 +1216,9 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   the normalized endpoint base URL. The live report validator requires this
   fingerprint for provider artifacts and rejects duplicates across the provider
   report set, so E2B/home/mobile evidence cannot silently come from the same
-  configured transport URL.
+  configured transport URL. The fingerprint helper also strips query/fragment
+  components and rejects embedded URL credentials before hashing, matching the
+  URL-backed endpoint provider's accepted base URL shape.
 - Conformance reports include an `rpcCalls` ledger that records every canonical
   protocol method used for each exercised surface and module. The live report
   validator requires this ledger to cover every `moduleExercises` entry, every

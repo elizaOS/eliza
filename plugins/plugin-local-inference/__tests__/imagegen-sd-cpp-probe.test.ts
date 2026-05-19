@@ -71,7 +71,12 @@ function runProbe(env: Record<string, string | undefined>): ProbeResult {
 					stdio: ["ignore", "pipe", "pipe"],
 				});
 	const status = "exitCode" in result ? result.exitCode : result.status;
-	const stdout = readFileSync(outPath, "utf8");
+	const stdout =
+		typeof Bun !== "undefined"
+			? readFileSync(outPath, "utf8")
+			: typeof result.stdout === "string"
+				? result.stdout
+				: new TextDecoder().decode(result.stdout ?? new Uint8Array());
 	const stderr =
 		typeof result.stderr === "string"
 			? result.stderr

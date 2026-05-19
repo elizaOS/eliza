@@ -175,6 +175,11 @@ function sumPluginCounts(
 
 function normalizeRemoteCapabilityEndpointBaseUrl(baseUrl: string): string {
   const url = new URL(baseUrl.trim());
+  if (url.username || url.password) {
+    throw new Error(
+      "Remote capability endpoint baseUrl must not include embedded credentials.",
+    );
+  }
   url.hash = "";
   url.search = "";
   url.pathname = url.pathname.replace(/\/+$/, "");
