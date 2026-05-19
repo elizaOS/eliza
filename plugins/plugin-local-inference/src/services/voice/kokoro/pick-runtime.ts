@@ -98,24 +98,6 @@ export function pickKokoroRuntimeBackend(
 		};
 	}
 
-	if (backend === "onnx") {
-		if (!inputs.onnx) {
-			throw new Error(
-				"[voice/kokoro] KOKORO_BACKEND=onnx requires `inputs.onnx` " +
-					"(layout). Configure the bundle's Kokoro model path first.",
-			);
-		}
-		return {
-			backend,
-			reason: inputs.backend
-				? "explicit backend=onnx (bundled Kokoro ONNX)"
-				: fromEnv
-					? "KOKORO_BACKEND=onnx → onnxruntime-node"
-					: "model layout default → onnxruntime-node",
-			runtime: new KokoroOnnxRuntime(inputs.onnx),
-		};
-	}
-
 	// backend === "mock"
 	if (!inputs.mock) {
 		throw new Error(

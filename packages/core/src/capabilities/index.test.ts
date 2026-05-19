@@ -784,6 +784,95 @@ describe("capability router", () => {
 		expect(calls).toEqual([]);
 	});
 
+	it("rejects outbound remote plugin action calls with empty module ids", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {};
+			},
+		});
+
+		await expect(
+			router.plugin.invokeAction({
+				moduleId: " ",
+				action: "WEATHER_LOOKUP",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.action.invoke",
+			message: "moduleId must be a non-empty string.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin provider calls with empty names", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {};
+			},
+		});
+
+		await expect(
+			router.plugin.getProvider({
+				moduleId: "remote-weather",
+				provider: " ",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.provider.get",
+			message: "provider must be a non-empty string.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin service calls with invalid method names", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {};
+			},
+		});
+
+		await expect(
+			router.plugin.callService({
+				moduleId: "remote-weather",
+				serviceType: "weather_service",
+				method: "callRemote",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.service.call",
+			message: "methods must not include reserved local service method names.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin app bridge calls with invalid hooks", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {};
+			},
+		});
+
+		await expect(
+			router.plugin.callAppBridge({
+				moduleId: "remote-weather",
+				hook: "launchEverything" as never,
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.appBridge.call",
+			message: "hook must be a valid plugin app bridge hook.",
+		});
+		expect(calls).toEqual([]);
+	});
+
 	it("rejects remote plugin route responses with invalid status codes", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({

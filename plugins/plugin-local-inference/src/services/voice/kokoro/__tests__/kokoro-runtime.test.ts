@@ -6,7 +6,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
 	KokoroGgufRuntime,
 	KokoroMockRuntime,
-	KokoroOnnxRuntime,
 } from "../kokoro-runtime";
 import type { KokoroVoicePack } from "../types";
 
