@@ -39,6 +39,7 @@ app.get("/", async (c) => {
         status: "DRAFT" as const,
         vercelUrl: null,
         error: null,
+        startedAt: null,
       });
     }
 
