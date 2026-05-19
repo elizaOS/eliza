@@ -40,6 +40,26 @@ behind the backend contract and future signed/elevated helpers.
   - server-side plan ID storage and execute-time plan reconstruction;
   - UI target device-path confirmation;
   - README rewrite to match reality.
+- Additional fake-media proof added on 2026-05-19:
+  - `src/__tests__/linux-fake-media-e2e.test.ts` creates a tiny fake ISO and a
+    fake USB target file under `/tmp`;
+  - calls the local HTTP handler `/plan` and `/execute` with the Linux backend;
+  - exercises the raw-write gate, server-owned `planId`, execute-time
+    revalidation, checksum validation, Linux backend write flow, real `dd`,
+    `sync`, SSE completion events, and final byte-for-byte/hash verification;
+  - never touches a real block device.
+- Local validation after that E2E test:
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 76 tests;
+  - `bun run --cwd packages/os/usb-installer typecheck` passed;
+  - `bun run --cwd packages/os/usb-installer build` passed;
+  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `git diff --check` passed.
+- Disk cleanup on 2026-05-19:
+  - removed ignored/generated stale ISO artifacts and root `dist/`;
+  - removed inactive `/tmp/eliza-pr7803` temp checkout after confirming no
+    process referenced it;
+  - did not remove chroots, apt caches, worktrees, node modules inside the repo,
+    or anything needed for future builds.
 
 ## Important Corrections From The Session
 
@@ -74,6 +94,8 @@ so the package needs hardening before we call it production-ready.
 
 - Physical USB proof is still separate. Do not call this hardware-proven until
   a final ISO has been written to removable media and booted.
+- The Linux fake-media E2E proves the guarded server/backend write path safely,
+  but it is not a replacement for a physical USB flash/boot test.
 - `HttpUsbInstallerBackend.executeWritePlan` now handles fragmented SSE chunks,
   but cancel/abort support is still missing.
 - macOS and Windows live-write helpers are still prototype-grade compared with
