@@ -864,7 +864,19 @@ export function createStreamingTranscriber(
 	const tryOpenVinoWhisper = (): StreamingTranscriber | null => {
 		const runtime = resolveOpenVinoWhisperRuntime();
 		if (!runtime) return null;
-		const { decoder, dispose } = makeOpenVinoWhisperDecoder(runtime);
+		let decoder: StreamingPcmDecoder;
+		let dispose: () => void;
+		try {
+			const worker = makeOpenVinoWhisperDecoder(runtime);
+			decoder = worker.decoder;
+			dispose = worker.dispose;
+		} catch (err) {
+			throw new AsrUnavailableError(
+				`[asr] OpenVINO whisper decoder unavailable: ${
+					err instanceof Error ? err.message : String(err)
+				}`,
+			);
+		}
 		try {
 			return new OpenVinoStreamingTranscriber({
 				vad: opts.vad,
