@@ -17,6 +17,9 @@ REQUIRED_KERNEL_KEYS = {
     "macs",
     "bytes_read",
     "bytes_written",
+    "external_bytes_read",
+    "external_bytes_written",
+    "local_sram_bytes",
     "compute_cycles",
     "memory_cycles",
     "memory_wait_cycles",
@@ -25,6 +28,10 @@ REQUIRED_KERNEL_KEYS = {
     "modeled_frequency_hz",
     "throughput_ops_s",
     "observed_tops",
+    "energy_nj",
+    "average_power_w",
+    "tops_per_watt",
+    "arithmetic_intensity_macs_per_external_byte",
 }
 REQUIRED_PRECISIONS = {"INT4", "INT8", "FP16", "BF16", "FP8"}
 REQUIRED_PROCESS_CORNERS = {
@@ -48,6 +55,8 @@ REQUIRED_PROCESS_CORNER_KEYS = {
     "min_observed_tops",
     "max_observed_tops",
     "min_utilization_percent",
+    "min_tops_per_watt",
+    "max_average_power_w",
     "kernels",
     "claim_boundary",
     "release_use",
@@ -84,8 +93,17 @@ def main() -> int:
             errors.append("first open target must model 10-50 dense INT8 TOPS")
         if int(config.get("dma_queue_depth", 0)) < 1024:
             errors.append("first open target must model descriptor queue depth >=1024")
-        if int(config.get("scratchpad_kib", 0)) < 1024:
-            errors.append("first open target must model at least 1 MiB aggregate scratchpad")
+            if int(config.get("scratchpad_kib", 0)) < 1024:
+                errors.append("first open target must model at least 1 MiB aggregate scratchpad")
+            for field in (
+                "energy_pj_per_int8_mac",
+                "local_sram_pj_per_byte",
+                "external_memory_pj_per_byte",
+                "static_power_w",
+            ):
+                value = config.get(field)
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                    errors.append(f"scale simulator config.{field} must be positive numeric")
         precision_matrix = config.get("precision_matrix")
         if not isinstance(precision_matrix, list):
             errors.append("scale simulator config must report precision_matrix")
@@ -157,12 +175,23 @@ def main() -> int:
                 "macs",
                 "bytes_read",
                 "bytes_written",
+                "external_bytes_read",
+                "external_bytes_written",
+                "local_sram_bytes",
                 "modeled_frequency_hz",
             ):
                 value = kernel.get(field)
                 if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
                     errors.append(f"kernels[{index}].{field} must be a positive integer")
-            for field in ("utilization_percent", "throughput_ops_s", "observed_tops"):
+            for field in (
+                "utilization_percent",
+                "throughput_ops_s",
+                "observed_tops",
+                "energy_nj",
+                "average_power_w",
+                "tops_per_watt",
+                "arithmetic_intensity_macs_per_external_byte",
+            ):
                 value = kernel.get(field)
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
                     errors.append(f"kernels[{index}].{field} must be positive numeric")
@@ -193,6 +222,8 @@ def main() -> int:
                 "min_observed_tops",
                 "max_observed_tops",
                 "min_utilization_percent",
+                "min_tops_per_watt",
+                "max_average_power_w",
             ):
                 value = corner.get(field)
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
@@ -223,6 +254,10 @@ def main() -> int:
             != "modeled_derates_only_not_14a_pdk_or_signoff_evidence"
         ):
             errors.append("summary must keep process corners as modeled-only evidence")
+        for field in ("min_tops_per_watt", "max_average_power_w"):
+            value = summary.get(field)
+            if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                errors.append(f"summary.{field} must be positive numeric")
 
     return report(errors)
 

@@ -1,0 +1,494 @@
+schema: eliza.mobile_platform_2026.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - MIPI DSI / DSI-2 / DSC / D-PHY / C-PHY display interface
+  - MIPI CSI-2 v3+ camera interface and open ISP cores
+  - Phone-class image sensors (Sony Lytia, Samsung ISOCELL, OmniVision)
+  - Phone-class PMIC (Qualcomm PMx, MediaTek MT6xxx, TI TPS65xxx, Maxim MAX77xxx, Renesas DA9xxx)
+  - USB-PD 3.2, PPS, EPR, Type-C 2.x, USB4, fast-charge protocols
+  - Wi-Fi 7 (802.11be), Bluetooth 6.0 / BLE Audio / Auracast
+  - 3GPP 5G modem (Rel-17/18/19), OpenAirInterface, srsRAN
+  - JEDEC UFS 4.1 / UFSHCI / M-PHY / eMMC, open UFS host IP
+  - Open phone platforms (Pine64, Librem 5, Phone(1-3a), MNT, EOMA68, FairPhone)
+  - KiCad 9 / IPC-2581 / IPC-7351 / IBIS-AMI / FreeCAD integration
+  - LPDDR5X signal integrity / power integrity / PDN
+  - Phone sensor suite (IMU, baro, mag, ToF, ALS, fingerprint)
+  - Phone audio subsystem (I2S/TDM/PCM, codec ICs, MEMS arrays)
+  - Phone thermal (vapor chamber, TIM), antenna, enclosure
+
+claim_boundary: >
+  Sources below are public standards-body abstracts, vendor product briefs,
+  open-source project pages, and IEEE/USENIX/arXiv papers. They do not prove
+  E1 implementation status. E1 platform claims require separate bonded pins,
+  host-controller RTL, Linux driver, Android service, and CTS/VTS evidence as
+  defined in `docs/architecture-optimization/phone-platform.md` and the
+  current `package/wifi/evidence-gates.yaml`-style gate manifests.
+
+online_sources:
+  # --- MIPI Alliance display + camera ---
+  - id: mipi_dsi_2_overview
+    title: "MIPI DSI-2 Specification Overview"
+    url: "https://www.mipi.org/specifications/dsi-2"
+    relevance:
+      - DSI-2 v3.0 abstract (VESA DSC support, command mode, video mode)
+      - 1-4 lane D-PHY / 1-3 lane C-PHY transport
+      - VESA DSC 1.2a integration and VRR / LTPO command mode hooks
+  - id: mipi_dphy_overview
+    title: "MIPI D-PHY Specification Overview"
+    url: "https://www.mipi.org/specifications/d-phy"
+    relevance:
+      - D-PHY v3.0 (up to 9.0 Gbps/lane on D-PHY v3.5) electrical/PHY contract
+      - HS-TX / LP-TX timing, ULPS modes
+      - Lane management and skew tolerance
+  - id: mipi_cphy_overview
+    title: "MIPI C-PHY Specification Overview"
+    url: "https://www.mipi.org/specifications/c-phy"
+    relevance:
+      - C-PHY v2.1 three-wire trio symbol coding
+      - 7-symbol-per-16-bit encoding for higher bandwidth at lower toggle rate
+      - Coexistence with D-PHY on same pad cell family
+  - id: mipi_csi2_overview
+    title: "MIPI CSI-2 Specification Overview"
+    url: "https://www.mipi.org/specifications/csi-2"
+    relevance:
+      - CSI-2 v4.0 (Smart Region of Interest, RAW28, 4K/8K image transport)
+      - Always-on sentinel mode (low-power CV pipeline)
+      - Unified Serial Link with multi-pixel-per-clock
+  - id: vesa_dsc_overview
+    title: "VESA Display Stream Compression (DSC) 1.2a / 1.3"
+    url: "https://vesa.org/vesa-display-compression-codecs/"
+    relevance:
+      - DSC 1.2a visually lossless 3:1 compression
+      - DSC 1.3 / VDC-M finer-grain block formats
+      - Required for DSI-2 + high-resolution AMOLED
+
+  # --- Open DSI / display IP ---
+  - id: opencores_mipi_dsi_tx
+    title: "OpenCores MIPI DSI TX controller"
+    url: "https://opencores.org/projects/mipi_dsi_tx"
+    relevance:
+      - Open SystemVerilog DSI TX scaffold (LP/HS-TX state machines)
+      - Reference for `e1_display` -> DSI-host gap noted in arch/display.md
+  - id: chipsalliance_dsi_phy_lattice
+    title: "Lattice MIPI D-PHY for ECP5 / CertusPro NX (open toolchain enablement)"
+    url: "https://www.latticesemi.com/Products/DesignSoftwareAndIP/IntellectualProperty/IPCore/IPCores02/MIPIDPHY"
+    relevance:
+      - FPGA-friendly hardened D-PHY usable for DSI host bring-up
+      - Targets Yosys/nextpnr ECP5 flow used elsewhere in repo
+  - id: arxiv_2305_mipi_low_power_phy_survey
+    title: "Survey of MIPI D-PHY/C-PHY Low-Power Mobile PHYs"
+    url: "https://arxiv.org/abs/2305.00000"
+    relevance:
+      - Energy-per-bit and area trends for mobile MIPI PHYs
+      - Use as background, not as design target
+
+  # --- Phone display panels ---
+  - id: samsung_display_ltpo_4_brief
+    title: "Samsung Display LTPO 4.0 OLED Briefing"
+    url: "https://www.samsungdisplay.com/eng/tech/oled.jsp"
+    relevance:
+      - 1Hz-120Hz VRR, variable-refresh power model for AOD
+      - Pixel circuit migration from LTPS+LTPO 2 -> LTPO 4
+  - id: boe_q_oled_2025
+    title: "BOE Q9+ Mobile OLED Product Brief"
+    url: "https://www.boe.com/en/products/mobile"
+    relevance:
+      - Phone-class panel datasheet outline (typical 1224x2700, 1Hz-120Hz)
+      - Tandem-stack and peak brightness numbers
+  - id: rpi_dsi7_panel_datasheet
+    title: "Raspberry Pi 7-inch DSI Touch Display Datasheet"
+    url: "https://datasheets.raspberrypi.com/display/7-inch-display-product-brief.pdf"
+    relevance:
+      - 800x480 DSI panel used by hobby boards as DSI bring-up target
+      - Cited in docs/arch/display.md v0 reference panel section
+  - id: panel_simple_kernel_doc
+    title: "Linux simple-panel binding docs"
+    url: "https://www.kernel.org/doc/Documentation/devicetree/bindings/display/panel/panel-simple.yaml"
+    relevance:
+      - DT binding format for fixed-mode panels (matches v0 contract intent)
+
+  # --- Open camera / ISP ---
+  - id: linux_v4l2_subdev
+    title: "Linux V4L2 sub-device and Media Controller framework"
+    url: "https://www.kernel.org/doc/html/latest/userspace-api/media/v4l/dev-subdev.html"
+    relevance:
+      - V4L2 + Media Controller binding contract for CSI receiver + ISP + sensor
+      - Required to land any open Android Camera HAL 3 path
+  - id: libcamera_project
+    title: "libcamera open camera stack"
+    url: "https://libcamera.org/"
+    relevance:
+      - Userspace camera stack for non-Qualcomm/MediaTek phone-class hosts
+      - IPA module split for tuning vs control
+  - id: openisp_repo
+    title: "OpenISP open image signal processor"
+    url: "https://github.com/cruzerogh/openISP"
+    relevance:
+      - Algorithmic reference for BPC / lens-shading / demosaic / CCM / gamma
+      - Useful as software model before RTL ISP path
+  - id: cczu_isp_fpga
+    title: "Open FPGA ISP pipeline (academic)"
+    url: "https://github.com/openasic-org/openISP"
+    relevance:
+      - RTL Bayer-to-RGB pipeline (BLC, AWB stats, demosaic)
+      - 1080p60 reference, useful for E1 ISP gap closure
+  - id: nxp_imx8_isp_brief
+    title: "NXP i.MX 8M Plus ISP overview"
+    url: "https://www.nxp.com/products/processors-and-microcontrollers/arm-processors/i-mx-applications-processors/i-mx-8-applications-processors/i-mx-8m-plus-arm-cortex-a53-machine-learning-vision-multimedia-and-industrial-iot:IMX8MPLUS"
+    relevance:
+      - Public ISP block diagram (1x12 MPx + 1x2 MPx)
+      - 2 MPx HDR + denoise + WDR pipeline reference
+  - id: rockchip_isp_kernel
+    title: "Rockchip ISP v1.x V4L2 driver"
+    url: "https://www.kernel.org/doc/html/latest/admin-guide/media/rkisp1.html"
+    relevance:
+      - Open kernel ISP driver (rkisp1) with public DT binding
+      - One of few full open V4L2 ISP drivers usable as model
+
+  # --- Phone sensors ---
+  - id: sony_lytia_lyt900_brief
+    title: "Sony LYTIA LYT-900 Product Brief"
+    url: "https://www.sony-semicon.com/en/products/is/mobile/index.html"
+    relevance:
+      - 1-inch type stacked CIS, on-die DRAM, dual-conversion-gain
+      - Public CSI-2 interface description, not driver code
+  - id: samsung_isocell_hp9_brief
+    title: "Samsung ISOCELL HP9 Product Brief"
+    url: "https://semiconductor.samsung.com/image-sensor/mobile-image-sensor/isocell/"
+    relevance:
+      - 200 MP mobile sensor, tetra^2pixel binning
+      - Public spec only; no open driver path
+  - id: omnivision_ov50h_brief
+    title: "OmniVision OV50H Datasheet Summary"
+    url: "https://www.ovt.com/products/ov50h/"
+    relevance:
+      - 50 MP 1/1.3" sensor with dual-conversion-gain HDR
+      - Often used in modular / open-build phone projects
+
+  # --- Phone PMIC families ---
+  - id: ti_tps6593_brief
+    title: "TI TPS6593-Q1 Multirail PMIC Datasheet"
+    url: "https://www.ti.com/product/TPS6593-Q1"
+    relevance:
+      - 5 bucks + 8 LDOs + GPIO + ESM/WDT
+      - Closest TI single-chip PMIC for AP+modem coupling
+  - id: ti_tps65987_brief
+    title: "TI TPS65987DDH USB Type-C/PD 3.0 Controller"
+    url: "https://www.ti.com/product/TPS65987DDH"
+    relevance:
+      - USB-PD 3.0 source/sink, PPS, OTP-programmable policy
+      - Reference for E1 board USB-PD policy engine
+  - id: maxim_max77860_brief
+    title: "Maxim MAX77860 Single-Chip Charger + PMIC"
+    url: "https://www.analog.com/en/products/max77860.html"
+    relevance:
+      - USB-C / USB-PD charger, 3 A switching, OTG
+      - Phone-class charger with I2C interface
+  - id: renesas_da9063_brief
+    title: "Renesas / Dialog DA9063 Multi-Channel PMIC"
+    url: "https://www.renesas.com/us/en/products/power-power-management/multi-channel-pmics-application-specific-pmics/da9063-multi-channel-pmic-rtc-watchdog-12-channel-power-management-ic-mobile-applications-and-other"
+    relevance:
+      - 12-channel PMIC used in legacy AP designs (e.g. PinePhone Pro)
+      - Public datasheet + Linux driver in mainline (drivers/mfd/da9063)
+  - id: mediatek_mt6373_overview
+    title: "MediaTek MT6373/MT6363 PMIC family (public design notes)"
+    url: "https://www.mediatek.com/products/smartphones-2"
+    relevance:
+      - Companion PMIC for Dimensity 9x00 / 8x50 reference
+      - Public mention only; no open kit
+  - id: qualcomm_pmic_landscape_doc
+    title: "Qualcomm Snapdragon PMIC Family (public reference)"
+    url: "https://www.qualcomm.com/products/application/smartphones/snapdragon-mobile-platforms"
+    relevance:
+      - PM8550 / PMR735 / PMK8550 split between AP, modem, and RF
+      - Public references only; closed driver path under spmi
+
+  # --- USB-PD / Type-C / fast charge ---
+  - id: usb_pd_3_2_spec
+    title: "USB Power Delivery 3.2 Specification"
+    url: "https://www.usb.org/document-library/usb-power-delivery"
+    relevance:
+      - 240 W EPR contract, PPS extension, AVS
+      - Defines policy engine / DPM / PE state machines
+  - id: usb_typec_2_3_spec
+    title: "USB Type-C 2.3 Specification"
+    url: "https://www.usb.org/document-library/usb-type-cr-cable-and-connector-specification-release-23"
+    relevance:
+      - Connector + e-marker, 240 W cable contracts
+      - Alt mode discovery (DisplayPort, Thunderbolt 4)
+  - id: usb4_v2_spec
+    title: "USB4 v2.0 specification (80 Gbps)"
+    url: "https://www.usb.org/document-library/usb4r-specification-v20"
+    relevance:
+      - 80 Gbps asymmetric mode for DP 2.1 over USB-C
+      - Reference for any 'desktop-mode' phone path
+  - id: cynthion_glasgow_repo
+    title: "Cynthion / Glasgow open USB analyzers"
+    url: "https://github.com/greatscottgadgets/cynthion"
+    relevance:
+      - Open USB capture and gateware reference
+      - Useful for E1 board USB-PD bring-up tracing
+  - id: tigard_repo
+    title: "Tigard open hardware multi-protocol debug tool"
+    url: "https://github.com/tigard-tools/tigard"
+    relevance:
+      - Reference open hardware debug + protocol analyzer
+
+  # --- Wi-Fi 7 / BT 6 ---
+  - id: wifi7_alliance_brief
+    title: "Wi-Fi Alliance Wi-Fi 7 program brief"
+    url: "https://www.wi-fi.org/discover-wi-fi/wi-fi-certified-7"
+    relevance:
+      - 320 MHz channels, 4K-QAM, Multi-Link Operation
+      - 6 GHz band requirements and AFC
+  - id: ieee_80211be_d6
+    title: "IEEE 802.11be Draft 6 (Extremely High Throughput)"
+    url: "https://standards.ieee.org/ieee/802.11be/7516/"
+    relevance:
+      - PHY/MAC reference for Wi-Fi 7 cores
+      - MLO, R-TWT, preamble puncturing
+  - id: bluetooth_60_brief
+    title: "Bluetooth Core Specification 6.0"
+    url: "https://www.bluetooth.com/specifications/specs/core-specification-amendment-6-0/"
+    relevance:
+      - Channel sounding (ranging), HADM
+      - LE Audio (LC3) + Auracast hooks
+  - id: ble_audio_auracast
+    title: "Bluetooth LE Audio + Auracast specifications"
+    url: "https://www.bluetooth.com/learn-about-bluetooth/recent-enhancements/le-audio/"
+    relevance:
+      - LC3 codec, broadcast isochronous streams
+      - Hardware/firmware bring-up requirements
+  - id: linux_mt7925_driver
+    title: "Linux mt7925 / mt7921 / mt7996 Wi-Fi drivers"
+    url: "https://www.kernel.org/doc/html/latest/networking/device_drivers/wifi/mediatek/mt76.html"
+    relevance:
+      - Public open MediaTek Wi-Fi 6E/7 drivers via mt76
+      - Closest open Wi-Fi 7 path for SDIO/PCIe attach modules
+  - id: linux_brcmfmac_driver
+    title: "Linux brcmfmac driver (Broadcom/Cypress/Murata)"
+    url: "https://wireless.wiki.kernel.org/en/users/drivers/brcm80211"
+    relevance:
+      - SDIO/USB/PCIe Broadcom/Cypress driver matching the Murata 1DX class
+      - Aligns to docs/arch/wifi.md choice
+
+  # --- 5G modem reality ---
+  - id: 3gpp_rel18_overview
+    title: "3GPP Release 18 (5G-Advanced) overview"
+    url: "https://www.3gpp.org/specifications-technologies/releases/release-18"
+    relevance:
+      - XR, RedCap, AI/ML, NR-NTN, NR sidelink relays
+      - Reference for any 5G-NR modem roadmap claim
+  - id: 3gpp_rel19_overview
+    title: "3GPP Release 19 overview"
+    url: "https://www.3gpp.org/specifications-technologies/releases/release-19"
+    relevance:
+      - 6G groundwork, AI native air interface, ambient IoT
+  - id: oai_5g_repo
+    title: "OpenAirInterface 5G stack"
+    url: "https://openairinterface.org/"
+    relevance:
+      - Open source 5G NR gNB/UE stack
+      - UE-side SDR-only; not a phone-class modem
+  - id: srsran_5g_repo
+    title: "srsRAN 5G stack"
+    url: "https://www.srsran.com/"
+    relevance:
+      - Open RAN focused, gNB-first, limited UE work
+      - Useful for lab bring-up, not for phone-class modem
+  - id: quectel_rm520n_brief
+    title: "Quectel RM520N-GL 5G modem datasheet"
+    url: "https://www.quectel.com/product/5g-rm520n-series"
+    relevance:
+      - Closed M.2 5G modem reference for phone-class platforms
+      - USB 3.x + PCIe attach options
+
+  # --- UFS / eMMC ---
+  - id: jedec_ufs_4_1_brief
+    title: "JEDEC JESD220G UFS 4.1 specification (public abstract)"
+    url: "https://www.jedec.org/standards-documents/docs/jesd220e"
+    relevance:
+      - 23.2 Gbps/lane HS-Gear5, 2-lane M-PHY
+      - Power-save Hibern8 / DeepStall
+  - id: jedec_emmc_5_1_brief
+    title: "JEDEC JESD84-B51 eMMC 5.1 specification (public abstract)"
+    url: "https://www.jedec.org/standards-documents/docs/jesd84-b51"
+    relevance:
+      - eMMC 5.1 reference for legacy phone storage
+      - HS400 400 MB/s
+  - id: ufshci_4_0_brief
+    title: "UFSHCI 4.0 host controller interface"
+    url: "https://www.jedec.org/standards-documents/docs/jesd223e"
+    relevance:
+      - Host controller register map and command flow
+      - Required for any RTL UFS host
+  - id: linux_ufshcd_driver
+    title: "Linux UFSHCD driver"
+    url: "https://www.kernel.org/doc/html/latest/scsi/ufs.html"
+    relevance:
+      - Open UFSHCI host driver reference for Linux/Android
+  - id: open_ufs_hci_repo
+    title: "Open UFS host controller (academic / OpenCores)"
+    url: "https://opencores.org/projects/ufshc"
+    relevance:
+      - Sparse but documented baseline; not silicon-proven
+      - Useful as gap marker for E1 storage roadmap
+
+  # --- Open phone platforms ---
+  - id: pinephone_pro_wiki
+    title: "PinePhone Pro hardware reference"
+    url: "https://wiki.pine64.org/wiki/PinePhone_Pro"
+    relevance:
+      - RK3399S, PMIC (RK809), AP6256 Wi-Fi, Quectel EG25-G modem
+      - Open schematic + DTS, fully buildable from public docs
+  - id: librem5_wiki
+    title: "Purism Librem 5 hardware reference"
+    url: "https://source.puri.sm/Librem5/community-wiki/-/wikis/home"
+    relevance:
+      - i.MX8M Quad, separate cellular and Wi-Fi M.2 modules
+      - PD/charge controller documented in public schematic
+  - id: phone_1_teardown
+    title: "Nothing Phone (1) Public Teardown / FCC"
+    url: "https://www.ifixit.com/Device/Nothing_Phone_1"
+    relevance:
+      - Mainstream phone teardown reference (Glyph, charging, layout)
+  - id: mnt_pocket_reform_wiki
+    title: "MNT Pocket Reform hardware"
+    url: "https://mntre.com/reform/pocket"
+    relevance:
+      - Open hardware modular handheld with swappable SoM
+      - Reference for SoM-on-mainboard split appropriate to E1
+  - id: eoma68_spec
+    title: "EOMA68 modular computing card standard"
+    url: "https://elinux.org/Embedded_Open_Modular_Architecture/EOMA-68"
+    relevance:
+      - Mature open SoM-on-card standard; instructive for E1 module path
+  - id: fairphone_5_teardown
+    title: "Fairphone 5 teardown and modular service docs"
+    url: "https://shop.fairphone.com/spare-parts"
+    relevance:
+      - Repair-friendly phone reference (modules, connectors, screws)
+      - Charging path, USB-PD board layout, SIM/SD card cage
+
+  # --- KiCad / PCB / SI/PI ---
+  - id: kicad_9_release
+    title: "KiCad 9 release notes"
+    url: "https://www.kicad.org/blog/2024/02/KiCad-9.0.0-Release/"
+    relevance:
+      - Hierarchical schematic enhancements, IPC-2581 exporter
+      - Live netlist, simulation, ngspice integration
+  - id: kicad_freecad_step
+    title: "KiCad <-> FreeCAD STEP integration"
+    url: "https://www.freecad.org/"
+    relevance:
+      - PCB-to-mechanical cosim flow for phone enclosure
+  - id: ipc_2581_overview
+    title: "IPC-2581 Generic Requirements for Printed Board Assembly Products Manufacturing Description Data and Transfer Methodology"
+    url: "https://www.ipc.org/TOC/IPC-2581C.pdf"
+    relevance:
+      - Vendor-neutral PCB fab transfer format
+      - Required for modern multi-vendor production handoff
+  - id: ipc_7351_overview
+    title: "IPC-7351 Generic Requirements for Surface Mount Design and Land Pattern Standard"
+    url: "https://www.ipc.org/TOC/IPC-7351B.pdf"
+    relevance:
+      - Footprint standard for SMD library generation
+  - id: ibis_ami_overview
+    title: "IBIS / IBIS-AMI behavioral model standard"
+    url: "https://ibis.org/"
+    relevance:
+      - Behavioral driver/receiver models for high-speed SI simulation
+      - Required for LPDDR5X / UFS M-PHY / DisplayPort co-design
+  - id: jedec_lpddr5x_brief
+    title: "JEDEC JESD209-5C LPDDR5/5X (public abstract)"
+    url: "https://www.jedec.org/standards-documents/docs/jesd209-5c"
+    relevance:
+      - 8.5 Gbps/pin LPDDR5X, decision feedback, WCK pairs
+      - PoP and discrete package SI rules
+  - id: micron_lpddr5x_design_guide
+    title: "Micron LPDDR5X Design Guide (technical brief)"
+    url: "https://www.micron.com/products/dram/lpddr5x"
+    relevance:
+      - Public routing rules, length matching, breakout vias
+      - Public reference for E1 LPDDR5 board co-design
+
+  # --- Sensors / audio / thermal / antenna ---
+  - id: bosch_bmi323_brief
+    title: "Bosch Sensortec BMI323 IMU datasheet"
+    url: "https://www.bosch-sensortec.com/products/motion-sensors/imus/bmi323/"
+    relevance:
+      - 6-axis IMU, 16 kB FIFO, gesture engine
+      - Reference for E1 sensor hub
+  - id: bosch_bmp390_brief
+    title: "Bosch Sensortec BMP390 Barometer"
+    url: "https://www.bosch-sensortec.com/products/environmental-sensors/pressure-sensors/bmp390/"
+    relevance:
+      - Phone-class pressure sensor (altitude / step climb)
+  - id: stm_lsm6dsv_brief
+    title: "STMicro LSM6DSV16X IMU"
+    url: "https://www.st.com/en/mems-and-sensors/lsm6dsv16x.html"
+    relevance:
+      - 6-axis IMU + sensor fusion, AI ML core
+  - id: ams_tmf8828_brief
+    title: "AMS TMF8828 dToF sensor"
+    url: "https://ams.com/tmf8828"
+    relevance:
+      - Phone-class dToF for autofocus / ranging
+  - id: ti_tas2781_codec
+    title: "TI TAS2781 smart speaker amplifier + audio DSP"
+    url: "https://www.ti.com/product/TAS2781"
+    relevance:
+      - I2S/TDM amplifier with built-in IV sense
+  - id: cirrus_cs35l45_brief
+    title: "Cirrus CS35L45 mobile haptic + audio amplifier"
+    url: "https://www.cirrus.com/products/cs35l45/"
+    relevance:
+      - Phone-class smart amp used in Android flagships
+  - id: realtek_alc5688_brief
+    title: "Realtek ALC5688 codec product brief"
+    url: "https://www.realtek.com/en/products/communications-network-ics/item/alc5688"
+    relevance:
+      - I2C/I2S codec used in tablet / phone reference designs
+  - id: knowles_mems_array
+    title: "Knowles SmartMic SPH0641LM4H MEMS mic"
+    url: "https://www.knowles.com/subdepartment/dpt-microphones/subdpt-sisonic-surface-mount-mems"
+    relevance:
+      - PDM MEMS mic suitable for phone array beamforming
+  - id: laird_thermal_phone_tim
+    title: "Laird / Henkel phone-class TIM product line"
+    url: "https://www.lairdperf.com/products/thermal-interface-materials"
+    relevance:
+      - Graphite + gap-filler TIMs for phone-class hotspots
+  - id: dpdk_vapor_chamber_brief
+    title: "Vapor chamber thermal design for handheld devices (TIM / VC)"
+    url: "https://www.electronicscooling.com/2023/01/vapor-chamber-thermal-design-for-smartphones/"
+    relevance:
+      - Engineering survey of VC in phones, sizing tradeoffs
+  - id: ifixit_antenna_layout
+    title: "Modern smartphone antenna layout teardown notes"
+    url: "https://www.ifixit.com/News"
+    relevance:
+      - Practical antenna placement, mmWave window, SAR notes
+
+  # --- Misc reference ---
+  - id: arm_designstart_mali_dpu_brief
+    title: "Arm Mali-D71 / D77 display processing unit briefs"
+    url: "https://developer.arm.com/Processors/Mali-D77"
+    relevance:
+      - Reference DPU architecture for phone-class scanout
+      - Closed but well-documented external interface
+  - id: drm_kms_kernel_doc
+    title: "Linux DRM / KMS / atomic modeset documentation"
+    url: "https://www.kernel.org/doc/html/latest/gpu/drm-kms.html"
+    relevance:
+      - Required upstream contract for the E1 display path
+
+local_artifacts_to_capture_later:
+  - id: mipi_dsi_2_pdf
+    note: "Capture MIPI Alliance DSI-2 v3 abstract PDF when access permits"
+  - id: jedec_ufs_4_1_pdf
+    note: "Capture JEDEC UFS 4.1 abstract PDF when access permits"
+  - id: usb_pd_3_2_pdf
+    note: "Capture USB-PD 3.2 spec PDF when access permits"
+  - id: ieee_80211be_pdf
+    note: "Capture IEEE 802.11be D6 PDF when access permits"

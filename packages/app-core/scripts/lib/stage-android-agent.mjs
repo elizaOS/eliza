@@ -400,13 +400,46 @@ function copyIfDifferent(source, target) {
 }
 
 function resolveNativeLlamaAssetDir(androidAbi) {
-  if (androidAbi !== "arm64-v8a") return null;
+  // Look up an env-var-supplied prebuilt native llama asset dir for this
+  // ABI. Each env var may be either:
+  //   - a single absolute dir (legacy arm64-only contract — the prebuilt
+  //     lives directly inside; only honoured when androidAbi is arm64-v8a),
+  //   - a per-ABI suffixed variant `<KEY>_<ABI>` where ABI is the upper-
+  //     snake-cased androidAbi (e.g. ELIZA_AOSP_LLAMA_ASSET_DIR_ARM64_V8A,
+  //     _X86_64, _RISCV64),
+  //   - or a base dir that contains per-ABI subdirectories named after the
+  //     androidAbi (e.g. `<dir>/arm64-v8a/`, `<dir>/x86_64/`, `<dir>/riscv64/`).
+  // The first env key that resolves to a real dir for this ABI wins. We
+  // never fall back across ABIs (an arm64 prebuilt is not valid for x86_64
+  // or riscv64).
+  const abiSuffix = androidAbi.replace(/-/g, "_").toUpperCase();
   for (const key of NATIVE_LLAMA_ASSET_ENV_KEYS) {
+    // 1. Per-ABI env var wins outright.
+    const perAbiRaw = process.env[`${key}_${abiSuffix}`]?.trim();
+    if (perAbiRaw) {
+      const resolved = path.resolve(perAbiRaw);
+      if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
+        return { dir: resolved, key: `${key}_${abiSuffix}` };
+      }
+    }
     const raw = process.env[key]?.trim();
     if (!raw) continue;
-    const resolved = path.resolve(raw);
-    if (fs.existsSync(resolved) && fs.statSync(resolved).isDirectory()) {
-      return { dir: resolved, key };
+    const baseResolved = path.resolve(raw);
+    if (!fs.existsSync(baseResolved)) continue;
+    if (!fs.statSync(baseResolved).isDirectory()) continue;
+    // 2. Base dir containing per-ABI subdirs.
+    const perAbiSubdir = path.join(baseResolved, androidAbi);
+    if (
+      fs.existsSync(perAbiSubdir) &&
+      fs.statSync(perAbiSubdir).isDirectory()
+    ) {
+      return { dir: perAbiSubdir, key: `${key}/${androidAbi}` };
+    }
+    // 3. Legacy: the env var points directly at the prebuilt dir; honour
+    //    it only for arm64-v8a since that's the only ABI the legacy
+    //    contract ever shipped a prebuilt for.
+    if (androidAbi === "arm64-v8a") {
+      return { dir: baseResolved, key };
     }
   }
   return null;
@@ -614,6 +647,28 @@ export async function stageAndroidAgentRuntime({
 
   for (const target of ABI_TARGETS) {
     const { androidAbi, bunArch, alpineArch, ldName } = target;
+    // Soft-skip the riscv64 lane when no MILADY_BUN_RISCV64_URL is set and
+    // MILADY_BUN_RISCV64_REQUIRED is not requested. Upstream Bun has no
+    // riscv64-linux-musl release, so by default riscv64 is opt-in (set
+    // MILADY_BUN_RISCV64_URL to a self-built canary zip from
+    // packages/app-core/scripts/bun-riscv64/build.sh). The libllama /
+    // shim cross-compiles still land their per-ABI artifacts independently
+    // — operators iterating on the native side don't have to build Bun
+    // first. Set MILADY_BUN_RISCV64_REQUIRED=1 to convert the soft-skip
+    // into a hard error (the AOSP cuttlefish smoke gates use this).
+    if (bunArch === "riscv64") {
+      const riscvUrl = process.env.MILADY_BUN_RISCV64_URL?.trim();
+      const required = process.env.MILADY_BUN_RISCV64_REQUIRED === "1";
+      if (!riscvUrl && !required) {
+        tlog(
+          `Skipping ABI ${androidAbi}: MILADY_BUN_RISCV64_URL unset (upstream Bun has ` +
+            `no riscv64-linux-musl release). Build with packages/app-core/scripts/` +
+            `bun-riscv64/build.sh and re-run, or set MILADY_BUN_RISCV64_REQUIRED=1 to ` +
+            `make this a hard error.`,
+        );
+        continue;
+      }
+    }
     const abiAssetsDir = path.join(assetsAgentDir, androidAbi);
     const abiJniDir = path.join(jniLibsDir, androidAbi);
     fs.mkdirSync(abiAssetsDir, { recursive: true });

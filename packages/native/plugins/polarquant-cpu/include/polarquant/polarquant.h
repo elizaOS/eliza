@@ -138,6 +138,8 @@ void ggml_vec_dot_q4_polar_preht_f32_avx2(
     int n, float * s, const block_q4_polar * x, const float * q_preht, int use_qjl);
 void ggml_vec_dot_q4_polar_preht_f32_neon(
     int n, float * s, const block_q4_polar * x, const float * q_preht, int use_qjl);
+void ggml_vec_dot_q4_polar_preht_f32_rvv(
+    int n, float * s, const block_q4_polar * x, const float * q_preht, int use_qjl);
 
 /* Best-available pre-Hadamard dot on the running CPU. The runtime is
  * responsible for tracking that `q_preht` is the Hadamard-transformed
@@ -189,6 +191,11 @@ void dequantize_row_q4_polar_neon(
     float * y,
     int64_t k,
     int use_qjl);
+void dequantize_row_q4_polar_rvv(
+    const block_q4_polar * x,
+    float * y,
+    int64_t k,
+    int use_qjl);
 
 void ggml_vec_dot_q4_polar_q8_0_avx2(
     int n,
@@ -197,6 +204,12 @@ void ggml_vec_dot_q4_polar_q8_0_avx2(
     const struct block_q8_0 * y,
     int use_qjl);
 void ggml_vec_dot_q4_polar_q8_0_neon(
+    int n,
+    float * s,
+    const block_q4_polar * x,
+    const struct block_q8_0 * y,
+    int use_qjl);
+void ggml_vec_dot_q4_polar_q8_0_rvv(
     int n,
     float * s,
     const block_q4_polar * x,

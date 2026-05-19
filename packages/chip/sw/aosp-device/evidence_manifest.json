@@ -61,7 +61,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_vendorimage.log",
-      "claim": "Eliza vendor image builds in an external AOSP checkout",
+      "claim": "OpenAgent vendor image builds in an external AOSP checkout",
       "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp vendorimage",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -72,7 +72,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_checkvintf.log",
-      "claim": "Eliza VINTF packaging validates in an external AOSP checkout",
+      "claim": "OpenAgent VINTF packaging validates in an external AOSP checkout",
       "capture_command": "sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp checkvintf",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -82,7 +82,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-      "claim": "Eliza vendor SELinux policy builds in an external AOSP checkout",
+      "claim": "OpenAgent vendor SELinux policy builds in an external AOSP checkout",
       "capture_command": "m vendor_sepolicy.cil selinux_policy",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -91,7 +91,7 @@
     },
     {
       "path": "docs/evidence/android/eliza_ai_soc_selinux_neverallow.log",
-      "claim": "Eliza SELinux neverallow checks complete in an external AOSP checkout",
+      "claim": "OpenAgent SELinux neverallow checks complete in an external AOSP checkout",
       "capture_command": "m sepolicy_neverallows",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",
       "external_artifacts": [
@@ -134,7 +134,7 @@
     },
     {
       "path": "docs/evidence/android/renode_e1_soc_smoke.log",
-      "claim": "Reference-only Renode smoke ran against the Eliza model; this is not Android compatibility evidence or a silicon boot claim",
+      "claim": "Reference-only Renode smoke ran against the OpenAgent model; this is not Android compatibility evidence or a silicon boot claim",
       "claim_boundary": "virtual_device_smoke_only_not_boot_or_compatibility_evidence",
       "capture_command": "renode sim/renode/eliza_e1.resc with Android-capable firmware/kernel handoff when available",
       "validation_command": "python3 scripts/check_software_bsp.py aosp --require-evidence",

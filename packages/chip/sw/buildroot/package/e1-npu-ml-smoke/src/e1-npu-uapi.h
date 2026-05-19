@@ -87,5 +87,12 @@ struct e1_npu_perf {
 	_IOR(E1_NPU_IOC_MAGIC, 0x06, struct e1_npu_contract)
 
 #define E1_NPU_SCRATCH_BYTES 64u
+#define E1_NPU_OP_DOT8_S4 7u
+#define E1_NPU_OP_GEMM_S4 9u
+#define E1_NPU_OP_RELU4_S8 10u
+#define E1_NPU_OP_VRELU_S8 11u
+#define E1_NPU_OP_SDOT4_S4_2_4 12u
+#define E1_NPU_OP_DOT16_S2 13u
+#define E1_NPU_OP_DOT4_FP8_E4M3 14u
 
 #endif /* _UAPI_E1_NPU_H */

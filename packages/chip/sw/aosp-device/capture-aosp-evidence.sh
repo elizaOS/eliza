@@ -22,6 +22,7 @@ aosp_make_args=${AOSP_MAKE_ARGS:-}
 aosp_cuttlefish_args=${AOSP_CUTTLEFISH_ARGS:---cpus=4 --memory_mb=8192 --gpu_mode=none}
 aosp_cuttlefish_launcher=${AOSP_CUTTLEFISH_LAUNCHER:-}
 aosp_adb_timeout_seconds=${AOSP_ADB_TIMEOUT_SECONDS:-180}
+aosp_adb_serial=${AOSP_ADB_SERIAL:-}
 aosp_cts_vts_excluded_modules=${AOSP_CTS_VTS_EXCLUDED_MODULES:-full_cts,full_vts,device_compatibility_claims}
 aosp_cts_vts_result_dir=${AOSP_CTS_VTS_RESULT_DIR:-out/host/linux-x86/cts-vts-plan}
 aosp_cts_vts_plan_command=${AOSP_CTS_VTS_PLAN_COMMAND:-}
@@ -234,10 +235,17 @@ case "$mode" in
 			"$evidence_dir/cuttlefish_riscv64_smoke.log" \
 			"source build/envsetup.sh && lunch $aosp_product && launch_cvd $aosp_cuttlefish_args -daemon" \
 			smoke \
-			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" "$aosp_shell" -lc '
+			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" AOSP_ADB_SERIAL="$aosp_adb_serial" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
 				lunch "$AOSP_PRODUCT" >/dev/null &&
 				cleanup() { stop_cvd >/dev/null 2>&1 || cvd stop >/dev/null 2>&1 || true; } &&
+				adb_cvd() {
+					if [ -n "$AOSP_ADB_SERIAL" ]; then
+						adb -s "$AOSP_ADB_SERIAL" "$@"
+					else
+						adb "$@"
+					fi
+				} &&
 				trap cleanup EXIT INT TERM &&
 				if [ -n "$AOSP_CUTTLEFISH_LAUNCHER" ]; then
 					cuttlefish_launcher=$AOSP_CUTTLEFISH_LAUNCHER
@@ -252,8 +260,12 @@ case "$mode" in
 				else
 					"$cuttlefish_launcher" $AOSP_CUTTLEFISH_ARGS -daemon
 				fi &&
+				if [ -z "$AOSP_ADB_SERIAL" ]; then
+					AOSP_ADB_SERIAL=$(adb devices -l | grep -v " usb:" | sed -n "2{s/[[:space:]].*//;p;q;}") &&
+					[ -n "$AOSP_ADB_SERIAL" ] && echo "ADB_SERIAL=$AOSP_ADB_SERIAL"
+				fi &&
 				deadline=$((SECONDS + '"$aosp_adb_timeout_seconds"')) &&
-				until adb get-state >/dev/null 2>&1; do
+				until adb_cvd get-state >/dev/null 2>&1; do
 					if [ "$SECONDS" -ge "$deadline" ]; then
 						echo "eliza-evidence: adb_wait_timeout_seconds='"$aosp_adb_timeout_seconds"'" &&
 						exit 1
@@ -261,21 +273,21 @@ case "$mode" in
 					sleep 2
 				done &&
 				echo "adb shell true" &&
-				adb shell true &&
+				adb_cvd shell true &&
 				echo "adb shell getprop ro.product.cpu.abi" &&
-				abi=$(adb shell getprop ro.product.cpu.abi | tr -d "\r") &&
+				abi=$(adb_cvd shell getprop ro.product.cpu.abi | tr -d "\r") &&
 				echo "ro.product.cpu.abi=$abi" &&
 				echo "TARGET_PRODUCT=$AOSP_TARGET_PRODUCT" &&
 				echo "adb shell getprop sys.boot_completed" &&
 				boot= &&
 				while [ "$SECONDS" -lt "$deadline" ]; do
-					boot=$(adb shell getprop sys.boot_completed | tr -d "\r") &&
+					boot=$(adb_cvd shell getprop sys.boot_completed | tr -d "\r") &&
 					[ "$boot" = 1 ] && break
 					sleep 2
 				done &&
 				echo "sys.boot_completed=$boot" &&
 				mkdir -p out &&
-				adb shell logcat -d -b all > out/eliza-cuttlefish-boot-logcat.txt 2>/dev/null || true
+				adb_cvd shell logcat -d -b all > out/eliza-cuttlefish-boot-logcat.txt 2>/dev/null || true
 				[ "$abi" = riscv64 ] && [ "$boot" = 1 ]
 			'
 		;;

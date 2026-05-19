@@ -71,6 +71,16 @@ module e1_soc_top (
     logic dma_m_rready;
     logic [31:0] dma_m_rdata;
     logic [1:0] dma_m_rresp;
+    logic npu_m_awvalid;
+    logic npu_m_awready;
+    logic [31:0] npu_m_awaddr;
+    logic npu_m_wvalid;
+    logic npu_m_wready;
+    logic [31:0] npu_m_wdata;
+    logic [3:0] npu_m_wstrb;
+    logic npu_m_bvalid;
+    logic npu_m_bready;
+    logic [1:0] npu_m_bresp;
     logic npu_m_arvalid;
     logic npu_m_arready;
     logic [31:0] npu_m_araddr;
@@ -106,13 +116,16 @@ module e1_soc_top (
 
     wire [DRAM_INDEX_BITS-1:0] mmio_dram_word = mmio_addr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] dma_wr_word = dma_m_awaddr[2 +: DRAM_INDEX_BITS];
+    wire [DRAM_INDEX_BITS-1:0] npu_wr_word = npu_m_awaddr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] dma_rd_word = dma_m_araddr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] npu_rd_word = npu_m_araddr[2 +: DRAM_INDEX_BITS];
     wire [DRAM_INDEX_BITS-1:0] display_rd_word = display_fb_read_addr[2 +: DRAM_INDEX_BITS];
     wire        dma_wr_fire = dma_m_awvalid && dma_m_awready && dma_m_wvalid && dma_m_wready;
+    wire        npu_wr_fire = npu_m_awvalid && npu_m_awready && npu_m_wvalid && npu_m_wready;
     wire        dma_rd_fire = dma_m_arvalid && dma_m_arready;
     wire        npu_rd_fire = npu_m_arvalid && npu_m_arready;
     wire        dma_wr_ok = (dma_m_awaddr[31:12] == 20'h8000_0) && (dma_m_awaddr[1:0] == 2'b00);
+    wire        npu_wr_ok = (npu_m_awaddr[31:12] == 20'h8000_0) && (npu_m_awaddr[1:0] == 2'b00);
     wire        dma_rd_ok = (dma_m_araddr[31:12] == 20'h8000_0) && (dma_m_araddr[1:0] == 2'b00);
     wire        npu_rd_ok = (npu_m_araddr[31:12] == 20'h8000_0) && (npu_m_araddr[1:0] == 2'b00);
     wire        display_rd_ok = display_fb_read_valid &&
@@ -177,8 +190,10 @@ module e1_soc_top (
     };
     /* verilator lint_on UNUSEDSIGNAL */
 
-    assign dma_m_awready = !dma_m_bvalid;
-    assign dma_m_wready  = !dma_m_bvalid;
+    assign dma_m_awready = !dma_m_bvalid && !npu_m_bvalid;
+    assign dma_m_wready  = !dma_m_bvalid && !npu_m_bvalid;
+    assign npu_m_awready = !npu_m_bvalid && !dma_m_awvalid && !dma_m_bvalid;
+    assign npu_m_wready  = !npu_m_bvalid && !dma_m_wvalid && !dma_m_bvalid;
     assign dma_m_arready = !dma_m_rvalid && !npu_m_arvalid;
     assign npu_m_arready = !npu_m_rvalid && !dma_m_arvalid && !dma_m_rvalid;
     assign display_fb_read_ready = display_rd_ok;
@@ -188,6 +203,8 @@ module e1_soc_top (
         if (!rst_n) begin
             dma_m_bvalid <= 1'b0;
             dma_m_bresp  <= 2'b00;
+            npu_m_bvalid <= 1'b0;
+            npu_m_bresp  <= 2'b00;
             dma_m_rvalid <= 1'b0;
             dma_m_rdata  <= 32'h0;
             dma_m_rresp  <= 2'b00;
@@ -197,6 +214,10 @@ module e1_soc_top (
         end else begin
             if (dma_m_bvalid && dma_m_bready) begin
                 dma_m_bvalid <= 1'b0;
+            end
+
+            if (npu_m_bvalid && npu_m_bready) begin
+                npu_m_bvalid <= 1'b0;
             end
 
             if (dma_m_rvalid && dma_m_rready) begin
@@ -222,6 +243,19 @@ module e1_soc_top (
                     dma_m_bresp <= 2'b10;
                 end
                 dma_m_bvalid <= 1'b1;
+            end
+
+            if (npu_wr_fire) begin
+                if (npu_wr_ok) begin
+                    if (npu_m_wstrb[0]) dram_mem[npu_wr_word][7:0]   <= npu_m_wdata[7:0];
+                    if (npu_m_wstrb[1]) dram_mem[npu_wr_word][15:8]  <= npu_m_wdata[15:8];
+                    if (npu_m_wstrb[2]) dram_mem[npu_wr_word][23:16] <= npu_m_wdata[23:16];
+                    if (npu_m_wstrb[3]) dram_mem[npu_wr_word][31:24] <= npu_m_wdata[31:24];
+                    npu_m_bresp <= 2'b00;
+                end else begin
+                    npu_m_bresp <= 2'b10;
+                end
+                npu_m_bvalid <= 1'b1;
             end
 
             if (dma_rd_fire) begin
@@ -546,6 +580,16 @@ module e1_soc_top (
         .wdata(mmio_wdata),
         .rdata(npu_rdata),
         .irq(irq_npu),
+        .m_axil_awvalid(npu_m_awvalid),
+        .m_axil_awready(npu_m_awready),
+        .m_axil_awaddr(npu_m_awaddr),
+        .m_axil_wvalid(npu_m_wvalid),
+        .m_axil_wready(npu_m_wready),
+        .m_axil_wdata(npu_m_wdata),
+        .m_axil_wstrb(npu_m_wstrb),
+        .m_axil_bvalid(npu_m_bvalid),
+        .m_axil_bready(npu_m_bready),
+        .m_axil_bresp(npu_m_bresp),
         .m_axil_arvalid(npu_m_arvalid),
         .m_axil_arready(npu_m_arready),
         .m_axil_araddr(npu_m_araddr),

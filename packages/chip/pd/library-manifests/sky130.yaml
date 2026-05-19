@@ -1,0 +1,60 @@
+schema: eliza.pd_library_manifest.v1
+pdk: sky130A
+node_class: open_130nm_planar_cmos
+status: open_pdk_libraries_available
+evidence_class: real_open_pdk_library_set
+
+claim_boundary:
+  allowed:
+    - Open Sky130 stdcell, SRAM (OpenRAM), IO, and primitive libraries.
+    - Pinning the open-PDK Volare commit + STD_CELL_LIBRARY version is the contract.
+  blocked:
+    - SRAM compilers from foundry vendors (closed) — not available at Sky130.
+    - Aging/EM/SI library views from foundry vendors — not available at Sky130.
+
+stdcell_libraries:
+  - name: sky130_fd_sc_hd
+    role: primary_high_density
+    version_pin: open_pdks_sky130A
+    cell_count: 426
+  - name: sky130_fd_sc_hs
+    role: high_speed
+    version_pin: open_pdks_sky130A
+  - name: sky130_fd_sc_hdll
+    role: low_leakage
+    version_pin: open_pdks_sky130A
+  - name: sky130_fd_sc_ms
+    role: medium_speed
+    version_pin: open_pdks_sky130A
+
+sram_compiler:
+  name: OpenRAM
+  url: https://github.com/VLSIDA/OpenRAM
+  version_pin: openram-sky130A-2024
+  modes_supported:
+    - 1RW_single_port
+    - 1R1W_dual_port
+  size_band_bits: "1KiB..256KiB per macro"
+  status: real_open_sram_compiler
+
+io_ring_library:
+  name: sky130_fd_io
+  version_pin: open_pdks_sky130A
+  pad_types:
+    - sky130_fd_io__top_gpiov2
+    - sky130_fd_io__top_power_hvc_wpad
+    - sky130_fd_io__top_ground_hvc_wpad
+
+pll_and_clock_ip:
+  name: open_sky130_pll
+  status: limited_open_pll_macros_only
+  notes: No high-Q production PLL hard macro at Sky130. Clock generation via on-chip RC oscillator + external crystal in the demonstrator path.
+
+lpddr_phy:
+  status: not_available_at_open_130nm
+  notes: LPDDR5X/LPDDR6 PHY is fundamentally not a 130 nm capability. Memory aperture is the in-RTL SRAM stand-in.
+
+required_provenance_fields:
+  - PDK_root (Volare-pinned commit)
+  - STD_CELL_LIBRARY name + revision
+  - OpenLane container digest used at build time

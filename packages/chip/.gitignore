@@ -32,6 +32,9 @@ __pycache__/
 *.kicad_prl
 external/
 tools/bin/
+tools/include/
+tools/lib/
+tools/share/
 downloads/
 fw/opensbi-payloads/e1-smode/*.bin
 fw/opensbi-payloads/e1-smode/*.elf

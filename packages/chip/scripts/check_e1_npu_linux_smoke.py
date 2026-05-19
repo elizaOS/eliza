@@ -81,6 +81,7 @@ def build_report() -> dict[str, Any]:
 
     require(problems, "e1-npu-ml-smoke" in smoke, "smoke source lacks command identity")
     require(problems, "E1_NPU_IOC_RUN_GEMM_S8" in smoke, "smoke does not use RUN_GEMM_S8")
+    require(problems, "E1_NPU_OP_RELU4_S8" in smoke, "smoke does not use RELU4_S8")
     require(
         problems, "E1_NPU_IOC_GET_CONTRACT" in smoke, "smoke does not validate the runtime contract"
     )
@@ -96,6 +97,8 @@ def build_report() -> dict[str, Any]:
         "smoke lacks input/output hash markers",
     )
     require(problems, "E1_NPU_IOC_RUN_GEMM_S8" in uapi, "UAPI lacks RUN_GEMM_S8 ioctl")
+    require(problems, "E1_NPU_OP_RELU4_S8" in uapi, "UAPI lacks RELU4_S8 opcode")
+    require(problems, "E1_NPU_OP_VRELU_S8" in uapi, "UAPI lacks VRELU_S8 opcode")
     require(problems, "E1_NPU_IOC_GET_CONTRACT" in uapi, "UAPI lacks GET_CONTRACT ioctl")
     require(problems, "E1_NPU_IOC_SUBMIT_DESCRIPTORS" in uapi, "UAPI lacks descriptor submit ioctl")
     require(

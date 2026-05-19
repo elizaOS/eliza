@@ -15,6 +15,7 @@ ARCH = ROOT / "docs/arch/npu.md"
 MEMORY_MAP = ROOT / "docs/arch/memory-map.md"
 CONTRACT = ROOT / "sw/platform/e1_platform_contract.json"
 RUNTIME = ROOT / "compiler/runtime/e1_npu_runtime.py"
+LOWERING = ROOT / "compiler/runtime/e1_npu_lowering.py"
 BENCH_CONFIG = ROOT / "benchmarks/configs/benchmark_plan.json"
 PROOF_TEMPLATE = ROOT / "docs/benchmarks/capabilities/e1_npu_nnapi.proof.template.json"
 ANDROID_PROOF_TEMPLATE = (
@@ -210,6 +211,20 @@ def check_runtime_contract(errors: list[str]) -> None:
         errors.append("compiler/runtime/e1_npu_runtime.py SCRATCH_BYTES must remain 64")
     if constants.get("OP_DOT8_S4") != 7:
         errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_DOT8_S4 = 7")
+    if constants.get("OP_GEMM_S4") != 9:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_GEMM_S4 = 9")
+    if constants.get("OP_RELU4_S8") != 10:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_RELU4_S8 = 10")
+    if constants.get("OP_VRELU_S8") != 11:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_VRELU_S8 = 11")
+    if constants.get("OP_SDOT4_S4_2_4") != 12:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_SDOT4_S4_2_4 = 12")
+    if constants.get("OP_DOT16_S2") != 13:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_DOT16_S2 = 13")
+    if constants.get("OP_DOT4_FP8_E4M3") != 14:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_DOT4_FP8_E4M3 = 14")
+    if constants.get("OP_EXP2_NEG_Q0_8") != 15:
+        errors.append("compiler/runtime/e1_npu_runtime.py must expose OP_EXP2_NEG_Q0_8 = 15")
 
 
 def check_benchmark_evidence_gates(errors: list[str]) -> None:
@@ -360,6 +375,7 @@ def main() -> int:
         MEMORY_MAP,
         CONTRACT,
         RUNTIME,
+        LOWERING,
         BENCH_CONFIG,
         PROOF_TEMPLATE,
         ANDROID_PROOF_TEMPLATE,
@@ -404,9 +420,11 @@ def main() -> int:
     gaps = set(classification.get("explicit_gaps", []))
     for gap in (
         "no_systolic_array",
-        "no_compiler_backend",
+        "no_production_compiler_backend",
         "no_NNAPI_delegate",
         "no_sustained_benchmark_evidence",
+        "no_INT2_tensor_path",
+        "no_FP8_tensor_path",
     ):
         if gap not in gaps:
             errors.append(f"current repo classification must explicitly retain gap: {gap}")
@@ -414,13 +432,126 @@ def main() -> int:
     rtl_text = RTL.read_text()
     cocotb_text = COCOTB.read_text()
     arch_text = ARCH.read_text()
+    lowering_text = LOWERING.read_text()
     doc_text = DOC.read_text()
     memory_map_text = MEMORY_MAP.read_text()
     for token, path_text, path in (
         ("OP_DOT8_S4", rtl_text, RTL),
+        ("OP_GEMM_S4", rtl_text, RTL),
+        ("OP_RELU4_S8", rtl_text, RTL),
+        ("OP_VRELU_S8", rtl_text, RTL),
+        ("OP_SDOT4_S4_2_4", rtl_text, RTL),
+        ("OP_DOT16_S2", rtl_text, RTL),
+        ("OP_DOT4_FP8_E4M3", rtl_text, RTL),
+        ("OP_EXP2_NEG_Q0_8", rtl_text, RTL),
+        ("exp2_neg_q0_8", rtl_text, RTL),
         ("dot8_s4_sum", rtl_text, RTL),
         ("pack_s4", cocotb_text, COCOTB),
+        ("pack_s2", cocotb_text, COCOTB),
+        ("pack_fp8", cocotb_text, COCOTB),
+        ("gemm_s4", cocotb_text, COCOTB),
+        ("sdot4_s4_2_4", cocotb_text, COCOTB),
+        ("dot16_s2", cocotb_text, COCOTB),
+        ("dot4_fp8_e4m3", cocotb_text, COCOTB),
+        ("vrelu_s8", cocotb_text, COCOTB),
         ("DOT8_S4", arch_text, ARCH),
+        ("GEMM_S4", arch_text, ARCH),
+        ("SDOT4_S4_2_4", arch_text, ARCH),
+        ("DOT16_S2", arch_text, ARCH),
+        ("DOT4_FP8_E4M3", arch_text, ARCH),
+        ("EXP2_NEG_Q0_8", arch_text, ARCH),
+        ("VRELU_S8", arch_text, ARCH),
+        ("lower_matmul_smoke", lowering_text, LOWERING),
+        ("_dispatch_tiled", lowering_text, LOWERING),
+        ("tile_count", lowering_text, LOWERING),
+        ("tiled_dispatch", lowering_text, LOWERING),
+        ("split_k", lowering_text, LOWERING),
+        ("host_accumulates_partials", lowering_text, LOWERING),
+        ("stablehlo.dot_general", lowering_text, LOWERING),
+        ("tflite.fully_connected", lowering_text, LOWERING),
+        ("lower_conv2d_smoke", lowering_text, LOWERING),
+        ("_conv2d_im2col_valid", lowering_text, LOWERING),
+        ("host_materializes_im2col", lowering_text, LOWERING),
+        ("stablehlo.convolution", lowering_text, LOWERING),
+        ("tflite.conv_2d", lowering_text, LOWERING),
+        ("lower_attention_qk_smoke", lowering_text, LOWERING),
+        ("_validate_attention_qk_shape", lowering_text, LOWERING),
+        ("host_transposes_keys", lowering_text, LOWERING),
+        ("host_iterates_heads", lowering_text, LOWERING),
+        ("eliza.attention_qk", lowering_text, LOWERING),
+        ("lower_attention_softmax_smoke", lowering_text, LOWERING),
+        ("_validate_attention_softmax_shape", lowering_text, LOWERING),
+        ("runtime.exp2_neg_q0_8", lowering_text, LOWERING),
+        ("host_divides_by_row_sum", lowering_text, LOWERING),
+        ("eliza.attention_softmax", lowering_text, LOWERING),
+        ("lower_attention_av_smoke", lowering_text, LOWERING),
+        ("_validate_attention_av_shape", lowering_text, LOWERING),
+        ("requires_prequantized_attention", lowering_text, LOWERING),
+        ("eliza.attention_av", lowering_text, LOWERING),
+        ("lower_mlp_smoke", lowering_text, LOWERING),
+        ("_validate_mlp_shape", lowering_text, LOWERING),
+        ("host_requantizes_hidden", lowering_text, LOWERING),
+        ("activation_opcode", lowering_text, LOWERING),
+        ("eliza.transformer_mlp", lowering_text, LOWERING),
+        ("lower_swiglu_smoke", lowering_text, LOWERING),
+        ("_validate_swiglu_shape", lowering_text, LOWERING),
+        ("eliza.swiglu", lowering_text, LOWERING),
+        ("lower_bias_add_smoke", lowering_text, LOWERING),
+        ("_validate_vector_range", lowering_text, LOWERING),
+        ("host_broadcasts_bias", lowering_text, LOWERING),
+        ("eliza.bias_add", lowering_text, LOWERING),
+        ("lower_residual_add_smoke", lowering_text, LOWERING),
+        ("_validate_same_shape", lowering_text, LOWERING),
+        ("host_saturates_int8", lowering_text, LOWERING),
+        ("scalar_add_count", lowering_text, LOWERING),
+        ("eliza.residual_add", lowering_text, LOWERING),
+        ("lower_transformer_block_smoke", lowering_text, LOWERING),
+        ("_validate_transformer_block_shape", lowering_text, LOWERING),
+        ("requires_prequantized_attention", lowering_text, LOWERING),
+        ("eliza.transformer_block", lowering_text, LOWERING),
+        ("lower_modern_decoder_block_smoke", lowering_text, LOWERING),
+        ("_validate_modern_decoder_block_shape", lowering_text, LOWERING),
+        ("computes_qk_scores", lowering_text, LOWERING),
+        ("host_requantizes_qkv", lowering_text, LOWERING),
+        ("eliza.decoder_block", lowering_text, LOWERING),
+        ("lower_rope_smoke", lowering_text, LOWERING),
+        ("_validate_rope_shape", lowering_text, LOWERING),
+        ("eliza.rope", lowering_text, LOWERING),
+        ("lower_rmsnorm_smoke", lowering_text, LOWERING),
+        ("_validate_rmsnorm_shape", lowering_text, LOWERING),
+        ("eliza.rms_norm", lowering_text, LOWERING),
+        ("single_matmul_tiled_smoke_only", arch_text, ARCH),
+        ("single_conv2d_im2col_smoke_only", arch_text, ARCH),
+        ("single-Conv2D im2col runtime orchestration", arch_text, ARCH),
+        ("attention_qk_scores_smoke_only", arch_text, ARCH),
+        ("attention-QK score runtime orchestration", arch_text, ARCH),
+        ("attention_softmax_exp2_q0_8_smoke_only", arch_text, ARCH),
+        ("attention-softmax scalar runtime orchestration", arch_text, ARCH),
+        ("attention_softmax_exp2_q0_8_lowering_smoke", SPEC.read_text(), SPEC),
+        ("attention_av_context_smoke_only", arch_text, ARCH),
+        ("attention-AV context runtime orchestration", arch_text, ARCH),
+        ("transformer_mlp_relu_smoke_only", arch_text, ARCH),
+        ("transformer-MLP ReLU runtime orchestration", arch_text, ARCH),
+        ("swiglu_s8_scalar_gate_smoke_only", arch_text, ARCH),
+        ("gated-MLP scalar runtime orchestration", arch_text, ARCH),
+        ("SwiGLU_s8_scalar_gate_lowering_smoke", SPEC.read_text(), SPEC),
+        ("bias_add_s8_scalar_broadcast_smoke_only", arch_text, ARCH),
+        ("row-wise bias-add scalar broadcast orchestration", arch_text, ARCH),
+        ("residual_add_s8_scalar_smoke_only", arch_text, ARCH),
+        ("residual-add scalar runtime orchestration", arch_text, ARCH),
+        ("single_head_transformer_block_smoke_only", arch_text, ARCH),
+        ("single-head transformer-block runtime orchestration", arch_text, ARCH),
+        ("modern_decoder_block_single_head_smoke_only", arch_text, ARCH),
+        ("modern decoder-block runtime orchestration", arch_text, ARCH),
+        ("modern_decoder_block_single_head_lowering_smoke", SPEC.read_text(), SPEC),
+        ("rope_s8_scalar_smoke_only", arch_text, ARCH),
+        ("RoPE scalar runtime orchestration", arch_text, ARCH),
+        ("RoPE_s8_scalar_lowering_smoke", SPEC.read_text(), SPEC),
+        ("rmsnorm_s8_scalar_smoke_only", arch_text, ARCH),
+        ("RMSNorm scalar runtime orchestration", arch_text, ARCH),
+        ("RMSNorm_s8_scalar_lowering_smoke", SPEC.read_text(), SPEC),
+        ("split-K chunks", arch_text, ARCH),
+        ("multi-tile runtime orchestration", arch_text, ARCH),
         ("PERF_UNSUPPORTED_OPS", memory_map_text, MEMORY_MAP),
         ("SCRATCH[0..15]", memory_map_text, MEMORY_MAP),
         ("Dense INT8 peak", doc_text, DOC),

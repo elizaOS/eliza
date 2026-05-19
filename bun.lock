@@ -1751,6 +1751,21 @@
       "name": "@elizaos/prompts",
       "version": "2.0.0-beta.3",
     },
+    "packages/robot": {
+      "name": "@elizaos/robot",
+      "version": "2.0.0-beta.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+      },
+      "devDependencies": {
+        "@biomejs/biome": "^2.4.14",
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "tsdown": "^0.22.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
+      },
+    },
     "packages/scenario-runner": {
       "name": "@elizaos/scenario-runner",
       "version": "2.0.0-beta.3",
@@ -2030,6 +2045,26 @@
         "tsup": "^8.5.1",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
+      },
+    },
+    "plugins/plugin-ainex": {
+      "name": "@elizaos/plugin-ainex",
+      "version": "2.0.0",
+      "dependencies": {
+        "@elizaos/core": "workspace:*",
+        "sharp": "^0.34.3",
+        "ws": "^8.18.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.3.5",
+        "@types/node": "^25.0.3",
+        "@types/ws": "^8.5.12",
+        "tsdown": "^0.22.0",
+        "typescript": "^6.0.3",
+        "vitest": "^4.1.4",
+      },
+      "peerDependencies": {
+        "zod": "^3.23.8",
       },
     },
     "plugins/plugin-anthropic": {
@@ -5033,6 +5068,8 @@
 
     "@elizaos/plugin-agent-skills": ["@elizaos/plugin-agent-skills@workspace:plugins/plugin-agent-skills"],
 
+    "@elizaos/plugin-ainex": ["@elizaos/plugin-ainex@workspace:plugins/plugin-ainex"],
+
     "@elizaos/plugin-anthropic": ["@elizaos/plugin-anthropic@workspace:plugins/plugin-anthropic"],
 
     "@elizaos/plugin-anthropic-proxy": ["@elizaos/plugin-anthropic-proxy@workspace:plugins/plugin-anthropic-proxy"],
@@ -5254,6 +5291,8 @@
     "@elizaos/plugin-zai": ["@elizaos/plugin-zai@workspace:plugins/plugin-zai"],
 
     "@elizaos/prompts": ["@elizaos/prompts@workspace:packages/prompts"],
+
+    "@elizaos/robot": ["@elizaos/robot@workspace:packages/robot"],
 
     "@elizaos/scenario-runner": ["@elizaos/scenario-runner@workspace:packages/scenario-runner"],
 

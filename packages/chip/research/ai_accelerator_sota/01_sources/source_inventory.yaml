@@ -1,0 +1,220 @@
+schema: eliza.ai_accelerator_sota.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - TPU architecture and TPU-like systolic accelerators
+  - GPU and rack-scale AI accelerator architecture
+  - mobile NPU/GPU/SoC public specifications
+  - open-source GPU/NPU/TPU RTL and generators
+  - sub-2nm / 14A process, backside power, packaging, and reliability effects
+claim_boundary: >
+  Sources below are public papers, vendor pages, product briefs, or open-source
+  project pages. They do not prove E1 implementation status. E1 claims require
+  separate local RTL, simulator, software, PD, and evidence gates.
+
+downloaded_artifacts:
+  - id: arxiv_2304_01433
+    title: "TPU v4: An Optically Reconfigurable Supercomputer for Machine Learning with Hardware Support for Embeddings"
+    url: "https://arxiv.org/abs/2304.01433"
+    local_path: "01_sources/downloads/arxiv_2304_01433_tpu_v4.pdf"
+    sha256: "94f08ac4cd041e46e5037876793761df8043296ac374aa5372af7afb0bdf3ce2"
+    relevance:
+      - optical circuit switched TPU pod topology
+      - SparseCore embedding acceleration
+      - TPU v4 perf/W and system scaling
+  - id: arxiv_2503_00461
+    title: "Leveraging Compute-in-Memory for Efficient Generative Model Inference in TPUs"
+    url: "https://arxiv.org/abs/2503.00461"
+    local_path: "01_sources/downloads/arxiv_2503_00461_cim_tpu.pdf"
+    sha256: "958b32b1e8651df2459156de07981833a59235f7951959f12e524af40b59048c"
+    relevance:
+      - digital compute-in-memory TPU MXU replacement
+      - LLM and diffusion transformer inference energy modeling
+      - design-space hooks for local SRAM/MAC co-design
+  - id: arxiv_2108_13732
+    title: "Deep Learning on Edge TPUs"
+    url: "https://arxiv.org/abs/2108.13732"
+    local_path: "01_sources/downloads/arxiv_2108_13732_edge_tpu.pdf"
+    sha256: "fc624df76b727c129bfbdbd4a8f94137cef4da53c518070d43e222ab62425afb"
+    relevance:
+      - edge TPU deployment constraints
+      - quantization and compiler limits
+      - production edge inference lessons
+  - id: arxiv_2503_05951
+    title: "TPU-Gen: LLM-Driven Custom Tensor Processing Unit Generator"
+    url: "https://arxiv.org/pdf/2503.05951"
+    local_path: "01_sources/downloads/arxiv_2503_05951_tpu_gen.pdf"
+    sha256: "ee64b9b1ac095277f7bb21c27a34f66fb317497ce27c9f8e32fa2b3c7dc594b3"
+    relevance:
+      - generator-driven systolic TPU exploration
+      - automated architecture parameterization
+  - id: arxiv_2506_00008
+    title: "AI Accelerators for Large Language Model Inference: Architecture Analysis and Scaling Strategies"
+    url: "https://arxiv.org/pdf/2506.00008"
+    local_path: "01_sources/downloads/arxiv_2506_00008_llm_accelerators.pdf"
+    sha256: "c31df8eca8464d4ce62cca9ee04076ec64a5949323414329d68ca7ce21362086"
+    relevance:
+      - LLM accelerator scaling patterns
+      - inference memory and interconnect bottlenecks
+  - id: qualcomm_snapdragon_8_elite_gen5_brief
+    title: "Snapdragon 8 Elite Gen 5 Product Brief"
+    url: "https://www.qualcomm.com/content/dam/qcomm-martech/dm-assets/documents/Snapdragon-8-Elite-Gen-5-product-brief.pdf"
+    local_path: "01_sources/downloads/qualcomm_snapdragon_8_elite_gen5_product_brief.pdf"
+    sha256: "f1e3b46b3407c67820d961a7251de3ee0d4d049a7b1ce886682c3b0c52c93a81"
+    relevance:
+      - mobile CPU/GPU/NPU system target
+      - Adreno high-performance memory and tile-memory features
+      - 3 nm process and LPDDR5X platform constraints
+  - id: intel_foundry_ai_hpc_brief
+    title: "Accelerating AI and HPC with advanced technologies"
+    url: "https://www.intel.com/content/www/us/en/foundry/library/ai-hpc.html"
+    local_path: "01_sources/downloads/intel_foundry_ai_hpc_brief.pdf"
+    sha256: "00aa8af93a0c22b650350c47e195808423ff4e0b4ed2cdc084535575a9207c8d"
+    relevance:
+      - Intel 18A/14A process claims
+      - RibbonFET, PowerVia, PowerDirect, Turbo Cells
+      - EMIB, Foveros Direct, HBM integration
+
+online_sources:
+  - id: google_ironwood_tpu_v7
+    title: "Ironwood: The first Google TPU for the age of inference"
+    url: "https://blog.google/innovation-and-ai/infrastructure-and-cloud/google-cloud/ironwood-tpu-age-of-inference/"
+    source_type: "vendor_page"
+    captured_points:
+      - "192 GB HBM per chip"
+      - "7.37 TB/s HBM bandwidth per chip"
+      - "1.2 TB/s bidirectional ICI"
+      - "2x perf/W relative to Trillium"
+      - "nearly 30x power efficiency relative to first Cloud TPU from 2018"
+  - id: nvidia_blackwell_architecture
+    title: "NVIDIA Blackwell Architecture"
+    url: "https://www.nvidia.com/en-us/data-center/technologies/blackwell-architecture/"
+    source_type: "vendor_page"
+    captured_points:
+      - "208B transistors, dual reticle-limited dies"
+      - "10 TB/s chip-to-chip interconnect"
+      - "second-generation Transformer Engine with FP4"
+      - "NVLink Switch 130 TB/s in 72-GPU NVLink domain"
+      - "decompression and RAS engines"
+  - id: nvidia_gb200_nvl72
+    title: "NVIDIA GB200 NVL72"
+    url: "https://www.nvidia.com/en-gb/data-center/gb200-nvl72/"
+    source_type: "vendor_page"
+    captured_points:
+      - "72 Blackwell GPUs and 36 Grace CPUs per rack"
+      - "720 dense / 1440 sparse PFLOPS NVFP4 per rack"
+      - "13.4 TB HBM3E and 576 TB/s HBM bandwidth per rack"
+      - "3.6 TB/s NVLink bandwidth per GB200 superchip"
+      - "25x energy-efficiency marketing claim versus H100 air-cooled infrastructure"
+  - id: nvidia_gb300_nvl72
+    title: "NVIDIA GB300 NVL72 / Blackwell Ultra"
+    url: "https://www.nvidia.com/en-gb/data-center/gb300-nvl72/"
+    source_type: "vendor_page"
+    captured_points:
+      - "72 Blackwell Ultra GPUs and 36 Grace CPUs per liquid-cooled rack"
+      - "1.5x larger HBM3E memory and added AI compute versus GB200 generation"
+      - "reasoning and long-context inference positioning"
+      - "GB300 is the newer Blackwell Ultra comparison point after GB200"
+  - id: nvidia_blackwell_ultra_blog
+    title: "NVIDIA Blackwell Ultra for the Era of AI Reasoning"
+    url: "https://developer.nvidia.com/blog/nvidia-blackwell-ultra-for-the-era-of-ai-reasoning/"
+    source_type: "vendor_technical_blog"
+    captured_points:
+      - "1.5x more AI compute FLOPS compared to Blackwell GPUs"
+      - "up to 288 GB HBM3E memory per GPU"
+      - "FP4 reasoning-inference focus"
+      - "GB300 NVL72 rack-scale platform"
+  - id: qualcomm_snapdragon_8_elite_gen5_press
+    title: "Snapdragon 8 Elite Gen 5 announcement"
+    url: "https://www.qualcomm.com/news/releases/2025/09/snapdragon-8-elite-gen-5--the-world-s-fastest-mobile-system-on-a"
+    source_type: "vendor_press_release"
+    captured_points:
+      - "37% faster Hexagon NPU than prior Snapdragon 8 Elite"
+      - "23% faster Adreno GPU"
+      - "20% faster Oryon CPU"
+      - "agentic on-device AI positioning"
+  - id: mediatek_dimensity_9400_press
+    title: "MediaTek Dimensity 9400 launch"
+    url: "https://www.mediatek.com/press-room/mediateks-dimensity-9400-flagship-soc-offers-extreme-performance-and-efficiency-for-the-latest-ai-experiences"
+    source_type: "vendor_press_release"
+    captured_points:
+      - "TSMC second-generation 3 nm process"
+      - "up to 40% more power efficient than Dimensity 9300"
+      - "8th-generation NPU"
+      - "80% faster LLM prompt performance and 35% higher AI power efficiency than Dimensity 9300"
+  - id: mediatek_dimensity_9400_product
+    title: "MediaTek Dimensity 9400 product page"
+    url: "https://www.mediatek.com/products/smartphones/mediatek-dimensity-9400"
+    source_type: "vendor_page"
+    captured_points:
+      - "LPDDR5X 10667 support"
+      - "Arm Immortalis-G925 12-core GPU"
+      - "41% peak GPU uplift and 44% GPU power-efficiency uplift claims"
+      - "on-device video generation, LoRA training, DiT, MoE support claims"
+  - id: introl_tpu_generations
+    title: "Google TPU Architecture: 7 Generations Explained"
+    url: "https://introl.com/blog/google-tpu-architecture-complete-guide-7-generations"
+    source_type: "secondary_blog"
+    captured_points:
+      - "generation-by-generation TPU summary"
+      - "use only as orientation; prefer Google/arXiv for claims"
+  - id: gemmini
+    title: "Gemmini: open-source agile systolic array generator"
+    url: "https://alonamid.github.io/publication/gemmini/"
+    source_type: "open_source_project"
+    captured_points:
+      - "RISC-V/Rocket Chip integrated systolic array generator"
+      - "RoCC accelerator model"
+      - "fabricated test SoCs in TSMC 16 nm and Intel 22FFL"
+  - id: vortex_gpgpu
+    title: "Vortex open-source RISC-V GPGPU"
+    url: "https://github.com/vortexgpgpu/vortex"
+    source_type: "open_source_project"
+    captured_points:
+      - "full-stack open-source RISC-V GPGPU"
+      - "OpenCL/OpenGL oriented software stack"
+      - "simulator, RTL simulator, FPGA backends"
+  - id: nvdla
+    title: "NVIDIA Deep Learning Accelerator"
+    url: "https://nvdla.org/"
+    source_type: "open_source_project"
+    captured_points:
+      - "Verilog, C-model, compiler, Linux drivers, tests"
+      - "configurable inference accelerator architecture"
+  - id: opencelerity
+    title: "OpenCelerity"
+    url: "https://opencelerity.org/"
+    source_type: "open_source_project"
+    captured_points:
+      - "open-source RISC-V tiered accelerator fabric SoC"
+      - "reference for manycore/fabric integration"
+  - id: esp_columbia
+    title: "ESP open SoC platform"
+    url: "https://www.esp.cs.columbia.edu/"
+    source_type: "open_source_project"
+    captured_points:
+      - "SoC platform with accelerator flows"
+      - "RTL/HLS/ML accelerator integration"
+      - "Vortex integration reference"
+  - id: opengemm
+    title: "OpenGeMM"
+    url: "https://arxiv.org/abs/2411.09543"
+    source_type: "paper"
+    captured_points:
+      - "GEMM accelerator generator"
+      - "reported 4.68 TOPS/W system efficiency"
+      - "compare against Gemmini for tile-utilization ideas"
+  - id: sub3nm_reliability
+    title: "Transistor-to-GDS Reliability Analysis in Sub-3nm"
+    url: "https://portal.fis.tum.de/en/publications/transistor-to-gds-reliability-analysis-in-sub-3nm-impact-of-self-/"
+    source_type: "paper_metadata"
+    captured_points:
+      - "self-heating and aging affect timing closure"
+      - "reported larger end-of-life degradation on AI accelerator than RISC-V core"
+      - "requires reliability-aware standard-cell and signoff methodology"
+  - id: bspdn_thermal_sip
+    title: "Thermal Implications of Non-Uniform Power in BSPDN-Enabled 2.5D/3D Chiplet Systems"
+    url: "https://arxiv.org/abs/2508.02284"
+    source_type: "paper"
+    captured_points:
+      - "backside power delivery changes 2.5D/3D package thermal behavior"
+      - "non-uniform NPU/GPU hotspots matter for package architecture"

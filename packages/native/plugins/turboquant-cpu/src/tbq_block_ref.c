@@ -155,9 +155,15 @@ static inline void tbq4_set(uint8_t * qs, int idx, uint8_t code) {
     else                  qs[j] = (uint8_t)((qs[j] & 0x0Fu) | ((code & 0x0Fu) << 4));
 }
 
-/* ---- public API ---------------------------------------------------- */
+/* ---- scalar reference implementations ------------------------------ *
+ *
+ * Exposed as `_ref` variants. The public no-suffix entry points
+ * (`tbq_quantize_tbq3_block` / `tbq_decode_tbq3_block`, ...) live in
+ * tbq_dispatch.c and trampoline through a function pointer table to
+ * the best available SIMD impl (ref / RVV today; NEON / AVX2 later).
+ */
 
-void tbq_quantize_tbq3_block(const float src[32], tbq_block_tbq3_0 * dst) {
+void tbq_quantize_tbq3_block_ref(const float src[32], tbq_block_tbq3_0 * dst) {
     float rotated[32];
     tbq_precondition(src, rotated);
     float sumsq = 0.0f;
@@ -172,7 +178,7 @@ void tbq_quantize_tbq3_block(const float src[32], tbq_block_tbq3_0 * dst) {
     }
 }
 
-void tbq_quantize_tbq4_block(const float src[32], tbq_block_tbq4_0 * dst) {
+void tbq_quantize_tbq4_block_ref(const float src[32], tbq_block_tbq4_0 * dst) {
     float rotated[32];
     tbq_precondition(src, rotated);
     float sumsq = 0.0f;
@@ -187,14 +193,14 @@ void tbq_quantize_tbq4_block(const float src[32], tbq_block_tbq4_0 * dst) {
     }
 }
 
-void tbq_decode_tbq3_block(const tbq_block_tbq3_0 * src, float dst[32]) {
+void tbq_decode_tbq3_block_ref(const tbq_block_tbq3_0 * src, float dst[32]) {
     const float d = tbq_fp16_to_fp32(src->d);
     if (d == 0.0f) { memset(dst, 0, 32 * sizeof(float)); return; }
     for (int i = 0; i < TBQ_QK; i++) dst[i] = d * TBQ3_CODEBOOK[tbq3_get(src->qs, i)];
     tbq_uncondition(dst);
 }
 
-void tbq_decode_tbq4_block(const tbq_block_tbq4_0 * src, float dst[32]) {
+void tbq_decode_tbq4_block_ref(const tbq_block_tbq4_0 * src, float dst[32]) {
     const float d = tbq_fp16_to_fp32(src->d);
     if (d == 0.0f) { memset(dst, 0, 32 * sizeof(float)); return; }
     for (int i = 0; i < TBQ_QK; i++) dst[i] = d * TBQ4_CODEBOOK[tbq4_get(src->qs, i)];

@@ -1,0 +1,18 @@
+schema: eliza.ihp_sg13g2_sram_compiler_config.v1
+macro_name: e1_sram_4kb_1rw_sg13g2
+pdk: sg13g2
+words: 1024
+word_size_bits: 32
+ports:
+  read_write: 1
+  read_only: 0
+  write_only: 0
+operating_corners:
+  - {name: TT, voltage_v: 1.2, temperature_c: 25}
+  - {name: SS, voltage_v: 1.08, temperature_c: 125}
+  - {name: FF, voltage_v: 1.32, temperature_c: -40}
+words_per_row: 64
+retention_bias: standard
+periphery_track_strategy: ring
+intended_use:
+  - portability_smoke_only

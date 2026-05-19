@@ -104,11 +104,7 @@ class SoftwareBspEvidenceTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("missing docs/evidence/buildroot/eliza_e1_defconfig.log", result.stdout)
-        self.assertIn(
-            "missing docs/evidence/android/eliza_ai_soc_sepolicy_build.log",
-            result.stdout,
-        )
-        self.assertIn("missing docs/evidence/android/qemu_riscv64_smoke.log", result.stdout)
+        self.assertIn("aosp BSP external evidence blocked", result.stdout)
         self.assertIn("missing docs/evidence/linux/opensbi_eliza_build.log", result.stdout)
         self.assertNotIn("missing docs/evidence/linux/u_boot_eliza_build.log", result.stdout)
 

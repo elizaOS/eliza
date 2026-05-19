@@ -126,6 +126,9 @@ def metric_entry(config: NpuScaleConfig, estimate) -> dict:
         "macs": estimate.macs,
         "bytes_read": estimate.bytes_read,
         "bytes_written": estimate.bytes_written,
+        "external_bytes_read": estimate.external_bytes_read,
+        "external_bytes_written": estimate.external_bytes_written,
+        "local_sram_bytes": estimate.local_sram_bytes,
         "compute_cycles": estimate.compute_cycles,
         "memory_cycles": estimate.memory_cycles,
         "memory_wait_cycles": memory_wait_cycles,
@@ -134,6 +137,12 @@ def metric_entry(config: NpuScaleConfig, estimate) -> dict:
         "modeled_frequency_hz": config.clock_hz,
         "throughput_ops_s": (estimate.macs * 2) / elapsed_s,
         "observed_tops": estimate.observed_tops(config.clock_hz),
+        "energy_nj": estimate.energy_nj(config),
+        "average_power_w": estimate.average_power_w(config),
+        "tops_per_watt": estimate.tops_per_watt(config),
+        "arithmetic_intensity_macs_per_external_byte": (
+            estimate.arithmetic_intensity_macs_per_external_byte()
+        ),
     }
 
 
@@ -150,6 +159,19 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
         ) // effective_dma_bytes_per_cycle
         cycles = max(compute_cycles, memory_cycles)
         elapsed_s = cycles / effective_clock_hz
+        dynamic_pj = (
+            estimate.macs * config.energy_pj_per_int8_mac * corner.dynamic_power_scale
+            + estimate.local_sram_bytes
+            * config.local_sram_pj_per_byte
+            * corner.dynamic_power_scale
+            + (estimate.external_bytes_read + estimate.external_bytes_written)
+            * config.external_memory_pj_per_byte
+            * corner.interconnect_rc_derate
+        )
+        static_nj = config.static_power_w * corner.leakage_power_scale * elapsed_s * 1e9
+        energy_nj = dynamic_pj / 1000.0 + static_nj
+        average_power_w = energy_nj / 1e9 / elapsed_s
+        observed_tops = estimate.macs * 2 / elapsed_s / 1e12
         kernel_entries.append(
             {
                 "kernel": estimate.kernel,
@@ -158,8 +180,11 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
                 "memory_cycles": memory_cycles,
                 "memory_wait_cycles": max(0, memory_cycles - compute_cycles),
                 "modeled_frequency_hz": effective_clock_hz,
-                "observed_tops": estimate.macs * 2 / elapsed_s / 1e12,
+                "observed_tops": observed_tops,
                 "utilization_percent": 100.0 * compute_cycles / cycles,
+                "energy_nj": energy_nj,
+                "average_power_w": average_power_w,
+                "tops_per_watt": observed_tops / average_power_w,
             }
         )
     min_observed_tops = min(kernel["observed_tops"] for kernel in kernel_entries)
@@ -178,6 +203,8 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
         "min_observed_tops": min_observed_tops,
         "max_observed_tops": max(kernel["observed_tops"] for kernel in kernel_entries),
         "min_utilization_percent": min(kernel["utilization_percent"] for kernel in kernel_entries),
+        "min_tops_per_watt": min(kernel["tops_per_watt"] for kernel in kernel_entries),
+        "max_average_power_w": max(kernel["average_power_w"] for kernel in kernel_entries),
         "kernels": kernel_entries,
         "claim_boundary": corner.claim_boundary,
         "release_use": "prohibited_until_pdk_extracted_timing_power_thermal_signoff",
@@ -219,6 +246,10 @@ def main() -> int:
             "supports_bf16": config.supports_bf16,
             "supports_fp16": config.supports_fp16,
             "supports_fp8": config.supports_fp8,
+            "energy_pj_per_int8_mac": config.energy_pj_per_int8_mac,
+            "local_sram_pj_per_byte": config.local_sram_pj_per_byte,
+            "external_memory_pj_per_byte": config.external_memory_pj_per_byte,
+            "static_power_w": config.static_power_w,
             "precision_matrix": config.precision_matrix(),
             "descriptor_queue": {
                 "depth": config.dma_queue_depth,
@@ -242,6 +273,8 @@ def main() -> int:
             "min_observed_tops": min(kernel["observed_tops"] for kernel in kernels),
             "max_observed_tops": max(kernel["observed_tops"] for kernel in kernels),
             "min_utilization_percent": min(kernel["utilization_percent"] for kernel in kernels),
+            "min_tops_per_watt": min(kernel["tops_per_watt"] for kernel in kernels),
+            "max_average_power_w": max(kernel["average_power_w"] for kernel in kernels),
             "worst_process_corner": worst_corner["name"],
             "worst_process_corner_min_observed_tops": worst_corner["min_observed_tops"],
             "process_corner_claim_boundary": "modeled_derates_only_not_14a_pdk_or_signoff_evidence",

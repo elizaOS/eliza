@@ -22,6 +22,7 @@ typedef enum {
     POLAR_SIMD_NEON,
     POLAR_SIMD_AVX2,
     POLAR_SIMD_AVXVNNI,
+    POLAR_SIMD_RVV,
 } polar_simd_t;
 
 static polar_simd_t polar_pick(void) {
@@ -35,6 +36,9 @@ static polar_simd_t polar_pick(void) {
 #endif
 #if defined(POLARQUANT_HAVE_NEON)
     if (f.has_neon) return POLAR_SIMD_NEON;
+#endif
+#if defined(POLARQUANT_HAVE_RVV) && (POLARQUANT_HAVE_RVV+0) == 1
+    if (f.has_rvv) return POLAR_SIMD_RVV;
 #endif
     (void)f;
     return POLAR_SIMD_REF;
@@ -59,6 +63,10 @@ void dequantize_row_q4_polar(
         case POLAR_SIMD_AVXVNNI:
             dequantize_row_q4_polar_avx2(x, y, k, use_qjl); return;
 #endif
+#if defined(POLARQUANT_HAVE_RVV) && (POLARQUANT_HAVE_RVV+0) == 1
+        case POLAR_SIMD_RVV:
+            dequantize_row_q4_polar_rvv(x, y, k, use_qjl); return;
+#endif
         default:
             dequantize_row_q4_polar_ref(x, y, k, use_qjl); return;
     }
@@ -76,6 +84,10 @@ void ggml_vec_dot_q4_polar_q8_0(
         case POLAR_SIMD_AVX2:
         case POLAR_SIMD_AVXVNNI:
             ggml_vec_dot_q4_polar_q8_0_avx2(n, s, x, y, use_qjl); return;
+#endif
+#if defined(POLARQUANT_HAVE_RVV) && (POLARQUANT_HAVE_RVV+0) == 1
+        case POLAR_SIMD_RVV:
+            ggml_vec_dot_q4_polar_q8_0_rvv(n, s, x, y, use_qjl); return;
 #endif
         default:
             ggml_vec_dot_q4_polar_q8_0_ref(n, s, x, y, use_qjl); return;
@@ -95,6 +107,10 @@ void ggml_vec_dot_q4_polar_preht_f32(
         case POLAR_SIMD_AVXVNNI:
             ggml_vec_dot_q4_polar_preht_f32_avx2(n, s, x, q_preht, use_qjl); return;
 #endif
+#if defined(POLARQUANT_HAVE_RVV) && (POLARQUANT_HAVE_RVV+0) == 1
+        case POLAR_SIMD_RVV:
+            ggml_vec_dot_q4_polar_preht_f32_rvv(n, s, x, q_preht, use_qjl); return;
+#endif
         default:
             ggml_vec_dot_q4_polar_preht_f32_ref(n, s, x, q_preht, use_qjl); return;
     }
@@ -105,6 +121,7 @@ const char * polarquant_active_simd(void) {
         case POLAR_SIMD_AVXVNNI: return "avxvnni";
         case POLAR_SIMD_AVX2:    return "avx2";
         case POLAR_SIMD_NEON:    return "neon";
+        case POLAR_SIMD_RVV:     return "rvv";
         default:                 return "ref";
     }
 }

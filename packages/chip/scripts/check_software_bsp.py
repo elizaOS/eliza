@@ -201,6 +201,7 @@ FORBIDDEN_TRANSCRIPT_MARKERS = [
     "status=FAIL",
     "status: FAIL",
     "eliza-evidence: status=FAIL",
+    "openagent-evidence: status=FAIL",
 ]
 
 
@@ -273,7 +274,7 @@ def validate_evidence_file(item: dict[str, Any]) -> list[str]:
             + ", ".join(dict.fromkeys(forbidden))
         )
 
-    status_match = re.search(r"eliza-evidence:\s*status=([A-Z]+)", text)
+    status_match = re.search(r"(?:eliza|openagent)-evidence:\s*status=([A-Z]+)", text)
     if not status_match:
         problems.append(f"{item['path']} missing evidence PASS status marker")
     elif status_match.group(1) != "PASS":
@@ -281,8 +282,11 @@ def validate_evidence_file(item: dict[str, Any]) -> list[str]:
 
     claim_boundary = item.get("claim_boundary", "")
     if claim_boundary in {AOSP_REFERENCE_ONLY_BOUNDARY, AOSP_VIRTUAL_DEVICE_BOUNDARY}:
-        marker = f"eliza-evidence: claim_boundary={claim_boundary}"
-        if marker not in text:
+        markers = {
+            f"eliza-evidence: claim_boundary={claim_boundary}",
+            f"openagent-evidence: claim_boundary={claim_boundary}",
+        }
+        if not any(marker in text for marker in markers):
             problems.append(f"{item['path']} missing reference-only claim boundary marker")
 
     return problems
@@ -444,9 +448,7 @@ def check_aosp_product_glue(errors: list[str]) -> None:
         "eliza_ai_soc-trunk_staging-userdebug",
     }
     if "COMMON_LUNCH_CHOICES" not in text or not any(choice in text for choice in lunch_choices):
-        errors.append(
-            "AOSP AndroidProducts.mk must expose an eliza_ai_soc userdebug lunch choice"
-        )
+        errors.append("AOSP AndroidProducts.mk must expose an eliza_ai_soc userdebug lunch choice")
     board_text = board.read_text(errors="ignore") if board.is_file() else ""
     for term in [
         "TARGET_ARCH := riscv64",
@@ -655,6 +657,12 @@ def check_target(name: str) -> tuple[list[str], list[str]]:
         blockers.append(
             f"{name} BSP BLOCKED: missing evidence for {spec['evidence_note']}: "
             + ", ".join(missing_with_codes)
+        )
+    elif blockers:
+        blockers.insert(
+            0,
+            f"{name} BSP BLOCKED: external evidence for {spec['evidence_note']} "
+            "does not satisfy required transcript markers",
         )
 
     return errors, blockers

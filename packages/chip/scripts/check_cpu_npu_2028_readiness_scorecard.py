@@ -680,8 +680,9 @@ def check_tapeout_readiness_audit(scorecard: dict[str, Any], errors: list[str]) 
     )
     benchmark_requirements = summary.get("blocked_benchmark_requirements")
     require(
-        isinstance(benchmark_requirements, list) and "benchmark_model" in benchmark_requirements,
-        "tapeout readiness audit must enumerate blocked benchmark_model evidence",
+        isinstance(benchmark_requirements, list)
+        and "benchmarks/capabilities/e1_npu_nnapi.proof.json" in benchmark_requirements,
+        "tapeout readiness audit must enumerate blocked e1 NPU NNAPI proof evidence",
         errors,
     )
     benchmark_rows = data.get("benchmark_release_readiness")

@@ -1,0 +1,71 @@
+schema: eliza.pd_asap7_block_set.v1
+pdk: ASAP7
+node_class: predictive_7nm_finfet
+status: predictive_pdk_shape_only_not_signoff
+evidence_class: predictive_finfet_shape_only
+
+flow: openroad_orfs
+container_image: openroad/orfs:latest
+container_image_digest: not_pinned_predictive_lane_only
+
+stdcell_library_primary: asap7sc7p5t
+stdcell_pitch_nm: 27
+vt_default: LVT
+multi_vt_available:
+  - SLVT
+  - LVT
+  - RVT
+  - SRAM
+
+clock_target:
+  big_core_period_ps: 250
+  big_core_target_mhz: 4000
+  npu_tile_period_ps: 500
+  npu_tile_target_mhz: 2000
+  slc_slice_period_ps: 333
+  slc_slice_target_mhz: 3000
+
+blocks:
+  - id: big_core_shell
+    role: cpu_big_core_finfet_shape
+    rtl_top: e1_soc_top
+    rtl_files:
+      - rtl/top/e1_soc_top.sv
+      - rtl/cpu/e1_cva6_wrapper.sv
+      - rtl/cpu/e1_cpu_axi_bridge.sv
+    clock_target_mhz: 4000
+    output_report: docs/evidence/process/asap7/big_core_shape.json
+    status: blocked_until_orfs_flow_executed
+    notes: >
+      Big-core wrapper is currently a CVA6 shell with a small in-order CPU
+      stub. ASAP7 shape applies to the wrapper, not to a real 8-wide Ascalon
+      / Kunminghu integration. As soon as a real big-core RTL lands, rerun.
+
+  - id: npu_tile
+    role: npu_compute_finfet_shape
+    rtl_top: e1_npu
+    rtl_files:
+      - rtl/npu/e1_npu.sv
+    clock_target_mhz: 2000
+    output_report: docs/evidence/process/asap7/npu_tile_shape.json
+    status: blocked_until_orfs_flow_executed
+
+  - id: slc_slice
+    role: shared_last_level_cache_slice_finfet_shape
+    rtl_top: e1_axi_lite_dram
+    rtl_files:
+      - rtl/memory/e1_axi_lite_dram.sv
+    clock_target_mhz: 3000
+    output_report: docs/evidence/process/asap7/slc_slice_shape.json
+    status: blocked_until_orfs_flow_executed
+
+projection_pipeline:
+  next_step: scripts/project_ppa_to_n2p.py
+  scaling_factors_source: docs/pd/process-node-selection.md
+  output_marker: projection_only_never_signoff
+
+forbidden_uses:
+  - cite_asap7_results_as_tsmc_n2p_signoff
+  - cite_asap7_results_as_tsmc_a14_signoff
+  - cite_asap7_results_as_intel_14a_signoff
+  - cite_asap7_sram_density_as_real_n2_macro_density

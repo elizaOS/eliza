@@ -8,10 +8,10 @@ boot, and benchmark workstreams now have stricter evidence intake. Renode
 remains blocked by a missing host executable and missing real transcript.
 Software BSP evidence remains blocked by missing external Buildroot, Linux,
 OpenSBI, U-Boot, AOSP, CTS, and VTS logs. Benchmarks now reject repo-local
-smoke shims as real tools; fio host runs pass, while CoreMark, STREAM,
-lmbench, TensorFlow Lite `benchmark_model`, and e1-NPU NNAPI remain blocked
-until real target executables and `benchmarks/capabilities/e1_npu_nnapi.proof.json`
-capability evidence exist.
+smoke shims as real tools; fio host runs pass, and local CoreMark, STREAM,
+lmbench, and TensorFlow Lite `benchmark_model` binaries are available for
+strict dry-run planning. e1-NPU NNAPI remains blocked until
+`benchmarks/capabilities/e1_npu_nnapi.proof.json` capability evidence exists.
 
 Heartbeat update 2026-05-17 04:33 PDT: CPU/AP is now an explicit MVP blocker,
 not an implied Linux boot claim. The in-repo tiny CPU remains local contract

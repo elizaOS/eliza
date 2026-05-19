@@ -73,23 +73,30 @@ The NPU is only real when the software stack can use it:
 ## Current Repo Gap
 
 `rtl/npu/e1_npu.sv` is currently a scalar datapath plus a 64-byte scratchpad
-GEMM prototype. It now includes a packed signed INT4 dot-product opcode as the
-first low-precision primitive, but it is still missing the actual tensor NPU
-structure:
+GEMM prototype. It now includes packed INT4, INT2, scalar FP8, descriptor read
+streaming into scratchpad, and a streamed `GEMM_S8` descriptor writeback smoke
+path. The runtime lowering evidence now includes bounded matmul, Conv2D,
+attention QK/AV, RoPE, RMSNorm, SwiGLU, and a single-head modern decoder-block
+smoke path with explicit prequantized-attention and non-production compiler
+boundaries. The design is still missing the actual tensor NPU structure:
 
 - no tensor command queue,
-- no DMA-fed scratchpad,
+- no production DMA-fed scratchpad or coherent tensor memory system,
 - no large SRAM,
 - no systolic array,
 - no sparse INT4 GEMM,
-- no INT2 or FP8 execution,
+- no INT2 or FP8 tensor execution,
 - no compiler backend,
 - no Android accelerator delegate,
-- no area or power model,
+- no measured area or power model,
 - no sustained hardware benchmark evidence.
 
-The next implementation move is to replace the scalar GEMM prototype with a
-parameterized INT8/INT4 tile model and feed it through a descriptor-ring ABI.
+The deterministic scale model now reports cycle, memory, energy, and TOPS/W
+estimates for open 2028 targets, including a modeled SOTA point above 160 dense
+INT8 TOPS and 18 TOPS/W on a large GEMM. That is planning evidence only. The
+next implementation move remains replacing the scalar GEMM prototype with a
+parameterized INT8/INT4 tile RTL model and proving it through descriptor-fed
+runtime tests.
 
 ## Evidence Gate
 

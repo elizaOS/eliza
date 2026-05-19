@@ -3899,17 +3899,16 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * filename. Callers should fire this on a long-cache TTL boundary, on
 	 * `closeConversation`, and at process shutdown.
 	 *
-	 * Returns true when a save was issued, false when there was no slot to
-	 * save or the best-effort save failed (e.g. slot pinning disabled,
-	 * server not running, shutdown race).
+	 * Best-effort save; failures are swallowed because callers run this on
+	 * close/shutdown paths where cache persistence must not fail the request.
 	 */
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
+	): Promise<void> {
 		const baseUrl = this.baseUrl;
 		const conversationDir = this.conversationKvDir;
-		if (!baseUrl || !conversationDir || slotId < 0) return false;
+		if (!baseUrl || !conversationDir || slotId < 0) return;
 		const targetPath = path.join(
 			conversationDir,
 			slotCacheFileName(conversationId, "long"),
@@ -3917,10 +3916,7 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		try {
 			await this.requestSlotSave(baseUrl, slotId, targetPath);
 			this.persistedConversations.add(conversationId);
-			return true;
-		} catch {
-			return false;
-		}
+		} catch {}
 	}
 
 	/**

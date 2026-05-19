@@ -8,6 +8,12 @@ module e1_npu_formal(input logic clk);
     (* anyseq *) logic [31:0] wdata;
     logic [31:0] rdata;
     logic irq;
+    logic m_axil_awvalid;
+    logic [31:0] m_axil_awaddr;
+    logic m_axil_wvalid;
+    logic [31:0] m_axil_wdata;
+    logic [3:0] m_axil_wstrb;
+    logic m_axil_bready;
     logic m_axil_arvalid;
     logic [31:0] m_axil_araddr;
     logic m_axil_rready;
@@ -25,6 +31,16 @@ module e1_npu_formal(input logic clk);
         .wdata(wdata),
         .rdata(rdata),
         .irq(irq),
+        .m_axil_awvalid(m_axil_awvalid),
+        .m_axil_awready(1'b0),
+        .m_axil_awaddr(m_axil_awaddr),
+        .m_axil_wvalid(m_axil_wvalid),
+        .m_axil_wready(1'b0),
+        .m_axil_wdata(m_axil_wdata),
+        .m_axil_wstrb(m_axil_wstrb),
+        .m_axil_bvalid(1'b0),
+        .m_axil_bready(m_axil_bready),
+        .m_axil_bresp(2'b00),
         .m_axil_arvalid(m_axil_arvalid),
         .m_axil_arready(1'b0),
         .m_axil_araddr(m_axil_araddr),

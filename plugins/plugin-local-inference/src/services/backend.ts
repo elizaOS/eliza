@@ -218,10 +218,7 @@ export interface LocalInferenceBackend {
 	}>;
 
 	/** Persist a slot's KV cache to disk under the conversation directory. */
-	persistConversationKv?(
-		conversationId: string,
-		slotId: number,
-	): Promise<boolean>;
+	persistConversationKv?(conversationId: string, slotId: number): Promise<void>;
 
 	/** Restore a slot's KV cache from disk into the running backend. */
 	restoreConversationKv?(
@@ -679,10 +676,10 @@ export class BackendDispatcher implements LocalInferenceBackend {
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
+	): Promise<void> {
 		this.ensureLoaded();
-		if (!this.active?.persistConversationKv) return false;
-		return this.active?.persistConversationKv(conversationId, slotId);
+		if (!this.active?.persistConversationKv) return;
+		await this.active?.persistConversationKv(conversationId, slotId);
 	}
 
 	async restoreConversationKv(

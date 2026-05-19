@@ -66,22 +66,52 @@ function DeploymentStatusBadge({
       return (
         <StatusBadge
           status="success"
-          label={t("cloud.apps.overview.deploymentDeployed", { defaultValue: "Deployed" })}
+          label={t("cloud.apps.overview.deploymentDeployed", {
+            defaultValue: "Deployed",
+          })}
           icon={<CheckCircle2 />}
         />
       );
     case "deploying":
       return (
-        <StatusBadge status="processing" label={t("cloud.apps.overview.deploymentDeploying", { defaultValue: "Deploying" })} icon={<Rocket />} />
+        <StatusBadge
+          status="processing"
+          label={t("cloud.apps.overview.deploymentDeploying", {
+            defaultValue: "Deploying",
+          })}
+          icon={<Rocket />}
+        />
       );
     case "building":
       return (
-        <StatusBadge status="processing" label={t("cloud.apps.overview.deploymentBuilding", { defaultValue: "Building" })} icon={<Hammer />} />
+        <StatusBadge
+          status="processing"
+          label={t("cloud.apps.overview.deploymentBuilding", {
+            defaultValue: "Building",
+          })}
+          icon={<Hammer />}
+        />
       );
     case "failed":
-      return <StatusBadge status="error" label={t("cloud.apps.overview.deploymentFailed", { defaultValue: "Failed" })} icon={<XCircle />} />;
+      return (
+        <StatusBadge
+          status="error"
+          label={t("cloud.apps.overview.deploymentFailed", {
+            defaultValue: "Failed",
+          })}
+          icon={<XCircle />}
+        />
+      );
     default:
-      return <StatusBadge status="neutral" label={t("cloud.apps.overview.deploymentDraft", { defaultValue: "Draft" })} icon={<FileEdit />} />;
+      return (
+        <StatusBadge
+          status="neutral"
+          label={t("cloud.apps.overview.deploymentDraft", {
+            defaultValue: "Draft",
+          })}
+          icon={<FileEdit />}
+        />
+      );
   }
 }
 
@@ -101,7 +131,12 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
     setCopiedItem(label);
-    toast.success(t("cloud.apps.overview.copiedLabel", { defaultValue: "{{label}} copied to clipboard", label }));
+    toast.success(
+      t("cloud.apps.overview.copiedLabel", {
+        defaultValue: "{{label}} copied to clipboard",
+        label,
+      }),
+    );
     setTimeout(() => setCopiedItem(null), 2000);
   };
 
@@ -158,18 +193,35 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || t("cloud.apps.overview.regenFailed", { defaultValue: "Failed to regenerate API key" }));
+        throw new Error(
+          error.error ||
+            t("cloud.apps.overview.regenFailed", {
+              defaultValue: "Failed to regenerate API key",
+            }),
+        );
       }
 
       const data = await response.json();
       if (typeof data.apiKey !== "string" || data.apiKey.length === 0) {
-        throw new Error(t("cloud.apps.overview.regenNoKey", { defaultValue: "Regeneration response did not include an API key" }));
+        throw new Error(
+          t("cloud.apps.overview.regenNoKey", {
+            defaultValue: "Regeneration response did not include an API key",
+          }),
+        );
       }
       revealApiKey(data.apiKey);
-      toast.success(t("cloud.apps.overview.regenSuccess", { defaultValue: "API key regenerated" }));
+      toast.success(
+        t("cloud.apps.overview.regenSuccess", {
+          defaultValue: "API key regenerated",
+        }),
+      );
     } catch (error) {
       toast.error(
-        error instanceof Error ? error.message : t("cloud.apps.overview.regenFailedShort", { defaultValue: "Failed to regenerate" }),
+        error instanceof Error
+          ? error.message
+          : t("cloud.apps.overview.regenFailedShort", {
+              defaultValue: "Failed to regenerate",
+            }),
       );
     } finally {
       setIsRegenerating(false);
@@ -197,7 +249,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             <Key className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white mb-2">
-                {t("cloud.apps.overview.apiKeyOnce", { defaultValue: "Your API Key (shown once)" })}
+                {t("cloud.apps.overview.apiKeyOnce", {
+                  defaultValue: "Your API Key (shown once)",
+                })}
               </p>
               <div className="flex items-center gap-2 mb-2">
                 <code className="flex-1 bg-black/30 px-3 py-2 rounded-sm text-xs text-white/80 font-mono overflow-x-auto">
@@ -216,7 +270,10 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                 </button>
               </div>
               <p className="text-xs text-white/74">
-                {t("cloud.apps.overview.saveKeyHint", { defaultValue: "Save this key securely. You won't see it again. This message disappears in 60 seconds." })}
+                {t("cloud.apps.overview.saveKeyHint", {
+                  defaultValue:
+                    "Save this key securely. You won't see it again. This message disappears in 60 seconds.",
+                })}
               </p>
             </div>
           </div>
@@ -226,13 +283,25 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
       {/* Stats Grid */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <DashboardStatCard
-          label={t("cloud.apps.overview.stat.status", { defaultValue: "Status" })}
-          value={app.is_active ? t("cloud.apps.overview.statusActive", { defaultValue: "Active" }) : t("cloud.apps.overview.statusInactive", { defaultValue: "Inactive" })}
+          label={t("cloud.apps.overview.stat.status", {
+            defaultValue: "Status",
+          })}
+          value={
+            app.is_active
+              ? t("cloud.apps.overview.statusActive", {
+                  defaultValue: "Active",
+                })
+              : t("cloud.apps.overview.statusInactive", {
+                  defaultValue: "Inactive",
+                })
+          }
           icon={<Activity className="h-5 w-5" />}
           accent={app.is_active ? "emerald" : "red"}
         />
         <DashboardStatCard
-          label={t("cloud.apps.overview.stat.deployment", { defaultValue: "Deployment" })}
+          label={t("cloud.apps.overview.stat.deployment", {
+            defaultValue: "Deployment",
+          })}
           value={
             (app.deployment_status || "draft").charAt(0).toUpperCase() +
             (app.deployment_status || "draft").slice(1)
@@ -241,13 +310,17 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
           accent="blue"
         />
         <DashboardStatCard
-          label={t("cloud.apps.overview.stat.totalUsers", { defaultValue: "Total Users" })}
+          label={t("cloud.apps.overview.stat.totalUsers", {
+            defaultValue: "Total Users",
+          })}
           value={app.total_users?.toLocaleString() || "0"}
           icon={<Shield className="h-5 w-5" />}
           accent="violet"
         />
         <DashboardStatCard
-          label={t("cloud.apps.overview.stat.totalRequests", { defaultValue: "Total Requests" })}
+          label={t("cloud.apps.overview.stat.totalRequests", {
+            defaultValue: "Total Requests",
+          })}
           value={app.total_requests?.toLocaleString() || "0"}
           icon={<TrendingUp className="h-5 w-5" />}
           accent="orange"
@@ -274,23 +347,38 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   ) : (
                     <RefreshCw className="h-3 w-3" />
                   )}
-                  {t("cloud.apps.overview.regenerate", { defaultValue: "Regenerate" })}
+                  {t("cloud.apps.overview.regenerate", {
+                    defaultValue: "Regenerate",
+                  })}
                 </button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>{t("cloud.apps.overview.regenTitle", { defaultValue: "Regenerate API Key?" })}</AlertDialogTitle>
+                  <AlertDialogTitle>
+                    {t("cloud.apps.overview.regenTitle", {
+                      defaultValue: "Regenerate API Key?",
+                    })}
+                  </AlertDialogTitle>
                   <AlertDialogDescription>
-                    {t("cloud.apps.overview.regenBody", { defaultValue: "This will immediately invalidate your current API key. Your app will stop working until you update it with the new key." })}
+                    {t("cloud.apps.overview.regenBody", {
+                      defaultValue:
+                        "This will immediately invalidate your current API key. Your app will stop working until you update it with the new key.",
+                    })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>{t("cloud.apps.deleteDialog.cancel", { defaultValue: "Cancel" })}</AlertDialogCancel>
+                  <AlertDialogCancel>
+                    {t("cloud.apps.deleteDialog.cancel", {
+                      defaultValue: "Cancel",
+                    })}
+                  </AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
                     className="bg-[#FF5800] hover:bg-[#FF5800]/80"
                   >
-                    {t("cloud.apps.overview.regenerate", { defaultValue: "Regenerate" })}
+                    {t("cloud.apps.overview.regenerate", {
+                      defaultValue: "Regenerate",
+                    })}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -331,7 +419,10 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
             </div>
           </div>
           <p className="text-xs text-neutral-500">
-            {t("cloud.apps.overview.apiKeyHint", { defaultValue: "Use this key to authenticate API requests from your app." })}
+            {t("cloud.apps.overview.apiKeyHint", {
+              defaultValue:
+                "Use this key to authenticate API requests from your app.",
+            })}
           </p>
         </div>
 
@@ -339,12 +430,19 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
             <Globe className="h-4 w-4 text-[#FF5800]" />
-            {t("cloud.apps.overview.appInformation", { defaultValue: "App Information" })}
+            {t("cloud.apps.overview.appInformation", {
+              defaultValue: "App Information",
+            })}
           </h3>
 
           <div className="space-y-3">
             {app.description && (
-              <InfoRow label={t("cloud.apps.overview.description", { defaultValue: "Description" })} value={app.description} />
+              <InfoRow
+                label={t("cloud.apps.overview.description", {
+                  defaultValue: "Description",
+                })}
+                value={app.description}
+              />
             )}
             {app.production_url && app.deployment_status === "deployed" && (
               <InfoRow

@@ -1,0 +1,45 @@
+schema: eliza.pd_corner_manifest.v1
+pdk: Intel_14A
+node_class: intel_14a_ribbonfet_2nd_gen_bspdn_high_na
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_corner_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - Any Intel 14A corner-set claim is BLOCKED.
+    - 14A includes 2nd-gen PowerVia BSPDN, so corner methodology needs two-sided PDN.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed Intel Foundry Services (IFS) agreement, possibly via DARPA / RAMP-C subsidy.
+    - Hard-IP licenses available at 14A (LPDDR PHY, USB, MIPI, PLL, SRAM compiler).
+    - Commercial EDA flow qualified at 14A by Intel.
+    - Two-sided PDN extraction / dynamic-IR analysis tool chain (Voltus or RedHawk-SC with BSPDN support).
+    - High-NA-EUV-aware DRC / DFM (Intel 14A is the only 2028 node committing to High-NA).
+
+required_after_unblock:
+  total_effective_corners_min: 32
+  total_full_corners_min: 144
+  pvt_axes:
+    process: [SS, TT, FF, SSGNP, FFGNP, local_NFET, local_PFET, high_NA_litho]
+    voltage_v: [vmin_low, vnom, vmax_high]
+    temperature_c: [-40, 0, 25, 85, 110, 125]
+    aging: [t0, mid_life, EOL]
+    rc: [cworst, cbest, rcworst, rcbest, typical]
+  multi_vt_required:
+    - SLVT
+    - LVT
+    - RVT
+    - HVT
+  ocv_model: LVF_or_SOCV
+  bspdn_corners: required_two_sided_pdn_corner_set
+  thermal_corner_uplift_for_bspdn_c: 5
+  bspdn_warpage_corner_required: true
+
+forbidden_claims_until_unblocked:
+  - intel_14a_corner_clean
+  - intel_14a_release_evidence
+  - 14a_bspdn_signoff_clean
+  - high_na_dfm_clean

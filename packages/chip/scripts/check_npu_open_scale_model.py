@@ -120,12 +120,34 @@ def main() -> int:
         require(estimate.macs > 0, f"{estimate.kernel} must issue MACs", errors)
         require(estimate.bytes_read > 0, f"{estimate.kernel} must read tensor bytes", errors)
         require(estimate.bytes_written > 0, f"{estimate.kernel} must write tensor bytes", errors)
+        require(
+            estimate.local_sram_bytes > estimate.bytes_read + estimate.bytes_written,
+            f"{estimate.kernel} must model local SRAM operand traffic",
+            errors,
+        )
+        require(
+            estimate.energy_nj(OPEN_2028_FIRST) > 0,
+            f"{estimate.kernel} must report positive modeled energy",
+            errors,
+        )
+        require(
+            estimate.tops_per_watt(OPEN_2028_FIRST) > 0,
+            f"{estimate.kernel} must report positive modeled TOPS/W",
+            errors,
+        )
         require(estimate.cycles > 0, f"{estimate.kernel} must consume cycles", errors)
         require(
             estimate.observed_tops(OPEN_2028_FIRST.clock_hz) > 0,
             f"{estimate.kernel} must report observed TOPS",
             errors,
         )
+
+    sota_gemm = estimate_gemm_s8(OPEN_2028_SOTA, 4096, 4096, 4096)
+    require(
+        sota_gemm.tops_per_watt(OPEN_2028_SOTA) >= 18.0,
+        f"2028 SOTA target must model >=18 TOPS/W on large GEMM, got {sota_gemm.tops_per_watt(OPEN_2028_SOTA):.2f}",
+        errors,
+    )
 
     if errors:
         print("NPU open scale model check failed:")

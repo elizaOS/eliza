@@ -40,12 +40,16 @@ def shell_files() -> list[Path]:
 
 
 def run(name: str, cmd: list[str], *, optional: bool = False) -> bool:
-    if shutil.which(cmd[0]) is None:
+    env = os.environ.copy()
+    local_paths = [ROOT / "tools/bin", ROOT / ".venv/bin", ROOT / "external/oss-cad-suite/bin"]
+    env["PATH"] = os.pathsep.join(
+        [str(path) for path in local_paths if path.is_dir()] + [env.get("PATH", "")]
+    )
+    if shutil.which(cmd[0], path=env["PATH"]) is None:
         status = "BLOCK" if optional else "FAIL"
         print(f"{status}: {name}: missing tool {cmd[0]}")
         return optional
     print(f"RUN: {name}: {' '.join(cmd)}")
-    env = os.environ.copy()
     if cmd[0] == "ruff":
         cache_dir = ROOT / "build" / "cache" / "ruff"
         cache_dir.mkdir(parents=True, exist_ok=True)

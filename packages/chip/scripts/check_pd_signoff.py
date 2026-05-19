@@ -486,15 +486,25 @@ def validate_run_manifest(root: Path, run_dir: Path, run_manifest: Path) -> list
                     f"run_manifest: {rel_manifest} checks.{check_name} must be a mapping"
                 )
                 continue
-            if check.get("status") not in {"clean", "waived"}:
+            if check.get("status") not in {"blocked", "clean", "waived"}:
                 failures.append(
-                    f"run_manifest: {rel_manifest} checks.{check_name}.status must be clean or waived"
+                    f"run_manifest: {rel_manifest} checks.{check_name}.status must be blocked, clean, or waived"
                 )
             if check.get("status") == "waived":
                 waiver = check.get("waiver")
                 if not isinstance(waiver, str) or not waiver:
                     failures.append(
                         f"run_manifest: {rel_manifest} checks.{check_name}.waiver is required for waived checks"
+                    )
+            if check.get("status") == "blocked":
+                reason = check.get("reason")
+                if not isinstance(reason, str) or not reason:
+                    failures.append(
+                        f"run_manifest: {rel_manifest} checks.{check_name}.reason is required for blocked checks"
+                    )
+                else:
+                    failures.append(
+                        f"run_manifest: {rel_manifest} checks.{check_name} is blocked: {reason}"
                     )
             report = check.get("report")
             if not isinstance(report, str) or not report:

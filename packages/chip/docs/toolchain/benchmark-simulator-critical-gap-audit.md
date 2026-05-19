@@ -32,8 +32,8 @@ Machine-readable status sources now include:
 | lmbench latency | `lat_mem_rd` executable. | `planned_missing_deps` when `lat_mem_rd` is absent. | Build lmbench for the target and archive stride sweep output. |
 | fio sequential read | `fio`; target filesystem/device identity; JSON parser is not required by config yet. | `planned_missing_deps` when `fio` is absent. | Install target fio, switch configs to JSON output, and record target storage topology. |
 | fio random read/write | `fio`; target filesystem/device identity; JSON parser is not required by config yet. | `planned_missing_deps` when `fio` is absent. | Same as sequential read; include random workload parameters in report metadata. |
-| TFLite CPU | `benchmark_model`; `benchmarks/models/mobile_smoke.tflite`; pinned model SHA-256. | `blocked` while the model is absent or placeholder-sized; may also report missing `benchmark_model`. | Generate or supply redistributable `.tflite`, pin SHA-256, and archive benchmark_model build provenance. |
-| TFLite e1 NPU | `benchmark_model` with NNAPI; `mobile_smoke.tflite`; real `e1-npu` NNAPI delegate/accelerator. | `blocked` while model is absent; `planned_missing_deps` for binary in dry-run. | Add model, NNAPI delegate evidence, accelerator name validation, and parser for latency output. |
+| TFLite CPU | Real `benchmark_model`; `benchmarks/models/mobile_smoke.tflite`; pinned model SHA-256. | `planned` when the real binary and pinned model are present; `blocked` if either falls back to a host-smoke shim, missing binary, or missing/placeholder model. | Archive benchmark_model build provenance and target run metadata before using scores for release claims. |
+| TFLite e1 NPU | Real `benchmark_model` with NNAPI; `mobile_smoke.tflite`; real `e1-npu` NNAPI delegate/accelerator proof. | `blocked` until `benchmarks/capabilities/e1_npu_nnapi.proof.json` and its required transcripts are captured from hardware. | Add NNAPI delegate evidence, accelerator name validation, DMA transcript, and zero-fallback parser evidence. |
 | MLPerf Mobile | External checkout, APK/runner, datasets, Android target, device shell path. | Documentation only; not represented in `benchmark_plan.json`. | Add an external-run manifest before accepting MLPerf numbers. |
 
 The benchmark harness correctly refuses to mark a result `passed` if required
@@ -61,6 +61,7 @@ metadata.
 | `scripts/check_tools.sh --json` | Emits `eliza.tool_status.v1` with per-tool `status`, `tier`, `gate`, `required`, and `path_or_status`. | Combine with `--strict` to preserve the same exit policy. |
 | `benchmarks/run_benchmarks.py plan` / `--dry-run` | Writes a dry-run report with `planned`, `planned_missing_deps`, or `blocked`. | `--strict-missing` exits 2 when any dependency or release-blocking asset is absent. |
 | `benchmarks/run_benchmarks.py run` | Skips blocked/missing workloads by recording `blocked` or `missing_dependencies`; real command failures exit 1. | `--strict-missing` exits 2 for missing deps/assets and 1 for real failures. |
+| `make benchmarks-local-host-evidence` | Runs locally installed CoreMark, STREAM, lmbench, fio, and TFLite CPU tools, archives raw logs, and parses metrics. | Writes non-release host evidence only; it is not target silicon, AOSP, PDK, power, or thermal evidence. |
 | `make qemu-check` | Semantic failures fail; missing compiler/QEMU is `BLOCKED` and exits 0. | `make qemu-check-strict` sets `REQUIRE_QEMU=1` and exits 2 on blocked executable smoke. |
 | `make renode-check` | Semantic failures fail; missing Renode/firmware/real transcript intake is `BLOCKED` and exits 0. | `make renode-check-strict` sets `REQUIRE_RENODE=1` and exits 2 on blocked executable smoke. |
 | `make smoke` | Includes non-strict QEMU/Renode and benchmark dry-run checks. | Not a release evidence gate. |
@@ -95,6 +96,6 @@ metadata.
 ## Required Follow-Up Checks
 
 1. Add benchmark JSON parsers for fio, CoreMark, STREAM, lmbench, and TFLite output.
-2. Add build recipes and version capture for CoreMark, STREAM, lmbench, fio, and `benchmark_model`.
+2. Archive build recipes and version capture for CoreMark, STREAM, lmbench, fio, and `benchmark_model`; keep local-host runs separated from release evidence with `make benchmarks-local-host-evidence`.
 3. Pin Docker/Nix/OpenLane/Chipyard inputs before using their outputs as release evidence.
 4. Archive QEMU/Renode transcripts under `build/reports/` only when they come from real tools, not fake status tests.

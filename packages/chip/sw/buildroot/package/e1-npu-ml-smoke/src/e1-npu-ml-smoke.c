@@ -30,6 +30,7 @@ int main(int argc, char **argv)
 	static const int32_t expected[] = { -44, 8, 139, -54 };
 	const char *device = E1_NPU_DEV;
 	struct e1_npu_contract contract;
+	struct e1_npu_cmd relu;
 	struct e1_npu_gemm_s8 gemm;
 	struct e1_npu_counters counters;
 	unsigned int i;
@@ -43,8 +44,11 @@ int main(int argc, char **argv)
 	}
 
 	memset(&gemm, 0, sizeof(gemm));
+	memset(&relu, 0, sizeof(relu));
 	memset(&counters, 0, sizeof(counters));
 	memset(&contract, 0, sizeof(contract));
+	relu.opcode = E1_NPU_OP_RELU4_S8;
+	relu.a = 0x800700fcu;
 	gemm.m = 2;
 	gemm.n = 2;
 	gemm.k = 3;
@@ -82,10 +86,22 @@ int main(int argc, char **argv)
 		return 3;
 	}
 
+	if (ioctl(fd, E1_NPU_IOC_RUN_CMD, &relu) < 0) {
+		fprintf(stderr, "E1_NPU_IOC_RUN_CMD RELU4_S8: %s\n", strerror(errno));
+		close(fd);
+		return 4;
+	}
+	if (relu.result != 0x00070000u) {
+		fprintf(stderr, "RELU4_S8 mismatch: got=0x%08x expected=0x00070000\n",
+			relu.result);
+		close(fd);
+		return 5;
+	}
+
 	if (ioctl(fd, E1_NPU_IOC_RUN_GEMM_S8, &gemm) < 0) {
 		fprintf(stderr, "E1_NPU_IOC_RUN_GEMM_S8: %s\n", strerror(errno));
 		close(fd);
-		return 4;
+		return 6;
 	}
 
 	for (i = 0; i < 4; i++) {
@@ -93,7 +109,7 @@ int main(int argc, char **argv)
 			fprintf(stderr, "GEMM_S8 mismatch at C[%u]: got=%d expected=%d\n",
 				i, gemm.c[i], expected[i]);
 			close(fd);
-			return 5;
+			return 7;
 		}
 	}
 
@@ -104,11 +120,14 @@ int main(int argc, char **argv)
 	printf("eliza-evidence: device=%s\n", device);
 	printf("eliza-evidence: contract_version=%u npu_base=0x%08x scratch_bytes=%u\n",
 	       contract.version, contract.npu_base, contract.scratch_bytes);
+	printf("eliza-evidence: workload=relu4_s8\n");
 	printf("eliza-evidence: workload=gemm_s8_int8_2x2x3\n");
 	printf("eliza-evidence: input_sha256=860fe3aa9f5e4b5515d4a0a671db874748650cc4fdae1548dc7ee4f0a057a8ed\n");
 	printf("eliza-evidence: output_sha256=d70386994e16722852e1149ff822f99cb1bc13cf4ebdeceaa5aa8b2eedf5e386\n");
 	printf("e1-npu-ml-smoke: PASS workload=gemm_s8_int8_2x2x3 c=");
 	print_matrix(gemm.c);
+	printf("\n");
+	printf("e1-npu-ml-smoke: PASS workload=relu4_s8 result=0x%08x", relu.result);
 	printf(" cycles=%u macs=%u ops=%u errors=%u unsupported_ops=%u ",
 	       counters.perf_cycles, counters.perf_macs, counters.perf_ops,
 	       counters.perf_errors, counters.perf_unsupported_ops);

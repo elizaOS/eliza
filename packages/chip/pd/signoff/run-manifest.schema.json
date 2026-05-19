@@ -114,9 +114,10 @@
       "additionalProperties": false,
       "required": ["status", "report"],
       "properties": {
-        "status": { "enum": ["clean", "waived"] },
+        "status": { "enum": ["clean", "waived", "blocked"] },
         "report": { "type": "string", "minLength": 1 },
-        "waiver": { "type": "string", "minLength": 1 }
+        "waiver": { "type": "string", "minLength": 1 },
+        "reason": { "type": "string", "minLength": 1 }
       }
     }
   }

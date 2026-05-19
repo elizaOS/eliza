@@ -84,17 +84,18 @@
 //   adapter never called it anyway).
 //
 // Output (per ABI):
-//   apps/app/android/app/src/main/assets/agent/{abi}/libllama.so
-//   apps/app/android/app/src/main/assets/agent/{abi}/libggml.so
-//   apps/app/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
-//   apps/app/android/app/src/main/assets/agent/{abi}/libggml-base.so
-//   apps/app/android/app/src/main/assets/agent/{abi}/libeliza-llama-shim.so
-//   apps/app/android/app/src/main/assets/agent/{abi}/llama-server          (DFlash spec-decode HTTP server)
+//   packages/app/android/app/src/main/assets/agent/{abi}/libllama.so
+//   packages/app/android/app/src/main/assets/agent/{abi}/libggml.so
+//   packages/app/android/app/src/main/assets/agent/{abi}/libggml-cpu.so
+//   packages/app/android/app/src/main/assets/agent/{abi}/libggml-base.so
+//   packages/app/android/app/src/main/assets/agent/{abi}/libeliza-llama-shim.so
+//   packages/app/android/app/src/main/assets/agent/{abi}/llama-server          (DFlash spec-decode HTTP server)
 //
 // libllama.so has NEEDED entries on the entire libggml family (see
 // `readelf -d`); the dynamic linker resolves them from the per-ABI asset
 // dir via the LD_LIBRARY_PATH ElizaAgentService.java sets at process
-// launch. ABIs: arm64-v8a (real phones) and x86_64 (cuttlefish + emulators).
+// launch. ABIs: arm64-v8a (real phones), x86_64 (cuttlefish + emulators),
+// and riscv64 (cf_riscv64_phone + future riscv64 hardware).
 //
 // libeliza-llama-shim.so is the bun:ffi struct-by-value workaround: a
 // thin C wrapper (llama-shim/eliza_llama_shim.c next to this script)
@@ -155,7 +156,7 @@
 //
 // Repo-root resolution:
 //   The script defaults `--assets-dir` to
-//   `<repoRoot>/apps/app/android/app/src/main/assets/agent` and
+//   `<repoRoot>/packages/app/android/app/src/main/assets/agent` and
 //   `--cache-dir` to `~/.cache/eliza-android-agent/llama-cpp-<tag>`.
 //   `<repoRoot>` is derived from this script's location: walk up from
 //   `eliza/packages/app-core/scripts/aosp/` to the host repo root by
@@ -312,7 +313,7 @@ export function parseArgs(argv) {
   const args = {
     androidAssetsDir: path.join(
       repoRoot,
-      "apps",
+      "packages",
       "app",
       "android",
       "app",
@@ -392,9 +393,12 @@ export function parseArgs(argv) {
       console.log(
         "Usage: node eliza/packages/app-core/scripts/aosp/compile-libllama.mjs " +
           "[--assets-dir <PATH>] [--cache-dir <PATH>] [--src-dir <PATH>] " +
-          "[--abi <arm64-v8a|x86_64>] [--target <android-<arch>-<backend>[-fused]>] " +
+          "[--abi <arm64-v8a|x86_64|riscv64>] [--target <android-<arch>-<backend>[-fused]>] " +
           "[--jobs <N>] [--skip-if-present] [--dry-run]\n" +
-          "  --target <TRIPLE>  Build a single target: android-{arm64,x86_64}-cpu[-fused].\n" +
+          "  --target <TRIPLE>  Build a single target: android-{arm64,x86_64,riscv64}-cpu[-fused].\n" +
+          "                    riscv64 requires NDK r27+ (first stable NDK with a real\n" +
+          "                    riscv64-linux-android sysroot); older NDKs will fail the\n" +
+          "                    compiler probe before any TU compiles.\n" +
           "                    Android Vulkan targets fail closed until GGML_VULKAN\n" +
           "                    flags and Vulkan backend artifact staging are wired.\n" +
           "                    -fused enables the omnivoice graft (same as dflash's\n" +
@@ -770,18 +774,66 @@ export function ensureZigDrivers({ cacheDir, abi, zigBin = "zig" }) {
   fs.mkdirSync(driverDir, { recursive: true });
   const ccPath = path.join(driverDir, "zig-cc");
   const cxxPath = path.join(driverDir, "zig-cxx");
+
+  // riscv64 needs an extra arg-filtering step. The vendored llama.cpp's
+  // ggml-cpu CMakeLists hardcodes `-march=rv64gc -mabi=lp64d` (and adds
+  // extension suffixes when GGML_RVV / GGML_RV_ZFH / etc. are ON). Zig
+  // 0.13's bundled LLVM doesn't accept `-march=rv64gc` as a GCC-style ISA
+  // string — it tries to translate it to `-mcpu=` and bails with
+  // "unknown CPU: 'rv64gc'". The triple `riscv64-linux-musl` already
+  // selects the rv64gc/lp64d baseline as Zig's triple-derived CPU, so
+  // stripping these flags is byte-for-byte equivalent to the intended
+  // build for our Wave 2 scalar-parity target. Zig 0.14+ accepts
+  // `-march=rv64gc` natively (the filter becomes a no-op there); the
+  // generated driver is shell-portable so the same script works on both
+  // Zig versions.
+  //
+  // Filter logic: walk the argv via the POSIX `set --` idiom (no eval —
+  // CMake escapes embedded quotes in -DGGML_VERSION=\"0.12.0\", and a
+  // naive `eval exec "..."` collapses them and the C preprocessor sees
+  // `0.12.0` as a malformed numeric literal). Each non-stripped arg is
+  // re-pushed onto $@ in place; the final `exec "$zig" cc ... "$@"`
+  // forwards the whole array with every quote and space preserved.
+  //
+  // We deliberately do NOT filter `-march=rv64gcv*` or anything broader
+  // — Wave 3 (Task 5) will use Zig 0.14+ and pass the RVV march string
+  // through directly.
+  const riscv64ArgFilter =
+    abi === "riscv64"
+      ? '_n=$#\n' +
+        'i=0\n' +
+        'while [ $i -lt $_n ]; do\n' +
+        '  arg=$1\n' +
+        '  shift\n' +
+        '  i=$((i+1))\n' +
+        '  case "$arg" in\n' +
+        '    -march=rv64gc|-march=rv64gc_*) ;;\n' +
+        '    -mabi=lp64d|-mabi=lp64) ;;\n' +
+        '    *) set -- "$@" "$arg" ;;\n' +
+        '  esac\n' +
+        'done\n'
+      : null;
+
+  const exec =
+    riscv64ArgFilter !== null
+      ? (subcmd) =>
+          riscv64ArgFilter +
+          `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`
+      : (subcmd) =>
+          `exec "${zigBin}" ${subcmd} --target=${target.zigTarget} "$@"\n`;
+
   // Quote zigBin so a path with spaces still works. The driver runs under
   // /bin/sh which is POSIX-portable across Linux, macOS, Alpine.
   const ccBody =
     "#!/bin/sh\n" +
     "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
     "# Do not edit — regenerated on every build.\n" +
-    `exec "${zigBin}" cc --target=${target.zigTarget} "$@"\n`;
+    exec("cc");
   const cxxBody =
     "#!/bin/sh\n" +
     "# Auto-generated by eliza/packages/app-core/scripts/aosp/compile-libllama.mjs.\n" +
     "# Do not edit — regenerated on every build.\n" +
-    `exec "${zigBin}" c++ --target=${target.zigTarget} "$@"\n`;
+    exec("c++");
   fs.writeFileSync(ccPath, ccBody, "utf8");
   fs.writeFileSync(cxxPath, cxxBody, "utf8");
   fs.chmodSync(ccPath, 0o755);
@@ -838,6 +890,33 @@ export function buildLibllamaForAbi({
   log(
     `[compile-libllama] Configuring llama.cpp for ${abi} (${target.zigTarget}) in ${buildDir}`,
   );
+  // riscv64 scalar-parity defaults. The vendored llama.cpp defaults
+  // GGML_RVV / GGML_RV_ZFH / GGML_RV_ZVFH / GGML_RV_ZICBOP /
+  // GGML_RV_ZIHINTPAUSE to ON, which builds a `-march=rv64gcv_zfh_zvfh_
+  // zicbop_zihintpause` string. Zig 0.13's LLVM doesn't accept that as a
+  // -march value (it tries to translate it to -mcpu= and fails with
+  // "unknown CPU"). Wave 1 of riscv64 support is scalar-parity only:
+  // we force every RVV / Zfh / Zvfh / Zicbop / Zihintpause / Zvfbfwma /
+  // XTheadVector option OFF so the resulting MARCH_STR is the plain
+  // baseline `rv64gc` which Zig (and any other clang-13+) accepts.
+  // Wave 3 (Task #5) will flip these back ON behind a Zig 0.14+ floor
+  // when the RVV kernel suite is verified on real hardware. Callers can
+  // override on the command line via extraCmakeFlags / ELIZA_DFLASH_CMAKE_FLAGS
+  // once the toolchain story improves.
+  const riscv64ScalarDefaults =
+    abi === "riscv64"
+      ? [
+          "-DGGML_RVV=OFF",
+          "-DGGML_RV_ZFH=OFF",
+          "-DGGML_RV_ZVFH=OFF",
+          "-DGGML_RV_ZICBOP=OFF",
+          "-DGGML_RV_ZIHINTPAUSE=OFF",
+          "-DGGML_RV_ZVFBFWMA=OFF",
+          "-DGGML_XTHEADVECTOR=OFF",
+          "-DGGML_RV_ZBA=OFF",
+          "-DGGML_CPU_RISCV64_SPACEMIT=OFF",
+        ]
+      : [];
   spawn(
     "cmake",
     [
@@ -868,6 +947,7 @@ export function buildLibllamaForAbi({
       // device of the target ABI. The default tunes for the build host's
       // native cpu, which is wrong for a cross-build.
       "-DGGML_NATIVE=OFF",
+      ...riscv64ScalarDefaults,
       // Don't bake in an absolute RUNPATH to the build tree. The default
       // CMAKE_BUILD_RPATH points at the per-ABI build dir, which is a
       // path-leak in shipped APKs and adds dead lookup entries at runtime.
@@ -1553,6 +1633,60 @@ function locateBuiltLib(buildDir, soName) {
  * Falls back to system `strip --strip-all <file>` (in-place safe on
  * GNU coreutils) if `zig objcopy` is missing or errors.
  */
+// Cache of the resolved llvm-strip path (from the Android NDK toolchain).
+// Set once on first call so we don't re-walk the NDK dir for every artifact.
+let _ndkLlvmStripPathCache = undefined;
+function locateNdkLlvmStrip() {
+  if (_ndkLlvmStripPathCache !== undefined) return _ndkLlvmStripPathCache;
+  // Honor the same env-var ladder as build-llama-cpp-dflash's resolveAndroidNdk()
+  // so operators with a custom NDK location get a consistent answer in both
+  // scripts.
+  const envRoots = [
+    process.env.ANDROID_NDK_HOME,
+    process.env.ANDROID_NDK_ROOT,
+    process.env.ANDROID_NDK,
+  ].filter((v) => typeof v === "string" && v.length > 0);
+  const sdkRoots = [
+    process.env.ANDROID_HOME,
+    process.env.ANDROID_SDK_ROOT,
+    path.join(os.homedir(), "Library", "Android", "sdk"),
+    path.join(os.homedir(), "Android", "Sdk"),
+  ].filter((v) => typeof v === "string" && v.length > 0);
+  const candidateNdks = [...envRoots];
+  for (const sdk of sdkRoots) {
+    const ndkDir = path.join(sdk, "ndk");
+    if (!fs.existsSync(ndkDir)) continue;
+    const versions = fs
+      .readdirSync(ndkDir, { withFileTypes: true })
+      .filter((e) => e.isDirectory())
+      .map((e) => e.name)
+      .sort();
+    if (versions.length > 0) {
+      candidateNdks.push(path.join(ndkDir, versions[versions.length - 1]));
+    }
+  }
+  const hosts = ["linux-x86_64", "darwin-arm64", "darwin-x86_64"];
+  for (const ndk of candidateNdks) {
+    for (const host of hosts) {
+      const cand = path.join(
+        ndk,
+        "toolchains",
+        "llvm",
+        "prebuilt",
+        host,
+        "bin",
+        "llvm-strip",
+      );
+      if (fs.existsSync(cand)) {
+        _ndkLlvmStripPathCache = cand;
+        return cand;
+      }
+    }
+  }
+  _ndkLlvmStripPathCache = null;
+  return null;
+}
+
 function stripBinary({ filePath, zigBin, log }) {
   const tmpPath = `${filePath}.stripped`;
   const zigStripResult = spawnSync(
@@ -1587,11 +1721,29 @@ function stripBinary({ filePath, zigBin, log }) {
         `error=${zigStripResult.error?.message ?? "none"}); falling back to system strip.`,
     );
   }
-  // Fallback: system strip. GNU coreutils strip is in-place safe.
+  // Fallback 1: system strip. GNU coreutils strip is in-place safe.
+  // x86_64-binutils doesn't grok riscv64 ELF or aarch64 ELF, so on a
+  // mismatched host this returns non-zero — fall through to llvm-strip.
   const systemStripResult = spawnSync("strip", ["--strip-all", filePath], {
     stdio: ["ignore", "pipe", "pipe"],
   });
   if (systemStripResult.status === 0) return true;
+  // Fallback 2: NDK's llvm-strip handles every Android ABI (arm64-v8a,
+  // x86_64, riscv64) including cross-host. This is the production path
+  // for riscv64 until Zig 0.14's objcopy lands across all build hosts.
+  const llvmStrip = locateNdkLlvmStrip();
+  if (llvmStrip) {
+    const llvmStripResult = spawnSync(
+      llvmStrip,
+      ["--strip-all", filePath],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    if (llvmStripResult.status === 0) return true;
+    log(
+      `[compile-libllama] DEBUG: NDK llvm-strip (${llvmStrip}) failed ` +
+        `(status=${llvmStripResult.status}, error=${llvmStripResult.error?.message ?? "none"}).`,
+    );
+  }
   log(
     `[compile-libllama] WARN: could not strip ${filePath}; shipping with debug symbols.`,
   );
@@ -1763,7 +1915,11 @@ export async function main(argv = process.argv.slice(2)) {
       args.srcDir ??
       (llamaCppSubmodulePresent() ? LLAMA_CPP_SUBMODULE_DIR : args.cacheDir);
     for (const abi of args.abis) {
-      const arch = abi === "x86_64" ? "x86_64" : "arm64";
+      // arm64-v8a is the only ANDROID_ABI that doesn't share its name with
+      // the `android-<arch>-cpu` triple's <arch> token; x86_64 and riscv64
+      // map 1:1 to the same string in both spellings. Keep this in sync
+      // with parseAndroidTarget()'s arch→ABI mapping.
+      const arch = abi === "arm64-v8a" ? "arm64" : abi;
       const target = `android-${arch}-cpu`;
       const abiAssetDir = path.join(args.androidAssetsDir, abi);
       describeAndroidTargetDryRun({

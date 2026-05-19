@@ -2,7 +2,7 @@
 set -eu
 
 repo_dir="$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)"
-if [ -d "$repo_dir/tools/bin" ]; then
+if [ "${ELIZA_RENODE_USE_REPO_TOOLS:-1}" = "1" ] && [ -d "$repo_dir/tools/bin" ]; then
     PATH="$repo_dir/tools/bin:$PATH"
 fi
 if [ -d "$repo_dir/.venv/bin" ]; then
@@ -21,7 +21,7 @@ qemu_transcript="$repo_dir/build/reports/qemu_smoke.log"
 artifact_dir="$repo_dir/build/renode"
 transcript="$artifact_dir/eliza_e1_uart.transcript"
 manifest="$artifact_dir/eliza_e1_smoke.json"
-status_report="$artifact_dir/eliza_e1_status.json"
+status_report="${RENODE_STATUS_REPORT:-$artifact_dir/eliza_e1_status.json}"
 schema="$repo_dir/sim/renode/eliza_e1_smoke.schema.json"
 
 status_line() {
@@ -56,7 +56,7 @@ emit_status_report() {
     exit_code=$4
     blocker_kind=${5:-}
 
-    mkdir -p "$artifact_dir"
+    mkdir -p "$(dirname -- "$status_report")"
     renode_path=""
     if command -v renode >/dev/null 2>&1; then
         renode_path=$(command -v renode)
@@ -661,7 +661,7 @@ if [ "$mode" = "check" ]; then
         blocked "Renode executable smoke needs ${firmware#"$repo_dir"/}; run scripts/run_qemu.sh --build-firmware first."
     fi
     status_line "PASS" "renode.preflight" "firmware present ${firmware#"$repo_dir"/}; attempting bounded Renode run for ${smoke_seconds}s"
-    if run_bounded_smoke; then
+    if run_executable_smoke; then
         status_line "PASS" "renode.check" "semantic, preflight, and executable smoke passed"
         exit 0
     fi

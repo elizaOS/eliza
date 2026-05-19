@@ -553,6 +553,34 @@ function resolveAndroidNdk() {
   return null;
 }
 
+// Parse the major version of an NDK by reading `source.properties` and
+// returning the integer leading the `Pkg.Revision` line, or null if the file
+// is missing/unparseable. NDKs ship `Pkg.Revision = 27.0.12077973` (the
+// release tag is r27, hence major=27). Used to gate the riscv64 Android ABI
+// behind r27+ since that is the first stable NDK with a real
+// `riscv64-linux-android` sysroot in `toolchains/llvm/prebuilt/<host>/sysroot`.
+function parseNdkMajorVersion(ndk) {
+  if (!ndk) return null;
+  const propsPath = path.join(ndk, "source.properties");
+  if (!fs.existsSync(propsPath)) return null;
+  try {
+    const text = fs.readFileSync(propsPath, "utf8");
+    const m = /^Pkg\.Revision\s*=\s*(\d+)/m.exec(text);
+    if (!m) return null;
+    const major = Number.parseInt(m[1], 10);
+    return Number.isFinite(major) ? major : null;
+  } catch {
+    return null;
+  }
+}
+
+// Floor: NDK r27 (released Sep-2024) is the first stable Android NDK with
+// first-class riscv64-linux-android sysroots and an unprefixed `riscv64`
+// ABI name. r26 shipped a developer-preview riscv64 sysroot only and
+// required out-of-tree patches; r25 and older have no riscv64 sysroot at
+// all. cmake/toolchain-android-riscv64.cmake encodes the same floor.
+const ANDROID_NDK_RISCV64_MIN_MAJOR = 27;
+
 // Find Vulkan headers usable for an Android build. Returns the include dir
 // (i.e. the parent of `vulkan/`) or null.
 //
@@ -1883,6 +1911,53 @@ function targetCompatibility(target, ctx) {
         ok: false,
         reason: "Android Vulkan headers not found in NDK sysroot",
       };
+    }
+    if (arch === "riscv64") {
+      // The riscv64-linux-android sysroot landed in NDK r27 (Sep-2024).
+      // Older NDKs will fail the toolchain probe before any TU compiles
+      // (clang aborts with "unknown target triple"), so we refuse upfront
+      // with a usable error instead of letting cmake spit a 200-line trace.
+      const major = parseNdkMajorVersion(ctx.androidNdk);
+      if (major !== null && major < ANDROID_NDK_RISCV64_MIN_MAJOR) {
+        return {
+          ok: false,
+          reason: `android-riscv64 target requires NDK r${ANDROID_NDK_RISCV64_MIN_MAJOR}+ (found r${major} at ${ctx.androidNdk}; r26 only shipped a developer-preview riscv64 sysroot and r25/older have none)`,
+        };
+      }
+      const sysroot = path.join(
+        ctx.androidNdk,
+        "toolchains",
+        "llvm",
+        "prebuilt",
+      );
+      // Probe at least one host-prebuilt for an actual riscv64-linux-android
+      // libdir; even on r27 some custom NDK repackages strip it. If neither
+      // major check nor sysroot existence rules it out we let the build
+      // proceed.
+      if (fs.existsSync(sysroot)) {
+        const hosts = fs
+          .readdirSync(sysroot, { withFileTypes: true })
+          .filter((e) => e.isDirectory())
+          .map((e) => e.name);
+        const haveRiscvSysroot = hosts.some((host) =>
+          fs.existsSync(
+            path.join(
+              sysroot,
+              host,
+              "sysroot",
+              "usr",
+              "lib",
+              "riscv64-linux-android",
+            ),
+          ),
+        );
+        if (!haveRiscvSysroot) {
+          return {
+            ok: false,
+            reason: `android-riscv64 target requires an NDK with riscv64-linux-android sysroot files under <ndk>/toolchains/llvm/prebuilt/<host>/sysroot/usr/lib/riscv64-linux-android/ (none found at ${ctx.androidNdk}; verify the NDK is r27+)`,
+          };
+        }
+      }
     }
     return { ok: true };
   }

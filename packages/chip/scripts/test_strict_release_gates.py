@@ -125,7 +125,12 @@ def main() -> int:
             command=["scripts/run_renode.sh", "--check"],
             expected_codes={2},
             required_tokens=("STATUS: BLOCKED renode.check", "Renode executable missing"),
-            env={"PATH": "/usr/bin:/bin", "REQUIRE_RENODE": "1"},
+            env={
+                "PATH": "/usr/bin:/bin",
+                "REQUIRE_RENODE": "1",
+                "ELIZA_RENODE_USE_REPO_TOOLS": "0",
+                "RENODE_STATUS_REPORT": "build/renode/unavailable-test-status.json",
+            },
         ),
         Check(
             name="benchmark strict blocks missing calibrated assets",

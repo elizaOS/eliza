@@ -2865,6 +2865,124 @@ export const allActionsSpec = {
 				"Trust system: action=evaluate|record_interaction|request_elevation|update_role.",
 		},
 		{
+			name: "AINEX_BOW",
+			description: "Play the bow action group on the AiNex robot.",
+			parameters: [],
+			similes: ["BOW"],
+			descriptionCompressed: "Play the bow action group on the AiNex robot.",
+		},
+		{
+			name: "AINEX_PICK_UP",
+			description: "Run the pick-up sequence on the AiNex robot.",
+			parameters: [],
+			similes: ["PICK_UP", "GRAB"],
+			descriptionCompressed: "Run the pick-up sequence on the AiNex robot.",
+		},
+		{
+			name: "AINEX_PLACE_DOWN",
+			description: "Run the place-down sequence on the AiNex robot.",
+			parameters: [],
+			similes: ["PLACE_DOWN", "PUT_DOWN", "RELEASE"],
+			descriptionCompressed: "Run the place-down sequence on the AiNex robot.",
+		},
+		{
+			name: "AINEX_RUN_ACTION_GROUP",
+			description:
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion) by id.",
+			parameters: [],
+			similes: ["RUN_ACTION_GROUP", "PLAY_ACTION", "PLAY_ACTION_GROUP"],
+			descriptionCompressed:
+				"Play a named Hiwonder action group (pre-recorded multi-servo motion) by id.",
+		},
+		{
+			name: "AINEX_SET_SERVO",
+			description:
+				"Drive a single AiNex servo / joint to a target angle over a given duration.",
+			parameters: [],
+			similes: ["SET_SERVO", "MOVE_SERVO", "MOVE_JOINT"],
+			descriptionCompressed:
+				"Drive a single AiNex servo/joint to a target angle over a given duration.",
+		},
+		{
+			name: "AINEX_SIDE_STEP_LEFT",
+			description: "Side-step the AiNex robot to the left.",
+			parameters: [],
+			similes: ["SIDE_STEP_LEFT", "STRAFE_LEFT"],
+			descriptionCompressed: "Side-step the AiNex robot to the left.",
+		},
+		{
+			name: "AINEX_SIDE_STEP_RIGHT",
+			description: "Side-step the AiNex robot to the right.",
+			parameters: [],
+			similes: ["SIDE_STEP_RIGHT", "STRAFE_RIGHT"],
+			descriptionCompressed: "Side-step the AiNex robot to the right.",
+		},
+		{
+			name: "AINEX_SIT",
+			description: "Move the AiNex robot into a seated/crouched pose.",
+			parameters: [],
+			similes: ["SIT", "SIT_DOWN"],
+			descriptionCompressed:
+				"Move the AiNex robot into a seated/crouched pose.",
+		},
+		{
+			name: "AINEX_STAND",
+			description: "Move the AiNex robot to its calibrated standing pose.",
+			parameters: [],
+			similes: ["STAND", "STAND_UP"],
+			descriptionCompressed:
+				"Move the AiNex robot to its calibrated standing pose.",
+		},
+		{
+			name: "AINEX_STOP",
+			description:
+				"Stop the AiNex robot immediately, preempting any in-flight walk or action group.",
+			parameters: [],
+			similes: ["STOP", "HALT", "FREEZE"],
+			descriptionCompressed:
+				"Stop the AiNex robot immediately, preempting any in-flight walk or action group.",
+		},
+		{
+			name: "AINEX_TURN_LEFT",
+			description: "Turn the AiNex robot to the left in place.",
+			parameters: [],
+			similes: ["TURN_LEFT", "ROTATE_LEFT"],
+			descriptionCompressed: "Turn the AiNex robot to the left in place.",
+		},
+		{
+			name: "AINEX_TURN_RIGHT",
+			description: "Turn the AiNex robot to the right in place.",
+			parameters: [],
+			similes: ["TURN_RIGHT", "ROTATE_RIGHT"],
+			descriptionCompressed: "Turn the AiNex robot to the right in place.",
+		},
+		{
+			name: "AINEX_WALK_BACKWARD",
+			description:
+				"Make the AiNex robot walk backward at the configured gait speed.",
+			parameters: [],
+			similes: ["WALK_BACKWARD", "MOVE_BACKWARD", "GO_BACK"],
+			descriptionCompressed:
+				"Make the AiNex robot walk backward at the configured gait speed.",
+		},
+		{
+			name: "AINEX_WALK_FORWARD",
+			description:
+				"Make the AiNex robot walk forward at the configured gait speed.",
+			parameters: [],
+			similes: ["WALK_FORWARD", "MOVE_FORWARD", "GO_FORWARD"],
+			descriptionCompressed:
+				"Make the AiNex robot walk forward at the configured gait speed.",
+		},
+		{
+			name: "AINEX_WAVE",
+			description: "Play the wave gesture action group on the AiNex robot.",
+			parameters: [],
+			similes: ["WAVE", "WAVE_HAND", "GREET"],
+			descriptionCompressed:
+				"Play the wave gesture action group on the AiNex robot.",
+		},
+		{
 			name: "ALARM",
 			description:
 				"Manage native macOS alarms via UNUserNotificationCenter. Subactions: set (schedule a new alarm), cancel (remove a scheduled alarm by id), list (show pending alarms). Subaction inferred from message text when not explicitly provided.",

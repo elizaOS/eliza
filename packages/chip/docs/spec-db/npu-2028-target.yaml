@@ -159,19 +159,44 @@ current_repo_classification:
     - scalar_integer_ops
     - DOT4_S8
     - DOT8_S4
+    - SDOT4_S4_2_4
+    - DOT16_S2
+    - DOT4_FP8_E4M3
+    - RELU4_S8
+    - bounded_MMIO_scratchpad_VRELU_S8
     - bounded_MMIO_scratchpad_GEMM_S8
+    - bounded_MMIO_scratchpad_GEMM_S4
+    - single_matmul_lowering_smoke
+    - multi_tile_MN_matmul_lowering_smoke
+    - split_K_matmul_lowering_smoke
+    - single_conv2d_im2col_lowering_smoke
+    - attention_QK_score_lowering_smoke
+    - attention_softmax_exp2_q0_8_lowering_smoke
+    - attention_AV_context_lowering_smoke
+    - transformer_MLP_relu_lowering_smoke
+    - SwiGLU_s8_scalar_gate_lowering_smoke
+    - bias_add_s8_scalar_broadcast_lowering_smoke
+    - residual_add_s8_scalar_lowering_smoke
+    - single_head_transformer_block_lowering_smoke
+    - modern_decoder_block_single_head_lowering_smoke
+    - RoPE_s8_scalar_lowering_smoke
+    - RMSNorm_s8_scalar_lowering_smoke
+    - descriptor_tensor_read_stream_smoke
+    - descriptor_gemm_s8_writeback_smoke
+    - deterministic_cycle_energy_scale_model
     - completion_irq
     - basic_performance_counters
   explicit_gaps:
     - no_tensor_command_queue
-    - no_DMA_fed_scratchpad
+    - no_production_DMA_fed_scratchpad
     - no_large_local_SRAM
     - no_systolic_array
     - no_sparse_INT4_GEMM
-    - no_INT2_or_FP8_execution
-    - no_compiler_backend
+    - no_INT2_tensor_path
+    - no_FP8_tensor_path
+    - no_production_compiler_backend
     - no_NNAPI_delegate
-    - no_power_or_area_model
+    - no_measured_power_or_area_model
     - no_sustained_benchmark_evidence
 
 next_implementation_steps:
@@ -179,4 +204,4 @@ next_implementation_steps:
   - Replace scalar GEMM prototype with a parameterized INT8/INT4 tile model.
   - Add descriptor-ring command ABI and DMA-fed scratchpad staging.
   - Add cycle-accurate performance model for tile count, SRAM, and DRAM bandwidth.
-  - Add compiler/runtime smoke path that maps one TFLite/StableHLO matmul to the NPU ABI.
+  - Expand the single-matmul lowering smoke path into a real StableHLO/TFLite compiler backend.

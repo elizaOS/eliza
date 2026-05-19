@@ -94,6 +94,8 @@ void qjl_quantize_row_avx2(const float *key, const float *prj,
                            qjl_block_qjl1_256 *out);
 void qjl_quantize_row_neon(const float *key, const float *prj,
                            qjl_block_qjl1_256 *out);
+void qjl_quantize_row_rvv(const float *key, const float *prj,
+                          qjl_block_qjl1_256 *out);
 
 /* Bulk: quantize n_rows successive key vectors. Each row is head_dim floats. */
 void qjl_quantize_rows_ref(const float *keys, const float *prj,
@@ -102,6 +104,8 @@ void qjl_quantize_rows_avx2(const float *keys, const float *prj,
                             qjl_block_qjl1_256 *out, size_t n_rows);
 void qjl_quantize_rows_neon(const float *keys, const float *prj,
                             qjl_block_qjl1_256 *out, size_t n_rows);
+void qjl_quantize_rows_rvv(const float *keys, const float *prj,
+                           qjl_block_qjl1_256 *out, size_t n_rows);
 
 /* Best available implementation on the running CPU. */
 void qjl_quantize_rows(const float *keys, const float *prj,
@@ -130,6 +134,8 @@ void qjl_dequantize_row_avx2(const qjl_block_qjl1_256 *blk, const float *prj,
                              float *out);
 void qjl_dequantize_row_neon(const qjl_block_qjl1_256 *blk, const float *prj,
                              float *out);
+void qjl_dequantize_row_rvv(const qjl_block_qjl1_256 *blk, const float *prj,
+                            float *out);
 
 /* ---------------- GQA attention score ---------------- */
 
@@ -159,6 +165,10 @@ void qjl_score_qk_neon(const float *q_sketch,
                        const qjl_block_qjl1_256 *packed_k,
                        int n_heads, int n_kv_heads, int n_tokens,
                        float *scores);
+void qjl_score_qk_rvv(const float *q_sketch,
+                      const qjl_block_qjl1_256 *packed_k,
+                      int n_heads, int n_kv_heads, int n_tokens,
+                      float *scores);
 
 void qjl_score_qk(const float *q_sketch,
                   const qjl_block_qjl1_256 *packed_k,
@@ -188,6 +198,10 @@ void qjl_score_qk_i8_dotprod(const qjl_i8_sketch_256 *q_sketch_i8,
                              const qjl_block_qjl1_256 *packed_k,
                              int n_heads, int n_kv_heads, int n_tokens,
                              float *scores);
+void qjl_score_qk_i8_rvv(const qjl_i8_sketch_256 *q_sketch_i8,
+                         const qjl_block_qjl1_256 *packed_k,
+                         int n_heads, int n_kv_heads, int n_tokens,
+                         float *scores);
 
 /* Best-available int8-sketch score path on the running CPU. */
 void qjl_score_qk_i8(const qjl_i8_sketch_256 *q_sketch_i8,

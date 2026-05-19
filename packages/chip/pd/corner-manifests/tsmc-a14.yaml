@@ -1,0 +1,42 @@
+schema: eliza.pd_corner_manifest.v1
+pdk: TSMC_A14
+node_class: tsmc_a14_2nd_gen_gaa
+status: blocked_until_foundry_agreement
+evidence_class: procurement_blocked_no_corner_set
+
+claim_boundary:
+  allowed: []
+  blocked:
+    - Any TSMC A14 corner-set claim is BLOCKED.
+    - A14 baseline is frontside-PDN; A14P (SPR-BSPDN) slips to 2029 and is documented separately.
+
+procurement_gate:
+  status: blocked_until_foundry_agreement
+  unblock_requires:
+    - Executed TSMC OIP / NDA agreement at A14.
+    - Hard-IP licenses re-cut for A14 (LPDDR PHY, USB, MIPI, PLL, SRAM compiler).
+    - Commercial EDA flow qualified at A14 by foundry.
+    - LVF/SOCV-capable signoff STA infrastructure.
+
+required_after_unblock:
+  total_effective_corners_min: 32
+  total_full_corners_min: 128
+  pvt_axes:
+    process: [SS, TT, FF, SSGNP, FFGNP, local_NFET, local_PFET]
+    voltage_v: [vmin_low, vnom, vmax_high]
+    temperature_c: [-40, 0, 25, 85, 110, 125]
+    aging: [t0, mid_life, EOL]
+    rc: [cworst, cbest, rcworst, rcbest, typical]
+  multi_vt_required:
+    - SLVT
+    - LVT
+    - RVT
+    - HVT
+    - ULVT_for_speed_critical_clusters
+  ocv_model: LVF_or_SOCV
+  bspdn_corners: a14_baseline_frontside_only_no_bspdn
+
+forbidden_claims_until_unblocked:
+  - a14_corner_clean
+  - a14_release_evidence
+  - a14p_bspdn_signoff_2029

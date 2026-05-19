@@ -8,6 +8,46 @@ Read32 = Callable[[int], int]
 Write32 = Callable[[int, int], None]
 
 
+def _s8(value: int) -> int:
+    value &= 0xFF
+    return value - 0x100 if value & 0x80 else value
+
+
+def _s4(value: int) -> int:
+    value &= 0xF
+    return value - 0x10 if value & 0x8 else value
+
+
+def _s2(value: int) -> int:
+    value &= 0x3
+    return value - 0x4 if value & 0x2 else value
+
+
+def _s32(value: int) -> int:
+    value &= 0xFFFF_FFFF
+    return value - 0x1_0000_0000 if value & 0x8000_0000 else value
+
+
+def _fp8_e4m3_to_q8_8(value: int) -> int:
+    value &= 0xFF
+    exp = (value >> 3) & 0xF
+    mant = value & 0x7
+    if exp == 0:
+        abs_q = mant >> 1
+    elif exp >= 2:
+        abs_q = (8 + mant) << (exp - 2)
+    else:
+        abs_q = (8 + mant) >> 1
+    return -abs_q if value & 0x80 else abs_q
+
+
+def golden_exp2_neg_q0_8(delta: int) -> int:
+    if not -128 <= delta <= 0:
+        raise ValueError("EXP2_NEG_Q0_8 delta must be signed INT8 in -128..0")
+    shift = min(8, -delta)
+    return 256 >> shift
+
+
 class NpuPrecisionState(StrEnum):
     SUPPORTED = "supported"
     RESERVED = "reserved"
@@ -130,6 +170,13 @@ class E1NpuRuntime:
     OP_MIN_U32 = 6
     OP_DOT8_S4 = 7
     OP_GEMM_S8 = 8
+    OP_GEMM_S4 = 9
+    OP_RELU4_S8 = 10
+    OP_VRELU_S8 = 11
+    OP_SDOT4_S4_2_4 = 12
+    OP_DOT16_S2 = 13
+    OP_DOT4_FP8_E4M3 = 14
+    OP_EXP2_NEG_Q0_8 = 15
     DESC_RING_ENTRIES = 8
     DESC_STATUS_EMPTY = 0x1
     DESC_STATUS_DONE = 0x2
@@ -147,14 +194,20 @@ class E1NpuRuntime:
         NpuPrecisionSupport(
             "INT8",
             NpuPrecisionState.SUPPORTED,
-            "DOT4_S8 and bounded GEMM_S8 through 64-byte MMIO scratchpad",
+            "DOT4_S8, RELU4_S8, VRELU_S8, and bounded GEMM_S8 through 64-byte MMIO scratchpad",
             "runtime tests plus e1-npu-runtime-contract.json",
         ),
         NpuPrecisionSupport(
             "INT4",
             NpuPrecisionState.SUPPORTED,
-            "DOT8_S4 packed dot prototype only; no tensor GEMM/compiler path",
-            "runtime opcode coverage only",
+            "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse dot, and bounded GEMM_S4 through 64-byte MMIO scratchpad",
+            "runtime opcode, sparse metadata, and bounded GEMM_S4 tests only; no compiler path",
+        ),
+        NpuPrecisionSupport(
+            "INT2",
+            NpuPrecisionState.SUPPORTED,
+            "DOT16_S2 packed scalar dot prototype only; no tensor GEMM/compiler path",
+            "runtime opcode and packed INT2 reference tests only",
         ),
         NpuPrecisionSupport(
             "FP16",
@@ -170,9 +223,9 @@ class E1NpuRuntime:
         ),
         NpuPrecisionSupport(
             "FP8",
-            NpuPrecisionState.BLOCKED,
-            "no opcode, RTL datapath, compiler lowering, or measured benchmark path",
-            "blocked until hardware/runtime tests identify execution path",
+            NpuPrecisionState.SUPPORTED,
+            "DOT4_FP8_E4M3 scalar E4M3 dot prototype with signed Q8.8 output only; no tensor GEMM/compiler path",
+            "runtime opcode and E4M3 fixed-point reference tests only",
         ),
     )
 
@@ -234,6 +287,12 @@ class E1NpuRuntime:
     def mul_lo(self, a: int, b: int) -> int:
         return self.run(self.OP_MUL_LO, a, b)
 
+    def max_u32(self, a: int, b: int) -> int:
+        return self.run(self.OP_MAX_U32, a, b)
+
+    def min_u32(self, a: int, b: int) -> int:
+        return self.run(self.OP_MIN_U32, a, b)
+
     def mac_s16(self, a: int, b: int, acc: int = 0) -> int:
         return self.run(self.OP_MAC_S16, a, b, acc)
 
@@ -242,6 +301,80 @@ class E1NpuRuntime:
 
     def dot8_s4(self, a_packed: int, b_packed: int, acc: int = 0) -> int:
         return self.run(self.OP_DOT8_S4, a_packed, b_packed, acc)
+
+    def sdot4_s4_2_4(
+        self,
+        nonzero_weights: list[int],
+        dense_values: list[int],
+        positions: list[int],
+    ) -> int:
+        if len(nonzero_weights) != 4:
+            raise ValueError("SDOT4_S4_2_4 requires exactly four nonzero INT4 weights")
+        if len(dense_values) != 8:
+            raise ValueError("SDOT4_S4_2_4 requires exactly eight dense INT4 values")
+        if len(positions) != 4:
+            raise ValueError("SDOT4_S4_2_4 requires exactly four metadata positions")
+        if any(not -8 <= value <= 7 for value in nonzero_weights + dense_values):
+            raise ValueError("SDOT4_S4_2_4 input outside signed INT4 range")
+        if any(not 0 <= position <= 3 for position in positions):
+            raise ValueError("SDOT4_S4_2_4 metadata positions must be in 0..3")
+        if len(set(positions[:2])) != 2 or len(set(positions[2:])) != 2:
+            raise ValueError("SDOT4_S4_2_4 requires two distinct positions per 2:4 group")
+
+        weights = sum((value & 0xF) << (4 * index) for index, value in enumerate(nonzero_weights))
+        dense = sum((value & 0xF) << (4 * index) for index, value in enumerate(dense_values))
+        metadata = sum((position & 0x3) << (2 * index) for index, position in enumerate(positions))
+        return _s32(self.run(self.OP_SDOT4_S4_2_4, weights, dense, metadata))
+
+    def dot16_s2(self, a_values: list[int], b_values: list[int], acc: int = 0) -> int:
+        if len(a_values) != 16 or len(b_values) != 16:
+            raise ValueError("DOT16_S2 requires exactly sixteen values per operand")
+        if any(not -2 <= value <= 1 for value in a_values + b_values):
+            raise ValueError("DOT16_S2 input outside signed INT2 range")
+        a_packed = sum((value & 0x3) << (2 * index) for index, value in enumerate(a_values))
+        b_packed = sum((value & 0x3) << (2 * index) for index, value in enumerate(b_values))
+        return _s32(self.run(self.OP_DOT16_S2, a_packed, b_packed, acc))
+
+    def dot4_fp8_e4m3(self, a_fp8: list[int], b_fp8: list[int], acc_q8_8: int = 0) -> int:
+        if len(a_fp8) != 4 or len(b_fp8) != 4:
+            raise ValueError("DOT4_FP8_E4M3 requires exactly four FP8 values per operand")
+        if any(not 0 <= value <= 0xFF for value in a_fp8 + b_fp8):
+            raise ValueError("DOT4_FP8_E4M3 inputs must be raw 8-bit FP8 encodings")
+        a_packed = sum((value & 0xFF) << (8 * index) for index, value in enumerate(a_fp8))
+        b_packed = sum((value & 0xFF) << (8 * index) for index, value in enumerate(b_fp8))
+        return _s32(self.run(self.OP_DOT4_FP8_E4M3, a_packed, b_packed, acc_q8_8))
+
+    def exp2_neg_q0_8(self, delta: int) -> int:
+        if not -128 <= delta <= 0:
+            raise ValueError("EXP2_NEG_Q0_8 delta must be signed INT8 in -128..0")
+        return self.run(self.OP_EXP2_NEG_Q0_8, delta & 0xFF, 0)
+
+    def relu4_s8(self, values: list[int]) -> list[int]:
+        if len(values) != 4:
+            raise ValueError("RELU4_S8 requires exactly four INT8 values")
+        packed = 0
+        for index, value in enumerate(values):
+            if not -128 <= value <= 127:
+                raise ValueError("RELU4_S8 input outside signed INT8 range")
+            packed |= (value & 0xFF) << (8 * index)
+        result = self.run(self.OP_RELU4_S8, packed, 0)
+        return [_s8(result >> (8 * index)) for index in range(4)]
+
+    def vrelu_s8(self, values: list[int]) -> list[int]:
+        if not 1 <= len(values) <= self.SCRATCH_BYTES:
+            raise ValueError("VRELU_S8 requires 1..64 INT8 values")
+        for value in values:
+            if not -128 <= value <= 127:
+                raise ValueError("VRELU_S8 input outside signed INT8 range")
+        self.clear_perf()
+        self.write_scratch(0, bytes(value & 0xFF for value in values))
+        self.write32(self.GEMM_CFG, len(values))
+        self.write32(self.GEMM_BASE, 0)
+        self.write32(self.OPCODE, self.OP_VRELU_S8)
+        self.write32(self.CTRL_STATUS, 2)
+        self.write32(self.CTRL_STATUS, 1)
+        self._poll_status(1024, "e1 NPU VRELU_S8 command")
+        return [_s8(value) for value in self.read_scratch(0, len(values))]
 
     def clear_perf(self):
         self.write32(self.PERF_ERRORS, 1)
@@ -415,12 +548,131 @@ class E1NpuRuntime:
             for r in range(m)
         ]
 
+    def gemm_s4(self, a, b):
+        """Run bounded packed INT4 GEMM, returning an MxN int32 matrix.
+
+        A and B are row-major signed INT4 values packed two per scratchpad byte.
+        GEMM_BASE A/B fields and A/B strides are interpreted as INT4 element
+        offsets for this opcode. C remains a byte offset and stores signed int32.
+        """
+        m = len(a)
+        k = len(a[0]) if m else 0
+        n = len(b[0]) if b else 0
+        if not (1 <= m <= 3 and 1 <= n <= 3 and 1 <= k <= 7):
+            raise ValueError("GEMM dimensions exceed prototype limits")
+        if any(len(row) != k for row in a) or len(b) != k or any(len(row) != n for row in b):
+            raise ValueError("ragged GEMM inputs")
+
+        a_base = 0
+        b_base = m * k
+        packed_input_bytes = (b_base + k * n + 1) // 2
+        c_base = (packed_input_bytes + 3) & ~3
+        c_bytes = m * n * 4
+        if c_base + c_bytes > self.SCRATCH_BYTES:
+            raise ValueError("GEMM tile exceeds 64-byte NPU scratchpad")
+
+        def s4(value):
+            if not -8 <= value <= 7:
+                raise ValueError("GEMM input outside signed INT4 range")
+            return value & 0xF
+
+        packed = bytearray(packed_input_bytes)
+        values = [s4(value) for row in a for value in row] + [
+            s4(b[row][col]) for row in range(k) for col in range(n)
+        ]
+        for index, value in enumerate(values):
+            if index & 1:
+                packed[index // 2] |= value << 4
+            else:
+                packed[index // 2] |= value
+
+        self.clear_perf()
+        self.write_scratch(0, bytes(packed))
+        self.write_scratch(c_base, bytes(c_bytes))
+        self.write32(self.GEMM_CFG, m | (n << 8) | (k << 16))
+        self.write32(self.GEMM_BASE, a_base | (b_base << 8) | (c_base << 16))
+        self.write32(self.GEMM_STRIDE, k | (n << 8) | ((n * 4) << 16))
+        self.write32(self.OPCODE, self.OP_GEMM_S4)
+        self.write32(self.CTRL_STATUS, 2)
+        self.write32(self.CTRL_STATUS, 1)
+        self._poll_status(1024, "e1 NPU GEMM_S4 command")
+        raw = self.read_scratch(c_base, c_bytes)
+        return [
+            [
+                int.from_bytes(raw[(r * n + c) * 4 : (r * n + c + 1) * 4], "little", signed=True)
+                for c in range(n)
+            ]
+            for r in range(m)
+        ]
+
 
 def golden_gemm_s8(a, b):
     m = len(a)
     k = len(a[0]) if m else 0
     n = len(b[0]) if b else 0
     return [[sum(a[i][kk] * b[kk][j] for kk in range(k)) for j in range(n)] for i in range(m)]
+
+
+def golden_gemm_s4(a, b):
+    return golden_gemm_s8(a, b)
+
+
+def golden_sdot4_s4_2_4(
+    nonzero_weights: list[int],
+    dense_values: list[int],
+    positions: list[int],
+) -> int:
+    if len(nonzero_weights) != 4:
+        raise ValueError("SDOT4_S4_2_4 requires exactly four nonzero INT4 weights")
+    if len(dense_values) != 8:
+        raise ValueError("SDOT4_S4_2_4 requires exactly eight dense INT4 values")
+    if len(positions) != 4:
+        raise ValueError("SDOT4_S4_2_4 requires exactly four metadata positions")
+    if any(not -8 <= value <= 7 for value in nonzero_weights + dense_values):
+        raise ValueError("SDOT4_S4_2_4 input outside signed INT4 range")
+    if any(not 0 <= position <= 3 for position in positions):
+        raise ValueError("SDOT4_S4_2_4 metadata positions must be in 0..3")
+    if len(set(positions[:2])) != 2 or len(set(positions[2:])) != 2:
+        raise ValueError("SDOT4_S4_2_4 requires two distinct positions per 2:4 group")
+    return sum(
+        nonzero_weights[index] * dense_values[(index // 2) * 4 + positions[index]]
+        for index in range(4)
+    )
+
+
+def golden_dot16_s2(a_values: list[int], b_values: list[int], acc: int = 0) -> int:
+    if len(a_values) != 16 or len(b_values) != 16:
+        raise ValueError("DOT16_S2 requires exactly sixteen values per operand")
+    if any(not -2 <= value <= 1 for value in a_values + b_values):
+        raise ValueError("DOT16_S2 input outside signed INT2 range")
+    return acc + sum(a * b for a, b in zip(a_values, b_values, strict=True))
+
+
+def golden_dot4_fp8_e4m3(a_fp8: list[int], b_fp8: list[int], acc_q8_8: int = 0) -> int:
+    if len(a_fp8) != 4 or len(b_fp8) != 4:
+        raise ValueError("DOT4_FP8_E4M3 requires exactly four FP8 values per operand")
+    if any(not 0 <= value <= 0xFF for value in a_fp8 + b_fp8):
+        raise ValueError("DOT4_FP8_E4M3 inputs must be raw 8-bit FP8 encodings")
+    return acc_q8_8 + sum(
+        (_fp8_e4m3_to_q8_8(a) * _fp8_e4m3_to_q8_8(b)) >> 8
+        for a, b in zip(a_fp8, b_fp8, strict=True)
+    )
+
+
+def golden_relu4_s8(values: list[int]) -> list[int]:
+    if len(values) != 4:
+        raise ValueError("RELU4_S8 requires exactly four INT8 values")
+    if any(not -128 <= value <= 127 for value in values):
+        raise ValueError("RELU4_S8 input outside signed INT8 range")
+    return [max(0, value) for value in values]
+
+
+def golden_vrelu_s8(values: list[int]) -> list[int]:
+    if not 1 <= len(values) <= E1NpuRuntime.SCRATCH_BYTES:
+        raise ValueError("VRELU_S8 requires 1..64 INT8 values")
+    if any(not -128 <= value <= 127 for value in values):
+        raise ValueError("VRELU_S8 input outside signed INT8 range")
+    return [max(0, value) for value in values]
 
 
 HelloNpuRuntime = E1NpuRuntime

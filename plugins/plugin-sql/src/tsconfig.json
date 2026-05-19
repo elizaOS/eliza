@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
     "target": "ESNext",
     "module": "ESNext",
     "lib": ["ESNext", "dom"],
@@ -24,8 +25,11 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false,
     "allowUnusedLabels": true,
-    "types": ["node", "bun"]
+    "types": ["node", "bun"],
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist/index.d.ts"]
+    }
   },
   "include": ["**/*.ts"],
-  "exclude": ["__tests__", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": ["dist", "__tests__", "**/__tests__/**", "**/*.test.ts", "**/*.spec.ts"]
 }

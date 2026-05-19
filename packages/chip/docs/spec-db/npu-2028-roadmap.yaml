@@ -21,7 +21,13 @@ phases:
       - scalar_mmio_ops
       - DOT4_S8
       - DOT8_S4
+      - SDOT4_S4_2_4
+      - DOT16_S2
+      - DOT4_FP8_E4M3
+      - RELU4_S8
+      - bounded_VRELU_S8_len64
       - bounded_GEMM_S8_m3_n3_k7
+      - bounded_GEMM_S4_m3_n3_k7
       - 64_byte_mmio_scratchpad
       - perf_counters_cycles_macs_ops_errors_unsupported_ops
     measurable_gates:

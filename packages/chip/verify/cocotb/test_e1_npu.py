@@ -8,7 +8,11 @@ from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
-from compiler.runtime.e1_npu_runtime import E1NpuRuntime, golden_gemm_s8  # noqa: E402
+from compiler.runtime.e1_npu_runtime import (  # noqa: E402
+    E1NpuRuntime,
+    golden_gemm_s4,
+    golden_gemm_s8,
+)
 
 
 async def reset(dut):
@@ -18,6 +22,10 @@ async def reset(dut):
     dut.addr.value = 0
     dut.wdata.value = 0
     if hasattr(dut, "m_axil_arready"):
+        dut.m_axil_awready.value = 0
+        dut.m_axil_wready.value = 0
+        dut.m_axil_bvalid.value = 0
+        dut.m_axil_bresp.value = 0
         dut.m_axil_arready.value = 0
         dut.m_axil_rvalid.value = 0
         dut.m_axil_rdata.value = 0
@@ -82,6 +90,20 @@ def pack_s4(values):
     word = 0
     for index, value in enumerate(values):
         word |= (value & 0xF) << (4 * index)
+    return word
+
+
+def pack_s2(values):
+    word = 0
+    for index, value in enumerate(values):
+        word |= (value & 0x3) << (2 * index)
+    return word
+
+
+def pack_fp8(values):
+    word = 0
+    for index, value in enumerate(values):
+        word |= (value & 0xFF) << (8 * index)
     return word
 
 
@@ -169,6 +191,70 @@ async def runtime_gemm_s8(dut, a, b):
     raise TimeoutError("e1 NPU runtime GEMM command did not complete")
 
 
+async def runtime_gemm_s4(dut, a, b):
+    m = len(a)
+    k = len(a[0]) if m else 0
+    n = len(b[0]) if b else 0
+    a_base = 0
+    b_base = m * k
+    packed_input_bytes = (b_base + k * n + 1) // 2
+    c_base = (packed_input_bytes + 3) & ~3
+    c_bytes = m * n * 4
+    packed = bytearray(packed_input_bytes)
+    values = [(value & 0xF) for row in a for value in row] + [
+        b[row][col] & 0xF for row in range(k) for col in range(n)
+    ]
+    for index, value in enumerate(values):
+        if index & 1:
+            packed[index // 2] |= value << 4
+        else:
+            packed[index // 2] |= value
+
+    await runtime_write32(dut, E1NpuRuntime.PERF_ERRORS, 1)
+    await runtime_write_scratch(dut, 0, bytes(packed))
+    await runtime_write_scratch(dut, c_base, bytes(c_bytes))
+    await runtime_write32(dut, E1NpuRuntime.GEMM_CFG, m | (n << 8) | (k << 16))
+    await runtime_write32(dut, E1NpuRuntime.GEMM_BASE, a_base | (b_base << 8) | (c_base << 16))
+    await runtime_write32(dut, E1NpuRuntime.GEMM_STRIDE, k | (n << 8) | ((n * 4) << 16))
+    await runtime_write32(dut, E1NpuRuntime.OPCODE, E1NpuRuntime.OP_GEMM_S4)
+    await runtime_write32(dut, E1NpuRuntime.CTRL_STATUS, 2)
+    await runtime_write32(dut, E1NpuRuntime.CTRL_STATUS, 1)
+    for _ in range(1024):
+        status = await runtime_read32(dut, E1NpuRuntime.CTRL_STATUS)
+        if status & 0x4:
+            raise RuntimeError("e1 NPU rejected runtime GEMM_S4 command")
+        if status & 0x2:
+            raw = await runtime_read_scratch(dut, c_base, c_bytes)
+            return [
+                [
+                    int.from_bytes(
+                        raw[(r * n + c) * 4 : (r * n + c + 1) * 4], "little", signed=True
+                    )
+                    for c in range(n)
+                ]
+                for r in range(m)
+            ]
+    raise TimeoutError("e1 NPU runtime GEMM_S4 command did not complete")
+
+
+async def runtime_vrelu_s8(dut, values):
+    await runtime_write32(dut, E1NpuRuntime.PERF_ERRORS, 1)
+    await runtime_write_scratch(dut, 0, bytes(value & 0xFF for value in values))
+    await runtime_write32(dut, E1NpuRuntime.GEMM_CFG, len(values))
+    await runtime_write32(dut, E1NpuRuntime.GEMM_BASE, 0)
+    await runtime_write32(dut, E1NpuRuntime.OPCODE, E1NpuRuntime.OP_VRELU_S8)
+    await runtime_write32(dut, E1NpuRuntime.CTRL_STATUS, 2)
+    await runtime_write32(dut, E1NpuRuntime.CTRL_STATUS, 1)
+    for _ in range(1024):
+        status = await runtime_read32(dut, E1NpuRuntime.CTRL_STATUS)
+        if status & 0x4:
+            raise RuntimeError("e1 NPU rejected runtime VRELU command")
+        if status & 0x2:
+            raw = await runtime_read_scratch(dut, 0, len(values))
+            return [value - 0x100 if value & 0x80 else value for value in raw]
+    raise TimeoutError("e1 NPU runtime VRELU command did not complete")
+
+
 async def descriptor_read_responder(dut, memory):
     pending = None
     while True:
@@ -188,6 +274,30 @@ async def descriptor_read_responder(dut, memory):
             pending = memory.get(int(dut.m_axil_araddr.value), 0)
         else:
             dut.m_axil_arready.value = 0
+
+
+async def descriptor_write_responder(dut, memory):
+    pending_aw = None
+    pending_w = None
+    while True:
+        await RisingEdge(dut.clk)
+        dut.m_axil_awready.value = pending_aw is None
+        dut.m_axil_wready.value = pending_w is None
+
+        if int(dut.m_axil_awvalid.value) and int(dut.m_axil_awready.value):
+            pending_aw = int(dut.m_axil_awaddr.value)
+        if int(dut.m_axil_wvalid.value) and int(dut.m_axil_wready.value):
+            pending_w = int(dut.m_axil_wdata.value)
+
+        if pending_aw is not None and pending_w is not None and not int(dut.m_axil_bvalid.value):
+            memory[pending_aw] = pending_w
+            dut.m_axil_bvalid.value = 1
+            dut.m_axil_bresp.value = 0
+            pending_aw = None
+            pending_w = None
+        elif int(dut.m_axil_bvalid.value) and int(dut.m_axil_bready.value):
+            dut.m_axil_bvalid.value = 0
+            dut.m_axil_bresp.value = 0
 
 
 @cocotb.test()
@@ -450,7 +560,7 @@ async def npu_descriptor_streams_tensor_tile_into_scratchpad_and_runs_gemm(dut):
 
 
 @cocotb.test()
-async def npu_descriptor_requires_valid_owner_bit_and_rejects_writeback_request(dut):
+async def npu_descriptor_requires_valid_owner_bit_and_rejects_malformed_writeback_request(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
@@ -462,7 +572,7 @@ async def npu_descriptor_requires_valid_owner_bit_and_rejects_writeback_request(
                 0x4004: 7,
                 0x4008: 11,
                 0x400C: 0,
-                0x4010: 0xC000_0000,  # valid owner + unsupported writeback request, ADD
+                0x4010: 0xC000_0000,  # valid owner + malformed scalar writeback request, ADD
                 0x4014: 7,
                 0x4018: 11,
                 0x401C: 0,
@@ -499,6 +609,75 @@ async def npu_descriptor_requires_valid_owner_bit_and_rejects_writeback_request(
 
 
 @cocotb.test()
+async def npu_descriptor_streams_gemm_and_writes_result_back_to_dram(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    a = [[2, -3, 4], [-5, 6, 7]]
+    b = [[1, 2], [-3, 4], [5, -6]]
+    a_bytes = bytes(value & 0xFF for row in a for value in row)
+    b_bytes = bytes(b[row][col] & 0xFF for row in range(3) for col in range(2))
+    tensor = a_bytes + b_bytes
+    memory = {
+        0x5000 + index * 4: int.from_bytes(tensor[index * 4 : index * 4 + 4], "little")
+        for index in range(3)
+    }
+    memory.update(
+        {
+            0x4000: (
+                E1NpuRuntime.DESC_FLAG_VALID_OWNER
+                | E1NpuRuntime.DESC_FLAG_WRITEBACK_REQUEST
+                | E1NpuRuntime.OP_GEMM_S8
+                | E1NpuRuntime.DESC_FLAG_STREAM_TO_SCRATCH
+                | (0 << 16)
+                | (len(tensor) << 24)
+            ),
+            0x4004: 0x5000,
+            0x4008: 0x6000,
+            0x400C: 0,
+        }
+    )
+    reader = cocotb.start_soon(descriptor_read_responder(dut, memory))
+    writer = cocotb.start_soon(descriptor_write_responder(dut, memory))
+
+    await write_reg(dut, 0x17, 1)
+    await write_reg(dut, 0x08, 2 | (2 << 8) | (3 << 16))
+    await write_reg(dut, 0x09, 0 | (6 << 8) | (12 << 16))
+    await write_reg(dut, 0x0A, 3 | (2 << 8) | (8 << 16))
+    await write_reg(dut, 0x10, 0x4000)
+    await write_reg(dut, 0x11, 1)
+    await write_reg(dut, 0x12, 0)
+    await write_reg(dut, 0x0C, 1)
+    await write_reg(dut, 0x03, 1)
+
+    done_status = await poll_done(dut, cycles=160)
+    desc_status = await read_reg(dut, 0x13)
+    assert done_status == 0x2, f"status=0x{done_status:08x} desc_status=0x{desc_status:08x}"
+    reader.kill()
+    writer.kill()
+
+    expected = golden_gemm_s8(a, b)
+    observed_words = [memory[0x6000 + word * 4] for word in range(4)]
+    observed = [
+        [
+            int.from_bytes(
+                observed_words[row * 2 + col].to_bytes(4, "little"), "little", signed=True
+            )
+            for col in range(2)
+        ]
+        for row in range(2)
+    ]
+    assert observed == expected
+    assert await read_reg(dut, 0x12) == 1
+    assert await read_reg(dut, 0x13) == 0x2
+    assert await read_reg(dut, 0x19) == 28
+    assert await read_reg(dut, 0x1A) == 16
+    assert await read_reg(dut, 0x1B) == 7
+    assert await read_reg(dut, 0x1C) == 4
+    assert await read_reg(dut, 0x17) == 0
+
+
+@cocotb.test()
 async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
@@ -524,6 +703,38 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
             0,
             146,
         ),
+        (
+            "sdot4_s4_2_4",
+            E1NpuRuntime.OP_SDOT4_S4_2_4,
+            pack_s4([7, -3, 5, -6]),
+            pack_s4([1, -2, 3, -4, 5, -6, 7, -8]),
+            0 | (2 << 2) | (1 << 4) | (3 << 6),
+            16,
+        ),
+        (
+            "dot16_s2",
+            E1NpuRuntime.OP_DOT16_S2,
+            pack_s2([1, -1, -2, 0, 1, 1, -2, -1, 0, 1, -1, -2, 1, 0, -2, 1]),
+            pack_s2([-2, 1, 1, -1, 1, -2, 0, -1, 1, 1, -2, -1, 0, -2, 1, 1]),
+            5,
+            4,
+        ),
+        (
+            "dot4_fp8_e4m3",
+            E1NpuRuntime.OP_DOT4_FP8_E4M3,
+            pack_fp8([0x38, 0xBC, 0x30, 0x40]),
+            pack_fp8([0x40, 0xB8, 0x28, 0xB0]),
+            64,
+            736,
+        ),
+        (
+            "relu4_s8",
+            E1NpuRuntime.OP_RELU4_S8,
+            pack_s8([-4, 0, 7, -128]),
+            0,
+            0,
+            pack_s8([0, 0, 7, 0]),
+        ),
         ("max_u32", E1NpuRuntime.OP_MAX_U32, 0x0000_0001, 0xFFFF_FFFE, 0, 0xFFFF_FFFE),
         ("min_u32", E1NpuRuntime.OP_MIN_U32, 0x0000_0001, 0xFFFF_FFFE, 0, 1),
     ]
@@ -540,11 +751,21 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
     assert observed_gemm == golden_gemm_s8(a, b)
     covered_opcodes.add(E1NpuRuntime.OP_GEMM_S8)
 
+    a_s4 = [[7, -8, 3], [-4, 5, -6]]
+    b_s4 = [[-7, 6], [5, -4], [3, -2]]
+    observed_gemm_s4 = await runtime_gemm_s4(dut, a_s4, b_s4)
+    assert observed_gemm_s4 == golden_gemm_s4(a_s4, b_s4)
+    covered_opcodes.add(E1NpuRuntime.OP_GEMM_S4)
+
+    observed_vrelu = await runtime_vrelu_s8(dut, [-128, -3, 0, 5, 127, -1])
+    assert observed_vrelu == [0, 0, 0, 5, 127, 0]
+    covered_opcodes.add(E1NpuRuntime.OP_VRELU_S8)
+
     perf_cycles = await runtime_read32(dut, E1NpuRuntime.PERF_CYCLES)
     perf_macs = await runtime_read32(dut, E1NpuRuntime.PERF_MACS)
     perf_errors = await runtime_read32(dut, E1NpuRuntime.PERF_ERRORS)
-    assert perf_cycles == 12
-    assert perf_macs == 12
+    assert perf_cycles == 6
+    assert perf_macs == 0
     assert perf_errors == 0
 
     coverage = {
@@ -552,8 +773,11 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
         "source": "verify/cocotb/test_e1_npu.py",
         "runtime_contract": "compiler/runtime/e1_npu_runtime.py",
         "covered_opcodes": sorted(covered_opcodes),
-        "covered_opcode_names": [case[0] for case in scalar_cases] + ["gemm_s8"],
-        "gemm_shapes": [{"m": 2, "n": 2, "k": 3}],
+        "covered_opcode_names": [case[0] for case in scalar_cases]
+        + ["gemm_s8", "gemm_s4", "vrelu_s8"],
+        "gemm_shapes": [{"m": 2, "n": 2, "k": 3, "precision": "int8"}],
+        "gemm_s4_shapes": [{"m": 2, "n": 2, "k": 3, "precision": "int4"}],
+        "vector_shapes": [{"length": 6, "op": "vrelu_s8", "precision": "int8"}],
         "status_bits": ["busy", "done", "error"],
         "descriptor_queue": {
             "registers": [
@@ -569,17 +793,19 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
             ],
             "descriptor_fetch_launches_scalar": True,
             "descriptor_streams_gemm_s8": True,
+            "descriptor_writeback_gemm_s8": True,
             "descriptor_bytes_read_covered": True,
             "descriptor_read_beats_covered": True,
-            "descriptor_write_counters_remain_zero_without_writeback": True,
+            "descriptor_bytes_written_covered": True,
+            "descriptor_write_beats_covered": True,
             "missing_descriptor_response_times_out": True,
             "empty_queue_rejects": True,
             "unaligned_base_rejects": True,
             "pending_depth_bits": "DESC_STATUS[21:19]",
             "pending_depth_semantics": "(DESC_HEAD - DESC_TAIL) modulo 8; 0 is empty, not a full-ring encoding",
-            "dma_backed_tensor_execution": False,
+            "dma_backed_tensor_execution": True,
             "valid_owner_bit_required": True,
-            "writeback_request_fails_closed": True,
+            "malformed_writeback_request_fails_closed": True,
         },
         "perf_counters": [
             "unsupported_ops",
@@ -593,9 +819,9 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
         "proof_boundary": {
             "nnapi_acceleration": False,
             "phone_class_tops": False,
-            "dma_backed_tensor_execution": False,
+            "dma_backed_tensor_execution": "single_descriptor_gemm_s8_read_writeback_smoke_only",
         },
-        "blocking_note": "Directed runtime ABI coverage only; no model, NNAPI, DMA writeback, queue ownership, or performance claim coverage.",
+        "blocking_note": "Directed runtime ABI coverage only; no model, NNAPI, queue ownership, or performance claim coverage.",
     }
     out = REPO_ROOT / "build/reports/npu_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)

@@ -16,6 +16,11 @@ COMPETITIVE = ROOT / "benchmarks/results/cpu-npu-2028-competitive-envelope.json"
 PROCESS_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-14a-process-eval.json"
 MODELED_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-modeled-eval.json"
 DRY_RUN_REPORT = ROOT / "benchmarks/results/dry-run/report.json"
+LOCAL_HOST_BENCHMARK_REPORT = ROOT / "benchmarks/results/local-host-benchmark-evidence.json"
+CHIPYARD_IMPORT_PREFLIGHT_REPORTS = (
+    ROOT / "build/chipyard/eliza_rocket/bootstrap-preflight.json",
+    ROOT / "benchmarks/results/chipyard/bootstrap-preflight.json",
+)
 OUT = ROOT / "benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json"
 
 REQUIRED_MODELED_REPORTS = {
@@ -264,6 +269,65 @@ def benchmark_release_rows() -> list[dict[str, Any]]:
     return rows
 
 
+def local_host_benchmark_summary() -> dict[str, Any]:
+    if not LOCAL_HOST_BENCHMARK_REPORT.is_file():
+        return {
+            "status": "missing",
+            "passed_count": 0,
+            "partial_timeout_count": 0,
+            "release_claim_allowed": False,
+        }
+    data = load_json_object(LOCAL_HOST_BENCHMARK_REPORT)
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        raise ValueError("local host benchmark report missing summary")
+    if data.get("status") != "local_host_evidence_not_release":
+        raise ValueError("local host benchmark report must remain non-release evidence")
+    boundary = str(data.get("claim_boundary", ""))
+    if "not target silicon" not in boundary or "must not be used for release" not in boundary:
+        raise ValueError("local host benchmark report claim boundary is too weak")
+    return {
+        "status": str(data.get("status")),
+        "passed_count": int(summary.get("passed_count", 0)),
+        "partial_timeout_count": int(summary.get("partial_timeout_count", 0)),
+        "release_claim_allowed": False,
+    }
+
+
+def chipyard_import_preflight_summary() -> dict[str, Any]:
+    for path in CHIPYARD_IMPORT_PREFLIGHT_REPORTS:
+        if not path.is_file():
+            continue
+        data = load_json_object(path)
+        if data.get("schema") != "eliza.cpu_ap_bootstrap_preflight.v1":
+            raise ValueError(f"{rel(path)} schema mismatch")
+        status = str(data.get("status", "missing"))
+        selected = data.get("selected_path")
+        chipyard = data.get("chipyard")
+        if not isinstance(selected, dict) or not isinstance(chipyard, dict):
+            raise ValueError(f"{rel(path)} missing Chipyard selected path metadata")
+        return {
+            "status": status,
+            "artifact": rel(path),
+            "checkout": str(data.get("checkout", "")),
+            "config_name": str(selected.get("config_name", "")),
+            "chipyard_tag": str(chipyard.get("tag", "")),
+            "chipyard_commit": str(chipyard.get("commit", "")),
+            "blocker_count": len(data.get("blockers") or []),
+            "error_count": len(data.get("errors") or []),
+        }
+    return {
+        "status": "missing",
+        "artifact": "",
+        "checkout": "",
+        "config_name": "",
+        "chipyard_tag": "",
+        "chipyard_commit": "",
+        "blocker_count": 0,
+        "error_count": 0,
+    }
+
+
 def build_report() -> dict[str, Any]:
     scorecard = load_yaml_object(SCORECARD)
     manual_review = load_yaml_object(MANUAL_REVIEW)
@@ -275,6 +339,8 @@ def build_report() -> dict[str, Any]:
     proof_rows = proof_domain_rows(scorecard)
     tools = tool_rows()
     benchmark_rows = benchmark_release_rows()
+    local_host_summary = local_host_benchmark_summary()
+    chipyard_preflight = chipyard_import_preflight_summary()
 
     competitive_metrics = competitive.get("envelope_metrics")
     process_metrics = process_eval.get("baseline_metrics")
@@ -347,6 +413,8 @@ def build_report() -> dict[str, Any]:
             "process_eval": rel(PROCESS_EVAL),
             "modeled_eval": rel(MODELED_EVAL),
             "benchmark_dry_run_report": rel(DRY_RUN_REPORT),
+            "local_host_benchmark_report": rel(LOCAL_HOST_BENCHMARK_REPORT),
+            "chipyard_import_preflight_report": chipyard_preflight["artifact"],
         },
         "modeled_reports": modeled_rows,
         "proof_domains": proof_rows,
@@ -362,6 +430,18 @@ def build_report() -> dict[str, Any]:
             "blocked_tools": blocked_tools,
             "blocked_benchmarks": blocked_benchmarks,
             "blocked_benchmark_requirements": blocked_benchmark_requirements,
+            "local_host_benchmark_status": local_host_summary["status"],
+            "local_host_benchmark_passed_count": local_host_summary["passed_count"],
+            "local_host_benchmark_partial_timeout_count": local_host_summary[
+                "partial_timeout_count"
+            ],
+            "local_host_benchmark_release_claim_allowed": local_host_summary[
+                "release_claim_allowed"
+            ],
+            "chipyard_import_preflight_status": chipyard_preflight["status"],
+            "chipyard_import_preflight_artifact": chipyard_preflight["artifact"],
+            "chipyard_import_preflight_blocker_count": chipyard_preflight["blocker_count"],
+            "chipyard_import_preflight_error_count": chipyard_preflight["error_count"],
             "competitive_npu_process_derated_dense_tops": require_number(
                 competitive_metrics.get("npu_process_derated_dense_tops"),
                 "process derated dense TOPS",
@@ -405,8 +485,11 @@ def validate_report(data: dict[str, Any]) -> list[str]:
     if require_number(summary.get("blocked_benchmark_count"), "blocked benchmark count") <= 0:
         errors.append("audit must enumerate blocked benchmark release rows")
     requirements = summary.get("blocked_benchmark_requirements")
-    if not isinstance(requirements, list) or "benchmark_model" not in requirements:
-        errors.append("audit must list benchmark_model as a blocked benchmark requirement")
+    if (
+        not isinstance(requirements, list)
+        or "benchmarks/capabilities/e1_npu_nnapi.proof.json" not in requirements
+    ):
+        errors.append("audit must list e1 NPU NNAPI proof as a blocked benchmark requirement")
     benchmark_rows = data.get("benchmark_release_readiness")
     if not isinstance(benchmark_rows, list):
         errors.append("benchmark_release_readiness must be a list")

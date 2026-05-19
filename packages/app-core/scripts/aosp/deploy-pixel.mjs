@@ -95,6 +95,18 @@ function parseArgs(argv) {
       `--abi must be arm64-v8a, x86_64, or riscv64 (got "${args.abi}")`,
     );
   }
+  // Pixel hardware is arm64-only. x86_64 lands on a running cvd. riscv64
+  // has no shipping Pixel device — refuse the no-device case so we don't
+  // silently try to push a riscv64 APK at an arm64 phone. If the operator
+  // really has a riscv64 dev board, they pass --device <serial> and we
+  // trust them.
+  if (args.abi === "riscv64" && !args.device) {
+    throw new Error(
+      `[deploy-pixel] --abi riscv64 needs an explicit --device <serial> (Pixel is arm64; ` +
+        `there is no shipping Google riscv64 phone). For Cuttlefish cf_riscv64_phone, ` +
+        `use \`node packages/app-core/scripts/aosp/sim.mjs --device-dir vsoc_riscv64_only\` instead.`,
+    );
+  }
   return args;
 }
 

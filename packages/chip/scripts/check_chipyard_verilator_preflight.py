@@ -29,6 +29,7 @@ REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS = (
     "generators/ibex",
     "generators/nvdla",
     "sims/firesim",
+    "tools/DRAMSim2",
     "tools/cde",
     "tools/dsptools",
     "tools/fixedpoint",
@@ -100,15 +101,34 @@ def submodule_problems() -> dict[str, list[str]]:
     return problems
 
 
-def selected_submodule_problems(paths: tuple[str, ...], *, recursive: bool) -> dict[str, list[str]]:
-    command = ["git", "submodule", "status"]
-    if recursive:
-        command.append("--recursive")
-    command.extend(paths)
-    status = run(command, cwd=CHECKOUT)
+def top_level_submodule_problems() -> dict[str, list[str]]:
+    status = run(
+        ["git", "submodule", "status", *REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS],
+        cwd=CHECKOUT,
+    )
     problems: dict[str, list[str]] = {"missing": [], "drifted": [], "conflicts": []}
     if status.returncode != 0:
-        problems["conflicts"].append("could not read selected submodule status")
+        problems["conflicts"].append("could not read top-level submodule status")
+        return problems
+    for line in status.stdout.splitlines():
+        if not line:
+            continue
+        fields = line[1:].strip().split()
+        path = fields[1] if len(fields) >= 2 else line
+        if line.startswith("-"):
+            problems["missing"].append(path)
+        elif line.startswith("+"):
+            problems["drifted"].append(path)
+        elif line.startswith("U"):
+            problems["conflicts"].append(path)
+    return problems
+
+
+def direct_generator_submodule_problems() -> dict[str, list[str]]:
+    status = run(["git", "submodule", "status", "generators"], cwd=CHECKOUT)
+    problems: dict[str, list[str]] = {"missing": [], "drifted": [], "conflicts": []}
+    if status.returncode != 0:
+        problems["conflicts"].append("could not read direct generator submodule status")
         return problems
     for line in status.stdout.splitlines():
         if not line:
@@ -194,10 +214,7 @@ def main() -> int:
         for path in problems["conflicts"]:
             errors.append(f"Chipyard recursive submodule has conflict or status error: {path}")
 
-        top_level_problems = selected_submodule_problems(
-            REQUIRED_TOP_LEVEL_SUBMODULE_ROOTS,
-            recursive=False,
-        )
+        top_level_problems = top_level_submodule_problems()
         checks["top_level_submodule_problems"] = top_level_problems
         for path in top_level_problems["missing"]:
             errors.append(f"Chipyard top-level submodule is not initialized: {path}")
@@ -206,7 +223,7 @@ def main() -> int:
         for path in top_level_problems["conflicts"]:
             errors.append(f"Chipyard top-level submodule has conflict or status error: {path}")
 
-        generator_problems = selected_submodule_problems(("generators",), recursive=False)
+        generator_problems = direct_generator_submodule_problems()
         checks["direct_generator_submodule_problems"] = generator_problems
         for path in generator_problems["missing"]:
             errors.append(f"Chipyard generator submodule is not initialized: {path}")
@@ -227,6 +244,7 @@ def main() -> int:
         "generators/chipyard/src/main/scala",
         "generators/rocket-chip/src/main/resources/vsrc/TestDriver.v",
         "sims/firesim/sim/midas/targetutils/src/main/scala",
+        "tools/DRAMSim2/Makefile",
         "tools/cde/cde/src/chipsalliance/rocketchip/config.scala",
         "tools/dsptools/src/main/scala",
         "tools/fixedpoint/src/main/scala",

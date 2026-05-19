@@ -1,0 +1,812 @@
+schema: eliza.cpu_subsystem_2026.source_inventory.v1
+captured_date: "2026-05-19"
+scope:
+  - open RISC-V application-class RV64 cores (Linux/Android-capable)
+  - open RISC-V embedded/management-class cores
+  - open RISC-V vector / RVV 1.0 implementations
+  - open out-of-order RISC-V cores
+  - cache hierarchy, coherency protocols, and open NoC/interconnect IP
+  - RISC-V ISA extensions of interest (V, B, K, H, Sscofpmf, Sstc, Smaia/Ssaia,
+    CHERI, Zicfilp/Zicfiss, Zacas, Zcmp/Zcb, Zvbb/Zvkn, Zfh/Zvfh)
+  - Linux RISC-V port status (kernel.org, distros, Sscofpmf perf/timer)
+  - Android RISC-V port status (RISE, riscv-android-sig, Cuttlefish RV,
+    ART/HotSpot RV JIT, NDK/CTS/VTS)
+  - CPU benchmark methodology (SPEC CPU 2017, Geekbench 6, CoreMark,
+    MLPerf inference CPU class, lmbench, mibench)
+  - open RV core verification (Spike, Sail, riscv-arch-test, RVfi,
+    ImperasFV/RVI, formal CVA6, RIE)
+claim_boundary: >
+  Sources below are public papers, vendor pages, project repositories,
+  RISC-V International ratified specs, and mailing-list summaries. They do
+  not prove Eliza E1 implementation status. E1 CPU/AP claims require
+  separate local RTL, simulator, OpenSBI/Linux transcript, MMU/cache,
+  PD, benchmark, and Android evidence as gated by
+  `docs/arch/linux-capable-cpu-contract.md`.
+
+# ---------------------------------------------------------------------------
+# Application-class RV64 cores
+# ---------------------------------------------------------------------------
+application_class_cores:
+  - id: rocket_chip
+    title: "Rocket Chip Generator"
+    url: "https://github.com/chipsalliance/rocket-chip"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "in-order 5-stage scalar RV64GC core with MMU, FPU, M/S/U privilege"
+      - "TileLink-based UncoreA / Periphery / SystemBus"
+      - "RoCC accelerator coprocessor interface (used by Gemmini)"
+      - "originally Berkeley UCB-BAR; tracked under CHIPS Alliance"
+      - "default boot path for Chipyard, BOOM, and many academic SoCs"
+  - id: chipyard
+    title: "Chipyard: an integrated SoC research/development framework"
+    url: "https://github.com/ucb-bar/chipyard"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "Chipyard 1.13.0 commit `69eba860a352343e4ac6b6df0f3638a79a86ec78` pinned by ElizaRocketConfig manifest"
+      - "wraps Rocket, BOOM, Gemmini, Hwacha, Spatz, Constellation, Saturn, FireSim flows"
+      - "default Linux boot uses OpenSBI + Linux + BusyBox over the Chipyard testchipip TSI loader"
+  - id: boom
+    title: "Berkeley Out-of-Order Machine (BOOM)"
+    url: "https://github.com/riscv-boom/riscv-boom"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "OoO superscalar RV64GC, parameterized fetch/decode/issue width"
+      - "SonicBOOM is the v3 / v4 line maintained by UCB-BAR"
+      - "supports unified physical register file, register renaming, ROB"
+      - "FireSim FPGA evidence at 3 GHz simulated, ~10 SPEC2006 IPC class"
+  - id: sonicboom
+    title: "SonicBOOM (BOOM v3/v4)"
+    url: "https://github.com/riscv-boom/riscv-boom/tree/master/src/main/scala"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "rebuilt LSU, store coalescing, improved branch prediction"
+      - "GShare + LTAGE + RAS branch predictor"
+      - "published at MICRO 2020 (SonicBOOM)"
+  - id: cva6
+    title: "CVA6 (Ariane) RV64 application core"
+    url: "https://github.com/openhwgroup/cva6"
+    source_type: open_source_project
+    license: Solderpad-Hardware-License-2.1
+    captured_points:
+      - "6-stage in-order single-issue RV64GC application core"
+      - "Sv39 MMU, M/S/U privilege, AXI master interface"
+      - "OpenHW Group community-verified core; CV64A6 production track"
+      - "vector unit work in progress (CVA6-V) and hypervisor extension"
+  - id: cva6_v
+    title: "CVA6-V: CVA6 with RVV 1.0 vector unit"
+    url: "https://github.com/openhwgroup/cva6"
+    source_type: open_source_project
+    license: Solderpad-Hardware-License-2.1
+    captured_points:
+      - "vector unit integration tracked in CVA6 development branches"
+      - "draft RVV 1.0 spec coverage in progress, primary target for OpenHW vector"
+  - id: openhwgroup_cv64a6_user_manual
+    title: "CVA6 User Manual"
+    url: "https://docs.openhwgroup.org/projects/cva6-user-manual/"
+    source_type: vendor_docs
+    captured_points:
+      - "memory model RVWMO, M/S/U privilege"
+      - "Sv32/Sv39 MMU, PMP, debug spec compliance"
+      - "supports configurable RV32 / RV64 builds"
+  - id: xiangshan_yanqi
+    title: "XiangShan Yanqi Lake (v1) RV64 OoO"
+    url: "https://github.com/OpenXiangShan/XiangShan"
+    source_type: open_source_project
+    license: Mulan-Permissive-Software-License-v2
+    captured_points:
+      - "open OoO RV64GC core from ICT Beijing"
+      - "Yanqi Lake taped out at 14 nm in 2021"
+      - "RVA22 application-profile alignment"
+  - id: xiangshan_nanhu
+    title: "XiangShan Nanhu (v2) RV64 OoO"
+    url: "https://xiangshan-doc.readthedocs.io/zh-cn/latest/"
+    source_type: vendor_docs
+    captured_points:
+      - "wider issue, larger ROB, 6-issue OoO"
+      - "improved branch predictor (TAGE-SC-L, ITTAGE)"
+      - "L2/L3 cache hierarchy with directory-based coherence (HuanCun)"
+  - id: xiangshan_kunminghu
+    title: "XiangShan KunMingHu (v3) RV64 OoO"
+    url: "https://github.com/OpenXiangShan/XiangShan"
+    source_type: open_source_project
+    license: Mulan-Permissive-Software-License-v2
+    captured_points:
+      - "8-issue out-of-order RV64GC + RVV 1.0 + H + Zfh"
+      - "decoupled front end with Smith-style fetch directed predictor"
+      - "RVA22+RVV target, ratified Hypervisor"
+      - "claims SPEC CPU 2006 ~15/GHz scoring class on simulation"
+  - id: naxriscv
+    title: "NaxRiscv OoO RV32/RV64 SpinalHDL core"
+    url: "https://github.com/SpinalHDL/NaxRiscv"
+    source_type: open_source_project
+    license: MIT
+    captured_points:
+      - "register-renamed OoO using SpinalHDL"
+      - "Linux-capable RV64GC + Sv39 MMU"
+      - "extensible RVV roadmap, RoCC-style accelerator hooks"
+  - id: openc910
+    title: "T-Head XuanTie OpenC910 RV64GC application core"
+    url: "https://github.com/T-head-Semi/openc910"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "12-stage 3-issue OoO RV64GCV"
+      - "private L1, shared L2 with MESI coherence"
+      - "RVV 0.7.1 instances; later XuanTie cores moved to RVV 1.0"
+      - "deployed in Allwinner D1, LicheePi 4A, BL808"
+  - id: openc908
+    title: "T-Head XuanTie OpenC908 RV64GCV vector core"
+    url: "https://github.com/XUANTIE-RV/openc908"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "in-order RV64GCV with RVV 1.0"
+      - "vector unit with 128-bit physical lanes"
+      - "L1/L2 cache, Sv39 MMU"
+  - id: openc906
+    title: "T-Head XuanTie C906 64-bit embedded Linux core"
+    url: "https://github.com/T-head-Semi/openc906"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "in-order 5-stage RV64GCV core used in Allwinner D1 (Nezha)"
+      - "Sv39 MMU, AXI bus, Linux-capable"
+  - id: openc920
+    title: "T-Head XuanTie C920 server-class RV64 OoO"
+    url: "https://github.com/XUANTIE-RV/openc920"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "3-issue OoO RV64GCV with V0.7.1"
+      - "deployed in LicheePi 4A and TH1520 SoC"
+      - "Sv39 MMU, MESI coherence"
+  - id: blackparrot
+    title: "BlackParrot 64-bit Linux-capable multicore"
+    url: "https://github.com/black-parrot/black-parrot"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "in-order RV64GC, multicore mesh with directory coherence (BedRock)"
+      - "manycore tile fabric, GlobalFoundries 12 nm tapeout history"
+      - "designed at U. Washington and BU"
+  - id: berkeley_saturn
+    title: "Saturn: a Rocket-integrated decoupled RVV 1.0 vector engine"
+    url: "https://github.com/ucb-bar/saturn-vectors"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "decoupled OoO RVV 1.0 unit attached to Rocket/BOOM"
+      - "DLEN up to 1024 bits, parameterized"
+      - "designed to slot into Chipyard SoCs"
+  - id: spatz
+    title: "Spatz: a compact vector processor"
+    url: "https://github.com/pulp-platform/spatz"
+    source_type: open_source_project
+    license: Apache-2.0 / Solderpad-2.1
+    captured_points:
+      - "RVV 1.0 lite implementation paired with Snitch"
+      - "PULP cluster integration, FPnew FPU"
+      - "low-area edge target with high MAC utilization"
+  - id: snitch
+    title: "Snitch: a 22-stage cluster-of-tiny-cores RISC-V"
+    url: "https://github.com/pulp-platform/snitch"
+    source_type: open_source_project
+    license: Apache-2.0 / Solderpad-2.1
+    captured_points:
+      - "small RV32IMA core with SSR/FREP stream extensions"
+      - "designed for tight FPU control under PULP"
+      - "Spatz vector integration in Occamy / Mempool / Manticore SoCs"
+  - id: cheshire
+    title: "Cheshire: PULP open Linux-capable SoC platform"
+    url: "https://github.com/pulp-platform/cheshire"
+    source_type: open_source_project
+    license: Apache-2.0 / Solderpad-2.1
+    captured_points:
+      - "open SoC scaffold built around CVA6 core"
+      - "AXI4 NoC, DRAM controller, peripherals"
+      - "used as basis for Carfield and Occamy"
+  - id: carfield
+    title: "Carfield: mixed-criticality automotive PULP platform"
+    url: "https://github.com/pulp-platform/carfield"
+    source_type: open_source_project
+    license: Apache-2.0 / Solderpad-2.1
+    captured_points:
+      - "Cheshire host + CVA6 + safety island with multiple Ibex"
+      - "mixed real-time / Linux topology reference"
+  - id: ara2
+    title: "Ara2: PULP RVV 1.0 vector accelerator"
+    url: "https://github.com/pulp-platform/ara"
+    source_type: open_source_project
+    license: Apache-2.0 / Solderpad-2.1
+    captured_points:
+      - "RVV 1.0 vector unit paired with CVA6"
+      - "ETH Zurich, sustained 96% FPU utilization in published runs"
+      - "DLEN 4096 bits possible"
+  - id: vroom
+    title: "Vroom! RV64 OoO core"
+    url: "https://github.com/MoonbaseOtago/vroom"
+    source_type: open_source_project
+    license: MIT
+    captured_points:
+      - "8-wide superscalar OoO RV64GC research core"
+      - "8 IPC dispatch claim on simulation"
+  - id: glow
+    title: "Glow: SiFive-style vector RISC-V core (research)"
+    url: "https://github.com/glow-vector/glow"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "research vector RISC-V core w/ RVV 1.0"
+      - "low-cost embedded vector target"
+
+# ---------------------------------------------------------------------------
+# Embedded / management / security cores
+# ---------------------------------------------------------------------------
+embedded_management_cores:
+  - id: ibex
+    title: "Ibex 32-bit embedded RISC-V core (lowRISC)"
+    url: "https://github.com/lowRISC/ibex"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "RV32IMC[B] in-order embedded core, used in OpenTitan root-of-trust"
+      - "PMP, fault injection / tamper-aware verification flows"
+      - "2-stage and 3-stage pipeline variants"
+      - "extensive lint, simulation, and formal regressions"
+  - id: opentitan
+    title: "OpenTitan open silicon root-of-trust"
+    url: "https://github.com/lowRISC/opentitan"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "Ibex-based root of trust with OTBN, AES, HMAC, KMAC, KeyMgr, OTP, Flash"
+      - "Earl Grey configuration is the canonical management-core SoC reference"
+      - "production tapeouts via lowRISC + Google + zeroRISC"
+  - id: scr1
+    title: "Syntacore SCR1 open RV32IMC core"
+    url: "https://github.com/syntacore/scr1"
+    source_type: open_source_project
+    license: Solderpad-Hardware-License-2.0
+    captured_points:
+      - "small embedded RV32IMC core, 4-stage pipeline"
+      - "AXI/AHB bus options"
+      - "MIT-style permissive open source"
+  - id: cores_veer_eh1
+    title: "Western Digital VeeR EH1"
+    url: "https://github.com/chipsalliance/Cores-VeeR-EH1"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "32-bit dual-issue in-order RV32IMC RISC-V core"
+      - "1 GHz @ 28 nm reported"
+      - "used as flash controller microcontroller in WD products"
+  - id: cores_veer_el2
+    title: "Western Digital VeeR EL2"
+    url: "https://github.com/chipsalliance/Cores-VeeR-EL2"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "low-area RV32IMCB"
+      - "fault injection, lockstep, and trace facility for safety-critical use"
+  - id: cores_veer_eh2
+    title: "Western Digital VeeR EH2"
+    url: "https://github.com/chipsalliance/Cores-VeeR-EH2"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "dual-threaded SMT RV32IMC"
+      - "designed for high-IPC embedded controller workloads"
+  - id: vexriscv
+    title: "VexRiscv SpinalHDL RV32 core"
+    url: "https://github.com/SpinalHDL/VexRiscv"
+    source_type: open_source_project
+    license: MIT
+    captured_points:
+      - "highly parameterized 5-stage RV32 core"
+      - "MMU + Linux-capable variant; widely used on iCE40/ECP5/Xilinx FPGAs"
+  - id: hummingbird_e203
+    title: "Nuclei Hummingbird E203 RV32 core"
+    url: "https://github.com/riscv-mcu/e203_hbirdv2"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "tiny embedded RV32IMAC core, 2-stage pipeline"
+      - "Nuclei N100 / N200 family lineage"
+  - id: picorv32
+    title: "PicoRV32 RV32IM core"
+    url: "https://github.com/YosysHQ/picorv32"
+    source_type: open_source_project
+    license: ISC
+    captured_points:
+      - "very small open RV32IMC; widely used as integration filler"
+      - "no MMU; no interrupts on minimal config"
+  - id: femtorv32
+    title: "FemtoRV32 minimal RV32 cores"
+    url: "https://github.com/BrunoLevy/learn-fpga/tree/master/FemtoRV"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "extremely small educational RV32I/IM cores"
+      - "good for management-core experiments on FPGA"
+  - id: rvmacs
+    title: "RVMACs: tiny management cores"
+    url: "https://github.com/riscv-software-src"
+    source_type: open_source_project
+    license: various
+    captured_points:
+      - "Umbrella for tiny management-class RV cores used by riscv-software-src"
+  - id: kelvin
+    title: "Kelvin Google open RV32 ML core"
+    url: "https://github.com/google/CFU-Playground/tree/main/proj/kelvin"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "Google research RV32IMV ML-class core"
+      - "tightly coupled to CFU-Playground accelerator framework"
+
+# ---------------------------------------------------------------------------
+# Coherency, NoC, and interconnect
+# ---------------------------------------------------------------------------
+coherence_and_noc:
+  - id: tilelink_spec
+    title: "TileLink Specification 1.8.x"
+    url: "https://www.chipsalliance.org/wp-content/uploads/sites/83/2024/05/TileLink-Spec-1.8.1.pdf"
+    source_type: standard_spec
+    captured_points:
+      - "TL-UL, TL-UH, TL-C coherence message tiers"
+      - "Branch/Trunk/Tip permissions for MOESI-style coherence"
+      - "CHIPS Alliance hosted spec"
+  - id: constellation_noc
+    title: "Constellation: parameterized NoC generator for Chipyard"
+    url: "https://github.com/ucb-bar/constellation"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "topology, routing, and channel-width generator"
+      - "supports TileLink and AXI overlays"
+      - "papers at MICRO 2022"
+  - id: chi_b_amba
+    title: "Arm AMBA CHI Issue F (CHI-B extension family)"
+    url: "https://developer.arm.com/documentation/ihi0050"
+    source_type: standard_spec
+    captured_points:
+      - "directory-based coherent NoC protocol"
+      - "MESI / MOESI variants, snoop filter requirements"
+      - "AMBA reference architecture used by Cortex-X/A coherent clusters"
+  - id: ccix
+    title: "Cache Coherent Interconnect for Accelerators (CCIX)"
+    url: "https://www.ccixconsortium.com/"
+    source_type: standard_spec
+    captured_points:
+      - "cache-coherent PCIe-class accelerator interconnect"
+      - "deprecated in favor of CXL, but relevant for legacy reference"
+  - id: cxl_30_spec
+    title: "Compute Express Link 3.0 Specification"
+    url: "https://www.computeexpresslink.org/_files/ugd/0c1418_a8713008916044ae9604405d10a7773b.pdf"
+    source_type: standard_spec
+    captured_points:
+      - "CXL.io / .cache / .mem"
+      - "fabric coherence and memory pooling"
+  - id: bedrock_blackparrot
+    title: "BedRock coherence protocol (BlackParrot)"
+    url: "https://github.com/black-parrot/black-parrot"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "directory-based MOESI-class protocol used by BlackParrot"
+      - "designed for tile-mesh NoC topology"
+  - id: huancun
+    title: "HuanCun: XiangShan inclusive cache + coherence directory"
+    url: "https://github.com/OpenXiangShan/HuanCun"
+    source_type: open_source_project
+    license: Mulan-Permissive-Software-License-v2
+    captured_points:
+      - "inclusive L2/L3 cache with TileLink-C protocol"
+      - "directory-based coherence used in XiangShan KunMingHu"
+  - id: openpiton
+    title: "OpenPiton manycore framework"
+    url: "https://github.com/PrincetonUniversity/openpiton"
+    source_type: open_source_project
+    license: BSD-3-Clause / Solderpad-2.0
+    captured_points:
+      - "tiled manycore with directory cache coherence (P-Mesh)"
+      - "supports Ariane/CVA6 and OpenSPARC cores"
+  - id: esp_noc
+    title: "ESP NoC platform (Columbia)"
+    url: "https://www.esp.cs.columbia.edu/"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "multi-plane NoC, accelerator socket discipline"
+      - "Linux + accelerator coherence reference"
+
+# ---------------------------------------------------------------------------
+# RISC-V ISA extensions of interest
+# ---------------------------------------------------------------------------
+isa_extensions:
+  - id: riscv_unprivileged_isa
+    title: "RISC-V Unprivileged Architecture (Volume I) 20240411"
+    url: "https://github.com/riscv/riscv-isa-manual"
+    source_type: standard_spec
+    captured_points:
+      - "ratified G = IMAFDZicsr_Zifencei base"
+      - "ratified C compressed, V vector 1.0, B bitmanip, K crypto"
+      - "ratified Zicond, Zacas, Zihintntl, Zfa, Zfh, Zfhmin"
+  - id: riscv_privileged_isa
+    title: "RISC-V Privileged Architecture (Volume II) 20240411"
+    url: "https://github.com/riscv/riscv-isa-manual"
+    source_type: standard_spec
+    captured_points:
+      - "M/S/U + ratified H hypervisor"
+      - "Sscofpmf, Sstc, Smaia / Ssaia ratified"
+      - "Svnapot, Svinval, Svpbmt, Svadu address-translation extensions"
+  - id: rvv_1_0
+    title: "RISC-V Vector Extension Specification v1.0"
+    url: "https://github.com/riscv/riscv-v-spec/releases/tag/v1.0"
+    source_type: standard_spec
+    captured_points:
+      - "vector registers v0-v31, LMUL/SEW/VL semantics"
+      - "ratified 2021-11; baseline for RVA22+RVV profile"
+      - "Zvfh, Zvbb, Zvkn embedded crypto extensions in 2023-2024"
+  - id: rva22_profile
+    title: "RVA22 RISC-V Application Profile"
+    url: "https://github.com/riscv/riscv-profiles/blob/main/profiles.adoc"
+    source_type: standard_spec
+    captured_points:
+      - "RVA22U64: RV64GC + Zicntr/Zihpm/Zihintpause/Zfhmin/Zba/Zbb/Zbs/Zkt"
+      - "RVA22S64 adds H/Smaia/Ssaia/Svnapot/Svpbmt/Svinval"
+      - "baseline minimum Android RV ABI"
+  - id: rva23_profile
+    title: "RVA23 RISC-V Application Profile (2024 ratification)"
+    url: "https://github.com/riscv/riscv-profiles"
+    source_type: standard_spec
+    captured_points:
+      - "adds V/B/K mandatory, Zihintntl, Zicond, Zfa, Zcb, Zacas"
+      - "intended baseline for Android 16+ on RISC-V"
+      - "ratified 2024 by RISC-V International"
+  - id: zicfilp_zicfiss_cfi
+    title: "RISC-V Control-flow Integrity (Zicfilp, Zicfiss)"
+    url: "https://github.com/riscv/riscv-cfi"
+    source_type: standard_spec
+    captured_points:
+      - "landing pads (Zicfilp) and shadow stack (Zicfiss)"
+      - "ratified 2024"
+  - id: cheri_riscv
+    title: "CHERI-RISC-V architecture"
+    url: "https://www.cl.cam.ac.uk/research/security/ctsrd/cheri/"
+    source_type: research_program
+    captured_points:
+      - "capability-based pointer safety hardware extension"
+      - "Toooba and CVA6 CHERI integrations exist"
+      - "ARM Morello demonstrated industry feasibility"
+  - id: zcmp_zcb
+    title: "Code-size compressed instructions Zcmp/Zcb/Zcmt"
+    url: "https://github.com/riscv/riscv-code-size-reduction"
+    source_type: standard_spec
+    captured_points:
+      - "push/pop multiple, table jump"
+      - "ratified 2023; reduces footprint vs RVC"
+  - id: hypervisor_extension
+    title: "RISC-V H (Hypervisor) Extension"
+    url: "https://github.com/riscv/riscv-isa-manual"
+    source_type: standard_spec
+    captured_points:
+      - "Two-stage page tables, HS/VS modes"
+      - "ratified; supported in KVM-RISC-V upstream"
+  - id: aia_smaia_ssaia
+    title: "Advanced Interrupt Architecture (Smaia / Ssaia)"
+    url: "https://github.com/riscv/riscv-aia"
+    source_type: standard_spec
+    captured_points:
+      - "AIA replaces PLIC for scalable interrupt delivery"
+      - "IMSIC + APLIC components"
+      - "ratified 2023"
+  - id: sstc_timer
+    title: "Sstc: supervisor-mode timer extension"
+    url: "https://github.com/riscv/riscv-time-compare"
+    source_type: standard_spec
+    captured_points:
+      - "stimecmp removes need for OpenSBI/M-mode trap on timer programming"
+      - "ratified; required for low-jitter Linux timer"
+  - id: sscofpmf
+    title: "Sscofpmf: Hardware performance event monitoring filter"
+    url: "https://github.com/riscv/riscv-count-overflow"
+    source_type: standard_spec
+    captured_points:
+      - "ratified 2021"
+      - "required for Linux perf_event subsystem on RV"
+      - "hpmcounter overflow IRQ for sampling profilers"
+
+# ---------------------------------------------------------------------------
+# Linux RISC-V port status
+# ---------------------------------------------------------------------------
+linux_riscv_port:
+  - id: kernel_org_riscv_tree
+    title: "kernel.org Linux RISC-V git tree"
+    url: "https://git.kernel.org/pub/scm/linux/kernel/git/riscv/linux.git/"
+    source_type: kernel_source
+    captured_points:
+      - "Palmer Dabbelt maintainer"
+      - "fixes-for-next and for-next branches synchronized with mainline"
+      - "RVV kernel-mode use behind CONFIG_RISCV_ISA_V"
+  - id: opensbi
+    title: "OpenSBI: RISC-V Supervisor Binary Interface"
+    url: "https://github.com/riscv-software-src/opensbi"
+    source_type: open_source_project
+    license: BSD-2-Clause
+    captured_points:
+      - "M-mode firmware providing SBI services to S-mode kernel"
+      - "platform support for QEMU, Chipyard, SiFive, Allwinner, T-Head"
+      - "Sscofpmf, Sstc, AIA hooks merged"
+  - id: u_boot_riscv
+    title: "U-Boot RISC-V port"
+    url: "https://docs.u-boot.org/en/latest/board/index.html"
+    source_type: open_source_project
+    license: GPL-2.0
+    captured_points:
+      - "supports SiFive, Allwinner D1, Microchip Polarfire, JH7110"
+      - "EFI boot path for distros"
+  - id: fedora_riscv
+    title: "Fedora RISC-V port"
+    url: "https://fedoraproject.org/wiki/Architectures/RISC-V"
+    source_type: distro
+    captured_points:
+      - "Fedora 41+ tracks RVA22"
+      - "builds for SiFive HiFive Unmatched, VisionFive 2, LicheePi 4A"
+  - id: opensuse_riscv
+    title: "openSUSE Tumbleweed RISC-V port"
+    url: "https://en.opensuse.org/openSUSE:RISC-V"
+    source_type: distro
+    captured_points:
+      - "Tumbleweed rolling build for RV64"
+      - "OBS infrastructure builds packages on RV hardware"
+  - id: debian_riscv64
+    title: "Debian riscv64 port"
+    url: "https://wiki.debian.org/RISC-V"
+    source_type: distro
+    captured_points:
+      - "official Debian architecture as of trixie/sid"
+      - "RVA22 baseline"
+  - id: ubuntu_riscv
+    title: "Ubuntu RISC-V port"
+    url: "https://wiki.ubuntu.com/RISC-V"
+    source_type: distro
+    captured_points:
+      - "official Ubuntu Server RISC-V image"
+      - "VisionFive 2, LicheePi 4A reference images"
+  - id: buildroot_riscv
+    title: "Buildroot RISC-V support"
+    url: "https://buildroot.org/"
+    source_type: build_system
+    captured_points:
+      - "RV32 and RV64 toolchain + rootfs"
+      - "QEMU virt and many SBC defconfigs"
+  - id: yocto_meta_riscv
+    title: "Yocto meta-riscv layer"
+    url: "https://github.com/riscv/meta-riscv"
+    source_type: build_system
+    captured_points:
+      - "Yocto/OpenEmbedded layer for RV"
+      - "qemuriscv32/64 MACHINE definitions"
+
+# ---------------------------------------------------------------------------
+# Android RISC-V port status
+# ---------------------------------------------------------------------------
+android_riscv_port:
+  - id: rise_project
+    title: "RISE: RISC-V Software Ecosystem Project"
+    url: "https://riseproject.dev/"
+    source_type: consortium
+    captured_points:
+      - "Linux Foundation hosted, founded 2023"
+      - "members: Google, Qualcomm, Samsung, Andes, Imagination, MediaTek, Nvidia, Red Hat, SiFive, T-Head, Ventana"
+      - "scope includes Android RV, distros, compilers, hypervisors"
+  - id: riscv_android_sig_aosp
+    title: "riscv-android-sig AOSP fork"
+    url: "https://github.com/riscv-android-src"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "tracks AOSP with RISC-V kernel, libc, bionic, dalvik, ART patches"
+      - "primary upstream landing point for Google's Android-on-RV work"
+  - id: android_riscv_status_2024
+    title: "Android RISC-V status update (Google I/O Connect)"
+    url: "https://opensource.googleblog.com/2023/10/android-and-risc-v-what-you-need-to-know.html"
+    source_type: vendor_blog
+    captured_points:
+      - "Google committed to Android on RISC-V as a Tier-1 architecture"
+      - "ART, NDK, libcore upstream targeted"
+      - "AOSP requires RVA22 + V + B + Zicond + Zihintntl + Zihintpause"
+  - id: android_riscv_deprioritization_2024
+    title: "Google deprioritizes mainline AOSP RISC-V landing"
+    url: "https://www.androidauthority.com/google-android-risc-v-3401425/"
+    source_type: secondary_news
+    captured_points:
+      - "Android Open Source Project removed in-tree riscv64 build target 2024-01"
+      - "ART and Linux RV continue; product readiness pushed out"
+      - "treat as schedule risk, not project cancellation"
+  - id: cuttlefish_riscv
+    title: "Cuttlefish Android RV emulation"
+    url: "https://source.android.com/docs/setup/create/cuttlefish"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "QEMU/virt-based Cuttlefish supports riscv64 builds"
+      - "test bed for CTS/VTS regressions on RV"
+  - id: art_riscv_jit
+    title: "ART RISC-V JIT and AOT compiler"
+    url: "https://android.googlesource.com/platform/art/+/refs/heads/main/compiler/optimizing/code_generator_riscv64.cc"
+    source_type: source_tree
+    captured_points:
+      - "RV64 code generator merged into ART optimizing compiler"
+      - "RVV codegen behind feature flag"
+  - id: hotspot_jdk_riscv
+    title: "OpenJDK HotSpot RISC-V JIT"
+    url: "https://openjdk.org/projects/riscv-port/"
+    source_type: open_source_project
+    license: GPL-2.0-with-Classpath-Exception
+    captured_points:
+      - "OpenJDK riscv-port project upstream"
+      - "JDK 21+ has full HotSpot RV64 C1/C2 JIT"
+
+# ---------------------------------------------------------------------------
+# CPU benchmark methodology
+# ---------------------------------------------------------------------------
+benchmark_methodology:
+  - id: spec_cpu_2017
+    title: "SPEC CPU 2017 Benchmark Suite"
+    url: "https://www.spec.org/cpu2017/"
+    source_type: benchmark_spec
+    captured_points:
+      - "industry-standard integer and floating-point suites"
+      - "SPECspeed and SPECrate configurations"
+      - "results must include compiler flags, system config, and base/peak"
+  - id: geekbench_6
+    title: "Geekbench 6 Documentation"
+    url: "https://www.geekbench.com/doc/geekbench6-cpu-workloads.pdf"
+    source_type: vendor_docs
+    captured_points:
+      - "single/multi-core scores from heterogeneous workloads"
+      - "comparable across mobile and desktop ISAs"
+      - "treated as context, not ground truth, per chip-package policy"
+  - id: coremark
+    title: "EEMBC CoreMark 1.0"
+    url: "https://www.eembc.org/coremark/"
+    source_type: benchmark_spec
+    captured_points:
+      - "small integer benchmark for embedded class"
+      - "license terms allow self-reporting"
+  - id: mlperf_inference_edge
+    title: "MLPerf Inference: Edge"
+    url: "https://mlcommons.org/benchmarks/inference-edge/"
+    source_type: benchmark_spec
+    captured_points:
+      - "Closed and Open divisions"
+      - "CPU-class submissions used as reference"
+  - id: lmbench
+    title: "lmbench micro-benchmarks"
+    url: "https://lmbench.sourceforge.net/"
+    source_type: benchmark_spec
+    captured_points:
+      - "memory latency, bandwidth, syscall, pipe IPC"
+      - "required for CPU/AP memory-system claims"
+  - id: stream
+    title: "STREAM memory bandwidth benchmark"
+    url: "https://www.cs.virginia.edu/stream/"
+    source_type: benchmark_spec
+    captured_points:
+      - "Triad, Copy, Scale, Add"
+      - "DRAM bandwidth ground truth"
+  - id: mibench
+    title: "MiBench: embedded benchmark suite"
+    url: "https://vhosts.eecs.umich.edu/mibench/"
+    source_type: benchmark_spec
+    captured_points:
+      - "automotive, network, security, telecom, consumer, office"
+      - "used in academic RV core evaluations"
+
+# ---------------------------------------------------------------------------
+# RISC-V core verification
+# ---------------------------------------------------------------------------
+verification:
+  - id: spike_isa_sim
+    title: "Spike: official RISC-V ISA simulator (riscv-isa-sim)"
+    url: "https://github.com/riscv-software-src/riscv-isa-sim"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "reference ISA simulator used as golden model"
+      - "supports V, H, B, K, CFI experimental extensions"
+  - id: sail_riscv
+    title: "Sail RISC-V formal model"
+    url: "https://github.com/riscv/sail-riscv"
+    source_type: open_source_project
+    license: BSD-2-Clause
+    captured_points:
+      - "ratified by RISC-V International as the executable formal spec"
+      - "exports to OCaml, C, Coq, Lem, Isabelle"
+  - id: riscv_arch_test
+    title: "riscv-arch-test compliance suite"
+    url: "https://github.com/riscv-non-isa/riscv-arch-test"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "architecture compliance tests for RV extensions"
+      - "RISC-V International official compliance suite"
+  - id: rvfi
+    title: "riscv-formal RVFI bus + checkers"
+    url: "https://github.com/YosysHQ/riscv-formal"
+    source_type: open_source_project
+    license: ISC
+    captured_points:
+      - "RVFI is the de-facto formal interface for RV instruction trace"
+      - "YosysHQ formal-verification flow"
+  - id: cva6_sv4sv
+    title: "CVA6 formal verification (SV4SV by AXIOM Verification)"
+    url: "https://docs.openhwgroup.org/projects/cva6-user-manual/"
+    source_type: vendor_docs
+    captured_points:
+      - "CVA6 formal proof on RTL using OpenHW SV4SV methodology"
+      - "binding to riscv-formal RVFI for end-to-end checks"
+  - id: imperasdv
+    title: "ImperasDV RISC-V verification platform"
+    url: "https://www.imperas.com/imperasdv"
+    source_type: vendor_page
+    captured_points:
+      - "commercial ISS used as golden model in core DV"
+      - "ISA extensions and async events supported"
+  - id: openhw_core_v_verif
+    title: "OpenHW core-v-verif: CVA6/CV32E40P verification framework"
+    url: "https://github.com/openhwgroup/core-v-verif"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "UVM testbench, riscv-dv generator, Spike reference"
+      - "production-grade RTL verification flow"
+  - id: riscv_dv
+    title: "riscv-dv random instruction generator"
+    url: "https://github.com/chipsalliance/riscv-dv"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "SystemVerilog UVM-based random instruction stream generator"
+      - "drives Spike+RTL co-simulation"
+  - id: rie_riscof
+    title: "RISCOF: RISC-V Compatibility Framework"
+    url: "https://github.com/riscv-software-src/riscof"
+    source_type: open_source_project
+    license: BSD-3-Clause
+    captured_points:
+      - "officially adopted by RISC-V International"
+      - "drives riscv-arch-test against multiple targets (Spike, Sail, Imperas, custom RTL)"
+
+# ---------------------------------------------------------------------------
+# AlphaChip / ML floorplanning crossover
+# ---------------------------------------------------------------------------
+ml_floorplanning_crossover:
+  - id: alphachip_nature
+    title: "AlphaChip: deep RL for chip floorplanning (Nature 2024 addendum)"
+    url: "https://www.nature.com/articles/s41586-024-08032-5"
+    source_type: paper
+    captured_points:
+      - "RL macro placement, mostly demonstrated on TPU and Ariane/CVA6 floors"
+      - "underpins ucb-bar alpha_chip_macro_placement reference flow in this repo"
+  - id: alphachip_repo
+    title: "alphachip macro placement reference flow"
+    url: "https://github.com/google-research/circuit_training"
+    source_type: open_source_project
+    license: Apache-2.0
+    captured_points:
+      - "open-source RL macro placement"
+      - "supports OpenROAD/OpenLane backends"
+
+claim_boundary_reiterated: >
+  Sources above were verified by their public URLs as of 2026-05-19.
+  None of them prove Eliza E1 silicon, RTL, software, or Linux/Android boot
+  claims; those gates remain in
+  `docs/arch/linux-capable-cpu-contract.md` and
+  `docs/evidence/cpu-ap-evidence-manifest.json`.

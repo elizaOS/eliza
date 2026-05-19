@@ -19,9 +19,23 @@ if [ -z "${RISCV:-}" ] && [ -d "$repo_dir/external/riscv-tools-linux-x64" ]; the
 	RISCV="$repo_dir/external/riscv-tools-linux-x64"
 	export RISCV
 fi
+if [ -z "${RISCV:-}" ] && [ -x "$repo_dir/tools/bin/riscv64-unknown-elf-gcc" ]; then
+	RISCV="$repo_dir/tools"
+	export RISCV
+fi
+if [ -z "${RISCV:-}" ] && [ -x "$repo_dir/external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc" ]; then
+	RISCV="$repo_dir/external/riscv64-linux-gnu/usr"
+	export RISCV
+fi
 if [ -d "$repo_dir/external/riscv-tools-linux-x64/bin" ]; then
 	PATH="$repo_dir/external/riscv-tools-linux-x64/bin:$PATH"
 	export PATH
 fi
+for tool_dir in "$repo_dir/tools/bin" "$repo_dir/external/oss-cad-suite/bin" "$repo_dir/.venv/bin"; do
+	if [ -d "$tool_dir" ]; then
+		PATH="$tool_dir:$PATH"
+	fi
+done
+export PATH
 
 exec make CONFIG="$config" CONFIG_PACKAGE="$config_package" "$@"

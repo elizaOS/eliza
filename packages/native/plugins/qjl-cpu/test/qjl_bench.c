@@ -326,7 +326,7 @@ static int run_throughput(void) {
         }
         {
             /* qjl_score_qk_i8 dispatches to the best built path (avxvnni /
-             * dotprod) at runtime — qjl_active_simd() reports which. */
+             * dotprod / rvv) at runtime — qjl_active_simd() reports which. */
             double t0 = now_seconds();
             for (int r = 0; r < reps_simd; r++)
                 qjl_score_qk_i8(qi8, blocks, n_q, n_kv, n_tok, scores);
@@ -365,6 +365,9 @@ static int parity(const char *path) {
 #if defined(QJL_HAVE_NEON)
     rc |= run_quant_parity("neon", qjl_quantize_row_neon, &fx);
 #endif
+#if defined(QJL_HAVE_RVV) && QJL_HAVE_RVV
+    rc |= run_quant_parity("rvv", qjl_quantize_row_rvv, &fx);
+#endif
 
     rc |= run_score_parity("ref", qjl_score_qk_ref, &fx);
 #if defined(QJL_HAVE_AVX2)
@@ -372,6 +375,9 @@ static int parity(const char *path) {
 #endif
 #if defined(QJL_HAVE_NEON)
     rc |= run_score_parity("neon", qjl_score_qk_neon, &fx);
+#endif
+#if defined(QJL_HAVE_RVV) && QJL_HAVE_RVV
+    rc |= run_score_parity("rvv", qjl_score_qk_rvv, &fx);
 #endif
 
     free_fixture(&fx);
