@@ -79,7 +79,9 @@ def minimal_npu_spec() -> dict[str, Any]:
 
 
 @contextlib.contextmanager
-def patched_validator(spec: dict[str, Any], npu_spec: dict[str, Any] | None = None) -> Iterator[Path]:
+def patched_validator(
+    spec: dict[str, Any], npu_spec: dict[str, Any] | None = None
+) -> Iterator[Path]:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         spec_path = root / "docs/spec-db/memory-2028-target.yaml"

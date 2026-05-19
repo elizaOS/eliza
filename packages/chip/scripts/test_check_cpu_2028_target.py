@@ -102,7 +102,9 @@ def minimal_valid_spec() -> dict[str, Any]:
 
 
 @contextlib.contextmanager
-def patched_validator(spec: dict[str, Any], *, write_rocket_manifest: bool = True) -> Iterator[Path]:
+def patched_validator(
+    spec: dict[str, Any], *, write_rocket_manifest: bool = True
+) -> Iterator[Path]:
     with tempfile.TemporaryDirectory() as tmp:
         root = Path(tmp)
         spec_path = root / "docs/spec-db/cpu-2028-target.yaml"
@@ -120,9 +122,11 @@ def patched_validator(spec: dict[str, Any], *, write_rocket_manifest: bool = Tru
                     if not candidate.exists() and candidate != rocket_manifest:
                         candidate.parent.mkdir(parents=True, exist_ok=True)
                         candidate.write_text("{}\n", encoding="utf-8")
-        with mock.patch.object(check_cpu_2028_target, "ROOT", root), mock.patch.object(
-            check_cpu_2028_target, "SPEC", spec_path
-        ), mock.patch.object(check_cpu_2028_target, "ROCKET_MANIFEST", rocket_manifest):
+        with (
+            mock.patch.object(check_cpu_2028_target, "ROOT", root),
+            mock.patch.object(check_cpu_2028_target, "SPEC", spec_path),
+            mock.patch.object(check_cpu_2028_target, "ROCKET_MANIFEST", rocket_manifest),
+        ):
             yield root
 
 
@@ -151,9 +155,11 @@ class CheckCpu2028TargetTests(unittest.TestCase):
             root = Path(tmp)
             spec_path = root / "docs/spec-db/cpu-2028-target.yaml"
             rocket_manifest = root / "generators/chipyard/eliza-rocket-manifest.json"
-            with mock.patch.object(check_cpu_2028_target, "ROOT", root), mock.patch.object(
-                check_cpu_2028_target, "SPEC", spec_path
-            ), mock.patch.object(check_cpu_2028_target, "ROCKET_MANIFEST", rocket_manifest):
+            with (
+                mock.patch.object(check_cpu_2028_target, "ROOT", root),
+                mock.patch.object(check_cpu_2028_target, "SPEC", spec_path),
+                mock.patch.object(check_cpu_2028_target, "ROCKET_MANIFEST", rocket_manifest),
+            ):
                 rc, _, stderr = run_validator()
         self.assertEqual(rc, 1)
         self.assertIn("spec missing", stderr)
@@ -167,9 +173,11 @@ class CheckCpu2028TargetTests(unittest.TestCase):
             rocket_manifest = root / "generators/chipyard/eliza-rocket-manifest.json"
             rocket_manifest.parent.mkdir(parents=True, exist_ok=True)
             rocket_manifest.write_text("{}\n", encoding="utf-8")
-            with mock.patch.object(check_cpu_2028_target, "ROOT", root), mock.patch.object(
-                check_cpu_2028_target, "SPEC", spec_path
-            ), mock.patch.object(check_cpu_2028_target, "ROCKET_MANIFEST", rocket_manifest):
+            with (
+                mock.patch.object(check_cpu_2028_target, "ROOT", root),
+                mock.patch.object(check_cpu_2028_target, "SPEC", spec_path),
+                mock.patch.object(check_cpu_2028_target, "ROCKET_MANIFEST", rocket_manifest),
+            ):
                 rc, _, stderr = run_validator()
         self.assertEqual(rc, 1)
         self.assertIn("spec is not a mapping", stderr)
@@ -274,9 +282,7 @@ class CheckCpu2028TargetTests(unittest.TestCase):
     def test_forbidden_paths_missing_entry_fails(self) -> None:
         for missing in ("RVV_0_7_1", "Hwacha_pre_RVV_1_0", "vendor_specific_cache_CSRs"):
             spec = minimal_valid_spec()
-            spec["forbidden_paths"] = [
-                path for path in spec["forbidden_paths"] if path != missing
-            ]
+            spec["forbidden_paths"] = [path for path in spec["forbidden_paths"] if path != missing]
             with self.subTest(missing=missing):
                 with patched_validator(spec):
                     rc, _, stderr = run_validator()

@@ -50,9 +50,7 @@ def minimal_valid_spec() -> dict[str, Any]:
             ],
         },
         "boot_chain": {"no_software_only_crypto_on_boot_path": True},
-        "key_algorithms": {
-            "required": {"signing": "Ed25519", "rng": "SP_800_90B"}
-        },
+        "key_algorithms": {"required": {"signing": "Ed25519", "rng": "SP_800_90B"}},
         "verified_boot": {"framework": "libavb 2.0"},
         "lifecycle_states": {"controller": "opentitan_lc_ctrl"},
         "dma_isolation": {
@@ -156,13 +154,22 @@ class TestSecurityCheck(unittest.TestCase):
                 self.assertIn(field, err)
 
     def test_missing_rot_block_fails(self) -> None:
-        for needed in ("rom_ctrl", "lc_ctrl", "otp_ctrl", "keymgr", "aes", "hmac",
-                       "entropy_src", "csrng", "edn", "otbn"):
+        for needed in (
+            "rom_ctrl",
+            "lc_ctrl",
+            "otp_ctrl",
+            "keymgr",
+            "aes",
+            "hmac",
+            "entropy_src",
+            "csrng",
+            "edn",
+            "otbn",
+        ):
             with self.subTest(block=needed):
                 spec = copy.deepcopy(minimal_valid_spec())
                 spec["rot_ip_set"]["boot_supervisor_blocks"] = [
-                    b for b in spec["rot_ip_set"]["boot_supervisor_blocks"]
-                    if b["block"] != needed
+                    b for b in spec["rot_ip_set"]["boot_supervisor_blocks"] if b["block"] != needed
                 ]
                 with patched_validator(spec):
                     code, _out, err = run_validator()
@@ -218,12 +225,17 @@ class TestSecurityCheck(unittest.TestCase):
         self.assertIn("deny_by_default", err)
 
     def test_missing_forbidden_claim_fails(self) -> None:
-        for needed in ("secure_boot", "verified_boot", "rollback_protected", "debug_locked", "strongbox"):
+        for needed in (
+            "secure_boot",
+            "verified_boot",
+            "rollback_protected",
+            "debug_locked",
+            "strongbox",
+        ):
             with self.subTest(claim=needed):
                 spec = copy.deepcopy(minimal_valid_spec())
                 spec["forbidden_claims_until_evidence"] = [
-                    c for c in spec["forbidden_claims_until_evidence"]
-                    if c["claim"] != needed
+                    c for c in spec["forbidden_claims_until_evidence"] if c["claim"] != needed
                 ]
                 with patched_validator(spec):
                     code, _out, err = run_validator()

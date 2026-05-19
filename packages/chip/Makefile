@@ -465,6 +465,9 @@ security-2028-target-check:
 pd-util-check:
 	@$(PYTHON) scripts/check_pd_utilization.py
 
+spec-check-tests:
+	@$(PYTHON) -m unittest scripts.test_check_cpu_2028_target scripts.test_check_memory_2028_target scripts.test_check_security_2028_target scripts.test_check_pd_utilization
+
 npu-runtime-contract-check:
 	@$(PYTHON) scripts/check_e1_npu_runtime_contract.py
 
