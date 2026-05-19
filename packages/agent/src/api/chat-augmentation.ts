@@ -46,6 +46,7 @@ const CHAT_LANGUAGE_INSTRUCTION: Record<string, string> = {
   pt: "Reply in natural Brazilian Portuguese unless the user explicitly requests another language.",
   vi: "Reply in natural Vietnamese unless the user explicitly requests another language.",
   tl: "Reply in natural Tagalog unless the user explicitly requests another language.",
+  ja: "Reply in natural Japanese unless the user explicitly requests another language.",
 };
 
 export function maybeAugmentChatMessageWithLanguage(

@@ -40,11 +40,17 @@ In the repo settings, create a new environment named
 
 ## Estimated cost
 
-Default `cpx11` in `fsn1` is roughly €0.005/hr. A nightly run that
+Default `cx22` in `fsn1` is roughly €0.006/hr (cpx11's deprecated
+successor — comparable 2 vCPU / 4 GB footprint). A nightly run that
 lives ~10 minutes is **about $0.30–$1.00/month** depending on
 healthcheck duration. The reaper enforces a 60-minute upper bound so
 the worst case (a stuck workflow) is bounded at one server-hour per
 run.
+
+If the requested `HETZNER_E2E_SERVER_TYPE` is deprecated or not
+offered at `HETZNER_E2E_LOCATION`, the provisioner falls back through
+a short list of known-good shared-cpu combos (cx22 in fsn1/nbg1, cax11
+ARM in fsn1/hel1/nbg1) before giving up.
 
 ## Manual trigger / dry run
 

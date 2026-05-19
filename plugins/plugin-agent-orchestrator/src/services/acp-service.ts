@@ -1,5 +1,6 @@
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { existsSync } from "node:fs";
 import { mkdir, readdir, stat, unlink } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -8,6 +9,7 @@ import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
@@ -159,9 +161,11 @@ export class AcpService extends Service {
     this.store = opts.store ?? new InMemorySessionStore();
     this.cliPath = this.setting("ELIZA_ACP_CLI") ?? "acpx";
     this.defaultAgent =
-      this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
-      this.setting("ELIZA_DEFAULT_AGENT_TYPE") ??
-      "codex";
+      normalizeTaskAgentAdapter(
+        this.setting("BENCHMARK_TASK_AGENT") ??
+          this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
+          this.setting("ELIZA_DEFAULT_AGENT_TYPE"),
+      ) ?? "codex";
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
@@ -404,7 +408,10 @@ export class AcpService extends Service {
     this.ensureStarted();
     const id = randomUUID();
     const name = opts.name?.trim() || id;
-    const agentType = opts.agentType ?? this.defaultAgent;
+    this.assertTransportAvailable(id);
+    const agentType =
+      normalizeTaskAgentAdapter(opts.agentType ?? this.defaultAgent) ??
+      this.defaultAgent;
     const approvalPreset = opts.approvalPreset ?? this.defaultApprovalPreset;
     const workdir = resolve(
       opts.workdir ??
@@ -913,6 +920,19 @@ export class AcpService extends Service {
     let finalText = "";
     let stopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
+    const missingCliMessage = this.missingCliMessage();
+    if (missingCliMessage) {
+      if (opts.sessionId) {
+        this.emitMissingCli(opts.sessionId, missingCliMessage);
+      }
+      return Promise.resolve({
+        code: 127,
+        signal: null,
+        stderr: missingCliMessage,
+        finalText: "",
+        durationMs: Date.now() - startedAt,
+      });
+    }
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,
@@ -1461,6 +1481,28 @@ export class AcpService extends Service {
     );
     return configured === true;
   }
+
+  private missingCliMessage(): string | undefined {
+    if (!this.cliPath.includes("/") || existsSync(this.cliPath)) {
+      return undefined;
+    }
+    return `acpx CLI is not available at ${this.cliPath}. Install the ACP transport or set ELIZA_ACP_CLI to a valid executable.`;
+  }
+
+  private emitMissingCli(sessionId: string, message: string): void {
+    this.emitSessionEvent(sessionId, "error", {
+      message,
+      failureKind: "not_found",
+    });
+  }
+
+  private assertTransportAvailable(sessionId: string): void {
+    if (process.env.ELIZA_PLATFORM !== "android") return;
+    const message = this.missingCliMessage();
+    if (!message) return;
+    this.emitMissingCli(sessionId, message);
+    throw new Error(message);
+  }
 }
 
 function approvalArgs(preset: ApprovalPreset): string[] {
@@ -1728,17 +1770,21 @@ function killProcessTree(
   proc: ChildProcessWithoutNullStreams,
   signal: NodeJS.Signals,
 ): void {
-  if (!proc.pid) return;
-  try {
-    process.kill(-proc.pid, signal);
-  } catch {
-    // Group may already be gone, or the platform doesn't support it
-    // (Windows). Fall back to a direct signal on the lead process.
+  if (proc.pid) {
     try {
-      proc.kill(signal);
+      process.kill(-proc.pid, signal);
+      return;
     } catch {
-      // best-effort
+      // Group may already be gone, or the platform doesn't support it
+      // (Windows). Fall through to a direct signal on the lead process.
     }
+  }
+  // Lead-process signal: covers the no-pid case (e.g. unit-test mocks where
+  // the child has not actually been forked) and the post-group-kill fallback.
+  try {
+    proc.kill(signal);
+  } catch {
+    // best-effort
   }
 }
 

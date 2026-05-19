@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.0",
+  "version": "2.0.0-beta.3",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -284,6 +284,7 @@
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.3.2",
     "@types/nprogress": "^0.2.3",
+    "@types/node": "25.6.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "react": "19.2.5",

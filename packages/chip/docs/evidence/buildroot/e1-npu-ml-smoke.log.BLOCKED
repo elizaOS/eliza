@@ -1,0 +1,11 @@
+BLOCKED: target-side Buildroot hello-npu-ml-smoke transcript is missing.
+
+Required capture command:
+HELLO_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/hello-npu-ml-smoke --device /dev/hello-npu' sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke
+
+Required validation command:
+python3 scripts/check_software_bsp.py buildroot --require-evidence
+
+This marker is not release evidence. Replace it only with a real transcript at
+docs/evidence/buildroot/hello-npu-ml-smoke.log captured from the built Buildroot
+rootfs running on the target or simulator.

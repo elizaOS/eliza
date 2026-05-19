@@ -1,0 +1,8 @@
+cocotb>=1.9,<2
+pytest>=9,<10
+numpy>=2,<3
+pyyaml>=6,<7
+ruff>=0.8,<1
+mypy>=1.13,<2
+yamllint>=1.35,<2
+types-PyYAML>=6,<7

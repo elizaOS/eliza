@@ -26,6 +26,7 @@ import {
   VID_BTN_CX,
   VID_BTN_CY,
 } from "@/components/ChatUI/renderChatToCanvas";
+import { useT } from "@/providers/I18nProvider";
 
 export interface ModelBHandle {
   spin: (direction?: 1 | -1) => void;
@@ -709,6 +710,7 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
   },
   ref,
 ) {
+  const t = useT();
   const backBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const vidBtnOverlayRef = useRef<HTMLButtonElement>(null);
   const platformRef = useRef(platform);
@@ -836,7 +838,9 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
         onClick={() => {
           currentOnBackClick?.();
         }}
-        aria-label="Back"
+        aria-label={t("homepage_eliza.model.backAria", {
+          defaultValue: "Back",
+        })}
         style={{
           display: "none",
           position: "fixed",
@@ -857,7 +861,9 @@ const ModelB = forwardRef<ModelBHandle, ModelBProps>(function ModelB(
         onClick={() => {
           currentOnVideoClick?.();
         }}
-        aria-label="Open video call"
+        aria-label={t("homepage_eliza.model.videoAria", {
+          defaultValue: "Open video call",
+        })}
         style={{
           display: "none",
           position: "fixed",

@@ -1,0 +1,27 @@
+# SELinux policy v0 for the e1_npu HAL.
+#
+# Goals:
+#   - Define a dedicated dev_type for /dev/e1-npu so the kernel char-dev
+#     and the HAL binary are the only things that touch it.
+#   - Define a HAL domain hal_e1_npu_default with the absolute minimum
+#     allow set required to open the char device and log.
+#   - Do NOT grant any rule that would trip an AOSP neverallow:
+#       * no untrusted_app/isolated_app access to the device.
+#       * no allow on system_app to vendor binders.
+#       * no execmem/execstack, no /dev/mem, no kernel_t writes.
+#       * no domain_trans into init/shell/vendor_shell.
+
+type e1_npu_device, dev_type;
+
+type hal_e1_npu_default, domain;
+type hal_e1_npu_default_exec, exec_type, vendor_file_type, file_type;
+
+init_daemon_domain(hal_e1_npu_default)
+
+# Allow the HAL to open and ioctl the kernel device. Read/write only; no
+# create/unlink/relabel.
+allow hal_e1_npu_default e1_npu_device:chr_file { open read write ioctl getattr };
+
+# Property gating: HAL reads vendor.e1_npu.ready (declared via
+# property_contexts in a future change). Until that context is added, the
+# HAL falls back to a default-deny read which is safe.

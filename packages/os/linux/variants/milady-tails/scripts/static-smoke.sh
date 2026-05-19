@@ -914,8 +914,10 @@ for (const root of [
     throw new Error(`${appControlPackagePath}: app-control must be source-staged`);
   }
   for (const packageName of [
+    "@elizaos/plugin-app-manager",
     "@elizaos/plugin-calendly",
     "@elizaos/plugin-health",
+    "@elizaos/plugin-registry",
   ]) {
     const distIndex = `${nodeModules}/${packageName}/dist/index.js`;
     if (!fs.existsSync(distIndex)) {

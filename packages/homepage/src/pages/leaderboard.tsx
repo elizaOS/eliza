@@ -47,6 +47,7 @@ import { useNavigate } from "react-router-dom";
 import BlobButton from "@/components/BlobButton";
 import { ElizaLogo } from "@/components/brand/eliza-logo";
 import ModelB, { type ModelBHandle } from "@/components/ModelViewers/ModelB";
+import { useT } from "@/providers/I18nProvider";
 
 // Heavy WebGL bundles split out so the leaderboard route shell becomes
 // interactive without waiting for the shader/canvas code. ShaderBackground is
@@ -195,6 +196,7 @@ function AnimatedLetters({
 
 export default function Leaderboard() {
   const navigate = useNavigate();
+  const t = useT();
   const modelRef = useRef<ModelBHandle>(null);
   const [platform, setPlatform] = useState<Platform>("imessage");
   const [tryPlatform, setTryPlatform] = useState<Platform>("imessage");
@@ -620,10 +622,19 @@ export default function Leaderboard() {
 
   const loginTitle =
     loginStep === "verify"
-      ? "Enter your verification code"
-      : "What's your phone number?";
+      ? t("homepage_eliza.leaderboard.loginTitleVerify", {
+          defaultValue: "Enter your verification code",
+        })
+      : t("homepage_eliza.leaderboard.loginTitlePhone", {
+          defaultValue: "What’s your phone number?",
+        });
   const loginSubtitle =
-    loginStep === "verify" ? `Sent SMS to ${submittedPhone}` : undefined;
+    loginStep === "verify"
+      ? t("homepage_eliza.leaderboard.loginSubtitleVerify", {
+          defaultValue: "Sent SMS to {{phone}}",
+          phone: submittedPhone,
+        })
+      : undefined;
 
   const phoneBarVisible = switcherOpen && loginSettled && loginStep === "phone";
   const verifyBarVisible =
@@ -783,7 +794,15 @@ export default function Leaderboard() {
               }
             }}
             disabled={!switcherOpen}
-            aria-label={switcherOpen ? "Close platform switcher" : "Eliza"}
+            aria-label={
+              switcherOpen
+                ? t("homepage_eliza.leaderboard.closeSwitcher", {
+                    defaultValue: "Close platform switcher",
+                  })
+                : t("homepage_eliza.leaderboard.brandAria", {
+                    defaultValue: "Eliza",
+                  })
+            }
             className={`appearance-none bg-transparent border-0 p-0 ${
               switcherOpen ? "cursor-pointer" : "cursor-default"
             }`}
@@ -792,7 +811,13 @@ export default function Leaderboard() {
           </button>
           <nav className="flex items-center gap-4">
             <BlobButton href={buildElizaSmsHref("Hi Eliza")} show={showUI}>
-              <AnimatedLetters text="Get Started" show={showUI} delay={80} />
+              <AnimatedLetters
+                text={t("homepage_eliza.leaderboard.getStarted", {
+                  defaultValue: "Get Started",
+                })}
+                show={showUI}
+                delay={80}
+              />
             </BlobButton>
           </nav>
         </header>
@@ -897,7 +922,9 @@ export default function Leaderboard() {
                   className="relative z-2 flex items-center justify-center h-full w-full rounded-sm text-black font-semibold text-base whitespace-nowrap cursor-pointer"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
-                  Try Now
+                  {t("homepage_eliza.leaderboard.tryNow", {
+                    defaultValue: "Try Now",
+                  })}
                 </AnimatedButton>
               </AnimatedDiv>
             </AnimatedDiv>
@@ -947,9 +974,13 @@ export default function Leaderboard() {
                 }}
                 placeholder={
                   tryPlatform === "telegram"
-                    ? "Message"
+                    ? t("homepage_eliza.leaderboard.placeholderTelegram", {
+                        defaultValue: "Message",
+                      })
                     : tryPlatform === "discord"
-                      ? "Message #general"
+                      ? t("homepage_eliza.leaderboard.placeholderDiscord", {
+                          defaultValue: "Message #general",
+                        })
                       : ""
                 }
                 className={`flex-1 bg-transparent text-lg outline-none resize-none py-1.5 max-h-80 leading-snug scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] ${tryPlatform === "discord" ? "text-white placeholder-[#72767d] caret-white" : tryPlatform === "telegram" ? "text-black placeholder-neutral-400 caret-[#2AABEE]" : "text-black caret-green-600"}`}
@@ -969,7 +1000,13 @@ export default function Leaderboard() {
                 }
               }}
               aria-label={
-                tryInput.trim() ? "Send message" : "Start voice input"
+                tryInput.trim()
+                  ? t("homepage_eliza.leaderboard.ariaSend", {
+                      defaultValue: "Send message",
+                    })
+                  : t("homepage_eliza.leaderboard.ariaVoice", {
+                      defaultValue: "Start voice input",
+                    })
               }
               className={`shrink-0 flex items-center justify-center rounded-full cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
             >
@@ -980,7 +1017,11 @@ export default function Leaderboard() {
                     fill="currentColor"
                     className="size-12"
                   >
-                    <title>Telegram</title>
+                    <title>
+                      {t("homepage_eliza.leaderboard.iconTitleTelegram", {
+                        defaultValue: "Telegram",
+                      })}
+                    </title>
                     <path d="M11.944 0A12 12 0 000 12a12 12 0 0012 12 12 12 0 0012-12A12 12 0 0012 0a12 12 0 00-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 01.171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.479.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" />
                   </svg>
                 ) : (
@@ -989,7 +1030,11 @@ export default function Leaderboard() {
                     fill="currentColor"
                     className="size-5"
                   >
-                    <title>Send message</title>
+                    <title>
+                      {t("homepage_eliza.leaderboard.iconTitleSend", {
+                        defaultValue: "Send message",
+                      })}
+                    </title>
                     <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
                   </svg>
                 )
@@ -1003,7 +1048,11 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-6"
                 >
-                  <title>Voice input</title>
+                  <title>
+                    {t("homepage_eliza.leaderboard.iconTitleVoice", {
+                      defaultValue: "Voice input",
+                    })}
+                  </title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1056,7 +1105,13 @@ export default function Leaderboard() {
                 }
               }}
               aria-label={
-                tryInput.trim() ? "Send message" : "Start voice input"
+                tryInput.trim()
+                  ? t("homepage_eliza.leaderboard.ariaSend", {
+                      defaultValue: "Send message",
+                    })
+                  : t("homepage_eliza.leaderboard.ariaVoice", {
+                      defaultValue: "Start voice input",
+                    })
               }
               className={`shrink-0 flex items-center justify-center rounded-sm mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-[var(--brand-blue)] text-white") : listening ? "w-12 h-9 bg-[var(--brand-blue)] text-white" : "w-9 h-9 text-black/40"}`}
             >
@@ -1070,7 +1125,11 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
-                  <title>Send message</title>
+                  <title>
+                    {t("homepage_eliza.leaderboard.iconTitleSend", {
+                      defaultValue: "Send message",
+                    })}
+                  </title>
                   <path d="M12 22V4M5 11l7-7 7 7" />
                 </svg>
               ) : listening ? (
@@ -1083,7 +1142,11 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
-                  <title>Voice input</title>
+                  <title>
+                    {t("homepage_eliza.leaderboard.iconTitleVoice", {
+                      defaultValue: "Voice input",
+                    })}
+                  </title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1098,7 +1161,11 @@ export default function Leaderboard() {
                   strokeLinejoin="round"
                   className="size-5"
                 >
-                  <title>Voice input</title>
+                  <title>
+                    {t("homepage_eliza.leaderboard.iconTitleVoice", {
+                      defaultValue: "Voice input",
+                    })}
+                  </title>
                   <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z" />
                   <path d="M19 10v2a7 7 0 0 1-14 0v-2" />
                   <path d="M12 19v4M8 23h8" />
@@ -1134,7 +1201,11 @@ export default function Leaderboard() {
               strokeLinejoin="round"
               className="size-4"
             >
-              <title>Select country</title>
+              <title>
+                {t("homepage_eliza.leaderboard.iconTitleSelectCountry", {
+                  defaultValue: "Select country",
+                })}
+              </title>
               <path d="M6 9l6 6 6-6" />
             </svg>
             <span className="text-3xl leading-none">{country.flag}</span>
@@ -1192,7 +1263,9 @@ export default function Leaderboard() {
               : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >
-          Continue with phone
+          {t("homepage_eliza.leaderboard.continueWithPhone", {
+            defaultValue: "Continue with phone",
+          })}
         </button>
       </AnimatedDiv>
       <AnimatedDiv
@@ -1268,25 +1341,27 @@ export default function Leaderboard() {
               : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >
-          Verify
+          {t("homepage_eliza.leaderboard.verify", { defaultValue: "Verify" })}
         </button>
         <p className="text-center text-sm text-neutral-500">
           {resendCountdown > 0 ? (
-            <>
-              Didn&apos;t receive a code? Resend in{" "}
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>
-                {resendCountdown}s
-              </span>
-            </>
+            t("homepage_eliza.leaderboard.resendCountdown", {
+              defaultValue: "Didn’t receive a code? Resend in {{s}}s",
+              s: resendCountdown,
+            })
           ) : (
             <>
-              Didn&apos;t receive a code?{" "}
+              {t("homepage_eliza.leaderboard.resendPrefix", {
+                defaultValue: "Didn’t receive a code?",
+              })}{" "}
               <button
                 type="button"
                 onClick={startResendCountdown}
                 className="text-neutral-900 font-medium underline cursor-pointer"
               >
-                Resend
+                {t("homepage_eliza.leaderboard.resend", {
+                  defaultValue: "Resend",
+                })}
               </button>
             </>
           )}

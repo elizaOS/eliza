@@ -11,6 +11,7 @@ import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 import LandingHeader from "../layout/landing-header";
 import Footer from "./Footer";
 import HeroSection from "./hero-section";
@@ -22,6 +23,7 @@ interface LandingPageProps {
 export function LandingPage({ accessError }: LandingPageProps) {
   const { ready, authenticated } = useSessionAuth();
   const navigate = useNavigate();
+  const t = useT();
   const hasRedirectedRef = useRef(false);
   const errorShownRef = useRef(false);
 
@@ -61,7 +63,9 @@ export function LandingPage({ accessError }: LandingPageProps) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-2 bg-black text-white">
         <Loader2 className="h-6 w-6 animate-spin" />
-        <span>Opening Eliza Cloud…</span>
+        <span>
+          {t("cloud.landing.opening", { defaultValue: "Opening Eliza Cloud…" })}
+        </span>
       </div>
     );
   }

@@ -5,6 +5,7 @@
  */
 import { isAddress } from "viem";
 import { verifyWalletSignature } from "../auth/wallet-auth";
+import { getStripeProductMessages } from "../stripe-products/messages";
 import type { UserWithOrganization } from "../types";
 import { logger } from "../utils/logger";
 import { creditsService } from "./credits";
@@ -233,6 +234,8 @@ async function createPaymentRequirements(
     }
   }
 
+  const productMessages = getStripeProductMessages(readEnvString(env, "ELIZA_LOCALE"));
+
   const requirements: PaymentRequirements = {
     scheme,
     network: network.caip2,
@@ -240,12 +243,12 @@ async function createPaymentRequirements(
     amount: amountBaseUnits,
     maxAmountRequired: amountBaseUnits,
     resource: req.url,
-    description: `Eliza Cloud credit top-up: $${amount}`,
+    description: productMessages.topupDescription(amount),
     mimeType: "application/json",
     payTo,
     maxTimeoutSeconds: 300,
     extra: {
-      name: "Eliza Cloud Credits",
+      name: productMessages.creditsName,
       version: "1",
       amountUsd: amount,
       endpoint: new URL(req.url).pathname,

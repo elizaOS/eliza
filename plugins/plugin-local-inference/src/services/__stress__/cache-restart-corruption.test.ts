@@ -149,8 +149,38 @@ describe("cache restart corruption: graceful fallback on bad KV files", () => {
 		// tolerance path indirectly.
 		await expect(
 			dflashLlamaServer.persistConversationKv("save-error-room", handle.slotId),
-		).resolves.toBe(true);
+		).resolves.toBeUndefined();
 		await engine.closeConversation(handle);
+	});
+
+	it("restoreConversationKv resolves to false when the server errors", async () => {
+		// First, write a real saved file so the restore path actually issues
+		// the slot-restore POST instead of short-circuiting on a missing file.
+		const handle = engine.openConversation({
+			conversationId: "restore-error-room",
+			modelId: "mock-model",
+		});
+		await engine.generateInConversation(handle, {
+			prompt: "seed",
+			maxTokens: 4,
+		});
+		await engine.closeConversation(handle);
+		const savedPath = path.join(
+			slotDir,
+			slotCacheFileName("restore-error-room", "long"),
+		);
+		expect(fs.existsSync(savedPath)).toBe(true);
+
+		// Mock returns 500 on restore. Without `await` in the catch block,
+		// this rejection would bubble out as an unhandled rejection instead
+		// of resolving to `false`.
+		state.corruptRestore = true;
+		await expect(
+			dflashLlamaServer.restoreConversationKv(
+				"restore-error-room",
+				handle.slotId,
+			),
+		).resolves.toBe(false);
 	});
 
 	it("100 concurrent openConversations on missing KV files all succeed", async () => {

@@ -8,6 +8,7 @@ export const UI_LANGUAGES = [
   "pt",
   "vi",
   "tl",
+  "ja",
 ] as const;
 
 export type UiLanguage = (typeof UI_LANGUAGES)[number];
@@ -31,6 +32,7 @@ export const MESSAGES: Record<UiLanguage, MessageDict> = {
   pt: {},
   vi: {},
   tl: {},
+  ja: {},
 };
 
 const loaders: Record<Exclude<UiLanguage, "en">, () => Promise<MessageDict>> = {
@@ -41,6 +43,7 @@ const loaders: Record<Exclude<UiLanguage, "en">, () => Promise<MessageDict>> = {
   pt: () => import("./locales/pt.json").then((m) => m.default as MessageDict),
   vi: () => import("./locales/vi.json").then((m) => m.default as MessageDict),
   tl: () => import("./locales/tl.json").then((m) => m.default as MessageDict),
+  ja: () => import("./locales/ja.json").then((m) => m.default as MessageDict),
 };
 
 const inflight = new Map<UiLanguage, Promise<void>>();

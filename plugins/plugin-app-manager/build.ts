@@ -1,12 +1,16 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
 import { rmSync } from "node:fs";
-import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const external = await externalsFromPackageJson("./package.json", {
-  // Keep wildcards + transitive workspace deps the hand-list relied on.
-  extra: ["@elizaos/agent", "dotenv", "node:*", "bun:*"],
-});
+const external = [
+  "@elizaos/core",
+  "@elizaos/agent",
+  "@elizaos/plugin-registry",
+  "@elizaos/shared",
+  "dotenv",
+  "node:*",
+  "bun:*",
+];
 
 console.log("🔨 Building @elizaos/plugin-app-manager...");
 const start = Date.now();

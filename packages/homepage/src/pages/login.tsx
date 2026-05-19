@@ -2,9 +2,11 @@ import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/context/auth-context";
+import { useT } from "@/providers/I18nProvider";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const t = useT();
   const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
@@ -20,10 +22,16 @@ export default function LoginPage() {
   return (
     <main className="theme-app app-shell">
       <header className="app-header">
-        <a href="/" aria-label="Eliza home" className="app-brand">
+        <a
+          href="/"
+          aria-label={t("homepage_eliza.common.brandHomeAria", {
+            defaultValue: "Eliza home",
+          })}
+          className="app-brand"
+        >
           <img
             src={`${BRAND_PATHS.logos}/${LOGO_FILES.elizaBlack}`}
-            alt="Eliza"
+            alt={t("homepage_eliza.common.brandAlt", { defaultValue: "Eliza" })}
             draggable={false}
             className="app-brand-mark"
           />
@@ -34,9 +42,17 @@ export default function LoginPage() {
         style={{ flex: 1, display: "flex", alignItems: "center" }}
       >
         <div className="app-narrow" style={{ width: "100%" }}>
-          <p className="app-eyebrow">Sign in</p>
-          <h1 className="app-display">Redirecting…</h1>
-          <p className="app-lede">Sending you to the right place.</p>
+          <p className="app-eyebrow">
+            {t("homepage_eliza.login.eyebrow", { defaultValue: "Sign in" })}
+          </p>
+          <h1 className="app-display">
+            {t("homepage_eliza.login.title", { defaultValue: "Redirecting…" })}
+          </h1>
+          <p className="app-lede">
+            {t("homepage_eliza.login.lede", {
+              defaultValue: "Sending you to the right place.",
+            })}
+          </p>
         </div>
       </section>
     </main>

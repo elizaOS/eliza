@@ -23,6 +23,7 @@ import { Capacitor } from "@capacitor/core";
 import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { client } from "../../api";
+import { appNameInterpolationVars, useBranding } from "../../config/branding";
 import type {
   CloudCompatAgent,
   CloudCompatJob,
@@ -2145,6 +2146,8 @@ function WelcomeChooser({
   t,
 }: WelcomeChooserProps) {
   const [advancedOpen, setAdvancedOpen] = React.useState(false);
+  const branding = useBranding();
+  const brandVars = appNameInterpolationVars(branding);
 
   return (
     <div className="flex w-full flex-col items-center gap-4 text-center sm:gap-5">
@@ -2154,7 +2157,8 @@ function WelcomeChooser({
           className="text-3xs tracking-[0.22em] text-[#ffe600]/80"
         >
           {t("runtimegate.welcomeEyebrow", {
-            defaultValue: "elizaOS — immersion agent runtime",
+            ...brandVars,
+            defaultValue: "{{appName}} — AI agent runtime",
           })}
         </p>
         <h1
@@ -2164,7 +2168,10 @@ function WelcomeChooser({
           }}
           className="text-2xl font-light uppercase tracking-tight text-white sm:text-3xl md:text-4xl"
         >
-          {t("runtimegate.welcomeTitle", { defaultValue: "Welcome to Eliza" })}
+          {t("runtimegate.welcomeTitle", {
+            ...brandVars,
+            defaultValue: "Welcome to {{appName}}",
+          })}
         </h1>
         <p
           className="max-w-md text-sm leading-relaxed text-white/85"
@@ -2174,8 +2181,9 @@ function WelcomeChooser({
           }}
         >
           {t("runtimegate.welcomeSubtitle", {
+            ...brandVars,
             defaultValue:
-              "Your personal AI, hosted on Eliza Cloud — ready in seconds.",
+              "Your personal AI. Ready in seconds, hosted by us.",
           })}
         </p>
       </div>

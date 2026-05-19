@@ -18,7 +18,15 @@ import { loadBrandFromArgv } from "./brand-config.mjs";
 import { lintInitRc } from "./lint-init-rc.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const repoRoot = path.resolve(here, "../..");
+// This file lives at packages/scripts/distro-android/validate.mjs, so the
+// repo root is three levels up. The previous `../..` value resolved to
+// `packages/` and silently broke vendor-dir resolution
+// (`path.resolve(repoRoot, brand.vendorDir)` produced
+// `packages/packages/os/android/vendor/<brand>` and the XML scan failed
+// before reaching the product-layer check). Reported by I1 against
+// brand-config rollouts that moved the vendor tree under
+// `packages/os/android/...`.
+const repoRoot = path.resolve(here, "../../..");
 
 const defaultGrantPermissions = [
   "android.permission.READ_CONTACTS",
@@ -247,11 +255,22 @@ export function validateProductLayer(vendorDir, brand) {
   const product = read(
     path.join(vendorDir, "products", `${brand.productName}.mk`),
   );
-  assertIncludes(
-    product,
-    "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk",
-    "product",
-  );
+  // The product makefile must inherit from a device tree. By default we
+  // assume the legacy Cuttlefish base (`aosp_cf.mk`); brand configs for
+  // non-Cuttlefish products (e.g. real-hardware SoC fusions like the
+  // OpenAgent E1) MUST declare `aospDeviceTreePaths` listing the device
+  // tree files they expect to find in the imported AOSP checkout. The
+  // first entry is treated as the primary inherit target the product
+  // makefile must reference; any additional entries are existence-checked
+  // against `--aosp-root` when present (see `validateAospDeviceTreePaths`).
+  // We intentionally do not fold a "found one of many" loop here: a
+  // product either inherits the documented base or it is misconfigured.
+  const deviceTreePaths = brand.aospDeviceTreePaths;
+  const primaryInherit =
+    Array.isArray(deviceTreePaths) && deviceTreePaths.length > 0
+      ? deviceTreePaths[0]
+      : "device/google/cuttlefish/vsoc_x86_64_only/phone/aosp_cf.mk";
+  assertIncludes(product, primaryInherit, "product");
   assertIncludes(
     product,
     `vendor/${brand.brand}/${brand.commonMakefile}`,
@@ -855,6 +874,35 @@ export function validateApk(apkPath, brand) {
   console.log(`[distro-android:validate] APK checks passed with ${aapt}.`);
 }
 
+/**
+ * Verify that the brand-declared AOSP device tree files exist in the
+ * imported AOSP checkout. This is the non-Cuttlefish counterpart to the
+ * implicit "aosp_cf.mk lives at a known path" assumption baked into the
+ * legacy validator. For fused-SoC brands (e.g. OpenAgent E1) the chip
+ * team's device tree must be rsynced into the AOSP checkout (see the
+ * chip's `import-aosp-device.sh`) before validate.mjs is run with
+ * `--aosp-root`. If the brand config does not declare
+ * `aospDeviceTreePaths`, this is a no-op (Cuttlefish path is implicit).
+ */
+export function validateAospDeviceTreePaths(aospRoot, brand) {
+  const paths = brand.aospDeviceTreePaths;
+  if (!Array.isArray(paths) || paths.length === 0) return;
+  for (const relPath of paths) {
+    if (typeof relPath !== "string" || relPath.length === 0) {
+      fail(
+        `brand.aospDeviceTreePaths must be an array of non-empty strings; got ${JSON.stringify(relPath)}`,
+      );
+    }
+    assertFile(
+      path.join(aospRoot, relPath),
+      `AOSP device tree file declared by brand (${relPath})`,
+    );
+  }
+  console.log(
+    `[distro-android:validate] AOSP device tree checks passed for ${paths.length} declared path(s).`,
+  );
+}
+
 export function validateAospRoot(aospRoot) {
   const buildEnvsetup = path.join(aospRoot, "build", "envsetup.sh");
   assertFile(buildEnvsetup, "AOSP build/envsetup.sh");
@@ -974,6 +1022,7 @@ export function main(argv = process.argv.slice(2)) {
   validateApk(args.apk, brand);
   if (args.aospRoot) {
     validateAospRoot(args.aospRoot);
+    validateAospDeviceTreePaths(args.aospRoot, brand);
   }
   console.log(`[distro-android:validate] ${brand.distroName} checks passed.`);
 }

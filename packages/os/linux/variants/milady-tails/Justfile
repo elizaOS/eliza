@@ -54,11 +54,45 @@ milady-app:
 
         echo "Building ${package_rel} runtime dist for elizaOS Live"
         case "${mode}" in
+            package-build)
+                if [ ! -x "${eliza_root}/node_modules/.bin/tsup" ] || [ ! -x "${eliza_root}/node_modules/.bin/tsc" ]; then
+                    echo "Installing workspace build dependencies for ${package_rel}"
+                    ( cd "${eliza_root}" && bun install --no-frozen-lockfile --ignore-scripts )
+                fi
+                ( cd "${package_dir}" && bun run build )
+                ;;
             package-js)
+                if [ ! -x "${eliza_root}/node_modules/.bin/tsup" ]; then
+                    echo "Installing workspace build dependencies for ${package_rel}"
+                    ( cd "${eliza_root}" && bun install --no-frozen-lockfile --ignore-scripts )
+                fi
                 ( cd "${package_dir}" && bun run build:js )
                 ;;
             tsup-index)
+                if [ ! -x "${eliza_root}/node_modules/.bin/tsup" ]; then
+                    echo "Installing workspace build dependencies for ${package_rel}"
+                    ( cd "${eliza_root}" && bun install --no-frozen-lockfile --ignore-scripts )
+                fi
                 ( cd "${package_dir}" && bunx tsup src/index.ts --format esm --clean )
+                ;;
+            bun-runtime-index)
+                ( cd "${package_dir}" && \
+                    rm -rf dist && \
+                    bun build src/index.ts \
+                        --outdir dist \
+                        --target=node \
+                        --format=esm \
+                        --sourcemap=external \
+                        --external '@elizaos/agent' \
+                        --external '@elizaos/app-core' \
+                        --external '@elizaos/app-core/*' \
+                        --external '@elizaos/core' \
+                        --external '@elizaos/plugin-registry' \
+                        --external '@elizaos/shared' \
+                        --external '@elizaos/vault' \
+                        --external dotenv \
+                        --external 'node:*' \
+                        --external 'bun:*' )
                 ;;
             *)
                 echo "Unknown runtime package build mode: ${mode}" >&2
@@ -100,6 +134,8 @@ milady-app:
     test -x "${app_out}/bin/launcher" || { echo "missing ${app_out}/bin/launcher"; exit 1; }
     ensure_plugin_runtime_dist "plugins/plugin-health" package-js
     ensure_plugin_runtime_dist "plugins/plugin-calendly" tsup-index
+    ensure_plugin_runtime_dist "plugins/plugin-registry" package-js
+    ensure_plugin_runtime_dist "plugins/plugin-app-manager" bun-runtime-index
     if [ -e "${stage}" ] && ! rm -rf "${stage}"; then
         sudo -n rm -rf "${stage}"
     fi
