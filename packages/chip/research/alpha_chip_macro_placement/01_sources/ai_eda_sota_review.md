@@ -59,10 +59,13 @@ affect source, release claims, or tapeout-facing artifacts.
   before/after RTL, cocotb/formal/synthesis, and benchmark gates.
 - Compiler and code-generation automation is a separate evidence surface from
   BSP work. LLVM MLGO, TVM MetaSchedule/Ansor, AutoFDO/Propeller/BOLT,
-  IntrinTrans/VecIntrinBench/SimdBench, and agentic compiler optimization can
-  improve shipped binaries or RVV/NPU kernels, but E1 needs pinned toolchains,
-  source/binary/profile hashes, semantic tests, simulator/runtime logs,
-  calibrated benchmarks, and review before generated code or profiles are used.
+  IntrinTrans/VecIntrinBench/SimdBench, Autocomp, AccelOpt, V-Seek, RISC-V
+  Interaction Tree semantics, and agentic compiler optimization can improve
+  shipped binaries or RVV/NPU kernels, but E1 needs pinned toolchains,
+  source/binary/profile hashes, prompt/model revisions, optimization-memory
+  quarantine, semantic tests, simulator/runtime logs, calibrated benchmarks,
+  and review before generated code, kernels, profiles, memories, or proof
+  claims are used.
 - External model and corpus intake is now a first-class gate because current
   HuggingFace and GitHub assets include RTL models, Verilog corpora,
   metric-reasoning datasets, CircuitNet-style multimodal corpora, SVA data, and
@@ -126,7 +129,7 @@ affect source, release claims, or tapeout-facing artifacts.
 | Simulator/NPU DSE | ZigZag, Timeloop/Accelergy, DOSA, DiffAxE | Use hashed architecture manifests; block claims until calibrated measurements exist. |
 | Simulator/benchmark targets | ZigZag, Timeloop/Accelergy, DOSA, RTLMUL | Capture local benchmark/runtime targets; block performance claims until logs exist. |
 | Software BSP, firmware, and boot simulation | LLM firmware validation, EoK RISC-V kernel optimization, IntrinTrans RVV, OpenSBI, U-Boot, MCP4EDA | Capture boot/BSP/firmware target tasks only; block generated patches, device-tree edits, boot claims, BSP claims, and kernel-performance claims until build logs, QEMU/Renode transcripts, static analysis, and review exist. |
-| Compiler autotuning and codegen | LLVM MLGO, Google ML Compiler Opt, TVM MetaSchedule, Ansor, AutoFDO, LLVM Propeller, BOLT, IntrinTrans, VecIntrinBench, SimdBench, Agentic Code Optimization, HINTPILOT, LLM-VeriOpt, xDSL RVV lowering | Capture compiler-model, RVV intrinsic, tensor-kernel schedule, profile-guided binary, and agentic optimization targets only; block generated code, compiler/pass changes, profile data, relinked binaries, autotuner/model execution, and performance claims until toolchain, correctness, simulator, benchmark, and review gates pass. |
+| Compiler autotuning and codegen | LLVM MLGO, Google ML Compiler Opt, TVM MetaSchedule, Ansor, AutoFDO, LLVM Propeller, BOLT, IntrinTrans, VecIntrinBench, SimdBench, Agentic Code Optimization, HINTPILOT, LLM-VeriOpt, xDSL RVV lowering, Autocomp, AccelOpt, V-Seek, RISC-V Interaction Tree Semantics | Capture compiler-model, RVV intrinsic, tensor-kernel schedule, accelerator-kernel optimization, profile-guided binary, formal-semantics, and agentic optimization targets only; block generated code, compiler/pass changes, generated kernels, optimization memories, profile data, relinked binaries, proof claims, autotuner/model execution, and performance claims until toolchain, correctness, simulator, benchmark, formal, and review gates pass. |
 | Reliability, aging, EM, and soft errors | AgenticTCAD, TcadGPT, PROTON, EMspice 2.0, NBTI/HCI aging models, SOFIA, Ethos-U55 soft-error study, Ibex SEU formal evaluation, BEC, Hamartia, FIES, TensorFI, Ares, Caliptra error-injection requirements | Capture TCAD/DTCO process-device assumptions, aging, EM, formal/QEMU fault-injection, NPU workload resilience, compiler reliability, and ECC/TMR mitigation targets only; block generated TCAD decks/device assumptions, fault injection, aging/EM analysis, generated mitigation, signoff, and reliability claims until authorized decks, process models, calibration, mission profiles, fault manifests, simulator/formal logs, PD/signoff evidence, before/after PPA, and review exist. |
 | RTL PPA advisory | RTLMUL, VerilogEval, CVDP, DeepCircuitX, CktEvo | Capture local RTL and synthesis hashes only; do not load weights, import repo-level RTL/PPA datasets, generate RTL evolution edits, or emit PPA predictions without revision pinning, license review, equivalence/simulation/synthesis gates, and held-out E1 error analysis. |
 | HLS and accelerator DSE | HLSFactory, HLS-Eval, LLM-DSE, iDSE, SECDA-DSE | Capture E1 HLS candidate tasks from runtime/spec inputs; block generated directives, HLS, and RTL until C-sim, HLS synthesis, RTL simulation, synthesis, equivalence where applicable, and review pass. |
@@ -287,10 +290,13 @@ affect source, release claims, or tapeout-facing artifacts.
     performance claim is allowed.
 28. Use `scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation`
     to keep LLVM MLGO, TVM/Ansor schedule search, RVV intrinsic generation,
-    profile-guided binary optimization, and agentic compiler optimization tied
-    to local compiler pins, runtime tests, RVV autovec checks, benchmark
-    calibration, simulator/runtime logs, and review before any generated code,
-    profile, binary, or compiler-performance claim is allowed.
+    profile-guided binary optimization, Autocomp/AccelOpt/V-Seek-style
+    accelerator-kernel optimization, formal RISC-V semantics, and agentic
+    compiler optimization tied to local compiler pins, runtime tests, RVV
+    autovec checks, benchmark calibration, simulator/runtime logs,
+    semantic-equivalence evidence, and review before any generated code,
+    kernel, optimization memory, profile, binary, proof, or
+    compiler-performance claim is allowed.
 29. Use `scripts/ai_eda/capture_reliability_resilience_targets.py --run-id validation`
     to keep aging, EM, soft-error, formal/QEMU fault-injection, NPU workload
     resilience, and ECC/TMR mitigation work tied to process models, mission

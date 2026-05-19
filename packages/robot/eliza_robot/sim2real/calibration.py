@@ -144,17 +144,40 @@ def _trajectory_distance(
 
 
 def _build_command_program(profile_id: str = "hiwonder-ainex") -> list[tuple[str, dict]]:
-    """A short, deterministic command sequence that exercises arms + head.
-
-    Walks both sims through the same poses so divergence at each step is
-    a direct measurement of perturbations.
+    """A long, deterministic command sequence that exercises legs +
+    arms + head with varied joint targets. Each pose is held briefly
+    so perturbations have measurable effect across every joint, not
+    just the ones touched by a couple of poses.
     """
     cmds: list[tuple[str, dict]] = []
-    # Sequence: stand, head pan +0.6, head pan -0.6, head 0, wave, stand
     cmds.append(("action.play", {"name": "stand"}))
-    for tilt in (0.0, 0.4, -0.4, 0.0):
-        cmds.append(("head.set", {"pan": 0.5 * (tilt + 0.2), "tilt": tilt, "duration": 0.4}))
+    # Head sweeps — exercise head_pan + head_tilt.
+    for pan, tilt in (
+        (0.6, 0.0), (-0.6, 0.0), (0.0, 0.5), (0.0, -0.4),
+        (0.4, 0.3), (-0.4, -0.3), (0.0, 0.0),
+    ):
+        cmds.append(("head.set", {"pan": pan, "tilt": tilt, "duration": 0.4}))
+    # Scripted actions — exercise legs + arms via the action library.
     cmds.append(("action.play", {"name": "wave"}))
+    cmds.append(("action.play", {"name": "stand"}))
+    cmds.append(("action.play", {"name": "bow"}))
+    cmds.append(("action.play", {"name": "stand"}))
+    cmds.append(("action.play", {"name": "sit"}))
+    cmds.append(("action.play", {"name": "stand"}))
+    # Direct servo.set — exercises specific joints at known angles.
+    for amplitude in (0.1, -0.1, 0.2, -0.2, 0.0):
+        cmds.append(("servo.set", {
+            "duration": 0.3,
+            "joint_positions": {
+                "r_sho_pitch": amplitude,
+                "l_sho_pitch": -amplitude,
+                "r_el_pitch": -0.2 + amplitude,
+                "l_el_pitch": -0.2 - amplitude,
+                "head_pan": amplitude * 2,
+                "head_tilt": amplitude,
+            },
+            "positions": [],
+        }))
     cmds.append(("action.play", {"name": "stand"}))
     return cmds
 
@@ -215,47 +238,90 @@ async def calibrate(
     best_dist = baseline_dist["rms_total"]
     history: list[dict] = [{"iter": 0, **baseline_dist}]
 
-    for it in range(1, iterations + 1):
-        # Estimate per-joint correction from the mean residual at the last
-        # step of the noisy run (assumes steady-state pose after final
-        # `stand`). For each joint, observed_pos = true_pos * strength + offset.
-        # We approximate by tracking the offset only and a small strength
-        # scale toward the average noisy/clean ratio.
-        if len(clean_traj) > 0 and len(noisy_traj) > 0:
-            tail = -1
-            clean_joint = clean_traj[tail].joint_positions
-            noisy_joint = noisy_traj[tail].joint_positions
-            for i, name in enumerate(joint_order):
-                if name not in clean_joint or name not in noisy_joint:
-                    continue
-                residual = noisy_joint[name] - (
-                    clean_joint[name] * params.motor_strengths[i] + params.joint_offsets[i]
-                )
-                # Update offset by a fraction of the residual.
-                params.joint_offsets[i] += learning_rate * float(residual)
-                # Update strength toward the ratio of noisy/clean (gentle).
-                if abs(clean_joint[name]) > 0.05:
-                    ratio = noisy_joint[name] / clean_joint[name]
-                    if 0.5 <= ratio <= 1.5:
-                        params.motor_strengths[i] += learning_rate * (
-                            float(ratio) - float(params.motor_strengths[i])
-                        ) * 0.3
+    # Residual estimation: only use samples where the robot is "at rest"
+    # (the final `stand` pose and similar steady-state moments). PD
+    # dynamics make mid-motion samples poor gradient signals because
+    # commanded ≠ observed during transients.
+    #
+    # We average the LAST K stable samples and update offset/strength
+    # gently. With Adam normalization, learning_rate ≈ step size per
+    # iteration, so 0.003 is appropriate when truth offsets are ~0.015 rad.
 
-        # Re-run the clean side with the calibration applied via a small
-        # adapter (we just pre-multiply joint targets in our recorder).
-        clean_traj2 = await _record_trajectory_calibrated(
+    # Adam state per parameter group.
+    m_off = np.zeros_like(params.joint_offsets)
+    v_off = np.zeros_like(params.joint_offsets)
+    m_str = np.zeros_like(params.motor_strengths)
+    v_str = np.zeros_like(params.motor_strengths)
+    beta1, beta2, eps = 0.9, 0.999, 1e-8
+    best_params_snapshot = params.to_jsonable()
+
+    for it in range(1, iterations + 1):
+        offset_grad = np.zeros_like(params.joint_offsets)
+        strength_grad = np.zeros_like(params.motor_strengths)
+        offset_count = np.zeros_like(params.joint_offsets)
+        strength_count = np.zeros_like(params.motor_strengths)
+
+        # Use the LAST k stable steps (steady-state pose, less PD transient).
+        k = min(5, min(len(clean_traj), len(noisy_traj)))
+        if k > 0:
+            for t in range(-k, 0):
+                cj = clean_traj[t].joint_positions
+                nj = noisy_traj[t].joint_positions
+                for i, name in enumerate(joint_order):
+                    if name not in cj or name not in nj:
+                        continue
+                    pred = float(cj[name]) * float(params.motor_strengths[i]) + float(
+                        params.joint_offsets[i]
+                    )
+                    err = float(nj[name]) - pred
+                    offset_grad[i] += err
+                    offset_count[i] += 1
+                    if abs(cj[name]) > 0.02:
+                        # strength gradient: ∂loss/∂strength = -clean_pos * err
+                        strength_grad[i] += float(cj[name]) * err
+                        strength_count[i] += 1
+
+        offset_grad /= np.maximum(offset_count, 1)
+        strength_grad /= np.maximum(strength_count, 1)
+
+        # Adam update with conservative step size — at most ~`learning_rate`
+        # rad of offset change per iteration regardless of gradient norm.
+        m_off = beta1 * m_off + (1 - beta1) * offset_grad
+        v_off = beta2 * v_off + (1 - beta2) * (offset_grad**2)
+        params.joint_offsets += (
+            learning_rate * m_off / (np.sqrt(v_off) + eps)
+        )
+        np.clip(params.joint_offsets, -0.15, 0.15, out=params.joint_offsets)
+
+        m_str = beta1 * m_str + (1 - beta1) * strength_grad
+        v_str = beta2 * v_str + (1 - beta2) * (strength_grad**2)
+        # Smaller step on strength (less identifiable than offset).
+        params.motor_strengths += (
+            0.3 * learning_rate * m_str / (np.sqrt(v_str) + eps)
+        )
+        np.clip(params.motor_strengths, 0.7, 1.3, out=params.motor_strengths)
+
+        # Re-record both sides with the new calibration applied to clean.
+        clean_traj = await _record_trajectory_calibrated(
             clean_backend, program, params, joint_order
         )
-        noisy_traj2 = await _record_trajectory(noisy_backend, program)
-        dist = _trajectory_distance(clean_traj2, noisy_traj2)
+        noisy_traj = await _record_trajectory(noisy_backend, program)
+        dist = _trajectory_distance(clean_traj, noisy_traj)
         history.append({"iter": it, **dist, "params_snapshot": params.to_jsonable()})
         if dist["rms_total"] < best_dist:
             best_dist = dist["rms_total"]
+            best_params_snapshot = params.to_jsonable()
         print(
             f"[calibrate] iter {it:2d}/{iterations}: "
             f"rms_imu={dist['rms_imu']:.4f}  rms_joint={dist['rms_joint']:.4f}  "
-            f"total={dist['rms_total']:.4f}"
+            f"total={dist['rms_total']:.4f}  "
+            f"({100*(baseline_dist['rms_total']-dist['rms_total'])/baseline_dist['rms_total']:+.1f}%)"
         )
+
+    # Roll back to the best parameters seen during the run (don't return
+    # the last-iteration params if they overshot).
+    params.joint_offsets = np.array(best_params_snapshot["joint_offsets"], dtype=np.float32)
+    params.motor_strengths = np.array(best_params_snapshot["motor_strengths"], dtype=np.float32)
 
     await clean_backend.shutdown()
     await noisy_inner.shutdown()

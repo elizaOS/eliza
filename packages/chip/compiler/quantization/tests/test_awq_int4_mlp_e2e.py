@@ -31,7 +31,6 @@ if str(RUNTIME_DIR) not in sys.path:
     sys.path.insert(0, str(RUNTIME_DIR))
 
 from e1_npu_runtime import golden_gemm_s4  # noqa: E402
-
 from quantization.awq_int4 import AwqInt4Calibrator  # noqa: E402
 
 # Bounded by the 64-byte MMIO scratchpad: M,N <= 3 and K <= 7.

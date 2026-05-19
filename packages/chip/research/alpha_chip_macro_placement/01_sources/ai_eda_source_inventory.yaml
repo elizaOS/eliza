@@ -4613,6 +4613,137 @@ entries:
     risk:
       - Lowering paths can diverge from upstream LLVM/MLIR behavior.
       - RVV generated code may not match E1 target profile.
+  - id: autocomp-kernel-optimization
+    name: Autocomp
+    kind: llm_driven_tensor_accelerator_kernel_optimization
+    stage:
+      - compiler
+      - tensor_kernel_optimization
+      - llm_code_optimization
+      - accelerator_runtime
+      - riscv_vector
+    priority: P1
+    source_url: https://arxiv.org/abs/2505.18574
+    code_url: https://github.com/ucb-bar/autocomp
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Strong code-bearing candidate for LLM-driven kernel optimization across
+      accelerators, including Gemmini and RISC-V vector processors, making it
+      relevant to E1 NPU simulator kernels and RVV fallback experiments.
+    integration_action: >
+      Track as a quarantined kernel-optimization framework only; do not run on
+      E1 kernels or import generated code until target adapters, prompts,
+      models, logs, correctness tests, and benchmarks are pinned.
+    evidence_gate: >
+      Any Autocomp-style use requires repository revision, license review,
+      target adapter hashes, prompt/model versions, generated source hashes,
+      compiler/simulator logs, semantic tests, before/after benchmarks, and
+      reviewer disposition.
+    risk:
+      - Optimizer can overfit simulator or benchmark feedback.
+      - Generated kernels may exploit undefined behavior, ABI assumptions, or
+        target features absent from E1.
+  - id: accelopt
+    name: AccelOpt
+    kind: self_improving_llm_agent_accelerator_kernel_optimization
+    stage:
+      - compiler
+      - tensor_kernel_optimization
+      - agentic_orchestration
+      - optimization_memory
+      - accelerator_runtime
+    priority: P1
+    source_url: https://arxiv.org/abs/2511.15915
+    code_url: https://github.com/zhang677/AccelOpt
+    model_url: https://huggingface.co/Genghan/sft-qwen-7b-instruct_GRPO_nki_pure_0920_cluster3
+    dataset_url: https://huggingface.co/datasets/Genghan/NKIBench
+    license_status: review_required
+    code_status: available_to_review
+    model_status: model_and_dataset_reported_to_review
+    e1_fit: >
+      Relevant agentic kernel optimizer with optimization memory and public
+      code/model/dataset pointers, but its Trainium/NKI benchmark setting is
+      not directly E1.
+    integration_action: >
+      Track for governance and future benchmark design only; do not reuse
+      optimization memories, model weights, or generated kernels for E1 without
+      quarantine, license, contamination, and local replay gates.
+    evidence_gate: >
+      Any AccelOpt-style experiment requires pinned code/model/dataset
+      revisions, optimization-memory hashes, generated kernel hashes, backend
+      logs, semantic correctness tests, before/after benchmark logs, and review.
+    risk:
+      - Self-improving memory can preserve target-specific tricks that do not
+        transfer to E1.
+      - Public benchmark/model assets can contaminate held-out local evaluation.
+  - id: v-seek-riscv-llm-inference
+    name: V-Seek
+    kind: riscv_llm_inference_kernel_optimization
+    stage:
+      - riscv
+      - riscv_vector
+      - software_optimization
+      - llm_inference_runtime
+      - kernel_optimization
+    priority: P2
+    source_url: https://arxiv.org/abs/2503.17422
+    code_url: https://github.com/ggml-org/llama.cpp
+    model_url: null
+    dataset_url: null
+    license_status: paper_and_upstream_code_review_required
+    code_status: upstream_runtime_available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful RISC-V vector optimization case study for LLM inference kernels;
+      relevant to future E1 CPU/RVV fallback and runtime benchmark strategy.
+    integration_action: >
+      Keep as a method reference; no llama.cpp or generated inference kernels
+      enter E1 until target ISA, compiler, simulator/runtime, and benchmark
+      evidence exist.
+    evidence_gate: >
+      RISC-V inference-kernel claims require source revision, compiler flags,
+      target ISA profile, generated binary hashes, simulator or hardware logs,
+      model/workload hashes, before/after metrics, and review.
+    risk:
+      - Server-class SG2042 assumptions may not transfer to E1 CPU/AP targets.
+      - LLM inference throughput is sensitive to memory hierarchy, quantization,
+        and runtime configuration.
+  - id: riscv-itree-semantics
+    name: Interaction Tree Semantics for RISC-V
+    kind: formal_riscv_compiler_hardware_semantics
+    stage:
+      - compiler_verification
+      - riscv_semantics
+      - formal_methods
+      - hardware_software_contract
+    priority: P2
+    source_url: https://arxiv.org/abs/2605.04933
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant guardrail for connecting compiler IR, RISC-V code, and hardware
+      behavior with machine-checked semantics before trusting generated kernel
+      or compiler optimizations.
+    integration_action: >
+      Track as formal-method context for future RISC-V kernel and compiler
+      optimization review; no E1 proof claims until assets and local models are
+      available.
+    evidence_gate: >
+      Any semantic-equivalence claim requires pinned formalization assets,
+      theorem/proof logs, exact RISC-V subset, compiler IR/source hashes,
+      generated code hashes, and reviewer disposition.
+    risk:
+      - Paper-level semantics may not cover E1-specific privileged, vector, or
+        memory-model behavior.
+      - Formal proofs can be scoped too narrowly for runtime or ABI claims.
   - id: proton-em
     name: PROTON Physics-Based Electromigration Assessment
     kind: electromigration_assessment_framework

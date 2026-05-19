@@ -1,0 +1,36 @@
+# elizaOS RV64 variant userland-bootstrap (Wave 2B / first-boot scaffold)
+#
+# Runtime dependencies the elizaOS agent expects to find on the system,
+# kept separate from the base/build-time package-list (`elizaos.list.chroot`)
+# so the userland-bootstrap wave can be reasoned about and trimmed
+# independently.
+#
+# These packages must be present even when /opt/elizaos/bin/elizaos is
+# the STATUS_LATER placeholder — they are what first-boot.sh and the
+# qemu-virt harness rely on to declare "boot fine, agent missing" rather
+# than "boot broken".
+#
+# One package per line. Comments begin with `#`. All packages must exist
+# for `riscv64` in Debian Trixie.
+
+# ── Network + TLS for agent fetch / connectors ───────────────────────
+curl
+ca-certificates
+
+# ── Local agent storage ──────────────────────────────────────────────
+sqlite3
+
+# ── Remote access (key-only auth is enforced in 0010-elizaos-agent) ──
+openssh-server
+
+# ── Time + locale: required for cert validation and log timestamps ───
+tzdata
+
+# ── Node 20 LTS: the elizaOS runtime ships node-based servers. Trixie's
+#    `nodejs` package is 20.x at the time of writing.
+nodejs
+
+# ── First-boot networking sanity (used by the qemu harness for ICMP
+#    and route inspection before the agent comes up).
+iproute2
+iputils-ping

@@ -431,7 +431,7 @@ module e1_axi4_interconnect
         end
         for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
             if (w_active[m].active && !w_active[m].is_decerr) begin
-                int unsigned s = w_active[m].slave;
+                automatic int unsigned s = w_active[m].slave;
                 s_wvalid[s] = m_wvalid[m];
                 s_wdata[s]  = m_wdata[m];
                 s_wstrb[s]  = m_wstrb[m];

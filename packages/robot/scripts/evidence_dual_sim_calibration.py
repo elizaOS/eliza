@@ -53,7 +53,9 @@ def _plot_convergence(out_dir: Path, summary: dict) -> None:
 
 
 async def main_async(args) -> int:
-    profile = NoiseProfile(rng_seed=args.seed)
+    profile = NoiseProfile(
+        rng_seed=args.seed, deterministic_only=args.deterministic,
+    )
     print(
         f"[dual-sim] noise profile: servo_delay={profile.servo_delay_ms_mean}±{profile.servo_delay_ms_std} ms, "
         f"motor_strength_std={profile.motor_strength_std}, "
@@ -93,8 +95,12 @@ async def main_async(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--iterations", type=int, default=12)
-    parser.add_argument("--lr", type=float, default=0.4)
+    parser.add_argument("--lr", type=float, default=0.003)
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument(
+        "--deterministic", action="store_true",
+        help="suppress per-sample IMU/joint noise so calibration sees a clean signal",
+    )
     parser.add_argument(
         "--out",
         type=Path,

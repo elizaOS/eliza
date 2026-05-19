@@ -725,6 +725,30 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_dataset_compiler_and_isa_review
     allowed_current_use: method_reference_only
+  - source_id: autocomp-kernel-optimization
+    asset_type: llm_driven_tensor_accelerator_kernel_optimization
+    asset_url: https://github.com/ucb-bar/autocomp
+    license_status: review_required
+    release_use: blocked_pending_code_prompt_model_adapter_and_replay_review
+    allowed_current_use: compiler_kernel_method_reference_only
+  - source_id: accelopt
+    asset_type: self_improving_llm_agent_accelerator_kernel_optimization
+    asset_url: https://github.com/zhang677/AccelOpt
+    license_status: review_required
+    release_use: blocked_pending_code_model_dataset_memory_and_replay_review
+    allowed_current_use: benchmark_governance_reference_only
+  - source_id: v-seek-riscv-llm-inference
+    asset_type: riscv_llm_inference_kernel_optimization
+    asset_url: https://arxiv.org/abs/2503.17422
+    license_status: paper_and_upstream_code_review_required
+    release_use: blocked_pending_runtime_revision_target_isa_and_benchmark_review
+    allowed_current_use: riscv_runtime_method_reference_only
+  - source_id: riscv-itree-semantics
+    asset_type: formal_riscv_compiler_hardware_semantics
+    asset_url: https://arxiv.org/abs/2605.04933
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_formalization_assets_proof_logs_and_scope_review
+    allowed_current_use: formal_semantics_reference_only
   - source_id: opensbi
     asset_type: riscv_supervisor_firmware
     asset_url: https://github.com/riscv-software-src/opensbi
