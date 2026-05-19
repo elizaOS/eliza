@@ -12,9 +12,8 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
 module tage_table
+    import bpu_pkg::*;
 #(
     parameter int unsigned TABLE_ID   = 0,
     parameter int unsigned ENTRIES    = TAGE_ENTRIES_TABLE,
@@ -24,7 +23,11 @@ module tage_table
     input  logic                rst_n,
 
     // Lookup
+    /* verilator lint_off UNUSEDSIGNAL */
+    // Lookup is a pure SRAM read on hashed (lkp_pc, lkp_hist). The consumer
+    // (tage.sv) gates the produced hit with its own valid bit.
     input  logic                lkp_valid,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  logic [VADDR_W-1:0]  lkp_pc,
     input  logic [HIST_LEN-1:0] lkp_hist,
     output logic                lkp_hit,
@@ -38,7 +41,12 @@ module tage_table
     input  logic [VADDR_W-1:0]  upd_pc,
     input  logic [HIST_LEN-1:0] upd_hist,
     input  logic                upd_taken,
+    /* verilator lint_off UNUSEDSIGNAL */
+    // upd_correct is part of the API for completeness with Seznec-style TAGE
+    // training; the current implementation derives the counter update from
+    // upd_taken alone and exposes useful tracking via upd_useful_*.
     input  logic                upd_correct,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  logic                upd_alloc,
     input  logic                upd_useful_inc,
     input  logic                upd_useful_dec,
@@ -115,8 +123,9 @@ module tage_table
 
     logic [IDX_W-1:0]      upd_i;
     logic [TAGE_TAG_W-1:0] upd_t;
+    /* verilator lint_off UNUSEDSIGNAL */
     logic                  upd_hit;
-    integer e;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     always_comb begin
         upd_i = index_hash(upd_pc, upd_hist);
@@ -126,7 +135,7 @@ module tage_table
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (e = 0; e < ENTRIES; e++) begin
+            for (int unsigned e = 0; e < ENTRIES; e++) begin
                 storage_q[e] <= '{valid:1'b0, tag:'0, ctr: {1'b0, {(TAGE_CTR_W-1){1'b1}}}, useful:'0};
             end
             pmu_alloc <= 1'b0;
@@ -136,7 +145,7 @@ module tage_table
             // Periodic useful-bit reset: alternates MSB/LSB to slowly age out
             // entries that have not proven useful since last reset.
             if (useful_reset_lsb || useful_reset_msb) begin
-                for (e = 0; e < ENTRIES; e++) begin
+                for (int unsigned e = 0; e < ENTRIES; e++) begin
                     if (useful_reset_msb && storage_q[e].useful != '0)
                         storage_q[e].useful[TAGE_USEFUL_W-1] <= 1'b0;
                     if (useful_reset_lsb && storage_q[e].useful != '0)

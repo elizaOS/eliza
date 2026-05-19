@@ -9,13 +9,17 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module bimodal (
+module bimodal
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
+    /* verilator lint_off UNUSEDSIGNAL */
+    // Same convention as the tagged tables: the bimodal is a pure RAM read
+    // on lkp_pc; the consumer gates the result.
     input  logic                lkp_valid,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  logic [VADDR_W-1:0]  lkp_pc,
     output logic                lkp_taken,
     output logic [BIM_CTR_W-1:0] lkp_ctr,
@@ -27,17 +31,21 @@ module bimodal (
 
     logic [BIM_CTR_W-1:0] table_q [BIM_ENTRIES];
 
+    /* verilator lint_off UNUSEDSIGNAL */
     function automatic logic [BIM_IDX_W-1:0] bim_idx(input logic [VADDR_W-1:0] pc);
-        // Drop the lowest two bits (compressed/uncompressed alignment) and
-        // fold the upper bits with XOR for a simple, cheap index hash.
-        logic [VADDR_W-1:0] s;
-        s = pc >> 1;
-        bim_idx = s[BIM_IDX_W-1:0] ^ s[2*BIM_IDX_W-1 -: BIM_IDX_W];
+        // Drop the lowest bit (compressed/uncompressed alignment) and fold
+        // two BIM_IDX_W-bit slices of the upper PC with XOR for a cheap
+        // index hash. Bits above 2*BIM_IDX_W are intentionally unused.
+        logic [BIM_IDX_W-1:0] low;
+        logic [BIM_IDX_W-1:0] high;
+        low  = pc[1 +: BIM_IDX_W];
+        high = pc[1 + BIM_IDX_W +: BIM_IDX_W];
+        bim_idx = low ^ high;
     endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
 
     logic [BIM_IDX_W-1:0] lkp_i;
     logic [BIM_IDX_W-1:0] upd_i;
-    integer i;
 
     assign lkp_i = bim_idx(lkp_pc);
     assign upd_i = bim_idx(upd_pc);
@@ -49,7 +57,7 @@ module bimodal (
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (i = 0; i < BIM_ENTRIES; i++) begin
+            for (int unsigned i = 0; i < BIM_ENTRIES; i++) begin
                 // Weakly-not-taken on reset matches the cold-start fairness
                 // story for code that has not seen any branch yet.
                 table_q[i] <= {1'b0, {(BIM_CTR_W-1){1'b1}}};

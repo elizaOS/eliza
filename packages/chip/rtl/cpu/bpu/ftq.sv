@@ -12,7 +12,9 @@
 
 `timescale 1ns/1ps
 
+/* verilator lint_off IMPORTSTAR */
 import bpu_pkg::*;
+/* verilator lint_on IMPORTSTAR */
 
 module ftq (
     input  logic                clk,
@@ -56,12 +58,11 @@ module ftq (
     assign pmu_full  = full;
     assign pmu_empty = empty;
 
-    integer i;
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             wr_ptr_q <= '0;
             rd_ptr_q <= '0;
-            for (i = 0; i < FTQ_ENTRIES; i++) begin
+            for (int unsigned i = 0; i < FTQ_ENTRIES; i++) begin
                 storage_q[i] <= '{
                     valid:        1'b0,
                     start_pc:     '0,

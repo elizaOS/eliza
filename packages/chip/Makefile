@@ -635,9 +635,9 @@ cocotb-contract:
 cocotb-cpu:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_tiny_cpu_execution COCOTB_TOPLEVEL=e1_tiny_cpu_contract_tb scripts/run_cocotb.sh
 
-.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq formal-bpu branch-prediction-check mpki-eval
+.PHONY: cocotb-bpu cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop formal-bpu branch-prediction-check mpki-eval bpu-lint
 
-cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq
+cocotb-bpu: cocotb-bpu-ras cocotb-bpu-ftq cocotb-bpu-ftb cocotb-bpu-uftb cocotb-bpu-loop
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_bpu_top COCOTB_TOPLEVEL=bpu_top_tb scripts/run_cocotb_bpu.sh
 
 cocotb-bpu-ras:
@@ -646,11 +646,23 @@ cocotb-bpu-ras:
 cocotb-bpu-ftq:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_ftq COCOTB_TOPLEVEL=ftq_tb scripts/run_cocotb_bpu.sh
 
+cocotb-bpu-ftb:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_ftb COCOTB_TOPLEVEL=ftb_tb scripts/run_cocotb_bpu.sh
+
+cocotb-bpu-uftb:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_uftb COCOTB_TOPLEVEL=uftb_tb scripts/run_cocotb_bpu.sh
+
+cocotb-bpu-loop:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/bpu COCOTB_MODULE=test_loop_predictor COCOTB_TOPLEVEL=loop_predictor_tb scripts/run_cocotb_bpu.sh
+
 formal-bpu:
 	@scripts/run_formal_bpu.sh
 
 branch-prediction-check:
 	@$(PYTHON) scripts/check_branch_prediction.py --require-clean
+
+bpu-lint:
+	@scripts/run_bpu_lint.sh
 
 mpki-eval:
 	@$(PYTHON) benchmarks/cpu/branch/run_mpki.py

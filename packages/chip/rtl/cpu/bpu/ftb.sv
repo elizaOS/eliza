@@ -14,9 +14,9 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module ftb (
+module ftb
+    import bpu_pkg::*;
+(
     input  logic                     clk,
     input  logic                     rst_n,
 
@@ -56,6 +56,7 @@ module ftb (
     // can be promoted to PLRU without changing the external interface.
     logic [$clog2(FTB_WAYS)-1:0] rr_ptr_q [FTB_SETS];
 
+    /* verilator lint_off UNUSEDSIGNAL */
     function automatic logic [FTB_IDX_W-1:0] ftb_index(input logic [VADDR_W-1:0] pc);
         // Drop the lower 5 bits (fetch block alignment) before indexing.
         ftb_index = pc[5 +: FTB_IDX_W];
@@ -64,13 +65,13 @@ module ftb (
     function automatic logic [FTB_TAG_W-1:0] ftb_tag(input logic [VADDR_W-1:0] pc);
         ftb_tag = pc[5 + FTB_IDX_W +: FTB_TAG_W];
     endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // -----------------------------------------------------------------------
     // Read path
     // -----------------------------------------------------------------------
     logic [FTB_IDX_W-1:0] lkp_idx;
     logic [FTB_TAG_W-1:0] lkp_tag;
-    integer w;
 
     always_comb begin
         lkp_hit       = 1'b0;
@@ -80,7 +81,7 @@ module ftb (
         lkp_idx       = ftb_index(lkp_pc);
         lkp_tag       = ftb_tag(lkp_pc);
         if (lkp_valid) begin
-            for (w = 0; w < FTB_WAYS; w++) begin
+            for (int unsigned w = 0; w < FTB_WAYS; w++) begin
                 if (storage_q[lkp_idx][w].valid &&
                     storage_q[lkp_idx][w].tag == lkp_tag) begin
                     lkp_hit      = 1'b1;
@@ -99,14 +100,13 @@ module ftb (
     logic [FTB_TAG_W-1:0] upd_tag;
     logic                 upd_match_any;
     logic [$clog2(FTB_WAYS)-1:0] upd_match_way;
-    integer s;
 
     always_comb begin
         upd_idx       = ftb_index(upd_pc);
         upd_tag       = ftb_tag(upd_pc);
         upd_match_any = 1'b0;
         upd_match_way = '0;
-        for (w = 0; w < FTB_WAYS; w++) begin
+        for (int unsigned w = 0; w < FTB_WAYS; w++) begin
             if (storage_q[upd_idx][w].valid &&
                 storage_q[upd_idx][w].tag == upd_tag) begin
                 upd_match_any = 1'b1;
@@ -117,8 +117,8 @@ module ftb (
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (s = 0; s < FTB_SETS; s++) begin
-                for (w = 0; w < FTB_WAYS; w++) begin
+            for (int unsigned s = 0; s < FTB_SETS; s++) begin
+                for (int unsigned w = 0; w < FTB_WAYS; w++) begin
                     storage_q[s][w] <= '{
                         valid:   1'b0,
                         tag:     '0,

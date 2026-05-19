@@ -15,9 +15,9 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module tage (
+module tage
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
@@ -55,7 +55,11 @@ module tage (
     logic [TAGE_TABLES-1:0] tab_alloc_pmu;
 
     logic                   bim_taken;
+    /* verilator lint_off UNUSEDSIGNAL */
+    // The bimodal counter is exported for SC reuse extensions; not consumed
+    // by the TAGE arbitration today.
     logic [BIM_CTR_W-1:0]   bim_ctr;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     bimodal u_bimodal (
         .clk        (clk),
@@ -120,9 +124,10 @@ module tage (
     // Read-path arbitration: longest hitting table wins. Alternate is the
     // next-longest. Providers are encoded 0=bimodal, 1..TAGE_TABLES=table-i.
     // -----------------------------------------------------------------------
-    integer t;
     logic [$clog2(TAGE_TABLES+1)-1:0] provider_pri;
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [$clog2(TAGE_TABLES+1)-1:0] alt_pri;
+    /* verilator lint_on UNUSEDSIGNAL */
     logic                              provider_taken;
     logic                              alt_taken;
     logic                              provider_found;
@@ -136,16 +141,16 @@ module tage (
         provider_found = 1'b0;
         alt_found      = 1'b0;
         lkp_hit_vec    = {tab_hit, 1'b1};
-        for (t = TAGE_TABLES-1; t >= 0; t--) begin
-            if (tab_hit[t]) begin
+        for (int ti = TAGE_TABLES-1; ti >= 0; ti--) begin
+            if (tab_hit[ti]) begin
                 if (!provider_found) begin
                     provider_found = 1'b1;
-                    provider_pri   = t[$clog2(TAGE_TABLES+1)-1:0] + 1;
-                    provider_taken = tab_taken[t];
+                    provider_pri   = ti[$clog2(TAGE_TABLES+1)-1:0] + 1;
+                    provider_taken = tab_taken[ti];
                 end else if (!alt_found) begin
                     alt_found = 1'b1;
-                    alt_pri   = t[$clog2(TAGE_TABLES+1)-1:0] + 1;
-                    alt_taken = tab_taken[t];
+                    alt_pri   = ti[$clog2(TAGE_TABLES+1)-1:0] + 1;
+                    alt_taken = tab_taken[ti];
                 end
             end
         end
@@ -167,14 +172,12 @@ module tage (
     // resolver feedback (the resolver replays the lookup so per-table
     // useful values are read again here on the upd cycle).
     // -----------------------------------------------------------------------
-    integer ta;
-    integer tb;
     logic [TAGE_TABLES-1:0] alloc_candidates;
     always_comb begin
         alloc_candidates = '0;
         tab_alloc_req    = '0;
         if (upd_valid && upd_misp) begin
-            for (ta = 0; ta < TAGE_TABLES; ta++) begin
+            for (int unsigned ta = 0; ta < TAGE_TABLES; ta++) begin
                 if (ta + 1 > upd_provider && tab_useful[ta] == '0)
                     alloc_candidates[ta] = 1'b1;
             end
@@ -182,7 +185,7 @@ module tage (
             // policy of allocating the shortest available table beyond the
             // provider so longer-history tables remain available for later
             // mispredictions.
-            for (tb = 0; tb < TAGE_TABLES; tb++) begin
+            for (int unsigned tb = 0; tb < TAGE_TABLES; tb++) begin
                 if (alloc_candidates[tb] && tab_alloc_req == '0)
                     tab_alloc_req[tb] = 1'b1;
             end

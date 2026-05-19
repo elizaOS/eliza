@@ -7,7 +7,7 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-19T09:44:57.674662+00:00",
+  "generated_at_utc": "2026-05-19T10:29:05.389843+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
@@ -54,11 +54,11 @@
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "90d82f79069b2dc314e60af83ffbe29036c77559",
+  "source_revision": "e922635cec91aaf98d296a56c625450b4a0330f0",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
-      "sha256": "16b844a3870df6fecde50beb82fbc89e17c31b774c1d101e7f9748df3cdfff0d"
+      "sha256": "362a6bd1b67355fb27bb7659b0f763e25a54cbb9e9655311113f3666ac895d49"
     },
     "manifest": {
       "path": "docs/generators/xiangshan/eliza-kunminghu-manifest.json",
@@ -66,11 +66,11 @@
     },
     "package": {
       "path": "rtl/cpu/bpu/bpu_pkg.sv",
-      "sha256": "16ca82dfab7460923b7c42be479a34a0eb1870ad26ef96daf2866b9c4513745d"
+      "sha256": "2a06e46c7bb84b7bfcee45b8d7760dcd8c20dada4ba869de5fa2bc7e762f97fe"
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "5bae202824986c0ac56d679ab977fb3c40b483eb7adc84fca63a5a3a1b0439c8"
+      "sha256": "002499c8935d8621d61a5f1109455677d95322b3a1378e41df95c22ae5e5db45"
     }
   },
   "status": "clean",

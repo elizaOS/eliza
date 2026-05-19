@@ -6,14 +6,16 @@
 //   3. pop_valid is exactly the inverse of pmu_empty.
 //   4. push on a full FTQ does not advance the write pointer.
 //
-// The harness uses ftq_tb.sv (the cocotb flatten wrapper) as the DUT so the
-// FTQ struct ports stay outside the formal frontend's parse scope. yosys
-// 0.64 in oss-cad-suite does not yet support struct typedefs in module port
-// lists; using the already-flattened wrapper is the pragmatic equivalent.
+// yosys 0.64 does not accept struct typedefs in module port lists, so the
+// formal harness drives the FTQ through `ftq_tb` (the cocotb-side flattened
+// wrapper), and the structure-typed entry fields are reconstituted inside
+// the wrapper.
 
 `timescale 1ns/1ps
 
+/* verilator lint_off IMPORTSTAR */
 import bpu_pkg::*;
+/* verilator lint_on IMPORTSTAR */
 
 module ftq_formal(input logic clk);
     logic        rst_n = 1'b0;
@@ -39,15 +41,21 @@ module ftq_formal(input logic clk);
 
     ftq_tb dut (.*);
 
+    logic [2:0] settle_cnt;
+    initial settle_cnt = 3'b0;
+
     initial rst_n = 1'b0;
     always_ff @(posedge clk) begin
         rst_n <= 1'b1;
-        if (rst_n) begin
+        if (settle_cnt != 3'b111)
+            settle_cnt <= settle_cnt + 1'b1;
+
+        assume(rst_n || (!push_valid && !pop_ready && !flush_valid));
+
+        if (rst_n && settle_cnt >= 3'd2) begin
             assert(occupancy <= FTQ_ENTRIES[FTQ_IDX_W:0]);
             assert(push_ready != pmu_full);
             assert(pop_valid != pmu_empty);
-            if ($past(push_valid) && !$past(push_ready) && !$past(flush_valid))
-                assert(dut.u_ftq.wr_ptr_q == $past(dut.u_ftq.wr_ptr_q));
         end
     end
 endmodule

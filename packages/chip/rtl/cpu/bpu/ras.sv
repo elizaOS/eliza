@@ -17,7 +17,9 @@
 
 `timescale 1ns/1ps
 
+/* verilator lint_off IMPORTSTAR */
 import bpu_pkg::*;
+/* verilator lint_on IMPORTSTAR */
 
 module ras (
     input  logic                   clk,
@@ -85,6 +87,9 @@ module ras (
     ras_entry_t arch_push_entry_n;
     ras_entry_t arch_pop_entry_n;
 
+    logic [$clog2(RAS_ARCH_ENTRIES)-1:0] arch_sp_top_rdaddr;
+    assign arch_sp_top_rdaddr = arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0] - 1'b1;
+
     always_comb begin
         spec_push_entry_n        = '0;
         spec_push_entry_n.addr   = spec_push_addr;
@@ -107,9 +112,6 @@ module ras (
         arch_pop_entry_n.valid   = 1'b0;
     end
 
-    logic [$clog2(RAS_ARCH_ENTRIES)-1:0] arch_sp_top_rdaddr;
-    assign arch_sp_top_rdaddr = arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0] - 1'b1;
-
     always_comb begin
         if (spec_empty) begin
             spec_top_addr  = '0;
@@ -122,16 +124,14 @@ module ras (
         end
     end
 
-    integer i;
-
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             spec_sp_q <= '0;
             arch_sp_q <= '0;
-            for (i = 0; i < RAS_SPEC_ENTRIES; i++) begin
+            for (int unsigned i = 0; i < RAS_SPEC_ENTRIES; i++) begin
                 spec_stack_q[i] <= '0;
             end
-            for (i = 0; i < RAS_ARCH_ENTRIES; i++) begin
+            for (int unsigned i = 0; i < RAS_ARCH_ENTRIES; i++) begin
                 arch_stack_q[i] <= '0;
             end
             pmu_overflow  <= 1'b0;
@@ -180,7 +180,7 @@ module ras (
             if (commit_push && !commit_pop) begin
                 if (arch_sp_q == RAS_ARCH_ENTRIES[$clog2(RAS_ARCH_ENTRIES+1)-1:0]) begin
                     // Drop the bottom: shift down by one.
-                    for (i = 0; i < RAS_ARCH_ENTRIES-1; i++) begin
+                    for (int unsigned i = 0; i < RAS_ARCH_ENTRIES-1; i++) begin
                         arch_stack_q[i] <= arch_stack_q[i+1];
                     end
                     arch_stack_q[RAS_ARCH_ENTRIES-1].addr  <= commit_push_addr;

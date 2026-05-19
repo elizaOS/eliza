@@ -12,9 +12,9 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module loop_predictor (
+module loop_predictor
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
@@ -49,7 +49,6 @@ module loop_predictor (
         tag_hash = folded;
     endfunction
 
-    integer i;
     logic [LOOP_TAG_W-1:0] lkp_t;
     logic [LOOP_IDX_W-1:0] hit_idx;
     logic                  hit_found;
@@ -58,10 +57,10 @@ module loop_predictor (
         lkp_t     = tag_hash(lkp_pc);
         hit_found = 1'b0;
         hit_idx   = '0;
-        for (i = 0; i < LOOP_ENTRIES; i++) begin
-            if (storage_q[i].valid && storage_q[i].tag == lkp_t) begin
+        for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
+            if (storage_q[li].valid && storage_q[li].tag == lkp_t) begin
                 hit_found = 1'b1;
-                hit_idx   = i[LOOP_IDX_W-1:0];
+                hit_idx   = li[LOOP_IDX_W-1:0];
             end
         end
         lkp_hit = lkp_valid && hit_found && (storage_q[hit_idx].conf == {LOOP_CONF_W{1'b1}});
@@ -77,18 +76,18 @@ module loop_predictor (
         upd_t         = tag_hash(upd_pc);
         upd_hit_found = 1'b0;
         upd_hit_idx   = '0;
-        for (i = 0; i < LOOP_ENTRIES; i++) begin
-            if (storage_q[i].valid && storage_q[i].tag == upd_t) begin
+        for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
+            if (storage_q[li].valid && storage_q[li].tag == upd_t) begin
                 upd_hit_found = 1'b1;
-                upd_hit_idx   = i[LOOP_IDX_W-1:0];
+                upd_hit_idx   = li[LOOP_IDX_W-1:0];
             end
         end
     end
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (i = 0; i < LOOP_ENTRIES; i++) begin
-                storage_q[i] <= '{valid:1'b0, tag:'0, iter_cur:'0, iter_max:'0, conf:'0};
+            for (int unsigned li = 0; li < LOOP_ENTRIES; li++) begin
+                storage_q[li] <= '{valid:1'b0, tag:'0, iter_cur:'0, iter_max:'0, conf:'0};
             end
             rr_ptr_q <= '0;
             pmu_hit  <= 1'b0;

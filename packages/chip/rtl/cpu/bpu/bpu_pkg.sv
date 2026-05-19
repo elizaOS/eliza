@@ -24,6 +24,11 @@
 
 `timescale 1ns/1ps
 
+// Many of the localparams below are intentionally not referenced by every
+// importer. They form the externally checkable geometry consumed by
+// scripts/check_branch_prediction.py and the docs gate, so verilator's
+// strict-lint UNUSEDPARAM warning is silenced for the whole package.
+/* verilator lint_off UNUSEDPARAM */
 package bpu_pkg;
 
     // ------------------------------------------------------------------
@@ -192,33 +197,45 @@ package bpu_pkg;
     // ------------------------------------------------------------------
     // Performance Monitoring Unit (Zihpm) event encoding
     // ------------------------------------------------------------------
-    // These IDs match docs/arch/branch-prediction.md PMU table and are
-    // exported through the bpu_pmu_events_t bundle on bpu_top.
+    // These IDs are arranged so that mapping into zihpm_pkg::hpm_event_e is a
+    // pure +1 offset (zihpm reserves id 0 for the "no event" sentinel). The
+    // BPU agent owns the source for events 0..19 here, exported as zihpm
+    // events 1..20; the translation is encoded in `bpu_pmu_to_hpm()` below
+    // and the documentation table in docs/arch/branch-prediction.md.
+    //
+    // Order is therefore locked to the zihpm enum and must change in lockstep
+    // with rtl/cpu/csr/zihpm.sv if either side is rearranged.
     typedef enum logic [4:0] {
-        PMU_BR_PRED        = 5'd0,
-        PMU_BR_MISP        = 5'd1,
-        PMU_BR_TAKEN       = 5'd2,
-        PMU_BR_COND        = 5'd3,
-        PMU_BR_COND_MISP   = 5'd4,
-        PMU_BR_IND         = 5'd5,
-        PMU_BR_IND_MISP    = 5'd6,
-        PMU_BR_CALL        = 5'd7,
-        PMU_BR_RET         = 5'd8,
-        PMU_BR_RET_MISP    = 5'd9,
-        PMU_RAS_OVERFLOW   = 5'd10,
-        PMU_RAS_UNDERFLOW  = 5'd11,
-        PMU_FTQ_FULL       = 5'd12,
-        PMU_FTQ_EMPTY      = 5'd13,
-        PMU_FETCH_BUBBLE   = 5'd14,
-        PMU_FTB_MISS       = 5'd15,
-        PMU_UFTB_HIT       = 5'd16,
-        PMU_TAGE_ALLOC     = 5'd17,
-        PMU_LOOP_HIT       = 5'd18,
-        PMU_SC_OVERRIDE    = 5'd19
+        PMU_BR_PRED        = 5'd0,   // zihpm EVT_BR_PRED        = 8'd1
+        PMU_BR_TAKEN       = 5'd1,   // zihpm EVT_BR_TAKEN       = 8'd2
+        PMU_BR_MISP        = 5'd2,   // zihpm EVT_BR_MISP        = 8'd3
+        PMU_BR_COND        = 5'd3,   // zihpm EVT_BR_COND        = 8'd4
+        PMU_BR_COND_MISP   = 5'd4,   // zihpm EVT_BR_COND_MISP   = 8'd5
+        PMU_BR_IND         = 5'd5,   // zihpm EVT_BR_IND         = 8'd6
+        PMU_BR_IND_MISP    = 5'd6,   // zihpm EVT_BR_IND_MISP    = 8'd7
+        PMU_BR_CALL        = 5'd7,   // zihpm EVT_BR_CALL        = 8'd8
+        PMU_BR_RET         = 5'd8,   // zihpm EVT_BR_RET         = 8'd9
+        PMU_BR_RET_MISP    = 5'd9,   // zihpm EVT_BR_RET_MISP    = 8'd10
+        PMU_RAS_OVERFLOW   = 5'd10,  // zihpm EVT_RAS_OVERFLOW   = 8'd11
+        PMU_RAS_UNDERFLOW  = 5'd11,  // zihpm EVT_RAS_UNDERFLOW  = 8'd12
+        PMU_FTQ_FULL       = 5'd12,  // zihpm EVT_FTQ_FULL       = 8'd13
+        PMU_FTQ_EMPTY      = 5'd13,  // zihpm EVT_FTQ_EMPTY      = 8'd14
+        PMU_FETCH_BUBBLE   = 5'd14,  // zihpm EVT_FETCH_BUBBLE   = 8'd15
+        PMU_FTB_MISS       = 5'd15,  // zihpm EVT_BTB_MISS       = 8'd16
+        PMU_UFTB_HIT       = 5'd16,  // zihpm EVT_UFTB_HIT       = 8'd17
+        PMU_TAGE_ALLOC     = 5'd17,  // zihpm EVT_TAGE_ALLOC     = 8'd18
+        PMU_LOOP_HIT       = 5'd18,  // zihpm EVT_LOOP_HIT       = 8'd19
+        PMU_SC_OVERRIDE    = 5'd19   // zihpm EVT_SC_OVERRIDE    = 8'd20
     } pmu_event_e;
 
     localparam int unsigned PMU_EVENTS = 20;
     localparam int unsigned PMU_COUNTER_W = 64;
+
+    // Translation helper: convert a BPU-domain PMU event id to the matching
+    // zihpm event id. Lockstep contract with rtl/cpu/csr/zihpm.sv.
+    function automatic logic [7:0] bpu_pmu_to_hpm(input logic [4:0] pmu_id);
+        bpu_pmu_to_hpm = {3'b000, pmu_id} + 8'd1;
+    endfunction
 
     // ------------------------------------------------------------------
     // BPU integration types
@@ -282,5 +299,6 @@ package bpu_pkg;
     } pmu_counter_t;
 
 endpackage : bpu_pkg
+/* verilator lint_on UNUSEDPARAM */
 
 `endif // BPU_PKG_SV

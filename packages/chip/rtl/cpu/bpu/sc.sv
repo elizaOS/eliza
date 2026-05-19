@@ -11,16 +11,21 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module sc (
+module sc
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
     input  logic                lkp_valid,
     input  logic [VADDR_W-1:0]  lkp_pc,
     input  logic [TAGE_HIST_LEN_MAX-1:0] lkp_hist,
+    /* verilator lint_off UNUSEDSIGNAL */
+    // Caller-side observation: the SC computes its own direction from the
+    // counter sum, so the consumer's TAGE direction is recorded only for
+    // future override-policy extensions.
     input  logic                lkp_tage_taken,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  logic                lkp_tage_lowconf,
     output logic                lkp_override,
     output logic                lkp_taken,
@@ -56,14 +61,12 @@ module sc (
         sc_idx = folded_pc ^ folded_h ^ tid[SC_IDX_W-1:0];
     endfunction
 
-    integer t;
-    integer e;
     logic signed [SC_CTR_W+2:0] sum;
     logic signed [SC_CTR_W+2:0] abs_sum;
 
     always_comb begin
         sum = '0;
-        for (t = 0; t < SC_TABLES; t++) begin
+        for (int unsigned t = 0; t < SC_TABLES; t++) begin
             sum = sum + $signed({{3{storage_q[t][sc_idx(t, lkp_pc, lkp_hist)][SC_CTR_W-1]}},
                                   storage_q[t][sc_idx(t, lkp_pc, lkp_hist)]});
         end
@@ -78,14 +81,14 @@ module sc (
 
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (t = 0; t < SC_TABLES; t++) begin
-                for (e = 0; e < SC_ENTRIES_TABLE; e++) begin
+            for (int unsigned t = 0; t < SC_TABLES; t++) begin
+                for (int unsigned e = 0; e < SC_ENTRIES_TABLE; e++) begin
                     storage_q[t][e] <= '0;
                 end
             end
             threshold_q <= $signed(SC_THRESH_INIT[7:0]);
         end else if (upd_valid && upd_tage_lowconf) begin
-            for (t = 0; t < SC_TABLES; t++) begin
+            for (int unsigned t = 0; t < SC_TABLES; t++) begin
                 automatic logic [SC_IDX_W-1:0] idx = sc_idx(t, upd_pc, upd_hist);
                 if (upd_taken) begin
                     if (storage_q[t][idx] != {1'b0, {(SC_CTR_W-1){1'b1}}})

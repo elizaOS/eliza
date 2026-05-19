@@ -13,13 +13,18 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module ittage (
+module ittage
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
+    /* verilator lint_off UNUSEDSIGNAL */
+    // lkp_valid is part of the external contract but the table lookup is
+    // hash-deterministic on lkp_pc + lkp_hist; the consumer gates the result
+    // with its own pred_valid signal at the top.
     input  logic                lkp_valid,
+    /* verilator lint_on UNUSEDSIGNAL */
     input  logic [VADDR_W-1:0]  lkp_pc,
     input  logic [TAGE_HIST_LEN_MAX-1:0] lkp_hist,
     output logic                lkp_hit,
@@ -88,20 +93,19 @@ module ittage (
                    tid[ITTAGE_TAG_W-1:0];
     endfunction
 
-    integer t;
-    integer e;
-
     logic [ITTAGE_TABLES-1:0] tab_hit;
     logic [VADDR_W-1:0]       tab_target [ITTAGE_TABLES];
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [ITTAGE_USEFUL_W-1:0] tab_useful [ITTAGE_TABLES];
+    /* verilator lint_on UNUSEDSIGNAL */
 
     always_comb begin
-        for (t = 0; t < ITTAGE_TABLES; t++) begin
-            automatic logic [ITT_IDX_W-1:0] idx = index_hash(t, lkp_pc, lkp_hist);
-            automatic logic [ITTAGE_TAG_W-1:0] tag = tag_hash(t, lkp_pc, lkp_hist);
-            tab_hit[t]    = storage_q[t][idx].valid && (storage_q[t][idx].tag == tag);
-            tab_target[t] = storage_q[t][idx].target;
-            tab_useful[t] = storage_q[t][idx].useful;
+        for (int unsigned ti = 0; ti < ITTAGE_TABLES; ti++) begin
+            automatic logic [ITT_IDX_W-1:0] idx = index_hash(ti, lkp_pc, lkp_hist);
+            automatic logic [ITTAGE_TAG_W-1:0] tag = tag_hash(ti, lkp_pc, lkp_hist);
+            tab_hit[ti]    = storage_q[ti][idx].valid && (storage_q[ti][idx].tag == tag);
+            tab_target[ti] = storage_q[ti][idx].target;
+            tab_useful[ti] = storage_q[ti][idx].useful;
         end
     end
 
@@ -110,11 +114,11 @@ module ittage (
         lkp_hit      = 1'b0;
         lkp_target   = '0;
         lkp_provider = '0;
-        for (t = ITTAGE_TABLES-1; t >= 0; t--) begin
-            if (tab_hit[t] && !lkp_hit) begin
+        for (int ti = ITTAGE_TABLES-1; ti >= 0; ti--) begin
+            if (tab_hit[ti] && !lkp_hit) begin
                 lkp_hit      = 1'b1;
-                lkp_target   = tab_target[t];
-                lkp_provider = t[$clog2(ITTAGE_TABLES+1)-1:0] + 1;
+                lkp_target   = tab_target[ti];
+                lkp_provider = ti[$clog2(ITTAGE_TABLES+1)-1:0] + 1;
             end
         end
     end
@@ -124,8 +128,8 @@ module ittage (
     // -----------------------------------------------------------------------
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (t = 0; t < ITTAGE_TABLES; t++) begin
-                for (e = 0; e < ITTAGE_ENTRIES_MAX; e++) begin
+            for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+                for (int unsigned e = 0; e < ITTAGE_ENTRIES_MAX; e++) begin
                     storage_q[t][e] <= '{valid:1'b0, tag:'0, target:'0,
                                           ctr:'0, useful:'0};
                 end
@@ -135,10 +139,10 @@ module ittage (
             // observed target matches; if it disagrees the counter is
             // decremented and on saturation the table is invalidated so the
             // allocator can try a longer-history table.
-            for (t = 0; t < ITTAGE_TABLES; t++) begin
+            for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
                 automatic logic [ITT_IDX_W-1:0] idx = index_hash(t, upd_pc, upd_hist);
                 automatic logic [ITTAGE_TAG_W-1:0] tag = tag_hash(t, upd_pc, upd_hist);
-                automatic int unsigned prov = upd_provider;
+                automatic int unsigned prov = {{(32-$bits(upd_provider)){1'b0}}, upd_provider};
                 if (prov == t + 1) begin
                     if (storage_q[t][idx].valid && storage_q[t][idx].tag == tag) begin
                         if (storage_q[t][idx].target == upd_target) begin

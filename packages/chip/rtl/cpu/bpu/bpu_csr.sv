@@ -8,9 +8,9 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module bpu_csr (
+module bpu_csr
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
@@ -29,11 +29,9 @@ module bpu_csr (
     logic [31:0] reset_period_q;
     logic        reset_phase_q;
 
-    integer e;
-
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            for (e = 0; e < PMU_EVENTS; e++) counters_q[e] <= '0;
+            for (int unsigned e = 0; e < PMU_EVENTS; e++) counters_q[e] <= '0;
             reset_period_q   <= '0;
             reset_phase_q    <= 1'b0;
             useful_reset_lsb <= 1'b0;
@@ -41,7 +39,7 @@ module bpu_csr (
         end else begin
             useful_reset_lsb <= 1'b0;
             useful_reset_msb <= 1'b0;
-            for (e = 0; e < PMU_EVENTS; e++) begin
+            for (int unsigned e = 0; e < PMU_EVENTS; e++) begin
                 if (event_strb[e] && counters_q[e] != {PMU_COUNTER_W{1'b1}})
                     counters_q[e] <= counters_q[e] + 1'b1;
             end

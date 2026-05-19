@@ -65,31 +65,38 @@ rationale.
 BPU exports `pmu_strb` and `csr_rdata` for SoC-level Zihpm integration; CSR
 counter indices are the enum value of the event.
 
-| Index | Event | Description |
-| --- | --- | --- |
-| 0 | `PMU_BR_PRED` | Total predictions emitted. |
-| 1 | `PMU_BR_MISP` | Mispredictions reported by the resolver. |
-| 2 | `PMU_BR_TAKEN` | Predictions where the direction was taken. |
-| 3 | `PMU_BR_COND` | Conditional branches predicted. |
-| 4 | `PMU_BR_COND_MISP` | Conditional branch mispredictions. |
-| 5 | `PMU_BR_IND` | Indirect branches predicted. |
-| 6 | `PMU_BR_IND_MISP` | Indirect branch mispredictions. |
-| 7 | `PMU_BR_CALL` | Call predictions. |
-| 8 | `PMU_BR_RET` | Return predictions. |
-| 9 | `PMU_BR_RET_MISP` | Return mispredictions. |
-| 10 | `PMU_RAS_OVERFLOW` | RAS push into a full speculative stack. |
-| 11 | `PMU_RAS_UNDERFLOW` | RAS pop from an empty speculative stack. |
-| 12 | `PMU_FTQ_FULL` | FTQ full strobe. |
-| 13 | `PMU_FTQ_EMPTY` | FTQ empty strobe. |
-| 14 | `PMU_FETCH_BUBBLE` | Fetch popped while FTQ was empty. |
-| 15 | `PMU_FTB_MISS` | FTB read missed. |
-| 16 | `PMU_UFTB_HIT` | uFTB read hit. |
-| 17 | `PMU_TAGE_ALLOC` | TAGE allocated a new entry. |
-| 18 | `PMU_LOOP_HIT` | Loop predictor produced a high-confidence prediction. |
-| 19 | `PMU_SC_OVERRIDE` | SC overrode TAGE on a low-confidence prediction. |
+The BPU enum is ordered so the mapping into `zihpm_pkg::hpm_event_e` is a
+pure +1 offset (zihpm reserves id 0 for the "no event" sentinel). The
+translation is `bpu_pkg::bpu_pmu_to_hpm(pmu_id) = pmu_id + 1`.
+
+| BPU id | Event | zihpm id | zihpm enum | Description |
+| --- | --- | --- | --- | --- |
+| 0 | `PMU_BR_PRED` | 1 | `EVT_BR_PRED` | Total predictions emitted. |
+| 1 | `PMU_BR_TAKEN` | 2 | `EVT_BR_TAKEN` | Predictions where the direction was taken. |
+| 2 | `PMU_BR_MISP` | 3 | `EVT_BR_MISP` | Mispredictions reported by the resolver. |
+| 3 | `PMU_BR_COND` | 4 | `EVT_BR_COND` | Conditional branches predicted. |
+| 4 | `PMU_BR_COND_MISP` | 5 | `EVT_BR_COND_MISP` | Conditional branch mispredictions. |
+| 5 | `PMU_BR_IND` | 6 | `EVT_BR_IND` | Indirect branches predicted. |
+| 6 | `PMU_BR_IND_MISP` | 7 | `EVT_BR_IND_MISP` | Indirect branch mispredictions. |
+| 7 | `PMU_BR_CALL` | 8 | `EVT_BR_CALL` | Call predictions. |
+| 8 | `PMU_BR_RET` | 9 | `EVT_BR_RET` | Return predictions. |
+| 9 | `PMU_BR_RET_MISP` | 10 | `EVT_BR_RET_MISP` | Return mispredictions. |
+| 10 | `PMU_RAS_OVERFLOW` | 11 | `EVT_RAS_OVERFLOW` | RAS push into a full speculative stack. |
+| 11 | `PMU_RAS_UNDERFLOW` | 12 | `EVT_RAS_UNDERFLOW` | RAS pop from an empty speculative stack. |
+| 12 | `PMU_FTQ_FULL` | 13 | `EVT_FTQ_FULL` | FTQ full strobe. |
+| 13 | `PMU_FTQ_EMPTY` | 14 | `EVT_FTQ_EMPTY` | FTQ empty strobe. |
+| 14 | `PMU_FETCH_BUBBLE` | 15 | `EVT_FETCH_BUBBLE` | Fetch popped while FTQ was empty. |
+| 15 | `PMU_FTB_MISS` | 16 | `EVT_BTB_MISS` | FTB read missed. |
+| 16 | `PMU_UFTB_HIT` | 17 | `EVT_UFTB_HIT` | uFTB read hit. |
+| 17 | `PMU_TAGE_ALLOC` | 18 | `EVT_TAGE_ALLOC` | TAGE allocated a new entry. |
+| 18 | `PMU_LOOP_HIT` | 19 | `EVT_LOOP_HIT` | Loop predictor produced a high-confidence prediction. |
+| 19 | `PMU_SC_OVERRIDE` | 20 | `EVT_SC_OVERRIDE` | SC overrode TAGE on a low-confidence prediction. |
 
 These are visible to Linux `perf` via `Zihpm` event selectors documented in
-`docs/evidence/cpu_ap/branch-prediction-params.json`.
+`docs/evidence/cpu_ap/branch-prediction-params.json`. The OoO cluster wires
+the BPU's `pmu_strb` bit `i` onto its event bus at position
+`bpu_pmu_to_hpm(i)` so the Zihpm counters see exactly one strobe per BPU
+event firing, with no further translation logic in the integration top.
 
 ## Accuracy targets
 

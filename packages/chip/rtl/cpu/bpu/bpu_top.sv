@@ -17,9 +17,9 @@
 
 `timescale 1ns/1ps
 
-import bpu_pkg::*;
-
-module bpu_top (
+module bpu_top
+    import bpu_pkg::*;
+(
     input  logic                clk,
     input  logic                rst_n,
 
@@ -79,7 +79,12 @@ module bpu_top (
     logic                  ftb_hit;
     logic [VADDR_W-1:0]    ftb_target;
     br_kind_e              ftb_kind;
+    // FTB returns up to MAX_BR_PER_BLOCK valid branch slots per fetch block.
+    // Reserved for the two-taken-per-cycle extension (BLOCKED until the
+    // dual-port FTB read path is implemented per docs/arch/branch-prediction.md).
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [MAX_BR_PER_BLOCK-1:0] ftb_br_valid;
+    /* verilator lint_on UNUSEDSIGNAL */
     logic                  ftb_pmu_miss;
 
     ftb u_ftb (
@@ -101,8 +106,13 @@ module bpu_top (
     );
 
     logic                  tage_taken;
+    // Alternate prediction (next-longest TAGE table) is exported by the
+    // tagged stack for use by the SC training path. Currently consumed only
+    // for future extensions of the SC update policy; observable in waves.
+    /* verilator lint_off UNUSEDSIGNAL */
     logic                  tage_taken_alt;
     logic [TAGE_TABLES:0]  tage_hit_vec;
+    /* verilator lint_on UNUSEDSIGNAL */
     logic [$clog2(TAGE_TABLES+1)-1:0] tage_provider;
     logic [TAGE_CTR_W-1:0] tage_provider_ctr;
     logic                  tage_pmu_alloc;
@@ -190,7 +200,7 @@ module bpu_top (
     // CALL: push the linear address after the branch. RET: pop the top.
     assign ras_spec_push      = lkp_valid && ftb_hit && (ftb_kind == BR_CALL);
     assign ras_spec_pop       = lkp_valid && ftb_hit && (ftb_kind == BR_RET);
-    assign ras_spec_push_addr = lkp_pc + FETCH_BLOCK_BYTES;
+    assign ras_spec_push_addr = lkp_pc + VADDR_W'(FETCH_BLOCK_BYTES);
 
     ras u_ras (
         .clk            (clk),
@@ -202,7 +212,7 @@ module bpu_top (
         .spec_top_valid (ras_top_valid),
         .spec_top_idx   (ras_top_idx),
         .commit_push    (resolve.valid && resolve.actual_kind == BR_CALL),
-        .commit_push_addr(resolve.pc + FETCH_BLOCK_BYTES),
+        .commit_push_addr(resolve.pc + VADDR_W'(FETCH_BLOCK_BYTES)),
         .commit_pop     (resolve.valid && resolve.actual_kind == BR_RET),
         .restore_valid  (resolve.valid && resolve.misprediction),
         .restore_top    (ras_top_idx),
@@ -275,12 +285,12 @@ module bpu_top (
                 end
                 pred_d.taken     = pred_taken_final;
                 pred_d.target_pc = pred_taken_final ? ftb_target :
-                                                       (lkp_pc + FETCH_BLOCK_BYTES);
+                                                       (lkp_pc + VADDR_W'(FETCH_BLOCK_BYTES));
             end else if (uftb_hit) begin
                 pred_d.target_pc = uftb_next_pc;
                 pred_d.taken     = 1'b1;
             end else begin
-                pred_d.target_pc = lkp_pc + FETCH_BLOCK_BYTES;
+                pred_d.target_pc = lkp_pc + VADDR_W'(FETCH_BLOCK_BYTES);
                 pred_d.taken     = 1'b0;
             end
         end
@@ -294,13 +304,19 @@ module bpu_top (
     // -----------------------------------------------------------------------
     ftq_entry_t push_entry;
     logic       push_valid;
+    // FTQ backpressure: the BPU currently emits predictions speculatively and
+    // relies on the FTQ-full PMU strobe + resolver replay to recover when the
+    // FTQ is saturated. Wiring push_ready into a stall is part of the FDIP
+    // workstream tracked in docs/arch/branch-prediction.md.
+    /* verilator lint_off UNUSEDSIGNAL */
     logic       push_ready;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     always_comb begin
         push_entry              = '0;
         push_entry.valid        = lkp_valid && pred_d.valid;
         push_entry.start_pc     = pred_d.start_pc;
-        push_entry.end_pc       = pred_d.start_pc + FETCH_BLOCK_BYTES - 1;
+        push_entry.end_pc       = pred_d.start_pc + VADDR_W'(FETCH_BLOCK_BYTES - 1);
         push_entry.target_pc    = pred_d.target_pc;
         push_entry.taken        = pred_d.taken;
         push_entry.kind         = pred_d.kind;
@@ -311,7 +327,11 @@ module bpu_top (
 
     logic                    ftq_pmu_full;
     logic                    ftq_pmu_empty;
+    // Live FTQ occupancy is wired up for waveform debug and the read-port
+    // PMU readout via bpu_csr; not surfaced on the bpu_top external boundary.
+    /* verilator lint_off UNUSEDSIGNAL */
     logic [FTQ_IDX_W:0]      ftq_occupancy;
+    /* verilator lint_on UNUSEDSIGNAL */
 
     ftq u_ftq (
         .clk         (clk),
