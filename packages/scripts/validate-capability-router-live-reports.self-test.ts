@@ -48,6 +48,7 @@ async function main(): Promise<void> {
     );
     const missingAssetDigestDir = join(workspace, "missing-asset-digest");
     const malformedAssetDigestDir = join(workspace, "malformed-asset-digest");
+    const emptyAssetDigestDir = join(workspace, "empty-asset-digest");
     const mismatchDir = join(workspace, "mismatch");
     const malformedEndpointIdDir = join(workspace, "malformed-endpoint-id");
     const malformedModuleIdDir = join(workspace, "malformed-module-id");
@@ -183,6 +184,7 @@ async function main(): Promise<void> {
     await mkdir(mismatchedAssetManifestDir, { recursive: true });
     await mkdir(missingAssetDigestDir, { recursive: true });
     await mkdir(malformedAssetDigestDir, { recursive: true });
+    await mkdir(emptyAssetDigestDir, { recursive: true });
     await mkdir(mismatchDir, { recursive: true });
     await mkdir(malformedEndpointIdDir, { recursive: true });
     await mkdir(malformedModuleIdDir, { recursive: true });
@@ -391,6 +393,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(malformedAssetDigestDir, "provider.json"),
       `${JSON.stringify(makeMalformedAssetDigestReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyAssetDigestDir, "provider.json"),
+      `${JSON.stringify(makeEmptyAssetDigestReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1163,6 +1170,19 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `malformed asset digest failed for the wrong reason: ${malformedAssetDigest.output}`,
+      );
+    }
+    const emptyAssetDigest = await runValidator(emptyAssetDigestDir);
+    if (emptyAssetDigest.exitCode === 0) {
+      throw new Error("empty asset digest report unexpectedly passed.");
+    }
+    if (
+      !emptyAssetDigest.output.includes(
+        "conformance.assetResult.sha256 must not be the empty SHA-256 digest",
+      )
+    ) {
+      throw new Error(
+        `empty asset digest failed for the wrong reason: ${emptyAssetDigest.output}`,
       );
     }
     const mismatch = await runValidator(mismatchDir);
@@ -2250,6 +2270,21 @@ function makeMalformedAssetDigestReport() {
         contentType: "text/javascript",
         byteLength: 12,
         sha256: "not-a-sha",
+      },
+    },
+  };
+}
+
+function makeEmptyAssetDigestReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        sha256:
+          "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
       },
     },
   };

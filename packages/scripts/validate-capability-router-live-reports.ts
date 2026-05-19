@@ -63,6 +63,9 @@ const REQUIRED_SURFACE_RPC_METHODS: Record<RequiredSurface, string[]> = {
   ],
 };
 
+const EMPTY_SHA256 =
+  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
 type RequiredSurface = (typeof REQUIRED_SURFACES)[number];
 type RequiredRemoteModuleCountField =
   (typeof REQUIRED_REMOTE_MODULE_COUNT_FIELDS)[number];
@@ -634,6 +637,11 @@ function validateReportFile(
     /^[0-9a-f]{64}$/i,
     "conformance.assetResult.sha256",
   );
+  if (assetSha256.toLowerCase() === EMPTY_SHA256) {
+    throw new Error(
+      "conformance.assetResult.sha256 must not be the empty SHA-256 digest.",
+    );
+  }
   requireObject(conformance.modelResult, "conformance.modelResult");
   requireObject(conformance.lifecycleResult, "conformance.lifecycleResult");
   requireObject(conformance.eventResult, "conformance.eventResult");

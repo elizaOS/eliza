@@ -993,8 +993,8 @@ stale or future-dated observations, missing malformed, or mismatched GitHub run
 metadata, duplicate endpoint ids, duplicate provider reports, malformed endpoint
 ids, non-lowercase provider names, invalid Cloud API base URLs, Cloud API base
 URLs with query or fragment components, non-2xx route results, non-JavaScript
-view asset paths/content types, missing or malformed view asset SHA-256 digests,
-and credential-shaped field names or string values such as tokens,
+view asset paths/content types, missing, malformed, or empty-content view asset
+SHA-256 digests, and credential-shaped field names or string values such as tokens,
 authorization headers, API keys, passwords, secrets, bearer/basic auth values,
 and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
@@ -1233,7 +1233,8 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 - View-asset conformance now preserves manifest-declared asset metadata and
   rejects fetched bundles whose content type or integrity value contradicts the
   manifest. The live report validator also rejects artifacts whose recorded
-  manifest asset metadata disagrees with the fetched asset metadata.
+  manifest asset metadata disagrees with the fetched asset metadata or whose
+  fetched JavaScript bundle digest is the empty SHA-256 digest.
 - Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
   endpoint id, and module id. The validator requires this runtime identity list
   to match `sync.registeredModules` exactly, so count totals cannot stand in for
