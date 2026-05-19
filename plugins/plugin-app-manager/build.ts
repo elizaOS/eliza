@@ -5,6 +5,7 @@ import { rmSync } from "node:fs";
 const external = [
   "@elizaos/core",
   "@elizaos/agent",
+  "@elizaos/plugin-registry",
   "@elizaos/shared",
   "dotenv",
   "node:*",

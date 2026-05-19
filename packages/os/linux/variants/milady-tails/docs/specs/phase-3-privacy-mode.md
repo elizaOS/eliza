@@ -6,9 +6,9 @@ like stock Tails. Same features either way, only speed differs.
 
 Paths are relative to `TAILS = packages/os/linux/variants/milady-tails/tails`.
 
-Status as of 2026-05-17: this overlay is implemented in source. The
+Status as of 2026-05-19: this overlay is implemented in source. The
 normal QEMU app path has passed on a prior artifact, but Privacy Mode still
-needs current-HEAD network/app validation. The implementation uses
+needs exact-release network/app validation. The implementation uses
 `elizaos_privacy=1` in the bootloader entries, while the live-config hook
 also accepts `elizaos.privacy=on` for compatibility.
 

@@ -391,7 +391,7 @@ describe("AcpService", () => {
     expect(promptArgs).not.toContain("opencode");
   });
 
-  it("sendPrompt emits message, tool_running, task_complete, stopped and resolves PromptResult", async () => {
+  it("sendPrompt emits message, tool_running, task_complete and resolves PromptResult", async () => {
     const create = nextProc();
     const service = new AcpService(runtime());
     const events: string[] = [];

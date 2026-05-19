@@ -1,10 +1,10 @@
 [Desktop Entry]
 Type=Application
-_Name=Additional Software
-_Comment=Configure the additional software installed from your Persistent Storage when starting elizaOS
-_Keywords=persistent;storage;package;install
+_Name=elizaOS Packages
+_Comment=Choose extra packages to install from elizaOS Persistent Storage
+_Keywords=elizaos;packages;persistent;storage;install
 Exec=tails-additional-software-config
-Icon=package-x-generic
+Icon=elizaos
 Terminal=false
 Categories=System;Utility;
 StartupNotify=true

@@ -4,10 +4,10 @@ File-level implementation plans for each phase of [`../../PLAN.md`](../../PLAN.m
 `PLAN.md` is the map (goals, success criteria, status); these specs are the
 turn-by-turn directions (exact files, exact changes, ordered checklists).
 
-Status note, 2026-05-17: Phase 2-7 OS/Tails overlays exist in source and a
-prior ISO passed the normal QEMU greeter/desktop/app-service path. Current
-HEAD includes later branding/docs polish and needs a fresh rebuild. Keep the
-specs as design/source-of-truth for intent, and use `PLAN.md` plus
+Status note, 2026-05-19: Phase 2-7 OS/Tails overlays exist in source and a
+recent local ISO artifact passed the normal QEMU greeter/desktop/app-service
+path. Rebuild and revalidate the exact release commit if the branch moves
+after that artifact. Keep the specs as design/source-of-truth for intent, and use `PLAN.md` plus
 `docs/current-status.md` for the current validation state.
 
 Each spec was produced by auditing the actual Tails source and the

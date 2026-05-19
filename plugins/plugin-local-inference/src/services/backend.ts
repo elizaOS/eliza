@@ -218,10 +218,16 @@ export interface LocalInferenceBackend {
 	}>;
 
 	/** Persist a slot's KV cache to disk under the conversation directory. */
-	persistConversationKv?(conversationId: string, slotId: number): Promise<void>;
+	persistConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean>;
 
 	/** Restore a slot's KV cache from disk into the running backend. */
-	restoreConversationKv?(conversationId: string, slotId: number): Promise<void>;
+	restoreConversationKv?(
+		conversationId: string,
+		slotId: number,
+	): Promise<boolean>;
 
 	/**
 	 * Pre-decode `promptPrefix` into the named slot/cache key so the next
@@ -673,19 +679,19 @@ export class BackendDispatcher implements LocalInferenceBackend {
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<void> {
+	): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.persistConversationKv) return;
-		await this.active!.persistConversationKv(conversationId, slotId);
+		if (!this.active!.persistConversationKv) return false;
+		return this.active!.persistConversationKv(conversationId, slotId);
 	}
 
 	async restoreConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<void> {
+	): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.restoreConversationKv) return;
-		await this.active!.restoreConversationKv(conversationId, slotId);
+		if (!this.active!.restoreConversationKv) return false;
+		return this.active!.restoreConversationKv(conversationId, slotId);
 	}
 
 	async prewarmConversation(
