@@ -1,17 +1,13 @@
 # FFI Streaming Backend Wire-up — Implementation Plan
 
-Status: **scaffolding landed, production wiring pending**.
+Status (2026-05-18): **Step B landed — desktop FFI adapter is the default path
+for desktop text generation**. Vision describe (mmproj), slot save/restore,
+conversation prewarm, and parallel-resize remain on the subprocess
+`dflash-server` fallback because the shim doesn't expose those operations
+yet. Each requires native C work in `eliza-llama-shim`.
 
-This doc captures the architectural audit and step-by-step plan for routing
-desktop local-inference text generation through the in-process FFI streaming
-runner (`plugins/plugin-local-inference/src/services/ffi-streaming-runner.ts`)
-instead of the subprocess+HTTP `dflash-server`. The polarity flip in
-`backend-selector.ts` was completed earlier in the consolidation pass, but
-`selectBackend()` is not yet consumed by any production code — the runtime
-still routes through `BackendDispatcher` which only knows about
-`node-llama-cpp` vs the subprocess.
-
-This doc describes the safe, incremental path to close that gap.
+This doc captures the original architectural audit and the remaining
+parity work tracked as Steps C–F.
 
 ## What's already done
 

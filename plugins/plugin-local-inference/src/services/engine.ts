@@ -30,6 +30,8 @@ import type {
 	LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
+import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
+import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,
@@ -812,12 +814,35 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
  */
 export class LocalInferenceEngine {
 	private readonly nodeBackend = new NodeLlamaCppBackend();
+	/**
+	 * In-process FFI backend (libllama + eliza-llama-shim via bun:ffi).
+	 * Production wiring of the desktop adapter — see
+	 * `services/desktop-llama-adapter.ts` +
+	 * `services/desktop-ffi-backend-runtime.ts`. When the desktop dylib
+	 * pair is present on disk AND bun:ffi resolves, this is the active
+	 * path for `decideBackend() === "llama-server"`. Otherwise the
+	 * dispatcher falls through to the subprocess `dflashLlamaServer`.
+	 */
+	private readonly ffiBackend = new FfiStreamingBackend(
+		desktopFfiBackendRuntime,
+	);
 	private readonly dispatcher = new BackendDispatcher(
 		this.nodeBackend,
 		dflashLlamaServer,
 		() => getDflashRuntimeStatus().enabled,
 		() => dflashRequired(),
 		() => getDflashRuntimeStatus().capabilities?.kernels ?? null,
+		this.ffiBackend,
+		// FFI is the default desktop path when the dylibs are present and
+		// the user hasn't explicitly opted out via `ELIZA_INFERENCE_BACKEND=http`.
+		// `desktopFfiBackendRuntime.supported()` does a cheap disk probe;
+		// the actual dlopen happens lazily in `acquire()` and falls
+		// through cleanly on failure.
+		() => {
+			const override = process.env.ELIZA_INFERENCE_BACKEND?.trim().toLowerCase();
+			if (override === "http") return false;
+			return desktopFfiBackendRuntime.supported();
+		},
 	);
 	/**
 	 * Active voice-streaming bridge (`EngineVoiceBridge`). Only set when an
