@@ -36,17 +36,25 @@
 
 /* verilator lint_off DECLFILENAME */
 /* verilator lint_off UNUSEDSIGNAL */
-module e1_cluster_top #(
+/* verilator lint_off UNUSEDPARAM */
+module e1_cluster_top
+    import e1_axi4_pkg::*;
+    import e1_ftq_to_l1i_pkg::*;
+    import e1_lsu_to_l1d_pkg::*;
+#(
     parameter int unsigned NUM_BIG_CORES   = 1,
     parameter int unsigned NUM_MID_CORES   = 3,
     parameter int unsigned NUM_LITTLE_CORES= 4,
     parameter int unsigned NUM_CORES       = NUM_BIG_CORES + NUM_MID_CORES + NUM_LITTLE_CORES,
     parameter logic [63:0] RESET_VECTOR    = 64'h0000_0000_8000_0000,
-    // Width of the cache-agent-owned coherent master bus per core. The cache
-    // agent declares the actual AXI4 type; we expose a flat per-core port
-    // group here so the cluster wrapper is independent of the cache RTL.
+    // AXI4 master bus geometry per core. The cache agent's
+    // `rtl/interconnect/axi4/e1_axi4_pkg.sv` declares the canonical
+    // constants. The defaults below mirror the cache-agent contract:
+    //   - AXI_ADDR_W = 64  (full RISC-V VA/PA carrier)
+    //   - AXI_DATA_W = 128 (matches lsu_l1d 128-bit data port)
+    //   - AXI_ID_W   = 8
     parameter int unsigned AXI_ADDR_W      = 64,
-    parameter int unsigned AXI_DATA_W      = 128,
+    parameter int unsigned AXI_DATA_W      = e1_lsu_to_l1d_pkg::L1D_DATA_W,
     parameter int unsigned AXI_ID_W        = 8
 ) (
     // Clocks/reset are per-core; the clock agent owns the actual PLL/clock
@@ -113,10 +121,46 @@ module e1_cluster_top #(
     input  logic [NUM_CORES-1:0]                 axi_r_valid_i,
     output logic [NUM_CORES-1:0]                 axi_r_ready_o,
 
+    // ------------------------------------------------------------------
+    // Cross-domain interface ports (declared but tied off until the
+    // per-core wrappers land; cluster contract owned here, port owners
+    // declared inline).
+    // ------------------------------------------------------------------
+
+    // FTQ-to-L1I (BPU agent owns the producer; cache agent owns the L1I
+    // consumer). Per `rtl/cache/ftq_to_l1i_pkg.sv` the request is a
+    // 40-bit physical address aligned to a 64 B L1I line plus a 3-bit
+    // confidence and a branch-target hint. We expose one channel per core.
+    output ftq_prefetch_req_t [NUM_CORES-1:0]    ftq_l1i_req_o,
+    output logic              [NUM_CORES-1:0]    ftq_l1i_valid_o,
+    input  logic              [NUM_CORES-1:0]    ftq_l1i_ready_i,
+    output logic              [NUM_CORES-1:0]    ftq_l1i_flush_o,
+
+    // LSU-to-L1D (this domain owns the LSU producer; cache agent owns the
+    // L1D consumer). Per `rtl/cache/lsu_to_l1d_pkg.sv` each core has two
+    // 128 b ports; we expose them as packed arrays per core.
+    output lsu_l1d_req_t      [NUM_CORES-1:0][1:0] lsu_l1d_req_o,
+    output logic              [NUM_CORES-1:0][1:0] lsu_l1d_valid_o,
+    input  lsu_l1d_resp_t     [NUM_CORES-1:0][1:0] lsu_l1d_resp_i,
+
+    // QoS class fed into the AR/AW channels at the cache->interconnect
+    // boundary. The cache agent honors these per
+    // `e1_axi4_pkg::QOS_CPU_LATENCY`. Exposed as an input so the power
+    // agent can override during DVFS / thermal events (e.g. fall back to
+    // QOS_DMA_BULK to free latency capacity for the GPU during heavy
+    // scanout).
+    input  logic [3:0]                            cluster_qos_class_i,
+
     // Cluster-level observability. The debug agent samples these.
     output logic [NUM_CORES-1:0][63:0]        core_pc_committed_o,
     output logic [NUM_CORES-1:0]              core_pc_committed_valid_o,
-    output logic [NUM_CORES-1:0]              core_halted_o
+    output logic [NUM_CORES-1:0]              core_halted_o,
+
+    // PMU event bus exported by the OoO domain into the back-end's Zihpm
+    // file. Width matches `zihpm.sv` EVT_BUS_W default. Cluster top OR-
+    // merges per-core event strobes here; the integrator routes to the
+    // back-end Zihpm CSR file.
+    output logic [255:0]                       cluster_event_bus_o
 );
 
     // -----------------------------------------------------------------
@@ -163,6 +207,15 @@ module e1_cluster_top #(
         assign core_pc_committed_o[gi]       = '0;
         assign core_pc_committed_valid_o[gi] = 1'b0;
         assign core_halted_o[gi]             = 1'b1;
+        // FTQ-to-L1I tieoff: BPU has not produced anything yet.
+        assign ftq_l1i_req_o[gi]      = ftq_prefetch_req_zero();
+        assign ftq_l1i_valid_o[gi]    = 1'b0;
+        assign ftq_l1i_flush_o[gi]    = 1'b0;
+        // LSU-to-L1D tieoff: no LSU yet, every port is quiet.
+        assign lsu_l1d_req_o[gi][0]   = lsu_l1d_req_zero();
+        assign lsu_l1d_req_o[gi][1]   = lsu_l1d_req_zero();
+        assign lsu_l1d_valid_o[gi][0] = 1'b0;
+        assign lsu_l1d_valid_o[gi][1] = 1'b0;
     end
 `else
     // Production wiring is the cache agent's responsibility. Big/mid/little
@@ -199,10 +252,27 @@ module e1_cluster_top #(
         assign core_pc_committed_o[gi]       = '0;
         assign core_pc_committed_valid_o[gi] = 1'b0;
         assign core_halted_o[gi]             = 1'b1;
+        // FTQ-to-L1I tieoff: BPU has not produced anything yet.
+        assign ftq_l1i_req_o[gi]      = ftq_prefetch_req_zero();
+        assign ftq_l1i_valid_o[gi]    = 1'b0;
+        assign ftq_l1i_flush_o[gi]    = 1'b0;
+        // LSU-to-L1D tieoff: no LSU yet, every port is quiet.
+        assign lsu_l1d_req_o[gi][0]   = lsu_l1d_req_zero();
+        assign lsu_l1d_req_o[gi][1]   = lsu_l1d_req_zero();
+        assign lsu_l1d_valid_o[gi][0] = 1'b0;
+        assign lsu_l1d_valid_o[gi][1] = 1'b0;
     end
 `endif
 
+    // Cluster-level event-bus OR-aggregator placeholder. Per-core remap
+    // adapters (`bpu_to_zihpm_remap` and friends) drive named bits in
+    // local event buses; this top OR-merges them. Until the per-core RTL
+    // is linked, the aggregate is zero.
+    assign cluster_event_bus_o = '0;
+
     // Tie off currently-unconsumed cluster inputs so lint stays clean.
+    // Every input is intentionally listed: the contract is that no input
+    // is silently dropped, even if it is currently unwired downstream.
     logic unused_cluster_inputs;
     assign unused_cluster_inputs = ^{
         core_clk_i,
@@ -225,9 +295,13 @@ module e1_cluster_top #(
         axi_r_resp_i,
         axi_r_last_i,
         axi_r_valid_i,
+        ftq_l1i_ready_i,
+        lsu_l1d_resp_i,
+        cluster_qos_class_i,
         RESET_VECTOR
     };
 
 endmodule
+/* verilator lint_on UNUSEDPARAM */
 /* verilator lint_on UNUSEDSIGNAL */
 /* verilator lint_on DECLFILENAME */

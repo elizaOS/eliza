@@ -24,6 +24,8 @@
 
 `timescale 1ns/1ps
 
+/* verilator lint_off DECLFILENAME */
+/* verilator lint_off UNUSEDPARAM */
 `ifndef RVV_PKG_DEFINED
 `define RVV_PKG_DEFINED
 package rvv_pkg;
@@ -81,10 +83,11 @@ package rvv_pkg;
 endpackage : rvv_pkg
 `endif
 
-/* verilator lint_off DECLFILENAME */
 module rvv_csr #(
     parameter int unsigned VLEN_BITS = rvv_pkg::VLEN_BITS_BIG,
     parameter int unsigned ELEN_BITS = rvv_pkg::ELEN_BITS_BIG,
+    // VLMAX_E8 = VLEN_BITS in E8/LMUL=1 by definition; kept as a parameter so
+    // integrators can override for fractional-LMUL minimum-VLMAX checks.
     parameter int unsigned VLMAX_E8  = VLEN_BITS,
     parameter int unsigned XLEN      = 64
 ) (
@@ -140,6 +143,7 @@ module rvv_csr #(
     // the division-by-sew_bytes stays at XLEN width.
     localparam logic [XLEN-1:0] VLEN_BYTES = XLEN'(VLEN_BITS / 8);
 
+    /* verilator lint_off UNUSEDSIGNAL */
     function automatic logic [XLEN-1:0] compute_vlmax(
         input rvv_pkg::vtype_t vt
     );
@@ -158,9 +162,14 @@ module rvv_csr #(
         endcase
         return vlmax_e;
     endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
 
+    /* verilator lint_off UNUSEDSIGNAL */
     function automatic logic vsew_lmul_legal(input rvv_pkg::vtype_t vt);
-        // ELEN limit: cannot have vsew larger than ELEN.
+        // ELEN limit: cannot have vsew larger than ELEN. vt.vill, vt.vma,
+        // vt.vta, and the reserved-hi bits are not inputs to the legality
+        // check — vill is the output, and vma/vta are agnostic flags that
+        // do not constrain (vsew, vlmul) legality.
         int unsigned sew_bits;
         sew_bits = 8 << vt.vsew;
         if (sew_bits > ELEN_BITS) return 1'b0;
@@ -168,6 +177,7 @@ module rvv_csr #(
         if (vt.vlmul == 3'b100) return 1'b0;
         return 1'b1;
     endfunction
+    /* verilator lint_on UNUSEDSIGNAL */
 
     // -----------------------------------------------------------------
     // CSR write path
@@ -246,4 +256,5 @@ module rvv_csr #(
     assign vxrm_o        = vxrm_q;
 
 endmodule
+/* verilator lint_on UNUSEDPARAM */
 /* verilator lint_on DECLFILENAME */

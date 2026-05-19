@@ -99,5 +99,11 @@ module ztso_ctrl #(
     assign lsu_op_is_tso_o = ztso_core_force_q
                              | (ztso_global_en_q & ztso_last_page_q);
 
+    // Only csr_wdata_i[1:0] is consumed by the e1_ztso_ctrl CSR. The upper
+    // bits are reserved for future microarchitectural knobs; document the
+    // intent so the unused-bit lint is satisfied without hiding real bugs.
+    logic unused_csr_wdata_upper;
+    assign unused_csr_wdata_upper = ^csr_wdata_i[XLEN-1:2];
+
 endmodule
 /* verilator lint_on DECLFILENAME */

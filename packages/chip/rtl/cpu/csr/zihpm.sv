@@ -6,9 +6,12 @@
 // selectors at the cluster boundary. Each counter is 64-bit and has an
 // hpmevent CSR that selects which cluster event drives it.
 //
-// Event encoding mirrors the OoO-execution agent's contract with the BPU
-// and cache agents. Events arrive as a single bus from the rest of the
-// CPU; this module accumulates and exposes them through CSR reads.
+// Event encoding is the canonical OoO/CSR cross-domain contract. The BPU,
+// cache, IOMMU, and memory agents emit raw per-domain events; the
+// `bpu_to_zihpm_remap` and per-domain remap adapters in `rtl/cpu/csr/`
+// translate each into a one-hot strobe on `event_bus_i[id]` using the
+// `hpm_event_e` enumeration below. The CSR-visible event IDs in
+// `hpm_event_e` are the authoritative system-level identifiers.
 //
 // CSR mapping (machine mode, supervisor mirrors below):
 //   mcycle           = 0xB00  (counter[0])
@@ -16,15 +19,18 @@
 //   mhpmcounter3..15 = 0xB03..0xB0F
 //   mhpmevent3..15   = 0x323..0x32F
 //
-// Per Sscofpmf, overflow generates an LCOFI interrupt; not implemented in
-// this minimal block — left as a synthesis-time TODO with a fail-closed
-// assertion so a missing implementation cannot silently degrade.
+// Per Sscofpmf, overflow generates an LCOFI interrupt; counter_overflow_o
+// strobes on wrap so the integrator can route them to a Smaia interrupt
+// file. Full LCOFI delivery (mhpmevent[63] inhibit, scountovf CSR) is the
+// integrator's responsibility.
 //
 // Event IDs are encoded in `hpm_event_e`. The selector value `0` is the
 // canonical "no event" — the counter stays still even when not inhibited.
 
 `timescale 1ns/1ps
 
+/* verilator lint_off DECLFILENAME */
+/* verilator lint_off UNUSEDPARAM */
 `ifndef ZIHPM_PKG_DEFINED
 `define ZIHPM_PKG_DEFINED
 package zihpm_pkg;
@@ -94,10 +100,15 @@ package zihpm_pkg;
 
     localparam int unsigned MAX_HPM_EVENT_ID = 32'd255;
 
+    // Convenience predicate used by remap adapters and the strict
+    // harmonization checker (`scripts/check_pmu_event_alignment.py`).
+    function automatic logic is_branch_event(input logic [EVT_W-1:0] id);
+        return (id >= EVT_BR_PRED) && (id <= EVT_SC_OVERRIDE);
+    endfunction
+
 endpackage : zihpm_pkg
 `endif
 
-/* verilator lint_off DECLFILENAME */
 module zihpm #(
     parameter int unsigned NUM_COUNTERS = 13,  // mhpmcounter 3..15
     parameter int unsigned EVT_BUS_W    = 256, // up to 256 simultaneous events
@@ -167,25 +178,29 @@ module zihpm #(
 
     // Programmable counters: increment by 1 every cycle the selected event
     // fires. Selecting EVT_NONE (=0) keeps the counter quiescent.
+    logic [NUM_COUNTERS-1:0]       inhibit_w;
+    logic [NUM_COUNTERS-1:0]       sel_fired_w;
+    logic [63:0]                   next_val_w [NUM_COUNTERS];
     for (genvar ci = 0; ci < NUM_COUNTERS; ci++) begin : g_hpmcounter
-        logic [63:0] next_val;
-        logic        sel_fired;
         always_comb begin
-            sel_fired = 1'b0;
+            sel_fired_w[ci] = 1'b0;
             if (mhpmevent[ci] != '0) begin
-                sel_fired = event_bus_i[mhpmevent[ci]];
+                sel_fired_w[ci] = event_bus_i[mhpmevent[ci]];
             end
+            next_val_w[ci] = mhpmcounter[ci] + 64'd1;
         end
-        // bit 3+ci of mcountinhibit gates counter (ci+3).
-        wire inhibit = mcountinhibit_i[ci + 3];
+        // bit 3+ci of mcountinhibit gates counter (ci+3). Bit 1 is reserved
+        // per Zihpm and intentionally left unconsumed; the selector code
+        // path leaves bit 1 unchecked but the lint waiver below documents
+        // that.
+        assign inhibit_w[ci] = mcountinhibit_i[ci + 3];
         always_ff @(posedge clk_i or negedge rst_ni) begin
             if (!rst_ni) begin
-                mhpmcounter[ci]       <= '0;
+                mhpmcounter[ci]        <= '0;
                 counter_overflow_o[ci] <= 1'b0;
-            end else if (!inhibit && sel_fired) begin
-                next_val = mhpmcounter[ci] + 64'd1;
-                mhpmcounter[ci] <= next_val;
-                counter_overflow_o[ci] <= (next_val == 64'd0);
+            end else if (!inhibit_w[ci] && sel_fired_w[ci]) begin
+                mhpmcounter[ci]        <= next_val_w[ci];
+                counter_overflow_o[ci] <= (next_val_w[ci] == 64'd0);
             end else begin
                 counter_overflow_o[ci] <= 1'b0;
             end
@@ -197,16 +212,23 @@ module zihpm #(
     // CSR address so verilator stays happy under strict widths.
     localparam int unsigned IDX_W = (NUM_COUNTERS <= 1) ? 1 : $clog2(NUM_COUNTERS);
 
-    // Subtracted indices, sized to the width of the CSR addr (12 bits) so
-    // the [IDX_W-1:0] slice is a clean part-select on a variable.
-    logic [11:0] wr_hpmevent_off;
-    logic [11:0] wr_hpmcnt_off;
-    logic [11:0] rd_hpmcnt_off;
-    logic [11:0] rd_hpmevent_off;
-    assign wr_hpmevent_off = csr_addr_i  - 12'h323;
-    assign wr_hpmcnt_off   = csr_addr_i  - 12'hB03;
-    assign rd_hpmcnt_off   = csr_raddr_i - 12'hB03;
-    assign rd_hpmevent_off = csr_raddr_i - 12'h323;
+    // Subtracted indices, sized down to IDX_W so the part-select on the
+    // mhpmcounter / mhpmevent arrays is a single clean slice. The upper
+    // bits of the subtracted CSR address are checked via the range guards
+    // below; only the bottom IDX_W bits index the array.
+    logic [IDX_W-1:0] wr_hpmevent_off;
+    logic [IDX_W-1:0] wr_hpmcnt_off;
+    logic [IDX_W-1:0] rd_hpmcnt_off;
+    logic [IDX_W-1:0] rd_hpmevent_off;
+    assign wr_hpmevent_off = IDX_W'(csr_addr_i  - 12'h323);
+    assign wr_hpmcnt_off   = IDX_W'(csr_addr_i  - 12'hB03);
+    assign rd_hpmcnt_off   = IDX_W'(csr_raddr_i - 12'hB03);
+    assign rd_hpmevent_off = IDX_W'(csr_raddr_i - 12'h323);
+
+    // Bit 1 of mcountinhibit is reserved by the Zihpm spec; we ignore it
+    // but document the intent so the unused-bit lint stays clean.
+    logic unused_mcountinhibit_bit1;
+    assign unused_mcountinhibit_bit1 = mcountinhibit_i[1];
 
     // -------------------------------------------------------------------
     // CSR write path
@@ -220,7 +242,7 @@ module zihpm #(
             // mhpmevent3..15 → 0x323..0x32F
             if (csr_addr_i >= 12'h323 &&
                 csr_addr_i < 12'h323 + 12'(NUM_COUNTERS)) begin
-                mhpmevent[wr_hpmevent_off[IDX_W-1:0]] <= csr_wdata_i[EVT_W-1:0];
+                mhpmevent[wr_hpmevent_off] <= csr_wdata_i[EVT_W-1:0];
             end
             // mhpmcounter writes are allowed in M-mode per spec; CSR writes
             // to mhpmcounter clobber the value. Real impls usually disable
@@ -229,7 +251,7 @@ module zihpm #(
             if (csr_addr_i == 12'hB02) minstret <= csr_wdata_i;
             if (csr_addr_i >= 12'hB03 &&
                 csr_addr_i < 12'hB03 + 12'(NUM_COUNTERS)) begin
-                mhpmcounter[wr_hpmcnt_off[IDX_W-1:0]] <= csr_wdata_i;
+                mhpmcounter[wr_hpmcnt_off] <= csr_wdata_i;
             end
         end
     end
@@ -246,15 +268,16 @@ module zihpm #(
             csr_rdata_o  = minstret; csr_rvalid_o = 1'b1;
         end else if (csr_raddr_i >= 12'hB03 &&
                      csr_raddr_i < 12'hB03 + 12'(NUM_COUNTERS)) begin
-            csr_rdata_o  = mhpmcounter[rd_hpmcnt_off[IDX_W-1:0]];
+            csr_rdata_o  = mhpmcounter[rd_hpmcnt_off];
             csr_rvalid_o = 1'b1;
         end else if (csr_raddr_i >= 12'h323 &&
                      csr_raddr_i < 12'h323 + 12'(NUM_COUNTERS)) begin
             csr_rdata_o  = {{(64-EVT_W){1'b0}},
-                            mhpmevent[rd_hpmevent_off[IDX_W-1:0]]};
+                            mhpmevent[rd_hpmevent_off]};
             csr_rvalid_o = 1'b1;
         end
     end
 
 endmodule
+/* verilator lint_on UNUSEDPARAM */
 /* verilator lint_on DECLFILENAME */

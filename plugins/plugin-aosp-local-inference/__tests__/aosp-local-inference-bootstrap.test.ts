@@ -520,37 +520,12 @@ describe("AOSP embedding gate", () => {
 });
 
 describe("AOSP TEXT_TO_SPEECH backend selection", () => {
-  it("keeps stock Android on Kokoro unless a backend is explicitly selected", async () => {
+  it("routes every request through the OmniVoice FFI handler", async () => {
     const calls: string[] = [];
     const handler = makeAospTextToSpeechHandler({
-      env: {},
       omnivoice: async () => {
         calls.push("omnivoice");
         return new Uint8Array([1, 2, 3]);
-      },
-      kokoro: async () => {
-        calls.push("kokoro");
-        return new Uint8Array([9]);
-      },
-    });
-
-    await expect(handler({} as never, "hello")).resolves.toEqual(
-      new Uint8Array([9]),
-    );
-    expect(calls).toEqual(["kokoro"]);
-  });
-
-  it("prefers OmniVoice in auto mode when it is available", async () => {
-    const calls: string[] = [];
-    const handler = makeAospTextToSpeechHandler({
-      env: { ELIZA_AOSP_TTS_BACKEND: "auto" },
-      omnivoice: async () => {
-        calls.push("omnivoice");
-        return new Uint8Array([1, 2, 3]);
-      },
-      kokoro: async () => {
-        calls.push("kokoro");
-        return new Uint8Array([9]);
       },
     });
 
@@ -560,56 +535,27 @@ describe("AOSP TEXT_TO_SPEECH backend selection", () => {
     expect(calls).toEqual(["omnivoice"]);
   });
 
-  it("keeps a forced Kokoro backend available for diagnostics", async () => {
-    const calls: string[] = [];
+  it("propagates OmniVoice failures verbatim (no Kokoro fallback)", async () => {
     const handler = makeAospTextToSpeechHandler({
-      env: { ELIZA_AOSP_TTS_BACKEND: "kokoro" },
-      omnivoice: async () => {
-        calls.push("omnivoice");
-        return new Uint8Array([1]);
-      },
-      kokoro: async () => {
-        calls.push("kokoro");
-        return new Uint8Array([4, 5]);
-      },
-    });
-
-    await expect(handler({} as never, "hello")).resolves.toEqual(
-      new Uint8Array([4, 5]),
-    );
-    expect(calls).toEqual(["kokoro"]);
-  });
-
-  it("falls back from auto OmniVoice failure to Kokoro", async () => {
-    const calls: string[] = [];
-    const handler = makeAospTextToSpeechHandler({
-      env: { ELIZA_AOSP_TTS_BACKEND: "auto" },
-      omnivoice: async () => {
-        calls.push("omnivoice");
-        throw new Error("missing lib");
-      },
-      kokoro: async () => {
-        calls.push("kokoro");
-        return new Uint8Array([7]);
-      },
-    });
-
-    await expect(handler({} as never, "hello")).resolves.toEqual(
-      new Uint8Array([7]),
-    );
-    expect(calls).toEqual(["omnivoice", "kokoro"]);
-  });
-
-  it("does not hide a forced OmniVoice failure", async () => {
-    const handler = makeAospTextToSpeechHandler({
-      env: { ELIZA_AOSP_TTS_BACKEND: "omnivoice" },
       omnivoice: async () => {
         throw new Error("missing lib");
       },
-      kokoro: async () => new Uint8Array([7]),
     });
 
     await expect(handler({} as never, "hello")).rejects.toThrow("missing lib");
+  });
+
+  it("invokes the foreground-use hook on every request", async () => {
+    let foreground = 0;
+    const handler = makeAospTextToSpeechHandler({
+      omnivoice: async () => new Uint8Array([0]),
+      onForegroundUse: () => {
+        foreground++;
+      },
+    });
+    await handler({} as never, "one");
+    await handler({} as never, "two");
+    expect(foreground).toBe(2);
   });
 
   it("resolves explicitly configured OmniVoice artifacts", () => {

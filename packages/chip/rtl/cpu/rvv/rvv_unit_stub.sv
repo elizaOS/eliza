@@ -30,7 +30,9 @@
 
 /* verilator lint_off DECLFILENAME */
 /* verilator lint_off UNUSEDSIGNAL */
-module rvv_unit_stub #(
+module rvv_unit_stub
+    import rvv_pkg::*;
+#(
     parameter int unsigned VLEN_BITS = rvv_pkg::VLEN_BITS_BIG,
     parameter int unsigned XLEN      = 64
 ) (
