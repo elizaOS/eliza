@@ -13,6 +13,7 @@
 import { logger } from "../utils/logger";
 import {
   type DeploymentStatus,
+  assertDeployable,
   deploymentIdFor,
   publicStatusFor,
 } from "./app-deployments-helpers";
@@ -62,6 +63,16 @@ export class AppDeploymentsService {
    * this method (mirrors the pattern used by `managed-domains.ts`).
    */
   async createDeployment(input: CreateDeploymentInput): Promise<DeploymentRecord> {
+    // Surface concurrent deploys to the caller rather than silently
+    // co-opting the in-flight one. The fresh `getById` is cache-hot
+    // because callers (the deploy route) just fetched the row for the
+    // ownership check, so this is effectively a Redis lookup.
+    const existing = await appsService.getById(input.appId);
+    if (!existing) {
+      throw new Error("App not found");
+    }
+    assertDeployable(existing);
+
     const startedAt = new Date();
     const updated = await appsService.update(input.appId, {
       deployment_status: "building",
