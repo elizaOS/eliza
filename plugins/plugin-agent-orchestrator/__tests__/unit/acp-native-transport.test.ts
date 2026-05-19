@@ -69,6 +69,17 @@ async function waitForWrites(p: MockProc, count: number): Promise<void> {
   );
 }
 
+async function waitForSpawnCount(count: number): Promise<void> {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < 1_000) {
+    if (spawnMock.mock.calls.length >= count) return;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  throw new Error(
+    `expected ${count} spawn calls, got ${spawnMock.mock.calls.length}`,
+  );
+}
+
 async function startClient(
   opts: Partial<ConstructorParameters<typeof NativeAcpClient>[0]> = {},
 ): Promise<{ client: NativeAcpClient; p: MockProc }> {
@@ -503,6 +514,9 @@ describe("NativeAcpClient terminal actions", () => {
       method: "terminal/create",
       params: { command: "node", args: ["-v"], cwd },
     });
+    // wait for createTerminal to call spawn() (after resolveDirectoryPath I/O)
+    // before emitting the spawn event so waitForSpawn's listener is registered
+    await waitForSpawnCount(2);
     terminalProc.emit("spawn");
     const created = await waitForResponse(agentProc, "terminal-create");
     const terminalId = (created.result as { terminalId: string } | undefined)

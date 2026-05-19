@@ -657,23 +657,13 @@ async function runSpawnAgent(
       })}`,
     );
 
-    // Brief acknowledgement reply. `continueChain: false` terminates
-    // the planner loop immediately, so without a non-empty `text` the
-    // bot ships NOTHING to Discord on a successful spawn — the user
-    // sees silence while the sub-agent quietly works for the next
-    // 5-60 seconds. A short "on it" ack lets the user know the
-    // request was dispatched without us claiming completion (the
-    // sub-agent runs async; its actual result is reported separately
-    // via the task-event channel).
-    const ackText = deferUserReply
-      ? ""
-      : `On it — spawning ${agentType} sub-agent to handle your request.`;
-    if (callback && ackText) {
-      await callbackText(callback, ackText);
-    }
+    // No text ack here. The orchestrator's progress hook posts a single
+    // 🚀 → narration → ✅/❌ flow on the main channel; emitting "On it"
+    // duplicates that and (worse) surfaces the planner's hallucinated
+    // messageToUser via the bootstrap REPLY path.
     return {
       success: true,
-      text: ackText,
+      text: "",
       // Terminate the planner loop after the first spawn fires.
       //
       // TASKS_SPAWN_AGENT is fire-and-forget: the action returns the

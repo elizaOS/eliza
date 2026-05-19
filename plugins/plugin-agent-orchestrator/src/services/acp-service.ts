@@ -175,7 +175,7 @@ export class AcpService extends Service {
         this.setting("BENCHMARK_TASK_AGENT") ??
           this.setting("ELIZA_ACP_DEFAULT_AGENT") ??
           this.setting("ELIZA_DEFAULT_AGENT_TYPE"),
-      ) ?? "codex";
+      ) ?? (this.transportMode === "native" ? "elizaos" : "codex");
     this.defaultApprovalPreset = normalizeApprovalPreset(
       boolSetting(this.setting("ACPX_APPROVE_ALL")) === true
         ? "approve-all"
@@ -559,7 +559,10 @@ export class AcpService extends Service {
   ): Promise<PromptResult> {
     this.ensureStarted();
     const session = await this.requireSession(sessionId);
-    if (session.acpxSessionId) {
+    // File-based state check applies only to CLI transport (acpx writes
+    // .stream.ndjson on disk). Native transport manages state in-process
+    // through NativeAcpClient, so skip the check for that mode.
+    if (session.acpxSessionId && this.transportMode !== "native") {
       const exists = await this.hasAcpxSessionState(session.acpxSessionId);
       if (!exists) {
         const message =
