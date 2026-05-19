@@ -397,7 +397,9 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                   Cost outlook
                 </h3>
                 <div className="bg-[rgba(255,88,0,0.25)] px-2 py-1">
-                  <p className="text-xs font-mono text-[var(--brand-orange)]">Burn Rate</p>
+                  <p className="text-xs font-mono text-[var(--brand-orange)]">
+                    Burn Rate
+                  </p>
                 </div>
               </div>
               <p className="text-xs font-mono text-[#858585] tracking-tight">
@@ -458,7 +460,9 @@ export function AnalyticsTab({ user: _user }: AnalyticsTabProps) {
                         credits
                       </p>
                       <div className="bg-[rgba(255,88,0,0.25)] px-2 py-1">
-                        <p className="text-xs font-mono text-[var(--brand-orange)]">Est.</p>
+                        <p className="text-xs font-mono text-[var(--brand-orange)]">
+                          Est.
+                        </p>
                       </div>
                     </div>
                     <p className="text-xs md:text-sm text-white/60">

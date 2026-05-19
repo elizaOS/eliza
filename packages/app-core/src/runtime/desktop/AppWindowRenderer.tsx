@@ -22,6 +22,7 @@ import {
   getInternalToolAppDescriptors,
   getInternalToolAppTargetTab,
 } from "@elizaos/ui/components/apps/internal-tool-apps";
+import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import {
   getAvailableOverlayApps,
   getOverlayApp,
@@ -54,7 +55,6 @@ import { FineTuningView } from "@elizaos/ui/components/training/injected";
 import { useBootConfig } from "@elizaos/ui/config/boot-config-react";
 import { useApp } from "@elizaos/ui/state/useApp";
 import { openExternalUrl } from "@elizaos/ui/utils";
-import type { OverlayApp } from "@elizaos/ui/components/apps/overlay-app-api";
 import {
   type ComponentType,
   type JSX,
@@ -195,9 +195,7 @@ const overlayLazyComponentCache = new WeakMap<
   }>
 >();
 
-function getOverlayLazyComponent(
-  overlay: OverlayApp,
-): ComponentType<{
+function getOverlayLazyComponent(overlay: OverlayApp): ComponentType<{
   exitToApps: () => void;
   uiTheme: "light" | "dark";
   t: (key: string, opts?: Record<string, unknown>) => string;

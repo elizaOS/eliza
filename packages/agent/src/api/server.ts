@@ -734,7 +734,9 @@ function parseBrowserBridgeKind(
 ): BrowserBridgeKind | null {
   if (!value) return null;
   const decoded = decodeURIComponent(value);
-  return (getBrowserPlugin().BROWSER_BRIDGE_KINDS as readonly string[]).includes(decoded)
+  return (
+    getBrowserPlugin().BROWSER_BRIDGE_KINDS as readonly string[]
+  ).includes(decoded)
     ? (decoded as BrowserBridgeKind)
     : null;
 }
@@ -743,7 +745,10 @@ function parseBrowserBridgePackageTarget(
   value: unknown,
 ): BrowserBridgePackagePathTarget | null {
   return typeof value === "string" &&
-    (getBrowserPlugin().BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]).includes(value)
+    (
+      getBrowserPlugin()
+        .BROWSER_BRIDGE_PACKAGE_PATH_TARGETS as readonly string[]
+    ).includes(value)
     ? (value as BrowserBridgePackagePathTarget)
     : null;
 }
@@ -835,7 +840,9 @@ async function handleBuiltinOptionalRoutes(
   }
 
   if (method === "GET" && pathname === "/api/browser-bridge/packages") {
-    json(res, { status: getBrowserPlugin().getBrowserBridgeCompanionPackageStatus() });
+    json(res, {
+      status: getBrowserPlugin().getBrowserBridgeCompanionPackageStatus(),
+    });
     return true;
   }
 
@@ -872,7 +879,10 @@ async function handleBuiltinOptionalRoutes(
       error(res, "Invalid browser bridge package browser", 400);
       return true;
     }
-    json(res, { status: await getBrowserPlugin().buildBrowserBridgeCompanionPackage(browser) });
+    json(res, {
+      status:
+        await getBrowserPlugin().buildBrowserBridgeCompanionPackage(browser),
+    });
     return true;
   }
 
@@ -885,7 +895,10 @@ async function handleBuiltinOptionalRoutes(
       error(res, "Invalid browser bridge package browser", 400);
       return true;
     }
-    json(res, await getBrowserPlugin().openBrowserBridgeCompanionManager(browser));
+    json(
+      res,
+      await getBrowserPlugin().openBrowserBridgeCompanionManager(browser),
+    );
     return true;
   }
 
@@ -4372,9 +4385,13 @@ export async function startApiServer(opts?: {
       rt.agentId != null && String(rt.agentId).length > 0
         ? String(rt.agentId)
         : undefined;
-    const result = getX402Plugin().validateX402Startup(rt.routes as Route[], rt.character, {
-      agentId,
-    });
+    const result = getX402Plugin().validateX402Startup(
+      rt.routes as Route[],
+      rt.character,
+      {
+        agentId,
+      },
+    );
     if (!result.valid) {
       throw new Error(
         `x402 configuration invalid:\n${result.errors.map((e) => `  • ${e}`).join("\n")}`,

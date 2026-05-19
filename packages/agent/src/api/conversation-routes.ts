@@ -103,9 +103,9 @@ type DiscordConversationModule = {
 let discordConversationPromise: Promise<DiscordConversationModule> | null =
   null;
 function getDiscordConversationApi(): Promise<DiscordConversationModule> {
-  discordConversationPromise ??= import("@elizaos/plugin-discord") as Promise<
-    unknown
-  > as Promise<DiscordConversationModule>;
+  discordConversationPromise ??= import(
+    "@elizaos/plugin-discord"
+  ) as Promise<unknown> as Promise<DiscordConversationModule>;
   return discordConversationPromise;
 }
 

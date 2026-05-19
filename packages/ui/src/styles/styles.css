@@ -186,6 +186,7 @@ body.native textarea {
 
 .custom-scrollbar,
 .chat-native-scrollbar,
+/* biome-ignore lint/style/noDescendingSpecificity: universal scrollbar styling is intentional. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb-mid) var(--scrollbar-track);
@@ -304,10 +305,13 @@ kbd {
   border-radius: var(--radius-md);
 }
 
-/* Reduced motion - !important is intentional for accessibility override */
+/* Reduced motion - universal override is intentional for accessibility */
 @media (prefers-reduced-motion: reduce) {
+  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every element regardless of prior class-level specificity. */
   *,
+  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
   *::before,
+  /* biome-ignore lint/style/noDescendingSpecificity: a11y override must apply to every pseudo-element. */
   *::after {
     animation-duration: 0.01ms;
     animation-iteration-count: 1;
