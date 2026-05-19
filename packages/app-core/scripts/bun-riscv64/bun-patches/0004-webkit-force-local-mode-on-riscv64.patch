@@ -1,0 +1,47 @@
+From 8f14a1ecf08daa6d52ac2566db8d014536909af9 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@milady.local>
+Date: Tue, 19 May 2026 04:35:50 -0700
+Subject: [PATCH 4/7] deps/webkit: force local mode on riscv64
+
+oven-sh/WebKit publishes prebuilt tarballs only for amd64/arm64. For riscv64 builds, force webkit=local; prebuiltUrl throws explicitly if reached.
+---
+ scripts/build/config.ts      | 6 +++++-
+ scripts/build/deps/webkit.ts | 5 +++++
+ 2 files changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/scripts/build/config.ts b/scripts/build/config.ts
+index 8013cb3..68f5313 100644
+--- a/scripts/build/config.ts
++++ b/scripts/build/config.ts
+@@ -531,7 +531,11 @@ export function resolveConfig(partial: PartialConfig, toolchain: Toolchain): Con
+     fuzzilli,
+     ci,
+     buildkite,
+-    webkit: partial.webkit ?? "prebuilt",
++    // WebKit mode:
++    //   riscv64: force local (no prebuilt tarball exists for riscv64;
++    //            BUN_WEBKIT_PATH must point at a built WebKitBuild dir).
++    //   else:    prebuilt unless overridden.
++    webkit: partial.webkit ?? (riscv64 ? "local" : "prebuilt"),
+     cwd,
+     buildDir,
+     codegenDir,
+diff --git a/scripts/build/deps/webkit.ts b/scripts/build/deps/webkit.ts
+index 2dcc0ab..6425048 100644
+--- a/scripts/build/deps/webkit.ts
++++ b/scripts/build/deps/webkit.ts
+@@ -69,6 +69,11 @@ function prebuiltSuffix(cfg: Config): string {
+ }
+ 
+ function prebuiltUrl(cfg: Config): string {
++  if (cfg.riscv64) {
++    throw new Error(
++      "deps/webkit: no prebuilt WebKit tarball for riscv64. Use --webkit=local with BUN_WEBKIT_PATH set.",
++    );
++  }
+   const os = cfg.windows ? "windows" : cfg.darwin ? "macos" : "linux";
+   const arch = cfg.arm64 ? "arm64" : "amd64";
+   const name = `bun-webkit-${os}-${arch}${prebuiltSuffix(cfg)}`;
+-- 
+2.43.0
+

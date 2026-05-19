@@ -102,6 +102,23 @@ if [ ! -d "$SRC_ROOT/WebKit" ]; then
     git -C "$SRC_ROOT/WebKit" checkout "${WEBKIT_COMMIT}"
 fi
 
+if compgen -G "/opt/webkit-patches/*.recipe" >/dev/null && [ "$FORCE_CLOOP" != "1" ]; then
+    # Recipe files are placeholders for cherry-pick chains the operator
+    # has not realized into actual *.patch files yet. Without those, the
+    # Baseline JIT cannot be built (LLInt + Baseline support is the whole
+    # point of webkit-patches/0001 + 0002). Force the operator to either
+    # realize the recipes or switch to C_LOOP fallback explicitly.
+    log "FATAL: webkit-patches/ contains unrealized *.recipe files:"
+    for r in /opt/webkit-patches/*.recipe; do
+        log "  - $r"
+    done
+    log "Baseline JIT bringup requires the cherry-pick chain documented in"
+    log "those recipe files to be realized into *.patch files first. Either:"
+    log "  a) realize the cherry-picks per the recipe instructions, OR"
+    log "  b) re-run with BUN_RISCV64_FORCE_CLOOP=1 to build with C_LOOP."
+    die "unrealized webkit-patches/*.recipe — refusing to build Baseline JIT"
+fi
+
 if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
     log "Applying webkit-patches/*.patch (in lexical order):"
     cd "$SRC_ROOT/WebKit"
@@ -109,6 +126,8 @@ if compgen -G "/opt/webkit-patches/*.patch" >/dev/null; then
     git config user.name "bun-riscv64 build"
     for p in $(ls /opt/webkit-patches/*.patch | sort); do
         log "  -> $p"
+        # 3-way merge is tolerant of context drift; on hard conflict, fail
+        # rather than silently skipping.
         git am --3way "$p" || die "WebKit patch failed: $p — see webkit-patches/README.md for rebase guidance"
     done
     cd "$SRC_ROOT"

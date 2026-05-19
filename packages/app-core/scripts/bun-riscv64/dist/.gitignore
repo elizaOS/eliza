@@ -2,4 +2,5 @@
 *
 !.gitignore
 !build-log.txt
+!build-failure.txt
 !*.sha256

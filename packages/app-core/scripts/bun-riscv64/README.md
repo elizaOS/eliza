@@ -136,9 +136,9 @@ Read `bun-version.json` for the authoritative pins. Summary:
 | Pin                | Value                                          | Why bumpable in lockstep |
 |--------------------|------------------------------------------------|--------------------------|
 | Bun tag            | `bun-v1.3.13`                                  | matches `stage-android-agent.mjs:BUN_VERSION` |
-| WebKit fork commit | `3167a44fb92c268c83f09b232b38a9f3e7f9655a`     | matches `scripts/build/deps/webkit.ts:WEBKIT_VERSION` on oven-sh/bun@main |
+| WebKit fork commit | `4d5e75ebd84a14edbc7ae264245dcd77fe597c10`     | matches `scripts/build/deps/webkit.ts:WEBKIT_VERSION` on oven-sh/bun@bun-v1.3.13 |
 | LLVM               | `21.1.8`                                       | matches Bun's pinned LLVM_VERSION; runtime allocator depends on no skew |
-| Rust nightly       | `nightly-2026-05-06`                           | matches Bun's `rust-toolchain.toml` |
+| Rust nightly       | `nightly-2025-12-10`                           | matches Bun's `rust-toolchain.toml` on `bun-v1.3.13` |
 | Zig                | `0.14.1`                                       | first stable with `riscv64-linux-musl` target acceptance |
 | Alpine branch      | `v3.21`                                        | matches `stage-android-agent.mjs:ALPINE_BRANCH` so musl/libstdc++ ABIs line up |
 
@@ -172,16 +172,88 @@ inference and network I/O, not JS hot loops.
   volume reduces this dramatically for iterative work — bind-mount
   `/work/src` as a named volume.
 
+## Patch series status
+
+| Side          | File                                              | State    |
+|---------------|---------------------------------------------------|----------|
+| Bun           | `0001-config-add-riscv64-arch.patch`              | written  |
+| Bun           | `0002-flags-add-riscv64-march-mabi.patch`         | written  |
+| Bun           | `0003-zig-add-riscv64-target-triple-and-cpu.patch`| written  |
+| Bun           | `0004-webkit-force-local-mode-on-riscv64.patch`   | written  |
+| Bun           | `0005-tinycc-disable-on-riscv64.patch`            | written  |
+| Bun           | `0006-build-add-riscv64-cli-validation.patch`     | written  |
+| Bun           | `0007-deps-per-dep-riscv64-checks.patch`          | written  |
+| WebKit        | `0001-cherry-pick-llint-riscv64.recipe`           | recipe   |
+| WebKit        | `0002-cherry-pick-baseline-jit-riscv64.recipe`    | recipe   |
+| WebKit        | `0003-disable-dfg-ftl-on-riscv64.patch`           | written  |
+
+**Written** = `*.patch` file that `git am --3way` applies on top of the
+pinned upstream commit. **Recipe** = `*.recipe` file describing the
+cherry-pick chain an operator must produce on a host with two WebKit
+clones; `build.sh` refuses to proceed with Baseline JIT while recipes
+exist (run with `BUN_RISCV64_FORCE_CLOOP=1` to build with C_LOOP instead).
+
+## Validating the patch series
+
+```bash
+cd packages/app-core/scripts/bun-riscv64
+./validate.sh
+```
+
+`validate.sh`:
+
+1. Checks every `*.patch` + `*.recipe` matches its `bun-version.json:patch_series.*` SHA256.
+2. Shallow-clones `oven-sh/bun @ bun.tag` to `/tmp/bun-riscv64-validate-bun` and runs `git apply --check` per Bun patch.
+3. Shallow-clones `oven-sh/WebKit @ webkit.fork_commit` to `/tmp/bun-riscv64-validate-webkit` and runs `git apply --check` per WebKit patch.
+
+Writes `dist/validate-report.txt`. Needs ~1.5 GB free in /tmp and network
+access to github.com. Exits non-zero on hard failures (missing/corrupted
+patch, clone failure); reports WARN (not FAIL) on context-drift apply
+failures because `git am --3way` during the real build merges those
+tolerantly.
+
+## Realizing the WebKit recipes
+
+Recipe files in `webkit-patches/` (`*.recipe`) document the cherry-pick
+chain. To convert them to actual `*.patch` files, follow the recipe
+header instructions:
+
+```bash
+# 1. Working WebKit clone + upstream remote
+git clone https://github.com/oven-sh/WebKit.git /work/WebKit
+cd /work/WebKit
+git remote add upstream https://github.com/WebKit/WebKit.git
+git fetch --filter=blob:none upstream main
+
+# 2. Cherry-pick onto the pinned commit
+git checkout -b riscv64-rebase 4d5e75ebd84a14edbc7ae264245dcd77fe597c10
+git cherry-pick d9b48eb6 2c412363 7cab5669 30fad9e8 66db9c06 \
+                849df0d9 b4c1b133 3d6fa6f5 37bf7544 7b1df19a \
+                d11ef53d eabcb75e d2f4296a a276bc15 3aefcc51 \
+                1c0ff93e 2abfe1cc
+# (resolve conflicts per recipe notes)
+
+# 3. Export as patches
+git format-patch -o "$REPO_ROOT/packages/app-core/scripts/bun-riscv64/webkit-patches/" \
+    --start-number=1 \
+    4d5e75ebd84a14edbc7ae264245dcd77fe597c10..HEAD
+
+# 4. Remove the recipes
+rm "$REPO_ROOT/packages/app-core/scripts/bun-riscv64/webkit-patches/"*.recipe
+
+# 5. Re-run validate.sh and update bun-version.json:patch_series sha256s
+./validate.sh
+```
+
 ## Punted items (follow-up tasks)
 
-- **Patches not yet written.** `bun-patches/` and `webkit-patches/` only
-  contain `README.md`s describing what to patch and why. A follow-up
-  task with a host that can hold the full Bun + WebKit checkouts and
-  iterate against actual build output is required to produce the
-  numbered `*.patch` files. The pipeline scaffolding is complete; the
-  patch authoring is the gating step.
-- **No first artifact yet.** Once the patch series exists, run the build
-  and commit `dist/build-log.txt`.
+- **WebKit recipes not yet realized.** Two recipes (0001-llint, 0002-baseline)
+  document the cherry-pick chain. An operator with a real WebKit clone +
+  CI runner needs to produce ~15 actual `*.patch` files from the listed
+  SHAs. Until that's done, the Baseline JIT path is gated; only `--c-loop`
+  builds will run.
+- **No first artifact yet.** Once the WebKit recipes are realized, run
+  the build and commit `dist/build-log.txt`.
 - **CI integration.** Hooking this build into the repo's CI (or a
   scheduled GitHub Action against a self-hosted x86_64 runner with
   Docker) so artifact builds are reproducible per Bun bump.

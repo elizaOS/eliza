@@ -1,0 +1,29 @@
+From 8c0d0617fc154312a5c60d3304af5a2862c27de3 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@milady.local>
+Date: Tue, 19 May 2026 04:36:26 -0700
+Subject: [PATCH 6/7] build: document --arch=riscv64 in scripts/build.ts CLI
+ help
+
+Adds an example invocation to the header comment. No semantic change.
+---
+ scripts/build.ts | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/scripts/build.ts b/scripts/build.ts
+index cbd5c6a..46761b9 100644
+--- a/scripts/build.ts
++++ b/scripts/build.ts
+@@ -3,6 +3,10 @@
+  *
+  *   bun scripts/build.ts --profile=debug
+  *   bun scripts/build.ts --profile=release
++ *   bun scripts/build.ts --profile=release --arch=riscv64 --abi=musl
++ *     # cross-compile to linux-riscv64-musl. Requires:
++ *     #   - $BUN_WEBKIT_PATH pointing at a built WebKitBuild dir
++ *     #   - cross-clang + riscv64-linux-musl sysroot in PATH
+  *   bun scripts/build.ts --asan=off test foo.test.ts    # override + build + run
+  *   bun scripts/build.ts --target tinycc                # build one dep
+  *   bun scripts/build.ts --configure-only               # emit ninja, don't run
+-- 
+2.43.0
+

@@ -121,7 +121,7 @@ RUN set -eux; \
 # the x86_64 host std (for build.rs etc.) AND the riscv64gc-unknown-linux-musl
 # Tier-2 std for the actual cross-compile.
 # ----------------------------------------------------------------------------
-ARG RUST_NIGHTLY=nightly-2026-05-06
+ARG RUST_NIGHTLY=nightly-2025-12-10
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH

@@ -1,0 +1,40 @@
+# WebKit cherry-pick recipe: Baseline JIT riscv64 enable
+#
+# Companion recipe to 0001-cherry-pick-llint-riscv64.recipe. The Baseline
+# JIT enablement (WebKit #239708, landed r293316 on 2022-04-25) actually
+# comes from the SAME chronological cherry-pick chain as 0001 — splitting
+# them is only a documentation aid for tracking the two upstream bug IDs.
+#
+# If you cherry-picked the full series listed in recipe 0001, you are
+# done. This recipe documents the specific commits that land the Baseline
+# JIT bringup (so you know what to look for in `git log`):
+
+# SHA                                       | Date       | Subject
+# ──────────────────────────────────────────┼────────────┼─────────────────────────────
+# d2f4296a70a58434f1279dbe4aa343cca02ea22b  | 2021-12-21 | [RISCV64] Add or enable missing CPU(RISCV64) codepaths in baseline JIT
+# bd5404116fac2ac04c517de47cc7893c96d0f66f  | 2022-04-20 | [JSC] Accommodate the RISCV64 C calling convention
+# 2abfe1cc0ddc0aa1cc65e9141e0548294a921713  | 2022-04-25 | [RISCV64] Enable Baseline JIT (r293316)
+
+# The 2abfe1cc commit is the moment Baseline JIT goes ON for riscv64 in
+# upstream WebKit. It mostly flips:
+#
+#   Source/WTF/wtf/PlatformEnable.h:
+#     #if CPU(RISCV64)
+#     #if !defined(ENABLE_JIT) && (... && !ENABLE(C_LOOP))
+#     #define ENABLE_JIT 1
+#     #endif
+#
+# and similar for ENABLE_LLINT_C_LOOP defaults.
+
+# How to verify Baseline is actually on after cherry-pick:
+#
+#   1. Configure WebKit with -DENABLE_JIT=ON -DENABLE_C_LOOP=OFF
+#      -DENABLE_DFG_JIT=OFF -DENABLE_FTL_JIT=OFF for riscv64.
+#   2. `ninja jsc` builds without offlineasm errors.
+#   3. Resulting jsc reports JIT tier names containing "Baseline" via:
+#        qemu-riscv64-static -L /sysroot ./jsc -e 'print(Math.random())'
+#      which exercises the JIT tier.
+
+# Once recipe 0001 is realized into actual `.patch` files, this recipe
+# also disappears. Both bug IDs (#229035 for LLInt, #239708 for Baseline)
+# are documented in the patch subjects, so traceability is preserved.

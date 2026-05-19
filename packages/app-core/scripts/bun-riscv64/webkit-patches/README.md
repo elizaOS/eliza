@@ -109,15 +109,35 @@ in the subject line for traceability; bucket-2 / bucket-3 patches author
 themselves locally with `Co-Authored-By: Claude Opus 4.7 (1M context)
 <noreply@anthropic.com>` per the repo convention.
 
-## Why we can't pre-populate the patches in this commit
+## Current state
 
-A correct cherry-pick series requires (a) a working WebKit clone with
-both Bun's fork and the upstream WebKit/WebKit remote, (b) running
-`git cherry-pick` interactively to resolve conflicts in the
-Bun-modified files, and (c) iterating against actual build output to
-fix any post-cherry-pick CMake / offlineasm issues. None of that is
-feasible inside the constraints of the agent shell that wrote this
-pipeline (no WebKit clone fits in the working set; the cherry-pick
-conflicts need human judgement). The build pipeline is ready; the
-patch series is the gating step a follow-up operator with a checkout
-on a beefy host will produce.
+| File                                              | Kind   | Notes                                                |
+|---------------------------------------------------|--------|------------------------------------------------------|
+| `0001-cherry-pick-llint-riscv64.recipe`           | recipe | 15-commit cherry-pick chain; operator realizes it    |
+| `0002-cherry-pick-baseline-jit-riscv64.recipe`    | recipe | enables Baseline JIT after 0001's chain              |
+| `0003-disable-dfg-ftl-on-riscv64.patch`           | patch  | pin DFG/FTL OFF on riscv64 in `PlatformEnable.h`     |
+
+`build.sh` refuses to proceed with Baseline JIT while any `*.recipe`
+file remains. Operator paths:
+
+1. **Realize the recipes.** Follow the steps in each `*.recipe` header,
+   generate `*.patch` files via `git format-patch`, then `rm` the
+   recipe. The actual SHAs from the cherry-pick chain are listed in
+   the recipe — `git cherry-pick <SHA>...` is a deterministic operation.
+2. **Skip JIT entirely.** Run `build.sh` with
+   `BUN_RISCV64_FORCE_CLOOP=1`; this bypasses the recipe gate and
+   builds JSC with `ENABLE_C_LOOP=ON`. No JIT, ~10× slower JS, but
+   guaranteed to work on any LP64D riscv64 host.
+
+## Why these can't be pre-populated as `*.patch` files in this commit
+
+Each cherry-picked commit is between 100 and 50_000 lines of diff. The
+full chain (~15 commits, ~80k lines) would bloat this repo by ~3 MB and
+would need to be regenerated from scratch every time the WebKit fork
+commit pin moves. The recipe approach keeps:
+
+- SHAs traceable through upstream Bugzilla / GitHub commits.
+- Operator workflow mechanical (no decision-making except conflict resolution).
+- Repo small.
+
+Conflict resolution notes per file are inline in `0001-cherry-pick-llint-riscv64.recipe`.

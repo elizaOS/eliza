@@ -1,0 +1,38 @@
+From e5e0c29ba3a3ee7e7a16794ce2d2b58b78dd6a80 Mon Sep 17 00:00:00 2001
+From: bun-riscv64 build <bun-riscv64@milady.local>
+Date: Tue, 19 May 2026 04:35:28 -0700
+Subject: [PATCH 3/7] zig: emit riscv64 target triple and generic_rv64 CPU
+
+zigTarget and zigCpu need riscv64 branches; Zig 0.14+ accepts riscv64-linux-musl and generic_rv64.
+---
+ scripts/build/zig.ts | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/scripts/build/zig.ts b/scripts/build/zig.ts
+index cc38679..38965e2 100644
+--- a/scripts/build/zig.ts
++++ b/scripts/build/zig.ts
+@@ -78,7 +78,7 @@ function usingParallelCompiler(cfg: Config): boolean {
+  * not `x64`/`arm64`.
+  */
+ export function zigTarget(cfg: Config): string {
+-  const arch = cfg.x64 ? "x86_64" : "aarch64";
++  const arch = cfg.x64 ? "x86_64" : cfg.riscv64 ? "riscv64" : "aarch64";
+   if (cfg.darwin) return `${arch}-macos-none`;
+   if (cfg.windows) return `${arch}-windows-msvc`;
+   // linux: abi is always set (resolveConfig asserts)
+@@ -129,6 +129,11 @@ export function zigCpu(cfg: Config): string {
+     if (cfg.windows) return "cortex_a76";
+     return "native";
+   }
++  if (cfg.riscv64) {
++    // generic_rv64 = IMAFDC base. Matches -march=rv64gc. Native target
++    // would let the build host (x86_64) pick — wrong for cross-compile.
++    return "generic_rv64";
++  }
+   // x64
+   return cfg.baseline ? "nehalem" : "haswell";
+ }
+-- 
+2.43.0
+

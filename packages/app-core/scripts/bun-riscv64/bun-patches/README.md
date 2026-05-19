@@ -79,29 +79,35 @@ need a small series of patches to:
      - boringssl — Bun uses C fallbacks on non-x86 already.
      - lol-html (Rust) — uses target features from cargo, no patches.
 
-## What we cannot pre-write here
+## Realized patch series (against `bun-v1.3.13`)
 
-The above describes the patch series with full intent and ordering, but
-each individual patch is a textual diff against a specific Bun commit
-(BUN_TAG). Producing those patches requires a clone of `oven-sh/bun` at
-the pinned tag and iterative `bun run build` invocations to find each
-new error after fixing the previous one — work that needs a host with the
-~15 GB build cache available and is non-trivial to do blind.
+| File                                                | Touches                                       |
+|-----------------------------------------------------|-----------------------------------------------|
+| `0001-config-add-riscv64-arch.patch`                | `scripts/build/config.ts`                     |
+| `0002-flags-add-riscv64-march-mabi.patch`           | `scripts/build/flags.ts`                      |
+| `0003-zig-add-riscv64-target-triple-and-cpu.patch`  | `scripts/build/zig.ts`                        |
+| `0004-webkit-force-local-mode-on-riscv64.patch`     | `scripts/build/config.ts` + `deps/webkit.ts`  |
+| `0005-tinycc-disable-on-riscv64.patch`              | `scripts/build/deps/tinycc.ts`                |
+| `0006-build-add-riscv64-cli-validation.patch`       | `scripts/build.ts` (doc-only)                 |
+| `0007-deps-per-dep-riscv64-checks.patch`            | `scripts/build/deps/lolhtml.ts`               |
 
-## File-naming convention
+Note on the original task brief: Bun 1.3.x removed the top-level
+`CMakeLists.txt` — the build is now fully driven by `scripts/build.ts`
+through ninja directly. There is no `cmake/` directory to patch, so
+"patch #7 CMakeLists.txt processor normalization" from the original
+brief was obsolete and is collapsed into `0007` (the per-dep audit).
 
+Likewise the `.cargo/config.toml` patch is unneeded: lol-html is the
+only cargo-built dep, and patch 0007 sets `rustTarget =
+riscv64gc-unknown-linux-${cfg.abi}` directly. `cargo` finds the
+cross-clang via the wrapper script in the Docker image's `/opt/cross/`.
+
+## Verifying
+
+```bash
+cd ../  # to bun-riscv64/
+./validate.sh
 ```
-0001-config-add-riscv64-arch.patch
-0002-flags-add-riscv64-mcpu.patch
-0003-rust-allow-riscv64gc-linux-musl.patch
-0004-webkit-force-local-mode-on-riscv64.patch
-0005-tinycc-disable-on-riscv64.patch
-0006-bd-accept-riscv64-arg.patch
-0007-cmake-normalize-riscv64-system-processor.patch
-```
 
-When you produce them, set:
-
-```
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
-```
+Runs `git apply --check` against a shallow clone of `oven-sh/bun @
+bun-v1.3.13`. See `../README.md` for output details.
