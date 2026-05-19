@@ -63,15 +63,34 @@ async def _build_backend(args):
     return dual, sim_env
 
 
-async def _measure_divergence(real_pos: dict, sim_pos: dict) -> dict:
-    """Compute per-joint divergence between two pose dicts."""
+async def _measure_divergence(
+    real_pos: dict, sim_pos: dict, calibrated_set: set[str] | None = None
+) -> dict:
+    """Compute per-joint divergence between two pose dicts.
+
+    If `calibrated_set` is provided, also reports an "rms_joint_rad_in_cal"
+    metric measured only over those joints — that's where calibration is
+    expected to make a difference. The all-joints RMS is dominated by
+    joints outside the calibration set and is a misleading aggregate."""
     keys = set(real_pos) & set(sim_pos)
+    out = {
+        "rms_joint_rad": 0.0, "max_joint_rad": 0.0, "n": 0,
+        "rms_joint_rad_in_cal": 0.0, "n_in_cal": 0,
+    }
     if not keys:
-        return {"rms_joint_rad": 0.0, "max_joint_rad": 0.0, "n": 0}
-    diffs = [float(real_pos[k]) - float(sim_pos[k]) for k in keys]
-    rms = float(np.sqrt(np.mean([d * d for d in diffs])))
-    mx = float(max(abs(d) for d in diffs))
-    return {"rms_joint_rad": rms, "max_joint_rad": mx, "n": len(keys)}
+        return out
+    diffs = {k: float(real_pos[k]) - float(sim_pos[k]) for k in keys}
+    out["rms_joint_rad"] = float(np.sqrt(np.mean([v * v for v in diffs.values()])))
+    out["max_joint_rad"] = float(max(abs(v) for v in diffs.values()))
+    out["n"] = len(keys)
+    if calibrated_set:
+        cal_keys = keys & calibrated_set
+        if cal_keys:
+            out["rms_joint_rad_in_cal"] = float(
+                np.sqrt(np.mean([diffs[k] * diffs[k] for k in cal_keys]))
+            )
+            out["n_in_cal"] = len(cal_keys)
+    return out
 
 
 async def _read_real_joints(real: AinexRemoteBackend) -> dict[str, float]:
@@ -100,6 +119,21 @@ async def _run(args) -> int:
     backend, sim_env = await _build_backend(args)
     real_inner = backend._real  # type: ignore[attr-defined]
     print(f"[e2e] dual backend ready (calibration: {args.calibration is not None})")
+
+    # Recover the set of joints the calibration actually applies to —
+    # used to filter the divergence metric so calibration's effect
+    # isn't washed out by uncalibrated joints.
+    calibrated_joints: set[str] = set()
+    if args.calibration and Path(args.calibration).is_file():
+        try:
+            raw_cal = json.loads(Path(args.calibration).read_text())
+            for name, fit in raw_cal.get("fits", {}).items():
+                alpha = float(fit.get("strength", 1.0))
+                if abs(alpha) >= 0.1:
+                    calibrated_joints.add(name)
+            print(f"[e2e] divergence will be reported over {len(calibrated_joints)} calibrated joints")
+        except Exception:
+            pass
 
     fourcc = cv2.VideoWriter_fourcc(*"mp4v")
     sim_sample = sim_env.render_external(width=1280, height=720)
@@ -131,7 +165,9 @@ async def _run(args) -> int:
             while time.time() < t_end:
                 real_pos = await _read_real_joints(real_inner)
                 sim_pos = await _read_sim_joints(sim_env)
-                div = await _measure_divergence(real_pos, sim_pos)
+                div = await _measure_divergence(
+                    real_pos, sim_pos, calibrated_set=calibrated_joints,
+                )
                 div["t_s"] = time.time() - t0
                 div["prompt"] = prompt
                 if div["n"] > 0:

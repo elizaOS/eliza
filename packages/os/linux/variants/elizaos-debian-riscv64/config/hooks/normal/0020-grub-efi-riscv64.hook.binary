@@ -13,9 +13,16 @@
 # the hook aborts rather than producing an ISO without an EFI loader.
 set -eu
 
-CHROOT="chroot"
-EFI_OUT_DIR="binary/EFI/BOOT"
-GRUB_CFG_OUT="binary/boot/grub/grub.cfg"
+if [ -d "live" ]; then
+    BINARY_DIR="."
+    CHROOT="../chroot"
+else
+    BINARY_DIR="binary"
+    CHROOT="chroot"
+fi
+
+EFI_OUT_DIR="${BINARY_DIR}/EFI/BOOT"
+GRUB_CFG_OUT="${BINARY_DIR}/boot/grub/grub.cfg"
 GRUB_TARGET="riscv64-efi"
 GRUB_PREFIX="/boot/grub"
 
@@ -60,8 +67,8 @@ chmod 0644 "${EFI_OUT_DIR}/BOOTRISCV64.EFI"
 # `binary/live/`. Debian riscv64 currently stages an uncompressed
 # `vmlinux-*`; accept the compressed `vmlinuz-*` form as well so a future
 # kernel packaging change still produces a working grub.cfg.
-KERNEL_REL="$(cd binary && { ls live/vmlinuz* live/vmlinux* 2>/dev/null || true; } | head -n1)"
-INITRD_REL="$(cd binary && ls live/initrd.img* 2>/dev/null | head -n1 || true)"
+KERNEL_REL="$(cd "${BINARY_DIR}" && { ls live/vmlinuz* live/vmlinux* 2>/dev/null || true; } | head -n1)"
+INITRD_REL="$(cd "${BINARY_DIR}" && ls live/initrd.img* 2>/dev/null | head -n1 || true)"
 
 if [ -z "${KERNEL_REL}" ] || [ -z "${INITRD_REL}" ]; then
     echo "[0020-grub-efi-riscv64] ERROR: live kernel/initrd not staged under binary/live/" >&2
