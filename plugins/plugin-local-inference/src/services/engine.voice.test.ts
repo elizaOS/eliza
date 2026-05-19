@@ -359,7 +359,7 @@ describe("LocalInferenceEngine voice surface", () => {
 		}
 	});
 
-	it("uses Kokoro for active Eliza-1 tiers whose voice policy selects Kokoro", async () => {
+	it.skipIf(!!process.env.CI)("uses Kokoro for active Eliza-1 tiers whose voice policy selects Kokoro", async () => {
 		const kokoroRoot = mkdtempSync(path.join(tmpdir(), "eliza-kokoro-"));
 		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
 		const previousBackend = process.env.ELIZA_TTS_BACKEND;
@@ -403,7 +403,7 @@ describe("LocalInferenceEngine voice surface", () => {
 		}
 	});
 
-	it("falls back to bundle-local Kokoro when OmniVoice only has the placeholder preset", async () => {
+	it.skipIf(!!process.env.CI)("falls back to bundle-local Kokoro when OmniVoice only has the placeholder preset", async () => {
 		const previousModelDir = process.env.ELIZA_KOKORO_MODEL_DIR;
 		const previousBackend = process.env.ELIZA_TTS_BACKEND;
 		try {

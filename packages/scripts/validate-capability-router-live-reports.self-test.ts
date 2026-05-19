@@ -41,6 +41,8 @@ async function main(): Promise<void> {
     const wrongSchemaDir = join(workspace, "wrong-schema");
     const partialDir = join(workspace, "partial");
     const failedRouteDir = join(workspace, "failed-route");
+    const missingRouteBodyDir = join(workspace, "missing-route-body");
+    const emptyRouteBodyDir = join(workspace, "empty-route-body");
     const missingModelResultDir = join(workspace, "missing-model-result");
     const emptyActionResultDir = join(workspace, "empty-action-result");
     const emptyProviderResultDir = join(workspace, "empty-provider-result");
@@ -91,6 +93,8 @@ async function main(): Promise<void> {
       workspace,
       "malformed-cloud-api-base",
     );
+    const cloudProviderFieldDir = join(workspace, "cloud-provider-field");
+    const providerCloudFieldDir = join(workspace, "provider-cloud-field");
     const cloudApiBaseQueryDir = join(workspace, "cloud-api-base-query");
     const cloudApiBaseFragmentDir = join(workspace, "cloud-api-base-fragment");
     const matchingFileIdentityDir = join(workspace, "matching-file-identity");
@@ -108,6 +112,8 @@ async function main(): Promise<void> {
       workspace,
       "duplicate-endpoint-url-fingerprint",
     );
+    const missingProviderIdDir = join(workspace, "missing-provider-id");
+    const mismatchedProviderIdDir = join(workspace, "mismatched-provider-id");
     const missingEndpointUrlFingerprintDir = join(
       workspace,
       "missing-endpoint-url-fingerprint",
@@ -184,6 +190,10 @@ async function main(): Promise<void> {
       workspace,
       "stale-runtime-remote-plugin",
     );
+    const mismatchedRuntimeRemotePluginCountDir = join(
+      workspace,
+      "mismatched-runtime-remote-plugin-count",
+    );
     const missingRegisteredServiceDir = join(
       workspace,
       "missing-registered-service",
@@ -214,6 +224,8 @@ async function main(): Promise<void> {
     await mkdir(wrongSchemaDir, { recursive: true });
     await mkdir(partialDir, { recursive: true });
     await mkdir(failedRouteDir, { recursive: true });
+    await mkdir(missingRouteBodyDir, { recursive: true });
+    await mkdir(emptyRouteBodyDir, { recursive: true });
     await mkdir(missingModelResultDir, { recursive: true });
     await mkdir(emptyActionResultDir, { recursive: true });
     await mkdir(emptyProviderResultDir, { recursive: true });
@@ -237,6 +249,8 @@ async function main(): Promise<void> {
     await mkdir(malformedModuleIdDir, { recursive: true });
     await mkdir(malformedProviderDir, { recursive: true });
     await mkdir(malformedCloudApiBaseDir, { recursive: true });
+    await mkdir(cloudProviderFieldDir, { recursive: true });
+    await mkdir(providerCloudFieldDir, { recursive: true });
     await mkdir(cloudApiBaseQueryDir, { recursive: true });
     await mkdir(cloudApiBaseFragmentDir, { recursive: true });
     await mkdir(matchingFileIdentityDir, { recursive: true });
@@ -245,6 +259,8 @@ async function main(): Promise<void> {
     await mkdir(duplicateEndpointDir, { recursive: true });
     await mkdir(duplicateProviderDir, { recursive: true });
     await mkdir(duplicateEndpointUrlFingerprintDir, { recursive: true });
+    await mkdir(missingProviderIdDir, { recursive: true });
+    await mkdir(mismatchedProviderIdDir, { recursive: true });
     await mkdir(missingEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(malformedEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(leakedSecretDir, { recursive: true });
@@ -276,6 +292,7 @@ async function main(): Promise<void> {
     await mkdir(runtimePluginUndercountDir, { recursive: true });
     await mkdir(missingRuntimeRemotePluginDir, { recursive: true });
     await mkdir(staleRuntimeRemotePluginDir, { recursive: true });
+    await mkdir(mismatchedRuntimeRemotePluginCountDir, { recursive: true });
     await mkdir(missingRegisteredServiceDir, { recursive: true });
     await mkdir(missingEvaluatorDir, { recursive: true });
     await mkdir(missingEventDir, { recursive: true });
@@ -423,6 +440,16 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(missingRouteBodyDir, "provider.json"),
+      `${JSON.stringify(makeMissingRouteBodyReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(emptyRouteBodyDir, "provider.json"),
+      `${JSON.stringify(makeEmptyRouteBodyReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(nonJavascriptAssetDir, "provider.json"),
       `${JSON.stringify(makeNonJavascriptAssetReport(), null, 2)}\n`,
       "utf8",
@@ -538,6 +565,16 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(cloudProviderFieldDir, "cloud.json"),
+      `${JSON.stringify(makeCloudProviderFieldReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(providerCloudFieldDir, "provider.json"),
+      `${JSON.stringify(makeProviderCloudFieldReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(cloudApiBaseQueryDir, "cloud.json"),
       `${JSON.stringify(makeCloudApiBaseQueryReport(), null, 2)}\n`,
       "utf8",
@@ -604,6 +641,16 @@ async function main(): Promise<void> {
         null,
         2,
       )}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingProviderIdDir, "provider.json"),
+      `${JSON.stringify(makeMissingProviderIdReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedProviderIdDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedProviderIdReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -759,6 +806,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(runtimePluginUndercountDir, "provider.json"),
       `${JSON.stringify(makeRuntimePluginUndercountReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedRuntimeRemotePluginCountDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedRuntimeRemotePluginCountReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1093,6 +1145,36 @@ async function main(): Promise<void> {
         `duplicate endpoint URL fingerprint failed for the wrong reason: ${duplicateEndpointUrlFingerprint.output}`,
       );
     }
+    const missingProviderId = await runValidator(
+      missingProviderIdDir,
+      "--kind=provider",
+    );
+    if (missingProviderId.exitCode === 0) {
+      throw new Error("missing providerId report unexpectedly passed.");
+    }
+    if (
+      !missingProviderId.output.includes(
+        "providerId must be a non-empty string",
+      )
+    ) {
+      throw new Error(
+        `missing providerId failed for the wrong reason: ${missingProviderId.output}`,
+      );
+    }
+    const mismatchedProviderId = await runValidator(
+      mismatchedProviderIdDir,
+      "--kind=provider",
+    );
+    if (mismatchedProviderId.exitCode === 0) {
+      throw new Error("mismatched providerId report unexpectedly passed.");
+    }
+    if (
+      !mismatchedProviderId.output.includes("providerId must match provider")
+    ) {
+      throw new Error(
+        `mismatched providerId failed for the wrong reason: ${mismatchedProviderId.output}`,
+      );
+    }
     const missingEndpointUrlFingerprint = await runValidator(
       missingEndpointUrlFingerprintDir,
       "--kind=provider",
@@ -1224,6 +1306,32 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `failed route report failed for the wrong reason: ${failedRoute.output}`,
+      );
+    }
+    const missingRouteBody = await runValidator(missingRouteBodyDir);
+    if (missingRouteBody.exitCode === 0) {
+      throw new Error("missing route body report unexpectedly passed.");
+    }
+    if (
+      !missingRouteBody.output.includes(
+        "conformance.routeResult.body must be a non-empty JSON value",
+      )
+    ) {
+      throw new Error(
+        `missing route body report failed for the wrong reason: ${missingRouteBody.output}`,
+      );
+    }
+    const emptyRouteBody = await runValidator(emptyRouteBodyDir);
+    if (emptyRouteBody.exitCode === 0) {
+      throw new Error("empty route body report unexpectedly passed.");
+    }
+    if (
+      !emptyRouteBody.output.includes(
+        "conformance.routeResult.body must be a non-empty JSON value",
+      )
+    ) {
+      throw new Error(
+        `empty route body report failed for the wrong reason: ${emptyRouteBody.output}`,
       );
     }
     const nonJavascriptAsset = await runValidator(nonJavascriptAssetDir);
@@ -1537,6 +1645,32 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `malformed cloudApiBase failed for the wrong reason: ${malformedCloudApiBase.output}`,
+      );
+    }
+    const cloudProviderField = await runValidator(cloudProviderFieldDir);
+    if (cloudProviderField.exitCode === 0) {
+      throw new Error("cloud provider field report unexpectedly passed.");
+    }
+    if (
+      !cloudProviderField.output.includes(
+        "provider must not be present for cloud reports",
+      )
+    ) {
+      throw new Error(
+        `cloud provider field failed for the wrong reason: ${cloudProviderField.output}`,
+      );
+    }
+    const providerCloudField = await runValidator(providerCloudFieldDir);
+    if (providerCloudField.exitCode === 0) {
+      throw new Error("provider cloud field report unexpectedly passed.");
+    }
+    if (
+      !providerCloudField.output.includes(
+        "cloudApiBase must not be present for provider reports",
+      )
+    ) {
+      throw new Error(
+        `provider cloud field failed for the wrong reason: ${providerCloudField.output}`,
       );
     }
     const cloudApiBaseQuery = await runValidator(cloudApiBaseQueryDir);
@@ -2003,6 +2137,23 @@ async function main(): Promise<void> {
         `stale runtime remote plugin failed for the wrong reason: ${staleRuntimeRemotePlugin.output}`,
       );
     }
+    const mismatchedRuntimeRemotePluginCount = await runValidator(
+      mismatchedRuntimeRemotePluginCountDir,
+    );
+    if (mismatchedRuntimeRemotePluginCount.exitCode === 0) {
+      throw new Error(
+        "mismatched runtime remote plugin count report unexpectedly passed.",
+      );
+    }
+    if (
+      !mismatchedRuntimeRemotePluginCount.output.includes(
+        "runtime.remotePlugins[0].routeCount must match sync.registeredModules",
+      )
+    ) {
+      throw new Error(
+        `mismatched runtime remote plugin count failed for the wrong reason: ${mismatchedRuntimeRemotePluginCount.output}`,
+      );
+    }
     const manifestOnlyUnregistered = await runValidator(
       manifestOnlyUnregisteredDir,
     );
@@ -2138,6 +2289,7 @@ function makeCompleteReport(
         }
       : {
           provider,
+          providerId: provider,
           endpointUrlSha256: makeEndpointUrlSha256(endpointId, provider),
         }),
     endpointId,
@@ -2172,6 +2324,7 @@ function makeCompleteReport(
           pluginName: "@remote/sample",
           moduleId: "sample-module",
           endpointId,
+          ...makeRegisteredModuleCounts(),
         },
       ],
       actionCount: 1,
@@ -2256,6 +2409,7 @@ function makeCompleteExtraExercisesReport() {
           pluginName: "@remote/second",
           moduleId: "second-module",
           endpointId: report.endpointId,
+          ...makeRegisteredModuleCounts(),
         },
       ],
       actionCount: 2,
@@ -2407,7 +2561,7 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
     rpcCalls,
     actionResult: { text: "sample action result" },
     providerResult: { text: "sample provider result" },
-    routeResult: { status: 200 },
+    routeResult: { status: 200, body: { sampleRoute: true } },
     assetResult: {
       path: "/assets/sample.js",
       contentType: "text/javascript",
@@ -2487,6 +2641,7 @@ function makePartialReport() {
     schemaVersion: 1,
     kind: "provider",
     provider: "e2b",
+    providerId: "e2b",
     endpointUrlSha256: makeEndpointUrlSha256("partial-endpoint", "e2b"),
     endpointId: "partial-endpoint",
     observedAt: new Date(0).toISOString(),
@@ -2510,6 +2665,28 @@ function makeFailedRouteReport() {
     conformance: {
       ...report.conformance,
       routeResult: { status: 500 },
+    },
+  };
+}
+
+function makeMissingRouteBodyReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      routeResult: { status: 204 },
+    },
+  };
+}
+
+function makeEmptyRouteBodyReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      routeResult: { status: 200, body: {} },
     },
   };
 }
@@ -2857,6 +3034,20 @@ function makeMalformedCloudApiBaseReport() {
   };
 }
 
+function makeCloudProviderFieldReport() {
+  return {
+    ...makeCompleteReport("cloud", "cloud-provider-field-endpoint"),
+    provider: "e2b",
+  };
+}
+
+function makeProviderCloudFieldReport() {
+  return {
+    ...makeCompleteReport("provider", "provider-cloud-field-endpoint", "e2b"),
+    cloudApiBase: "https://api.example.test",
+  };
+}
+
 function makeCloudApiBaseQueryReport() {
   return {
     ...makeCompleteReport("cloud", "query-cloud-endpoint"),
@@ -2877,6 +3068,21 @@ function makeMissingEndpointUrlFingerprintReport() {
   } as Record<string, unknown>;
   delete report.endpointUrlSha256;
   return report;
+}
+
+function makeMissingProviderIdReport() {
+  const report = {
+    ...makeCompleteReport("provider", "missing-provider-id-endpoint", "e2b"),
+  } as Record<string, unknown>;
+  delete report.providerId;
+  return report;
+}
+
+function makeMismatchedProviderIdReport() {
+  return {
+    ...makeCompleteReport("provider", "mismatched-provider-id-endpoint", "e2b"),
+    providerId: "home-machine",
+  };
 }
 
 function makeMalformedEndpointUrlFingerprintReport() {
@@ -3507,6 +3713,7 @@ function makeRuntimePluginUndercountReport() {
           pluginName: "@remote/second",
           moduleId: "second-module",
           endpointId: "sample-endpoint",
+          ...makeRegisteredModuleCounts(),
         },
       ],
       actionCount: 2,
@@ -3524,6 +3731,19 @@ function makeRuntimePluginUndercountReport() {
       widgetCount: 2,
       componentTypeCount: 2,
       viewCount: 2,
+    },
+  };
+}
+
+function makeMismatchedRuntimeRemotePluginCountReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    runtime: {
+      ...report.runtime,
+      remotePlugins: report.runtime.remotePlugins.map((plugin, index) =>
+        index === 0 ? { ...plugin, routeCount: 0 } : plugin,
+      ),
     },
   };
 }

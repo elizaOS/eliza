@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from benchmarks.orchestrator.adapters import GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
 from benchmarks.orchestrator.calibration_report import build_calibration_report
 from benchmarks.orchestrator.db import (
     connect_database,
@@ -243,8 +244,17 @@ def test_calibration_report_treats_no_real_harnesses_as_incomplete(
 
     assert row["real_required_harnesses"] == []
     assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+        "hermes": GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+        "openclaw": GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    }
     assert row["real_pattern"] == "no_required_real_harnesses"
     assert row["real_scores"] == {"eliza": None, "hermes": None, "openclaw": None}
+    assert all(
+        not cell["non_real_warnings"]
+        for cell in row["real_cells"].values()
+    )
     assert report["matrix_summary"]["required_real_cells"] == 0
     assert report["matrix_summary"]["unsupported_real_cells"] == 3
     assert report["matrix_summary"].get("complete_benchmarks", 0) == 0

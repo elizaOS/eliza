@@ -861,7 +861,7 @@ Current focused tests cover:
 - CLI endpoint conformance checks for arbitrary capability-router URLs,
   including bearer auth, action/provider/evaluator/response-handler
   evaluator/response-handler field evaluator/route/model/lifecycle/event/service
-  /app bridge/view-asset exercise, route status validation, and
+  /app bridge/view-asset exercise, route status and non-empty body validation, and
   required-surface validation,
 - duplicate module ID rejection,
 - real localhost HTTP capability-server integration,
@@ -991,14 +991,16 @@ report-level endpoint id to match the conformance endpoint id, requires
 `cloud.json` for Cloud and `<provider>.json` for provider reports, and rejects
 stale or future-dated observations, missing malformed, or mismatched GitHub run
 metadata, duplicate endpoint ids, duplicate provider reports, malformed endpoint
-ids, non-lowercase provider names, invalid Cloud API base URLs, Cloud API base
-URLs with query or fragment components, non-2xx route results, non-JavaScript
-view asset paths/content types, missing, malformed, or empty-content view asset
-SHA-256 digests, missing model results, failed lifecycle calls, unhandled event
-calls, asset integrity values that do not match the recorded asset digest,
-empty action/provider/evaluator/response-handler outputs, missing
-service/app-bridge results, and credential-shaped field names or string values
-such as tokens,
+ids, non-lowercase provider names, missing or mismatched provider IDs, invalid
+Cloud API base URLs, Cloud API base URLs with query or fragment components,
+cloud artifacts with provider-only fields, provider artifacts with cloud-only fields,
+non-2xx route results, route results without a non-empty observable body payload,
+non-JavaScript view asset paths/content types, missing, malformed, or
+empty-content view asset SHA-256 digests, missing model results, failed
+lifecycle calls, unhandled event calls, asset integrity values that do not match
+the recorded asset digest, empty action/provider/evaluator/response handler
+outputs, missing service/app-bridge results, and credential-shaped field
+names or string values such as tokens,
 authorization headers, API keys, passwords, secrets, bearer/basic auth values,
 and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
@@ -1016,7 +1018,9 @@ When a view asset includes subresource integrity metadata, the harness verifies
 that value against the fetched bundle bytes before recording the observation.
 The live report writer rejects unknown report kinds before writing, only accepts
 lowercase hyphenated report names, enforces `cloud.json` for Cloud and
-`<provider>.json` for provider reports, and writes with exclusive create so a
+`<provider>.json` for provider reports, requires provider report `providerId`
+to match `provider`, rejects provider-only fields on Cloud artifacts and
+cloud-only fields on provider artifacts, and writes with exclusive create so a
 second artifact cannot overwrite the first observation.
 `sync.registered` and `sync.registeredModules` must not contain duplicate
 materialized plugin/module identities, and every registered module must have a
@@ -1071,8 +1075,9 @@ remote plugin surface to be present in each configured provider observation,
 requiring E2B/home/mobile provider reports, and rejecting inconsistent endpoint
 ids, malformed provider labels, leaked credential-shaped fields, or exercised
 targets that do not belong to an observed module. Provider reports also include
-the sync summary, registered remote module identities, and runtime
-materialization counts from the agent that connected to the endpoint.
+the provider ID returned by the endpoint provider, the sync summary, registered
+remote module identities, and runtime materialization counts from the agent that
+connected to the endpoint.
 If provider endpoint secrets exist but the workflow event is not
 `workflow_dispatch` or `schedule`, the job writes an explicit notice and step
 summary saying the provider live smoke was not observed for that run.
@@ -1225,9 +1230,15 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   live report validation, required artifact upload, and matching live report
   directories between smoke producers, validators, and uploaded artifacts. It
   also audits the package-level `test:remote-capabilities` script so live report
-  writer safety remains in the canonical remote-capability suite.
+  writer safety remains in the canonical remote-capability suite, audits the
+  provider live smoke source so provider reports keep recording `providerId`,
+  requires the live report validator self-test to stay in CI, and audits the
+  root package scripts that invoke the live report validator, the validator
+  self-test, the live CI audit, and the live CI audit self-test.
 - `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
-  report-directory env vars, artifact upload paths, package-level remote
+  report-directory env vars, artifact upload paths, provider live report
+  `providerId` evidence, live report validator self-test coverage, root package
+  live validator and live CI audit script wiring, package-level remote
   capability suite membership, final `test-status` live job gating,
   scheduled/manual live observation gates, Cloud
   freshness/identity validation flags, provider primary endpoint secret
@@ -1242,11 +1253,16 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   configured transport URL. The fingerprint helper also strips query/fragment
   components and rejects embedded URL credentials before hashing, matching the
   URL-backed endpoint provider's accepted base URL shape.
+- Provider live reports also include `providerId` from the endpoint provider,
+  and the validator requires it to match the report provider label, so a live
+  artifact cannot be relabeled across E2B, home-machine, mobile-companion, or
+  desktop-companion provider families.
 - Live report writers only accept lowercase report names with numbers or
   hyphens, require Cloud reports to be named `cloud`, require provider reports
-  to be named after their provider, and create report files with exclusive
-  writes, so a duplicate Cloud or provider report cannot silently overwrite an
-  earlier artifact before validation/upload.
+  to be named after their provider, require provider IDs to match provider
+  labels, and create report files with exclusive writes, so a duplicate Cloud or
+  provider report cannot silently overwrite an earlier artifact before
+  validation/upload.
 - Conformance reports include an `rpcCalls` ledger that records every canonical
   protocol method used for each exercised surface and module. The live report
   validator requires this ledger to cover every `moduleExercises` entry, every

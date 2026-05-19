@@ -27,6 +27,21 @@ from elizaos_gaia.providers import (
 from elizaos_gaia.runner import GAIARunner, run_quick_test
 from elizaos_gaia.types import GAIAConfig, GAIALevel
 
+HUGGINGFACE_TOKEN_ENV_VARS: tuple[str, ...] = (
+    "HF_TOKEN",
+    "HUGGINGFACE_HUB_TOKEN",
+    "HUGGINGFACE_TOKEN",
+)
+
+
+def get_hf_token_from_env() -> str | None:
+    """Return the first configured Hugging Face token from supported env vars."""
+    for name in HUGGINGFACE_TOKEN_ENV_VARS:
+        value = os.getenv(name)
+        if value:
+            return value
+    return None
+
 
 def load_dotenv(
     start_dir: Path | None = None,
@@ -180,7 +195,12 @@ Examples:
     parser.add_argument("--quiet", "-q", action="store_true", help="Suppress non-essential output")
 
     # HuggingFace token
-    parser.add_argument("--hf-token", type=str, default=None, help="HuggingFace token (or set HF_TOKEN env var)")
+    parser.add_argument(
+        "--hf-token",
+        type=str,
+        default=None,
+        help="HuggingFace token (or set HF_TOKEN/HUGGINGFACE_HUB_TOKEN env var)",
+    )
 
     return parser.parse_args()
 
@@ -250,6 +270,39 @@ def handle_list_commands(args: argparse.Namespace) -> bool:
     return False
 
 
+def prepare_dataset_access(
+    config: GAIAConfig,
+    *,
+    quick_test: bool,
+    hf_token: str | None,
+) -> str | None:
+    """Apply dataset access policy before starting any harness server.
+
+    Official GAIA is gated. Without a HuggingFace token, a real benchmark run
+    cannot fetch attachments or metadata, so fail before spending time starting
+    an agent harness. Quick-test mode remains an explicit smoke path and falls
+    back to the built-in sample dataset.
+    """
+    if config.dataset_source != "gaia" or hf_token:
+        return None
+
+    if quick_test:
+        logging.warning(
+            "GAIA dataset is gated and no Hugging Face token env var is set; "
+            "running built-in sample dataset for quick test instead. Set "
+            "HF_TOKEN or HUGGINGFACE_HUB_TOKEN and request access to run the "
+            "official GAIA benchmark."
+        )
+        config.dataset_source = "sample"
+        return None
+
+    return (
+        "GAIA dataset access requires HF_TOKEN/HUGGINGFACE_HUB_TOKEN or --hf-token. "
+        "Request access at https://huggingface.co/datasets/gaia-benchmark/GAIA "
+        "before running the official GAIA benchmark."
+    )
+
+
 async def run_benchmark_async(args: argparse.Namespace) -> int:
     """Run the benchmark asynchronously through the elizaOS TS bridge."""
     if handle_list_commands(args):
@@ -259,7 +312,15 @@ async def run_benchmark_async(args: argparse.Namespace) -> int:
     if args.quick_test and not config.max_questions:
         config.max_questions = args.max_questions or 5
 
-    hf_token = args.hf_token or os.getenv("HF_TOKEN")
+    hf_token = args.hf_token or get_hf_token_from_env()
+    dataset_error = prepare_dataset_access(
+        config,
+        quick_test=bool(args.quick_test),
+        hf_token=hf_token,
+    )
+    if dataset_error:
+        print(f"\nBenchmark failed: {dataset_error}")
+        return 1
 
     route = resolve_harness(config)
     os.environ.update(harness_env_updates(route))

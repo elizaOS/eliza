@@ -15,6 +15,7 @@ import pytest
 from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     _score_from_app_eval,
     _score_from_compactbench,
     _score_from_eliza_1,
@@ -162,6 +163,11 @@ def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
 def test_gauntlet_surfpool_manager_uses_current_mainnet_datasource_cli(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.syspath_prepend(str(_workspace_root() / "benchmarks" / "gauntlet" / "src"))
+    for module_name in list(sys.modules):
+        if module_name == "gauntlet" or module_name.startswith("gauntlet."):
+            del sys.modules[module_name]
+
     from gauntlet.harness.surfpool import SurfpoolConfig, SurfpoolManager
 
     manager = SurfpoolManager(
@@ -614,7 +620,28 @@ def test_gaia_matrix_rows_require_official_dataset_access(
 
     assert len(gaia_cells) == 6
     assert all(cell.compatible is False for cell in gaia_cells)
-    assert all("not in adapter compatibility" in str(cell.reason) for cell in gaia_cells)
+    assert all(
+        cell.reason == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+        for cell in gaia_cells
+    )
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    ["HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"],
+)
+def test_gaia_official_dataset_gate_accepts_hf_token_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+) -> None:
+    for name in orchestrator_adapters.HUGGINGFACE_TOKEN_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(env_name, "token-value")
+    orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
+    try:
+        assert orchestrator_adapters._has_gaia_official_dataset() is True
+    finally:
+        orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
 
 
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
@@ -1515,7 +1542,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
     assert mt_command[mt_command.index("--judge-provider") + 1] == "cerebras"
     assert mt_command[mt_command.index("--judge-model") + 1] == "gpt-oss-120b"
     assert mt_command[mt_command.index("--judge-api-key-env") + 1] == "CEREBRAS_API_KEY"
-    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
+    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "512"
 
 
 def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:

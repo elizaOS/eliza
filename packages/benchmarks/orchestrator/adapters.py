@@ -92,6 +92,17 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON = (
+    "official GAIA dataset access unavailable "
+    "(set HF_TOKEN/HUGGINGFACE_HUB_TOKEN or GAIA_DATASET_PATH, "
+    "or pre-cache gaia-benchmark/GAIA); "
+    "harness not run"
+)
+HUGGINGFACE_TOKEN_ENV_VARS: tuple[str, ...] = (
+    "HF_TOKEN",
+    "HUGGINGFACE_HUB_TOKEN",
+    "HUGGINGFACE_TOKEN",
+)
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
@@ -128,7 +139,7 @@ def _has_gaia_official_dataset() -> bool:
     global _GAIA_OFFICIAL_DATASET_AVAILABLE
     if _GAIA_OFFICIAL_DATASET_AVAILABLE is not None:
         return _GAIA_OFFICIAL_DATASET_AVAILABLE
-    if os.environ.get("HF_TOKEN"):
+    if any(os.environ.get(name) for name in HUGGINGFACE_TOKEN_ENV_VARS):
         _GAIA_OFFICIAL_DATASET_AVAILABLE = True
         return True
     dataset_path = os.environ.get("GAIA_DATASET_PATH")
