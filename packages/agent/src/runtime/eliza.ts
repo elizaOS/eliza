@@ -200,6 +200,7 @@ import {
 } from "../hooks/index.ts";
 import { ensureAgentWorkspace } from "../providers/workspace.ts";
 import { SandboxAuditLog } from "../security/audit-log.ts";
+import { bootstrapRemoteCapabilityPlugins } from "../services/remote-plugin-adapter.ts";
 import {
   SandboxManager,
   type SandboxMode,
@@ -3932,7 +3933,28 @@ export async function startEliza(
       config,
     );
 
-    // 8a. Apply legacy role redaction to protected plugin providers.
+    // 8a. Register remote capability modules as runtime-owned plugins.
+    try {
+      const result = await bootstrapRemoteCapabilityPlugins(runtime, {
+        unloadMissing: true,
+      });
+      if (
+        result.registered.length > 0 ||
+        result.unloaded.length > 0 ||
+        result.skipped.length > 0
+      ) {
+        logger.info(
+          `[eliza] Remote capability plugins synced — registered=${result.registered.length}, ` +
+            `unloaded=${result.unloaded.length}, skipped=${result.skipped.length}`,
+        );
+      }
+    } catch (err) {
+      logger.warn(
+        `[eliza] Remote capability plugin sync failed: ${formatError(err)}`,
+      );
+    }
+
+    // 8b. Apply legacy role redaction to protected plugin providers.
     try {
       const { applyPluginRoleGating } = await import("./plugin-role-gating.ts");
       applyPluginRoleGating(runtime.plugins ?? []);
@@ -3942,7 +3964,7 @@ export async function startEliza(
       );
     }
 
-    // 8b. Register conversation-proximity provider for post-turn evaluators.
+    // 8c. Register conversation-proximity provider for post-turn evaluators.
     // This is read-only context; relationship writes are handled by the
     // evaluator service from model-extracted relationship updates.
     try {

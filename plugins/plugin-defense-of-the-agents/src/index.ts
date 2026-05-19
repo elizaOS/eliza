@@ -34,6 +34,19 @@ export function createAppDefenseOfTheAgentsPlugin(): Plugin {
         visibleInManager: true,
         desktopTabEnabled: true,
       },
+      {
+        id: "defense-of-the-agents",
+        label: "Defense of the Agents TUI",
+        description: "Terminal Defense of the Agents strategy and telemetry",
+        icon: "Gamepad2",
+        path: "/defense-of-the-agents/tui",
+        viewType: "tui",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "DefenseAgentsTuiView",
+        tags: ["game", "strategy", "defense-of-the-agents", "terminal"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
     ],
   };
 }

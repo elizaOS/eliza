@@ -335,5 +335,20 @@ export const trainingPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "training",
+      label: "Training TUI",
+      description:
+        "Terminal fine-tuning jobs, datasets, trained models, and trajectory management",
+      icon: "BrainCircuit",
+      path: "/training/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "FineTuningTuiView",
+      tags: ["training", "fine-tuning", "models", "trajectories", "terminal"],
+      developerOnly: true,
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };

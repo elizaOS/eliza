@@ -10,7 +10,12 @@ import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import type { IAgentRuntime } from "@elizaos/core";
-import { logger, type Plugin, type ViewDeclaration } from "@elizaos/core";
+import {
+  logger,
+  type Plugin,
+  type ViewDeclaration,
+  type ViewType,
+} from "@elizaos/core";
 import type { AgentPlatform } from "./platform-detect.ts";
 
 export type { ViewRegistryEntry } from "./view-registry-types.ts";
@@ -40,7 +45,17 @@ function escapeSvgText(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-/** Module-level registry storage. Keyed by view id. */
+const DEFAULT_VIEW_TYPE: ViewType = "gui";
+
+function normalizeViewType(viewType: ViewDeclaration["viewType"]): ViewType {
+  return viewType ?? DEFAULT_VIEW_TYPE;
+}
+
+function viewRegistryKey(id: string, viewType: ViewType): string {
+  return `${viewType}:${id}`;
+}
+
+/** Module-level registry storage. Keyed by view type + view id. */
 const registry = new Map<string, ViewRegistryEntry>();
 
 /**
@@ -188,7 +203,8 @@ export async function registerPluginViews(
   const registered: ViewRegistryEntry[] = [];
   for (const view of views) {
     const entry = await buildEntry(view, plugin.name, resolvedDir);
-    const existing = registry.get(entry.id);
+    const key = viewRegistryKey(entry.id, entry.viewType);
+    const existing = registry.get(key);
     if (existing && existing.pluginName !== plugin.name) {
       logger.warn(
         {
@@ -201,7 +217,7 @@ export async function registerPluginViews(
       );
       continue;
     }
-    registry.set(entry.id, entry);
+    registry.set(key, entry);
     registered.push(entry);
     logger.debug(
       {
@@ -229,13 +245,13 @@ export async function registerPluginViews(
  * unloaded via `runtime.unloadPlugin`.
  */
 export function unregisterPluginViews(pluginName: string): void {
-  for (const [id, entry] of registry) {
+  for (const [key, entry] of registry) {
     if (entry.pluginName === pluginName) {
-      registry.delete(id);
-      viewSearchIndex.removeView(id);
+      registry.delete(key);
+      viewSearchIndex.removeView(entry.id, entry.viewType);
       logger.debug(
-        { src: "ViewRegistry", viewId: id, pluginName },
-        `[ViewRegistry] Unregistered view "${id}" from plugin "${pluginName}"`,
+        { src: "ViewRegistry", viewId: entry.id, pluginName },
+        `[ViewRegistry] Unregistered view "${entry.id}" from plugin "${pluginName}"`,
       );
     }
   }
@@ -261,7 +277,9 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
   const pluginName = "@elizaos/builtin";
   const registered: ViewRegistryEntry[] = [];
   for (const view of BUILTIN_VIEWS) {
-    if (registry.has(view.id)) {
+    const viewType = normalizeViewType(view.viewType);
+    const key = viewRegistryKey(view.id, viewType);
+    if (registry.has(key)) {
       // Already registered (e.g. called twice at startup). Skip silently.
       continue;
     }
@@ -269,6 +287,7 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
       (view.platforms?.[0] as AgentPlatform | undefined) ?? "web";
     const entry: ViewRegistryEntry = {
       ...view,
+      viewType,
       pluginName,
       pluginDir: undefined,
       bundleUrl: undefined,
@@ -279,7 +298,7 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
       platform,
       builtin: true,
     };
-    registry.set(view.id, entry);
+    registry.set(key, entry);
     registered.push(entry);
   }
   logger.info(
@@ -305,13 +324,31 @@ export function registerBuiltinViews(runtime?: IAgentRuntime): void {
  */
 export function listViews(filter?: {
   developerMode?: boolean;
+  viewType?: ViewType;
 }): ViewRegistryEntry[] {
   const developerMode = filter?.developerMode ?? false;
-  const results: ViewRegistryEntry[] = [];
+  const requestedViewType = filter?.viewType ?? DEFAULT_VIEW_TYPE;
+  const byId = new Map<string, ViewRegistryEntry>();
   for (const entry of registry.values()) {
     if (entry.developerOnly && !developerMode) continue;
-    results.push(entry);
+    const existing = byId.get(entry.id);
+    if (!existing) {
+      if (
+        entry.viewType === requestedViewType ||
+        entry.viewType === DEFAULT_VIEW_TYPE
+      ) {
+        byId.set(entry.id, entry);
+      }
+      continue;
+    }
+    if (
+      existing.viewType !== requestedViewType &&
+      entry.viewType === requestedViewType
+    ) {
+      byId.set(entry.id, entry);
+    }
   }
+  const results = [...byId.values()];
   results.sort(
     (a, b) =>
       (a.order ?? 100) - (b.order ?? 100) ||
@@ -324,8 +361,15 @@ export function listViews(filter?: {
 /**
  * Look up a single view by its stable id.
  */
-export function getView(id: string): ViewRegistryEntry | undefined {
-  return registry.get(id);
+export function getView(
+  id: string,
+  filter?: { viewType?: ViewType },
+): ViewRegistryEntry | undefined {
+  const requestedViewType = filter?.viewType ?? DEFAULT_VIEW_TYPE;
+  return (
+    registry.get(viewRegistryKey(id, requestedViewType)) ??
+    registry.get(viewRegistryKey(id, DEFAULT_VIEW_TYPE))
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -350,10 +394,10 @@ async function buildEntry(
   const loadedAt = Date.now();
 
   // Check bundle availability and collect hash + size when resolvable.
-  let available = false;
+  let available = Boolean(view.bundleUrl);
   let bundleHash: string | undefined;
   let bundleSize: number | undefined;
-  if (pluginDir && view.bundlePath) {
+  if (!view.bundleUrl && pluginDir && view.bundlePath) {
     const bundleAbs = path.resolve(pluginDir, view.bundlePath);
     const packageRoot = `${path.resolve(pluginDir)}${path.sep}`;
     if (bundleAbs.startsWith(packageRoot)) {
@@ -386,15 +430,34 @@ async function buildEntry(
   const encodedId = encodeURIComponent(view.id);
   // bundleUrl uses a timestamp ?v= param for backwards-compat; bundleUrlVersioned
   // uses the content hash when available (allows immutable long-lived caching).
-  const bundleUrl = view.bundlePath
-    ? `/api/views/${encodedId}/bundle.js?v=${loadedAt}`
-    : undefined;
-  const bundleUrlVersioned =
-    view.bundlePath && bundleHash
-      ? `/api/views/${encodedId}/bundle.js?v=${bundleHash}`
+  const normalizedViewType = normalizeViewType(view.viewType);
+  const buildAssetUrl = (
+    asset: "bundle.js" | "hero",
+    version?: number | string,
+  ): string => {
+    const params = new URLSearchParams();
+    if (normalizedViewType !== DEFAULT_VIEW_TYPE) {
+      params.set("viewType", normalizedViewType);
+    }
+    if (version !== undefined) {
+      params.set("v", String(version));
+    }
+
+    const query = params.toString();
+    return `/api/views/${encodedId}/${asset}${query ? `?${query}` : ""}`;
+  };
+  const bundleUrl = view.bundleUrl
+    ? view.bundleUrl
+    : view.bundlePath
+      ? buildAssetUrl("bundle.js", loadedAt)
+      : undefined;
+  const bundleUrlVersioned = view.bundleUrl
+    ? view.bundleUrl
+    : view.bundlePath && bundleHash
+      ? buildAssetUrl("bundle.js", bundleHash)
       : bundleUrl;
 
-  const heroImageUrl = `/api/views/${encodedId}/hero`;
+  const heroImageUrl = buildAssetUrl("hero");
 
   // Derive a representative platform from the declaration's platforms list.
   // When multiple platforms are declared, the first entry wins. Absent the
@@ -404,6 +467,7 @@ async function buildEntry(
 
   return {
     ...view,
+    viewType: normalizedViewType,
     pluginName,
     pluginDir,
     bundleUrl,

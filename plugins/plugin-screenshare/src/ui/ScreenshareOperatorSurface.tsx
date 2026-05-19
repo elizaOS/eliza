@@ -49,6 +49,10 @@ interface StartSessionResponse {
   viewerUrl: string;
 }
 
+interface SessionsResponse {
+  sessions: PublicSession[];
+}
+
 const APP_NAME = "@elizaos/plugin-screenshare";
 
 function apiUrl(path: string): string {
@@ -466,4 +470,287 @@ export function ScreenshareOperatorSurface({
       ) : null}
     </section>
   );
+}
+
+export function ScreenshareTuiView() {
+  const [state, setState] =
+    useState<Awaited<ReturnType<typeof loadScreenshareTuiState>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadScreenshareTuiState();
+      setState(next);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setError(
+        caught instanceof Error ? caught.message : "Screen share refresh failed",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const activeSessions =
+    state?.sessions.sessions.filter((session) => session.status === "active") ??
+    [];
+  const viewState = {
+    viewType: "tui",
+    viewId: "screenshare",
+    platform: state?.capabilities.platform ?? null,
+    sessionCount: state?.sessions.sessions.length ?? 0,
+    activeSessionCount: activeSessions.length,
+    capabilities: state
+      ? Object.fromEntries(
+          Object.entries(state.capabilities.capabilities).map(
+            ([name, capability]) => [name, capability.available],
+          ),
+        )
+      : {},
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://screenshare --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : state?.capabilities.platform ?? "unknown"} |{" "}
+        {activeSessions.length} active sessions | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Screen share sessions"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>sessions</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {(state?.sessions.sessions ?? []).map((session) => (
+            <div
+              key={session.id}
+              style={{
+                borderTop: "1px solid rgba(125,211,252,0.14)",
+                padding: "8px 0",
+              }}
+            >
+              <div style={{ color: "#e2e8f0" }}>
+                {session.id} / {session.status}
+              </div>
+              <div style={{ color: "#94a3b8" }}>
+                {session.label} frames {session.frameCount} inputs{" "}
+                {session.inputCount}
+              </div>
+              <div style={{ color: "#64748b" }}>
+                last frame {formatTime(session.lastFrameAt)} / last input{" "}
+                {formatTime(session.lastInputAt)}
+              </div>
+            </div>
+          ))}
+        </section>
+
+        <section
+          aria-label="Screen share capabilities"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>capabilities</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | start | session | stop | input | viewer-url
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>platform</span>{" "}
+            {state?.capabilities.platform ?? "unknown"}
+          </div>
+          {Object.entries(state?.capabilities.capabilities ?? {}).map(
+            ([name, capability]) => (
+              <div key={name} style={{ padding: "6px 0" }}>
+                <span style={{ color: capability.available ? "#a7f3d0" : "#fca5a5" }}>
+                  {capability.available ? "ok" : "off"}
+                </span>{" "}
+                {name} via {capability.tool}
+              </div>
+            ),
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+async function loadScreenshareTuiState(): Promise<{
+  capabilities: CapabilitiesResponse;
+  sessions: SessionsResponse;
+}> {
+  const [capabilities, sessions] = await Promise.all([
+    fetchJson<CapabilitiesResponse>("/api/apps/screenshare/capabilities"),
+    fetchJson<SessionsResponse>("/api/apps/screenshare/sessions"),
+  ]);
+  return { capabilities, sessions };
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-screenshare-state") {
+    return { viewType: "tui", ...(await loadScreenshareTuiState()) };
+  }
+
+  if (capability === "terminal-screenshare-start") {
+    return {
+      viewType: "tui",
+      ...(await fetchJson<StartSessionResponse>("/api/apps/screenshare/session", {
+        method: "POST",
+        body: JSON.stringify({
+          label: typeof params?.label === "string" ? params.label : "Terminal",
+        }),
+      })),
+    };
+  }
+
+  if (capability === "terminal-screenshare-session") {
+    const sessionId =
+      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
+    const token = typeof params?.token === "string" ? params.token.trim() : "";
+    if (!sessionId) throw new Error("sessionId is required");
+    if (!token) throw new Error("token is required");
+    return {
+      viewType: "tui",
+      ...(await fetchJson<{ session: PublicSession }>(
+        `/api/apps/screenshare/session/${encodeURIComponent(
+          sessionId,
+        )}?token=${encodeURIComponent(token)}`,
+      )),
+    };
+  }
+
+  if (capability === "terminal-screenshare-stop") {
+    const sessionId =
+      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
+    const token = typeof params?.token === "string" ? params.token.trim() : "";
+    if (!sessionId) throw new Error("sessionId is required");
+    if (!token) throw new Error("token is required");
+    return {
+      viewType: "tui",
+      ...(await fetchJson<{ session: PublicSession }>(
+        `/api/apps/screenshare/session/${encodeURIComponent(sessionId)}/stop`,
+        {
+          method: "POST",
+          body: JSON.stringify({ token }),
+          headers: { "X-Screenshare-Token": token },
+        },
+      )),
+    };
+  }
+
+  if (capability === "terminal-screenshare-input") {
+    const sessionId =
+      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
+    const token = typeof params?.token === "string" ? params.token.trim() : "";
+    if (!sessionId) throw new Error("sessionId is required");
+    if (!token) throw new Error("token is required");
+    return {
+      viewType: "tui",
+      ...(await fetchJson<Record<string, unknown>>(
+        `/api/apps/screenshare/session/${encodeURIComponent(sessionId)}/input`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            token,
+            type: typeof params?.type === "string" ? params.type : "keypress",
+            keys: typeof params?.keys === "string" ? params.keys : undefined,
+            text: typeof params?.text === "string" ? params.text : undefined,
+            x: typeof params?.x === "number" ? params.x : undefined,
+            y: typeof params?.y === "number" ? params.y : undefined,
+            button:
+              typeof params?.button === "string" ? params.button : undefined,
+            deltaY:
+              typeof params?.deltaY === "number" ? params.deltaY : undefined,
+          }),
+          headers: { "X-Screenshare-Token": token },
+        },
+      )),
+    };
+  }
+
+  if (capability === "terminal-screenshare-viewer-url") {
+    const sessionId =
+      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
+    const token = typeof params?.token === "string" ? params.token.trim() : "";
+    if (!sessionId) throw new Error("sessionId is required");
+    if (!token) throw new Error("token is required");
+    return {
+      viewType: "tui",
+      viewerUrl: buildViewerUrl({
+        baseUrl: typeof params?.baseUrl === "string" ? params.baseUrl : "",
+        sessionId,
+        token,
+      }),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

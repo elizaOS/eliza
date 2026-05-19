@@ -51,6 +51,19 @@ export function createAppClawvillePlugin(): Plugin {
         visibleInManager: true,
         desktopTabEnabled: true,
       },
+      {
+        id: "clawville",
+        label: "ClawVille TUI",
+        description: "Terminal ClawVille game operator surface",
+        icon: "Gamepad2",
+        path: "/clawville/tui",
+        viewType: "tui",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "ClawvilleTuiView",
+        tags: ["game", "clawville", "terminal"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
     ],
   };
 }

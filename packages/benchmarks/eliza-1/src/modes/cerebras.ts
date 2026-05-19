@@ -26,6 +26,9 @@ import type {
 
 const CEREBRAS_ENDPOINT = "https://api.cerebras.ai/v1/chat/completions";
 const DEFAULT_MODEL = "llama3.1-8b";
+const DEFAULT_MAX_ATTEMPTS = 4;
+const DEFAULT_RETRY_BASE_MS = 4000;
+const DEFAULT_RETRY_MAX_MS = 30000;
 
 /**
  * Structural type for the Cerebras chat completions endpoint. We don't depend
@@ -293,21 +296,68 @@ function buildAttempts(args: {
 function createFetchClient(endpoint: string, apiKey: string): CerebrasClient {
   return {
     async chatCompletions(req) {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(req),
-      });
-      if (!res.ok) {
+      const maxAttempts = envInt("CEREBRAS_BENCH_MAX_ATTEMPTS", DEFAULT_MAX_ATTEMPTS);
+      const baseMs = envInt("CEREBRAS_BENCH_RETRY_BASE_MS", DEFAULT_RETRY_BASE_MS);
+      const maxMs = envInt("CEREBRAS_BENCH_RETRY_MAX_MS", DEFAULT_RETRY_MAX_MS);
+      let lastError: Error | null = null;
+      for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        const res = await fetch(endpoint, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify(req),
+        });
+        if (res.ok) {
+          return (await res.json()) as CerebrasResponse;
+        }
         const detail = await res.text().catch(() => "");
-        throw new Error(`cerebras ${res.status}: ${detail.slice(0, 240)}`);
+        lastError = new Error(`cerebras ${res.status}: ${detail.slice(0, 240)}`);
+        if (!isRetryableStatus(res.status) || attempt >= maxAttempts) {
+          throw lastError;
+        }
+        await sleep(retryDelayMs(res, attempt, baseMs, maxMs));
       }
-      return (await res.json()) as CerebrasResponse;
+      throw lastError ?? new Error("cerebras request failed");
     },
   };
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function retryDelayMs(
+  res: Response,
+  attempt: number,
+  baseMs: number,
+  maxMs: number,
+): number {
+  const retryAfter = res.headers.get("retry-after");
+  if (retryAfter) {
+    const asSeconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(asSeconds) && asSeconds > 0) {
+      return Math.min(Math.ceil(asSeconds * 1000), maxMs);
+    }
+    const asDate = Date.parse(retryAfter);
+    if (Number.isFinite(asDate)) {
+      return Math.min(Math.max(asDate - Date.now(), 0), maxMs);
+    }
+  }
+  const exponential = Math.min(baseMs * 2 ** (attempt - 1), maxMs);
+  return exponential + Math.floor(Math.random() * 250);
+}
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function buildJsonMessages(

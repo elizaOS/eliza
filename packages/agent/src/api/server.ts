@@ -281,6 +281,7 @@ import { handlePermissionsExtraRoutes } from "./permissions-routes-extra.ts";
 import { handleProviderSwitchRoutes } from "./provider-switch-routes.ts";
 import { handleRegistryRoutes } from "./registry-routes.ts";
 import { RegistryService } from "./registry-service.ts";
+import { handleRemoteCapabilityRoutes } from "./remote-capability-routes.ts";
 import { handleRelationshipsRoutes } from "./relationships-routes.ts";
 import {
   isPublicRuntimePluginRoute,
@@ -2095,6 +2096,24 @@ async function handleRequest(
         state.runtime?.plugins.map((plugin) => plugin.name) ?? [],
       getBundledPluginIds: () => getReleaseBundledPluginIds(),
       classifyRegistryPluginRelease,
+    })
+  ) {
+    return;
+  }
+
+  if (
+    await handleRemoteCapabilityRoutes({
+      req,
+      res,
+      method,
+      pathname,
+      runtime: state.runtime,
+      config: state.config,
+      readJsonBody,
+      saveConfig: (config) => saveElizaConfig(config as ElizaConfig),
+      persistConfigEnv,
+      json,
+      error,
     })
   ) {
     return;

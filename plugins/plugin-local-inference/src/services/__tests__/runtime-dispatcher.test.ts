@@ -9,15 +9,15 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { FfiStreamingRunner } from "../ffi-streaming-runner";
+import type {
+	LlmCtxHandle,
+	LlmStreamingBinding,
+} from "../llm-streaming-binding";
 import {
 	dispatchGenerate,
 	type HttpStreamingAdapter,
 	type InferenceStreamEvent,
 } from "../runtime-dispatcher";
-import type {
-	LlmCtxHandle,
-	LlmStreamingBinding,
-} from "../llm-streaming-binding";
 import type { LlmStreamHandle, LlmStreamStep } from "../voice/ffi-bindings";
 
 const FFI_STEPS: LlmStreamStep[] = [

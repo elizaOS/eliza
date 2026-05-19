@@ -45,7 +45,9 @@
     "format": "bunx @biomejs/biome format src",
     "format:fix": "bunx @biomejs/biome format --write src",
     "pack:dry-run": "cd dist && npm pack --dry-run",
-    "test": "vitest run --config vitest.config.ts"
+    "test": "vitest run --config vitest.config.ts",
+    "test:remote-capabilities": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts packages/agent/src/services/remote-capability-router.test.ts packages/agent/src/services/remote-capability-cloud-sandbox.test.ts packages/agent/src/api/remote-capability-routes.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/core/src/capabilities/index.test.ts --coverage.enabled=false",
+    "test:remote-capabilities:docker": "cd ../.. && ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE=1 bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts --coverage.enabled=false"
   },
   "exports": {
     ".": {
@@ -276,6 +278,7 @@
     "@elizaos/plugin-x402": "workspace:*",
     "@elizaos/shared": "workspace:*",
     "@elizaos/skills": "workspace:*",
+    "@elizaos/tui": "workspace:*",
     "@elizaos/vault": "workspace:*",
     "@noble/curves": "2.2.0",
     "@noble/hashes": "2.2.0",

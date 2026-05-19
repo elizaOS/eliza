@@ -120,6 +120,8 @@
     "test:client": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/app|packages/ui|plugins/plugin-lifeops|plugins/plugin-companion|plugins/plugin-training)\\)' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --no-cloud",
     "test:core": "node packages/scripts/with-test-runtime.mjs turbo run test --filter=./packages/core",
     "test:server": "bun run build:core && TEST_PACKAGE_FILTER='\\((packages/agent|packages/app-core|packages/shared|packages/core|packages/vault|packages/elizaos|packages/skills|packages/scenario-runner)\\)' TEST_SCRIPT_FILTER='^test$' node packages/scripts/run-all-tests.mjs --no-cloud",
+    "test:remote-capabilities": "bun run --cwd packages/agent test:remote-capabilities",
+    "test:remote-capabilities:docker": "bun run --cwd packages/agent test:remote-capabilities:docker",
     "browser-bridge:package:release": "cd packages/browser-bridge-extension && bun run package:release",
     "test:browser-bridge": "cd packages/browser-bridge-extension && bun run test:ci",
     "test:browser-bridge:safari": "cd packages/browser-bridge-extension && bun run test:smoke:safari",

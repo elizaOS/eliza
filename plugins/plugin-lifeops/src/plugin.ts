@@ -949,6 +949,19 @@ const rawAppLifeOpsPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "lifeops",
+      label: "LifeOps TUI",
+      description: "Terminal LifeOps routines, goals, inbox, calendar, and health",
+      icon: "LayoutDashboard",
+      path: "/lifeops/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "LifeOpsTuiView",
+      tags: ["lifeops", "productivity", "health", "calendar", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 

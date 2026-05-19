@@ -4,7 +4,9 @@
  * Mirrors plugins/plugin-edge-tts/build.ts.
  */
 
-const externalDeps = ["@elizaos/core"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build() {
   const totalStart = Date.now();
@@ -19,6 +21,7 @@ async function build() {
     sourcemap: "external",
     minify: false,
     external: [...externalDeps, "bun:ffi"],
+    // ^ bun:ffi is a runtime built-in, not a package; pass alongside deps.
     naming: { entry: "index.node.js" },
   });
   if (!nodeResult.success) {
@@ -38,7 +41,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: true,
-    external: [...externalDeps],
+    external: externalDeps,
     naming: { entry: "index.browser.js" },
   });
   if (!browserResult.success) {

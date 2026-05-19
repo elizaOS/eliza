@@ -1,6 +1,17 @@
 import type { OverlayAppContext } from "@elizaos/app-core";
-import { Button, PagePanel, Spinner } from "@elizaos/app-core";
+import { Button, client, PagePanel, Spinner } from "@elizaos/app-core";
 import { ArrowLeft, LockKeyhole, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import "./client";
+import type { PolymarketClient } from "./client";
+import type {
+  PolymarketDisabledResponse,
+  PolymarketMarket,
+  PolymarketMarketsResponse,
+  PolymarketOrderbookResponse,
+  PolymarketPositionsResponse,
+  PolymarketStatusResponse,
+} from "./polymarket-contracts";
 import { usePolymarketState } from "./usePolymarketState";
 
 export function PolymarketAppView({ exitToApps, t }: OverlayAppContext) {
@@ -220,4 +231,334 @@ function Metric({ label, value }: { label: string; value: string | null }) {
       </div>
     </div>
   );
+}
+
+async function loadPolymarketTuiState(user?: string): Promise<{
+  status: PolymarketStatusResponse;
+  markets: PolymarketMarketsResponse;
+  orders: PolymarketDisabledResponse;
+  positions: PolymarketPositionsResponse | null;
+}> {
+  const polymarketClient = client as PolymarketClient;
+  const [status, markets, orders] = await Promise.all([
+    polymarketClient.polymarketStatus(),
+    polymarketClient.polymarketMarkets({ limit: 25 }),
+    polymarketClient.polymarketOrders(),
+  ]);
+  const positions = user
+    ? await polymarketClient.polymarketPositions(user)
+    : null;
+  return { status, markets, orders, positions };
+}
+
+async function postPolymarketCommand(
+  path: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const response = await fetch(path, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      typeof data === "object" &&
+      data !== null &&
+      "error" in data &&
+      typeof data.error === "string"
+        ? data.error
+        : `Polymarket request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+export function PolymarketTuiView() {
+  const [state, setState] =
+    useState<Awaited<ReturnType<typeof loadPolymarketTuiState>> | null>(null);
+  const [selectedMarket, setSelectedMarket] = useState<PolymarketMarket | null>(
+    null,
+  );
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadPolymarketTuiState();
+      setState(next);
+      setSelectedMarket((current) => current ?? next.markets.markets[0] ?? null);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setSelectedMarket(null);
+      setError(
+        caught instanceof Error ? caught.message : "Polymarket refresh failed",
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const viewState = {
+    viewType: "tui",
+    viewId: "polymarket",
+    publicReadReady: state?.status.publicReads.ready ?? false,
+    tradingReady: state?.status.trading.ready ?? false,
+    marketCount: state?.markets.markets.length ?? 0,
+    selectedMarketId: selectedMarket?.id ?? null,
+    ordersEnabled: state?.orders.enabled ?? false,
+    positionCount: state?.positions?.positions.length ?? 0,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://polymarket --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : state?.status.publicReads.ready ? "read-ready" : "read-blocked"} |{" "}
+        {state?.markets.markets.length ?? 0} markets | trading{" "}
+        {state?.status.trading.ready ? "ready" : "disabled"} | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Polymarket markets"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>active markets</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {(state?.markets.markets ?? []).map((market, index) => (
+            <button
+              key={market.id}
+              type="button"
+              onClick={() => setSelectedMarket(market)}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "4ch minmax(0,1fr) 10ch",
+                gap: 10,
+                width: "100%",
+                border: "none",
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                background:
+                  selectedMarket?.id === market.id
+                    ? "rgba(125,211,252,0.08)"
+                    : "transparent",
+                color: "inherit",
+                padding: "9px 0",
+                textAlign: "left",
+                fontFamily: "inherit",
+                cursor: "pointer",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span style={{ color: "#e2e8f0", overflow: "hidden" }}>
+                {market.question ?? market.slug ?? market.id}
+              </span>
+              <span style={{ color: market.active ? "#a7f3d0" : "#94a3b8" }}>
+                {market.active ? "active" : "closed"}
+              </span>
+              <span style={{ gridColumn: "2 / 4", color: "#94a3b8" }}>
+                vol {market.volume ?? "n/a"} / liq {market.liquidity ?? "n/a"}
+              </span>
+            </button>
+          ))}
+        </section>
+
+        <section
+          aria-label="Polymarket market details"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>market detail</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | market | orderbook | positions | trading-check
+          </div>
+          {selectedMarket ? (
+            <>
+              <div style={{ color: "#e2e8f0", marginBottom: 8 }}>
+                {selectedMarket.question ?? selectedMarket.slug}
+              </div>
+              <div style={{ color: "#94a3b8", marginBottom: 12 }}>
+                {selectedMarket.description ?? selectedMarket.category ?? "No description"}
+              </div>
+              <div style={{ color: "#a7f3d0", marginBottom: 8 }}>outcomes</div>
+              {selectedMarket.outcomes.map((outcome) => (
+                <div
+                  key={outcome.name}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    borderTop: "1px solid rgba(125,211,252,0.14)",
+                    padding: "7px 0",
+                  }}
+                >
+                  <span>{outcome.name}</span>
+                  <span style={{ color: "#94a3b8" }}>{outcome.price ?? "n/a"}</span>
+                </div>
+              ))}
+              <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+                orderbook tokens
+              </div>
+              {selectedMarket.clobTokenIds.length ? (
+                selectedMarket.clobTokenIds.map((tokenId) => (
+                  <div key={tokenId} style={{ color: "#94a3b8" }}>
+                    {tokenId}
+                  </div>
+                ))
+              ) : (
+                <div style={{ color: "#64748b" }}>no CLOB token ids</div>
+              )}
+            </>
+          ) : (
+            <div style={{ color: "#64748b" }}>no market selected</div>
+          )}
+          {state?.orders.reason && (
+            <div style={{ color: "#fca5a5", marginTop: 18 }}>
+              {state.orders.reason}
+            </div>
+          )}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-polymarket-state") {
+    const user = typeof params?.user === "string" ? params.user.trim() : "";
+    const state = await loadPolymarketTuiState(user || undefined);
+    return {
+      viewType: "tui",
+      status: state.status,
+      markets: state.markets.markets.slice(
+        0,
+        typeof params?.limit === "number" ? params.limit : 25,
+      ),
+      orders: state.orders,
+      positions: state.positions,
+    };
+  }
+
+  if (capability === "terminal-polymarket-market") {
+    const id = typeof params?.id === "string" ? params.id.trim() : "";
+    const slug = typeof params?.slug === "string" ? params.slug.trim() : "";
+    const polymarketClient = client as PolymarketClient;
+    if (id) {
+      return {
+        viewType: "tui",
+        ...(await polymarketClient.polymarketMarketById(id)),
+      };
+    }
+    if (slug) {
+      return {
+        viewType: "tui",
+        ...(await polymarketClient.polymarketMarketBySlug(slug)),
+      };
+    }
+    throw new Error("id or slug is required");
+  }
+
+  if (capability === "terminal-polymarket-orderbook") {
+    const tokenId =
+      typeof params?.tokenId === "string" ? params.tokenId.trim() : "";
+    if (!tokenId) throw new Error("tokenId is required");
+    const orderbook: PolymarketOrderbookResponse = await (
+      client as PolymarketClient
+    ).polymarketOrderbook(tokenId);
+    return { viewType: "tui", orderbook };
+  }
+
+  if (capability === "terminal-polymarket-positions") {
+    const user = typeof params?.user === "string" ? params.user.trim() : "";
+    if (!user) throw new Error("user is required");
+    return {
+      viewType: "tui",
+      positions: await (client as PolymarketClient).polymarketPositions(user),
+    };
+  }
+
+  if (capability === "terminal-polymarket-trading-check") {
+    return {
+      viewType: "tui",
+      result: await postPolymarketCommand("/api/polymarket/orders", {
+        marketId: typeof params?.marketId === "string" ? params.marketId : "",
+        side: typeof params?.side === "string" ? params.side : "buy",
+        outcome: typeof params?.outcome === "string" ? params.outcome : "",
+        size:
+          typeof params?.size === "number" || typeof params?.size === "string"
+            ? params.size
+            : 0,
+      }),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

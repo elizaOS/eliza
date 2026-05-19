@@ -100,13 +100,33 @@ export default defineConfig({
         find: /^@elizaos\/agent\/(.+)$/,
         replacement: path.join(agentSrc, "$1"),
       },
+      {
+        find: /^@elizaos\/ui$/,
+        replacement: path.join(repoRoot, "packages/ui/src/index.ts"),
+      },
+      {
+        find: /^react$/,
+        replacement: path.join(repoRoot, "node_modules/react"),
+      },
+      {
+        find: /^react\/jsx-runtime$/,
+        replacement: path.join(repoRoot, "node_modules/react/jsx-runtime.js"),
+      },
+      {
+        find: /^react-dom$/,
+        replacement: path.join(repoRoot, "node_modules/react-dom"),
+      },
+      {
+        find: /^react-dom\/client$/,
+        replacement: path.join(repoRoot, "node_modules/react-dom/client.js"),
+      },
       ...baseAliases,
     ],
   },
   test: {
     ...baseConfig.test,
     environment: "node",
-    include: ["test/**/*.test.ts", "src/**/*.test.ts"],
+    include: ["test/**/*.test.ts", "src/**/*.test.ts", "src/**/*.test.tsx"],
     exclude: unitExcludes,
     globals: false,
     passWithNoTests: true,

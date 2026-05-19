@@ -983,8 +983,16 @@ def _env_solana(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, s
 
 
 def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    osworld_python = str(
+        ctx.request.extra_config.get("osworld_python")
+        or os.environ.get("OSWORLD_PYTHON")
+        or ""
+    ).strip()
+    if not osworld_python:
+        conda_python = Path("/opt/miniconda3/bin/python3")
+        osworld_python = str(conda_python) if conda_python.exists() else sys.executable
     args = [
-        sys.executable,
+        osworld_python,
         "scripts/python/run_multienv_eliza.py",
         "--result_dir",
         str(ctx.output_root),
@@ -2089,7 +2097,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {
+            "agent_max_turns": 6,
+            "domain": "retail",
             "max_tasks": 1,
+            "num_trials": 1,
+            "pass_k_values": [1],
             "sample": True,
         },
         "terminal_bench": {
@@ -2100,6 +2112,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,
+        },
+        "vending_bench": {
+            "max_tasks": 1,
         },
         "visualwebbench": {
             "max_tasks": 1,

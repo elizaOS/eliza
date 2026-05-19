@@ -7,10 +7,12 @@
  * @module api/view-registry-types
  */
 
-import type { ViewDeclaration } from "@elizaos/core";
+import type { ViewDeclaration, ViewType } from "@elizaos/core";
 import type { AgentPlatform } from "./platform-detect.ts";
 
 export interface ViewRegistryEntry extends ViewDeclaration {
+  /** Concrete presentation type after applying the default (`gui`). */
+  viewType: ViewType;
   /** Owning plugin name. */
   pluginName: string;
   /** Absolute path to the plugin's package root, if resolvable. */

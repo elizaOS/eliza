@@ -124,5 +124,18 @@ export const shopifyPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "shopify",
+      label: "Shopify TUI",
+      description: "Terminal Shopify orders, products, customers, and inventory",
+      icon: "ShoppingBag",
+      path: "/shopify/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ShopifyTuiView",
+      tags: ["shopify", "ecommerce", "store", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };

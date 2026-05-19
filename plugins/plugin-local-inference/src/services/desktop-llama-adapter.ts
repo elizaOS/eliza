@@ -766,7 +766,7 @@ export class DesktopLlamaAdapter {
 	}
 
 	private prefillSession(stream: LlmStreamHandle, tokens: Int32Array): void {
-		const sess = this.requireSession(stream);
+		const _sess = this.requireSession(stream);
 		if (!this.ctxPtr) throw new Error("[desktop-llama] ctx gone mid-prefill");
 		// Copy into a session-owned buffer so the FFI batch ptr stays valid
 		// for the lifetime of `eliza_llama_decode`.

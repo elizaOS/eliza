@@ -55,6 +55,7 @@ const ShaderBackground = lazy(
   () => import("@/components/ShaderBackground/ShaderBackground"),
 );
 const VideoCall = lazy(() => import("@/components/VideoCall"));
+
 import { buildElizaSmsHref } from "@/lib/contact";
 import type { SpringAnimatedStyle } from "@/lib/spring-types";
 

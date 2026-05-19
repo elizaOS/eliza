@@ -13,6 +13,7 @@
 
 import type { OverlayAppContext } from "@elizaos/ui";
 import { Button, PagePanel, Spinner, useApp } from "@elizaos/ui";
+import type { WalletAddresses, WalletBalancesResponse } from "@elizaos/shared";
 import {
   ArrowLeft,
   RefreshCw,
@@ -20,9 +21,17 @@ import {
   TrendingUp,
   Wallet,
 } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
 import { TradingProfileCard } from "./TradingProfileCard";
 import { TradingStrategyPanel } from "./TradingStrategyPanel";
 import { useVincentDashboard } from "./useVincentDashboard";
+import { vincentClient } from "./client";
+import type {
+  VincentStatusResponse,
+  VincentStrategyResponse,
+  VincentStrategyUpdateRequest,
+  VincentTradingProfileResponse,
+} from "./vincent-contracts";
 import { VincentConnectionCard } from "./VincentConnectionCard";
 import { WalletStatusCard } from "./WalletStatusCard";
 
@@ -182,4 +191,266 @@ export function VincentAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
     </div>
   );
+}
+
+async function loadVincentTuiState(): Promise<{
+  status: VincentStatusResponse;
+  walletAddresses: WalletAddresses | null;
+  walletBalances: WalletBalancesResponse | null;
+  strategy: VincentStrategyResponse;
+  tradingProfile: VincentTradingProfileResponse;
+}> {
+  const status = await vincentClient.vincentStatus();
+  const [walletAddresses, walletBalances, strategy, tradingProfile] =
+    await Promise.allSettled([
+      vincentClient.getWalletAddresses(),
+      vincentClient.getWalletBalances(),
+      vincentClient.vincentStrategy(),
+      vincentClient.vincentTradingProfile(),
+    ]);
+
+  return {
+    status,
+    walletAddresses:
+      walletAddresses.status === "fulfilled" ? walletAddresses.value : null,
+    walletBalances:
+      walletBalances.status === "fulfilled" ? walletBalances.value : null,
+    strategy:
+      strategy.status === "fulfilled"
+        ? strategy.value
+        : { connected: status.connected, strategy: null },
+    tradingProfile:
+      tradingProfile.status === "fulfilled"
+        ? tradingProfile.value
+        : { connected: status.connected, profile: null },
+  };
+}
+
+export function VincentTuiView() {
+  const [state, setState] =
+    useState<Awaited<ReturnType<typeof loadVincentTuiState>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadVincentTuiState();
+      setState(next);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setError(caught instanceof Error ? caught.message : "Vincent refresh failed");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const strategy = state?.strategy.strategy ?? null;
+  const profile = state?.tradingProfile.profile ?? null;
+  const walletAddresses = state?.walletAddresses as
+    | (WalletAddresses & Record<string, unknown>)
+    | null
+    | undefined;
+  const viewState = {
+    viewType: "tui",
+    viewId: "vincent",
+    connected: state?.status.connected ?? false,
+    connectedAt: state?.status.connectedAt ?? null,
+    venues: state?.status.tradingVenues ?? [],
+    evmAddress:
+      typeof walletAddresses?.evm === "string" ? walletAddresses.evm : null,
+    solanaAddress:
+      typeof walletAddresses?.solana === "string"
+        ? walletAddresses.solana
+        : null,
+    strategyName: strategy?.name ?? null,
+    strategyRunning: strategy?.running ?? false,
+    dryRun: strategy?.dryRun ?? null,
+    totalPnl: profile?.totalPnl ?? null,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://vincent --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : state?.status.connected ? "connected" : "disconnected"} |{" "}
+        {(state?.status.tradingVenues ?? []).join(",") || "no venues"} | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Vincent access"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>access</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          <div>
+            <span style={{ color: "#64748b" }}>connected</span>{" "}
+            {state?.status.connected ? "yes" : "no"}
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>connectedAt</span>{" "}
+            {state?.status.connectedAt ?? "n/a"}
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>venues</span>{" "}
+            {(state?.status.tradingVenues ?? []).join(", ") || "n/a"}
+          </div>
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>wallet</div>
+          <div>evm {viewState.evmAddress ?? "n/a"}</div>
+          <div>solana {viewState.solanaAddress ?? "n/a"}</div>
+          {!state?.status.connected && !loading ? (
+            <div style={{ color: "#94a3b8", marginTop: 18 }}>
+              Use terminal-vincent-start-login to begin OAuth.
+            </div>
+          ) : null}
+        </section>
+
+        <section
+          aria-label="Vincent trading"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>strategy</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | start-login | disconnect | update-strategy
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>name</span>{" "}
+            {strategy?.name ?? "not configured"}
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>interval</span>{" "}
+            {strategy?.intervalSeconds ?? "n/a"}
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>dryRun</span>{" "}
+            {typeof strategy?.dryRun === "boolean" ? String(strategy.dryRun) : "n/a"}
+          </div>
+          <div>
+            <span style={{ color: "#64748b" }}>running</span>{" "}
+            {typeof strategy?.running === "boolean" ? String(strategy.running) : "n/a"}
+          </div>
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>profile</div>
+          <div>pnl {profile?.totalPnl ?? "n/a"}</div>
+          <div>winRate {profile?.winRate ?? "n/a"}</div>
+          <div>swaps {profile?.totalSwaps ?? "n/a"}</div>
+          {(profile?.tokenBreakdown ?? []).map((token) => (
+            <div key={token.symbol} style={{ color: "#94a3b8", padding: "4px 0" }}>
+              {token.symbol} pnl {token.pnl} swaps {token.swaps}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-vincent-state") {
+    return { viewType: "tui", ...(await loadVincentTuiState()) };
+  }
+
+  if (capability === "terminal-vincent-start-login") {
+    return {
+      viewType: "tui",
+      login: await vincentClient.vincentStartLogin(
+        typeof params?.appName === "string" ? params.appName : "Eliza",
+      ),
+    };
+  }
+
+  if (capability === "terminal-vincent-disconnect") {
+    return {
+      viewType: "tui",
+      disconnected: await vincentClient.vincentDisconnect(),
+    };
+  }
+
+  if (capability === "terminal-vincent-update-strategy") {
+    const request: VincentStrategyUpdateRequest = {};
+    if (typeof params?.strategy === "string") {
+      request.strategy = params.strategy as VincentStrategyUpdateRequest["strategy"];
+    }
+    if (params?.params && typeof params.params === "object") {
+      request.params = params.params as Record<string, unknown>;
+    }
+    if (typeof params?.intervalSeconds === "number") {
+      request.intervalSeconds = params.intervalSeconds;
+    }
+    if (typeof params?.dryRun === "boolean") {
+      request.dryRun = params.dryRun;
+    }
+    return {
+      viewType: "tui",
+      update: await vincentClient.vincentUpdateStrategy(request),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

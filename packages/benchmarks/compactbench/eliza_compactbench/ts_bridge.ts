@@ -56,6 +56,9 @@ type CompactorMessage = {
 const CEREBRAS_BASE_URL =
   process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
 const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
+const CEREBRAS_MAX_ATTEMPTS = envInt("CEREBRAS_BENCH_MAX_ATTEMPTS", 4);
+const CEREBRAS_RETRY_BASE_MS = envInt("CEREBRAS_BENCH_RETRY_BASE_MS", 4000);
+const CEREBRAS_RETRY_MAX_MS = envInt("CEREBRAS_BENCH_RETRY_MAX_MS", 30000);
 
 async function cerebrasChat(params: {
   systemPrompt: string;
@@ -101,19 +104,30 @@ async function cerebrasChat(params: {
     reasoning_effort: process.env.CEREBRAS_REASONING_EFFORT ?? "low",
   };
 
-  const res = await fetch(`${CEREBRAS_BASE_URL}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-  });
+  let res: Response | null = null;
+  let errorText = "";
+  for (let attempt = 1; attempt <= CEREBRAS_MAX_ATTEMPTS; attempt += 1) {
+    res = await fetch(`${CEREBRAS_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) break;
+    errorText = await res.text();
+    if (!isRetryableStatus(res.status) || attempt >= CEREBRAS_MAX_ATTEMPTS) {
+      throw new Error(
+        `Cerebras chat completion failed (${res.status} ${res.statusText}): ${errorText}`,
+      );
+    }
+    await sleep(retryDelayMs(res, attempt));
+  }
 
-  if (!res.ok) {
-    const text = await res.text();
+  if (!res?.ok) {
     throw new Error(
-      `Cerebras chat completion failed (${res.status} ${res.statusText}): ${text}`,
+      `Cerebras chat completion failed (${res?.status ?? "unknown"} ${res?.statusText ?? ""}): ${errorText}`,
     );
   }
 
@@ -135,6 +149,40 @@ async function cerebrasChat(params: {
     );
   }
   return text;
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function retryDelayMs(res: Response, attempt: number): number {
+  const retryAfter = res.headers.get("retry-after");
+  if (retryAfter) {
+    const asSeconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(asSeconds) && asSeconds > 0) {
+      return Math.min(Math.ceil(asSeconds * 1000), CEREBRAS_RETRY_MAX_MS);
+    }
+    const asDate = Date.parse(retryAfter);
+    if (Number.isFinite(asDate)) {
+      return Math.min(Math.max(asDate - Date.now(), 0), CEREBRAS_RETRY_MAX_MS);
+    }
+  }
+  const exponential = Math.min(
+    CEREBRAS_RETRY_BASE_MS * 2 ** (attempt - 1),
+    CEREBRAS_RETRY_MAX_MS,
+  );
+  return exponential + Math.floor(Math.random() * 250);
+}
+
+function envInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 // ---------------------------------------------------------------------------

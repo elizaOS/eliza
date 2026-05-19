@@ -6,6 +6,11 @@
 import { existsSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import { $ } from "bun";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  extra: ["node:*"],
+});
 
 async function cleanBuild(outdir = "dist") {
   if (existsSync(outdir)) {
@@ -39,7 +44,7 @@ async function build() {
             format: "esm",
             sourcemap: "linked",
             minify: false,
-            external: ["node:*", "@elizaos/core", "puppeteer-core"],
+            external: externalDeps,
             naming: {
               entry: "[dir]/[name].[ext]",
             },

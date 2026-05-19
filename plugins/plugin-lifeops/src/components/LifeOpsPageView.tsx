@@ -76,6 +76,77 @@ type TranslateFn = (
   options?: Record<string, unknown> & { defaultValue?: string },
 ) => string;
 
+type LifeOpsTuiOccurrence = {
+  id: string;
+  title?: string;
+  state?: string;
+  dueAt?: string | null;
+  scheduledAt?: string | null;
+  definitionKind?: string;
+  priority?: number;
+};
+
+type LifeOpsTuiOverview = {
+  summary?: {
+    activeOccurrenceCount?: number;
+    overdueOccurrenceCount?: number;
+    snoozedOccurrenceCount?: number;
+    activeReminderCount?: number;
+    activeGoalCount?: number;
+  };
+  occurrences?: LifeOpsTuiOccurrence[];
+  owner?: {
+    occurrences?: LifeOpsTuiOccurrence[];
+    goals?: Array<{ id: string; title?: string; status?: string }>;
+    reminders?: Array<{ id: string; title?: string }>;
+  };
+  agentOps?: {
+    occurrences?: LifeOpsTuiOccurrence[];
+    goals?: Array<{ id: string; title?: string; status?: string }>;
+    reminders?: Array<{ id: string; title?: string }>;
+  };
+};
+
+type LifeOpsTuiDefinitionRecord = {
+  definition?: {
+    id: string;
+    title?: string;
+    kind?: string;
+    status?: string;
+    priority?: number;
+  };
+};
+
+const lifeOpsClient = client as typeof client & {
+  getLifeOpsAppState?: () => Promise<{ enabled: boolean }>;
+  updateLifeOpsAppState?: (data: { enabled: boolean }) => Promise<{ enabled: boolean }>;
+  getLifeOpsOverview?: () => Promise<LifeOpsTuiOverview>;
+  listLifeOpsDefinitions?: () => Promise<{ definitions: LifeOpsTuiDefinitionRecord[] }>;
+  completeLifeOpsOccurrence?: (
+    occurrenceId: string,
+    data?: Record<string, unknown>,
+  ) => Promise<unknown>;
+  skipLifeOpsOccurrence?: (occurrenceId: string) => Promise<unknown>;
+  snoozeLifeOpsOccurrence?: (
+    occurrenceId: string,
+    data: { minutes?: number; until?: string },
+  ) => Promise<unknown>;
+};
+
+async function loadLifeOpsTuiState() {
+  const [appState, overview, definitions] = await Promise.all([
+    lifeOpsClient.getLifeOpsAppState?.().catch(() => null) ?? Promise.resolve(null),
+    lifeOpsClient.getLifeOpsOverview?.().catch(() => null) ?? Promise.resolve(null),
+    lifeOpsClient.listLifeOpsDefinitions?.().catch(() => null) ??
+      Promise.resolve(null),
+  ]);
+  return {
+    appState,
+    overview,
+    definitions: definitions?.definitions ?? [],
+  };
+}
+
 const LIFEOPS_COMPACT_LAYOUT_MEDIA_QUERY = "(max-width: 1023px)";
 
 function buildOwnerGithubRedirectUrl(): string {
@@ -438,6 +509,345 @@ export function LifeOpsPageView() {
       <LifeOpsWorkspaceInner />
     </LifeOpsSelectionProvider>
   );
+}
+
+export function LifeOpsTuiView() {
+  const [lifeOpsState, setLifeOpsState] =
+    useState<Awaited<ReturnType<typeof loadLifeOpsTuiState>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadLifeOpsTuiState();
+      setLifeOpsState(next);
+      setLastAction("refresh");
+    } catch (cause) {
+      setLifeOpsState(null);
+      setError(cause instanceof Error ? cause.message : String(cause));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const updateEnabled = useCallback(
+    async (enabled: boolean) => {
+      if (!lifeOpsClient.updateLifeOpsAppState) return;
+      setSaving(true);
+      setError(null);
+      try {
+        await lifeOpsClient.updateLifeOpsAppState({ enabled });
+        setLastAction(enabled ? "enabled" : "paused");
+        await refresh();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [refresh],
+  );
+
+  const completeOccurrence = useCallback(
+    async (occurrenceId: string) => {
+      if (!lifeOpsClient.completeLifeOpsOccurrence) return;
+      setSaving(true);
+      setError(null);
+      try {
+        await lifeOpsClient.completeLifeOpsOccurrence(occurrenceId, {});
+        setLastAction(`completed ${occurrenceId}`);
+        await refresh();
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : String(cause));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [refresh],
+  );
+
+  const overview = lifeOpsState?.overview ?? null;
+  const occurrences = overview?.occurrences ?? overview?.owner?.occurrences ?? [];
+  const definitions = lifeOpsState?.definitions ?? [];
+  const state = {
+    viewType: "tui",
+    viewId: "lifeops",
+    enabled: lifeOpsState?.appState?.enabled ?? false,
+    occurrenceCount: occurrences.length,
+    activeOccurrenceCount: overview?.summary?.activeOccurrenceCount ?? 0,
+    overdueOccurrenceCount: overview?.summary?.overdueOccurrenceCount ?? 0,
+    activeReminderCount: overview?.summary?.activeReminderCount ?? 0,
+    activeGoalCount: overview?.summary?.activeGoalCount ?? 0,
+    definitionCount: definitions.length,
+    loading,
+    saving,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(state)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://lifeops --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : state.enabled ? "enabled" : "paused"} |{" "}
+        {state.activeOccurrenceCount} active | {state.overdueOccurrenceCount} overdue |{" "}
+        {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(300px, 1fr) minmax(300px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="LifeOps scheduled tasks"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 8,
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>scheduled tasks</strong>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => void updateEnabled(!state.enabled)}
+                disabled={saving}
+                style={{
+                  background: "transparent",
+                  color: state.enabled ? "#fca5a5" : "#a7f3d0",
+                  border: "1px solid rgba(125,211,252,0.35)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                {state.enabled ? "pause" : "enable"}
+              </button>
+              <button
+                type="button"
+                onClick={() => void refresh()}
+                disabled={loading}
+                style={{
+                  background: "transparent",
+                  color: "#a7f3d0",
+                  border: "1px solid rgba(167,243,208,0.45)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  cursor: loading ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                refresh
+              </button>
+            </div>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          {!loading && !error && occurrences.length === 0 && (
+            <div style={{ color: "#64748b" }}>no active occurrences</div>
+          )}
+          {occurrences.slice(0, 14).map((occurrence, index) => (
+            <div
+              key={occurrence.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "4ch minmax(8ch, 1fr) 9ch",
+                gap: 10,
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                padding: "8px 0",
+              }}
+            >
+              <span style={{ color: "#64748b" }}>
+                {String(index + 1).padStart(2, "0")}
+              </span>
+              <span style={{ color: "#e2e8f0" }}>{occurrence.title ?? occurrence.id}</span>
+              <span
+                style={{
+                  color: occurrence.state === "overdue" ? "#fca5a5" : "#94a3b8",
+                }}
+              >
+                {occurrence.state ?? "active"}
+              </span>
+              <span style={{ gridColumn: "2 / 3", color: "#94a3b8" }}>
+                {occurrence.definitionKind ?? "task"} | due{" "}
+                {occurrence.dueAt ?? occurrence.scheduledAt ?? "unscheduled"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void completeOccurrence(occurrence.id)}
+                disabled={saving}
+                style={{
+                  gridColumn: "3",
+                  background: "transparent",
+                  color: "#7dd3fc",
+                  border: "1px solid rgba(125,211,252,0.45)",
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  cursor: saving ? "not-allowed" : "pointer",
+                  fontFamily: "inherit",
+                }}
+              >
+                complete
+              </button>
+            </div>
+          ))}
+        </section>
+
+        <section
+          aria-label="LifeOps definitions and goals"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>definitions</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | enable | complete | skip | snooze
+          </div>
+          {definitions.slice(0, 10).map((record, index) => (
+            <div
+              key={record.definition?.id ?? String(index)}
+              style={{
+                borderTop:
+                  index === 0 ? "none" : "1px solid rgba(125,211,252,0.18)",
+                padding: "8px 0",
+              }}
+            >
+              <span style={{ color: "#a7f3d0" }}>
+                {record.definition?.title ?? record.definition?.id ?? "definition"}
+              </span>{" "}
+              <span style={{ color: "#94a3b8" }}>
+                {record.definition?.kind ?? "task"} / {record.definition?.status ?? "unknown"}
+              </span>
+            </div>
+          ))}
+
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>goals</div>
+          {(overview?.owner?.goals ?? overview?.goals ?? []).slice(0, 8).map((goal) => (
+            <div key={goal.id} style={{ padding: "4px 0" }}>
+              {goal.title ?? goal.id}{" "}
+              <span style={{ color: "#94a3b8" }}>{goal.status ?? ""}</span>
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-lifeops-state") {
+    const state = await loadLifeOpsTuiState();
+    const overview = state.overview;
+    const occurrences = overview?.occurrences ?? overview?.owner?.occurrences ?? [];
+    return {
+      viewType: "tui",
+      appState: state.appState,
+      summary: overview?.summary ?? null,
+      definitions: state.definitions.slice(
+        0,
+        typeof params?.limit === "number" ? params.limit : 20,
+      ),
+      occurrences: occurrences.slice(
+        0,
+        typeof params?.limit === "number" ? params.limit : 20,
+      ),
+    };
+  }
+
+  if (capability === "terminal-lifeops-enable") {
+    const enabled = params?.enabled !== false;
+    if (!lifeOpsClient.updateLifeOpsAppState) {
+      throw new Error("LifeOps app-state client is unavailable");
+    }
+    return {
+      viewType: "tui",
+      appState: await lifeOpsClient.updateLifeOpsAppState({ enabled }),
+    };
+  }
+
+  if (capability === "terminal-lifeops-complete") {
+    const occurrenceId =
+      typeof params?.occurrenceId === "string" ? params.occurrenceId.trim() : "";
+    if (!occurrenceId) throw new Error("occurrenceId is required");
+    if (!lifeOpsClient.completeLifeOpsOccurrence) {
+      throw new Error("LifeOps occurrence client is unavailable");
+    }
+    return {
+      viewType: "tui",
+      result: await lifeOpsClient.completeLifeOpsOccurrence(occurrenceId, {}),
+    };
+  }
+
+  if (capability === "terminal-lifeops-skip") {
+    const occurrenceId =
+      typeof params?.occurrenceId === "string" ? params.occurrenceId.trim() : "";
+    if (!occurrenceId) throw new Error("occurrenceId is required");
+    if (!lifeOpsClient.skipLifeOpsOccurrence) {
+      throw new Error("LifeOps occurrence client is unavailable");
+    }
+    return {
+      viewType: "tui",
+      result: await lifeOpsClient.skipLifeOpsOccurrence(occurrenceId),
+    };
+  }
+
+  if (capability === "terminal-lifeops-snooze") {
+    const occurrenceId =
+      typeof params?.occurrenceId === "string" ? params.occurrenceId.trim() : "";
+    if (!occurrenceId) throw new Error("occurrenceId is required");
+    if (!lifeOpsClient.snoozeLifeOpsOccurrence) {
+      throw new Error("LifeOps occurrence client is unavailable");
+    }
+    const minutes = typeof params?.minutes === "number" ? params.minutes : 30;
+    return {
+      viewType: "tui",
+      result: await lifeOpsClient.snoozeLifeOpsOccurrence(occurrenceId, {
+        minutes,
+      }),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }
 
 function LifeOpsWorkspaceInner() {

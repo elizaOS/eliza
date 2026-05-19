@@ -3,6 +3,7 @@
 import * as clack from "@clack/prompts";
 import { Command } from "commander";
 import {
+  capabilityRouterConnect,
   create,
   deploy,
   info,
@@ -102,6 +103,48 @@ program
   .action(deploy);
 
 registerPluginsCommand(program);
+
+const capabilityRouter = program
+  .command("capability-router")
+  .description("Manage dynamic capability-router endpoints");
+
+capabilityRouter
+  .command("connect")
+  .description(
+    "Connect the running agent to a remote capability-router endpoint or Cloud sandbox",
+  )
+  .option("--api-base <url>", "Agent API base URL")
+  .option("--api-token <token>", "Agent API bearer token")
+  .option("--endpoint-url <url>", "Existing capability-router endpoint URL")
+  .option("--endpoint-id <id>", "Endpoint id to register")
+  .option("--endpoint-token <token>", "Bearer token for the endpoint")
+  .option("--cloud-api-base <url>", "Eliza Cloud API base URL")
+  .option("--cloud-auth-token <token>", "Eliza Cloud bearer token")
+  .option("--cloud-agent-name <name>", "Name for the provisioned Cloud agent")
+  .option("--cloud-bio <line...>", "Bio lines for the provisioned Cloud agent")
+  .option(
+    "--cloud-endpoint-token <token>",
+    "Override token used to call the provisioned endpoint",
+  )
+  .option(
+    "--keep-missing",
+    "Keep previously synced remote plugins missing from the endpoint",
+  )
+  .option("--no-persist", "Connect for this running agent only")
+  .option(
+    "--request-timeout-ms <ms>",
+    "Capability request timeout in milliseconds",
+  )
+  .option(
+    "--provision-timeout-ms <ms>",
+    "Cloud provisioning timeout in milliseconds",
+  )
+  .option(
+    "--poll-interval-ms <ms>",
+    "Cloud provisioning poll interval in milliseconds",
+  )
+  .option("-j, --json", "Output JSON")
+  .action(capabilityRouterConnect);
 
 program.action(defaultAction);
 

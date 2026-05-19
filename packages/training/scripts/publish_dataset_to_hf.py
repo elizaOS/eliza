@@ -31,11 +31,15 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import logging
 import os
+import re
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parent.parent
 DATA = ROOT / "data"
@@ -54,6 +58,8 @@ logging.basicConfig(
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 log = logging.getLogger("publish_dataset")
+
+REMOVED_TIER_RE = re.compile(r"27b[-_ ]?1m", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
@@ -98,11 +104,11 @@ def _spec_training_from_dir(source_dir: Path | None = None) -> DatasetSpec:
         manifest_src = final / "manifest.json"
     if not manifest_src.exists():
         manifest_src = final / "manifest_final.json"
-    files = (
-        train_src,
-        val_src,
-        final / "test.jsonl",
-        manifest_src,
+    files = _hf_loadable_training_files(
+        train_src=train_src,
+        val_src=val_src,
+        test_src=final / "test.jsonl",
+        manifest_src=manifest_src,
     )
     path_in_repo = {
         files[0]: "train.jsonl",
@@ -110,6 +116,10 @@ def _spec_training_from_dir(source_dir: Path | None = None) -> DatasetSpec:
         files[2]: "test.jsonl",
         files[3]: "manifest.json",
     }
+    if len(files) >= 7:
+        path_in_repo[files[4]] = "data/train-00000-of-00001.parquet"
+        path_in_repo[files[5]] = "data/validation-00000-of-00001.parquet"
+        path_in_repo[files[6]] = "data/test-00000-of-00001.parquet"
     return DatasetSpec(
         name="training",
         files=files,
@@ -120,6 +130,145 @@ def _spec_training_from_dir(source_dir: Path | None = None) -> DatasetSpec:
 
 def _spec_training() -> DatasetSpec:
     return _spec_training_from_dir()
+
+
+def _iter_jsonl(path: Path):
+    with path.open(encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                yield json.loads(line)
+
+
+def _first_jsonl_record(path: Path) -> dict[str, Any] | None:
+    try:
+        return next(_iter_jsonl(path))
+    except StopIteration:
+        return None
+
+
+def _json_dumps(value: Any) -> str:
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _assistant_text(response: Any) -> str:
+    if isinstance(response, dict):
+        text = response.get("text")
+        if isinstance(text, str):
+            return text
+        content = response.get("content")
+        if isinstance(content, str):
+            return content
+    if isinstance(response, str):
+        return response
+    return ""
+
+
+def _tool_calls(response: Any) -> list[Any]:
+    if not isinstance(response, dict):
+        return []
+    value = response.get("toolCalls")
+    if isinstance(value, list):
+        return value
+    value = response.get("tool_calls")
+    return value if isinstance(value, list) else []
+
+
+def _messages(request: Any) -> list[Any]:
+    if not isinstance(request, dict):
+        return []
+    value = request.get("messages")
+    return value if isinstance(value, list) else []
+
+
+def _hf_training_row(record: dict[str, Any]) -> dict[str, Any]:
+    request = record.get("request") if isinstance(record.get("request"), dict) else {}
+    response = record.get("response") if isinstance(record.get("response"), dict) else {}
+    metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+    tool_calls = _tool_calls(response)
+    return {
+        "schema": "eliza.eliza1_hf_training_row.v1",
+        "format": str(record.get("format") or ""),
+        "boundary": str(record.get("boundary") or ""),
+        "messages_json": _json_dumps(_messages(request)),
+        "request_json": _json_dumps(request),
+        "response_json": _json_dumps(response),
+        "metadata_json": _json_dumps(metadata),
+        "native_json": _json_dumps(record),
+        "assistant_text": _assistant_text(response),
+        "assistant_tool_calls_json": _json_dumps(tool_calls),
+        "has_tool_call": bool(tool_calls),
+    }
+
+
+def _needs_hf_jsonl_export(paths: tuple[Path, Path, Path]) -> bool:
+    for path in paths:
+        first = _first_jsonl_record(path)
+        if first is None:
+            continue
+        if first.get("format") == "eliza_native_v1" and isinstance(first.get("request"), dict):
+            return True
+    return False
+
+
+def _hf_export_root(paths: tuple[Path, Path, Path], manifest_src: Path) -> Path:
+    digest = hashlib.sha256()
+    for path in (*paths, manifest_src):
+        digest.update(str(path.resolve()).encode("utf-8"))
+        if path.exists():
+            digest.update(str(path.stat().st_mtime_ns).encode("ascii"))
+            digest.update(str(path.stat().st_size).encode("ascii"))
+    return Path(tempfile.gettempdir()) / "eliza1-hf-training-export" / digest.hexdigest()[:16]
+
+
+def _write_hf_jsonl_export(src: Path, dst: Path) -> None:
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    with src.open(encoding="utf-8") as inp, dst.open("w", encoding="utf-8") as out:
+        for line in inp:
+            line = line.strip()
+            if not line:
+                continue
+            row = _hf_training_row(json.loads(line))
+            out.write(_json_dumps(row) + "\n")
+
+
+def _write_hf_parquet_export(src: Path, dst: Path) -> None:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    rows = [_hf_training_row(record) for record in _iter_jsonl(src)]
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    table = pa.Table.from_pylist(rows)
+    pq.write_table(table, dst, compression="zstd")
+
+
+def _hf_loadable_training_files(
+    *,
+    train_src: Path,
+    val_src: Path,
+    test_src: Path,
+    manifest_src: Path,
+) -> tuple[Path, Path, Path, Path]:
+    split_paths = (train_src, val_src, test_src)
+    if not all(path.exists() for path in split_paths) or not _needs_hf_jsonl_export(split_paths):
+        return (train_src, val_src, test_src, manifest_src)
+
+    export_root = _hf_export_root(split_paths, manifest_src)
+    out_paths = (
+        export_root / "train.jsonl",
+        export_root / "val.jsonl",
+        export_root / "test.jsonl",
+    )
+    parquet_paths = (
+        export_root / "data" / "train-00000-of-00001.parquet",
+        export_root / "data" / "validation-00000-of-00001.parquet",
+        export_root / "data" / "test-00000-of-00001.parquet",
+    )
+    for src, dst in zip(split_paths, out_paths):
+        _write_hf_jsonl_export(src, dst)
+    for src, dst in zip(split_paths, parquet_paths):
+        _write_hf_parquet_export(src, dst)
+    return (*out_paths, manifest_src, *parquet_paths)
 
 
 def _spec_scambench() -> DatasetSpec:
@@ -292,7 +441,8 @@ def _card_training() -> str:
         "All app-facing runtime bundles live in the single model repo\n"
         "[`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) under\n"
         "`bundles/<tier>/` paths for the active `eliza-1-0_8b`,\n"
-        "`eliza-1-2b`, and `eliza-1-4b` tiers.\n"
+        "`eliza-1-2b`, `eliza-1-4b`, `eliza-1-9b`, `eliza-1-27b`,\n"
+        "and `eliza-1-27b-256k` tiers.\n"
         "\n"
         "## Files\n"
         "\n"
@@ -305,16 +455,23 @@ def _card_training() -> str:
         "\n"
         "## Schema\n"
         "\n"
-        "The active trajectory path uses `eliza_native_v1`: one row per model\n"
+        "The source trajectory path uses `eliza_native_v1`: one row per model\n"
         "boundary, with the exact request sent to the model and the expected\n"
-        "text/tool-call response.\n"
+        "text/tool-call response. The published Hub rows use\n"
+        "`eliza.eliza1_hf_training_row.v1`: nested native payloads are stored\n"
+        "as JSON strings so the Hugging Face Dataset Viewer can load every\n"
+        "split with one stable Arrow schema. Consumers can parse\n"
+        "`request_json`, `response_json`, `metadata_json`, and `native_json`\n"
+        "to recover the full native trajectory record.\n"
         "\n"
         "```json\n"
         "{\n"
+        '  "schema": "eliza.eliza1_hf_training_row.v1",\n'
         '  "format": "eliza_native_v1",\n'
-        '  "request": {"messages": [{"role": "user", "content": "..."}], "tools": []},\n'
-        '  "response": {"text": "...", "toolCalls": []},\n'
-        '  "metadata": {"task_type": "...", "source_dataset": "..."}\n'
+        '  "request_json": "{\\"messages\\":[...]}",\n'
+        '  "response_json": "{\\"text\\":\\"...\\",\\"toolCalls\\":[]}",\n'
+        '  "metadata_json": "{\\"task_type\\":\\"...\\",\\"source_dataset\\":\\"...\\"}",\n'
+        '  "native_json": "{\\"format\\":\\"eliza_native_v1\\",...}"\n'
         "}\n"
         "```\n"
         "\n"
@@ -343,7 +500,7 @@ def _card_training() -> str:
         "\n"
         "## Intended use\n"
         "\n"
-        "Supervised fine-tuning of small-to-medium Qwen3.5 causal LMs (0.8B-4B)\n"
+        "Supervised fine-tuning of Qwen3.5/Qwen3.6 causal LMs (0.8B-27B)\n"
         "for agent / tool-use workloads on mobile, local desktop, and\n"
         "workstation hardware.\n"
         "\n"
@@ -713,6 +870,47 @@ def validate_hf_loadable(spec: DatasetSpec) -> bool:
     return True
 
 
+def _release_manifest_blockers(spec: DatasetSpec) -> list[str]:
+    blockers: list[str] = []
+    removed_tier_mentions = sorted(set(REMOVED_TIER_RE.findall(spec.card)))
+    if removed_tier_mentions:
+        blockers.append(
+            "README card mentions removed tier(s): "
+            + ", ".join(removed_tier_mentions)
+        )
+
+    manifest_paths = [
+        path for path, target in spec.path_in_repo.items() if target == "manifest.json"
+    ]
+    if not manifest_paths:
+        return blockers
+    manifest_path = manifest_paths[0]
+    if not manifest_path.exists():
+        blockers.append(f"manifest.json source is missing: {manifest_path}")
+        return blockers
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        blockers.append(f"manifest.json is not valid JSON: {exc}")
+        return blockers
+
+    schema = str(manifest.get("schema", ""))
+    purpose = str(manifest.get("purpose", ""))
+    if "smoke" in schema.lower() or "smoke" in purpose.lower():
+        blockers.append(
+            "manifest.json is a smoke-corpus manifest "
+            f"(schema={schema!r}, purpose={purpose[:120]!r})"
+        )
+    return blockers
+
+
+def validate_release_manifest(spec: DatasetSpec) -> bool:
+    blockers = _release_manifest_blockers(spec)
+    for blocker in blockers:
+        log.error("release manifest preflight failed: %s", blocker)
+    return not blockers
+
+
 def _print_dry_run(
     spec: DatasetSpec, repo_id: str, *, validate_hf_load: bool = False
 ) -> int:
@@ -757,6 +955,8 @@ def publish(spec: DatasetSpec, repo_id: str, public: bool) -> int:
             "HF_TOKEN (or HUGGINGFACE_HUB_TOKEN) env var not set; refusing to push."
         )
         return 1
+    if not validate_release_manifest(spec):
+        return 2
     if not validate_hf_loadable(spec):
         return 2
 

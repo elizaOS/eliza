@@ -520,18 +520,25 @@ function ViewRouter({
       tab === "apps" || tab === "views"
         ? getAppSlugFromPath(navigationPath)
         : null;
-    const remoteView = availableViews.find(
-      (v) =>
-        v.bundleUrl &&
-        (v.id === tab ||
-          v.path === navigationPath ||
-          v.path === `/${tab}` ||
-          v.path === `/apps/${tab}` ||
-          (appSlug !== null &&
-            (v.id === appSlug ||
-              v.path === `/apps/${appSlug}` ||
-              v.path === `/${appSlug}`))),
-    );
+    const normalizedNavigationPath =
+      navigationPath.length > 1 && navigationPath.endsWith("/")
+        ? navigationPath.slice(0, -1)
+        : navigationPath;
+    const remoteView =
+      availableViews.find(
+        (v) => v.bundleUrl && v.path === normalizedNavigationPath,
+      ) ??
+      availableViews.find(
+        (v) =>
+          v.bundleUrl &&
+          (v.id === tab ||
+            v.path === `/${tab}` ||
+            v.path === `/apps/${tab}` ||
+            (appSlug !== null &&
+              (v.id === appSlug ||
+                v.path === `/apps/${appSlug}` ||
+                v.path === `/${appSlug}`))),
+      );
     if (remoteView?.bundleUrl) {
       return (
         <TabContentView>
@@ -539,6 +546,7 @@ function ViewRouter({
             bundleUrl={remoteView.bundleUrl}
             componentExport={remoteView.componentExport}
             viewId={remoteView.id}
+            viewType={remoteView.viewType}
           />
         </TabContentView>
       );
@@ -997,6 +1005,7 @@ export function App() {
           viewId?: string;
           viewPath?: string;
           viewLabel?: string;
+          viewType?: "gui" | "tui";
           action?: string;
         }>
       ).detail;
@@ -1006,7 +1015,10 @@ export function App() {
       if (!path) return;
       // For the Views manager specifically, navigate the tab directly so the
       // nav bar becomes visible without relying solely on URL routing.
-      if (path === "/views" || detail.viewId === "views-manager") {
+      if (
+        path === "/views" ||
+        (detail.viewId === "views-manager" && detail.viewType !== "tui")
+      ) {
         setTab("views");
         return;
       }

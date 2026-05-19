@@ -10,17 +10,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = [
-	"@elizaos/core",
-	"@atproto/api",
-	"@atproto/identity",
-	"@atproto/lexicon",
-	"@atproto/syntax",
-	"@atproto/xrpc",
-	"lru-cache",
-	"zod",
-] as const;
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build(): Promise<void> {
 	const totalStart = Date.now();

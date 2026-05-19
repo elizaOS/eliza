@@ -33,6 +33,19 @@ export const walletAppPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "wallet",
+      label: "Wallet TUI",
+      description: "Terminal wallet inventory and balance surface",
+      icon: "Wallet",
+      path: "/wallet/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "InventoryTuiView",
+      tags: ["finance", "crypto", "wallet", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   widgets: [
     {

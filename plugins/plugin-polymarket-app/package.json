@@ -41,6 +41,7 @@
   "scripts": {
     "build": "bun run build:js && bun run build:views && bun run build:types",
     "clean": "rm -rf dist",
+    "test": "vitest run --config vitest.config.ts",
     "build:js": "tsup --config ../tsup.plugin-packages.shared.ts",
     "build:views": "vite build --config vite.config.views.ts",
     "build:types": "tsc --noCheck -p tsconfig.build.json"
@@ -50,6 +51,7 @@
   ],
   "devDependencies": {
     "tsup": "^8.5.1",
-    "vite": "^8.0.0"
+    "vite": "^8.0.0",
+    "vitest": "^4.1.5"
   }
 }

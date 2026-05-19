@@ -15,6 +15,7 @@ export * from "./app-route-plugin-registry";
 // plugin browser dists that call syncAppEnvToEliza / syncElizaEnvAliases.
 export * from "./boot-env";
 export * from "./build-variant";
+export * from "./capabilities";
 export * from "./character";
 // `cloud-routing` is pure data (no Node deps) — safe in the browser bundle;
 // app-core sensitive-request code depends on `toRuntimeSettings` and route helpers.

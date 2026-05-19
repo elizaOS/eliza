@@ -105,6 +105,19 @@ export const polymarketPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "polymarket",
+      label: "Polymarket TUI",
+      description: "Terminal Polymarket markets, orderbook, and positions",
+      icon: "BarChart2",
+      path: "/polymarket/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "PolymarketTuiView",
+      tags: ["prediction-markets", "polymarket", "trading", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<PredictionMarketService>(PREDICTION_MARKET_SERVICE_TYPE);

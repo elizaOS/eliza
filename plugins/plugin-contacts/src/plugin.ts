@@ -31,6 +31,19 @@ export const appContactsPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "contacts",
+      label: "Contacts TUI",
+      description: "Terminal address-book lookup surface",
+      icon: "Users",
+      path: "/contacts/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "ContactsTuiView",
+      tags: ["contacts", "android", "address-book", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
 };
 

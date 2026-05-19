@@ -29,6 +29,9 @@ on:
       - ".github/ISSUE_TEMPLATE/**"
       - ".github/pull_request_template.md"
   workflow_dispatch:
+  schedule:
+    # Nightly live smoke for container-backed remote capability plugins.
+    - cron: "17 9 * * *"
 
 concurrency:
   group: test-${{ github.ref }}
@@ -88,6 +91,13 @@ jobs:
 
       - name: Views system tests
         run: bunx vitest run packages/agent/src/__tests__/views-system-smoke.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts
+
+      - name: Remote capability router tests
+        run: bun run test:remote-capabilities
+
+      - name: Remote capability Docker smoke
+        if: github.event_name == 'workflow_dispatch' || github.event_name == 'schedule'
+        run: bun run test:remote-capabilities:docker
 
       - name: Run server tests
         run: bun run test:server

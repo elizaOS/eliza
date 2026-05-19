@@ -1,15 +1,11 @@
 #!/usr/bin/env bun
 import { $ } from "bun";
 import { rmSync } from "node:fs";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const external = [
-  "@elizaos/core",
-  "ffmpeg-static",
-  "fluent-ffmpeg",
-  "youtube-dl-exec",
-  "node:*",
-  "bun:*",
-];
+const external = await externalsFromPackageJson("./package.json", {
+  extra: ["node:*", "bun:*"],
+});
 
 console.log("🔨 Building @elizaos/plugin-video...");
 const start = Date.now();

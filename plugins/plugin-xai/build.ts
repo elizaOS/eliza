@@ -9,7 +9,12 @@
  * - dist/*.d.ts (TypeScript declarations)
  */
 
-const externalDeps = ["@elizaos/core", "zod"];
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
+
+const externalDeps = await externalsFromPackageJson("./package.json", {
+  // zod is a transitive dep used through @elizaos/core; keep externalized.
+  extra: ["zod"],
+});
 
 async function build(): Promise<void> {
   const totalStart = Date.now();

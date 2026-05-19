@@ -207,7 +207,13 @@ def _resolve_im_end_token_id(tokenizer) -> int:
 
 
 def _build_optimizer(model, config: TrainingConfig):
-    """Build the optimizer. APOLLO when --apollo, else 8-bit AdamW."""
+    """Build the optimizer. APOLLO when --apollo, else plain AdamW.
+
+    For LoRA training the trainable params are tiny (~10 MB at rank 8),
+    so the 8-bit AdamW savings don't justify the bitsandbytes complexity
+    (which fails GPU-placement checks under modern transformers + LoRA
+    on single-GPU layouts). Plain AdamW is simpler and fast enough.
+    """
     trainable = [p for p in model.parameters() if p.requires_grad]
     if config.use_apollo:
         try:
@@ -219,21 +225,9 @@ def _build_optimizer(model, config: TrainingConfig):
                 "APOLLO requested via --apollo but apollo_torch is not "
                 "installed. `pip install apollo-torch`."
             ) from exc
-    try:
-        import bitsandbytes as bnb  # type: ignore
+    import torch  # type: ignore
 
-        return bnb.optim.AdamW8bit(trainable, lr=config.learning_rate)
-    except ImportError:
-        # bitsandbytes is GPU-bound and sometimes unavailable on
-        # workstations. Fall through to torch's AdamW so the trainer
-        # still works (memory penalty, but explicit and visible).
-        logger.warning(
-            "bitsandbytes not available; falling back to torch.optim.AdamW "
-            "(higher VRAM use). Install bitsandbytes for the 8-bit variant."
-        )
-        import torch  # type: ignore
-
-        return torch.optim.AdamW(trainable, lr=config.learning_rate)
+    return torch.optim.AdamW(trainable, lr=config.learning_rate)
 
 
 def train(config: TrainingConfig) -> Path:
@@ -257,12 +251,17 @@ def train(config: TrainingConfig) -> Path:
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
+    # Force single-GPU placement for LoRA training. `device_map="auto"` can
+    # split a small model awkwardly and confuses the optimizer's device
+    # checks; bitsandbytes is_on_gpu in particular rejects the resulting
+    # tensor layout. Single GPU is the right choice for ~10MB of trainable
+    # LoRA params anyway.
+    device = "cuda:0" if torch.cuda.is_available() else "cpu"
     model = AutoModelForCausalLM.from_pretrained(
         config.tier_spec.base_id,
         torch_dtype=torch.bfloat16,
-        device_map="auto",
         trust_remote_code=False,
-    )
+    ).to(device)
 
     im_end_id = _resolve_im_end_token_id(tokenizer)
     vocab_size = int(model.config.vocab_size)
@@ -308,8 +307,8 @@ def train(config: TrainingConfig) -> Path:
         for batch in _iter_batches(records, config.batch_size, tokenizer, config.seq_len):
             input_ids = batch["input_ids"].to(model.device)
             attention_mask = batch["attention_mask"].to(model.device)
-            labels = batch["labels"]
-            last_token_idx = batch["last_token_idx"]
+            labels = batch["labels"].to(model.device)
+            last_token_idx = batch["last_token_idx"].to(model.device)
 
             outputs = model(input_ids=input_ids, attention_mask=attention_mask)
             logits = outputs.logits  # [B, T, V]

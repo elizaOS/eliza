@@ -59,6 +59,19 @@ export function createAppScapePlugin(): Plugin {
         visibleInManager: true,
         desktopTabEnabled: true,
       },
+      {
+        id: "scape",
+        label: "'scape TUI",
+        description: "Terminal RuneScape-alike operator controls and journal",
+        icon: "Gamepad2",
+        path: "/scape/tui",
+        viewType: "tui",
+        bundlePath: "dist/views/bundle.js",
+        componentExport: "ScapeTuiView",
+        tags: ["game", "scape", "runescape", "terminal"],
+        visibleInManager: true,
+        desktopTabEnabled: true,
+      },
     ],
     async dispose(runtime: IAgentRuntime) {
       const svc = runtime.getService<ScapeGameService>(ScapeGameService.serviceType);

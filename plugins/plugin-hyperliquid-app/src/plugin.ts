@@ -125,6 +125,19 @@ export const hyperliquidPlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "hyperliquid",
+      label: "Hyperliquid TUI",
+      description: "Terminal Hyperliquid markets, positions, orders, and status",
+      icon: "TrendingUp",
+      path: "/hyperliquid/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "HyperliquidTuiView",
+      tags: ["trading", "perps", "hyperliquid", "crypto", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<PerpetualMarketService>(PERPETUAL_MARKET_SERVICE_TYPE);

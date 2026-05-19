@@ -19,6 +19,8 @@ export interface ViewRegistryEntry {
   id: string;
   /** Human-readable label shown in the view manager. */
   label: string;
+  /** Presentation/runtime family. Defaults to "gui". */
+  viewType?: "gui" | "tui";
   /** One-line description shown in the view card. */
   description?: string;
   /** Lucide icon name or data-URI for the card icon. */
@@ -66,11 +68,16 @@ interface UseAvailableViewsResult {
 
 const POLL_INTERVAL_MS = 30_000;
 
-async function fetchViews(): Promise<ViewRegistryEntry[]> {
+async function fetchViewList(
+  viewType?: "gui" | "tui",
+): Promise<ViewRegistryEntry[]> {
   const platform = getFrontendPlatform();
-  const response = await fetchWithCsrf("/api/views", {
-    headers: { "X-Eliza-Platform": platform },
-  });
+  const response = await fetchWithCsrf(
+    `/api/views${viewType ? `?viewType=${viewType}` : ""}`,
+    {
+      headers: { "X-Eliza-Platform": platform },
+    },
+  );
   if (!response.ok) {
     throw new Error(`GET /api/views returned HTTP ${response.status}`);
   }
@@ -81,6 +88,21 @@ async function fetchViews(): Promise<ViewRegistryEntry[]> {
   const { views } = data as { views: unknown };
   if (!Array.isArray(views)) return [];
   return views as ViewRegistryEntry[];
+}
+
+async function fetchViews(): Promise<ViewRegistryEntry[]> {
+  const guiViews = await fetchViewList();
+  const tuiViews = (await fetchViewList("tui")).filter(
+    (view) => view.viewType === "tui",
+  );
+  const merged = new Map<string, ViewRegistryEntry>();
+  for (const view of guiViews) {
+    merged.set(`${view.viewType ?? "gui"}:${view.id}`, view);
+  }
+  for (const view of tuiViews) {
+    merged.set(`tui:${view.id}`, view);
+  }
+  return [...merged.values()];
 }
 
 export function useAvailableViews(): UseAvailableViewsResult {

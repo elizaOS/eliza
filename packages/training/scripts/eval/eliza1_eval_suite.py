@@ -297,6 +297,8 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
         candidates.append(d)
     if not candidates:
         return None
+    if prefer_backend and not any(prefer_backend in d.name for d in candidates):
+        return None
 
     def rank(d: Path) -> tuple[int, int, int]:
         fused = 1 if "fused" in d.name else 0
@@ -1261,8 +1263,10 @@ REQUIRED_GRAPH_CACHE_FAMILIES = ("turbo3", "turbo4", "qjl", "polarquant")
 
 
 def _find_verify_dir() -> Path | None:
-    # packages/training → packages/inference/verify is a sibling package.
     candidates = [
+        # Current source tree: native verifier lives with plugin-local-inference.
+        _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify",
+        # Historical/compatibility paths kept for older release worktrees.
         _TRAINING_ROOT.parent / "inference" / "verify",
         _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify",
     ]
@@ -1272,8 +1276,21 @@ def _find_verify_dir() -> Path | None:
     return None
 
 
+def _dispatch_targets_for_backend(backend: str) -> list[str]:
+    if backend == "metal":
+        return ["metal-verify", "dispatch-smoke"]
+    if backend == "vulkan":
+        return ["vulkan-verify", "vulkan-dispatch-smoke"]
+    if backend == "rocm":
+        return ["rocm-verify", "rocm-dispatch-smoke"]
+    # CUDA dispatch is driven through cuda_runner.sh outside this make-based
+    # harness; keep the default path CPU/reference-only.
+    return ["kernel-contract", "reference-test"]
+
+
 def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
-    base = {"schemaVersion": SCHEMA_VERSION, "backend": "cpu"}
+    backend = ((ctx.engine.backend if ctx.engine else None) or "cpu").replace("-fused", "")
+    base = {"schemaVersion": SCHEMA_VERSION, "backend": backend}
     verify_dir = _find_verify_dir()
     if verify_dir is None:
         return {
@@ -1293,7 +1310,7 @@ def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
         ).stdout.strip() or "unknown"
     except Exception:  # noqa: BLE001
         pass
-    targets = ["kernel-contract", "reference-test"]
+    targets = _dispatch_targets_for_backend(backend)
     logs: list[str] = []
     ok = True
     for tgt in targets:
@@ -1319,7 +1336,7 @@ def eval_dispatch(ctx: EvalContext) -> dict[str, Any]:
         "runtimeReady": ok,
         "atCommit": git_sha,
         "generatedAt": _utc_now(),
-        "report": "packages/inference/verify (make kernel-contract reference-test)",
+        "report": f"packages/inference/verify (make {' '.join(targets)})",
         "kernelSet": list(REQUIRED_GRAPH_CACHE_FAMILIES) + ["dflash"],
         "kernelFamilies": list(REQUIRED_GRAPH_CACHE_FAMILIES),
         "targets": targets,
@@ -1386,6 +1403,25 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
         "dflash-accept.json": dflash,
         "dispatch.json": dispatch,
     }
+    dispatch_backend = str(dispatch.get("backend") or "cpu")
+    evals[f"{dispatch_backend}_dispatch.json"] = dispatch
+    if dispatch_backend == "cpu":
+        evals["cpu_reference.json"] = {
+            **dispatch,
+            "report": "plugins/plugin-local-inference/native/verify (make reference-test)",
+            "targets": [
+                target for target in dispatch.get("targets", []) if target == "reference-test"
+            ] or ["reference-test"],
+        }
+    elif dispatch_backend in {"metal", "vulkan", "rocm", "cuda"}:
+        verify_target = f"{dispatch_backend}-verify"
+        evals[f"{dispatch_backend}_verify.json"] = {
+            **dispatch,
+            "report": f"plugins/plugin-local-inference/native/verify (make {verify_target})",
+            "targets": [
+                target for target in dispatch.get("targets", []) if target == verify_target
+            ] or [verify_target],
+        }
 
     # e2e_loop_ok / thirty_turn_ok are independent contract booleans; when the
     # loop did not run they are recorded as null — a required gate with a null

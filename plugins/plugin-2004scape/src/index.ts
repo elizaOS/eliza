@@ -25,6 +25,19 @@ const rawRs2004scapePlugin: Plugin = {
       visibleInManager: true,
       desktopTabEnabled: true,
     },
+    {
+      id: "2004scape",
+      label: "2004scape TUI",
+      description: "Terminal 2004scape operator surface",
+      icon: "Gamepad2",
+      path: "/2004scape/tui",
+      viewType: "tui",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "TwoThousandFourScapeTuiView",
+      tags: ["game", "runescape", "2004scape", "terminal"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
   ],
   async dispose(runtime: IAgentRuntime) {
     const svc = runtime.getService<RsSdkGameService>(RsSdkGameService.serviceType);

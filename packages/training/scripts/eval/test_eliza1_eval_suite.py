@@ -20,6 +20,7 @@ in CI and by the live run recorded in ``packages/inference/reports/``.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -83,6 +84,8 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
         "endurance.json",
         "dflash-accept.json",
         "dispatch.json",
+        "cpu_dispatch.json",
+        "cpu_reference.json",
         "aggregate.json",
     ):
         assert (evals / name).is_file(), f"missing {name}"
@@ -90,6 +93,64 @@ def test_writes_all_eval_blobs(tmp_path: Path, monkeypatch) -> None:
     assert agg["mode"] == "full"
     assert "results" in agg
     assert agg["bundleIsLocalStandin"] is True
+
+
+def test_run_suite_writes_backend_verify_alias_for_metal(tmp_path: Path, monkeypatch) -> None:
+    bundle = _make_standin_bundle(tmp_path)
+    monkeypatch.setattr(suite, "discover_engine", lambda *a, **k: None)
+    monkeypatch.setattr(
+        suite,
+        "eval_dispatch",
+        lambda ctx: {
+            "schemaVersion": suite.SCHEMA_VERSION,
+            "backend": "metal",
+            "status": "pass",
+            "runtimeReady": True,
+            "targets": ["metal-verify", "dispatch-smoke"],
+            "passed": None,
+        },
+    )
+    args = suite.argparse.Namespace(
+        bundle_dir=bundle,
+        tier="0_8b",
+        backend="metal",
+        text_eval_model=None,
+        text_corpus=None,
+        threads=2,
+        timeout=30,
+    )
+    ctx = suite.build_context(args)
+    suite.run_suite(ctx)
+
+    evals = bundle / "evals"
+    dispatch = json.loads((evals / "metal_dispatch.json").read_text())
+    verify = json.loads((evals / "metal_verify.json").read_text())
+    assert dispatch["backend"] == "metal"
+    assert dispatch["runtimeReady"] is True
+    assert verify["targets"] == ["metal-verify"]
+    assert "metal-verify" in verify["report"]
+
+
+def test_discover_engine_honors_missing_preferred_backend(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    engine_dir = root / f"{suite._platform_tag()}-metal-fused"
+    engine_dir.mkdir(parents=True)
+    (engine_dir / "llama-cli").write_text("#!/bin/sh\n")
+    os.chmod(engine_dir / "llama-cli", 0o755)
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / "state"))
+
+    assert suite.discover_engine("cpu") is None
+
+
+def test_find_verify_dir_prefers_native_plugin_verify() -> None:
+    verify_dir = suite._find_verify_dir()
+
+    assert verify_dir is not None
+    assert verify_dir.as_posix().endswith("plugins/plugin-local-inference/native/verify")
+
+
+def test_dispatch_targets_for_metal_include_runtime_smoke() -> None:
+    assert suite._dispatch_targets_for_backend("metal") == ["metal-verify", "dispatch-smoke"]
 
 
 def test_standin_bundle_records_not_run_not_fake_pass(tmp_path: Path, monkeypatch) -> None:

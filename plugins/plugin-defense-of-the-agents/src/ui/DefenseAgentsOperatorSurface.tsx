@@ -7,7 +7,7 @@ import {
   GameOperatorShell,
   useApp,
 } from "@elizaos/app-core";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type CSSProperties } from "react";
 
 const LANES = ["top", "mid", "bot"] as const;
 
@@ -343,4 +343,191 @@ export function DefenseAgentsOperatorSurface({
       onCommand={(command) => void sendCommand(command)}
     />
   );
+}
+
+export function DefenseAgentsTuiView() {
+  const { appRuns, setActionNotice, setState } = useApp();
+  const run = useMemo(
+    () =>
+      [...(Array.isArray(appRuns) ? appRuns : [])]
+        .filter(
+          (candidate) =>
+            candidate.appName === "@elizaos/plugin-defense-of-the-agents",
+        )
+        .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0] ??
+      null,
+    [appRuns],
+  );
+  const [draft, setDraft] = useState("");
+  const [sending, setSending] = useState(false);
+  const telemetry =
+    run?.session?.telemetry && typeof run.session.telemetry === "object"
+      ? (run.session.telemetry as Record<string, unknown>)
+      : null;
+  const heroLine = formatHeroLine(telemetry);
+  const heroLane = readString(telemetry, "heroLane");
+  const autoPlay = telemetry?.autoPlay === true;
+  const canSend = Boolean(run?.runId && run.session?.canSendCommands);
+  const tacticalPrompts = (run?.session?.suggestedPrompts ?? [])
+    .filter(isRelevantPrompt)
+    .filter((prompt) => !/^auto[- ]?play/i.test(prompt));
+  const events = run ? collectRunEvents(run, telemetry, []) : [];
+  const viewState = {
+    viewType: "tui",
+    viewId: "defense-of-the-agents",
+    appName: "@elizaos/plugin-defense-of-the-agents",
+    runId: run?.runId ?? null,
+    status: run?.status ?? "idle",
+    canSend,
+    heroLine,
+    heroLane,
+    autoPlay,
+    tacticalPromptCount: tacticalPrompts.length,
+    eventCount: events.length,
+  };
+
+  const sendDraft = async (content: string) => {
+    const trimmed = content.trim();
+    if (!run?.runId || !trimmed || sending) return;
+    setSending(true);
+    try {
+      const response = await client.sendAppRunMessage(run.runId, trimmed);
+      if (response.run) {
+        setState("appRuns", replaceRun(appRuns, response.run));
+      }
+      setActionNotice(response.message, response.success ? "success" : "error", 2600);
+      setDraft("");
+    } catch (error) {
+      setActionNotice(
+        error instanceof Error ? error.message : "Defense command failed.",
+        "error",
+        3200,
+      );
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div data-view-state={JSON.stringify(viewState)} style={tuiRootStyle}>
+      <div style={tuiRouteStyle}>
+        elizaos://defense-of-the-agents --type=tui
+      </div>
+      <div style={tuiMetaStyle}>
+        {run?.status ?? "idle"} | {heroLine} | autoplay {autoPlay ? "on" : "off"}
+      </div>
+      <section style={tuiPanelStyle} aria-label="Defense of the Agents state">
+        <strong style={tuiTitleStyle}>Defense of the Agents</strong>
+        <div>run {run?.runId ?? "none"}</div>
+        <div>commands {canSend ? "available" : "unavailable"}</div>
+        <div>lane {heroLane ?? "unassigned"}</div>
+        <div style={tuiSubtleStyle}>tactical prompts</div>
+        {(tacticalPrompts.length
+          ? tacticalPrompts
+          : ["review strategy", "move to mid", "recall"]
+        )
+          .slice(0, 6)
+          .map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              disabled={!canSend || sending}
+              onClick={() => void sendDraft(prompt)}
+              style={tuiButtonStyle}
+            >
+              {prompt}
+            </button>
+          ))}
+        <input
+          aria-label="Defense command"
+          value={draft}
+          onChange={(event) => setDraft(event.currentTarget.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void sendDraft(draft);
+          }}
+          placeholder="Command the hero..."
+          style={tuiInputStyle}
+        />
+        <button
+          type="button"
+          disabled={!canSend || sending || !draft.trim()}
+          onClick={() => void sendDraft(draft)}
+          style={tuiButtonStyle}
+        >
+          send command
+        </button>
+      </section>
+    </div>
+  );
+}
+
+const tuiRootStyle: CSSProperties = {
+  minHeight: "100vh",
+  background: "#020617",
+  color: "#cbd5e1",
+  fontFamily:
+    'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+  padding: 20,
+};
+const tuiRouteStyle: CSSProperties = { color: "#7dd3fc", marginBottom: 4 };
+const tuiMetaStyle: CSSProperties = { color: "#475569", marginBottom: 16 };
+const tuiPanelStyle: CSSProperties = {
+  border: "1px solid rgba(125,211,252,0.3)",
+  borderRadius: 6,
+  padding: 16,
+  maxWidth: 760,
+};
+const tuiTitleStyle: CSSProperties = {
+  display: "block",
+  color: "#e2e8f0",
+  marginBottom: 10,
+};
+const tuiSubtleStyle: CSSProperties = { color: "#64748b", marginTop: 14 };
+const tuiButtonStyle: CSSProperties = {
+  display: "block",
+  width: "100%",
+  margin: "8px 0",
+  background: "transparent",
+  color: "#a7f3d0",
+  border: "1px solid rgba(167,243,208,0.45)",
+  borderRadius: 4,
+  padding: "6px 8px",
+  cursor: "pointer",
+  fontFamily: "inherit",
+};
+const tuiInputStyle: CSSProperties = {
+  width: "100%",
+  marginTop: 14,
+  background: "#020617",
+  color: "#e2e8f0",
+  border: "1px solid rgba(125,211,252,0.35)",
+  borderRadius: 4,
+  padding: "8px",
+  fontFamily: "inherit",
+};
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-defense-state") {
+    return {
+      viewType: "tui",
+      appName: "@elizaos/plugin-defense-of-the-agents",
+      lanes: [...LANES],
+      primaryCommands: ["review strategy", "move to top", "move to mid", "move to bot", "recall"],
+    };
+  }
+  if (capability === "terminal-defense-command") {
+    const runId = typeof params?.runId === "string" ? params.runId.trim() : "";
+    const content =
+      typeof params?.content === "string" ? params.content.trim() : "";
+    if (!runId) throw new Error("runId is required");
+    if (!content) throw new Error("content is required");
+    return {
+      viewType: "tui",
+      command: await client.sendAppRunMessage(runId, content),
+    };
+  }
+  throw new Error(`Unsupported Defense TUI capability: ${capability}`);
 }

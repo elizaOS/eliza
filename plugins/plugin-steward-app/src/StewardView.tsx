@@ -16,7 +16,12 @@ import { useCallback, useEffect, useState } from "react";
 import { ApprovalQueue } from "./ApprovalQueue";
 import { StewardLogo } from "./StewardLogo";
 import { TransactionHistory } from "./TransactionHistory";
-import type { StewardStatusResponse } from "./types/steward";
+import type {
+  StewardApprovalActionResponse,
+  StewardPendingApproval,
+  StewardStatusResponse,
+  StewardTxRecord,
+} from "./types/steward";
 
 type StewardTab = "history" | "approvals";
 
@@ -188,4 +193,311 @@ export function StewardView() {
       </div>
     </PageLayout>
   );
+}
+
+interface StewardTxRecordsResponse {
+  records: StewardTxRecord[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
+async function stewardJson<T>(url: string): Promise<T> {
+  const response = await fetch(url);
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data
+        ? String(data.error)
+        : `Steward request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+async function postStewardJson<T>(
+  url: string,
+  body: Record<string, unknown>,
+): Promise<T> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data
+        ? String(data.error)
+        : `Steward request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+async function loadStewardTuiState(): Promise<{
+  status: StewardStatusResponse;
+  pending: StewardPendingApproval[];
+  history: StewardTxRecordsResponse | null;
+}> {
+  const status = await stewardJson<StewardStatusResponse>(
+    "/api/wallet/steward-status",
+  );
+
+  if (!status.connected) {
+    return { status, pending: [], history: null };
+  }
+
+  const [pending, history] = await Promise.all([
+    stewardJson<StewardPendingApproval[]>(
+      "/api/wallet/steward-pending-approvals",
+    ),
+    stewardJson<StewardTxRecordsResponse>(
+      "/api/wallet/steward-tx-records?limit=25&offset=0",
+    ),
+  ]);
+
+  return { status, pending, history };
+}
+
+export function StewardTuiView() {
+  const [state, setState] =
+    useState<Awaited<ReturnType<typeof loadStewardTuiState>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadStewardTuiState();
+      setState(next);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setError(caught instanceof Error ? caught.message : "Steward refresh failed");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const recent = state?.history?.records ?? [];
+  const viewState = {
+    viewType: "tui",
+    viewId: "steward",
+    connected: state?.status.connected ?? false,
+    configured: state?.status.configured ?? false,
+    available: state?.status.available ?? false,
+    evmAddress: state?.status.evmAddress ?? null,
+    pendingCount: state?.pending.length ?? 0,
+    historyCount: state?.history?.total ?? 0,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://steward --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : state?.status.connected ? "connected" : "not-connected"} |{" "}
+        {state?.pending.length ?? 0} pending | {recent.length} history | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Steward approvals"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>pending approvals</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          <div style={{ marginBottom: 12 }}>
+            <div>
+              <span style={{ color: "#64748b" }}>configured</span>{" "}
+              {state?.status.configured ? "yes" : "no"}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>available</span>{" "}
+              {state?.status.available ? "yes" : "no"}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>evm</span>{" "}
+              {state?.status.evmAddress ?? "no steward evm address"}
+            </div>
+            {state?.status.error ? (
+              <div style={{ color: "#fca5a5" }}>{state.status.error}</div>
+            ) : null}
+          </div>
+          {!state?.status.connected && !loading ? (
+            <div style={{ color: "#94a3b8", marginTop: 18 }}>
+              Set STEWARD_API_URL and STEWARD_API_KEY to enable vault approvals.
+            </div>
+          ) : null}
+          {state?.pending.map((item) => (
+            <div
+              key={item.queueId}
+              style={{
+                borderTop: "1px solid rgba(125,211,252,0.14)",
+                padding: "9px 0",
+              }}
+            >
+              <div style={{ color: "#e2e8f0" }}>
+                {item.transaction.id} / {item.transaction.status}
+              </div>
+              <div style={{ color: "#94a3b8" }}>
+                chain {item.transaction.request.chainId} to{" "}
+                {item.transaction.request.to} value {item.transaction.request.value}
+              </div>
+              <div style={{ color: "#64748b" }}>{item.requestedAt}</div>
+            </div>
+          ))}
+        </section>
+
+        <section
+          aria-label="Steward transaction history"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>transaction history</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | pending | history | approve | deny
+          </div>
+          {recent.map((tx) => (
+            <div
+              key={tx.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "minmax(0,1fr) 10ch",
+                gap: 10,
+                borderTop: "1px solid rgba(125,211,252,0.14)",
+                padding: "8px 0",
+              }}
+            >
+              <span style={{ color: "#e2e8f0" }}>{tx.id}</span>
+              <span style={{ color: "#a7f3d0" }}>{tx.status}</span>
+              <span style={{ gridColumn: "1 / 3", color: "#94a3b8" }}>
+                chain {tx.request.chainId} to {tx.request.to}
+                {tx.txHash ? ` hash ${tx.txHash}` : ""}
+              </span>
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-steward-state") {
+    return { viewType: "tui", ...(await loadStewardTuiState()) };
+  }
+
+  if (capability === "terminal-steward-pending") {
+    return {
+      viewType: "tui",
+      pending: await stewardJson<StewardPendingApproval[]>(
+        "/api/wallet/steward-pending-approvals",
+      ),
+    };
+  }
+
+  if (capability === "terminal-steward-history") {
+    const status = typeof params?.status === "string" ? params.status : "";
+    const limit = typeof params?.limit === "number" ? params.limit : 50;
+    const offset = typeof params?.offset === "number" ? params.offset : 0;
+    const search = new URLSearchParams({
+      limit: String(limit),
+      offset: String(offset),
+    });
+    if (status) search.set("status", status);
+    return {
+      viewType: "tui",
+      history: await stewardJson<StewardTxRecordsResponse>(
+        `/api/wallet/steward-tx-records?${search}`,
+      ),
+    };
+  }
+
+  if (
+    capability === "terminal-steward-approve" ||
+    capability === "terminal-steward-deny"
+  ) {
+    const txId = typeof params?.txId === "string" ? params.txId.trim() : "";
+    if (!txId) throw new Error("txId is required");
+    const deny = capability === "terminal-steward-deny";
+    return {
+      viewType: "tui",
+      result: await postStewardJson<StewardApprovalActionResponse>(
+        deny
+          ? "/api/wallet/steward-deny-tx"
+          : "/api/wallet/steward-approve-tx",
+        {
+          txId,
+          reason: typeof params?.reason === "string" ? params.reason : undefined,
+        },
+      ),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

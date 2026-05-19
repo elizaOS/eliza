@@ -3,15 +3,9 @@
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
-const externalDeps = [
-  "@elizaos/core",
-  "@elizaos/cloud-sdk",
-  "@ai-sdk/openai",
-  "ai",
-  "js-tiktoken",
-  "jose",
-];
+const externalDeps = await externalsFromPackageJson("./package.json");
 
 async function build() {
   const totalStart = Date.now();
@@ -33,7 +27,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
   if (!nodeResult.success) {
     console.error(nodeResult.logs);
@@ -50,7 +44,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: true,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
   if (!browserResult.success) {
     console.error(browserResult.logs);
@@ -67,7 +61,7 @@ async function build() {
     format: "cjs",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
   });
   if (!cjsResult.success) {
     console.error(cjsResult.logs);
@@ -101,7 +95,7 @@ async function build() {
     format: "esm",
     sourcemap: "external",
     minify: false,
-    external: [...externalDeps, "undici"],
+    external: externalDeps,
     naming: {
       entry: "[dir]/[name].[ext]",
       chunk: "chunks/[name]-[hash].[ext]",

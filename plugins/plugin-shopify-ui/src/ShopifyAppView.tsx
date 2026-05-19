@@ -22,13 +22,20 @@ import {
   Wifi,
   WifiOff,
 } from "lucide-react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CustomersPanel } from "./CustomersPanel";
 import { InventoryLevelsPanel } from "./InventoryLevelsPanel";
 import { OrdersPanel } from "./OrdersPanel";
 import { ProductsPanel } from "./ProductsPanel";
 import { StoreOverviewCard } from "./StoreOverviewCard";
-import { useShopifyDashboard } from "./useShopifyDashboard";
+import {
+  type ShopifyCustomersResponse,
+  type ShopifyInventoryResponse,
+  type ShopifyOrdersResponse,
+  type ShopifyProductsResponse,
+  type ShopifyStatus,
+  useShopifyDashboard,
+} from "./useShopifyDashboard";
 
 function ShopifySetupCard() {
   const setupItems = [
@@ -445,4 +452,359 @@ export function ShopifyAppView({ exitToApps }: OverlayAppContext) {
       </div>
     </div>
   );
+}
+
+async function fetchShopifyTuiJson<T>(url: string): Promise<T | null> {
+  const response = await fetch(url);
+  if (response.status === 404) return null;
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data
+        ? String(data.error)
+        : `Shopify request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return data as T;
+}
+
+async function postShopifyTuiJson(
+  url: string,
+  body: Record<string, unknown>,
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const message =
+      data && typeof data === "object" && "error" in data
+        ? String(data.error)
+        : `Shopify request failed with ${response.status}`;
+    throw new Error(message);
+  }
+  return data;
+}
+
+async function loadShopifyTuiState(): Promise<{
+  status: ShopifyStatus;
+  products: ShopifyProductsResponse | null;
+  orders: ShopifyOrdersResponse | null;
+  inventory: ShopifyInventoryResponse | null;
+  customers: ShopifyCustomersResponse | null;
+}> {
+  const status =
+    (await fetchShopifyTuiJson<ShopifyStatus>("/api/shopify/status")) ?? {
+      connected: false,
+      shop: null,
+    };
+
+  if (!status.connected) {
+    return {
+      status,
+      products: null,
+      orders: null,
+      inventory: null,
+      customers: null,
+    };
+  }
+
+  const [products, orders, inventory, customers] = await Promise.all([
+    fetchShopifyTuiJson<ShopifyProductsResponse>(
+      "/api/shopify/products?page=1&limit=10&q=",
+    ),
+    fetchShopifyTuiJson<ShopifyOrdersResponse>(
+      "/api/shopify/orders?status=any&limit=10",
+    ),
+    fetchShopifyTuiJson<ShopifyInventoryResponse>("/api/shopify/inventory"),
+    fetchShopifyTuiJson<ShopifyCustomersResponse>(
+      "/api/shopify/customers?q=&limit=10",
+    ),
+  ]);
+
+  return { status, products, orders, inventory, customers };
+}
+
+export function ShopifyTuiView() {
+  const [state, setState] =
+    useState<Awaited<ReturnType<typeof loadShopifyTuiState>> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [lastAction, setLastAction] = useState("boot");
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const next = await loadShopifyTuiState();
+      setState(next);
+      setLastAction("refresh");
+    } catch (caught) {
+      setState(null);
+      setError(caught instanceof Error ? caught.message : "Shopify refresh failed");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  const lowInventory =
+    state?.inventory?.items.filter((item) => item.available <= 5) ?? [];
+  const viewState = {
+    viewType: "tui",
+    viewId: "shopify",
+    connected: state?.status.connected ?? false,
+    domain: state?.status.shop?.domain ?? null,
+    productCount: state?.products?.total ?? 0,
+    orderCount: state?.orders?.total ?? 0,
+    inventoryCount: state?.inventory?.items.length ?? 0,
+    lowInventoryCount: lowInventory.length,
+    customerCount: state?.customers?.total ?? 0,
+    loading,
+    lastAction,
+    error,
+  };
+
+  return (
+    <div
+      data-view-state={JSON.stringify(viewState)}
+      style={{
+        minHeight: "100vh",
+        background: "#020617",
+        color: "#cbd5e1",
+        fontFamily:
+          'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace',
+        padding: 20,
+      }}
+    >
+      <div style={{ color: "#7dd3fc", marginBottom: 4 }}>
+        elizaos://shopify --type=tui
+      </div>
+      <div style={{ color: "#475569", marginBottom: 16 }}>
+        {loading ? "loading" : state?.status.connected ? "connected" : "not-connected"} |{" "}
+        {state?.status.shop?.domain ?? "no shop"} | {lastAction}
+      </div>
+
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "minmax(320px, 1fr) minmax(320px, 1fr)",
+          gap: 16,
+        }}
+      >
+        <section
+          aria-label="Shopify status"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 10,
+            }}
+          >
+            <strong style={{ color: "#e2e8f0" }}>store</strong>
+            <button
+              type="button"
+              onClick={() => void refresh()}
+              disabled={loading}
+              style={{
+                background: "transparent",
+                color: "#a7f3d0",
+                border: "1px solid rgba(167,243,208,0.45)",
+                borderRadius: 4,
+                padding: "4px 8px",
+                cursor: loading ? "not-allowed" : "pointer",
+                fontFamily: "inherit",
+              }}
+            >
+              refresh
+            </button>
+          </div>
+          {error && <div style={{ color: "#fca5a5" }}>{error}</div>}
+          <div style={{ marginBottom: 12 }}>
+            <div>
+              <span style={{ color: "#64748b" }}>connected</span>{" "}
+              {state?.status.connected ? "yes" : "no"}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>shop</span>{" "}
+              {state?.status.shop?.name ?? "not configured"}
+            </div>
+            <div>
+              <span style={{ color: "#64748b" }}>domain</span>{" "}
+              {state?.status.shop?.domain ?? "SHOPIFY_STORE_DOMAIN required"}
+            </div>
+          </div>
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>counts</div>
+          <div>products {state?.products?.total ?? 0}</div>
+          <div>orders {state?.orders?.total ?? 0}</div>
+          <div>customers {state?.customers?.total ?? 0}</div>
+          <div>inventory rows {state?.inventory?.items.length ?? 0}</div>
+          <div style={{ color: "#fca5a5" }}>low inventory {lowInventory.length}</div>
+          {!state?.status.connected && !loading ? (
+            <div style={{ color: "#94a3b8", marginTop: 18 }}>
+              Configure SHOPIFY_STORE_DOMAIN and SHOPIFY_ACCESS_TOKEN for live data.
+            </div>
+          ) : null}
+        </section>
+
+        <section
+          aria-label="Shopify commerce"
+          style={{
+            border: "1px solid rgba(125,211,252,0.3)",
+            borderRadius: 6,
+            padding: 16,
+            minHeight: 420,
+          }}
+        >
+          <strong style={{ color: "#e2e8f0" }}>commerce</strong>
+          <div style={{ color: "#64748b", margin: "6px 0 14px" }}>
+            commands: state | products | orders | inventory | customers | create-product | adjust-inventory
+          </div>
+          <div style={{ color: "#a7f3d0", marginBottom: 8 }}>recent orders</div>
+          {(state?.orders?.orders ?? []).slice(0, 6).map((order) => (
+            <div
+              key={order.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "9ch minmax(0,1fr) 10ch",
+                gap: 10,
+                borderTop: "1px solid rgba(125,211,252,0.14)",
+                padding: "7px 0",
+              }}
+            >
+              <span>{order.name}</span>
+              <span style={{ color: "#94a3b8" }}>{order.email}</span>
+              <span style={{ color: "#e2e8f0" }}>
+                {order.totalPrice} {order.currencyCode}
+              </span>
+            </div>
+          ))}
+          <div style={{ color: "#a7f3d0", margin: "18px 0 8px" }}>
+            low inventory
+          </div>
+          {lowInventory.slice(0, 8).map((item) => (
+            <div key={`${item.id}:${item.locationName}`} style={{ padding: "5px 0" }}>
+              {item.productTitle}
+              {item.variantTitle ? ` / ${item.variantTitle}` : ""} @{" "}
+              {item.locationName}: {item.available}
+            </div>
+          ))}
+        </section>
+      </div>
+    </div>
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "terminal-shopify-state") {
+    return { viewType: "tui", ...(await loadShopifyTuiState()) };
+  }
+
+  if (capability === "terminal-shopify-products") {
+    const query = typeof params?.query === "string" ? params.query.trim() : "";
+    const page = typeof params?.page === "number" ? params.page : 1;
+    const limit = typeof params?.limit === "number" ? params.limit : 20;
+    return {
+      viewType: "tui",
+      products: await fetchShopifyTuiJson<ShopifyProductsResponse>(
+        `/api/shopify/products?${new URLSearchParams({
+          page: String(page),
+          limit: String(limit),
+          q: query,
+        })}`,
+      ),
+    };
+  }
+
+  if (capability === "terminal-shopify-orders") {
+    const status =
+      typeof params?.status === "string" ? params.status.trim() : "any";
+    const limit = typeof params?.limit === "number" ? params.limit : 20;
+    return {
+      viewType: "tui",
+      orders: await fetchShopifyTuiJson<ShopifyOrdersResponse>(
+        `/api/shopify/orders?${new URLSearchParams({
+          status,
+          limit: String(limit),
+        })}`,
+      ),
+    };
+  }
+
+  if (capability === "terminal-shopify-inventory") {
+    return {
+      viewType: "tui",
+      inventory: await fetchShopifyTuiJson<ShopifyInventoryResponse>(
+        "/api/shopify/inventory",
+      ),
+    };
+  }
+
+  if (capability === "terminal-shopify-customers") {
+    const query = typeof params?.query === "string" ? params.query.trim() : "";
+    const limit = typeof params?.limit === "number" ? params.limit : 20;
+    return {
+      viewType: "tui",
+      customers: await fetchShopifyTuiJson<ShopifyCustomersResponse>(
+        `/api/shopify/customers?${new URLSearchParams({
+          q: query,
+          limit: String(limit),
+        })}`,
+      ),
+    };
+  }
+
+  if (capability === "terminal-shopify-create-product") {
+    const title = typeof params?.title === "string" ? params.title.trim() : "";
+    if (!title) throw new Error("title is required");
+    return {
+      viewType: "tui",
+      product: await postShopifyTuiJson("/api/shopify/products", {
+        title,
+        vendor: typeof params?.vendor === "string" ? params.vendor : undefined,
+        productType:
+          typeof params?.productType === "string" ? params.productType : undefined,
+        price:
+          typeof params?.price === "string" || typeof params?.price === "number"
+            ? params.price
+            : undefined,
+      }),
+    };
+  }
+
+  if (capability === "terminal-shopify-adjust-inventory") {
+    const itemId = typeof params?.itemId === "string" ? params.itemId.trim() : "";
+    const delta = typeof params?.delta === "number" ? params.delta : null;
+    if (!itemId) throw new Error("itemId is required");
+    if (delta === null) throw new Error("delta is required");
+    return {
+      viewType: "tui",
+      inventory: await postShopifyTuiJson(
+        `/api/shopify/inventory/${encodeURIComponent(itemId)}/adjust`,
+        {
+          delta,
+          locationId:
+            typeof params?.locationId === "string" ? params.locationId : undefined,
+        },
+      ),
+    };
+  }
+
+  throw new Error(`Unsupported capability "${capability}"`);
 }

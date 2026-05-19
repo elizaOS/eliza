@@ -30,8 +30,6 @@ import type {
 	LocalInferenceBackend,
 } from "./backend";
 import { BackendDispatcher, gpuLayersForKvOffload } from "./backend";
-import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
-import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import {
 	ELIZA_1_PLACEHOLDER_IDS,
 	type Eliza1TierId,
@@ -41,6 +39,7 @@ import {
 	type ConversationHandle,
 	conversationRegistry,
 } from "./conversation-registry";
+import { desktopFfiBackendRuntime } from "./desktop-ffi-backend-runtime";
 import {
 	type DflashGenerateResult,
 	type DflashRuntimeLoadConfig,
@@ -50,14 +49,7 @@ import {
 	getDflashRuntimeStatus,
 	logDflashDevDisabledWarning,
 } from "./dflash-server";
-// NOTE: `dflashLlamaServer` is now only consumed at the dispatcher
-// construction site (line ~819) — every per-call site routes through
-// `this.dispatcher.*` instead. See plugins/plugin-local-inference/
-// FFI_BACKEND_WIREUP_PLAN.md Step C.
-import {
-	getDflashDrafterBlockReason,
-	getDflashTargetMetaBlockReason,
-} from "./dflash-target-meta";
+import { FfiStreamingBackend } from "./ffi-streaming-backend";
 import type { LocalUsageBlock } from "./llama-server-metrics";
 import { MemoryMonitor } from "./memory-monitor";
 import { listInstalledModels } from "./registry";
@@ -651,13 +643,6 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 	 * reset every turn to preserve the historical stateless behaviour.
 	 */
 	async generate(args: GenerateArgs): Promise<string> {
-		// When the dispatcher has a backend loaded (llama-server OR
-		// node-llama-cpp OR future FFI), forward to it. The dispatcher
-		// already knows which backend is active and handles errors
-		// consistently across all of them.
-		if (this.dispatcher.hasLoadedModel()) {
-			return this.dispatcher.generate(args);
-		}
 		const pool = this.sessionPool;
 		if (!pool) {
 			throw new Error(

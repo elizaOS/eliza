@@ -10,17 +10,7 @@ import { $ } from "bun";
 // when resolved via a relative path and thus inlined undici@8.x — whose
 // `CacheStorage` constructor calls Node-internal `webidl.util.markAsUncloneable`
 // (absent on Bun), crashing at top-level import.
-async function externalsFromPackageJson(
-  pkgJsonPath: string,
-): Promise<string[]> {
-  const pkg = JSON.parse(await Bun.file(pkgJsonPath).text()) as {
-    dependencies?: Record<string, string>;
-    peerDependencies?: Record<string, string>;
-  };
-  const deps = Object.keys(pkg.dependencies ?? {});
-  const peers = Object.keys(pkg.peerDependencies ?? {});
-  return [...new Set([...deps, ...peers])];
-}
+import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const external = await externalsFromPackageJson("./package.json");
 

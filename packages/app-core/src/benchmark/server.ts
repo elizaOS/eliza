@@ -2273,25 +2273,45 @@ export async function startBenchmarkServer() {
             Array.isArray(benchmarkContext.tools) &&
             benchmarkContext.tools.length > 0
           ) {
+            const nativeMessages = normalizeLocaNativeMessages(
+              benchmarkContext.messages,
+            );
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 2048;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
             activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
             try {
-              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
-                messages: normalizeLocaNativeMessages(
-                  benchmarkContext.messages,
-                ),
+              const directResult = await callOpenAiCompatibleActionCalling({
+                messages: nativeMessages,
                 tools: benchmarkContext.tools,
                 toolChoice: "required",
-                maxTokens:
-                  typeof benchmarkContext.max_tokens === "number"
-                    ? benchmarkContext.max_tokens
-                    : 2048,
-                temperature:
-                  typeof benchmarkContext.temperature === "number"
-                    ? benchmarkContext.temperature
-                    : 0,
+                maxTokens,
+                temperature,
               });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = {
+                  text: directResult.text,
+                  toolCalls: directResult.toolCalls,
+                };
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  messages: nativeMessages,
+                  tools: benchmarkContext.tools,
+                  toolChoice: "required",
+                  maxTokens,
+                  temperature,
+                });
+              }
             } finally {
               activeUsageBuffer = null;
             }

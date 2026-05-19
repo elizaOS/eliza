@@ -527,6 +527,7 @@ export {
 export type { DesktopPowerState } from "./utils/desktop-workspace";
 export * from "./views/view-event-bus";
 export * from "./views/view-event-types";
+export * from "./components/views/TerminalPluginView";
 export * from "./voice";
 export * from "./widgets";
 export * from "./widgets/registry-store";

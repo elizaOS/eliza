@@ -2352,7 +2352,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async postToConnectorThread(
 		runtime: IAgentRuntime,
 		params: ConnectorPostToThreadParams,
-	): Promise<Memory | void> {
+	): Promise<Memory | undefined> {
 		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const state = this.requireAccountState(accountId);
 		const client = state.client;

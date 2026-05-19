@@ -393,10 +393,14 @@ export function bindReadyPhase(
         typeof data.viewPath === "string" ? data.viewPath : undefined;
       const viewLabel =
         typeof data.viewLabel === "string" ? data.viewLabel : undefined;
+      const viewType =
+        data.viewType === "gui" || data.viewType === "tui"
+          ? data.viewType
+          : undefined;
       const action = typeof data.action === "string" ? data.action : undefined;
       window.dispatchEvent(
         new CustomEvent("eliza:navigate:view", {
-          detail: { viewId, viewPath, viewLabel, action },
+          detail: { viewId, viewPath, viewLabel, viewType, action },
         }),
       );
     },
@@ -424,6 +428,10 @@ export function bindReadyPhase(
       const viewId = typeof data.viewId === "string" ? data.viewId : null;
       const capability =
         typeof data.capability === "string" ? data.capability : null;
+      const viewType =
+        data.viewType === "gui" || data.viewType === "tui"
+          ? data.viewType
+          : undefined;
       const requestId =
         typeof data.requestId === "string" ? data.requestId : null;
       if (!viewId || !capability || !requestId) return;
@@ -436,7 +444,7 @@ export function bindReadyPhase(
       // Lazy-import to avoid pulling the registry into the startup bundle.
       import("../components/views/view-interact-registry")
         .then(({ dispatchViewInteract }) =>
-          dispatchViewInteract(viewId, capability, params, requestId),
+          dispatchViewInteract(viewId, viewType, capability, params, requestId),
         )
         .catch(() => {
           client.sendWsMessage({
