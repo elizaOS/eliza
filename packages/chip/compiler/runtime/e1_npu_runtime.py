@@ -319,6 +319,7 @@ def stage_prepared_descriptor_batch(
     if not isinstance(sequence, Mapping):
         raise ValueError("prepared descriptor batch requires host_runtime_sequence")
     _validate_sequence_mmio_preamble(prepared, sequence)
+    _validate_descriptor_writeback_preamble(prepared, image)
     _validate_descriptor_submission(image, sequence, descriptor_base, descriptor_count)
     _validate_sequence_descriptor_memory_writes(sequence, image)
     result = stage_host_runtime_sequence(
@@ -423,6 +424,7 @@ def stage_prepared_descriptor_execution_batches(
         if not isinstance(sequence, Mapping):
             raise ValueError("prepared execution batch requires host_runtime_sequence")
         _validate_sequence_mmio_preamble(batch, sequence)
+        _validate_descriptor_writeback_preamble(batch, image)
         _validate_descriptor_submission(image, sequence, expected_descriptor_base, descriptor_count)
         _validate_sequence_descriptor_memory_writes(sequence, image)
         sequences.append(sequence)
@@ -574,6 +576,38 @@ def _validate_descriptor_word0(word0: int) -> None:
         raise ValueError("prepared execution batch descriptor stream exceeds scratchpad")
     if writeback_request and opcode not in (E1NpuRuntime.OP_GEMM_S8, E1NpuRuntime.OP_GEMM_S4):
         raise ValueError("prepared execution batch writeback_request requires GEMM opcode")
+
+
+def _validate_descriptor_writeback_preamble(
+    batch: Mapping[str, Any], image: Mapping[str, Any]
+) -> None:
+    descriptor_words = image.get("descriptor_words")
+    op_mmio_preamble = batch.get("op_mmio_preamble")
+    if not isinstance(descriptor_words, list) or not isinstance(op_mmio_preamble, list):
+        raise ValueError("prepared execution batch requires descriptor_words and op_mmio_preamble")
+    if len(descriptor_words) != len(op_mmio_preamble):
+        raise ValueError("prepared execution batch descriptor_words count does not match op_mmio_preamble")
+    for words, entry in zip(descriptor_words, op_mmio_preamble, strict=True):
+        if not isinstance(words, list) or not words:
+            raise ValueError("prepared execution batch descriptor_words entry must have four words")
+        word0 = words[0]
+        if not isinstance(word0, int):
+            raise ValueError("prepared execution batch descriptor_words value must be a uint32")
+        if not word0 & E1NpuRuntime.DESC_FLAG_WRITEBACK_REQUEST:
+            continue
+        if not isinstance(entry, Mapping):
+            raise TypeError("prepared execution batch preamble entry must be a mapping")
+        preamble = entry.get("mmio_preamble")
+        if not isinstance(preamble, Mapping):
+            raise ValueError("prepared execution batch requires mmio_preamble metadata")
+        cfg = preamble.get("GEMM_CFG")
+        if not isinstance(cfg, int) or cfg < 0 or cfg > 0xFFFF_FFFF:
+            raise ValueError("prepared execution batch GEMM_CFG must be a uint32")
+        writeback_bytes = (cfg & 0x3) * ((cfg >> 8) & 0x3) * 4
+        if writeback_bytes == 0:
+            raise ValueError(
+                "prepared execution batch writeback_request requires nonzero GEMM output"
+            )
 
 
 def _validate_descriptor_submission(

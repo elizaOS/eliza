@@ -649,7 +649,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
       "../../../../../plugins/plugin-groq/index.ts"
     )) as GroqPluginModule;
   }
-  const groq = groqModule?.groqPlugin ?? groqModule?.default;
+  const groq = groqModule.groqPlugin ?? groqModule.default;
   if (!groq) {
     throw new Error("Failed to load Groq TypeScript plugin");
   }
@@ -658,7 +658,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     "@elizaos/plugin-local-inference"
   )) as LocalEmbeddingPluginModule;
   const localEmbedding =
-    embeddingModule?.localEmbeddingPlugin ?? embeddingModule?.default;
+    embeddingModule.localEmbeddingPlugin ?? embeddingModule.default;
   if (!localEmbedding) {
     throw new Error(
       "Failed to load local embedding plugin. VoiceBench no longer registers zero-vector fallback embeddings.",
@@ -680,7 +680,7 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     )) as ElevenLabsPluginModule;
   }
   const elevenLabs =
-    elevenLabsModule?.elevenLabsPlugin ?? elevenLabsModule?.default;
+    elevenLabsModule.elevenLabsPlugin ?? elevenLabsModule.default;
   if (!elevenLabs) {
     throw new Error("Failed to load ElevenLabs TypeScript plugin");
   }
@@ -1208,7 +1208,7 @@ async function main(): Promise<void> {
             llmCalls: llmLogs.map((entry) => ({
               model: entry.model,
               purpose: entry.purpose,
-              latencyMs: entry.latencyMs ?? 0,
+              latencyMs: entry.latencyMs,
             })),
             providerAccesses: providerLogs.map((entry) => ({
               providerName: entry.providerName,

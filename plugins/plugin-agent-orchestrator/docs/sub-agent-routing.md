@@ -1,8 +1,7 @@
 # Sub-agent routing
 
-> Canonical orchestration path for ACPX sub-agents. ACP-spawned sessions
-> route through `AcpService` and `SubAgentRouter`; PTY-spawned sessions keep
-> using the coordinator modules that ship in this package.
+> Canonical orchestration path for ACP sub-agents. ACP-spawned sessions route
+> through `AcpService` and `SubAgentRouter`.
 
 ## Goals
 
@@ -20,7 +19,7 @@
 
 ## Components
 
-### `AcpService` (existing)
+### `AcpService`
 
 Spawn surface. TASKS op=create records origin context in
 `session.metadata` at spawn time:
@@ -43,7 +42,7 @@ Spawn surface. TASKS op=create records origin context in
 }
 ```
 
-### `SubAgentRouter` (new — `services/sub-agent-router.ts`)
+### `SubAgentRouter` (`services/sub-agent-router.ts`)
 
 Subscribes to `AcpService.onSessionEvent`. On `task_complete`, `error`, or
 `blocked` (boundary events only — not streaming chunks), it:
@@ -132,7 +131,7 @@ Set `ACPX_SUB_AGENT_ROUND_TRIP_CAP=N` in the runtime config to override.
 The default of 32 is generous; a typical sub-agent task hits 1–5
 round-trips before terminal completion.
 
-### `activeSubAgentsProvider` (new — `providers/active-sub-agents.ts`)
+### `activeSubAgentsProvider` (`providers/active-sub-agents.ts`)
 
 Cache-friendly view of live sub-agent sessions. Filters to:
 

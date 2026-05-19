@@ -265,15 +265,17 @@ def check_evidence_rows_collected(manifest: dict, is_template: bool) -> list[Gat
     return out
 
 
-def _resolve_evidence_path(path_value: str) -> Path:
+def _resolve_evidence_path(variant_dir: Path, path_value: str) -> Path:
     """Resolve an evidence path relative to the variant directory."""
     candidate = Path(path_value)
     if not candidate.is_absolute():
-        candidate = (VARIANT_DIR / candidate).resolve()
+        candidate = (variant_dir / candidate).resolve()
     return candidate
 
 
-def check_qemu_virt_evidence(manifest: dict, is_template: bool) -> list[GateResult]:
+def check_qemu_virt_evidence(
+    manifest: dict, is_template: bool, variant_dir: Path
+) -> list[GateResult]:
     """Cross-check the qemu-virt evidence JSON against the manifest."""
     rows = _evidence_index(manifest)
     row = rows.get("qemu-virt-boot")
@@ -291,7 +293,7 @@ def check_qemu_virt_evidence(manifest: dict, is_template: bool) -> list[GateResu
             ]
         return [GateResult("BLOCKED", "qemu-virt-boot.path not filled")]
 
-    evidence_path = _resolve_evidence_path(path_value)
+    evidence_path = _resolve_evidence_path(variant_dir, path_value)
     if not evidence_path.is_file():
         return [GateResult("BLOCKED", f"evidence file not present: {evidence_path}")]
 
@@ -338,7 +340,7 @@ def check_qemu_virt_evidence(manifest: dict, is_template: bool) -> list[GateResu
     if isinstance(transcript_value, str):
         transcript_text = transcript_value
     elif isinstance(transcript_path_value, str) and transcript_path_value:
-        transcript_path = _resolve_evidence_path(transcript_path_value)
+        transcript_path = _resolve_evidence_path(variant_dir, transcript_path_value)
         if not transcript_path.is_file():
             out.append(GateResult("FAIL", f"transcript file missing: {transcript_path}"))
         else:
@@ -364,7 +366,9 @@ def check_qemu_virt_evidence(manifest: dict, is_template: bool) -> list[GateResu
     return out
 
 
-def check_iso_sha256_against_file(manifest: dict, is_template: bool) -> list[GateResult]:
+def check_iso_sha256_against_file(
+    manifest: dict, is_template: bool, variant_dir: Path
+) -> list[GateResult]:
     """If the ISO file is reachable, its sha256 must match the manifest."""
     if is_template:
         return [GateResult("BLOCKED", "iso sha256 not checked: template manifest")]
@@ -374,7 +378,7 @@ def check_iso_sha256_against_file(manifest: dict, is_template: bool) -> list[Gat
         return [GateResult("BLOCKED", "manifest.sha256 not filled")]
     if not isinstance(filename, str) or filename == TEMPLATE_SENTINEL_FILENAME:
         return [GateResult("BLOCKED", "manifest.filename not filled")]
-    iso_path = VARIANT_DIR / "out" / filename
+    iso_path = variant_dir / "out" / filename
     if not iso_path.is_file():
         return [GateResult("BLOCKED", f"ISO file not present locally: {iso_path}")]
     hasher = hashlib.sha256()
@@ -409,8 +413,8 @@ def run_checks(variant_dir: Path) -> tuple[Status, list[GateResult], Path, bool]
     results.extend(check_schema(manifest, schema))
     results.extend(check_required_evidence_rows(manifest))
     results.extend(check_evidence_rows_collected(manifest, is_template))
-    results.extend(check_qemu_virt_evidence(manifest, is_template))
-    results.extend(check_iso_sha256_against_file(manifest, is_template))
+    results.extend(check_qemu_virt_evidence(manifest, is_template, variant_dir))
+    results.extend(check_iso_sha256_against_file(manifest, is_template, variant_dir))
     return aggregate(results), results, manifest_path, is_template
 
 

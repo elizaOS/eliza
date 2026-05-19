@@ -87,9 +87,9 @@ export async function runJudge(args: {
     });
     const parsed = out.parsed as unknown as { pass?: boolean; reason?: string };
     return {
-      pass: !!parsed?.pass,
+      pass: !!parsed.pass,
       reason:
-        typeof parsed?.reason === "string"
+        typeof parsed.reason === "string"
           ? parsed.reason
           : "(no reason returned)",
     };

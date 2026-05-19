@@ -41,6 +41,7 @@ logger = logging.getLogger(__name__)
 
 _COMMAND_RE = re.compile(r"<command>(.*?)</command>", re.DOTALL | re.IGNORECASE)
 _BASH_FENCE_RE = re.compile(r"```(?:bash|sh)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
+_MAX_COMMAND_BLOCKS_PER_TURN = 3
 
 
 def _extract_command(text: str) -> Optional[str]:
@@ -52,7 +53,7 @@ def _extract_command(text: str) -> Optional[str]:
         if _clean_xml_command_body(match.group(1))
     ]
     if command_matches:
-        return command_matches[-1]
+        return "\n".join(command_matches[:_MAX_COMMAND_BLOCKS_PER_TURN])
     m = _BASH_FENCE_RE.search(text)
     if m:
         return m.group(1).strip()
@@ -201,11 +202,16 @@ class ElizaBridgeTerminalAgent:
                 if iteration == 0:
                     msg = (
                         "You are an AI agent solving a Terminal-Bench task in a "
-                        "Docker container.\n\n"
+                        "terminal sandbox. The task text may refer to /app; use "
+                        "that path exactly. Prefer portable shell commands, "
+                        "heredocs, python, sed, and cat for file edits. Do not "
+                        "use apply_patch unless it exists in the sandbox.\n\n"
                         f"Task: {task.instruction}\n\n"
                         "Respond with the next shell command wrapped in "
-                        "<command>...</command> tags. When you believe the "
-                        "task is complete, respond with TASK_COMPLETE."
+                        "<command>...</command> tags. You may include multiple "
+                        "<command> blocks if they should run in sequence. When "
+                        "you believe the task is complete, respond with "
+                        "TASK_COMPLETE."
                     )
                 else:
                     msg = (

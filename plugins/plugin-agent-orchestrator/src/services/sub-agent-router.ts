@@ -67,7 +67,7 @@ function collectVerifiableUrlCandidates(
   const candidates: string[] = [];
   for (const match of text.matchAll(URL_IN_TEXT_RE)) {
     const raw = match[0];
-    const index = match.index ?? -1;
+    const index = match.index;
     const suffix =
       index >= 0 ? text.slice(index + raw.length, index + raw.length + 4) : "";
     // Route instructions and docs often contain URL templates such as
@@ -614,7 +614,7 @@ export class SubAgentRouter extends Service {
     if (!source) return undefined;
     return async (response: Content): Promise<Memory[]> => {
       const text =
-        typeof response?.text === "string" ? response.text.trim() : "";
+        typeof response.text === "string" ? response.text.trim() : "";
       if (!text) return [];
       const originReplyTarget =
         origin.parentConnectorMessageId ?? origin.parentMessageId;
@@ -771,7 +771,7 @@ Do not report done until every referenced URL in the final page resolves without
     data?: unknown,
   ): void {
     const logger = this.runtime.logger;
-    const fn = logger?.[level];
+    const fn = logger[level];
     if (typeof fn === "function") {
       fn.call(
         logger,

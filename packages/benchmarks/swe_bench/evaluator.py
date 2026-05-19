@@ -237,6 +237,29 @@ class SWEBenchEvaluator:
         safe = re.sub(r"[^A-Za-z0-9_.-]+", "_", base)
         return safe[:200]
 
+    def _prepare_docker_env(self, tmp_path: Path, env: dict[str, str]) -> dict[str, str]:
+        """Return an env that avoids host Docker credential-helper failures.
+
+        SWE-bench mostly pulls public images. On developer machines Docker
+        Desktop can still invoke registry-specific credential helpers before a
+        pull, and a broken helper makes the harness fail before any container
+        starts. Use a minimal per-run Docker config by default; callers can opt
+        back into their host config with SWE_BENCH_USE_HOST_DOCKER_CONFIG=1.
+        """
+        if os.environ.get("SWE_BENCH_USE_HOST_DOCKER_CONFIG", "").lower() in {
+            "1",
+            "true",
+            "yes",
+        }:
+            return env
+
+        docker_config = tmp_path / "docker-config"
+        docker_config.mkdir(parents=True, exist_ok=True)
+        (docker_config / "config.json").write_text('{"auths": {}}\n', encoding="utf-8")
+        prepared = dict(env)
+        prepared["DOCKER_CONFIG"] = str(docker_config)
+        return prepared
+
     async def _maybe_prepare_epoch_prebuilt_image(self, instance_id: str) -> None:
         """Best-effort: tag Epoch prebuilt images to match harness naming.
 
@@ -361,6 +384,7 @@ class SWEBenchEvaluator:
             # On Apple Silicon (ARM64), the SWE-bench Docker images are x86_64-only.
             # Set DOCKER_DEFAULT_PLATFORM so Docker uses QEMU emulation transparently.
             env = dict(os.environ)
+            env = self._prepare_docker_env(tmp_path, env)
             if _platform.machine() in ("arm64", "aarch64"):
                 env["DOCKER_DEFAULT_PLATFORM"] = "linux/amd64"
                 logger.info("ARM64 detected; setting DOCKER_DEFAULT_PLATFORM=linux/amd64")

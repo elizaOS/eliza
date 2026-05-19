@@ -20,7 +20,9 @@ const ENV_KEYS = [
   "ELIZA_AGENT_SELECTION_STRATEGY",
   "ELIZA_CONFIG_PATH",
   "ELIZA_DEFAULT_AGENT_TYPE",
+  "ELIZA_ELIZAOS_ACP_COMMAND",
   "ELIZA_LLM_PROVIDER",
+  "ELIZA_PI_AGENT_ACP_COMMAND",
   "ELIZA_PROVIDER",
   "HOME",
   "OPENAI_API_KEY",
@@ -116,6 +118,42 @@ describe("getTaskAgentFrameworkState", () => {
     expect(
       state.frameworks.find((item) => item.id === "codex")?.authReady,
     ).toBe(false);
+  });
+
+  it("honors ElizaOS as an explicit native task-agent default", async () => {
+    setEnv({
+      ELIZA_DEFAULT_AGENT_TYPE: "elizaos",
+      BENCHMARK_MODEL_PROVIDER: "cerebras",
+      CEREBRAS_API_KEY: "csk-test",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+
+    expect(state.preferred.id).toBe("elizaos");
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.installed,
+    ).toBe(true);
+    expect(
+      state.frameworks.find((item) => item.id === "elizaos")?.authReady,
+    ).toBe(true);
+  });
+
+  it("honors Pi Agent as an explicit native task-agent default", async () => {
+    setEnv({
+      ELIZA_DEFAULT_AGENT_TYPE: "pi-agent",
+      BENCHMARK_MODEL_PROVIDER: "cerebras",
+      CEREBRAS_API_KEY: "csk-test",
+    });
+
+    const state = await getTaskAgentFrameworkState(runtime(), installedProbe());
+
+    expect(state.preferred.id).toBe("pi-agent");
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.installed,
+    ).toBe(true);
+    expect(
+      state.frameworks.find((item) => item.id === "pi-agent")?.authReady,
+    ).toBe(true);
   });
 
   it("does not treat a Cerebras-mirrored OpenAI key as Codex auth", async () => {

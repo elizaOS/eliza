@@ -67,6 +67,24 @@ const DIALPAD_KEYS = [
   "#",
 ];
 
+const ANDROID_SMS_GATEWAY_ENABLED =
+  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_ENABLED === "true";
+const ANDROID_SMS_GATEWAY_SECRET = String(
+  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_SECRET ?? "",
+);
+const ANDROID_SMS_GATEWAY_WEBHOOK_URL = String(
+  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL ??
+    "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+);
+const ANDROID_SMS_GATEWAY_PHONE_NUMBER = String(
+  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER ??
+    "+14159611510",
+);
+const ANDROID_SMS_GATEWAY_PHONE_LABEL = String(
+  import.meta.env.VITE_ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL ??
+    "Eliza Cloud Gateway (+14159611510)",
+);
+
 function useLaunchParams(): URLSearchParams {
   const [params, setParams] = useState(() => readLaunchParams());
 
@@ -986,6 +1004,13 @@ interface IncomingSmsContext {
   messageId: string | null;
 }
 
+interface AndroidSmsGatewayReply {
+  success?: boolean;
+  handled?: boolean;
+  reason?: string;
+  replyText?: string | null;
+}
+
 function readIncomingSmsContext(
   params: URLSearchParams,
 ): IncomingSmsContext | null {
@@ -1008,6 +1033,37 @@ function initialMessageBody(params: URLSearchParams): string {
     : (params.get("body") ?? "");
 }
 
+function androidSmsGatewayPayload(incoming: IncomingSmsContext) {
+  return {
+    type: "new-message",
+    data: {
+      guid:
+        incoming.messageId ??
+        `android-sms-${incoming.sender}-${incoming.timestamp ?? Date.now()}`,
+      text: incoming.body,
+      isFromMe: false,
+      handle: {
+        address: incoming.sender,
+        service: "SMS",
+      },
+      chats: [
+        {
+          guid: `SMS;-;${incoming.sender}`,
+          chatIdentifier: incoming.sender,
+        },
+      ],
+      dateCreated: incoming.timestamp ?? Date.now(),
+      metadata: {
+        localPhoneNumber: ANDROID_SMS_GATEWAY_PHONE_NUMBER,
+        phoneNumber: ANDROID_SMS_GATEWAY_PHONE_NUMBER,
+        phoneAccountId: ANDROID_SMS_GATEWAY_PHONE_NUMBER,
+        phoneAccountLabel: ANDROID_SMS_GATEWAY_PHONE_LABEL,
+        androidSmsGateway: true,
+      },
+    },
+  };
+}
+
 export function MessagesPageView() {
   const params = useLaunchParams();
   const [address, setAddress] = useState(
@@ -1027,6 +1083,7 @@ export function MessagesPageView() {
     return event;
   });
   const [error, setError] = useState<string | null>(null);
+  const forwardedIncomingIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
     const incoming = readIncomingSmsContext(params);
@@ -1063,6 +1120,71 @@ export function MessagesPageView() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (!ANDROID_SMS_GATEWAY_ENABLED || !incomingSms) return;
+    if (!ANDROID_SMS_GATEWAY_SECRET) {
+      setError("Android SMS gateway secret is not configured.");
+      return;
+    }
+
+    const key =
+      incomingSms.messageId ??
+      `${incomingSms.sender}:${incomingSms.timestamp ?? ""}:${incomingSms.body}`;
+    if (forwardedIncomingIds.current.has(key)) return;
+    forwardedIncomingIds.current.add(key);
+
+    let cancelled = false;
+    const forward = async () => {
+      try {
+        const response = await fetch(ANDROID_SMS_GATEWAY_WEBHOOK_URL, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-eliza-bridge": "android-sms",
+            "x-eliza-gateway-secret": ANDROID_SMS_GATEWAY_SECRET,
+          },
+          body: JSON.stringify(androidSmsGatewayPayload(incomingSms)),
+        });
+        const cloudReply = (await response.json().catch(() => ({}))) as
+          | AndroidSmsGatewayReply
+          | Record<string, never>;
+        if (!response.ok) {
+          throw new Error(
+            `Cloud gateway failed (${response.status}): ${JSON.stringify(cloudReply)}`,
+          );
+        }
+
+        const replyText = cloudReply.replyText?.trim();
+        if (!replyText) {
+          if (!cancelled) setNotice("SMS forwarded to Eliza Cloud.");
+          return;
+        }
+
+        const plugins = getPlugins();
+        if (typeof plugins.messages.plugin.sendSms !== "function") {
+          throw new Error("ElizaMessages plugin is unavailable");
+        }
+        await plugins.messages.plugin.sendSms({
+          address: incomingSms.sender,
+          body: replyText,
+        });
+        if (!cancelled) {
+          setNotice("SMS forwarded to Eliza Cloud and reply sent.");
+          await refresh();
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setError(err instanceof Error ? err.message : String(err));
+        }
+      }
+    };
+
+    void forward();
+    return () => {
+      cancelled = true;
+    };
+  }, [incomingSms, refresh]);
 
   const send = async () => {
     setBusy(true);

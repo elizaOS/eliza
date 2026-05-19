@@ -14,9 +14,15 @@ import { getElizaNamespace, resolveStateDir } from "@elizaos/core";
 
 function readConfig(): Record<string, unknown> | undefined {
   try {
-    const namespace = getElizaNamespace();
-    const filename = namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
-    const configPath = path.join(resolveStateDir(), filename);
+    const explicitPath = process.env.ELIZA_CONFIG_PATH?.trim();
+    const configPath = explicitPath
+      ? path.resolve(explicitPath)
+      : (() => {
+          const namespace = getElizaNamespace();
+          const filename =
+            namespace === "eliza" ? "eliza.json" : `${namespace}.json`;
+          return path.join(resolveStateDir(), filename);
+        })();
     const raw = readFileSync(configPath, "utf-8");
     return JSON.parse(raw);
   } catch {

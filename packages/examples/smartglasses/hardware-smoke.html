@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Even G1 Smartglasses Hardware Smoke</title>
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        margin: 0;
+        padding: 24px;
+        color: #17202a;
+        background: #f7f9fb;
+      }
+      main {
+        max-width: 920px;
+        margin: 0 auto;
+        display: grid;
+        gap: 16px;
+      }
+      section {
+        background: #fff;
+        border: 1px solid #d8e0e8;
+        border-radius: 8px;
+        padding: 16px;
+      }
+      .controls {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+      }
+      button {
+        border: 1px solid #9fb2c4;
+        background: #eef4f8;
+        color: #17202a;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 14px;
+      }
+      button:disabled {
+        opacity: 0.45;
+      }
+      textarea {
+        width: 100%;
+        min-height: 88px;
+        font: inherit;
+      }
+      pre {
+        background: #0f1720;
+        color: #dce7f1;
+        padding: 12px;
+        border-radius: 6px;
+        overflow: auto;
+        min-height: 220px;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Even G1 Smartglasses Hardware Smoke</h1>
+      <section>
+        <p>
+          Requires a browser with Web Bluetooth support. Select the left lens first, then the right lens.
+          The page sends real G1 UART packets through <code>WebBluetoothG1Transport</code>.
+        </p>
+        <div class="controls">
+          <button id="connect-left" type="button">Connect Left</button>
+          <button id="connect-right" type="button">Connect Right</button>
+          <button id="disconnect" type="button" disabled>Disconnect</button>
+          <button id="mic-on" type="button" disabled>Mic On</button>
+          <button id="mic-off" type="button" disabled>Mic Off</button>
+          <button id="settings" type="button" disabled>Send Settings</button>
+          <button id="finalize-report" type="button" disabled>Finalize Report</button>
+          <button id="copy-report" type="button" disabled>Copy Report</button>
+          <button id="download-report" type="button" disabled>Download Report</button>
+        </div>
+      </section>
+      <section>
+        <label for="text">Display text</label>
+        <textarea id="text">Eliza smartglasses hardware smoke test. Single tap should enable the microphone. Double tap should disable it.</textarea>
+        <div class="controls">
+          <button id="display" type="button" disabled>Display Text</button>
+          <button id="clear" type="button" disabled>Clear Display</button>
+        </div>
+      </section>
+      <section>
+        <h2>Log</h2>
+        <pre id="log"></pre>
+      </section>
+    </main>
+    <script type="module" src="./hardware-smoke.ts"></script>
+  </body>
+</html>

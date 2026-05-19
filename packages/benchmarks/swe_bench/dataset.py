@@ -32,6 +32,7 @@ class SWEBenchDataset:
         SWEBenchVariant.FULL: "SWE-bench/SWE-bench",
         SWEBenchVariant.LITE: "SWE-bench/SWE-bench_Lite",
         SWEBenchVariant.VERIFIED: "SWE-bench/SWE-bench_Verified",
+        SWEBenchVariant.MULTILINGUAL: "SWE-bench/SWE-bench_Multilingual",
     }
 
     def __init__(

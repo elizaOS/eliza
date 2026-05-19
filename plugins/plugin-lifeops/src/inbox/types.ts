@@ -71,6 +71,12 @@ export interface InboundMessage {
   gmailAccountId?: string;
   /** Display label for the Gmail account (e.g., `work@example.com`). */
   gmailAccountEmail?: string;
+  /** Local phone/iMessage identity that handled the message, when known. */
+  phoneAccountId?: string;
+  /** Human-readable label for the local phone identity. */
+  phoneAccountLabel?: string;
+  /** Local phone number that handled the message, when known. */
+  phoneNumber?: string;
   /** ISO timestamp of when the user last viewed this thread. */
   lastSeenAt?: string;
   /** ISO timestamp if the user has replied since this message arrived. */

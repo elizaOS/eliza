@@ -799,6 +799,50 @@ def test_stage_prepared_descriptor_execution_batches_validates_descriptor_byte_c
     assert memory_writes == []
 
 
+def test_stage_prepared_descriptor_execution_batches_validates_writeback_gemm_output() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    op_preamble = dict(first_batch["op_mmio_preamble"][0])
+    mmio_preamble = dict(op_preamble["mmio_preamble"])
+    mmio_preamble["GEMM_CFG"] = 0
+    op_preamble["mmio_preamble"] = mmio_preamble
+    first_batch["op_mmio_preamble"] = [op_preamble]
+    sequence = dict(first_batch["host_runtime_sequence"])
+    sequence_preamble = dict(sequence["mmio_preamble_writes"][0])
+    sequence_preamble["writes"] = [
+        {**write, "value": 0} if write["register"] == "GEMM_CFG" else write
+        for write in sequence_preamble["writes"]
+    ]
+    sequence["mmio_preamble_writes"] = [sequence_preamble]
+    first_batch["host_runtime_sequence"] = sequence
+
+    with pytest.raises(ValueError, match="writeback_request requires nonzero GEMM output"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
 def test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble() -> None:
     prepared = (
         partition_module(parse_module(_mismatched_dot_payload()))
@@ -1087,6 +1131,44 @@ def test_stage_prepared_descriptor_batch_validates_scratch_bounds_before_writes(
     with pytest.raises(ValueError, match="descriptor stream exceeds scratchpad"):
         stage_prepared_descriptor_batch(
             {**prepared, "descriptor_command_buffer_image": image},
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_batch_validates_writeback_gemm_output_before_writes() -> None:
+    prepared = (
+        partition_module(parse_module(_dot_payload()))
+        .prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    op_preamble = dict(prepared["op_mmio_preamble"][0])
+    mmio_preamble = dict(op_preamble["mmio_preamble"])
+    mmio_preamble["GEMM_CFG"] = 0
+    op_preamble["mmio_preamble"] = mmio_preamble
+    sequence = dict(prepared["host_runtime_sequence"])
+    sequence_preamble = dict(sequence["mmio_preamble_writes"][0])
+    sequence_preamble["writes"] = [
+        {**write, "value": 0} if write["register"] == "GEMM_CFG" else write
+        for write in sequence_preamble["writes"]
+    ]
+    sequence["mmio_preamble_writes"] = [sequence_preamble]
+
+    with pytest.raises(ValueError, match="writeback_request requires nonzero GEMM output"):
+        stage_prepared_descriptor_batch(
+            {
+                **prepared,
+                "op_mmio_preamble": [op_preamble],
+                "host_runtime_sequence": sequence,
+            },
             write_mmio32=lambda address, value: mmio_writes.append((address, value)),
             write_mem32=lambda address, value: memory_writes.append((address, value)),
         )

@@ -90,6 +90,17 @@ def _summary_agent_label(args: argparse.Namespace) -> str:
     return f"{harness}-dry-run-smoke" if args.dry_run else harness
 
 
+def _task_agent_artifact_fields() -> dict[str, str]:
+    return {
+        "benchmark_task_agent": os.environ.get("BENCHMARK_TASK_AGENT", ""),
+        "acp_default_agent": os.environ.get("ELIZA_ACP_DEFAULT_AGENT", ""),
+        "default_agent_type": os.environ.get("ELIZA_DEFAULT_AGENT_TYPE", ""),
+        "agent_selection_strategy": os.environ.get(
+            "ELIZA_AGENT_SELECTION_STRATEGY", ""
+        ),
+    }
+
+
 def _configure_bridge_model_env(model: str) -> None:
     model_name = (model or "").strip()
     if not model_name:
@@ -440,6 +451,7 @@ def run_benchmark(args: argparse.Namespace) -> dict[str, object]:
             "model": args.model,
             "agent": _summary_agent_label(args),
             "harness": _effective_harness_label(),
+            **_task_agent_artifact_fields(),
             "run_mode": _run_mode_label(args),
             "smoke": bool(args.dry_run),
             "observation_type": args.observation_type,

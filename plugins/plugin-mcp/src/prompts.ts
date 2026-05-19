@@ -81,7 +81,7 @@ export const resourceAnalysisTemplate = `{{{mcpProvider.text}}}
 
 # Prompt
 
-You are a helpful assistant responding to a user's request. You've just accessed the resource "{{{uri}}}" to help answer this request.
+Respond to the user's request using the resource "{{{uri}}}".
 
 Original user request: "{{{userMessage}}}"
 
@@ -109,7 +109,7 @@ export const resourceSelectionTemplate = `{{{mcpProvider.text}}}
 
 # Prompt
 
-You are an intelligent assistant helping select the right resource to address a user's request.
+Select the right resource to address the user's request.
 
 CRITICAL INSTRUCTIONS:
 1. You MUST specify both a valid serverName AND uri from the list above
@@ -155,7 +155,7 @@ export const toolReasoningTemplate = `{{{mcpProvider.text}}}
 
 # Prompt
 
-You are a helpful assistant responding to a user's request. You've just used the "{{{toolName}}}" tool from the "{{{serverName}}}" server to help answer this request.
+Synthesize the result from the "{{{toolName}}}" tool into a response to the user's request.
 
 Original user request: "{{{userMessage}}}"
 

@@ -46,7 +46,7 @@ export interface PromptEvolutionInput {
   options?: PromptEvolutionOptions;
 }
 
-const MUTATION_INSTRUCTIONS = `You are a prompt engineer. Mutate the SYSTEM PROMPT below to explore a different phrasing.
+const MUTATION_INSTRUCTIONS = `Mutate the SYSTEM PROMPT below to explore a different phrasing.
 
 Constraints:
 - Preserve the original task contract (inputs, outputs, format).

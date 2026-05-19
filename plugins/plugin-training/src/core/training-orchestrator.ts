@@ -242,10 +242,12 @@ async function defaultDispatcher(
         };
       }
       const baselinePrompt = await loadBaselineForTask(input.task);
+      const optimizerName =
+        process.env.TRAIN_OPTIMIZER?.trim() ?? "gepa";
       const result = await runNativeBackend({
         datasetPath: input.datasetPath,
         task: input.task,
-        optimizer: "instruction-search",
+        optimizer: optimizerName as import("../optimizers/types.js").OptimizerName,
         baselinePrompt,
         runtime: { useModel: useModelHandler },
       });
@@ -297,10 +299,8 @@ async function extractUseModel(
     process.env.TRAIN_MODEL_PROVIDER?.trim() ??
     process.env.TRAINING_PROVIDER?.trim();
   if (trainProvider === "cerebras") {
-    // Lazy-import so the helper isn't required during unit tests that don't
-    // exercise this branch.
     const { getTrainingUseModelAdapter } = await import(
-      "../../../plugin-lifeops/test/helpers/lifeops-eval-model.ts"
+      "./cerebras-eval-model.js"
     );
     return getTrainingUseModelAdapter();
   }

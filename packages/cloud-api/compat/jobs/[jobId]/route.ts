@@ -53,7 +53,7 @@ const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCompatCorsOptions(CORS_METHODS));
 __hono_app.get("/", async (c) =>
   __hono_GET(c.req.raw, {
-    params: Promise.resolve({ jobId: c.req.param("jobId")! }),
+    params: Promise.resolve({ jobId: c.req.param("jobId") as string }),
   }),
 );
 export default __hono_app;

@@ -143,7 +143,7 @@ export async function buildSkillsManifest(
     | undefined;
 
   if (!service) {
-    log.debug?.(
+    log.debug(
       `${LOG_PREFIX} AGENT_SKILLS_SERVICE not registered; emitting empty manifest`,
     );
     const virtualEntries = opts.virtualSkills ?? [];

@@ -3,6 +3,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  normalizeTaskAgentAdapter,
   resolvePinnedAdapter,
   resolveSpawnWorkdir,
   resolveWorkdirRoute,
@@ -13,18 +14,72 @@ const ENV_KEY = "TASK_AGENT_WORKDIR_ROUTES";
 let tmpRoot: string;
 let appsDir: string;
 let originalValue: string | undefined;
+let originalDefaultAgent: string | undefined;
+let originalAcpDefaultAgent: string | undefined;
+let originalBenchmarkAgent: string | undefined;
+let originalSelectionStrategy: string | undefined;
 
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "workdir-routes-"));
   appsDir = path.join(tmpRoot, "static-apps");
   fs.mkdirSync(appsDir, { recursive: true });
   originalValue = process.env[ENV_KEY];
+  originalDefaultAgent = process.env.ELIZA_DEFAULT_AGENT_TYPE;
+  originalAcpDefaultAgent = process.env.ELIZA_ACP_DEFAULT_AGENT;
+  originalBenchmarkAgent = process.env.BENCHMARK_TASK_AGENT;
+  originalSelectionStrategy = process.env.ELIZA_AGENT_SELECTION_STRATEGY;
 });
 
 afterEach(() => {
   if (originalValue === undefined) delete process.env[ENV_KEY];
   else process.env[ENV_KEY] = originalValue;
+  if (originalDefaultAgent === undefined)
+    delete process.env.ELIZA_DEFAULT_AGENT_TYPE;
+  else process.env.ELIZA_DEFAULT_AGENT_TYPE = originalDefaultAgent;
+  if (originalAcpDefaultAgent === undefined)
+    delete process.env.ELIZA_ACP_DEFAULT_AGENT;
+  else process.env.ELIZA_ACP_DEFAULT_AGENT = originalAcpDefaultAgent;
+  if (originalBenchmarkAgent === undefined)
+    delete process.env.BENCHMARK_TASK_AGENT;
+  else process.env.BENCHMARK_TASK_AGENT = originalBenchmarkAgent;
+  if (originalSelectionStrategy === undefined)
+    delete process.env.ELIZA_AGENT_SELECTION_STRATEGY;
+  else process.env.ELIZA_AGENT_SELECTION_STRATEGY = originalSelectionStrategy;
   fs.rmSync(tmpRoot, { recursive: true, force: true });
+});
+
+describe("task-agent adapter defaults", () => {
+  it("normalizes the configurable first-party adapter aliases", () => {
+    expect(normalizeTaskAgentAdapter("eliza")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("eliza-os")).toBe("elizaos");
+    expect(normalizeTaskAgentAdapter("pi agent")).toBe("pi-agent");
+    expect(normalizeTaskAgentAdapter("open code")).toBe("opencode");
+  });
+
+  it("pins the settings default so planner guesses cannot override it", () => {
+    delete process.env.BENCHMARK_TASK_AGENT;
+    delete process.env.ELIZA_ACP_DEFAULT_AGENT;
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "pi agent";
+    process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
+
+    expect(resolvePinnedAdapter(undefined)).toBe("pi-agent");
+  });
+
+  it("lets BENCHMARK_TASK_AGENT override the normal default for matrix runs", () => {
+    process.env.BENCHMARK_TASK_AGENT = "opencode";
+    process.env.ELIZA_ACP_DEFAULT_AGENT = "elizaos";
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "pi-agent";
+    process.env.ELIZA_AGENT_SELECTION_STRATEGY = "fixed";
+
+    expect(resolvePinnedAdapter(undefined)).toBe("opencode");
+  });
+
+  it("does not pin an adapter when selection strategy is dynamic", () => {
+    process.env.ELIZA_DEFAULT_AGENT_TYPE = "opencode";
+    process.env.ELIZA_AGENT_SELECTION_STRATEGY = "dynamic";
+
+    expect(resolvePinnedAdapter(undefined)).toBeUndefined();
+  });
 });
 
 describe("resolveWorkdirRoute", () => {

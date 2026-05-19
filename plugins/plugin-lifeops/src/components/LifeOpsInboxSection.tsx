@@ -139,6 +139,12 @@ const MISSED_REPLY_GAP_MS = 24 * 60 * 60 * 1000;
 const MISSED_MIN_PRIORITY = 50;
 const ALL_GMAIL_ACCOUNTS = "__all__";
 
+interface PhoneAccountOption {
+  id: string;
+  label: string;
+  phoneNumber?: string;
+}
+
 type MailWorkflowKind = "needs_response" | "unresponded" | "spam_review";
 
 interface MailWorkflowState {
@@ -250,6 +256,33 @@ function ChannelChip({
   );
 }
 
+function PhoneAccountChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string;
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      className={[
+        "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors",
+        active
+          ? "bg-emerald-500/16 text-emerald-300 ring-1 ring-emerald-500/40"
+          : "bg-bg-muted/30 text-muted hover:text-txt",
+      ].join(" ")}
+    >
+      <Phone className="h-3.5 w-3.5" aria-hidden />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function GmailAccountChip({
   label,
   active,
@@ -355,6 +388,7 @@ interface ThreadRowProps {
   onSelect: () => void;
   onReply: () => void;
   showAccountSubtitle: boolean;
+  showPhoneAccountSubtitle: boolean;
 }
 
 function ThreadRow({
@@ -363,6 +397,7 @@ function ThreadRow({
   onSelect,
   onReply,
   showAccountSubtitle,
+  showPhoneAccountSubtitle,
 }: ThreadRowProps) {
   const message = group.latestMessage;
   const style = styleFor(message.channel);
@@ -473,6 +508,12 @@ function ThreadRow({
               {message.gmailAccountEmail}
             </span>
           ) : null}
+          {showPhoneAccountSubtitle &&
+          (message.phoneAccountLabel ?? message.sourceRef.phoneAccountLabel) ? (
+            <span className="truncate text-[10px] text-muted/70">
+              {message.phoneAccountLabel ?? message.sourceRef.phoneAccountLabel}
+            </span>
+          ) : null}
         </div>
       </div>
 
@@ -507,11 +548,13 @@ function MessageRow({
   selected,
   onSelect,
   onReply,
+  showPhoneAccountSubtitle,
 }: {
   message: LifeOpsInboxMessage;
   selected: boolean;
   onSelect: () => void;
   onReply: () => void;
+  showPhoneAccountSubtitle: boolean;
 }) {
   const style = styleFor(message.channel);
   const subject = message.subject?.trim() || `${style.label} message`;
@@ -584,6 +627,12 @@ function MessageRow({
         <div className="mt-0.5 line-clamp-1 text-[11px] text-muted/70">
           {message.snippet}
         </div>
+        {showPhoneAccountSubtitle &&
+        (message.phoneAccountLabel ?? message.sourceRef.phoneAccountLabel) ? (
+          <div className="mt-1 truncate text-[10px] text-muted/70">
+            {message.phoneAccountLabel ?? message.sourceRef.phoneAccountLabel}
+          </div>
+        ) : null}
       </div>
 
       <button
@@ -839,6 +888,7 @@ interface InboxListPaneProps {
   groupedMode: boolean;
   visibleThreadGroups: LifeOpsInboxThreadGroup[];
   showGmailAccountSubtitles: boolean;
+  showPhoneAccountSubtitles: boolean;
 }
 
 function InboxListPane({
@@ -850,6 +900,7 @@ function InboxListPane({
   groupedMode,
   visibleThreadGroups,
   showGmailAccountSubtitles,
+  showPhoneAccountSubtitles,
 }: InboxListPaneProps) {
   const { t } = useApp();
   const isEmpty = groupedMode
@@ -906,6 +957,7 @@ function InboxListPane({
               onSelect={() => onSelect({ messageId: group.latestMessage.id })}
               onReply={() => onReply(group.latestMessage)}
               showAccountSubtitle={showGmailAccountSubtitles}
+              showPhoneAccountSubtitle={showPhoneAccountSubtitles}
             />
           ))
         ) : (
@@ -916,6 +968,7 @@ function InboxListPane({
               selected={msg.id === selectedMessageId}
               onSelect={() => onSelect({ messageId: msg.id })}
               onReply={() => onReply(msg)}
+              showPhoneAccountSubtitle={showPhoneAccountSubtitles}
             />
           ))
         )}
@@ -958,6 +1011,12 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
 
   const [selectedGmailAccount, setSelectedGmailAccount] =
     useState<string>(ALL_GMAIL_ACCOUNTS);
+  const [selectedPhoneAccountIds, setSelectedPhoneAccountIds] = useState<
+    string[]
+  >([]);
+  const [knownPhoneAccounts, setKnownPhoneAccounts] = useState<
+    PhoneAccountOption[]
+  >([]);
   const [missedOnly, setMissedOnly] = useState<boolean>(false);
   const [mailWorkflow, setMailWorkflow] = useState<MailWorkflowState>({
     kind: null,
@@ -986,6 +1045,10 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
     gmailAccountId:
       isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
         ? selectedGmailAccount
+        : undefined,
+    phoneAccountIds:
+      isMessagesMode && selectedPhoneAccountIds.length > 0
+        ? selectedPhoneAccountIds
         : undefined,
     missedOnly: isMessagesMode ? missedOnly : false,
     // Mail mode keeps recency-first because email priority is less actionable.
@@ -1057,6 +1120,14 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
   // Subtitle on every Gmail row when more than one account is connected, so
   // users can tell apart two senders that exist in both inboxes.
   const showGmailAccountSubtitles = showGmailAccountChips;
+  const phoneAccountOptions = useMemo<PhoneAccountOption[]>(
+    () =>
+      [...knownPhoneAccounts].sort((a, b) => a.label.localeCompare(b.label)),
+    [knownPhoneAccounts],
+  );
+  const showPhoneAccountChips =
+    isMessagesMode && phoneAccountOptions.length > 1;
+  const showPhoneAccountSubtitles = showPhoneAccountChips;
   const activeGmailGrantId =
     isMailMode && selectedGmailAccount !== ALL_GMAIL_ACCOUNTS
       ? selectedGmailAccount
@@ -1111,6 +1182,61 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
       setSelectedGmailAccount(ALL_GMAIL_ACCOUNTS);
     }
   }, [gmailAccountOptions, selectedGmailAccount]);
+
+  useEffect(() => {
+    if (!isMessagesMode) return;
+    const next = new Map<string, PhoneAccountOption>();
+    for (const option of knownPhoneAccounts) {
+      next.set(option.id, option);
+    }
+    const messages = [
+      ...inbox.messages,
+      ...inbox.threadGroups.flatMap(messagesForThreadGroup),
+    ];
+    for (const message of messages) {
+      const id =
+        message.phoneAccountId ??
+        message.phoneNumber ??
+        message.sourceRef.phoneAccountId ??
+        message.sourceRef.phoneNumber;
+      if (!id || next.has(id)) continue;
+      const phoneNumber = message.phoneNumber ?? message.sourceRef.phoneNumber;
+      next.set(id, {
+        id,
+        label:
+          message.phoneAccountLabel ??
+          message.sourceRef.phoneAccountLabel ??
+          phoneNumber ??
+          id,
+        ...(phoneNumber ? { phoneNumber } : {}),
+      });
+    }
+    const values = Array.from(next.values());
+    if (
+      values.length !== knownPhoneAccounts.length ||
+      values.some((value, index) => value.id !== knownPhoneAccounts[index]?.id)
+    ) {
+      setKnownPhoneAccounts(values);
+    }
+  }, [inbox.messages, inbox.threadGroups, isMessagesMode, knownPhoneAccounts]);
+
+  useEffect(() => {
+    if (selectedPhoneAccountIds.length === 0) return;
+    setSelectedPhoneAccountIds((current) => {
+      const filtered = current.filter((id) =>
+        phoneAccountOptions.some((option) => option.id === id),
+      );
+      return filtered.length === current.length ? current : filtered;
+    });
+  }, [phoneAccountOptions, selectedPhoneAccountIds.length]);
+
+  const togglePhoneAccount = useCallback((id: string) => {
+    setSelectedPhoneAccountIds((current) =>
+      current.includes(id)
+        ? current.filter((value) => value !== id)
+        : [...current, id],
+    );
+  }, []);
 
   const channelCounts = useMemo(() => {
     const base = Object.fromEntries(
@@ -1309,6 +1435,26 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
         </div>
       ) : null}
 
+      {showPhoneAccountChips ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border/10 px-3 py-2">
+          <PhoneAccountChip
+            label={t("lifeopsInbox.allPhoneNumbers", {
+              defaultValue: "All numbers",
+            })}
+            active={selectedPhoneAccountIds.length === 0}
+            onClick={() => setSelectedPhoneAccountIds([])}
+          />
+          {phoneAccountOptions.map((opt) => (
+            <PhoneAccountChip
+              key={opt.id}
+              label={opt.label}
+              active={selectedPhoneAccountIds.includes(opt.id)}
+              onClick={() => togglePhoneAccount(opt.id)}
+            />
+          ))}
+        </div>
+      ) : null}
+
       {inbox.error ? (
         <div className="px-5 py-4 text-xs text-rose-300">{inbox.error}</div>
       ) : inbox.loading && inbox.messages.length === 0 ? (
@@ -1336,6 +1482,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                 groupedMode={true}
                 visibleThreadGroups={inbox.threadGroups}
                 showGmailAccountSubtitles={showGmailAccountSubtitles}
+                showPhoneAccountSubtitles={showPhoneAccountSubtitles}
               />
             )
           ) : (
@@ -1350,6 +1497,7 @@ export function LifeOpsInboxSection(props: LifeOpsInboxSectionProps = {}) {
                   groupedMode={true}
                   visibleThreadGroups={inbox.threadGroups}
                   showGmailAccountSubtitles={showGmailAccountSubtitles}
+                  showPhoneAccountSubtitles={showPhoneAccountSubtitles}
                 />
               </div>
 

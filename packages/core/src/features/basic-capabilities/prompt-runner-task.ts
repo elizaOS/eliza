@@ -33,7 +33,7 @@ export interface PromptRunnerTaskMetadata {
 }
 
 const PROMPT_RUNNER_SYSTEM_PROMPT =
-	"You are an autonomous agent processing a scheduled task. Execute the user's intent and report what you did.\n\nTask: {{prompt}}";
+	"Process the scheduled task below. Execute the user's intent and report what you did.\n\nTask: {{prompt}}";
 
 function readPrompt(task: Task): string | null {
 	const meta = task.metadata as Record<string, unknown> | undefined;

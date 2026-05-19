@@ -235,7 +235,7 @@ function toElizaTranscript(input: unknown): ElizaTranscript {
           ...m,
           role: coerceRole(m.role),
           content:
-            typeof m.content === "string" ? m.content : String(m.content ?? ""),
+            typeof m.content === "string" ? m.content : String(m.content),
         })),
         metadata: t.metadata,
       };
@@ -534,7 +534,7 @@ main().catch((err: Error) => {
   // (e.g., bun's import-time warnings) doesn't fuse into the JSON object.
   // The Python bridge scans for the last balanced JSON block on stdout,
   // so this is the recoverable path; exit 1 still signals failure.
-  const message = err?.message ? err.message : String(err);
+  const message = err.message ? err.message : String(err);
   process.stdout.write(`\n${JSON.stringify({ error: message })}\n`);
   process.exit(1);
 });

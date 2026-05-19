@@ -228,7 +228,7 @@ export async function gradeStyleHeld(
 ): Promise<PersonalityVerdict> {
   const { style, maxTokens, isMultilang, directiveLanguage } =
     readOptions(scenario);
-  const checkTurns = scenario.personalityExpect.checkTurns ?? [];
+  const checkTurns = scenario.personalityExpect.checkTurns;
   const layers: LayerResult[] = [];
 
   if (checkTurns.length === 0) {

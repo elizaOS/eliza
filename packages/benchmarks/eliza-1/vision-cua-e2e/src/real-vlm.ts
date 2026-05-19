@@ -64,7 +64,7 @@ export class RealVlm {
       imageUrl: req.imageUrl,
       prompt: promptForModel,
     });
-    const description = result.description?.trim() ?? "";
+    const description = result.description.trim();
     if (description.length === 0) {
       throw new Error(
         "[real-vlm] IMAGE_DESCRIPTION returned an empty description",
@@ -87,7 +87,7 @@ export class RealVlm {
       imageUrl,
       prompt,
     });
-    const text = `${result.title ?? ""}\n${result.description ?? ""}`;
+    const text = `${result.title}\n${result.description}`;
     const parsed = parseGroundingResponse(text);
     if (parsed.x < 0 || parsed.y < 0) {
       throw new Error(

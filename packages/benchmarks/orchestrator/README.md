@@ -170,12 +170,16 @@ Replay scoring example (from normalized Eliza capture artifacts):
 
 ## Code Agent Matrix
 
-Worker lane for comparing real coding agents on SWE-bench cells:
+Worker lane for comparing real coding agents across coding, terminal, browser,
+and computer-use benchmarks. The default included matrix is sourced from
+`benchmarks/orchestrator/code_agent_coverage.py` and currently covers
+`swe_bench`, `terminal_bench`, `mind2web`, `visualwebbench`, `webshop`, and
+`osworld` for both `elizaos` and `opencode`.
 
 ```bash
 cd /Users/shawwalters/milaidy/eliza/packages
 python -m benchmarks.orchestrator.code_agent_matrix \
-  --benchmarks swe_bench \
+  --benchmarks swe_bench,terminal_bench,mind2web,visualwebbench,webshop,osworld \
   --adapters elizaos,opencode \
   --provider cerebras \
   --model gpt-oss-120b \
@@ -191,6 +195,12 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
 - benchmark output JSON under each cell's `output/` directory.
 - requested trajectory output under each cell's `trajectories/` directory.
 - top-level `summary.json` and `summary.md` with failure buckets.
+
+Smoke mode uses each benchmark's cheap offline fixtures where available:
+Mind2Web `--sample --mock`, VisualWebBench `--use-sample-tasks --mock`,
+WebShop `--use-sample-tasks --mock`, and OSWorld `--dry_run`. Real WebShop
+runs add `--bridge`; real OSWorld runs do not add `--dry_run`, so they require
+the desktop/VM capacity expected by OSWorld.
 
 Resume is default: cells with `cell-result.json` are reused. Add `--force` to
 rerun, or summarize an interrupted/keyed run without executing anything:
