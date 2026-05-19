@@ -297,15 +297,19 @@ The standard methods currently implemented in core are:
 ```
 
 The manifest is structural. Runtime behavior must not depend on prompt text.
-`module.id` is the remote routing key; `module.name` is the local plugin name
-registered into the runtime lifecycle.
+`module.id` is the remote routing key and must use only letters, numbers,
+dots, underscores, or hyphens. Colons are reserved for the live/conformance
+`moduleId:target` notation, and path/query separators are not valid module
+identity. `module.name` is the local plugin name registered into the runtime
+lifecycle.
 
 Manifest decoding is strict at the capability-router boundary:
 
-- `module.id`, `module.name`, action `name`, action `description`, provider
-  `name`, evaluator `name`, evaluator `description`, evaluator `prompt`, model
-  `modelType`, widget `id`, widget `label`, route `path`, view `id`, and view
-  `label` must be non-empty strings.
+- `module.id` must be a valid remote module identifier. `module.name`, action
+  `name`, action `description`, provider `name`, evaluator `name`, evaluator
+  `description`, evaluator `prompt`, model `modelType`, widget `id`, widget
+  `label`, route `path`, view `id`, and view `label` must be non-empty
+  strings.
 - Route `method` must be one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, or
   `STATIC`. The remote plugin adapter currently rejects remote `STATIC` routes
   because local route dispatch skips static routes and there is no remote static
@@ -1157,8 +1161,8 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   missing, malformed, or duplicate provider endpoint URL fingerprints, accidental
   credential-shaped fields and string values, valid required-only and
   required-plus-desktop provider report sets, unknown provider-family reports,
-  missing required provider-family observations, exercised RPC targets without
-  `moduleId:target` syntax,
+  missing required provider-family observations, malformed remote module ids,
+  exercised RPC targets without `moduleId:target` syntax,
   exercised RPC targets that reference unobserved module ids, exercised RPC
   targets from manifest-only modules that did not register locally, registered
   modules that were never exercised by conformance RPC, duplicate

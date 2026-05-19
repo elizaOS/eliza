@@ -454,7 +454,10 @@ function validateReportFile(
   }
   const observedModuleIds = new Set<string>();
   for (const [index, moduleId] of moduleIds.entries()) {
-    const id = requireString(moduleId, `conformance.moduleIds[${index}]`);
+    const id = requireRemotePluginModuleId(
+      moduleId,
+      `conformance.moduleIds[${index}]`,
+    );
     if (observedModuleIds.has(id)) {
       throw new Error("conformance.moduleIds must not contain duplicates.");
     }
@@ -508,7 +511,7 @@ function validateReportFile(
       exercise.surface,
       `conformance.moduleExercises[${index}].surface`,
     );
-    const moduleId = requireString(
+    const moduleId = requireRemotePluginModuleId(
       exercise.moduleId,
       `conformance.moduleExercises[${index}].moduleId`,
     );
@@ -682,7 +685,7 @@ function validateRpcCalls(
         `conformance.rpcCalls[${index}].method must be valid for its surface.`,
       );
     }
-    const moduleId = requireString(
+    const moduleId = requireRemotePluginModuleId(
       call.moduleId,
       `conformance.rpcCalls[${index}].moduleId`,
     );
@@ -964,7 +967,7 @@ function validateSyncEvidence(
         "sync.registeredModules pluginName must be present in sync.registered.",
       );
     }
-    const moduleId = requireString(
+    const moduleId = requireRemotePluginModuleId(
       item.moduleId,
       `sync.registeredModules[${index}].moduleId`,
     );
@@ -1062,7 +1065,7 @@ function validateSyncEvidence(
       continue;
     }
     if (item.trusted === true && item.endpointId === endpointId) {
-      const moduleId = requireString(
+      const moduleId = requireRemotePluginModuleId(
         item.moduleId,
         `sync.trustDecisions[${index}].moduleId`,
       );
@@ -1226,7 +1229,7 @@ function validateRuntimeRemotePlugins(
       item.endpointId,
       `runtime.remotePlugins[${index}].endpointId`,
     );
-    const moduleId = requireString(
+    const moduleId = requireRemotePluginModuleId(
       item.moduleId,
       `runtime.remotePlugins[${index}].moduleId`,
     );
@@ -1426,6 +1429,16 @@ function requireEndpointId(value: unknown, field: string): string {
   if (!/^[A-Za-z0-9._:-]+$/.test(text)) {
     throw new Error(
       `${field} must contain only letters, numbers, dots, underscores, colons, or hyphens.`,
+    );
+  }
+  return text;
+}
+
+function requireRemotePluginModuleId(value: unknown, field: string): string {
+  const text = requireString(value, field);
+  if (!/^[A-Za-z0-9._-]+$/.test(text)) {
+    throw new Error(
+      `${field} must use letters, numbers, dots, underscores, or hyphens.`,
     );
   }
   return text;

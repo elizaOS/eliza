@@ -50,6 +50,7 @@ async function main(): Promise<void> {
     const malformedAssetDigestDir = join(workspace, "malformed-asset-digest");
     const mismatchDir = join(workspace, "mismatch");
     const malformedEndpointIdDir = join(workspace, "malformed-endpoint-id");
+    const malformedModuleIdDir = join(workspace, "malformed-module-id");
     const malformedProviderDir = join(workspace, "malformed-provider");
     const malformedCloudApiBaseDir = join(
       workspace,
@@ -184,6 +185,7 @@ async function main(): Promise<void> {
     await mkdir(malformedAssetDigestDir, { recursive: true });
     await mkdir(mismatchDir, { recursive: true });
     await mkdir(malformedEndpointIdDir, { recursive: true });
+    await mkdir(malformedModuleIdDir, { recursive: true });
     await mkdir(malformedProviderDir, { recursive: true });
     await mkdir(malformedCloudApiBaseDir, { recursive: true });
     await mkdir(cloudApiBaseQueryDir, { recursive: true });
@@ -399,6 +401,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(malformedEndpointIdDir, "provider.json"),
       `${JSON.stringify(makeMalformedEndpointIdReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(malformedModuleIdDir, "provider.json"),
+      `${JSON.stringify(makeMalformedModuleIdReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1178,6 +1185,15 @@ async function main(): Promise<void> {
     if (!malformedEndpointId.output.includes("endpointId must contain only")) {
       throw new Error(
         `malformed endpoint id failed for the wrong reason: ${malformedEndpointId.output}`,
+      );
+    }
+    const malformedModuleId = await runValidator(malformedModuleIdDir);
+    if (malformedModuleId.exitCode === 0) {
+      throw new Error("malformed module id unexpectedly passed validation.");
+    }
+    if (!malformedModuleId.output.includes("moduleIds[0] must use letters")) {
+      throw new Error(
+        `malformed module id failed for the wrong reason: ${malformedModuleId.output}`,
       );
     }
     const malformedProvider = await runValidator(malformedProviderDir);
@@ -2314,6 +2330,17 @@ function makeMalformedEndpointIdReport() {
   return {
     ...makeCompleteReport("provider"),
     endpointId: "bad endpoint id",
+  };
+}
+
+function makeMalformedModuleIdReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleIds: ["bad:module"],
+    },
   };
 }
 

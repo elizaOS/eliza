@@ -2957,6 +2957,22 @@ function validateRemotePluginCallTarget(
 	if (typeof value !== "string" || value.trim().length === 0) {
 		throw decodeError(method, `${key} must be a non-empty string.`);
 	}
+	if (key === "moduleId") {
+		validateRemotePluginModuleId(value, key, method);
+	}
+}
+
+function validateRemotePluginModuleId(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+		throw decodeError(
+			method,
+			`${key} must use letters, numbers, dots, underscores, or hyphens.`,
+		);
+	}
 }
 
 function requireRemotePluginWidget(

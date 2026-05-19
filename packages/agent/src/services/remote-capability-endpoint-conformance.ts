@@ -629,9 +629,9 @@ function assertModuleList(
   }
   const seen = new Set<string>();
   for (const module of result.modules) {
-    if (!module.id || !module.name) {
+    if (!isValidRemotePluginModuleId(module.id) || !module.name) {
       throw new Error(
-        `Capability endpoint "${endpointId}" returned a module without id or name.`,
+        `Capability endpoint "${endpointId}" returned a module with invalid id or missing name.`,
       );
     }
     if (seen.has(module.id)) {
@@ -641,6 +641,10 @@ function assertModuleList(
     }
     seen.add(module.id);
   }
+}
+
+function isValidRemotePluginModuleId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9._-]+$/.test(value);
 }
 
 function orderModulesByExercise(
