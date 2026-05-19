@@ -688,11 +688,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         agent = str(extra.get("agent") or extra.get("harness") or "").strip().lower()
         if extra.get("mock") is True or provider_name == "mock":
             args.extend(["--provider", "heuristic"])
-        elif agent in {"hermes", "openclaw"}:
-            raise ValueError(
-                "vending_bench has no native hermes/openclaw harness adapter yet"
-            )
-        elif agent == "eliza" or provider_name == "cerebras":
+        elif agent in {"eliza", "hermes", "openclaw"} or provider_name == "cerebras":
             args.extend(["--provider", "eliza"])
         elif model.provider in {"openai", "anthropic", "groq", "heuristic", "eliza", "vllm"}:
             args.extend(["--provider", model.provider])
