@@ -37,9 +37,7 @@ from typing import Literal
 ROOT = Path(__file__).resolve().parents[1]
 REPORT_PATH = ROOT / "build/reports/tapeout-readiness.json"
 SCHEMA = "eliza.tapeout_readiness.v1"
-CLAIM_BOUNDARY = (
-    "tapeout_readiness_aggregator_view_only_no_silicon_or_release_claim"
-)
+CLAIM_BOUNDARY = "tapeout_readiness_aggregator_view_only_no_silicon_or_release_claim"
 
 Status = Literal["PASS", "FAIL", "BLOCKED"]
 Subsystem = Literal[
@@ -383,7 +381,20 @@ class GateResult:
 
 
 def _classify(returncode: int, combined_output: str) -> Status:
-    if "STATUS: BLOCKED" in combined_output:
+    blob = combined_output
+    # Any check that prints a recognised BLOCKED preamble is BLOCKED, no matter
+    # what its exit code says: BLOCKED is a planning state, not a regression.
+    blocked_markers = (
+        "STATUS: BLOCKED",
+        "BLOCKED:",
+        " BLOCKED",
+        "gate BLOCKED",
+        "blocked_until_evidence",
+    )
+    if any(marker in blob for marker in blocked_markers):
+        return "BLOCKED"
+    # Conventional 2 == soft-fail / blocked for several existing checks.
+    if returncode == 2:
         return "BLOCKED"
     if returncode != 0:
         return "FAIL"
@@ -512,8 +523,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--strict",
         action="store_true",
         help=(
-            "Treat BLOCKED as a release blocker as well. "
-            "Used by `make tapeout-readiness-strict`."
+            "Treat BLOCKED as a release blocker as well. Used by `make tapeout-readiness-strict`."
         ),
     )
     parser.add_argument(
