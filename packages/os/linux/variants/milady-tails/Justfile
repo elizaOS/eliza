@@ -37,23 +37,69 @@ setup:
 milady-app:
     #!/usr/bin/env bash
     set -euo pipefail
-    milady_root="$(cd ../../../../../.. && pwd)"
-    app_out="${milady_root}/eliza/packages/app-core/platforms/electrobun/build/dev-linux-x64/Milady-dev"
+    eliza_root="$(git rev-parse --show-toplevel)"
+    outer_root="$(cd "${eliza_root}/.." && pwd)"
+    app_out="${ELIZAOS_MILADY_APP_ARTIFACT:-${eliza_root}/packages/app-core/platforms/electrobun/build/dev-linux-x64/Milady-dev}"
     stage="tails/config/chroot_local-includes/usr/share/elizaos/milady-app"
+
+    ensure_plugin_runtime_dist() {
+        local package_rel="$1"
+        local mode="$2"
+        local package_dir="${eliza_root}/${package_rel}"
+        local dist_index="${package_dir}/dist/index.js"
+
+        if [ -s "${dist_index}" ]; then
+            return 0
+        fi
+
+        echo "Building ${package_rel} runtime dist for elizaOS Live"
+        case "${mode}" in
+            package-js)
+                ( cd "${package_dir}" && bun run build:js )
+                ;;
+            tsup-index)
+                ( cd "${package_dir}" && bunx tsup src/index.ts --format esm --clean )
+                ;;
+            *)
+                echo "Unknown runtime package build mode: ${mode}" >&2
+                exit 1
+                ;;
+        esac
+
+        test -s "${dist_index}" || {
+            echo "missing ${dist_index} after runtime package build" >&2
+            exit 1
+        }
+    }
+
     if [ ! -x "${app_out}/bin/launcher" ]; then
         if [ "${ELIZAOS_BUILD_MILADY_APP:-0}" != "1" ]; then
             echo "Milady app build not found at ${app_out}/bin/launcher"
-            echo "Build it separately, or rerun with ELIZAOS_BUILD_MILADY_APP=1 to permit this recipe to build it."
+            echo "Build it separately, set ELIZAOS_MILADY_APP_ARTIFACT, or rerun with ELIZAOS_BUILD_MILADY_APP=1 to permit this recipe to build it."
             exit 1
         fi
         echo "Milady app build not found; ELIZAOS_BUILD_MILADY_APP=1 so building it now"
-        ( cd "${milady_root}" && bun install --no-frozen-lockfile --ignore-scripts )
-        ( cd "${milady_root}" && bun install --cwd eliza --no-frozen-lockfile --ignore-scripts )
-        ( cd "${milady_root}" && MILADY_ELIZA_SOURCE=local node scripts/setup-upstreams.mjs )
-        ( cd "${milady_root}/eliza/packages/electrobun-carrots" && bun run build )
-        ( cd "${milady_root}" && MILADY_ELIZA_SOURCE=local bun run build:desktop )
+        ( cd "${eliza_root}" && bun install --no-frozen-lockfile --ignore-scripts )
+        if [ -f "${outer_root}/package.json" ] && [ -d "${outer_root}/eliza" ]; then
+            ( cd "${outer_root}" && bun install --no-frozen-lockfile --ignore-scripts )
+            ( cd "${outer_root}" && bun install --cwd eliza --no-frozen-lockfile --ignore-scripts )
+            ( cd "${outer_root}" && MILADY_ELIZA_SOURCE=local node scripts/setup-upstreams.mjs )
+            ( cd "${outer_root}/eliza/packages/electrobun-carrots" && bun run build )
+            ( cd "${outer_root}" && MILADY_ELIZA_SOURCE=local bun run build:desktop )
+        else
+            ( cd "${eliza_root}" && MILADY_ELIZA_SOURCE=local node packages/app-core/scripts/setup-upstreams.mjs )
+            ( cd "${eliza_root}/packages/electrobun-carrots" && bun run build )
+            ( cd "${eliza_root}" && \
+                ELIZA_APP_NAME=Milady \
+                ELIZA_APP_ID=ai.milady.milady \
+                ELIZA_URL_SCHEME=milady \
+                ELIZA_NAMESPACE=milady \
+                bun run --cwd packages/app-core/platforms/electrobun build )
+        fi
     fi
     test -x "${app_out}/bin/launcher" || { echo "missing ${app_out}/bin/launcher"; exit 1; }
+    ensure_plugin_runtime_dist "plugins/plugin-health" package-js
+    ensure_plugin_runtime_dist "plugins/plugin-calendly" tsup-index
     if [ -e "${stage}" ] && ! rm -rf "${stage}"; then
         sudo -n rm -rf "${stage}"
     fi

@@ -28,6 +28,9 @@ stat_mode() {
 }
 
 echo "==> shell syntax"
+test -f tails/data/debootstrap/scripts/debian-common.patch
+test -f tails/data/splash.png
+test -x tails/data/wrappers/apt-get
 bash -n build.sh build-iso.sh tails/auto/build \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
@@ -67,6 +70,9 @@ node --check scripts/generate-release-evidence.mjs
 node --check scripts/validate-model-catalog.mjs
 node --check scripts/validate-runtime-overlay.mjs
 node --check tails/config/chroot_local-includes/usr/local/lib/elizaos/renderer-server.mjs
+grep -q 'ELIZAOS_MILADY_APP_ARTIFACT' Justfile
+grep -q 'ensure_plugin_runtime_dist "plugins/plugin-health" package-js' Justfile
+grep -q 'ensure_plugin_runtime_dist "plugins/plugin-calendly" tsup-index' Justfile
 python3 -m json.tool schemas/update-manifest.schema.json >/dev/null
 python3 -m json.tool schemas/model-catalog.schema.json >/dev/null
 python3 - \
@@ -274,6 +280,17 @@ if rg -n \
     tails/config/binary_local-includes/isolinux/sorry32.txt
 then
     echo "High-visibility inherited Tails strings still need elizaOS branding." >&2
+    exit 1
+fi
+if rg -n \
+    'Preparing Tails for first use|Checking the Tails system partition|Configuring Tails|Tails specific tools|Tails live user' \
+    tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-premount/partitioning \
+    tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-top/read-and-update-random-seed-sector \
+    tails/config/chroot_local-includes/usr/lib/live/config/2000-aesthetics \
+    tails/config/chroot_local-includes/usr/local/bin/milady \
+    tails/config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in
+then
+    echo "First-boot and launcher polish still exposes inherited Tails wording." >&2
     exit 1
 fi
 launcher_paths=(
