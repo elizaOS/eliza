@@ -96,8 +96,39 @@ jobs:
         run: bun install --no-save --ignore-scripts
 
       - name: Provision Hetzner server
+        id: provision
         if: steps.secret_config.outputs.configured == 'true'
-        run: bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts
+        run: |
+          set -o pipefail
+          log=/tmp/hetzner-e2e-provision.log
+          bun run packages/scripts/cloud/admin/hetzner-e2e/hetzner-e2e-provision.ts 2>&1 | tee "$log"
+
+      - name: Surface provision failure diagnostic
+        if: always() && steps.secret_config.outputs.configured == 'true' && steps.provision.outcome == 'failure'
+        run: |
+          log=/tmp/hetzner-e2e-provision.log
+          {
+            echo "### Hetzner E2E provisioning failed"
+            echo ""
+            if [ -f "$log" ] && grep -qE "quota exhausted|server limit reached|limit_reached|resource_limit_exceeded|quota_exceeded" "$log"; then
+              echo "**Cause:** Hetzner project quota exhausted (server cap reached)."
+              echo ""
+              echo "Operator action:"
+              echo "1. Open https://console.hetzner.cloud/ and check the CI project for leaked servers (filter labels \`ci=true\`, \`workflow=hetzner-e2e\`)."
+              echo "2. Delete any leaked servers, or wait for the half-hourly reaper workflow to sweep them."
+              echo "3. Re-run this workflow."
+              echo ""
+              echo "If the project itself has a tighter cap than the fallback ladder can survive, request a quota increase from Hetzner support or rotate \`HCLOUD_TOKEN_CI\` to a project with capacity."
+            elif [ -f "$log" ] && grep -qE "Hetzner rejected the token|missing_token|HTTP 401|HTTP 403" "$log"; then
+              echo "**Cause:** Hetzner rejected the API token (HTTP 401/403)."
+              echo ""
+              echo "Operator action: refresh \`HCLOUD_TOKEN_CI\` in the \`ci-hetzner-e2e\` GitHub environment, or confirm the project is still active."
+            else
+              echo "**Cause:** see the \"Provision Hetzner server\" step log for the raw error."
+              echo ""
+              echo "If the error message is unfamiliar, check \`packages/scripts/cloud/admin/hetzner-e2e/README.md\` and the fallback ladder in \`hetzner-e2e-provision.ts\`."
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Wait for host ready
         if: steps.secret_config.outputs.configured == 'true'

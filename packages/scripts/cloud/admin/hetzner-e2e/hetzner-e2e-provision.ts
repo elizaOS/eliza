@@ -15,7 +15,10 @@
  * any further work — so a crash never leaks a server.
  */
 
-import { HetznerCloudClient } from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
+import {
+  HetznerCloudClient,
+  HetznerCloudError,
+} from "@elizaos/cloud-shared/lib/services/containers/hetzner-cloud-api";
 import { appendStateAtomic } from "./state-file";
 
 function requireEnv(name: string): string {
@@ -48,10 +51,18 @@ const SERVER_TYPE_FALLBACKS: ReadonlyArray<{
 // Hetzner's "this server type can't be created here" and "this server
 // type is going away" responses — both render the requested combo
 // unusable and a different shared-cpu type / location is the natural
-// remediation. Auth / quota / billing failures (HTTP 401/402/403) are
-// NOT in this list — those are surfaced unchanged so the operator
+// remediation. We also treat project-wide quota exhaustion as retryable
+// because the pre-reap pass runs immediately before the loop: if it
+// freed any slots, the next attempt may now fit under the cap. The
+// fallback ladder is finite (~5 combos) so a genuinely exhausted project
+// will still surface as the last combo's error after the loop exits.
+// Pure auth / billing failures (HTTP 401, real 403 without limit code)
+// are NOT in this list — those are surfaced unchanged so the operator
 // fixes the underlying account issue.
 function isRetryableCombo(err: unknown): boolean {
+  if (err instanceof HetznerCloudError && err.code === "quota_exceeded") {
+    return true;
+  }
   const message = err instanceof Error ? err.message.toLowerCase() : "";
   return (
     message.includes("unsupported_server_type_for_location") ||
@@ -60,7 +71,14 @@ function isRetryableCombo(err: unknown): boolean {
     message.includes("is deprecated") ||
     message.includes("server_type_deprecated") ||
     message.includes("resource_unavailable") ||
-    message.includes("not_found") // Hetzner returns 404 when a deprecated type is fully removed
+    message.includes("not_found") || // Hetzner returns 404 when a deprecated type is fully removed
+    // Hetzner returns HTTP 403 with body `{ error: { code: "limit_reached",
+    // message: "server limit reached" } }` when the project cap is hit.
+    // Match both the apiCode and the human message so we stay correct even
+    // if mapStatusToCode is bypassed (e.g. transport layer wraps the body).
+    message.includes("server limit reached") ||
+    message.includes("limit_reached") ||
+    message.includes("resource_limit_exceeded")
   );
 }
 
@@ -179,7 +197,23 @@ async function main(): Promise<void> {
       break;
     } catch (err) {
       lastError = err;
-      if (!isRetryableCombo(err)) throw err;
+      if (!isRetryableCombo(err)) {
+        // Surface a hint before propagating: a non-retryable failure on
+        // the first attempt is almost always an auth/account problem
+        // (missing or stale HCLOUD_TOKEN_CI, project disabled). Without
+        // this, the workflow log just shows the bare HetznerCloudError
+        // and the operator has to guess.
+        if (
+          err instanceof HetznerCloudError &&
+          err.code === "missing_token"
+        ) {
+          console.error(
+            "[hetzner-e2e-provision] Hetzner rejected the token (HTTP 401/403). " +
+              "Refresh HCLOUD_TOKEN_CI in the ci-hetzner-e2e GitHub environment, or verify the project is active.",
+          );
+        }
+        throw err;
+      }
       const reason = err instanceof Error ? err.message : String(err);
       console.error(
         `[hetzner-e2e-provision] ${attempt.serverType}@${attempt.location} unavailable (${reason}); trying next fallback`,
@@ -187,6 +221,23 @@ async function main(): Promise<void> {
     }
   }
   if (!server) {
+    // Layer 2 diagnostic: when every fallback combo also failed with
+    // quota_exceeded, the operator needs a single actionable next step —
+    // not a stack of "unavailable" lines that look like a transient API
+    // glitch. Refresh `HCLOUD_TOKEN_CI` only if the token's project no
+    // longer matches the CI project; otherwise delete leaked servers in
+    // the Hetzner console (https://console.hetzner.cloud/) and re-run.
+    if (
+      lastError instanceof HetznerCloudError &&
+      lastError.code === "quota_exceeded"
+    ) {
+      throw new Error(
+        `Hetzner project quota exhausted across all fallback combos (last error: ${lastError.message}). ` +
+          "Operator action required: pre-reap freed nothing in 20min window, and the workflow cannot proceed. " +
+          "Check https://console.hetzner.cloud/ for leaked CI servers (label ci=true, workflow=hetzner-e2e), " +
+          "or rotate HCLOUD_TOKEN_CI if it now points to a project with a tighter cap.",
+      );
+    }
     throw lastError instanceof Error
       ? lastError
       : new Error("Hetzner provisioning failed across all fallback combos");
