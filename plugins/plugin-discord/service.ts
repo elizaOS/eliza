@@ -1,7 +1,6 @@
 import {
 	ChannelType,
 	type Character,
-	type ConnectorPostIdentity,
 	type Content,
 	createUniqueUuid,
 	type EventPayload,
@@ -2353,7 +2352,7 @@ export class DiscordService extends Service implements IDiscordService {
 	public async postToConnectorThread(
 		runtime: IAgentRuntime,
 		params: ConnectorPostToThreadParams,
-	): Promise<Memory | undefined> {
+	): Promise<Memory | void> {
 		const accountId = this.resolveAccountIdFromTarget(params.target, params);
 		const state = this.requireAccountState(accountId);
 		const client = state.client;
@@ -2389,10 +2388,11 @@ export class DiscordService extends Service implements IDiscordService {
 							? { avatarURL: params.identity.avatarUrl }
 							: {}),
 					});
-					return await this.buildMemoryFromMessage(sent as Message, {
+					const memory = await this.buildMemoryFromMessage(sent as Message, {
 						accountId,
 						extraMetadata: extractContentMetadata(params.content),
 					});
+					return memory ?? undefined;
 				}
 				runtime.logger?.warn?.(
 					{
@@ -2406,10 +2406,11 @@ export class DiscordService extends Service implements IDiscordService {
 		}
 
 		const sent = await threadChannel.send(text);
-		return await this.buildMemoryFromMessage(sent as Message, {
+		const memory = await this.buildMemoryFromMessage(sent as Message, {
 			accountId,
 			extraMetadata: extractContentMetadata(params.content),
 		});
+		return memory ?? undefined;
 	}
 
 	private async findOrCreateWebhook(
