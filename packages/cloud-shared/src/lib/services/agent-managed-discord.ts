@@ -8,7 +8,7 @@ import {
   withManagedAgentDiscordGateway,
   withoutManagedAgentDiscordBinding,
 } from "./eliza-agent-config";
-import { elizaSandboxService } from "./eliza-sandbox";
+import { provisioningJobService } from "./provisioning-jobs";
 
 const DISCORD_OWNER_USER_IDS_ENV_KEY = "AGENT_DISCORD_OWNER_USER_IDS_JSON";
 export const DISCORD_DEVELOPER_PORTAL_URL = "https://discord.com/developers/applications";
@@ -223,17 +223,18 @@ export class ManagedAgentDiscordService {
       agent_config: nextConfig,
     });
 
+    // Restart is asynchronous via the job queue (Workers can't SSH the
+    // cores). `restarted: true` means a restart job was enqueued — the
+    // daemon picks it up, stops the container, and re-provisions with
+    // the freshly-persisted agent_config above.
     let restarted = false;
     if (sandbox.status === "running") {
-      const shutdown = await elizaSandboxService.shutdown(sandbox.id, params.organizationId);
-      if (!shutdown.success) {
-        throw new Error(shutdown.error || "Failed to restart agent");
-      }
-
-      const provision = await elizaSandboxService.provision(sandbox.id, params.organizationId);
-      if (!provision.success) {
-        throw new Error(provision.error || "Failed to restart agent");
-      }
+      await provisioningJobService.enqueueAgentRestartOnce({
+        agentId: sandbox.id,
+        organizationId: params.organizationId,
+        userId: sandbox.user_id,
+      });
+      void provisioningJobService.triggerImmediate().catch(() => {});
       restarted = true;
     }
 
@@ -275,17 +276,18 @@ export class ManagedAgentDiscordService {
       agent_config: nextConfig,
     });
 
+    // Restart is asynchronous via the job queue (Workers can't SSH the
+    // cores). `restarted: true` means a restart job was enqueued — the
+    // daemon picks it up, stops the container, and re-provisions with
+    // the freshly-persisted agent_config above.
     let restarted = false;
     if (sandbox.status === "running") {
-      const shutdown = await elizaSandboxService.shutdown(sandbox.id, params.organizationId);
-      if (!shutdown.success) {
-        throw new Error(shutdown.error || "Failed to restart agent");
-      }
-
-      const provision = await elizaSandboxService.provision(sandbox.id, params.organizationId);
-      if (!provision.success) {
-        throw new Error(provision.error || "Failed to restart agent");
-      }
+      await provisioningJobService.enqueueAgentRestartOnce({
+        agentId: sandbox.id,
+        organizationId: params.organizationId,
+        userId: sandbox.user_id,
+      });
+      void provisioningJobService.triggerImmediate().catch(() => {});
       restarted = true;
     }
 
