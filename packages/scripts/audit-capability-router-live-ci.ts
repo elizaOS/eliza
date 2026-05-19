@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 
 const workflowPath = ".github/workflows/test.yml";
+const rootPackagePath = "package.json";
 const agentPackagePath = "packages/agent/package.json";
+const providerSmokePath =
+  "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts";
 
 type Check = {
   name: string;
   pattern: RegExp;
-  source?: "agent-package" | "workflow";
+  source?: "agent-package" | "provider-smoke" | "root-package" | "workflow";
   message: string;
 };
 
@@ -28,6 +31,41 @@ export const checks: Check[] = [
     pattern:
       /Remote capability live CI audit self-test[\s\S]*test:remote-capabilities:live-ci-audit:self-test/,
     message: "server CI must run the live CI audit self-test.",
+  },
+  {
+    name: "live report validator self-test is a CI gate",
+    pattern:
+      /Remote capability live report validator self-test[\s\S]*test:remote-capabilities:validate-live-reports:self-test/,
+    message: "server CI must run the live report validator self-test.",
+  },
+  {
+    name: "live report validator self-test script exists",
+    pattern:
+      /"test:remote-capabilities:validate-live-reports:self-test"\s*:\s*"bun packages\/scripts\/validate-capability-router-live-reports\.self-test\.ts"/,
+    source: "root-package",
+    message:
+      "root package scripts must expose the live report validator self-test.",
+  },
+  {
+    name: "live report validator script exists",
+    pattern:
+      /"test:remote-capabilities:validate-live-reports"\s*:\s*"bun packages\/scripts\/validate-capability-router-live-reports\.ts"/,
+    source: "root-package",
+    message: "root package scripts must expose the live report validator.",
+  },
+  {
+    name: "live CI audit script exists",
+    pattern:
+      /"test:remote-capabilities:live-ci-audit"\s*:\s*"bun packages\/scripts\/audit-capability-router-live-ci\.ts"/,
+    source: "root-package",
+    message: "root package scripts must expose the live CI audit.",
+  },
+  {
+    name: "live CI audit self-test script exists",
+    pattern:
+      /"test:remote-capabilities:live-ci-audit:self-test"\s*:\s*"bun packages\/scripts\/audit-capability-router-live-ci\.self-test\.ts"/,
+    source: "root-package",
+    message: "root package scripts must expose the live CI audit self-test.",
   },
   {
     name: "canonical remote capability suite covers live report writer",
@@ -93,6 +131,14 @@ export const checks: Check[] = [
       "provider live smoke must write reports to the same directory that validation consumes.",
   },
   {
+    name: "provider live reports include providerId evidence",
+    pattern:
+      /writeRemoteCapabilityLiveReport\(target\.label,[\s\S]*provider:\s*target\.label,[\s\S]*providerId:\s*result\.providerId,/,
+    source: "provider-smoke",
+    message:
+      "provider live reports must record the endpoint providerId returned by the provider.",
+  },
+  {
     name: "cloud live reports are uploaded as required artifacts",
     pattern:
       /remote-capability-cloud-live-report[\s\S]*path: reports\/remote-capabilities\/cloud\/\*\.json[\s\S]*if-no-files-found: error/,
@@ -109,30 +155,60 @@ export const checks: Check[] = [
 
 export function validateCapabilityRouterLiveCi(
   workflow: string,
-  options: { agentPackageJson?: string; workflowPath?: string } = {},
+  options: {
+    agentPackageJson?: string;
+    providerSmokeSource?: string;
+    rootPackageJson?: string;
+    workflowPath?: string;
+  } = {},
 ): LiveCiAuditFailure[] {
   const path = options.workflowPath ?? workflowPath;
   return checks
     .filter((check) => {
-      const content =
-        check.source === "agent-package"
-          ? (options.agentPackageJson ?? "")
-          : workflow;
+      const content = getCheckContent(check, workflow, options);
       return !check.pattern.test(content);
     })
     .map((check) => ({
-      sourcePath: check.source === "agent-package" ? agentPackagePath : path,
+      sourcePath: getCheckSourcePath(check, path),
       workflowPath: path,
       name: check.name,
       message: check.message,
     }));
 }
 
+function getCheckContent(
+  check: Check,
+  workflow: string,
+  options: {
+    agentPackageJson?: string;
+    providerSmokeSource?: string;
+    rootPackageJson?: string;
+  },
+): string {
+  if (check.source === "agent-package") return options.agentPackageJson ?? "";
+  if (check.source === "provider-smoke") {
+    return options.providerSmokeSource ?? "";
+  }
+  if (check.source === "root-package") return options.rootPackageJson ?? "";
+  return workflow;
+}
+
+function getCheckSourcePath(check: Check, workflowPath: string): string {
+  if (check.source === "agent-package") return agentPackagePath;
+  if (check.source === "provider-smoke") return providerSmokePath;
+  if (check.source === "root-package") return rootPackagePath;
+  return workflowPath;
+}
+
 if (import.meta.main) {
   const workflow = readFileSync(workflowPath, "utf8");
+  const rootPackageJson = readFileSync(rootPackagePath, "utf8");
   const agentPackageJson = readFileSync(agentPackagePath, "utf8");
+  const providerSmokeSource = readFileSync(providerSmokePath, "utf8");
   const failures = validateCapabilityRouterLiveCi(workflow, {
     agentPackageJson,
+    providerSmokeSource,
+    rootPackageJson,
     workflowPath,
   });
 

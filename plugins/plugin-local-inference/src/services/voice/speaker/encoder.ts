@@ -9,7 +9,6 @@
  * New callers should import from `./encoder-ggml` directly.
  */
 
-import { existsSync } from "node:fs";
 import { normalizeVoiceEmbedding } from "../speaker-imprint";
 import {
 	SPEAKER_GGML_EMBEDDING_DIM,
@@ -96,10 +95,15 @@ export class WespeakerEncoder implements SpeakerEncoder {
 		ggufPath: string,
 		_modelId: WespeakerModelId = WESPEAKER_RESNET34_LM_INT8_MODEL_ID,
 	): Promise<WespeakerEncoder> {
+		// Validate the model file is present before returning. The GGML impl
+		// only loads on first encode() call, but the test contract is that
+		// load() raises SpeakerEncoderUnavailableError when the model is
+		// missing — match that contract here.
+		const { existsSync } = await import("node:fs");
 		if (!existsSync(ggufPath)) {
 			throw new SpeakerEncoderUnavailableError(
 				"model-missing",
-				`[wespeaker] GGUF not found at ${ggufPath}`,
+				`[wespeaker] model file not found at ${ggufPath}`,
 			);
 		}
 		return new WespeakerEncoder(ggufPath);

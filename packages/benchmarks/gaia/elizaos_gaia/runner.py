@@ -194,6 +194,7 @@ class GAIARunner:
                     "model_provider": model_provider,
                     "model": model_name,
                     "model_identifier": model_id,
+                    "harness": self.harness_route.harness,
                     "benchmark_harness": self.harness_route.harness,
                     "harness_backend": self.harness_route.backend,
                     "temperature": self.config.temperature,

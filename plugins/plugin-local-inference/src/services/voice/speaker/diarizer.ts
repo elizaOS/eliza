@@ -9,9 +9,6 @@
  * callers don't need simultaneous updates.
  */
 
-import { existsSync } from "node:fs";
-import { DiarizerGgml, DiarizerGgmlUnavailableError } from "./diarizer-ggml";
-
 export const PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID =
 	"pyannote-segmentation-3.0-int8" as const;
 export const PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID =
@@ -51,12 +48,37 @@ export const PYANNOTE_CLASS_TO_SPEAKERS: ReadonlyArray<ReadonlyArray<number>> =
 
 /** Thrown when the diarizer cannot be constructed. */
 export class DiarizerUnavailableError extends Error {
-	readonly code: "ort-missing" | "model-load-failed" | "invalid-input";
+	readonly code:
+		| "ort-missing"
+		| "native-missing"
+		| "library-missing"
+		| "model-missing"
+		| "model-load-failed"
+		| "model-shape-mismatch"
+		| "forward-not-implemented"
+		| "invalid-input";
 	constructor(code: DiarizerUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "DiarizerUnavailableError";
 		this.code = code;
 	}
+}
+
+const DIARIZER_UNAVAILABLE_CODES = new Set<string>([
+	"ort-missing",
+	"native-missing",
+	"library-missing",
+	"model-missing",
+	"model-load-failed",
+	"model-shape-mismatch",
+	"forward-not-implemented",
+	"invalid-input",
+]);
+
+function coerceDiarizerCode(code: unknown): DiarizerUnavailableError["code"] {
+	return typeof code === "string" && DIARIZER_UNAVAILABLE_CODES.has(code)
+		? (code as DiarizerUnavailableError["code"])
+		: "model-load-failed";
 }
 
 /**
@@ -91,6 +113,11 @@ export interface Diarizer {
 	dispose(): Promise<void>;
 }
 
+type DiarizerGgmlFacade = {
+	segment(pcm: Float32Array): Promise<{ labels: ArrayLike<number> }>;
+	dispose(): Promise<void>;
+};
+
 /**
  * Backward-compatible pyannote facade. The ONNX implementation has been
  * replaced by the GGML binding, but several callers still import
@@ -98,26 +125,25 @@ export interface Diarizer {
  */
 export class PyannoteDiarizer implements Diarizer {
 	readonly sampleRate = PYANNOTE_SAMPLE_RATE;
-	private readonly impl: DiarizerGgml;
 
 	private constructor(
-		ggufPath: string,
+		private readonly impl: DiarizerGgmlFacade,
 		readonly modelId: PyannoteDiarizerModelId,
-	) {
-		this.impl = new DiarizerGgml({ ggufPath });
-	}
+	) {}
 
 	static async load(
 		ggufPath: string,
 		modelId: PyannoteDiarizerModelId = PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
 	): Promise<PyannoteDiarizer> {
+		const { existsSync } = await import("node:fs");
 		if (!existsSync(ggufPath)) {
 			throw new DiarizerUnavailableError(
-				"model-load-failed",
+				"model-missing",
 				`[pyannote] GGUF not found at ${ggufPath}`,
 			);
 		}
-		return new PyannoteDiarizer(ggufPath, modelId);
+		const { DiarizerGgml } = await import("./diarizer-ggml");
+		return new PyannoteDiarizer(new DiarizerGgml({ ggufPath }), modelId);
 	}
 
 	async diarizeWindow(pcm: Float32Array): Promise<DiarizerOutput> {
@@ -125,7 +151,7 @@ export class PyannoteDiarizer implements Diarizer {
 			const out = await this.impl.segment(pcm);
 			const probs = new Float32Array(out.labels.length * PYANNOTE_CLASS_COUNT);
 			for (let frame = 0; frame < out.labels.length; frame += 1) {
-				const label = out.labels[frame];
+				const label = out.labels[frame] ?? -1;
 				if (label < 0 || label >= PYANNOTE_CLASS_COUNT) {
 					throw new DiarizerUnavailableError(
 						"model-load-failed",
@@ -142,8 +168,11 @@ export class PyannoteDiarizer implements Diarizer {
 				PYANNOTE_FRAME_STRIDE_MS,
 			);
 		} catch (err) {
-			if (err instanceof DiarizerGgmlUnavailableError) {
-				throw new DiarizerUnavailableError(err.code, err.message);
+			if (err instanceof Error && err.name === "DiarizerGgmlUnavailableError") {
+				throw new DiarizerUnavailableError(
+					coerceDiarizerCode((err as { code?: unknown }).code),
+					err.message,
+				);
 			}
 			throw err;
 		}

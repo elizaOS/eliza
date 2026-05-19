@@ -161,7 +161,7 @@ class GAIADataset:
                 raise DatasetAccessError(
                     "GAIA dataset access denied (gated). "
                     "Request access at https://huggingface.co/datasets/gaia-benchmark/GAIA "
-                    "and provide a token via HF_TOKEN or --hf-token.",
+                    "and provide a token via HF_TOKEN/HUGGINGFACE_HUB_TOKEN or --hf-token.",
                     is_gated=True,
                 ) from e
             raise

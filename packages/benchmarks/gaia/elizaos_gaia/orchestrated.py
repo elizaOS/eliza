@@ -26,6 +26,20 @@ from elizaos_gaia.runner import run_quick_test
 from elizaos_gaia.trajectory import write_trajectory_artifacts
 from elizaos_gaia.types import GAIAConfig
 
+HUGGINGFACE_TOKEN_ENV_VARS: tuple[str, ...] = (
+    "HF_TOKEN",
+    "HUGGINGFACE_HUB_TOKEN",
+    "HUGGINGFACE_TOKEN",
+)
+
+
+def _hf_token_from_env() -> str | None:
+    for name in HUGGINGFACE_TOKEN_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return None
+
 _RESEARCH_CAPABILITIES = {
     "research.web_search",
     "research.web_browse",
@@ -396,7 +410,7 @@ async def _run_provider(args: argparse.Namespace, provider_label: str) -> dict[s
         results = await run_quick_test(
             config,
             num_questions=args.max_questions,
-            hf_token=os.environ.get("HF_TOKEN"),
+            hf_token=_hf_token_from_env(),
         )
     telemetry_summary = _read_telemetry_summary(telemetry_path)
     trajectory_paths = write_trajectory_artifacts(
