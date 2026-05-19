@@ -727,7 +727,7 @@ async function synthPhrasePcm(port, text, turnTimeoutS, ttsSteps = 32, durationS
   const ctrl = new AbortController();
   const to = setTimeout(() => ctrl.abort(), turnTimeoutS * 1000);
   try {
-    const body = { input: text, response_format: "pcm", num_step: ttsSteps };
+    const body = { input: text, response_format: "pcm", num_step: ttsSteps, interactive: false };
     if (Number.isFinite(durationSec) && durationSec > 0) body.duration = durationSec;
     const res = await fetch(`http://127.0.0.1:${port}/v1/audio/speech`, {
       method: "POST",

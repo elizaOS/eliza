@@ -11,6 +11,8 @@ const providerSmokePath =
   "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts";
 const liveReportValidatorPath =
   "packages/scripts/validate-capability-router-live-reports.ts";
+const liveReportValidatorSelfTestPath =
+  "packages/scripts/validate-capability-router-live-reports.self-test.ts";
 
 type Check = {
   name: string;
@@ -19,6 +21,7 @@ type Check = {
     | "agent-package"
     | "endpoint-conformance"
     | "live-report-validator"
+    | "live-report-validator-self-test"
     | "live-report-writer"
     | "provider-smoke"
     | "root-package"
@@ -113,12 +116,124 @@ export const checks: Check[] = [
       "endpoint conformance must reject route calls without non-empty JSON body evidence.",
   },
   {
+    name: "endpoint conformance verifies view asset bytes",
+    pattern:
+      /const assetBytes = Buffer\.from\(assetResult\.bodyBase64, "base64"\)[\s\S]*const byteLength = assetBytes\.byteLength[\s\S]*byteLength === 0[\s\S]*returned an empty view asset[\s\S]*createHash\("sha256"\)\.update\(assetBytes\)\.digest\("hex"\)/,
+    source: "endpoint-conformance",
+    message:
+      "endpoint conformance must fetch non-empty view asset bytes and record their SHA-256 digest.",
+  },
+  {
+    name: "endpoint conformance verifies view asset integrity against bytes",
+    pattern:
+      /function assertAssetIntegrity\([\s\S]*bytes: Buffer[\s\S]*createHash\(algorithm\)\.update\(bytes\)\.digest\("base64"\)[\s\S]*token\.startsWith\("sha256-"\)[\s\S]*digest && digest === expectedDigests\.get\(algorithm\)[\s\S]*view asset integrity value that does not match its bytes/,
+    source: "endpoint-conformance",
+    message:
+      "endpoint conformance must compare returned view asset integrity values with fetched bytes.",
+  },
+  {
     name: "live report validator requires non-empty route bodies",
     pattern:
-      /routeResult\.body[\s\S]*isMeaningfulJsonEvidence\(routeResult\.body\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value[\s\S]*function isMeaningfulJsonEvidence[\s\S]*value === undefined \|\| value === null[\s\S]*Array\.isArray\(value\)[\s\S]*Object\.keys\(value\)\.length > 0/,
+      /isMeaningfulJsonEvidence\(routeResult\.body\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value[\s\S]*function isMeaningfulJsonEvidence[\s\S]*value === undefined \|\| value === null[\s\S]*Array\.isArray\(value\)[\s\S]*Object\.keys\(value\)\.length > 0/,
     source: "live-report-validator",
     message:
       "live report validation must reject route results without non-empty JSON body evidence.",
+  },
+  {
+    name: "live report validator verifies view asset metadata",
+    pattern:
+      /conformance\.assetResult\.path[\s\S]*\.\(\?:js\|mjs\)\$[\s\S]*conformance\.assetResult\.contentType must be JavaScript[\s\S]*manifestContentType !== undefined &&[\s\S]*manifestContentType !== assetContentType[\s\S]*manifestIntegrity !== undefined &&[\s\S]*manifestIntegrity !== assetIntegrity/,
+    source: "live-report-validator",
+    message:
+      "live report validation must reject non-JavaScript and manifest-mismatched view asset evidence.",
+  },
+  {
+    name: "live report validator verifies view asset digest evidence",
+    pattern:
+      /conformance\.assetResult\.byteLength[\s\S]*byteLength <= 0[\s\S]*conformance\.assetResult\.sha256[\s\S]*\^\[0-9a-f\]\{64\}\$[\s\S]*assetSha256\.toLowerCase\(\) === EMPTY_SHA256[\s\S]*validateAssetIntegritySha256\(assetIntegrity, assetSha256\.toLowerCase\(\)\)/,
+    source: "live-report-validator",
+    message:
+      "live report validation must reject empty, malformed, and integrity-mismatched view asset digests.",
+  },
+  {
+    name: "live report validator compares view asset integrity to digest",
+    pattern:
+      /function validateAssetIntegritySha256[\s\S]*filter\(\(token\) => token\.startsWith\("sha256-"\)\)[\s\S]*Buffer\.from\(assetSha256, "hex"\)\.toString\("base64"\)[\s\S]*sha256Tokens\.includes\(`sha256-\$\{expectedDigest\}`\)[\s\S]*conformance\.assetResult\.integrity must match conformance\.assetResult\.sha256/,
+    source: "live-report-validator",
+    message:
+      "live report validation must compare view asset integrity tokens with the recorded SHA-256 digest.",
+  },
+  {
+    name: "live report validator self-test covers non-JavaScript asset failures",
+    pattern:
+      /nonJavascriptAssetDir[\s\S]*makeNonJavascriptAssetReport\(\)[\s\S]*conformance\.assetResult\.path must be a JavaScript asset/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover non-JavaScript asset evidence.",
+  },
+  {
+    name: "live report validator self-test covers missing route body failures",
+    pattern:
+      /missingRouteBodyDir[\s\S]*makeMissingRouteBodyReport\(\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing route body evidence.",
+  },
+  {
+    name: "live report validator self-test covers empty route body failures",
+    pattern:
+      /emptyRouteBodyDir[\s\S]*makeEmptyRouteBodyReport\(\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover empty route body evidence.",
+  },
+  {
+    name: "live report validator self-test covers manifest-mismatched asset failures",
+    pattern:
+      /mismatchedAssetManifestDir[\s\S]*makeMismatchedAssetManifestReport\(\)[\s\S]*conformance\.assetResult\.manifestContentType must match/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover manifest-mismatched asset evidence.",
+  },
+  {
+    name: "live report validator self-test covers missing asset digest failures",
+    pattern:
+      /missingAssetDigestDir[\s\S]*makeMissingAssetDigestReport\(\)[\s\S]*conformance\.assetResult\.sha256 must be a non-empty string/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers malformed asset digest failures",
+    pattern:
+      /malformedAssetDigestDir[\s\S]*makeMalformedAssetDigestReport\(\)[\s\S]*conformance\.assetResult\.sha256 has invalid format/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover malformed view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers empty asset digest failures",
+    pattern:
+      /emptyAssetDigestDir[\s\S]*makeEmptyAssetDigestReport\(\)[\s\S]*conformance\.assetResult\.sha256 must not be the empty SHA-256 digest/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover empty view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers mismatched asset integrity failures",
+    pattern:
+      /mismatchedAssetIntegrityDir[\s\S]*makeMismatchedAssetIntegrityReport\(\)[\s\S]*conformance\.assetResult\.integrity must match conformance\.assetResult\.sha256/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover mismatched view asset integrity evidence.",
+  },
+  {
+    name: "live report validator self-test covers missing sha256 asset integrity failures",
+    pattern:
+      /missingSha256AssetIntegrityDir[\s\S]*makeMissingSha256AssetIntegrityReport\(\)[\s\S]*conformance\.assetResult\.integrity must include a sha256 digest/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing-sha256 view asset integrity evidence.",
   },
   {
     name: "provider live job is required by test-status",
@@ -203,6 +318,7 @@ export function validateCapabilityRouterLiveCi(
   options: {
     agentPackageJson?: string;
     endpointConformanceSource?: string;
+    liveReportValidatorSelfTestSource?: string;
     providerSmokeSource?: string;
     rootPackageJson?: string;
     liveReportValidatorSource?: string;
@@ -230,6 +346,7 @@ function getCheckContent(
   options: {
     agentPackageJson?: string;
     endpointConformanceSource?: string;
+    liveReportValidatorSelfTestSource?: string;
     providerSmokeSource?: string;
     rootPackageJson?: string;
     liveReportValidatorSource?: string;
@@ -242,6 +359,9 @@ function getCheckContent(
   }
   if (check.source === "live-report-validator") {
     return options.liveReportValidatorSource ?? "";
+  }
+  if (check.source === "live-report-validator-self-test") {
+    return options.liveReportValidatorSelfTestSource ?? "";
   }
   if (check.source === "live-report-writer") {
     return options.liveReportWriterSource ?? "";
@@ -257,6 +377,9 @@ function getCheckSourcePath(check: Check, workflowPath: string): string {
   if (check.source === "agent-package") return agentPackagePath;
   if (check.source === "endpoint-conformance") return endpointConformancePath;
   if (check.source === "live-report-validator") return liveReportValidatorPath;
+  if (check.source === "live-report-validator-self-test") {
+    return liveReportValidatorSelfTestPath;
+  }
   if (check.source === "live-report-writer") return liveReportWriterPath;
   if (check.source === "provider-smoke") return providerSmokePath;
   if (check.source === "root-package") return rootPackagePath;
@@ -272,11 +395,16 @@ if (import.meta.main) {
     "utf8",
   );
   const liveReportValidatorSource = readFileSync(liveReportValidatorPath, "utf8");
+  const liveReportValidatorSelfTestSource = readFileSync(
+    liveReportValidatorSelfTestPath,
+    "utf8",
+  );
   const liveReportWriterSource = readFileSync(liveReportWriterPath, "utf8");
   const providerSmokeSource = readFileSync(providerSmokePath, "utf8");
   const failures = validateCapabilityRouterLiveCi(workflow, {
     agentPackageJson,
     endpointConformanceSource,
+    liveReportValidatorSelfTestSource,
     liveReportValidatorSource,
     liveReportWriterSource,
     providerSmokeSource,

@@ -78,6 +78,13 @@ def _score_from_bfcl_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="realm:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="realm:root"), ctx="realm:metrics")
+    metadata = get_optional(root, "metadata")
+    metadata_dict = metadata if isinstance(metadata, dict) else {}
+    config = metadata_dict.get("config")
+    config_dict = config if isinstance(config, dict) else {}
+    use_sample_tasks = bool(config_dict.get("use_sample_tasks"))
+    if use_sample_tasks:
+        raise ValueError("realm: sample-task run is not publishable as a real harness score")
     overall = expect_float(
         get_required(metrics, "overall_success_rate", ctx="realm:metrics"),
         ctx="realm:overall_success_rate",
@@ -95,6 +102,7 @@ def _score_from_realm_json(data: JSONValue) -> ScoreExtraction:
             "passed_tasks": get_optional(metrics, "passed_tasks") or 0,
             "avg_plan_quality": get_optional(metrics, "avg_plan_quality") or 0,
             "avg_efficiency": get_optional(metrics, "avg_efficiency") or 0,
+            "use_sample_tasks": use_sample_tasks,
         },
     )
 

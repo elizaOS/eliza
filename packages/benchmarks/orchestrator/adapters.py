@@ -2423,6 +2423,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "seeds": 1,
         },
         "realm": {
+            "categories": ["P11"],
             "max_tasks": 1,
             "max_steps": 3,
             "timeout": 60000,
