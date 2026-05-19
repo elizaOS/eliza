@@ -55,6 +55,7 @@ ONNX_FILES_TO_DELETE: Final[tuple[str, ...]] = (
     "bundles/27b-256k/vad/silero-vad-int8.onnx",
     "voice/vad/silero-vad-int8.onnx",
     # TTS (Kokoro) — replaced by omnivoice GGUF
+    "bundles/0_8b/tts/kokoro/model_q4.onnx",
     "bundles/2b/tts/kokoro/model_q4.onnx",
     "bundles/4b/tts/kokoro/model_q4.onnx",
     "bundles/9b/tts/kokoro/model_q4.onnx",
