@@ -2,45 +2,44 @@
 
 Baseline screenshots that catch unintended visual changes during redesign work.
 
-## Status: Playwright not yet installed
+## Status
 
-This package currently has only `vitest` configured. The spec at
-`tests/visual.spec.ts` is staged but will not run until Playwright is wired up.
+Playwright is wired through `playwright.config.ts` and `package.json`.
+`test:e2e` builds the Vite bundle, serves it with `vite preview`, and uses
+mocked `/api/*` routes so the UI can be tested without a live raw-disk backend.
 
-### Required setup before first run
-
-1. Add Playwright as a devDependency:
-   ```bash
-   bun --cwd packages/os/usb-installer add -D @playwright/test
-   bunx playwright install chromium
-   ```
-2. Create `packages/os/usb-installer/playwright.config.ts` modeled on
-   `packages/os-homepage/playwright.config.ts`. It needs:
-   - `testDir: "./tests"` with a `testMatch` that targets `visual.spec.ts`
-     (the existing `vitest` glob covers `*.test.ts`, so file extensions
-     should already be separate; double-check `vitest.config.ts` does not
-     pick up `*.spec.ts`).
-   - A `webServer` block that runs `bun run dev` (or `vite preview` on a
-     built bundle) on a free port (e.g. 4466).
-   - `use.baseURL` matching that port.
-   - Desktop + mobile projects (see other consumers for the pattern).
-3. Add a `test:e2e` script to `package.json`:
-   ```json
-   "test:e2e": "playwright test"
-   ```
-
-### Generate baselines (after setup)
+Before the first local run on a fresh machine, install the Chromium runtime:
 
 ```bash
-bun --cwd packages/os/usb-installer run test:e2e -- --update-snapshots
+cd packages/os/usb-installer
+bunx playwright install chromium
 ```
 
-PNGs land in `tests/visual.spec.ts-snapshots/`. Commit them.
+Normal e2e smoke:
+
+```bash
+bun run --cwd packages/os/usb-installer test:e2e
+```
+
+### Generate Baselines
+
+```bash
+ELIZAOS_USB_VISUAL_SNAPSHOTS=1 bun run --cwd packages/os/usb-installer test:e2e -- --update-snapshots
+```
+
+PNG baselines land in `tests/visual.spec.ts-snapshots/`. Snapshot comparison is
+opt-in through `ELIZAOS_USB_VISUAL_SNAPSHOTS=1`; normal `test:e2e` verifies the
+page renders and the mocked installer data appears without requiring Linux-only
+PNG baselines in every CI lane.
 
 ## Routes covered
 
 `/` at desktop (1280×720) and mobile (390×844 — iPhone 14 Pro). The installer
 is a single-page Electrobun shell so there is only one route to snapshot.
+
+`tests/wizard.spec.ts` covers the guarded wizard flow: drive selection, image
+selection, specs, target-device confirmation, write execution via server
+`planId`, SSE completion, and complete state.
 
 ## Dynamic content
 

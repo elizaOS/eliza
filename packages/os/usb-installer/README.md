@@ -51,6 +51,18 @@ bun run --cwd packages/os/usb-installer lint
 bun run --cwd packages/os/usb-installer test:e2e
 ```
 
+Run the guarded Linux virtual block-device write proof:
+
+```bash
+bun run --cwd packages/os/usb-installer test:linux-virtual-usb
+```
+
+That test requires Linux, passwordless `sudo -n`, and the kernel
+`scsi_debug` module. It creates a disposable 64 MiB removable block device with
+model `ELIZAUSBTEST`, writes a trusted 4 MiB image through the same local
+server/Linux backend flow, reads the first 4 MiB back, verifies SHA-256, and
+unloads the module. It refuses to run if `scsi_debug` is already loaded.
+
 Run the local app:
 
 ```bash
@@ -106,6 +118,10 @@ Windows:
 
 This package is code-ready only after tests/build pass. It is USB-proven only
 after a final ISO is written to a real removable drive and boot-tested.
+
+The Linux virtual block-device E2E is stronger than a unit test because it uses
+real `lsblk`, `sudo`, `dd`, `sync`, and a kernel block device. It still is not a
+substitute for physical USB flash and boot validation.
 
 Remaining production hardening:
 

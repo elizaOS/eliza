@@ -48,11 +48,30 @@ behind the backend contract and future signed/elevated helpers.
     revalidation, checksum validation, Linux backend write flow, real `dd`,
     `sync`, SSE completion events, and final byte-for-byte/hash verification;
   - never touches a real block device.
-- Local validation after that E2E test:
-  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 76 tests;
+- Additional Linux virtual block-device proof added on 2026-05-19:
+  - `src/__tests__/linux-virtual-block-device-e2e.test.ts` is opt-in through
+    `bun run --cwd packages/os/usb-installer test:linux-virtual-usb`;
+  - requires Linux, passwordless `sudo -n`, and kernel `scsi_debug`;
+  - creates a disposable 64 MiB removable block device with model
+    `ELIZAUSBTEST` and refuses to run if `scsi_debug` is already loaded;
+  - exercises real `lsblk`, the local HTTP handler, server-owned `planId`,
+    execute-time revalidation, checksum validation, Linux backend write flow,
+    `sudo -n dd`, `sync`, SSE completion events, and readback SHA-256
+    verification from the virtual block device;
+  - unloads `scsi_debug` in cleanup.
+- Final local validation after the fake-media, browser, and virtual block-device
+  proofs:
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 76 tests,
+    with the opt-in virtual block-device test skipped by default;
   - `bun run --cwd packages/os/usb-installer typecheck` passed;
   - `bun run --cwd packages/os/usb-installer build` passed;
-  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `bun run --cwd packages/os/usb-installer lint` passed across `src`,
+    `tests`, `server.ts`, and config files;
+  - `bun run --cwd packages/os/usb-installer test:e2e` passed: 6 Playwright
+    tests covering desktop/mobile render and guarded wizard success flow;
+  - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+    against `scsi_debug`: wrote with `sudo -n dd`, read back, SHA-256 matched,
+    and module cleanup was verified;
   - `git diff --check` passed.
 - Disk cleanup on 2026-05-19:
   - removed ignored/generated stale ISO artifacts and root `dist/`;
@@ -96,6 +115,9 @@ so the package needs hardening before we call it production-ready.
   a final ISO has been written to removable media and booted.
 - The Linux fake-media E2E proves the guarded server/backend write path safely,
   but it is not a replacement for a physical USB flash/boot test.
+- The Linux virtual block-device E2E proves the same path against a real kernel
+  block device, but it is still not a replacement for physical USB flash/boot
+  validation with a final ISO.
 - `HttpUsbInstallerBackend.executeWritePlan` now handles fragmented SSE chunks,
   but cancel/abort support is still missing.
 - macOS and Windows live-write helpers are still prototype-grade compared with
@@ -119,6 +141,7 @@ bun run --cwd packages/os/usb-installer typecheck
 bun run --cwd packages/os/usb-installer build
 bun run --cwd packages/os/usb-installer lint
 bun run --cwd packages/os/usb-installer test:e2e
+bun run --cwd packages/os/usb-installer test:linux-virtual-usb
 ```
 
 Run the dev app locally:
