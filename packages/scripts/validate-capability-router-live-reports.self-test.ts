@@ -114,6 +114,11 @@ async function main(): Promise<void> {
       "missing-module-exercises",
     );
     const missingRpcCallsDir = join(workspace, "missing-rpc-calls");
+    const invalidRpcMethodDir = join(workspace, "invalid-rpc-method");
+    const missingRequiredRpcMethodDir = join(
+      workspace,
+      "missing-required-rpc-method",
+    );
     const manifestOnlyUnregisteredDir = join(
       workspace,
       "manifest-only-unregistered",
@@ -195,6 +200,8 @@ async function main(): Promise<void> {
     await mkdir(duplicateModuleExerciseDir, { recursive: true });
     await mkdir(missingModuleExercisesDir, { recursive: true });
     await mkdir(missingRpcCallsDir, { recursive: true });
+    await mkdir(invalidRpcMethodDir, { recursive: true });
+    await mkdir(missingRequiredRpcMethodDir, { recursive: true });
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
     await mkdir(runtimePluginUndercountDir, { recursive: true });
@@ -538,6 +545,16 @@ async function main(): Promise<void> {
     await writeFile(
       join(missingRpcCallsDir, "provider.json"),
       `${JSON.stringify(makeMissingRpcCallsReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(invalidRpcMethodDir, "provider.json"),
+      `${JSON.stringify(makeInvalidRpcMethodReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingRequiredRpcMethodDir, "provider.json"),
+      `${JSON.stringify(makeMissingRequiredRpcMethodReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1369,6 +1386,34 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `missing rpcCalls failed for the wrong reason: ${missingRpcCalls.output}`,
+      );
+    }
+    const invalidRpcMethod = await runValidator(invalidRpcMethodDir);
+    if (invalidRpcMethod.exitCode === 0) {
+      throw new Error("invalid rpc method report unexpectedly passed.");
+    }
+    if (
+      !invalidRpcMethod.output.includes(
+        "conformance.rpcCalls[0].method must be valid for its surface.",
+      )
+    ) {
+      throw new Error(
+        `invalid rpc method failed for the wrong reason: ${invalidRpcMethod.output}`,
+      );
+    }
+    const missingRequiredRpcMethod = await runValidator(
+      missingRequiredRpcMethodDir,
+    );
+    if (missingRequiredRpcMethod.exitCode === 0) {
+      throw new Error("missing required rpc method report unexpectedly passed.");
+    }
+    if (
+      !missingRequiredRpcMethod.output.includes(
+        "conformance.rpcCalls must include every required method for each conformance.moduleExercises entry.",
+      )
+    ) {
+      throw new Error(
+        `missing required rpc method failed for the wrong reason: ${missingRequiredRpcMethod.output}`,
       );
     }
     const missingRuntimeRemotePlugin = await runValidator(
@@ -2537,6 +2582,37 @@ function makeMissingRpcCallsReport() {
   return {
     ...report,
     conformance,
+  };
+}
+
+function makeInvalidRpcMethodReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      rpcCalls: report.conformance.rpcCalls.map((call, index) =>
+        index === 0
+          ? {
+              ...call,
+              method: "plugin.action.run",
+            }
+          : call,
+      ),
+    },
+  };
+}
+
+function makeMissingRequiredRpcMethodReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      rpcCalls: report.conformance.rpcCalls.filter(
+        (call) => call.method !== "plugin.evaluator.process",
+      ),
+    },
   };
 }
 

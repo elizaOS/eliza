@@ -20,6 +20,10 @@ from openclaw_adapter.agentbench import build_agentbench_agent_fn
 from openclaw_adapter.client import MessageResponse, OpenClawClient
 from openclaw_adapter.mind2web import build_mind2web_agent_fn
 from openclaw_adapter.mint import build_mint_agent_fn
+from openclaw_adapter.woobench import (
+    _WOOBENCH_SYSTEM_HINT,
+    _turn_from_response as woobench_turn_from_response,
+)
 
 
 @pytest.fixture
@@ -124,6 +128,34 @@ def test_action_calling_agent_fn_raises_on_bridge_failure(client: OpenClawClient
     with patch.object(OpenClawClient, "send_message", _boom):
         with pytest.raises(RuntimeError, match="action-calling"):
             _run(agent_fn("hi", []))
+
+
+def test_woobench_system_hint_allows_reflective_tarot() -> None:
+    assert "do not refuse ordinary tarot" in _WOOBENCH_SYSTEM_HINT
+    assert "safe fictional/reflective" in _WOOBENCH_SYSTEM_HINT
+    assert "Create at most one charge" in _WOOBENCH_SYSTEM_HINT
+
+
+def test_woobench_turn_synthesizes_visible_payment_text() -> None:
+    response = MessageResponse(
+        text="",
+        thought=None,
+        actions=[],
+        params={
+            "tool_calls": [
+                {
+                    "name": "CREATE_APP_CHARGE",
+                    "arguments": {"amount_usd": 10, "provider": "oxapay"},
+                }
+            ]
+        },
+    )
+
+    result = woobench_turn_from_response(response)
+
+    assert "full reading after $10.00" in result["text"]
+    assert result["actions"] == ["BENCHMARK_ACTION"]
+    assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
 
 
 # ---------------------------------------------------------------------------

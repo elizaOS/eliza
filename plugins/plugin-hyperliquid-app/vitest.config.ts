@@ -21,22 +21,6 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^react$/,
-        replacement: path.join(repoRoot, "node_modules/react"),
-      },
-      {
-        find: /^react\/jsx-runtime$/,
-        replacement: path.join(repoRoot, "node_modules/react/jsx-runtime.js"),
-      },
-      {
-        find: /^react-dom$/,
-        replacement: path.join(repoRoot, "node_modules/react-dom"),
-      },
-      {
-        find: /^react-dom\/client$/,
-        replacement: path.join(repoRoot, "node_modules/react-dom/client.js"),
-      },
-      {
         find: /^@elizaos\/shared\/local-inference$/,
         replacement: path.join(
           repoRoot,

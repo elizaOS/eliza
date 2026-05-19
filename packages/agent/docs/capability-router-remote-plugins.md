@@ -1223,6 +1223,17 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   The live report validator requires every `sync.skipped` entry to have a
   rejected trust decision, so skipped modules are auditable rather than just
   unexplained plugin names.
+- `bun run test:remote-capabilities:surface-audit` also audits the canonical
+  plugin RPC method union. Every `plugin.*` method must be implemented by the
+  fixture server, and every non-list plugin RPC method must appear in endpoint
+  conformance plus the live report validator's required-method matrix. The
+  audit also rejects validator-required plugin methods that are not canonical
+  non-list RPC methods. This keeps protocol expansion from bypassing the
+  full-surface proof path.
+- Endpoint conformance reports type `rpcCalls.method` from the core
+  `RuntimeBrokerCapabilityMethod` plugin-method union, excluding only
+  `plugin.modules.list`, so conformance evidence cannot drift to ad-hoc method
+  names while the validator and surface audit enforce coverage.
 - `bun run --cwd packages/agent test:remote-capabilities:cloud-live` skipped
   locally because no `ELIZAOS_CLOUD_API_KEY` is configured. A real Cloud run
   remains a required live-provider observation before claiming the Cloud side

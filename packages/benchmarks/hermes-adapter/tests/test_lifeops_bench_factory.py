@@ -21,6 +21,10 @@ import pytest
 from hermes_adapter.bfcl import build_bfcl_agent_fn
 from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
+from hermes_adapter.woobench import (
+    _WOOBENCH_SYSTEM_HINT,
+    _turn_from_response as woobench_turn_from_response,
+)
 
 
 @pytest.fixture
@@ -103,6 +107,34 @@ def test_bfcl_agent_fn_raises_on_bridge_failure(fake_client: HermesClient) -> No
     with patch.object(HermesClient, "send_message", _boom):
         with pytest.raises(RuntimeError, match="BFCL"):
             _run(agent_fn("hi", []))
+
+
+def test_woobench_system_hint_allows_reflective_tarot() -> None:
+    assert "do not refuse ordinary tarot" in _WOOBENCH_SYSTEM_HINT
+    assert "safe fictional/reflective" in _WOOBENCH_SYSTEM_HINT
+    assert "Create at most one charge" in _WOOBENCH_SYSTEM_HINT
+
+
+def test_woobench_turn_synthesizes_visible_payment_text() -> None:
+    response = MessageResponse(
+        text="",
+        thought=None,
+        actions=[],
+        params={
+            "tool_calls": [
+                {
+                    "name": "CREATE_APP_CHARGE",
+                    "arguments": {"amount_usd": 15, "provider": "oxapay"},
+                }
+            ]
+        },
+    )
+
+    result = woobench_turn_from_response(response)
+
+    assert "full reading after $15.00" in result["text"]
+    assert result["actions"] == ["BENCHMARK_ACTION"]
+    assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
 
 
 def test_build_clawbench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:

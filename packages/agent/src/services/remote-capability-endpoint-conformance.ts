@@ -24,6 +24,7 @@ import {
   type PluginResponseHandlerFieldEvaluatorParseResult,
   type PluginResponseHandlerFieldEvaluatorShouldRunResult,
   type RemotePluginModuleManifest,
+  type RuntimeBrokerCapabilityMethod,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -44,6 +45,11 @@ export type RemoteCapabilityEndpointConformanceSurface =
   | "evaluator"
   | "responseHandlerEvaluator"
   | "responseHandlerFieldEvaluator";
+
+export type RemoteCapabilityEndpointConformanceRpcMethod = Exclude<
+  Extract<RuntimeBrokerCapabilityMethod, `plugin.${string}`>,
+  "plugin.modules.list"
+>;
 
 export type RemoteCapabilityEndpointConformanceOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
@@ -67,7 +73,7 @@ export type RemoteCapabilityEndpointConformanceReport = {
     target: string;
   }>;
   rpcCalls: Array<{
-    method: string;
+    method: RemoteCapabilityEndpointConformanceRpcMethod;
     surface: RemoteCapabilityEndpointConformanceSurface;
     moduleId: string;
     target: string;
@@ -653,7 +659,7 @@ function recordExercise(
   report: RemoteCapabilityEndpointConformanceReport,
   exerciseCounts: Map<string, number>,
   surface: RemoteCapabilityEndpointConformanceSurface,
-  method: string,
+  method: RemoteCapabilityEndpointConformanceRpcMethod,
   moduleId: string,
   target: string,
   options: { summarize?: boolean } = {},
@@ -673,7 +679,7 @@ function recordExercise(
 function recordRpcCall(
   report: RemoteCapabilityEndpointConformanceReport,
   surface: RemoteCapabilityEndpointConformanceSurface,
-  method: string,
+  method: RemoteCapabilityEndpointConformanceRpcMethod,
   moduleId: string,
   target: string,
 ): void {
