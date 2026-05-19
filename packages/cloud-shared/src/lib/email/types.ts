@@ -28,6 +28,7 @@ export interface WelcomeEmailData {
   organizationName: string;
   creditBalance: number;
   dashboardUrl: string;
+  locale?: string;
 }
 
 /**
@@ -39,6 +40,7 @@ export interface LowCreditsEmailData {
   currentBalance: number;
   threshold: number;
   billingUrl: string;
+  locale?: string;
 }
 
 /**
@@ -51,6 +53,7 @@ export interface InviteEmailData {
   role: string;
   inviteToken: string;
   expiresAt: string;
+  locale?: string;
 }
 
 /**
@@ -65,6 +68,7 @@ export interface AutoTopUpSuccessEmailData {
   paymentMethod: string;
   invoiceUrl: string;
   billingUrl: string;
+  locale?: string;
 }
 
 /**
@@ -76,6 +80,7 @@ export interface AutoTopUpDisabledEmailData {
   reason: string;
   currentBalance: number;
   settingsUrl: string;
+  locale?: string;
 }
 
 /**
@@ -93,6 +98,7 @@ export interface PurchaseConfirmationEmailData {
   invoiceNumber?: string;
   invoiceUrl?: string;
   dashboardUrl: string;
+  locale?: string;
 }
 
 /**
@@ -111,4 +117,5 @@ export interface ContainerShutdownWarningEmailData {
   shutdownTime: string;
   billingUrl: string;
   dashboardUrl: string;
+  locale?: string;
 }
