@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import test from "node:test";
 
@@ -14,6 +15,7 @@ import {
   IOS_AGENT_RUNTIME_ASSETS,
   IOS_OFFICIAL_PODS,
   isIosAppStoreBuild,
+  resolveCapacitorCli,
   resolveIosAgentRuntimeAssetPlan,
   resolveIosBuildTarget,
   resolveIosCustomPods,
@@ -235,6 +237,34 @@ test("resolveIosBuildTarget defaults App Store iOS to a device build", () => {
       reason: "App Store device build",
     },
   );
+});
+
+test("resolveCapacitorCli supports hoisted workspace installs", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-capacitor-"));
+  try {
+    const tempAppDir = path.join(tempRoot, "packages", "app");
+    const capacitorCli = path.join(
+      tempRoot,
+      "node_modules",
+      "@capacitor",
+      "cli",
+      "bin",
+      "capacitor",
+    );
+    fs.mkdirSync(path.dirname(capacitorCli), { recursive: true });
+    fs.mkdirSync(tempAppDir, { recursive: true });
+    fs.writeFileSync(capacitorCli, "#!/usr/bin/env node\n", "utf8");
+
+    assert.equal(
+      resolveCapacitorCli({
+        appDirValue: tempAppDir,
+        repoRootValue: tempRoot,
+      }),
+      capacitorCli,
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
 });
 
 test("iOS background runner pod resolves through the official package", () => {
