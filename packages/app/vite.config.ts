@@ -109,6 +109,22 @@ function resolvePackageExportTarget(value: unknown): string | null {
   return null;
 }
 
+function resolveLocalPackageSourceExportTarget(
+  packageDir: string,
+  exportTarget: string,
+): string | null {
+  if (!exportTarget.startsWith("./dist/") || !exportTarget.endsWith(".js")) {
+    return null;
+  }
+
+  const sourceTarget = path.join(
+    packageDir,
+    "src",
+    exportTarget.slice("./dist/".length, -".js".length) + ".ts",
+  );
+  return fs.existsSync(sourceTarget) ? sourceTarget : null;
+}
+
 function isAppPluginPackage(
   packageRootName: string,
   entryName: string,
@@ -1196,6 +1212,32 @@ export default defineConfig({
         }
         return aliases;
       })(),
+      ...(() => {
+        const cloudSdkSrcDir = path.resolve(
+          elizaRoot,
+          "packages/cloud-sdk/src",
+        );
+        if (!fs.existsSync(path.join(cloudSdkSrcDir, "index.ts"))) {
+          return [];
+        }
+        return [
+          {
+            find: /^@elizaos\/cloud-sdk$/,
+            replacement: path.join(cloudSdkSrcDir, "index.ts"),
+          },
+          {
+            find: /^@elizaos\/cloud-sdk\/cloud-setup-session$/,
+            replacement: path.join(
+              cloudSdkSrcDir,
+              "cloud-setup-session/index.ts",
+            ),
+          },
+          {
+            find: /^@elizaos\/cloud-sdk\/cloud-setup-session\/(.+)$/,
+            replacement: path.join(cloudSdkSrcDir, "cloud-setup-session/$1.ts"),
+          },
+        ];
+      })(),
       // Force local @elizaos/app-core when workspace-linked (prevents stale
       // bun cache copies from overriding the symlinked local source).
       ...(() => {
@@ -1213,17 +1255,30 @@ export default defineConfig({
         const generatedAliases = [];
 
         for (const [key, value] of Object.entries(appCorePkg.exports || {})) {
-          if (key !== ".") continue;
           const exportTarget = resolvePackageExportTarget(value);
           if (!exportTarget) continue;
-          // Keep the renderer on a browser-safe entry. The package root barrel
-          // re-exports server modules that pull Node-only code like sharp into
-          // the Vite client graph.
-          const targetPath = appCoreBrowserEntry;
+          if (key === ".") {
+            // Keep the renderer on a browser-safe entry. The package root
+            // barrel re-exports server modules that pull Node-only code like
+            // sharp into the Vite client graph.
+            generatedAliases.push({
+              find: new RegExp(`^${escapeRegExp("@elizaos/app-core")}$`),
+              replacement: appCoreBrowserEntry,
+            });
+            continue;
+          }
 
+          if (!key.startsWith("./")) continue;
+          const sourceTarget = resolveLocalPackageSourceExportTarget(
+            appCorePkgDir,
+            exportTarget,
+          );
+          if (!sourceTarget) continue;
           generatedAliases.push({
-            find: new RegExp(`^${escapeRegExp("@elizaos/app-core")}$`),
-            replacement: targetPath,
+            find: new RegExp(
+              `^${escapeRegExp(`@elizaos/app-core/${key.slice(2)}`)}$`,
+            ),
+            replacement: sourceTarget,
           });
         }
 
