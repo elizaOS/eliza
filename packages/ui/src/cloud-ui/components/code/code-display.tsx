@@ -1,10 +1,8 @@
 "use client";
 
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
-
-import { SyntaxHighlighter } from "./prism-light";
-
 import { cn } from "../../lib/utils";
+import { SyntaxHighlighter } from "./prism-light";
 
 export interface CodeDisplayProps {
   code: string;

@@ -6,8 +6,6 @@
 // dominates the docs vendor chunk; registering only what we use cuts the
 // shipped grammars by ~95%.
 
-import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
-
 import bash from "react-syntax-highlighter/dist/esm/languages/prism/bash";
 import css from "react-syntax-highlighter/dist/esm/languages/prism/css";
 import javascript from "react-syntax-highlighter/dist/esm/languages/prism/javascript";
@@ -20,6 +18,7 @@ import sql from "react-syntax-highlighter/dist/esm/languages/prism/sql";
 import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
+import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
 
 SyntaxHighlighter.registerLanguage("bash", bash);
 SyntaxHighlighter.registerLanguage("shell", bash);
