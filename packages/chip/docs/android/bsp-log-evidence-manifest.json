@@ -303,7 +303,7 @@
     "docs/evidence/android/eliza_ai_soc_lunch.log": {
       "blocker_code": "missing_aosp_lunch_log",
       "claim_boundary": "external_aosp_product_selection_only_not_boot_or_compatibility_evidence",
-      "producer_command": "source build/envsetup.sh && lunch eliza_ai_soc-userdebug",
+      "producer_command": "source build/envsetup.sh && lunch eliza_ai_soc-trunk_staging-userdebug",
       "capture_hint": "prepend EXTERNAL_TREE, COMMAND, START_UTC, END_UTC, RESULT, COMPATIBILITY_CLAIM=none, then append the AOSP lunch transcript",
       "required_metadata": [
         "EXTERNAL_TREE=",
@@ -314,7 +314,7 @@
         "COMPATIBILITY_CLAIM=none"
       ],
       "required_any": [
-        "eliza_ai_soc-userdebug",
+        "eliza_ai_soc-trunk_staging-userdebug",
         "TARGET_PRODUCT=eliza_ai_soc"
       ],
       "required_all": [
