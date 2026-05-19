@@ -148,6 +148,160 @@ if (
   );
 }
 
+const endpointConformanceFailure = assertFails(
+  "endpoint conformance requires non-empty route bodies",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource.replace(
+    "  if (!hasMeaningfulRouteBody(result.body)) {\n",
+    "  if (!hasOwn(result, \"body\") || result.body === undefined) {\n",
+  ),
+);
+if (
+  endpointConformanceFailure.sourcePath !==
+  "packages/agent/src/services/remote-capability-endpoint-conformance.ts"
+) {
+  throw new Error(
+    `endpoint conformance failure reported wrong source path: ${endpointConformanceFailure.sourcePath}`,
+  );
+}
+
+const assetBytesFailure = assertFails(
+  "endpoint conformance verifies view asset bytes",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource.replace(
+    '      sha256: createHash("sha256").update(assetBytes).digest("hex"),\n',
+    '      sha256: assetResult.integrity ?? "",\n',
+  ),
+);
+if (
+  assetBytesFailure.sourcePath !==
+  "packages/agent/src/services/remote-capability-endpoint-conformance.ts"
+) {
+  throw new Error(
+    `asset bytes conformance failure reported wrong source path: ${assetBytesFailure.sourcePath}`,
+  );
+}
+
+const assetIntegrityFailure = assertFails(
+  "endpoint conformance verifies view asset integrity against bytes",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource.replace(
+    "    if (digest && digest === expectedDigests.get(algorithm)) return;\n",
+    "    if (digest) return;\n",
+  ),
+);
+if (
+  assetIntegrityFailure.sourcePath !==
+  "packages/agent/src/services/remote-capability-endpoint-conformance.ts"
+) {
+  throw new Error(
+    `asset integrity conformance failure reported wrong source path: ${assetIntegrityFailure.sourcePath}`,
+  );
+}
+
+const routeBodyValidatorFailure = assertFails(
+  "live report validator requires non-empty route bodies",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    "  if (!isMeaningfulJsonEvidence(routeResult.body)) {\n",
+    "  if (!Object.hasOwn(routeResult, \"body\") || routeResult.body === undefined) {\n",
+  ),
+  liveReportWriterSource,
+  endpointConformanceSource,
+);
+if (
+  routeBodyValidatorFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `route body validator failure reported wrong source path: ${routeBodyValidatorFailure.sourcePath}`,
+  );
+}
+
+const assetMetadataValidatorFailure = assertFails(
+  "live report validator verifies view asset metadata",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    "    manifestIntegrity !== undefined &&\n    manifestIntegrity !== assetIntegrity\n",
+    "    false\n",
+  ),
+  liveReportWriterSource,
+  endpointConformanceSource,
+);
+if (
+  assetMetadataValidatorFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `asset metadata validator failure reported wrong source path: ${assetMetadataValidatorFailure.sourcePath}`,
+  );
+}
+
+const assetDigestValidatorFailure = assertFails(
+  "live report validator verifies view asset digest evidence",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    "  if (assetSha256.toLowerCase() === EMPTY_SHA256) {\n",
+    "  if (false) {\n",
+  ),
+  liveReportWriterSource,
+  endpointConformanceSource,
+);
+if (
+  assetDigestValidatorFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `asset digest validator failure reported wrong source path: ${assetDigestValidatorFailure.sourcePath}`,
+  );
+}
+
+const assetIntegrityValidatorFailure = assertFails(
+  "live report validator compares view asset integrity to digest",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource.replace(
+    "  if (!sha256Tokens.includes(`sha256-${expectedDigest}`)) {\n",
+    "  if (false) {\n",
+  ),
+  liveReportWriterSource,
+  endpointConformanceSource,
+);
+if (
+  assetIntegrityValidatorFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.ts"
+) {
+  throw new Error(
+    `asset integrity validator failure reported wrong source path: ${assetIntegrityValidatorFailure.sourcePath}`,
+  );
+}
+
 assertFails(
   "cloud live job is required by test-status",
   workflow.replace("      - cloud-live-e2e\n", ""),
@@ -301,9 +455,11 @@ function assertPasses(
   candidateProviderSmokeSource = providerSmokeSource,
   candidateLiveReportValidatorSource = liveReportValidatorSource,
   candidateLiveReportWriterSource = liveReportWriterSource,
+  candidateEndpointConformanceSource = endpointConformanceSource,
 ): void {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
+    endpointConformanceSource: candidateEndpointConformanceSource,
     liveReportValidatorSource: candidateLiveReportValidatorSource,
     liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,
@@ -327,9 +483,11 @@ function assertFails(
   candidateProviderSmokeSource = providerSmokeSource,
   candidateLiveReportValidatorSource = liveReportValidatorSource,
   candidateLiveReportWriterSource = liveReportWriterSource,
+  candidateEndpointConformanceSource = endpointConformanceSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
+    endpointConformanceSource: candidateEndpointConformanceSource,
     liveReportValidatorSource: candidateLiveReportValidatorSource,
     liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,

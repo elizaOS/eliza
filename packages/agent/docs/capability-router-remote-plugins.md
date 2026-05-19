@@ -1234,15 +1234,24 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   provider live smoke source so provider reports keep recording `providerId`,
   audits the live report writer so runtime remote plugin entries keep
   per-module surface counts, audits the live report validator so those runtime
-  counts keep matching `sync.registeredModules`,
+  counts keep matching `sync.registeredModules`, audits the endpoint
+  conformance harness and live report validator so route evidence keeps
+  requiring non-empty JSON body payloads, and audits endpoint conformance so
+  view assets keep being fetched as non-empty bytes with SHA-256 evidence and
+  integrity checks against those bytes, and audits the live report validator so
+  uploaded artifacts keep rejecting non-JavaScript, manifest-mismatched,
+  empty-digest, malformed-digest, and integrity-mismatched view asset evidence,
   requires the live report validator self-test to stay in CI, and audits the
   root package scripts that invoke the live report validator, the validator
   self-test, the live CI audit, and the live CI audit self-test.
 - `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
   report-directory env vars, artifact upload paths, provider live report
-  `providerId` evidence, runtime remote plugin per-module count evidence, live
-  report validator self-test coverage, root package live validator and live CI
-  audit script wiring, package-level remote capability suite membership, final
+  `providerId` evidence, runtime remote plugin per-module count evidence, route
+  body evidence in both source conformance and report validation, view asset
+  byte/digest/integrity evidence in endpoint conformance and live report
+  validation, live report validator self-test coverage, root package live
+  validator and live CI audit
+  script wiring, package-level remote capability suite membership, final
   `test-status` live job gating,
   scheduled/manual live observation gates, Cloud
   freshness/identity validation flags, provider primary endpoint secret
@@ -1281,11 +1290,14 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 - View-asset conformance now preserves manifest-declared asset metadata and
   rejects fetched bundles whose content type or integrity value contradicts the
   manifest, whose integrity value does not include a SHA-256 token, or whose
-  integrity value does not match the fetched bytes. The live report validator
-  also rejects artifacts whose recorded manifest asset metadata disagrees with
-  the fetched asset metadata, whose integrity value lacks or does not match the
-  recorded SHA-256 digest, or whose fetched JavaScript bundle digest is the empty
-  SHA-256 digest.
+  integrity value does not match the fetched bytes. The live CI audit now also
+  statically protects the source-side byte fetch, non-empty byte check,
+  SHA-256 digest recording, and integrity-to-byte comparison. The live report
+  validator also rejects artifacts whose recorded manifest asset metadata
+  disagrees with the fetched asset metadata, whose integrity value lacks or does
+  not match the recorded SHA-256 digest, or whose fetched JavaScript bundle
+  digest is the empty SHA-256 digest; the live CI audit now statically protects
+  those artifact-side validator rules as well.
 - Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
   endpoint id, module id, and per-module surface counts. The validator requires
   this runtime identity list and each module's runtime surface counts to match

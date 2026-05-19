@@ -1483,7 +1483,7 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
     )
 
     assert "--categories" not in command
-    assert "--use-sample-tasks" in command
+    assert "--use-sample-tasks" not in command
     assert command[command.index("--max-tasks") + 1] == "1"
     assert command[command.index("--max-steps") + 1] == "3"
     assert command[command.index("--timeout") + 1] == "60000"
@@ -1494,6 +1494,13 @@ def test_realm_registry_smoke_bounds_and_routes_selected_harness(
         {"agent": "openclaw", "max_tasks": 1},
     )
     assert openclaw_command[openclaw_command.index("--provider") + 1] == "openclaw"
+
+    sample_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza", "max_tasks": 1, "use_sample_tasks": True},
+    )
+    assert "--use-sample-tasks" in sample_command
 
 
 def test_registry_adapter_forwards_selected_harness_to_build_command(tmp_path: Path) -> None:
@@ -1922,6 +1929,23 @@ def test_realm_and_mint_scores_reject_zero_task_results() -> None:
                 }
             }
         )
+
+
+def test_realm_score_rejects_sample_task_runs() -> None:
+    with pytest.raises(ValueError, match="sample-task run"):
+        _score_from_realm_json(
+            {
+                "metrics": {"overall_success_rate": 1.0, "total_tasks": 2},
+                "metadata": {"config": {"use_sample_tasks": True}},
+            }
+        )
+
+    assert _score_from_realm_json(
+        {
+            "metrics": {"overall_success_rate": 0.5, "total_tasks": 2},
+            "metadata": {"config": {"use_sample_tasks": False}},
+        }
+    ).score == 0.5
 
 
 def test_mint_score_uses_best_non_empty_configuration() -> None:

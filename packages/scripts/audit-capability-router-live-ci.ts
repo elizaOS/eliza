@@ -113,12 +113,52 @@ export const checks: Check[] = [
       "endpoint conformance must reject route calls without non-empty JSON body evidence.",
   },
   {
+    name: "endpoint conformance verifies view asset bytes",
+    pattern:
+      /const assetBytes = Buffer\.from\(assetResult\.bodyBase64, "base64"\)[\s\S]*const byteLength = assetBytes\.byteLength[\s\S]*byteLength === 0[\s\S]*returned an empty view asset[\s\S]*createHash\("sha256"\)\.update\(assetBytes\)\.digest\("hex"\)/,
+    source: "endpoint-conformance",
+    message:
+      "endpoint conformance must fetch non-empty view asset bytes and record their SHA-256 digest.",
+  },
+  {
+    name: "endpoint conformance verifies view asset integrity against bytes",
+    pattern:
+      /function assertAssetIntegrity\([\s\S]*bytes: Buffer[\s\S]*createHash\(algorithm\)\.update\(bytes\)\.digest\("base64"\)[\s\S]*token\.startsWith\("sha256-"\)[\s\S]*digest && digest === expectedDigests\.get\(algorithm\)[\s\S]*view asset integrity value that does not match its bytes/,
+    source: "endpoint-conformance",
+    message:
+      "endpoint conformance must compare returned view asset integrity values with fetched bytes.",
+  },
+  {
     name: "live report validator requires non-empty route bodies",
     pattern:
-      /routeResult\.body[\s\S]*isMeaningfulJsonEvidence\(routeResult\.body\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value[\s\S]*function isMeaningfulJsonEvidence[\s\S]*value === undefined \|\| value === null[\s\S]*Array\.isArray\(value\)[\s\S]*Object\.keys\(value\)\.length > 0/,
+      /isMeaningfulJsonEvidence\(routeResult\.body\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value[\s\S]*function isMeaningfulJsonEvidence[\s\S]*value === undefined \|\| value === null[\s\S]*Array\.isArray\(value\)[\s\S]*Object\.keys\(value\)\.length > 0/,
     source: "live-report-validator",
     message:
       "live report validation must reject route results without non-empty JSON body evidence.",
+  },
+  {
+    name: "live report validator verifies view asset metadata",
+    pattern:
+      /conformance\.assetResult\.path[\s\S]*\.\(\?:js\|mjs\)\$[\s\S]*conformance\.assetResult\.contentType must be JavaScript[\s\S]*manifestContentType !== undefined &&[\s\S]*manifestContentType !== assetContentType[\s\S]*manifestIntegrity !== undefined &&[\s\S]*manifestIntegrity !== assetIntegrity/,
+    source: "live-report-validator",
+    message:
+      "live report validation must reject non-JavaScript and manifest-mismatched view asset evidence.",
+  },
+  {
+    name: "live report validator verifies view asset digest evidence",
+    pattern:
+      /conformance\.assetResult\.byteLength[\s\S]*byteLength <= 0[\s\S]*conformance\.assetResult\.sha256[\s\S]*\^\[0-9a-f\]\{64\}\$[\s\S]*assetSha256\.toLowerCase\(\) === EMPTY_SHA256[\s\S]*validateAssetIntegritySha256\(assetIntegrity, assetSha256\.toLowerCase\(\)\)/,
+    source: "live-report-validator",
+    message:
+      "live report validation must reject empty, malformed, and integrity-mismatched view asset digests.",
+  },
+  {
+    name: "live report validator compares view asset integrity to digest",
+    pattern:
+      /function validateAssetIntegritySha256[\s\S]*filter\(\(token\) => token\.startsWith\("sha256-"\)\)[\s\S]*Buffer\.from\(assetSha256, "hex"\)\.toString\("base64"\)[\s\S]*sha256Tokens\.includes\(`sha256-\$\{expectedDigest\}`\)[\s\S]*conformance\.assetResult\.integrity must match conformance\.assetResult\.sha256/,
+    source: "live-report-validator",
+    message:
+      "live report validation must compare view asset integrity tokens with the recorded SHA-256 digest.",
   },
   {
     name: "provider live job is required by test-status",
