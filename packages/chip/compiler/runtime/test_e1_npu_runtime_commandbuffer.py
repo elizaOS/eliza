@@ -584,6 +584,42 @@ def test_stage_prepared_descriptor_execution_batches_validates_descriptor_image_
     assert memory_writes == []
 
 
+def test_stage_prepared_descriptor_execution_batches_validates_descriptor_words() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    first_image = dict(first_batch["descriptor_command_buffer_image"])
+    first_words = list(first_image["descriptor_words"][0])
+    first_words[0] = 0
+    first_image["descriptor_words"] = [first_words]
+    first_batch["descriptor_command_buffer_image"] = first_image
+
+    with pytest.raises(ValueError, match="descriptor_words do not match descriptor_image"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
 def test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble() -> None:
     prepared = (
         partition_module(parse_module(_mismatched_dot_payload()))
@@ -607,6 +643,40 @@ def test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble() -
     first_batch["host_runtime_sequence"] = sequence
 
     with pytest.raises(ValueError, match="mmio_preamble_writes value mismatch"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_execution_batches_validates_op_names() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    first_image = dict(first_batch["descriptor_command_buffer_image"])
+    first_image["op_names"] = ["wrong"]
+    first_batch["descriptor_command_buffer_image"] = first_image
+
+    with pytest.raises(ValueError, match="op_names do not match op_mmio_preamble"):
         stage_prepared_descriptor_execution_batches(
             {
                 **prepared,
@@ -702,6 +772,58 @@ def test_stage_prepared_descriptor_batch_validates_package_before_writes() -> No
     with pytest.raises(ValueError, match="descriptor_memory_writes do not match"):
         stage_prepared_descriptor_batch(
             {**prepared, "host_runtime_sequence": sequence},
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_batch_validates_descriptor_words_before_writes() -> None:
+    prepared = (
+        partition_module(parse_module(_dot_payload()))
+        .prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    image = dict(prepared["descriptor_command_buffer_image"])
+    words = list(image["descriptor_words"][0])
+    words[0] = 0
+    image["descriptor_words"] = [words]
+
+    with pytest.raises(ValueError, match="descriptor_words do not match descriptor_image"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "descriptor_command_buffer_image": image},
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_batch_validates_op_names_before_writes() -> None:
+    prepared = (
+        partition_module(parse_module(_dot_payload()))
+        .prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    image = dict(prepared["descriptor_command_buffer_image"])
+    image["op_names"] = ["wrong"]
+
+    with pytest.raises(ValueError, match="op_names do not match op_mmio_preamble"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "descriptor_command_buffer_image": image},
             write_mmio32=lambda address, value: mmio_writes.append((address, value)),
             write_mem32=lambda address, value: memory_writes.append((address, value)),
         )

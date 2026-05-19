@@ -557,6 +557,7 @@ def main() -> int:
         ("register metadata mismatch", runtime_text, RUNTIME),
         ("register address mismatch", runtime_text, RUNTIME),
         ("descriptor_memory_writes do not match descriptor_image", runtime_text, RUNTIME),
+        ("op_names do not match op_mmio_preamble", runtime_text, RUNTIME),
         ("mmio_preamble_writes value mismatch", runtime_text, RUNTIME),
         ("eliza.e1_npu_host_runtime_sequence_stage_result.v1", runtime_text, RUNTIME),
         ("eliza.e1_npu_prepared_descriptor_batch_stage_result.v1", runtime_text, RUNTIME),
@@ -597,6 +598,11 @@ def main() -> int:
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
         ),
+        (
+            "test_stage_prepared_descriptor_batch_validates_op_names_before_writes",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
         ("GEMM preamble register metadata mismatch", command_buffer_test_text, COMMAND_BUFFER_TEST),
         (
             "descriptor submission register address mismatch",
@@ -630,6 +636,11 @@ def main() -> int:
         ),
         (
             "test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
+            "test_stage_prepared_descriptor_execution_batches_validates_op_names",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
         ),

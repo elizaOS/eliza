@@ -796,9 +796,7 @@ class RuntimePreparedDescriptorExecutionBatches:
             ),
             "arena_base": self.arena_base,
             "arena_total_bytes": self.batches[0].arena_total_bytes if self.batches else 0,
-            "arena_alignment_bytes": (
-                self.batches[0].arena_alignment_bytes if self.batches else 0
-            ),
+            "arena_alignment_bytes": (self.batches[0].arena_alignment_bytes if self.batches else 0),
             "descriptor_base": self.descriptor_base,
             "descriptor_stride_bytes": self.descriptor_stride_bytes,
             "execution_batch_count": len(self.batches),

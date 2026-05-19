@@ -297,7 +297,9 @@ def stage_prepared_descriptor_batch(
     )
     arena_base = _aligned_uint32(prepared.get("arena_base"), "prepared descriptor batch arena_base")
     _validate_arena_sizing(prepared, "prepared descriptor batch")
-    batch_index = _nonnegative_int(prepared.get("batch_index"), "prepared descriptor batch batch_index")
+    batch_index = _nonnegative_int(
+        prepared.get("batch_index"), "prepared descriptor batch batch_index"
+    )
     descriptor_base = _aligned_uint32(
         prepared.get("descriptor_base"), "prepared descriptor batch descriptor_base"
     )
@@ -311,6 +313,8 @@ def stage_prepared_descriptor_batch(
         raise ValueError("prepared descriptor batch descriptor_base does not match image")
     _validate_descriptor_image_arena_base(image, arena_base, "prepared descriptor batch")
     _validate_descriptor_image_batch_index(image, batch_index, "prepared descriptor batch")
+    _validate_descriptor_image_op_names(prepared, image)
+    _validate_descriptor_image_words(image, descriptor_base)
     sequence = prepared.get("host_runtime_sequence")
     if not isinstance(sequence, Mapping):
         raise ValueError("prepared descriptor batch requires host_runtime_sequence")
@@ -401,6 +405,7 @@ def stage_prepared_descriptor_execution_batches(
             batch.get("batch_index"), "prepared execution batch batch_index"
         )
         _validate_descriptor_image_batch_index(image, batch_index, "prepared execution batch")
+        _validate_descriptor_image_op_names(batch, image)
         if image.get("execution_batch_index") != expected_index:
             raise ValueError("prepared execution batches must be ordered by execution_batch_index")
         expected_descriptor_base = descriptor_base + expected_index * descriptor_stride_bytes
@@ -413,6 +418,7 @@ def stage_prepared_descriptor_execution_batches(
             raise ValueError(
                 "prepared execution batch descriptor_base does not match descriptor_stride_bytes"
             )
+        _validate_descriptor_image_words(image, expected_descriptor_base)
         sequence = batch.get("host_runtime_sequence")
         if not isinstance(sequence, Mapping):
             raise ValueError("prepared execution batch requires host_runtime_sequence")
@@ -484,6 +490,59 @@ def _validate_descriptor_image_batch_index(
     image_batch_index = _nonnegative_int(image.get("batch_index"), f"{label} batch_index")
     if image_batch_index != expected_batch_index:
         raise ValueError(f"{label} batch_index does not match descriptor image")
+
+
+def _validate_descriptor_image_op_names(batch: Mapping[str, Any], image: Mapping[str, Any]) -> None:
+    op_names = image.get("op_names")
+    if (
+        not isinstance(op_names, list)
+        or not op_names
+        or not all(isinstance(op_name, str) and op_name for op_name in op_names)
+    ):
+        raise ValueError("prepared execution batch requires descriptor image op_names metadata")
+    op_mmio_preamble = batch.get("op_mmio_preamble")
+    if not isinstance(op_mmio_preamble, list) or not op_mmio_preamble:
+        raise ValueError("prepared execution batch requires op_mmio_preamble metadata")
+    preamble_op_names: list[str] = []
+    for entry in op_mmio_preamble:
+        if not isinstance(entry, Mapping):
+            raise TypeError("prepared execution batch preamble entry must be a mapping")
+        op_name = entry.get("op_name")
+        if not isinstance(op_name, str) or not op_name:
+            raise ValueError("prepared execution batch requires op_mmio_preamble op_name metadata")
+        preamble_op_names.append(op_name)
+    if op_names != preamble_op_names:
+        raise ValueError("prepared execution batch op_names do not match op_mmio_preamble")
+
+
+def _validate_descriptor_image_words(image: Mapping[str, Any], descriptor_base: int) -> None:
+    descriptor_words = image.get("descriptor_words")
+    if not isinstance(descriptor_words, list) or not descriptor_words:
+        raise ValueError("prepared execution batch requires descriptor_words metadata")
+    expected: dict[int, int] = {}
+    for descriptor_index, words in enumerate(descriptor_words):
+        if not isinstance(words, list) or len(words) != 4:
+            raise ValueError("prepared execution batch descriptor_words entry must have four words")
+        for word_index, word in enumerate(words):
+            if not isinstance(word, int) or word < 0 or word > 0xFFFF_FFFF:
+                raise ValueError("prepared execution batch descriptor_words value must be a uint32")
+            address = (
+                descriptor_base + descriptor_index * CommandBuffer.DESCRIPTOR_BYTES + word_index * 4
+            )
+            if address > 0xFFFF_FFFF:
+                raise ValueError("prepared execution batch descriptor_image address exceeds uint32")
+            expected[address] = word
+    descriptor_image = image.get("descriptor_image")
+    if not isinstance(descriptor_image, Mapping) or not descriptor_image:
+        raise ValueError("prepared execution batch requires descriptor_image metadata")
+    materialized: dict[int, int] = {}
+    for address, value in descriptor_image.items():
+        parsed_address = _sequence_address(address)
+        if not isinstance(value, int) or value < 0 or value > 0xFFFF_FFFF:
+            raise ValueError("prepared execution batch descriptor_image value must be a uint32")
+        materialized[parsed_address] = value
+    if materialized != expected:
+        raise ValueError("prepared execution batch descriptor_words do not match descriptor_image")
 
 
 def _validate_sequence_submission_base(sequence: Mapping[str, Any], expected_base: int) -> None:

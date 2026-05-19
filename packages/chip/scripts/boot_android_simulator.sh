@@ -110,7 +110,8 @@ print(json.dumps([
     "Linux host with hardware virtualization enabled",
     "AOSP_DIR set to an AOSP checkout containing build/envsetup.sh and device/",
     "/dev/kvm present and readable/writable by the running user",
-    "repo and adb available on PATH",
+    "repo available on PATH when syncing or bootstrapping a checkout",
+    "adb available on PATH when running Cuttlefish boot smoke",
     "launch_cvd or cvd available on PATH or under AOSP_DIR/out/host/linux-x86/bin",
     "user in kvm/cvdnetwork/render groups, or equivalent host permissions",
 ], indent=2))

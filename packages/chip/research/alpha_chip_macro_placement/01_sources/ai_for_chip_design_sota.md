@@ -679,11 +679,18 @@ power, and manufacturing preparation.
 - ML/XAI boot-failure debug:
   https://rei.iteso.mx/items/d449d907-2591-4969-b402-1f32bee002ab
 - LLM4SecHW: https://arxiv.org/abs/2401.16448
+- LLM4SecHW OSHD dataset:
+  https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD
+- ChipBench paper: https://arxiv.org/abs/2601.21448
+- ChipBench code: https://github.com/zhongkaiyu/ChipBench
 - Use: structure tests that can run across simulation, FPGA, and silicon; learn
-  from labeled boot-failure telemetry; triage hardware defects with LLMs.
+  from labeled boot-failure telemetry; triage hardware defects with LLMs; and
+  evaluate whether LLMs can handle realistic Verilog debugging and
+  reference-model generation tasks before trusting them near E1.
 - E1 fit: target capture only. Generated lab scripts, test binaries, root-cause
-  reports, or fixes require local target IDs, logs, traces, deterministic gates,
-  and human review.
+  reports, fixes, benchmark imports, or debug-corpus use require local target
+  IDs, logs, traces, deterministic gates, dataset provenance, contamination
+  review, and human review.
 
 ## Recommended order for E1
 

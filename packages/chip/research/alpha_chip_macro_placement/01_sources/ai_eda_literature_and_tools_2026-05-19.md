@@ -99,6 +99,18 @@ candidate inputs to reproducible gates, not as standalone evidence.
 - AMS-Net: <https://ams-net.github.io/>. Schematic/netlist dataset for
   analog/mixed-signal circuits; dataset-governance only until exact snapshot,
   license, non-overlap review, and parser baselines exist.
+- LLM4SecHW OSHD:
+  <https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD>. Open-source
+  hardware-debug dataset paired with the LLM4SecHW workflow. E1 status:
+  quarantined dataset candidate only until exact revision, license,
+  source-project provenance, overlap/contamination review, and generated-output
+  isolation exist.
+- ChipBench: <https://arxiv.org/abs/2601.21448> and
+  <https://github.com/zhongkaiyu/ChipBench>. 2026 benchmark covering realistic
+  Verilog generation, debugging, and Python/SystemC/CXXRTL reference-model
+  generation. E1 status: benchmark-governance reference only until task
+  manifests, license, overlap review, local replay, and reviewer disposition
+  are captured.
 - AI-assisted hardware security verification:
   <https://arxiv.org/abs/2604.01572>. Useful taxonomy for asset identification,
   threat modeling, security test planning, simulation, formal verification, and
