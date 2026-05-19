@@ -162,8 +162,6 @@ export const IOS_AGENT_RUNTIME_ASSETS = [
   "pglite.wasm",
   "initdb.wasm",
   "pglite.data",
-  "ort-wasm-simd-threaded.mjs",
-  "ort-wasm-simd-threaded.wasm",
   "vector.tar.gz",
   "fuzzystrmatch.tar.gz",
   "plugins-manifest.json",

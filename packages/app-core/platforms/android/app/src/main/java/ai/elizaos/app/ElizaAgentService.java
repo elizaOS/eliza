@@ -531,10 +531,9 @@ public class ElizaAgentService extends Service {
         copyAssetIfPresent(assets, "agent/pglite.wasm", new File(root, "pglite.wasm"));
         copyAssetIfPresent(assets, "agent/initdb.wasm", new File(root, "initdb.wasm"));
         copyAssetIfPresent(assets, "agent/pglite.data", new File(root, "pglite.data"));
-        // ONNX Runtime Web sidecars used by the Android Kokoro TTS path.
-        // The mobile agent bundle imports onnxruntime-web/wasm; Bun resolves
-        // the module relative to agent-bundle.js, so these files must be
-        // extracted next to the bundle just like the PGlite WASM assets.
+        // Legacy ONNX Runtime Web sidecars used by the removed Android Kokoro
+        // TTS path. Current AOSP TTS uses fused OmniVoice, so fresh bundles do
+        // not ship these files; keep extraction best-effort for older APKs.
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.mjs",
             new File(root, "ort-wasm-simd-threaded.mjs"));
         copyAssetIfPresent(assets, "agent/ort-wasm-simd-threaded.wasm",
