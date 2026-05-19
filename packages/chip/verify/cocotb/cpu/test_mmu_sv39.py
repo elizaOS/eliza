@@ -17,14 +17,19 @@ DUT requirements:
   - S-mode entry
   - dcache flush / fence.vma plumbing
 
-None of those are present in the tiny stub CPU. This file is therefore
-parked as a structural skeleton: the cocotb tests are skipped fail-closed
-on the stub, and the same file is rerunnable against the real
-``E1_HAVE_CVA6`` build later. The host-side checker prints BLOCKED.
+The tiny stub CPU has none of those. The test runs in two modes:
+
+  - stub mode: assert the DUT cannot resolve Sv39 (signals absent) and
+    record BLOCKED.
+  - real mode: once the DUT exposes ``satp_q`` (or ``dut_has_mmu``) the
+    cocotb body programs satp, the page table, and walks a load. This
+    body is still a skeleton; flipping it on is gated by a real DUT in
+    `verify/cocotb/cpu/conftest.py` (TBD) and explicit env override.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
@@ -50,11 +55,14 @@ PTE_U = 1 << 4
 PTE_G = 1 << 5
 PTE_A = 1 << 6
 PTE_D = 1 << 7
-# Bit 7 also doubles as the proposed Ztso indicator per
-# rtl/cpu/csr/ztso_ctrl.sv when D is encoded separately; the current
-# Sv39 spec reserves bits 8-9 for RSW so a software-allocated Ztso bit
-# can live at bit 8 without conflicting.
+# Bit 8 is an Sv39 RSW slot that the e1 big core proposes to use as the
+# Ztso (Total Store Order) per-page indicator. See
+# rtl/cpu/csr/ztso_ctrl.sv and docs/arch/ooo-cluster.md.
 PTE_ZTSO_RSW = 1 << 8
+
+SATP_MODE_SV39 = 8
+SATP_MODE_SV48 = 9
+SATP_MODE_SV57 = 10
 
 
 def pte_make(ppn: int, perm: int) -> int:
@@ -89,10 +97,24 @@ def build_page_table(va: int, pa_page: int, perm: int) -> dict:
 
     return {
         "root_pa": root_pa,
-        "satp_mode_sv39": 8,
-        "satp_value": (8 << 60) | (root_pa >> 12),
+        "satp_mode_sv39": SATP_MODE_SV39,
+        "satp_value": (SATP_MODE_SV39 << 60) | (root_pa >> 12),
         "entries": entries,
     }
+
+
+def build_page_table_with_ztso(va: int, pa_page: int, perm: int) -> dict:
+    """Like build_page_table but sets the Ztso RSW bit on the leaf."""
+    base = build_page_table(va, pa_page, perm | PTE_ZTSO_RSW)
+    # Validate the leaf carries the RSW bit.
+    indices = virt_to_indices(va)
+    leaf_addr = 0x8020_2000 + 8 * indices[2]
+    assert base["entries"][leaf_addr] & PTE_ZTSO_RSW
+    return base
+
+
+def _real_dut(dut) -> bool:
+    return any(hasattr(dut, n) for n in ("satp_q", "dut_has_mmu", "csr_satp"))
 
 
 # -------- host-side structural checks --------
@@ -113,6 +135,19 @@ def host_self_check() -> int:
     assert leaf_pte & PTE_R
     assert leaf_pte & PTE_W
     assert not (leaf_pte & PTE_X)
+    # The Ztso variant must set bit 8 but not change the PPN.
+    tbl_ztso = build_page_table_with_ztso(va, pa_page, PTE_R | PTE_W)
+    leaf_ztso = tbl_ztso["entries"][leaf_addr]
+    assert leaf_ztso & PTE_ZTSO_RSW
+    assert (leaf_ztso >> 10) & ((1 << 44) - 1) == pa_page >> 12
+    # Multi-VA collision check: two different VAs must land in different
+    # leaf slots so the builder is not aliasing.
+    a = build_page_table(0x0000_0000_DEAD_0000, 0x8010_0000, PTE_R)
+    b = build_page_table(0x0000_0000_DEAD_1000, 0x8010_1000, PTE_R)
+    a_leaf = 0x8020_2000 + 8 * virt_to_indices(0x0000_0000_DEAD_0000)[2]
+    b_leaf = 0x8020_2000 + 8 * virt_to_indices(0x0000_0000_DEAD_1000)[2]
+    assert a_leaf != b_leaf
+    assert a["entries"][a_leaf] != b["entries"][b_leaf]
     return 0
 
 
@@ -130,9 +165,7 @@ if cocotb is not None:
             await RisingEdge(dut.clk)
         dut.rst_n.value = 1
         await RisingEdge(dut.clk)
-        # If a real MMU shows up later, replace this body with the full
-        # walk + load smoke. Until then, halt-fail-closed must be honored.
-        if not hasattr(dut, "satp_q") and not hasattr(dut, "dut_has_mmu"):
+        if not _real_dut(dut):
             cocotb.log.info(
                 "STATUS: BLOCKED cpu.mmu_sv39_evidence - "
                 "DUT has no satp/MMU; real CVA6/Kunminghu/Ascalon required."
@@ -146,10 +179,16 @@ if cocotb is not None:
 
 def main(argv: list[str] | None = None) -> int:
     host_self_check()
+    if os.environ.get("E1_REQUIRE_REAL_MMU_DUT"):
+        print(
+            "STATUS: FAIL cpu.mmu_sv39_evidence - E1_REQUIRE_REAL_MMU_DUT set "
+            "but no real MMU DUT is available."
+        )
+        return 1
     print(
         "STATUS: BLOCKED cpu.mmu_sv39_evidence - "
         "real Sv39 walk requires CVA6 / Kunminghu / Ascalon DUT; "
-        "page-table builder self-check passed."
+        "page-table builder + Ztso RSW host check passed."
     )
     return 0
 

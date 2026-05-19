@@ -1,22 +1,23 @@
 """CSR / trap / privilege smoke for the e1 CPU subsystem.
 
-The current local DUT is the tiny stub CPU at
-``rtl/cpu/e1_cpu_subsystem_stub.sv``, which has no CSR file, no privilege
-mode, and no trap entry: it halts fail-closed on any CSR access, MRET,
-SRET, or ECALL. This test pins that fail-closed behavior and explicitly
-records the negative result so the gate at
-``docs/evidence/cpu_ap/csr-trap-evidence.yaml`` cannot silently flip green
-when the real big-core RTL lands.
+This file is dual-purpose:
 
-When the production wrapper ``e1_cva6_wrapper.sv`` is compiled with
-``+define+E1_HAVE_CVA6`` and the CVA6 source tree is on the include path,
-the same test file is re-runnable against the real core; the second test
-in this module exercises the CVA6 path but is skipped fail-closed
-otherwise.
+  - On the stub DUT (``rtl/cpu/e1_cpu_subsystem_stub.sv``) it pins
+    fail-closed halt-on-illegal-CSR / MRET / SRET / ECALL / EBREAK.
+  - On a real DUT compiled with ``+define+E1_HAVE_CVA6`` (or
+    ``E1_HAVE_KUNMINGHU`` / ``E1_HAVE_ASCALON`` when they land) the same
+    test module re-runs the positive trap path: CSR writes succeed,
+    illegal CSR accesses trap to ``mepc=PC``, ``mcause=2``, then the
+    handler returns via MRET. Until that DUT is selectable the
+    positive-path coroutine is registered but skip-marked.
+
+The cocotb skip path explicitly records BLOCKED in the evidence YAML so
+the gate cannot silently flip green when the big-core RTL lands.
 """
 
 from __future__ import annotations
 
+import os
 import sys
 from typing import Any
 
@@ -38,6 +39,16 @@ def _csr_rw(rd: int, csr: int, rs1: int) -> int:
     return (csr << 20) | (rs1 << 15) | (1 << 12) | (rd << 7) | 0x73
 
 
+def _csr_rs(rd: int, csr: int, rs1: int) -> int:
+    """CSRRS rd, csr, rs1."""
+    return (csr << 20) | (rs1 << 15) | (2 << 12) | (rd << 7) | 0x73
+
+
+def _csr_rwi(rd: int, csr: int, uimm: int) -> int:
+    """CSRRWI rd, csr, uimm."""
+    return (csr << 20) | (uimm << 15) | (5 << 12) | (rd << 7) | 0x73
+
+
 def _ecall() -> int:
     return 0x00000073
 
@@ -52,6 +63,18 @@ def _mret() -> int:
 
 def _sret() -> int:
     return 0x10200073
+
+
+def _has_dut_attr(dut, *names: str) -> bool:
+    """Return True if every name is a signal on dut."""
+    return all(hasattr(dut, n) for n in names)
+
+
+def _is_real_cpu_dut(dut) -> bool:
+    """A real DUT exposes at minimum mepc/mcause/mstatus signals."""
+    # Conservative — any one of these distinguishes a real privileged DUT
+    # from the tiny stub which only exposes cpu_halted / loader_*.
+    return any(hasattr(dut, n) for n in ("mepc_q", "csr_mepc", "satp_q", "dut_has_mmu"))
 
 
 async def _reset(dut) -> None:
@@ -121,6 +144,9 @@ if cocotb is not None:
     @cocotb.test()
     async def stub_cpu_halts_on_csr_access(dut) -> None:
         """Stub DUT must halt fail-closed on CSRRW; never produce CSR value."""
+        if _is_real_cpu_dut(dut):
+            dut._log.info("real CPU DUT detected — stub-only test deferred")
+            return
         cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
         await _reset(dut)
         # CSRRW x1, mstatus, x0  -> CSR access in tiny CPU must halt
@@ -135,6 +161,9 @@ if cocotb is not None:
     @cocotb.test()
     async def stub_cpu_halts_on_mret_and_sret(dut) -> None:
         """Privileged return must trap-and-halt on the tiny CPU."""
+        if _is_real_cpu_dut(dut):
+            dut._log.info("real CPU DUT detected — stub-only test deferred")
+            return
         cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
         for opcode in (_mret(), _sret()):
             await _reset(dut)
@@ -146,6 +175,9 @@ if cocotb is not None:
     @cocotb.test()
     async def stub_cpu_halts_on_ecall_and_ebreak(dut) -> None:
         """ECALL/EBREAK are local halt only — no trap entry in the tiny CPU."""
+        if _is_real_cpu_dut(dut):
+            dut._log.info("real CPU DUT detected — stub-only test deferred")
+            return
         cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
         for opcode in (_ecall(), _ebreak()):
             await _reset(dut)
@@ -153,6 +185,25 @@ if cocotb is not None:
             dut.cpu_enable.value = 1
             assert await _run_until_halt(dut, 64), f"tiny CPU did not halt on 0x{opcode:08x}"
             assert int(dut.cpu_halted.value) == 1
+
+    @cocotb.test()
+    async def real_dut_csr_write_read_round_trip(dut) -> None:
+        """Positive-path CSR round-trip; only runs against a real DUT."""
+        if not _is_real_cpu_dut(dut):
+            dut._log.info(
+                "STATUS: BLOCKED cpu.csr_trap_evidence - DUT is stub; "
+                "positive CSR/trap path requires +define+E1_HAVE_CVA6 (or "
+                "Kunminghu/Ascalon). See evidence_yaml_path()."
+            )
+            return
+        # Real-DUT body is the implementer's responsibility once a wrapper
+        # exposes the canonical signals; this assertion guards against
+        # accidentally flipping the gate green with an empty body.
+        raise AssertionError(
+            "real CPU DUT detected but positive-path CSR test body is not yet "
+            "ported. Implement against e1_cva6_wrapper signals before flipping "
+            "the gate."
+        )
 
 
 # -------- structural meta-checks (host) --------
@@ -172,6 +223,21 @@ def evidence_yaml_path() -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Host-side sanity on the helper encoders so a typo in a future edit
+    # does not silently flip an opcode.
+    assert _mret() == 0x30200073
+    assert _sret() == 0x10200073
+    assert _ecall() == 0x00000073
+    assert _ebreak() == 0x00100073
+    assert _csr_rw(1, 0x300, 0) == (0x300 << 20) | (1 << 7) | (1 << 12) | 0x73
+    assert _csr_rs(1, 0x300, 0) == (0x300 << 20) | (2 << 12) | (1 << 7) | 0x73
+    assert _csr_rwi(1, 0x300, 5) == (0x300 << 20) | (5 << 15) | (5 << 12) | (1 << 7) | 0x73
+    if os.environ.get("E1_REQUIRE_REAL_CSR_DUT"):
+        print(
+            "STATUS: FAIL cpu.csr_trap_evidence - E1_REQUIRE_REAL_CSR_DUT set "
+            "but stub-only path is the current DUT."
+        )
+        return 1
     print("STATUS: BLOCKED cpu.csr_trap_evidence -", csr_trap_evidence_blocked_note())
     print("evidence_yaml:", evidence_yaml_path())
     return 0
