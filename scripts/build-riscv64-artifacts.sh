@@ -161,12 +161,16 @@ build_native_plugin() {
 }
 
 # RVV flag escapes for Zig 0.13 (same logic as
-# scripts/verify-riscv64-buildpaths.sh).
+# scripts/verify-riscv64-buildpaths.sh). TurboQuant uses the generic
+# CPU (no zvl* attribute) so LLVM's loop vectoriser emits portable
+# vsetvli loops; a named core like sifive_x280 advertises VLEN=512
+# via zvl512b and produces code that silently truncates at smaller
+# VLEN (qemu-user reports VLEN=128, the RVV-spec minimum).
 QJL_RVV=""; POLAR_RVV=""; TBQ_RVV=""
 if [ "$ZIG_MAJOR_MINOR" = "0.13" ]; then
     QJL_RVV="-DQJL_RVV_COMPILE_OPTIONS=-mcpu=sifive_x280;-mabi=lp64d"
     POLAR_RVV="-DPOLARQUANT_RVV_COMPILE_OPTIONS=-mcpu=sifive_x280;-mabi=lp64d"
-    TBQ_RVV="-DTURBOQUANT_RVV_FLAGS=-mcpu=sifive_x280;-mabi=lp64d"
+    TBQ_RVV="-DTURBOQUANT_RVV_FLAGS=-mcpu=generic_rv64+v+m+a+f+d+c"
 fi
 
 # ── Native plugins ───────────────────────────────────────────────────

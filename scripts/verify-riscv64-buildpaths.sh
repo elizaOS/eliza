@@ -25,9 +25,11 @@
 #   `-march=rv64gcv1p0`, which Zig 0.14+'s clang accepts directly. On
 #   Zig 0.13 we drive the per-package escape hatches
 #   (QJL_RVV_COMPILE_OPTIONS / POLARQUANT_RVV_COMPILE_OPTIONS /
-#   TURBOQUANT_RVV_FLAGS) with `-mcpu=sifive_x280;-mabi=lp64d` — the
-#   SiFive X280 is the smallest CPU Zig 0.13 ships with full RVV 1.0
-#   support, so the same intrinsic code compiles unchanged.
+#   TURBOQUANT_RVV_FLAGS) with a CPU name. TurboQuant uses
+#   `-mcpu=generic_rv64+v+m+a+f+d+c` rather than a named core
+#   (e.g. sifive_x280) because LLVM bakes the named core's VLEN into the
+#   zvl* attribute, and the resulting code silently truncates at a
+#   smaller actual VLEN (qemu-user reports VLEN=128, the spec minimum).
 
 set -euo pipefail
 
@@ -69,10 +71,16 @@ ZIG_MAJOR_MINOR="$(printf '%s' "$ZIG_VERSION" | awk -F. '{ print $1"."$2 }')"
 # smallest one with full RVV 1.0 support and runs the same intrinsics.
 case "$ZIG_MAJOR_MINOR" in
     0.13)
-        RVV_OVERRIDE_REASON="Zig 0.13 (clang in 0.13 only accepts \`-mcpu=\` for RVV; using sifive_x280)"
+        RVV_OVERRIDE_REASON="Zig 0.13 (clang in 0.13 only accepts \`-mcpu=\`; using generic_rv64+v to avoid baked-in VLEN assumptions)"
         QJL_RVV="-DQJL_RVV_COMPILE_OPTIONS=-mcpu=sifive_x280;-mabi=lp64d"
         POLAR_RVV="-DPOLARQUANT_RVV_COMPILE_OPTIONS=-mcpu=sifive_x280;-mabi=lp64d"
-        TBQ_RVV="-DTURBOQUANT_RVV_FLAGS=-mcpu=sifive_x280;-mabi=lp64d"
+        # Use the generic rv64gc+V CPU rather than a named core: named cores
+        # (e.g. sifive_x280) advertise their VLEN (X280 = 512) via the
+        # zvl512b attribute, which makes LLVM's loop vectoriser emit
+        # unrolled m1/m2 sequences that silently truncate at VLEN=128
+        # (the spec minimum, and what qemu-user reports). The generic
+        # CPU has no zvl* attribute so vsetvli loops stay portable.
+        TBQ_RVV="-DTURBOQUANT_RVV_FLAGS=-mcpu=generic_rv64+v+m+a+f+d+c"
         ;;
     *)
         RVV_OVERRIDE_REASON="Zig $ZIG_MAJOR_MINOR (default \`-march=rv64gcv1p0\` accepted)"

@@ -43,17 +43,40 @@ target_compile_options(turboquant PRIVATE -O3 -Wall -Wextra -Wno-unused-paramete
 target_link_libraries(turboquant PUBLIC m)
 
 # riscv64: RVV intrinsic kernels need an ISA string that enables the V
-# extension. The default works on toolchains that accept the GCC-style
-# `-march=rv64gcv1p0` (gcc, clang >= 15, zig >= 0.14). Older toolchains
-# (notably zig 0.13's bundled clang) want a CPU name instead — set
-# TURBOQUANT_RVV_FLAGS at the cmake command line, e.g.
-#   -DTURBOQUANT_RVV_FLAGS='-mcpu=sifive_x280'
-# for the SiFive X280 (RVV 1.0 capable).
+# extension. Two compiler dialects exist:
+#
+#   * gcc / clang >= 15 / zig >= 0.14 accept the GCC-style
+#     `-march=rv64gcv1p0`. This makes no assumption about VLEN beyond
+#     the RVV spec minimum (VLEN >= 128) so the resulting code is
+#     portable across every conforming RVV 1.0 implementation.
+#
+#   * zig 0.13's bundled clang only accepts `-mcpu=` CPU names; the
+#     gcc-style march is rejected with "unknown CPU". Use the generic
+#     `-mcpu=generic_rv64+v+m+a+f+d+c` (rv64gc + V), which also avoids
+#     the per-CPU VLEN assumptions LLVM bakes in for named cores
+#     (`-mcpu=sifive_x280` advertises VLEN=512 via the zvl512b
+#     attribute; LLVM's loop vectoriser emits unrolled m1/m2 sequences
+#     that silently truncate at VLEN=128, e.g. under qemu-user). The
+#     generic CPU has no zvl* attribute so the auto-vectoriser uses
+#     vsetvli loops that are correct at every VLEN >= 128.
+#
+# Override knob: pass `-DTURBOQUANT_RVV_FLAGS=...` at the cmake command
+# line to pin a specific flag (e.g. for a known target microarch).
 if(TURBOQUANT_RISCV)
     target_compile_definitions(turboquant PUBLIC TBQ_HAVE_RVV=1)
     target_compile_definitions(turboquant PRIVATE TBQ_ARCH_RISCV=1)
     if(NOT DEFINED TURBOQUANT_RVV_FLAGS)
-        set(TURBOQUANT_RVV_FLAGS "-march=rv64gcv1p0;-mabi=lp64d")
+        # Detect whether the active compiler accepts -march=rv64gcv1p0;
+        # if not, fall back to zig 0.13's -mcpu=generic_rv64+v form.
+        include(CheckCSourceCompiles)
+        set(CMAKE_REQUIRED_FLAGS "-march=rv64gcv1p0 -mabi=lp64d")
+        check_c_source_compiles("int main(void){return 0;}" TURBOQUANT_RVV_MARCH_OK)
+        unset(CMAKE_REQUIRED_FLAGS)
+        if(TURBOQUANT_RVV_MARCH_OK)
+            set(TURBOQUANT_RVV_FLAGS "-march=rv64gcv1p0;-mabi=lp64d")
+        else()
+            set(TURBOQUANT_RVV_FLAGS "-mcpu=generic_rv64+v+m+a+f+d+c")
+        endif()
     endif()
     set_source_files_properties(
         src/tbq_encode_rvv.c src/tbq_decode_rvv.c
