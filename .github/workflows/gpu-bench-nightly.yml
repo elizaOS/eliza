@@ -36,7 +36,7 @@ jobs:
         with:
           bun-version: latest
       - name: install
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
       - name: probe GPU + print autotune plan
         run: |
           bun run --cwd packages/inference/voice-bench bench gpu \
@@ -60,7 +60,7 @@ jobs:
         with:
           bun-version: latest
       - name: install
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
       - name: run voice-bench
         run: |
           bun run --cwd packages/inference/voice-bench bench \
