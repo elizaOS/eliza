@@ -504,7 +504,7 @@ export function extractCompletionSummary(raw: string): string {
  * concise status the parent agent would give the user when asked "where
  * are you?".
  */
-const HEARTBEAT_SUMMARY_PROMPT = `You are a thin progress reporter for an autonomous coding sub-agent.
+const HEARTBEAT_SUMMARY_PROMPT = `Thin progress reporter for an autonomous coding sub-agent.
 Below is recent activity. It may include:
 - prose narration the sub-agent wrote ("Now let me build...")
 - a list of CONCRETE tool calls with args (most recent last), e.g. \`Read(…/site/index.html)\`, \`Bash(wrangler pages deploy)\`, \`Edit(…/styles.css)\`, \`Grep("color-accent")\`

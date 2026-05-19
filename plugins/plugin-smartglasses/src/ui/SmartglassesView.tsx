@@ -87,7 +87,8 @@ const PLATFORM_COPY: Record<
 > = {
   desktop: {
     label: "Desktop",
-    primary: "Use the browser Bluetooth picker. The headset flow asks for both lenses and only marks connected when both are live.",
+    primary:
+      "Use the browser Bluetooth picker. The headset flow asks for both lenses and only marks connected when both are live.",
     secondary:
       "Chrome and Edge support Web Bluetooth on desktop. Keep the base plugged in and disconnect stale phone pairings if one lens stalls.",
   },
@@ -229,11 +230,22 @@ export function SmartglassesView() {
         networks: wifiNetworks,
       },
     }),
-    [bridge, events, headsetConnected, lenses, tests, transport, wifiNetworks, wifiStatus],
+    [
+      bridge,
+      events,
+      headsetConnected,
+      lenses,
+      tests,
+      transport,
+      wifiNetworks,
+      wifiStatus,
+    ],
   );
 
   function appendEvent(type: string, detail: string): void {
-    setEvents((current) => [...current, { at: now(), type, detail }].slice(-80));
+    setEvents((current) =>
+      [...current, { at: now(), type, detail }].slice(-80),
+    );
   }
 
   function markTest(id: string, value = true): void {
@@ -380,7 +392,8 @@ export function SmartglassesView() {
     setBusy("wifi-scan");
     setError(null);
     try {
-      if (!bridge) throw new Error("No native smartglasses bridge is available");
+      if (!bridge)
+        throw new Error("No native smartglasses bridge is available");
       const result = await callWifiBridge(bridge, "request_wifi_scan");
       const networks = parseWifiNetworks(result);
       setWifiNetworks(networks);
@@ -403,7 +416,8 @@ export function SmartglassesView() {
     setBusy("wifi-configure");
     setError(null);
     try {
-      if (!bridge) throw new Error("No native smartglasses bridge is available");
+      if (!bridge)
+        throw new Error("No native smartglasses bridge is available");
       if (!wifiSsid.trim()) throw new Error("Enter a Wi-Fi SSID");
       await callWifiBridge(bridge, "set_wifi_credentials", {
         ssid: wifiSsid.trim(),
@@ -454,7 +468,10 @@ export function SmartglassesView() {
               hardware test reporting.
             </p>
           </div>
-          <StatusPill ok={headsetConnected} label={headsetConnected ? "Headset connected" : "Not connected"} />
+          <StatusPill
+            ok={headsetConnected}
+            label={headsetConnected ? "Headset connected" : "Not connected"}
+          />
         </div>
       </div>
 
@@ -517,13 +534,22 @@ export function SmartglassesView() {
               className="mt-4 w-full resize-none rounded-md border border-border bg-bg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="mt-3 flex flex-wrap gap-2">
-              <ActionButton onClick={sendDisplay} disabled={!headsetConnected || busy !== null}>
+              <ActionButton
+                onClick={sendDisplay}
+                disabled={!headsetConnected || busy !== null}
+              >
                 Send Display
               </ActionButton>
-              <ActionButton onClick={clearDisplay} disabled={!headsetConnected || busy !== null}>
+              <ActionButton
+                onClick={clearDisplay}
+                disabled={!headsetConnected || busy !== null}
+              >
                 Clear
               </ActionButton>
-              <ActionButton onClick={() => toggleMic(!micEnabled)} disabled={!headsetConnected || busy !== null}>
+              <ActionButton
+                onClick={() => toggleMic(!micEnabled)}
+                disabled={!headsetConnected || busy !== null}
+              >
                 <Mic className="h-4 w-4" />
                 {micEnabled ? "Mic Off" : "Mic On"}
               </ActionButton>
@@ -561,10 +587,16 @@ export function SmartglassesView() {
               />
             </div>
             <div className="mt-3 flex flex-wrap gap-2">
-              <ActionButton onClick={scanWifi} disabled={!bridge || busy !== null}>
+              <ActionButton
+                onClick={scanWifi}
+                disabled={!bridge || busy !== null}
+              >
                 Scan
               </ActionButton>
-              <ActionButton onClick={configureWifi} disabled={!bridge || busy !== null}>
+              <ActionButton
+                onClick={configureWifi}
+                disabled={!bridge || busy !== null}
+              >
                 Configure Wi-Fi
               </ActionButton>
             </div>
@@ -710,7 +742,11 @@ function StatusPill({ ok, label }: { ok: boolean; label: string }) {
           : "border-border bg-muted/20 text-muted"
       }`}
     >
-      {ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />}
+      {ok ? (
+        <CheckCircle2 className="h-3.5 w-3.5" />
+      ) : (
+        <XCircle className="h-3.5 w-3.5" />
+      )}
       {label}
     </span>
   );

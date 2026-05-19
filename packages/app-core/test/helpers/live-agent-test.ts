@@ -60,7 +60,7 @@ export interface LiveAgentHarness {
 }
 
 const DEFAULT_SYSTEM_PROMPT =
-  "You are a concise, helpful assistant used for end-to-end testing. " +
+  "Concise, helpful assistant for end-to-end testing. " +
   "Always respond in plain text. Keep answers short (1-3 sentences) unless asked otherwise.";
 
 interface ProviderConfig {

@@ -30,7 +30,7 @@ import {
 } from "./model-playground-utils";
 
 const DEFAULT_SYSTEM_PROMPT =
-  "You are a concise model evaluation assistant. Answer directly, note tradeoffs when relevant, and avoid unnecessary filler.";
+  "Answer directly, note tradeoffs when relevant, and avoid unnecessary filler.";
 
 interface TranscriptMessage {
   id: string;

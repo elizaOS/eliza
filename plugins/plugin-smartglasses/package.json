@@ -47,9 +47,14 @@
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
     "@types/node": "^25.0.3",
+    "@types/react": "^19.2.3",
+    "@types/react-dom": "^19.2.3",
     "bun-types": "^1.3.14",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
+    "vite": "^8.0.0",
     "vitest": "^4.0.17"
   },
   "elizaos": {
@@ -74,12 +79,7 @@
         "description": "Preferred smartglasses transport. auto selects an injected transport, Even bridge, Web Bluetooth, then Noble BLE.",
         "required": false,
         "default": "auto",
-        "enum": [
-          "auto",
-          "even-bridge",
-          "web-bluetooth",
-          "noble"
-        ],
+        "enum": ["auto", "even-bridge", "web-bluetooth", "noble"],
         "sensitive": false
       },
       "SMARTGLASSES_SCAN_TIMEOUT_MS": {
@@ -101,10 +101,7 @@
         "description": "G1 connection-ready init packet mode. lens-specific sends 0x4D to left and 0xF4 to right; official sends 0x4D to both lenses as in EvenDemoApp.",
         "required": false,
         "default": "lens-specific",
-        "enum": [
-          "lens-specific",
-          "official"
-        ],
+        "enum": ["lens-specific", "official"],
         "sensitive": false
       }
     }
@@ -113,8 +110,5 @@
     "access": "public"
   },
   "types": "./dist/index.d.ts",
-  "files": [
-    "dist",
-    "docs"
-  ]
+  "files": ["dist", "docs"]
 }
