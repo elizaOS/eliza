@@ -36,6 +36,7 @@ bash -n build.sh build-iso.sh tails/auto/build \
     scripts/usb-write.sh \
     scripts/generate-elizaos-brand-assets.sh \
     scripts/security-smoke.sh
+bash -n scripts/sync-runtime-to-chroot.sh
 sh -n \
     tails/auto/config \
     tails/config/chroot_local-hooks/9100-install-milady \
@@ -126,7 +127,8 @@ for executable in \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/update-manager \
     scripts/dev-sign-update-manifest.sh \
     scripts/usb-write.sh \
-    scripts/security-smoke.sh
+    scripts/security-smoke.sh \
+    scripts/sync-runtime-to-chroot.sh
 do
     mode="$(stat_mode "${executable}")"
     if [ "${mode}" != "755" ]; then
@@ -148,6 +150,10 @@ grep -q "Poppins 10" \
     tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
 grep -q "Poppins Medium 10" \
     tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
+grep -q "color-scheme='prefer-light'" \
+    tails/config/chroot_local-includes/etc/dconf/db/local.d/00_Tails_defaults
+grep -q '#0b35f1' \
+    tails/config/chroot_local-includes/usr/share/gnome-shell/extensions/window-list@gnome-shell-extensions.gcampax.github.com/stylesheet-dark.css
 grep -q '^gir1.2-udisks-2.0$' \
     tails/config/chroot_local-packageslists/tails-common.list
 grep -q '#0B35F1' scripts/generate-elizaos-brand-assets.sh
@@ -155,6 +161,7 @@ grep -q 'logo_white_bluebg.svg' scripts/generate-elizaos-brand-assets.sh
 if rg -n '#FF5800|#FF0000|#ff5800|#ff0000|ORANGE|RED|#ffe600|#f0b90b|#08080a|#0a0a0a|#03061f' \
     scripts/generate-elizaos-brand-assets.sh \
     tails/config/chroot_local-includes/usr/share/tails/greeter/greeter.css \
+    tails/config/chroot_local-includes/usr/share/tails/persistent-storage/style.css \
     tails/config/chroot_local-includes/usr/share/doc/elizaos/website/doc.en.html \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 then
@@ -177,6 +184,76 @@ if [ "${SOURCE_ONLY}" != "1" ]; then
         echo "Packaged app renderer must not expose the old dark shell metadata." >&2
         exit 1
     fi
+    if rg -n '#FF5800|#ff5800|#FF0000|#ff0000' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/index.html \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/site.webmanifest
+    then
+        echo "Packaged app renderer metadata must use the blue/white elizaOS palette." >&2
+        exit 1
+    fi
+fi
+if rg -n 'bg-\[#ffe600\]|radial-gradient|blur-\[' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
+then
+    echo "Startup shell must stay on the clean elizaOS white/blue surface." >&2
+    exit 1
+fi
+grep -q 'bg-\[#F7F9FF\]' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
+grep -q 'text-\[#0B35F1\]' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupShell.tsx"
+if rg -n 'bg-danger|text-danger|variant="danger"|radial-gradient' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
+then
+    echo "Startup failure shell must stay on the clean elizaOS white/blue surface." >&2
+    exit 1
+fi
+grep -q 'bg-\[#F7F9FF\]' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
+grep -q 'text-\[#0B35F1\]' \
+    "${REPO_ROOT}/packages/ui/src/components/shell/StartupFailureView.tsx"
+grep -q 'bg-\[#F7F9FF\]' \
+    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixGate.tsx"
+grep -q 'bg-\[#0B35F1\]' \
+    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixSteps.tsx"
+if rg -n 'bg-bg|bg-card|text-accent|bg-accent|text-warn|text-ok|text-danger|#FF5800|#ff5800|#ffe600|#f0b90b' \
+    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixGate.tsx" \
+    "${REPO_ROOT}/packages/ui/src/components/onboarding/VoicePrefixSteps.tsx"
+then
+    echo "Voice prefix onboarding must stay on the clean elizaOS white/blue surface." >&2
+    exit 1
+fi
+if rg -n '#ff8a24|#FF5800|#ff5800|#ffe600|#f0b90b' \
+    "${REPO_ROOT}/packages/ui/src/components/onboarding/states/onboarding.css"
+then
+    echo "Legacy onboarding states must stay on the blue/white elizaOS palette." >&2
+    exit 1
+fi
+if [ "${SOURCE_ONLY}" != "1" ]; then
+    if rg -n '#FF5800|#ff5800|#ff8a24|#ffe600|#f0b90b' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/brand \
+        --glob '*.svg'
+    then
+        echo "Packaged renderer SVG brand assets must not expose the old warm palette." >&2
+        exit 1
+    fi
+    if rg -n '#FF5800|#ff5800|#ff8a24|#e54f00|#c94400|#ff6d1f|255, ?88, ?0' \
+        tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/assets \
+        --glob '*.css'
+    then
+        echo "Packaged renderer CSS assets must not expose the old orange palette." >&2
+        exit 1
+    fi
+fi
+grep -q 'export const handleWalletRoutes' \
+    "${REPO_ROOT}/packages/agent/src/api/index.ts"
+grep -q 'await import("@elizaos/plugin-wallet")' \
+    "${REPO_ROOT}/packages/agent/src/api/index.ts"
+if rg -n 'handleWalletRoutes,\\n  type WalletAddressesSnapshot' \
+    "${REPO_ROOT}/packages/agent/src/api/index.ts"
+then
+    echo "Agent API barrel must not hard-import plugin-wallet during startup." >&2
+    exit 1
 fi
 python3 - <<'PY'
 try:
@@ -206,6 +283,12 @@ grep -q 'file:///usr/share/doc/elizaos/website/doc.en.html' \
     tails/config/chroot_local-includes/usr/local/bin/tails-documentation
 grep -q 'file:///usr/share/doc/elizaos/website/' \
     tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tailsgreeter/ui/main_window.py
+if rg -n 'Documentation=https://tails\.net' \
+    tails/config/chroot_local-includes/usr/lib/systemd/user/*.service
+then
+    echo "User systemd unit documentation must route to elizaOS help." >&2
+    exit 1
+fi
 grep -q '<property name="uri">doc.en.html#storage</property>' \
     tails/config/chroot_local-includes/usr/share/tails/greeter/main.ui.in
 grep -q 'font-family: "Poppins"' \
@@ -216,6 +299,20 @@ grep -q '"distribution": "elizaOS"' \
     tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/config.py
 grep -q '"partition_label": "elizaOS"' \
     tails/config/chroot_local-includes/usr/lib/python3/dist-packages/tails_installer/config.py
+grep -q 'ConditionPathExists=/etc/elizaos/base-updates-enabled' \
+    tails/config/chroot_local-includes/usr/lib/systemd/user/tails-upgrade-frontend.service
+grep -q 'ELIZAOS_SECURITY_FEED_BASE_URL' \
+    tails/config/chroot_local-includes/usr/local/bin/tails-security-check
+grep -q 'support@elizaos.ai' \
+    tails/config/chroot_local-includes/etc/whisperback/config.py
+grep -q 'elizaOS Feedback' \
+    tails/config/chroot_local-includes/usr/share/whisperback/whisperback.ui.in
+if rg -n 'support@tails|whisperback\.tails|tails\.boum\.org|Tails-Version' \
+    tails/config/chroot_local-includes/etc/whisperback/config.py
+then
+    echo "WhisperBack config must not route elizaOS reports to inherited Tails endpoints." >&2
+    exit 1
+fi
 if command -v identify >/dev/null 2>&1; then
     image_paths=(
         tails/config/chroot_local-includes/usr/share/tails/desktop_wallpaper.png \
@@ -231,9 +328,13 @@ if command -v identify >/dev/null 2>&1; then
         tails/config/chroot_local-includes/usr/share/pixmaps/elizaos.png \
     )
     if [ "${SOURCE_ONLY}" != "1" ]; then
+        renderer_icon="tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/brand/favicons/android-chrome-512x512.png"
+        if [ ! -f "${renderer_icon}" ]; then
+            renderer_icon="tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/favicon-256x256.png"
+        fi
         image_paths+=(
             tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/assets/appIcon.png
-            tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/app/renderer/favicon-256x256.png
+            "${renderer_icon}"
         )
     fi
     identify "${image_paths[@]}" >/dev/null
@@ -584,8 +685,11 @@ grep -q 'systemctl --user start --no-block elizaos-agent.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
 grep -q 'systemctl --user start --no-block elizaos-renderer.service' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
-grep -q 'systemctl --user start --no-block elizaos-pill.service' \
-    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper
+if grep -q 'systemctl --user start --no-block elizaos-pill.service' \
+    tails/config/chroot_local-includes/usr/local/lib/elizaos/milady-keeper; then
+    echo "Voice pill must stay installed but opt-in until the pill renderer is production-ready." >&2
+    exit 1
+fi
 grep -q 'ELIZA_API_PORT.*:-31337' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-agent-user
 grep -q 'ELIZAOS_LIVE_EMBEDDING_FALLBACK.*:-1' \
@@ -658,8 +762,11 @@ grep -q 'ELIZAOS_RENDERER_PORT.*:-5174' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/start-elizaos-pill-user
 grep -q '^ExecStart=/usr/local/lib/elizaos/start-elizaos-pill-user$' \
     tails/config/chroot_local-includes/etc/systemd/user/elizaos-pill.service
-grep -q 'systemctl --global enable elizaos-pill.service' \
-    tails/config/chroot_local-hooks/52-update-systemd-units
+if grep -q 'systemctl --global enable elizaos-pill.service' \
+    tails/config/chroot_local-hooks/52-update-systemd-units; then
+    echo "Voice pill must stay installed but opt-in until the pill renderer is production-ready." >&2
+    exit 1
+fi
 grep -q 'set_network_proxy_settings(WebKit2.NetworkProxyMode.NO_PROXY' \
     tails/config/chroot_local-includes/usr/local/lib/elizaos/elizaos-webkit-shell
 grep -q 'base_data_directory=data_dir' \
@@ -787,7 +894,7 @@ fi
 grep -q 'args = \["root-status"\]' \
     tails/config/chroot_local-includes/etc/generate-sudoers.d/elizaos-capability-runner.toml
 
-if [ -e tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/build.json ]; then
+if [ "${SOURCE_ONLY}" != "1" ] && [ -e tails/config/chroot_local-includes/usr/share/elizaos/milady-app/Resources/build.json ]; then
     echo "==> Milady live overlay"
     node scripts/prepare-milady-app-overlay.mjs --check
     node scripts/validate-runtime-overlay.mjs
@@ -824,6 +931,24 @@ for (const root of [
     if (brand[key] !== expected) {
       throw new Error(`${brandPath}: ${key} must be ${expected}`);
     }
+  }
+
+  const entryPath = `${root}/Resources/app/eliza-dist/entry.js`;
+  const appCoreEntryPath = `${root}/Resources/app/eliza-dist/node_modules/@elizaos/app-core/dist/entry.js`;
+  if (!fs.existsSync(entryPath)) {
+    throw new Error(`${entryPath}: missing agent runtime entry`);
+  }
+  if (!fs.existsSync(appCoreEntryPath)) {
+    throw new Error(`${appCoreEntryPath}: missing bundled app-core runtime entry`);
+  }
+  const entry = fs.readFileSync(entryPath, "utf8");
+  if (entry.includes("../packages/") || entry.includes("src/entry.ts")) {
+    throw new Error(
+      `${entryPath}: live runtime entry must not point back to source checkout paths`,
+    );
+  }
+  if (!entry.includes("./node_modules/@elizaos/app-core/dist/entry.js")) {
+    throw new Error(`${entryPath}: live runtime entry must import bundled app-core dist`);
   }
 }
 

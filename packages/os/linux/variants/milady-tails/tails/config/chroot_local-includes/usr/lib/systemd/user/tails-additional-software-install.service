@@ -3,7 +3,7 @@
 
 [Unit]
 Description=Trigger installation of Additional Software Packages
-Documentation=https://tails.net/contribute/design/persistence/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 
 [Service]
 Type=oneshot

@@ -25,8 +25,7 @@ tails-security-check [ ATOM_FEED_BASE_URL ]
 
 =head1 AUTHOR
 
-Tails developers <foundations@tails.net>
-See https://tails.net/.
+Derived from the Tails security feed checker.
 
 =cut
 
@@ -44,7 +43,7 @@ use XML::Atom::Feed;
 
 ### configuration
 
-my $default_base_url = 'https://tails.net/security/';
+my $default_base_url = $ENV{ELIZAOS_SECURITY_FEED_BASE_URL} // '';
 
 =head1 FUNCTIONS
 
@@ -184,6 +183,12 @@ sub unfixed_entries {
 =cut
 my $base_url  = shift || $default_base_url;
 my $opt_since = shift;
+
+if (! defined $base_url || $base_url =~ m{\A\s*\z}xms) {
+    # elizaOS base security feeds must be explicitly configured. Do not query
+    # upstream Tails infrastructure from a branded derivative by default.
+    exit 0;
+}
 
 
 =head2 do the work

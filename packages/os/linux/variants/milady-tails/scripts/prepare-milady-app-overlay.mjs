@@ -53,6 +53,7 @@ const overlayManifestPath = path.join(
   "Resources/app/elizaos-live-overlay-manifest.json",
 );
 const rendererRoot = path.join(stage, "Resources/app/renderer");
+const officialAssetRoot = path.join(root, "assets");
 const rendererWallpaperPath = path.join(
   root,
   "tails/config/chroot_local-includes/usr/share/tails/desktop_wallpaper.png",
@@ -620,7 +621,11 @@ function workspacePackagePath(relativePath) {
   return workspaceRoot ? path.join(workspaceRoot, relativePath) : null;
 }
 
-function syncDirectoryContents(sourceDir, targetDir, { checkOnly }) {
+function syncDirectoryContents(
+  sourceDir,
+  targetDir,
+  { checkOnly, include = () => true },
+) {
   let stale = false;
   if (!fs.existsSync(sourceDir)) return false;
   if (!fs.existsSync(targetDir)) {
@@ -629,11 +634,20 @@ function syncDirectoryContents(sourceDir, targetDir, { checkOnly }) {
   if (!checkOnly) {
     fs.rmSync(targetDir, { recursive: true, force: true });
     fs.mkdirSync(path.dirname(targetDir), { recursive: true });
-    fs.cpSync(sourceDir, targetDir, { recursive: true, dereference: true });
+    fs.cpSync(sourceDir, targetDir, {
+      recursive: true,
+      dereference: true,
+      filter: (sourcePath) => {
+        if (sourcePath === sourceDir) return true;
+        const relativePath = path.relative(sourceDir, sourcePath);
+        return include(relativePath, sourcePath);
+      },
+    });
     return stale;
   }
   walkFiles(sourceDir, (sourcePath) => {
     const relativePath = path.relative(sourceDir, sourcePath);
+    if (!include(relativePath, sourcePath)) return;
     const targetPath = path.join(targetDir, relativePath);
     if (
       !fs.existsSync(targetPath) ||
@@ -644,6 +658,7 @@ function syncDirectoryContents(sourceDir, targetDir, { checkOnly }) {
   });
   walkFiles(targetDir, (targetPath) => {
     const relativePath = path.relative(targetDir, targetPath);
+    if (!include(relativePath, targetPath)) return;
     const sourcePath = path.join(sourceDir, relativePath);
     if (!fs.existsSync(sourcePath)) {
       stale = true;
@@ -652,34 +667,69 @@ function syncDirectoryContents(sourceDir, targetDir, { checkOnly }) {
   return stale;
 }
 
+const sourceRuntimePackages = [
+  ["@elizaos/plugin-app-control", "plugins/plugin-app-control"],
+  ["@elizaos/plugin-companion", "plugins/plugin-companion"],
+  ["@elizaos/plugin-computeruse", "plugins/plugin-computeruse"],
+  ["@elizaos/plugin-device-filesystem", "plugins/plugin-device-filesystem"],
+  ["@elizaos/plugin-google", "plugins/plugin-google"],
+  ["@elizaos/plugin-lifeops", "plugins/plugin-lifeops"],
+  ["@elizaos/plugin-workflow", "plugins/plugin-workflow"],
+];
+
+function includeRuntimePackageFile(relativePath) {
+  const parts = relativePath.split(path.sep);
+  if (relativePath === "package.json") return false;
+  if (parts.includes("node_modules")) return false;
+  if (parts.includes(".turbo")) return false;
+  if (parts.includes("coverage")) return false;
+  if (parts.includes(".git")) return false;
+  return true;
+}
+
+function syncSourceRuntimePackage(packageName, relativeSource, { checkOnly }) {
+  const packageSource = workspacePackagePath(relativeSource);
+  if (!packageSource || !fs.existsSync(packageSource)) return false;
+
+  let stale = false;
+  const targetDir = packageDirectory(packageName);
+  stale =
+    syncDirectoryContents(packageSource, targetDir, {
+      checkOnly,
+      include: includeRuntimePackageFile,
+    }) || stale;
+
+  const sourcePackageJson = path.join(packageSource, "package.json");
+  if (fs.existsSync(sourcePackageJson)) {
+    const sourceManifest = JSON.parse(fs.readFileSync(sourcePackageJson, "utf8"));
+    const targetPackageJson = path.join(targetDir, "package.json");
+    const targetManifest = `${JSON.stringify(
+      sourcePackageManifest(packageName, sourceManifest),
+      null,
+      2,
+    )}\n`;
+    if (
+      !fs.existsSync(targetPackageJson) ||
+      fs.readFileSync(targetPackageJson, "utf8") !== targetManifest
+    ) {
+      stale = true;
+      if (!checkOnly) {
+        fs.mkdirSync(targetDir, { recursive: true });
+        fs.writeFileSync(targetPackageJson, targetManifest);
+      }
+    }
+  }
+
+  return stale;
+}
+
 function syncWorkspaceRuntimePackages({ checkOnly }) {
   let stale = false;
 
-  const appControlSource = workspacePackagePath("plugins/plugin-app-control");
-  if (appControlSource && fs.existsSync(appControlSource)) {
-    const targetDir = packageDirectory("@elizaos/plugin-app-control");
-    const sourcePackageJson = path.join(appControlSource, "package.json");
-    const sourceSrcDir = path.join(appControlSource, "src");
-    if (!fs.existsSync(targetDir)) stale = true;
-    if (!checkOnly) fs.mkdirSync(targetDir, { recursive: true });
-    if (fs.existsSync(sourcePackageJson)) {
-      const targetPackageJson = path.join(targetDir, "package.json");
-      if (!fs.existsSync(targetPackageJson)) {
-        stale = true;
-        if (!checkOnly) {
-          fs.writeFileSync(
-            targetPackageJson,
-            fs.readFileSync(sourcePackageJson, "utf8"),
-          );
-        }
-      }
-    }
-    if (fs.existsSync(sourceSrcDir)) {
-      stale =
-        syncDirectoryContents(sourceSrcDir, path.join(targetDir, "src"), {
-          checkOnly,
-        }) || stale;
-    }
+  for (const [packageName, relativeSource] of sourceRuntimePackages) {
+    stale =
+      syncSourceRuntimePackage(packageName, relativeSource, { checkOnly }) ||
+      stale;
   }
 
   for (const [packageName, relativeSource] of [
@@ -798,6 +848,66 @@ function lucideReactStubWrites() {
       ].join("\n"),
     },
   ];
+}
+
+function liveRuntimeEntryWrites() {
+  const entryPath = path.join(stage, "Resources/app/eliza-dist/entry.js");
+  const appCoreEntryPath = path.join(
+    stage,
+    "Resources/app/eliza-dist/node_modules/@elizaos/app-core/dist/entry.js",
+  );
+  if (!fs.existsSync(entryPath) || !fs.existsSync(appCoreEntryPath)) return [];
+
+  return [
+    {
+      filePath: entryPath,
+      content: [
+        "#!/usr/bin/env bun",
+        "// auto-generated by prepare-milady-app-overlay.mjs",
+        "// elizaOS Live must boot from the bundled runtime, not the source checkout.",
+        'import "./node_modules/@elizaos/app-core/dist/entry.js";',
+        "",
+      ].join("\n"),
+    },
+  ];
+}
+
+function agentApiLazyWalletWrites() {
+  const filePath = path.join(
+    stage,
+    "Resources/app/eliza-dist/node_modules/@elizaos/agent/src/api/index.ts",
+  );
+  if (!fs.existsSync(filePath)) return [];
+
+  const sourcePath = workspacePackagePath("packages/agent/src/api/index.ts");
+  const content =
+    sourcePath && fs.existsSync(sourcePath)
+      ? fs.readFileSync(sourcePath, "utf8")
+      : fs.readFileSync(filePath, "utf8").replace(
+          /export \{\n  handleWalletRoutes,\n  type WalletAddressesSnapshot,\n  type WalletRouteContext,\n  type WalletRouteDependencies,\n  type WalletRpcReadinessSnapshot,\n\} from "@elizaos\/plugin-wallet";/,
+          [
+            "export type {",
+            "  WalletAddressesSnapshot,",
+            "  WalletRouteContext,",
+            "  WalletRouteDependencies,",
+            "  WalletRpcReadinessSnapshot,",
+            '} from "@elizaos/plugin-wallet";',
+            'export const handleWalletRoutes: typeof import("@elizaos/plugin-wallet").handleWalletRoutes =',
+            "  async (context) => {",
+            '    const walletApi = await import("@elizaos/plugin-wallet");',
+            "    return walletApi.handleWalletRoutes(context);",
+            "  };",
+          ].join("\n"),
+        );
+
+  if (
+    !content.includes("export const handleWalletRoutes") ||
+    content.includes("  handleWalletRoutes,\n  type WalletAddressesSnapshot")
+  ) {
+    throw new Error(`${filePath}: failed to apply lazy wallet route import`);
+  }
+
+  return [{ filePath, content }];
 }
 
 function relativeToStage(filePath) {
@@ -1065,13 +1175,19 @@ function liveOverlayManifestWrite() {
                 behavior:
                   "live launcher may enable zero-vector embedding fallback when no local inference backend is active",
               },
-              {
-                packageName: "@elizaos/core",
-                behavior:
-                  "test-only exports are stripped from the packaged node entrypoint",
-              },
-            ],
-          },
+      {
+        packageName: "@elizaos/core",
+        behavior:
+          "test-only exports are stripped from the packaged node entrypoint",
+      },
+      {
+        packageName: "@elizaos/app-core",
+        path: "Resources/app/eliza-dist/entry.js",
+        behavior:
+          "live runtime entry imports the bundled app-core dist entry instead of source-checkout paths",
+      },
+    ],
+  },
           entrypoints: [
             entrypoint(
               "Electrobun launcher",
@@ -1336,6 +1452,42 @@ function liveEmbeddingFallbackVector(): number[] {
 \t\t}
 `,
     );
+    content = content.replace(
+      `\t\tconst service = serviceFromRuntime(runtime);
+\t\tif (!service) {
+\t\t\tthrow unavailable(
+\t\t\t\tModelType.TEXT_EMBEDDING,
+\t\t\t\t"backend_unavailable",
+\t\t\t\t"[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.",
+\t\t\t);
+\t\t}
+\t\tif (typeof service.embed !== "function") {
+\t\t\tthrow unavailable(
+\t\t\t\tModelType.TEXT_EMBEDDING,
+\t\t\t\t"capability_unavailable",
+\t\t\t\t"[local-inference] Active local backend does not implement TEXT_EMBEDDING",
+\t\t\t);
+\t\t}
+`,
+      `\t\tconst service = serviceFromRuntime(runtime);
+\t\tif (!service) {
+\t\t\tif (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
+\t\t\tthrow unavailable(
+\t\t\t\tModelType.TEXT_EMBEDDING,
+\t\t\t\t"backend_unavailable",
+\t\t\t\t"[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.",
+\t\t\t);
+\t\t}
+\t\tif (typeof service.embed !== "function") {
+\t\t\tif (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
+\t\t\tthrow unavailable(
+\t\t\t\tModelType.TEXT_EMBEDDING,
+\t\t\t\t"capability_unavailable",
+\t\t\t\t"[local-inference] Active local backend does not implement TEXT_EMBEDDING",
+\t\t\t);
+\t\t}
+`,
+    );
     return content;
   }
 
@@ -1376,6 +1528,34 @@ function liveEmbeddingFallbackVector() {
 `,
   );
   content = content.replace(
+    `function requireService(runtime, modelType) {
+  const service = serviceFromRuntime(runtime);
+  if (!service) {
+    throw unavailable(modelType, "backend_unavailable", \`[local-inference] \${modelType} requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader.\`);
+  }
+  return service;
+}
+`,
+    `function requireService(runtime, modelType) {
+  const service = serviceFromRuntime(runtime);
+  if (!service) {
+    throw unavailable(modelType, "backend_unavailable", \`[local-inference] \${modelType} requires an active Eliza-1 local inference backend. Activate an Eliza-1 bundle or enable an AOSP/device local loader.\`);
+  }
+  return service;
+}
+function liveEmbeddingFallbackEnabled() {
+  const value = process.env.ELIZAOS_LIVE_EMBEDDING_FALLBACK?.trim().toLowerCase();
+  return value === "1" || value === "true" || value === "yes";
+}
+function liveEmbeddingFallbackVector() {
+  const raw = process.env.EMBEDDING_DIMENSION ?? process.env.LOCAL_EMBEDDING_DIMENSIONS ?? "384";
+  const dimension = Number.parseInt(raw, 10);
+  const safeDimension = Number.isFinite(dimension) && dimension > 0 && dimension <= 8192 ? dimension : 384;
+  return Array.from({ length: safeDimension }, () => 0);
+}
+`,
+  );
+  content = content.replace(
     `function shouldWarmupLocalEmbeddingModel() {
   if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
     return false;
@@ -1383,6 +1563,21 @@ function liveEmbeddingFallbackVector() {
 `,
     `function shouldWarmupLocalEmbeddingModel() {
   if (isTruthyEnv("ELIZA_DISABLE_LOCAL_EMBEDDINGS")) {
+    return false;
+  }
+  if (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
+    return false;
+  }
+`,
+  );
+  content = content.replace(
+    `function shouldWarmupLocalEmbeddingModel() {
+  if (isLocalEmbeddingDisabledByEnv()) {
+    return false;
+  }
+`,
+    `function shouldWarmupLocalEmbeddingModel() {
+  if (isLocalEmbeddingDisabledByEnv()) {
     return false;
   }
   if (isTruthyEnv("ELIZAOS_LIVE_EMBEDDING_FALLBACK")) {
@@ -1416,6 +1611,26 @@ function liveEmbeddingFallbackVector() {
         "capability_unavailable",
         "[local-inference] Active local backend does not implement TEXT_EMBEDDING"
       );
+    }
+`,
+  );
+  content = content.replace(
+    `    const service = serviceFromRuntime(runtime);
+    if (!service) {
+      throw unavailable(ModelType2.TEXT_EMBEDDING, "backend_unavailable", "[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.");
+    }
+    if (typeof service.embed !== "function") {
+      throw unavailable(ModelType2.TEXT_EMBEDDING, "capability_unavailable", "[local-inference] Active local backend does not implement TEXT_EMBEDDING");
+    }
+`,
+    `    const service = serviceFromRuntime(runtime);
+    if (!service) {
+      if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
+      throw unavailable(ModelType2.TEXT_EMBEDDING, "backend_unavailable", "[local-inference] TEXT_EMBEDDING requires an active Eliza-1 backend or another embedding provider; refusing to synthesize zero-vectors.");
+    }
+    if (typeof service.embed !== "function") {
+      if (liveEmbeddingFallbackEnabled()) return liveEmbeddingFallbackVector();
+      throw unavailable(ModelType2.TEXT_EMBEDDING, "capability_unavailable", "[local-inference] Active local backend does not implement TEXT_EMBEDDING");
     }
 `,
   );
@@ -1481,8 +1696,26 @@ function patchRendererHtml(content) {
     html,
     body {
       background: #F7F9FF !important;
-      color: #0B35F1 !important;
+      color: #06133F !important;
       font-family: "Poppins", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+    }
+
+    :root {
+      --brand-orange: #0B35F1 !important;
+      --eliza-orange: #0B35F1 !important;
+      --accent: #0B35F1 !important;
+      --accent-rgb: 11, 53, 241 !important;
+      --accent-foreground: #FFFFFF !important;
+      --accent-subtle: #EAF0FF !important;
+      --primary: #0B35F1 !important;
+      --primary-foreground: #FFFFFF !important;
+      --bg: #F7F9FF !important;
+      --card: #FFFFFF !important;
+      --text: #06133F !important;
+      --txt: #06133F !important;
+      --muted: #3550B8 !important;
+      --border: #D8E1FF !important;
+      color-scheme: light !important;
     }
 
     [data-testid="onboarding-ui-overlay"] {
@@ -1556,14 +1789,87 @@ function patchRendererHtml(content) {
     [data-testid="onboarding-ui-overlay"] [class*="ring-offset-black"] {
       --tw-ring-offset-color: #F7F9FF !important;
     }
+
+    [data-testid="voice-prefix-gate"],
+    [data-testid="voice-prefix-gate"] > div,
+    [data-testid="voice-prefix-steps"],
+    [data-testid="voice-prefix-steps"] main {
+      background: #FFFFFF !important;
+      color: #06133F !important;
+      border-color: #D8E1FF !important;
+      text-shadow: none !important;
+    }
+
+    [data-testid="voice-prefix-gate"] {
+      background: #F7F9FF !important;
+    }
+
+    [data-testid="voice-prefix-gate"] > div,
+    [data-testid="voice-prefix-steps"] main {
+      box-shadow: 0 24px 80px rgba(11, 53, 241, 0.14) !important;
+    }
+
+    [data-testid="voice-prefix-steps"] p,
+    [data-testid="voice-prefix-steps"] header,
+    [data-testid="voice-prefix-steps"] label {
+      color: #3550B8 !important;
+    }
+
+    [data-testid="voice-prefix-step-name"],
+    [data-testid="voice-prefix-steps"] strong,
+    [data-testid="voice-prefix-steps"] input {
+      color: #06133F !important;
+    }
+
+    [data-testid="voice-prefix-steps"] button {
+      border-color: #0B35F1 !important;
+      background: #FFFFFF !important;
+      color: #0B35F1 !important;
+      box-shadow: none !important;
+    }
+
+    [data-testid="voice-prefix-continue"],
+    [data-testid="voice-prefix-welcome-request-mic"],
+    [data-testid="voice-prefix-agent-speaks-play"],
+    [data-testid="voice-prefix-user-speaks-record"],
+    [data-testid="voice-prefix-owner-confirm-save"],
+    [data-testid="voice-prefix-family-record"] {
+      background: #0B35F1 !important;
+      color: #FFFFFF !important;
+      box-shadow: 0 12px 28px rgba(11, 53, 241, 0.22) !important;
+    }
+
+    [data-testid="voice-prefix-welcome"] span,
+    [data-testid="voice-prefix-family-recording"] {
+      background: #EAF0FF !important;
+      color: #0B35F1 !important;
+      border-color: #C9D6FF !important;
+    }
   </style>`;
 
   let patched = content
     .replaceAll("<title>Milady</title>", "<title>elizaOS</title>")
+    .replaceAll("<title>Eliza</title>", "<title>elizaOS</title>")
     .replaceAll('content="Milady"', 'content="elizaOS"')
     .replaceAll('content="black-translucent"', 'content="default"')
     .replaceAll('content="#08080a"', 'content="#F7F9FF"')
+    .replaceAll('content="#FF5800"', 'content="#F7F9FF"')
+    .replaceAll('content="#ff5800"', 'content="#F7F9FF"')
     .replaceAll("background-color: #08080a;", "background-color: #F7F9FF;")
+    .replaceAll("background-color: var(--bg, #000000);", "background-color: var(--bg, #F7F9FF);")
+    .replaceAll("color: var(--text, #e8e8ec);", "color: var(--text, #0B35F1);")
+    .replaceAll(
+      "orange #FF5800. The dark chat shell takes over once React mounts.",
+      "elizaOS blue on a soft white shell. The live theme takes over once React mounts.",
+    )
+    .replaceAll(
+      "Painting orange here would strobe into dark; painting pure black",
+      "Painting the same soft white here avoids a flash; it",
+    )
+    .replaceAll(
+      "matches the chat shell and is a cleaner handoff. --bg is set by",
+      "matches the elizaOS shell and is a cleaner handoff. --bg is set by",
+    )
     .replaceAll(
       "Cute agents for the acceleration",
       "AI agents for elizaOS Live",
@@ -1599,6 +1905,17 @@ function patchRendererManifest(content) {
 
 function patchRendererBundle(content) {
   return content
+    .replaceAll("#FF5800", "#0B35F1")
+    .replaceAll("#ff5800", "#0B35F1")
+    .replaceAll("#ff8a24", "#0B35F1")
+    .replaceAll("#ffe600", "#0B35F1")
+    .replaceAll("#f0b90b", "#D8E1FF")
+    .replaceAll("#fff0a3", "#EAF0FF")
+    .replaceAll("#e54f00", "#082BC7")
+    .replaceAll("#c94400", "#082BC7")
+    .replaceAll("#ff6d1f", "#3550B8")
+    .replaceAll("255, 88, 0", "11, 53, 241")
+    .replaceAll("255,88,0", "11,53,241")
     .replaceAll("WELCOME TO MILADY", "WELCOME TO ELIZAOS")
     .replaceAll("Welcome to Milady", "Welcome to elizaOS")
     .replaceAll("Milady's HTTP API", "elizaOS HTTP API")
@@ -1624,6 +1941,45 @@ function patchRendererBundle(content) {
     .replaceAll("milady.zone", "elizaOS");
 }
 
+function patchRendererSvg(content) {
+  return content
+    .replaceAll("#FF5800", "#0B35F1")
+    .replaceAll("#ff5800", "#0B35F1")
+    .replaceAll("#FF0000", "#0B35F1")
+    .replaceAll("#ff0000", "#0B35F1")
+    .replaceAll("#ff8a24", "#0B35F1")
+    .replaceAll("#ffe600", "#0B35F1")
+    .replaceAll("#f0b90b", "#0B35F1");
+}
+
+function officialLogoWrites() {
+  if (!fs.existsSync(rendererRoot)) return [];
+
+  const mappings = [
+    ["logo_white_bluebg.svg", "brand/logos/logo_white_bluebg.svg"],
+    ["logo_white_bluebg.svg", "brand/logos/logo_white_orangebg.svg"],
+    ["logo_blue_nobg.svg", "brand/logos/logo_blue_nobg.svg"],
+    ["logo_blue_nobg.svg", "brand/logos/logo_orange_nobg.svg"],
+    ["logo_white_nobg.svg", "brand/logos/logo_white_nobg.svg"],
+    ["logo_white_bluebg.svg", "brand/logos/logo_orange_blackbg.svg"],
+    ["elizaOS_text_black.svg", "brand/logos/elizaOS_text_black.svg"],
+    ["elizaOS_text_white.svg", "brand/logos/elizaOS_text_white.svg"],
+    ["elizaos_logotext.svg", "brand/logos/elizaos_logotext.svg"],
+    ["elizaos_logotext_black.svg", "brand/logos/elizaos_logotext_black.svg"],
+  ];
+
+  const writes = [];
+  for (const [sourceName, targetRelativePath] of mappings) {
+    const sourcePath = path.join(officialAssetRoot, sourceName);
+    if (!fs.existsSync(sourcePath)) continue;
+    writes.push({
+      filePath: path.join(rendererRoot, targetRelativePath),
+      content: patchRendererSvg(fs.readFileSync(sourcePath, "utf8")),
+    });
+  }
+  return writes;
+}
+
 function rendererBrandingWrites() {
   if (!fs.existsSync(rendererRoot)) return [];
   const writes = [];
@@ -1645,7 +2001,7 @@ function rendererBrandingWrites() {
   }
 
   walkFiles(path.join(rendererRoot, "assets"), (filePath) => {
-    if (path.extname(filePath) !== ".js") return;
+    if (![".css", ".js"].includes(path.extname(filePath))) return;
     const current = fs.readFileSync(filePath, "utf8");
     const content = patchRendererBundle(current);
     if (content !== current) {
@@ -1653,7 +2009,16 @@ function rendererBrandingWrites() {
     }
   });
 
-  return writes;
+  walkFiles(path.join(rendererRoot, "brand"), (filePath) => {
+    if (path.extname(filePath) !== ".svg") return;
+    const current = fs.readFileSync(filePath, "utf8");
+    const content = patchRendererSvg(current);
+    if (content !== current) {
+      writes.push({ filePath, content });
+    }
+  });
+
+  return [...writes, ...officialLogoWrites()];
 }
 
 function buffersEqual(leftPath, rightPath) {
@@ -1760,6 +2125,8 @@ const preManifestRuntimeWrites = hasNodeModules
       ...lucideReactStubWrites(),
       ...localInferenceFallbackWrites(),
       ...sanitizedCoreRuntimeWrites(),
+      ...liveRuntimeEntryWrites(),
+      ...agentApiLazyWalletWrites(),
     ]
   : [];
 const rendererWrites = rendererBrandingWrites();

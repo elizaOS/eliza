@@ -30,7 +30,7 @@ class AboutElizaOS(Gtk.AboutDialog):
         headerbar.set_show_close_button(True)
         self.set_titlebar(headerbar)
 
-        self.button = Gtk.Button.new_with_label(_("Check for Upgrades"))
+        self.button = Gtk.Button.new_with_label(_("Base Update Status"))
         self.button.connect("clicked", self.on_check_for_upgrade_clicked)
         self.vbox.pack_start(self.button, True, True, 0)
 

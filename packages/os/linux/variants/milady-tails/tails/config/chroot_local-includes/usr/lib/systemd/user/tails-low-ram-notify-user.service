@@ -1,6 +1,6 @@
 [Unit]
 Description=Warn the user if the system has too little RAM installed
-Documentation=https://tails.net/doc/about/requirements/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 After=tails-wait-until-htpdate-has-succeeded.service
 
 [Service]

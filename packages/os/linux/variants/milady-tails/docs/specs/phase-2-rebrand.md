@@ -54,7 +54,7 @@ Two bootloader paths, both must change:
 ## C. Plymouth boot theme → elizaOS wordmark
 
 Tails uses the Plymouth `text` theme. Switch to a small elizaOS graphical theme:
-1. New: `TAILS/config/chroot_local-includes/usr/share/plymouth/themes/elizaos/{elizaos.plymouth,elizaos.script,elizaos-wordmark.png}` (wordmark on `#050506`).
+1. New: `TAILS/config/chroot_local-includes/usr/share/plymouth/themes/elizaos/{elizaos.plymouth,elizaos.script,elizaos-wordmark.png}` (white wordmark on eliza blue, generated from the official elizaOS SVG assets).
 2. Edit `TAILS/config/chroot_local-includes/usr/share/tails/build/plymouth-theme.diff` — patched value `Theme=text` → `Theme=elizaos`.
 3. Edit `TAILS/config/chroot_local-hooks/22-plymouth` — after the `patch` line, add `plymouth-set-default-theme -R elizaos`.
 
@@ -71,7 +71,7 @@ Keep the paths, replace the bytes: overwrite `TAILS/config/chroot_local-includes
 
 ## F. `/etc/os-release` → elizaos-tails identifier
 
-`/etc/os-release` is **generated** by `TAILS/auto/config` (a `cat >>` heredoc), not a static file. Edit the heredoc in `auto/config`: `NAME="elizaOS"`, `ID="elizaos-tails"`, `ID_LIKE="tails debian"` (keep `tails` internally — code/AppArmor may key off it), `PRETTY_NAME="elizaOS"`, `HOME_URL` → `https://elizaos.ai/`. **Keep all `TAILS_*` keys** (`TAILS_DISTRIBUTION`, `TAILS_GIT_COMMIT`, etc. — `tailslib.release`, the IUK upgrade system depend on them) and keep the Tails `SUPPORT_URL`/`BUG_REPORT_URL` for v1.0 (they feed inherited tooling).
+`/etc/os-release` is **generated** by `TAILS/auto/config` (a `cat >>` heredoc), not a static file. Edit the heredoc in `auto/config`: `NAME="elizaOS"`, `ID="elizaos-tails"`, `ID_LIKE="tails debian"` (keep `tails` internally — code/AppArmor may key off it), `PRETTY_NAME="elizaOS"`, `HOME_URL`/`SUPPORT_URL`/`BUG_REPORT_URL` → `https://elizaos.ai/`. **Keep all `TAILS_*` keys** (`TAILS_DISTRIBUTION`, `TAILS_GIT_COMMIT`, etc. — `tailslib.release` and inherited update plumbing depend on them).
 
 ## G. `/etc/issue` MOTD → elizaOS
 
@@ -80,7 +80,7 @@ Tails ships no custom `/etc/issue`. New file: `TAILS/config/chroot_local-include
 ## H. Tails credit — REQUIRED, three surfaces
 
 - **H1. Greeter footer** — covered by §A5.
-- **H2. About** — `TAILS/config/chroot_local-includes/usr/local/bin/tails-about`: set `program_name`/title to "elizaOS"/"About elizaOS", swap the logo to an elizaOS asset, **add a credit line** via `set_comments()` / `add_credit_section("Based on", ["The Tails project - https://tails.net/"])`. `tails-about.desktop.in`: `Name=` → `About elizaOS`. Do NOT rename the `tails-about` binary or `.desktop` filename (the `54-menu` hook + `tailslib.release` depend on them).
+- **H2. About** — `TAILS/config/chroot_local-includes/usr/local/bin/tails-about`: set `program_name`/title to "elizaOS"/"About elizaOS" and swap the logo to an elizaOS asset. Keep upstream attribution in source/release notes, not as first-run product copy. `tails-about.desktop.in`: `Name=` → `About elizaOS`. Do NOT rename the `tails-about` binary or `.desktop` filename (the `54-menu` hook + `tailslib.release` depend on them).
 - **H3. CREDITS file** — new file `TAILS/config/chroot_local-includes/usr/share/doc/elizaos-tails/CREDITS` (a *new* sibling dir — allowed; the constraint only forbids renaming the existing `usr/share/doc/tails/`).
 
 ## DO NOT TOUCH (constraints)

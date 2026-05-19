@@ -1,4 +1,4 @@
-# Tails configuration file for WhisperBack
+# elizaOS configuration file for WhisperBack
 # ==========================================
 #
 # This is a Python script that will be read at startup. Any Python
@@ -22,7 +22,7 @@ gnupg_keyring = "/usr/share/keyrings/whisperback-keyring.gpg"
 # This section defines the recipient parameters
 
 # The address of the recipient
-to_address = "support@tails.net"
+to_address = "support@elizaos.ai"
 
 # The fingerprint of the recipient's GPG key
 to_fingerprint = "1F56EDD30741048035DAC1C5EC57B56EF0C43132"
@@ -32,14 +32,14 @@ to_fingerprint = "1F56EDD30741048035DAC1C5EC57B56EF0C43132"
 # This section defines the sender parameters
 
 # The address of the sender
-from_address = "devnull@tails.boum.org"
+from_address = "devnull@elizaos.ai"
 
 # SMTP
 #
 # This section defines the SMTP server parameters
 #
 # The SMTP server to use to send the mail
-smtp_host = "whisperback.tails.net"
+smtp_host = "whisperback.elizaos.ai"
 # The port to connect to on that SMTP server
 smtp_port = 2525
 
@@ -62,7 +62,7 @@ mail_subject = "Bug report: %x" % random.randrange(16**32)  # noqa: S311
 
 
 def mail_prepended_info():
-    """Return the version of the running Tails system.
+    """Return the version of the running elizaOS system.
 
     A callback function to get information to prepend to the mail
     (this information will be encrypted). This is useful to add
@@ -80,4 +80,4 @@ def mail_prepended_info():
     except FileNotFoundError:
         tails_version = "/etc/os-release file not found"
 
-    return "Tails-Version: %s\n" % tails_version
+    return "elizaOS-Version: %s\n" % tails_version
