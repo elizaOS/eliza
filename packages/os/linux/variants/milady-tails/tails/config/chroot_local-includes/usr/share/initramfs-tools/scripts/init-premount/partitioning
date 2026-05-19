@@ -90,7 +90,7 @@ GUID=$(sgdisk --print "${PARENT_DEVICE}" |
 
 if [ "${GUID}" = "17B81DA0-8B1E-4269-9C39-FE5C7B9B58A3" ]; then
     log "This is the first boot, so repartitioning"
-    PLYMOUTH_MSG="Preparing Tails for first use..."
+    PLYMOUTH_MSG="Preparing elizaOS for first use..."
     plymouth display-message --text="${PLYMOUTH_MSG}"
     if ! /scripts/lib/first_boot_repartition "${PARENT_DEVICE}" "${SYSTEM_PARTITION}"; then
         log "Repartitioning failed"
@@ -109,7 +109,7 @@ else
     verify_partition_table
 
     log "This is not the first boot, so repairing filesystem"
-    PLYMOUTH_MSG="Checking the Tails system partition for errors..."
+    PLYMOUTH_MSG="Checking the elizaOS system partition for errors..."
     plymouth display-message --text="${PLYMOUTH_MSG}"
     repair_system_partition
     # `plymouth hide-message` doesn't work (#20401)

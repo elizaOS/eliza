@@ -276,6 +276,17 @@ then
     echo "High-visibility inherited Tails strings still need elizaOS branding." >&2
     exit 1
 fi
+if rg -n \
+    'Preparing Tails for first use|Checking the Tails system partition|Configuring Tails|Tails specific tools|Tails live user' \
+    tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-premount/partitioning \
+    tails/config/chroot_local-includes/usr/share/initramfs-tools/scripts/init-top/read-and-update-random-seed-sector \
+    tails/config/chroot_local-includes/usr/lib/live/config/2000-aesthetics \
+    tails/config/chroot_local-includes/usr/local/bin/milady \
+    tails/config/chroot_local-includes/usr/share/desktop-directories/Tails.directory.in
+then
+    echo "First-boot and launcher polish still exposes inherited Tails wording." >&2
+    exit 1
+fi
 launcher_paths=(
     tails/config/chroot_local-includes/usr/share/applications/tails-documentation.desktop
     tails/config/chroot_local-includes/usr/share/applications/tails-backup.desktop
