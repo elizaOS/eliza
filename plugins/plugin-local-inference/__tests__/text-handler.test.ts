@@ -10,7 +10,7 @@
  *     rather than silently serving a zero output).
  *
  * This is the runtime contract every platform path (Linux/macOS/Windows
- * via node-llama-cpp + llama-server, AOSP via plugin-aosp-local-inference,
+ * via capacitor-llama + llama-server, AOSP via plugin-aosp-local-inference,
  * iOS/Android via capacitor-llama) MUST satisfy. The handlers live in
  * provider.ts and look up the loader by name — so as long as a platform's
  * loader registers under "localInferenceLoader" and implements

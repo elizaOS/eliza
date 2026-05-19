@@ -158,7 +158,11 @@ export function turnDetectorGgufForTier(tierId: string): {
 }
 
 // ---------------------------------------------------------------------------
-// node-llama-cpp lazy import (fork wrapper — per native/AGENTS.md §1)
+// Legacy llama.cpp controlled-evaluate surface (held over from the removed
+// node-llama-cpp binding). The shapes below describe the API the GGUF-backed
+// LiveKit detector needs (controlledEvaluate → next-token probability map).
+// Until capacitor-llama / the bun:ffi shim expose an equivalent entry point,
+// `loadNlc()` throws and the resolver above falls back to HeuristicEotClassifier.
 // ---------------------------------------------------------------------------
 
 interface NlcModule {
@@ -221,22 +225,20 @@ interface NlcLlamaSequence {
 }
 
 async function loadNlc(): Promise<NlcModule> {
-	// node-llama-cpp has been removed. The EOT classifier relied on
+	// The legacy `node-llama-cpp` binding (now removed) exposed
 	// `LlamaContextSequence.controlledEvaluate({ generateNext: { probabilities:
 	// true } })` to read the next-token probability distribution after a
-	// truncated prompt — that API has no equivalent in the Capacitor binding
-	// or the desktop bun:ffi shim today (both expose `completion()` which
-	// consumes tokens rather than returning a logit map without sampling).
+	// truncated prompt. The current `capacitor-llama` adapter and the desktop
+	// bun:ffi shim do not yet expose an equivalent (both surface `completion()`,
+	// which consumes tokens rather than returning a logit map without sampling).
 	//
-	// The resolver above this binding (`tryBuildEliza1EotClassifier`) checks
-	// `dispatcher.activeBackendId() === "capacitor-llama"` AND the model
-	// pointer, both of which now return null since `NodeLlamaCppBackend` is
-	// stubbed out, so this path is only reached if a future caller bypasses
-	// the resolver. Throwing here keeps fail-closed semantics: the binding
-	// never fabricates a probability.
+	// The resolver above this binding (`tryBuildEliza1EotClassifier`) is gated
+	// on the dispatcher's active backend and model pointer, so this path is
+	// only reached if a future caller bypasses the resolver. Throwing here
+	// keeps fail-closed semantics: the binding never fabricates a probability.
 	throw new EotGgmlUnavailableError(
 		"native-missing",
-		"[eot-ggml] node-llama-cpp has been removed; the Capacitor / bun:ffi llama.cpp adapters do not yet expose a controlled-evaluate API for next-token probabilities. Use HeuristicEotClassifier or route through the LiveKit ONNX fallback until the shim exposes `llama_get_logits_ith`.",
+		"[eot-ggml] the active llama.cpp adapter (capacitor-llama / bun:ffi shim) does not yet expose a controlled-evaluate API for next-token probabilities. Use HeuristicEotClassifier until the shim exposes `llama_get_logits_ith`.",
 	);
 }
 
@@ -480,8 +482,7 @@ export class LiveKitGgmlTurnDetector implements EotClassifier {
  *   4. `<modelDir>/<intl GGUF name>` (multilingual).
  *
  * Returns `null` if no GGUF is found alongside the directory — the
- * caller falls back to the legacy ONNX path (`createBundledLiveKitTurnDetector`)
- * which itself falls back to `HeuristicEotClassifier`.
+ * caller falls back to `HeuristicEotClassifier`.
  */
 export async function createBundledLiveKitGgmlTurnDetector(
 	opts: {
