@@ -21,6 +21,7 @@ const expectedApexRecords = new Set([
   "185.199.111.153",
 ]);
 const expectedWwwCname = "elizaos.github.io.";
+const registryRdapUrl = `https://pubapi.registry.google/rdap/domain/${expectedDomain}`;
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -66,6 +67,14 @@ function dig(name, type = null) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean);
+}
+
+function fetchJson(url) {
+  const result = run("curl", ["-sS", "--max-time", "10", url]);
+  if (result.status !== 0) {
+    throw new Error(result.stderr.trim() || result.stdout.trim() || "curl failed");
+  }
+  return JSON.parse(result.stdout);
 }
 
 function setEquals(a, b) {
@@ -156,13 +165,43 @@ function main() {
   }
 
   const delegatedNameservers = dig(expectedDomain, "NS");
+  let registryStatuses = [];
+  let registryNameservers = [];
+  try {
+    const rdap = fetchJson(registryRdapUrl);
+    registryStatuses = Array.isArray(rdap.status) ? rdap.status : [];
+    registryNameservers = Array.isArray(rdap.nameservers)
+      ? rdap.nameservers
+          .map((entry) =>
+            typeof entry?.ldhName === "string" ? entry.ldhName.toLowerCase() : "",
+          )
+          .filter(Boolean)
+      : [];
+    const clientHold = registryStatuses.includes("client hold");
+    allPassed =
+      check(
+        "registry-status",
+        !clientHold,
+        registryStatuses.length ? registryStatuses.join(", ") : "no status flags",
+      ) && allPassed;
+  } catch (error) {
+    allPassed =
+      check(
+        "registry-status",
+        false,
+        error instanceof Error ? error.message : String(error),
+      ) && allPassed;
+  }
+
   allPassed =
     check(
       "domain-delegation",
       delegatedNameservers.length > 0,
       delegatedNameservers.length
         ? delegatedNameservers.join(", ")
-        : "no delegated nameservers at .app registry",
+        : registryNameservers.length
+          ? `registry lists ${registryNameservers.join(", ")} but delegation is withheld`
+          : "no delegated nameservers at .app registry",
     ) && allPassed;
 
   const apexRecords = new Set(dig(expectedDomain));
@@ -182,9 +221,10 @@ function main() {
     ) && allPassed;
 
   if (!allPassed) {
-    console.error(
-      "[homepage-public] next: delegate eliza.app to DNS nameservers, add GitHub Pages DNS records, then rerun this script.",
-    );
+    const next = registryStatuses.includes("client hold")
+      ? "clear client hold at Porkbun/registrar, then add GitHub Pages DNS records and rerun this script."
+      : "delegate eliza.app to DNS nameservers, add GitHub Pages DNS records, then rerun this script.";
+    console.error(`[homepage-public] next: ${next}`);
     process.exitCode = 1;
   }
 }
