@@ -149,10 +149,22 @@ module e1_axi4_interconnect
 
     // ------------------------------------------------------------------
     // Observability
+    //
+    // Both IRQ status vectors model a write-1-to-clear MMR.  Hardware sets
+    // a bit on the offending edge; software clears it by asserting
+    // `irq_status_clear_we` for one cycle with the corresponding bit set
+    // in `irq_status_decode_err_clear_mask` / `irq_status_excl_fail_clear_mask`.
+    // The MMIO address bindings for these registers live in
+    // docs/spec-db/axi4-interconnect-mmio.yaml so the upstream Linux driver
+    // and any embedded firmware agree on the layout.
     // ------------------------------------------------------------------
     output logic [NUM_MASTERS-1:0] decode_err_irq,
     output logic [NUM_MASTERS-1:0] exclusive_fail_irq,
-    output logic [NUM_MASTERS-1:0][31:0] outstanding_count_dbg
+    output logic [NUM_MASTERS-1:0][31:0] outstanding_count_dbg,
+
+    input  logic                         irq_status_clear_we,
+    input  logic [NUM_MASTERS-1:0]       irq_status_decode_err_clear_mask,
+    input  logic [NUM_MASTERS-1:0]       irq_status_excl_fail_clear_mask
 );
 
     // ------------------------------------------------------------------
@@ -543,11 +555,22 @@ module e1_axi4_interconnect
                 ar_rr_ptr[s] <= '0;
             end
         end else begin
-            // IRQs are sticky: held until software clears them via the
-            // observability path (interconnect does not yet expose a
-            // write-1-to-clear register, so the bench latches and reads).
-            // Decode-error edges are pulsed but coalesced with the prior
-            // value so they remain visible across multiple cycles.
+            // IRQs are sticky write-1-to-clear: each bit latches on the
+            // offending edge and stays asserted until software pulses
+            // irq_status_clear_we with the matching bit set in the
+            // corresponding clear mask.  Hardware-set wins ties with a
+            // simultaneous software clear so that a new event coincident
+            // with the W1C write is not silently dropped.
+            if (irq_status_clear_we) begin
+                for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
+                    if (irq_status_decode_err_clear_mask[m]) begin
+                        decode_err_irq[m] <= 1'b0;
+                    end
+                    if (irq_status_excl_fail_clear_mask[m]) begin
+                        exclusive_fail_irq[m] <= 1'b0;
+                    end
+                end
+            end
 
             // -- AW handshake ---------------------------------------------
             for (int unsigned m = 0; m < NUM_MASTERS; m++) begin

@@ -1,6 +1,6 @@
 {
   "schema": "eliza.memory.axi4_cocotb_status.v1",
-  "generated_at": "2026-05-19T11:05:33.855110Z",
+  "generated_at": "2026-05-19T11:12:07.941917Z",
   "harness": {
     "simulator": "verilator",
     "toplevel": "e1_axi4_tb",
@@ -16,27 +16,27 @@
     "incr_burst_length_sweep": {
       "status": "pass",
       "sim_time_ns": 18560.001,
-      "wall_time_s": 0.09106945991516113
+      "wall_time_s": 0.07846713066101074
     },
     "decode_error_returns_decerr": {
       "status": "pass",
       "sim_time_ns": 130.0010000000002,
-      "wall_time_s": 0.0008156299591064453
+      "wall_time_s": 0.0007121562957763672
     },
     "write_strobe_partial_beat_preserves_unwritten_bytes": {
       "status": "pass",
       "sim_time_ns": 370.0010000000002,
-      "wall_time_s": 0.001940011978149414
+      "wall_time_s": 0.0015456676483154297
     },
     "id_ordering_per_axid": {
       "status": "pass",
       "sim_time_ns": 620.0010000000002,
-      "wall_time_s": 0.002949953079223633
+      "wall_time_s": 0.002668142318725586
     },
     "exclusive_read_then_write_returns_exokay_or_okay": {
       "status": "pass",
       "sim_time_ns": 440.0010000000002,
-      "wall_time_s": 0.0023937225341796875
+      "wall_time_s": 0.002050161361694336
     }
   },
   "required_tests": [

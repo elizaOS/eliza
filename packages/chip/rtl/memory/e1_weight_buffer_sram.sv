@@ -27,6 +27,10 @@
 `timescale 1ns/1ps
 
 module e1_weight_buffer_sram (
+`ifdef USE_POWER_PINS
+    inout  wire         VPWR,
+    inout  wire         VGND,
+`endif
     input  logic        clk,
     input  logic        rst_n,
     // Port 0: RW (chip-side scratch interface)
@@ -44,18 +48,20 @@ module e1_weight_buffer_sram (
 
 `ifdef E1_HAVE_HARD_SRAM
     // Hard macro path: instantiate the Sky130 pre-built OpenRAM SRAM.
-    // The Verilog black-box model lives in the PDK under:
-    //   external/pdks/volare/sky130/versions/<hash>/sky130A/libs.ref/
-    //     sky130_sram_macros/verilog/sky130_sram_2kbyte_1rw1r_32x512_8.v
-    // OpenLane EXTRA_LEFS / EXTRA_LIBS / EXTRA_VERILOG_MODELS point to it.
+    // The Verilog black-box model lives in pd/openlane/.
+    // OpenLane EXTRA_LEFS / EXTRA_LIBS / MACROS point to the macro
+    // GDS/LEF/LIB. Power pins are propagated through the hierarchy
+    // (e1_chip_top -> e1_soc_top -> here) under USE_POWER_PINS so the
+    // SetPowerConnections odbpy step can resolve vccd1/vssd1 to the
+    // top-level VPWR/VGND nets.
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_rst_n = rst_n;
     /* verilator lint_on UNUSEDSIGNAL */
 
     sky130_sram_2kbyte_1rw1r_32x512_8 u_sram (
 `ifdef USE_POWER_PINS
-        .vccd1(1'b1),
-        .vssd1(1'b0),
+        .vccd1(VPWR),
+        .vssd1(VGND),
 `endif
         .clk0   (clk),
         .csb0   (p0_csb),
@@ -77,7 +83,7 @@ module e1_weight_buffer_sram (
     logic [31:0] dout0_q;
     logic [31:0] dout1_q;
 
-    always_ff @(posedge clk) begin
+    always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             dout0_q <= 32'h0;
             dout1_q <= 32'h0;

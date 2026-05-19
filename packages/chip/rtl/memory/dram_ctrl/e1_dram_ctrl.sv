@@ -273,25 +273,165 @@ module e1_dram_ctrl
         .s_rlast    (s_rlast)
     );
 
-    // DFI south interface defaults — the closed-IP PHY drives these in
-    // production.  The stub leaves them tied off in safe defaults so
-    // that simulation can elaborate without an attached PHY model.
-    assign dfi_addr             = '0;
-    assign dfi_bank             = '0;
-    assign dfi_cs_n             = 1'b1;
-    assign dfi_act_n            = 1'b1;
-    assign dfi_ras_n            = 1'b1;
-    assign dfi_cas_n            = 1'b1;
-    assign dfi_we_n             = 1'b1;
+    // ------------------------------------------------------------------
+    // DFI 5.0 north command shaper.
+    //
+    // Until the closed-IP LPDDR5X/6 PHY is attached
+    // (docs/evidence/memory/lpddr-phy-procurement.yaml) this controller
+    // synthesises representative DFI 5.0 north traffic from the AXI4
+    // handshakes and the internal refresh scheduler so that downstream
+    // verification can observe CKE / CS_n / RAS_n / CAS_n / WE_n / ADDR
+    // / BA / wrdata_en / rddata_en transitions for every transaction.
+    // The signal semantics follow the JEDEC LPDDR5/6 controller-side
+    // mapping:
+    //
+    //   ACTIVATE  : act_n=0, ras_n=0, cas_n=1, we_n=1, bank=row's bank
+    //   READ      : act_n=1, ras_n=1, cas_n=0, we_n=1, addr=column
+    //   WRITE     : act_n=1, ras_n=1, cas_n=0, we_n=0, addr=column
+    //   PRECHARGE : act_n=1, ras_n=0, cas_n=1, we_n=0
+    //   REFRESH   : act_n=1, ras_n=0, cas_n=0, we_n=1
+    //   NOP       : act_n=1, ras_n=1, cas_n=1, we_n=1
+    //
+    // The stub does not yet open-row track or schedule precharge
+    // separately; it emits ACTIVATE on the cycle the AXI handshake
+    // accepts the address phase and READ/WRITE on the same edge as the
+    // model latches the beat.  This is sufficient to validate that
+    // every DFI 5.0 north line toggles from a safe reset baseline when
+    // the controller sees traffic.
+    // ------------------------------------------------------------------
+    // DFI init phase: hold init_start high until dfi_init_complete is
+    // sampled at least once with a small minimum window so the PHY has
+    // time to run read/write training, gate training, and ZQ cal.  The
+    // minimum window also makes the boot-time DFI handshake observable
+    // in cocotb without requiring sub-cycle precision.
+    localparam int unsigned DFI_INIT_MIN_CYCLES = 8;
+    logic [$clog2(DFI_INIT_MIN_CYCLES+1)-1:0] init_cycles;
+    logic dfi_initialized;
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            dfi_initialized <= 1'b0;
+            init_cycles     <= '0;
+        end else if (!dfi_initialized) begin
+            if (init_cycles < $clog2(DFI_INIT_MIN_CYCLES+1)'(DFI_INIT_MIN_CYCLES)) begin
+                init_cycles <= init_cycles + 1'b1;
+            end else if (dfi_init_complete) begin
+                dfi_initialized <= 1'b1;
+            end
+        end
+    end
+
+    logic axi_write_accept;
+    logic axi_read_accept;
+    logic axi_write_beat;
+    logic axi_read_beat;
+    logic refresh_now;
+
+    assign axi_write_accept = s_awvalid && s_awready;
+    assign axi_read_accept  = s_arvalid && s_arready;
+    assign axi_write_beat   = s_wvalid  && s_wready;
+    assign axi_read_beat    = s_rvalid  && s_rready;
+    assign refresh_now      = refresh_active;
+
+    // Sample bank from address bits [9:6] (low-order bank field is a
+    // common LPDDR mapping; the exact bank-interleave bits are PHY
+    // dependent in production).
+    logic [3:0] aw_bank_q;
+    logic [3:0] ar_bank_q;
+    logic [ADDR_WIDTH-1:0] aw_row_q;
+    logic [ADDR_WIDTH-1:0] ar_row_q;
+
+    always_ff @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            aw_bank_q <= '0;
+            ar_bank_q <= '0;
+            aw_row_q  <= '0;
+            ar_row_q  <= '0;
+        end else begin
+            if (axi_write_accept) begin
+                aw_bank_q <= s_awaddr[9:6];
+                aw_row_q  <= s_awaddr;
+            end
+            if (axi_read_accept) begin
+                ar_bank_q <= s_araddr[9:6];
+                ar_row_q  <= s_araddr;
+            end
+        end
+    end
+
+    // CKE asserts as soon as init completes (and stays high while we are
+    // not in clock-disable).  CS_n drops on any command edge.
+    assign dfi_cke              = dfi_initialized;
     assign dfi_reset_n          = rst_n;
-    assign dfi_cke              = rst_n;
-    assign dfi_odt              = 1'b0;
-    assign dfi_wrdata           = '0;
-    assign dfi_wrdata_mask      = '1;
-    assign dfi_wrdata_en        = 1'b0;
-    assign dfi_rddata_en        = 1'b0;
-    assign dfi_init_start       = 1'b0;
-    assign dfi_ctrlupd_req      = 1'b0;
     assign dfi_dram_clk_disable = 1'b0;
+    assign dfi_init_start       = !dfi_initialized && rst_n;
+    assign dfi_ctrlupd_req      = refresh_now;
+    assign dfi_odt              = axi_write_beat;
+
+    // The command shaper drives one DFI command per cycle.  Priority is
+    // refresh > activate > read > write > precharge > nop because the
+    // physical timing manual orders refresh ahead of column traffic.
+    always_comb begin
+        // NOP defaults
+        dfi_cs_n        = !dfi_initialized;
+        dfi_act_n       = 1'b1;
+        dfi_ras_n       = 1'b1;
+        dfi_cas_n       = 1'b1;
+        dfi_we_n        = 1'b1;
+        dfi_bank        = '0;
+        dfi_addr        = '0;
+        dfi_wrdata      = '0;
+        dfi_wrdata_mask = '1;
+        dfi_wrdata_en   = 1'b0;
+        dfi_rddata_en   = 1'b0;
+
+        if (refresh_now) begin
+            // REFRESH
+            dfi_cs_n  = 1'b0;
+            dfi_act_n = 1'b1;
+            dfi_ras_n = 1'b0;
+            dfi_cas_n = 1'b0;
+            dfi_we_n  = 1'b1;
+        end else if (axi_write_accept) begin
+            // ACTIVATE for write
+            dfi_cs_n  = 1'b0;
+            dfi_act_n = 1'b0;
+            dfi_ras_n = 1'b0;
+            dfi_cas_n = 1'b1;
+            dfi_we_n  = 1'b1;
+            dfi_bank  = s_awaddr[9:6];
+            dfi_addr  = s_awaddr;
+        end else if (axi_read_accept) begin
+            // ACTIVATE for read
+            dfi_cs_n  = 1'b0;
+            dfi_act_n = 1'b0;
+            dfi_ras_n = 1'b0;
+            dfi_cas_n = 1'b1;
+            dfi_we_n  = 1'b1;
+            dfi_bank  = s_araddr[9:6];
+            dfi_addr  = s_araddr;
+        end else if (axi_write_beat) begin
+            // WRITE column command + data
+            dfi_cs_n        = 1'b0;
+            dfi_act_n       = 1'b1;
+            dfi_ras_n       = 1'b1;
+            dfi_cas_n       = 1'b0;
+            dfi_we_n        = 1'b0;
+            dfi_bank        = aw_bank_q;
+            dfi_addr        = aw_row_q;
+            dfi_wrdata      = s_wdata;
+            dfi_wrdata_mask = ~s_wstrb;
+            dfi_wrdata_en   = 1'b1;
+        end else if (axi_read_beat) begin
+            // READ column command + capture enable
+            dfi_cs_n      = 1'b0;
+            dfi_act_n     = 1'b1;
+            dfi_ras_n     = 1'b1;
+            dfi_cas_n     = 1'b0;
+            dfi_we_n      = 1'b1;
+            dfi_bank      = ar_bank_q;
+            dfi_addr      = ar_row_q;
+            dfi_rddata_en = 1'b1;
+        end
+    end
 
 endmodule
