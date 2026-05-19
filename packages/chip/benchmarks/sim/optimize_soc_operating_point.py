@@ -174,6 +174,7 @@ def score(summary: dict[str, Any]) -> float:
     return (
         float(summary["min_composite_perf_per_w"]) * 1_000_000
         + float(summary["min_npu_int8_tops"]) * 100
+        + float(summary["min_bandwidth_margin_gbps"]) * 10
         - float(summary["max_total_power_w"]) * 10
     )
 

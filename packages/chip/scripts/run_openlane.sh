@@ -146,12 +146,28 @@ copy_docker_runs() {
     if ! docker container inspect "$cid" >/dev/null 2>&1; then
         return 0
     fi
-    if ! docker exec "$cid" sh -lc 'test -d /work/pd/openlane/runs' >/dev/null 2>&1; then
-        return 0
-    fi
     mkdir -p "$REPO_DIR/pd/openlane/runs"
     echo "Copying OpenLane run artifacts from Docker container $cid to pd/openlane/runs"
-    docker cp "$cid:/work/pd/openlane/runs/." "$REPO_DIR/pd/openlane/runs/"
+    docker cp "$cid:/work/pd/openlane/runs/." "$REPO_DIR/pd/openlane/runs/" >/dev/null 2>&1 || {
+        if find "$REPO_DIR/pd/openlane/runs" -mindepth 1 -maxdepth 1 -type d | grep . >/dev/null 2>&1; then
+            echo "OpenLane run artifacts are already visible through the bind mount."
+        else
+            echo "No OpenLane run artifacts were available to copy from container $cid."
+        fi
+    }
+}
+
+normalize_docker_outputs() {
+    if ! command -v docker >/dev/null 2>&1; then
+        return 0
+    fi
+    uid="$(id -u)"
+    gid="$(id -g)"
+    docker run --rm \
+        -v "$REPO_DIR:/work" \
+        -w /work \
+        "$IMAGE" sh -lc "chown -R '$uid:$gid' /work/pd/openlane/runs 2>/dev/null || true; chown -R '$uid:$gid' /work/.openlane-run.lock 2>/dev/null || true" \
+        >/dev/null 2>&1 || true
 }
 
 run_and_diagnose() {
@@ -180,6 +196,7 @@ run_docker_and_diagnose() {
     status=$?
     set -e
     copy_docker_runs "$DOCKER_CID_FILE"
+    normalize_docker_outputs
     if [ "$status" -ne 0 ]; then
         echo "OpenLane Docker command exited with status $status; diagnosing latest run directory."
         diagnose_latest_run

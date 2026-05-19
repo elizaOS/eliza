@@ -19,6 +19,7 @@ BURST_THERMAL_TRANSIENT = ROOT / "benchmarks/results/cpu-npu-2028-burst-thermal-
 AOSP_GOVERNOR_TRACE = ROOT / "benchmarks/results/cpu-npu-2028-aosp-governor-trace.json"
 PROCESS_EVAL = ROOT / "benchmarks/results/cpu-npu-2028-14a-process-eval.json"
 COMPETITIVE_ENVELOPE = ROOT / "benchmarks/results/cpu-npu-2028-competitive-envelope.json"
+TAPEOUT_AUDIT = ROOT / "benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json"
 OPTIMIZER_CHECK = ROOT / "scripts/check_soc_optimization.py"
 WORK_ORDER_CHECK = ROOT / "scripts/check_soc_optimized_work_order.py"
 MODELED_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_modeled_benchmark_eval.py"
@@ -27,6 +28,7 @@ BURST_THERMAL_TRANSIENT_CHECK = ROOT / "scripts/check_cpu_npu_burst_thermal_tran
 AOSP_GOVERNOR_TRACE_CHECK = ROOT / "scripts/check_cpu_npu_aosp_governor_trace.py"
 PROCESS_EVAL_CHECK = ROOT / "scripts/check_cpu_npu_14a_process_eval.py"
 COMPETITIVE_ENVELOPE_CHECK = ROOT / "scripts/check_cpu_npu_competitive_envelope.py"
+TAPEOUT_AUDIT_CHECK = ROOT / "scripts/check_cpu_npu_tapeout_readiness_audit.py"
 BENCHMARK_PLAN = ROOT / "benchmarks/configs/benchmark_plan.json"
 MAKEFILE = ROOT / "Makefile"
 
@@ -614,6 +616,101 @@ def check_competitive_envelope(scorecard: dict[str, Any], errors: list[str]) -> 
         )
 
 
+def check_tapeout_readiness_audit(scorecard: dict[str, Any], errors: list[str]) -> None:
+    source_artifacts = scorecard.get("source_artifacts")
+    if not isinstance(source_artifacts, dict):
+        errors.append("source_artifacts must be a mapping")
+        return
+    require(
+        source_artifacts.get("tapeout_readiness_audit")
+        == "benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json",
+        "scorecard must point at tapeout readiness audit",
+        errors,
+    )
+    require(
+        source_artifacts.get("tapeout_readiness_audit_command")
+        == "make cpu-npu-tapeout-readiness-audit",
+        "scorecard must list tapeout readiness audit command",
+        errors,
+    )
+    if not TAPEOUT_AUDIT.exists():
+        run_required_check([sys.executable, str(TAPEOUT_AUDIT_CHECK)], errors)
+    if not TAPEOUT_AUDIT.exists():
+        errors.append("tapeout readiness audit missing")
+        return
+    try:
+        data = load_json_object(TAPEOUT_AUDIT)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        errors.append(str(exc))
+        return
+    require(
+        data.get("schema") == "eliza.cpu_npu_2028_tapeout_readiness_audit.v1",
+        "tapeout readiness audit schema mismatch",
+        errors,
+    )
+    require(
+        data.get("status") == "tapeout_release_blocked",
+        "tapeout readiness audit must remain release-blocked",
+        errors,
+    )
+    summary = data.get("summary")
+    if not isinstance(summary, dict):
+        errors.append("tapeout readiness audit missing summary")
+        return
+    require(
+        summary.get("modeled_local_complete") is True,
+        "tapeout readiness audit must show modeled local stack complete",
+        errors,
+    )
+    blocked_count = summary.get("blocked_proof_domain_count")
+    require(
+        isinstance(blocked_count, int | float)
+        and not isinstance(blocked_count, bool)
+        and blocked_count > 0,
+        "tapeout readiness audit must keep proof domains blocked",
+        errors,
+    )
+    benchmark_blocked_count = summary.get("blocked_benchmark_count")
+    require(
+        isinstance(benchmark_blocked_count, int | float)
+        and not isinstance(benchmark_blocked_count, bool)
+        and benchmark_blocked_count > 0,
+        "tapeout readiness audit must keep benchmark release rows blocked",
+        errors,
+    )
+    benchmark_requirements = summary.get("blocked_benchmark_requirements")
+    require(
+        isinstance(benchmark_requirements, list) and "benchmark_model" in benchmark_requirements,
+        "tapeout readiness audit must enumerate blocked benchmark_model evidence",
+        errors,
+    )
+    benchmark_rows = data.get("benchmark_release_readiness")
+    require(
+        isinstance(benchmark_rows, list)
+        and any(
+            isinstance(row, dict)
+            and row.get("id") == "tflite_e1_npu"
+            and row.get("status") == "blocked"
+            for row in benchmark_rows
+        ),
+        "tapeout readiness audit must keep tflite_e1_npu release benchmark blocked",
+        errors,
+    )
+    checks = data.get("checks")
+    if not isinstance(checks, list):
+        errors.append("tapeout readiness audit missing checks")
+        return
+    by_id = {item.get("id"): item for item in checks if isinstance(item, dict)}
+    for row_id in ("modeled_cpu_npu_stack_complete", "competitive_envelope_metrics_pass"):
+        require(by_id.get(row_id, {}).get("status") == "pass", f"{row_id} must pass", errors)
+    for row_id in ("release_evidence_incomplete_blocked", "final_tapeout_claim_blocked"):
+        require(
+            by_id.get(row_id, {}).get("status") == "blocked",
+            f"{row_id} must remain blocked",
+            errors,
+        )
+
+
 def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> list[str]:
     errors: list[str] = []
     require(
@@ -640,6 +737,7 @@ def check_scorecard(scorecard: dict[str, Any], optimizer: dict[str, Any]) -> lis
     check_aosp_governor_trace(scorecard, errors)
     check_process_eval(scorecard, errors)
     check_competitive_envelope(scorecard, errors)
+    check_tapeout_readiness_audit(scorecard, errors)
     blockers = "\n".join(str(item) for item in scorecard.get("release_claim_forbidden_until", []))
     for domain in REQUIRED_DOMAINS:
         require(domain in blockers, f"release blockers missing {domain}", errors)

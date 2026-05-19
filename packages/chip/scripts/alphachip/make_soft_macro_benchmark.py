@@ -126,6 +126,12 @@ def main() -> None:
     parser.add_argument("--cols", type=int, default=8)
     parser.add_argument("--rows", type=int, default=8)
     parser.add_argument("--min-area", type=float, default=0.01)
+    parser.add_argument(
+        "--area-scale",
+        type=float,
+        default=0.08,
+        help="Scale OpenDB pin/cell geometry into soft-macro area.",
+    )
     args = parser.parse_args()
 
     comments, nodes = parse_pb(Path(args.pb))
@@ -184,26 +190,32 @@ def main() -> None:
 
     for cluster, members in sorted(clusters.items()):
         area = sum(
-            max(args.min_area, attr_float(m, "width") * attr_float(m, "height")) for m in members
+            max(
+                args.min_area,
+                attr_float(m, "width") * attr_float(m, "height") * args.area_scale,
+            )
+            for m in members
         )
         sum_area = max(area, args.min_area)
         sum_x = sum(
             attr_float(m, "x")
-            * max(args.min_area, attr_float(m, "width") * attr_float(m, "height"))
+            * max(
+                args.min_area,
+                attr_float(m, "width") * attr_float(m, "height") * args.area_scale,
+            )
             for m in members
         )
         sum_y = sum(
             attr_float(m, "y")
-            * max(args.min_area, attr_float(m, "width") * attr_float(m, "height"))
+            * max(
+                args.min_area,
+                attr_float(m, "width") * attr_float(m, "height") * args.area_scale,
+            )
             for m in members
         )
-        xs = [attr_float(m, "x") for m in members]
-        ys = [attr_float(m, "y") for m in members]
-        bbox_w = max(xs) - min(xs) + max(attr_float(m, "width") for m in members)
-        bbox_h = max(ys) - min(ys) + max(attr_float(m, "height") for m in members)
         side = math.sqrt(sum_area)
-        macro_w = max(side, min(bbox_w, width / args.cols))
-        macro_h = max(sum_area / max(macro_w, 1e-9), min(bbox_h, height / args.rows))
+        macro_w = side
+        macro_h = side
         out_nodes.append(
             Node(
                 name=cluster,

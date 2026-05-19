@@ -24,6 +24,9 @@ if [ -d "$MP_DIR/.git" ]; then
     else
         echo "MacroPlacement: checkout present but no complete revision yet"
     fi
+elif [ -f "$MP_DIR/PINNED_COMMIT" ] && [ -f "$MP_DIR/CodeElements/FormatTranslators/src/gen_pb_or.tcl" ]; then
+    printf 'MacroPlacement: source archive '
+    cat "$MP_DIR/PINNED_COMMIT"
 else
     echo "MacroPlacement: MISSING at $MP_DIR"
 fi

@@ -3899,16 +3899,16 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	 * filename. Callers should fire this on a long-cache TTL boundary, on
 	 * `closeConversation`, and at process shutdown.
 	 *
-	 * Returns true when a save was issued, false when there was no slot to
-	 * save (e.g. slot pinning disabled, server not running).
+	 * No-ops when there is no slot to save (e.g. slot pinning disabled,
+	 * server not running).
 	 */
 	async persistConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
+	): Promise<void> {
 		const baseUrl = this.baseUrl;
 		const conversationDir = this.conversationKvDir;
-		if (!baseUrl || !conversationDir || slotId < 0) return false;
+		if (!baseUrl || !conversationDir || slotId < 0) return;
 		const targetPath = path.join(
 			conversationDir,
 			slotCacheFileName(conversationId, "long"),
@@ -3916,9 +3916,8 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 		try {
 			await this.requestSlotSave(baseUrl, slotId, targetPath);
 			this.persistedConversations.add(conversationId);
-			return true;
 		} catch {
-			return false;
+			return;
 		}
 	}
 
@@ -3930,23 +3929,18 @@ export class DflashLlamaServer implements LocalInferenceBackend {
 	async restoreConversationKv(
 		conversationId: string,
 		slotId: number,
-	): Promise<boolean> {
+	): Promise<void> {
 		const baseUrl = this.baseUrl;
 		const conversationDir = this.conversationKvDir;
-		if (!baseUrl || !conversationDir || slotId < 0) return false;
+		if (!baseUrl || !conversationDir || slotId < 0) return;
 		const sourcePath = path.join(
 			conversationDir,
 			slotCacheFileName(conversationId, "long"),
 		);
 		try {
-			const restored = await this.requestSlotRestore(
-				baseUrl,
-				slotId,
-				sourcePath,
-			);
-			return restored;
+			await this.requestSlotRestore(baseUrl, slotId, sourcePath);
 		} catch {
-			return false;
+			return;
 		}
 	}
 

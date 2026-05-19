@@ -15,12 +15,14 @@ area/size, manufacturability, verification evidence, and release blockers.
 | Compute and silicon | `compute-silicon.md` |
 | CPU+NPU 2028 manual review | `cpu-npu-2028-manual-review.yaml` |
 | CPU+NPU 2028 readiness scorecard | `cpu-npu-2028-readiness-scorecard.yaml` |
+| CPU+NPU design-space frontier | `../../benchmarks/results/cpu-npu-2028-design-space-frontier.json` |
 | CPU+NPU modeled benchmark eval | `../../benchmarks/results/cpu-npu-2028-modeled-eval.json` |
 | CPU+NPU burst/sustained policy | `../../benchmarks/results/cpu-npu-2028-burst-sustained-policy.json` |
 | CPU+NPU burst thermal transient | `../../benchmarks/results/cpu-npu-2028-burst-thermal-transient.json` |
 | CPU+NPU AOSP governor trace | `../../benchmarks/results/cpu-npu-2028-aosp-governor-trace.json` |
 | CPU+NPU 14A process eval | `../../benchmarks/results/cpu-npu-2028-14a-process-eval.json` |
 | CPU+NPU competitive envelope | `../../benchmarks/results/cpu-npu-2028-competitive-envelope.json` |
+| CPU+NPU tapeout readiness audit | `../../benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json` |
 | Modeled CPU+NPU operating point | `soc-optimized-operating-point.yaml` |
 | Platform and product IO | `phone-platform.md` |
 | Physical, power, package, thermal | `physical-power-thermal.md` |

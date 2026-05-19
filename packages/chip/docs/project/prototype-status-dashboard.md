@@ -18,7 +18,7 @@ Snapshot: generated during the 2026-05-17 fail-closed evidence pass.
 | cocotb | `PASS` | `generated_artifact` | `none` |
 | verilator | `PASS` | `generated_artifact` | `none` |
 | formal | `PASS` | `generated_artifact` | `none` |
-| qemu | `BLOCK` | `tool_blocker` | `make qemu-check` |
+| qemu | `PASS` | `generated_artifact` | `none` |
 | renode | `BLOCK` | `tool_blocker` | `make renode-check` |
 | npu-ml-proof | `PASS` | `generated_artifact` | `none` |
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |

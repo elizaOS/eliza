@@ -651,13 +651,6 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 	 * reset every turn to preserve the historical stateless behaviour.
 	 */
 	async generate(args: GenerateArgs): Promise<string> {
-		// When the dispatcher has a backend loaded (llama-server OR
-		// node-llama-cpp OR future FFI), forward to it. The dispatcher
-		// already knows which backend is active and handles errors
-		// consistently across all of them.
-		if (this.dispatcher.hasLoadedModel()) {
-			return this.dispatcher.generate(args);
-		}
 		const pool = this.sessionPool;
 		if (!pool) {
 			throw new Error(

@@ -8,6 +8,7 @@ claim_boundary: >
 review_inputs:
   optimizer_report: benchmarks/results/soc-optimized-operating-point.json
   work_order: docs/architecture-optimization/soc-optimized-operating-point.yaml
+  design_space_frontier: benchmarks/results/cpu-npu-2028-design-space-frontier.json
   readiness_scorecard: docs/architecture-optimization/cpu-npu-2028-readiness-scorecard.yaml
   modeled_benchmark_report: benchmarks/results/modeled-cpu-npu-2028-local/report.json
   modeled_benchmark_eval: benchmarks/results/cpu-npu-2028-modeled-eval.json
@@ -16,6 +17,7 @@ review_inputs:
   aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
   process_14a_eval: benchmarks/results/cpu-npu-2028-14a-process-eval.json
   competitive_envelope: benchmarks/results/cpu-npu-2028-competitive-envelope.json
+  tapeout_readiness_audit: benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json
   benchmark_plan: benchmarks/configs/benchmark_plan.json
   process_effects_contract: docs/spec-db/process-14a-effects.yaml
 selected_modeled_point:
@@ -25,12 +27,16 @@ selected_modeled_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
-  memory_sustained_gbps: 208.0
+  memory_sustained_gbps: 240.0
 modeled_review_findings:
   - id: modeled_operating_point_pass
     status: pass
     evidence: Optimizer selected a no-throttle point across four required 14A planning corners.
     metric_check: optimized.summary.any_modeled_throttle_required == false
+  - id: modeled_design_space_frontier_pass
+    status: pass
+    evidence: Pareto frontier search proves the selected CPU/NPU point is non-dominated and score-optimal across robust feasible modeled candidates.
+    metric_check: make cpu-npu-design-space-frontier
   - id: modeled_power_thermal_pass
     status: pass
     evidence: Nominal modeled worst die temperature and total power remain under the selected mobile budget.
@@ -71,6 +77,10 @@ modeled_review_findings:
     status: pass
     evidence: Local 2028 compact-flagship planning envelope checks CPU, NPU, memory, sustained power, burst power, and thermal headroom while blocking future Pixel product claims.
     metric_check: make cpu-npu-competitive-envelope
+  - id: modeled_tapeout_readiness_audit_pass
+    status: pass
+    evidence: Tapeout readiness audit proves the local modeled CPU/NPU stack is complete while enumerating remaining proof-domain and tool blockers before any tapeout claim.
+    metric_check: make cpu-npu-tapeout-readiness-audit
   - id: cpu_ap_evidence_blocked
     status: blocked
     evidence: Generated Linux-capable AP manifest and boot/benchmark transcripts are still absent.
