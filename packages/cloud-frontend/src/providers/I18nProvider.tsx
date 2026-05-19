@@ -1,10 +1,10 @@
 import {
   createTranslator,
   DEFAULT_UI_LANGUAGE,
-  ensureLanguageLoaded,
   normalizeLanguage,
   type UiLanguage,
-} from "@elizaos/ui";
+} from "@elizaos/ui/i18n/index";
+import { ensureLanguageLoaded } from "@elizaos/ui/i18n/messages";
 import {
   createContext,
   type ReactNode,
