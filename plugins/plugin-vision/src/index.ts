@@ -1,0 +1,45 @@
+import type { Plugin } from "@elizaos/core";
+import { promoteSubactionsToActions } from "@elizaos/core";
+import { visionAction } from "./action";
+import { visionProvider } from "./provider";
+import { VisionService } from "./service";
+
+export const visionPlugin: Plugin = {
+  name: "vision",
+  description:
+    "Provides visual perception through camera integration and scene analysis",
+  services: [VisionService],
+  providers: [visionProvider],
+  actions: [...promoteSubactionsToActions(visionAction)],
+  // Self-declared auto-enable: activate when features.vision is enabled OR
+  // when media.vision.provider is configured.
+  autoEnable: {
+    shouldEnable: (_env, config) => {
+      const f = (config?.features as Record<string, unknown> | undefined)
+        ?.vision;
+      const featureOn =
+        f === true ||
+        (typeof f === "object" &&
+          f !== null &&
+          (f as { enabled?: unknown }).enabled !== false);
+      if (featureOn) return true;
+      const media = config?.media as Record<string, unknown> | undefined;
+      const visionMedia = media?.vision as
+        | { enabled?: unknown; provider?: unknown }
+        | undefined;
+      return Boolean(
+        visionMedia &&
+          visionMedia.enabled !== false &&
+          typeof visionMedia.provider === "string" &&
+          visionMedia.provider.length > 0,
+      );
+    },
+  },
+  init: async (_config, _runtime) => {},
+  async dispose(runtime) {
+    const svc = runtime.getService<VisionService>(VisionService.serviceType);
+    await svc?.stop();
+  },
+};
+
+export default visionPlugin;

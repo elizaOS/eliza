@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "declaration": true,
+    "declarationMap": true,
+    "emitDeclarationOnly": true,
+    "ignoreDeprecations": "6.0",
+    "outDir": "./dist",
+    "rootDir": ".",
+    "paths": {
+      "@elizaos/core": ["../../../packages/core/dist"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist", "__tests__", "build.ts"]
+}

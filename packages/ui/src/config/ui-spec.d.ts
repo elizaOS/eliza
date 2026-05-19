@@ -1,0 +1,2 @@
+export type { ActionConfirm, ActionOnError, ActionOnSuccess, AndVisibility, AuthState, AuthVisibility, BuiltinValidator, CondExpr, DynamicProp, NotVisibility, OrVisibility, PatchOp, PathVisibility, RepeatConfig, UIStreamConfig, UiAction, UiComponentType, UiElement, UiEventBindings, UiRenderContext, UiSpec, UiSpecValidationCheck, UiSpecValidationConfig, UiSpecVisibilityCondition, VisibilityOperator, } from "@elizaos/shared";
+//# sourceMappingURL=ui-spec.d.ts.map

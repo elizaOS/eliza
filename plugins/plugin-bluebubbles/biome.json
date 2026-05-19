@@ -1,0 +1,18 @@
+{
+	"root": false,
+	"$schema": "https://biomejs.dev/schemas/2.4.14/schema.json",
+	"files": {
+		"includes": ["src/**", "__tests__/**", "build.ts", "vitest.config.ts"]
+	},
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"suspicious": {
+				"noExplicitAny": "off"
+			}
+		}
+	},
+	"formatter": {
+		"enabled": true
+	}
+}

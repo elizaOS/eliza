@@ -1,0 +1,1 @@
+{"version":3,"file":"workflow-graph-events.d.ts","sourceRoot":"","sources":["workflow-graph-events.ts"],"names":[],"mappings":"AAAA;;;;;;;;GAQG;AAEH,eAAO,MAAM,wBAAwB,yCAAyC,CAAC;AAE/E,MAAM,WAAW,4BAA4B;IAC3C,UAAU,EAAE,MAAM,CAAC;CACpB;AAED,wBAAgB,yBAAyB,CAAC,UAAU,EAAE,MAAM,GAAG,IAAI,CAOlE"}

@@ -1,0 +1,30 @@
+{
+  "_comment": "Optional override of the default eliza fingerprint dictionaries. Drop this file as `config.json` next to your eliza root and the proxy plugin will pick it up at startup. Any field you omit falls back to the eliza-default value baked into the plugin (src/proxy/eliza-fingerprint.ts).",
+
+  "_when_to_use": "If you are running a non-eliza agent runtime, the eliza tool-name dictionary almost certainly does not match your tool surface and you should override `toolRenames` (and possibly `replacements` / `propRenames`).",
+
+  "replacements": [
+    ["yourFrameworkSentinel", "yourFrameworkSentinel"],
+    ["YOUR_DISTINCTIVE_HEADER", "YOUR_DISTINCTIVE_HEADER"]
+  ],
+
+  "toolRenames": [
+    ["your_tool_name", "PreferredCCName"],
+    ["another_tool", "AnotherCCName"]
+  ],
+
+  "propRenames": [
+    ["yourPropertyName", "neutral_name"]
+  ],
+
+  "reverseMap": [
+    ["yourFrameworkSentinel", "yourFrameworkSentinel"],
+    ["YOUR_DISTINCTIVE_HEADER", "YOUR_DISTINCTIVE_HEADER"]
+  ],
+
+  "_notes": [
+    "Every entry in `reverseMap` should mirror an entry in `replacements` so that the response stream round-trips losslessly.",
+    "Tool rename targets must not collide \u2014 each Anthropic-side name should appear at most once in the values column.",
+    "If your framework injects a recurring system-prompt block you want stripped, file an issue \u2014 v0.3 will expose configurable strip anchors."
+  ]
+}

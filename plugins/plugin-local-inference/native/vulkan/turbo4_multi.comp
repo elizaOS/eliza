@@ -1,0 +1,112 @@
+// Multi-block-per-workgroup variant of turbo4.comp. Identical decode math;
+// one workgroup processes BLOCKS_PER_WG consecutive KV indices serially in a
+// 32-thread loop. BLOCKS_PER_WG is a SPIR-V specialization constant
+// (constant_id = 0); default 1 == turbo4.comp behaviour. local_size stays 32
+// (portable shared-memory tree reduction, no subgroup assumptions).
+//
+// Dispatch: grid_x = ceil(n_kv / BLOCKS_PER_WG), tg_x = 32.
+
+#version 450
+#extension GL_EXT_shader_16bit_storage  : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
+#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+
+layout(constant_id = 0) const uint BLOCKS_PER_WG = 1u;
+
+layout(std430, binding = 0) readonly buffer QBuf { float q[]; };
+layout(std430, binding = 1) readonly buffer KBuf { uint k_packed[]; };
+layout(std430, binding = 2) writeonly buffer OutBuf { float scores[]; };
+
+layout(push_constant) uniform Push {
+    uint head_dim;          // must be 128
+    uint n_kv;
+    uint kv_stride_blocks;  // 4 for d=128
+    uint q_head;
+    uint head_offset_bytes;
+} push;
+
+const uint TURBO4_BLOCK_BYTES = 18u;
+
+const float TURBO_CENTROIDS_4BIT[16] = float[16](
+    -2.7321365, -2.0685055, -1.6175243, -1.2557391,
+    -0.9419147, -0.6564307, -0.3878412, -0.1283243,
+     0.1283243,  0.3878412,  0.6564307,  0.9419147,
+     1.2557391,  1.6175243,  2.0685055,  2.7321365
+);
+
+float fp16_to_fp32(uint h16) {
+    uint sign = (h16 & 0x8000u) << 16;
+    uint exp  = (h16 >> 10) & 0x1Fu;
+    uint mant = h16 & 0x3FFu;
+    uint u;
+    if (exp == 0u) {
+        if (mant == 0u) { u = sign; }
+        else {
+            uint e = 1u;
+            while ((mant & 0x400u) == 0u) { mant <<= 1; e += 1u; }
+            mant &= 0x3FFu;
+            u = sign | ((127u - 15u - e + 1u) << 23) | (mant << 13);
+        }
+    } else if (exp == 0x1Fu) {
+        u = sign | 0x7F800000u | (mant << 13);
+    } else {
+        u = sign | ((exp + 127u - 15u) << 23) | (mant << 13);
+    }
+    return uintBitsToFloat(u);
+}
+
+uint read_byte(uint b) {
+    uint w = k_packed[b >> 2];
+    return (w >> ((b & 3u) * 8u)) & 0xFFu;
+}
+uint read_u16(uint b) {
+    return read_byte(b) | (read_byte(b + 1u) << 8u);
+}
+
+shared float partials[32];
+
+float reduce_sum_32(float v, uint tid) {
+    partials[tid] = v;
+    barrier();
+    for (uint stride = 16u; stride > 0u; stride >>= 1) {
+        if (tid < stride) {
+            partials[tid] += partials[tid + stride];
+        }
+        barrier();
+    }
+    return partials[0];
+}
+
+void main() {
+    uint tid = gl_LocalInvocationID.x;
+    uint elem0 = tid * 4u;
+    uint blk_idx = elem0 >> 5;
+    uint within0 = elem0 & 31u;
+    uint q_base = push.q_head * push.head_dim + elem0;
+
+    uint kv_base = gl_WorkGroupID.x * BLOCKS_PER_WG;
+    for (uint b = 0u; b < BLOCKS_PER_WG; ++b) {
+        uint kv_idx = kv_base + b;
+        if (kv_idx >= push.n_kv) return;
+
+        uint group_off = push.head_offset_bytes +
+                         kv_idx * push.kv_stride_blocks * TURBO4_BLOCK_BYTES;
+        uint blk_off = group_off + blk_idx * TURBO4_BLOCK_BYTES;
+        float norm = fp16_to_fp32(read_u16(blk_off + 0u));
+
+        float acc = 0.0;
+        for (uint local = 0u; local < 4u; local += 1u) {
+            uint within = within0 + local;
+            uint qs_byte = read_byte(blk_off + 2u + (within & 15u));
+            uint idx = within < 16u ? (qs_byte & 0xFu) : (qs_byte >> 4);
+            acc = fma(q[q_base + local], TURBO_CENTROIDS_4BIT[idx] * norm, acc);
+        }
+
+        float sum = reduce_sum_32(acc, tid);
+        if (tid == 0u) {
+            scores[push.q_head * push.n_kv + kv_idx] = sum;
+        }
+    }
+}

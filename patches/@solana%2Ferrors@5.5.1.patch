@@ -1,0 +1,13 @@
+diff --git a/package.json b/package.json
+index 25228f66f54442b816a170645bc3b2c9b44d4e20..41ab8c17cfbd69c5bd317e189f11d985a7bb3142 100644
+--- a/package.json
++++ b/package.json
+@@ -60,7 +60,7 @@
+     "commander": "14.0.2"
+   },
+   "peerDependencies": {
+-    "typescript": "^5.0.0"
++    "typescript": ">=5.0.0"
+   },
+   "peerDependenciesMeta": {
+     "typescript": {

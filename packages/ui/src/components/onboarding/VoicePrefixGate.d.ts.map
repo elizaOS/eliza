@@ -1,0 +1,1 @@
+{"version":3,"file":"VoicePrefixGate.d.ts","sourceRoot":"","sources":["VoicePrefixGate.tsx"],"names":[],"mappings":"AAAA;;;;;;;;;;;GAWG;AAEH,OAAO,KAAK,KAAK,MAAM,OAAO,CAAC;AAS/B,MAAM,WAAW,oBAAoB;IACnC,qEAAqE;IACrE,MAAM,EAAE,MAAM,IAAI,CAAC;CACpB;AAID,wBAAgB,eAAe,CAAC,EAC9B,MAAM,GACP,EAAE,oBAAoB,GAAG,KAAK,CAAC,YAAY,CAsE3C;AAED,eAAe,eAAe,CAAC"}

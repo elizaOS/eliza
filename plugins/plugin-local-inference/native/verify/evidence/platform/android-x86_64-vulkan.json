@@ -1,0 +1,48 @@
+{
+  "schemaVersion": 1,
+  "backend": "vulkan",
+  "platform": "android",
+  "arch": "x86_64",
+  "target": "android-x86_64-vulkan",
+  "status": "diagnostic-only",
+  "runtimeReady": false,
+  "passRecordable": false,
+  "exitCode": 0,
+  "runner": "manual: cross-compile vulkan_verify (NDK x86_64-linux-android28-clang++, glslc) -> adb push -> adb shell ELIZA_ALLOW_SOFTWARE_VULKAN=1 ./vulkan_verify against the Cuttlefish (cvd-1) SwiftShader Vulkan ICD",
+  "evidenceDate": "2026-05-12",
+  "atCommit": "0ae9ff6983bdfbd45369c4aacb88d2ef9bf13d56",
+  "forkCommit": "03fc58ef9af8b7c77d04724b3caf0736b2f46408",
+  "sourceOfTruth": "Cuttlefish's virtio-gpu Vulkan ICD here is SwiftShader (LLVM 16.0.0, vendor 0x1ae0 = Google software rasterizer; api=1.3). Per the kernel-contract.json fail-closed evidence rule, a software Vulkan ICD CANNOT produce recordable runtime-ready evidence. All eight standalone fixture cases pass numerically; they are recorded here as diagnostic-only to document the Android x86_64 cross-build is well-formed and the SPIR-V shaders load + dispatch correctly through the standard Android Vulkan loader. Recordable Android x86_64 Vulkan evidence requires real ChromeOS x86_64 GPU silicon (Adreno/Mali under ARCVM) or a passed-through host GPU via crosvm gfxstream.",
+  "host": {
+    "kind": "cuttlefish",
+    "kernel": "Linux localhost 6.12.38-android16-5-g501f58f107ab-ab13974591 #1 SMP PREEMPT Thu Aug 21 21:28:12 UTC 2025 x86_64 Toybox",
+    "abi": "x86_64",
+    "buildFingerprint": "generic/milady_cf_x86_64_phone/vsoc_x86_64_only:Baklava/BP4A.251205.006/eng.shaw:userdebug/test-keys",
+    "sdkVersion": "36",
+    "cvd": "1.53.0",
+    "adbDevice": "0.0.0.0:6520",
+    "vulkanIcd": "SwiftShader Device (LLVM 16.0.0); vendorID=0x1ae0; deviceType=CPU; api=1.3.0",
+    "vulkanIcdSource": "adb shell cmd gpu vkjson | first device .properties.deviceName"
+  },
+  "verify_harness": {
+    "sha256": "3f159aebb483133162ae282ef0aa8e860117b43b9fe0129d1c9af758d0f312b5",
+    "kind": "vulkan_verify (standalone SPIR-V fixture harness, software-vulkan-allowed)",
+    "remotePath": "/data/local/tmp/eliza-x86_64-verify/vulkan_verify",
+    "envOverride": "ELIZA_ALLOW_SOFTWARE_VULKAN=1 (per fail-closed rule)"
+  },
+  "cases": [
+    { "shader": "turbo3.spv", "fixture": "fixtures/turbo3.json", "result": "PASS", "maxDiff": 3.815e-06 },
+    { "shader": "turbo4.spv", "fixture": "fixtures/turbo4.json", "result": "PASS", "maxDiff": 5.722e-06 },
+    { "shader": "turbo3_tcq.spv", "fixture": "fixtures/turbo3_tcq.json", "result": "PASS", "maxDiff": 4.768e-06 },
+    { "shader": "qjl.spv", "fixture": "fixtures/qjl.json", "result": "PASS", "maxDiff": 7.629e-06 },
+    { "shader": "polar.spv", "fixture": "fixtures/polar.json", "result": "PASS", "maxDiff": 5.722e-06 },
+    { "shader": "polar.spv", "fixture": "fixtures/polar_qjl.json", "result": "PASS", "maxDiff": 3.815e-06 },
+    { "shader": "polar_preht.spv", "fixture": "fixtures/polar.json", "result": "PASS", "maxDiff": 9.537e-06 },
+    { "shader": "polar_preht.spv", "fixture": "fixtures/polar_qjl.json", "result": "PASS", "maxDiff": 4.292e-06 }
+  ],
+  "caveats": [
+    "Numeric correctness only — the SPIR-V binaries are well-formed and the shaders execute correctly under a Vulkan 1.3 loader on Android x86_64. The fixtures pass.",
+    "NOT recordable runtime-ready evidence. SwiftShader is a software rasterizer; per kernel-contract.json fail-closed hosts rule (and the vulkan_dispatch_smoke / vulkan-native-smoke / android-vulkan-smoke device-class screens), software ICDs are diagnostic-only.",
+    "PLATFORM_MATRIX.md's android-x86_64-vulkan row stays authored-pending-hardware for graph dispatch; that needs real ChromeOS x86_64 GPU silicon (Adreno/Mali under ARCVM) or a passed-through host GPU via crosvm gfxstream + a real-GPU host."
+  ]
+}

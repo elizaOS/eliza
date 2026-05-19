@@ -1,0 +1,365 @@
+{
+  "uuid": "bbbb1111-aaaa-4000-8000-0000000200f8",
+  "lastMigration": 33,
+  "name": "lifeops-anthropic-mock",
+  "endpointPrefix": "",
+  "latency": 0,
+  "port": 18814,
+  "hostname": "0.0.0.0",
+  "folders": [],
+  "routes": [
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ee",
+      "type": "http",
+      "documentation": "POST v1/messages (failure-injection only)",
+      "method": "post",
+      "endpoint": "v1/messages",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200ef",
+          "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"overloaded_error\",\n    \"message\": \"Mockoon anthropic env is failure-injection only — point the SDK at cerebras for happy-path completions.\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 503,
+          "label": "default (failure-only env)",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f0",
+          "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"rate_limit_error\",\n    \"message\": \"Number of request tokens has exceeded your per-minute rate limit\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f1",
+          "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"authentication_error\",\n    \"message\": \"invalid x-api-key\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f2",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    },
+    {
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f3",
+      "type": "http",
+      "documentation": "POST v1/messages/count_tokens (failure-injection only)",
+      "method": "post",
+      "endpoint": "v1/messages/count_tokens",
+      "responses": [
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f4",
+          "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"overloaded_error\",\n    \"message\": \"Mockoon anthropic env is failure-injection only — point the SDK at cerebras for happy-path completions.\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 503,
+          "label": "default (failure-only env)",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": true,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f5",
+          "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"rate_limit_error\",\n    \"message\": \"Number of request tokens has exceeded your per-minute rate limit\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 429,
+          "label": "rate_limit",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "key": "Retry-After",
+              "value": "1"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "rate_limit",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f6",
+          "body": "{\n  \"type\": \"error\",\n  \"error\": {\n    \"type\": \"authentication_error\",\n    \"message\": \"invalid x-api-key\"\n  }\n}",
+          "latency": 0,
+          "statusCode": 401,
+          "label": "auth_expired",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "auth_expired",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        },
+        {
+          "uuid": "bbbb1111-aaaa-4000-8000-0000000200f7",
+          "body": "{\n  \"error\": \"internal_server_error\"\n}",
+          "latency": 0,
+          "statusCode": 500,
+          "label": "server_error",
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json"
+            }
+          ],
+          "bodyType": "INLINE",
+          "filePath": "",
+          "databucketID": "",
+          "sendFileAsBody": false,
+          "rules": [
+            {
+              "target": "header",
+              "modifier": "X-Mockoon-Fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            },
+            {
+              "target": "query",
+              "modifier": "_fault",
+              "value": "server_error",
+              "invert": false,
+              "operator": "equals"
+            }
+          ],
+          "rulesOperator": "OR",
+          "disableTemplating": false,
+          "fallbackTo404": false,
+          "default": false,
+          "crudKey": "id",
+          "callbacks": []
+        }
+      ],
+      "responseMode": null
+    }
+  ],
+  "rootChildren": [
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200ee"
+    },
+    {
+      "type": "route",
+      "uuid": "bbbb1111-aaaa-4000-8000-0000000200f3"
+    }
+  ],
+  "proxyMode": false,
+  "proxyHost": "",
+  "proxyRemovePrefix": false,
+  "tlsOptions": {
+    "enabled": false,
+    "type": "CERT",
+    "pfxPath": "",
+    "certPath": "",
+    "keyPath": "",
+    "caPath": "",
+    "passphrase": ""
+  },
+  "cors": true,
+  "headers": [
+    {
+      "key": "Content-Type",
+      "value": "application/json"
+    }
+  ],
+  "proxyReqHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "proxyResHeaders": [
+    {
+      "key": "",
+      "value": ""
+    }
+  ],
+  "data": [],
+  "callbacks": []
+}

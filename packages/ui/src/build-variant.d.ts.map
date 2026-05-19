@@ -1,0 +1,1 @@
+{"version":3,"file":"build-variant.d.ts","sourceRoot":"","sources":["build-variant.ts"],"names":[],"mappings":"AAAA;;;;;;;;GAQG;AAIH,eAAO,MAAM,cAAc,8BAA+B,CAAC;AAC3D,MAAM,MAAM,YAAY,GAAG,CAAC,OAAO,cAAc,CAAC,CAAC,MAAM,CAAC,CAAC;AAE3D,eAAO,MAAM,qBAAqB,EAAE,YAAuB,CAAC;AAS5D,wBAAgB,eAAe,IAAI,YAAY,CAK9C;AAED,wBAAgB,YAAY,IAAI,OAAO,CAEtC;AAED,wBAAgB,aAAa,IAAI,OAAO,CAEvC"}

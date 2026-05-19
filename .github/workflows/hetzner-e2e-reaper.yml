@@ -19,7 +19,7 @@ jobs:
   reap:
     name: Sweep stale CI servers
     runs-on: ubuntu-latest
-    environment: agent-containers
+    environment: ci-hetzner-e2e
     timeout-minutes: 10
     env:
       HCLOUD_TOKEN_CI: ${{ secrets.HCLOUD_TOKEN_CI }}

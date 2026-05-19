@@ -1,0 +1,44 @@
+upstream:       https://github.com/jonirajala/kokoro_training
+commit:         f7815b9ebfe41e6d084e73c386e4dbd8042ae6e3
+commit_date:    2025-11-15 09:22:29 +0200
+vendored_at:    2026-05-14
+vendored_by:    milady/eliza N1-kokoro-vendor agent (Voice Wave 2)
+license:        no LICENSE file declared in upstream repo as of vendoring SHA
+                see LICENSE.upstream for details and the conservative interpretation
+                we apply to this vendor copy
+
+scope:          Python-only training pipeline. No vendored C/C++. No GGUF I/O.
+                No quantization. No overlap with the elizaOS/llama.cpp fork at
+                ../llama.cpp/ or the omnivoice.cpp/ fork at ../omnivoice.cpp/.
+
+components vendored:
+  - kokoro/         ~22M-120M param encoder-decoder transformer (Kokoro-inspired,
+                    architecturally independent from hexgrad/Kokoro-82M).
+  - training/       English trainer, config, checkpoint manager, adaptive memory
+                    manager, MPS grad scaler, interbatch profiler.
+  - data/           LJSpeech dataset adapter, English phoneme processor (g2p_en
+                    + ARPA phonemes + MFA TextGrid alignment).
+  - audio/          AudioUtils, HiFiGAN vocoder wrapper, vocoder manager.
+  - training_english.py  CLI entry point for full fine-tune.
+  - inference_english.py CLI entry point for synthesis.
+  - setup_ljspeech.py    LJSpeech corpus + MFA alignment bootstrapper.
+  - test_*.py       Smoke tests for the upstream code path.
+
+components stripped:
+  - .git/                 (git history removed; vendor is in-tree-only).
+  - overfit_test_output/  (committed test artifacts; regenerated on demand).
+
+local additions on top of upstream:
+  - VENDORED_FROM       this file.
+  - LICENSE.upstream    license interpretation + caveats.
+  - AGENTS.md           contract for downstream agents working in this dir.
+  - milady_adapter/     thin layer that bridges this trainer to the
+                        elizaOS-style finetune entry point at
+                        packages/training/scripts/kokoro/finetune_kokoro.py
+                        (--mode=full-finetune). The adapter does the
+                        elizaOS-conventions (APOLLO optimizer, our config
+                        schema, our trajectory-aware checkpoint cadence) and
+                        delegates the inner training loop to the vendored
+                        EnglishTrainer.
+
+upstream README:        see README.md (preserved verbatim).

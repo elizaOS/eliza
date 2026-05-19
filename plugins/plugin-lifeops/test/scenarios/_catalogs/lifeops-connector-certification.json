@@ -1,0 +1,500 @@
+{
+  "catalogId": "lifeops-connector-certification",
+  "title": "LifeOps connector certification scenario catalog",
+  "connectors": [
+    {
+      "connector": "gmail",
+      "providers": ["Gmail API"],
+      "requiredAxes": ["core", "missing-scope"]
+    },
+    {
+      "connector": "google-calendar",
+      "providers": ["Google Calendar API"],
+      "requiredAxes": ["core", "rate-limited"]
+    },
+    {
+      "connector": "calendly",
+      "providers": ["Calendly API"],
+      "requiredAxes": ["core", "disconnected"]
+    },
+    {
+      "connector": "discord",
+      "providers": ["Discord bridge"],
+      "requiredAxes": ["core", "disconnected"]
+    },
+    {
+      "connector": "telegram",
+      "providers": ["Telegram bridge"],
+      "requiredAxes": ["core", "auth-expired"]
+    },
+    {
+      "connector": "x-dm",
+      "providers": ["X bridge"],
+      "requiredAxes": ["core", "disconnected"]
+    },
+    {
+      "connector": "signal",
+      "providers": ["Signal bridge"],
+      "requiredAxes": ["core", "session-revoked"]
+    },
+    {
+      "connector": "whatsapp",
+      "providers": ["WhatsApp bridge"],
+      "requiredAxes": ["core", "delivery-degraded"]
+    },
+    {
+      "connector": "imessage",
+      "providers": ["iMessage connector plugin"],
+      "requiredAxes": ["core", "plugin-unavailable"]
+    },
+    {
+      "connector": "twilio-sms",
+      "providers": ["Twilio"],
+      "requiredAxes": ["core", "retry-idempotent"]
+    },
+    {
+      "connector": "twilio-voice",
+      "providers": ["Twilio"],
+      "requiredAxes": ["core", "retry-idempotent"]
+    },
+    {
+      "connector": "google-drive-docs-sheets",
+      "providers": ["Google Drive API", "Google Docs API", "Google Sheets API"],
+      "requiredAxes": ["core", "missing-scope"]
+    },
+    {
+      "connector": "travel-booking",
+      "providers": ["Travel adapter"],
+      "requiredAxes": ["core", "hold-expired"]
+    },
+    {
+      "connector": "notifications",
+      "providers": ["Desktop notification bridge", "Mobile companion"],
+      "requiredAxes": ["core", "transport-offline"]
+    },
+    {
+      "connector": "browser-portal",
+      "providers": ["Browser bridge"],
+      "requiredAxes": ["core", "blocked-resume"]
+    }
+  ],
+  "scenarios": [
+    {
+      "id": "connector.gmail.certify-core",
+      "connector": "gmail",
+      "axis": "core",
+      "providers": ["Gmail API"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["read", "draft", "send-after-approval", "degraded-auth"],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "approvalRequestExists",
+        "messageDelivered"
+      ]
+    },
+    {
+      "id": "connector.gmail.certify-missing-scope",
+      "connector": "gmail",
+      "axis": "missing-scope",
+      "degraded": true,
+      "providers": ["Gmail API"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["missing-send-scope", "draft-hold", "reauth-required"],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": ["interventionRequestExists", "draftExists"]
+    },
+    {
+      "id": "connector.google-calendar.certify-core",
+      "connector": "google-calendar",
+      "axis": "core",
+      "providers": ["Google Calendar API"],
+      "actions": ["CALENDAR", "CALENDAR", "CALENDAR"],
+      "capabilities": [
+        "availability",
+        "create",
+        "reschedule",
+        "cancel",
+        "conflict-repair"
+      ],
+      "requiredFinalCheckTypes": [
+        "selectedActionArguments",
+        "memoryWriteOccurred"
+      ]
+    },
+    {
+      "id": "connector.google-calendar.certify-rate-limited",
+      "connector": "google-calendar",
+      "axis": "rate-limited",
+      "degraded": true,
+      "providers": ["Google Calendar API"],
+      "actions": ["CALENDAR", "CALENDAR", "CALENDAR"],
+      "capabilities": [
+        "availability",
+        "retry-safe-write",
+        "rate-limit-surfacing"
+      ],
+      "requiredSeedTypes": ["transportFault"],
+      "requiredFinalCheckTypes": ["clarificationRequested"]
+    },
+    {
+      "id": "connector.calendly.certify-core",
+      "connector": "calendly",
+      "axis": "core",
+      "providers": ["Calendly API"],
+      "actions": ["CALENDAR", "CALENDAR"],
+      "capabilities": [
+        "availability-handoff",
+        "booking-reconciliation",
+        "single-use-link"
+      ],
+      "requiredFinalCheckTypes": ["selectedActionArguments"]
+    },
+    {
+      "id": "connector.calendly.certify-disconnected",
+      "connector": "calendly",
+      "axis": "disconnected",
+      "degraded": true,
+      "providers": ["Calendly API"],
+      "actions": ["CALENDAR", "CALENDAR"],
+      "capabilities": ["disconnect-surfacing", "reconnect-request"],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": ["clarificationRequested"]
+    },
+    {
+      "id": "connector.discord.certify-core",
+      "connector": "discord",
+      "axis": "core",
+      "providers": ["Discord bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": [
+        "inbound-fetch",
+        "reply-draft",
+        "send",
+        "thread-context",
+        "deep-link"
+      ],
+      "requiredFinalCheckTypes": ["draftExists", "messageDelivered"]
+    },
+    {
+      "id": "connector.discord.certify-disconnected",
+      "connector": "discord",
+      "axis": "disconnected",
+      "degraded": true,
+      "providers": ["Discord bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["disconnect-surfacing", "reconnect-request"],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": ["clarificationRequested"]
+    },
+    {
+      "id": "connector.telegram.certify-core",
+      "connector": "telegram",
+      "axis": "core",
+      "providers": ["Telegram bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": [
+        "inbound-fetch",
+        "reply-draft",
+        "send",
+        "thread-context",
+        "deep-link"
+      ],
+      "requiredFinalCheckTypes": ["draftExists", "messageDelivered"]
+    },
+    {
+      "id": "connector.telegram.certify-auth-expired",
+      "connector": "telegram",
+      "axis": "auth-expired",
+      "degraded": true,
+      "providers": ["Telegram bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["auth-expiry-surfacing", "reauth-request"],
+      "requiredSeedTypes": ["connectorAuthSession"],
+      "requiredFinalCheckTypes": ["interventionRequestExists"]
+    },
+    {
+      "id": "connector.x-dm.certify-core",
+      "connector": "x-dm",
+      "axis": "core",
+      "providers": ["X bridge"],
+      "actions": ["X", "MESSAGE"],
+      "capabilities": [
+        "inbound-fetch",
+        "reply-draft",
+        "send",
+        "thread-context"
+      ],
+      "requiredFinalCheckTypes": ["draftExists"]
+    },
+    {
+      "id": "connector.x-dm.certify-disconnected",
+      "connector": "x-dm",
+      "axis": "disconnected",
+      "degraded": true,
+      "providers": ["X bridge"],
+      "actions": ["X", "MESSAGE"],
+      "capabilities": ["disconnect-surfacing", "reconnect-request"],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": ["clarificationRequested"]
+    },
+    {
+      "id": "connector.signal.certify-core",
+      "connector": "signal",
+      "axis": "core",
+      "providers": ["Signal bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": [
+        "inbound-fetch",
+        "reply-draft",
+        "send",
+        "delivery",
+        "degraded-behavior"
+      ],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "messageDelivered",
+        "interventionRequestExists"
+      ]
+    },
+    {
+      "id": "connector.signal.certify-session-revoked",
+      "connector": "signal",
+      "axis": "session-revoked",
+      "degraded": true,
+      "providers": ["Signal bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["revoked-session-surfacing", "relink-request"],
+      "requiredSeedTypes": ["connectorAuthSession"],
+      "requiredFinalCheckTypes": ["interventionRequestExists"]
+    },
+    {
+      "id": "connector.whatsapp.certify-core",
+      "connector": "whatsapp",
+      "axis": "core",
+      "providers": ["WhatsApp bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": [
+        "inbound-fetch",
+        "reply-draft",
+        "send",
+        "delivery",
+        "degraded-behavior"
+      ],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "messageDelivered",
+        "interventionRequestExists"
+      ]
+    },
+    {
+      "id": "connector.whatsapp.certify-delivery-degraded",
+      "connector": "whatsapp",
+      "axis": "delivery-degraded",
+      "degraded": true,
+      "providers": ["WhatsApp bridge"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["delivery-surfacing", "failed-send-followup"],
+      "requiredSeedTypes": ["transportFault"],
+      "requiredFinalCheckTypes": [
+        "connectorDispatchOccurred",
+        "interventionRequestExists"
+      ]
+    },
+    {
+      "id": "connector.imessage.certify-core",
+      "connector": "imessage",
+      "axis": "core",
+      "providers": ["iMessage connector plugin"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["bridge-health", "send", "delivery-state", "reconnect"],
+      "requiredFinalCheckTypes": [
+        "draftExists",
+        "messageDelivered",
+        "interventionRequestExists"
+      ]
+    },
+    {
+      "id": "connector.imessage.certify-plugin-unavailable",
+      "connector": "imessage",
+      "axis": "plugin-unavailable",
+      "degraded": true,
+      "providers": ["iMessage connector plugin"],
+      "actions": ["MESSAGE", "MESSAGE"],
+      "capabilities": ["plugin-health-surfacing", "repair-request"],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": ["interventionRequestExists"]
+    },
+    {
+      "id": "connector.twilio-sms.certify-core",
+      "connector": "twilio-sms",
+      "axis": "core",
+      "providers": ["Twilio"],
+      "actions": ["MESSAGE"],
+      "capabilities": [
+        "send-after-approval",
+        "delivery-state",
+        "retry",
+        "idempotency"
+      ],
+      "requiredFinalCheckTypes": ["approvalRequestExists", "messageDelivered"]
+    },
+    {
+      "id": "connector.twilio-sms.certify-retry-idempotent",
+      "connector": "twilio-sms",
+      "axis": "retry-idempotent",
+      "degraded": true,
+      "providers": ["Twilio"],
+      "actions": ["MESSAGE"],
+      "capabilities": ["retry-safe-send", "idempotent-resend"],
+      "requiredSeedTypes": ["transportFault"],
+      "requiredFinalCheckTypes": [
+        "connectorDispatchOccurred",
+        "messageDelivered"
+      ]
+    },
+    {
+      "id": "connector.twilio-voice.certify-core",
+      "connector": "twilio-voice",
+      "axis": "core",
+      "providers": ["Twilio"],
+      "actions": ["VOICE_CALL", "VOICE_CALL"],
+      "capabilities": [
+        "call-after-approval",
+        "outcome-state",
+        "escalation-ladder"
+      ],
+      "requiredFinalCheckTypes": ["approvalRequestExists", "pushSent"]
+    },
+    {
+      "id": "connector.twilio-voice.certify-retry-idempotent",
+      "connector": "twilio-voice",
+      "axis": "retry-idempotent",
+      "degraded": true,
+      "providers": ["Twilio"],
+      "actions": ["VOICE_CALL"],
+      "capabilities": ["retry-safe-call", "idempotent-redial"],
+      "requiredSeedTypes": ["transportFault"],
+      "requiredFinalCheckTypes": [
+        "approvalRequestExists",
+        "connectorDispatchOccurred"
+      ]
+    },
+    {
+      "id": "connector.google-drive-docs-sheets.certify-core",
+      "connector": "google-drive-docs-sheets",
+      "axis": "core",
+      "providers": ["Google Drive API", "Google Docs API", "Google Sheets API"],
+      "actions": ["COMPUTER_USE"],
+      "capabilities": [
+        "file-fetch",
+        "upload",
+        "share",
+        "provenance",
+        "degraded-auth"
+      ],
+      "requiredFinalCheckTypes": [
+        "browserTaskCompleted",
+        "uploadedAssetExists",
+        "interventionRequestExists"
+      ]
+    },
+    {
+      "id": "connector.google-drive-docs-sheets.certify-missing-scope",
+      "connector": "google-drive-docs-sheets",
+      "axis": "missing-scope",
+      "degraded": true,
+      "providers": ["Google Drive API", "Google Docs API", "Google Sheets API"],
+      "actions": ["COMPUTER_USE"],
+      "capabilities": [
+        "missing-write-scope",
+        "reauth-request",
+        "upload-blocked"
+      ],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": ["interventionRequestExists"]
+    },
+    {
+      "id": "connector.travel-booking.certify-core",
+      "connector": "travel-booking",
+      "axis": "core",
+      "providers": ["Travel adapter"],
+      "actions": ["CALENDAR", "MESSAGE", "VOICE_CALL"],
+      "capabilities": [
+        "search",
+        "hold",
+        "book",
+        "sync-itinerary",
+        "rebook-on-conflict"
+      ],
+      "requiredFinalCheckTypes": ["approvalRequestExists", "messageDelivered"]
+    },
+    {
+      "id": "connector.travel-booking.certify-hold-expired",
+      "connector": "travel-booking",
+      "axis": "hold-expired",
+      "degraded": true,
+      "providers": ["Travel adapter"],
+      "actions": ["CALENDAR", "MESSAGE", "VOICE_CALL"],
+      "capabilities": ["expired-hold-repair", "reprice", "reapproval"],
+      "requiredSeedTypes": ["transportFault"],
+      "requiredFinalCheckTypes": [
+        "approvalRequestExists",
+        "connectorDispatchOccurred"
+      ]
+    },
+    {
+      "id": "connector.notifications.certify-core",
+      "connector": "notifications",
+      "axis": "core",
+      "providers": ["Desktop notification bridge", "Mobile companion"],
+      "actions": ["DEVICE_INTENT", "DEVICE_INTENT"],
+      "capabilities": ["dispatch", "ack-sync", "suppression-after-ack"],
+      "requiredFinalCheckTypes": [
+        "pushSent",
+        "pushEscalationOrder",
+        "pushAcknowledgedSync"
+      ]
+    },
+    {
+      "id": "connector.notifications.certify-transport-offline",
+      "connector": "notifications",
+      "axis": "transport-offline",
+      "degraded": true,
+      "providers": ["Desktop notification bridge", "Mobile companion"],
+      "actions": ["DEVICE_INTENT", "DEVICE_INTENT"],
+      "capabilities": ["push-failure-surfacing", "fallback-request"],
+      "requiredSeedTypes": ["transportFault"],
+      "requiredFinalCheckTypes": [
+        "clarificationRequested",
+        "interventionRequestExists"
+      ]
+    },
+    {
+      "id": "connector.browser-portal.certify-core",
+      "connector": "browser-portal",
+      "axis": "core",
+      "providers": ["Browser bridge"],
+      "actions": ["COMPUTER_USE", "AUTOFILL"],
+      "capabilities": [
+        "upload",
+        "blocked-state-intervention",
+        "credential-scoped-resume"
+      ],
+      "requiredFinalCheckTypes": ["browserTaskCompleted", "uploadedAssetExists"]
+    },
+    {
+      "id": "connector.browser-portal.certify-blocked-resume",
+      "connector": "browser-portal",
+      "axis": "blocked-resume",
+      "degraded": true,
+      "providers": ["Browser bridge"],
+      "actions": ["COMPUTER_USE", "AUTOFILL"],
+      "capabilities": ["needs-human", "resume-after-intervention"],
+      "requiredSeedTypes": ["connectorStatus"],
+      "requiredFinalCheckTypes": [
+        "browserTaskNeedsHuman",
+        "interventionRequestExists"
+      ]
+    }
+  ]
+}

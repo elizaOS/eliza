@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "skipLibCheck": true,
+    "moduleResolution": "bundler",
+    "target": "ES2022",
+    "module": "ESNext",
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": [],
+  "exclude": ["node_modules", "metal", "vulkan", "reference", "verify"]
+}

@@ -1,0 +1,95 @@
+{
+  "id": "reminder-lifecycle-snooze",
+  "title": "Compressed reminder lifecycle with snooze",
+  "domain": "lifeops",
+  "requiresIsolation": true,
+  "rooms": [
+    {
+      "id": "discord",
+      "source": "discord",
+      "title": "LifeOps Reminder Snooze Discord"
+    }
+  ],
+  "turns": [
+    {
+      "name": "seed call dentist",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/definitions",
+        "body": {
+          "kind": "task",
+          "title": "Call dentist",
+          "timezone": "UTC",
+          "priority": 1,
+          "cadence": {
+            "kind": "once",
+            "dueAt": "{{now+10m}}",
+            "visibilityLeadMinutes": 240,
+            "visibilityLagMinutes": 720
+          },
+          "reminderPlan": {
+            "steps": [
+              {
+                "channel": "in_app",
+                "offsetMinutes": 0,
+                "label": "In-app reminder"
+              }
+            ]
+          }
+        }
+      },
+      "apiStatus": 201
+    },
+    {
+      "name": "process first reminder",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/reminders/process",
+        "body": {
+          "now": "{{now+10m}}",
+          "limit": 10
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["delivered", "in_app"]
+    },
+    {
+      "name": "snooze reminder through chat",
+      "room": "discord",
+      "text": "snooze call dentist for 30 minutes",
+      "plannerIncludesAll": ["<name>life</name>", "snooze"],
+      "responseIncludesAny": ["30", "snooze", "later"]
+    },
+    {
+      "name": "api overview after snooze",
+      "apiRequest": {
+        "method": "GET",
+        "path": "/api/lifeops/overview"
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["Call dentist", "snoozed"]
+    },
+    {
+      "name": "process reminders before snooze expires",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/reminders/process",
+        "body": {
+          "now": "{{now+20m}}",
+          "limit": 10
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["\"attempts\":[]"]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Call dentist",
+      "delta": 1,
+      "cadenceKind": "once",
+      "requireReminderPlan": true
+    }
+  ]
+}

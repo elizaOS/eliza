@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json.schemastore.org/i18next.json",
+  "description": "Voice onboarding + voice settings copy used by R10 (I10-app-ux). Mirrors the canonical English copy in R10 §3.2 / §5 / §8. Translate by adding sibling json files (zh-CN, tl, ko, pt, vi, es, ja, de). English-only entries are acceptable for this wave; mark TODO(i18n) when adding new locales.",
+  "voice": {
+    "onboarding": {
+      "welcome": {
+        "name": "Welcome",
+        "subtitle": "Grant mic access and meet your agent.",
+        "intro": "You'll talk to your agent, and your agent will talk back. We'll take a minute to set that up.",
+        "grantMic": "Grant microphone access",
+        "micGranted": "Microphone access granted.",
+        "micDenied": "Microphone access was denied. You can grant it later in system settings."
+      },
+      "tier": {
+        "name": "Device check",
+        "subtitle": "How your hardware will run voice."
+      },
+      "models": {
+        "name": "Models",
+        "subtitle": "Download voice models.",
+        "background": "Continue in background — the model panel in Settings shows progress."
+      },
+      "agentSpeaks": {
+        "name": "Listen",
+        "subtitle": "Hear the agent introduce itself.",
+        "script": "Hi — I'm Eliza. I'll listen when you talk and reply out loud. To recognise your voice across conversations I need to learn how you sound. Ready?",
+        "play": "Play greeting",
+        "replay": "Replay greeting"
+      },
+      "userSpeaks": {
+        "name": "Speak",
+        "subtitle": "Record three short prompts.",
+        "loading": "Preparing capture session…",
+        "record": "Record",
+        "stopAndSave": "Stop & save",
+        "skipPrompt": "Skip this one",
+        "capturedAll": "Captured {{count}} of {{total}} samples. Tap Continue to confirm."
+      },
+      "ownerConfirm": {
+        "name": "Owner",
+        "subtitle": "Confirm you are the owner.",
+        "title": "You are the OWNER. The agent will only execute privileged actions for you.",
+        "displayName": "Display name",
+        "save": "Confirm OWNER",
+        "saving": "Saving…",
+        "saved": "Saved"
+      },
+      "family": {
+        "name": "Family",
+        "subtitle": "Add other people the agent might hear (optional).",
+        "description": "Optional: introduce other people the agent might hear. You can add more anytime in Settings → Voice → Profiles.",
+        "addAnother": "Add another voice",
+        "empty": "No additional people captured yet."
+      }
+    },
+    "section": {
+      "title": "Voice",
+      "tooltip": "Continuous chat, wake word, profiles, and privacy.",
+      "continuous": {
+        "title": "Continuous chat",
+        "description": "When on, the mic stays open and the agent decides when you finished speaking.",
+        "modes": {
+          "off": "Off",
+          "vadGated": "VAD",
+          "alwaysOn": "Live",
+          "offDescription": "Push-to-talk only. Hold the mic to record.",
+          "vadGatedDescription": "Mic opens automatically when you start speaking and closes on silence.",
+          "alwaysOnDescription": "Mic stays on. The agent decides when you finished speaking and replies."
+        }
+      },
+      "wake": {
+        "title": "Wake word",
+        "description": "Listen for a phrase like 'Hey Eliza' before opening the mic.",
+        "on": "On",
+        "off": "Off"
+      },
+      "strategy": {
+        "title": "Local vs Cloud",
+        "description": "Where speech recognition and synthesis run.",
+        "auto": "Auto (recommended)",
+        "forceLocal": "Force local",
+        "forceCloud": "Force cloud"
+      },
+      "models": {
+        "title": "Models",
+        "empty": "Voice models will appear here once they're available. Voice updates appear automatically on Wi-Fi; on cellular we'll ask first."
+      },
+      "privacy": {
+        "title": "Privacy",
+        "cloudCache": "Cloud first-line cache",
+        "cloudCacheDescription": "Lets Eliza Cloud cache the agent's short opener phrases for faster replies. Disabled by default.",
+        "autoLearn": "Auto-learn new voices",
+        "autoLearnDescription": "When the agent hears an unfamiliar voice, build a profile for them automatically."
+      }
+    },
+    "profiles": {
+      "title": "Voice profiles",
+      "export": "Export",
+      "reset": "Reset",
+      "loading": "Loading profiles…",
+      "empty": "No voice profiles yet. They'll appear here automatically when the agent hears a distinct voice (or you can add one in onboarding).",
+      "samples": "{{count}} sample",
+      "samplesPlural": "{{count}} samples",
+      "ownerCannotDelete": "Owner profile cannot be deleted from this panel.",
+      "noRelationship": "(no label)",
+      "relationships": {
+        "wife": "wife",
+        "husband": "husband",
+        "partner": "partner",
+        "child": "child",
+        "mother": "mother",
+        "father": "father",
+        "sibling": "sibling",
+        "friend": "friend",
+        "colleague": "colleague",
+        "roommate": "roommate"
+      }
+    },
+    "owner": {
+      "tooltip": "OWNER — full control",
+      "label": "Owner"
+    },
+    "chatStatusBar": {
+      "idle": "Idle",
+      "listening": "Listening",
+      "thinking": "Thinking",
+      "speaking": "Speaking",
+      "interrupting": "Interrupting"
+    }
+  }
+}

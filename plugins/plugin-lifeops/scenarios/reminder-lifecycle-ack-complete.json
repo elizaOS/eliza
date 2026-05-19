@@ -1,0 +1,141 @@
+{
+  "id": "reminder-lifecycle-ack-complete",
+  "title": "Compressed reminder lifecycle with ack and completion",
+  "domain": "lifeops",
+  "requiresIsolation": true,
+  "rooms": [
+    {
+      "id": "discord",
+      "source": "discord",
+      "title": "LifeOps Reminder Lifecycle Discord"
+    },
+    {
+      "id": "telegram",
+      "source": "telegram",
+      "title": "LifeOps Reminder Lifecycle Telegram"
+    }
+  ],
+  "turns": [
+    {
+      "name": "seed lifecycle call dentist",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/definitions",
+        "body": {
+          "kind": "task",
+          "title": "Call dentist",
+          "timezone": "UTC",
+          "priority": 1,
+          "cadence": {
+            "kind": "once",
+            "dueAt": "{{now+10m}}",
+            "visibilityLeadMinutes": 240,
+            "visibilityLagMinutes": 720
+          },
+          "reminderPlan": {
+            "steps": [
+              {
+                "channel": "in_app",
+                "offsetMinutes": 0,
+                "label": "In-app reminder"
+              }
+            ]
+          }
+        }
+      },
+      "apiStatus": 201
+    },
+    {
+      "name": "process first reminder",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/reminders/process",
+        "body": {
+          "now": "{{now+10m}}",
+          "limit": 10
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["delivered", "in_app"]
+    },
+    {
+      "name": "acknowledge delivered reminder",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/reminders/acknowledge",
+        "body": {
+          "ownerType": "occurrence",
+          "ownerId": "{{occurrenceId:Call dentist}}",
+          "acknowledgedAt": "{{now+11m}}",
+          "note": "seen already"
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["ok"]
+    },
+    {
+      "name": "process follow-up reminder after acknowledgement",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/reminders/process",
+        "body": {
+          "now": "{{now+41m}}",
+          "limit": 10
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["\"attempts\":[]"]
+    },
+    {
+      "name": "inspect reminder lifecycle",
+      "apiRequest": {
+        "method": "GET",
+        "path": "/api/lifeops/reminders/inspection?ownerType=occurrence&ownerId={{occurrenceId:Call dentist}}"
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["delivered", "reminder_delivered"],
+      "apiResponseExcludes": ["blocked_acknowledged"]
+    },
+    {
+      "name": "overview before completion",
+      "room": "discord",
+      "text": "what life ops tasks are still left for today?",
+      "plannerIncludesAll": ["<name>life</name>", "overview"],
+      "responseIncludesAny": ["call dentist", "call the dentist"]
+    },
+    {
+      "name": "complete call dentist after acknowledgement",
+      "apiRequest": {
+        "method": "POST",
+        "path": "/api/lifeops/occurrences/{{occurrenceId:Call dentist}}/complete",
+        "body": {
+          "note": "done after the reminder fired"
+        }
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": ["completed"]
+    },
+    {
+      "name": "definition performance after completion",
+      "apiRequest": {
+        "method": "GET",
+        "path": "/api/lifeops/definitions/{{definitionId:Call dentist}}"
+      },
+      "apiStatus": 200,
+      "apiResponseIncludesAll": [
+        "totalCompletedCount",
+        "1",
+        "currentOccurrenceStreak"
+      ]
+    }
+  ],
+  "finalChecks": [
+    {
+      "type": "definitionCountDelta",
+      "title": "Call dentist",
+      "delta": 1,
+      "cadenceKind": "once",
+      "requireReminderPlan": true
+    }
+  ]
+}

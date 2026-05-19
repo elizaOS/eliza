@@ -1,0 +1,34 @@
+{
+  "name": "@elizaos/voice-bench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Voice-loop benchmark harness for the Eliza-1 pipeline. Drives the voice pipeline with synthetic audio and measures TTFA, barge-in response, and rollback waste. Per AGENTS.md evidence-or-it-didn't-happen rule, every voice-pipeline optimization PR ships this harness's JSON output as proof.",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./types": "./src/types.ts",
+    "./metrics": "./src/metrics.ts",
+    "./audio-source": "./src/audio-source.ts",
+    "./scenarios": "./src/scenarios.ts",
+    "./fixtures": "./src/fixtures.ts",
+    "./runner": "./src/runner.ts",
+    "./gates": "./src/gates.ts"
+  },
+  "bin": {
+    "voice-bench": "./bin/voice-bench"
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit",
+    "bench": "bun run bin/voice-bench",
+    "generate-fixtures": "bun run scripts/generate-fixtures.ts"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/bun": "^1.1.13",
+    "@types/node": "^25.0.3",
+    "typescript": "^6.0.3"
+  }
+}

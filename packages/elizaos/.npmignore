@@ -1,0 +1,60 @@
+# Database and runtime files
+**/.eliza/
+**/.elizadb/
+**/pg_wal/
+**/pg_stat/
+
+# Dependencies
+**/node_modules/
+**/bun.lockb
+**/package-lock.json
+**/yarn.lock
+**/pnpm-lock.yaml
+
+# Build artifacts
+**/dist/
+**/build/
+**/target/
+**/*.tsbuildinfo
+
+# Environment files
+**/.env
+**/.env.*
+!**/.env.example
+
+# IDE and editor
+**/.vscode/
+**/.idea/
+**/*.swp
+**/*.swo
+
+# OS files
+**/.DS_Store
+**/Thumbs.db
+
+# Test coverage
+**/coverage/
+**/.nyc_output/
+
+# Logs
+**/*.log
+**/logs/
+
+# Cache
+**/.cache/
+**/.turbo/
+
+# Large binary files
+**/*.jpg
+**/*.jpeg
+**/*.png
+**/*.gif
+**/*.webp
+**/*.mp4
+**/*.mov
+**/*.avi
+**/*.mp3
+**/*.wav
+
+# Documentation that shouldn't be in package
+**/old/

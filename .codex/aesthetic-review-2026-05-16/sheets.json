@@ -1,0 +1,62 @@
+[
+  {
+    "product": "app",
+    "viewport": "desktop",
+    "file": "contact-sheets/app-desktop.png"
+  },
+  {
+    "product": "app",
+    "viewport": "wide",
+    "file": "contact-sheets/app-wide.png"
+  },
+  {
+    "product": "app",
+    "viewport": "mobile-portrait",
+    "file": "contact-sheets/app-mobile-portrait.png"
+  },
+  {
+    "product": "app",
+    "viewport": "mobile-landscape",
+    "file": "contact-sheets/app-mobile-landscape.png"
+  },
+  {
+    "product": "os",
+    "viewport": "desktop",
+    "file": "contact-sheets/os-desktop.png"
+  },
+  {
+    "product": "os",
+    "viewport": "wide",
+    "file": "contact-sheets/os-wide.png"
+  },
+  {
+    "product": "os",
+    "viewport": "mobile-portrait",
+    "file": "contact-sheets/os-mobile-portrait.png"
+  },
+  {
+    "product": "os",
+    "viewport": "mobile-landscape",
+    "file": "contact-sheets/os-mobile-landscape.png"
+  },
+  {
+    "product": "cloud",
+    "viewport": "desktop",
+    "file": "contact-sheets/cloud-desktop.png"
+  },
+  {
+    "product": "cloud",
+    "viewport": "wide",
+    "file": "contact-sheets/cloud-wide.png"
+  },
+  {
+    "product": "cloud",
+    "viewport": "mobile-portrait",
+    "file": "contact-sheets/cloud-mobile-portrait.png"
+  },
+  {
+    "product": "cloud",
+    "viewport": "mobile-landscape",
+    "file": "contact-sheets/cloud-mobile-landscape.png"
+  }
+]

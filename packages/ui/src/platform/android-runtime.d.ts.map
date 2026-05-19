@@ -1,0 +1,1 @@
+{"version":3,"file":"android-runtime.d.ts","sourceRoot":"","sources":["android-runtime.ts"],"names":[],"mappings":"AAAA;;;;;;;;;;;;;;;;;;;;;GAqBG;AAEH,MAAM,MAAM,kBAAkB,GAAG,OAAO,GAAG,OAAO,CAAC;AAEnD,KAAK,UAAU,GAAG,MAAM,CAAC,MAAM,EAAE,MAAM,GAAG,OAAO,GAAG,SAAS,CAAC,CAAC;AAqB/D,wBAAgB,yBAAyB,CAAC,GAAG,EAAE,UAAU,GAAG,kBAAkB,CAE7E;AAED;;;;GAIG;AACH,wBAAgB,mBAAmB,IAAI,OAAO,CAS7C"}
