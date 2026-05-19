@@ -511,12 +511,6 @@ parts:
         --filter=@elizaos/plugin-wallet-ui \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
-        --filter=@elizaos/capacitor-contacts \
-        --filter=@elizaos/capacitor-phone \
-        --filter=@elizaos/capacitor-wifi \
-        --filter=@elizaos/capacitor-appblocker \
-        --filter=@elizaos/capacitor-mobile-signals \
-        --filter=@elizaos/native-activity-tracker \
         --filter=@elizaos/scenario-schema
       rm -rf node_modules/@types
       rm -rf "$SNAP_BUILD_TYPES_DIR"
