@@ -139,6 +139,34 @@ interface LlamaSymbols {
 	llama_sampler_sample: (smpl: Pointer, ctx: Pointer, idx: number) => number;
 	llama_sampler_accept: (smpl: Pointer, token: number) => void;
 	llama_sampler_free: (smpl: Pointer) => void;
+
+	/**
+	 * Upstream KV cache persistence. Both functions take a context pointer
+	 * + UTF-8 NUL-terminated filepath. `save_file` writes the seq's KV
+	 * state to disk; `load_file` rebuilds it. seq_id is the slot id —
+	 * we use 0 in v1 (single conversation per ctx). Both return bytes
+	 * written/read; 0 indicates failure.
+	 *
+	 * Token arrays are optional context the caller can save alongside the
+	 * KV (so a reload knows what tokens are already prefilled). We pass
+	 * NULL + 0 in v1 — the engine owns prompt token bookkeeping above
+	 * the adapter.
+	 */
+	llama_state_seq_save_file: (
+		ctx: Pointer,
+		filepath: Pointer,
+		seq_id: number,
+		tokens: Pointer,
+		n_token_count: number,
+	) => number;
+	llama_state_seq_load_file: (
+		ctx: Pointer,
+		filepath: Pointer,
+		dest_seq_id: number,
+		tokens_out: Pointer,
+		n_token_capacity: number,
+		n_token_count_out: Pointer,
+	) => number;
 }
 
 // === libeliza-llama-shim symbols (struct-by-value workarounds) =============
@@ -319,6 +347,15 @@ function bindLlama(ffi: BunFFIModule, libPath: string): LlamaSymbols {
 		llama_sampler_sample: { args: [T.ptr, T.ptr, T.i32], returns: T.i32 },
 		llama_sampler_accept: { args: [T.ptr, T.i32], returns: T.void },
 		llama_sampler_free: { args: [T.ptr], returns: T.void },
+
+		llama_state_seq_save_file: {
+			args: [T.ptr, T.ptr, T.i32, T.ptr, T.i32],
+			returns: T.i32,
+		},
+		llama_state_seq_load_file: {
+			args: [T.ptr, T.ptr, T.i32, T.ptr, T.i32, T.ptr],
+			returns: T.i32,
+		},
 	});
 	return handle.symbols;
 }
@@ -592,10 +629,60 @@ export class DesktopLlamaAdapter {
 				this.nextStep(args.stream, args.maxTokensPerStep, args.maxTextBytes),
 			llmStreamCancel: (stream) => this.cancelSession(stream),
 			llmStreamClose: (stream) => this.closeSession(stream),
-			// Slot save/restore deliberately omitted — shim lacks the
-			// `llama_state_seq_save_file`/`_load_file` wrappers today. The
-			// runner already guards both methods via `if (this.ffi.llmStreamSaveSlot === undefined) throw`.
+			llmStreamSaveSlot: (args) => this.saveSlot(args.filename),
+			llmStreamRestoreSlot: (args) => this.restoreSlot(args.filename),
 		};
+	}
+
+	/**
+	 * Persist the current ctx's seq_id=0 KV state to `filename`. v1 uses a
+	 * single seq per ctx — the engine's conversation registry handles
+	 * cross-conversation slot pinning above this layer by creating a fresh
+	 * adapter per active conversation. Multi-seq pooling (one ctx serving
+	 * N concurrent conversations) is tracked under Step E.
+	 */
+	saveSlot(filename: string): void {
+		if (!this.ctxPtr) {
+			throw new Error("[desktop-llama] saveSlot before model load");
+		}
+		const pathBuf = encodeCString(filename);
+		const written = this.llama.llama_state_seq_save_file(
+			this.ctxPtr,
+			this.ffi.ptr(pathBuf),
+			0, // seq_id — v1 uses single seq per ctx
+			this.ffi.ptr(new Int32Array(1)), // tokens — NULL placeholder; engine owns prompt bookkeeping
+			0,
+		);
+		if (written <= 0) {
+			throw new Error(
+				`[desktop-llama] llama_state_seq_save_file returned ${written} for ${filename}`,
+			);
+		}
+	}
+
+	/** Restore the seq_id=0 KV state from `filename` into the current ctx. */
+	restoreSlot(filename: string): void {
+		if (!this.ctxPtr) {
+			throw new Error("[desktop-llama] restoreSlot before model load");
+		}
+		const pathBuf = encodeCString(filename);
+		const countOut = new Int32Array(1);
+		const read = this.llama.llama_state_seq_load_file(
+			this.ctxPtr,
+			this.ffi.ptr(pathBuf),
+			0,
+			this.ffi.ptr(new Int32Array(1)),
+			0,
+			this.ffi.ptr(countOut),
+		);
+		if (read <= 0) {
+			throw new Error(
+				`[desktop-llama] llama_state_seq_load_file returned ${read} for ${filename}`,
+			);
+		}
+		// Mark hasDecoded so future openSession calls clear KV between turns
+		// even though the prefill happened off-line.
+		this.hasDecoded = true;
 	}
 
 	getCtxHandle(): LlmCtxHandle {
