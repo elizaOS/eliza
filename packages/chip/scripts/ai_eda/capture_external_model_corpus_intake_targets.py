@@ -117,6 +117,7 @@ def main() -> int:
             "siliconmind-v1",
             "chipcraftx-rtlgen-7b",
             "chipseek",
+            "circuitmind-tcbench",
             "rtlseek",
             "qimeng-codev-r1",
             "evolve-verilog",
@@ -154,7 +155,7 @@ def main() -> int:
             {
                 "id": "hf-rtl-model-candidate-watch",
                 "status": "CAPTURED_NOT_DOWNLOADED",
-                "target": "future SiliconMind, ChipCraftX, ChipSeek, RTLSeek, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, prompts, outputs, and evaluator logs",
+                "target": "future SiliconMind, ChipCraftX, ChipSeek, CircuitMind/TC-Bench, RTLSeek, CodeV-R1, EvolVE, VeriAgent, VeriForge, CodeV, or similar model tests must pin exact revisions, model-card terms, prompts, outputs, benchmark overlap, and evaluator logs",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
@@ -202,6 +203,7 @@ def main() -> int:
             "no contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts",
             "no DeepCircuitX dataset manifest, source-repository license audit, or PPA-label transfer analysis for E1",
             "no ChipSeek or RTLSeek revision, model-weight manifest, EDA-feedback reward audit, or local benchmark non-overlap report",
+            "no CircuitMind/TC-Bench revision, model/data manifest, RAG trace, benchmark-overlap review, or local gate-level metric replay",
             "no local evaluator allowed to download weights, import datasets, train, fine-tune, run inference, or generate source",
             "no held-out E1 task suite with lint, simulation, synthesis, formal, and reviewer disposition for external models",
             "no technology-matched label corpus proving MetRex, CircuitNet 3.0, or other public labels transfer to E1",

@@ -101,7 +101,7 @@
     "docs/evidence/buildroot/e1-npu-ml-smoke.log": {
       "blocker_code": "missing_buildroot_e1_npu_ml_smoke_log",
       "claim_boundary": "driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark",
-      "producer_command": "/usr/bin/e1-npu-ml-smoke --device /dev/e1-npu",
+      "producer_command": "/usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu",
       "capture_hint": "prepend EXTERNAL_TREE or TARGET, COMMAND, START_UTC, END_UTC, RESULT, then append the target-side e1-npu-ml-smoke transcript from the built Buildroot rootfs",
       "required_metadata": [
         "EXTERNAL_TREE=",

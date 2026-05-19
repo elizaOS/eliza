@@ -282,12 +282,20 @@ class MuJocoBackend(BridgeBackend):
 
         elif cmd.command == "servo.set":
             # Accept both joint_positions (name->rad) and positions ([{id, pos}]).
+            # Step physics long enough for PD control to converge near the
+            # commanded pose — otherwise sys-ID probes and the calibrated
+            # path see "joint barely moves" and recover α ≈ 0.
+            duration_s = float(cmd.payload.get("duration", 0.3))
+            timestep = float(getattr(self._env.model.opt, "timestep", 0.002))
+            n_steps = max(1, min(int(duration_s / timestep), 1000))
+
             jp = cmd.payload.get("joint_positions", {})
             if isinstance(jp, dict) and jp:
                 self._joint_positions.update(jp)
-                self._last_telemetry = self._env.step(joint_targets=jp)
+                self._last_telemetry = self._env.step_n(
+                    n=n_steps, joint_targets=jp,
+                )
             else:
-                # Fallback: decode id/position pairs.
                 positions = cmd.payload.get("positions", [])
                 if isinstance(positions, list) and positions:
                     try:
@@ -304,8 +312,8 @@ class MuJocoBackend(BridgeBackend):
                                 )
                         if targets:
                             self._joint_positions.update(targets)
-                            self._last_telemetry = self._env.step(
-                                joint_targets=targets
+                            self._last_telemetry = self._env.step_n(
+                                n=n_steps, joint_targets=targets,
                             )
                     except ImportError:
                         ok = False

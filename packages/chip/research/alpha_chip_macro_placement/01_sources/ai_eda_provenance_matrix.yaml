@@ -244,6 +244,12 @@ entries:
     license_status: Apache-2.0_reported_review_required
     release_use: blocked_pending_revision_license_label_and_technology_review
     allowed_current_use: metadata_reference_only
+  - source_id: circuitmind-tcbench
+    asset_type: multi_agent_gate_level_generation_code_model_dataset
+    asset_url: https://github.com/BUAA-CLab/CircuitMind
+    license_status: Apache-2.0_reported_review_required
+    release_use: blocked_pending_revision_license_benchmark_overlap_prompt_output_gate_and_review
+    allowed_current_use: metadata_reference_only
   - source_id: openroad-fastroute
     asset_type: global_routing_tool
     asset_url: https://github.com/The-OpenROAD-Project/OpenROAD

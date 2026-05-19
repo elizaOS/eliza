@@ -42,6 +42,15 @@ class MinimumLinuxNpuTargetTest(unittest.TestCase):
             self.assertIn(required, names)
         self.assertEqual(report["benchmark_command"][0], "e1-npu-ml-smoke")
         self.assertIn("/dev/e1-npu", report["benchmark_command"])
+        self.assertIn("--workload", report["benchmark_command"])
+        self.assertIn("gemm_s8_int8_2x2x3", report["benchmark_command"])
+        self.assertIn("--require-npu", report["benchmark_command"])
+        target_smoke = next(
+            gate for gate in report["gates"] if gate["name"] == "target_side_npu_ml_smoke"
+        )
+        capture_commands = target_smoke["report"]["capture_commands"]
+        self.assertIn("--workload gemm_s8_int8_2x2x3", capture_commands["target_smoke"])
+        self.assertIn("--require-npu", capture_commands["target_smoke"])
 
 
 if __name__ == "__main__":

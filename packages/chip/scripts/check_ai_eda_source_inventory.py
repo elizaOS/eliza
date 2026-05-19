@@ -258,6 +258,7 @@ REQUIRED_SOURCES = {
     "verilog-eval",
     "cvdp",
     "chipseek",
+    "circuitmind-tcbench",
     "rtlseek",
     "qimeng-codev-r1",
     "evolve-verilog",

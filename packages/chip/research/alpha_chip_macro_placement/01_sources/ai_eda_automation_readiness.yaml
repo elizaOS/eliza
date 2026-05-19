@@ -106,6 +106,7 @@ stages:
       - siliconmind-v1
       - chipcraftx-rtlgen-7b
       - chipseek
+      - circuitmind-tcbench
       - rtlseek
       - qimeng-codev-r1
       - evolve-verilog
@@ -122,6 +123,7 @@ stages:
     critical_review: >
       HuggingFace and GitHub now contain useful RTL models, Verilog corpora,
       repository-level RTL/PPA datasets, RTL RL/code/model artifacts,
+      multi-agent gate-level generation frameworks and benchmarks,
       metric-reasoning datasets, CircuitNet-style PD corpora, SVA datasets, and
       wafer-defect models. E1 should treat them as metadata-only candidates
       until exact revisions, licenses, file manifests, contamination checks,

@@ -3,6 +3,8 @@
 .claude/
 .mypy_cache/
 .ruff_cache/
+.pytest_cache/
+.hypothesis/
 .openlane-run.lock/
 sim_build/
 results.xml
@@ -17,10 +19,6 @@ verify/formal/e1_dbg_mmio_bridge/
 verify/formal/e1_npu/
 verify/formal/e1_dma/
 verify/formal/e1_soc_top/
-verify/formal/hello_dbg_mmio_bridge/
-verify/formal/hello_npu/
-verify/formal/hello_dma/
-verify/formal/hello_soc_top/
 verify/formal/hello_dbg_mmio_bridge/
 verify/formal/hello_npu/
 verify/formal/hello_dma/

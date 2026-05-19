@@ -986,6 +986,46 @@ entries:
         PPA while missing E1 protocol, reset, MMIO, or integration contracts.
       - Docker/GPU/model dependencies are too heavy for release evidence unless
         fully pinned and replayed locally.
+  - id: circuitmind-tcbench
+    name: CircuitMind / TC-Bench
+    kind: multi_agent_gate_level_generation_framework
+    stage:
+      - rtl_generation
+      - gate_level_generation
+      - multi_agent_eda
+      - rag
+      - benchmark_evaluation
+      - ppa_optimization
+    priority: P1
+    source_url: https://arxiv.org/abs/2504.14625
+    code_url: https://github.com/BUAA-CLab/CircuitMind
+    model_url: https://github.com/BUAA-CLab/CircuitMind
+    dataset_url: https://github.com/BUAA-CLab/CircuitMind
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: reported_model_assets_to_review
+    e1_fit: >
+      Relevant because it combines syntax-locked gate-level generation,
+      retrieval-augmented subcircuit reuse, dual-reward correctness/efficiency
+      feedback, and the TC-Bench benchmark for measuring generated circuit
+      efficiency against human baselines.
+    integration_action: >
+      Track as an external RTL/gate-level generation and benchmark candidate
+      only. Do not run agents, import TC-Bench tasks, reuse models/data, or
+      promote generated circuits until exact revisions, licenses, benchmark
+      overlap, prompt/output manifests, and local gates are reviewed.
+    evidence_gate: >
+      CircuitMind use requires pinned repository revision, dependency and model
+      manifests, TC-Bench file hashes and license review, E1 task non-overlap,
+      generated RTL/netlist quarantine, prompt and RAG retrieval logs,
+      lint/simulation/synthesis/formal evidence, PPA metric replay, and human
+      review before any source or efficiency claim.
+    risk:
+      - TuringComplete-style gate-level tasks may not represent E1
+        microarchitecture, timing, reset, memory-mapped IO, or integration
+        constraints.
+      - RAG and multi-agent feedback loops can silently optimize benchmark gate
+        counts while violating local protocol, naming, or synthesis assumptions.
   - id: rtlseek
     name: RTLSeek
     kind: diversity_oriented_rl_rtl_generation_method

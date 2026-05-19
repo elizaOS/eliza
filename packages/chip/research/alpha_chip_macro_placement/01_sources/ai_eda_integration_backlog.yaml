@@ -481,6 +481,7 @@ work_items:
       - openllm-rtl
       - chipcraftx-rtlgen-7b
       - chipseek
+      - circuitmind-tcbench
       - rtlseek
       - qimeng-codev-r1
       - evolve-verilog
@@ -490,15 +491,17 @@ work_items:
       - verilog-eval
     target_area:
       - rtl_generation
+      - gate_level_generation
       - ppa_optimization
       - reinforcement_learning
+      - multi_agent_eda
       - benchmark
       - rtl_completion
     owner_scope: evaluation harness only; generated RTL does not enter source automatically
     objective: >
-      Evaluate open RTL models, EDA-feedback RL frameworks, and datasets
-      against E1-style small-module tasks with lint, simulation, synthesis, and
-      review checks.
+      Evaluate open RTL models, EDA-feedback RL frameworks, multi-agent
+      gate-level generators, and datasets against E1-style small-module tasks
+      with lint, simulation, synthesis, and review checks.
     deliverables:
       - scripts/ai_eda/evaluate_rtl_model.py
       - research/alpha_chip_macro_placement/05_experiments/e1_rtl_model_eval_plan.md
@@ -514,6 +517,8 @@ work_items:
       - Per-model and per-dataset license review
       - Local inference or API backend decision
       - No ChipSeek/RTLSeek model-weight, reward-definition, or benchmark-overlap review
+      - No CircuitMind/TC-Bench revision, model/data manifest, RAG trace,
+        benchmark-overlap review, or local gate-level metric replay
       - No CodeV-R1/EvolVE/VeriAgent revision, search-trace, evolving-memory,
         or PPA-replay review against held-out E1 tasks
       - Executed lint, simulation, and synthesis logs for generated artifacts

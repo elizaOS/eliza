@@ -118,15 +118,6 @@ command -v python3 >/dev/null 2>&1 \
 command -v sha256sum >/dev/null 2>&1 \
     || die "sha256sum not on PATH"
 
-TIMEOUT_BIN=""
-if command -v timeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="timeout"
-elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="gtimeout"
-else
-    die "neither timeout nor gtimeout on PATH"
-fi
-
 if [ -z "${UBOOT_PATH}" ] && [ -f "${UBOOT_CHIP_DEFAULT}" ]; then
     UBOOT_PATH="${UBOOT_CHIP_DEFAULT}"
 fi
@@ -187,10 +178,49 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '##\n'
 } >> "${TRANSCRIPT_PATH}"
 
+boot_markers_present() {
+    grep -F -q -- "Linux version" "${TRANSCRIPT_PATH}" \
+        && grep -F -q -- "systemd[1]: System Initialized" "${TRANSCRIPT_PATH}" \
+        && { grep -F -q -- "elizaos-ready" "${TRANSCRIPT_PATH}" \
+            || grep -F -q -- "login:" "${TRANSCRIPT_PATH}"; }
+}
+
+forbidden_marker_present() {
+    grep -F -q -- "Kernel panic" "${TRANSCRIPT_PATH}" \
+        || grep -F -q -- "Oops" "${TRANSCRIPT_PATH}" \
+        || grep -F -q -- "BUG" "${TRANSCRIPT_PATH}"
+}
+
 set +e
-"${TIMEOUT_BIN}" --foreground "${TIMEOUT_SECS}s" "${QEMU_CMD[@]}" </dev/null \
-    >> "${TRANSCRIPT_PATH}" 2>&1
-QEMU_RC=$?
+"${QEMU_CMD[@]}" </dev/null >> "${TRANSCRIPT_PATH}" 2>&1 &
+QEMU_PID=$!
+QEMU_RC=124
+while kill -0 "${QEMU_PID}" >/dev/null 2>&1; do
+    if boot_markers_present; then
+        QEMU_RC=0
+        kill "${QEMU_PID}" >/dev/null 2>&1
+        wait "${QEMU_PID}" >/dev/null 2>&1
+        break
+    fi
+    if forbidden_marker_present; then
+        QEMU_RC=1
+        kill "${QEMU_PID}" >/dev/null 2>&1
+        wait "${QEMU_PID}" >/dev/null 2>&1
+        break
+    fi
+    NOW_EPOCH="$(date -u +%s)"
+    if [ $(( NOW_EPOCH - START_EPOCH )) -ge "${TIMEOUT_SECS}" ]; then
+        QEMU_RC=124
+        kill "${QEMU_PID}" >/dev/null 2>&1
+        wait "${QEMU_PID}" >/dev/null 2>&1
+        break
+    fi
+    sleep 2
+done
+if [ "${QEMU_RC}" -eq 124 ] && ! kill -0 "${QEMU_PID}" >/dev/null 2>&1; then
+    wait "${QEMU_PID}"
+    QEMU_RC=$?
+fi
 set -e
 if [ -n "${UEFI_VARS_RUNTIME}" ]; then
     rm -f "${UEFI_VARS_RUNTIME}"
