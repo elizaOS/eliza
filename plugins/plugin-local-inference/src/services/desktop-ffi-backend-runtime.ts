@@ -81,16 +81,28 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
 					"Dispatcher should not have routed here; check probeFfiActive().",
 			);
 		}
+		// Speculative decoding: the catalog entry may declare a drafter
+		// GGUF via `runtime.dflash.drafterModelPath`. The adapter loads +
+		// attaches it lazily when the first `llmStreamOpen` runs with a
+		// non-null `dflashDrafterPath`. We surface the resolved path on
+		// the session so `FfiStreamingBackend.generate()` can pass it
+		// through to the runner.
+		const drafterPath = resolveDrafterPath(plan);
 		const runner = new FfiStreamingRunner(result.binding, result.ctx);
 		const session: FfiBackendSession = {
 			binding: result.binding,
 			ctx: result.ctx,
 			runner,
 			tokenize: (prompt) => result.adapter.tokenize(prompt),
-			drafterPath: null, // speculative decoding not wired in v1
+			drafterPath,
 		};
 		this.active = { adapter: result.adapter, session };
 		return session;
+	}
+
+	/** Currently-loaded drafter model path, or null when no drafter is attached. */
+	loadedDrafterPath(): string | null {
+		return this.active?.adapter.loadedDrafterPath() ?? null;
 	}
 
 	async release(): Promise<void> {
@@ -105,3 +117,19 @@ export class DesktopFfiBackendRuntime implements FfiBackendRuntime {
  * loads against the same instance go through acquire/release lifecycles.
  */
 export const desktopFfiBackendRuntime = new DesktopFfiBackendRuntime();
+
+/**
+ * Resolve a DFlash drafter GGUF path from the plan. The dispatcher's
+ * subprocess path reads the drafter from `catalog.runtime.dflash` (see
+ * `dflash-server.ts`'s catalog handling); we mirror that here so FFI
+ * mode runs speculative decoding against the same drafter. Returns null
+ * when the catalog doesn't declare one (drafter-less generation).
+ */
+function resolveDrafterPath(plan: BackendPlan): string | null {
+	const dflash = plan.catalog?.runtime?.dflash;
+	if (!dflash || typeof dflash !== "object") return null;
+	const path =
+		(dflash as { drafterModelPath?: unknown }).drafterModelPath ??
+		(dflash as { drafterPath?: unknown }).drafterPath;
+	return typeof path === "string" && path.length > 0 ? path : null;
+}

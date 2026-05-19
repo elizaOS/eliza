@@ -228,7 +228,23 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 		return true;
 	}
 
-	// Deliberately still no `embed()`, `describeImage()`,  or `resizeParallel()`.
+	/**
+	 * Speculative-decoding accessors. The FFI runtime resolves the drafter
+	 * path from the catalog's `runtime.dflash` block and attaches it
+	 * lazily on the first `llmStreamOpen` call. `drafterEnabled()` reflects
+	 * whether the session was wired with a drafter path; the adapter
+	 * decides per-generation whether to actually attach based on the
+	 * `dflashDrafterPath` passed in `LlmStreamConfig`.
+	 */
+	drafterEnabled(): boolean {
+		return this.session?.drafterPath !== null && this.session?.drafterPath !== undefined;
+	}
+
+	loadedDrafterModelPath(): string | null {
+		return this.session?.drafterPath ?? null;
+	}
+
+	// Deliberately still no `embed()`, `describeImage()`, or `resizeParallel()`.
 	// The dispatcher throws actionable errors when those are called against
 	// an FFI session — vision requires native llava/mtmd wrappers in the shim,
 	// and parallel-resize needs multi-context pooling at the adapter layer.

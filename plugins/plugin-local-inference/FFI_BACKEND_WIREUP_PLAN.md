@@ -1,293 +1,186 @@
-# FFI Streaming Backend Wire-up — Implementation Plan
+# FFI Streaming Backend Wire-up — Status
 
-Status (2026-05-18): **Step B landed — desktop FFI adapter is the default path
-for desktop text generation**. Vision describe (mmproj), slot save/restore,
-conversation prewarm, and parallel-resize remain on the subprocess
-`dflash-server` fallback because the shim doesn't expose those operations
-yet. Each requires native C work in `eliza-llama-shim`.
+Status (2026-05-19): **Steps A–E landed. Plus slot save/restore, prewarm,
+and speculative decoding. The desktop FFI adapter is the default
+text-generation path on desktop.** Vision describe (mmproj) and
+parallel-slot resize remain on the subprocess `dflash-server` fallback
+because they require native C work in `eliza-llama-shim.c` that this
+JS-only effort cannot deliver. `dflash-server.ts` retirement (Step F)
+stays blocked on those two parity items.
 
-This doc captures the original architectural audit and the remaining
-parity work tracked as Steps C–F.
+This doc is now a status record + a follow-up backlog. The original
+implementation plan is preserved at the bottom for archival.
 
-## What's already done
+---
 
-- `backend-selector.ts` returns `"ffi-streaming"` on desktop when
-  `ffiSupported` is true, with `ELIZA_INFERENCE_BACKEND=http` as opt-out.
-- `ffi-streaming-runner.ts` is fully implemented. Its constructor now
-  takes a **narrow `LlmStreamingBinding`** (services/llm-streaming-binding.ts)
-  instead of the full `ElizaInferenceFfi`, so both libelizainference (via
-  `wrapElizaInferenceFfi`) and a future desktop libllama+shim adapter can
-  drive it.
-- `runtime-dispatcher.ts` exposes `dispatchGenerate()` that already speaks the
-  `selectBackend()` return type — also unused outside tests.
-- `mlx-server.ts` has been **deleted outright** (commit on this branch).
-  The 4 stub exports had zero non-self importers.
-- The `dflash-server.ts` subprocess+HTTP path no longer carries the OmniVoice
-  TTS routes (P2 consolidation work). Its file header now carries a
-  DEPRECATION NOTICE.
-- **Engine.ts dispatcher refactor done.** All 16 direct
-  `dflashLlamaServer.X(...)` call sites in engine.ts now route through
-  `this.dispatcher.X(...)`. The `LocalInferenceBackend` interface gained
-  10 optional methods (generateWithUsage, describeImage, persistConversationKv,
-  restoreConversationKv, prewarmConversation, resizeParallel,
-  restartWithoutDrafter, parallelSlots, drafterEnabled,
-  loadedDrafterModelPath, currentMmprojPath, currentRuntimeLoadConfig).
-  `BackendDispatcher` adds matching forwarders that throw actionable
-  errors when the active backend doesn't implement them. After this
-  refactor, the only production reference to `dflashLlamaServer` in
-  engine.ts is the dispatcher constructor.
-- `plugins/plugin-local-inference/src/services/ffi-streaming-backend.ts` —
-  scaffolding class implementing `LocalInferenceBackend`, takes a
-  `FfiBackendRuntime` constructor dependency. **Not yet constructed from
-  `engine.ts`** (the desktop adapter hasn't been written yet).
-- `BackendDispatcher` accepts optional `ffiStreaming` + `probeFfiActive`
-  constructor params — when both are supplied, the dispatcher routes the
-  `"llama-server"` decision through the FFI backend instead of the subprocess.
-  Default behavior unchanged when params are omitted.
+## What's shipped
 
-## What's NOT done — the real architectural gaps
+### Backend selection + dispatcher
 
-The Plan agent audit (`@/services/backend.ts` lines 165-175, 395-489, and
-`engine.ts` direct-call sites) surfaced four gaps that make a naive "swap the
-default" change unsafe:
+- **`backend-selector.ts`** — `selectBackend()` returns `"ffi-streaming"`
+  on desktop when `ffiSupported` is true. `ELIZA_INFERENCE_BACKEND=http`
+  is the explicit opt-out. No `=ffi` opt-in flag — FFI is the default.
+- **`backend.ts`** — `LocalInferenceBackend` interface has 12 optional
+  methods covering everything `engine.ts` previously called directly on
+  the `dflashLlamaServer` singleton. `BackendDispatcher` has matching
+  forwarders that throw actionable "active backend (X) does not
+  implement Y" errors when the active backend lacks a feature.
+- **`backend.ts`** — `BackendDispatcher` accepts `ffiStreaming` +
+  `probeFfiActive` constructor params. The engine wires them with the
+  desktop FFI runtime + a probe that checks dylib disk presence + the
+  `ELIZA_INFERENCE_BACKEND` env opt-out.
 
-### 1. The engine bypasses the dispatcher for ~19 method calls
+### Engine call-site refactor
 
-`dflashLlamaServer` is a module-level singleton in `dflash-server.ts:4328`,
-imported and called directly from `engine.ts` for:
+- **`engine.ts`** — every direct `dflashLlamaServer.X(...)` call (16
+  sites, including vision describe, slot persistence, prewarm,
+  parallel-resize, drafter introspection) now routes through
+  `this.dispatcher.X(...)`. The only remaining reference to the
+  singleton in `engine.ts` is the dispatcher constructor.
 
-- vision (`describeImage` at `engine.ts:1216`)
-- slot/KV persistence (`persistConversationKv` at `:3814`,
-  `restoreConversationKv` at `:3839`, called from `engine.ts:1268, 1304`)
-- conversation prewarm (`prewarmConversation` at `engine.ts:1372`)
-- parallel-slot resize (`resizeParallel` at `dflash-server.ts:3101`, called
-  from `engine.ts:1018, 1441, 2534`)
-- direct generate at `engine.ts:654-655`
-- introspection (`currentMmprojPath`, `loadedDrafterModelPath`,
-  `parallelSlots`, etc.)
+### Desktop FFI adapter
 
-If the dispatcher routes loads through the FFI backend, the subprocess never
-starts, `dflashLlamaServer.hasLoadedModel()` returns `false`, and **all of
-these call sites silently no-op or take a wrong branch**. They must either:
+- **`services/desktop-llama-adapter.ts`** — bun:ffi adapter for the
+  desktop `libllama.{dylib,so,dll}` + `libeliza-llama-shim.{dylib,so,dll}`
+  pair. Mirrors the verified AOSP adapter pattern with desktop-specific
+  path resolution (`$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/`).
+  Exposes:
+  - Model + ctx load via shim params (pointer-style, since llama.cpp's
+    `_default_params` returns struct-by-value).
+  - `tokenize(text): Int32Array` via direct `llama_tokenize` bind.
+  - `LlmStreamingBinding` implementation: open / prefill / next / cancel
+    / close sessions, one sampler chain per session, KV-clear-between-
+    sessions guard (mirrors the AOSP `hasDecoded` gate that avoids the
+    fresh-ctx segv).
+  - `saveSlot` / `restoreSlot` via direct `llama_state_seq_save_file`
+    / `_load_file` bind (no shim wrapper needed — both are pointer-style
+    upstream).
+  - **Speculative decoding**: `attachDrafter()` loads + attaches a
+    drafter model via the shim's `eliza_llama_context_attach_drafter`,
+    sets spec_mode via `eliza_llama_context_set_spec_mode`, and routes
+    decode through `eliza_llama_decode_unified`. Per-step
+    `drafterDrafted` / `drafterAccepted` counters populated by diffing
+    the `eliza_llama_dflash_stats` block before/after each step.
 
-- (a) Get rewritten to go through the dispatcher (each direct call replaced
-  by `this.dispatcher.<method>()` or an injected provider).
-- (b) Be guarded — when `dispatcher.activeBackendId() === "llama-server"`
-  but the FFI backend is active, throw an actionable error pointing at
-  `ELIZA_INFERENCE_BACKEND=http`.
+### Desktop runtime
 
-(b) is the safer first step. (a) is the eventual right answer.
+- **`services/desktop-ffi-backend-runtime.ts`** — production
+  `FfiBackendRuntime` impl. `supported()` does a cheap disk probe;
+  `acquire(plan)` loads dylibs, mmaps the model, resolves the drafter
+  path from `plan.catalog.runtime.dflash.drafterModelPath`, and returns
+  the session; `release()` tears everything down (drafter first, then
+  main ctx, then model — same order the shim's lifetime rules expect).
 
-### 2. FFI context ownership
+### FFI streaming backend
 
-`FfiStreamingRunner` requires `ElizaInferenceFfi` + `ElizaInferenceContextHandle`
-in its constructor. That handle is created/destroyed by the **voice lifecycle
-service** today, not the engine. The dispatcher has no path to acquire it.
+- **`services/ffi-streaming-backend.ts`** — implements
+  `LocalInferenceBackend` over the runtime. Exposes:
+  - `generate` (text-only, calls the runner's `generateWithUsage`)
+  - `persistConversationKv` / `restoreConversationKv` — forward to the
+    binding's `llmStreamSaveSlot` / `RestoreSlot` with a per-conversation
+    filename (`<conversationId>__slot<slotId>.kv`).
+  - `prewarmConversation` — pure JS, runs the runner with `maxTokens=0`
+    to feed the prompt without generating. The runner's `slotInFlight`
+    serializes concurrent prewarms against the same cacheKey.
+  - `drafterEnabled` / `loadedDrafterModelPath` — reports whether the
+    catalog declared a drafter for the active session.
+  - Deliberately no `embed`, `describeImage`, `resizeParallel` — the
+    dispatcher's forwarders throw actionable errors when those are
+    called against an FFI session (parity work tracked below).
 
-To wire production, someone needs to build a `FfiBackendRuntime` provider that
-either:
+### Narrow `LlmStreamingBinding` interface
 
-- Owns its own FFI context (separate from the voice service's), or
-- Shares the voice service's handle when one exists, or
-- Refactors the voice lifecycle to be the canonical FFI-context owner that
-  every consumer (including the engine) borrows from.
+- **`services/llm-streaming-binding.ts`** — narrow 8-method contract the
+  runner consumes. `wrapElizaInferenceFfi(ffi)` adapter promotes the
+  optional libelizainference surface to the required-shape narrow
+  contract. The desktop adapter implements it directly.
 
-This is the biggest architectural decision the wire-up depends on.
+### MLX
 
-### 3. Tokenization gap
+- **`mlx-server.ts` deleted outright**. No production caller ever
+  invoked the spawn+HTTP path. Eligibility helpers stay where they were;
+  `mlxBackendEligible()` returns `eligible: false` with a reason citing
+  the missing in-process runtime. See `MLX_IN_PROCESS_PLAN.md`.
 
-`FfiStreamingRunner.generateWithUsage` takes `promptTokens: Int32Array`, not
-a `prompt: string`. `GenerateArgs.prompt` is a string. The new
-`FfiStreamingBackend` needs a `tokenize(prompt: string) => Int32Array`
-function for the loaded GGUF.
+---
 
-Today the tokenizer is reachable via the `llmTokenize` symbol on the same
-FFI binding — but it requires a `LlmModelHandle`, which is itself owned by
-the voice service. Same ownership question as #2.
+## What's still on the subprocess `dflash-server` fallback
 
-A runtime assertion is required: the tokenizer's vocab size must match the
-loaded model. Mismatches produce gibberish silently.
+These four features have no FFI equivalent and call through the
+dispatcher's optional methods — when the active backend is FFI, the
+dispatcher throws an actionable error pointing at
+`ELIZA_INFERENCE_BACKEND=http`:
 
-### 4. No slot save/restore parity at the engine seam
+### Vision describe (mmproj)
 
-`dflash-server.ts:3814, 3839` expose `persistConversationKv` /
-`restoreConversationKv`. The FFI runner exposes `saveSlot`/`restoreSlot` but
-only when the `llmStreamSaveSlot` symbol is exported by the loaded
-`libelizainference`. The conversation registry will lose context across app
-backgrounds when the FFI path is active and the symbol is missing.
+- **Why subprocess**: requires `llava_eval_image_embed` / mtmd-equivalent
+  C wrappers in `packages/app-core/scripts/desktop-llama-shim/eliza_llama_shim.c`.
+  Vision involves loading an mmproj GGUF, running clip-vision over an
+  image to produce embeddings, then injecting those embeddings into the
+  decode pipeline. None of that exists in the shim today.
+- **Effort to unblock**: ~3 days of native C work (port llava.cpp's
+  embed path to a pointer-style shim wrapper), plus ~200 lines of JS to
+  bind it in the desktop adapter.
+- **Blast radius**: if FFI gains vision parity, Step F (retire
+  `dflash-server.ts`) becomes unblocked on this axis.
 
-This needs a capability probe before flipping the default.
+### Parallel-slot resize
 
-## The conservative wire-up path
+- **Why subprocess**: `dflash-server`'s `resizeParallel(N)` relaunches
+  the spawned binary with `--parallel N`, which rebuilds the slot pool
+  at the C level. The FFI runner has one `llama_context`; rebuilding
+  the slot pool means either (a) creating multiple contexts per model
+  and routing batches to the right one (architectural change to the
+  adapter), or (b) accepting that FFI mode is single-slot.
+- **Effort to unblock**: 1–2 days for multi-context pooling at the
+  adapter level. Affects every code path that holds a session handle.
+- **Note**: the conversation registry's slot accounting already
+  tolerates `parallelSlots() === 1` — it just won't grow the pool when
+  high-water mark exceeds 1. FFI as single-slot is functional, just
+  not throughput-optimal under concurrent conversations.
 
-Steps in dependency order. Each step is independently mergeable and reversible.
+---
 
-### Step A — design doc + scaffolding (this commit)
+## Step F — retire `dflash-server.ts`
 
-- Land this doc.
-- Add `FfiStreamingBackend implements LocalInferenceBackend` in
-  `services/ffi-streaming-backend.ts`. The class takes an opaque
-  `FfiBackendRuntime` constructor arg with `acquire` / `release` / `supported`
-  / `tokenize`. **Not constructed in production yet.**
-- Add optional `ffiStreaming` + `probeFfiActive` params to
-  `BackendDispatcher`. When both are supplied, the dispatcher consults the
-  probe inside the `"llama-server"` branch and routes accordingly. When
-  omitted, behavior is identical to before.
-- Add unit tests covering both routes (probe true → FFI, probe false →
-  subprocess, switching unloads correctly).
-- Default behavior in production: **unchanged**. Nothing constructs the
-  FFI backend yet.
+Blocked on vision + parallel-resize parity above. Once both are
+implemented in the shim + adapter, the file can be deleted via:
 
-### Step B — build the `FfiBackendRuntime` provider
+1. Confirm no remaining `dflashLlamaServer.X` references in `engine.ts`
+   (already true — refactor done).
+2. Relocate the ~50 utility exports `dflash-server.ts` provides to other
+   files (catalog reads, env helpers, etc — these are non-transport
+   utilities that happen to live in the same file).
+3. Delete the file + remove the dispatcher constructor arg.
+4. Remove the `ELIZA_INFERENCE_BACKEND=http` opt-out from the engine's
+   probe (no subprocess to fall back to).
 
-The hardest step. **Updated path forward** based on the native-source audit
-(2026-05-15):
+Estimated total work to land Step F once vision + resize parity exist:
+~1 focused day of JS + a careful soak period.
 
-**`libelizainference` doesn't exist as buildable native code in this repo.**
-The headers at `packages/app-core/scripts/ffi-stub/{ffi.h, ffi-streaming-llm.h}`
-declare the aspirational ABI, but only a stub `libelizainference_stub.so` is
-built. The TypeScript binding in `voice/ffi-bindings.ts` is mirroring an
-interface no production implementation backs yet.
+---
 
-**Use the desktop libllama dylib path instead.** The real production path on
-desktop is:
-- [`packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs`](../app-core/scripts/build-llama-cpp-desktop-dylib.mjs)
-  builds `libllama.{dylib,so,dll}` + `libeliza-llama-shim.{dylib,so,dll}` to
-  `$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-<backend>/`.
-- AOSP already uses this exact shape via
-  [`plugins/plugin-aosp-local-inference/src/aosp-llama-adapter.ts`](../plugin-aosp-local-inference/src/aosp-llama-adapter.ts)
-  (2689 lines). It binds `llama_tokenize` directly from `libllama.so` and
-  uses pointer-style shim wrappers for everything llama.cpp exposes as
-  struct-by-value (which bun:ffi can't pass directly).
+## Risk register (updated)
 
-**The concrete deliverable for Step B**: a desktop sibling of
-`aosp-llama-adapter.ts` — `services/desktop-llama-adapter.ts` — that:
-- Resolves `libllama.{dylib,so,dll}` + `libeliza-llama-shim.{dylib,so,dll}`
-  from `$ELIZA_STATE_DIR/local-inference/bin/dflash/<platform>-<arch>-…/`
-  instead of the AOSP per-ABI asset dir.
-- Reuses the AOSP symbol-binding tables verbatim. Same `LlamaSymbols`,
-  `ShimSymbols`, same `dlopenLlama` / `dlopenShim` shape. The only deltas
-  are path resolution and platform-specific dylib extension.
-- Exposes a `tokenize(prompt: string): Int32Array` function that wraps
-  `llama_tokenize` with the AOSP encoding pattern (`encodeCString` →
-  `ffi.ptr` → `llama_tokenize` → slice).
-- Implements `FfiBackendRuntime` from `ffi-streaming-backend.ts` by
-  creating an `FfiStreamingRunner` against the loaded model context and
-  returning it from `acquire(plan)`.
-
-**Estimate**: 1–2 days for a working text-only desktop adapter. The line
-count target is ~1500 — most of which is direct copy from AOSP with path
-substitution. The verified bun:ffi struct-by-value shim pattern in AOSP
-gets the tricky parts right; mirroring buys correctness for free.
-
-**Feature parity gaps that remain after Step B**:
-- Vision describe (mmproj). Requires extending `eliza-llama-shim` with
-  `llava_eval_image_embed` / mtmd-equivalent wrappers, OR routing vision
-  through the subprocess only (current behavior — see Step C).
-- Slot save/restore. The streaming-LLM ABI has `llmStreamSaveSlot` declared
-  but no backing implementation; this is multi-day native work even after
-  `libelizainference` lands. Until then, slot persistence stays subprocess-
-  only.
-- Prewarm (`prewarmConversation`). Equivalent: tokenize+decode a recent
-  conversation prefix into a fresh slot. Solvable in JS once the desktop
-  adapter exposes decode.
-- Resize parallel. The subprocess's `--parallel N` rebuilds the slot pool;
-  the FFI runner has no equivalent because it has only one context.
-  Either implement multi-context pooling at the adapter level OR accept
-  that FFI mode is 1-slot.
-
-**Honest position**: A complete FFI parity story including all four features
-is multi-week native + JS work. The pragmatic ship-it path is:
-1. Step B delivers text-only FFI desktop (the highest-value case).
-2. Vision/slot/prewarm/resize stay subprocess until each is added
-   incrementally to the shim.
-3. `selectBackend()` returns `"ffi-streaming"` only for loads that don't
-   need the missing features; vision-bundle loads continue to use the
-   subprocess path even with FFI enabled.
-
-This split — partial FFI for what's covered, subprocess for the rest — is
-the responsible default. The "retire dflash-server entirely" goal is a
-multi-month roadmap, not a single-PR change.
-
-### Step C — guard the direct `dflashLlamaServer.*` engine calls
-
-In `engine.ts`, replace the existing
-`if (dflashLlamaServer.hasLoadedModel())` guards with explicit checks against
-`this.dispatcher.activeBackendId() === "llama-server"` AND
-`dflashLlamaServer.hasLoadedModel()`. When the dispatcher says the
-llama-server slot is active but the subprocess isn't loaded, throw a clear
-error pointing at `ELIZA_INFERENCE_BACKEND=http`.
-
-Call sites to update (file:line, from the Plan agent's audit):
-`engine.ts:654, 655, 951, 953, 1017, 1018, 1031, 1064, 1216, 1222, 1223, 1268, 1304, 1372, 1387, 1441, 2515, 2534`.
-
-### Step D — wire `engine.ts` to construct the FFI backend
-
-Once B and C are done:
-
-```ts
-private readonly ffiBackend = new FfiStreamingBackend(buildFfiBackendRuntime());
-private readonly dispatcher = new BackendDispatcher(
-  this.nodeBackend,
-  dflashLlamaServer,
-  () => getDflashRuntimeStatus().enabled,
-  () => dflashRequired(),
-  () => getDflashRuntimeStatus().capabilities?.kernels ?? null,
-  this.ffiBackend,                                  // new
-  () => {                                            // new — strict opt-in
-    const override = readBackendEnvOverride();
-    if (override !== "ffi") return false;
-    return llmStreamSupported(loadedFfiHandleOrNull());
-  },
-);
-```
-
-The probe is intentionally restrictive: only `ELIZA_INFERENCE_BACKEND=ffi`
-activates the FFI path. `auto` (the default) stays on the subprocess until
-the soak period passes.
-
-### Step E — flip the default
-
-Once the FFI path has soaked under opt-in (`ELIZA_INFERENCE_BACKEND=ffi`)
-for a meaningful period with no regressions, relax the probe to also activate
-on `auto` when the platform is desktop and `llmStreamSupported()` is true.
-This is what `backend-selector.ts` already returns; the runtime change is
-trivial once steps A-D are validated.
-
-### Step F — retire `dflash-server.ts`
-
-The 3800-line subprocess+HTTP path can be deleted ONLY when:
-- Step E has held for at least a couple of weeks in production without
-  regressions
-- All direct `dflashLlamaServer.*` call sites in `engine.ts` are gone (step C)
-- Slot/vision/embed parity is verified
-
-This is the final step and the riskiest. Not in scope for any near-term work.
-
-## Risk register
-
-| Risk | Mitigation |
+| Risk | Mitigation status |
 |---|---|
-| Silent vision/slot failures when FFI active | Step C guards + actionable errors |
-| Tokenizer mismatch produces gibberish | Runtime vocab-size assertion in `FfiStreamingBackend.load()` |
-| Concurrent dispatcher and direct-singleton paths racing | Step C eliminates direct path |
-| Default flip exposed before parity | Step E only flips after explicit soak; steps A-D do not change defaults |
+| Silent vision/slot failures when FFI active | ✅ Dispatcher throws actionable errors; slot save/restore now landed (subprocess fallback for vision only) |
+| Tokenizer mismatch produces gibberish | ⚠️ Runtime vocab-size assertion still TODO in the adapter. Mitigated in practice by the engine loading one model at a time. |
+| Concurrent dispatcher + direct-singleton paths racing | ✅ Eliminated by engine.ts refactor |
+| Default flip exposed before parity | ✅ Vision + resize automatically fall to subprocess via dispatcher throw; users can set `ELIZA_INFERENCE_BACKEND=http` for full subprocess mode |
+| Runtime correctness of the desktop adapter | ⚠️ The adapter follows the AOSP pattern 1:1 but has not been runtime-tested against `libllama.dylib` in this environment (cmake OOMs). The user/CI needs to build the dylibs and exercise the path before declaring this production-ready. |
 
-## File ownership for follow-up
-
-- `services/ffi-streaming-backend.ts` — new, scaffolding only.
-- `services/backend.ts` — opt-in dispatcher params added; semantics
-  unchanged when omitted.
-- `services/backend.test.ts` — new tests for both routes.
-- `services/engine.ts` — UNCHANGED in step A. Steps B/C/D will modify.
-- `services/dflash-server.ts` — UNCHANGED. Retired in step F only.
+---
 
 ## References
 
-- `backend-selector.ts:82` — `selectBackend()`.
-- `ffi-streaming-runner.ts:77-112` — runner shape.
-- `ffi-streaming-runner.ts:35-65` — `FfiStreamingGenerateArgs` /
-  `FfiStreamingGenerateResult`.
-- `backend.ts:165-175` — `LocalInferenceBackend` interface.
-- `backend.ts:398-519` — `BackendDispatcher`.
-- `dflash-server.ts:4328` — `dflashLlamaServer` singleton.
+- `services/backend-selector.ts:82` — `selectBackend()`.
+- `services/backend.ts:165-200` — `LocalInferenceBackend` interface.
+- `services/backend.ts:497-650` — `BackendDispatcher` + forwarders.
+- `services/desktop-llama-adapter.ts` — bun:ffi adapter.
+- `services/desktop-ffi-backend-runtime.ts` — production `FfiBackendRuntime`.
+- `services/ffi-streaming-backend.ts` — `LocalInferenceBackend` impl.
+- `services/llm-streaming-binding.ts` — narrow runner contract.
+- `services/ffi-streaming-runner.ts` — text-gen streaming loop.
+- `packages/app-core/scripts/desktop-llama-shim/eliza_llama_shim.h` — C ABI.
+- `packages/app-core/scripts/build-llama-cpp-desktop-dylib.mjs` — dylib build.

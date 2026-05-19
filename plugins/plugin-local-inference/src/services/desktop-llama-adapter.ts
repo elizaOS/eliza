@@ -202,6 +202,30 @@ interface ShimSymbols {
 	eliza_llama_decode: (ctx: Pointer, batch: Pointer) => number;
 
 	eliza_llama_log_silence: () => void;
+
+	// === Speculative decoding (DFlash). When a drafter model is attached
+	// === to the main ctx, `decode_unified` runs the verify-and-rewind
+	// === cycle internally; `dflash_stats` exposes the per-step counters
+	// === so we can populate `drafterDrafted` / `drafterAccepted` on
+	// === LlmStreamStep.
+	eliza_llama_context_attach_drafter: (
+		main_ctx: Pointer,
+		drafter_model: Pointer,
+		n_ctx_draft: number,
+		n_gpu_layers_draft: number,
+		n_parallel: number,
+	) => number;
+	eliza_llama_context_detach_drafter: (main_ctx: Pointer) => void;
+	eliza_llama_context_has_drafter: (main_ctx: Pointer) => number;
+	eliza_llama_context_set_spec_mode: (
+		main_ctx: Pointer,
+		mode: number,
+		draft_min: number,
+		draft_max: number,
+	) => number;
+	eliza_llama_decode_unified: (ctx: Pointer, batch: Pointer) => number;
+	/** Legacy 4-int32 telemetry: [drafted, accepted, rejected, last_status]. */
+	eliza_llama_dflash_stats: (ctx: Pointer, out: Pointer) => void;
 }
 
 // === Path resolution =======================================================
@@ -424,6 +448,22 @@ function bindShim(ffi: BunFFIModule, libPath: string): ShimSymbols {
 		eliza_llama_batch_free: { args: [T.ptr], returns: T.void },
 		eliza_llama_decode: { args: [T.ptr, T.ptr], returns: T.i32 },
 		eliza_llama_log_silence: { args: [], returns: T.void },
+
+		eliza_llama_context_attach_drafter: {
+			args: [T.ptr, T.ptr, T.u32, T.i32, T.i32],
+			returns: T.i32,
+		},
+		eliza_llama_context_detach_drafter: {
+			args: [T.ptr],
+			returns: T.void,
+		},
+		eliza_llama_context_has_drafter: { args: [T.ptr], returns: T.i32 },
+		eliza_llama_context_set_spec_mode: {
+			args: [T.ptr, T.i32, T.i32, T.i32],
+			returns: T.i32,
+		},
+		eliza_llama_decode_unified: { args: [T.ptr, T.ptr], returns: T.i32 },
+		eliza_llama_dflash_stats: { args: [T.ptr, T.ptr], returns: T.void },
 	});
 	return handle.symbols;
 }
@@ -489,13 +529,109 @@ export class DesktopLlamaAdapter {
 	private hasDecoded = false;
 	private nextStreamId = 1n;
 	private readonly sessions = new Map<bigint, DesktopSession>();
-	private warnedDrafterIgnored = false;
+	/** Loaded drafter model (DFlash speculative decoding). Null when no drafter is attached. */
+	private drafterModelPtr: Pointer | null = null;
+	private drafterModelPath: string | null = null;
 
 	constructor(
 		private readonly ffi: BunFFIModule,
 		private readonly llama: LlamaSymbols,
 		private readonly shim: ShimSymbols,
 	) {}
+
+	/**
+	 * Load a DFlash drafter model and attach it to the main context. Once
+	 * attached, `decode_unified` runs the verify-and-rewind speculative loop
+	 * internally and `dflash_stats` exposes per-step accept/reject counters.
+	 *
+	 * Reuses the loaded main model's GPU layer count by default — the
+	 * drafter is usually 4–8x smaller and benefits from the same backend.
+	 * `n_parallel` mirrors the main ctx so concurrent sessions can share.
+	 *
+	 * Idempotent on the same path: if a drafter is already attached and the
+	 * path matches, returns without reloading. Different path => detach +
+	 * reload + reattach.
+	 */
+	attachDrafter(opts: {
+		drafterPath: string;
+		contextSize?: number;
+		gpuLayers?: number;
+		nParallel?: number;
+		draftMin?: number;
+		draftMax?: number;
+	}): void {
+		if (!this.ctxPtr || !this.modelPtr) {
+			throw new Error("[desktop-llama] attachDrafter before main model load");
+		}
+		if (
+			this.drafterModelPath === opts.drafterPath &&
+			this.shim.eliza_llama_context_has_drafter(this.ctxPtr) === 1
+		) {
+			return;
+		}
+		this.detachDrafter();
+		const mp = this.shim.eliza_llama_model_params_default();
+		try {
+			this.shim.eliza_llama_model_params_set_n_gpu_layers(
+				mp,
+				opts.gpuLayers ?? 999,
+			);
+			this.shim.eliza_llama_model_params_set_use_mmap(mp, true);
+			const pathBuf = encodeCString(opts.drafterPath);
+			this.drafterModelPtr = this.shim.eliza_llama_model_load_from_file(
+				this.ffi.ptr(pathBuf),
+				mp,
+			);
+		} finally {
+			this.shim.eliza_llama_model_params_free(mp);
+		}
+		if (!this.drafterModelPtr) {
+			throw new Error(
+				`[desktop-llama] drafter model load failed for ${opts.drafterPath}`,
+			);
+		}
+		const rc = this.shim.eliza_llama_context_attach_drafter(
+			this.ctxPtr,
+			this.drafterModelPtr,
+			opts.contextSize ?? 4096,
+			opts.gpuLayers ?? 999,
+			opts.nParallel ?? 1,
+		);
+		if (rc !== 0) {
+			this.llama.llama_model_free(this.drafterModelPtr);
+			this.drafterModelPtr = null;
+			throw new Error(
+				`[desktop-llama] eliza_llama_context_attach_drafter rc=${rc}`,
+			);
+		}
+		// spec_mode = 1 (auto) with the caller's draft-len bounds. mode=0
+		// disables speculation even with a drafter attached (useful for
+		// A/B benchmarking against the same model load).
+		this.shim.eliza_llama_context_set_spec_mode(
+			this.ctxPtr,
+			1,
+			opts.draftMin ?? 4,
+			opts.draftMax ?? 16,
+		);
+		this.drafterModelPath = opts.drafterPath;
+	}
+
+	/** Detach + free any attached drafter. Idempotent. */
+	detachDrafter(): void {
+		if (!this.ctxPtr) return;
+		if (this.shim.eliza_llama_context_has_drafter(this.ctxPtr) === 1) {
+			this.shim.eliza_llama_context_detach_drafter(this.ctxPtr);
+		}
+		if (this.drafterModelPtr !== null) {
+			this.llama.llama_model_free(this.drafterModelPtr);
+			this.drafterModelPtr = null;
+		}
+		this.drafterModelPath = null;
+	}
+
+	loadedDrafterPath(): string | null {
+		return this.drafterModelPath;
+	}
 
 	/** Singleton-ish backend init — safe to call repeatedly per upstream. */
 	initBackend(): void {
@@ -566,6 +702,10 @@ export class DesktopLlamaAdapter {
 			this.llama.llama_sampler_free(sess.sampler);
 		}
 		this.sessions.clear();
+		// Detach + free the drafter BEFORE the main ctx — the drafter is
+		// borrowed via the main ctx's shim slot. `llama_free` on the main
+		// ctx is otherwise unsafe while a drafter ctx references it.
+		this.detachDrafter();
 		if (this.ctxPtr !== null) {
 			this.llama.llama_free(this.ctxPtr);
 			this.ctxPtr = null;
@@ -703,17 +843,22 @@ export class DesktopLlamaAdapter {
 			const mem = this.llama.llama_get_memory(this.ctxPtr);
 			this.llama.llama_memory_clear(mem, true);
 		}
-		// Drafter args are ignored in v1; warn loudly once.
-		if (
-			(config.draftMin > 0 ||
-				config.draftMax > 0 ||
-				config.dflashDrafterPath) &&
-			!this.warnedDrafterIgnored
-		) {
-			console.warn(
-				"[desktop-llama] speculative-decoding args (draftMin/draftMax/dflashDrafterPath) are ignored in v1 — the desktop FFI adapter does not yet bind eliza_llama_context_attach_drafter.",
-			);
-			this.warnedDrafterIgnored = true;
+		// Speculative decoding: if the caller supplies a drafter path,
+		// load + attach it (idempotent on the same path) and set the
+		// spec mode for this session's draft-len bounds. Subsequent
+		// `decode_unified` calls in `nextStep` will run the verify/rewind
+		// loop internally; stats land on the LlmStreamStep counters.
+		if (config.dflashDrafterPath) {
+			this.attachDrafter({
+				drafterPath: config.dflashDrafterPath,
+				draftMin: config.draftMin,
+				draftMax: config.draftMax,
+			});
+		} else if (this.drafterModelPtr !== null) {
+			// No drafter requested but one is attached from a prior session —
+			// detach so plain `decode` runs. Cheap; the model load is the
+			// expensive part.
+			this.detachDrafter();
 		}
 		// Sampler chain.
 		const sp = this.shim.eliza_llama_sampler_chain_params_default();
@@ -799,6 +944,13 @@ export class DesktopLlamaAdapter {
 		const out: number[] = [];
 		let text = "";
 		let done = false;
+		// When a drafter is attached, `eliza_llama_decode_unified` runs the
+		// verify-and-rewind cycle internally and accumulates drafter
+		// counters on the ctx. We snapshot before/after and diff to report
+		// per-step `drafterDrafted` / `drafterAccepted` on the LlmStreamStep.
+		const usingDrafter =
+			this.shim.eliza_llama_context_has_drafter(this.ctxPtr) === 1;
+		const statsBefore = usingDrafter ? this.readDflashStats() : null;
 
 		for (let i = 0; i < maxTokensPerStep; i++) {
 			if (sess.abort.cancelled) {
@@ -829,13 +981,17 @@ export class DesktopLlamaAdapter {
 			out.push(next);
 
 			// Decode the just-sampled token to advance the KV cache.
+			// `decode_unified` runs verify-and-rewind when a drafter is
+			// attached; `decode` is the plain path used otherwise.
 			sess.tokenBuf[0] = next;
 			const batch = this.shim.eliza_llama_batch_get_one(
 				this.ffi.ptr(sess.tokenBuf),
 				1,
 			);
 			try {
-				const rc = this.shim.eliza_llama_decode(this.ctxPtr, batch);
+				const rc = usingDrafter
+					? this.shim.eliza_llama_decode_unified(this.ctxPtr, batch)
+					: this.shim.eliza_llama_decode(this.ctxPtr, batch);
 				if (rc !== 0) {
 					throw new Error(`[desktop-llama] decode rc=${rc}`);
 				}
@@ -846,12 +1002,43 @@ export class DesktopLlamaAdapter {
 			if (text.length >= maxTextBytes) break;
 		}
 		if (done) sess.finished = true;
+
+		let drafted = 0;
+		let accepted = 0;
+		if (usingDrafter && statsBefore) {
+			const statsAfter = this.readDflashStats();
+			drafted = Math.max(0, statsAfter.drafted - statsBefore.drafted);
+			accepted = Math.max(0, statsAfter.accepted - statsBefore.accepted);
+		}
 		return {
 			tokens: out,
 			text,
 			done,
-			drafterDrafted: 0,
-			drafterAccepted: 0,
+			drafterDrafted: drafted,
+			drafterAccepted: accepted,
+		};
+	}
+
+	/**
+	 * Read the legacy 4-int32 DFlash telemetry block.
+	 * Returns zero counters when no drafter is attached.
+	 */
+	private readDflashStats(): {
+		drafted: number;
+		accepted: number;
+		rejected: number;
+		lastStatus: number;
+	} {
+		if (!this.ctxPtr) {
+			return { drafted: 0, accepted: 0, rejected: 0, lastStatus: 0 };
+		}
+		const buf = new Int32Array(4);
+		this.shim.eliza_llama_dflash_stats(this.ctxPtr, this.ffi.ptr(buf));
+		return {
+			drafted: buf[0] ?? 0,
+			accepted: buf[1] ?? 0,
+			rejected: buf[2] ?? 0,
+			lastStatus: buf[3] ?? 0,
 		};
 	}
 
