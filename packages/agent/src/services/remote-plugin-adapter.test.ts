@@ -1090,6 +1090,66 @@ describe("remote plugin adapter", () => {
     });
   });
 
+  it("rejects duplicate remote view ids in the same sync batch", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          remoteModule,
+          {
+            ...remoteModule,
+            id: "remote-view-copy",
+            name: "@remote/view-copy",
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            events: [],
+            models: [],
+            services: [],
+            routes: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote view collision for "gui:remote-view" between modules "remote-demo" and "remote-view-copy".',
+    });
+  });
+
+  it("rejects remote views that collide with local runtime views", async () => {
+    const runtime = makeRuntime(makeRouter(), {
+      plugins: [
+        {
+          name: "@local/views",
+          description: "Local plugin with an existing view",
+          views: [
+            {
+              id: "remote-view",
+              label: "Local View",
+              viewType: "gui",
+            },
+          ],
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, { modules: [remoteModule] }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" view "gui:remote-view" would collide with an existing runtime view.',
+    });
+  });
+
   it("enforces remote plugin trust policy before registration", async () => {
     const runtime = makeRuntime(makeRouter());
     const trustedModule = {

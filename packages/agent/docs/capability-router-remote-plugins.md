@@ -317,6 +317,11 @@ Manifest decoding is strict at the capability-router boundary:
   adapter-owned remote plugin. Service `methods`, when present, must be valid,
   unique JavaScript method identifiers and cannot use reserved local service
   method names such as `callRemote`, `constructor`, or prototype built-ins.
+- Remote view ids are registry keys scoped by `viewType`. The adapter rejects
+  duplicate remote view keys in a sync batch and rejects remote views that would
+  collide with existing local runtime views outside a reload of an adapter-owned
+  remote plugin, so compiled frontend entries are not silently dropped by the
+  view registry.
 - Evaluator `schema` is required and must be a JSON object. Evaluator `prompt`
   is manifest data because the current core evaluator interface expects
   synchronous prompt generation; async remote work belongs in `shouldRun`,
@@ -669,6 +674,8 @@ Current focused tests cover:
 - remote frontend asset path validation before browser import URL creation and
   before same-origin asset proxy dispatch,
 - remote frontend bundle URL validation before browser import URL exposure,
+- remote view id collision rejection before frontend entries are handed to the
+  local view registry,
 - remote asset RPC response validation before decoded bytes and content-type
   metadata are exposed through the asset proxy,
 - browser-facing view registry and `/api/views` metadata for remote absolute
@@ -795,12 +802,12 @@ This is not complete until the following are true:
   Restart-through-product-flow E2E remains.
 - Auth is specified and enforced for endpoint registration, invocation, and
   frontend asset access.
-- Endpoint identity, module identity, route namespace, action/provider/evaluator,
-  response-handler evaluator, service type, and per-module model declaration
-  collision rules are enforced in the local adapter/router. The adapter also
-  accepts an explicit trust policy for endpoint/module allowlists before
-  registration. Remaining trust work is attestation and operator audit records
-  for those decisions.
+- Endpoint identity, module identity, route namespace, view registry identity,
+  action/provider/evaluator, response-handler evaluator, service type, and
+  per-module model declaration collision rules are enforced in the local
+  adapter/router. The adapter also accepts an explicit trust policy for
+  endpoint/module allowlists before registration. Remaining trust work is
+  attestation and operator audit records for those decisions.
 - Remote view loading is covered through the browser-facing view registry
   metadata path, real compiled bundle fetch/evaluation smokes, app-shell loader
   unit coverage, and a focused Playwright app-shell smoke against a running

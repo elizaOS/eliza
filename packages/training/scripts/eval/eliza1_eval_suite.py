@@ -80,7 +80,13 @@ SCHEMA_VERSION = 1
 # (which run without the dataset on disk) working without silently degrading
 # the real publish-time eval.
 
-_DATASET_TEST_RELATIVE: Path = Path("datasets/eliza1-sft-0_8b/test.jsonl")
+_DATASET_TEST_RELATIVES: tuple[Path, ...] = (
+    Path("datasets/eliza1-sft-0_8b/test.jsonl"),
+    # The staged training dataset was renamed from the historical 0.6B tier to
+    # 0.8B for release. Keep the old path as a canonical local fallback so
+    # publish evals do not silently degrade to the hand-written mini corpus.
+    Path("datasets/eliza1-sft-0_6b/test.jsonl"),
+)
 
 _TEXT_CORPUS_MIN_CHARS: int = 32
 _TEXT_CORPUS_MAX_RECORDS: int = 200
@@ -165,15 +171,19 @@ def _dataset_test_jsonl() -> Path | None:
 
     Search order:
       1. ``ELIZA_EVAL_TEXT_CORPUS`` env var (explicit operator override).
-      2. ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` next to
-         the training package (this is the in-repo source-of-truth split).
+      2. The in-repo eliza1 SFT ``test.jsonl`` split next to the training
+         package. ``0_8b`` is preferred; ``0_6b`` is the historical pre-rename
+         path still present in older worktrees.
     """
     override = os.environ.get("ELIZA_EVAL_TEXT_CORPUS")
     if override:
         p = Path(override).expanduser().resolve()
         return p if p.is_file() else None
-    candidate = (_TRAINING_ROOT / _DATASET_TEST_RELATIVE).resolve()
-    return candidate if candidate.is_file() else None
+    for relative in _DATASET_TEST_RELATIVES:
+        candidate = (_TRAINING_ROOT / relative).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _default_text_eval_corpus() -> tuple[str, ...]:

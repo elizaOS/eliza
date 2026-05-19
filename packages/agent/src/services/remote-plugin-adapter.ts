@@ -88,6 +88,7 @@ export async function registerRemoteCapabilityPlugins(
   validateRemotePluginModelDeclarations(modules);
   validateRemotePluginRouteDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
+  validateRemotePluginViewCollisions(runtime, modules, options);
   const plugins = modules
     .map((module) => createRemoteCapabilityPlugin(module))
     .filter((plugin) => shouldRegisterPlugin(runtime, plugin, options));
@@ -134,6 +135,7 @@ export async function syncRemoteCapabilityPlugins(
   validateRemotePluginModelDeclarations(modules);
   validateRemotePluginRouteDeclarations(modules);
   validateRemotePluginRouteCollisions(runtime, modules, options);
+  validateRemotePluginViewCollisions(runtime, modules, options);
   const nextPlugins = modules.map((module) =>
     createRemoteCapabilityPlugin(module),
   );
@@ -1288,12 +1290,65 @@ function validateRemotePluginRouteCollisions(
   }
 }
 
+function validateRemotePluginViewCollisions(
+  runtime: IAgentRuntime,
+  modules: RemotePluginModuleManifest[],
+  options: Pick<RemotePluginAdapterOptions, "reloadExisting">,
+): void {
+  const seen = new Map<string, string>();
+  for (const module of modules) {
+    for (const view of module.views ?? []) {
+      const key = viewCollisionKey(view);
+      const existingModuleId = seen.get(key);
+      if (existingModuleId) {
+        throw new CapabilityError({
+          code: "CAPABILITY_DECODE_FAILED",
+          message: `Remote view collision for "${key}" between modules "${existingModuleId}" and "${module.id}".`,
+          capability: "plugin",
+          method: "plugin.modules.list",
+        });
+      }
+      seen.set(key, module.id);
+    }
+  }
+
+  if (options.reloadExisting) return;
+
+  const registeredRemoteViewKeys = new Set(
+    getRegisteredRemoteCapabilityViews(runtime).map(viewCollisionKey),
+  );
+  for (const module of modules) {
+    for (const view of module.views ?? []) {
+      const key = viewCollisionKey(view);
+      const existing = (runtime.plugins ?? [])
+        .filter((plugin) => {
+          const config = plugin.config as Record<string, unknown> | undefined;
+          return typeof config?.remoteCapabilityModuleId !== "string";
+        })
+        .flatMap((plugin) => plugin.views ?? [])
+        .find((runtimeView) => viewCollisionKey(runtimeView) === key);
+      if (!existing) continue;
+      if (registeredRemoteViewKeys.has(key)) continue;
+      throw new CapabilityError({
+        code: "CAPABILITY_DECODE_FAILED",
+        message: `Remote plugin "${module.id}" view "${key}" would collide with an existing runtime view.`,
+        capability: "plugin",
+        method: "plugin.modules.list",
+      });
+    }
+  }
+}
+
 function routeCollisionKey(method: string, routePath: string): string {
   return `${method.toUpperCase()} ${normalizeRoutePath(routePath)}`;
 }
 
 function normalizeRoutePath(routePath: string): string {
   return routePath.startsWith("/") ? routePath : `/${routePath}`;
+}
+
+function viewCollisionKey(view: Pick<ViewDeclaration, "id" | "viewType">): string {
+  return `${view.viewType === "tui" ? "tui" : "gui"}:${view.id}`;
 }
 
 async function ensureConfiguredCapabilityRouter(
@@ -1331,6 +1386,25 @@ function getRegisteredRemoteCapabilityRoutes(runtime: IAgentRuntime): Route[] {
       return typeof config?.remoteCapabilityModuleId === "string";
     })
     .flatMap((item) => item.routes);
+}
+
+function getRegisteredRemoteCapabilityViews(
+  runtime: IAgentRuntime,
+): NonNullable<Plugin["views"]> {
+  const views: NonNullable<Plugin["views"]> = [];
+  for (const item of runtime.getAllPluginOwnership?.() ?? []) {
+    const config = item.plugin.config as Record<string, unknown> | undefined;
+    if (typeof config?.remoteCapabilityModuleId === "string") {
+      views.push(...(item.plugin.views ?? []));
+    }
+  }
+  for (const plugin of runtime.plugins ?? []) {
+    const config = plugin.config as Record<string, unknown> | undefined;
+    if (typeof config?.remoteCapabilityModuleId === "string") {
+      views.push(...(plugin.views ?? []));
+    }
+  }
+  return views;
 }
 
 function getRegisteredRemoteCapabilityActions(

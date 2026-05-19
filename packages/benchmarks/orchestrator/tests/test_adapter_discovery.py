@@ -287,7 +287,14 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             assert cell.propagated_env["BENCHMARK_HARNESS"] == harness
             assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == harness
 
-    for benchmark_id in ("gaia", "gaia_orchestrated", "webshop"):
+    for benchmark_id in (
+        "gaia",
+        "gaia_orchestrated",
+        "hyperliquid_bench",
+        "orchestrator_lifecycle",
+        "vending_bench",
+        "webshop",
+    ):
         for harness in ("eliza", "hermes", "openclaw"):
             cell = cells[(benchmark_id, harness)]
             assert cell.compatible is True
@@ -300,6 +307,15 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             if benchmark_id == "gaia_orchestrated":
                 assert "--providers" in cell.command
                 assert cell.command[cell.command.index("--providers") + 1] == harness
+            if benchmark_id == "vending_bench":
+                assert "--provider" in cell.command
+                assert cell.command[cell.command.index("--provider") + 1] == "eliza"
+            if benchmark_id == "hyperliquid_bench":
+                assert "--mode" in cell.command
+                assert cell.command[cell.command.index("--mode") + 1] == "eliza"
+            if benchmark_id == "orchestrator_lifecycle":
+                assert "--mode" in cell.command
+                assert cell.command[cell.command.index("--mode") + 1] == "bridge"
 
     for benchmark_id in (
         "hermes_tblite",

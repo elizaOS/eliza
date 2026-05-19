@@ -943,9 +943,23 @@ describe("translateUmbrellaAction (P0-5)", () => {
     expect(translated.kwargs).toBe(kwargs);
   });
 
+  it("maps CALENDAR(subaction=check_availability) to calendar.list_events", () => {
+    const translated = translateUmbrellaAction("CALENDAR", {
+      subaction: "check_availability",
+      start: "2026-05-14T09:00:00Z",
+      end: "2026-05-14T10:00:00Z",
+    });
+    expect(translated.name).toBe("calendar.list_events");
+    expect(translated.kwargs).toEqual({
+      start: "2026-05-14T09:00:00Z",
+      end: "2026-05-14T10:00:00Z",
+    });
+  });
+
   it("maps ARCHIVE_THREAD to MESSAGE manage archive defaults", () => {
     const translated = translateUmbrellaAction("ARCHIVE_THREAD", {
       threadId: "thread_01464",
+      operation: "archive",
     });
     expect(translated.name).toBe("MESSAGE");
     expect(translated.kwargs).toEqual({
