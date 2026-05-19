@@ -70,7 +70,7 @@ cleanup_lock() {
 trap cleanup_lock EXIT HUP INT TERM
 
 if [ -z "$binary" ]; then
-	payload_export="$(python3 "$repo_dir/scripts/locate_chipyard_linux_payload.py" --export-env)"
+	payload_export="$(python3 "$repo_dir/scripts/locate_chipyard_linux_payload.py" --export-env --require-preferred || true)"
 	case "$payload_export" in
 		export\ CHIPYARD_LINUX_BINARY=*)
 			eval "$payload_export"

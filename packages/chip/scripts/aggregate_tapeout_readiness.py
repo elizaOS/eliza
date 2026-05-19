@@ -393,21 +393,26 @@ def _classify(returncode: int, combined_output: str) -> Status:
 def _first_evidence_line(name: str, combined_output: str, returncode: int) -> str:
     """Return up to 200 chars of evidence, preferring the most informative line.
 
-    Picks the first line containing one of ``STATUS:``, ``FAIL:``, ``BLOCKED``,
-    ``failed`` or, failing that, the first non-empty line. Falls back to a
-    synthetic stub when the script printed nothing at all.
+    Picks the first ``STATUS: BLOCKED``, ``BLOCKED``, ``FAIL:``, or ``failed``
+    line. If none is present, picks the first ``STATUS:`` or non-empty line.
+    Falls back to a synthetic stub when the script printed nothing.
     """
     lines = [line.strip() for line in combined_output.splitlines() if line.strip()]
-    preferred = None
+    preferred: str | None = None
     for line in lines:
-        if (
-            line.startswith("STATUS:")
-            or line.startswith("FAIL:")
-            or "BLOCKED" in line
-            or "failed" in line
-        ):
+        if "STATUS: BLOCKED" in line or "BLOCKED:" in line:
             preferred = line
             break
+    if preferred is None:
+        for line in lines:
+            if line.startswith("FAIL:") or "failed" in line:
+                preferred = line
+                break
+    if preferred is None:
+        for line in lines:
+            if line.startswith("STATUS:"):
+                preferred = line
+                break
     if preferred is None and lines:
         preferred = lines[0]
     if preferred is None:

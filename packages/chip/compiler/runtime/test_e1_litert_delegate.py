@@ -25,6 +25,7 @@ from e1_litert_delegate import (
     e1_litert_delegate_create,
     e1_litert_delegate_descriptor_command_buffer_image,
     e1_litert_delegate_destroy,
+    e1_litert_delegate_execution_command_buffer_image,
     e1_litert_delegate_invoke,
     e1_litert_delegate_partition,
     e1_litert_delegate_prepared_descriptor_batch,
@@ -259,6 +260,24 @@ def test_delegate_descriptor_command_buffer_image_fails_closed_for_mixed_batch()
         )
 
 
+def test_delegate_materializes_execution_command_buffer_image_for_split_batch() -> None:
+    delegate = e1_litert_delegate_create()
+    image = e1_litert_delegate_execution_command_buffer_image(
+        delegate,
+        json.dumps(_mismatched_dot_payload()),
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert image["schema"] == "eliza.e1_npu_descriptor_command_buffer_image.v1"
+    assert image["backend_id"] == BACKEND_ID
+    assert image["module"] == "litert_mismatched_dot"
+    assert image["execution_batch_index"] == 1
+    assert image["op_names"] == ["dot1"]
+    assert image["descriptor_words"] == [[0xCC000108, 0x8000_0038, 0x8000_0020, 0]]
+
+
 def test_delegate_prepares_descriptor_batch_for_ready_batch() -> None:
     delegate = e1_litert_delegate_create()
     prepared = e1_litert_delegate_prepared_descriptor_batch(
@@ -341,6 +360,17 @@ def test_delegate_descriptor_command_buffer_image_rejects_non_delegate_handle() 
         )
 
 
+def test_delegate_execution_command_buffer_image_rejects_non_delegate_handle() -> None:
+    with pytest.raises(TypeError, match="E1LiteRtDelegate"):
+        e1_litert_delegate_execution_command_buffer_image(
+            object(),
+            json.dumps(_mismatched_dot_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            execution_batch_index=1,
+        )
+
+
 def test_delegate_prepared_descriptor_batch_rejects_non_delegate_handle() -> None:
     with pytest.raises(TypeError, match="E1LiteRtDelegate"):
         e1_litert_delegate_prepared_descriptor_batch(
@@ -370,6 +400,7 @@ def test_header_file_exists_and_declares_expected_entry_points() -> None:
         "e1_litert_delegate_partition",
         "e1_litert_delegate_invoke",
         "e1_litert_delegate_descriptor_command_buffer_image",
+        "e1_litert_delegate_execution_command_buffer_image",
         "e1_litert_delegate_prepared_descriptor_batch",
         "e1_litert_delegate_prepared_descriptor_execution_batch",
         "e1_litert_delegate_destroy",

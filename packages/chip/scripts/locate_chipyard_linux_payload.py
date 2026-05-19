@@ -30,6 +30,11 @@ DEFAULT_CANDIDATES = (
     FIREMARSHAL / "images/firechip/linux-poweroff/linux-poweroff-bin-dwarf-nodisk",
     FIREMARSHAL / "images/firechip/br-base/br-base-bin",
 )
+LINUX_POWEROFF_DWARF_OUTPUT = FIREMARSHAL / (
+    "images/firechip/linux-poweroff/linux-poweroff-bin-dwarf-nodisk"
+)
+BR_BASE_OUTPUT = FIREMARSHAL / "images/firechip/br-base/br-base-bin"
+PREFERRED_LINUX_SMOKE_PAYLOADS = frozenset({DEFAULT_OUTPUT.resolve()})
 
 
 @dataclass(frozen=True)
@@ -52,6 +57,7 @@ class ElfInfo:
             and self.machine == 0xF3
             and self.entry != 0
             and self.contains_opensbi
+            and self.contains_linux_version
         )
 
 
@@ -128,17 +134,36 @@ def firemarshal_build_command() -> str:
     )
 
 
+def payload_role(path: Path) -> str:
+    resolved = path.resolve()
+    if resolved == DEFAULT_OUTPUT.resolve():
+        return "preferred_linux_poweroff_nodisk"
+    if resolved == LINUX_POWEROFF_DWARF_OUTPUT.resolve():
+        return "linux_poweroff_dwarf_nodisk"
+    if resolved == BR_BASE_OUTPUT.resolve():
+        return "fallback_br_base"
+    return "custom"
+
+
+def preferred_for_linux_smoke(path: Path) -> bool:
+    return path.resolve() in PREFERRED_LINUX_SMOKE_PAYLOADS
+
+
 def manifest_for(
     *,
     selected: ElfInfo | None,
     candidates: list[dict[str, object]],
     errors: list[str],
+    warnings: list[str],
 ) -> dict[str, object]:
+    selected_is_preferred = selected is not None and preferred_for_linux_smoke(selected.path)
     return {
         "schema": "eliza.chipyard_linux_payload.v1",
         "status": "pass" if selected else "blocked",
         "payload_env": PAYLOAD_ENV,
         "selected_payload": rel(selected.path) if selected else "",
+        "selected_payload_role": payload_role(selected.path) if selected else "",
+        "selected_payload_preferred_for_linux_smoke": selected_is_preferred,
         "selected_payload_sha256": selected.sha256 if selected else "",
         "selected_payload_entry": f"0x{selected.entry:x}" if selected else "",
         "selected_payload_size_bytes": selected.size if selected else 0,
@@ -152,12 +177,18 @@ def manifest_for(
         ),
         "firemarshal_build_command": firemarshal_build_command(),
         "firemarshal_output": rel(DEFAULT_OUTPUT),
+        "preferred_linux_smoke_payload": rel(DEFAULT_OUTPUT),
+        "preferred_linux_smoke_payload_available": any(
+            record.get("path") == rel(DEFAULT_OUTPUT) and record.get("status") == "pass"
+            for record in candidates
+        ),
         "host": {
             "system": platform.system(),
             "machine": platform.machine(),
         },
         "candidates": candidates,
         "errors": errors,
+        "warnings": warnings,
     }
 
 
@@ -189,15 +220,25 @@ def main() -> int:
         action="store_true",
         help="Exit nonzero if no runnable payload is found.",
     )
+    parser.add_argument(
+        "--require-preferred",
+        action="store_true",
+        help="Exit nonzero unless the selected payload is the preferred linux-poweroff nodisk image.",
+    )
     args = parser.parse_args()
 
     selected: ElfInfo | None = None
     candidates: list[dict[str, object]] = []
     errors: list[str] = []
+    warnings: list[str] = []
 
     for path in candidate_paths(args.candidate, defaults=not args.no_defaults):
         info, error = read_elf_info(path)
-        record: dict[str, object] = {"path": rel(path)}
+        record: dict[str, object] = {
+            "path": rel(path),
+            "role": payload_role(path),
+            "preferred_for_linux_smoke": preferred_for_linux_smoke(path),
+        }
         if info is None:
             record.update({"status": "blocked", "reason": error})
         else:
@@ -220,26 +261,46 @@ def main() -> int:
 
     if selected is None:
         errors.append(
-            "No runnable RISC-V ELF payload with OpenSBI marker found. "
+            "No runnable RISC-V ELF payload with OpenSBI and Linux version markers found. "
             f"Build one with: {firemarshal_build_command()}"
         )
+    elif not preferred_for_linux_smoke(selected.path):
+        warnings.append(
+            "Selected payload is runnable but is not the preferred linux-poweroff nodisk "
+            f"smoke payload; build {rel(DEFAULT_OUTPUT)} with: {firemarshal_build_command()}"
+        )
+        if args.require_preferred:
+            errors.append(
+                "Preferred linux-poweroff nodisk smoke payload is unavailable; "
+                f"build it with: {firemarshal_build_command()}"
+            )
 
-    manifest = manifest_for(selected=selected, candidates=candidates, errors=errors)
+    manifest = manifest_for(
+        selected=selected,
+        candidates=candidates,
+        errors=errors,
+        warnings=warnings,
+    )
     REPORT.parent.mkdir(parents=True, exist_ok=True)
     REPORT.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n")
 
     if args.json:
         print(json.dumps(manifest, indent=2, sort_keys=True))
     elif args.export_env:
-        if selected:
+        if errors:
+            print(f"# BLOCKED: {errors[0]}")
+        elif selected:
             print(f"export {PAYLOAD_ENV}={selected.path}")
         else:
             print(f"# BLOCKED: {errors[0]}")
     elif selected:
         print(f"STATUS: PASS chipyard.linux_payload - {rel(selected.path)}")
+        print(f"  role: {payload_role(selected.path)}")
         print(f"  sha256: {selected.sha256}")
         print(f"  entry: 0x{selected.entry:x}")
         print(f"  export: export {PAYLOAD_ENV}={selected.path}")
+        for warning in warnings:
+            print(f"  warning: {warning}")
         print(f"  report: {rel(REPORT)}")
     else:
         print("STATUS: BLOCKED chipyard.linux_payload")
@@ -248,6 +309,8 @@ def main() -> int:
         print(f"  report: {rel(REPORT)}")
 
     if selected is None and args.require:
+        return 2
+    if args.require_preferred and errors:
         return 2
     return 0
 

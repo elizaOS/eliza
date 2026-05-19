@@ -75,6 +75,19 @@ int e1_litert_delegate_descriptor_command_buffer_image(
     uint8_t* image_json,
     size_t* image_json_size);
 
+/* Materialize a descriptor command-buffer image for one execution sub-batch
+ * into `image_json`. This is used after descriptor_execution_batches split an
+ * original batch by GEMM MMIO preamble compatibility. */
+int e1_litert_delegate_execution_command_buffer_image(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t execution_batch_index,
+    uint8_t* image_json,
+    size_t* image_json_size);
+
 /* Prepare the metadata package needed to stage one descriptor-ready batch into
  * `prepared_json`. This includes tensor arena sizing, GEMM MMIO preamble
  * values, and the descriptor image; it does not execute or submit the batch. */

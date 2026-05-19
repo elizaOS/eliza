@@ -117,12 +117,14 @@ closed when ready ops in the same batch require different GEMM MMIO preambles.
 The blob also reports `descriptor_batches` with batch-level blocked op reasons
 and `descriptor_execution_batches` split by `shared_mmio_preamble`, and the
 `execution_command_buffer_image` helper materializes those sub-batches with an
-`execution_batch_index`. The `prepared_descriptor_execution_batch` and
+`execution_batch_index`. ExecuTorch/LiteRT delegate skeletons expose direct
+`execution_command_buffer_image` wrappers, and LiteRT mirrors that entry point
+as `e1_litert_delegate_execution_command_buffer_image`. The
+`prepared_descriptor_execution_batch` and
 `e1_litert_delegate_prepared_descriptor_execution_batch` wrappers expose the
 same host-runtime package shape for materializable sub-batches, with simulator
 evidence for descriptor-base staging, submission, and computed tile writeback.
-The
-ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
+The ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
 wrappers for ready-batch descriptor image materialization. The partitioner and
 delegates also expose `prepared_descriptor_batch`/
 `e1_litert_delegate_prepared_descriptor_batch` wrappers that package arena

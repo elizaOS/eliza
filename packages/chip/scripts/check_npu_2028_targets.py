@@ -762,6 +762,7 @@ def main() -> int:
         ("runtime_binding_plan", executorch_text, EXECUTORCH_DELEGATE),
         ("descriptor_staging_plan", executorch_text, EXECUTORCH_DELEGATE),
         ("descriptor_command_buffer_image", executorch_text, EXECUTORCH_DELEGATE),
+        ("execution_command_buffer_image", executorch_text, EXECUTORCH_DELEGATE),
         ("prepared_descriptor_batch", executorch_text, EXECUTORCH_DELEGATE),
         ("prepared_descriptor_execution_batch", executorch_text, EXECUTORCH_DELEGATE),
         ("descriptor_batches", executorch_test_text, EXECUTORCH_DELEGATE_TEST),
@@ -772,6 +773,11 @@ def main() -> int:
         ),
         (
             "test_backend_descriptor_command_buffer_image_fails_closed_for_mixed_batch",
+            executorch_test_text,
+            EXECUTORCH_DELEGATE_TEST,
+        ),
+        (
+            "test_backend_materializes_execution_command_buffer_image_for_split_batch",
             executorch_test_text,
             EXECUTORCH_DELEGATE_TEST,
         ),
@@ -803,9 +809,11 @@ def main() -> int:
         ("runtime_binding_plan", litert_text, LITERT_DELEGATE),
         ("descriptor_staging_plan", litert_text, LITERT_DELEGATE),
         ("descriptor_command_buffer_image", litert_text, LITERT_DELEGATE),
+        ("execution_command_buffer_image", litert_text, LITERT_DELEGATE),
         ("prepared_descriptor_batch", litert_text, LITERT_DELEGATE),
         ("prepared_descriptor_execution_batch", litert_text, LITERT_DELEGATE),
         ("e1_litert_delegate_descriptor_command_buffer_image", litert_text, LITERT_DELEGATE),
+        ("e1_litert_delegate_execution_command_buffer_image", litert_text, LITERT_DELEGATE),
         ("e1_litert_delegate_prepared_descriptor_batch", litert_text, LITERT_DELEGATE),
         (
             "e1_litert_delegate_prepared_descriptor_execution_batch",
@@ -820,6 +828,11 @@ def main() -> int:
         ),
         (
             "test_delegate_descriptor_command_buffer_image_fails_closed_for_mixed_batch",
+            litert_test_text,
+            LITERT_DELEGATE_TEST,
+        ),
+        (
+            "test_delegate_materializes_execution_command_buffer_image_for_split_batch",
             litert_test_text,
             LITERT_DELEGATE_TEST,
         ),

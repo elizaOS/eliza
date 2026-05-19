@@ -82,17 +82,20 @@ def run_main(argv: list[str] | None = None) -> tuple[int, str, str]:
     stdout = io.StringIO()
     stderr = io.StringIO()
     code = 0
-    with mock.patch.object(sys, "argv", argv_full):
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            try:
-                code = check_pd_utilization.main()
-            except SystemExit as exc:
-                if isinstance(exc.code, int):
-                    code = exc.code
-                else:
-                    # SystemExit("string") prints the string to stderr and exits 1
-                    stderr.write(str(exc.code) + "\n")
-                    code = 1
+    with (
+        mock.patch.object(sys, "argv", argv_full),
+        contextlib.redirect_stdout(stdout),
+        contextlib.redirect_stderr(stderr),
+    ):
+        try:
+            code = check_pd_utilization.main()
+        except SystemExit as exc:
+            if isinstance(exc.code, int):
+                code = exc.code
+            else:
+                # SystemExit("string") prints the string to stderr and exits 1
+                stderr.write(str(exc.code) + "\n")
+                code = 1
     return code, stdout.getvalue(), stderr.getvalue()
 
 

@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT / "scripts") not in sys.path:
     sys.path.insert(0, str(ROOT / "scripts"))
 
-import aggregate_tapeout_readiness as agg
+import aggregate_tapeout_readiness as agg  # noqa: E402
 
 
 class ClassifyTests(unittest.TestCase):
@@ -47,11 +47,21 @@ class ClassifyTests(unittest.TestCase):
 
 
 class EvidenceLineTests(unittest.TestCase):
-    def test_prefers_status_line(self) -> None:
+    def test_prefers_blocked_line(self) -> None:
         out = "starting check\nSTATUS: BLOCKED foo - missing\ndone\n"
         self.assertEqual(
             agg._first_evidence_line("foo", out, 0),
             "STATUS: BLOCKED foo - missing",
+        )
+
+    def test_blocked_wins_over_status_pass(self) -> None:
+        out = (
+            "STATUS: PASS cpu.core_selection\n"
+            "STATUS: BLOCKED cpu.core_selection_big_core - license required\n"
+        )
+        self.assertEqual(
+            agg._first_evidence_line("foo", out, 0),
+            "STATUS: BLOCKED cpu.core_selection_big_core - license required",
         )
 
     def test_prefers_fail_line(self) -> None:
@@ -59,6 +69,13 @@ class EvidenceLineTests(unittest.TestCase):
         self.assertEqual(
             agg._first_evidence_line("foo", out, 1),
             "FAIL: something broke",
+        )
+
+    def test_status_pass_line_picked_when_no_blocker(self) -> None:
+        out = "preamble\nSTATUS: PASS rva23.llvm_pin_sha — abc\n"
+        self.assertEqual(
+            agg._first_evidence_line("foo", out, 0),
+            "STATUS: PASS rva23.llvm_pin_sha — abc",
         )
 
     def test_falls_back_to_first_nonempty_line(self) -> None:
@@ -267,6 +284,8 @@ class MainExitCodeTests(unittest.TestCase):
 
 class ReportFileTests(unittest.TestCase):
     def test_write_report_emits_valid_json_with_trailing_newline(self) -> None:
+        import tempfile
+
         report = agg.build_report(
             [
                 agg.GateResult(
@@ -278,18 +297,15 @@ class ReportFileTests(unittest.TestCase):
                 )
             ]
         )
-        with mock.patch.object(agg.REPORT_PATH, "parent") as parent:
-            parent.mkdir = mock.MagicMock()
-            written: dict[str, str] = {}
-
-            def fake_write_text(text: str) -> None:
-                written["text"] = text
-
-            with mock.patch.object(agg.REPORT_PATH, "write_text", side_effect=fake_write_text):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "nested/dir/tapeout-readiness.json"
+            with mock.patch.object(agg, "REPORT_PATH", target):
                 agg.write_report(report)
-        self.assertTrue(written["text"].endswith("\n"))
-        parsed = json.loads(written["text"])
+            text = target.read_text()
+        self.assertTrue(text.endswith("\n"))
+        parsed = json.loads(text)
         self.assertEqual(parsed["schema"], "eliza.tapeout_readiness.v1")
+        self.assertEqual(parsed["gates"][0]["name"], "x")
 
 
 if __name__ == "__main__":

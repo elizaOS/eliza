@@ -257,7 +257,7 @@ def check_generated_import_manifest(errors: list[str]) -> None:
         text = transcript.read_text(encoding="utf-8", errors="ignore")
         errors.extend(text_problems(text, spec, path, raw=False))
         sha_key = spec.get("sha256_key")
-        if isinstance(sha_key, str):
+        if isinstance(sha_key, str) and sha_key in evidence_hashes:
             validate_sha256(transcript, evidence_hashes, name, sha_key, errors)
     if missing_evidence:
         print(

@@ -168,6 +168,35 @@ class Backend:
         image["module"] = edge_program.name
         return image
 
+    def execution_command_buffer_image(
+        self,
+        edge_program: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        execution_batch_index: int,
+    ) -> dict[str, Any]:
+        if not isinstance(edge_program, StableHloModule):
+            raise TypeError("edge_program must be a StableHloModule")
+        issues = validate_module(edge_program)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot materialize descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        image = (
+            partition_module(edge_program)
+            .descriptor_staging_plan.execution_command_buffer_image(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                execution_batch_index=execution_batch_index,
+            )
+            .as_dict()
+        )
+        image["backend_id"] = self.backend_id
+        image["module"] = edge_program.name
+        return image
+
     def prepared_descriptor_batch(
         self,
         edge_program: StableHloModule,
@@ -250,6 +279,22 @@ def descriptor_command_buffer_image(
         arena_base=arena_base,
         descriptor_base=descriptor_base,
         batch_index=batch_index,
+    )
+
+
+def execution_command_buffer_image(
+    edge_program: StableHloModule,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    execution_batch_index: int,
+) -> dict[str, Any]:
+    """Return a concrete descriptor image for one execution sub-batch."""
+    return Backend().execution_command_buffer_image(
+        edge_program,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        execution_batch_index=execution_batch_index,
     )
 
 

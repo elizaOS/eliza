@@ -1719,6 +1719,7 @@ def main() -> int:
         ("runtime_binding_plan", executorch_text, "ExecuTorch delegate"),
         ("descriptor_staging_plan", executorch_text, "ExecuTorch delegate"),
         ("descriptor_command_buffer_image", executorch_text, "ExecuTorch delegate"),
+        ("execution_command_buffer_image", executorch_text, "ExecuTorch delegate"),
         ("prepared_descriptor_batch", executorch_text, "ExecuTorch delegate"),
         ("prepared_descriptor_execution_batch", executorch_text, "ExecuTorch delegate"),
         ("partition_report.descriptor_staging_plan", executorch_text, "ExecuTorch delegate"),
@@ -1729,6 +1730,11 @@ def main() -> int:
         ),
         (
             "test_backend_descriptor_command_buffer_image_fails_closed_for_mixed_batch",
+            executorch_test_text,
+            "ExecuTorch delegate test",
+        ),
+        (
+            "test_backend_materializes_execution_command_buffer_image_for_split_batch",
             executorch_test_text,
             "ExecuTorch delegate test",
         ),
@@ -1759,9 +1765,11 @@ def main() -> int:
         ("runtime_binding_plan", litert_text, "LiteRT delegate"),
         ("descriptor_staging_plan", litert_text, "LiteRT delegate"),
         ("descriptor_command_buffer_image", litert_text, "LiteRT delegate"),
+        ("execution_command_buffer_image", litert_text, "LiteRT delegate"),
         ("prepared_descriptor_batch", litert_text, "LiteRT delegate"),
         ("prepared_descriptor_execution_batch", litert_text, "LiteRT delegate"),
         ("e1_litert_delegate_descriptor_command_buffer_image", litert_text, "LiteRT delegate"),
+        ("e1_litert_delegate_execution_command_buffer_image", litert_text, "LiteRT delegate"),
         ("e1_litert_delegate_prepared_descriptor_batch", litert_text, "LiteRT delegate"),
         (
             "e1_litert_delegate_prepared_descriptor_execution_batch",
@@ -1776,6 +1784,11 @@ def main() -> int:
         ),
         (
             "test_delegate_descriptor_command_buffer_image_fails_closed_for_mixed_batch",
+            litert_test_text,
+            "LiteRT delegate test",
+        ),
+        (
+            "test_delegate_materializes_execution_command_buffer_image_for_split_batch",
             litert_test_text,
             "LiteRT delegate test",
         ),
@@ -1870,6 +1883,8 @@ def main() -> int:
         "eliza.e1_npu_descriptor_command_buffer_image.v1",
         "descriptor_command_buffer_image",
         "e1_litert_delegate_descriptor_command_buffer_image",
+        "execution_command_buffer_image",
+        "e1_litert_delegate_execution_command_buffer_image",
         "prepared_descriptor_batch",
         "eliza.e1_npu_prepared_descriptor_batch.v1",
         "prepared_descriptor_execution_batch",

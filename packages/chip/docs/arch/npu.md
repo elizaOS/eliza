@@ -899,11 +899,14 @@ execution_batch_index)` materializes one of those sub-batches into the same
 descriptor image schema while recording the `execution_batch_index`. Delegates
 can reject a mixed command-buffer batch before trying to emit descriptors, or
 use the execution-batch plan to split a ready run safely. The partitioner and
-delegate skeletons also expose `prepared_descriptor_execution_batch`, and LiteRT
-mirrors it as `e1_litert_delegate_prepared_descriptor_execution_batch`, so
-callers can get the host-runtime package for one materializable sub-batch. The
-userspace simulator checks that a prepared execution batch stages and submits
-through its own descriptor base and writes back the computed output tile.
+delegate skeletons also expose `execution_command_buffer_image` directly, and
+LiteRT mirrors it as `e1_litert_delegate_execution_command_buffer_image`, for
+callers that only need the relocatable descriptor image. They also expose
+`prepared_descriptor_execution_batch`, and LiteRT mirrors it as
+`e1_litert_delegate_prepared_descriptor_execution_batch`, so callers can get the
+host-runtime package for one materializable sub-batch. The userspace simulator
+checks that a prepared execution batch stages and submits through its own
+descriptor base and writes back the computed output tile.
 ExecuTorch exposes this through `descriptor_command_buffer_image`, and LiteRT
 mirrors it through `e1_litert_delegate_descriptor_command_buffer_image`, both
 returning the same `eliza.e1_npu_descriptor_command_buffer_image.v1` shape for
