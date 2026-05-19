@@ -120,6 +120,10 @@ jobs:
         working-directory: ${{ env.BENCH_DIR }}
         run: uv sync --extra test --extra anthropic
 
+      - name: Build deterministic LifeWorld snapshots
+        working-directory: ${{ env.BENCH_DIR }}
+        run: uv run python -m eliza_lifeops_bench.lifeworld.snapshots --rebuild
+
       - name: Run pytest
         id: pytest
         working-directory: ${{ env.BENCH_DIR }}
@@ -179,6 +183,10 @@ jobs:
       - name: uv sync (lifeops-bench)
         working-directory: ${{ env.BENCH_DIR }}
         run: uv sync --extra test --extra anthropic
+
+      - name: Build deterministic LifeWorld snapshots
+        working-directory: ${{ env.BENCH_DIR }}
+        run: uv run python -m eliza_lifeops_bench.lifeworld.snapshots --rebuild
 
       - name: Run smoke bench (in-process, no API keys)
         id: smoke
@@ -340,6 +348,11 @@ jobs:
         if: steps.gate.outputs.skip != 'true'
         working-directory: ${{ env.BENCH_DIR }}
         run: uv sync --extra test --extra anthropic
+
+      - name: Build deterministic LifeWorld snapshots
+        if: steps.gate.outputs.skip != 'true'
+        working-directory: ${{ env.BENCH_DIR }}
+        run: uv run python -m eliza_lifeops_bench.lifeworld.snapshots --rebuild
 
       - name: Run live bench
         if: steps.gate.outputs.skip != 'true'

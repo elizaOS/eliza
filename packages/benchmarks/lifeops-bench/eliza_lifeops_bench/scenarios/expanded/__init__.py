@@ -295,6 +295,7 @@ def _task(
         trigger.update({"taskId": f"task_{area.slug}_{case_slug}_{variant}_parent"})
 
     kwargs: dict[str, Any] = {
+        "subaction": "create",
         "kind": kind,
         "promptInstructions": prompt,
         "trigger": trigger,
@@ -430,8 +431,8 @@ def _static_actions(
                 priority="low",
                 pipeline={"onComplete": [f"task_{area.slug}_{case_slug}_recap"]},
             ),
-            Action(name="SCHEDULED_TASK_UPDATE", kwargs={"taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"priority": "medium"}}),
-            Action(name="SCHEDULED_TASK_SNOOZE", kwargs={"taskId": f"task_{area.slug}_{case_slug}_{variant}", "minutes": 30}),
+            Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"priority": "medium"}}),
+            Action(name="SCHEDULED_TASK_SNOOZE", kwargs={"subaction": "snooze", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "minutes": 30}),
         ]
     if area.slug == "cross_domain_day_week":
         return [
@@ -444,7 +445,7 @@ def _static_actions(
         return [
             _task(area=area, case_slug=case_slug, variant=variant, prompt=prompt, trigger_kind="once", priority="high", output={"destination": "channel", "target": "sms:owner"}),
             _message(source="sms", body=f"Escalation fallback for {topic}.", variant=variant),
-            Action(name="SCHEDULED_TASK_UPDATE", kwargs={"taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"escalationCursor": 1}}),
+            Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"escalationCursor": 1}}),
         ]
     if area.slug == "connector_degradation":
         trigger_kinds = ("event", "manual", "once")
@@ -615,7 +616,7 @@ def _static_actions(
             trigger_kinds = ("manual", "once", "event")
             return [
                 _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Switch locale from English to Japanese and keep timezone America/Los_Angeles: {topic}", trigger_kind=trigger_kinds[variant], subject={"kind": "self", "id": "self"}, output={"destination": "channel", "target": "in_app:owner", "locale": "ja-JP"}),
-                Action(name="SCHEDULED_TASK_UPDATE", kwargs={"taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"metadata": {"localeSequence": ["en-US", "ja-JP"], "ownerFact": {"timezone": "America/Los_Angeles"}}}}),
+                Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"metadata": {"localeSequence": ["en-US", "ja-JP"], "ownerFact": {"timezone": "America/Los_Angeles"}}}}),
             ]
         if family_index == 2:
             trigger_kinds = ("once", "manual", "event")
@@ -628,7 +629,7 @@ def _static_actions(
             return [
                 _task(area=area, case_slug=case_slug, variant=variant, prompt=f"Document watcher with privacy revocation: {topic}", kind="watcher", trigger_kind=trigger_kinds[variant], subject={"kind": "document", "id": f"doc_{case_slug}_{variant}"}, pipeline={"privacy": {"scope": "explicit_only", "revoked": True, "auditReason": "owner_revoked_access"}}),
                 Action(name="LIFE_SKIP", kwargs={"subaction": "skip", "target": f"private-occurrence-{case_slug}", "reason": "privacy_revoked"}),
-                Action(name="SCHEDULED_TASK_UPDATE", kwargs={"taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"state": "skipped", "privacyRevoked": True}}),
+                Action(name="SCHEDULED_TASK_UPDATE", kwargs={"subaction": "update", "taskId": f"task_{area.slug}_{case_slug}_{variant}", "updates": {"state": "skipped", "privacyRevoked": True}}),
             ]
         if family_index == 4:
             trigger_kinds = ("event", "manual", "once")
