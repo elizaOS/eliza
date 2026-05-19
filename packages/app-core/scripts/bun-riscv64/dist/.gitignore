@@ -1,0 +1,5 @@
+# Track build evidence + checksums, ignore binary artifacts.
+*
+!.gitignore
+!build-log.txt
+!*.sha256
