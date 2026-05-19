@@ -877,48 +877,48 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 		},
 		event: {
 			handled: true,
-		},
-		service: {
-			result: { text: "fixture service", fixture: true },
-		},
-		appBridge: {
+			},
+			service: {
+				result: { text: "fixture service", fixture: true },
+			},
+			appBridge: {
 			result: {
 				handled: true,
 				status: 208,
-				headers: { "x-capability-fixture-bridge": "yes" },
-				body: { fixtureAppBridge: true },
+					headers: { "x-capability-fixture-bridge": "yes" },
+					body: { fixtureAppBridge: true },
+				},
 			},
-		},
-		evaluatorShouldRun: {
-			shouldRun: true,
-		},
-		evaluatorPrepare: {
-			prepared: { fixturePrepared: true },
-		},
-		evaluatorPrompt: {
-			prompt: "fixture evaluator prompt",
-		},
-		evaluatorProcess: {
-			result: { fixtureProcessed: true },
-		},
-		responseHandlerEvaluatorShouldRun: {
-			shouldRun: true,
-		},
-		responseHandlerEvaluatorEvaluate: {
-			patch: { fixtureResponsePatch: true },
-		},
-		responseHandlerFieldEvaluatorShouldRun: {
-			shouldRun: true,
-		},
-		responseHandlerFieldEvaluatorParse: {
-			value: { fixtureParsed: true },
-		},
-		responseHandlerFieldEvaluatorHandle: {
-			effect: {
-				patch: { fixtureHandled: true },
-				debug: ["fixture field handled"],
+			evaluatorShouldRun: {
+				shouldRun: true,
 			},
-		},
+			evaluatorPrepare: {
+				prepared: { fixturePrepared: true },
+			},
+			evaluatorPrompt: {
+				prompt: "fixture evaluator prompt",
+			},
+			evaluatorProcess: {
+				result: { fixtureProcessed: true },
+			},
+			responseHandlerEvaluatorShouldRun: {
+				shouldRun: true,
+			},
+			responseHandlerEvaluatorEvaluate: {
+				patch: { fixtureResponsePatch: true },
+			},
+			responseHandlerFieldEvaluatorShouldRun: {
+				shouldRun: true,
+			},
+			responseHandlerFieldEvaluatorParse: {
+				value: { fixtureParsed: true },
+			},
+			responseHandlerFieldEvaluatorHandle: {
+				effect: {
+					patch: { fixtureHandled: true },
+					debug: ["fixture field handled"],
+				},
+			},
 	},
 } as const satisfies {
 	availability: CapabilityAvailability;
