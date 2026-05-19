@@ -1,9 +1,9 @@
 {
   "yaw_before_rad": 0.0,
-  "yaw_after_rad": -2.700347292657097,
-  "yaw_delta_deg": -154.7185030888298,
-  "mean_pixel_diff": 44.927216796875,
-  "changed_pixel_pct": 99.99674479166667,
+  "yaw_after_rad": -2.5971138222799723,
+  "yaw_delta_deg": -148.80366093173177,
+  "mean_pixel_diff": 45.219211154513886,
+  "changed_pixel_pct": 99.99544270833334,
   "yaw_rate_command_rad_s": -8.0,
   "duration_s": 2.5,
   "image_shape": [
