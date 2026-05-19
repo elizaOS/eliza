@@ -180,7 +180,7 @@ export class VoiceAttributionPipeline {
 
 		const match = await this.deps.profileStore.findBestMatch({
 			embedding,
-			embeddingModel: this.deps.encoder.modelId,
+			embeddingModel: this.deps.encoder.modelId ?? "",
 		});
 
 		let observation: VoiceProfileObservation;
@@ -198,7 +198,7 @@ export class VoiceAttributionPipeline {
 				imprintClusterId: match.profile.sourceScopeId ?? match.profile.id,
 				entityId: refined?.entityId ?? match.profile.entityId ?? null,
 				embedding,
-				embeddingModel: this.deps.encoder.modelId,
+				embeddingModel: this.deps.encoder.modelId ?? "",
 				confidence: match.confidence,
 				source: req.source,
 				startMs: primarySpans[0]?.startMs,
@@ -213,7 +213,7 @@ export class VoiceAttributionPipeline {
 			// Create a new cluster.
 			const created = await this.deps.profileStore.createProfile({
 				centroid: embedding,
-				embeddingModel: this.deps.encoder.modelId,
+				embeddingModel: this.deps.encoder.modelId ?? "",
 				entityId: null,
 				confidence: 0.5,
 				durationMs: this.spanMsTotal(primarySpans),
@@ -223,7 +223,7 @@ export class VoiceAttributionPipeline {
 				imprintClusterId: created.imprintClusterId,
 				entityId: null,
 				embedding,
-				embeddingModel: this.deps.encoder.modelId,
+				embeddingModel: this.deps.encoder.modelId ?? "",
 				confidence: 0.5,
 				source: req.source,
 				startMs: primarySpans[0]?.startMs,
@@ -241,7 +241,7 @@ export class VoiceAttributionPipeline {
 					evidenceKind: "voice_imprint_attribution",
 					identityAuthority: false,
 					synthesisAuthorization: false,
-					embeddingModel: this.deps.encoder.modelId,
+					embeddingModel: this.deps.encoder.modelId ?? "",
 					profileId: created.profileId,
 				},
 			};

@@ -1,49 +1,27 @@
 /**
- * Voice-emotion classifier — on-device acoustic-prosody emotion model.
+ * Voice-emotion types and pure projection functions — shared by the GGML
+ * classifier (`voice-emotion-classifier-ggml.ts`) and the attribution
+ * pipeline (`emotion-attribution.ts`).
  *
- * Ships **Wav2Small** (Wagner et al., arXiv:2408.13920 — 72K params, ~120 KB
- * ONNX int8) distilled from `audeering/wav2vec2-large-robust-12-ft-emotion-msp-dim`
- * (teacher — CC-BY-NC-SA-4.0, NEVER bundled). Student weights are produced by
- * `packages/training/scripts/emotion/distill_wav2small.py` and shipped under
- * Apache-2.0 alongside the eliza-1 voice bundle.
+ * The ONNX-backed `VoiceEmotionClassifier` class was removed when
+ * `onnxruntime-node` was dropped. The GGML implementation lives in
+ * `voice-emotion-classifier-ggml.ts` and uses `bun:ffi` →
+ * `libvoice_classifier`.
  *
- * Model contract — auto-detected at load time from the ONNX output shape:
- *   - Input  : 16 kHz mono Float32 PCM, [-1, 1] normalized, ≥ 1.0 s window.
- *              The student carries its own log-mel front-end (the
- *              paper's Conv1D-LogMel layer is part of the ONNX graph) so the
- *              caller hands raw PCM, not features.
- *   - Output : either a continuous V-A-D triple `[1, 3]` (legacy
- *              `head=vad` contract, projected to a discrete tag via
- *              `projectVadToExpressiveEmotion`) **or** direct 7-class
- *              logits `[1, 7]` (current `head=cls7` contract, ``argmax``
- *              over softmax). The legacy V-A-D projection is bypassed when
- *              the model exposes the 7-class head.
- *
- * Why two contracts: the V-A-D projection table was calibrated against
- * audeering teacher's [0, 1]-spanning V-A-D distribution; on the
- * student's compressed range the projection metric capped at
- * macro-F1 ~0.32 even with a well-fit V-A-D head. The 7-class
- * classifier head (already trained for the auxiliary CE loss) hits
- * macro-F1 ≥ 0.35 on the same checkpoint, so we ship that directly when
- * available.
- *
- * No silent fallback (AGENTS.md §3): when the ONNX runtime is missing the
- * constructor throws `OnnxRuntimeUnavailableError`; when the model file is
- * missing or malformed the inference call throws a `VoiceEmotionClassifierError`.
- * The wrapping pipeline (`attributeVoiceEmotion` / `pipeline.ts`) decides
- * whether to swallow the failure as an evidence-row downgrade or surface it.
+ * Pure exports here:
+ *   - Model id constants (`WAV2SMALL_INT8_MODEL_ID`, etc.)
+ *   - Sample rate / window constants
+ *   - `VoiceEmotionVad`, `VoiceEmotionClassifierOutput` interfaces
+ *   - `VoiceEmotionHead` type
+ *   - `VoiceEmotionClassifierError` error class
+ *   - `projectVadToExpressiveEmotion` — V-A-D → ExpressiveEmotion projection
+ *   - `interpretCls7Output` — 7-class logit → structured output
  */
 
 import {
 	EXPRESSIVE_EMOTION_TAGS,
 	type ExpressiveEmotion,
 } from "./expressive-tags";
-import {
-	loadOnnxRuntime,
-	OnnxRuntimeUnavailableError,
-	type OrtInferenceSession,
-	type OrtTensorCtor,
-} from "./onnx-runtime";
 
 /** Stable identifier for the Wav2Small student head we ship. */
 export const WAV2SMALL_INT8_MODEL_ID = "wav2small-msp-dim-int8" as const;
@@ -88,14 +66,6 @@ export interface VoiceEmotionClassifierOutput {
 	modelId: VoiceEmotionModelId;
 	/** Inference wall-time in ms (CPU side; useful for the bench harness). */
 	latencyMs: number;
-}
-
-/** Construction options. */
-export interface VoiceEmotionClassifierOptions {
-	/** Absolute path to the ONNX file. */
-	modelPath: string;
-	/** Stable model id recorded on every inference; defaults to int8. */
-	modelId?: VoiceEmotionModelId;
 }
 
 /**
@@ -208,10 +178,9 @@ export function projectVadToExpressiveEmotion(vad: VoiceEmotionVad): {
 }
 
 /**
- * Stable model-head identifier — declares whether the ONNX session emits
- * V-A-D triples or 7-class logits. Auto-detected from the first inference
- * output's last dim (3 → vad, 7 → cls7). Stored on the classifier so
- * callers can inspect after a successful `ensureLoaded()`.
+ * Stable model-head identifier — declares whether the model emits
+ * V-A-D triples or 7-class logits. `vad` = continuous [valence, arousal,
+ * dominance]; `cls7` = 7-class logits in `EXPRESSIVE_EMOTION_TAGS` order.
  */
 export type VoiceEmotionHead = "vad" | "cls7";
 
@@ -305,174 +274,3 @@ function makeEmptyScoresRecord(): Record<ExpressiveEmotion, number> {
 	};
 }
 
-/**
- * Run the Wav2Small ONNX session and return a structured emotion read.
- * Side-effect-free; safe to call concurrently as long as `ort` enforces
- * per-session locking (the node binding does).
- */
-export class VoiceEmotionClassifier {
-	private readonly modelPath: string;
-	private readonly modelId: VoiceEmotionModelId;
-	private session: OrtInferenceSession | null = null;
-	private tensorCtor: OrtTensorCtor | null = null;
-	private inputName: string | null = null;
-	/**
-	 * Set on first successful inference based on the model's output shape.
-	 * `null` until then. Exposed via `getHead()` for diagnostics.
-	 */
-	private head: VoiceEmotionHead | null = null;
-
-	constructor(options: VoiceEmotionClassifierOptions) {
-		if (
-			typeof options.modelPath !== "string" ||
-			options.modelPath.length === 0
-		) {
-			throw new VoiceEmotionClassifierError(
-				"[voice-emotion] modelPath is required",
-			);
-		}
-		this.modelPath = options.modelPath;
-		this.modelId = options.modelId ?? WAV2SMALL_INT8_MODEL_ID;
-	}
-
-	/** Lazy session-load; first call pays the cost. Subsequent calls reuse. */
-	async ensureLoaded(): Promise<void> {
-		if (this.session) return;
-		let ort: Awaited<ReturnType<typeof loadOnnxRuntime>>;
-		try {
-			ort = await loadOnnxRuntime();
-		} catch (err) {
-			if (err instanceof OnnxRuntimeUnavailableError) throw err;
-			throw new VoiceEmotionClassifierError(
-				`[voice-emotion] failed to load onnxruntime-node: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
-		try {
-			this.session = await ort.InferenceSession.create(this.modelPath);
-		} catch (err) {
-			throw new VoiceEmotionClassifierError(
-				`[voice-emotion] failed to load model at ${this.modelPath}: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
-		this.tensorCtor = ort.Tensor;
-		this.inputName = this.session.inputNames[0] ?? null;
-		if (!this.inputName) {
-			throw new VoiceEmotionClassifierError(
-				"[voice-emotion] ONNX session reported zero input names",
-			);
-		}
-	}
-
-	/** Returns the active head contract after the first successful inference. */
-	getHead(): VoiceEmotionHead | null {
-		return this.head;
-	}
-
-	/**
-	 * Classify a single utterance. `pcm` must be 16 kHz mono Float32 in
-	 * [-1, 1]. Inputs shorter than `WAV2SMALL_MIN_SAMPLES` throw; longer
-	 * inputs are truncated to the trailing `WAV2SMALL_MAX_SAMPLES` window
-	 * (the final 12 s carry the most-recent prosody — strongest signal for
-	 * "what did the user just say in what mood").
-	 */
-	async classify(pcm: Float32Array): Promise<VoiceEmotionClassifierOutput> {
-		if (!(pcm instanceof Float32Array)) {
-			throw new VoiceEmotionClassifierError(
-				"[voice-emotion] pcm must be a Float32Array",
-			);
-		}
-		if (pcm.length < WAV2SMALL_MIN_SAMPLES) {
-			throw new VoiceEmotionClassifierError(
-				`[voice-emotion] pcm too short: ${pcm.length} samples < ${WAV2SMALL_MIN_SAMPLES}`,
-			);
-		}
-		await this.ensureLoaded();
-		const session = this.session;
-		const Tensor = this.tensorCtor;
-		const inputName = this.inputName;
-		if (!session || !Tensor || !inputName) {
-			throw new VoiceEmotionClassifierError(
-				"[voice-emotion] session not loaded after ensureLoaded()",
-			);
-		}
-		const samples =
-			pcm.length > WAV2SMALL_MAX_SAMPLES
-				? pcm.subarray(pcm.length - WAV2SMALL_MAX_SAMPLES)
-				: pcm;
-		// Wav2Small input is rank-2: [batch=1, samples].
-		const tensor = new Tensor("float32", samples.slice(), [1, samples.length]);
-		const startedAt = Date.now();
-		let outputs: Record<string, { data: Float32Array | BigInt64Array }>;
-		try {
-			outputs = (await session.run({ [inputName]: tensor })) as Record<
-				string,
-				{ data: Float32Array | BigInt64Array }
-			>;
-		} catch (err) {
-			throw new VoiceEmotionClassifierError(
-				`[voice-emotion] ONNX run failed: ${
-					err instanceof Error ? err.message : String(err)
-				}`,
-			);
-		}
-		const latencyMs = Date.now() - startedAt;
-
-		// Wav2Small canonical exports either:
-		//   - `head=vad`  → first output [1, 3] in (V, A, D) order, name
-		//     `vad`; the runtime projects to `EXPRESSIVE_EMOTION_TAGS`.
-		//   - `head=cls7` → first output [1, 7] logits in
-		//     `EXPRESSIVE_EMOTION_TAGS` order, name `cls_logits`; the runtime
-		//     softmaxes + argmaxes directly without going through the V-A-D
-		//     projection table.
-		// Auto-detect by the output's last dim — robust to renamed exports.
-		const outputNames = session.outputNames;
-		const headName = outputNames[0];
-		if (!headName) {
-			throw new VoiceEmotionClassifierError(
-				"[voice-emotion] ONNX session reported zero output names",
-			);
-		}
-		const out = outputs[headName];
-		if (!out || !(out.data instanceof Float32Array)) {
-			throw new VoiceEmotionClassifierError(
-				`[voice-emotion] expected Float32 output, got ${out?.data.constructor.name}`,
-			);
-		}
-		const dataLen = out.data.length;
-		if (dataLen === 3) {
-			this.head = "vad";
-			const vad: VoiceEmotionVad = {
-				valence: clamp01(out.data[0] ?? 0),
-				arousal: clamp01(out.data[1] ?? 0),
-				dominance: clamp01(out.data[2] ?? 0),
-			};
-			const projected = projectVadToExpressiveEmotion(vad);
-			return {
-				vad,
-				emotion: projected.emotion,
-				confidence: projected.confidence,
-				scores: projected.scores,
-				modelId: this.modelId,
-				latencyMs,
-			};
-		}
-		if (dataLen === EXPRESSIVE_EMOTION_TAGS.length) {
-			this.head = "cls7";
-			return interpretCls7Output(out.data, this.modelId, latencyMs);
-		}
-		throw new VoiceEmotionClassifierError(
-			`[voice-emotion] expected output of length 3 (V-A-D) or ${EXPRESSIVE_EMOTION_TAGS.length} (cls7), got ${dataLen}`,
-		);
-	}
-
-	/** Free the underlying ONNX session. Safe to call once. */
-	dispose(): void {
-		this.session = null;
-		this.tensorCtor = null;
-		this.inputName = null;
-	}
-}
