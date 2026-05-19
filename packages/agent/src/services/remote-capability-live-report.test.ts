@@ -1,6 +1,7 @@
 import type { IAgentRuntime, Plugin, UUID } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
+  summarizeRemoteCapabilityEndpointUrlFingerprint,
   summarizeRemoteCapabilityLiveRuntime,
   summarizeRemoteCapabilityLiveSync,
 } from "./remote-capability-live-report.ts";
@@ -80,6 +81,18 @@ describe("remote capability live report summaries", () => {
       componentTypeCount: 1,
       viewCount: 1,
     });
+  });
+
+  it("summarizes endpoint URL identity without writing the URL into live artifacts", () => {
+    expect(
+      summarizeRemoteCapabilityEndpointUrlFingerprint(
+        "https://provider.example.test/capability/?token=secret#debug",
+      ),
+    ).toBe(
+      summarizeRemoteCapabilityEndpointUrlFingerprint(
+        "https://provider.example.test/capability",
+      ),
+    );
   });
 });
 

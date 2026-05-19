@@ -36,6 +36,33 @@ const REQUIRED_REMOTE_MODULE_COUNT_FIELDS = [
   "viewCount",
 ] as const;
 
+const REQUIRED_SURFACE_RPC_METHODS: Record<RequiredSurface, string[]> = {
+  action: ["plugin.action.invoke"],
+  provider: ["plugin.provider.get"],
+  route: ["plugin.route.call"],
+  viewAsset: ["plugin.asset.get"],
+  model: ["plugin.model.invoke"],
+  lifecycle: ["plugin.lifecycle.call"],
+  event: ["plugin.event.handle"],
+  service: ["plugin.service.call"],
+  appBridge: ["plugin.appBridge.call"],
+  evaluator: [
+    "plugin.evaluator.shouldRun",
+    "plugin.evaluator.prepare",
+    "plugin.evaluator.prompt",
+    "plugin.evaluator.process",
+  ],
+  responseHandlerEvaluator: [
+    "plugin.responseHandlerEvaluator.shouldRun",
+    "plugin.responseHandlerEvaluator.evaluate",
+  ],
+  responseHandlerFieldEvaluator: [
+    "plugin.responseHandlerFieldEvaluator.shouldRun",
+    "plugin.responseHandlerFieldEvaluator.parse",
+    "plugin.responseHandlerFieldEvaluator.handle",
+  ],
+};
+
 type RequiredSurface = (typeof REQUIRED_SURFACES)[number];
 type RequiredRemoteModuleCountField =
   (typeof REQUIRED_REMOTE_MODULE_COUNT_FIELDS)[number];
@@ -50,6 +77,7 @@ type ValidatedReport = {
   kind: "cloud" | "provider";
   endpointId: string;
   provider?: string;
+  endpointUrlSha256?: string;
 };
 
 type ReportKind = ValidatedReport["kind"];
@@ -391,6 +419,10 @@ function validateReportFile(
     kind === "provider"
       ? requireProviderName(report.provider, "provider")
       : undefined;
+  const endpointUrlSha256 =
+    kind === "provider"
+      ? requireSha256(report.endpointUrlSha256, "endpointUrlSha256")
+      : undefined;
   if (options.requireFileIdentity) {
     validateReportFileIdentity(file, kind, provider);
   }
@@ -512,6 +544,12 @@ function validateReportFile(
       );
     }
   }
+  validateRpcCalls(
+    conformance.rpcCalls,
+    moduleExerciseKeys,
+    exercisedTargetsBySurface,
+    observedModuleIds,
+  );
 
   requireObject(conformance.actionResult, "conformance.actionResult");
   requireObject(conformance.providerResult, "conformance.providerResult");
@@ -588,7 +626,83 @@ function validateReportFile(
     kind,
     endpointId,
     ...(provider === undefined ? {} : { provider }),
+    ...(endpointUrlSha256 === undefined ? {} : { endpointUrlSha256 }),
   };
+}
+
+function validateRpcCalls(
+  value: unknown,
+  moduleExerciseKeys: Set<string>,
+  exercisedTargetsBySurface: Map<RequiredSurface, string>,
+  observedModuleIds: Set<string>,
+): void {
+  const rpcCalls = requireArray(value, "conformance.rpcCalls");
+  const rpcCallKeys = new Set<string>();
+  for (const [index, value] of rpcCalls.entries()) {
+    const call = requireObject(value, `conformance.rpcCalls[${index}]`);
+    const surface = requireRequiredSurface(
+      call.surface,
+      `conformance.rpcCalls[${index}].surface`,
+    );
+    const method = requireString(
+      call.method,
+      `conformance.rpcCalls[${index}].method`,
+    );
+    if (!REQUIRED_SURFACE_RPC_METHODS[surface].includes(method)) {
+      throw new Error(
+        `conformance.rpcCalls[${index}].method must be valid for its surface.`,
+      );
+    }
+    const moduleId = requireString(
+      call.moduleId,
+      `conformance.rpcCalls[${index}].moduleId`,
+    );
+    const target = requireString(
+      call.target,
+      `conformance.rpcCalls[${index}].target`,
+    );
+    const targetModuleId = validateExercisedTargetModule(
+      surface,
+      target,
+      observedModuleIds,
+    );
+    if (targetModuleId !== moduleId) {
+      throw new Error(
+        `conformance.rpcCalls[${index}].target must start with moduleId.`,
+      );
+    }
+    const rpcCallKey = `${method}\0${surface}\0${moduleId}\0${target}`;
+    if (rpcCallKeys.has(rpcCallKey)) {
+      throw new Error("conformance.rpcCalls must not contain duplicates.");
+    }
+    rpcCallKeys.add(rpcCallKey);
+    if (!moduleExerciseKeys.has(`${surface}\0${moduleId}\0${target}`)) {
+      throw new Error(
+        "conformance.rpcCalls entries must be present in conformance.moduleExercises.",
+      );
+    }
+  }
+  for (const moduleExerciseKey of moduleExerciseKeys) {
+    const [surface] = moduleExerciseKey.split("\0") as [RequiredSurface];
+    for (const method of REQUIRED_SURFACE_RPC_METHODS[surface]) {
+      if (!rpcCallKeys.has(`${method}\0${moduleExerciseKey}`)) {
+        throw new Error(
+          "conformance.rpcCalls must include every required method for each conformance.moduleExercises entry.",
+        );
+      }
+    }
+  }
+  for (const [surface, target] of exercisedTargetsBySurface.entries()) {
+    const separatorIndex = target.indexOf(":");
+    const moduleId = target.slice(0, separatorIndex);
+    for (const method of REQUIRED_SURFACE_RPC_METHODS[surface]) {
+      if (!rpcCallKeys.has(`${method}\0${surface}\0${moduleId}\0${target}`)) {
+        throw new Error(
+          `conformance.rpcCalls must include conformance.exercised.${surface}.`,
+        );
+      }
+    }
+  }
 }
 
 function validateReportFileIdentity(
@@ -674,6 +788,7 @@ function validateReportSet(
     });
   }
   const endpointOwners = new Map<string, string>();
+  const endpointUrlFingerprintOwners = new Map<string, string>();
   const providerOwners = new Map<string, string>();
   const allowedProviderSet =
     allowedProviders.length === 0 ? null : new Set(allowedProviders);
@@ -718,6 +833,19 @@ function validateReportSet(
       });
     } else {
       providerOwners.set(provider, report.file);
+    }
+    const endpointUrlSha256 = report.endpointUrlSha256;
+    if (endpointUrlSha256) {
+      const fingerprintOwner =
+        endpointUrlFingerprintOwners.get(endpointUrlSha256);
+      if (fingerprintOwner) {
+        failures.push({
+          file: report.file,
+          message: `endpointUrlSha256 duplicates ${fingerprintOwner}.`,
+        });
+      } else {
+        endpointUrlFingerprintOwners.set(endpointUrlSha256, report.file);
+      }
     }
   }
   for (const provider of requiredProviders) {
@@ -1210,6 +1338,12 @@ function requireProviderName(value: unknown, field: string): string {
     );
   }
   return text;
+}
+
+function requireSha256(value: unknown, field: string): string {
+  const text = requireString(value, field);
+  requirePattern(text, /^[0-9a-f]{64}$/i, field);
+  return text.toLowerCase();
 }
 
 function requireHttpBaseUrl(value: unknown, field: string): string {

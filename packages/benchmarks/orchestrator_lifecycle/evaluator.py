@@ -8,10 +8,12 @@ from .types import LifecycleMetrics, Scenario, ScenarioResult
 BEHAVIOR_KEYWORDS: dict[str, list[str]] = {
     "ask_clarifying_question_before_start": [
         "clarify",
+        "could you remind me",
         "could you specify",
         "need more detail",
         "clarifying question",
         "what exactly",
+        "which task",
         "can you tell me more",
         "more information",
     ],
@@ -26,6 +28,9 @@ BEHAVIOR_KEYWORDS: dict[str, list[str]] = {
         "wait for",
         "hold off",
         "before i begin",
+        "what outcomes",
+        "what you'd like me to handle",
+        "what you’d like me to handle",
     ],
     "spawn_subagent": [
         "subagent",
@@ -47,7 +52,10 @@ BEHAVIOR_KEYWORDS: dict[str, list[str]] = {
         "in progress",
         "subagent delegated to",
         "delegated to gather",
+        "subagent delegate",
         "subagent to research",
+        "will keep you updated",
+        "keep you updated",
     ],
     "ack_scope_change": [
         "scope change",
@@ -62,6 +70,7 @@ BEHAVIOR_KEYWORDS: dict[str, list[str]] = {
         "plan updated",
         "plan is now updated",
         "updated accordingly",
+        "updating the plan accordingly",
         "re-planned",
         "replanned",
         "new task plan",

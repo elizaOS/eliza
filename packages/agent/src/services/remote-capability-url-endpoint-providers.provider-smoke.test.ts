@@ -12,6 +12,7 @@ import {
 } from "./remote-capability-endpoint-provider.ts";
 import {
   summarizeRemoteCapabilityLiveCi,
+  summarizeRemoteCapabilityEndpointUrlFingerprint,
   summarizeRemoteCapabilityLiveRuntime,
   summarizeRemoteCapabilityLiveSync,
   writeRemoteCapabilityLiveReport,
@@ -136,6 +137,9 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
           schemaVersion: 1,
           kind: "provider",
           provider: target.label,
+          endpointUrlSha256: summarizeRemoteCapabilityEndpointUrlFingerprint(
+            options.baseUrl,
+          ),
           endpointId: options.endpointId,
           observedAt: new Date().toISOString(),
           conformance,

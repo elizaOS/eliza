@@ -1,4 +1,5 @@
 import { mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import type { IAgentRuntime, Plugin } from "@elizaos/core";
 
@@ -44,6 +45,14 @@ export function summarizeRemoteCapabilityLiveCi():
     sha: process.env.GITHUB_SHA?.trim() ?? "",
     ref: process.env.GITHUB_REF?.trim() ?? "",
   };
+}
+
+export function summarizeRemoteCapabilityEndpointUrlFingerprint(
+  baseUrl: string,
+): string {
+  return createHash("sha256")
+    .update(normalizeRemoteCapabilityEndpointBaseUrl(baseUrl))
+    .digest("hex");
 }
 
 export function summarizeRemoteCapabilityLiveSync(
@@ -151,4 +160,12 @@ function sumPluginCounts(
   count: (plugin: Plugin) => number,
 ): number {
   return plugins.reduce((total, plugin) => total + count(plugin), 0);
+}
+
+function normalizeRemoteCapabilityEndpointBaseUrl(baseUrl: string): string {
+  const url = new URL(baseUrl.trim());
+  url.hash = "";
+  url.search = "";
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  return url.toString();
 }

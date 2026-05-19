@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +60,10 @@ async function main(): Promise<void> {
     );
     const duplicateEndpointDir = join(workspace, "duplicate-endpoint");
     const duplicateProviderDir = join(workspace, "duplicate-provider");
+    const duplicateEndpointUrlFingerprintDir = join(
+      workspace,
+      "duplicate-endpoint-url-fingerprint",
+    );
     const leakedSecretDir = join(workspace, "leaked-secret");
     const leakedSecretValueDir = join(workspace, "leaked-secret-value");
     const bogusTargetDir = join(workspace, "bogus-target");
@@ -103,6 +108,7 @@ async function main(): Promise<void> {
       workspace,
       "missing-module-exercises",
     );
+    const missingRpcCallsDir = join(workspace, "missing-rpc-calls");
     const manifestOnlyUnregisteredDir = join(
       workspace,
       "manifest-only-unregistered",
@@ -152,6 +158,7 @@ async function main(): Promise<void> {
     await mkdir(mismatchedCloudFileIdentityDir, { recursive: true });
     await mkdir(duplicateEndpointDir, { recursive: true });
     await mkdir(duplicateProviderDir, { recursive: true });
+    await mkdir(duplicateEndpointUrlFingerprintDir, { recursive: true });
     await mkdir(leakedSecretDir, { recursive: true });
     await mkdir(leakedSecretValueDir, { recursive: true });
     await mkdir(bogusTargetDir, { recursive: true });
@@ -172,6 +179,7 @@ async function main(): Promise<void> {
     await mkdir(missingSummaryModuleExerciseDir, { recursive: true });
     await mkdir(duplicateModuleExerciseDir, { recursive: true });
     await mkdir(missingModuleExercisesDir, { recursive: true });
+    await mkdir(missingRpcCallsDir, { recursive: true });
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
     await mkdir(runtimePluginUndercountDir, { recursive: true });
@@ -367,6 +375,30 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(duplicateEndpointUrlFingerprintDir, "provider-a.json"),
+      `${JSON.stringify(makeCompleteReport("provider", "fingerprint-endpoint-a", "e2b"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(duplicateEndpointUrlFingerprintDir, "provider-b.json"),
+      `${JSON.stringify(
+        {
+          ...makeCompleteReport(
+            "provider",
+            "fingerprint-endpoint-b",
+            "home-machine",
+          ),
+          endpointUrlSha256: makeEndpointUrlSha256(
+            "fingerprint-endpoint-a",
+            "e2b",
+          ),
+        },
+        null,
+        2,
+      )}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(leakedSecretDir, "provider.json"),
       `${JSON.stringify(makeLeakedSecretReport(), null, 2)}\n`,
       "utf8",
@@ -464,6 +496,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(missingModuleExercisesDir, "provider.json"),
       `${JSON.stringify(makeMissingModuleExercisesReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingRpcCallsDir, "provider.json"),
+      `${JSON.stringify(makeMissingRpcCallsReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -685,6 +722,24 @@ async function main(): Promise<void> {
     if (!unknownProvider.output.includes("is not in --allowed-providers")) {
       throw new Error(
         `unknown provider failed for the wrong reason: ${unknownProvider.output}`,
+      );
+    }
+    const duplicateEndpointUrlFingerprint = await runValidator(
+      duplicateEndpointUrlFingerprintDir,
+      "--kind=provider",
+    );
+    if (duplicateEndpointUrlFingerprint.exitCode === 0) {
+      throw new Error(
+        "duplicate endpoint URL fingerprint unexpectedly passed validation.",
+      );
+    }
+    if (
+      !duplicateEndpointUrlFingerprint.output.includes(
+        "endpointUrlSha256 duplicates",
+      )
+    ) {
+      throw new Error(
+        `duplicate endpoint URL fingerprint failed for the wrong reason: ${duplicateEndpointUrlFingerprint.output}`,
       );
     }
     const kindMismatch = await runValidator(providerOnlyDir, "--kind", "cloud");
@@ -1236,6 +1291,17 @@ async function main(): Promise<void> {
         `missing moduleExercises failed for the wrong reason: ${missingModuleExercises.output}`,
       );
     }
+    const missingRpcCalls = await runValidator(missingRpcCallsDir);
+    if (missingRpcCalls.exitCode === 0) {
+      throw new Error("missing rpcCalls report unexpectedly passed.");
+    }
+    if (
+      !missingRpcCalls.output.includes("conformance.rpcCalls must be an array")
+    ) {
+      throw new Error(
+        `missing rpcCalls failed for the wrong reason: ${missingRpcCalls.output}`,
+      );
+    }
     const manifestOnlyUnregistered = await runValidator(
       manifestOnlyUnregisteredDir,
     );
@@ -1369,7 +1435,10 @@ function makeCompleteReport(
           cloudApiBase: "https://api.example.test",
           agentId: "agent-1",
         }
-      : { provider }),
+      : {
+          provider,
+          endpointUrlSha256: makeEndpointUrlSha256(endpointId, provider),
+        }),
     endpointId,
     observedAt,
     conformance,
@@ -1416,6 +1485,12 @@ function makeCompleteReport(
   };
 }
 
+function makeEndpointUrlSha256(endpointId: string, provider: string): string {
+  return createHash("sha256")
+    .update(`https://${provider}.${endpointId}.example.test`)
+    .digest("hex");
+}
+
 function makeCompleteExtraExercisesReport() {
   const report = makeCompleteReport("provider");
   return {
@@ -1427,6 +1502,15 @@ function makeCompleteExtraExercisesReport() {
       moduleExercises: [
         ...report.conformance.moduleExercises,
         {
+          surface: "action",
+          moduleId: "second-module",
+          target: "second-module:extra-action",
+        },
+      ],
+      rpcCalls: [
+        ...report.conformance.rpcCalls,
+        {
+          method: "plugin.action.invoke",
           surface: "action",
           moduleId: "second-module",
           target: "second-module:extra-action",
@@ -1488,6 +1572,15 @@ function makeCompletePartialModuleReport() {
       moduleExercises: [
         ...report.conformance.moduleExercises,
         {
+          surface: "action",
+          moduleId: "partial-module",
+          target: "partial-module:PARTIAL_ACTION",
+        },
+      ],
+      rpcCalls: [
+        ...report.conformance.rpcCalls,
+        {
+          method: "plugin.action.invoke",
           surface: "action",
           moduleId: "partial-module",
           target: "partial-module:PARTIAL_ACTION",
@@ -1564,6 +1657,12 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
       target,
     }),
   );
+  const rpcCalls = moduleExercises.flatMap((exercise) =>
+    rpcMethodsForSurface(exercise.surface).map((method) => ({
+      method,
+      ...exercise,
+    })),
+  );
   return {
     endpointId,
     availability: {
@@ -1581,6 +1680,7 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
     moduleIds: ["sample-module"],
     exercised,
     moduleExercises,
+    rpcCalls,
     actionResult: {},
     providerResult: {},
     routeResult: { status: 200 },
@@ -1614,11 +1714,55 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
   };
 }
 
+function rpcMethodsForSurface(surface: string): string[] {
+  switch (surface) {
+    case "action":
+      return ["plugin.action.invoke"];
+    case "provider":
+      return ["plugin.provider.get"];
+    case "route":
+      return ["plugin.route.call"];
+    case "viewAsset":
+      return ["plugin.asset.get"];
+    case "model":
+      return ["plugin.model.invoke"];
+    case "lifecycle":
+      return ["plugin.lifecycle.call"];
+    case "event":
+      return ["plugin.event.handle"];
+    case "service":
+      return ["plugin.service.call"];
+    case "appBridge":
+      return ["plugin.appBridge.call"];
+    case "evaluator":
+      return [
+        "plugin.evaluator.shouldRun",
+        "plugin.evaluator.prepare",
+        "plugin.evaluator.prompt",
+        "plugin.evaluator.process",
+      ];
+    case "responseHandlerEvaluator":
+      return [
+        "plugin.responseHandlerEvaluator.shouldRun",
+        "plugin.responseHandlerEvaluator.evaluate",
+      ];
+    case "responseHandlerFieldEvaluator":
+      return [
+        "plugin.responseHandlerFieldEvaluator.shouldRun",
+        "plugin.responseHandlerFieldEvaluator.parse",
+        "plugin.responseHandlerFieldEvaluator.handle",
+      ];
+    default:
+      throw new Error(`Unknown surface ${surface}.`);
+  }
+}
+
 function makePartialReport() {
   return {
     schemaVersion: 1,
     kind: "provider",
     provider: "e2b",
+    endpointUrlSha256: makeEndpointUrlSha256("partial-endpoint", "e2b"),
     endpointId: "partial-endpoint",
     observedAt: new Date(0).toISOString(),
     conformance: {
@@ -2024,6 +2168,16 @@ function makeExercisedUnregisteredReport() {
             }
           : exercise,
       ),
+      rpcCalls: report.conformance.rpcCalls.map((call) =>
+        call.surface === "service"
+          ? {
+              method: "plugin.service.call",
+              surface: "service",
+              moduleId: "manifest-only-module",
+              target: "manifest-only-module:service",
+            }
+          : call,
+      ),
     },
     sync: {
       ...report.sync,
@@ -2180,6 +2334,15 @@ function makeMissingModuleExercisesReport() {
   };
 }
 
+function makeMissingRpcCallsReport() {
+  const report = makeCompleteReport("provider");
+  const { rpcCalls: _rpcCalls, ...conformance } = report.conformance;
+  return {
+    ...report,
+    conformance,
+  };
+}
+
 function makeManifestOnlyUnregisteredReport() {
   const report = makeCompleteReport("provider");
   return {
@@ -2234,6 +2397,16 @@ function makeRuntimePluginUndercountReport() {
               target: "second-module:service",
             }
           : exercise,
+      ),
+      rpcCalls: report.conformance.rpcCalls.map((call) =>
+        call.surface === "service"
+          ? {
+              method: "plugin.service.call",
+              surface: "service",
+              moduleId: "second-module",
+              target: "second-module:service",
+            }
+          : call,
       ),
     },
     sync: {

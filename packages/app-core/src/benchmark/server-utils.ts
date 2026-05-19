@@ -636,6 +636,9 @@ export function composeBenchmarkPrompt(params: {
       : undefined;
   const isLocaBenchmark =
     benchmark === "loca_bench" || benchmark === "loca-bench";
+  const isOrchestratorLifecycle =
+    benchmark === "orchestrator_lifecycle" ||
+    benchmark === "orchestrator-lifecycle";
 
   if (params.context && Object.keys(params.context).length > 0) {
     const contextForPrompt = isLocaBenchmark
@@ -667,6 +670,16 @@ export function composeBenchmarkPrompt(params: {
         "source_data is read-only input data; write/edit requested output CSV files such as assignment_info.csv and quiz_info.csv at the workspace root.",
         'For example: {"actions":["BENCHMARK_ACTION"],"text":"","params":{"BENCHMARK_ACTION":{"tool_name":"filesystem_list_directory","arguments":{"path":"source_data"}}}}',
         "Only use REPLY after the requested output files have been written.",
+      ].join(" "),
+    );
+  } else if (isOrchestratorLifecycle) {
+    segments.push(
+      [
+        "This is an orchestrator lifecycle benchmark.",
+        "Use REPLY text for the next lifecycle message.",
+        "For failed approaches, replans, and scope changes, acknowledge the failure or scope change and state that the updated plan has been applied.",
+        "For delegation/status turns, mention active subagent status or progress.",
+        "For underspecified turns, ask a clarifying question and say you will wait before starting.",
       ].join(" "),
     );
   } else {

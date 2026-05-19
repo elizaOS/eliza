@@ -384,6 +384,14 @@ describe("remote capability endpoint conformance", () => {
         target: `${module.id}:REMOTE_ACTION_${index}`,
       })),
     );
+    expect(report.rpcCalls).toEqual(
+      modules.map((module, index) => ({
+        method: "plugin.action.invoke",
+        surface: "action",
+        moduleId: module.id,
+        target: `${module.id}:REMOTE_ACTION_${index}`,
+      })),
+    );
   });
 
   it("can backfill module exercise evidence through non-basic plugin surfaces", async () => {
@@ -438,6 +446,20 @@ describe("remote capability endpoint conformance", () => {
         target: "action-module:ACTION_MODULE_RUN",
       },
       {
+        surface: "service",
+        moduleId: "service-only-module",
+        target: "service-only-module:service-only.ping",
+      },
+    ]);
+    expect(report.rpcCalls).toEqual([
+      {
+        method: "plugin.action.invoke",
+        surface: "action",
+        moduleId: "action-module",
+        target: "action-module:ACTION_MODULE_RUN",
+      },
+      {
+        method: "plugin.service.call",
         surface: "service",
         moduleId: "service-only-module",
         target: "service-only-module:service-only.ping",

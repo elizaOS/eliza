@@ -66,6 +66,12 @@ export type RemoteCapabilityEndpointConformanceReport = {
     moduleId: string;
     target: string;
   }>;
+  rpcCalls: Array<{
+    method: string;
+    surface: RemoteCapabilityEndpointConformanceSurface;
+    moduleId: string;
+    target: string;
+  }>;
   actionResult?: PluginInvokeActionResult;
   providerResult?: PluginGetProviderResult;
   routeResult?: PluginCallRouteResult;
@@ -145,6 +151,7 @@ export async function assertRemoteCapabilityEndpointConformance(
     moduleIds: modules.map((module) => module.id),
     exercised,
     moduleExercises,
+    rpcCalls: [],
   };
 
   const required = options.requiredSurfaces ?? DEFAULT_REQUIRED_SURFACES;
@@ -170,6 +177,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "action",
+      "plugin.action.invoke",
       target.module.id,
       target.action.name,
     );
@@ -194,6 +202,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "provider",
+      "plugin.provider.get",
       target.module.id,
       target.provider.name,
     );
@@ -229,6 +238,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "route",
+      "plugin.route.call",
       target.module.id,
       `${target.route.method} ${target.route.path}`,
     );
@@ -276,6 +286,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "viewAsset",
+      "plugin.asset.get",
       target.module.id,
       target.bundlePath,
     );
@@ -300,6 +311,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "model",
+      "plugin.model.invoke",
       target.module.id,
       target.model.modelType,
     );
@@ -324,6 +336,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "lifecycle",
+      "plugin.lifecycle.call",
       target.module.id,
       target.hook,
     );
@@ -348,6 +361,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "event",
+      "plugin.event.handle",
       target.module.id,
       target.event.eventName,
     );
@@ -373,6 +387,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "service",
+      "plugin.service.call",
       target.module.id,
       `${target.service.serviceType}.${target.method}`,
     );
@@ -403,6 +418,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "appBridge",
+      "plugin.appBridge.call",
       target.module.id,
       target.hook,
     );
@@ -426,11 +442,32 @@ export async function assertRemoteCapabilityEndpointConformance(
       options: {},
     };
     const shouldRun = await router.plugin.shouldRunEvaluator(common);
+    recordRpcCall(
+      report,
+      "evaluator",
+      "plugin.evaluator.shouldRun",
+      target.module.id,
+      target.evaluator.name,
+    );
     const prepare = await router.plugin.prepareEvaluator(common);
+    recordRpcCall(
+      report,
+      "evaluator",
+      "plugin.evaluator.prepare",
+      target.module.id,
+      target.evaluator.name,
+    );
     const prompt = await router.plugin.promptEvaluator({
       ...common,
       ...(prepare.prepared === undefined ? {} : { prepared: prepare.prepared }),
     });
+    recordRpcCall(
+      report,
+      "evaluator",
+      "plugin.evaluator.prompt",
+      target.module.id,
+      target.evaluator.name,
+    );
     const process = await router.plugin.processEvaluator({
       ...common,
       ...(prepare.prepared === undefined ? {} : { prepared: prepare.prepared }),
@@ -441,6 +478,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "evaluator",
+      "plugin.evaluator.process",
       target.module.id,
       target.evaluator.name,
     );
@@ -463,6 +501,13 @@ export async function assertRemoteCapabilityEndpointConformance(
     };
     const shouldRun =
       await router.plugin.shouldRunResponseHandlerEvaluator(common);
+    recordRpcCall(
+      report,
+      "responseHandlerEvaluator",
+      "plugin.responseHandlerEvaluator.shouldRun",
+      target.module.id,
+      target.evaluator.name,
+    );
     const evaluate =
       await router.plugin.evaluateResponseHandlerEvaluator(common);
     report.responseHandlerEvaluatorResult = { shouldRun, evaluate };
@@ -470,6 +515,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "responseHandlerEvaluator",
+      "plugin.responseHandlerEvaluator.evaluate",
       target.module.id,
       target.evaluator.name,
     );
@@ -492,10 +538,24 @@ export async function assertRemoteCapabilityEndpointConformance(
     };
     const shouldRun =
       await router.plugin.shouldRunResponseHandlerFieldEvaluator(common);
+    recordRpcCall(
+      report,
+      "responseHandlerFieldEvaluator",
+      "plugin.responseHandlerFieldEvaluator.shouldRun",
+      target.module.id,
+      target.field.name,
+    );
     const parse = await router.plugin.parseResponseHandlerFieldEvaluator({
       ...common,
       value: { raw: true },
     });
+    recordRpcCall(
+      report,
+      "responseHandlerFieldEvaluator",
+      "plugin.responseHandlerFieldEvaluator.parse",
+      target.module.id,
+      target.field.name,
+    );
     const handle = await router.plugin.handleResponseHandlerFieldEvaluator({
       ...common,
       value: { raw: true },
@@ -511,6 +571,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       report,
       exerciseCounts,
       "responseHandlerFieldEvaluator",
+      "plugin.responseHandlerFieldEvaluator.handle",
       target.module.id,
       target.field.name,
     );
@@ -568,6 +629,7 @@ function recordExercise(
   report: RemoteCapabilityEndpointConformanceReport,
   exerciseCounts: Map<string, number>,
   surface: RemoteCapabilityEndpointConformanceSurface,
+  method: string,
   moduleId: string,
   target: string,
   options: { summarize?: boolean } = {},
@@ -580,7 +642,23 @@ function recordExercise(
     moduleId,
     target: `${moduleId}:${target}`,
   });
+  recordRpcCall(report, surface, method, moduleId, target);
   exerciseCounts.set(moduleId, (exerciseCounts.get(moduleId) ?? 0) + 1);
+}
+
+function recordRpcCall(
+  report: RemoteCapabilityEndpointConformanceReport,
+  surface: RemoteCapabilityEndpointConformanceSurface,
+  method: string,
+  moduleId: string,
+  target: string,
+): void {
+  report.rpcCalls.push({
+    method,
+    surface,
+    moduleId,
+    target: `${moduleId}:${target}`,
+  });
 }
 
 async function exerciseUncoveredModules(
@@ -602,9 +680,15 @@ async function exerciseUncoveredModules(
           text: "capability-router conformance action",
         },
       });
-      recordExercise(report, exerciseCounts, "action", module.id, action.name, {
-        summarize: false,
-      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "action",
+        "plugin.action.invoke",
+        module.id,
+        action.name,
+        { summarize: false },
+      );
       continue;
     }
     const provider = module.providers?.[0];
@@ -619,6 +703,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "provider",
+        "plugin.provider.get",
         module.id,
         provider.name,
         { summarize: false },
@@ -648,6 +733,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "route",
+        "plugin.route.call",
         module.id,
         `${route.method} ${route.path}`,
         { summarize: false },
@@ -681,6 +767,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "viewAsset",
+        "plugin.asset.get",
         module.id,
         view.bundlePath,
         { summarize: false },
@@ -699,6 +786,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "model",
+        "plugin.model.invoke",
         module.id,
         model.modelType,
         { summarize: false },
@@ -713,9 +801,15 @@ async function exerciseUncoveredModules(
         hook,
         context: { conformance: true },
       });
-      recordExercise(report, exerciseCounts, "lifecycle", module.id, hook, {
-        summarize: false,
-      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "lifecycle",
+        "plugin.lifecycle.call",
+        module.id,
+        hook,
+        { summarize: false },
+      );
       continue;
     }
     const event = module.events?.[0];
@@ -730,6 +824,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "event",
+        "plugin.event.handle",
         module.id,
         event.eventName,
         { summarize: false },
@@ -752,6 +847,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "service",
+        "plugin.service.call",
         module.id,
         `${service.serviceType}.${method}`,
         { summarize: false },
@@ -776,6 +872,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "appBridge",
+        "plugin.appBridge.call",
         module.id,
         appBridgeHook,
         { summarize: false },
@@ -793,13 +890,34 @@ async function exerciseUncoveredModules(
         options: {},
       };
       await router.plugin.shouldRunEvaluator(common);
+      recordRpcCall(
+        report,
+        "evaluator",
+        "plugin.evaluator.shouldRun",
+        module.id,
+        evaluator.name,
+      );
       const prepare = await router.plugin.prepareEvaluator(common);
+      recordRpcCall(
+        report,
+        "evaluator",
+        "plugin.evaluator.prepare",
+        module.id,
+        evaluator.name,
+      );
       const prompt = await router.plugin.promptEvaluator({
         ...common,
         ...(prepare.prepared === undefined
           ? {}
           : { prepared: prepare.prepared }),
       });
+      recordRpcCall(
+        report,
+        "evaluator",
+        "plugin.evaluator.prompt",
+        module.id,
+        evaluator.name,
+      );
       await router.plugin.processEvaluator({
         ...common,
         ...(prepare.prepared === undefined
@@ -811,6 +929,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "evaluator",
+        "plugin.evaluator.process",
         module.id,
         evaluator.name,
         { summarize: false },
@@ -826,11 +945,19 @@ async function exerciseUncoveredModules(
         context: { conformance: true },
       };
       await router.plugin.shouldRunResponseHandlerEvaluator(common);
+      recordRpcCall(
+        report,
+        "responseHandlerEvaluator",
+        "plugin.responseHandlerEvaluator.shouldRun",
+        module.id,
+        responseEvaluator.name,
+      );
       await router.plugin.evaluateResponseHandlerEvaluator(common);
       recordExercise(
         report,
         exerciseCounts,
         "responseHandlerEvaluator",
+        "plugin.responseHandlerEvaluator.evaluate",
         module.id,
         responseEvaluator.name,
         { summarize: false },
@@ -846,10 +973,24 @@ async function exerciseUncoveredModules(
         context: { conformance: true },
       };
       await router.plugin.shouldRunResponseHandlerFieldEvaluator(common);
+      recordRpcCall(
+        report,
+        "responseHandlerFieldEvaluator",
+        "plugin.responseHandlerFieldEvaluator.shouldRun",
+        module.id,
+        responseField.name,
+      );
       const parse = await router.plugin.parseResponseHandlerFieldEvaluator({
         ...common,
         value: { raw: true },
       });
+      recordRpcCall(
+        report,
+        "responseHandlerFieldEvaluator",
+        "plugin.responseHandlerFieldEvaluator.parse",
+        module.id,
+        responseField.name,
+      );
       await router.plugin.handleResponseHandlerFieldEvaluator({
         ...common,
         value: { raw: true },
@@ -864,6 +1005,7 @@ async function exerciseUncoveredModules(
         report,
         exerciseCounts,
         "responseHandlerFieldEvaluator",
+        "plugin.responseHandlerFieldEvaluator.handle",
         module.id,
         responseField.name,
         { summarize: false },

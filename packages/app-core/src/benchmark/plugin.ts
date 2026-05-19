@@ -754,6 +754,9 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "personality-bench",
   ]).has(benchmark);
   const isWooBench = benchmark === "woobench" || benchmark === "woo-bench";
+  const isOrchestratorLifecycle =
+    benchmark === "orchestrator_lifecycle" ||
+    benchmark === "orchestrator-lifecycle";
   const isPersonalityBenchmark =
     benchmark === "personality_bench" || benchmark === "personality-bench";
 
@@ -1029,6 +1032,16 @@ function formatContextAsText(ctx: BenchmarkContext): string {
       );
       sections.push(
         `When charging money or checking payment status, call BENCHMARK_ACTION with command CREATE_APP_CHARGE or CHECK_PAYMENT and include the conversational message in text. Never ask for money with REPLY alone, and never check payment before the user says they paid or an active charge exists.`,
+      );
+    } else if (isOrchestratorLifecycle) {
+      sections.push(
+        `This is an orchestrator lifecycle benchmark. Respond with actions: REPLY and put only the next lifecycle message in text. Do not call BENCHMARK_ACTION.`,
+      );
+      sections.push(
+        `If the user says the current approach failed, asks to replan, changes scope, or asks to continue with revised work, acknowledge the scope change or failure and state that the updated plan has been applied.`,
+      );
+      sections.push(
+        `For delegation/status turns, mention the active subagent and the status or progress update. For underspecified turns, ask a clarifying question and say you will wait before starting.`,
       );
     } else {
       sections.push(
