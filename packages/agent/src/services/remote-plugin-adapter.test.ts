@@ -2765,26 +2765,52 @@ createServer(async (req, res) => {
       res.end(readFileSync("/app/dist/docker-view.js"));
       return;
     }
+    if (req.method === "GET" && url.pathname === "/v1/capabilities/assets/docker-tools-plugin/assets/docker-tools-view.js") {
+      res.statusCode = 200;
+      res.setHeader("content-type", "text/javascript");
+      res.end(readFileSync("/app/dist/docker-tools-view.js"));
+      return;
+    }
     if (req.method === "POST" && url.pathname === "/v1/capabilities/invoke") {
       const body = await readBody(req);
       if (body.method === "plugin.modules.list") {
-        return json(res, 200, { ok: true, result: { modules: [{
-          id: "docker-plugin",
-          name: "@remote/docker-plugin",
-          description: "Remote plugin served from a Docker container.",
-          actions: [{ name: "DOCKER_ACTION", description: "Run Docker action." }],
-          providers: [{ name: "DOCKER_CONTEXT", description: "Docker provider." }],
-          routes: [{ method: "POST", path: "/docker/route", public: true, name: "docker-route" }],
-          views: [{ id: "docker.view", label: "Docker View", bundlePath: "/assets/docker-view.js" }],
-        }] } });
+        return json(res, 200, { ok: true, result: { modules: [
+          {
+            id: "docker-plugin",
+            name: "@remote/docker-plugin",
+            description: "Remote plugin served from a Docker container.",
+            actions: [{ name: "DOCKER_ACTION", description: "Run Docker action." }],
+            providers: [{ name: "DOCKER_CONTEXT", description: "Docker provider." }],
+            routes: [{ method: "POST", path: "/docker/route", public: true, name: "docker-route" }],
+            views: [{ id: "docker.view", label: "Docker View", bundlePath: "/assets/docker-view.js" }],
+          },
+          {
+            id: "docker-tools-plugin",
+            name: "@remote/docker-tools-plugin",
+            description: "Second remote plugin served from the same Docker container.",
+            actions: [{ name: "DOCKER_TOOLS_ACTION", description: "Run Docker tools action." }],
+            providers: [{ name: "DOCKER_TOOLS_CONTEXT", description: "Docker tools provider." }],
+            routes: [{ method: "POST", path: "/docker-tools/route", public: true, name: "docker-tools-route" }],
+            views: [{ id: "docker.tools.view", label: "Docker Tools View", bundlePath: "/assets/docker-tools-view.js" }],
+          },
+        ] } });
       }
       if (body.method === "plugin.action.invoke") {
-        return json(res, 200, { ok: true, result: { text: "docker action", data: { container: true } } });
+        if (body.params?.moduleId === "docker-tools-plugin") {
+          return json(res, 200, { ok: true, result: { text: "docker tools action", data: { container: true, module: "tools" } } });
+        }
+        return json(res, 200, { ok: true, result: { text: "docker action", data: { container: true, module: "primary" } } });
       }
       if (body.method === "plugin.provider.get") {
-        return json(res, 200, { ok: true, result: { text: "docker provider", values: { isolated: "container" } } });
+        if (body.params?.moduleId === "docker-tools-plugin") {
+          return json(res, 200, { ok: true, result: { text: "docker tools provider", values: { isolated: "container", module: "tools" } } });
+        }
+        return json(res, 200, { ok: true, result: { text: "docker provider", values: { isolated: "container", module: "primary" } } });
       }
       if (body.method === "plugin.route.call") {
+        if (body.params?.moduleId === "docker-tools-plugin") {
+          return json(res, 200, { ok: true, result: { status: 210, headers: { "x-docker-tools-plugin": "yes" }, body: { dockerToolsRoute: true, body: body.params?.body } } });
+        }
         return json(res, 200, { ok: true, result: { status: 209, headers: { "x-docker-plugin": "yes" }, body: { dockerRoute: true, body: body.params?.body } } });
       }
       return json(res, 404, { ok: false, error: { code: "CAPABILITY_UNAVAILABLE", message: "unsupported method", method: body.method } });
@@ -2804,6 +2830,7 @@ createServer(async (req, res) => {
           "WORKDIR /app",
           "COPY server.mjs /app/server.mjs",
           "COPY dist/docker-view.js /app/dist/docker-view.js",
+          "COPY dist/docker-tools-view.js /app/dist/docker-tools-view.js",
           "ENV PORT=8080",
           'CMD ["node", "/app/server.mjs"]',
           "",
@@ -2854,13 +2881,14 @@ createServer(async (req, res) => {
           bootstrapRemoteCapabilityPlugins(runtime, {
             trustPolicy: {
               allowedEndpointIds: ["primary"],
-              allowedModuleIds: ["docker-plugin"],
+              allowedModuleIds: ["docker-plugin", "docker-tools-plugin"],
               requireEndpointId: true,
             },
           }),
         ).resolves.toEqual({
           registered: [
             expect.objectContaining({ name: "@remote/docker-plugin" }),
+            expect.objectContaining({ name: "@remote/docker-tools-plugin" }),
           ],
           unloaded: [],
           skipped: [],
@@ -2868,6 +2896,13 @@ createServer(async (req, res) => {
             {
               moduleId: "docker-plugin",
               pluginName: "@remote/docker-plugin",
+              endpointId: "primary",
+              trusted: true,
+              reason: "allowed",
+            },
+            {
+              moduleId: "docker-tools-plugin",
+              pluginName: "@remote/docker-tools-plugin",
               endpointId: "primary",
               trusted: true,
               reason: "allowed",
@@ -2881,6 +2916,13 @@ createServer(async (req, res) => {
           id: "docker.view",
           pluginName: "@remote/docker-plugin",
           bundleUrl,
+          available: true,
+        });
+        expect(getView("docker.tools.view")).toMatchObject({
+          id: "docker.tools.view",
+          pluginName: "@remote/docker-tools-plugin",
+          bundleUrl:
+            "/api/capability-router/assets/primary/docker-tools-plugin/assets/docker-tools-view.js",
           available: true,
         });
         const remoteBundleUrl = `${baseUrl}/v1/capabilities/assets/docker-plugin/assets/docker-view.js`;
@@ -2899,18 +2941,50 @@ createServer(async (req, res) => {
           marker: "docker-built-remote-view",
           isolation: "docker",
         });
+        const toolsBundleResponse = await fetch(
+          `${baseUrl}/v1/capabilities/assets/docker-tools-plugin/assets/docker-tools-view.js`,
+          {
+            headers: { authorization: "Bearer docker-token" },
+          },
+        );
+        expect(toolsBundleResponse.status).toBe(200);
+        const toolsBundleSource = await toolsBundleResponse.text();
+        await expect(
+          import(
+            `data:text/javascript;base64,${Buffer.from(
+              toolsBundleSource,
+            ).toString("base64")}`
+          ),
+        ).resolves.toMatchObject({
+          marker: "docker-tools-built-remote-view",
+          isolation: "docker",
+          module: "tools",
+        });
         await expect(
           runtime.actions[0]?.handler(runtime, { content: {} } as never),
         ).resolves.toMatchObject({
           success: true,
           text: "docker action",
-          data: { container: true },
+          data: { container: true, module: "primary" },
+        });
+        await expect(
+          runtime.actions[1]?.handler(runtime, { content: {} } as never),
+        ).resolves.toMatchObject({
+          success: true,
+          text: "docker tools action",
+          data: { container: true, module: "tools" },
         });
         await expect(
           runtime.providers[0]?.get(runtime, {} as never, {} as never),
         ).resolves.toMatchObject({
           text: "docker provider",
-          values: { isolated: "container" },
+          values: { isolated: "container", module: "primary" },
+        });
+        await expect(
+          runtime.providers[1]?.get(runtime, {} as never, {} as never),
+        ).resolves.toMatchObject({
+          text: "docker tools provider",
+          values: { isolated: "container", module: "tools" },
         });
         await expect(
           dispatchRoute({
@@ -2926,6 +3000,21 @@ createServer(async (req, res) => {
           status: 209,
           headers: { "x-docker-plugin": "yes" },
           body: { dockerRoute: true, body: { docker: true } },
+        });
+        await expect(
+          dispatchRoute({
+            runtime,
+            method: "POST",
+            path: "/docker-tools/route",
+            headers: {},
+            body: { dockerTools: true },
+            inProcess: false,
+            isAuthorized: () => false,
+          }),
+        ).resolves.toEqual({
+          status: 210,
+          headers: { "x-docker-tools-plugin": "yes" },
+          body: { dockerToolsRoute: true, body: { dockerTools: true } },
         });
       } finally {
         if (containerId) {

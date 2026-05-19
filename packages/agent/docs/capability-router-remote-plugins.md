@@ -604,9 +604,10 @@ Current focused tests cover:
   registration code,
 - no-credential process-isolation smoke: a built remote plugin runs from a
   separate child-process capability server and is consumed through HTTP only,
-- opt-in Docker/container smoke: a built remote plugin is packaged into a real
-  Docker container, exposed as a capability server, and consumed through the
-  same runtime path (`bun run test:remote-capabilities:docker`),
+- Docker/container smoke: two built remote plugin modules are packaged into one
+  real Docker container, exposed as one capability server, trusted by explicit
+  endpoint/module allowlist, and consumed through the same runtime path
+  (`bun run test:remote-capabilities:docker`),
 - remote route dispatch through the actual API route dispatcher,
 - remote frontend bundle URL normalization,
 - browser-facing view registry and `/api/views` metadata for remote absolute
@@ -644,10 +645,11 @@ ELIZAOS_CLOUD_API_KEY=... bun run test:remote-capabilities:cloud-live
 
 The GitHub `Tests` workflow now runs both `bun run test:remote-capabilities`
 and `bun run test:remote-capabilities:docker` in the server job for pull
-requests and pushes. The Docker smoke builds a remote frontend bundle, builds
-and runs a containerized capability server, syncs it through the normal remote
-plugin adapter with endpoint/module trust policy, imports the compiled bundle,
-and executes remote action/provider/route handlers through the protocol.
+requests and pushes. The Docker smoke builds two remote frontend bundles, builds
+and runs one containerized capability server that advertises two plugin modules,
+syncs both through the normal remote plugin adapter with endpoint/module trust
+policy, imports both compiled bundles, and executes each module's remote
+action/provider/route handlers through the protocol.
 The same workflow also runs `bun run test:remote-capabilities:cloud-live` in
 the credentialed cloud-live job on `workflow_dispatch` and nightly schedules
 when `ELIZAOS_CLOUD_API_KEY` is configured. That live smoke provisions a real
@@ -708,7 +710,8 @@ This is not complete until the following are true:
   handlers through the capability-router protocol. The no-credential local
   source-build and child-process smokes prove the protocol and process-boundary
   paths; the Docker smoke is now a server CI gate that proves local container
-  isolation with explicit endpoint/module trust policy.
+  isolation, multiple modules in one sandbox, and explicit endpoint/module trust
+  policy.
 - The agent can create or connect to that sandbox from normal product flows.
   The agent-side provisioner, API route, and CLI can now connect/sync returned
   endpoints into a runtime with verified restart persistence through

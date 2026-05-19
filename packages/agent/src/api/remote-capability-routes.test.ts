@@ -489,6 +489,33 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(json).not.toHaveBeenCalled();
   });
 
+  it("rejects ambiguous endpoint and cloud connect requests", async () => {
+    const installEndpoint = vi.fn();
+    const connectCloudSandbox = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        endpoint: { baseUrl: "https://capability.example.test" },
+        cloud: {
+          cloudApiBase: "https://api.elizacloud.ai",
+          authToken: "cloud-auth",
+          name: "Cloud Tools",
+        },
+      },
+      { installEndpoint, connectCloudSandbox },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Request body must include only one of 'endpoint' or 'cloud'.",
+      400,
+    );
+    expect(installEndpoint).not.toHaveBeenCalled();
+    expect(connectCloudSandbox).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
+  });
+
   it("rejects invalid endpoint URLs", async () => {
     const { ctx, error, json } = makeCtx({
       endpoint: { baseUrl: "file:///tmp/capability" },

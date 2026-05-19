@@ -606,6 +606,8 @@ def _run_e2e_loop_bench(
     mic_tts_steps = os.environ.get("ELIZA_EVAL_E2E_MIC_TTS_STEPS")
     ctx_tokens = os.environ.get("ELIZA_EVAL_E2E_CTX")
     ngl = os.environ.get("ELIZA_EVAL_E2E_NGL")
+    start_timeout = os.environ.get("ELIZA_EVAL_E2E_START_TIMEOUT")
+    turn_timeout = os.environ.get("ELIZA_EVAL_E2E_TURN_TIMEOUT")
     if wavs:
         args += ["--wav", wavs]
     if refs:
@@ -622,6 +624,10 @@ def _run_e2e_loop_bench(
         args += ["--ctx", ctx_tokens]
     if ngl:
         args += ["--ngl", ngl]
+    if start_timeout:
+        args += ["--start-timeout", start_timeout]
+    if turn_timeout:
+        args += ["--turn-timeout", turn_timeout]
     if use_kokoro:
         args += ["--threads", str(ctx.threads)]
         if os.environ.get("ELIZA_EVAL_E2E_SKIP_EMBEDDING") == "1":
