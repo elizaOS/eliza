@@ -72,7 +72,8 @@ export const seoMessages: SeoMessages = {
     },
     apiKeys: {
       title: "API Keys",
-      description: "Mag-generate at mag-manage ng API keys para sa programmatic access sa Eliza Cloud.",
+      description:
+        "Mag-generate at mag-manage ng API keys para sa programmatic access sa Eliza Cloud.",
     },
     analytics: {
       title: "Analytics",
@@ -91,8 +92,7 @@ export const seoMessages: SeoMessages = {
     },
     account: {
       title: "Account Settings",
-      description:
-        "I-manage ang account settings, profile, at preferences mo sa Eliza Cloud.",
+      description: "I-manage ang account settings, profile, at preferences mo sa Eliza Cloud.",
     },
   },
 };

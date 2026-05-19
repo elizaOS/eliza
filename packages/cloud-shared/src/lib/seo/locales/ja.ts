@@ -57,8 +57,7 @@ export const seoMessages: SeoMessages = {
     },
     voiceCloning: {
       title: "ボイスクローン",
-      description:
-        "ElevenLabs 連携で声をクローン。AI エージェント専用のボイスを作成できます。",
+      description: "ElevenLabs 連携で声をクローン。AI エージェント専用のボイスを作成できます。",
     },
     apiExplorer: {
       title: "API エクスプローラー",
@@ -91,8 +90,7 @@ export const seoMessages: SeoMessages = {
     },
     account: {
       title: "アカウント設定",
-      description:
-        "Eliza Cloud のアカウント設定、プロフィール、各種設定を管理できます。",
+      description: "Eliza Cloud のアカウント設定、プロフィール、各種設定を管理できます。",
     },
   },
 };

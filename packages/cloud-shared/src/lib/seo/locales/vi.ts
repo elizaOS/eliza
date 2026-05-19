@@ -81,13 +81,11 @@ export const seoMessages: SeoMessages = {
     },
     storage: {
       title: "Storage",
-      description:
-        "Quản lý file và nội dung tạo ra. Xem ảnh, video và tài liệu trong R2 storage.",
+      description: "Quản lý file và nội dung tạo ra. Xem ảnh, video và tài liệu trong R2 storage.",
     },
     gallery: {
       title: "Gallery",
-      description:
-        "Duyệt ảnh và video bạn đã tạo. Xem, tải về và chia sẻ nội dung AI của bạn.",
+      description: "Duyệt ảnh và video bạn đã tạo. Xem, tải về và chia sẻ nội dung AI của bạn.",
     },
     account: {
       title: "Cài đặt tài khoản",

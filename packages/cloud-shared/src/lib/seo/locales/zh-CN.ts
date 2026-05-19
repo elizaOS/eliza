@@ -21,8 +21,7 @@ export const seoMessages: SeoMessages = {
     },
     containers: {
       title: "容器",
-      description:
-        "在 AWS ECS 上部署和管理 elizaOS 容器。监控运行状态、查看日志、扩展部署规模。",
+      description: "在 AWS ECS 上部署和管理 elizaOS 容器。监控运行状态、查看日志、扩展部署规模。",
     },
     eliza: {
       title: "聊天",
@@ -30,23 +29,19 @@ export const seoMessages: SeoMessages = {
     },
     characterCreator: {
       title: "角色创建器",
-      description:
-        "用 AI 辅助构建器创建你的自定义 AI 角色。为 agent 设定个性、知识和行为。",
+      description: "用 AI 辅助构建器创建你的自定义 AI 角色。为 agent 设定个性、知识和行为。",
     },
     myAgents: {
       title: "我的 Agents",
-      description:
-        "管理和交互你的个人 AI agent。查看、部署、与你的角色聊天。",
+      description: "管理和交互你的个人 AI agent。查看、部署、与你的角色聊天。",
     },
     textGeneration: {
       title: "文本生成",
-      description:
-        "使用先进的 AI 模型生成文本。通过我们的 API 访问 GPT-4、Claude、Gemini 等。",
+      description: "使用先进的 AI 模型生成文本。通过我们的 API 访问 GPT-4、Claude、Gemini 等。",
     },
     imageGeneration: {
       title: "图像生成",
-      description:
-        "用 Google Gemini 2.5 Flash 创作出彩图像。高质量 1024x1024 图像自动存储。",
+      description: "用 Google Gemini 2.5 Flash 创作出彩图像。高质量 1024x1024 图像自动存储。",
     },
     videoGeneration: {
       title: "视频生成",
@@ -62,8 +57,7 @@ export const seoMessages: SeoMessages = {
     },
     billing: {
       title: "账单与积分",
-      description:
-        "管理你的积分、查看使用情况、购买积分包。所有 AI 操作价格透明。",
+      description: "管理你的积分、查看使用情况、购买积分包。所有 AI 操作价格透明。",
     },
     apiKeys: {
       title: "API 密钥",

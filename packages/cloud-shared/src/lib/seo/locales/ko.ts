@@ -57,7 +57,8 @@ export const seoMessages: SeoMessages = {
     },
     voiceCloning: {
       title: "보이스 클로닝",
-      description: "ElevenLabs 연동으로 목소리를 복제하세요. AI 에이전트만의 보이스를 만들 수 있어요.",
+      description:
+        "ElevenLabs 연동으로 목소리를 복제하세요. AI 에이전트만의 보이스를 만들 수 있어요.",
     },
     apiExplorer: {
       title: "API 익스플로러",
@@ -74,8 +75,7 @@ export const seoMessages: SeoMessages = {
     },
     analytics: {
       title: "애널리틱스",
-      description:
-        "사용량을 확인하고 비용을 추적하고 모든 AI 작업의 성능을 모니터링하세요.",
+      description: "사용량을 확인하고 비용을 추적하고 모든 AI 작업의 성능을 모니터링하세요.",
     },
     storage: {
       title: "스토리지",
