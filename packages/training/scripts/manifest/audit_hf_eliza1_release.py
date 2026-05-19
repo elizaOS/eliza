@@ -53,7 +53,20 @@ DATASET_VIEWER_JSONL_SPLIT_FILES = ("train.jsonl", "val.jsonl", "test.jsonl")
 DATASET_REQUIRED_PIPELINE_DOCS = (
     "pipeline/docs/training/eliza1-smallest-finetunes.md",
 )
+DATASET_LIVE_AUDIT_PATH = "validation/eliza1-training-live-audit-2026-05-19.json"
 DATASET_VALIDATION_SCHEMA = "eliza.eliza1_trajectory_validation_report.v1"
+DATASET_LIVE_AUDIT_SCHEMA = "eliza.eliza1_training_dataset_live_audit.v1"
+ACTIVE_TEXT_SFT_TIER = "0_8b"
+ACTIVE_TEXT_SFT_ROOT = f"sft/{ACTIVE_TEXT_SFT_TIER}"
+ACTIVE_TEXT_SFT_REQUIRED_FILES = (
+    f"{ACTIVE_TEXT_SFT_ROOT}/train.jsonl",
+    f"{ACTIVE_TEXT_SFT_ROOT}/val.jsonl",
+    f"{ACTIVE_TEXT_SFT_ROOT}/test.jsonl",
+    f"{ACTIVE_TEXT_SFT_ROOT}/manifest.json",
+    f"{ACTIVE_TEXT_SFT_ROOT}/validation.json",
+)
+ACTIVE_TEXT_SFT_MANIFEST_SCHEMA = "eliza.eliza1_sft_0_8b_manifest.v1"
+ACTIVE_TEXT_SFT_VALIDATION_SCHEMA = "eliza.eliza1_sft_0_8b_validation.v1"
 DATASET_PRIVACY_ATTESTATION_SOURCES = frozenset(
     {
         "cli_flag",
@@ -137,6 +150,7 @@ QUANTIZATION_KERNEL_TARGETS = {
 NATIVE_UPSTREAM_REVIEW_PATH = "evidence/upstream/native-upstream-review-2026-05-19.md"
 IMAGEGEN_RUNTIME_EVIDENCE_PATH = "evidence/imagegen/sd-cpp-runtime.json"
 FINETUNE_COMPARISON_EVIDENCE_PATH = "evidence/training/fine-tune-comparison.json"
+TEXT_CONTEXT_VARIANT_EVIDENCE_PATH = "evidence/text/context-variants-2026-05-19.json"
 FINETUNE_REQUIRED_METRICS = frozenset(
     {
         "eliza_bench",
@@ -789,6 +803,58 @@ def _native_upstream_review_blockers(text: str) -> list[str]:
     return blockers
 
 
+def _text_context_variant_evidence_blockers(evidence: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if evidence.get("schema") != "eliza.eliza1_text_context_variant_audit.v1":
+        blockers.append(f"schema: {evidence.get('schema')!r}")
+    if evidence.get("repo") != ELIZA_1_HF_REPO:
+        blockers.append(f"repo: {evidence.get('repo')!r}")
+    if evidence.get("passed") is not True:
+        blockers.append(f"passed: {evidence.get('passed')!r}")
+    if evidence.get("blockers") not in ([], None):
+        blockers.append("blockers: non-empty")
+    if evidence.get("legacy27b1mPaths") not in ([], None):
+        blockers.append("legacy27b1mPaths: non-empty")
+    contexts = evidence.get("expectedContexts")
+    if contexts != ["128k", "256k"]:
+        blockers.append(f"expectedContexts: {contexts!r}")
+    results = evidence.get("results")
+    if not isinstance(results, list):
+        blockers.append("results: missing")
+        return blockers
+    by_tier = {
+        result.get("tier"): result
+        for result in results
+        if isinstance(result, Mapping) and isinstance(result.get("tier"), str)
+    }
+    for tier, expected_contexts in CONTEXTS_BY_TIER.items():
+        result = by_tier.get(tier)
+        if not isinstance(result, Mapping):
+            blockers.append(f"{tier}: missing")
+            continue
+        if result.get("passed") is not True:
+            blockers.append(f"{tier}.passed: {result.get('passed')!r}")
+        required = result.get("requiredContexts")
+        if not isinstance(required, list):
+            blockers.append(f"{tier}.requiredContexts: missing")
+            continue
+        by_context = {
+            item.get("context"): item
+            for item in required
+            if isinstance(item, Mapping) and isinstance(item.get("context"), str)
+        }
+        for ctx in expected_contexts:
+            item = by_context.get(ctx)
+            if not isinstance(item, Mapping):
+                blockers.append(f"{tier}.{ctx}: missing")
+                continue
+            if item.get("existsOnHub") is not True:
+                blockers.append(f"{tier}.{ctx}.existsOnHub: {item.get('existsOnHub')!r}")
+            if item.get("blockers") not in ([], None):
+                blockers.append(f"{tier}.{ctx}.blockers: non-empty")
+    return blockers
+
+
 def _imagegen_runtime_blockers(evidence: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if evidence.get("status") != "pass":
@@ -1031,6 +1097,112 @@ def _dataset_validation_blockers(
     return blockers
 
 
+def _dataset_live_audit_blockers(
+    manifest: Mapping[str, Any],
+    audit: Mapping[str, Any],
+    *,
+    dataset_repo: str,
+) -> list[str]:
+    blockers: list[str] = []
+    if audit.get("schema") != DATASET_LIVE_AUDIT_SCHEMA:
+        blockers.append(f"schema: {audit.get('schema')!r}")
+    if audit.get("datasetRepo") != dataset_repo:
+        blockers.append(f"datasetRepo: {audit.get('datasetRepo')!r}")
+    if audit.get("passed") is not True:
+        blockers.append(f"passed: {audit.get('passed')!r}")
+
+    validation = audit.get("validation")
+    if not isinstance(validation, Mapping):
+        blockers.append("validation: missing")
+    else:
+        blockers.extend(
+            f"validation.{blocker}"
+            for blocker in _dataset_validation_blockers(manifest, validation)
+        )
+
+    if audit.get("hashMismatches") not in ([], None):
+        blockers.append("hashMismatches: non-empty")
+
+    legacy = audit.get("legacy27b1m")
+    if not isinstance(legacy, Mapping):
+        blockers.append("legacy27b1m: missing")
+    elif legacy.get("passed") is not True:
+        blockers.append(f"legacy27b1m.passed: {legacy.get('passed')!r}")
+
+    secret_scan = audit.get("secretScan")
+    if not isinstance(secret_scan, Mapping):
+        blockers.append("secretScan: missing")
+    elif secret_scan.get("passed") is not True:
+        blockers.append(f"secretScan.passed: {secret_scan.get('passed')!r}")
+
+    manifest_validation = manifest.get("validation")
+    expected_total = (
+        manifest_validation.get("totalRecords")
+        if isinstance(manifest_validation, Mapping)
+        else None
+    )
+    row_counts = audit.get("rowCounts")
+    if isinstance(row_counts, Mapping) and isinstance(expected_total, int):
+        observed_total = sum(
+            value for value in row_counts.values() if isinstance(value, int)
+        )
+        if observed_total != expected_total:
+            blockers.append(f"rowCounts total: {observed_total!r} != manifest {expected_total!r}")
+    else:
+        blockers.append("rowCounts: missing")
+    return blockers
+
+
+def _active_text_sft_blockers(
+    manifest: Mapping[str, Any],
+    validation: Mapping[str, Any],
+) -> list[str]:
+    blockers: list[str] = []
+    if manifest.get("schema") != ACTIVE_TEXT_SFT_MANIFEST_SCHEMA:
+        blockers.append(f"manifest.schema: {manifest.get('schema')!r}")
+    if validation.get("schema") != ACTIVE_TEXT_SFT_VALIDATION_SCHEMA:
+        blockers.append(f"validation.schema: {validation.get('schema')!r}")
+    if validation.get("passed") is not True:
+        blockers.append(f"validation.passed: {validation.get('passed')!r}")
+    if validation.get("blockers") not in ([], None):
+        blockers.append("validation.blockers: non-empty")
+    if manifest.get("published_name") != f"eliza-1-{ACTIVE_TEXT_SFT_TIER}":
+        blockers.append(f"manifest.published_name: {manifest.get('published_name')!r}")
+    if manifest.get("base_model") != "Qwen/Qwen3.5-0.8B":
+        blockers.append(f"manifest.base_model: {manifest.get('base_model')!r}")
+
+    counts = manifest.get("counts")
+    splits = validation.get("splits")
+    if not isinstance(counts, Mapping):
+        blockers.append("manifest.counts: missing")
+    if not isinstance(splits, Mapping):
+        blockers.append("validation.splits: missing")
+    if isinstance(counts, Mapping) and isinstance(splits, Mapping):
+        total = 0
+        for split in ("train", "val", "test"):
+            expected = counts.get(split)
+            item = splits.get(split)
+            actual = item.get("rows") if isinstance(item, Mapping) else None
+            if not isinstance(expected, int) or expected <= 0:
+                blockers.append(f"manifest.counts.{split}: {expected!r}")
+            if actual != expected:
+                blockers.append(f"validation.splits.{split}.rows: {actual!r} != {expected!r}")
+            if isinstance(actual, int):
+                total += actual
+        if counts.get("total") != total:
+            blockers.append(f"manifest.counts.total: {counts.get('total')!r} != {total!r}")
+
+    privacy = manifest.get("privacy_filter")
+    if not isinstance(privacy, Mapping):
+        blockers.append("manifest.privacy_filter: missing")
+    elif privacy.get("real_user_trajectories_consumed") != 0:
+        blockers.append(
+            "manifest.privacy_filter.real_user_trajectories_consumed: "
+            f"{privacy.get('real_user_trajectories_consumed')!r}"
+        )
+    return blockers
+
+
 def _dataset_privacy_blockers(manifest: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     privacy = manifest.get("privacy")
@@ -1104,6 +1276,29 @@ def audit_hf_release(
             bool(upstream_review) and not upstream_review_blockers,
             ", ".join(upstream_review_blockers[:8])
             + (f" (+{len(upstream_review_blockers) - 8} more)" if len(upstream_review_blockers) > 8 else ""),
+        )
+    report.check(
+        "text context variant audit evidence present",
+        TEXT_CONTEXT_VARIANT_EVIDENCE_PATH in model_paths,
+        TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
+    )
+    try:
+        text_context_evidence = json.loads(
+            fetch_text(_raw_model_url(model_repo, TEXT_CONTEXT_VARIANT_EVIDENCE_PATH))
+        )
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        report.check("text context variant audit evidence passed", False, str(exc))
+    else:
+        text_context_blockers = (
+            _text_context_variant_evidence_blockers(text_context_evidence)
+            if isinstance(text_context_evidence, Mapping)
+            else ["not an object"]
+        )
+        report.check(
+            "text context variant audit evidence passed",
+            not text_context_blockers,
+            ", ".join(text_context_blockers[:8])
+            + (f" (+{len(text_context_blockers) - 8} more)" if len(text_context_blockers) > 8 else ""),
         )
     report.check(
         "imagegen runtime evidence present",
@@ -1381,6 +1576,19 @@ def audit_hf_release(
         not legacy_dataset_paths,
         ", ".join(legacy_dataset_paths[:8]),
     )
+    report.check(
+        "dataset live validation audit present",
+        DATASET_LIVE_AUDIT_PATH in dataset_paths,
+        DATASET_LIVE_AUDIT_PATH,
+    )
+    missing_active_sft_files = [
+        path for path in ACTIVE_TEXT_SFT_REQUIRED_FILES if path not in dataset_paths
+    ]
+    report.check(
+        "dataset active 0_8b SFT package present",
+        not missing_active_sft_files,
+        ", ".join(missing_active_sft_files),
+    )
 
     try:
         dataset_readme = fetch_text(_raw_dataset_url(dataset_repo, "README.md"))
@@ -1444,6 +1652,59 @@ def audit_hf_release(
                     not validation_blockers,
                     ", ".join(validation_blockers[:8])
                     + (f" (+{len(validation_blockers) - 8} more)" if len(validation_blockers) > 8 else ""),
+                )
+        if DATASET_LIVE_AUDIT_PATH in dataset_paths:
+            try:
+                live_audit_text = fetch_text(_raw_dataset_url(dataset_repo, DATASET_LIVE_AUDIT_PATH))
+                live_audit = json.loads(live_audit_text)
+            except (RuntimeError, json.JSONDecodeError) as exc:
+                report.check("dataset live validation audit passed", False, str(exc))
+            else:
+                live_audit_blockers = _dataset_live_audit_blockers(
+                    dataset_manifest,
+                    live_audit,
+                    dataset_repo=dataset_repo,
+                )
+                report.check(
+                    "dataset live validation audit passed",
+                    not live_audit_blockers,
+                    ", ".join(live_audit_blockers[:8])
+                    + (f" (+{len(live_audit_blockers) - 8} more)" if len(live_audit_blockers) > 8 else ""),
+                )
+        else:
+            report.check(
+                "dataset live validation audit passed",
+                False,
+                DATASET_LIVE_AUDIT_PATH,
+            )
+        if missing_active_sft_files:
+            report.check(
+                "dataset active 0_8b SFT validation passed",
+                False,
+                ", ".join(missing_active_sft_files),
+            )
+        else:
+            try:
+                active_sft_manifest = json.loads(
+                    fetch_text(_raw_dataset_url(dataset_repo, f"{ACTIVE_TEXT_SFT_ROOT}/manifest.json"))
+                )
+                active_sft_validation = json.loads(
+                    fetch_text(_raw_dataset_url(dataset_repo, f"{ACTIVE_TEXT_SFT_ROOT}/validation.json"))
+                )
+            except (RuntimeError, json.JSONDecodeError) as exc:
+                report.check("dataset active 0_8b SFT validation passed", False, str(exc))
+            else:
+                active_sft_blockers = (
+                    _active_text_sft_blockers(active_sft_manifest, active_sft_validation)
+                    if isinstance(active_sft_manifest, Mapping)
+                    and isinstance(active_sft_validation, Mapping)
+                    else ["manifest or validation not an object"]
+                )
+                report.check(
+                    "dataset active 0_8b SFT validation passed",
+                    not active_sft_blockers,
+                    ", ".join(active_sft_blockers[:8])
+                    + (f" (+{len(active_sft_blockers) - 8} more)" if len(active_sft_blockers) > 8 else ""),
                 )
 
     try:

@@ -7,6 +7,10 @@ import {
   type PluginCallAppBridgeResult,
   type PluginCallRouteResult,
   type PluginCallServiceResult,
+  type PluginEvaluatorPrepareResult,
+  type PluginEvaluatorProcessResult,
+  type PluginEvaluatorPromptResult,
+  type PluginEvaluatorShouldRunResult,
   type PluginGetAssetResult,
   type PluginGetProviderResult,
   type PluginHandleEventResult,
@@ -14,10 +18,6 @@ import {
   type PluginInvokeModelResult,
   type PluginLifecycleCallResult,
   type PluginListModulesResult,
-  type PluginEvaluatorPrepareResult,
-  type PluginEvaluatorProcessResult,
-  type PluginEvaluatorPromptResult,
-  type PluginEvaluatorShouldRunResult,
   type PluginResponseHandlerEvaluatorEvaluateResult,
   type PluginResponseHandlerEvaluatorShouldRunResult,
   type PluginResponseHandlerFieldEvaluatorHandleResult,
@@ -61,6 +61,11 @@ export type RemoteCapabilityEndpointConformanceReport = {
   exercised: Partial<
     Record<RemoteCapabilityEndpointConformanceSurface, string>
   >;
+  moduleExercises: Array<{
+    surface: RemoteCapabilityEndpointConformanceSurface;
+    moduleId: string;
+    target: string;
+  }>;
   actionResult?: PluginInvokeActionResult;
   providerResult?: PluginGetProviderResult;
   routeResult?: PluginCallRouteResult;
@@ -131,17 +136,23 @@ export async function assertRemoteCapabilityEndpointConformance(
   assertModuleList(options.endpoint.id, moduleResult);
   const modules = moduleResult.modules;
   const exercised: RemoteCapabilityEndpointConformanceReport["exercised"] = {};
+  const moduleExercises: RemoteCapabilityEndpointConformanceReport["moduleExercises"] =
+    [];
   const report: RemoteCapabilityEndpointConformanceReport = {
     endpointId: options.endpoint.id,
     availability,
     moduleCount: modules.length,
     moduleIds: modules.map((module) => module.id),
     exercised,
+    moduleExercises,
   };
 
   const required = options.requiredSurfaces ?? DEFAULT_REQUIRED_SURFACES;
+  const exerciseCounts = new Map(modules.map((module) => [module.id, 0]));
   if (required.includes("action")) {
-    const target = findActionTarget(modules);
+    const target = findActionTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote action.`,
@@ -155,11 +166,19 @@ export async function assertRemoteCapabilityEndpointConformance(
         text: "capability-router conformance action",
       },
     });
-    exercised.action = `${target.module.id}:${target.action.name}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "action",
+      target.module.id,
+      target.action.name,
+    );
   }
 
   if (required.includes("provider")) {
-    const target = findProviderTarget(modules);
+    const target = findProviderTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote provider.`,
@@ -171,11 +190,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       provider: target.provider.name,
       state: {},
     });
-    exercised.provider = `${target.module.id}:${target.provider.name}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "provider",
+      target.module.id,
+      target.provider.name,
+    );
   }
 
   if (required.includes("route")) {
-    const target = findRouteTarget(modules);
+    const target = findRouteTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote route.`,
@@ -198,11 +225,19 @@ export async function assertRemoteCapabilityEndpointConformance(
         `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
       );
     }
-    exercised.route = `${target.module.id}:${target.route.method} ${target.route.path}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "route",
+      target.module.id,
+      `${target.route.method} ${target.route.path}`,
+    );
   }
 
   if (required.includes("viewAsset")) {
-    const target = findViewAssetTarget(modules);
+    const target = findViewAssetTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote view bundle asset.`,
@@ -237,11 +272,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       byteLength,
       sha256: createHash("sha256").update(assetBytes).digest("hex"),
     };
-    exercised.viewAsset = `${target.module.id}:${target.bundlePath}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "viewAsset",
+      target.module.id,
+      target.bundlePath,
+    );
   }
 
   if (required.includes("model")) {
-    const target = findModelTarget(modules);
+    const target = findModelTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote model.`,
@@ -253,11 +296,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       modelType: target.model.modelType,
       params: { prompt: "capability-router conformance model" },
     });
-    exercised.model = `${target.module.id}:${target.model.modelType}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "model",
+      target.module.id,
+      target.model.modelType,
+    );
   }
 
   if (required.includes("lifecycle")) {
-    const target = findLifecycleTarget(modules);
+    const target = findLifecycleTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote lifecycle hook.`,
@@ -269,11 +320,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       hook: target.hook,
       context: { conformance: true },
     });
-    exercised.lifecycle = `${target.module.id}:${target.hook}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "lifecycle",
+      target.module.id,
+      target.hook,
+    );
   }
 
   if (required.includes("event")) {
-    const target = findEventTarget(modules);
+    const target = findEventTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote event handler.`,
@@ -285,11 +344,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       eventName: target.event.eventName,
       payload: { conformance: true },
     });
-    exercised.event = `${target.module.id}:${target.event.eventName}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "event",
+      target.module.id,
+      target.event.eventName,
+    );
   }
 
   if (required.includes("service")) {
-    const target = findServiceTarget(modules);
+    const target = findServiceTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote service method.`,
@@ -302,11 +369,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       method: target.method,
       args: [{ conformance: true }],
     });
-    exercised.service = `${target.module.id}:${target.service.serviceType}.${target.method}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "service",
+      target.module.id,
+      `${target.service.serviceType}.${target.method}`,
+    );
   }
 
   if (required.includes("appBridge")) {
-    const target = findAppBridgeTarget(modules);
+    const target = findAppBridgeTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote app bridge hook.`,
@@ -324,11 +399,19 @@ export async function assertRemoteCapabilityEndpointConformance(
         headers: {},
       },
     });
-    exercised.appBridge = `${target.module.id}:${target.hook}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "appBridge",
+      target.module.id,
+      target.hook,
+    );
   }
 
   if (required.includes("evaluator")) {
-    const target = findEvaluatorTarget(modules);
+    const target = findEvaluatorTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote evaluator.`,
@@ -354,11 +437,19 @@ export async function assertRemoteCapabilityEndpointConformance(
       output: { prompt: prompt.prompt },
     });
     report.evaluatorResult = { shouldRun, prepare, prompt, process };
-    exercised.evaluator = `${target.module.id}:${target.evaluator.name}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "evaluator",
+      target.module.id,
+      target.evaluator.name,
+    );
   }
 
   if (required.includes("responseHandlerEvaluator")) {
-    const target = findResponseHandlerEvaluatorTarget(modules);
+    const target = findResponseHandlerEvaluatorTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote response-handler evaluator.`,
@@ -375,11 +466,19 @@ export async function assertRemoteCapabilityEndpointConformance(
     const evaluate =
       await router.plugin.evaluateResponseHandlerEvaluator(common);
     report.responseHandlerEvaluatorResult = { shouldRun, evaluate };
-    exercised.responseHandlerEvaluator = `${target.module.id}:${target.evaluator.name}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "responseHandlerEvaluator",
+      target.module.id,
+      target.evaluator.name,
+    );
   }
 
   if (required.includes("responseHandlerFieldEvaluator")) {
-    const target = findResponseHandlerFieldEvaluatorTarget(modules);
+    const target = findResponseHandlerFieldEvaluatorTarget(
+      orderModulesByExercise(modules, exerciseCounts),
+    );
     if (!target) {
       throw new Error(
         `Capability endpoint "${options.endpoint.id}" did not expose a remote response-handler field evaluator.`,
@@ -408,7 +507,13 @@ export async function assertRemoteCapabilityEndpointConformance(
         : { parsed: parse.value }),
     });
     report.responseHandlerFieldEvaluatorResult = { shouldRun, parse, handle };
-    exercised.responseHandlerFieldEvaluator = `${target.module.id}:${target.field.name}`;
+    recordExercise(
+      report,
+      exerciseCounts,
+      "responseHandlerFieldEvaluator",
+      target.module.id,
+      target.field.name,
+    );
   }
 
   return report;
@@ -437,6 +542,34 @@ function assertModuleList(
     }
     seen.add(module.id);
   }
+}
+
+function orderModulesByExercise(
+  modules: RemotePluginModuleManifest[],
+  exerciseCounts: Map<string, number>,
+): RemotePluginModuleManifest[] {
+  return [...modules].sort((left, right) => {
+    const countDelta =
+      (exerciseCounts.get(left.id) ?? 0) - (exerciseCounts.get(right.id) ?? 0);
+    if (countDelta !== 0) return countDelta;
+    return modules.indexOf(left) - modules.indexOf(right);
+  });
+}
+
+function recordExercise(
+  report: RemoteCapabilityEndpointConformanceReport,
+  exerciseCounts: Map<string, number>,
+  surface: RemoteCapabilityEndpointConformanceSurface,
+  moduleId: string,
+  target: string,
+): void {
+  report.exercised[surface] = `${moduleId}:${target}`;
+  report.moduleExercises.push({
+    surface,
+    moduleId,
+    target: `${moduleId}:${target}`,
+  });
+  exerciseCounts.set(moduleId, (exerciseCounts.get(moduleId) ?? 0) + 1);
 }
 
 function findActionTarget(modules: RemotePluginModuleManifest[]) {

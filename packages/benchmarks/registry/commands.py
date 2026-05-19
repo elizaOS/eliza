@@ -537,9 +537,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
             args.extend(["--dataset", dataset])
-        elif not os.getenv("HF_TOKEN"):
-            # Default to sample dataset when HF gated GAIA access is unavailable.
-            args.extend(["--dataset", "sample"])
+        else:
+            args.extend(["--dataset", "gaia"])
         dataset_path = extra.get("dataset_path")
         if isinstance(dataset_path, str) and dataset_path.strip():
             args.extend(["--dataset-path", dataset_path])
@@ -549,7 +548,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         else:
             args.extend(["--max-questions", "3"])
         quick = extra.get("quick_test")
-        if quick is None or quick is True:
+        if quick is True:
             args.append("--quick-test")
         return args
 
@@ -576,6 +575,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
             args.extend(["--dataset", dataset])
+        else:
+            args.extend(["--dataset", "gaia"])
         max_q = extra.get("max_questions")
         if isinstance(max_q, int) and max_q > 0:
             args.extend(["--max-questions", str(max_q)])
@@ -1630,9 +1631,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     def _webshop_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
         """Build command for WebShop benchmark.
 
-        Defaults to the bundled sample task set and disables trajectory logging
-        unless the caller opts in. Non-mock runs route through the Eliza
-        TypeScript benchmark bridge; ``--mock`` bypasses it for smoke tests.
+        Real harness rows use the upstream WebShop data loader (small profile
+        by default, auto-fetched when absent). The bundled sample catalog is
+        smoke-only and must be requested explicitly or via mock mode.
         """
         args = [
             python,
@@ -1663,12 +1664,20 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         trials = extra.get("trials")
         if isinstance(trials, int) and trials > 0:
             args.extend(["--trials", str(trials)])
+        profile = extra.get("profile")
+        if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+            args.extend(["--profile", profile.strip()])
         if extra.get("hf") is True:
             args.append("--hf")
             split = extra.get("split")
             if isinstance(split, str) and split.strip():
                 args.extend(["--split", split.strip()])
-        else:
+        elif (
+            extra.get("sample") is True
+            or extra.get("use_sample_tasks") is True
+            or extra.get("mock") is True
+            or provider_name == "mock"
+        ):
             args.append("--sample")
         if extra.get("trajectories") is True:
             args.append("--trajectories")

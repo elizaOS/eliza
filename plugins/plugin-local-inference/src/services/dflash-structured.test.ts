@@ -98,7 +98,9 @@ async function startMock(): Promise<{
 		captured,
 		close: async () => {
 			if (vitestGlobals.stubGlobal) {
-				(vi as unknown as { unstubAllGlobals?: () => void }).unstubAllGlobals?.();
+				(
+					vi as unknown as { unstubAllGlobals?: () => void }
+				).unstubAllGlobals?.();
 			} else if (originalFetch) {
 				globalThis.fetch = originalFetch;
 			} else {

@@ -1,9 +1,11 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
+import { delimiter } from "node:path";
 import { join } from "node:path";
 
-const auditedRoots = [
+const defaultAuditedRoots = [
   ".github",
   "docs",
+  "packages/agent/docs",
   "packages/agent/src",
   "packages/app/src",
   "packages/app-core/src",
@@ -11,8 +13,37 @@ const auditedRoots = [
   "packages/elizaos/src",
   "packages/shared/src",
 ];
+const auditedRoots =
+  process.env.CAPABILITY_ROUTER_NAMING_AUDIT_ROOTS?.split(delimiter)
+    .map((root) => root.trim())
+    .filter(Boolean) ?? defaultAuditedRoots;
 
 const allowedSatelliteMentions = new Map<string, RegExp[]>([
+  [
+    "packages/agent/docs/capability-router-remote-plugins.md",
+    [
+      /A satellite is one possible/,
+      /## Why Not "Satellite" As The Abstraction/,
+      /PR #7779 uses the word "satellite"/,
+      /non-satellite cases/,
+      /whether or not the provider is called a satellite/,
+      /Keep `satellite` for a concrete deployment target/,
+      /It only allows `satellite` in this historical naming analysis/,
+      /"Satellite" is overloaded/,
+      /E2B\/Satellite/,
+      /defines a Satellite HTTP/,
+      /coding-satellite/,
+      /plugins mean things, satellites/,
+      /Electrobun satellites as one deployment backend/,
+      /There is no current E2B, home-machine, mobile-companion, or coding-satellite/,
+      /source\/docs\/workflow roots reintroduce `satellite`/,
+      /without reintroducing satellite-specific runtime code/,
+      /do not use `satellite` as canonical runtime/,
+      /ELIZA_SATELLITE_RUNNER_\*/,
+      /Canonical abstraction is not `satellite`/,
+      /The old satellite-specific names/,
+    ],
+  ],
   [
     "packages/agent/src/services/remote-capability-router.ts",
     [/ELIZA_SATELLITE_RUNNER_URL/, /ELIZA_SATELLITE_RUNNER_TOKEN/],
@@ -22,7 +53,6 @@ const allowedSatelliteMentions = new Map<string, RegExp[]>([
     [
       /resolves canonical env names before legacy satellite aliases/,
       /ELIZA_SATELLITE_RUNNER_URL/,
-      /ELIZA_SATELLITE_RUNNER_TOKEN/,
     ],
   ],
 ]);
@@ -38,15 +68,26 @@ for (const root of auditedRoots) {
       if (!satellitePattern.test(line)) continue;
       if (allowlist.some((pattern) => pattern.test(line))) continue;
       failures.push(
-        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for legacy env aliases.`,
+        `${file}:${lineIndex + 1}: use capability-router/remote-capability vocabulary; satellite is only allowed for historical naming analysis or legacy env aliases.`,
       );
     }
   }
 }
 
-for (const file of allowedSatelliteMentions.keys()) {
-  if (!statExists(file)) {
-    failures.push(`Allowlisted satellite file is missing: ${file}`);
+if (!process.env.CAPABILITY_ROUTER_NAMING_AUDIT_ROOTS) {
+  for (const [file, patterns] of allowedSatelliteMentions.entries()) {
+    if (!statExists(file)) {
+      failures.push(`Allowlisted satellite file is missing: ${file}`);
+      continue;
+    }
+    const source = readFileSync(file, "utf8");
+    for (const pattern of patterns) {
+      if (!pattern.test(source)) {
+        failures.push(
+          `Allowlisted satellite pattern no longer matches ${file}: ${pattern}`,
+        );
+      }
+    }
   }
 }
 
@@ -61,7 +102,7 @@ console.log(
     {
       ok: true,
       auditedRoots,
-      legacySatelliteAllowlistFiles: [...allowedSatelliteMentions.keys()],
+      allowedSatelliteMentionFiles: [...allowedSatelliteMentions.keys()],
     },
     null,
     2,

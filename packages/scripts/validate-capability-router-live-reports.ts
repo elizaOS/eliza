@@ -53,6 +53,10 @@ type ValidatedReport = {
 type ReportKind = ValidatedReport["kind"];
 
 type RemoteModuleCountTotals = Record<RequiredRemoteModuleCountField, number>;
+type RemoteSyncEvidence = {
+  registeredPluginCount: number;
+  registeredRemoteModuleCounts: RemoteModuleCountTotals;
+};
 
 type CliOptions = {
   expectedKind?: ReportKind;
@@ -444,14 +448,59 @@ function validateReportFile(
     "conformance.exercised",
   );
   const exercisedModuleIds = new Set<string>();
+  const exercisedTargetsBySurface = new Map<RequiredSurface, string>();
   for (const surface of REQUIRED_SURFACES) {
     const target = requireString(
       exercised[surface],
       `conformance.exercised.${surface}`,
     );
+    exercisedTargetsBySurface.set(surface, target);
     exercisedModuleIds.add(
       validateExercisedTargetModule(surface, target, observedModuleIds),
     );
+  }
+  const summarizedModuleExerciseTargets = new Set<string>();
+  for (const [index, value] of requireArray(
+    conformance.moduleExercises,
+    "conformance.moduleExercises",
+  ).entries()) {
+    const exercise = requireObject(
+      value,
+      `conformance.moduleExercises[${index}]`,
+    );
+    const surface = requireRequiredSurface(
+      exercise.surface,
+      `conformance.moduleExercises[${index}].surface`,
+    );
+    const moduleId = requireString(
+      exercise.moduleId,
+      `conformance.moduleExercises[${index}].moduleId`,
+    );
+    const target = requireString(
+      exercise.target,
+      `conformance.moduleExercises[${index}].target`,
+    );
+    const targetModuleId = validateExercisedTargetModule(
+      surface,
+      target,
+      observedModuleIds,
+    );
+    if (targetModuleId !== moduleId) {
+      throw new Error(
+        `conformance.moduleExercises[${index}].target must start with moduleId.`,
+      );
+    }
+    exercisedModuleIds.add(moduleId);
+    if (target === exercisedTargetsBySurface.get(surface)) {
+      summarizedModuleExerciseTargets.add(`${surface}\0${target}`);
+    }
+  }
+  for (const [surface, target] of exercisedTargetsBySurface.entries()) {
+    if (!summarizedModuleExerciseTargets.has(`${surface}\0${target}`)) {
+      throw new Error(
+        `conformance.moduleExercises must include conformance.exercised.${surface}.`,
+      );
+    }
   }
 
   requireObject(conformance.actionResult, "conformance.actionResult");
@@ -517,13 +566,13 @@ function validateReportFile(
   validateResponseHandlerFieldEvaluatorResult(
     conformance.responseHandlerFieldEvaluatorResult,
   );
-  const registeredRemoteModuleCounts = validateSyncEvidence(
+  const syncEvidence = validateSyncEvidence(
     report.sync,
     endpointId,
     observedModuleIds,
     exercisedModuleIds,
   );
-  validateRuntimeEvidence(report.runtime, registeredRemoteModuleCounts);
+  validateRuntimeEvidence(report.runtime, syncEvidence);
   return {
     file,
     kind,
@@ -693,12 +742,20 @@ function validateExercisedTargetModule(
   return moduleId;
 }
 
+function requireRequiredSurface(value: unknown, field: string): RequiredSurface {
+  const surface = requireString(value, field);
+  if (!REQUIRED_SURFACES.includes(surface as RequiredSurface)) {
+    throw new Error(`${field} must be a required remote capability surface.`);
+  }
+  return surface as RequiredSurface;
+}
+
 function validateSyncEvidence(
   value: unknown,
   endpointId: string,
   observedModuleIds: Set<string>,
   exercisedModuleIds: Set<string>,
-): RemoteModuleCountTotals {
+): RemoteSyncEvidence {
   const sync = requireObject(value, "sync");
   const registered = requireArray(sync.registered, "sync.registered");
   if (registered.length === 0) {
@@ -706,9 +763,14 @@ function validateSyncEvidence(
   }
   const registeredPluginNames = new Set<string>();
   for (const [index, pluginName] of registered.entries()) {
-    registeredPluginNames.add(
-      requireString(pluginName, `sync.registered[${index}]`),
+    const registeredPluginName = requireString(
+      pluginName,
+      `sync.registered[${index}]`,
     );
+    if (registeredPluginNames.has(registeredPluginName)) {
+      throw new Error("sync.registered must not contain duplicates.");
+    }
+    registeredPluginNames.add(registeredPluginName);
   }
   const registeredModules = requireArray(
     sync.registeredModules,
@@ -754,10 +816,16 @@ function validateSyncEvidence(
       );
     }
     for (const field of REQUIRED_REMOTE_MODULE_COUNT_FIELDS) {
-      registeredRemoteModuleCounts[field] += requireNonNegativeInteger(
+      const count = requireNonNegativeInteger(
         item[field],
         `sync.registeredModules[${index}].${field}`,
       );
+      if (count <= 0) {
+        throw new Error(
+          `sync.registeredModules[${index}].${field} must be greater than zero.`,
+        );
+      }
+      registeredRemoteModuleCounts[field] += count;
     }
     registeredModuleIds.add(moduleId);
     const registeredModuleKey = `${moduleEndpointId}\0${moduleId}\0${pluginName}`;
@@ -773,20 +841,36 @@ function validateSyncEvidence(
       );
     }
   }
-  for (const field of REQUIRED_REMOTE_MODULE_COUNT_FIELDS) {
-    if (registeredRemoteModuleCounts[field] <= 0) {
+  for (const moduleId of registeredModuleIds) {
+    if (!exercisedModuleIds.has(moduleId)) {
       throw new Error(
-        `sync.registeredModules must include a positive aggregate ${field}.`,
+        "every sync.registeredModules moduleId must be exercised by conformance.exercised.",
       );
     }
   }
-  requireArray(sync.unloaded, "sync.unloaded");
-  requireArray(sync.skipped, "sync.skipped");
+  const unloadedPluginNames = validatePluginNameList(
+    sync.unloaded,
+    "sync.unloaded",
+    {
+      disallow: registeredPluginNames,
+      disallowMessage:
+        "sync.unloaded must not include plugins that are also registered.",
+    },
+  );
+  validatePluginNameList(sync.skipped, "sync.skipped", {
+    disallow: registeredPluginNames,
+    disallowMessage:
+      "sync.skipped must not include plugins that are also registered.",
+    disallowAdditional: new Set(unloadedPluginNames),
+    disallowAdditionalMessage:
+      "sync.skipped must not include plugins that are also unloaded.",
+  });
   const trustDecisions = requireArray(
     sync.trustDecisions,
     "sync.trustDecisions",
   );
   const trustedModuleIds = new Set<string>();
+  const trustedModuleKeys = new Set<string>();
   for (const [index, decision] of trustDecisions.entries()) {
     const item = requireObject(decision, `sync.trustDecisions[${index}]`);
     if (item.trusted === true && item.endpointId === endpointId) {
@@ -798,15 +882,18 @@ function validateSyncEvidence(
         item.pluginName,
         `sync.trustDecisions[${index}].pluginName`,
       );
+      const trustedModuleKey = `${endpointId}\0${moduleId}\0${pluginName}`;
+      if (trustedModuleKeys.has(trustedModuleKey)) {
+        throw new Error("sync.trustDecisions must not contain duplicates.");
+      }
+      trustedModuleKeys.add(trustedModuleKey);
       trustedModuleIds.add(moduleId);
       if (!observedModuleIds.has(moduleId)) {
         throw new Error(
           "sync.trustDecisions trusted moduleId must be present in conformance.moduleIds.",
         );
       }
-      if (
-        !registeredModuleKeys.has(`${endpointId}\0${moduleId}\0${pluginName}`)
-      ) {
+      if (!registeredModuleKeys.has(trustedModuleKey)) {
         throw new Error(
           "sync.trustDecisions trusted module must be present in sync.registeredModules.",
         );
@@ -818,6 +905,13 @@ function validateSyncEvidence(
       "sync.trustDecisions must include at least one trusted module for endpointId.",
     );
   }
+  for (const registeredModuleKey of registeredModuleKeys) {
+    if (!trustedModuleKeys.has(registeredModuleKey)) {
+      throw new Error(
+        "every sync.registeredModules entry must have a trusted sync.trustDecisions entry.",
+      );
+    }
+  }
   for (const moduleId of exercisedModuleIds) {
     if (!trustedModuleIds.has(moduleId)) {
       throw new Error(
@@ -825,15 +919,23 @@ function validateSyncEvidence(
       );
     }
   }
-  return registeredRemoteModuleCounts;
+  return {
+    registeredPluginCount: registered.length,
+    registeredRemoteModuleCounts,
+  };
 }
 
 function validateRuntimeEvidence(
   value: unknown,
-  registeredRemoteModuleCounts: RemoteModuleCountTotals,
+  syncEvidence: RemoteSyncEvidence,
 ): void {
   const runtime = requireObject(value, "runtime");
-  requirePositiveCountAtLeast(runtime.pluginCount, "runtime.pluginCount", 1);
+  const { registeredPluginCount, registeredRemoteModuleCounts } = syncEvidence;
+  requirePositiveCountAtLeast(
+    runtime.pluginCount,
+    "runtime.pluginCount",
+    registeredPluginCount,
+  );
   requirePositiveCountAtLeast(
     runtime.actionCount,
     "runtime.actionCount",
@@ -899,6 +1001,41 @@ function validateRuntimeEvidence(
     "runtime.viewCount",
     registeredRemoteModuleCounts.viewCount,
   );
+}
+
+function validatePluginNameList(
+  value: unknown,
+  field: string,
+  options: {
+    disallow?: Set<string>;
+    disallowMessage?: string;
+    disallowAdditional?: Set<string>;
+    disallowAdditionalMessage?: string;
+  } = {},
+): string[] {
+  const values = requireArray(value, field).map((item, index) =>
+    requireString(item, `${field}[${index}]`),
+  );
+  const seen = new Set<string>();
+  for (const pluginName of values) {
+    if (seen.has(pluginName)) {
+      throw new Error(`${field} must not contain duplicates.`);
+    }
+    seen.add(pluginName);
+    if (options.disallow?.has(pluginName)) {
+      throw new Error(
+        options.disallowMessage ??
+          `${field} contains a disallowed plugin name.`,
+      );
+    }
+    if (options.disallowAdditional?.has(pluginName)) {
+      throw new Error(
+        options.disallowAdditionalMessage ??
+          `${field} contains a disallowed plugin name.`,
+      );
+    }
+  }
+  return values;
 }
 
 function assertNoSensitiveFields(value: unknown, path: string): void {

@@ -101,6 +101,9 @@ jobs:
       - name: Remote capability naming audit
         run: bun run test:remote-capabilities:naming-audit
 
+      - name: Remote capability naming audit self-test
+        run: bun run test:remote-capabilities:naming-audit:self-test
+
       - name: Remote capability source-build smoke
         run: bun run test:remote-capabilities:source-build
 

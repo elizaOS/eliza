@@ -9,6 +9,7 @@ such as llama.cpp.
 from __future__ import annotations
 
 import os
+import time
 from dataclasses import dataclass
 from typing import Any
 
@@ -111,8 +112,42 @@ def _openai_compatible_completion(
     )
 
 
+def _sanitize_messages(messages: Any) -> Any:
+    """Remove provider-emitted fields that OpenAI-compatible APIs reject.
+
+    Cerebras gpt-oss models can return ``reasoning_content`` on assistant
+    messages. The field is useful telemetry, but the chat-completions API
+    rejects it if a benchmark later replays the message history.
+    """
+    if not isinstance(messages, list):
+        return messages
+    sanitized: list[Any] = []
+    for item in messages:
+        if not isinstance(item, dict):
+            sanitized.append(item)
+            continue
+        msg = dict(item)
+        if msg.get("role") == "assistant":
+            msg.pop("reasoning_content", None)
+            msg.pop("provider_specific_fields", None)
+        sanitized.append(msg)
+    return sanitized
+
+
+def _looks_retryable(exc: Exception) -> bool:
+    text = str(exc).lower()
+    return (
+        "rate limit" in text
+        or "too many requests" in text
+        or "queue_exceeded" in text
+        or "high traffic" in text
+    )
+
+
 def completion(**kwargs: Any) -> Any:
     """Call LiteLLM when present, otherwise an OpenAI-compatible endpoint."""
+    if "messages" in kwargs:
+        kwargs = {**kwargs, "messages": _sanitize_messages(kwargs.get("messages"))}
     provider_key = str(kwargs.get("custom_llm_provider") or "").strip().lower()
     if provider_key in {"llama.cpp", "llamacpp", "llama-cpp", "local", "openai-compatible"}:
         return _openai_compatible_completion(**kwargs)
@@ -120,7 +155,19 @@ def completion(**kwargs: Any) -> Any:
         from litellm import completion as litellm_completion  # type: ignore
     except Exception:
         return _openai_compatible_completion(**kwargs)
-    return litellm_completion(**kwargs)
+    delays = (0.0, 2.0, 5.0, 10.0)
+    last_exc: Exception | None = None
+    for delay in delays:
+        if delay:
+            time.sleep(delay)
+        try:
+            return litellm_completion(**kwargs)
+        except Exception as exc:
+            last_exc = exc
+            if not _looks_retryable(exc):
+                raise
+    assert last_exc is not None
+    raise last_exc
 
 
 __all__ = [

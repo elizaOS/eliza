@@ -7,11 +7,11 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
+import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
   connectRemoteCapabilityEndpointProvider,
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
-import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
   desktopCompanionCapabilityEndpointProvider,
   e2bCapabilityEndpointProvider,

@@ -559,7 +559,10 @@ def test_default_env_maps_profile_reasoning_effort_to_provider_env() -> None:
     assert env["CEREBRAS_REASONING_EFFORT"] == "low"
 
 
-def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
+def test_cross_matrix_validation_constructs_all_compatible_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -593,6 +596,27 @@ def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
     assert all(cell.reason for cell in incompatible)
 
 
+def test_gaia_matrix_rows_require_official_dataset_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: False)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    gaia_cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id in {"gaia", "gaia_orchestrated"}
+    ]
+
+    assert len(gaia_cells) == 6
+    assert all(cell.compatible is False for cell in gaia_cells)
+    assert all("not in adapter compatibility" in str(cell.reason) for cell in gaia_cells)
+
+
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -616,6 +640,7 @@ def test_cross_matrix_validation_redacts_secret_config_values() -> None:
 def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(
         orchestrator_adapters,
         "_has_hermes_sandbox_backend",
@@ -1493,7 +1518,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
     assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
 
 
-def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None:
+def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["tau_bench"]
     effective = _effective_request(
         adapter,
@@ -1519,7 +1544,7 @@ def test_taubench_adapter_defaults_to_single_sample_task(tmp_path: Path) -> None
     command = adapter.command_builder(ctx, adapter)
 
     assert command[command.index("--max-tasks-per-domain") + 1] == "1"
-    assert "--use-sample-tasks" in command
+    assert "--use-sample-tasks" not in command
     assert command[command.index("--agent-harness") + 1] == "eliza"
     assert command[command.index("--agent-provider") + 1] == "cerebras"
     assert command[command.index("--agent-model") + 1] == "gpt-oss-120b"
@@ -1539,7 +1564,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         "lifeops_bench": ("--limit", "2"),
         "mint": ("--max-tasks", "1"),
         "realm": ("--max-tasks", "1"),
-        "bfcl": ("--sample", "2"),
+        "bfcl": ("--max-per-category", "1"),
         "hyperliquid_bench": ("--max-steps", "1"),
         "experience": ("--queries", "2"),
         "loca_bench": ("--max-tool-uses", "40"),

@@ -13,8 +13,8 @@
     "types": ["node", "bun-types"],
     "baseUrl": ".",
     "paths": {
-      "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
-      "@elizaos/cloud-test-mocks/*": ["../cloud-test-mocks/src/*"]
+      "@elizaos/cloud-shared/*": ["../../cloud-shared/src/*"],
+      "@elizaos/cloud-test-mocks/*": ["../../cloud-test-mocks/src/*"]
     },
     "lib": ["ES2022", "DOM"]
   },

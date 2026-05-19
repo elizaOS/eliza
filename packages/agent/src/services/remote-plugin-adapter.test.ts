@@ -28,12 +28,12 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
+import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import {
   importAppRouteModule,
   registerRuntimeAppRouteModule,
   unregisterRuntimeAppRouteModule,
 } from "./app-package-modules.ts";
-import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import {
   createRemoteCapabilityFetchHandler,
   RemoteCapabilityRouterService,
@@ -3146,9 +3146,9 @@ export function createRouter() {
       ).resolves.toBeUndefined();
       const builtSourceService = runtime.getService(
         "built_source_service",
-      ) as unknown as
-        | { lookup: (...args: unknown[]) => Promise<unknown> }
-        | null;
+      ) as unknown as {
+        lookup: (...args: unknown[]) => Promise<unknown>;
+      } | null;
       await expect(
         builtSourceService?.lookup({ query: "service" }),
       ).resolves.toEqual({
@@ -3163,9 +3163,19 @@ export function createRouter() {
       ).resolves.toEqual({
         launchUrl: "https://built-source.example/launch",
       });
-      const modelHandlers = (runtime as unknown as {
-        models: Map<string, Array<{ handler: (runtime: IAgentRuntime, params: unknown) => Promise<unknown> }>>;
-      }).models;
+      const modelHandlers = (
+        runtime as unknown as {
+          models: Map<
+            string,
+            Array<{
+              handler: (
+                runtime: IAgentRuntime,
+                params: unknown,
+              ) => Promise<unknown>;
+            }>
+          >;
+        }
+      ).models;
       await expect(
         modelHandlers.get("BUILT_SOURCE_TEXT")?.[0]?.handler(runtime, {
           prompt: "hello model",
@@ -3814,17 +3824,13 @@ createServer(async (req, res) => {
           dockerPlugin?.evaluators?.[0]?.shouldRun(dockerEvaluatorContext),
         ).resolves.toBe(true);
         await expect(
-          dockerToolsPlugin?.evaluators?.[0]?.shouldRun(
-            dockerEvaluatorContext,
-          ),
+          dockerToolsPlugin?.evaluators?.[0]?.shouldRun(dockerEvaluatorContext),
         ).resolves.toBe(true);
         await expect(
           dockerPlugin?.evaluators?.[0]?.prepare?.(dockerEvaluatorContext),
         ).resolves.toEqual({ module: "primary" });
         await expect(
-          dockerToolsPlugin?.evaluators?.[0]?.prepare?.(
-            dockerEvaluatorContext,
-          ),
+          dockerToolsPlugin?.evaluators?.[0]?.prepare?.(dockerEvaluatorContext),
         ).resolves.toEqual({ module: "tools" });
         await expect(
           dockerPlugin?.evaluators?.[0]?.processors?.[0]?.process({
@@ -3939,7 +3945,9 @@ createServer(async (req, res) => {
         const dockerToolsService = runtime.getService(
           "docker_tools_service",
         ) as unknown as { lookup: (...args: unknown[]) => Promise<unknown> };
-        await expect(dockerService.lookup({ query: "primary" })).resolves.toEqual({
+        await expect(
+          dockerService.lookup({ query: "primary" }),
+        ).resolves.toEqual({
           text: "docker primary service",
           args: [{ query: "primary" }],
         });
@@ -3955,9 +3963,19 @@ createServer(async (req, res) => {
         await expect(
           dockerToolsPlugin?.appBridge?.prepareLaunch?.({ runtime } as never),
         ).resolves.toEqual({ launchUrl: "https://docker.example/tools" });
-        const modelHandlers = (runtime as unknown as {
-          models: Map<string, Array<{ handler: (runtime: IAgentRuntime, params: unknown) => Promise<unknown> }>>;
-        }).models;
+        const modelHandlers = (
+          runtime as unknown as {
+            models: Map<
+              string,
+              Array<{
+                handler: (
+                  runtime: IAgentRuntime,
+                  params: unknown,
+                ) => Promise<unknown>;
+              }>
+            >;
+          }
+        ).models;
         await expect(
           modelHandlers.get("DOCKER_TEXT")?.[0]?.handler(runtime, {
             prompt: "primary",
@@ -4114,9 +4132,11 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     );
     for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
       if (typeof handler === "function") {
-        const modelMap = (runtime as unknown as {
-          models: Map<string, Array<{ handler: unknown; provider: string }>>;
-        }).models;
+        const modelMap = (
+          runtime as unknown as {
+            models: Map<string, Array<{ handler: unknown; provider: string }>>;
+          }
+        ).models;
         const handlers = modelMap.get(modelType) ?? [];
         handlers.push({ handler, provider: plugin.name });
         modelMap.set(modelType, handlers);
@@ -4171,9 +4191,11 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     runtime.events[event] = handlers;
   };
   runtime.registerModel = (modelType, handler, provider) => {
-    const modelMap = (runtime as unknown as {
-      models: Map<string, Array<{ handler: unknown; provider: string }>>;
-    }).models;
+    const modelMap = (
+      runtime as unknown as {
+        models: Map<string, Array<{ handler: unknown; provider: string }>>;
+      }
+    ).models;
     const key = String(modelType);
     const handlers = modelMap.get(key) ?? [];
     handlers.push({ handler, provider });
@@ -4198,7 +4220,11 @@ function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     }
     for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
       if (typeof handler === "function") {
-        runtime.registerModel(modelType as never, handler as never, plugin.name);
+        runtime.registerModel(
+          modelType as never,
+          handler as never,
+          plugin.name,
+        );
       }
     }
     runtime.routes.push(...(plugin.routes ?? []));

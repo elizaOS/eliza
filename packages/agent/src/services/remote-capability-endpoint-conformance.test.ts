@@ -310,6 +310,42 @@ describe("remote capability endpoint conformance", () => {
     );
   });
 
+  it("spreads conformance calls across modules when multiple modules expose required surfaces", async () => {
+    installMinimalFixtureFetch(
+      {
+        "plugin.action.invoke":
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
+        "plugin.provider.get":
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider,
+      },
+      {
+        modules: [
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+          {
+            ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+            id: "second-remote-plugin",
+            name: "@remote/second-fixture",
+          },
+        ],
+      },
+    );
+
+    const report = await assertRemoteCapabilityEndpointConformance({
+      endpoint: {
+        id: "remote-endpoint",
+        baseUrl: "https://remote.example.test",
+      },
+      requiredSurfaces: ["action", "provider"],
+    });
+
+    expect(new Set(Object.values(report.exercised))).toEqual(
+      new Set([
+        "fixture-remote-plugin:FIXTURE_ACTION",
+        "second-remote-plugin:FIXTURE_CONTEXT",
+      ]),
+    );
+  });
+
   it("fails when remote route conformance returns a non-2xx status", async () => {
     installMinimalFixtureFetch({
       "plugin.route.call": {
@@ -356,6 +392,9 @@ describe("remote capability endpoint conformance", () => {
 
 function installMinimalFixtureFetch(
   resultsByMethod: Record<string, unknown>,
+  options: {
+    modules?: unknown[];
+  } = {},
 ): void {
   globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
     const body = init?.body
@@ -378,7 +417,7 @@ function installMinimalFixtureFetch(
       return jsonResponse({
         ok: true,
         result: {
-          modules: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
+          modules: options.modules ?? [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
         },
       });
     }

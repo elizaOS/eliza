@@ -12,12 +12,15 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
     DATASET_API,
+    ACTIVE_TEXT_SFT_REQUIRED_FILES,
+    ACTIVE_TEXT_SFT_ROOT,
     DATASET_SPLITS_API,
     FINETUNE_COMPARISON_EVIDENCE_PATH,
     IMAGEGEN_RUNTIME_EVIDENCE_PATH,
     MODEL_API,
     NATIVE_UPSTREAM_REVIEW_PATH,
     QUANTIZATION_SIDECARS,
+    TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
     audit_hf_release,
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
@@ -55,6 +58,7 @@ def _complete_model_paths() -> list[str]:
         NATIVE_UPSTREAM_REVIEW_PATH,
         IMAGEGEN_RUNTIME_EVIDENCE_PATH,
         FINETUNE_COMPARISON_EVIDENCE_PATH,
+        TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
     ]
     for tier, tier_plan in build_plan().items():
         paths.append(f"bundles/{tier}/eliza-1.manifest.json")
@@ -77,7 +81,9 @@ def _complete_dataset_paths() -> list[str]:
         "data/validation-00000-of-00001.parquet",
         "data/test-00000-of-00001.parquet",
         "pipeline/docs/training/eliza1-smallest-finetunes.md",
+        *ACTIVE_TEXT_SFT_REQUIRED_FILES,
         "validation/eliza1-trajectories-20260513-root-validation.json",
+        "validation/eliza1-training-live-audit-2026-05-19.json",
     ]
 
 
@@ -114,11 +120,15 @@ def _text_fetcher(
     *,
     model_readme: str | None = None,
     upstream_review: str | None = None,
+    text_context_variants: str | None = None,
     imagegen_runtime: str | None = None,
     finetune_comparison: str | None = None,
     readme: str = "Eliza-1 training dataset\n",
     manifest: str | None = None,
     validation_report: str | None = None,
+    dataset_live_audit: str | None = None,
+    active_sft_manifest: str | None = None,
+    active_sft_validation: str | None = None,
     model_manifests: Mapping[str, str] | None = None,
     dflash_target_meta: Mapping[str, str] | None = None,
     release_evidence: Mapping[str, str] | None = None,
@@ -133,6 +143,9 @@ def _text_fetcher(
         f"https://huggingface.co/elizaos/eliza-1/raw/main/{NATIVE_UPSTREAM_REVIEW_PATH}": upstream_review
         if upstream_review is not None
         else _passing_upstream_review(),
+        f"https://huggingface.co/elizaos/eliza-1/raw/main/{TEXT_CONTEXT_VARIANT_EVIDENCE_PATH}": text_context_variants
+        if text_context_variants is not None
+        else _passing_text_context_variants(),
         f"https://huggingface.co/elizaos/eliza-1/raw/main/{IMAGEGEN_RUNTIME_EVIDENCE_PATH}": imagegen_runtime
         if imagegen_runtime is not None
         else _passing_imagegen_runtime(),
@@ -146,6 +159,15 @@ def _text_fetcher(
         "https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/validation/eliza1-trajectories-20260513-root-validation.json": validation_report
         if validation_report is not None
         else _passing_dataset_validation_report(),
+        "https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/validation/eliza1-training-live-audit-2026-05-19.json": dataset_live_audit
+        if dataset_live_audit is not None
+        else _passing_dataset_live_audit(),
+        f"https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/{ACTIVE_TEXT_SFT_ROOT}/manifest.json": active_sft_manifest
+        if active_sft_manifest is not None
+        else _passing_active_sft_manifest(),
+        f"https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/{ACTIVE_TEXT_SFT_ROOT}/validation.json": active_sft_validation
+        if active_sft_validation is not None
+        else _passing_active_sft_validation(),
     }
     for tier in ELIZA_1_TIERS:
         payloads[
@@ -236,6 +258,52 @@ def _passing_upstream_review() -> str:
             "- Release impact: image generation memory and platform support.",
             "- Next action: pin binary and rerun imagegen checks.",
         ]
+    )
+
+
+def _passing_text_context_variants() -> str:
+    results = []
+    for tier, tier_plan in build_plan().items():
+        required = []
+        for ctx in tier_plan.contexts:
+            tokens = int(ctx[:-1]) * 1024
+            if tier == "27b-256k":
+                rel = f"text/eliza-1-27b-{ctx}.gguf"
+            else:
+                rel = f"text/eliza-1-{tier}-{ctx}.gguf"
+            required.append(
+                {
+                    "context": ctx,
+                    "expectedCtxTokens": tokens,
+                    "path": f"bundles/{tier}/{rel}",
+                    "existsOnHub": True,
+                    "lfsSha256": "a" * 64,
+                    "manifestEntry": {
+                        "ctx": tokens,
+                        "path": rel,
+                        "sha256": "a" * 64,
+                    },
+                    "blockers": [],
+                }
+            )
+        results.append(
+            {
+                "tier": tier,
+                "requiredContexts": required,
+                "extraTextGgufs": [],
+                "passed": True,
+            }
+        )
+    return __import__("json").dumps(
+        {
+            "schema": "eliza.eliza1_text_context_variant_audit.v1",
+            "repo": ELIZA_1_HF_REPO,
+            "passed": True,
+            "expectedContexts": ["128k", "256k"],
+            "blockers": [],
+            "legacy27b1mPaths": [],
+            "results": results,
+        }
     )
 
 
@@ -387,6 +455,37 @@ def _passing_dataset_validation_report() -> str:
             "errorsByFile": {},
             "errorsBySourceKind": {},
             "firstFailures": [],
+        }
+    )
+
+
+def _passing_dataset_live_audit() -> str:
+    return __import__("json").dumps(
+        {
+            "schema": "eliza.eliza1_training_dataset_live_audit.v1",
+            "datasetRepo": DATASET_REPO,
+            "passed": True,
+            "validation": __import__("json").loads(_passing_dataset_validation_report()),
+            "rowCounts": {
+                "train.jsonl": 1140,
+                "val.jsonl": 143,
+                "test.jsonl": 143,
+            },
+            "hashMismatches": [],
+            "legacy27b1m": {
+                "passed": True,
+                "pathOrRowHits": [],
+                "readmeHits": [],
+            },
+            "secretScan": {
+                "passed": True,
+                "hits": {
+                    "hf_token": 0,
+                    "openai_key": 0,
+                    "aws_access_key": 0,
+                    "private_key_header": 0,
+                },
+            },
         }
     )
 
@@ -615,6 +714,46 @@ def test_hf_release_audit_blocks_incomplete_native_upstream_review() -> None:
         check["name"] == "native upstream review content passed"
         and "omnivoice.cpp: missing" in check["detail"]
         and "stable-diffusion.cpp: missing" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_text_context_variant_evidence_file() -> None:
+    paths = _complete_model_paths()
+    paths.remove(TEXT_CONTEXT_VARIANT_EVIDENCE_PATH)
+
+    report = audit_hf_release(fetch_json=_fetcher(model_paths=paths), fetch_text=_text_fetcher())
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "text context variant audit evidence present"
+        and TEXT_CONTEXT_VARIANT_EVIDENCE_PATH in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_dirty_text_context_variant_evidence() -> None:
+    bad = __import__("json").loads(_passing_text_context_variants())
+    bad["passed"] = False
+    bad["blockers"] = ["missing required text context"]
+    bad["results"][0]["passed"] = False
+    bad["results"][0]["requiredContexts"][0]["existsOnHub"] = False
+    bad["results"][0]["requiredContexts"][0]["blockers"] = ["missing from Hub"]
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(text_context_variants=__import__("json").dumps(bad)),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "text context variant audit evidence passed"
+        and "passed: False" in check["detail"]
+        and "blockers: non-empty" in check["detail"]
+        and "0_8b.passed: False" in check["detail"]
+        and "0_8b.128k.existsOnHub: False" in check["detail"]
         for check in failed
     )
 
@@ -1343,6 +1482,48 @@ def test_hf_release_audit_blocks_dirty_dataset_validation_report() -> None:
         and "validRecords: 1425 != manifest 1426" in check["detail"]
         and "invalidRecords: 1" in check["detail"]
         and "errorsByCode: 1" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_dataset_live_audit_file() -> None:
+    paths = _complete_dataset_paths()
+    paths.remove("validation/eliza1-training-live-audit-2026-05-19.json")
+    report = audit_hf_release(fetch_json=_fetcher(dataset_paths=paths), fetch_text=_text_fetcher())
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset live validation audit present"
+        and "validation/eliza1-training-live-audit-2026-05-19.json" in check["detail"]
+        for check in failed
+    )
+    assert any(
+        check["name"] == "dataset live validation audit passed"
+        and "validation/eliza1-training-live-audit-2026-05-19.json" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_dirty_dataset_live_audit() -> None:
+    dirty = __import__("json").loads(_passing_dataset_live_audit())
+    dirty["passed"] = False
+    dirty["hashMismatches"] = [{"split": "train"}]
+    dirty["secretScan"]["passed"] = False
+    dirty["rowCounts"]["train.jsonl"] = 1139
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(dataset_live_audit=__import__("json").dumps(dirty)),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset live validation audit passed"
+        and "passed: False" in check["detail"]
+        and "hashMismatches: non-empty" in check["detail"]
+        and "secretScan.passed: False" in check["detail"]
+        and "rowCounts total: 1425 != manifest 1426" in check["detail"]
         for check in failed
     )
 

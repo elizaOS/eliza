@@ -11,11 +11,11 @@ import {
   registerPluginViews,
   unregisterPluginViews,
 } from "../api/views-registry.ts";
-import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
   installRemoteCapabilityEndpoint,
   provisionCloudCapabilitySandbox,
 } from "./remote-capability-cloud-sandbox.ts";
+import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import { syncRemoteCapabilityPlugins } from "./remote-plugin-adapter.ts";
 
 const cloudLive =

@@ -232,9 +232,7 @@ export const TIER_TO_DEFAULT_IMAGE_MODEL: Readonly<
  * Returns null when the input doesn't match any known tier — caller
  * surfaces a clear error.
  */
-export function resolveDefaultImageGenModel(
-	keyOrTier: string,
-): {
+export function resolveDefaultImageGenModel(keyOrTier: string): {
 	modelId: string;
 	file: string;
 	splitDiffusionModel?: boolean;
