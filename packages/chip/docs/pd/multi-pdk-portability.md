@@ -126,9 +126,11 @@ numbers**, expect identical pass/fail shape on the methodology checks.
 ## 5. Portability check workflow
 
 ```sh
-make pdk-portability-check   # verify every config has manifests + access gate
+make pdk-portability-check   # verify every config has manifests + access gate + macro cross-ref
+make pdk-portability-test    # unit tests for the portability checker
 make pdk-access-gate         # advanced-node procurement evidence (fail-closed)
-make ppa-projection          # project open / ASAP7 PPA to N2P envelope
+make ppa-projection          # project open / ASAP7 PPA to N2P / A14 / Intel 14A / SF2P
+make die-area-budget-check   # 100-130 mm² envelope cross-check vs die-shot cohort
 ```
 
 Each command writes a structured report to `docs/evidence/process/`. Reports
@@ -137,6 +139,17 @@ include:
 - `evidence_class` (real open-pdk / predictive shape / procurement-blocked)
 - the list of pass / blocked entries with reasons
 - next-step commands
+
+The portability checker cross-references `pd/macros/manifest.yaml` (owned by
+the PD agent): every Sky130 and IHP SG13G2 library manifest must declare the
+same hard-macro set the PD agent has declared. Drift on either side fails the
+gate.
+
+The PPA projection script runs a 4096-sample Monte Carlo over the
+public-disclosure 1-sigma bands documented in
+`docs/evidence/process/ppa-projection.yaml`, producing p10 / p50 / p90 bands
+per target node (N2P / A14 / Intel 14A / Samsung SF2P). Outputs remain
+`projection_only_never_signoff`.
 
 ## 6. Where portability ends
 

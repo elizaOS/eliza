@@ -31,6 +31,11 @@ scaling_factors:
     a14_to_a14p_density: 1.05
     intel_18a_to_intel_14a_density: 1.15
     samsung_sf2_to_sf2p_density: 1.05
+    # Cross-node bridges from the Intel and Samsung roadmaps. Used by the
+    # projection script to target Intel 14A and Samsung SF2P without going
+    # through the TSMC family.
+    n3e_to_intel_14a: 1.45     # rough parity assumption to N2 logic density
+    n3e_to_samsung_sf2p: 1.30  # SF2P trails N2P on logic density
   perf_iso_power:
     n5_to_n3e: 1.10
     n3e_to_n2: 1.10
@@ -38,6 +43,8 @@ scaling_factors:
     n2_to_a14: 1.15
     intel_18a_to_intel_14a_perf: 1.175
     samsung_sf3p_to_sf2p_perf: 1.05
+    n3e_to_intel_14a_perf: 1.20
+    n3e_to_samsung_sf2p_perf: 1.10
   power_iso_perf:
     n5_to_n3e: 0.80
     n3e_to_n2: 0.75
@@ -45,6 +52,8 @@ scaling_factors:
     n2_to_a14: 0.70
     intel_18a_to_intel_14a_power: 0.725
     samsung_sf3p_to_sf2p_power: 0.75
+    n3e_to_intel_14a_power: 0.65
+    n3e_to_samsung_sf2p_power: 0.78
   sram_macro_mb_per_mm2:
     n5: 27.3
     n3e: 28.5
@@ -52,7 +61,31 @@ scaling_factors:
     n2p: 38.1
     a14: 39.5
     intel_18a: 35
+    intel_14a: 38
     samsung_sf2p: 32
+
+# Public-disclosure uncertainty bands per factor. Used by the projection
+# script's Monte Carlo to emit p10/p50/p90 bands instead of a single point.
+# Values are 1-sigma fractional uncertainty for each factor.
+uncertainty_bands:
+  density:
+    n3e_to_n2: 0.08          # TSMC public disclosure
+    n2_to_n2p: 0.05
+    n2_to_a14: 0.10
+    n3e_to_intel_14a: 0.15   # Intel public roadmap, less disclosed
+    n3e_to_samsung_sf2p: 0.15
+  perf_iso_power:
+    n3e_to_n2: 0.05
+    n2_to_n2p: 0.03
+    n2_to_a14: 0.08
+    n3e_to_intel_14a_perf: 0.10
+    n3e_to_samsung_sf2p_perf: 0.10
+  power_iso_perf:
+    n3e_to_n2: 0.05
+    n2_to_n2p: 0.05
+    n2_to_a14: 0.08
+    n3e_to_intel_14a_power: 0.10
+    n3e_to_samsung_sf2p_power: 0.10
 
 source_citations:
   - source: TSMC Tech Symposium 2025

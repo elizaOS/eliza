@@ -25,8 +25,16 @@ import yaml
 ROOT = Path(__file__).resolve().parents[1]
 INDEX = ROOT / "pd/openlane/portability-index.yaml"
 REPORT = ROOT / "docs/evidence/process/pdk-portability.json"
+MACROS_MANIFEST = ROOT / "pd/macros/manifest.yaml"
 
 SCHEMA = "eliza.pd_portability_index.v1"
+
+# PDKs that have hard-macro entries the library manifest must cross-reference.
+# The map is portability-index `pdk_name` -> pd/macros/manifest.yaml `pdks` key.
+PDKS_WITH_MACROS = {
+    "sky130A": "sky130A",
+    "ihp-sg13g2": "ihp-sg13g2",
+}
 
 OPEN_PDK_NODES = {
     "open_130nm_planar_cmos",
@@ -103,6 +111,79 @@ def check_entry_paths(entry: dict[str, Any], errors: list[str]) -> None:
         cm = ROOT / corner_manifest
         if not cm.exists():
             errors.append(f"{eid}: corner_manifest missing: {corner_manifest}")
+
+
+def check_entry_macros(
+    entry: dict[str, Any],
+    macros: dict[str, Any],
+    errors: list[str],
+) -> None:
+    """Verify open-PDK entries with hard macros cross-reference the macro manifest.
+
+    The library manifest must list each macro the PD agent declares in
+    pd/macros/manifest.yaml under the matching PDK. Drift between the two
+    manifests is flagged as a portability error.
+    """
+    eid = entry.get("id", "<no_id>")
+    pdk_name = entry.get("pdk_name", "")
+    macro_key = PDKS_WITH_MACROS.get(pdk_name)
+    if macro_key is None:
+        return  # Other PDKs do not have a macro inventory entry yet.
+    macro_pdk_entry = macros.get(macro_key)
+    if not isinstance(macro_pdk_entry, dict):
+        errors.append(f"{eid}: pd/macros/manifest.yaml has no entry for {macro_key}")
+        return
+    declared_macros = macro_pdk_entry.get("target_macros")
+    if not isinstance(declared_macros, list) or not declared_macros:
+        errors.append(f"{eid}: pd/macros/manifest.yaml has no target_macros for {macro_key}")
+        return
+    declared_names = {
+        name
+        for m in declared_macros
+        if isinstance(m, dict) and isinstance((name := m.get("name")), str)
+    }
+    library_manifest = entry.get("library_manifest")
+    if not isinstance(library_manifest, str):
+        return
+    lm_path = ROOT / library_manifest
+    if not lm_path.exists():
+        return
+    lm_data = yaml.safe_load(lm_path.read_text(encoding="utf-8"))
+    if not isinstance(lm_data, dict):
+        errors.append(f"{eid}: {library_manifest} must be a YAML mapping")
+        return
+    sram_macros = lm_data.get("sram_macros")
+    if not isinstance(sram_macros, dict):
+        errors.append(
+            f"{eid}: {library_manifest} must contain sram_macros section "
+            f"cross-referencing pd/macros/manifest.yaml"
+        )
+        return
+    if sram_macros.get("source_of_truth") != "pd/macros/manifest.yaml":
+        errors.append(
+            f"{eid}: {library_manifest} sram_macros.source_of_truth must be pd/macros/manifest.yaml"
+        )
+    library_macros = sram_macros.get("macros")
+    if not isinstance(library_macros, list):
+        errors.append(f"{eid}: {library_manifest} sram_macros.macros must be a list")
+        return
+    library_names = {
+        name
+        for m in library_macros
+        if isinstance(m, dict) and isinstance((name := m.get("name")), str)
+    }
+    missing = declared_names - library_names
+    if missing:
+        errors.append(
+            f"{eid}: library manifest missing macros declared in "
+            f"pd/macros/manifest.yaml: {sorted(missing)}"
+        )
+    extra = library_names - declared_names
+    if extra:
+        errors.append(
+            f"{eid}: library manifest references macros not in "
+            f"pd/macros/manifest.yaml: {sorted(extra)}"
+        )
 
 
 def check_entry_access_gate(entry: dict[str, Any], errors: list[str]) -> None:
@@ -228,6 +309,21 @@ def main() -> int:
         errors.append("configs must be a list")
         configs = []
 
+    # Load PD-agent macro manifest once; macro cross-check uses it per entry.
+    macros: dict[str, Any] = {}
+    if MACROS_MANIFEST.is_file():
+        loaded = yaml.safe_load(MACROS_MANIFEST.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            pdk_section = loaded.get("pdks")
+            if isinstance(pdk_section, dict):
+                macros = pdk_section
+            else:
+                errors.append(f"{rel(MACROS_MANIFEST)} missing pdks mapping")
+        else:
+            errors.append(f"{rel(MACROS_MANIFEST)} must be a YAML mapping")
+    else:
+        errors.append(f"missing macros manifest: {rel(MACROS_MANIFEST)}")
+
     seen_ids: set[str] = set()
     for entry in configs:
         if not isinstance(entry, dict):
@@ -243,6 +339,7 @@ def main() -> int:
         check_entry_required_fields(entry, errors)
         check_entry_paths(entry, errors)
         check_entry_access_gate(entry, errors)
+        check_entry_macros(entry, macros, errors)
 
     # At least one open-PDK + at least one advanced-node entry must be present.
     open_count = sum(

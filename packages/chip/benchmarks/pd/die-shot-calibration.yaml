@@ -95,6 +95,86 @@ derived_block_envelope_at_n2:
     high: 12.0
     basis: A19_Pro_SLC_11_03_mm2_at_N3P_uses_macro_density_not_bitcell_shrink
 
+# Per-block budgets per the integrated 2028-SOTA report Section 2.4.
+# These are the explicit blocks the floorplan must place inside the 100-130 mm²
+# envelope. Cross-checked against scripts/check_die_area_budget.py and
+# docs/evidence/process/die-area-budget.yaml.
+per_block_budget_section_2_4:
+  big_core_with_l2_mm2:
+    low: 2.0
+    high: 3.5
+    basis: A19_Pro_P_core_with_L2_at_N3P_scaled_to_N2_density_1_45
+    instances_in_e1: 2
+  premium_mid_core_with_l2_mm2:
+    low: 0.7
+    high: 1.0
+    point_estimate: 0.85
+    basis: C1_Premium_class_scaled_to_N2_density
+    instances_in_e1: 4
+  pro_little_core_with_l2_mm2:
+    low: 0.20
+    high: 0.30
+    point_estimate: 0.25
+    basis: C1_Pro_class_scaled_to_N2_density
+    instances_in_e1: 2
+  npu_compute_plus_local_sram_mm2:
+    low: 4.0
+    high: 6.0
+    basis: scaled_C1_NPU_class_with_8_MiB_local_SRAM_macro_density_38_1_Mb_per_mm2
+    instances_in_e1: 1
+  slc_16_to_32_MB_mm2:
+    low: 8.0
+    high: 12.0
+    basis: macro_density_38_1_Mb_per_mm2_HD_at_N2
+    instances_in_e1: 1
+  lpddr_phy_4x16bit_mm2:
+    low: 6.0
+    high: 10.0
+    basis: PHY_does_not_scale_with_logic_node
+    instances_in_e1: 1
+  gpu_mm2:
+    low: 6.0
+    high: 10.0
+    basis: Imagination_or_RISCV_SIMT_scaled_to_N2
+    instances_in_e1: 1
+  modem_isp_codecs_aon_mm2:
+    low: 6.0
+    high: 12.0
+    basis: aggregated_from_2025_flagship_die_shots
+    instances_in_e1: 1
+
+# Top-level sum across instance counts.
+e1_floorplan_sum_at_n2_mm2:
+  low: 32.6
+  high: 53.5
+  composition:
+    - 2x_big_core_with_l2: "2 × 2.0..3.5 mm² = 4.0..7.0 mm²"
+    - 4x_premium_mid: "4 × 0.85 mm² = 3.4 mm²"
+    - 2x_pro_little: "2 × 0.25 mm² = 0.5 mm²"
+    - npu_block: "1 × 4..6 mm²"
+    - slc: "1 × 8..12 mm²"
+    - lpddr_phy: "1 × 6..10 mm²"
+    - gpu: "1 × 6..10 mm²"
+    - modem_isp_codecs_aon: "1 × 6..12 mm²"
+  headroom_to_envelope_low_mm2: 46.5   # 100 - 53.5 worst-case sum
+  headroom_to_envelope_high_mm2: 97.4  # 130 - 32.6 best-case sum
+  basis: section_2_4_of_2028_sota_integrated_report
+
+# Bring-up calibration cross-check: total integer-pad budget against published
+# flagship die areas. The e1 budget must remain demonstrably below the cohort
+# floor (Apple A19 at 81.9 mm²) before flagship-density claims are made.
+calibration_cross_check:
+  cohort_minimum_mm2: 81.9         # Apple A19 N3P
+  cohort_envelope_target_mm2: 110  # midpoint of 100-130 mm² N2 envelope
+  e1_floorplan_high_mm2: 53.5      # see e1_floorplan_sum_at_n2_mm2.high
+  headroom_above_e1_floorplan_high_mm2: 56.5  # 110 - 53.5
+  interpretation: >
+    The 53.5 mm² high-side floorplan sum from Section 2.4 leaves ~56 mm² of
+    headroom against the midpoint envelope (110 mm²) for routing channels,
+    decap, antenna fill, power switches, AON islands, and PHY analog content
+    not enumerated as a top-level block. This is the area engineer-budget,
+    not signoff.
+
 usage:
   consumer: scripts/check_die_area_budget.py
   evidence_file: docs/evidence/process/die-area-budget.yaml

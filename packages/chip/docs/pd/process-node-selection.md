@@ -162,7 +162,58 @@ methodology portability but do not produce flagship-frequency numbers.
 | Commercial EDA seat budget unavailable | Continue open methodology; no flagship tapeout possible. |
 | BSPDN bring-up risk too high (Intel 14A) | Switch to TSMC A14 baseline frontside. |
 
-## 8. Sources
+## 8. Quarterly decision tree
+
+The advanced-node lane is procurement-blocked. The project's posture is
+reviewed at the end of each quarter against four binary preconditions. The
+quarterly decision tree below documents the order in which those
+preconditions must clear before the project can begin spending NRE.
+
+```
+Q-end decision tree
+===================
+
+1. Foundry-conversation status — is at least one of the following live?
+   - TSMC OIP / NDA conversation at N2P or A14 (primary / stretch)
+   - Intel Foundry Services conversation at 14A (2nd source)
+   - Samsung Foundry SAFE conversation at SF2P (backup)
+   ↓ no → hold; continue open-PDK and ASAP7 work; revisit next quarter
+   ↓ yes → step 2
+
+2. Hard-IP availability at the chosen node — are the following on a vendor's
+   roadmap with a delivery date inside the 2028 production window?
+   - LPDDR5X (mature) or LPDDR6 (preferred) PHY at the selected node
+   - USB 3.2 / USB4 PHY at the selected node
+   - MIPI D-PHY v3 / C-PHY v2 at the selected node
+   - PLL hard IP at the selected node
+   - SRAM compiler (with NanoFlex / equivalent DTCO assist)
+   ↓ no → fall back one node tier (N2P ← A14, or open-PDK ← N2P) and revisit
+   ↓ yes → step 3
+
+3. Wafer-allocation realism — does the selected foundry have a wafer-window
+   commitment for our tape-out + ramp inside 2028? Apple holds >50% of TSMC
+   N2 through 2027 Q2; allocation must be granted in writing.
+   ↓ no → hold; continue open-PDK / ASAP7; bring in anchor customer or
+          DARPA-style subsidy; revisit next quarter
+   ↓ yes → step 4
+
+4. Mask-NRE + wafer-NRE budget approval — is the funding committed?
+   - Mask set NRE $40-45M
+   - Tapeout NRE $250-500M
+   - Commercial EDA seat budget $5M+/yr
+   - Hard-IP license budget
+   ↓ no → hold; the project does not own a tape-out window without funding
+   ↓ yes → unblock the selected lane: flip `access_gate` to `unblocked`,
+           land the foundry NDA / license artifacts under
+           `docs/evidence/process/`, and remove the BLOCKED label from the
+           portability index.
+```
+
+The decision tree is fail-closed: every step is binary, every step blocks
+the next, and every "no" path keeps the project on the open-PDK methodology
+track instead of pretending the BLOCKED lane is live.
+
+## 9. Sources
 
 - `docs/architecture-optimization/sota-2028/process-nodes.md` — full SOTA report
 - TSMC public roadmap (Tom's Hardware): A12 / A13 / N2U; A16 → 2027; A14 → 2028
