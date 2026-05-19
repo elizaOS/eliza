@@ -177,7 +177,10 @@ fail closed against unauthorized-IOVA tests.
 
 Authoritative behavioural reference: the RTL is cross-checked against
 the [`riscv-non-isa/riscv-iommu`][refmodel] upstream model whose pinned
-revision is recorded in `verify/external/riscv-iommu/manifest.yaml`.
+revision is recorded in
+`verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml`. The cloned
+tree itself lives under `verify/external/` (gitignored); the manifest
+survives in tracked storage so the pin is never lost.
 
 [refmodel]: https://github.com/riscv-non-isa/riscv-iommu
 

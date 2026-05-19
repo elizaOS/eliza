@@ -6,11 +6,9 @@ policy:
   - URLs verified at compile date; future drift requires re-check.
   - No vendor marketing copy treated as evidence.
 notes:
-  - This inventory is the source list for the `pd_eda_2026` packet only.
-  - The AlphaChip-specific source list lives at
-    `research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml`.
-  - Entries flagged `extends_alphachip_packet: true` add 2025-2026 deltas
-    to topics already present in the AlphaChip packet.
+  - "This inventory is the source list for the `pd_eda_2026` packet only."
+  - "The AlphaChip-specific source list lives at `research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml`."
+  - "Entries flagged `extends_alphachip_packet: true` add 2025-2026 deltas to topics already present in the AlphaChip packet."
 
 sources:
 

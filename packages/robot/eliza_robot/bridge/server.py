@@ -107,6 +107,11 @@ class RuntimeConfig:
     profile_id: str = "hiwonder-ainex"
     # MuJoCo backend knobs (only consulted when backend == "mujoco").
     mujoco_target_xyz: tuple[float, float, float] = (2.0, 0.0, 0.05)
+    # When set, `camera.snapshot` reads from a v4l2 device (e.g. Obsbot)
+    # instead of (or in addition to) the backend's snapshot_camera(). -1 = off.
+    camera_device: int = -1
+    camera_width: int = 640
+    camera_height: int = 480
 
 
 def _load_config_file(path: str) -> JsonDict:
@@ -154,6 +159,9 @@ def _coerce_runtime_config(args: argparse.Namespace, config_obj: JsonDict) -> Ru
             getattr(args, "mujoco_target_y", 0.0),
             getattr(args, "mujoco_target_z", 0.05),
         ),
+        camera_device=getattr(args, "camera_device", -1),
+        camera_width=getattr(args, "camera_width", 640),
+        camera_height=getattr(args, "camera_height", 480),
     )
 
 
@@ -844,8 +852,38 @@ async def _handler(
                     cam_name = (
                         requested_cam if isinstance(requested_cam, str) and requested_cam else "head"
                     )
+                    frame = None
+                    # External v4l2 camera (e.g. Obsbot) takes precedence
+                    # when explicitly requested via `camera=external` OR
+                    # when the backend can't produce a frame.
+                    use_external = (
+                        config.camera_device >= 0
+                        and (cam_name in {"external", "obsbot", "v4l2"} or cam_name == "head")
+                    )
                     try:
-                        frame = backend.snapshot_camera(cam_name)
+                        if cam_name in {"external", "obsbot", "v4l2"} and config.camera_device >= 0:
+                            from eliza_robot.perception.frame_source import OpenCVSource
+                            with OpenCVSource(
+                                device=config.camera_device,
+                                width=config.camera_width,
+                                height=config.camera_height,
+                            ) as src:
+                                ok, bgr = src.read()
+                                if ok and bgr is not None and bgr.size > 0:
+                                    # OpenCV returns BGR; we ship RGB on the wire.
+                                    frame = bgr[:, :, ::-1].copy()
+                        else:
+                            frame = backend.snapshot_camera(cam_name)
+                            if frame is None and use_external:
+                                from eliza_robot.perception.frame_source import OpenCVSource
+                                with OpenCVSource(
+                                    device=config.camera_device,
+                                    width=config.camera_width,
+                                    height=config.camera_height,
+                                ) as src:
+                                    ok, bgr = src.read()
+                                    if ok and bgr is not None and bgr.size > 0:
+                                        frame = bgr[:, :, ::-1].copy()
                     except Exception as exc:
                         await _safe_send(
                             ws,
@@ -1071,6 +1109,26 @@ def _parse_args() -> argparse.Namespace:
         type=float,
         default=0.05,
         help="MuJoCo backend: target ball Z position (m, default 0.05)",
+    )
+    parser.add_argument(
+        "--camera-device",
+        type=int,
+        default=-1,
+        help="v4l2 device index for an external camera (Obsbot etc.). "
+             "When >=0, `camera.snapshot` reads from this device instead "
+             "of the backend (useful with --backend ros_real).",
+    )
+    parser.add_argument(
+        "--camera-width",
+        type=int,
+        default=640,
+        help="External camera capture width (default 640)",
+    )
+    parser.add_argument(
+        "--camera-height",
+        type=int,
+        default=480,
+        help="External camera capture height (default 480)",
     )
     parser.add_argument(
         "--config",

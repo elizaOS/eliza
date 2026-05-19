@@ -15,13 +15,12 @@ Usage on the target:
         --bad-iova 0x10_0000_0000 \
         --output /data/local/tmp/iommu_fault_injection_report.json
 """
+
 from __future__ import annotations
 
 import argparse
-import ctypes
 import json
 import os
-import struct
 import sys
 import time
 from pathlib import Path
@@ -38,11 +37,16 @@ def open_iommufd():
 
 
 def emit_blocked(reason: str) -> None:
-    print(json.dumps({
-        "schema": "eliza.memory.iommu_fault_injection.v1",
-        "status": "blocked",
-        "reason": reason,
-    }, indent=2))
+    print(
+        json.dumps(
+            {
+                "schema": "eliza.memory.iommu_fault_injection.v1",
+                "status": "blocked",
+                "reason": reason,
+            },
+            indent=2,
+        )
+    )
 
 
 def parse_int(value: str) -> int:
@@ -51,14 +55,23 @@ def parse_int(value: str) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--master", required=True,
-                    help="Bus master identifier (npu, gpu, dma, display, camera, codec).")
-    ap.add_argument("--devid", type=parse_int, required=True,
-                    help="Device ID (DID) of the master.")
-    ap.add_argument("--bad-iova", type=parse_int, required=True,
-                    help="IOVA known to be outside the master's mapping.")
-    ap.add_argument("--output", required=True,
-                    help="Path to write the eliza.memory.iommu_fault_injection.v1 JSON.")
+    ap.add_argument(
+        "--master",
+        required=True,
+        help="Bus master identifier (npu, gpu, dma, display, camera, codec).",
+    )
+    ap.add_argument("--devid", type=parse_int, required=True, help="Device ID (DID) of the master.")
+    ap.add_argument(
+        "--bad-iova",
+        type=parse_int,
+        required=True,
+        help="IOVA known to be outside the master's mapping.",
+    )
+    ap.add_argument(
+        "--output",
+        required=True,
+        help="Path to write the eliza.memory.iommu_fault_injection.v1 JSON.",
+    )
     args = ap.parse_args()
 
     if not Path(IOMMUFD_DEV).exists():

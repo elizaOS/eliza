@@ -21,6 +21,7 @@ Phone-class MPKI claims remain BLOCKED until the academic-quality
 infrastructure is wired in and committed to git LFS or vetted to be
 buildable offline.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,7 +29,6 @@ import datetime as dt
 import json
 import os
 import shutil
-import subprocess
 import sys
 from pathlib import Path
 
@@ -101,36 +101,35 @@ def write_blocked_stub(path: Path, reason: str) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--champsim-bin", default=None,
-                    help="Override ChampSim binary path")
-    ap.add_argument("--output", default=None,
-                    help="Output JSON path (defaults to scratch)")
-    ap.add_argument("--commit-evidence", action="store_true",
-                    help="Write the artifact under docs/evidence/cache/")
+    ap.add_argument("--champsim-bin", default=None, help="Override ChampSim binary path")
+    ap.add_argument("--output", default=None, help="Output JSON path (defaults to scratch)")
+    ap.add_argument(
+        "--commit-evidence",
+        action="store_true",
+        help="Write the artifact under docs/evidence/cache/",
+    )
     args = ap.parse_args()
 
     scratch = ROOT / "build/reports/cache/champsim_sweep.json"
     evidence = ROOT / "docs/evidence/cache/champsim_prefetch_sweep_report.json"
-    out_path = Path(args.output) if args.output else (
-        evidence if args.commit_evidence else scratch
-    )
+    out_path = Path(args.output) if args.output else (evidence if args.commit_evidence else scratch)
 
     binary = args.champsim_bin or find_champsim_bin()
     if binary is None:
-        write_blocked_stub(scratch, "champsim_binary_missing")
+        write_blocked_stub(out_path, "champsim_binary_missing")
         # Exit 0 — fail-closed via stub artifact, not via process status.
         return 0
 
     traces = find_traces()
     if not traces:
-        write_blocked_stub(scratch, "champsim_traces_missing")
+        write_blocked_stub(out_path, "champsim_traces_missing")
         return 0
 
     # Real sweep would loop here. We stop short of running uncommitted EDA
     # against potentially-large traces in this scaffold; emit a BLOCKED
     # stub so the gate stays honest.
     write_blocked_stub(
-        scratch,
+        out_path,
         "academic_sweep_not_yet_committed_to_repo",
     )
     return 0

@@ -16,14 +16,15 @@ The synthetic generators are explicitly NOT SPEC or AOSP. They produce
 order-of-magnitude MPKI numbers good enough to validate the model is wired
 correctly, never as a phone-class workload claim.
 """
+
 from __future__ import annotations
 
 import json
 import struct
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
-from typing import Iterable, Iterator
 
-from .bpu_model import BR_CALL, BR_COND, BR_NONE, BR_RET, BranchEvent
+from .bpu_model import BR_CALL, BR_COND, BR_RET, BranchEvent
 
 
 def read_cbp5(path: Path) -> Iterator[BranchEvent]:
@@ -69,9 +70,7 @@ def synthetic_alternating(iterations: int = 1_000) -> Iterator[BranchEvent]:
         yield BranchEvent(pc=pc, target=target, taken=taken, kind=BR_COND)
 
 
-def synthetic_loop_known_count(
-    trips: int = 16, repetitions: int = 64
-) -> Iterator[BranchEvent]:
+def synthetic_loop_known_count(trips: int = 16, repetitions: int = 64) -> Iterator[BranchEvent]:
     pc = 0x8000_3000
     target = 0x8000_3000 - 0x40
     for _ in range(repetitions):
@@ -133,7 +132,7 @@ def synthetic_indirect_dispatch(
             )
 
 
-SYNTHETIC_GENERATORS: dict[str, callable[[], Iterable[BranchEvent]]] = {
+SYNTHETIC_GENERATORS: dict[str, Callable[[], Iterable[BranchEvent]]] = {
     "always_taken_loop": synthetic_always_taken_loop,
     "alternating": synthetic_alternating,
     "loop_known_count": synthetic_loop_known_count,

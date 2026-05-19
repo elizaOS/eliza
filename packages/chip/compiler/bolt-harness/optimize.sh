@@ -54,7 +54,7 @@ if [ -n "$workload" ] && [ -z "$profile" ]; then
     "$BOLT" --instrument --instrumentation-file-append-pid \
         "$binary" -o "$instrumented"
     "$workload" "$instrumented"
-    profile="$(ls -t /tmp/prof.fdata* 2>/dev/null | head -1)"
+    profile="$(find /tmp -maxdepth 1 -name 'prof.fdata*' -type f -printf '%T@ %p\n' 2>/dev/null | sort -nr | awk 'NR == 1 {print $2}')"
     if [ -z "$profile" ]; then
         emit_status "FAIL" "bolt.profile_missing"
         echo "optimize: instrumented run produced no /tmp/prof.fdata*" >&2

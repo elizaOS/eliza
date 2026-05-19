@@ -8,9 +8,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from e1_npu_lowering import (
     lower_attention_av_smoke,
     lower_attention_qk_smoke,
+    lower_attention_smoke,
     lower_attention_softmax_smoke,
     lower_bias_add_smoke,
     lower_conv2d_smoke,
+    lower_decode_attention_smoke,
     lower_fp8_matmul_smoke,
     lower_int2_matmul_smoke,
     lower_kv_cache_update_smoke,
@@ -488,6 +490,37 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertEqual(lowered.scalar_exp_count, 5)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_attention_smoke_dispatches_qk_softmax_av(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_attention_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.attention",
+            "precision": "int8",
+            "query": [[[[1, 2], [3, 4]], [[-1, 2], [2, -1]]]],
+            "key": [[[[1, 0], [0, 1]], [[1, 1], [-1, 1]]]],
+            "value": [[[[5, 6], [7, 8]], [[-3, 4], [6, -5]]]],
+            "qk_score_shift": 0,
+            "attention_weight_shift": 1,
+            "context_shift": 4,
+        }
+
+        lowered = lower_attention_smoke(sim.runtime, graph)
+
+        self.assertEqual(
+            lowered.attention_weights_s8,
+            [[[[43, 86], [43, 86]], [[26, 103], [121, 8]]]],
+        )
+        self.assertEqual(
+            lowered.context_requantized,
+            [[[[51, 59], [51, 59]], [[33, -26], [-20, 27]]]],
+        )
+        self.assertEqual(lowered.total_tile_count, 4)
+        self.assertTrue(lowered.computes_attention_softmax)
+        self.assertFalse(lowered.requires_prequantized_attention)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_kv_cache_update_smoke_dispatches_scalar_copies(self):
         sim = E1NpuMmioSim()
         graph = {
@@ -511,6 +544,35 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertFalse(lowered.cpu_fallback)
         self.assertTrue(lowered.host_preserves_existing_cache)
         self.assertTrue(lowered.host_tracks_cache_lengths)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_decode_attention_smoke_dispatches_kv_append_and_attention(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_decode_attention_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.decode_attention",
+            "precision": "int8",
+            "query": [[[[1, 1]], [[2, -1]]]],
+            "key_cache": [[[[1, 0], [0, 1], [0, 0], [0, 0]], [[1, 1], [0, 0], [0, 0], [0, 0]]]],
+            "value_cache": [[[[5, 6], [7, 8], [0, 0], [0, 0]], [[-3, 4], [0, 0], [0, 0], [0, 0]]]],
+            "new_key": [[[[2, 1]], [[-1, 1]]]],
+            "new_value": [[[[9, 10]], [[6, -5]]]],
+            "cache_lengths": [[2, 1]],
+            "qk_score_shift": 0,
+            "attention_weight_shift": 1,
+            "context_shift": 4,
+        }
+
+        lowered = lower_decode_attention_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.updated_cache_lengths, [[3, 2]])
+        self.assertEqual(lowered.attention_mask, [[[[True, True, True]], [[True, True, False]]]])
+        self.assertEqual(lowered.attention.context_requantized, [[[[64, 73]], [[-20, 27]]]])
+        self.assertTrue(lowered.updates_kv_cache)
+        self.assertTrue(lowered.computes_attention_over_cache)
+        self.assertTrue(lowered.host_materializes_cache_view)
+        self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
     def test_runtime_transformer_mlp_smoke_dispatches_gemm_vrelu_gemm(self):

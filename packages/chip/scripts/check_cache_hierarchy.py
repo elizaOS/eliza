@@ -15,6 +15,7 @@ parameter values in `rtl/cache/cache_pkg.sv`. Fails closed if:
 Writes a tiny evidence JSON to `build/reports/cache_hierarchy_gate.json`
 on success so downstream gates can chain.
 """
+
 from __future__ import annotations
 
 import json
@@ -92,9 +93,7 @@ def require(condition: bool, message: str, errors: list[str]) -> None:
 
 def parse_pkg_localparam(text: str, name: str) -> int | None:
     """Extract `localparam int unsigned NAME = <expr>;` and evaluate."""
-    pattern = re.compile(
-        rf"localparam\s+int\s+unsigned\s+{name}\s*=\s*([^;]+);"
-    )
+    pattern = re.compile(rf"localparam\s+int\s+unsigned\s+{name}\s*=\s*([^;]+);")
     m = pattern.search(text)
     if not m:
         return None
@@ -127,8 +126,8 @@ def check_pkg_minimums(gate: dict, errors: list[str]) -> dict[str, int]:
     expected = {
         "L1I_SIZE_BYTES": gate["phone_2028_minimums"]["l1i_kib_min"] * 1024,
         "L1D_SIZE_BYTES": gate["phone_2028_minimums"]["l1d_kib_min"] * 1024,
-        "L2_SIZE_BYTES":  gate["phone_2028_minimums"]["l2_kib_min"]  * 1024,
-        "L3_SIZE_BYTES":  gate["phone_2028_minimums"]["l3_mib_min"]  * 1024 * 1024,
+        "L2_SIZE_BYTES": gate["phone_2028_minimums"]["l2_kib_min"] * 1024,
+        "L3_SIZE_BYTES": gate["phone_2028_minimums"]["l3_mib_min"] * 1024 * 1024,
         "SLC_SIZE_BYTES": gate["phone_2028_minimums"]["slc_mib_min"] * 1024 * 1024,
     }
     for name, minimum in expected.items():
@@ -138,9 +137,7 @@ def check_pkg_minimums(gate: dict, errors: list[str]) -> dict[str, int]:
             continue
         actual[name] = value
         if value < minimum:
-            errors.append(
-                f"cache_pkg.sv {name}={value} is below 2028 minimum {minimum}"
-            )
+            errors.append(f"cache_pkg.sv {name}={value} is below 2028 minimum {minimum}")
 
     # Line bytes must match the gate
     line_bytes = parse_pkg_localparam(text, "LINE_BYTES_DEFAULT")
@@ -262,14 +259,10 @@ def check_gate_yaml(errors: list[str]) -> dict:
         artifacts = item.get("evidence_artifacts") or []
         for artifact in artifacts:
             if not isinstance(artifact, str):
-                errors.append(
-                    f"claim {item.get('id')} non-string evidence artifact"
-                )
+                errors.append(f"claim {item.get('id')} non-string evidence artifact")
                 continue
             if (ROOT / artifact).exists():
-                errors.append(
-                    f"claim {item.get('id')} is blocked but artifact exists: {artifact}"
-                )
+                errors.append(f"claim {item.get('id')} is blocked but artifact exists: {artifact}")
 
     return data
 
@@ -298,16 +291,16 @@ def main() -> int:
         "cache_pkg_actuals": actual,
         "blocked_claim_count": len(REQUIRED_BLOCKED_IDS),
     }
-    (out_dir / "cache_hierarchy_gate.json").write_text(
-        json.dumps(report, indent=2) + "\n"
-    )
+    (out_dir / "cache_hierarchy_gate.json").write_text(json.dumps(report, indent=2) + "\n")
     print("Cache hierarchy claim gate passed.")
     print(f"  rtl_modules: {len(REQUIRED_RTL)}")
-    print(f"  l1i={actual.get('L1I_SIZE_BYTES')} B "
-          f"l1d={actual.get('L1D_SIZE_BYTES')} B "
-          f"l2={actual.get('L2_SIZE_BYTES')} B "
-          f"l3={actual.get('L3_SIZE_BYTES')} B "
-          f"slc={actual.get('SLC_SIZE_BYTES')} B")
+    print(
+        f"  l1i={actual.get('L1I_SIZE_BYTES')} B "
+        f"l1d={actual.get('L1D_SIZE_BYTES')} B "
+        f"l2={actual.get('L2_SIZE_BYTES')} B "
+        f"l3={actual.get('L3_SIZE_BYTES')} B "
+        f"slc={actual.get('SLC_SIZE_BYTES')} B"
+    )
     print(f"  blocked_real_claims: {len(REQUIRED_BLOCKED_IDS)}")
     return 0
 

@@ -36,7 +36,9 @@ while [ $# -gt 0 ]; do
         --image-only) IMAGE_ONLY=1; shift ;;
         --shell) SHELL_MODE=1; shift ;;
         -h|--help)
-            grep '^#' "$0" | sed -n '3,30p' | sed 's|^# \?||'
+            # Usage block lives in the file header (lines 3-17 of the
+            # leading comment, just below the shebang).
+            grep '^#' "$0" | sed -n '3,17p' | sed 's|^# \?||'
             exit 0 ;;
         *)
             echo "Unknown arg: $1" >&2

@@ -41,6 +41,13 @@ beforeAll(async () => {
 	vi.resetModules?.();
 	vi.doMock?.("./openvino-whisper-asr", () => ({
 		OPENVINO_WHISPER_DEFAULT_DEVICE_CHAIN: "NPU,CPU",
+		// `transcriber.ts` queries this to decide what error to throw on
+		// unsupported arches. The mock returns `true` so the rest of the
+		// existing tests (which simulate x86_64 / arm64 environments) hit
+		// the same codepaths they did before this gate landed. Riscv64
+		// behavior is covered separately by direct (unmocked) calls to
+		// `isOpenVinoSupportedArch` below.
+		isOpenVinoSupportedArch: () => true,
 		resolveOpenVinoWhisperRuntime: () => mockState.runtimeFixture,
 		makeOpenVinoWhisperDecoder: () => ({
 			decoder: async (pcm16k: Float32Array): Promise<string> => {
@@ -68,6 +75,81 @@ afterEach(() => {
 	mockState.runtimeFixture = null;
 	delete process.env.ELIZA_LOCAL_ASR_BACKEND;
 	delete process.env.ELIZA_LOCAL_ASR_ALLOW_OPENVINO;
+	delete process.env.ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO;
+});
+
+describe("isOpenVinoSupportedArch — arch gate", () => {
+	// These tests need the *real* implementation, not the module-level mock
+	// installed above for `createStreamingTranscriber` chain tests. We load it
+	// via vi.importActual so the gate logic is exercised directly.
+	let isOpenVinoSupportedArch: (
+		arch?: NodeJS.Architecture,
+		env?: NodeJS.ProcessEnv,
+	) => boolean;
+	let resolveOpenVinoWhisperRuntime: () => unknown;
+
+	beforeAll(async () => {
+		const actual = await vi.importActual<
+			typeof import("./openvino-whisper-asr")
+		>("./openvino-whisper-asr");
+		isOpenVinoSupportedArch = actual.isOpenVinoSupportedArch;
+		resolveOpenVinoWhisperRuntime = actual.resolveOpenVinoWhisperRuntime;
+	});
+
+	it("allows x64 and arm64 (the OpenVINO PyPI wheel set)", () => {
+		expect(isOpenVinoSupportedArch("x64", {})).toBe(true);
+		expect(isOpenVinoSupportedArch("arm64", {})).toBe(true);
+	});
+
+	it("refuses riscv64 by default — no OpenVINO wheel ships for that arch", () => {
+		expect(isOpenVinoSupportedArch("riscv64", {})).toBe(false);
+	});
+
+	it("permits riscv64 only when ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO=1", () => {
+		expect(
+			isOpenVinoSupportedArch("riscv64", {
+				ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO: "1",
+			}),
+		).toBe(true);
+		expect(
+			isOpenVinoSupportedArch("riscv64", {
+				ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO: "true",
+			}),
+		).toBe(true);
+		expect(
+			isOpenVinoSupportedArch("riscv64", {
+				ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO: "0",
+			}),
+		).toBe(false);
+		expect(
+			isOpenVinoSupportedArch("riscv64", {
+				ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO: "",
+			}),
+		).toBe(false);
+	});
+
+	it("refuses other exotic arches (ppc64, s390x, mips) outright", () => {
+		expect(isOpenVinoSupportedArch("ppc64" as NodeJS.Architecture, {})).toBe(
+			false,
+		);
+		expect(isOpenVinoSupportedArch("s390x" as NodeJS.Architecture, {})).toBe(
+			false,
+		);
+		expect(isOpenVinoSupportedArch("mips" as NodeJS.Architecture, {})).toBe(
+			false,
+		);
+	});
+
+	it("resolveOpenVinoWhisperRuntime short-circuits to null on riscv64 hosts without the opt-in env", () => {
+		// Only meaningful when actually running on riscv64. On supported
+		// arches the resolver returns null only when artifacts are missing,
+		// which is environment-dependent — we just assert no throw here.
+		if (process.arch === "riscv64") {
+			expect(resolveOpenVinoWhisperRuntime()).toBeNull();
+		} else {
+			expect(() => resolveOpenVinoWhisperRuntime()).not.toThrow();
+		}
+	});
 });
 
 describe("createStreamingTranscriber — OpenVINO Whisper tier", () => {

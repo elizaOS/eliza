@@ -104,7 +104,7 @@ def fail(message: str, **context: Any) -> int:
 
 def load_optuna() -> Any:
     try:
-        import optuna  # type: ignore
+        import optuna
     except ImportError:
         return None
     return optuna

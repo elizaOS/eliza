@@ -10,7 +10,7 @@ The tests cover:
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, Timer
+from cocotb.triggers import RisingEdge
 
 
 async def reset(dut):

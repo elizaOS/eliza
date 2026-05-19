@@ -21,6 +21,7 @@ surface:
 
 Reference: https://docs.riscv.org/reference/hardware/iommu/v20240911/_attachments/riscv-iommu.pdf
 """
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -32,49 +33,49 @@ from cocotb.triggers import RisingEdge, Timer
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 OFFS_CAPABILITIES = 0x000
-OFFS_FCTL         = 0x008
-OFFS_DDTP         = 0x010
-OFFS_CQB          = 0x018
-OFFS_CQH          = 0x020
-OFFS_CQT          = 0x024
-OFFS_FQB          = 0x028
-OFFS_FQH          = 0x030
-OFFS_FQT          = 0x034
-OFFS_IPSR         = 0x054
-OFFS_ALLOW_BASE   = 0x800
+OFFS_FCTL = 0x008
+OFFS_DDTP = 0x010
+OFFS_CQB = 0x018
+OFFS_CQH = 0x020
+OFFS_CQT = 0x024
+OFFS_FQB = 0x028
+OFFS_FQH = 0x030
+OFFS_FQT = 0x034
+OFFS_IPSR = 0x054
+OFFS_ALLOW_BASE = 0x800
 
-DDTP_OFF    = 0
-DDTP_BARE   = 1
-DDTP_1LVL   = 2
-DDTP_2LVL   = 3
-DDTP_3LVL   = 4
+DDTP_OFF = 0
+DDTP_BARE = 1
+DDTP_1LVL = 2
+DDTP_2LVL = 3
+DDTP_3LVL = 4
 
 CAUSE_DDT_ENTRY_NOT_VALID = 258
 
-TTYP_READ  = 1
+TTYP_READ = 1
 TTYP_WRITE = 2
 
-RESP_OKAY   = 0
+RESP_OKAY = 0
 RESP_SLVERR = 2
 
 
 async def reset(dut):
     dut.rst_n.value = 0
     dut.u_awvalid.value = 0
-    dut.u_wvalid.value  = 0
-    dut.u_bready.value  = 0
+    dut.u_wvalid.value = 0
+    dut.u_bready.value = 0
     dut.u_arvalid.value = 0
-    dut.u_rready.value  = 0
+    dut.u_rready.value = 0
     dut.mmio_awvalid.value = 0
-    dut.mmio_wvalid.value  = 0
-    dut.mmio_bready.value  = 0
+    dut.mmio_wvalid.value = 0
+    dut.mmio_bready.value = 0
     dut.mmio_arvalid.value = 0
-    dut.mmio_rready.value  = 0
+    dut.mmio_rready.value = 0
     dut.d_awready.value = 1
-    dut.d_wready.value  = 1
-    dut.d_bvalid.value  = 0
+    dut.d_wready.value = 1
+    dut.d_bvalid.value = 0
     dut.d_arready.value = 1
-    dut.d_rvalid.value  = 0
+    dut.d_rvalid.value = 0
     for _ in range(8):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -84,7 +85,7 @@ async def reset(dut):
 
 async def mmio_write64(dut, offset, value):
     dut.mmio_awvalid.value = 1
-    dut.mmio_awaddr.value  = offset
+    dut.mmio_awaddr.value = offset
     for _ in range(64):
         await RisingEdge(dut.clk)
         if int(dut.mmio_awready.value):
@@ -92,8 +93,8 @@ async def mmio_write64(dut, offset, value):
     dut.mmio_awvalid.value = 0
 
     dut.mmio_wvalid.value = 1
-    dut.mmio_wdata.value  = value
-    dut.mmio_wstrb.value  = 0xFF
+    dut.mmio_wdata.value = value
+    dut.mmio_wstrb.value = 0xFF
     for _ in range(64):
         await RisingEdge(dut.clk)
         if int(dut.mmio_wready.value):
@@ -110,7 +111,7 @@ async def mmio_write64(dut, offset, value):
 
 async def mmio_read64(dut, offset):
     dut.mmio_arvalid.value = 1
-    dut.mmio_araddr.value  = offset
+    dut.mmio_araddr.value = offset
     for _ in range(64):
         await RisingEdge(dut.clk)
         if int(dut.mmio_arready.value):
@@ -131,15 +132,15 @@ async def mmio_read64(dut, offset):
 async def upstream_read(dut, master, devid, pasid, addr, length=1):
     bit = 1 << master
     dut.u_arvalid.value = (int(dut.u_arvalid.value) & ~bit) | bit
-    dut.u_arid[master].value    = master
-    dut.u_araddr[master].value  = addr
-    dut.u_arlen[master].value   = length - 1
-    dut.u_arsize[master].value  = 4
+    dut.u_arid[master].value = master
+    dut.u_araddr[master].value = addr
+    dut.u_arlen[master].value = length - 1
+    dut.u_arsize[master].value = 4
     dut.u_arburst[master].value = 1
     dut.u_arcache[master].value = 0x2
-    dut.u_arprot[master].value  = 0x2
-    dut.u_arqos[master].value   = 0
-    dut.u_aruser[master].value  = 0
+    dut.u_arprot[master].value = 0x2
+    dut.u_arqos[master].value = 0
+    dut.u_aruser[master].value = 0
     dut.u_ar_devid[master].value = devid
     dut.u_ar_pasid[master].value = pasid
     for _ in range(128):
@@ -152,15 +153,15 @@ async def upstream_read(dut, master, devid, pasid, addr, length=1):
 async def upstream_write(dut, master, devid, pasid, addr):
     bit = 1 << master
     dut.u_awvalid.value = (int(dut.u_awvalid.value) & ~bit) | bit
-    dut.u_awid[master].value    = master
-    dut.u_awaddr[master].value  = addr
-    dut.u_awlen[master].value   = 0
-    dut.u_awsize[master].value  = 4
+    dut.u_awid[master].value = master
+    dut.u_awaddr[master].value = addr
+    dut.u_awlen[master].value = 0
+    dut.u_awsize[master].value = 4
     dut.u_awburst[master].value = 1
     dut.u_awcache[master].value = 0x2
-    dut.u_awprot[master].value  = 0x2
-    dut.u_awqos[master].value   = 0
-    dut.u_awuser[master].value  = 0
+    dut.u_awprot[master].value = 0x2
+    dut.u_awqos[master].value = 0
+    dut.u_awuser[master].value = 0
     dut.u_aw_devid[master].value = devid
     dut.u_aw_pasid[master].value = pasid
     for _ in range(128):
@@ -208,8 +209,7 @@ async def translate_mode_blocks_unknown_devid_with_fault(dut):
         if int(dut.fault_count_dbg.value) > init_faults:
             break
     new_faults = int(dut.fault_count_dbg.value)
-    assert new_faults == init_faults + 1, \
-        f"expected 1 fault, got {new_faults - init_faults}"
+    assert new_faults == init_faults + 1, f"expected 1 fault, got {new_faults - init_faults}"
     assert int(dut.fault_irq.value) in (0, 1)
 
 
@@ -224,8 +224,9 @@ async def translate_mode_allows_known_devid(dut):
     await upstream_read(dut, 0, devid=0x55, pasid=0x1234, addr=0x6000, length=1)
     await Timer(100, units="ns")
     new_faults = int(dut.fault_count_dbg.value)
-    assert new_faults == init_faults, \
+    assert new_faults == init_faults, (
         f"authorised devid 0x55 unexpectedly faulted ({new_faults - init_faults})"
+    )
 
 
 @cocotb.test()
@@ -246,5 +247,6 @@ async def pasid_isolation_via_allowlist_revoke(dut):
         if int(dut.fault_count_dbg.value) > faults_after_allow:
             break
     final = int(dut.fault_count_dbg.value)
-    assert final == faults_after_allow + 1, \
+    assert final == faults_after_allow + 1, (
         f"revoked devid should fault: faults={final - faults_after_allow}"
+    )

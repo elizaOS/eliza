@@ -1,5 +1,6 @@
 import type {
   WalletAddresses,
+  WalletBalancesResponse,
   WalletConfigStatus,
   WalletMarketMover,
   WalletMarketOverviewResponse,

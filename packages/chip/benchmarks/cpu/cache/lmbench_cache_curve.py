@@ -18,6 +18,7 @@ output represents the developer's CPU and memory subsystem, NOT the
 Phone-class claims remain BLOCKED until the same JSON is produced from
 the target SoC; see docs/evidence/cache/cache-evidence-gate.yaml.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -28,22 +29,22 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[3]
 
 # Working sets to walk (size in bytes, label)
 DEFAULT_WORKING_SETS = (
-    ("1KiB",   1 * 1024),
-    ("64KiB",  64 * 1024),
-    ("1MiB",   1 * 1024 * 1024),
-    ("16MiB",  16 * 1024 * 1024),
+    ("1KiB", 1 * 1024),
+    ("64KiB", 64 * 1024),
+    ("1MiB", 1 * 1024 * 1024),
+    ("16MiB", 16 * 1024 * 1024),
     ("256MiB", 256 * 1024 * 1024),
 )
 
 DEFAULT_STRIDE_BYTES = 64
-DEFAULT_RUN_SECONDS  = 1
+DEFAULT_RUN_SECONDS = 1
 
 
 def find_lat_mem_rd() -> str | None:
@@ -57,8 +58,7 @@ def find_lat_mem_rd() -> str | None:
     return on_path
 
 
-def run_lat_mem_rd(binary: str, size_bytes: int, stride: int,
-                   timeout: int) -> str:
+def run_lat_mem_rd(binary: str, size_bytes: int, stride: int, timeout: int) -> str:
     """Invoke lat_mem_rd for a given working set, returning the raw stdout.
 
     lat_mem_rd reports latency for one (size, stride) pair per invocation.
@@ -67,9 +67,7 @@ def run_lat_mem_rd(binary: str, size_bytes: int, stride: int,
     """
     size_mb = max(1, size_bytes // (1024 * 1024))
     cmd = [binary, str(size_mb), str(stride)]
-    proc = subprocess.run(
-        cmd, capture_output=True, text=True, timeout=timeout, check=False
-    )
+    proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, check=False)
     return proc.stdout + proc.stderr
 
 
@@ -90,20 +88,20 @@ def parse_lat_mem_rd_output(text: str) -> list[dict]:
     return out
 
 
-def build_artifact(measurements: dict, source: str,
-                   working_sets: Iterable[tuple[str, int]],
-                   stride_bytes: int,
-                   binary: str | None) -> dict:
+def build_artifact(
+    measurements: dict,
+    source: str,
+    working_sets: Iterable[tuple[str, int]],
+    stride_bytes: int,
+    binary: str | None,
+) -> dict:
     return {
         "schema": "eliza.cache.lmbench_curve.v1",
         "status": "host_scaffold_only_not_target_evidence",
         "captured_utc": dt.datetime.now(dt.UTC).isoformat(),
         "source": source,
         "binary": binary,
-        "working_sets": [
-            {"label": label, "size_bytes": size}
-            for label, size in working_sets
-        ],
+        "working_sets": [{"label": label, "size_bytes": size} for label, size in working_sets],
         "stride_bytes": stride_bytes,
         "measurements": measurements,
         "claim_boundary": (
@@ -121,23 +119,37 @@ def build_artifact(measurements: dict, source: str,
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--output", default=None,
-                    help="Output JSON path. Defaults to build/reports/cache/lmbench_host_curve.json")
-    ap.add_argument("--allow-missing-tool", action="store_true",
-                    help="Exit 0 with a BLOCKED stub artifact if lat_mem_rd is unavailable")
+    ap.add_argument(
+        "--output",
+        default=None,
+        help="Output JSON path. Defaults to build/reports/cache/lmbench_host_curve.json",
+    )
+    ap.add_argument(
+        "--allow-missing-tool",
+        action="store_true",
+        help="Exit 0 with a BLOCKED stub artifact if lat_mem_rd is unavailable",
+    )
+    ap.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Write a methodology-only stub without invoking lat_mem_rd",
+    )
+    ap.add_argument(
+        "--per-set-timeout",
+        type=int,
+        default=8,
+        help="Seconds per working-set invocation (default 8)",
+    )
     args = ap.parse_args()
 
     binary = find_lat_mem_rd()
     out_dir = ROOT / "build/reports/cache"
     out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = Path(args.output) if args.output else (
-        out_dir / "lmbench_host_curve.json"
-    )
+    out_path = Path(args.output) if args.output else (out_dir / "lmbench_host_curve.json")
 
     if binary is None:
         if not args.allow_missing_tool:
-            print("lat_mem_rd not found in tools/bin, oss-cad-suite, or PATH",
-                  file=sys.stderr)
+            print("lat_mem_rd not found in tools/bin, oss-cad-suite, or PATH", file=sys.stderr)
             return 2
         artifact = build_artifact(
             measurements={"status": "blocked", "reason": "lat_mem_rd missing"},
@@ -150,12 +162,25 @@ def main() -> int:
         print(f"lat_mem_rd missing; wrote BLOCKED stub to {out_path}")
         return 0
 
+    if args.dry_run:
+        artifact = build_artifact(
+            measurements={"status": "dry_run", "reason": "methodology stub"},
+            source="host_dry_run",
+            working_sets=DEFAULT_WORKING_SETS,
+            stride_bytes=DEFAULT_STRIDE_BYTES,
+            binary=binary,
+        )
+        out_path.write_text(json.dumps(artifact, indent=2) + "\n")
+        print(f"dry-run; wrote methodology stub to {out_path}")
+        return 0
+
     measurements: dict = {}
+    # Working sets >= 16 MiB are slow on developer hosts (`lat_mem_rd` walks
+    # the full set under each stride). They are gated behind
+    # `CACHE_CURVE_LARGE=1` so the methodology validation path stays fast.
+    large_threshold = 16 * 1024 * 1024
     for label, size in DEFAULT_WORKING_SETS:
-        # 256 MiB run is slow on lower-end developer hosts and is the
-        # least informative point for cache curve methodology validation
-        # (it walks DRAM). Skip when not explicitly requested.
-        if size >= 256 * 1024 * 1024 and not os.environ.get("CACHE_CURVE_LARGE"):
+        if size >= large_threshold and not os.environ.get("CACHE_CURVE_LARGE"):
             measurements[label] = {
                 "size_bytes": size,
                 "rows": [],
@@ -164,7 +189,10 @@ def main() -> int:
             continue
         try:
             raw = run_lat_mem_rd(
-                binary, size, DEFAULT_STRIDE_BYTES, timeout=30,
+                binary,
+                size,
+                DEFAULT_STRIDE_BYTES,
+                timeout=args.per_set_timeout,
             )
             rows = parse_lat_mem_rd_output(raw)
             measurements[label] = {

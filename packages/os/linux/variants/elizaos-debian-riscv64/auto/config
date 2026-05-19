@@ -17,9 +17,9 @@ lb config noauto \
     --distribution trixie \
     --architecture riscv64 \
     --linux-flavours riscv64 \
-    --bootloader grub-efi \
-    --binary-images iso-hybrid \
+    --bootloaders grub-efi \
+    --binary-image iso-hybrid \
     --apt-recommends false \
-    --debian-installer false \
+    --debian-installer none \
     --bootappend-live "boot=live components" \
     "${@}"

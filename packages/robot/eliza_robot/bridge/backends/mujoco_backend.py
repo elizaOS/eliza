@@ -15,6 +15,7 @@ Usage:
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,6 +24,7 @@ import numpy as np
 from eliza_robot.bridge.backends.base import BridgeBackend
 from eliza_robot.bridge.protocol import CommandEnvelope, EventEnvelope, ResponseEnvelope, utc_now_iso
 from eliza_robot.bridge.types import JsonDict
+from eliza_robot.sim.mujoco.ainex_constants import ALL_JOINT_NAMES
 
 
 @dataclass
@@ -62,6 +64,10 @@ class MuJocoBackend(BridgeBackend):
         self._head = _HeadState()
         self._joint_positions: dict[str, float] = {}
         self._last_telemetry: dict[str, Any] = {}
+        # Background gait loop — kicks in when walk.command:start enables
+        # walking and idles otherwise.
+        self._gait_task: asyncio.Task[None] | None = None
+        self._gait_controller: "BezierGaitController | None" = None  # lazy
 
     # ------------------------------------------------------------------
     # BridgeBackend interface
@@ -74,10 +80,58 @@ class MuJocoBackend(BridgeBackend):
     async def connect(self) -> None:
         """Reset the MuJoCo environment on connect."""
         self._last_telemetry = self._env.reset()
+        # Lazy-construct the bezier gait controller. Failure here is loud:
+        # without the controller the MuJoCo backend can still serve head/servo
+        # but `walk.command:start` will be a no-op (logged).
+        try:
+            from eliza_robot.sim.mujoco.gait.controller import BezierGaitController
+
+            self._gait_controller = BezierGaitController()
+        except Exception:
+            self._gait_controller = None
 
     async def shutdown(self) -> None:
-        """Close the MuJoCo environment."""
+        """Cancel the gait loop and close the MuJoCo environment."""
+        if self._gait_task is not None and not self._gait_task.done():
+            self._gait_task.cancel()
+            try:
+                await self._gait_task
+            except (asyncio.CancelledError, Exception):
+                pass
+            self._gait_task = None
         self._env.close()
+
+    async def _gait_loop(self) -> None:
+        """Drive the robot with the Bezier gait controller at ~50 Hz while
+        ``self._walk.is_walking`` is True. Cancels itself once walking stops.
+        """
+        if self._gait_controller is None:
+            return
+        gait_dt = 0.02  # 50 Hz outer control loop
+        timestep = float(getattr(self._env.model.opt, "timestep", 0.002))
+        steps_per_tick = max(1, int(gait_dt / timestep))
+        joint_names = ALL_JOINT_NAMES
+        try:
+            while self._walk.is_walking:
+                # Bridge protocol uses walk.x/y in [-0.05, 0.05] (~m/cycle).
+                # The bezier controller expects vx/vy in m/s. We treat the
+                # commanded x/y as a per-step length and scale by cycle_hz.
+                cycle_hz = float(self._gait_controller.cycle_hz)
+                vx = float(self._walk.x) * cycle_hz
+                vy = float(self._walk.y) * cycle_hz
+                # walk.yaw in [-10, 10] — treat as rad/s body-yaw rate.
+                vyaw = float(self._walk.yaw)
+                q = self._gait_controller.step(vx, vy, vyaw, dt=gait_dt)
+                targets = {name: float(q[i]) for i, name in enumerate(joint_names)}
+                # Preserve commanded head pose across gait ticks.
+                targets["head_pan"] = float(self._head.pan)
+                targets["head_tilt"] = float(self._head.tilt)
+                self._last_telemetry = self._env.step_n(
+                    n=steps_per_tick, joint_targets=targets
+                )
+                await asyncio.sleep(gait_dt)
+        except asyncio.CancelledError:
+            return
 
     def capabilities(self) -> JsonDict:
         return {
@@ -114,6 +168,13 @@ class MuJocoBackend(BridgeBackend):
             action = cmd.payload.get("action")
             if action == "start":
                 self._walk.is_walking = True
+                # Spawn / re-spawn the gait loop. The controller must exist
+                # (constructed in connect()); if not, walking is a no-op.
+                if (
+                    self._gait_controller is not None
+                    and (self._gait_task is None or self._gait_task.done())
+                ):
+                    self._gait_task = asyncio.create_task(self._gait_loop())
             elif action == "stop":
                 self._walk.is_walking = False
                 self._walk.x = 0.0
@@ -131,13 +192,22 @@ class MuJocoBackend(BridgeBackend):
         elif cmd.command == "head.set":
             self._head.pan = float(cmd.payload.get("pan", 0.0))
             self._head.tilt = float(cmd.payload.get("tilt", 0.0))
+            duration_s = float(cmd.payload.get("duration", 0.5))
             # Apply head targets to the sim actuators.
             head_targets = {
                 "head_pan": self._head.pan,
                 "head_tilt": self._head.tilt,
             }
-            self._env.step(joint_targets=head_targets)
-            self._last_telemetry = self._env._build_telemetry()
+            # Step physics long enough for PD control to converge near the
+            # commanded head pose; otherwise the rendered ego frame won't
+            # actually move and downstream pixel-diff checks fail.
+            timestep = float(getattr(self._env.model.opt, "timestep", 0.002))
+            n_steps = max(1, int(duration_s / timestep))
+            # Cap to keep handler latency bounded.
+            n_steps = min(n_steps, 1000)
+            self._last_telemetry = self._env.step_n(
+                n=n_steps, joint_targets=head_targets
+            )
 
         elif cmd.command == "servo.set":
             # Accept both joint_positions (name->rad) and positions ([{id, pos}]).

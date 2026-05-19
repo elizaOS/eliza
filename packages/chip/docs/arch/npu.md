@@ -134,6 +134,61 @@ This proves scalar-dot FP8 matmul orchestration only. It is not a tensor FP8
 GEMM, FP8 systolic path, FP16/BF16 accumulation path, graph partitioning,
 Android delegation, production compiler backend, or sustained TOPS/W claim.
 
+## Block-scaled microformats (planned, L2)
+
+The production FP family for E1 is the Open Compute Project (OCP) Microscaling
+specification (`ocp_mx_spec`, `mx_formats_paper`, `microxcaling_repo`,
+`ptq_mx_paper`). MX formats group 32 lane elements that share a single E8M0
+scale; lane payloads are MXFP8 (E5M2 or E4M3), MXFP6 (E3M2 or E2M3), MXFP4
+(E2M1), and MXINT8. Operand fetch is block-scaled: hardware reads 32 lane
+elements and one E8M0 exponent, scales lanes against the shared exponent, and
+multiply-accumulates into a wider FP/INT accumulator.
+
+The current `DOT4_FP8_E4M3` opcode is unscaled scalar evidence only. It is not
+the production format, and no MX block-scaled lane fetch, MX accumulator, or MX
+compiler lowering exists in the repo today. MX adoption lands in `L2` together
+with the parameterized tile and is tracked through:
+
+- `docs/spec-db/e1-npu-runtime-contract.json`
+  `precision_matrix` entries `MXFP8`, `MXFP6`, `MXFP4`, `MXINT8` carrying
+  `state: blocked_l2_planned` and the same MX block-scale citation.
+- `docs/spec-db/npu-2028-target.yaml` `precision_requirements.required`
+  includes `mxfp8`, `mxfp6`, `mxfp4`, `mxint8` with the OCP MX block-scale
+  footnote.
+
+## Group-scaled INT4 weights (planned, L1)
+
+W4A16-style group-scaled INT4 weight execution lands as
+`GEMM_S4_GS32`, `GEMM_S4_GS64`, and `GEMM_S4_GS128` (`gptq_paper`,
+`awq_paper`, `omniquant_paper`, `hqq_repo`). Weight storage is packed signed
+INT4 (two lanes per byte, low nibble first). Every 32 / 64 / 128 contiguous K
+lanes share one INT8 or BF16 scale value. Activations remain INT8 (or higher
+precision once the tile carries BF16). The accumulator stays signed int32, and
+the host applies the per-group scale during requantization.
+
+These opcodes have no RTL or compiler implementation today. They land in `L1`
+and are tracked in `docs/spec-db/e1-npu-runtime-contract.json` as
+`phase: L1_planned` with the field shapes above; `docs/spec-db/npu-2028-target.yaml`
+`precision_requirements.required` includes `int4_group_scaled` for the same
+reason.
+
+## Tile-level 2:4 sparse INT4 GEMM (planned, L2)
+
+`SDOT4_S4_2_4` is the current scalar 2:4 metadata primitive (see above). The
+tile-level lift is `GEMM_S4_2_4` (`sparsegpt_paper`, `wanda_paper`,
+`maskllm_paper`, `trainium2_aws_docs`): a sparsity-decode microengine consumes
+packed INT4 weights with two nonzero positions per four-lane group, expands
+each row into the same dense lane input the existing INT4 tile already
+consumes, and dispatches MACs through the parameterized tile without
+redesigning the MAC array. Effective throughput targets the Trainium2
+4x-sparse-INT8 ratio extrapolated to INT4.
+
+There is no RTL, no compiler lowering, and no sparsity-decode microengine
+today. The opcode lands at `L2` and is tracked in
+`docs/spec-db/e1-npu-runtime-contract.json` as `phase: L2_planned`; the
+`sparse_int4_tile_2_4` capability appears in
+`docs/spec-db/npu-2028-roadmap.yaml` `L2_SINGLE_TILE_ACCELERATOR`.
+
 ## Matmul Lowering Smoke Path
 
 `compiler/runtime/e1_npu_lowering.py` provides a single-op lowering smoke path
@@ -226,6 +281,26 @@ complete attention kernel: softmax, scaling, masking, score normalization,
 KV-cache paging, fusion, graph partitioning, Android delegation, and hardware
 scheduling remain future work.
 
+`lower_attention_smoke` composes the QK, softmax, and AV evidence paths into a
+bounded multi-head attention lowering for `eliza.attention`,
+`stablehlo.attention`, and `tflite.attention` records. It accepts rank-4 int8
+query/key/value tensors and an optional boolean mask. The path calls
+`lower_attention_qk_smoke`, requantizes QK scores to int8 logits on host, calls
+`lower_attention_softmax_smoke`, requantizes Q0.8 attention weights to int8,
+calls `lower_attention_av_smoke`, and requantizes the context tensor. The
+returned evidence records QK scores, logits, approximate softmax weights,
+attention weights, AV context, requantized context, head count, tile count,
+`computes_qk_scores=true`, `computes_attention_softmax=true`,
+`requires_prequantized_attention=false`, `host_requantizes_qk_scores=true`,
+`host_requantizes_attention_weights=true`, `host_requantizes_context=true`,
+`cpu_fallback=false`, and the claim boundary
+`multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend`.
+
+This proves multi-head attention runtime orchestration over current smoke
+primitives only. It is not fused flash attention, exact exp/e softmax, scaling
+fusion, KV-cache paging/update, graph partitioning, Android delegation, a
+production compiler backend, or sustained transformer decode evidence.
+
 `lower_kv_cache_update_smoke` adds a bounded decode-state evidence path for
 `eliza.kv_cache_update`, `stablehlo.kv_cache_update`, and
 `tflite.kv_cache_update` records. It accepts rank-4
@@ -243,6 +318,26 @@ This proves append-only KV-cache runtime orchestration only. It is not a paged
 KV cache, cache eviction policy, circular buffer, DMA-backed cache update,
 multi-batch decode cache manager, Android delegation, graph compilation, or a
 production transformer decode cache path.
+
+`lower_decode_attention_smoke` composes append-only K/V cache update with the
+multi-head attention smoke path. It accepts `eliza.decode_attention`,
+`stablehlo.decode_attention`, and `tflite.decode_attention` records with rank-4
+query tensors, fixed-capacity rank-4 key/value caches, rank-4 new key/value
+tensors, and per-head cache lengths. The path validates all shifts before
+MMIO, calls `lower_kv_cache_update_smoke`, materializes a rectangular
+cache-view up to the maximum updated head length, masks padded cache lanes, and
+calls `lower_attention_smoke` so QK-softmax-AV runs over the updated cache. The
+returned evidence records the K/V cache update result, cache-view tensors,
+attention mask, updated cache lengths, maximum attention cache length,
+`updates_kv_cache=true`, `computes_attention_over_cache=true`,
+`host_materializes_cache_view=true`, `cpu_fallback=false`, and the claim
+boundary
+`decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend`.
+
+This proves decode-attention runtime orchestration only. It is not a paged KV
+cache, cache eviction policy, circular buffer, DMA-backed cache update, fused
+flash attention, multi-batch cache manager, Android delegation, graph
+compilation, or production transformer decode kernel.
 
 `lower_mlp_smoke` adds a tiny transformer feed-forward evidence path. It
 accepts `stablehlo.mlp`, `tflite.mlp`, and `eliza.transformer_mlp` records

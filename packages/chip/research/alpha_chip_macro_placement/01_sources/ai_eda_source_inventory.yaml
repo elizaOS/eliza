@@ -2933,6 +2933,265 @@ entries:
     risk:
       - RL/search policies can overfit proxy simulators or unconstrained knobs.
       - Current E1 memory/interconnect scaffold is too limited for real SoC DSE.
+  - id: agentic-architect
+    name: Agentic Architect
+    kind: agentic_microarchitecture_dse
+    stage:
+      - cpu_microarchitecture
+      - architecture_dse
+      - branch_prediction
+      - cache_replacement
+      - prefetching
+    priority: P1
+    source_url: https://arxiv.org/abs/2604.25083
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: llm_agent_method
+    e1_fit: >
+      Highly relevant method for using LLM agents around cycle-accurate
+      simulation to evolve branch predictors, prefetchers, and cache
+      replacement policies, but E1 needs strict RTL and simulator gates first.
+    integration_action: >
+      Track as target-capture only until local BPU/cache knobs, traces,
+      simulator configs, and promotion gates are stable.
+    evidence_gate: >
+      Any generated policy requires pinned agent/model, trace hashes, simulator
+      version, before/after metrics, RTL diff, formal/cocotb/synthesis evidence,
+      and human review.
+    risk:
+      - Agent-generated microarchitecture can overfit proxy traces.
+      - Simulation wins do not prove area, timing, power, or product impact.
+  - id: perfvec
+    name: PerfVec
+    kind: ml_cpu_performance_model
+    stage:
+      - cpu_microarchitecture
+      - performance_prediction
+      - gem5
+      - architecture_dse
+    priority: P2
+    source_url: https://github.com/PerfVec/PerfVec
+    code_url: https://github.com/PerfVec/PerfVec
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Relevant for fast CPU performance prediction from microarchitecture and
+      workload representations, but E1 lacks a calibrated CPU simulator and
+      held-out workload suite.
+    integration_action: >
+      Keep as optional backend inventory; do not run or trust predictions
+      without license review, pinned gem5 fork, and local validation.
+    evidence_gate: >
+      Performance-model claims require exact simulator/source revisions,
+      workload hashes, microarchitecture encodings, train/test split, error
+      analysis, and benchmark cross-checks.
+    risk:
+      - Prediction error can be workload- and design-space-dependent.
+      - Model features may not represent E1 BPU/cache/NPU interactions.
+  - id: concorde-cpu-performance-model
+    name: Concorde CPU Performance Model
+    kind: analytical_ml_cpu_performance_model
+    stage:
+      - cpu_microarchitecture
+      - performance_prediction
+      - architecture_dse
+    priority: P2
+    source_url: https://www.catalyzex.com/paper/concorde-fast-and-accurate-cpu-performance
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Useful SOTA reference for analytical/ML CPU CPI modeling that can speed
+      architecture sweeps, but E1 has no validated model implementation.
+    integration_action: >
+      Track for future CPU AP performance-model design; current use is review
+      context and target capture only.
+    evidence_gate: >
+      CPI prediction needs pinned implementation, simulator baseline, workload
+      hashes, microarchitecture config hashes, confidence intervals, and local
+      benchmark comparison.
+    risk:
+      - Fast CPI models can hide component interactions outside their training
+        space.
+      - Paper-level results are not reproducible without code and workloads.
+  - id: champsim
+    name: ChampSim
+    kind: trace_based_microarchitecture_simulator
+    stage:
+      - cpu_microarchitecture
+      - cache_replacement
+      - prefetching
+      - branch_prediction
+      - simulator
+    priority: P1
+    source_url: https://champsim.github.io/ChampSim/master/
+    code_url: https://github.com/ChampSim/ChampSim
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical backend for cache replacement, prefetcher, and branch-predictor
+      sweeps once E1 has approved traces and microarchitecture configs.
+    integration_action: >
+      Keep local `scripts/champsim_sweep.py` fail-closed until binary, traces,
+      configs, and evidence promotion rules are pinned.
+    evidence_gate: >
+      ChampSim results need simulator revision, config hashes, trace hashes,
+      warmup/simulation counts, output logs, and comparison to RTL/benchmark
+      gates.
+    risk:
+      - Trace-driven simulation can miss OS, coherence, and timing effects.
+      - Public traces may not represent E1 Android or NPU workloads.
+  - id: branchnet
+    name: BranchNet
+    kind: neural_branch_predictor
+    stage:
+      - cpu_microarchitecture
+      - branch_prediction
+      - neural_prediction
+    priority: P2
+    source_url: https://github.com/siavashzk/BranchNet
+    code_url: https://github.com/siavashzk/BranchNet
+    model_url: null
+    dataset_url: null
+    license_status: MIT_reported_review_required
+    code_status: available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Useful reference for hard-to-predict branch classification and helper
+      predictors, but E1 cannot embed learned predictors without trace and RTL
+      promotion evidence.
+    integration_action: >
+      Track as a BPU search source only; do not train or synthesize neural BPU
+      changes in the current lane.
+    evidence_gate: >
+      Neural branch prediction needs trace provenance, train/test split,
+      predictor weights, RTL cost, timing/power estimates, MPKI results, and
+      BPU cocotb/formal review.
+    risk:
+      - Offline-trained predictors can overfit benchmark branches.
+      - Helper predictors may break timing or area budgets.
+  - id: llbp
+    name: Last-Level Branch Predictor
+    kind: branch_predictor_simulator
+    stage:
+      - cpu_microarchitecture
+      - branch_prediction
+      - simulator
+    priority: P2
+    source_url: https://github.com/dhschall/LLBP
+    code_url: https://github.com/dhschall/LLBP
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant current open branch-predictor simulator for larger predictor
+      state and context prefetching, but not integrated with E1 BPU RTL.
+    integration_action: >
+      Track as future comparison point for BPU design-space exploration after
+      local branch traces and BPU gates stabilize.
+    evidence_gate: >
+      LLBP comparisons require pinned source, trace hashes, predictor
+      configuration, MPKI reports, RTL feasibility review, and timing budget.
+    risk:
+      - High-capacity predictor state can be impractical for mobile area/power.
+      - Simulator-only results can ignore fetch-pipeline integration.
+  - id: pythia-prefetcher
+    name: Pythia Reinforcement-Learning Prefetcher
+    kind: reinforcement_learning_prefetcher
+    stage:
+      - cpu_microarchitecture
+      - prefetching
+      - cache_hierarchy
+      - reinforcement_learning
+    priority: P1
+    source_url: https://arxiv.org/abs/2109.12021
+    code_url: https://github.com/CMU-SAFARI/Pythia
+    model_url: null
+    dataset_url: null
+    license_status: MIT_reported_review_required
+    code_status: available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Strong open reference for hardware-realizable RL prefetching and
+      ChampSim-based experiments; E1 already has a Pythia stub to gate future
+      comparison work.
+    integration_action: >
+      Keep as blocked backend inventory until trace, license, and RTL promotion
+      policy are reviewed.
+    evidence_gate: >
+      Prefetcher use needs trace hashes, simulator version, policy weights or
+      tables, pollution/bandwidth metrics, RTL area/timing/power review, and
+      cache cocotb/formal gates.
+    risk:
+      - Prefetch wins can come from benchmark-specific trace behavior.
+      - Aggressive prefetching can increase bandwidth, power, and interference.
+  - id: mockingjay-cache-replacement
+    name: Mockingjay Cache Replacement
+    kind: learned_cache_replacement_policy
+    stage:
+      - cpu_microarchitecture
+      - cache_replacement
+      - cache_hierarchy
+    priority: P2
+    source_url: https://par.nsf.gov/servlets/purl/10334308
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant SOTA LLC replacement reference for approximating Belady-like
+      decisions, but E1 needs real cache hierarchy and trace evidence first.
+    integration_action: >
+      Track as policy target for cache RTL and ChampSim sweeps; no performance
+      claim is allowed from local stubs.
+    evidence_gate: >
+      Replacement-policy claims require trace hashes, simulator config, local
+      RTL implementation, cocotb/formal cache evidence, synthesis, and review.
+    risk:
+      - LLC policy gains may not transfer to mobile coherent SLC workloads.
+      - Learned metadata can exceed area or latency budgets.
+  - id: drishti-cache-replacement
+    name: Drishti Cache Replacement
+    kind: many_core_cache_replacement_policy
+    stage:
+      - cpu_microarchitecture
+      - cache_replacement
+      - many_core_cache
+    priority: P3
+    source_url: https://www.cse.iitb.ac.in/~biswa/MICRO25.pdf
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful recent cache-replacement SOTA context for many-core LLC slicing,
+      but E1 does not yet have a many-core coherent cache hierarchy.
+    integration_action: >
+      Track as literature context for future SLC/LLC replacement sweeps only.
+    evidence_gate: >
+      Use requires code/assets review, cache-slice topology, trace hashes,
+      simulator logs, RTL feasibility, and cache evidence gates.
+    risk:
+      - Many-core assumptions may not match E1's planned mobile cluster.
+      - Paper-level cache policy cannot substitute for local implementation.
   - id: ai-noc-dse
     name: AI-Assisted Network-on-Chip Design-Space Exploration
     kind: noc_dse_method

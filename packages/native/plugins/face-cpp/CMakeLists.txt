@@ -17,6 +17,13 @@ include_directories(include src)
 # face_embed_open / forward + post-process) live in face_model.c. The
 # model-independent helpers (anchors, alignment, distance) keep their
 # Phase 1 implementations.
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# When SIMD TUs are added (Phase 3 ggml dispatch), mirror the qjl-cpu
+# pattern: separate per-arch TUs (avx2/neon/rvv), each compiled only
+# for its own arch via a CMAKE_SYSTEM_PROCESSOR conditional.
 set(FACE_SRCS
     src/face_model.c
     src/face_blazeface.c

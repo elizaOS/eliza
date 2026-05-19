@@ -77,13 +77,15 @@ required_artifact_schemas:
   docs/evidence/memory/iommu_pasid_isolation_report.json: eliza.memory.iommu_pasid_isolation.v1
 
 reference_model:
-  manifest: verify/external/riscv-iommu/manifest.yaml
+  manifest: verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml
   schema: eliza.external_dependency_manifest.v1
   required_state: pinned_reference_model_unfetched
   blocked_reason: >
     No outbound network in the build environment. Operators must fetch
     the pinned reference model when network is provisioned; never run
-    against an unverified checkout.
+    against an unverified checkout. The manifest lives in
+    verify/cocotb/iommu/refmodel/ so it survives clean clones; the
+    cloned tree itself goes under verify/external/ which is gitignored.
 
 unblock_requires:
   - Every required cocotb test passes under verilator or icarus.

@@ -5,6 +5,7 @@ Exercises:
 - demand miss -> L2 refill -> IFU response
 - back-invalidate via probe and re-miss after invalidate
 """
+
 from __future__ import annotations
 
 import cocotb

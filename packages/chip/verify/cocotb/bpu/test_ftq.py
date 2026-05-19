@@ -62,6 +62,7 @@ async def ftq_push_pop_first_in_first_out(dut):
     # so verilator has settled the propagation. Sampling on Timer(1, ns)
     # after the edge avoids racing the scheduler.
     from cocotb.triggers import Timer
+
     for start, _end, target, taken, kind in entries:
         await Timer(1, units="ns")
         assert int(dut.pop_valid.value) == 1
@@ -80,8 +81,9 @@ async def ftq_full_blocks_push(dut):
     await reset(dut)
 
     for i in range(FTQ_ENTRIES):
-        await push(dut, 0x9000_0000 + i * 0x20, 0x9000_001F + i * 0x20,
-                   0x9000_0040 + i * 0x20, 1, BR_COND)
+        await push(
+            dut, 0x9000_0000 + i * 0x20, 0x9000_001F + i * 0x20, 0x9000_0040 + i * 0x20, 1, BR_COND
+        )
 
     await RisingEdge(dut.clk)
     assert int(dut.pmu_full.value) == 1
@@ -94,8 +96,9 @@ async def ftq_flush_truncates_back_to_resolver_index(dut):
     await reset(dut)
 
     for i in range(8):
-        await push(dut, 0xA000_0000 + i * 0x20, 0xA000_001F + i * 0x20,
-                   0xA000_0040 + i * 0x20, 1, BR_COND)
+        await push(
+            dut, 0xA000_0000 + i * 0x20, 0xA000_001F + i * 0x20, 0xA000_0040 + i * 0x20, 1, BR_COND
+        )
 
     # Flush back to logical index 4. After flush, occupancy should be 4.
     dut.flush_valid.value = 1

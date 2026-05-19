@@ -118,8 +118,8 @@ async def bpu_call_return_round_trip_uses_ras(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
-    call_pc   = 0x8000_2000
-    callee    = 0x8000_3000
+    call_pc = 0x8000_2000
+    callee = 0x8000_3000
     return_pc = 0x8000_3010
     return_to = 0x8000_2020  # call_pc + 32
 

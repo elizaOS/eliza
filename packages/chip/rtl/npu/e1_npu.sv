@@ -122,6 +122,9 @@ module e1_npu (
     logic [31:0] desc_bytes_written;
     logic [31:0] desc_read_beats;
     logic [31:0] desc_write_beats;
+    logic [31:0] perf_stall_cycles;
+    logic [31:0] perf_scratch_bytes;
+    logic [31:0] perf_thermal_throttle;
     logic [31:0] desc_current_addr;
     logic [5:0]  desc_stream_done;
     logic [5:0]  desc_write_done;
@@ -504,6 +507,9 @@ module e1_npu (
             desc_bytes_written <= 32'h0;
             desc_read_beats <= 32'h0;
             desc_write_beats <= 32'h0;
+            perf_stall_cycles <= 32'h0;
+            perf_scratch_bytes <= 32'h0;
+            perf_thermal_throttle <= 32'h0;
             desc_stream_done <= 6'h0;
             desc_write_done <= 6'h0;
             gemm_busy <= 1'b0;

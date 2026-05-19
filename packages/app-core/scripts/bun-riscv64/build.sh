@@ -43,10 +43,6 @@ VERSION_FILE="${VERSION_FILE:-/opt/bun-version.json}"
 
 # We have bun in the image, so use it as the JSON reader. jq is not
 # installed to keep the image lean.
-read_json() {
-    bun -e "console.log((${1}) ?? '')" <<< ""  # placeholder; replaced below
-}
-# Simpler: pipe through node-like one-liner via bun.
 bun_jq() {
     bun -e "const v = JSON.parse(require('fs').readFileSync('${VERSION_FILE}','utf8')); console.log($1);"
 }
@@ -168,13 +164,19 @@ WEBKIT_BUILD_DIR="$SRC_ROOT/WebKit/WebKitBuild/riscv64-Release"
 mkdir -p "$WEBKIT_BUILD_DIR"
 cd "$WEBKIT_BUILD_DIR"
 
-# JIT switches: Baseline ON / DFG OFF / FTL OFF, OR everything off + C_LOOP
-# when BUN_RISCV64_FORCE_CLOOP=1.
+# JIT switches. WebKit's CMake exposes ENABLE_JIT (umbrella, implies
+# LLInt + Baseline tiers), ENABLE_DFG_JIT, ENABLE_FTL_JIT, and
+# ENABLE_C_LOOP. There is no `ENABLE_BASELINE_JIT` option — Baseline is
+# always built when ENABLE_JIT=ON and the target arch has a Baseline
+# backend (riscv64 does, via WebKit bug #239708 r293316).
+#
+# - Default: ENABLE_JIT=ON (LLInt + Baseline), DFG/FTL OFF.
+# - BUN_RISCV64_FORCE_CLOOP=1: ENABLE_C_LOOP=ON, ENABLE_JIT=OFF (mutually
+#   exclusive per WebKit's WEBKIT_OPTION_CONFLICT).
 if [ "$FORCE_CLOOP" = "1" ]; then
     WK_JIT_FLAGS=(
         -DENABLE_C_LOOP=ON
         -DENABLE_JIT=OFF
-        -DENABLE_BASELINE_JIT=OFF
         -DENABLE_DFG_JIT=OFF
         -DENABLE_FTL_JIT=OFF
     )
@@ -182,7 +184,6 @@ else
     WK_JIT_FLAGS=(
         -DENABLE_C_LOOP=OFF
         -DENABLE_JIT=ON
-        -DENABLE_BASELINE_JIT=ON
         -DENABLE_DFG_JIT=OFF
         -DENABLE_FTL_JIT=OFF
     )
@@ -203,7 +204,6 @@ cmake \
     -DENABLE_STATIC_JSC=ON \
     -DUSE_THIN_ARCHIVES=OFF \
     -DUSE_SYSTEM_MALLOC=OFF \
-    -DENABLE_FTL_JIT=OFF \
     "${WK_JIT_FLAGS[@]}" \
     "$SRC_ROOT/WebKit" \
     || die "WebKit cmake configure failed. If Baseline JIT, retry with BUN_RISCV64_FORCE_CLOOP=1."

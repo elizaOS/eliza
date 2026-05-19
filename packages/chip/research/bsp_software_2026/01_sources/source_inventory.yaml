@@ -138,7 +138,7 @@ online_sources:
     title: "Cuttlefish virtual device RV64 (device/google/cuttlefish)"
     url: "https://cs.android.com/android/platform/superproject/main/+/main:device/google/cuttlefish/"
     captured_points:
-      - `aosp_cf_riscv64_phone` lunch combo; crosvm RV64 backing
+      - "`aosp_cf_riscv64_phone` lunch combo; crosvm RV64 backing"
       - vsoc kernel built with KVM-RV when host has H extension
       - cuttlefish-common requires nested KVM or hardware H-mode on host
   - id: crosvm_riscv
@@ -386,8 +386,7 @@ online_sources:
     url: "https://ai.google.dev/edge/litert"
     captured_points:
       - LiteRT rebrand 2024-09; same .tflite format
-      - delegates: GPU, XNNPACK, Hexagon, NNAPI (legacy), AICore (Android 16),
-        custom delegate API for vendor NPU
+      - "delegates: GPU, XNNPACK, Hexagon, NNAPI (legacy), AICore (Android 16), custom delegate API for vendor NPU"
   - id: mediapipe_tasks
     title: "MediaPipe Tasks (image/audio/text/genai)"
     url: "https://developers.google.com/mediapipe/solutions"

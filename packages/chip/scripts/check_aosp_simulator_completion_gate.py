@@ -158,6 +158,36 @@ def check_android_evidence(data: dict[str, Any], blockers: list[str]) -> None:
             blockers.append("required_android_evidence entries must be paths")
 
 
+def check_android_marker_evidence(data: dict[str, Any], blockers: list[str]) -> None:
+    values = data.get("required_android_marker_evidence")
+    if values is None:
+        return
+    if not isinstance(values, list):
+        blockers.append("required_android_marker_evidence must be a list")
+        return
+    seen: set[str] = set()
+    for item in values:
+        if not isinstance(item, dict):
+            blockers.append("required_android_marker_evidence entries must be mappings")
+            continue
+        ident = item.get("id")
+        evidence = item.get("evidence")
+        markers = item.get("required_markers")
+        if not isinstance(ident, str) or not ident:
+            blockers.append("required_android_marker_evidence entry missing id")
+            continue
+        if ident in seen:
+            blockers.append(f"{ident}: duplicate required_android_marker_evidence id")
+        seen.add(ident)
+        if not isinstance(evidence, str):
+            blockers.append(f"{ident}: missing evidence path")
+            continue
+        if not isinstance(markers, list) or not all(isinstance(marker, str) for marker in markers):
+            blockers.append(f"{ident}: required_markers must be a string list")
+            continue
+        require_text_markers(ROOT / evidence, markers, blockers)
+
+
 def check_peripherals(data: dict[str, Any], blockers: list[str]) -> None:
     values = data.get("required_simulated_peripherals")
     if not isinstance(values, list):
@@ -240,6 +270,7 @@ def main() -> int:
         check_mvp_report(data, blockers)
         check_android_report(data, blockers)
         check_android_evidence(data, blockers)
+        check_android_marker_evidence(data, blockers)
         check_peripherals(data, blockers)
         check_npu_tasks(data, blockers)
 

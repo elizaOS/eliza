@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Tests for scripts/check_pdk_portability.py."""
+
 from __future__ import annotations
 
 import copy
@@ -51,8 +52,7 @@ def test_advanced_nodes_are_blocked() -> None:
     configs = data.get("configs")
     assert isinstance(configs, list)
     advanced = [
-        c for c in configs
-        if isinstance(c, dict) and c.get("node_class") in checker.ADVANCED_NODES
+        c for c in configs if isinstance(c, dict) and c.get("node_class") in checker.ADVANCED_NODES
     ]
     if len(advanced) < 3:
         raise AssertionError("must include at least 3 advanced-node lanes")
@@ -68,8 +68,7 @@ def test_open_pdk_lanes_are_open() -> None:
     configs = data.get("configs")
     assert isinstance(configs, list)
     open_lanes = [
-        c for c in configs
-        if isinstance(c, dict) and c.get("node_class") in checker.OPEN_PDK_NODES
+        c for c in configs if isinstance(c, dict) and c.get("node_class") in checker.OPEN_PDK_NODES
     ]
     if len(open_lanes) < 2:
         raise AssertionError("must include at least 2 open-PDK lanes")

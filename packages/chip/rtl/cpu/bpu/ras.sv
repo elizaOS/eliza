@@ -76,6 +76,40 @@ module ras (
     ras_entry_t spec_top_entry;
     assign spec_top_entry = spec_stack_q[spec_top_rdaddr];
 
+    // Working temporaries used by the always_ff push/pop paths. Declared
+    // at module scope so the yosys 0.64 frontend can reason about them as
+    // ordinary signals rather than block-local automatic variables.
+    ras_entry_t spec_push_entry_n;
+    ras_entry_t spec_pop_entry_n;
+    ras_entry_t spec_pop_ovf_entry_n;
+    ras_entry_t arch_push_entry_n;
+    ras_entry_t arch_pop_entry_n;
+
+    always_comb begin
+        spec_push_entry_n        = '0;
+        spec_push_entry_n.addr   = spec_push_addr;
+        spec_push_entry_n.ovf    = '0;
+        spec_push_entry_n.valid  = 1'b1;
+
+        spec_pop_entry_n         = spec_top_entry;
+        spec_pop_entry_n.valid   = 1'b0;
+
+        spec_pop_ovf_entry_n     = spec_top_entry;
+        spec_pop_ovf_entry_n.ovf = (spec_top_entry.ovf != '0)
+                                    ? (spec_top_entry.ovf - 1'b1) : '0;
+
+        arch_push_entry_n        = '0;
+        arch_push_entry_n.addr   = commit_push_addr;
+        arch_push_entry_n.ovf    = '0;
+        arch_push_entry_n.valid  = 1'b1;
+
+        arch_pop_entry_n         = arch_stack_q[arch_sp_top_rdaddr];
+        arch_pop_entry_n.valid   = 1'b0;
+    end
+
+    logic [$clog2(RAS_ARCH_ENTRIES)-1:0] arch_sp_top_rdaddr;
+    assign arch_sp_top_rdaddr = arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0] - 1'b1;
+
     always_comb begin
         if (spec_empty) begin
             spec_top_addr  = '0;
@@ -121,19 +155,19 @@ module ras (
                             spec_stack_q[RAS_SPEC_ENTRIES-1].ovf + 1'b1;
                         pmu_overflow <= 1'b1;
                     end else begin
-                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]].addr  <= spec_push_addr;
-                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]].ovf   <= '0;
-                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]].valid <= 1'b1;
+                        // Whole-struct write at the indexed location keeps the
+                        // yosys 0.64 frontend happy (no member-specific writes
+                        // with a non-constant array index).
+                        spec_stack_q[spec_sp_q[RAS_IDX_W-1:0]] <= spec_push_entry_n;
                         spec_sp_q <= spec_sp_q + 1'b1;
                     end
                 end else if (spec_pop && !spec_push) begin
                     if (spec_empty) begin
                         pmu_underflow <= 1'b1;
-                    end else if (spec_stack_q[spec_top_rdaddr].ovf != '0) begin
-                        spec_stack_q[spec_top_rdaddr].ovf <=
-                            spec_stack_q[spec_top_rdaddr].ovf - 1'b1;
+                    end else if (spec_top_entry.ovf != '0) begin
+                        spec_stack_q[spec_top_rdaddr] <= spec_pop_ovf_entry_n;
                     end else begin
-                        spec_stack_q[spec_top_rdaddr].valid <= 1'b0;
+                        spec_stack_q[spec_top_rdaddr] <= spec_pop_entry_n;
                         spec_sp_q <= spec_sp_q - 1'b1;
                     end
                 end
@@ -153,14 +187,12 @@ module ras (
                     arch_stack_q[RAS_ARCH_ENTRIES-1].ovf   <= '0;
                     arch_stack_q[RAS_ARCH_ENTRIES-1].valid <= 1'b1;
                 end else begin
-                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]].addr  <= commit_push_addr;
-                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]].ovf   <= '0;
-                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]].valid <= 1'b1;
+                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0]] <= arch_push_entry_n;
                     arch_sp_q <= arch_sp_q + 1'b1;
                 end
             end else if (commit_pop && !commit_push) begin
                 if (arch_sp_q != '0) begin
-                    arch_stack_q[arch_sp_q[$clog2(RAS_ARCH_ENTRIES)-1:0] - 1'b1].valid <= 1'b0;
+                    arch_stack_q[arch_sp_top_rdaddr] <= arch_pop_entry_n;
                     arch_sp_q <= arch_sp_q - 1'b1;
                 end
             end

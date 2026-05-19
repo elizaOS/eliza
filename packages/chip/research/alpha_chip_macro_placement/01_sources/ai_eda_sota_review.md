@@ -50,6 +50,12 @@ affect source, release claims, or tapeout-facing artifacts.
   memory/fabric contracts define valid knobs. ArchGym, BookSim2, Ramulator2,
   DRAMsim3, DRAMSys, gem5-Aladdin, and Gem5-AcceSys are useful references; the
   current E1 AXI-Lite SRAM-backed scaffold makes them target-capture only.
+- CPU microarchitecture search is now an explicit AI lane. Agentic Architect
+  extends the agentic-EDA idea into branch predictors, cache replacement, and
+  prefetching; PerfVec and Concorde show fast CPU performance modeling; and
+  BranchNet, Pythia, Mockingjay, Drishti, LLBP, and ChampSim are useful SOTA
+  references. E1 should keep this behind trace provenance, simulator logs,
+  before/after RTL, cocotb/formal/synthesis, and benchmark gates.
 - DFT, power/thermal, and hardware-security AI are not optional for a complete
   chip-design automation map, but they are less ready for E1 source integration:
   open DFT tooling and AI ATPG methods need a scan/ATPG evidence contract,
@@ -101,6 +107,7 @@ affect source, release claims, or tapeout-facing artifacts.
 | CDC/RDC and reset-domain signoff | Accellera CDC/RDC standard, formal CDC MSI methodology, Questa CDC/RDC Assist, OpenCDC, MCP4EDA | Capture clock/reset-domain target tasks only; block generated constraints, waivers, classifications, and signoff claims until local intent, deterministic CDC/RDC reports, reset-domain regressions, and review exist. |
 | Analog and mixed-signal | ALIGN, AutoCkt, GENIE-ASI, ACDC, ADO-LLM, AnalogGenie, Masala-CHAI, LIMCA | Capture padframe/package/SI-PI/IO targets only; block generated SPICE, analog layout, foundry IP, and analog IMC claims until SPICE, DRC/LVS, extraction, package, and human review evidence exists. |
 | Memory, interconnect, and NoC DSE | ArchGym, AI NoC DSE, BookSim2, Ramulator2, DRAMsim3, DRAMSys, gem5-Aladdin, Gem5-AcceSys | Capture E1 memory/fabric target tasks and backend availability; block fabric, memory-map, coherency, QoS, and DRAM claims until local contract, simulator, benchmark, and RTL evidence exists. |
+| CPU microarchitecture AI | Agentic Architect, PerfVec, Concorde, ChampSim, BranchNet, LLBP, Pythia, Mockingjay, Drishti | Capture branch predictor, cache replacement, prefetcher, CPU performance-model, and simulator-backed DSE targets only; block generated RTL, simulator/model execution, trace import, IPC/MPKI/area/power/product claims, and release use until local traces, before/after simulator logs, RTL/cocotb/formal/synthesis, benchmark evidence, and review exist. |
 | DFT, ATPG, and manufacturing test | Fault DFT, DeepTPI, DEFT, LITE scan instrumentation, DRL ATPG, ATPG via AI survey, ATPG Toolkit, NN-for-ATPG | Capture DFT/ATPG target tasks only; block scan insertion, test-point insertion, generated patterns, and fault-coverage claims until netlist, scan policy, ATPG, manufacturing, and signoff evidence exists. |
 | Power, thermal, IR drop, and PDN | DeepOHeat, 2D-ThermAl, ThermEDGe/IREDGe, WACA-UNet, IR-Drop-Predictor, EDA IR-Drop Prediction, OpeNPDN, AiEDA, RTLMUL | Capture power/thermal/PDN target tasks only; block generated power maps, thermal maps, PDNs, IR-drop predictions, TOPS/W, and thermal claims until measured traces, package models, PDNSim/OpenROAD labels, and signoff evidence exist. |
 | Hardware security | Hardware Trojan ML, PEARL, TrojanSAINT, GNN-MFF, SecureRAG-RTL, TrojanWhisper, TrojanGYM, GHOST Benchmarks | Capture local RTL/security target tasks only; block scanner execution, Trojan insertion, vulnerability claims, generated-RTL trust claims, and release use until labels, deterministic regressions, provenance, and human security review exist. |
@@ -225,6 +232,12 @@ affect source, release claims, or tapeout-facing artifacts.
     comparisons tied to local PD, manufacturing, real-world, synthesis, and
     review gates before any layout, mask, OPC, hotspot, yield, wafer-defect, or
     release claim is allowed.
+27. Use `scripts/ai_eda/capture_cpu_microarchitecture_targets.py --run-id validation`
+    to keep branch predictor, cache replacement, prefetcher, CPU performance
+    model, and simulator-backed microarchitecture DSE work tied to local BPU,
+    cache, benchmark, simulator, RTL, synthesis, formal, cocotb, and review
+    gates before any generated RTL, policy change, IPC/MPKI claim, or product
+    performance claim is allowed.
 
 ## Current Blockers
 

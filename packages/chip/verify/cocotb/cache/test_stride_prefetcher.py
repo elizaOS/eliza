@@ -3,11 +3,12 @@
 Drives a stream of observed accesses with a constant stride and verifies
 the prefetcher emits a +DEGREE*stride request once it has trained.
 """
+
 from __future__ import annotations
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ReadOnly
+from cocotb.triggers import ReadOnly, RisingEdge
 
 
 async def reset_dut(dut) -> None:

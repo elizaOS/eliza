@@ -77,7 +77,8 @@ GEMM prototype. It now includes packed INT4, INT2, scalar FP8, descriptor read
 streaming into scratchpad, and a streamed `GEMM_S8` descriptor writeback smoke
 path. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
 scalar-dot sparse INT4 2:4, INT2, and FP8 E4M3 matmul, Conv2D, attention
-QK/softmax/AV, append-only KV-cache update, RoPE, RMSNorm, SwiGLU, and a
+QK/softmax/AV plus composed multi-head attention, append-only KV-cache update,
+decode attention over the updated cache, RoPE, RMSNorm, SwiGLU, and a
 single-head modern decoder-block smoke path with explicit non-production
 compiler boundaries. The design is still missing the actual tensor NPU
 structure:

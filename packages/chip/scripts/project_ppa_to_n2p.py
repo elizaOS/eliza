@@ -16,6 +16,7 @@ Discipline:
   fixed to `projection_only_never_signoff`. Downstream readers must respect
   that marker and must never cite the projection as silicon evidence.
 """
+
 from __future__ import annotations
 
 import json

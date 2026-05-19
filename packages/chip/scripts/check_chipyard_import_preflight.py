@@ -53,9 +53,7 @@ def write_report(path: Path, evidence: dict) -> Path:
             "reason": "requested_report_path_not_writable",
         }
         fallback.parent.mkdir(parents=True, exist_ok=True)
-        fallback.write_text(
-            json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        fallback.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return fallback
 
 

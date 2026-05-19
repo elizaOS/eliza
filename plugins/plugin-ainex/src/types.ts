@@ -57,7 +57,8 @@ export type BridgeCommand =
   | "policy.stop"
   | "policy.tick"
   | "policy.status"
-  | "profile.describe";
+  | "profile.describe"
+  | "camera.snapshot";
 
 // Mirrors VALID_EVENTS in bridge/protocol.py.
 export type BridgeEvent =

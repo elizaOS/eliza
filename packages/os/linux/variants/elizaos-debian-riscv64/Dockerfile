@@ -24,26 +24,32 @@ FROM debian:trixie-slim
 ENV DEBIAN_FRONTEND=noninteractive
 
 # ── Build dependencies ───────────────────────────────────────────────
-# Two layers of deps:
+# Three layers of deps:
 #   1. live-build's own runtime deps (mirrors the relevant subset of the
 #      milady-tails Dockerfile — debootstrap, parted, squashfs, xorriso,
 #      rsync, etc.). riscv64 has no isolinux/syslinux/grub-pc-bin path,
 #      so those are dropped.
-#   2. riscv64-specific bootloader pieces: grub-efi-riscv64-bin (UEFI
-#      payload), grub-efi-riscv64-signed (secure-boot path), u-boot-menu
-#      (U-Boot extlinux fallback for boards without UEFI), extlinux.
+#   2. riscv64-specific bootloader pieces, pulled via multiarch since
+#      grub-efi-riscv64-bin is Architecture: riscv64 and the builder host
+#      is typically amd64 (`dpkg --add-architecture riscv64` below).
+#      u-boot-menu is Architecture: all so it installs without multiarch.
+#      No `grub-efi-riscv64-signed` — Debian does not yet publish a
+#      signed riscv64 grub-efi payload, so dropping it is correct, not a
+#      lapse to fix in Wave 4. Secure-boot path will land when Debian
+#      ships the signed variant. extlinux on amd64 is only useful as a
+#      host-side helper for the U-Boot extlinux.conf generator; the real
+#      riscv64 bootloader binary comes from the chroot.
 #   3. Foreign-arch execution: qemu-user-static + binfmt-support so the
 #      builder host (typically x86_64) can run riscv64 binaries during
 #      debootstrap's second stage inside the chroot.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN dpkg --add-architecture riscv64 \
+    && apt-get update && apt-get install -y --no-install-recommends \
         live-build \
         debootstrap \
         qemu-user-static \
         binfmt-support \
         u-boot-menu \
-        grub-efi-riscv64-bin \
-        grub-efi-riscv64-signed \
-        extlinux \
+        grub-efi-riscv64-bin:riscv64 \
         cpio \
         dosfstools \
         mtools \

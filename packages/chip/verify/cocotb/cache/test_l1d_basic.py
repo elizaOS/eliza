@@ -7,12 +7,12 @@ Exercises:
 - probe downgrade M->S writes back dirty data
 - probe invalidate removes line
 """
+
 from __future__ import annotations
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
-
 
 MESI_I = 0
 MESI_S = 1
@@ -27,12 +27,12 @@ def _pack_req(paddr, size=3, is_load=1, wdata=0, wstrb=0, tag=0):
     Use the struct slot directly via field assignment if needed.
     """
     return (
-        (tag    & 0xFF)              |
-        ((wstrb & 0xFFFF)      << 8) |
-        ((wdata & ((1<<128)-1))<< 24) |
-        ((is_load & 0x1)       << 152) |
-        ((size & 0x7)          << 153) |
-        ((paddr & ((1<<40)-1)) << 156)
+        (tag & 0xFF)
+        | ((wstrb & 0xFFFF) << 8)
+        | ((wdata & ((1 << 128) - 1)) << 24)
+        | ((is_load & 0x1) << 152)
+        | ((size & 0x7) << 153)
+        | ((paddr & ((1 << 40) - 1)) << 156)
     )
 
 
@@ -89,9 +89,7 @@ async def test_l1d_miss_then_refill(dut):
     # Wait for the L2 acquire
     await wait_for(dut, "l2_acq_valid")
     paddr_line = int(dut.l2_acq_paddr_line.value)
-    assert paddr_line == (paddr & ~0x3F), (
-        f"l2_acq paddr {paddr_line:#x} != line({paddr:#x})"
-    )
+    assert paddr_line == (paddr & ~0x3F), f"l2_acq paddr {paddr_line:#x} != line({paddr:#x})"
 
     # Drive a grant with a 64-byte line of all-zeros, state E
     await RisingEdge(dut.clk)
@@ -114,7 +112,6 @@ async def test_l1d_miss_then_refill(dut):
     for _ in range(8):
         await RisingEdge(dut.clk)
         if int(dut.lsu_p0_resp_valid.value) == 1:
-            ack_bit = int(dut.lsu_p0_resp.value) & 0x1  # 'ack' is in a known position
             # Verify the path responded (rdata=0 is acceptable for our zero line)
             saw_ack = True
             break

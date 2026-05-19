@@ -29,6 +29,8 @@ SUPPORTED_SPARSE_INT4_MATMUL_SCHEMA = "eliza.e1_npu_sparse_int4_matmul_smoke.v1"
 SUPPORTED_INT2_MATMUL_SCHEMA = "eliza.e1_npu_int2_matmul_smoke.v1"
 SUPPORTED_FP8_MATMUL_SCHEMA = "eliza.e1_npu_fp8_matmul_smoke.v1"
 SUPPORTED_CONV2D_SCHEMA = "eliza.e1_npu_conv2d_smoke.v1"
+SUPPORTED_ATTENTION_SCHEMA = "eliza.e1_npu_attention_smoke.v1"
+SUPPORTED_DECODE_ATTENTION_SCHEMA = "eliza.e1_npu_decode_attention_smoke.v1"
 SUPPORTED_ATTENTION_QK_SCHEMA = "eliza.e1_npu_attention_qk_smoke.v1"
 SUPPORTED_ATTENTION_SOFTMAX_SCHEMA = "eliza.e1_npu_attention_softmax_smoke.v1"
 SUPPORTED_ATTENTION_AV_SCHEMA = "eliza.e1_npu_attention_av_smoke.v1"
@@ -57,6 +59,16 @@ SUPPORTED_FP8_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.fp8_matmul"}
 SUPPORTED_CONV2D_OPS = {
     "stablehlo.convolution",
     "tflite.conv_2d",
+}
+SUPPORTED_ATTENTION_OPS = {
+    "eliza.attention",
+    "stablehlo.attention",
+    "tflite.attention",
+}
+SUPPORTED_DECODE_ATTENTION_OPS = {
+    "eliza.decode_attention",
+    "stablehlo.decode_attention",
+    "tflite.decode_attention",
 }
 SUPPORTED_ATTENTION_QK_OPS = {
     "stablehlo.dot_general",
@@ -433,6 +445,56 @@ class LoweredAttentionAvResult:
 
 
 @dataclass(frozen=True)
+class LoweredAttentionResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    qk_scores: LoweredAttentionQkResult
+    qk_logits_s8: list[list[list[list[int]]]]
+    attention_softmax: LoweredAttentionSoftmaxResult
+    attention_weights_s8: list[list[list[list[int]]]]
+    attention_av: LoweredAttentionAvResult
+    context_requantized: list[list[list[list[int]]]]
+    head_count: int
+    total_tile_count: int
+    scalar_add_count: int
+    cpu_fallback: bool
+    computes_qk_scores: bool
+    computes_attention_softmax: bool
+    requires_prequantized_attention: bool
+    host_requantizes_qk_scores: bool
+    host_requantizes_attention_weights: bool
+    host_requantizes_context: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "qk_scores": self.qk_scores.as_dict(),
+            "qk_logits_s8": self.qk_logits_s8,
+            "attention_softmax": self.attention_softmax.as_dict(),
+            "attention_weights_s8": self.attention_weights_s8,
+            "attention_av": self.attention_av.as_dict(),
+            "context_requantized": self.context_requantized,
+            "head_count": self.head_count,
+            "total_tile_count": self.total_tile_count,
+            "scalar_add_count": self.scalar_add_count,
+            "cpu_fallback": self.cpu_fallback,
+            "computes_qk_scores": self.computes_qk_scores,
+            "computes_attention_softmax": self.computes_attention_softmax,
+            "requires_prequantized_attention": self.requires_prequantized_attention,
+            "host_requantizes_qk_scores": self.host_requantizes_qk_scores,
+            "host_requantizes_attention_weights": self.host_requantizes_attention_weights,
+            "host_requantizes_context": self.host_requantizes_context,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
 class LoweredKvCacheUpdateResult:
     schema: str
     source_dialect: str
@@ -468,6 +530,50 @@ class LoweredKvCacheUpdateResult:
             "cpu_fallback": self.cpu_fallback,
             "host_preserves_existing_cache": self.host_preserves_existing_cache,
             "host_tracks_cache_lengths": self.host_tracks_cache_lengths,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredDecodeAttentionResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    kv_cache_update: LoweredKvCacheUpdateResult
+    attention: LoweredAttentionResult
+    attention_key_cache_view: list[list[list[list[int]]]]
+    attention_value_cache_view: list[list[list[list[int]]]]
+    attention_mask: list[list[list[list[bool]]]]
+    updated_cache_lengths: list[list[int]]
+    max_attention_cache_length: int
+    total_tile_count: int
+    scalar_add_count: int
+    cpu_fallback: bool
+    updates_kv_cache: bool
+    computes_attention_over_cache: bool
+    host_materializes_cache_view: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "kv_cache_update": self.kv_cache_update.as_dict(),
+            "attention": self.attention.as_dict(),
+            "attention_key_cache_view": self.attention_key_cache_view,
+            "attention_value_cache_view": self.attention_value_cache_view,
+            "attention_mask": self.attention_mask,
+            "updated_cache_lengths": self.updated_cache_lengths,
+            "max_attention_cache_length": self.max_attention_cache_length,
+            "total_tile_count": self.total_tile_count,
+            "scalar_add_count": self.scalar_add_count,
+            "cpu_fallback": self.cpu_fallback,
+            "updates_kv_cache": self.updates_kv_cache,
+            "computes_attention_over_cache": self.computes_attention_over_cache,
+            "host_materializes_cache_view": self.host_materializes_cache_view,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -2156,6 +2262,164 @@ def lower_attention_av_smoke(
     )
 
 
+def _default_attention_mask(
+    query: list[list[list[list[int]]]], key: list[list[list[list[int]]]]
+) -> list[list[list[list[bool]]]]:
+    _validate_attention_qk_shape(query, key)
+    return [
+        [
+            [[True for _ in range(len(key_head))] for _ in range(len(query_head))]
+            for query_head, key_head in zip(batch_query, batch_key, strict=True)
+        ]
+        for batch_query, batch_key in zip(query, key, strict=True)
+    ]
+
+
+def _zero_attention_logits(
+    query: list[list[list[list[int]]]], key: list[list[list[list[int]]]]
+) -> list[list[list[list[int]]]]:
+    _validate_attention_qk_shape(query, key)
+    return [
+        [
+            [[0 for _ in range(len(key_head))] for _ in range(len(query_head))]
+            for query_head, key_head in zip(batch_query, batch_key, strict=True)
+        ]
+        for batch_query, batch_key in zip(query, key, strict=True)
+    ]
+
+
+def lower_attention_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredAttentionResult:
+    """Compose multi-head QK, approximate softmax, and AV smoke lowerings."""
+
+    if graph.get("schema") != SUPPORTED_ATTENTION_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_ATTENTION_OPS:
+        raise NpuLoweringError(f"unsupported attention source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported attention precision {precision!r}")
+
+    query = _tensor4(graph.get("query"), "query")
+    key = _tensor4(graph.get("key"), "key")
+    value = _tensor4(graph.get("value"), "value")
+    mask = (
+        _bool_tensor4(graph.get("mask"), "mask")
+        if graph.get("mask") is not None
+        else _default_attention_mask(query, key)
+    )
+    qk_score_shift = _nonnegative_int(graph.get("qk_score_shift", 0), "qk_score_shift")
+    attention_weight_shift = _nonnegative_int(
+        graph.get("attention_weight_shift", 1), "attention_weight_shift"
+    )
+    context_shift = _nonnegative_int(graph.get("context_shift", 0), "context_shift")
+    if qk_score_shift > 31 or attention_weight_shift > 31 or context_shift > 31:
+        raise NpuLoweringError("attention shifts must be in 0..31")
+    _validate_attention_qk_shape(query, key)
+    _validate_attention_softmax_shape(_zero_attention_logits(query, key), mask)
+    _validate_attention_av_shape(mask_to_int8(mask), value)
+
+    qk_scores = lower_attention_qk_smoke(
+        runtime,
+        {
+            "schema": SUPPORTED_ATTENTION_QK_SCHEMA,
+            "dialect": graph.get("dialect", "unknown"),
+            "op": "eliza.attention_qk",
+            "precision": "int8",
+            "query": query,
+            "key": key,
+        },
+    )
+    qk_logits_s8 = _requantize_s8_tensor4(qk_scores.scores, qk_score_shift)
+    _validate_attention_softmax_shape(qk_logits_s8, mask)
+    attention_softmax = lower_attention_softmax_smoke(
+        runtime,
+        {
+            "schema": SUPPORTED_ATTENTION_SOFTMAX_SCHEMA,
+            "dialect": graph.get("dialect", "unknown"),
+            "op": "eliza.attention_softmax",
+            "precision": "int8",
+            "logits": qk_logits_s8,
+            "mask": mask,
+        },
+    )
+    attention_weights_s8 = _requantize_attention_weights_s8(
+        attention_softmax.weights_q0_8, attention_weight_shift
+    )
+    attention_av = lower_attention_av_smoke(
+        runtime,
+        {
+            "schema": SUPPORTED_ATTENTION_AV_SCHEMA,
+            "dialect": graph.get("dialect", "unknown"),
+            "op": "eliza.attention_av",
+            "precision": "int8",
+            "attention": attention_weights_s8,
+            "value": value,
+        },
+    )
+    context_requantized = _requantize_s8_tensor4(attention_av.context, context_shift)
+    return LoweredAttentionResult(
+        schema="eliza.e1_npu_lowered_attention_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        qk_scores=qk_scores,
+        qk_logits_s8=qk_logits_s8,
+        attention_softmax=attention_softmax,
+        attention_weights_s8=attention_weights_s8,
+        attention_av=attention_av,
+        context_requantized=context_requantized,
+        head_count=len(query[0]),
+        total_tile_count=qk_scores.total_tile_count + attention_av.total_tile_count,
+        scalar_add_count=attention_softmax.scalar_add_count,
+        cpu_fallback=False,
+        computes_qk_scores=True,
+        computes_attention_softmax=True,
+        requires_prequantized_attention=False,
+        host_requantizes_qk_scores=True,
+        host_requantizes_attention_weights=True,
+        host_requantizes_context=True,
+        claim_boundary="multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend",
+    )
+
+
+def _materialize_attention_cache_view(
+    key_cache: list[list[list[list[int]]]],
+    value_cache: list[list[list[list[int]]]],
+    cache_lengths: list[list[int]],
+    query_tokens: int,
+) -> tuple[
+    list[list[list[list[int]]]],
+    list[list[list[list[int]]]],
+    list[list[list[list[bool]]]],
+]:
+    max_length = max(length for batch in cache_lengths for length in batch)
+    if max_length < 1:
+        raise NpuLoweringError("decode_attention requires non-empty updated cache")
+    key_view: list[list[list[list[int]]]] = []
+    value_view: list[list[list[list[int]]]] = []
+    mask: list[list[list[list[bool]]]] = []
+    for batch_index, batch_lengths in enumerate(cache_lengths):
+        batch_key: list[list[list[int]]] = []
+        batch_value: list[list[list[int]]] = []
+        batch_mask: list[list[list[bool]]] = []
+        for head_index, length in enumerate(batch_lengths):
+            batch_key.append([list(row) for row in key_cache[batch_index][head_index][:max_length]])
+            batch_value.append(
+                [list(row) for row in value_cache[batch_index][head_index][:max_length]]
+            )
+            batch_mask.append(
+                [
+                    [token_index < length for token_index in range(max_length)]
+                    for _ in range(query_tokens)
+                ]
+            )
+        key_view.append(batch_key)
+        value_view.append(batch_value)
+        mask.append(batch_mask)
+    return key_view, value_view, mask
+
+
 def lower_kv_cache_update_smoke(
     runtime: E1NpuRuntime, graph: dict[str, Any]
 ) -> LoweredKvCacheUpdateResult:
@@ -2219,6 +2483,95 @@ def lower_kv_cache_update_smoke(
         host_preserves_existing_cache=True,
         host_tracks_cache_lengths=True,
         claim_boundary="kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
+    )
+
+
+def lower_decode_attention_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredDecodeAttentionResult:
+    """Append K/V cache tokens, then attend query tokens over the updated cache."""
+
+    if graph.get("schema") != SUPPORTED_DECODE_ATTENTION_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_DECODE_ATTENTION_OPS:
+        raise NpuLoweringError(f"unsupported decode_attention source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported decode_attention precision {precision!r}")
+
+    query = _tensor4(graph.get("query"), "query")
+    key_cache = _tensor4(graph.get("key_cache"), "key_cache")
+    value_cache = _tensor4(graph.get("value_cache"), "value_cache")
+    new_key = _tensor4(graph.get("new_key"), "new_key")
+    new_value = _tensor4(graph.get("new_value"), "new_value")
+    cache_lengths = _matrix(graph.get("cache_lengths"), "cache_lengths")
+    qk_score_shift = _nonnegative_int(graph.get("qk_score_shift", 0), "qk_score_shift")
+    attention_weight_shift = _nonnegative_int(
+        graph.get("attention_weight_shift", 1), "attention_weight_shift"
+    )
+    context_shift = _nonnegative_int(graph.get("context_shift", 0), "context_shift")
+    if qk_score_shift > 31 or attention_weight_shift > 31 or context_shift > 31:
+        raise NpuLoweringError("decode_attention shifts must be in 0..31")
+    _validate_attention_qk_shape(query, key_cache)
+    _validate_kv_cache_update_shape(key_cache, value_cache, new_key, new_value, cache_lengths)
+
+    kv_cache_update = lower_kv_cache_update_smoke(
+        runtime,
+        {
+            "schema": SUPPORTED_KV_CACHE_UPDATE_SCHEMA,
+            "dialect": graph.get("dialect", "unknown"),
+            "op": "eliza.kv_cache_update",
+            "precision": "int8",
+            "key_cache": key_cache,
+            "value_cache": value_cache,
+            "new_key": new_key,
+            "new_value": new_value,
+            "cache_lengths": cache_lengths,
+        },
+    )
+    key_view, value_view, mask = _materialize_attention_cache_view(
+        kv_cache_update.updated_key_cache,
+        kv_cache_update.updated_value_cache,
+        kv_cache_update.cache_lengths,
+        len(query[0][0]),
+    )
+    attention = lower_attention_smoke(
+        runtime,
+        {
+            "schema": SUPPORTED_ATTENTION_SCHEMA,
+            "dialect": graph.get("dialect", "unknown"),
+            "op": "eliza.attention",
+            "precision": "int8",
+            "query": query,
+            "key": key_view,
+            "value": value_view,
+            "mask": mask,
+            "qk_score_shift": qk_score_shift,
+            "attention_weight_shift": attention_weight_shift,
+            "context_shift": context_shift,
+        },
+    )
+    max_cache_length = len(key_view[0][0])
+    return LoweredDecodeAttentionResult(
+        schema="eliza.e1_npu_lowered_decode_attention_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        kv_cache_update=kv_cache_update,
+        attention=attention,
+        attention_key_cache_view=key_view,
+        attention_value_cache_view=value_view,
+        attention_mask=mask,
+        updated_cache_lengths=kv_cache_update.cache_lengths,
+        max_attention_cache_length=max_cache_length,
+        total_tile_count=attention.total_tile_count,
+        scalar_add_count=kv_cache_update.scalar_copy_count + attention.scalar_add_count,
+        cpu_fallback=False,
+        updates_kv_cache=True,
+        computes_attention_over_cache=True,
+        host_materializes_cache_view=True,
+        claim_boundary="decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend",
     )
 
 
@@ -2858,6 +3211,12 @@ def _requantize_s8_tensor4(
     return [
         [[[_clamp_s8(value >> shift) for value in row] for row in head] for head in batch]
         for batch in tensor
+    ]
+
+
+def mask_to_int8(mask: list[list[list[list[bool]]]]) -> list[list[list[list[int]]]]:
+    return [
+        [[[1 if value else 0 for value in row] for row in head] for head in batch] for batch in mask
     ]
 
 

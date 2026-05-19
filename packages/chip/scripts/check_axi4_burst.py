@@ -5,6 +5,7 @@ Validates docs/evidence/memory/axi4-burst-evidence-gate.yaml plus the
 RTL files it scopes.  The gate is BLOCKED until every required cocotb
 test exists and the AXI4 RTL has the named capabilities checked in.
 """
+
 from __future__ import annotations
 
 import sys
@@ -99,10 +100,14 @@ def main() -> int:
     data = yaml.safe_load(GATE.read_text())
     require(isinstance(data, dict), "gate must be a YAML mapping", errors)
 
-    require(data.get("schema") == "eliza.axi4_burst_evidence_gate.v1",
-            "gate schema drifted", errors)
-    require(data.get("status") == "blocked_until_evidence",
-            "gate must remain blocked_until_evidence", errors)
+    require(
+        data.get("schema") == "eliza.axi4_burst_evidence_gate.v1", "gate schema drifted", errors
+    )
+    require(
+        data.get("status") == "blocked_until_evidence",
+        "gate must remain blocked_until_evidence",
+        errors,
+    )
 
     for rel in REQUIRED_RTL:
         require((ROOT / rel).is_file(), f"missing RTL {rel}", errors)
@@ -117,30 +122,30 @@ def main() -> int:
     tests = data.get("required_tests") or []
     seen_ids = {item.get("id") for item in tests if isinstance(item, dict)}
     missing = sorted(REQUIRED_TEST_IDS - seen_ids)
-    require(not missing,
-            "required_tests missing ids: " + ", ".join(missing), errors)
+    require(not missing, "required_tests missing ids: " + ", ".join(missing), errors)
 
     test_file = ROOT / "verify/cocotb/axi4/test_axi4_burst.py"
-    require(test_file.is_file(),
-            "verify/cocotb/axi4/test_axi4_burst.py missing", errors)
+    require(test_file.is_file(), "verify/cocotb/axi4/test_axi4_burst.py missing", errors)
     if test_file.is_file():
         text = test_file.read_text()
         for tid in REQUIRED_TEST_IDS:
             require(tid in text, f"cocotb file missing test {tid}", errors)
 
     artifacts = data.get("required_artifacts") or []
-    require(isinstance(artifacts, list) and bool(artifacts),
-            "gate must list required_artifacts", errors)
+    require(
+        isinstance(artifacts, list) and bool(artifacts), "gate must list required_artifacts", errors
+    )
     for art in artifacts:
-        require(art in REQUIRED_ARTIFACTS,
-                f"unexpected artifact {art}", errors)
-        require(not (ROOT / art).exists(),
-                f"gate is blocked but artifact exists: {art}", errors)
+        require(art in REQUIRED_ARTIFACTS, f"unexpected artifact {art}", errors)
+        require(not (ROOT / art).exists(), f"gate is blocked but artifact exists: {art}", errors)
 
     schemas = data.get("required_artifact_schemas") or {}
     for art, schema in REQUIRED_ARTIFACTS.items():
-        require(schemas.get(art) == schema,
-                f"artifact schema for {art} drifted (expected {schema})", errors)
+        require(
+            schemas.get(art) == schema,
+            f"artifact schema for {art} drifted (expected {schema})",
+            errors,
+        )
 
     if errors:
         print("AXI4 burst evidence gate failed:")

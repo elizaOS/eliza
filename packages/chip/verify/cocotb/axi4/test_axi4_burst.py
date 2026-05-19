@@ -20,9 +20,9 @@ The test runs against a synthetic harness that wires NUM_MASTERS=2
 masters to a single ``e1_axi4_dram_model`` slave through the
 ``e1_axi4_interconnect``.
 """
+
 from __future__ import annotations
 
-import os
 from pathlib import Path
 
 import cocotb
@@ -31,14 +31,14 @@ from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
-RESP_OKAY   = 0
+RESP_OKAY = 0
 RESP_EXOKAY = 1
 RESP_SLVERR = 2
 RESP_DECERR = 3
 
 BURST_FIXED = 0
-BURST_INCR  = 1
-BURST_WRAP  = 2
+BURST_INCR = 1
+BURST_WRAP = 2
 
 DATA_WIDTH = 128
 BYTES_PER_BEAT = DATA_WIDTH // 8
@@ -48,10 +48,10 @@ async def reset(dut):
     dut.rst_n.value = 0
     # Zero all master inputs
     dut.m_awvalid.value = 0
-    dut.m_wvalid.value  = 0
-    dut.m_bready.value  = 0
+    dut.m_wvalid.value = 0
+    dut.m_bready.value = 0
     dut.m_arvalid.value = 0
-    dut.m_rready.value  = 0
+    dut.m_rready.value = 0
     for _ in range(8):
         await RisingEdge(dut.clk)
     dut.rst_n.value = 1
@@ -59,8 +59,9 @@ async def reset(dut):
         await RisingEdge(dut.clk)
 
 
-async def axi4_write_burst(dut, master, awid, addr, beats, size=4, burst=BURST_INCR, lock=0,
-                           qos=0, cache=0x2, prot=0x2):
+async def axi4_write_burst(
+    dut, master, awid, addr, beats, size=4, burst=BURST_INCR, lock=0, qos=0, cache=0x2, prot=0x2
+):
     """Issue an AXI4 write burst from ``master`` (0 or 1).
 
     ``beats`` is a list of (data, strb) tuples.  Returns the BRESP and BID.
@@ -70,16 +71,16 @@ async def axi4_write_burst(dut, master, awid, addr, beats, size=4, burst=BURST_I
     bit = 1 << master
 
     # Drive AW
-    dut.m_awid[master].value    = awid
-    dut.m_awaddr[master].value  = addr
-    dut.m_awlen[master].value   = len(beats) - 1
-    dut.m_awsize[master].value  = size
+    dut.m_awid[master].value = awid
+    dut.m_awaddr[master].value = addr
+    dut.m_awlen[master].value = len(beats) - 1
+    dut.m_awsize[master].value = size
     dut.m_awburst[master].value = burst
-    dut.m_awlock[master].value  = lock
+    dut.m_awlock[master].value = lock
     dut.m_awcache[master].value = cache
-    dut.m_awprot[master].value  = prot
-    dut.m_awqos[master].value   = qos
-    dut.m_awuser[master].value  = 0
+    dut.m_awprot[master].value = prot
+    dut.m_awqos[master].value = qos
+    dut.m_awuser[master].value = 0
     dut.m_awvalid.value = (int(dut.m_awvalid.value) & ~bit) | bit
     # Wait for the handshake cycle
     for _ in range(512):
@@ -112,25 +113,26 @@ async def axi4_write_burst(dut, master, awid, addr, beats, size=4, burst=BURST_I
         await RisingEdge(dut.clk)
         if int(dut.m_bvalid.value) & bit:
             bresp = int(dut.m_bresp[master].value)
-            bid   = int(dut.m_bid[master].value)
+            bid = int(dut.m_bid[master].value)
             break
     dut.m_bready.value = int(dut.m_bready.value) & ~bit
     return bresp, bid
 
 
-async def axi4_read_burst(dut, master, arid, addr, length, size=4, burst=BURST_INCR, lock=0,
-                          qos=0, cache=0x2, prot=0x2):
+async def axi4_read_burst(
+    dut, master, arid, addr, length, size=4, burst=BURST_INCR, lock=0, qos=0, cache=0x2, prot=0x2
+):
     bit = 1 << master
-    dut.m_arid[master].value    = arid
-    dut.m_araddr[master].value  = addr
-    dut.m_arlen[master].value   = length - 1
-    dut.m_arsize[master].value  = size
+    dut.m_arid[master].value = arid
+    dut.m_araddr[master].value = addr
+    dut.m_arlen[master].value = length - 1
+    dut.m_arsize[master].value = size
     dut.m_arburst[master].value = burst
-    dut.m_arlock[master].value  = lock
+    dut.m_arlock[master].value = lock
     dut.m_arcache[master].value = cache
-    dut.m_arprot[master].value  = prot
-    dut.m_arqos[master].value   = qos
-    dut.m_aruser[master].value  = 0
+    dut.m_arprot[master].value = prot
+    dut.m_arqos[master].value = qos
+    dut.m_aruser[master].value = 0
     dut.m_arvalid.value = (int(dut.m_arvalid.value) & ~bit) | bit
     for _ in range(512):
         await RisingEdge(dut.clk)
@@ -146,7 +148,7 @@ async def axi4_read_burst(dut, master, arid, addr, length, size=4, burst=BURST_I
             data = int(dut.m_rdata[master].value)
             resp = int(dut.m_rresp[master].value)
             last = int(dut.m_rlast[master].value) & bit
-            rid  = int(dut.m_rid[master].value)
+            rid = int(dut.m_rid[master].value)
             beats.append((data, resp, last, rid))
             if last:
                 break
@@ -163,11 +165,15 @@ async def incr_burst_length_sweep(dut):
     for length in (1, 4, 16, 64):
         base = 0x0000_0000 + length * 0x100
         beats = [(0xA5A5_DEAD_0000_0000 + i, full_strb) for i in range(length)]
-        bresp, _ = await axi4_write_burst(dut, 0, 0x5, base, beats, size=int(BYTES_PER_BEAT).bit_length() - 1)
+        bresp, _ = await axi4_write_burst(
+            dut, 0, 0x5, base, beats, size=int(BYTES_PER_BEAT).bit_length() - 1
+        )
         assert bresp == RESP_OKAY, f"INCR len {length} got bresp={bresp}"
-        rd = await axi4_read_burst(dut, 0, 0x5, base, length, size=int(BYTES_PER_BEAT).bit_length() - 1)
+        rd = await axi4_read_burst(
+            dut, 0, 0x5, base, length, size=int(BYTES_PER_BEAT).bit_length() - 1
+        )
         assert len(rd) == length, f"INCR len {length} got {len(rd)} beats"
-        for i, (data, resp, last, rid) in enumerate(rd):
+        for i, (data, resp, _last, rid) in enumerate(rd):
             assert resp == RESP_OKAY
             assert rid == 0x5
             assert (data & 0xFFFFFFFFFFFFFFFF) == (0xA5A5_DEAD_0000_0000 + i) & 0xFFFFFFFFFFFFFFFF
@@ -206,7 +212,7 @@ async def write_strobe_partial_beat_preserves_unwritten_bytes(dut):
     data, resp, _, _ = rd[0]
     assert resp == RESP_OKAY
     # byte 0 must still be 0xAA, byte 1 must be 0xC3
-    assert (data & 0xFF)        == 0xAA, f"byte 0 changed: {hex(data & 0xFF)}"
+    assert (data & 0xFF) == 0xAA, f"byte 0 changed: {hex(data & 0xFF)}"
     assert ((data >> 8) & 0xFF) == 0xC3, f"byte 1 wrong: {hex((data >> 8) & 0xFF)}"
 
 
@@ -217,8 +223,12 @@ async def id_ordering_per_axid(dut):
     await reset(dut)
     size = int(BYTES_PER_BEAT).bit_length() - 1
     full_strb = (1 << BYTES_PER_BEAT) - 1
-    await axi4_write_burst(dut, 0, 0x3, 0x6000, [(0x11_0000 + i, full_strb) for i in range(4)], size=size)
-    await axi4_write_burst(dut, 0, 0x4, 0x7000, [(0x22_0000 + i, full_strb) for i in range(4)], size=size)
+    await axi4_write_burst(
+        dut, 0, 0x3, 0x6000, [(0x11_0000 + i, full_strb) for i in range(4)], size=size
+    )
+    await axi4_write_burst(
+        dut, 0, 0x4, 0x7000, [(0x22_0000 + i, full_strb) for i in range(4)], size=size
+    )
     rd0 = await axi4_read_burst(dut, 0, 0x3, 0x6000, 4, size=size)
     rd1 = await axi4_read_burst(dut, 0, 0x4, 0x7000, 4, size=size)
     for i, (data, _, _, rid) in enumerate(rd0):
@@ -242,7 +252,9 @@ async def exclusive_read_then_write_returns_exokay_or_okay(dut):
     rd = await axi4_read_burst(dut, 0, 0x9, 0x8000, 1, size=size, lock=1)
     assert rd
     # master 0 writes exclusively — interconnect monitor allows
-    bresp, _ = await axi4_write_burst(dut, 0, 0x9, 0x8000, [(0xCAFEBABE, full_strb)], size=size, lock=1)
+    bresp, _ = await axi4_write_burst(
+        dut, 0, 0x9, 0x8000, [(0xCAFEBABE, full_strb)], size=size, lock=1
+    )
     # Note: behavioural slave returns RESP_OKAY for exclusive writes.
     # The interconnect monitor records the reservation; an unrelated
     # AW from master 1 must clear it.

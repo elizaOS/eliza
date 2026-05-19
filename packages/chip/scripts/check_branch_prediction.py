@@ -10,6 +10,7 @@ selection plus tool-versions.
 Refuses to mark ``status=clean`` if any parameter regresses below the
 threshold, or if the supporting RTL/manifest files are missing.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -18,7 +19,7 @@ import json
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -128,7 +129,8 @@ def detect_tool_versions() -> dict[str, str]:
         except FileNotFoundError:
             tools[binary] = "unavailable"
     try:
-        import cocotb  # type: ignore
+        import cocotb
+
         tools["cocotb"] = f"cocotb {cocotb.__version__}"
     except ImportError:
         tools["cocotb"] = "unavailable"
@@ -157,9 +159,7 @@ def evaluate(values: dict[str, int | list[int]]) -> tuple[str, list[str]]:
             continue
         actual = values[name]
         if isinstance(actual, int) and actual < threshold:
-            failures.append(
-                f"{name}={actual} below 2028 minimum threshold {threshold}"
-            )
+            failures.append(f"{name}={actual} below 2028 minimum threshold {threshold}")
     tage_hist = values.get("TAGE_HIST_LEN")
     if not isinstance(tage_hist, list) or len(tage_hist) < 4:
         failures.append("TAGE_HIST_LEN must declare >=4 per-table histories")
@@ -171,8 +171,7 @@ def evaluate(values: dict[str, int | list[int]]) -> tuple[str, list[str]]:
     ittage_entries = values.get("ITTAGE_ENTRIES")
     if not isinstance(ittage_entries, list) or sum(ittage_entries) < 1024:
         failures.append(
-            "ITTAGE_ENTRIES total must be >= 1024 entries to satisfy "
-            "indirect-target storage floor"
+            "ITTAGE_ENTRIES total must be >= 1024 entries to satisfy indirect-target storage floor"
         )
     status = "clean" if not failures else "blocked"
     return status, failures
@@ -185,14 +184,21 @@ def build_evidence(
     tools: dict[str, str],
 ) -> dict:
     serialisable: dict[str, int | list[int]] = {
-        name: values[name] for name in values if name in THRESHOLDS or name in {
-            "TAGE_HIST_LEN", "SC_HIST_LEN", "ITTAGE_ENTRIES", "ITTAGE_HIST_LEN",
+        name: values[name]
+        for name in values
+        if name in THRESHOLDS
+        or name
+        in {
+            "TAGE_HIST_LEN",
+            "SC_HIST_LEN",
+            "ITTAGE_ENTRIES",
+            "ITTAGE_HIST_LEN",
         }
     }
     return {
         "schema": "eliza.bpu_params.v1",
         "status": status,
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_at_utc": datetime.now(UTC).isoformat(),
         "source_revision": git_revision(),
         "tool_versions": tools,
         "thresholds": THRESHOLDS,
@@ -260,8 +266,10 @@ def main() -> int:
     else:
         EVIDENCE_PATH.parent.mkdir(parents=True, exist_ok=True)
         EVIDENCE_PATH.write_text(json.dumps(evidence, indent=2, sort_keys=True) + "\n")
-        print(f"eliza-evidence: status={'PASS' if status == 'clean' else 'BLOCKED'} "
-              f"path={EVIDENCE_PATH.relative_to(ROOT)}")
+        print(
+            f"eliza-evidence: status={'PASS' if status == 'clean' else 'BLOCKED'} "
+            f"path={EVIDENCE_PATH.relative_to(ROOT)}"
+        )
 
     if status != "clean":
         for fail in failures:

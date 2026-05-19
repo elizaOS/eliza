@@ -588,8 +588,32 @@ export function resolveKvCacheType(
 
 const SERVICE_NAME = "localInferenceLoader";
 
-function isAospEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return env.ELIZA_LOCAL_LLAMA?.trim() === "1";
+/**
+ * The FFI loader is enabled when ANY of these signals fires:
+ *
+ *   1. `ELIZA_LOCAL_LLAMA=1` — the canonical AOSP / mobile opt-in. Operators
+ *      use it on Android, on the in-process FFI cuttlefish image, and any
+ *      desktop host where they want to force the FFI path over
+ *      `node-llama-cpp` (debugging, fork-only KV cache types, etc.).
+ *   2. `process.arch === "riscv64"` — `node-llama-cpp` has no riscv64
+ *      prebuild and we can't realistically NAPI-build it on a fresh device,
+ *      so the FFI loader (which dlopens the vendored `libllama.so` + shim
+ *      already cross-compiled for `linux-riscv64` / `android-riscv64`) is
+ *      the only viable in-process path. Auto-firing the loader here keeps
+ *      the riscv64 boot path zero-config.
+ *
+ * Override knobs: `ELIZA_DISABLE_FFI_LLAMA=1` forces a hard opt-out (use
+ * when a riscv64 host wants to skip the FFI path and route inference to
+ * Cloud instead).
+ */
+export function isAospEnabled(
+  env: NodeJS.ProcessEnv = process.env,
+  arch: NodeJS.Architecture = process.arch,
+): boolean {
+  if (env.ELIZA_DISABLE_FFI_LLAMA?.trim() === "1") return false;
+  if (env.ELIZA_LOCAL_LLAMA?.trim() === "1") return true;
+  if (arch === "riscv64") return true;
+  return false;
 }
 
 /**
@@ -794,7 +818,13 @@ export function resolveSpeculativeShimPath(
 
 function resolveAbiDir(arch: NodeJS.Architecture, cwd: string): string {
   const abiDir =
-    arch === "arm64" ? "arm64-v8a" : arch === "x64" ? "x86_64" : null;
+    arch === "arm64"
+      ? "arm64-v8a"
+      : arch === "x64"
+        ? "x86_64"
+        : arch === "riscv64"
+          ? "riscv64"
+          : null;
   if (abiDir === null) {
     throw new Error(
       `[aosp-llama] Unsupported process.arch for AOSP build: ${arch}`,

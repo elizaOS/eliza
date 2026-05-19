@@ -135,6 +135,11 @@ SOURCE_SET = (
         "ai_eda_runner",
     ),
     (
+        "cpu_microarchitecture_targets_runner",
+        "scripts/ai_eda/capture_cpu_microarchitecture_targets.py",
+        "ai_eda_runner",
+    ),
+    (
         "external_source_probe_runner",
         "scripts/ai_eda/probe_external_ai_eda_sources.py",
         "ai_eda_runner",
@@ -345,6 +350,17 @@ SMOKE_QUERIES = (
             "make pd-contract-check",
             "make manufacturing-artifacts-check",
             "make real-world-gates-check",
+        ],
+    },
+    {
+        "id": "cpu_microarchitecture_targets",
+        "query": "Which local sources define branch predictor, cache, prefetcher, and CPU microarchitecture AI target capture?",
+        "required_source_ids": ["cpu_microarchitecture_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_cpu_microarchitecture_targets.py --run-id validation",
+            "make branch-prediction-check",
+            "make mpki-eval",
+            "python3 scripts/check_cache_hierarchy.py",
         ],
     },
 )

@@ -483,6 +483,44 @@ def main() -> int:
         if token not in lowering_text:
             errors.append(f"attention_av lowering smoke missing token {token!r}")
 
+    attention_lowering = contract.get("attention_lowering_smoke", {})
+    if attention_lowering.get("runtime_api") != "lower_attention_smoke":
+        errors.append("attention lowering smoke must identify lower_attention_smoke runtime API")
+    if (
+        attention_lowering.get("claim_boundary")
+        != "multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend"
+    ):
+        errors.append("attention lowering smoke claim boundary must remain composed-smoke-only")
+    if set(attention_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("attention lowering smoke must be limited to int8")
+    attention_lowering_text = str(attention_lowering.get("lowering", ""))
+    for required in (
+        "lower_attention_qk_smoke",
+        "lower_attention_softmax_smoke",
+        "lower_attention_av_smoke",
+        "host QK-score requantization",
+        "host Q0.8 attention-weight requantization",
+    ):
+        if required not in attention_lowering_text:
+            errors.append(f"attention contract missing {required!r}")
+    for token in (
+        "SUPPORTED_ATTENTION_SCHEMA",
+        "lower_attention_smoke",
+        "_zero_attention_logits",
+        "computes_qk_scores",
+        "computes_attention_softmax",
+        "requires_prequantized_attention",
+        "host_requantizes_qk_scores",
+        "host_requantizes_attention_weights",
+        "host_requantizes_context",
+        "eliza.attention",
+        "stablehlo.attention",
+        "tflite.attention",
+        "multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"attention lowering smoke missing token {token!r}")
+
     kv_cache_lowering = contract.get("kv_cache_update_lowering_smoke", {})
     if kv_cache_lowering.get("runtime_api") != "lower_kv_cache_update_smoke":
         errors.append("kv_cache_update lowering smoke must identify lower_kv_cache_update_smoke")
@@ -510,6 +548,39 @@ def main() -> int:
     ):
         if token not in lowering_text:
             errors.append(f"kv_cache_update lowering smoke missing token {token!r}")
+
+    decode_attention_lowering = contract.get("decode_attention_lowering_smoke", {})
+    if decode_attention_lowering.get("runtime_api") != "lower_decode_attention_smoke":
+        errors.append("decode_attention lowering smoke must identify lower_decode_attention_smoke")
+    if (
+        decode_attention_lowering.get("claim_boundary")
+        != "decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend"
+    ):
+        errors.append("decode_attention claim boundary must remain decode-smoke-only")
+    if set(decode_attention_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("decode_attention lowering smoke must be limited to int8")
+    decode_attention_text = str(decode_attention_lowering.get("lowering", ""))
+    for required in (
+        "lower_kv_cache_update_smoke",
+        "host cache-view materialization",
+        "lower_attention_smoke",
+    ):
+        if required not in decode_attention_text:
+            errors.append(f"decode_attention contract missing {required!r}")
+    for token in (
+        "SUPPORTED_DECODE_ATTENTION_SCHEMA",
+        "lower_decode_attention_smoke",
+        "_materialize_attention_cache_view",
+        "updates_kv_cache",
+        "computes_attention_over_cache",
+        "host_materializes_cache_view",
+        "eliza.decode_attention",
+        "stablehlo.decode_attention",
+        "tflite.decode_attention",
+        "decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"decode_attention lowering smoke missing token {token!r}")
 
     mlp_lowering = contract.get("mlp_lowering_smoke", {})
     if mlp_lowering.get("runtime_api") != "lower_mlp_smoke":
@@ -821,9 +892,11 @@ def main() -> int:
         "lower_int2_matmul_smoke",
         "lower_fp8_matmul_smoke",
         "lower_conv2d_smoke",
+        "lower_attention_smoke",
         "lower_attention_qk_smoke",
         "lower_attention_av_smoke",
         "lower_kv_cache_update_smoke",
+        "lower_decode_attention_smoke",
         "lower_mlp_smoke",
         "lower_swiglu_smoke",
         "lower_bias_add_smoke",
@@ -838,10 +911,12 @@ def main() -> int:
         "test_runtime_int2_matmul_smoke_dispatches_dot16_chunks",
         "test_runtime_fp8_matmul_smoke_dispatches_dot4_chunks",
         "test_runtime_conv2d_smoke_lowering_dispatches_im2col_tiles",
+        "test_runtime_attention_smoke_dispatches_qk_softmax_av",
         "test_runtime_attention_qk_smoke_lowering_dispatches_per_head_gemm",
         "test_runtime_attention_softmax_smoke_dispatches_scalar_exp2_path",
         "test_runtime_attention_av_smoke_lowering_dispatches_per_head_gemm",
         "test_runtime_kv_cache_update_smoke_dispatches_scalar_copies",
+        "test_runtime_decode_attention_smoke_dispatches_kv_append_and_attention",
         "test_runtime_transformer_mlp_smoke_dispatches_gemm_vrelu_gemm",
         "test_runtime_swiglu_smoke_dispatches_gemm_scalar_gate_gemm",
         "test_runtime_bias_add_smoke_dispatches_broadcast_scalar_adds",

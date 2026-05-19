@@ -7,7 +7,7 @@
     "spec2017_mpki_claim": false,
     "two_taken_per_cycle_claim": false
   },
-  "generated_at_utc": "2026-05-19T09:27:26.227331+00:00",
+  "generated_at_utc": "2026-05-19T09:44:57.674662+00:00",
   "parameters": {
     "BIM_ENTRIES": 16384,
     "FETCH_BLOCK_BYTES": 32,
@@ -54,7 +54,7 @@
     "UFTB_ENTRIES": 512
   },
   "schema": "eliza.bpu_params.v1",
-  "source_revision": "a893a3e29d64666ed46ae1687cbb4a10d4fbac8e",
+  "source_revision": "90d82f79069b2dc314e60af83ffbe29036c77559",
   "sources": {
     "contract": {
       "path": "docs/arch/branch-prediction.md",
@@ -70,7 +70,7 @@
     },
     "top": {
       "path": "rtl/cpu/bpu/bpu_top.sv",
-      "sha256": "09c2e7113e3412ad415b5f8cfc849feec9f1cb97d1c9ad51b0f0173466b69ea9"
+      "sha256": "5bae202824986c0ac56d679ab977fb3c40b483eb7adc84fca63a5a3a1b0439c8"
     }
   },
   "status": "clean",

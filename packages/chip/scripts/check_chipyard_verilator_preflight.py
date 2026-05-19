@@ -391,12 +391,8 @@ def main() -> int:
                 }
                 present_excluded = sorted(excluded_members & members)
                 missing_required = sorted(required_members - members)
-                checks["archive:RISCV/lib/libriscv.a/excluded_members_present"] = (
-                    present_excluded
-                )
-                checks["archive:RISCV/lib/libriscv.a/missing_required_members"] = (
-                    missing_required
-                )
+                checks["archive:RISCV/lib/libriscv.a/excluded_members_present"] = present_excluded
+                checks["archive:RISCV/lib/libriscv.a/missing_required_members"] = missing_required
                 if present_excluded:
                     blockers.append(
                         "Spike static library contains standalone simulator objects "

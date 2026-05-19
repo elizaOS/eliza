@@ -9,17 +9,17 @@ Outputs are tagged ``simulator_only`` and cannot satisfy phone-class
 real-target bandwidth claims; see
 ``docs/evidence/memory/uma-dram-evidence-gate.yaml``.
 """
+
 from __future__ import annotations
 
 import importlib
 import json
 import shutil
-import subprocess
 import sys
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[3]
 
@@ -53,7 +53,9 @@ class DramSimResult:
     measured_read_bandwidth_gbps: float = 0.0
     measured_write_bandwidth_gbps: float = 0.0
     measured_p95_latency_ns: float = 0.0
-    captured_utc: str = field(default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+    captured_utc: str = field(
+        default_factory=lambda: time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    )
     raw_log_path: str = ""
 
     def to_dict(self) -> dict:
@@ -100,8 +102,9 @@ def _module_present(name: str) -> bool:
         return False
 
 
-def run_dram_sweep(config: DramConfig, workloads: Iterable[str],
-                   output_dir: Path) -> list[DramSimResult]:
+def run_dram_sweep(
+    config: DramConfig, workloads: Iterable[str], output_dir: Path
+) -> list[DramSimResult]:
     """Run the simulator across a list of workload names and return
     one DramSimResult per workload.  When no backend is installed, the
     function returns an empty list and writes a blocked-status JSON so
@@ -129,16 +132,16 @@ def run_dram_sweep(config: DramConfig, workloads: Iterable[str],
             backend=backend,
             config=config,
             workload=workload,
-            requested_address_range_bytes=config.capacity_gib * 1024 ** 3,
+            requested_address_range_bytes=config.capacity_gib * 1024**3,
             raw_log_path=str(output_dir / f"dram_sim_{backend}_{workload}.log"),
         )
         # Backend-specific execution would go here.  The wrapper keeps
         # the surface minimal and writes a deterministic placeholder so
         # the parser is exercised even when the simulator is absent at
         # the call site.
-        result.measured_read_bandwidth_gbps  = config.peak_bandwidth_gbps * 0.82
+        result.measured_read_bandwidth_gbps = config.peak_bandwidth_gbps * 0.82
         result.measured_write_bandwidth_gbps = config.peak_bandwidth_gbps * 0.74
-        result.measured_p95_latency_ns       = 110.0
+        result.measured_p95_latency_ns = 110.0
         out_path = output_dir / f"dram_sim_{backend}_{workload}.json"
         out_path.write_text(json.dumps(result.to_dict(), indent=2))
         results.append(result)

@@ -11,6 +11,7 @@ Validates:
 Writes docs/evidence/process/die-area-budget-check.json so downstream gates
 can consume the result.
 """
+
 from __future__ import annotations
 
 import json
@@ -147,9 +148,13 @@ def main() -> int:
         return 1
 
     if budget.get("status") != "envelope_target_subject_to_n2p_or_a14_density_scaling":
-        errors.append("budget.status must remain envelope_target_subject_to_n2p_or_a14_density_scaling")
+        errors.append(
+            "budget.status must remain envelope_target_subject_to_n2p_or_a14_density_scaling"
+        )
     if cal.get("status") != "published_die_shot_calibration_used_as_envelope_input":
-        errors.append("calibration.status must remain published_die_shot_calibration_used_as_envelope_input")
+        errors.append(
+            "calibration.status must remain published_die_shot_calibration_used_as_envelope_input"
+        )
 
     envelope = check_envelope(budget, errors)
     sub_budgets = check_sub_budgets(budget, errors)

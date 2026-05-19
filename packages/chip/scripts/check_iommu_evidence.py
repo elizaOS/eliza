@@ -4,8 +4,9 @@
 Validates docs/evidence/memory/iommu-evidence-gate.yaml together with
 the RTL implementation under rtl/iommu/, the cocotb tests under
 verify/cocotb/iommu/, and the pinned reference-model manifest under
-verify/external/riscv-iommu/manifest.yaml.
+verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml.
 """
+
 from __future__ import annotations
 
 import sys
@@ -15,7 +16,7 @@ import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 GATE = ROOT / "docs/evidence/memory/iommu-evidence-gate.yaml"
-REFMODEL_MANIFEST = ROOT / "verify/external/riscv-iommu/manifest.yaml"
+REFMODEL_MANIFEST = ROOT / "verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml"
 
 REQUIRED_RTL = [
     "rtl/iommu/e1_riscv_iommu.sv",
@@ -75,10 +76,12 @@ def main() -> int:
         return 1
 
     data = yaml.safe_load(GATE.read_text())
-    require(data.get("schema") == "eliza.iommu_evidence_gate.v1",
-            "gate schema drifted", errors)
-    require(data.get("status") == "blocked_until_evidence",
-            "gate must remain blocked_until_evidence", errors)
+    require(data.get("schema") == "eliza.iommu_evidence_gate.v1", "gate schema drifted", errors)
+    require(
+        data.get("status") == "blocked_until_evidence",
+        "gate must remain blocked_until_evidence",
+        errors,
+    )
 
     spec = data.get("specification") or {}
     require(spec.get("name") == "RISC-V IOMMU", "spec name drifted", errors)
@@ -97,12 +100,10 @@ def main() -> int:
     tests = data.get("required_tests") or []
     seen = {item.get("id") for item in tests if isinstance(item, dict)}
     missing = sorted(REQUIRED_TESTS - seen)
-    require(not missing,
-            "required_tests missing ids: " + ", ".join(missing), errors)
+    require(not missing, "required_tests missing ids: " + ", ".join(missing), errors)
 
     test_file = ROOT / "verify/cocotb/iommu/test_riscv_iommu.py"
-    require(test_file.is_file(),
-            "verify/cocotb/iommu/test_riscv_iommu.py missing", errors)
+    require(test_file.is_file(), "verify/cocotb/iommu/test_riscv_iommu.py missing", errors)
     if test_file.is_file():
         text = test_file.read_text()
         for tid in REQUIRED_TESTS:
@@ -111,27 +112,36 @@ def main() -> int:
     artifacts = data.get("required_artifacts") or []
     for art in artifacts:
         require(art in REQUIRED_ARTIFACTS, f"unexpected artifact {art}", errors)
-        require(not (ROOT / art).exists(),
-                f"gate blocked but artifact exists: {art}", errors)
+        require(not (ROOT / art).exists(), f"gate blocked but artifact exists: {art}", errors)
     schemas = data.get("required_artifact_schemas") or {}
     for art, schema in REQUIRED_ARTIFACTS.items():
-        require(schemas.get(art) == schema,
-                f"artifact schema for {art} drifted", errors)
+        require(schemas.get(art) == schema, f"artifact schema for {art} drifted", errors)
 
     refmodel = data.get("reference_model") or {}
-    require(refmodel.get("manifest") == "verify/external/riscv-iommu/manifest.yaml",
-            "reference_model.manifest path drifted", errors)
-    require(REFMODEL_MANIFEST.is_file(),
-            "reference model manifest missing", errors)
+    require(
+        refmodel.get("manifest") == "verify/cocotb/iommu/refmodel/riscv-iommu.manifest.yaml",
+        "reference_model.manifest path drifted",
+        errors,
+    )
+    require(REFMODEL_MANIFEST.is_file(), "reference model manifest missing", errors)
     if REFMODEL_MANIFEST.is_file():
         mdata = yaml.safe_load(REFMODEL_MANIFEST.read_text())
-        require(mdata.get("schema") == "eliza.external_dependency_manifest.v1",
-                "manifest schema drifted", errors)
+        require(
+            mdata.get("schema") == "eliza.external_dependency_manifest.v1",
+            "manifest schema drifted",
+            errors,
+        )
         pinned = (mdata.get("pinned_revision") or {}).get("commit_sha")
-        require(isinstance(pinned, str) and len(pinned) >= 7,
-                "reference model commit_sha is not pinned", errors)
-        require(mdata.get("dependency", {}).get("spec_version") == "v1.0.1",
-                "reference manifest must pin spec v1.0.1", errors)
+        require(
+            isinstance(pinned, str) and len(pinned) >= 7,
+            "reference model commit_sha is not pinned",
+            errors,
+        )
+        require(
+            mdata.get("dependency", {}).get("spec_version") == "v1.0.1",
+            "reference manifest must pin spec v1.0.1",
+            errors,
+        )
 
     if errors:
         print("IOMMU evidence gate failed:")

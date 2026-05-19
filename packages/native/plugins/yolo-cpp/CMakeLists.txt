@@ -19,6 +19,12 @@ include_directories(include src)
 # yolo_detect's full forward pass is staged — it returns -ENOSYS today;
 # see yolo_runtime.c's TU header for the honest rationale and the
 # Phase 3 plan (ggml dispatch or im2col + SIMD).
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# When Phase 3 lands im2col + SIMD, mirror the qjl-cpu pattern (per-arch
+# TUs gated on CMAKE_SYSTEM_PROCESSOR + runtime dispatch).
 set(YOLO_SRCS
     src/yolo_classes.c
     src/yolo_nms.c

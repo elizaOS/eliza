@@ -132,6 +132,13 @@ DFM_YIELD_LITHOGRAPHY_TARGETS_BUILD = ROOT / "build/ai_eda/dfm_yield_lithography
 DFM_YIELD_LITHOGRAPHY_TARGETS_CLAIM_BOUNDARY = (
     "dfm_yield_lithography_target_capture_only_no_mask_yield_or_release_claim"
 )
+CPU_MICROARCHITECTURE_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_cpu_microarchitecture_targets.py"
+)
+CPU_MICROARCHITECTURE_TARGETS_BUILD = ROOT / "build/ai_eda/cpu_microarchitecture_targets"
+CPU_MICROARCHITECTURE_TARGETS_CLAIM_BOUNDARY = (
+    "cpu_microarchitecture_target_capture_only_no_rtl_perf_or_product_claim"
+)
 
 REQUIRED_SOURCES = {
     "agentic-eda-survey-2512-23189v2",
@@ -155,6 +162,15 @@ REQUIRED_SOURCES = {
     "diffopc",
     "radai-wm811k-wafer-defect-model",
     "pegasus-lpa",
+    "agentic-architect",
+    "perfvec",
+    "concorde-cpu-performance-model",
+    "champsim",
+    "branchnet",
+    "llbp",
+    "pythia-prefetcher",
+    "mockingjay-cache-replacement",
+    "drishti-cache-replacement",
     "google-circuit-training",
     "autodmp",
     "orassistant",
@@ -288,6 +304,7 @@ REQUIRED_WORK_ITEMS = {
     "p1-post-silicon-validation-target-capture",
     "p1-circuit-foundation-model-target-capture",
     "p1-dfm-yield-lithography-target-capture",
+    "p1-cpu-microarchitecture-target-capture",
     "p2-rtl-model-evaluation-harness",
     "p2-e1-pd-predictor-dataset",
     "p2-dft-atpg-watch",
@@ -452,6 +469,7 @@ def check_readiness(source_ids: set[str], errors: list[str]) -> None:
         "physical_design_prediction",
         "circuit_foundation_models",
         "dfm_yield_lithography",
+        "cpu_microarchitecture_ai",
         "placement_optimization",
         "npu_architecture_dse",
         "software_bsp_and_firmware",
@@ -1555,7 +1573,9 @@ def check_board_package_fpga_targets(source_ids: set[str], errors: list[str]) ->
         fail(errors, f"missing {BOARD_PACKAGE_FPGA_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not BOARD_PACKAGE_FPGA_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in BOARD_PACKAGE_FPGA_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(
+        path for path in BOARD_PACKAGE_FPGA_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1628,7 +1648,9 @@ def check_low_power_intent_targets(source_ids: set[str], errors: list[str]) -> N
         fail(errors, f"missing {LOW_POWER_INTENT_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not LOW_POWER_INTENT_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in LOW_POWER_INTENT_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(
+        path for path in LOW_POWER_INTENT_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1844,7 +1866,9 @@ def check_circuit_foundation_model_targets(source_ids: set[str], errors: list[st
         fail(errors, f"missing {CIRCUIT_FOUNDATION_TARGETS_SCRIPT.relative_to(ROOT)}")
     if not CIRCUIT_FOUNDATION_TARGETS_BUILD.is_dir():
         return
-    for run_dir in sorted(path for path in CIRCUIT_FOUNDATION_TARGETS_BUILD.iterdir() if path.is_dir()):
+    for run_dir in sorted(
+        path for path in CIRCUIT_FOUNDATION_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
         report = load_json(run_dir / "targets_report.json", errors)
         label = str(run_dir.relative_to(ROOT))
         if not isinstance(report, dict):
@@ -1994,6 +2018,90 @@ def check_dfm_yield_lithography_targets(source_ids: set[str], errors: list[str])
                 fail(errors, f"{label}: missing follow-up gate {required_gate}")
 
 
+def check_cpu_microarchitecture_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not CPU_MICROARCHITECTURE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {CPU_MICROARCHITECTURE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not CPU_MICROARCHITECTURE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in CPU_MICROARCHITECTURE_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.cpu_microarchitecture_targets.v1":
+            fail(errors, f"{label}: unexpected CPU microarchitecture targets schema")
+        if report.get("claim_boundary") != CPU_MICROARCHITECTURE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe CPU microarchitecture claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_CPU_MICROARCHITECTURE_EXECUTION":
+            fail(errors, f"{label}: CPU microarchitecture capture must not execute tools")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing CPU microarchitecture target policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_microarchitecture") is not False
+            or policy.get("changes_cache_policy") is not False
+            or policy.get("changes_branch_predictor") is not False
+            or policy.get("changes_prefetcher") is not False
+            or policy.get("generates_rtl") is not False
+            or policy.get("runs_simulator") is not False
+            or policy.get("runs_ml_model") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("downloads_external_traces") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("imports_benchmark_traces") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("ipc_claim_allowed") is not False
+            or policy.get("mpki_claim_allowed") is not False
+            or policy.get("area_power_claim_allowed") is not False
+            or policy.get("product_performance_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: CPU microarchitecture target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: CPU microarchitecture target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale CPU microarchitecture hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make branch-prediction-check",
+            "make mpki-eval",
+            "make cocotb-bpu",
+            "make formal-bpu",
+            "python3 scripts/check_cache_hierarchy.py",
+            "python3 scripts/champsim_sweep.py",
+            "make memory-interconnect-contract-check",
+            "make memory-uma-claim-gate",
+            "make benchmark-cpu-ap-sim-metrics",
+            "make benchmark-cpu-ap-sota-sim-metrics",
+            "make cpu-ap-evidence-check",
+            "make no-hardware-action-check",
+            "make rtl-check",
+            "make synth",
+            "make formal",
+            "make docs-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
 def main() -> int:
     errors: list[str] = []
     source_ids = check_inventory(errors)
@@ -2026,6 +2134,7 @@ def main() -> int:
     check_post_silicon_validation_targets(source_ids, errors)
     check_circuit_foundation_model_targets(source_ids, errors)
     check_dfm_yield_lithography_targets(source_ids, errors)
+    check_cpu_microarchitecture_targets(source_ids, errors)
     check_openroad_autotune(errors)
     check_rtl_eval(errors)
     check_pd_predictor(errors)

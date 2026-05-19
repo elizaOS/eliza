@@ -3,9 +3,11 @@ from e1_npu_lowering import (
     NpuLoweringError,
     lower_attention_av_smoke,
     lower_attention_qk_smoke,
+    lower_attention_smoke,
     lower_attention_softmax_smoke,
     lower_bias_add_smoke,
     lower_conv2d_smoke,
+    lower_decode_attention_smoke,
     lower_fp8_matmul_smoke,
     lower_int2_matmul_smoke,
     lower_kv_cache_update_smoke,
@@ -880,6 +882,43 @@ def test_attention_av_smoke_split_k_uses_gemm_s4_tiles_without_cpu_fallback():
     assert mmio.commands[-2:] == [runtime.OP_GEMM_S4] * 2
 
 
+def test_attention_smoke_composes_multihead_qk_softmax_av_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.attention",
+        "precision": "int8",
+        "query": [[[[1, 2], [3, 4]], [[-1, 2], [2, -1]]]],
+        "key": [[[[1, 0], [0, 1]], [[1, 1], [-1, 1]]]],
+        "value": [[[[5, 6], [7, 8]], [[-3, 4], [6, -5]]]],
+        "qk_score_shift": 0,
+        "attention_weight_shift": 1,
+        "context_shift": 4,
+    }
+
+    lowered = lower_attention_smoke(runtime, graph)
+
+    assert lowered.qk_scores.scores == [[[[1, 2], [3, 4]], [[1, 3], [1, -3]]]]
+    assert lowered.qk_logits_s8 == lowered.qk_scores.scores
+    assert lowered.attention_softmax.weights_q0_8 == [
+        [[[85, 171], [85, 171]], [[51, 205], [241, 15]]]
+    ]
+    assert lowered.attention_weights_s8 == [[[[43, 86], [43, 86]], [[26, 103], [121, 8]]]]
+    assert lowered.attention_av.context == [[[[817, 946], [817, 946]], [[540, -411], [-315, 444]]]]
+    assert lowered.context_requantized == [[[[51, 59], [51, 59]], [[33, -26], [-20, 27]]]]
+    assert lowered.head_count == 2
+    assert lowered.total_tile_count == 4
+    assert lowered.computes_qk_scores is True
+    assert lowered.computes_attention_softmax is True
+    assert lowered.requires_prequantized_attention is False
+    assert lowered.host_requantizes_attention_weights is True
+    assert lowered.cpu_fallback is False
+    assert "multihead_attention_qk_exp2_softmax_av_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 4
+    assert runtime.OP_EXP2_NEG_Q0_8 in mmio.commands
+
+
 def test_kv_cache_update_smoke_appends_key_value_tokens_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -909,6 +948,42 @@ def test_kv_cache_update_smoke_appends_key_value_tokens_without_cpu_fallback():
     assert lowered.cpu_fallback is False
     assert "kv_cache_update_s8_scalar_append_smoke_only" in lowered.claim_boundary
     assert mmio.commands[-8:] == [runtime.OP_ADD] * 8
+
+
+def test_decode_attention_smoke_appends_kv_and_attends_over_cache_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_decode_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decode_attention",
+        "precision": "int8",
+        "query": [[[[1, 1]], [[2, -1]]]],
+        "key_cache": [[[[1, 0], [0, 1], [0, 0], [0, 0]], [[1, 1], [0, 0], [0, 0], [0, 0]]]],
+        "value_cache": [[[[5, 6], [7, 8], [0, 0], [0, 0]], [[-3, 4], [0, 0], [0, 0], [0, 0]]]],
+        "new_key": [[[[2, 1]], [[-1, 1]]]],
+        "new_value": [[[[9, 10]], [[6, -5]]]],
+        "cache_lengths": [[2, 1]],
+        "qk_score_shift": 0,
+        "attention_weight_shift": 1,
+        "context_shift": 4,
+    }
+
+    lowered = lower_decode_attention_smoke(runtime, graph)
+
+    assert lowered.updated_cache_lengths == [[3, 2]]
+    assert lowered.max_attention_cache_length == 3
+    assert lowered.attention_mask == [[[[True, True, True]], [[True, True, False]]]]
+    assert lowered.attention.qk_scores.scores == [[[[1, 1, 3]], [[1, -3, 0]]]]
+    assert lowered.attention.attention_softmax.weights_q0_8 == [[[[43, 43, 171]], [[241, 15, 0]]]]
+    assert lowered.attention.attention_weights_s8 == [[[[22, 22, 86]], [[121, 8, 0]]]]
+    assert lowered.attention.context_requantized == [[[[64, 73]], [[-20, 27]]]]
+    assert lowered.updates_kv_cache is True
+    assert lowered.computes_attention_over_cache is True
+    assert lowered.host_materializes_cache_view is True
+    assert lowered.cpu_fallback is False
+    assert "decode_attention_kv_append_qk_softmax_av_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 4
+    assert runtime.OP_EXP2_NEG_Q0_8 in mmio.commands
 
 
 def test_transformer_mlp_smoke_uses_gemm_vrelu_gemm_without_cpu_fallback():
@@ -1626,6 +1701,34 @@ def test_attention_softmax_smoke_lowering_rejects_unsupported_graphs_before_touc
     assert mmio.writes == []
 
 
+def test_attention_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.attention",
+        "precision": "int8",
+        "query": [[[[1, 2]]]],
+        "key": [[[[1, 2]]]],
+        "value": [[[[3, 4]]]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_attention_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported attention source op"):
+        lower_attention_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
+    with pytest.raises(NpuLoweringError, match="unsupported attention precision"):
+        lower_attention_smoke(runtime, {**base, "precision": "int4"})
+    with pytest.raises(NpuLoweringError, match="head_dim mismatch"):
+        lower_attention_smoke(runtime, {**base, "key": [[[[1]]]]})
+    with pytest.raises(NpuLoweringError, match="attention_softmax mask key-token mismatch"):
+        lower_attention_smoke(runtime, {**base, "mask": [[[[True, False]]]]})
+    with pytest.raises(NpuLoweringError, match="attention shifts must be in 0..31"):
+        lower_attention_smoke(runtime, {**base, "context_shift": 32})
+
+    assert mmio.writes == []
+
+
 def test_kv_cache_update_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
     runtime, mmio = make_runtime()
     base = {
@@ -1763,6 +1866,37 @@ def test_bias_add_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio
         lower_bias_add_smoke(runtime, {**base, "bias": [1, 2]})
     with pytest.raises(NpuLoweringError, match="outside range"):
         lower_bias_add_smoke(runtime, {**base, "bias": [128]})
+
+    assert mmio.writes == []
+
+
+def test_decode_attention_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_decode_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decode_attention",
+        "precision": "int8",
+        "query": [[[[1]]]],
+        "key_cache": [[[[0], [0]]]],
+        "value_cache": [[[[0], [0]]]],
+        "new_key": [[[[1]]]],
+        "new_value": [[[[1]]]],
+        "cache_lengths": [[1]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_decode_attention_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported decode_attention source op"):
+        lower_decode_attention_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
+    with pytest.raises(NpuLoweringError, match="unsupported decode_attention precision"):
+        lower_decode_attention_smoke(runtime, {**base, "precision": "int4"})
+    with pytest.raises(NpuLoweringError, match="head_dim mismatch"):
+        lower_decode_attention_smoke(runtime, {**base, "key_cache": [[[[0, 1], [0, 1]]]]})
+    with pytest.raises(NpuLoweringError, match="append exceeds cache capacity"):
+        lower_decode_attention_smoke(runtime, {**base, "cache_lengths": [[2]]})
+    with pytest.raises(NpuLoweringError, match="decode_attention shifts must be in 0..31"):
+        lower_decode_attention_smoke(runtime, {**base, "context_shift": 32})
 
     assert mmio.writes == []
 

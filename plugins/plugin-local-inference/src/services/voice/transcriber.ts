@@ -37,6 +37,7 @@ import type {
 	ElizaInferenceFfi,
 } from "./ffi-bindings";
 import {
+	isOpenVinoSupportedArch,
 	makeOpenVinoWhisperDecoder,
 	resolveOpenVinoWhisperRuntime,
 } from "./openvino-whisper-asr";
@@ -900,6 +901,11 @@ export function createStreamingTranscriber(
 	if (prefer === "openvino-whisper") {
 		const ov = tryOpenVinoWhisper();
 		if (ov) return ov;
+		if (!isOpenVinoSupportedArch()) {
+			throw new AsrUnavailableError(
+				`[asr] OpenVINO whisper ASR was requested but the OpenVINO Runtime does not ship for process.arch=${process.arch}. OpenVINO 2026.1 only publishes wheels for x86_64 (manylinux + win), aarch64 (manylinux), and arm64 (macOS). On riscv64 the supported on-device ASR path is the fused libelizainference build (eliza_inference_asr_stream_* / eliza_inference_asr_transcribe). Set ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO=1 only if you have a hand-built openvino_genai available for this arch.`,
+			);
+		}
 		throw new AsrUnavailableError(
 			"[asr] OpenVINO whisper ASR was requested but is not available (no openvino python venv, no whisper IR model, or worker script missing — set ELIZA_OPENVINO_PYTHON / ELIZA_OPENVINO_WHISPER_MODEL / ELIZA_OPENVINO_WHISPER_WORKER)",
 		);
@@ -915,7 +921,10 @@ export function createStreamingTranscriber(
 		if (ov) return ov;
 	}
 
+	const archHint = isOpenVinoSupportedArch()
+		? ""
+		: ` (OpenVINO is unsupported on process.arch=${process.arch}; the fused build is the only on-device ASR path here — set ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO=1 only if openvino_genai is hand-built for this arch and the whisper IR + venv are present)`;
 	throw new AsrUnavailableError(
-		"[asr] no fused ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* or eliza_inference_asr_transcribe). The whisper.cpp interim fallback has been removed; the local-inference path requires the fused omnivoice build.",
+		`[asr] no fused ASR decoder available — load the fused libelizainference build with a bundled ASR model (eliza_inference_asr_stream_* or eliza_inference_asr_transcribe). The whisper.cpp interim fallback has been removed; the local-inference path requires the fused omnivoice build.${archHint}`,
 	);
 }

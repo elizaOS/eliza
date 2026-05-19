@@ -3,11 +3,11 @@
 Verifies the e1_bdi_compress + e1_bdi_decompress modules form an identity
 (roundtrip) and that the classifier picks the smallest valid form.
 """
+
 from __future__ import annotations
 
 import cocotb
 from cocotb.triggers import Timer
-
 
 LINE_BITS = 8 * 64
 

@@ -8,20 +8,20 @@ synthetic generators versus real traces. The synthetic generators carry an
 explicit ``trace_class`` field so any downstream report cannot accidentally
 treat them as silicon evidence.
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sys
-from datetime import datetime, timezone
+from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterable
 
 ROOT = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(ROOT))
 
-from benchmarks.cpu.branch.bpu_model import BPUSimulator, DEFAULT_GEOMETRY  # noqa: E402
+from benchmarks.cpu.branch.bpu_model import DEFAULT_GEOMETRY, BPUSimulator  # noqa: E402
 from benchmarks.cpu.branch.traces import (  # noqa: E402
     SYNTHETIC_GENERATORS,
     read_cbp5,
@@ -134,7 +134,7 @@ def main() -> int:
 
     evidence = {
         "schema": "eliza.bpu_mpki_eval.v1",
-        "generated_at_utc": datetime.now(timezone.utc).isoformat(),
+        "generated_at_utc": datetime.now(UTC).isoformat(),
         "geometry": {
             key: list(value) if isinstance(value, tuple) else value
             for key, value in DEFAULT_GEOMETRY.items()

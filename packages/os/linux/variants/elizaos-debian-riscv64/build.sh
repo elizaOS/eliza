@@ -41,9 +41,10 @@ if ! command -v lb >/dev/null 2>&1; then
 fi
 
 lb config \
+    --distribution trixie \
     --architecture "${ARCH}" \
     --linux-flavours "${KERNEL_FLAVOUR}" \
-    --bootloader "${BOOTLOADER}"
+    --bootloaders "${BOOTLOADER}"
 
 # ── Step 2: lb build ─────────────────────────────────────────────────
 # STATUS_LATER: Wave 4. We do not yet have the chroot package list,

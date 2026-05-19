@@ -11,6 +11,26 @@
  * `xe` driver triggers iGPU GuC scheduler resets.
  *
  * This is the ASR half of the RFC at elizaOS/eliza#7633.
+ *
+ * ## Architecture coverage
+ *
+ * OpenVINO Runtime ships official wheels for `win_amd64`,
+ * `manylinux_2_28_x86_64`, `manylinux_2_35_aarch64`, and
+ * `macosx_11_0_arm64` only. There is no riscv64 wheel as of OpenVINO
+ * 2026.1 (verified 2026-05). Cross-compiling OpenVINO for riscv64 from
+ * source is documented but unresolved upstream (oneDNN/FlatBuffers
+ * submodule issues — openvinotoolkit/openvino#23784, March 2024, still
+ * open).
+ *
+ * On riscv64 we therefore refuse to resolve a runtime by default — the
+ * Python worker would just fail `import openvino_genai` after a
+ * subprocess spin-up cost. Operators with a hand-built openvino_genai on
+ * their riscv64 board can override by setting
+ * `ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO=1`. The recommended riscv64
+ * ASR path is the fused `libelizainference` build
+ * (`eliza_inference_asr_stream_*` / `eliza_inference_asr_transcribe`),
+ * which is what `tryFusedStreaming` / `tryFusedBatch` resolve to in
+ * `createStreamingTranscriber` before this adapter is even consulted.
  */
 
 import { existsSync } from "node:fs";
@@ -20,6 +40,46 @@ import path from "node:path";
 import type { StreamingPcmDecoder } from "./types";
 
 export const OPENVINO_WHISPER_DEFAULT_DEVICE_CHAIN = "NPU,CPU";
+
+/**
+ * Architectures with an official OpenVINO Runtime distribution (pip
+ * wheels on PyPI). Kept in lock-step with the pypi.org/project/openvino
+ * file list — update both together when OpenVINO adds an ABI.
+ */
+const OPENVINO_SUPPORTED_NODE_ARCHES: ReadonlyArray<string> = [
+	"x64", // win_amd64 + manylinux_2_28_x86_64
+	"arm64", // manylinux_2_35_aarch64 + macosx_11_0_arm64
+];
+
+function normalizeBooleanEnv(value: string | undefined): boolean {
+	const normalized = value?.trim().toLowerCase();
+	return (
+		normalized === "1" ||
+		normalized === "true" ||
+		normalized === "yes" ||
+		normalized === "on"
+	);
+}
+
+/**
+ * Whether the current CPU architecture is one OpenVINO officially
+ * ships. Returns `false` for `riscv64` (no upstream wheel and no
+ * production-ready source build) unless the operator opts in with
+ * `ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO=1`. The opt-in is a niche
+ * escape hatch for users who have hand-built `openvino_genai` against
+ * an out-of-tree port — the runtime resolver still has to find the
+ * Python venv + IR for it to succeed.
+ */
+export function isOpenVinoSupportedArch(
+	arch: NodeJS.Architecture = process.arch,
+	env: NodeJS.ProcessEnv = process.env,
+): boolean {
+	if (OPENVINO_SUPPORTED_NODE_ARCHES.includes(arch)) return true;
+	if (arch === "riscv64") {
+		return normalizeBooleanEnv(env.ELIZA_LOCAL_ASR_RISCV64_ALLOW_OPENVINO);
+	}
+	return false;
+}
 
 /**
  * Resolved runtime: the python interpreter that will run the worker, the
@@ -122,6 +182,11 @@ function resolveModelDir(): string | null {
 }
 
 export function resolveOpenVinoWhisperRuntime(): OpenVinoWhisperRuntime | null {
+	// Refuse on archs OpenVINO does not ship for. This is checked before any
+	// filesystem probes so an operator on riscv64 with stray cache dirs from a
+	// prior x86_64 install does not get a runtime "resolved" that will then
+	// immediately fail `import openvino_genai`.
+	if (!isOpenVinoSupportedArch()) return null;
 	const pythonBin = resolveOpenVinoPython();
 	if (!pythonBin) return null;
 	const workerScript = resolveWorkerScript();

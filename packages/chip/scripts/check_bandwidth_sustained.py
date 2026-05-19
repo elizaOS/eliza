@@ -7,6 +7,7 @@ the phone-class memory gate can consume measured numbers.  Fails closed
 if the input lacks the required fields or if the SKU declared on the
 command line does not match the gate-tracked per-SKU thresholds.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -54,7 +55,7 @@ def parse_lmbench_lat(text: str) -> dict | None:
         if len(toks) >= 2:
             try:
                 size_mib = float(toks[0])
-                ns       = float(toks[1])
+                ns = float(toks[1])
             except ValueError:
                 continue
             points.append((size_mib, ns))
@@ -80,18 +81,15 @@ def main() -> int:
     ap.add_argument("--lmbench-rd-raw", help="lmbench bw_mem 1024M rd output.")
     ap.add_argument("--lmbench-wr-raw", help="lmbench bw_mem 1024M wr output.")
     ap.add_argument("--lmbench-lat-raw", help="lmbench lat_mem_rd output.")
-    ap.add_argument("--target-id", required=True,
-                    help="phone-baseline or phone-ai")
-    ap.add_argument("--output", required=True,
-                    help="Path to write the normalised JSON report.")
+    ap.add_argument("--target-id", required=True, help="phone-baseline or phone-ai")
+    ap.add_argument("--output", required=True, help="Path to write the normalised JSON report.")
     args = ap.parse_args()
 
     sku_split = load_gate_skus()
     sku_key = "baseline_sku" if args.target_id == "phone-baseline" else "ai_sku"
     sku_data = sku_split.get(sku_key) or {}
     if not sku_data:
-        print(f"target-id {args.target_id} not found in gate sku_split_decision",
-              file=sys.stderr)
+        print(f"target-id {args.target_id} not found in gate sku_split_decision", file=sys.stderr)
         return 1
 
     record = {
@@ -113,8 +111,7 @@ def main() -> int:
 
     if args.stream_json and Path(args.stream_json).is_file():
         stream = json.loads(Path(args.stream_json).read_text())
-        triad = next((k for k in stream.get("kernels", [])
-                      if k.get("name") == "triad"), None)
+        triad = next((k for k in stream.get("kernels", []) if k.get("name") == "triad"), None)
         record["benchmark_commands"].append("./stream")
         record["raw_log_paths"].append(args.stream_json)
         if triad:
@@ -141,7 +138,9 @@ def main() -> int:
         text = Path(args.lmbench_lat_raw).read_text()
         parsed = parse_lmbench_lat(text)
         if parsed:
-            record["parsed_metrics"]["p95_random_read_latency_ns"] = parsed["p95_random_read_latency_ns"]
+            record["parsed_metrics"]["p95_random_read_latency_ns"] = parsed[
+                "p95_random_read_latency_ns"
+            ]
         record["benchmark_commands"].append("./lat_mem_rd 1024 128")
         record["raw_log_paths"].append(args.lmbench_lat_raw)
 

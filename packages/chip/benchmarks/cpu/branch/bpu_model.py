@@ -12,12 +12,12 @@ phone-class MPKI claims remain blocked until the harness ingests SPEC, AOSP,
 and JS-engine traces — the policy is enforced by
 ``scripts/check_branch_prediction.py`` and the gate JSON it writes.
 """
+
 from __future__ import annotations
 
-import dataclasses
 from collections import defaultdict
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable, Iterator
 
 BR_NONE = 0
 BR_COND = 1
@@ -60,6 +60,7 @@ DEFAULT_GEOMETRY: dict[str, object] = {
 @dataclass
 class BranchEvent:
     """A single retired branch event consumed by the model."""
+
     pc: int
     target: int
     taken: bool
@@ -167,7 +168,7 @@ class _Tage:
     bim: _BimodalTable
 
     @classmethod
-    def build(cls, geo: dict) -> "_Tage":
+    def build(cls, geo: dict) -> _Tage:
         bim = _BimodalTable(
             entries=[1 << (geo["BIM_CTR_W"] - 1)] * geo["BIM_ENTRIES"],
             ctr_w=geo["BIM_CTR_W"],
@@ -308,14 +309,16 @@ class _ITTAGE:
     storage: list[dict[int, dict]] = field(default_factory=list)
 
     @classmethod
-    def build(cls, geo: dict) -> "_ITTAGE":
+    def build(cls, geo: dict) -> _ITTAGE:
         return cls(geo=geo, storage=[{} for _ in range(geo["ITTAGE_TABLES"])])
 
     def _index_tag(self, table_id: int, pc: int, hist: int) -> tuple[int, int]:
         size = self.geo["ITTAGE_ENTRIES"][table_id]
         idx_w = max(1, (size - 1).bit_length())
         idx = _index_hash(pc, hist, self.geo["ITTAGE_HIST_LEN"][table_id], idx_w, table_id) % size
-        tag = _tag_hash(pc, hist, self.geo["ITTAGE_HIST_LEN"][table_id], self.geo["ITTAGE_TAG_W"], table_id + 7)
+        tag = _tag_hash(
+            pc, hist, self.geo["ITTAGE_HIST_LEN"][table_id], self.geo["ITTAGE_TAG_W"], table_id + 7
+        )
         return idx, tag
 
     def predict(self, pc: int, hist: int) -> tuple[int | None, int]:
@@ -352,6 +355,7 @@ class _ITTAGE:
 @dataclass
 class BPUSimulator:
     """End-to-end BPU model, indexable by branch events."""
+
     geometry: dict = field(default_factory=lambda: dict(DEFAULT_GEOMETRY))
     tage: _Tage = field(init=False)
     loop: _LoopPredictor = field(init=False)
@@ -359,7 +363,7 @@ class BPUSimulator:
     ftb: _FTB = field(init=False)
     ittage: _ITTAGE = field(init=False)
     hist: int = 0
-    counters: dict[int, int] = field(default_factory=lambda: defaultdict(int))
+    counters: dict[str, int] = field(default_factory=lambda: defaultdict(int))
 
     def __post_init__(self) -> None:
         self.tage = _Tage.build(self.geometry)
@@ -379,12 +383,20 @@ class BPUSimulator:
         ftb_entry = self.ftb.lookup(event.pc)
         if event.kind == BR_RET:
             top = self.ras.pop()
-            predicted_target = top if top is not None else (event.pc + self.geometry["FETCH_BLOCK_BYTES"])
+            predicted_target = (
+                top if top is not None else (event.pc + self.geometry["FETCH_BLOCK_BYTES"])
+            )
             return True, predicted_target
         if event.kind == BR_CALL:
             itt_target, _provider = self.ittage.predict(event.pc, self.hist)
-            target = itt_target if itt_target is not None else (
-                ftb_entry["target"] if ftb_entry else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+            target = (
+                itt_target
+                if itt_target is not None
+                else (
+                    ftb_entry["target"]
+                    if ftb_entry
+                    else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+                )
             )
             self.ras.push(event.pc + self.geometry["FETCH_BLOCK_BYTES"])
             return True, target
@@ -392,8 +404,10 @@ class BPUSimulator:
             loop_conf, loop_taken = self.loop.predict(event.pc)
             tage_taken, provider, low_conf = self.tage.predict(event.pc, self.hist)
             taken = loop_taken if loop_conf else tage_taken
-            target = ftb_entry["target"] if (ftb_entry and taken) else (
-                event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+            target = (
+                ftb_entry["target"]
+                if (ftb_entry and taken)
+                else (event.pc + self.geometry["FETCH_BLOCK_BYTES"])
             )
             return taken, target
         return False, event.pc + self.geometry["FETCH_BLOCK_BYTES"]
@@ -402,9 +416,7 @@ class BPUSimulator:
         pred_taken, pred_target = self._predict(event)
         actual_taken = event.taken
         actual_target = event.target
-        misp = (pred_taken != actual_taken) or (
-            actual_taken and pred_target != actual_target
-        )
+        misp = (pred_taken != actual_taken) or (actual_taken and pred_target != actual_target)
 
         # Update PMU-style counters.
         self.counters["pred"] += 1

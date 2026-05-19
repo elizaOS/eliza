@@ -15,6 +15,14 @@ include_directories(include)
 # detection + crnn_vgg16_bn recognition translation units that link
 # against the elizaOS/llama.cpp fork's ggml dispatcher; see AGENTS.md
 # for the port plan.
+#
+# Architecture portability: every TU below is plain scalar C with no
+# x86/ARM/RVV intrinsics, so the same source list builds on x86_64,
+# aarch64, and riscv64 without any CMAKE_SYSTEM_PROCESSOR branching.
+# When SIMD TUs are added (Phase 3 ggml dispatch), mirror the qjl-cpu
+# pattern: separate per-arch TUs (avx2/neon/rvv), each compiled only
+# for its own arch via a CMAKE_SYSTEM_PROCESSOR conditional, and
+# runtime dispatch via cpuid/hwcap/riscv_hwprobe.
 set(DOCTR_SRCS
     src/doctr_stub.c
 )

@@ -51,6 +51,29 @@
     "perf_clear_register": "PERF_ERRORS",
     "perf_clear_write_value": "0x1"
   },
+  "perf_counters_planned": {
+    "claim_boundary": "no RTL counter exists for any field below; the npu_rtl_ops sub-agent will assign final MMIO offsets when the counters land, and this spec entry must be updated with those offsets in the same commit",
+    "entries": [
+      {
+        "name": "PERF_STALL_CYCLES",
+        "pending_rtl_offset": true,
+        "description": "Cycles the NPU spent stalled waiting for descriptor, scratchpad, or AXI completion that did not retire a MAC or accepted operation; required for power-per-counter attribution at L1/L2",
+        "sources": ["accelergy_repo", "timeloop_paper"]
+      },
+      {
+        "name": "PERF_SCRATCH_BYTES",
+        "pending_rtl_offset": true,
+        "description": "Total scratchpad bytes accessed (read plus write) by accepted operations; complements DESC_BYTES_READ/DESC_BYTES_WRITTEN by exposing on-die SRAM bandwidth used by the GEMM/VRELU datapath rather than the DMA stream path",
+        "sources": ["accelergy_repo", "timeloop_paper"]
+      },
+      {
+        "name": "PERF_THERMAL_THROTTLE",
+        "pending_rtl_offset": true,
+        "description": "Cycles or events the NPU spent in a throttled clock/voltage state driven by the platform thermal hint or an internal thermal counter; required so the L2_SINGLE_TILE perf report can separate stall from throttle and so the L5 power/thermal manifest can compute sustained perf/W against measured throttle state",
+        "sources": ["accelergy_repo", "timeloop_paper", "trainium2_aws_docs"]
+      }
+    ]
+  },
   "opcodes": {
     "ADD": 0,
     "SUB": 1,
@@ -256,6 +279,23 @@
     "claim_boundary": "attention_av_context_smoke_only_not_softmax_or_production_compiler_backend",
     "not_claimed": "No softmax, scaling, masking, score normalization, KV-cache paging, fused attention kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
   },
+  "attention_lowering_smoke": {
+    "runtime_api": "lower_attention_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_attention_smoke.v1",
+    "supported_source_ops": [
+      "eliza.attention",
+      "stablehlo.attention",
+      "tflite.attention"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "layout": "rank-4 [batch][heads][tokens][head_dim] query/key tensors plus [batch][heads][key_tokens][value_dim] value tensors and optional boolean mask",
+    "lowering": "Composes lower_attention_qk_smoke, host QK-score requantization, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, and host context requantization across batch/head slices",
+    "claim_boundary": "multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend",
+    "not_claimed": "No fused flash attention kernel, exact exp/e softmax, scale fusion, KV-cache paging/update, graph partitioning, Android delegate, production compiler backend, or sustained transformer decode performance is implemented"
+  },
   "kv_cache_update_lowering_smoke": {
     "runtime_api": "lower_kv_cache_update_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
@@ -272,6 +312,23 @@
     "lowering": "Host validates cache capacity and append lengths, preserves existing cache entries, dispatches each appended K/V scalar copy through OP_ADD(value, 0), writes appended tokens into fixed cache positions, and advances cache_lengths",
     "claim_boundary": "kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
     "not_claimed": "No paged KV cache, cache eviction, circular buffer, DMA-backed cache update, multi-batch decode cache manager, Android delegate, graph compiler, or production compiler backend is implemented"
+  },
+  "decode_attention_lowering_smoke": {
+    "runtime_api": "lower_decode_attention_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_decode_attention_smoke.v1",
+    "supported_source_ops": [
+      "eliza.decode_attention",
+      "stablehlo.decode_attention",
+      "tflite.decode_attention"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "layout": "rank-4 query tensor plus fixed-capacity rank-4 key/value caches, rank-4 new key/value tensors, and per-head cache lengths",
+    "lowering": "Composes lower_kv_cache_update_smoke, host cache-view materialization with padded cache-lane mask, and lower_attention_smoke so the runtime appends K/V tokens and computes QK-softmax-AV attention over the updated cache",
+    "claim_boundary": "decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend",
+    "not_claimed": "No paged KV cache, cache eviction, circular buffer, DMA-backed cache update, fused flash attention, multi-batch cache manager, Android delegate, graph compiler, or production transformer decode kernel is implemented"
   },
   "mlp_lowering_smoke": {
     "runtime_api": "lower_mlp_smoke",
@@ -472,8 +529,93 @@
       "precision": "FP8",
       "state": "supported_prototype",
       "path": "DOT4_FP8_E4M3 scalar E4M3 dot prototype plus bounded scalar-dot FP8 matmul lowering smoke with signed Q8.8 output only; no tensor FP8 GEMM/compiler path"
+    },
+    {
+      "precision": "MXFP8",
+      "state": "blocked_l2_planned",
+      "phase": "L2_planned",
+      "path": "OCP Microscaling MXFP8 (E5M2 or E4M3 lanes, 32-element block, shared E8M0 scale); no MX block-scaled operand fetch, no MX accumulator, and no compiler lowering exists today",
+      "claim_boundary": "no MX RTL or compiler support exists today; current DOT4_FP8_E4M3 is scalar evidence only and not the production format",
+      "sources": ["ocp_mx_spec", "mx_formats_paper", "microxcaling_repo", "ptq_mx_paper"]
+    },
+    {
+      "precision": "MXFP6",
+      "state": "blocked_l2_planned",
+      "phase": "L2_planned",
+      "path": "OCP Microscaling MXFP6 (E3M2 or E2M3 lanes, 32-element block, shared E8M0 scale); no MX block-scaled operand fetch, no MX accumulator, and no compiler lowering exists today",
+      "claim_boundary": "no MX RTL or compiler support exists today",
+      "sources": ["ocp_mx_spec", "mx_formats_paper", "microxcaling_repo"]
+    },
+    {
+      "precision": "MXFP4",
+      "state": "blocked_l2_planned",
+      "phase": "L2_planned",
+      "path": "OCP Microscaling MXFP4 (E2M1 lanes, 32-element block, shared E8M0 scale); no MX block-scaled operand fetch, no MX accumulator, and no compiler lowering exists today",
+      "claim_boundary": "no MX RTL or compiler support exists today",
+      "sources": ["ocp_mx_spec", "mx_formats_paper", "microxcaling_repo", "ptq_mx_paper"]
+    },
+    {
+      "precision": "MXINT8",
+      "state": "blocked_l2_planned",
+      "phase": "L2_planned",
+      "path": "OCP Microscaling MXINT8 (INT8 lanes, 32-element block, shared E8M0 scale); no MX block-scaled operand fetch and no compiler lowering exists today",
+      "claim_boundary": "no MX RTL or compiler support exists today",
+      "sources": ["ocp_mx_spec", "mx_formats_paper", "microxcaling_repo"]
+    },
+    {
+      "precision": "INT4_GROUP_SCALED",
+      "state": "blocked_l1_planned",
+      "phase": "L1_planned",
+      "path": "Group-scaled W4A16 INT4 weights with per-group INT8 or BF16 scale at group sizes 32, 64, 128; packed INT4 weight storage (two lanes per byte, low nibble first), INT8-or-higher activations, signed int32 accumulator, host-side scale application; no RTL or compiler support exists today",
+      "claim_boundary": "no group-scaled INT4 RTL opcode (GEMM_S4_GS32/64/128) or compiler lowering exists today",
+      "sources": ["gptq_paper", "awq_paper", "omniquant_paper", "hqq_repo"]
     }
   ],
+  "opcodes_planned": {
+    "claim_boundary": "no RTL, compiler lowering, or runtime exists for any opcode below; these are spec-only entries that document the planned ABI shape and phase ownership",
+    "entries": [
+      {
+        "name": "GEMM_S4_GS32",
+        "phase": "L1_planned",
+        "description": "Group-scaled INT4 weight GEMM with group size 32 K lanes per shared scale",
+        "weight_format": "packed signed INT4 (two lanes per byte, low nibble first)",
+        "scale_format": "one INT8 or BF16 scale per 32 contiguous K lanes per output row",
+        "activation_format": "signed INT8 (BF16 once the tile carries BF16)",
+        "accumulator": "signed int32; host applies per-group scale during requantization",
+        "sources": ["gptq_paper", "awq_paper", "omniquant_paper", "hqq_repo"]
+      },
+      {
+        "name": "GEMM_S4_GS64",
+        "phase": "L1_planned",
+        "description": "Group-scaled INT4 weight GEMM with group size 64 K lanes per shared scale",
+        "weight_format": "packed signed INT4 (two lanes per byte, low nibble first)",
+        "scale_format": "one INT8 or BF16 scale per 64 contiguous K lanes per output row",
+        "activation_format": "signed INT8 (BF16 once the tile carries BF16)",
+        "accumulator": "signed int32; host applies per-group scale during requantization",
+        "sources": ["gptq_paper", "awq_paper", "omniquant_paper", "hqq_repo"]
+      },
+      {
+        "name": "GEMM_S4_GS128",
+        "phase": "L1_planned",
+        "description": "Group-scaled INT4 weight GEMM with group size 128 K lanes per shared scale",
+        "weight_format": "packed signed INT4 (two lanes per byte, low nibble first)",
+        "scale_format": "one INT8 or BF16 scale per 128 contiguous K lanes per output row",
+        "activation_format": "signed INT8 (BF16 once the tile carries BF16)",
+        "accumulator": "signed int32; host applies per-group scale during requantization",
+        "sources": ["gptq_paper", "awq_paper", "omniquant_paper", "hqq_repo"]
+      },
+      {
+        "name": "GEMM_S4_2_4",
+        "phase": "L2_planned",
+        "description": "Tile-level 2:4 sparse INT4 GEMM; lift of the scalar SDOT4_S4_2_4 primitive to a parameterized tile op fed by a shared sparsity-decode microengine",
+        "weight_format": "packed signed INT4 with four nonzeros per eight-lane group; metadata carries two distinct 2-bit positions per four-lane half-group",
+        "activation_format": "dense signed INT4 or INT8 lanes consumed by the existing tile MAC array",
+        "decode_path": "shared sparsity-decode microengine expands 2:4 INT4 rows into dense lane input; no MAC array redesign",
+        "accumulator": "signed int32",
+        "sources": ["sparsegpt_paper", "wanda_paper", "maskllm_paper", "trainium2_aws_docs"]
+      }
+    ]
+  },
   "runtime_evidence_requirements": [
     "Runtime register constants match this manifest",
     "BSP contract header exposes the same NPU perf offsets",

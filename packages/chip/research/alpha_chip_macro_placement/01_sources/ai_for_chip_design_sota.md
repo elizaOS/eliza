@@ -200,6 +200,43 @@ power, and manufacturing preparation.
   provenance, inspection images, or measured defect labels, so public weights
   must not be downloaded or used for yield claims.
 
+## CPU microarchitecture AI and simulator-backed DSE
+
+### Agentic and fast performance-model search
+
+- Agentic Architect: https://arxiv.org/abs/2604.25083
+- PerfVec: https://github.com/PerfVec/PerfVec
+- Concorde:
+  https://www.catalyzex.com/paper/concorde-fast-and-accurate-cpu-performance
+- ChampSim: https://champsim.github.io/ChampSim/master/
+- Use: automate or accelerate CPU architecture sweeps across branch predictors,
+  cache replacement, prefetchers, and broader microarchitecture configurations.
+- E1 fit: target capture only. Any suggested BPU/cache/prefetch policy needs
+  trace provenance, simulator configs, before/after logs, RTL cost, synthesis,
+  formal/cocotb, benchmark evidence, and review.
+
+### Branch prediction
+
+- BranchNet: https://github.com/siavashzk/BranchNet
+- LLBP: https://github.com/dhschall/LLBP
+- Use: neural helper prediction for hard-to-predict branches and high-capacity
+  branch-predictor state backed by simulation.
+- E1 fit: comparison source only. Learned branch predictors or larger BPU state
+  must not enter RTL without local MPKI, timing, area, power, and BPU regression
+  evidence.
+
+### Prefetch and cache replacement
+
+- Pythia: https://github.com/CMU-SAFARI/Pythia
+- Mockingjay:
+  https://par.nsf.gov/servlets/purl/10334308
+- Drishti: https://www.cse.iitb.ac.in/~biswa/MICRO25.pdf
+- Use: reinforcement-learning prefetching and learned/recent LLC replacement
+  policies, usually evaluated in ChampSim-style trace simulation.
+- E1 fit: blocked backend inventory. Cache/prefetch wins must be measured on
+  approved traces and promoted through cache hierarchy, memory/UMA, RTL,
+  synthesis, power, and benchmark gates.
+
 ## Synthesis, timing, power, and routability predictors
 
 ### OpenABC-D
@@ -372,3 +409,8 @@ power, and manufacturing preparation.
     Do not run hotspot detectors, lithography simulation, OPC/ILT, wafer-defect
     models, or make DFM/yield/mask claims without foundry/process collateral,
     local layout labels, deterministic signoff gates, and review.
+11. CPU microarchitecture AI target capture with
+    `scripts/ai_eda/capture_cpu_microarchitecture_targets.py --run-id validation`.
+    Do not generate BPU/cache/prefetch RTL, run unreviewed simulators/models, or
+    claim IPC/MPKI/product gains without local traces, deterministic RTL and
+    benchmark gates, and review.

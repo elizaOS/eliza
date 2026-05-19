@@ -12,6 +12,7 @@ This check walks pd/openlane/portability-index.yaml and verifies:
 The check writes a structured report to docs/evidence/process/pdk-portability.json
 that downstream gates can consume.
 """
+
 from __future__ import annotations
 
 import json
@@ -140,8 +141,7 @@ def check_entry_access_gate(entry: dict[str, Any], errors: list[str]) -> None:
                     forbid = stub.get("forbidden_claims_until_unblocked")
                     if not isinstance(forbid, list) or not forbid:
                         errors.append(
-                            f"{eid}: access-gate file must list "
-                            f"forbidden_claims_until_unblocked"
+                            f"{eid}: access-gate file must list forbidden_claims_until_unblocked"
                         )
     elif node_class in OPEN_PDK_NODES:
         if access_gate != "open_no_gate":
@@ -246,14 +246,10 @@ def main() -> int:
 
     # At least one open-PDK + at least one advanced-node entry must be present.
     open_count = sum(
-        1
-        for e in configs
-        if isinstance(e, dict) and e.get("node_class") in OPEN_PDK_NODES
+        1 for e in configs if isinstance(e, dict) and e.get("node_class") in OPEN_PDK_NODES
     )
     advanced_count = sum(
-        1
-        for e in configs
-        if isinstance(e, dict) and e.get("node_class") in ADVANCED_NODES
+        1 for e in configs if isinstance(e, dict) and e.get("node_class") in ADVANCED_NODES
     )
     if open_count < 2:
         errors.append("portability index must include at least two open-PDK lanes")

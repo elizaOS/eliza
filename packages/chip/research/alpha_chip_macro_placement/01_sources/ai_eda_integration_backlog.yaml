@@ -1336,3 +1336,56 @@ work_items:
       - Report hashes local source inventory, SOTA review, PD signoff, manufacturing release, OpenLane, formal, synthesis, and PD predictor inputs.
       - Report states no layout, mask, constraint, OPC, PDK-rule, lithography, DRC, LVS, model, download, prediction, DFM, yield, wafer-defect, or release action is enabled.
       - Candidate tasks list deterministic source inventory, OpenLane preflight, PD contract, manufacturing, real-world, product, synthesis, docs, no-hardware-action, and PD snapshot gates.
+  - id: p1-cpu-microarchitecture-target-capture
+    title: CPU Microarchitecture AI Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - agentic-architect
+      - perfvec
+      - concorde-cpu-performance-model
+      - champsim
+      - branchnet
+      - llbp
+      - pythia-prefetcher
+      - mockingjay-cache-replacement
+      - drishti-cache-replacement
+    target_area:
+      - cpu_microarchitecture
+      - branch_prediction
+      - cache_replacement
+      - prefetching
+      - performance_prediction
+      - simulator_backed_dse
+    owner_scope: dry-run target capture only; no generated RTL, simulator execution, model execution, trace import, performance claim, or product claim
+    objective: >
+      Track agentic and ML-assisted CPU microarchitecture exploration for
+      branch prediction, cache replacement, prefetching, and CPU performance
+      modeling while keeping all future E1 use behind local traces, simulator
+      configs, RTL hashes, deterministic gates, and human review.
+    deliverables:
+      - scripts/ai_eda/capture_cpu_microarchitecture_targets.py
+      - build/ai_eda/cpu_microarchitecture_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      CPU microarchitecture automation reports may only hash local BPU, cache,
+      benchmark, simulator, and evidence-gate artifacts; branch/cache/prefetch
+      or performance changes require trace provenance, before/after simulator
+      logs, RTL/cocotb/formal/synthesis evidence, benchmark evidence, and
+      review before affecting source.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_cpu_microarchitecture_targets.py --run-id validation
+      - make branch-prediction-check
+      - make mpki-eval
+      - python3 scripts/check_cache_hierarchy.py
+    blocked_by:
+      - No pinned ChampSim, gem5, PerfVec, Concorde, Agentic Architect, BranchNet, Pythia, Mockingjay, or Drishti backend selected for local execution
+      - No license-reviewed external branch, cache, or SPEC/DPC trace corpus imported for E1 experiments
+      - No held-out E1 application trace suite with branch, cache, prefetch, IPC, area, power, and workload provenance
+      - No before/after RTL, synthesis, formal, cocotb, simulator, and benchmark promotion policy for generated microarchitecture changes
+      - No silicon or calibrated full-system simulator evidence tying MPKI/IPC estimates to product performance
+      - No approved workflow for AI-generated branch predictor, cache replacement, prefetcher, or CPU-architecture edits
+    acceptance_criteria:
+      - Report hashes local source inventory, SOTA review, BPU docs/RTL, cache docs/RTL, benchmark scripts, MPKI output, ChampSim sweep output, and cache evidence gates.
+      - Report states no RTL, branch predictor, cache policy, prefetcher, simulator, model, trace import, prediction, IPC, MPKI, area/power, product-performance, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, branch-prediction, MPKI, BPU cocotb/formal, cache hierarchy, ChampSim, memory, benchmark, RTL, synthesis, formal, docs, and no-hardware-action gates.

@@ -7,11 +7,12 @@ Verifies:
   follower) and that way is not immediately picked as victim on the
   next query.
 """
+
 from __future__ import annotations
 
 import cocotb
 from cocotb.clock import Clock
-from cocotb.triggers import RisingEdge, ReadOnly
+from cocotb.triggers import ReadOnly, RisingEdge
 
 
 async def reset_dut(dut) -> None:

@@ -118,6 +118,49 @@ export class AinexService extends Service {
     return this.telemetry;
   }
 
+  /**
+   * Fetch a single camera snapshot through the bridge. Returns the decoded
+   * base64 PNG bytes (without the data URL prefix) plus the advertised
+   * width/height. Throws when the bridge is offline or the backend does
+   * not expose a camera.
+   */
+  async snapshotCamera(
+    camera: string = "head",
+  ): Promise<{ frameBase64: string; width: number; height: number; format: string; camera: string }> {
+    if (!this.bridge || !this.bridge.isConnected()) {
+      throw new Error("AinexService.snapshotCamera: bridge not connected");
+    }
+    const payload: Record<string, string> = {};
+    if (camera !== "head") payload.camera = camera;
+    const response = await this.bridge.send("camera.snapshot", payload);
+    if (!response.ok) {
+      throw new Error(
+        `AinexService.snapshotCamera: ${response.message ?? "bridge error"}`,
+      );
+    }
+    const data = response.data as {
+      camera?: string;
+      format?: string;
+      width?: number;
+      height?: number;
+      frame_base64?: string;
+    };
+    if (
+      typeof data.frame_base64 !== "string" ||
+      typeof data.width !== "number" ||
+      typeof data.height !== "number"
+    ) {
+      throw new Error("AinexService.snapshotCamera: malformed response");
+    }
+    return {
+      camera: data.camera ?? camera,
+      format: data.format ?? "png",
+      width: data.width,
+      height: data.height,
+      frameBase64: data.frame_base64,
+    };
+  }
+
   getPerception(): PerceptionSnapshot | null {
     return this.perception;
   }

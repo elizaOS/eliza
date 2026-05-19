@@ -20,6 +20,12 @@
  *   arm64-v8a/ld-musl-aarch64.so.1
  *   arm64-v8a/libstdc++.so.6.0.33
  *   arm64-v8a/libgcc_s.so.1
+ *   riscv64/bun                     (cuttlefish riscv64; opt-in via
+ *                                    MILADY_BUN_RISCV64_URL since upstream Bun
+ *                                    has no riscv64-linux-musl release)
+ *   riscv64/ld-musl-riscv64.so.1
+ *   riscv64/libstdc++.so.6.0.33
+ *   riscv64/libgcc_s.so.1
  *
  * Downloads are cached under `~/.cache/eliza-android-agent/<bun-version>/`
  * and the staging step is idempotent — already-staged files with matching
@@ -51,10 +57,11 @@ const ALPINE_BRANCH = "v3.21";
 
 /**
  * Default cache dir for compile-shim.mjs's outputs. Mirrors the default
- * in `scripts/elizaos/compile-shim.mjs`. We resolve from `os.homedir()`
- * directly instead of importing `compile-shim.mjs` to avoid pulling the
- * zig probe + shell-out machinery into the staging step (this module
- * runs unconditionally on every gradle build, not just AOSP).
+ * in `packages/app-core/scripts/aosp/compile-shim.mjs`. We resolve from
+ * `os.homedir()` directly instead of importing `compile-shim.mjs` to
+ * avoid pulling the zig probe + shell-out machinery into the staging
+ * step (this module runs unconditionally on every gradle build, not
+ * just AOSP).
  */
 const SECCOMP_SHIM_CACHE_DIR = path.join(
   os.homedir(),
@@ -535,8 +542,8 @@ export function stageSeccompShimForAbi({
   if (!fs.existsSync(cachedWrap) || !fs.existsSync(cachedShim)) {
     log?.(
       `No compiled SIGSYS shim for ${androidAbi}; leaving the Alpine ` +
-        `loader at ${ldName} (run \`node scripts/elizaos/compile-shim.mjs\` for ` +
-        `the AOSP path).`,
+        `loader at ${ldName} (run \`node packages/app-core/scripts/aosp/compile-shim.mjs\` ` +
+        `for the AOSP path).`,
     );
     return 0;
   }

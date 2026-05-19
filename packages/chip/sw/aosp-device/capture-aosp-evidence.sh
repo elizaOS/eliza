@@ -3,7 +3,7 @@
 set -eu
 
 usage() {
-	echo "usage: $0 /path/to/aosp {lunch|vendorimage|checkvintf|sepolicy-build|selinux-neverallow|cts-vts-plan|cuttlefish-smoke|qemu-smoke|renode-smoke|cuttlefish-boot|cts-subset|vts-subset}" >&2
+	echo "usage: $0 /path/to/aosp {lunch|vendorimage|checkvintf|sepolicy-build|selinux-neverallow|cts-vts-plan|cuttlefish-smoke|cuttlefish-agent-smoke|qemu-smoke|renode-smoke|cuttlefish-boot|cts-subset|vts-subset}" >&2
 }
 
 if [ "$#" -ne 2 ]; then
@@ -28,6 +28,24 @@ aosp_cts_vts_result_dir=${AOSP_CTS_VTS_RESULT_DIR:-out/host/linux-x86/cts-vts-pl
 aosp_cts_vts_plan_command=${AOSP_CTS_VTS_PLAN_COMMAND:-}
 aosp_qemu_smoke_command=${AOSP_QEMU_SMOKE_COMMAND:-}
 aosp_renode_smoke_command=${AOSP_RENODE_SMOKE_COMMAND:-}
+aosp_agent_apk=${AOSP_AGENT_APK:-}
+aosp_agent_package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}
+aosp_agent_service=${AOSP_AGENT_SERVICE:-com.elizaos.agent/.AgentService}
+aosp_agent_host_port=${AOSP_AGENT_HOST_PORT:-31337}
+aosp_agent_device_port=${AOSP_AGENT_DEVICE_PORT:-31337}
+aosp_agent_service_wait_seconds=${AOSP_AGENT_SERVICE_WAIT_SECONDS:-90}
+aosp_agent_port_wait_seconds=${AOSP_AGENT_PORT_WAIT_SECONDS:-60}
+aosp_agent_llama_model=${AOSP_AGENT_LLAMA_MODEL:-}
+aosp_agent_llama_device_dir=${AOSP_AGENT_LLAMA_DEVICE_DIR:-/data/local/tmp/eliza-smoke}
+aosp_agent_llama_prompt=${AOSP_AGENT_LLAMA_PROMPT:-Say hello in one short sentence.}
+aosp_agent_llama_min_tokens=${AOSP_AGENT_LLAMA_MIN_TOKENS:-32}
+aosp_agent_tts_text=${AOSP_AGENT_TTS_TEXT:-The quick brown fox jumps over the lazy dog.}
+aosp_agent_golden_audio=${AOSP_AGENT_GOLDEN_AUDIO:-}
+aosp_agent_golden_transcript=${AOSP_AGENT_GOLDEN_TRANSCRIPT:-}
+aosp_agent_stt_min_overlap=${AOSP_AGENT_STT_MIN_OVERLAP:-0.80}
+aosp_agent_sd_optin=${AOSP_AGENT_SD_OPTIN:-0}
+aosp_agent_sd_prompt=${AOSP_AGENT_SD_PROMPT:-a single red apple on a white background}
+agent_smoke_driver="$repo_root/sw/aosp-device/scripts/cuttlefish_agent_smoke.py"
 reference_only_boundary=reference_only_not_e1_chip_ap_evidence
 virtual_device_boundary=virtual_device_smoke_only_not_boot_or_compatibility_evidence
 boot_transcript_schema=docs/android/boot-transcript.schema.json
@@ -290,6 +308,69 @@ case "$mode" in
 				adb_cvd shell logcat -d -b all > out/eliza-cuttlefish-boot-logcat.txt 2>/dev/null || true
 				[ "$abi" = riscv64 ] && [ "$boot" = 1 ]
 			'
+		;;
+	cuttlefish-agent-smoke)
+		# shellcheck disable=SC2016
+		if [ -z "$aosp_agent_apk" ]; then
+			echo "error: set AOSP_AGENT_APK to the riscv64 Eliza agent APK path" >&2
+			exit 2
+		fi
+		if [ -z "$aosp_agent_llama_model" ]; then
+			echo "error: set AOSP_AGENT_LLAMA_MODEL to a GGUF file path for the llama smoke" >&2
+			exit 2
+		fi
+		if [ -z "$aosp_agent_golden_audio" ]; then
+			echo "error: set AOSP_AGENT_GOLDEN_AUDIO to a WAV path for the whisper smoke" >&2
+			exit 2
+		fi
+		if [ -z "$aosp_agent_golden_transcript" ]; then
+			echo "error: set AOSP_AGENT_GOLDEN_TRANSCRIPT to the golden transcript text for the whisper smoke" >&2
+			exit 2
+		fi
+		if [ ! -x "$agent_smoke_driver" ]; then
+			echo "error: agent smoke driver missing: $agent_smoke_driver" >&2
+			exit 1
+		fi
+		command_label="cuttlefish_agent_smoke.py against $aosp_agent_service via tcp:$aosp_agent_host_port"
+		run_capture \
+			eliza_ai_soc_cuttlefish_agent_smoke \
+			"$evidence_dir/eliza_ai_soc_cuttlefish_agent_smoke.log" \
+			"$command_label" \
+			smoke \
+			env AOSP_PRODUCT="$aosp_product" \
+				AOSP_TARGET_PRODUCT="$aosp_target_product" \
+				AOSP_ADB_SERIAL="$aosp_adb_serial" \
+				AOSP_AGENT_APK="$aosp_agent_apk" \
+				AOSP_AGENT_PACKAGE="$aosp_agent_package" \
+				AOSP_AGENT_SERVICE="$aosp_agent_service" \
+				AOSP_AGENT_HOST_PORT="$aosp_agent_host_port" \
+				AOSP_AGENT_DEVICE_PORT="$aosp_agent_device_port" \
+				AOSP_AGENT_SERVICE_WAIT_SECONDS="$aosp_agent_service_wait_seconds" \
+				AOSP_AGENT_PORT_WAIT_SECONDS="$aosp_agent_port_wait_seconds" \
+				AOSP_AGENT_LLAMA_MODEL="$aosp_agent_llama_model" \
+				AOSP_AGENT_LLAMA_DEVICE_DIR="$aosp_agent_llama_device_dir" \
+				AOSP_AGENT_LLAMA_PROMPT="$aosp_agent_llama_prompt" \
+				AOSP_AGENT_LLAMA_MIN_TOKENS="$aosp_agent_llama_min_tokens" \
+				AOSP_AGENT_TTS_TEXT="$aosp_agent_tts_text" \
+				AOSP_AGENT_GOLDEN_AUDIO="$aosp_agent_golden_audio" \
+				AOSP_AGENT_GOLDEN_TRANSCRIPT="$aosp_agent_golden_transcript" \
+				AOSP_AGENT_STT_MIN_OVERLAP="$aosp_agent_stt_min_overlap" \
+				AOSP_AGENT_SD_OPTIN="$aosp_agent_sd_optin" \
+				AOSP_AGENT_SD_PROMPT="$aosp_agent_sd_prompt" \
+				AGENT_SMOKE_DRIVER="$agent_smoke_driver" \
+				"$aosp_shell" -lc '
+					if ! command -v adb >/dev/null 2>&1; then
+						echo "error: adb is not on PATH; source build/envsetup.sh in the AOSP tree first" >&2
+						exit 1
+					fi &&
+					if [ -n "${AOSP_ADB_SERIAL:-}" ]; then
+						adb -s "$AOSP_ADB_SERIAL" get-state >/dev/null
+					else
+						adb get-state >/dev/null
+					fi &&
+					mkdir -p out &&
+					python3 "$AGENT_SMOKE_DRIVER" --out-dir out
+				'
 		;;
 	qemu-smoke)
 		# shellcheck disable=SC2016

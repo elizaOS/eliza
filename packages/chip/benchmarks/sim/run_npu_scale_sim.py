@@ -161,9 +161,7 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
         elapsed_s = cycles / effective_clock_hz
         dynamic_pj = (
             estimate.macs * config.energy_pj_per_int8_mac * corner.dynamic_power_scale
-            + estimate.local_sram_bytes
-            * config.local_sram_pj_per_byte
-            * corner.dynamic_power_scale
+            + estimate.local_sram_bytes * config.local_sram_pj_per_byte * corner.dynamic_power_scale
             + (estimate.external_bytes_read + estimate.external_bytes_written)
             * config.external_memory_pj_per_byte
             * corner.interconnect_rc_derate
