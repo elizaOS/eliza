@@ -16,6 +16,10 @@ const liveReportValidatorSource = readFileSync(
   "packages/scripts/validate-capability-router-live-reports.ts",
   "utf8",
 );
+const liveReportValidatorSelfTestSource = readFileSync(
+  "packages/scripts/validate-capability-router-live-reports.self-test.ts",
+  "utf8",
+);
 const liveReportWriterSource = readFileSync(
   "packages/agent/src/services/remote-capability-live-report.ts",
   "utf8",
@@ -302,6 +306,75 @@ if (
   );
 }
 
+const assetMetadataSelfTestFailure = assertFails(
+  "live report validator self-test covers asset metadata failures",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.manifestContentType must match\",\n",
+    "",
+  ),
+);
+if (
+  assetMetadataSelfTestFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.self-test.ts"
+) {
+  throw new Error(
+    `asset metadata self-test failure reported wrong source path: ${assetMetadataSelfTestFailure.sourcePath}`,
+  );
+}
+
+const assetDigestSelfTestFailure = assertFails(
+  "live report validator self-test covers asset digest failures",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.sha256 must not be the empty SHA-256 digest\",\n",
+    "",
+  ),
+);
+if (
+  assetDigestSelfTestFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.self-test.ts"
+) {
+  throw new Error(
+    `asset digest self-test failure reported wrong source path: ${assetDigestSelfTestFailure.sourcePath}`,
+  );
+}
+
+const assetIntegritySelfTestFailure = assertFails(
+  "live report validator self-test covers asset integrity failures",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource.replace(
+    "        \"conformance.assetResult.integrity must include a sha256 digest\",\n",
+    "",
+  ),
+);
+if (
+  assetIntegritySelfTestFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-live-reports.self-test.ts"
+) {
+  throw new Error(
+    `asset integrity self-test failure reported wrong source path: ${assetIntegritySelfTestFailure.sourcePath}`,
+  );
+}
+
 assertFails(
   "cloud live job is required by test-status",
   workflow.replace("      - cloud-live-e2e\n", ""),
@@ -456,10 +529,13 @@ function assertPasses(
   candidateLiveReportValidatorSource = liveReportValidatorSource,
   candidateLiveReportWriterSource = liveReportWriterSource,
   candidateEndpointConformanceSource = endpointConformanceSource,
+  candidateLiveReportValidatorSelfTestSource = liveReportValidatorSelfTestSource,
 ): void {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
     endpointConformanceSource: candidateEndpointConformanceSource,
+    liveReportValidatorSelfTestSource:
+      candidateLiveReportValidatorSelfTestSource,
     liveReportValidatorSource: candidateLiveReportValidatorSource,
     liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,
@@ -484,10 +560,13 @@ function assertFails(
   candidateLiveReportValidatorSource = liveReportValidatorSource,
   candidateLiveReportWriterSource = liveReportWriterSource,
   candidateEndpointConformanceSource = endpointConformanceSource,
+  candidateLiveReportValidatorSelfTestSource = liveReportValidatorSelfTestSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
     endpointConformanceSource: candidateEndpointConformanceSource,
+    liveReportValidatorSelfTestSource:
+      candidateLiveReportValidatorSelfTestSource,
     liveReportValidatorSource: candidateLiveReportValidatorSource,
     liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,

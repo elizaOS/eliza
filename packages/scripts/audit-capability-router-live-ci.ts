@@ -11,6 +11,8 @@ const providerSmokePath =
   "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts";
 const liveReportValidatorPath =
   "packages/scripts/validate-capability-router-live-reports.ts";
+const liveReportValidatorSelfTestPath =
+  "packages/scripts/validate-capability-router-live-reports.self-test.ts";
 
 type Check = {
   name: string;
@@ -19,6 +21,7 @@ type Check = {
     | "agent-package"
     | "endpoint-conformance"
     | "live-report-validator"
+    | "live-report-validator-self-test"
     | "live-report-writer"
     | "provider-smoke"
     | "root-package"
@@ -161,6 +164,30 @@ export const checks: Check[] = [
       "live report validation must compare view asset integrity tokens with the recorded SHA-256 digest.",
   },
   {
+    name: "live report validator self-test covers asset metadata failures",
+    pattern:
+      /(?=[\s\S]*nonJavascriptAssetDir)(?=[\s\S]*makeNonJavascriptAssetReport\(\))(?=[\s\S]*conformance\.assetResult\.path must be a JavaScript asset)(?=[\s\S]*mismatchedAssetManifestDir)(?=[\s\S]*makeMismatchedAssetManifestReport\(\))(?=[\s\S]*conformance\.assetResult\.manifestContentType must match)/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover non-JavaScript and manifest-mismatched asset evidence.",
+  },
+  {
+    name: "live report validator self-test covers asset digest failures",
+    pattern:
+      /(?=[\s\S]*missingAssetDigestDir)(?=[\s\S]*makeMissingAssetDigestReport\(\))(?=[\s\S]*conformance\.assetResult\.sha256 must be a non-empty string)(?=[\s\S]*malformedAssetDigestDir)(?=[\s\S]*makeMalformedAssetDigestReport\(\))(?=[\s\S]*conformance\.assetResult\.sha256 has invalid format)(?=[\s\S]*emptyAssetDigestDir)(?=[\s\S]*makeEmptyAssetDigestReport\(\))(?=[\s\S]*conformance\.assetResult\.sha256 must not be the empty SHA-256 digest)/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover missing, malformed, and empty view asset digests.",
+  },
+  {
+    name: "live report validator self-test covers asset integrity failures",
+    pattern:
+      /(?=[\s\S]*mismatchedAssetIntegrityDir)(?=[\s\S]*makeMismatchedAssetIntegrityReport\(\))(?=[\s\S]*conformance\.assetResult\.integrity must match conformance\.assetResult\.sha256)(?=[\s\S]*missingSha256AssetIntegrityDir)(?=[\s\S]*makeMissingSha256AssetIntegrityReport\(\))(?=[\s\S]*conformance\.assetResult\.integrity must include a sha256 digest)/,
+    source: "live-report-validator-self-test",
+    message:
+      "live report validator self-test must cover mismatched and missing-sha256 view asset integrity evidence.",
+  },
+  {
     name: "provider live job is required by test-status",
     pattern: /strict_results="\$\{\{\s*github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\s*\}\}"[\s\S]*for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
     message:
@@ -243,6 +270,7 @@ export function validateCapabilityRouterLiveCi(
   options: {
     agentPackageJson?: string;
     endpointConformanceSource?: string;
+    liveReportValidatorSelfTestSource?: string;
     providerSmokeSource?: string;
     rootPackageJson?: string;
     liveReportValidatorSource?: string;
@@ -270,6 +298,7 @@ function getCheckContent(
   options: {
     agentPackageJson?: string;
     endpointConformanceSource?: string;
+    liveReportValidatorSelfTestSource?: string;
     providerSmokeSource?: string;
     rootPackageJson?: string;
     liveReportValidatorSource?: string;
@@ -282,6 +311,9 @@ function getCheckContent(
   }
   if (check.source === "live-report-validator") {
     return options.liveReportValidatorSource ?? "";
+  }
+  if (check.source === "live-report-validator-self-test") {
+    return options.liveReportValidatorSelfTestSource ?? "";
   }
   if (check.source === "live-report-writer") {
     return options.liveReportWriterSource ?? "";
@@ -297,6 +329,9 @@ function getCheckSourcePath(check: Check, workflowPath: string): string {
   if (check.source === "agent-package") return agentPackagePath;
   if (check.source === "endpoint-conformance") return endpointConformancePath;
   if (check.source === "live-report-validator") return liveReportValidatorPath;
+  if (check.source === "live-report-validator-self-test") {
+    return liveReportValidatorSelfTestPath;
+  }
   if (check.source === "live-report-writer") return liveReportWriterPath;
   if (check.source === "provider-smoke") return providerSmokePath;
   if (check.source === "root-package") return rootPackagePath;
@@ -312,11 +347,16 @@ if (import.meta.main) {
     "utf8",
   );
   const liveReportValidatorSource = readFileSync(liveReportValidatorPath, "utf8");
+  const liveReportValidatorSelfTestSource = readFileSync(
+    liveReportValidatorSelfTestPath,
+    "utf8",
+  );
   const liveReportWriterSource = readFileSync(liveReportWriterPath, "utf8");
   const providerSmokeSource = readFileSync(providerSmokePath, "utf8");
   const failures = validateCapabilityRouterLiveCi(workflow, {
     agentPackageJson,
     endpointConformanceSource,
+    liveReportValidatorSelfTestSource,
     liveReportValidatorSource,
     liveReportWriterSource,
     providerSmokeSource,
