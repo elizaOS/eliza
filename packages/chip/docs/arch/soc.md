@@ -47,3 +47,9 @@ The e1 chip keeps the same contract style while making the first end-to-end flow
 ## Contract scaffold
 
 The Linux-capable CPU/interconnect/interrupt scaffold is not wired into the e1-chip pad-level design yet. It lives under `rtl/cpu`, `rtl/interconnect`, `rtl/memory`, and `rtl/interrupts`, with `e1_linux_soc_contract` serving as the integration wrapper for verification. This keeps the first chip stable while establishing the future CPU, external DRAM controller, interconnect, and interrupt-controller boundary.
+
+## Integrated SoC top (2028 target)
+
+`rtl/top/e1_soc_integrated.sv` is the integration top that wires up the eight 2028-target domains: BPU (`bpu_top`), CSR/Zihpm (`zihpm` + `bpu_to_zihpm_remap`), OoO cluster (`e1_cluster_top` in lite tie-off mode), cache south boundary (`tl_c_to_chi_bridge` + `e1_chi_to_axi4_bridge`), AXI4 fabric (`e1_axi4_interconnect`), IOMMU (`e1_riscv_iommu`), DRAM (`e1_dram_ctrl` + `e1_axi4_dram_model`), power (`pmc_top`), plus the existing peripherals (boot ROM, GPIO, timer, DMA, NPU, display, weight-buffer SRAM). The v0 `e1_chip_top` + `e1_soc_top` path is kept untouched and runnable.
+
+Cross-domain wiring contract: `docs/arch/soc-integration.md`. Boot-smoke and cross-domain cocotb gates: `docs/evidence/integration/`. Make targets: `make cocotb-soc-boot-smoke`, `make cocotb-cross-domain`, `make soc-integration-check`.

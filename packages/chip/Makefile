@@ -378,6 +378,23 @@ cocotb-iommu:
 	  COCOTB_TOPLEVEL=e1_iommu_tb COCOTB_DIR=verify/cocotb/iommu \
 	  scripts/run_cocotb.sh
 
+.PHONY: cocotb-soc-boot-smoke cocotb-cross-domain soc-integration-check
+
+cocotb-soc-boot-smoke:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_soc_boot_smoke \
+	  COCOTB_TOPLEVEL=e1_soc_integrated_tb \
+	  COCOTB_DIR=verify/cocotb/integration \
+	  scripts/run_cocotb.sh
+
+cocotb-cross-domain:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_MODULE=test_cross_domain_interfaces \
+	  COCOTB_TOPLEVEL=e1_soc_integrated_tb \
+	  COCOTB_DIR=verify/cocotb/integration \
+	  scripts/run_cocotb.sh
+
+soc-integration-check: cocotb-soc-boot-smoke cocotb-cross-domain
+	@$(PYTHON) scripts/check_soc_integration.py
+
 stream-bench:
 	@$(MAKE) -C benchmarks/memory/stream run \
 	  || $(MAKE) -C benchmarks/memory/stream blocked-evidence

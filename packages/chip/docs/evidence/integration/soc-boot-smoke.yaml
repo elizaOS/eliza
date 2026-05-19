@@ -1,0 +1,52 @@
+# SoC boot-smoke evidence gate
+#
+# Verifies that the new `e1_soc_integrated` top accepts the same MMIO
+# traffic as the v0 `e1_soc_top` path.  Fail-closed on Verilator or
+# cocotb absence — the gate returns BLOCKED rather than a false pass.
+#
+# Pass criteria (in order):
+#
+#   1. reset_clears_bus_and_bootrom_magic     — bootrom OSPOSCHIP visible
+#   2. gpio_mmio_write_is_visible             — MMIO → GPIO pad
+#   3. clint_timer_interrupt_fires            — mtip asserts when mtimecmp=0
+#   4. dma_npu_display_irqs_fire              — peripheral IRQ wires reachable
+#   5. pmc_mailbox_loopback                   — PMC ↔ MMIO mailbox round-trip
+#   6. zihpm_mcycle_advances                  — Zihpm mcycle counter
+#   7. zihpm_minstret_counts_pulses           — Zihpm minstret increments by
+#                                                instret_pulse_i strobes
+
+contract:
+  module: e1_soc_integrated
+  testbench: e1_soc_integrated_tb
+  module_source: rtl/top/e1_soc_integrated.sv
+  testbench_source: verify/cocotb/integration/e1_soc_integrated_tb.sv
+  cocotb_dir: verify/cocotb/integration
+  cocotb_module: test_soc_boot_smoke
+  expected_tests:
+    - reset_clears_bus_and_bootrom_magic
+    - gpio_mmio_write_is_visible
+    - clint_timer_interrupt_fires
+    - dma_npu_display_irqs_fire
+    - pmc_mailbox_loopback
+    - zihpm_mcycle_advances
+    - zihpm_minstret_counts_pulses
+  expected_pass_count: 7
+  expected_fail_count: 0
+
+command:
+  invoke: "make cocotb-soc-boot-smoke"
+  result_xml: "verify/cocotb/results/e1_soc_integrated_tb_test_soc_boot_smoke.xml"
+
+gate:
+  fail_closed_when_missing: true
+  blocked_reason: |
+    If Verilator or cocotb is unavailable on the host, the gate reports
+    BLOCKED and does not pass.  Install `oss-cad-suite` (or the
+    repository-provided external/) and `cocotb` to run the gate.
+
+last_known_pass:
+  date: 2026-05-19
+  verilator_version: "5.049 devel rev v5.048-46-g7c5069c7d (mod)"
+  cocotb_version: "1.9.2"
+  pass_count: 7
+  fail_count: 0
