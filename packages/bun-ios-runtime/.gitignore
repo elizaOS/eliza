@@ -1,5 +1,3 @@
-artifacts/*
-!artifacts/ElizaBunEngine.xcframework/
-!artifacts/ElizaBunEngine.xcframework/**
+artifacts/
 build/
 vendor/
