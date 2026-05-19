@@ -26,8 +26,8 @@ const primaryDownloadIds = [
 ] as const;
 
 const fallbackDownloads: Record<(typeof primaryDownloadIds)[number], string> = {
-  "macos-arm64": "macOS Apple Silicon",
-  "macos-x64": "macOS Intel",
+  "macos-arm64": "macOS (Apple Silicon)",
+  "macos-x64": "macOS (Intel)",
   "windows-x64": "Windows",
   "linux-x64": "Linux",
   "android-apk": "Android APK",
