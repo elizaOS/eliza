@@ -77,6 +77,7 @@ async def ibex_boot_vector_reaches_first_instruction_fetch(dut):
         # The test should not run in the default build; we report a clear
         # skip-rationale so the BLOCKED gate is the source of truth.
         from cocotb.result import TestSuccess
+
         raise TestSuccess(
             "skipped: PMC_INSTANTIATE_IBEX not set. Run scripts/bootstrap_ibex.sh "
             "and rebuild cocotb with PMC_INSTANTIATE_IBEX=1 to enable this test."

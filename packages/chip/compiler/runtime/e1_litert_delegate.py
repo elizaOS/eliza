@@ -156,6 +156,64 @@ class E1LiteRtDelegate:
             descriptor_staging_plan=descriptor_staging_plan,
         )
 
+    def descriptor_command_buffer_image(
+        self,
+        module: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        batch_index: int = 0,
+    ) -> dict[str, Any]:
+        if not isinstance(module, StableHloModule):
+            raise TypeError("module must be a StableHloModule")
+        issues = validate_module(module)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot materialize descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        image = (
+            partition_module(module)
+            .descriptor_staging_plan.command_buffer_image(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                batch_index=batch_index,
+            )
+            .as_dict()
+        )
+        image["backend_id"] = self.backend_id
+        image["module"] = module.name
+        return image
+
+    def prepared_descriptor_batch(
+        self,
+        module: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        batch_index: int = 0,
+    ) -> dict[str, Any]:
+        if not isinstance(module, StableHloModule):
+            raise TypeError("module must be a StableHloModule")
+        issues = validate_module(module)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot prepare descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        prepared = (
+            partition_module(module)
+            .prepared_descriptor_batch(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                batch_index=batch_index,
+            )
+            .as_dict()
+        )
+        prepared["backend_id"] = self.backend_id
+        prepared["module"] = module.name
+        return prepared
+
 
 def e1_litert_delegate_create() -> E1LiteRtDelegate:
     """C entry-point mirror: allocate a delegate handle."""
@@ -183,6 +241,46 @@ def e1_litert_delegate_invoke(
         raise TypeError("delegate must be an E1LiteRtDelegate")
     module = parse_module(module_json)
     return delegate.invoke(module)
+
+
+def e1_litert_delegate_descriptor_command_buffer_image(
+    delegate: E1LiteRtDelegate,
+    module_json: str | bytes,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    batch_index: int = 0,
+) -> dict[str, Any]:
+    """C entry-point mirror: materialize descriptor words for one ready batch."""
+    if not isinstance(delegate, E1LiteRtDelegate):
+        raise TypeError("delegate must be an E1LiteRtDelegate")
+    module = parse_module(module_json)
+    return delegate.descriptor_command_buffer_image(
+        module,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        batch_index=batch_index,
+    )
+
+
+def e1_litert_delegate_prepared_descriptor_batch(
+    delegate: E1LiteRtDelegate,
+    module_json: str | bytes,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    batch_index: int = 0,
+) -> dict[str, Any]:
+    """C entry-point mirror: prepare metadata for one descriptor-ready batch."""
+    if not isinstance(delegate, E1LiteRtDelegate):
+        raise TypeError("delegate must be an E1LiteRtDelegate")
+    module = parse_module(module_json)
+    return delegate.prepared_descriptor_batch(
+        module,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        batch_index=batch_index,
+    )
 
 
 def e1_litert_delegate_destroy(delegate: E1LiteRtDelegate) -> None:

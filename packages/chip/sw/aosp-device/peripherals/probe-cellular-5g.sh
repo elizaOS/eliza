@@ -21,6 +21,8 @@ die() {
 	exit "$code"
 }
 
+# shellcheck source=./probe-common.sh
+# shellcheck disable=SC1091
 . "$here/probe-common.sh"
 require_adb_device
 

@@ -25,10 +25,10 @@ from cocotb.triggers import RisingEdge
 
 QOS_DISPLAY_RT = 0
 QOS_CAMERA_ISP = 1
-QOS_CPU_FG     = 2
-QOS_CPU_BG     = 3
-QOS_NPU        = 4
-QOS_GPU        = 5
+QOS_CPU_FG = 2
+QOS_CPU_BG = 3
+QOS_NPU = 4
+QOS_GPU = 5
 
 
 def all_ways_enabled(banks: int, ways: int) -> int:
@@ -104,9 +104,15 @@ async def serve_dram(dut, paddr_line: int, data: int) -> None:
     dut.dram_grant_valid.value = 0
 
 
-async def issue_req(dut, paddr_line: int, *, is_write: int = 0,
-                    qos: int = QOS_CPU_FG, client: int = 0,
-                    wb_data: int = 0) -> None:
+async def issue_req(
+    dut,
+    paddr_line: int,
+    *,
+    is_write: int = 0,
+    qos: int = QOS_CPU_FG,
+    client: int = 0,
+    wb_data: int = 0,
+) -> None:
     dut.req_valid.value = 1
     dut.req_paddr_line.value = paddr_line
     dut.req_is_write.value = is_write

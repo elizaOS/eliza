@@ -99,6 +99,40 @@ entries:
     risk:
       - LLM-generated EDA scripts can be syntactically plausible and wrong.
       - Published agent demos may not reproduce on the E1 OpenLane flow.
+  - id: llm-eda-log-analysis
+    name: LLM-Powered EDA Log Analysis for Effective Design Debugging
+    kind: eda_log_analysis_method
+    stage:
+      - agentic_orchestration
+      - log_analysis
+      - synthesis
+      - place_and_route
+      - debug
+    priority: P1
+    source_url: https://www2.eecs.berkeley.edu/Pubs/TechRpts/2025/EECS-2025-48.html
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Strong match for E1 because the repo already produces long synthesis,
+      OpenLane, OpenROAD, formal, and simulator logs that need structured
+      triage before any generated fix is considered.
+    integration_action: >
+      Use as methodology input for the local read-only RAG/log-triage lane:
+      parse and cite logs, cluster issues, and name follow-up gates, but do not
+      edit HDL, constraints, Tcl, or scripts from log summaries.
+    evidence_gate: >
+      Log-analysis outputs require log hashes, extracted-table/schema hashes,
+      cited source locations, deterministic checker names, generated-fix
+      quarantine, and reviewer disposition before any source change.
+    risk:
+      - Reported fix rates depend on private prompts/models and small teaching
+        designs, not E1-scale SoC flows.
+      - Log summaries can hide missing context or suggest plausible but unsafe
+        HDL, constraint, or flow edits.
   - id: synopsys-ai-copilot
     name: Synopsys.ai Copilot
     kind: commercial_eda_ai_copilot
@@ -2297,6 +2331,42 @@ entries:
       - Model-card license hints do not replace full dependency license review.
       - Benchmark SOTA can hide failures on SoC-specific protocols and reset
         behavior.
+  - id: uvmarvel
+    name: UVMarvel
+    kind: llm_uvm_subsystem_verification
+    stage:
+      - verification
+      - uvm
+      - subsystem_verification
+      - testbench_generation
+      - coverage_closure
+    priority: P2
+    source_url: https://arxiv.org/abs/2605.04704
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation_found
+    model_status: no_model
+    e1_fit: >
+      Current SOTA direction for LLM-aided subsystem-level UVM testbench
+      construction across bus protocols. E1 can reuse the protocol-IR and
+      coverage-refinement ideas for AXI, DMA, NPU, and interconnect
+      verification, but not the reported coverage as local evidence.
+    integration_action: >
+      Track as verification-debug target context only; do not generate or
+      promote UVM collateral until simulator licensing, protocol IR, coverage
+      logs, cocotb/formal cross-checks, and review are available.
+    evidence_gate: >
+      Any UVM automation requires exact paper/code revision if released,
+      generated testbench quarantine, simulator/tool versions, coverage
+      reports, RTL/spec hashes, cocotb/formal correlation, and reviewer
+      disposition.
+    risk:
+      - UVM results can depend on commercial simulator behavior and coverage
+        definitions unavailable in the current open E1 flow.
+      - Generated protocol agents may verify implementation behavior rather
+        than the architectural intent.
   - id: symbolic-qed
     name: Symbolic Quick Error Detection
     kind: post_silicon_debug_method
@@ -2651,6 +2721,40 @@ entries:
     risk:
       - DFT insertion can alter timing or area and must be checked downstream.
       - Open-source DFT support may not cover all E1 sequential structures.
+  - id: verirag-llm4dft
+    name: VeriRAG / LLM4DFT
+    kind: llm_dft_testability_repair
+    stage:
+      - design_for_test
+      - rtl_repair
+      - testability
+      - retrieval_augmented_generation
+      - model_dataset
+    priority: P1
+    source_url: https://arxiv.org/abs/2507.15664
+    code_url: https://github.com/yuyangdu01/LLM4DFT
+    model_url: https://github.com/yuyangdu01/LLM4DFT
+    dataset_url: https://github.com/yuyangdu01/LLM4DFT
+    license_status: review_required
+    code_status: available_to_review
+    model_status: model_or_artifacts_to_review
+    e1_fit: >
+      Directly relevant to E1 DFT readiness because it targets RTL
+      testability repair with retrieved reference fixes while trying to
+      preserve synthesizability.
+    integration_action: >
+      Add as a high-priority DFT repair candidate, but keep all generated RTL
+      repairs outside source until E1 has a testability oracle, scan policy,
+      synthesis/formal/cocotb/DFT gates, and reviewer disposition.
+    evidence_gate: >
+      Use requires exact repository revision, dataset/model manifest, license
+      review, input RTL hashes, generated-repair quarantine, DFT rule outcome,
+      synthesis/formal/simulation logs, before/after PPA, and human review.
+    risk:
+      - Testability-oriented repairs can change functionality, timing, reset,
+        clock-domain, or scan assumptions.
+      - Public repair datasets may not represent E1 SoC protocols or local DFT
+        rules.
   - id: deeptpi
     name: DeepTPI
     kind: rl_test_point_insertion
@@ -4686,6 +4790,41 @@ entries:
     risk:
       - Benchmark pass rates may not transfer to E1 memory maps or MMIO ABI.
       - Hosted LLM use can block reproducible release gates.
+  - id: llm-dse
+    name: LLM-DSE
+    kind: llm_hls_directive_agent
+    stage:
+      - high_level_synthesis
+      - accelerator_dse
+      - directive_optimization
+      - agentic_search
+    priority: P1
+    source_url: https://arxiv.org/abs/2505.12188
+    code_url: https://github.com/Nozidoali/LLM-DSE
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Strong current candidate for E1 HLS/accelerator exploration because it
+      exposes a multi-agent directive-search loop rather than only a benchmark
+      or paper method.
+    integration_action: >
+      Track as a future quarantined HLS directive-search backend for bounded
+      E1 NPU kernels. Do not run agents, generate directives, or import
+      benchmark assets until the HLS backend, prompts, revisions, and replay
+      manifests are pinned.
+    evidence_gate: >
+      Directive-search use requires exact code revision, model/provider
+      manifest, prompt and response hashes, explored directive/config logs,
+      C-simulation, HLS synthesis, generated RTL hashes, downstream E1
+      simulation/synthesis/equivalence checks, and human review.
+    risk:
+      - HLSyn benchmark gains may not transfer to E1 memory, MMIO, or NPU
+        scheduling constraints.
+      - Agentic search can optimize benchmark latency while degrading
+        integration, area, timing, power, or driver compatibility.
   - id: idse-hls
     name: iDSE
     kind: llm_hls_dse_method

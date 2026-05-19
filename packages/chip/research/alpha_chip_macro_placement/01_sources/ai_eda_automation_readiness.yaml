@@ -20,6 +20,7 @@ stages:
       - agentic-eda-survey-2512-23189v2
       - autoeda-mcp
       - chateda
+      - llm-eda-log-analysis
       - orassistant
       - mcp4eda
       - synopsys-ai-copilot
@@ -33,8 +34,10 @@ stages:
       - build/ai_eda/rag_index/source_manifest.json
     next_gate: python3 scripts/check_ai_eda_source_inventory.py
     critical_review: >
-      Agents are useful for context retrieval and run triage, but write-capable
-      tool agents need typed command schemas and archived logs.
+      Agents and log-analysis assistants are useful for context retrieval and
+      run triage, but write-capable tool agents need typed command schemas,
+      log schemas, archived logs, deterministic replay, and reviewer
+      disposition.
   - id: eda_tool_agent_interoperability
     rating: READY_DRY_RUN
     source_ids:
@@ -300,6 +303,7 @@ stages:
       - sangam-sva
       - fvdebug
       - siliconmind-v1
+      - uvmarvel
     local_lane: p1-verification-debug-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_verification_debug_targets.py
@@ -307,10 +311,10 @@ stages:
     next_gate: make formal
     critical_review: >
       Agentic verification planners and formal-debug assistants are useful for
-      triage, but root-cause narratives, generated testbenches, generated SVAs,
-      and proposed RTL fixes are all unsafe until tied to local traces, RTL
-      hashes, deterministic regressions, equivalence/synthesis where needed,
-      and human review.
+      triage, but root-cause narratives, generated testbenches, generated UVM
+      collateral, generated SVAs, coverage claims, and proposed RTL fixes are
+      all unsafe until tied to local traces, RTL hashes, deterministic
+      regressions, equivalence/synthesis where needed, and human review.
   - id: physical_design_prediction
     rating: READY_ADVISORY
     source_ids:
@@ -586,6 +590,7 @@ stages:
     source_ids:
       - hlsfactory
       - hls-eval
+      - llm-dse
       - idse-hls
       - secda-dse
     local_lane: p1-hls-accelerator-target-capture
@@ -595,9 +600,9 @@ stages:
     next_gate: make npu-runtime-contract-check
     critical_review: >
       HLS and LLM-guided HLS DSE can speed accelerator experiments, but E1 must
-      first capture bounded runtime/spec tasks and keep generated HLS/RTL out of
-      source until C-sim, HLS synthesis, RTL simulation, synthesis, and review
-      evidence exist.
+      first capture bounded runtime/spec tasks and keep generated directives,
+      HLS, and RTL out of source until C-sim, HLS synthesis, RTL simulation,
+      synthesis, equivalence, and review evidence exist.
   - id: timing_closure_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -691,6 +696,7 @@ stages:
     rating: READY_DRY_RUN
     source_ids:
       - fault-dft
+      - verirag-llm4dft
       - deeptpi
       - deft-atpg
       - lite-scan-instrumentation
@@ -705,10 +711,11 @@ stages:
     next_gate: make synth
     critical_review: >
       Open DFT tooling and AI-assisted ATPG/testability methods can improve
-      scan, pattern generation, hard-to-detect faults, and test-point ranking,
-      but E1 still needs a scan architecture, fault model, pinned ATPG backend,
-      tester interface, and downstream timing/signoff evidence before any DFT
-      insertion or fault-coverage claim.
+      scan, pattern generation, hard-to-detect faults, testability repair, and
+      test-point ranking, but E1 still needs a scan architecture, fault model,
+      pinned ATPG backend, DFT-rule oracle, tester interface, generated-repair
+      quarantine, and downstream timing/signoff evidence before any DFT
+      insertion, RTL repair, or fault-coverage claim.
   - id: power_thermal_prediction
     rating: READY_DRY_RUN
     source_ids:

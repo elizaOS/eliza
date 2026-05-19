@@ -30,6 +30,8 @@ die() {
 	exit "$code"
 }
 
+# shellcheck source=./probe-common.sh
+# shellcheck disable=SC1091
 . "$here/probe-common.sh"
 require_adb_device
 command -v file >/dev/null 2>&1 || die "file(1) not on PATH" 2

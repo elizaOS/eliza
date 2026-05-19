@@ -71,9 +71,7 @@ def required_results() -> list[dict]:
         base_result("chipyard_verilator_preflight", "blocked", "our_chip_prereq", "os_prereq"),
         base_result("chipyard_generated_ap", "blocked", "our_chip_prereq", "os_prereq"),
         base_result("chipyard_payload_path", "blocked", "our_chip_prereq", "os_prereq"),
-        base_result(
-            "chipyard_verilator_linux_attempt", "blocked", "our_chip_os_boot", "os_boot"
-        ),
+        base_result("chipyard_verilator_linux_attempt", "blocked", "our_chip_os_boot", "os_boot"),
         base_result("chipyard_verilator_linux_smoke", "blocked", "our_chip_os_boot", "os_boot"),
         base_result("npu_ml_smoke", "pass", "our_chip_npu_ml_local", "npu_ml"),
     ]

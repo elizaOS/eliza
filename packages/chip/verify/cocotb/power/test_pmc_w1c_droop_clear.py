@@ -134,9 +134,7 @@ async def w1c_only_clears_the_specified_bits(dut):
     await _mbox_write(dut, PMC_REG_DROOP_STICKY, 0x0000000F)
     await _settle(dut)
     after = await _mbox_read(dut, PMC_REG_DROOP_STICKY)
-    assert after == (0x10 & ~0x0F), (
-        f"partial W1C: expected {(0x10 & ~0x0F):#x}, got {after:#x}"
-    )
+    assert after == (0x10 & ~0x0F), f"partial W1C: expected {(0x10 & ~0x0F):#x}, got {after:#x}"
 
 
 @cocotb.test()
@@ -159,6 +157,5 @@ async def droop_count_aggregate_still_reads_present_sum(dut):
     await _settle(dut)
     present_after_clear = await _mbox_read(dut, PMC_REG_DROOP_COUNT)
     assert present_after_clear == sum(counts), (
-        f"present sum changed after sticky clear: "
-        f"{present_after_clear} != {sum(counts)}"
+        f"present sum changed after sticky clear: {present_after_clear} != {sum(counts)}"
     )

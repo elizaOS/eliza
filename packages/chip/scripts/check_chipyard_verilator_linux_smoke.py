@@ -177,17 +177,31 @@ def resolve_payload_symbol(payload: str | None, pc: int | None) -> dict[str, obj
         return result
     best: tuple[int, int, str] | None = None
     for line in proc.stdout.splitlines():
-        match = SYMBOL_LINE_RE.match(line.strip())
-        if not match or match.group("section") != ".text":
+        text = line.strip()
+        match = SYMBOL_LINE_RE.match(text)
+        if match:
+            section = match.group("section")
+            addr_text = match.group("addr")
+            size_text = match.group("size")
+            name = match.group("name")
+        else:
+            parts = text.split()
+            if len(parts) >= 6 and parts[3] == ".text":
+                addr_text, section, size_text, name = parts[0], parts[3], parts[4], parts[5]
+            elif len(parts) >= 5 and parts[2] == ".text":
+                addr_text, section, size_text, name = parts[0], parts[2], parts[3], parts[4]
+            else:
+                continue
+        if section != ".text" or name.startswith("."):
             continue
-        addr = int(match.group("addr"), 16)
-        size = int(match.group("size"), 16)
+        addr = int(addr_text, 16)
+        size = int(size_text, 16)
         if addr > pc:
             continue
         if size and pc >= addr + size:
             continue
         if best is None or addr > best[0]:
-            best = (addr, size, match.group("name"))
+            best = (addr, size, name)
     if best is None:
         return result
     addr, _size, name = best
@@ -617,7 +631,24 @@ def output_stem_for_payload(payload: str | None) -> str:
     return Path(payload).name
 
 
-def parse_instruction_trace(payload: str | None) -> dict[str, object]:
+def trace_fresh_for_log(trace: Path, log_metadata: dict[str, object] | None = None) -> bool:
+    if not LOG.is_file():
+        return True
+    trace_mtime = trace.stat().st_mtime
+    log_mtime = LOG.stat().st_mtime
+    if trace_mtime >= log_mtime:
+        return True
+    timeout_after = None if log_metadata is None else log_metadata.get("timeout_after_seconds")
+    try:
+        timeout_window = float(str(timeout_after)) if timeout_after is not None else 0.0
+    except ValueError:
+        timeout_window = 0.0
+    return timeout_window > 0.0 and trace_mtime >= log_mtime - timeout_window - 30.0
+
+
+def parse_instruction_trace(
+    payload: str | None, log_metadata: dict[str, object] | None = None
+) -> dict[str, object]:
     trace = (
         SIM_DIR
         / "output"
@@ -642,7 +673,7 @@ def parse_instruction_trace(payload: str | None) -> dict[str, object]:
     }
     if not trace.is_file():
         return metadata
-    metadata["fresh_for_log"] = not LOG.is_file() or trace.stat().st_mtime >= LOG.stat().st_mtime
+    metadata["fresh_for_log"] = trace_fresh_for_log(trace, log_metadata)
 
     first_pc: int | None = None
     last_pc: int | None = None
@@ -716,13 +747,27 @@ def classify_smoke_progress(
             "stage": "opensbi_banner_only",
             "next_step": "continue until OpenSBI handoff markers and the Linux banner appear",
         }
-    if instruction_trace.get("bootrom_to_payload_handoff"):
+    if instruction_trace.get("bootrom_to_payload_handoff") and instruction_trace.get(
+        "fresh_for_log"
+    ):
         last_symbol = str(instruction_trace.get("last_symbol") or "")
+        retired_raw = instruction_trace.get("retired_instruction_count")
+        cycle_raw = instruction_trace.get("last_cycle")
+        retired_count = int(retired_raw) if isinstance(retired_raw, int | str) else 0
+        last_cycle = int(cycle_raw) if isinstance(cycle_raw, int | str) else 0
         if last_symbol.startswith("fdt_") or last_symbol in {
             "sbi_memchr",
             "sbi_memcmp",
             "sbi_strncmp",
         }:
+            if retired_count < 1_000_000 or last_cycle < 2_000_000:
+                return {
+                    "stage": "payload_fdt_parse_in_progress",
+                    "next_step": (
+                        "continue the generated AP traced smoke beyond early OpenSBI "
+                        "FDT traversal before treating DTS or console compatibility as failed"
+                    ),
+                }
             return {
                 "stage": "payload_fdt_parse_no_console",
                 "next_step": (
@@ -738,6 +783,23 @@ def classify_smoke_progress(
                     "TX enable path, and UART host bridge before OpenSBI banner output"
                 ),
             }
+        if last_symbol in {
+            "_bss_zero",
+            "_scratch_init",
+            "_fdt_reloc_again",
+            "_fdt_reloc_done",
+            "_relocate_done",
+            "_try_lottery",
+            "_wait_for_boot_hart",
+            "_wait_relocate_copy_done",
+        }:
+            return {
+                "stage": "payload_opensbi_early_init",
+                "next_step": (
+                    "continue the generated AP trace beyond OpenSBI early assembly "
+                    "initialization, then classify the first console or FDT failure"
+                ),
+            }
         if "serial" in last_symbol or "console" in last_symbol or "uart" in last_symbol:
             return {
                 "stage": "payload_console_init_no_banner",
@@ -749,6 +811,31 @@ def classify_smoke_progress(
         return {
             "stage": "cpu_progress_to_payload",
             "next_step": "debug why the payload runs after boot ROM handoff but emits no OpenSBI/Linux UART markers",
+        }
+    if instruction_trace.get("bootrom_to_payload_handoff") and not instruction_trace.get(
+        "fresh_for_log"
+    ):
+        return {
+            "stage": "stale_instruction_trace",
+            "next_step": (
+                "rerun with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC "
+                "evidence, or rely on UART-only log evidence from run-binary-fast"
+            ),
+        }
+    if (
+        log_metadata.get("run_target") == "run-binary-fast"
+        and log_metadata.get("exit_code")
+        and log_metadata.get("exit_code") != "0"
+        and not instruction_trace.get("exists")
+        and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS)
+    ):
+        return {
+            "stage": "fast_timeout_no_trace",
+            "next_step": (
+                "rerun with CHIPYARD_LINUX_SMOKE_RUN_TARGET=run-binary for fresh PC "
+                "evidence, or extend the fast timeout only after a traced run identifies "
+                "the current payload stage"
+            ),
         }
     if log_metadata.get("simdram_entry") or "SimDRAM loaded ELF entry=" in log_text:
         return {
@@ -774,7 +861,7 @@ def classify_smoke_progress(
 def write_report(status: str, blockers: list[str], payload: str | None) -> None:
     allow_container_paths = os.environ.get(CONTAINER_PATH_ENV) == "1"
     log_metadata = parse_log_metadata()
-    instruction_trace = parse_instruction_trace(payload)
+    instruction_trace = parse_instruction_trace(payload, log_metadata)
     simulator_artifact = simulator_artifact_metadata()
     log_text = LOG.read_text(encoding="utf-8", errors="replace") if LOG.is_file() else ""
     progress = classify_smoke_progress(log_text, instruction_trace, log_metadata)
@@ -875,7 +962,7 @@ def main() -> int:
             f"{PAYLOAD_ENV} {payload_source} payload does not point to a file: {payload}"
         )
 
-    instruction_trace = parse_instruction_trace(payload)
+    instruction_trace = parse_instruction_trace(payload, log_metadata)
     log_text = ""
     if not LOG.is_file():
         blockers.append(f"missing Verilator OpenSBI/Linux smoke log: {rel(LOG)}")

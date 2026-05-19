@@ -879,6 +879,19 @@ the same word-addressed descriptor image and submission tuple that
 is descriptor-codegen ready. The same blob includes `descriptor_batches`, a
 batch-level readiness summary with blocked op names and reasons, so delegates
 can reject a mixed command-buffer batch before trying to emit descriptors.
+ExecuTorch exposes this through `descriptor_command_buffer_image`, and LiteRT
+mirrors it through `e1_litert_delegate_descriptor_command_buffer_image`, both
+returning the same `eliza.e1_npu_descriptor_command_buffer_image.v1` shape for
+ready batches and failing closed for mixed batches. The partition report also
+exposes `prepared_descriptor_batch(arena_base, descriptor_base, batch_index)`,
+which packages the tensor arena size/alignment, per-op GEMM MMIO preamble, and
+descriptor command-buffer image under
+`eliza.e1_npu_prepared_descriptor_batch.v1`; ExecuTorch mirrors this as
+`prepared_descriptor_batch`, and LiteRT mirrors it as
+`e1_litert_delegate_prepared_descriptor_batch`. The prepared batch also emits a
+metadata-only `host_runtime_sequence` (`eliza.e1_npu_host_runtime_sequence.v1`)
+that spells out the GEMM preamble writes, descriptor-memory staging writes,
+descriptor submission MMIO writes, and `DESC_STATUS` completion-poll condition.
 Non-matmul ops and unresolved sparse/group-scale metadata remain blocked. This
 does not assign an arena base, populate tensor data, own DMA submission, perform
 output dtype conversion, integrate an Android delegate, or replace the

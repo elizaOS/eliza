@@ -114,6 +114,18 @@ power, and manufacturing preparation.
 - E1 fit: useful if the Chipyard/Gemmini path becomes primary. Higher setup
   cost because it expects Gurobi and FireSim/Gemmini-style infrastructure.
 
+### HLS DSE and Directive Agents
+
+- HLSFactory: https://github.com/sharc-lab/HLSFactory
+- HLS-Eval: https://github.com/sharc-lab/hls-eval
+- LLM-DSE: https://github.com/Nozidoali/LLM-DSE
+- iDSE: https://arxiv.org/abs/2505.22086
+- Use: HLS design-space datasets, HLS code-generation evaluation, and
+  LLM/agent-guided directive search.
+- E1 fit: useful for bounded NPU kernels only after a local HLS backend,
+  generated-artifact quarantine, C-sim, HLS synthesis, generated-RTL checks,
+  and runtime/driver gates exist.
+
 ## RTL generation and EDA assistance
 
 ### RTL-Coder / RTLLM
@@ -154,6 +166,17 @@ power, and manufacturing preparation.
   command/script assistance.
 - E1 fit: reference data for an internal assistant that explains OpenROAD logs
   and suggests reproducible Tcl/config sweeps.
+
+### LLM-Powered EDA Log Analysis
+
+- Berkeley technical report:
+  https://www2.eecs.berkeley.edu/Pubs/TechRpts/2025/EECS-2025-48.html
+- Use: structured synthesis/place-and-route log extraction, issue clustering,
+  and advisory fix triage.
+- E1 fit: high-value for the existing read-only local RAG/log-triage lane,
+  especially for OpenLane, synthesis, formal, and simulator failure logs. Any
+  suggested HDL, SDC, Tcl, or script fix stays quarantined until deterministic
+  local gates and review pass.
 
 ## Circuit foundation models and embeddings
 
@@ -602,8 +625,9 @@ power, and manufacturing preparation.
    power-domain artifacts until deterministic low-power evidence gates exist.
 7. Verification-debug target capture with
    `scripts/ai_eda/capture_verification_debug_targets.py --run-id validation`.
-   Do not generate or promote verification plans, testbenches, SVAs, root-cause
-   reports, or RTL fixes without local deterministic gates and review.
+   Do not generate or promote verification plans, testbenches, UVM collateral,
+   SVAs, coverage claims, root-cause reports, or RTL fixes without local
+   deterministic gates and review.
 8. Post-silicon validation target capture with
    `scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation`.
    Do not generate or promote lab scripts, test binaries, hardware actions,

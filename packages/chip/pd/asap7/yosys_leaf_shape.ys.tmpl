@@ -1,0 +1,40 @@
+# pd/asap7/yosys_leaf_shape.ys.tmpl — Yosys ABC mapping of a single leaf RTL
+# module against the ASAP7 7.5T 27nm-pitch RVT TT corner standard cells.
+#
+# This is a synth-only flow (no PnR). It produces a gate-level netlist mapped
+# against ASAP7 cells so that the gate count, std-cell area, and combinational
+# depth are tagged as predictive-FinFET shape input for downstream projection
+# via scripts/project_ppa_to_n2p.py.
+#
+# All output is `evidence_class: predictive_finfet_shape_only_not_signoff` and
+# must never be cited as TSMC N2P / A14 / Intel 14A / Samsung SF2P signoff.
+#
+# Templated tokens (substituted by scripts/run_asap7_block.sh):
+#   __MODULE__        — top module to synthesize (e.g. tage_table)
+#   __RTL_FILES__     — newline-separated list of read_verilog -sv lines
+#   __LIB_FILES__     — newline-separated list of read_liberty -lib lines
+#   __ABC_LIB__       — path to the merged liberty file used by ABC mapping
+#   __JSON_REPORT__   — yosys stat -json output path
+#   __NETLIST__       — final mapped netlist output path
+#   __STAT_LOG__      — plain stat report log
+
+__RTL_FILES__
+__LIB_FILES__
+
+hierarchy -check -top __MODULE__
+proc
+flatten
+opt -fast
+fsm
+opt
+wreduce
+peepopt
+opt_clean
+techmap
+opt -fast
+dfflibmap -liberty __ABC_LIB__
+abc -liberty __ABC_LIB__
+opt_clean
+stat -liberty __ABC_LIB__ -tee __STAT_LOG__
+stat -liberty __ABC_LIB__ -json __JSON_REPORT__
+write_verilog __NETLIST__

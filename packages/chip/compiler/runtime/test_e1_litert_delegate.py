@@ -23,9 +23,11 @@ from e1_litert_delegate import (
     LiteRtInvokeResult,
     LiteRtPartitionResult,
     e1_litert_delegate_create,
+    e1_litert_delegate_descriptor_command_buffer_image,
     e1_litert_delegate_destroy,
     e1_litert_delegate_invoke,
     e1_litert_delegate_partition,
+    e1_litert_delegate_prepared_descriptor_batch,
 )
 from e1_npu_stablehlo import StableHloParseError, StableHloValidationError
 
@@ -70,6 +72,13 @@ def _oversize_payload() -> dict:
             }
         ],
     }
+
+
+def _dot_only_payload() -> dict:
+    payload = _supported_payload()
+    payload["name"] = "litert_dot_only"
+    payload["ops"] = [payload["ops"][0]]
+    return payload
 
 
 def test_delegate_create_returns_handle() -> None:
@@ -143,7 +152,17 @@ def test_invoke_returns_placeholder_blob_with_descriptor_specs() -> None:
     assert payload["descriptor_staging_plan"]["schema"] == (
         "eliza.e1_npu_descriptor_staging_plan.v1"
     )
+    assert payload["descriptor_staging_plan"]["descriptor_batches"][0][
+        "descriptor_codegen_ready"
+    ] is (False)
+    assert (
+        payload["descriptor_staging_plan"]["descriptor_batches"][0]["blocked_ops"][0]["op_name"]
+        == "bias0"
+    )
     assert payload["descriptor_staging_plan"]["ops"][0]["descriptor_opcode_name"] == "OP_GEMM_S8"
+    assert payload["descriptor_staging_plan"]["ops"][0]["descriptor_word_template"]["word0"] == (
+        0xD0000108
+    )
     assert payload["descriptor_staging_plan"]["ops"][1]["blocking_reasons"] == [
         "runtime_api_not_supported_by_descriptor_staging_plan"
     ]
@@ -194,6 +213,108 @@ def test_partition_and_invoke_accept_byte_payload() -> None:
     assert len(invoke_result.descriptor_staging_plan["ops"]) == 2
 
 
+def test_delegate_materializes_descriptor_command_buffer_image_for_ready_batch() -> None:
+    delegate = e1_litert_delegate_create()
+    image = e1_litert_delegate_descriptor_command_buffer_image(
+        delegate,
+        json.dumps(_dot_only_payload()),
+        arena_base=0x8000_0000,
+        descriptor_base=0x2000,
+    )
+
+    assert image["schema"] == "eliza.e1_npu_descriptor_command_buffer_image.v1"
+    assert image["backend_id"] == BACKEND_ID
+    assert image["module"] == "litert_dot_only"
+    assert image["descriptor_words"] == [[0xD0000108, 0x8000_0010, 0x8000_0000, 0]]
+    assert image["submission"] == {"base": 0x2000, "head": 0, "tail": 1}
+
+
+def test_delegate_descriptor_command_buffer_image_fails_closed_for_mixed_batch() -> None:
+    delegate = e1_litert_delegate_create()
+
+    with pytest.raises(ValueError, match="non-codegen-ready ops: bias0"):
+        e1_litert_delegate_descriptor_command_buffer_image(
+            delegate,
+            json.dumps(_supported_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+
+
+def test_delegate_prepares_descriptor_batch_for_ready_batch() -> None:
+    delegate = e1_litert_delegate_create()
+    prepared = e1_litert_delegate_prepared_descriptor_batch(
+        delegate,
+        json.dumps(_dot_only_payload()),
+        arena_base=0x8000_0000,
+        descriptor_base=0x2000,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_batch.v1"
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["module"] == "litert_dot_only"
+    assert prepared["arena_total_bytes"] == 32
+    assert prepared["op_mmio_preamble"] == [
+        {
+            "op_name": "dot0",
+            "runtime_api": "lower_matmul_smoke",
+            "mmio_preamble": {
+                "GEMM_CFG": 0x0003_0202,
+                "GEMM_BASE": 0x0010_0800,
+                "GEMM_STRIDE": 0x0008_0203,
+            },
+        }
+    ]
+    assert prepared["descriptor_command_buffer_image"]["submission"] == {
+        "base": 0x2000,
+        "head": 0,
+        "tail": 1,
+    }
+    assert prepared["host_runtime_sequence"]["schema"] == ("eliza.e1_npu_host_runtime_sequence.v1")
+    assert prepared["host_runtime_sequence"]["descriptor_memory_writes"][0] == {
+        "address": "0x00002000",
+        "value": 0xD0000108,
+    }
+    assert prepared["host_runtime_sequence"]["completion_poll"] == {
+        "register": "DESC_STATUS",
+        "address": "0x1002004c",
+        "requires_done_bit": True,
+        "rejects_error_bit": True,
+    }
+
+
+def test_delegate_prepared_descriptor_batch_fails_closed_for_mixed_batch() -> None:
+    delegate = e1_litert_delegate_create()
+
+    with pytest.raises(ValueError, match="non-codegen-ready ops: bias0"):
+        e1_litert_delegate_prepared_descriptor_batch(
+            delegate,
+            json.dumps(_supported_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+
+
+def test_delegate_descriptor_command_buffer_image_rejects_non_delegate_handle() -> None:
+    with pytest.raises(TypeError, match="E1LiteRtDelegate"):
+        e1_litert_delegate_descriptor_command_buffer_image(
+            object(),
+            json.dumps(_dot_only_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+
+
+def test_delegate_prepared_descriptor_batch_rejects_non_delegate_handle() -> None:
+    with pytest.raises(TypeError, match="E1LiteRtDelegate"):
+        e1_litert_delegate_prepared_descriptor_batch(
+            object(),
+            json.dumps(_dot_only_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+
+
 def test_header_file_exists_and_declares_expected_entry_points() -> None:
     header_path = Path(__file__).resolve().parent / "e1_litert_delegate.h"
     text = header_path.read_text(encoding="utf-8")
@@ -201,6 +322,8 @@ def test_header_file_exists_and_declares_expected_entry_points() -> None:
         "e1_litert_delegate_create",
         "e1_litert_delegate_partition",
         "e1_litert_delegate_invoke",
+        "e1_litert_delegate_descriptor_command_buffer_image",
+        "e1_litert_delegate_prepared_descriptor_batch",
         "e1_litert_delegate_destroy",
         "E1_LITERT_DELEGATE_BACKEND_ID",
     ):

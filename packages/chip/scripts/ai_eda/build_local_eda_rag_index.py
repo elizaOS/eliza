@@ -254,6 +254,15 @@ SMOKE_QUERIES = (
         ],
     },
     {
+        "id": "eda_log_triage",
+        "query": "Which local sources define read-only EDA log triage and generated-fix quarantine?",
+        "required_source_ids": ["ai_eda_inventory", "ai_eda_backlog"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "python3 scripts/check_ai_eda_source_inventory.py",
+        ],
+    },
+    {
         "id": "ai_eda_claim_boundary",
         "query": "Which local sources define AI/EDA claim boundaries and evidence gates?",
         "required_source_ids": ["ai_eda_inventory", "ai_eda_backlog"],
@@ -700,7 +709,13 @@ def main() -> int:
         "status": "READ_ONLY_INDEX_MANIFEST",
         "claim_boundary": CLAIM_BOUNDARY,
         "backlog_item": "p1-local-eda-rag-log-triage",
-        "source_ids": ["orassistant", "eda-corpus", "autoeda-mcp-server", "mcp4eda"],
+        "source_ids": [
+            "orassistant",
+            "eda-corpus",
+            "llm-eda-log-analysis",
+            "autoeda-mcp-server",
+            "mcp4eda",
+        ],
         "index_policy": {
             "read_only": True,
             "network_required": False,

@@ -79,6 +79,43 @@ blocks:
       available before the full tile closes. This is not a substitute for
       hierarchical PnR.
 
+  - id: tage_table
+    role: leaf_sub_block_finfet_shape
+    rtl_top: tage_table
+    rtl_files:
+      - rtl/cpu/bpu/bpu_pkg.sv
+      - rtl/cpu/bpu/tage_table.sv
+    clock_target_mhz: 3000
+    leaf_block_only: true
+    flow_mode: yosys_abc_synth_only
+    memory_inference: true
+    synth_params:
+      ENTRIES: 128
+    leaf_scope:
+      - One TAGE tagged-table primitive (128-entry leaf-shape proxy of the
+        production 4096-entry geometry; 14-bit-per-entry valid+tag+ctr+useful
+        struct) synthesized standalone with yosys 0.64, ABC-mapped to
+        asap7sc7p5t_27 RVT TT (0.70 V, 25 C) stdcells.
+      - ENTRIES is overridden to 128 (synth_params) so the lookup-and-update
+        control path is the same as the production geometry while keeping the
+        flat-flop storage tractable for a synth-only run. The storage cost is
+        per-bit; the per-bit area can be multiplied by the production
+        entry count when projecting to N2P (see projection_pipeline below).
+      - Storage is mapped as flat flip-flops (no SRAM macro replacement). Real
+        N2P implementation will replace the storage with a high-density SRAM
+        macro; this shape is the gate-level structural cost only.
+      - Power and frequency derived from yosys/ABC delay model (no PnR, no
+        activity-driven power). Downstream consumers must treat as predictive.
+    output_report: docs/evidence/process/asap7/tage_table_shape.json
+    status: synth_only_pre_route_predictive
+    notes: >
+      Round-3 process-nodes leaf shape. Yosys+ABC is used because the full
+      ORFS post-route flow requires several gigabytes of additional container
+      layers and is gated separately. The shape is real (real cells, real
+      area unit, real ABC delay model) but is not a substitute for ORFS
+      detailed-route closure. evidence_class is identical to ORFS output so
+      the projection pipeline ingests both the same way.
+
 projection_pipeline:
   next_step: scripts/project_ppa_to_n2p.py
   scaling_factors_source: docs/pd/process-node-selection.md

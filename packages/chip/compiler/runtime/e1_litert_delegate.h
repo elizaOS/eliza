@@ -62,6 +62,32 @@ int e1_litert_delegate_invoke(
     uint8_t* blob,
     size_t* blob_size);
 
+/* Materialize a descriptor command-buffer image for one descriptor-ready batch
+ * into `image_json`. This does not populate tensor data, program MMIO, or
+ * submit DMA. */
+int e1_litert_delegate_descriptor_command_buffer_image(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t batch_index,
+    uint8_t* image_json,
+    size_t* image_json_size);
+
+/* Prepare the metadata package needed to stage one descriptor-ready batch into
+ * `prepared_json`. This includes tensor arena sizing, GEMM MMIO preamble
+ * values, and the descriptor image; it does not execute or submit the batch. */
+int e1_litert_delegate_prepared_descriptor_batch(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t batch_index,
+    uint8_t* prepared_json,
+    size_t* prepared_json_size);
+
 /* Free the delegate handle and any internal partitioner state. */
 void e1_litert_delegate_destroy(E1LiteRtDelegate* delegate);
 

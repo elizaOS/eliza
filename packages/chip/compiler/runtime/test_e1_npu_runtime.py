@@ -739,9 +739,10 @@ def test_stablehlo_module_smoke_rejects_invalid_import_before_touching_mmio():
         lower_stablehlo_module_smoke(runtime, module, {"dot0": {"lhs": [[1]], "rhs": [[1]]}})
     with pytest.raises(NpuLoweringError, match="invalid StableHLO smoke module"):
         lower_stablehlo_module_smoke(runtime, {**module, "schema": "other"}, {})
+    first_op: dict[str, object] = dict(module["ops"][0])  # type: ignore[arg-type]
     duplicate = {
         **module,
-        "ops": [module["ops"][0], {**module["ops"][0], "precision": "int8"}],
+        "ops": [first_op, {**first_op, "precision": "int8"}],
     }
     with pytest.raises(NpuLoweringError, match="DUPLICATE_OP_NAME"):
         lower_stablehlo_module_smoke(runtime, duplicate, {"dot0": {"lhs": [[1]], "rhs": [[1]]}})

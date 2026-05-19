@@ -1,0 +1,19 @@
+# Trial yosys run to validate ASAP7 7.5T 27 cells map tage_table cleanly.
+plugin -i slang
+read_slang --top tage_table --compat-mode --unroll-limit 200000 rtl/cpu/bpu/bpu_pkg.sv rtl/cpu/bpu/tage_table.sv
+
+hierarchy -check -top tage_table
+proc
+flatten
+opt -fast
+fsm
+opt
+wreduce
+peepopt
+opt_clean
+techmap
+opt -fast
+dfflibmap -liberty build/asap7/lib/asap7sc7p5t_27_RVT_TT_merged.lib
+abc -liberty build/asap7/lib/asap7sc7p5t_27_RVT_TT_merged.lib
+opt_clean
+stat -liberty build/asap7/lib/asap7sc7p5t_27_RVT_TT_merged.lib

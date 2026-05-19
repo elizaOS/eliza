@@ -24,7 +24,7 @@ from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any
 
-from e1_npu_runtime import CommandBuffer, E1NpuRuntime
+from e1_npu_runtime import CommandBuffer, E1NpuRuntime, NpuStreamDescriptor
 from e1_npu_stablehlo import (
     StableHloModule,
     StableHloOp,
@@ -312,6 +312,44 @@ class RuntimeDescriptorStagingOp:
     def descriptor_codegen_ready(self) -> bool:
         return self.input_stream_ready and self.writeback_ready and not self.blocking_reasons
 
+    @property
+    def descriptor_word_template(self) -> dict[str, int | str | bool] | None:
+        if (
+            not self.descriptor_codegen_ready
+            or self.descriptor_opcode is None
+            or self.source_arena_offset is None
+            or self.output_arena_offset is None
+            or self.stream_byte_count is None
+        ):
+            return None
+        return {
+            "word0": E1NpuRuntime.pack_stream_descriptor_word0(
+                self.descriptor_opcode,
+                0,
+                self.stream_byte_count,
+                writeback_request=True,
+            ),
+            "word1": "arena_base + source_arena_offset",
+            "word1_arena_offset": self.source_arena_offset,
+            "word2": "arena_base + output_arena_offset",
+            "word2_arena_offset": self.output_arena_offset,
+            "word3": 0,
+            "requires_arena_base": True,
+        }
+
+    def descriptor_words(self, arena_base: int) -> tuple[int, int, int, int]:
+        if arena_base < 0 or arena_base & 0x3:
+            raise ValueError("descriptor arena base must be non-negative and 32-bit aligned")
+        template = self.descriptor_word_template
+        if template is None:
+            raise ValueError("descriptor staging op is not codegen-ready")
+        return (
+            int(template["word0"]),
+            (arena_base + int(template["word1_arena_offset"])) & 0xFFFF_FFFF,
+            (arena_base + int(template["word2_arena_offset"])) & 0xFFFF_FFFF,
+            int(template["word3"]),
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "op_name": self.op_name,
@@ -330,6 +368,7 @@ class RuntimeDescriptorStagingOp:
             "output_allocation_bytes": self.output_allocation_bytes,
             "inputs": [input_binding.as_dict() for input_binding in self.inputs],
             "mmio_preamble": self.mmio_preamble,
+            "descriptor_word_template": self.descriptor_word_template,
             "blocking_reasons": list(self.blocking_reasons),
         }
 
@@ -340,15 +379,268 @@ class RuntimeDescriptorStagingPlan:
 
     ops: tuple[RuntimeDescriptorStagingOp, ...]
 
+    @property
+    def descriptor_batches(self) -> tuple[RuntimeDescriptorBatch, ...]:
+        batch_indexes = sorted({op.command_buffer_batch_index for op in self.ops})
+        batches: list[RuntimeDescriptorBatch] = []
+        for batch_index in batch_indexes:
+            ops = tuple(op for op in self.ops if op.command_buffer_batch_index == batch_index)
+            blocked = tuple(
+                RuntimeDescriptorBatchBlocker(
+                    op_name=op.op_name,
+                    blocking_reasons=op.blocking_reasons,
+                )
+                for op in ops
+                if not op.descriptor_codegen_ready
+            )
+            batches.append(
+                RuntimeDescriptorBatch(
+                    batch_index=batch_index,
+                    op_names=tuple(op.op_name for op in ops),
+                    descriptor_slots=len(ops),
+                    descriptor_codegen_ready=not blocked,
+                    blocked_ops=blocked,
+                )
+            )
+        return tuple(batches)
+
+    def command_buffer_image(
+        self, arena_base: int, descriptor_base: int, *, batch_index: int = 0
+    ) -> RuntimeDescriptorCommandBufferImage:
+        if arena_base < 0 or arena_base & 0x3:
+            raise ValueError("descriptor arena base must be non-negative and 32-bit aligned")
+        if descriptor_base < 0 or descriptor_base & 0x3:
+            raise ValueError("descriptor base must be non-negative and 32-bit aligned")
+
+        ops = tuple(op for op in self.ops if op.command_buffer_batch_index == batch_index)
+        if not ops:
+            raise ValueError(f"no descriptor staging ops for command-buffer batch {batch_index}")
+        blocked = tuple(op.op_name for op in ops if not op.descriptor_codegen_ready)
+        if blocked:
+            raise ValueError(
+                f"command-buffer batch {batch_index} contains non-codegen-ready ops: "
+                f"{', '.join(blocked)}"
+            )
+
+        command_buffer = CommandBuffer(descriptor_base)
+        descriptor_words: list[tuple[int, int, int, int]] = []
+        for op in ops:
+            if op.descriptor_opcode is None or op.stream_byte_count is None:
+                raise ValueError(f"op {op.op_name} is missing descriptor stream metadata")
+            words = op.descriptor_words(arena_base)
+            descriptor_words.append(words)
+            command_buffer.append(
+                NpuStreamDescriptor(
+                    opcode=int(op.descriptor_opcode),
+                    source_addr=words[1],
+                    scratch_offset=0,
+                    byte_count=int(op.stream_byte_count),
+                    op_b=words[2],
+                    acc=words[3],
+                    writeback_request=True,
+                )
+            )
+
+        return RuntimeDescriptorCommandBufferImage(
+            batch_index=batch_index,
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            op_names=tuple(op.op_name for op in ops),
+            descriptor_words=tuple(descriptor_words),
+            descriptor_image=command_buffer.descriptor_image(),
+            submission={
+                "base": command_buffer.submission().base,
+                "head": command_buffer.submission().head,
+                "tail": command_buffer.submission().tail,
+            },
+        )
+
     def as_dict(self) -> dict[str, Any]:
         return {
             "schema": "eliza.e1_npu_descriptor_staging_plan.v1",
             "claim_boundary": (
-                "descriptor_staging_metadata_only_not_binary_codegen_or_dma_runtime"
+                "descriptor_staging_relocatable_template_only_not_arena_base_assignment_or_dma_runtime"
             ),
             "ready_ops": sum(1 for op in self.ops if op.descriptor_codegen_ready),
             "blocked_ops": sum(1 for op in self.ops if not op.descriptor_codegen_ready),
+            "descriptor_batches": [batch.as_dict() for batch in self.descriptor_batches],
             "ops": [op.as_dict() for op in self.ops],
+        }
+
+
+@dataclass(frozen=True)
+class RuntimeDescriptorBatchBlocker:
+    """Blocked op summary for a descriptor command-buffer batch."""
+
+    op_name: str
+    blocking_reasons: tuple[str, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "op_name": self.op_name,
+            "blocking_reasons": list(self.blocking_reasons),
+        }
+
+
+@dataclass(frozen=True)
+class RuntimeDescriptorBatch:
+    """Batch-level descriptor emission readiness."""
+
+    batch_index: int
+    op_names: tuple[str, ...]
+    descriptor_slots: int
+    descriptor_codegen_ready: bool
+    blocked_ops: tuple[RuntimeDescriptorBatchBlocker, ...]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "batch_index": self.batch_index,
+            "op_names": list(self.op_names),
+            "descriptor_slots": self.descriptor_slots,
+            "descriptor_codegen_ready": self.descriptor_codegen_ready,
+            "blocked_ops": [blocked.as_dict() for blocked in self.blocked_ops],
+        }
+
+
+@dataclass(frozen=True)
+class RuntimeDescriptorCommandBufferImage:
+    """Concrete descriptor image for one ready command-buffer batch."""
+
+    batch_index: int
+    arena_base: int
+    descriptor_base: int
+    op_names: tuple[str, ...]
+    descriptor_words: tuple[tuple[int, int, int, int], ...]
+    descriptor_image: dict[int, int]
+    submission: dict[str, int]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "eliza.e1_npu_descriptor_command_buffer_image.v1",
+            "claim_boundary": (
+                "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population"
+            ),
+            "batch_index": self.batch_index,
+            "arena_base": self.arena_base,
+            "descriptor_base": self.descriptor_base,
+            "op_names": list(self.op_names),
+            "descriptor_words": [list(words) for words in self.descriptor_words],
+            "descriptor_image": {
+                f"0x{address:08x}": word for address, word in self.descriptor_image.items()
+            },
+            "submission": self.submission,
+        }
+
+
+@dataclass(frozen=True)
+class RuntimePreparedDescriptorBatch:
+    """Concrete metadata package for staging one descriptor-ready batch."""
+
+    batch_index: int
+    arena_base: int
+    descriptor_base: int
+    arena_total_bytes: int
+    arena_alignment_bytes: int
+    op_mmio_preamble: tuple[dict[str, Any], ...]
+    descriptor_command_buffer_image: RuntimeDescriptorCommandBufferImage
+
+    @property
+    def host_runtime_sequence(self) -> dict[str, Any]:
+        submission = self.descriptor_command_buffer_image.submission
+        return {
+            "schema": "eliza.e1_npu_host_runtime_sequence.v1",
+            "claim_boundary": (
+                "host_runtime_sequence_metadata_only_not_tensor_population_or_execution"
+            ),
+            "mmio_preamble_writes": [
+                {
+                    "op_name": op["op_name"],
+                    "writes": [
+                        {
+                            "register": "GEMM_CFG",
+                            "address": f"0x{E1NpuRuntime.GEMM_CFG:08x}",
+                            "value": op["mmio_preamble"]["GEMM_CFG"],
+                        },
+                        {
+                            "register": "GEMM_BASE",
+                            "address": f"0x{E1NpuRuntime.GEMM_BASE:08x}",
+                            "value": op["mmio_preamble"]["GEMM_BASE"],
+                        },
+                        {
+                            "register": "GEMM_STRIDE",
+                            "address": f"0x{E1NpuRuntime.GEMM_STRIDE:08x}",
+                            "value": op["mmio_preamble"]["GEMM_STRIDE"],
+                        },
+                    ],
+                }
+                for op in self.op_mmio_preamble
+            ],
+            "descriptor_memory_writes": [
+                {"address": f"0x{address:08x}", "value": word}
+                for address, word in sorted(
+                    self.descriptor_command_buffer_image.descriptor_image.items()
+                )
+            ],
+            "submission_mmio_writes": [
+                {
+                    "register": "DESC_BASE",
+                    "address": f"0x{E1NpuRuntime.DESC_BASE:08x}",
+                    "value": submission["base"],
+                },
+                {
+                    "register": "DESC_HEAD",
+                    "address": f"0x{E1NpuRuntime.DESC_HEAD:08x}",
+                    "value": submission["head"],
+                },
+                {
+                    "register": "DESC_TAIL",
+                    "address": f"0x{E1NpuRuntime.DESC_TAIL:08x}",
+                    "value": submission["tail"],
+                },
+                {
+                    "register": "CMD_PARAM",
+                    "address": f"0x{E1NpuRuntime.CMD_PARAM:08x}",
+                    "value": 1,
+                },
+                {
+                    "register": "CTRL_STATUS",
+                    "address": f"0x{E1NpuRuntime.CTRL_STATUS:08x}",
+                    "value": 2,
+                },
+                {
+                    "register": "CTRL_STATUS",
+                    "address": f"0x{E1NpuRuntime.CTRL_STATUS:08x}",
+                    "value": 1,
+                },
+            ],
+            "completion_poll": {
+                "register": "DESC_STATUS",
+                "address": f"0x{E1NpuRuntime.DESC_STATUS:08x}",
+                "requires_done_bit": True,
+                "rejects_error_bit": True,
+            },
+        }
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": "eliza.e1_npu_prepared_descriptor_batch.v1",
+            "claim_boundary": (
+                "prepared_descriptor_batch_metadata_only_not_mmio_execution_or_dma_submission"
+            ),
+            "batch_index": self.batch_index,
+            "arena_base": self.arena_base,
+            "descriptor_base": self.descriptor_base,
+            "arena_total_bytes": self.arena_total_bytes,
+            "arena_alignment_bytes": self.arena_alignment_bytes,
+            "required_runtime_steps": [
+                "populate_tensor_arena",
+                "program_mmio_preamble",
+                "stage_descriptor_image",
+                "submit_command_buffer",
+            ],
+            "op_mmio_preamble": list(self.op_mmio_preamble),
+            "descriptor_command_buffer_image": self.descriptor_command_buffer_image.as_dict(),
+            "host_runtime_sequence": self.host_runtime_sequence,
         }
 
 
@@ -483,6 +775,38 @@ class PartitionReport:
             plan = plan_op_lowering(entry.op)
             ops.append(_descriptor_staging_op(entry.op, plan.lowering_precision, binding))
         return RuntimeDescriptorStagingPlan(ops=tuple(ops))
+
+    def prepared_descriptor_batch(
+        self, arena_base: int, descriptor_base: int, *, batch_index: int = 0
+    ) -> RuntimePreparedDescriptorBatch:
+        staging_plan = self.descriptor_staging_plan
+        batch_ops = tuple(
+            op for op in staging_plan.ops if op.command_buffer_batch_index == batch_index
+        )
+        if not batch_ops:
+            raise ValueError(f"no descriptor staging ops for command-buffer batch {batch_index}")
+        image = staging_plan.command_buffer_image(
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            batch_index=batch_index,
+        )
+        arena = self.tensor_arena_plan
+        return RuntimePreparedDescriptorBatch(
+            batch_index=batch_index,
+            arena_base=arena_base,
+            descriptor_base=descriptor_base,
+            arena_total_bytes=arena.total_bytes,
+            arena_alignment_bytes=arena.alignment_bytes,
+            op_mmio_preamble=tuple(
+                {
+                    "op_name": op.op_name,
+                    "runtime_api": op.runtime_api,
+                    "mmio_preamble": op.mmio_preamble,
+                }
+                for op in batch_ops
+            ),
+            descriptor_command_buffer_image=image,
+        )
 
     def as_dict(self) -> dict[str, Any]:
         return {

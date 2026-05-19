@@ -49,6 +49,7 @@ def _cva6_rtl_present() -> tuple[bool, str]:
                 return True, str(candidate.relative_to(_ROOT))
     return False, ""
 
+
 _cocotb: Any
 try:
     import cocotb as _cocotb_real
@@ -206,10 +207,7 @@ def main(argv: list[str] | None = None) -> int:
                 "  next: git -C external/chipyard submodule update --init "
                 "--recursive generators/cva6"
             )
-            print(
-                "  alt:  git clone https://github.com/openhwgroup/cva6.git "
-                "external/cva6/cva6"
-            )
+            print("  alt:  git clone https://github.com/openhwgroup/cva6.git external/cva6/cva6")
             return 1
         print(
             "STATUS: BLOCKED cpu.mmu_sv39_evidence - "

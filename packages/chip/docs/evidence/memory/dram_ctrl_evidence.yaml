@@ -72,8 +72,7 @@ required_artifact_schemas:
   docs/evidence/memory/dram_ctrl_post_silicon_training_record.json: eliza.memory.dram_ctrl_post_silicon_training.v1
 
 unblock_requires:
-  - All four cocotb DFI tests pass under verilator (current status:
-    cocotb_PASS).
+  - "All four cocotb DFI tests pass under verilator (current status: cocotb_PASS)."
   - A real LPDDR5X/6 PHY is licensed (see lpddr-phy-procurement.yaml)
     and attached to the DFI 5.0 south interface.
   - First-silicon read leveling, gate training, vref, and ZQ

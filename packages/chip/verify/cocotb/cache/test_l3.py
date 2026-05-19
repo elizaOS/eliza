@@ -60,8 +60,9 @@ async def wait_for(dut, signal: str, max_cycles: int = 64) -> int:
     raise AssertionError(f"{signal} never asserted within {max_cycles} cycles")
 
 
-async def issue_l2_acq(dut, paddr_line: int, *, source: int = 0,
-                       is_write: int = 0, state: int = MESI_S) -> None:
+async def issue_l2_acq(
+    dut, paddr_line: int, *, source: int = 0, is_write: int = 0, state: int = MESI_S
+) -> None:
     dut.l2_acq_valid.value = 1
     dut.l2_acq_paddr_line.value = paddr_line
     dut.l2_acq_is_write.value = is_write

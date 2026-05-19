@@ -448,31 +448,31 @@ async def ftq_l1i_shim_flushes_on_misprediction(dut):
 # IOMMU MMIO aperture (32-bit halves of 64-bit IOMMU registers).
 IOMMU_APER_BASE = 0x1006_0000
 IOMMU_DDTP_OFFS = 0x010
-IOMMU_FQT_OFFS  = 0x034
+IOMMU_FQT_OFFS = 0x034
 
 # IOMMU DMA fixture aperture.
-IOMMU_DMA_BASE   = 0x1007_0000
-IOMMU_DMA_IOVA   = 0x000
-IOMMU_DMA_CTRL   = 0x004
+IOMMU_DMA_BASE = 0x1007_0000
+IOMMU_DMA_IOVA = 0x000
+IOMMU_DMA_CTRL = 0x004
 IOMMU_DMA_STATUS = 0x008
-IOMMU_DMA_DEVID  = 0x00C
+IOMMU_DMA_DEVID = 0x00C
 
 # SLC fixture aperture.
-SLC_BASE         = 0x1008_0000
-SLC_PADDR_LO     = 0x000
-SLC_PADDR_HI     = 0x004
-SLC_CTRL         = 0x008
-SLC_STATUS       = 0x00C
-SLC_GRANT_LO     = 0x010
+SLC_BASE = 0x1008_0000
+SLC_PADDR_LO = 0x000
+SLC_PADDR_HI = 0x004
+SLC_CTRL = 0x008
+SLC_STATUS = 0x00C
+SLC_GRANT_LO = 0x010
 
-DDTP_MODE_OFF  = 0
+DDTP_MODE_OFF = 0
 DDTP_MODE_BARE = 1
 DDTP_MODE_1LVL = 2
 
 
 async def write_iommu_reg64(dut, offset, value):
     """Two-write sequence: low half then high half issues a 64-bit IOMMU write."""
-    await write_mmio(dut, IOMMU_APER_BASE + offset,     value & 0xFFFF_FFFF)
+    await write_mmio(dut, IOMMU_APER_BASE + offset, value & 0xFFFF_FFFF)
     await write_mmio(dut, IOMMU_APER_BASE + offset + 4, (value >> 32) & 0xFFFF_FFFF)
     # Allow the IOMMU's AXI-Lite slave a couple of cycles to commit.
     for _ in range(4):
@@ -524,7 +524,7 @@ async def test_iommu_programmed_fault(dut):
 
     # Program DMA fixture: dev_id = 0xBAD, IOVA = 0x9000.
     await write_mmio(dut, IOMMU_DMA_BASE + IOMMU_DMA_DEVID, 0xBAD)
-    await write_mmio(dut, IOMMU_DMA_BASE + IOMMU_DMA_IOVA,  0x9000)
+    await write_mmio(dut, IOMMU_DMA_BASE + IOMMU_DMA_IOVA, 0x9000)
     # Trigger a read transaction.
     await write_mmio(dut, IOMMU_DMA_BASE + IOMMU_DMA_CTRL, 0x2)
     # Allow the IOMMU enough cycles to grant the master, check the
@@ -534,8 +534,7 @@ async def test_iommu_programmed_fault(dut):
 
     fault_count = int(dut.iommu_fault_count_o.value)
     assert fault_count >= 1, (
-        f"IOMMU fault_count did not advance after unauthorised DMA "
-        f"(got {fault_count})."
+        f"IOMMU fault_count did not advance after unauthorised DMA (got {fault_count})."
     )
 
     # The fault queue tail register should also have moved.
@@ -591,9 +590,7 @@ async def test_slc_passthrough(dut):
     # The line at address zero is all zeros from a cold DRAM, so the
     # latched low-32 grant data should be 0.
     grant_lo = await read_mmio(dut, SLC_BASE + SLC_GRANT_LO)
-    assert grant_lo == 0, (
-        f"SLC grant low-word expected 0 from cold DRAM, got {grant_lo:#x}"
-    )
+    assert grant_lo == 0, f"SLC grant low-word expected 0 from cold DRAM, got {grant_lo:#x}"
 
 
 @cocotb.test()

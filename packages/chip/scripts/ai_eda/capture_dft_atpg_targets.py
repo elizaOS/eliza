@@ -106,6 +106,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "fault-dft",
+            "verirag-llm4dft",
             "deeptpi",
             "deft-atpg",
             "lite-scan-instrumentation",
@@ -168,11 +169,22 @@ def main() -> int:
                     "make cocotb-contract",
                 ],
             },
+            {
+                "id": "llm-dft-repair-quarantine-watch",
+                "status": "CAPTURED_NOT_REPAIRED",
+                "target": "future VeriRAG/LLM4DFT-style testability repairs must remain quarantined until DFT, synthesis, formal, simulation, and signoff gates pass",
+                "acceptance_gates": [
+                    "make synth",
+                    "make formal",
+                    "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+                ],
+            },
         ],
         "blocked_by": [
             "no E1 scan architecture or scan IO contract",
             "no reviewed gate-level DFT netlist flow",
             "no ATPG backend selected, pinned, or license-reviewed",
+            "no license-reviewed LLM4DFT/VeriDFT revision, local testability-rule oracle, or generated-repair quarantine workflow",
             "Fault may bundle proprietary/noncommercial ATPG engines that cannot be assumed release-safe",
             "no fault model, pattern format, coverage target, or tester interface contract",
             "no before/after timing, area, power, or signoff evidence for scan/test-point insertion",

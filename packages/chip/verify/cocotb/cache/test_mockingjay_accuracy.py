@@ -28,7 +28,6 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 
-
 # Trim DUT geometry mirrored from e1_mockingjay_prod_tb.sv
 WAYS = 8
 SETS = 64
@@ -46,7 +45,9 @@ class LRUModel:
         self.ways = ways
         self.sets = sets
         # Each set is an OrderedDict tag -> dummy (LRU semantics)
-        self._sets = [collections.OrderedDict() for _ in range(sets)]
+        self._sets: list[collections.OrderedDict[int, bool]] = [
+            collections.OrderedDict() for _ in range(sets)
+        ]
         self.hits = 0
         self.misses = 0
 
@@ -70,8 +71,8 @@ class TrackedTagSet:
     def __init__(self, ways: int, sets: int) -> None:
         self.ways = ways
         self.sets = sets
-        self.way_to_tag = [[None] * ways for _ in range(sets)]
-        self.tag_to_way = [{} for _ in range(sets)]
+        self.way_to_tag: list[list[int | None]] = [[None] * ways for _ in range(sets)]
+        self.tag_to_way: list[dict[int, int]] = [{} for _ in range(sets)]
 
     def lookup(self, set_idx: int, tag: int) -> int | None:
         return self.tag_to_way[set_idx].get(tag)
@@ -100,11 +101,11 @@ def gen_stream(num_ops: int, seed: int = 42):
     so each burst forces an LRU eviction of one hot line per set.
     """
     rng = random.Random(seed)
-    hot_sets = [0, 1, 2, 3]                  # 4 sets share both populations
+    hot_sets = [0, 1, 2, 3]  # 4 sets share both populations
     hot_pcs = [0x10_0000, 0x10_0040, 0x10_0080, 0x10_00C0]
     scan_pc = 0x20_0000
     HOT_TAGS = 4
-    HOT_REPS_PER_BURST = 4   # repeat the (set,tag) walk this many times
+    HOT_REPS_PER_BURST = 4  # repeat the (set,tag) walk this many times
     # WAYS=8 ways. Forcing LRU to evict the 4 hot tags requires more than
     # (WAYS - HOT_TAGS) unique scan tags per set. Use 8 unique scan tags
     # per hot set per burst.
@@ -165,7 +166,7 @@ async def test_mockingjay_beats_lru_on_scan_reuse(dut):
     mj_misses = 0
     NUM_OPS = 2000
 
-    for op_idx, (s, tag, pc) in enumerate(gen_stream(NUM_OPS, seed=1)):
+    for _op_idx, (s, tag, pc) in enumerate(gen_stream(NUM_OPS, seed=1)):
         # 1. Decide hit/miss in the Mockingjay-driven tracked set.
         way = tracker.lookup(s, tag)
         if way is not None:
@@ -228,8 +229,7 @@ async def test_mockingjay_beats_lru_on_scan_reuse(dut):
     rel_gain = (mj_rate - lru_rate) / max(lru_rate, 1e-6)
     abs_gain = mj_rate - lru_rate
     dut._log.info(
-        f"Mockingjay vs LRU: abs_gain={abs_gain*100:.2f}% "
-        f"rel_gain={rel_gain*100:.2f}%"
+        f"Mockingjay vs LRU: abs_gain={abs_gain * 100:.2f}% rel_gain={rel_gain * 100:.2f}%"
     )
 
     # Emit a machine-readable line for the evidence gate to parse.
@@ -241,6 +241,6 @@ async def test_mockingjay_beats_lru_on_scan_reuse(dut):
 
     assert mj_rate > lru_rate, "Mockingjay must beat LRU on the synthetic stream"
     assert abs_gain >= 0.10 or rel_gain >= 0.10, (
-        f"Mockingjay-vs-LRU gain {abs_gain*100:.2f}% absolute "
-        f"({rel_gain*100:.2f}% relative) below 10% threshold"
+        f"Mockingjay-vs-LRU gain {abs_gain * 100:.2f}% absolute "
+        f"({rel_gain * 100:.2f}% relative) below 10% threshold"
     )

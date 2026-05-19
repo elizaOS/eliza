@@ -35,9 +35,15 @@ CONFIG := $(REPO_ROOT)/pd/asap7/config.asap7.yaml
 # Sub-blocks under shape projection. Each block is sourced from rtl/ and run
 # through ORFS per pd/asap7/config.asap7.yaml.
 BLOCKS := big_core_shell npu_tile slc_slice
-LEAF_BLOCKS := npu_tile_rf_leaf
+LEAF_BLOCKS := npu_tile_rf_leaf tage_table
 
-.PHONY: all $(BLOCKS:%=%-shape) leaf-shape check clone-asap7 clone-orfs preflight-doc
+# Default leaf module for `make leaf-shape MODULE=<name>`. When MODULE is set,
+# leaf-shape runs only that module via the yosys+ABC synth-only driver. The
+# default falls back to the npu_tile_rf_leaf ORFS path so existing automation
+# is unchanged.
+MODULE ?=
+
+.PHONY: all $(BLOCKS:%=%-shape) leaf-shape leaf-synth check clone-asap7 clone-orfs preflight-doc
 
 all: $(BLOCKS:%=%-shape) leaf-shape
 	@echo "[asap7] all shape projection runs complete (predictive_only)."
@@ -80,35 +86,64 @@ big_core_shell-shape:
 	$(ASAP7_PRESENT)
 	$(ORFS_PRESENT)
 	@echo "[asap7] big_core_shell -> ORFS asap7 platform"
-	@scripts/run_asap7_block.sh big_core_shell $(CONFIG) $(EVIDENCE_DIR) \
-	    || (echo "BLOCKED: scripts/run_asap7_block.sh did not complete"; exit 1)
+	@$(REPO_ROOT)/scripts/run_asap7_block.sh big_core_shell $(CONFIG) $(EVIDENCE_DIR) \
+	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 npu_tile-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
 	$(ORFS_PRESENT)
 	@echo "[asap7] npu_tile -> ORFS asap7 platform"
-	@scripts/run_asap7_block.sh npu_tile $(CONFIG) $(EVIDENCE_DIR) \
-	    || (echo "BLOCKED: scripts/run_asap7_block.sh did not complete"; exit 1)
+	@$(REPO_ROOT)/scripts/run_asap7_block.sh npu_tile $(CONFIG) $(EVIDENCE_DIR) \
+	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 slc_slice-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
 	$(ORFS_PRESENT)
 	@echo "[asap7] slc_slice -> ORFS asap7 platform"
-	@scripts/run_asap7_block.sh slc_slice $(CONFIG) $(EVIDENCE_DIR) \
-	    || (echo "BLOCKED: scripts/run_asap7_block.sh did not complete"; exit 1)
+	@$(REPO_ROOT)/scripts/run_asap7_block.sh slc_slice $(CONFIG) $(EVIDENCE_DIR) \
+	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
-leaf-shape: $(LEAF_BLOCKS:%=%-shape)
+# leaf-shape: when MODULE is set, dispatch to the yosys+ABC synth-only driver
+# (works without ORFS). When MODULE is empty, fall back to the legacy ORFS
+# per-leaf list which currently contains only npu_tile_rf_leaf (ORFS gated).
+leaf-shape:
+	@if [ -n "$(MODULE)" ]; then \
+	    $(MAKE) --no-print-directory -C . leaf-synth MODULE="$(MODULE)"; \
+	else \
+	    $(MAKE) --no-print-directory -C . $(LEAF_BLOCKS:%=%-shape); \
+	fi
 	@echo "[asap7] leaf-block shape projection complete (predictive_only)."
+
+# leaf-synth: synth-only ABC mapping against the ASAP7 7p5t 27 nm RVT TT
+# stdcell library. Produces docs/evidence/process/asap7/<module>_shape.json
+# tagged predictive_finfet_shape_only_not_signoff. Does not require ORFS.
+leaf-synth:
+	@if [ -z "$(MODULE)" ]; then \
+	    echo "BLOCKED: leaf-synth requires MODULE=<rtl_top> (e.g. make leaf-shape MODULE=tage_table)"; \
+	    exit 1; \
+	fi
+	@mkdir -p $(EVIDENCE_DIR)
+	$(ASAP7_PRESENT)
+	@echo "[asap7] $(MODULE) -> yosys+ABC against asap7sc7p5t_27 RVT TT (synth-only)"
+	@$(REPO_ROOT)/scripts/run_asap7_block.sh $(MODULE) $(CONFIG) $(EVIDENCE_DIR) \
+	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 npu_tile_rf_leaf-shape:
 	@mkdir -p $(EVIDENCE_DIR)
 	$(ASAP7_PRESENT)
 	$(ORFS_PRESENT)
 	@echo "[asap7] npu_tile_rf_leaf -> ORFS asap7 platform (leaf sub-block)"
-	@scripts/run_asap7_block.sh npu_tile_rf_leaf $(CONFIG) $(EVIDENCE_DIR) \
-	    || (echo "BLOCKED: scripts/run_asap7_block.sh did not complete"; exit 1)
+	@$(REPO_ROOT)/scripts/run_asap7_block.sh npu_tile_rf_leaf $(CONFIG) $(EVIDENCE_DIR) \
+	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
+
+tage_table-shape:
+	@mkdir -p $(EVIDENCE_DIR)
+	$(ASAP7_PRESENT)
+	@echo "[asap7] tage_table -> yosys+ABC against asap7sc7p5t_27 RVT TT (synth-only leaf)"
+	@$(REPO_ROOT)/scripts/run_asap7_block.sh tage_table $(CONFIG) $(EVIDENCE_DIR) \
+	    || (echo "BLOCKED: $(REPO_ROOT)/scripts/run_asap7_block.sh did not complete"; exit 1)
 
 # ---------------------------------------------------------------------------
 # PDK + ORFS bootstrap (manual; never run inside the gates)

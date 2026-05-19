@@ -87,7 +87,13 @@ def main() -> int:
         "mode": "dry-run",
         "status": "TARGET_CAPTURE_ONLY_NO_HLS_GENERATION",
         "claim_boundary": CLAIM_BOUNDARY,
-        "source_ids": ["hlsfactory", "hls-eval", "idse-hls", "secda-dse"],
+        "source_ids": [
+            "hlsfactory",
+            "hls-eval",
+            "llm-dse",
+            "idse-hls",
+            "secda-dse",
+        ],
         "policy": {
             "generates_hls_code": False,
             "generates_rtl": False,
@@ -125,11 +131,23 @@ def main() -> int:
                     "make synth",
                 ],
             },
+            {
+                "id": "hls-directive-agent-search-watch",
+                "source_spec": "compiler/runtime/test_e1_npu_runtime.py",
+                "target": "future LLM-DSE-style directive and accelerator-parameter search for bounded E1 kernels",
+                "status": "CAPTURED_NOT_SEARCHED",
+                "acceptance_gates": [
+                    "make npu-runtime-contract-check",
+                    "python3 compiler/runtime/test_e1_npu_runtime.py",
+                    "make synth",
+                ],
+            },
         ],
         "blocked_by": [
             "no HLS backend selected or version-pinned",
             "no generated HLS code isolated under build/ai_eda",
             "no C-simulation, HLS synthesis, RTL simulation, or equivalence logs",
+            "no pinned LLM-DSE environment, HLSyn input subset, prompt log, or directive-search replay manifest",
             "external benchmark and framework licenses not manually reviewed",
         ],
     }

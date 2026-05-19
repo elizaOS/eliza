@@ -159,6 +159,7 @@ def test_progress_classifies_sifive_uart_tx_full_poll() -> None:
         instruction_trace={
             "bootrom_to_payload_handoff": True,
             "last_symbol": "sifive_uart_putc",
+            "fresh_for_log": True,
         },
         log_metadata={"raw_transcript_closed": True},
     )
@@ -166,6 +167,74 @@ def test_progress_classifies_sifive_uart_tx_full_poll() -> None:
         raise AssertionError(f"expected UART TX poll stage, got {progress}")
     if "TXDATA full-bit" not in progress["next_step"]:
         raise AssertionError(f"expected TXDATA guidance, got {progress}")
+
+
+def test_progress_rejects_stale_instruction_trace() -> None:
+    progress = smoke.classify_smoke_progress(
+        log_text="eliza-evidence: raw_transcript_begin\n",
+        instruction_trace={
+            "bootrom_to_payload_handoff": True,
+            "last_symbol": "sifive_uart_putc",
+            "fresh_for_log": False,
+        },
+        log_metadata={"raw_transcript_closed": True},
+    )
+    if progress["stage"] != "stale_instruction_trace":
+        raise AssertionError(f"expected stale trace stage, got {progress}")
+    if "run-binary" not in progress["next_step"]:
+        raise AssertionError(f"expected fresh trace guidance, got {progress}")
+
+
+def test_progress_classifies_opensbi_early_init() -> None:
+    progress = smoke.classify_smoke_progress(
+        log_text="eliza-evidence: raw_transcript_begin\n",
+        instruction_trace={
+            "bootrom_to_payload_handoff": True,
+            "last_symbol": "_bss_zero",
+            "fresh_for_log": True,
+        },
+        log_metadata={"raw_transcript_closed": True},
+    )
+    if progress["stage"] != "payload_opensbi_early_init":
+        raise AssertionError(f"expected OpenSBI early init stage, got {progress}")
+    if "early assembly" not in progress["next_step"]:
+        raise AssertionError(f"expected early init guidance, got {progress}")
+
+
+def test_progress_classifies_early_fdt_as_in_progress() -> None:
+    progress = smoke.classify_smoke_progress(
+        log_text="eliza-evidence: raw_transcript_begin\n",
+        instruction_trace={
+            "bootrom_to_payload_handoff": True,
+            "last_symbol": "fdt_offset_ptr",
+            "fresh_for_log": True,
+            "retired_instruction_count": 195_761,
+            "last_cycle": 446_860,
+        },
+        log_metadata={"raw_transcript_closed": True},
+    )
+    if progress["stage"] != "payload_fdt_parse_in_progress":
+        raise AssertionError(f"expected FDT in-progress stage, got {progress}")
+    if "continue" not in progress["next_step"]:
+        raise AssertionError(f"expected continue guidance, got {progress}")
+
+
+def test_progress_classifies_fast_timeout_without_trace() -> None:
+    progress = smoke.classify_smoke_progress(
+        log_text=(
+            "eliza-evidence: run_target=run-binary-fast\n[UART] UART0 is here (stdin/stdout).\n"
+        ),
+        instruction_trace={"exists": False},
+        log_metadata={
+            "raw_transcript_closed": True,
+            "run_target": "run-binary-fast",
+            "exit_code": "124",
+        },
+    )
+    if progress["stage"] != "fast_timeout_no_trace":
+        raise AssertionError(f"expected fast timeout no-trace stage, got {progress}")
+    if "fresh PC evidence" not in progress["next_step"]:
+        raise AssertionError(f"expected traced rerun guidance, got {progress}")
 
 
 def test_local_smoke_defaults_to_uart_diagnostics() -> None:
@@ -186,6 +255,10 @@ def main() -> int:
         test_log_metadata_records_attempt_and_closed_transcript,
         test_simulator_artifact_validation_requires_executable_candidate,
         test_progress_classifies_sifive_uart_tx_full_poll,
+        test_progress_rejects_stale_instruction_trace,
+        test_progress_classifies_opensbi_early_init,
+        test_progress_classifies_early_fdt_as_in_progress,
+        test_progress_classifies_fast_timeout_without_trace,
         test_local_smoke_defaults_to_uart_diagnostics,
     )
     for test in tests:

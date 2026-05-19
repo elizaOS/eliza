@@ -23,7 +23,10 @@ from e1_npu_partitioner import (
     PartitionEntry,
     PartitionReport,
     RuntimeBindingPlan,
+    RuntimeDescriptorBatch,
+    RuntimeDescriptorCommandBufferImage,
     RuntimeDescriptorStagingPlan,
+    RuntimePreparedDescriptorBatch,
     SupportEntry,
     TensorArenaPlan,
     load_support_table,
@@ -93,6 +96,24 @@ def _many_dots_payload(count: int) -> dict:
         "name": f"{count}_dot_command_buffer_smoke",
         "ops": [
             _dot_payload("int8")["ops"][0] | {"name": f"dot_{index}"} for index in range(count)
+        ],
+    }
+
+
+def _dot_add_payload() -> dict:
+    return {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "dot_add_command_buffer_smoke",
+        "ops": [
+            _dot_payload("int8")["ops"][0],
+            {
+                "op": "stablehlo.add",
+                "name": "add0",
+                "lhs_type": {"shape": [2, 2], "dtype": "int8"},
+                "rhs_type": {"shape": [2, 2], "dtype": "int8"},
+                "result_type": {"shape": [2, 2], "dtype": "int8"},
+                "precision": "int8",
+            },
         ],
     }
 
@@ -271,35 +292,35 @@ def test_partition_report_emits_runtime_binding_plan_from_arena_offsets() -> Non
                         "tensor_name": "dot0.lhs",
                         "op_name": "dot0",
                         "role": "lhs",
-                            "shape": [2, 3],
-                            "dtype": "int8",
-                            "storage_dtype": "logical",
-                            "byte_size": 6,
-                            "offset": 16,
-                        },
-                        {
-                            "graph_field": "rhs",
+                        "shape": [2, 3],
+                        "dtype": "int8",
+                        "storage_dtype": "logical",
+                        "byte_size": 6,
+                        "offset": 16,
+                    },
+                    {
+                        "graph_field": "rhs",
                         "tensor_name": "dot0.rhs",
                         "op_name": "dot0",
                         "role": "rhs",
-                            "shape": [3, 2],
-                            "dtype": "int8",
-                            "storage_dtype": "logical",
-                            "byte_size": 6,
-                            "offset": 24,
-                        },
-                    ],
-                    "output": {
+                        "shape": [3, 2],
+                        "dtype": "int8",
+                        "storage_dtype": "logical",
+                        "byte_size": 6,
+                        "offset": 24,
+                    },
+                ],
+                "output": {
                     "graph_field": "result",
                     "tensor_name": "dot0.result",
                     "op_name": "dot0",
-                        "role": "result",
-                        "shape": [2, 2],
-                        "dtype": "int8",
-                        "storage_dtype": "int32_accumulator",
-                        "byte_size": 16,
-                        "offset": 0,
-                    },
+                    "role": "result",
+                    "shape": [2, 2],
+                    "dtype": "int8",
+                    "storage_dtype": "int32_accumulator",
+                    "byte_size": 16,
+                    "offset": 0,
+                },
                 "unresolved_inputs": [],
             }
         ],
@@ -345,6 +366,18 @@ def test_partition_report_emits_descriptor_staging_plan_for_ready_input_streams(
     assert staging_plan.as_dict()["schema"] == "eliza.e1_npu_descriptor_staging_plan.v1"
     assert staging_plan.as_dict()["ready_ops"] == 1
     assert staging_plan.as_dict()["blocked_ops"] == 0
+    assert all(
+        isinstance(batch, RuntimeDescriptorBatch) for batch in staging_plan.descriptor_batches
+    )
+    assert staging_plan.as_dict()["descriptor_batches"] == [
+        {
+            "batch_index": 0,
+            "op_names": ["dot0"],
+            "descriptor_slots": 1,
+            "descriptor_codegen_ready": True,
+            "blocked_ops": [],
+        }
+    ]
     assert op["descriptor_opcode_name"] == "OP_GEMM_S8"
     assert op["descriptor_opcode"] == 8
     assert op["input_stream_ready"] is True
@@ -377,7 +410,236 @@ def test_partition_report_emits_descriptor_staging_plan_for_ready_input_streams(
         "GEMM_BASE": 0 | (8 << 8) | (16 << 16),
         "GEMM_STRIDE": 3 | (2 << 8) | (8 << 16),
     }
+    assert op["descriptor_word_template"] == {
+        "word0": 0xD0000108,
+        "word1": "arena_base + source_arena_offset",
+        "word1_arena_offset": 16,
+        "word2": "arena_base + output_arena_offset",
+        "word2_arena_offset": 0,
+        "word3": 0,
+        "requires_arena_base": True,
+    }
+    assert staging_plan.ops[0].descriptor_words(0x8000_0000) == (
+        0xD0000108,
+        0x8000_0010,
+        0x8000_0000,
+        0,
+    )
     assert op["blocking_reasons"] == []
+
+
+def test_partition_report_descriptor_word_materialization_is_fail_closed() -> None:
+    ready_op = partition_module(parse_module(_dot_payload("int8"))).descriptor_staging_plan.ops[0]
+    blocked_op = partition_module(
+        parse_module(_dot_payload("sparse_int4_2_4"))
+    ).descriptor_staging_plan.ops[0]
+
+    with pytest.raises(ValueError, match="32-bit aligned"):
+        ready_op.descriptor_words(0x8000_0002)
+    with pytest.raises(ValueError, match="not codegen-ready"):
+        blocked_op.descriptor_words(0x8000_0000)
+
+
+def test_descriptor_staging_plan_materializes_ready_command_buffer_image() -> None:
+    staging_plan = partition_module(parse_module(_many_dots_payload(2))).descriptor_staging_plan
+
+    image = staging_plan.command_buffer_image(
+        arena_base=0x8000_0000,
+        descriptor_base=0x2000,
+        batch_index=0,
+    )
+
+    assert isinstance(image, RuntimeDescriptorCommandBufferImage)
+    assert image.as_dict() == {
+        "schema": "eliza.e1_npu_descriptor_command_buffer_image.v1",
+        "claim_boundary": (
+            "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population"
+        ),
+        "batch_index": 0,
+        "arena_base": 0x8000_0000,
+        "descriptor_base": 0x2000,
+        "op_names": ["dot_0", "dot_1"],
+        "descriptor_words": [
+            [0xD0000108, 0x8000_0010, 0x8000_0000, 0],
+            [0xD0000108, 0x8000_0030, 0x8000_0020, 0],
+        ],
+        "descriptor_image": {
+            "0x00002000": 0xD0000108,
+            "0x00002004": 0x8000_0010,
+            "0x00002008": 0x8000_0000,
+            "0x0000200c": 0,
+            "0x00002010": 0xD0000108,
+            "0x00002014": 0x8000_0030,
+            "0x00002018": 0x8000_0020,
+            "0x0000201c": 0,
+        },
+        "submission": {"base": 0x2000, "head": 0, "tail": 2},
+    }
+
+
+def test_descriptor_staging_plan_command_buffer_image_is_fail_closed() -> None:
+    mixed_plan = partition_module(parse_module(_dot_add_payload())).descriptor_staging_plan
+    ready_plan = partition_module(parse_module(_dot_payload("int8"))).descriptor_staging_plan
+
+    with pytest.raises(ValueError, match="32-bit aligned"):
+        ready_plan.command_buffer_image(arena_base=0x8000_0000, descriptor_base=0x2002)
+    with pytest.raises(ValueError, match="non-codegen-ready ops: add0"):
+        mixed_plan.command_buffer_image(arena_base=0x8000_0000, descriptor_base=0x2000)
+    with pytest.raises(ValueError, match="no descriptor staging ops"):
+        ready_plan.command_buffer_image(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            batch_index=1,
+        )
+
+
+def test_partition_report_prepares_descriptor_batch_with_mmio_preamble() -> None:
+    report = partition_module(parse_module(_dot_payload("int8")))
+
+    prepared = report.prepared_descriptor_batch(
+        arena_base=0x8000_0000,
+        descriptor_base=0x2000,
+        batch_index=0,
+    )
+
+    prepared_dict = prepared.as_dict()
+    assert isinstance(prepared, RuntimePreparedDescriptorBatch)
+    assert {
+        key: prepared_dict[key]
+        for key in (
+            "schema",
+            "claim_boundary",
+            "batch_index",
+            "arena_base",
+            "descriptor_base",
+            "arena_total_bytes",
+            "arena_alignment_bytes",
+            "required_runtime_steps",
+            "op_mmio_preamble",
+            "descriptor_command_buffer_image",
+        )
+    } == {
+        "schema": "eliza.e1_npu_prepared_descriptor_batch.v1",
+        "claim_boundary": (
+            "prepared_descriptor_batch_metadata_only_not_mmio_execution_or_dma_submission"
+        ),
+        "batch_index": 0,
+        "arena_base": 0x8000_0000,
+        "descriptor_base": 0x2000,
+        "arena_total_bytes": 32,
+        "arena_alignment_bytes": 4,
+        "required_runtime_steps": [
+            "populate_tensor_arena",
+            "program_mmio_preamble",
+            "stage_descriptor_image",
+            "submit_command_buffer",
+        ],
+        "op_mmio_preamble": [
+            {
+                "op_name": "dot0",
+                "runtime_api": "lower_matmul_smoke",
+                "mmio_preamble": {
+                    "GEMM_CFG": 0x0003_0202,
+                    "GEMM_BASE": 0x0010_0800,
+                    "GEMM_STRIDE": 0x0008_0203,
+                },
+            }
+        ],
+        "descriptor_command_buffer_image": {
+            "schema": "eliza.e1_npu_descriptor_command_buffer_image.v1",
+            "claim_boundary": (
+                "descriptor_command_buffer_image_only_not_dma_submission_or_tensor_population"
+            ),
+            "batch_index": 0,
+            "arena_base": 0x8000_0000,
+            "descriptor_base": 0x2000,
+            "op_names": ["dot0"],
+            "descriptor_words": [[0xD0000108, 0x8000_0010, 0x8000_0000, 0]],
+            "descriptor_image": {
+                "0x00002000": 0xD0000108,
+                "0x00002004": 0x8000_0010,
+                "0x00002008": 0x8000_0000,
+                "0x0000200c": 0,
+            },
+            "submission": {"base": 0x2000, "head": 0, "tail": 1},
+        },
+    }
+    assert prepared_dict["host_runtime_sequence"] == {
+        "schema": "eliza.e1_npu_host_runtime_sequence.v1",
+        "claim_boundary": (
+            "host_runtime_sequence_metadata_only_not_tensor_population_or_execution"
+        ),
+        "mmio_preamble_writes": [
+            {
+                "op_name": "dot0",
+                "writes": [
+                    {"register": "GEMM_CFG", "address": "0x10020020", "value": 0x0003_0202},
+                    {"register": "GEMM_BASE", "address": "0x10020024", "value": 0x0010_0800},
+                    {
+                        "register": "GEMM_STRIDE",
+                        "address": "0x10020028",
+                        "value": 0x0008_0203,
+                    },
+                ],
+            }
+        ],
+        "descriptor_memory_writes": [
+            {"address": "0x00002000", "value": 0xD0000108},
+            {"address": "0x00002004", "value": 0x8000_0010},
+            {"address": "0x00002008", "value": 0x8000_0000},
+            {"address": "0x0000200c", "value": 0},
+        ],
+        "submission_mmio_writes": [
+            {"register": "DESC_BASE", "address": "0x10020040", "value": 0x2000},
+            {"register": "DESC_HEAD", "address": "0x10020044", "value": 0},
+            {"register": "DESC_TAIL", "address": "0x10020048", "value": 1},
+            {"register": "CMD_PARAM", "address": "0x10020030", "value": 1},
+            {"register": "CTRL_STATUS", "address": "0x1002000c", "value": 2},
+            {"register": "CTRL_STATUS", "address": "0x1002000c", "value": 1},
+        ],
+        "completion_poll": {
+            "register": "DESC_STATUS",
+            "address": "0x1002004c",
+            "requires_done_bit": True,
+            "rejects_error_bit": True,
+        },
+    }
+
+
+def test_partition_report_prepared_descriptor_batch_is_fail_closed() -> None:
+    mixed_report = partition_module(parse_module(_dot_add_payload()))
+    ready_report = partition_module(parse_module(_dot_payload("int8")))
+
+    with pytest.raises(ValueError, match="non-codegen-ready ops: add0"):
+        mixed_report.prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+    with pytest.raises(ValueError, match="no descriptor staging ops"):
+        ready_report.prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+            batch_index=1,
+        )
+
+
+def test_descriptor_staging_plan_reports_batch_level_blockers() -> None:
+    staging_plan = partition_module(parse_module(_dot_add_payload())).descriptor_staging_plan
+
+    assert staging_plan.as_dict()["descriptor_batches"] == [
+        {
+            "batch_index": 0,
+            "op_names": ["dot0", "add0"],
+            "descriptor_slots": 2,
+            "descriptor_codegen_ready": False,
+            "blocked_ops": [
+                {
+                    "op_name": "add0",
+                    "blocking_reasons": ["runtime_api_not_supported_by_descriptor_staging_plan"],
+                }
+            ],
+        }
+    ]
 
 
 def test_partition_report_descriptor_staging_plan_blocks_unresolved_inputs() -> None:
@@ -390,6 +652,7 @@ def test_partition_report_descriptor_staging_plan_blocks_unresolved_inputs() -> 
     assert op["writeback_ready"] is False
     assert op["descriptor_codegen_ready"] is False
     assert op["descriptor_opcode"] is None
+    assert op["descriptor_word_template"] is None
     assert op["blocking_reasons"] == [
         "unresolved_required_graph_fields",
         "runtime_api_not_supported_by_descriptor_staging_plan",

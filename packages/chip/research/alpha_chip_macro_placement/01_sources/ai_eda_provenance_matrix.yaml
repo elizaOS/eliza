@@ -665,6 +665,12 @@ entries:
     license_status: review_required
     release_use: blocked_pending_review
     allowed_current_use: citation_reference_only
+  - source_id: llm-dse
+    asset_type: llm_hls_directive_agent_code
+    asset_url: https://github.com/Nozidoali/LLM-DSE
+    license_status: review_required
+    release_use: blocked_pending_revision_license_hls_backend_prompt_replay_and_qor_review
+    allowed_current_use: citation_reference_only
   - source_id: idse-hls
     asset_type: llm_hls_dse_method
     asset_url: https://arxiv.org/abs/2505.22086
@@ -1223,3 +1229,21 @@ entries:
     license_status: review_required
     release_use: blocked_pending_version_capture_profile_probe_raw_trace_and_review
     allowed_current_use: optional_tool_reference_only
+  - source_id: llm-eda-log-analysis
+    asset_type: eda_log_analysis_research_method
+    asset_url: https://www2.eecs.berkeley.edu/Pubs/TechRpts/2025/EECS-2025-48.html
+    license_status: paper_only
+    release_use: blocked_pending_prompt_model_log_schema_replay_and_review
+    allowed_current_use: citation_reference_only
+  - source_id: verirag-llm4dft
+    asset_type: dft_rtl_repair_code_model_dataset
+    asset_url: https://github.com/yuyangdu01/LLM4DFT
+    license_status: review_required
+    release_use: blocked_pending_revision_license_dataset_model_dft_oracle_and_repair_review
+    allowed_current_use: citation_reference_only
+  - source_id: uvmarvel
+    asset_type: llm_uvm_subsystem_verification_method
+    asset_url: https://arxiv.org/abs/2605.04704
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_release_simulator_protocol_ir_coverage_and_review
+    allowed_current_use: citation_reference_only

@@ -102,7 +102,23 @@ is not DMA address assignment, binary descriptor codegen, dependency scheduling,
 or Android delegate integration. A new `descriptor_staging_plan` derives the
 current RTL opcode, input stream span, scratch offsets, output scratch offset,
 and GEMM MMIO preamble for ready matmul bindings, including writeback-ready
-INT8/INT4 matmul templates where the arena has int32 accumulator storage. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
+INT8/INT4 matmul templates where the arena has int32 accumulator storage. Those
+ready entries now include a relocatable `descriptor_word_template` and a checked
+`descriptor_words(arena_base)` materialization path. Ready batches can also
+materialize a `command_buffer_image(arena_base, descriptor_base, batch_index)`
+that matches the runtime `CommandBuffer.descriptor_image()` layout. The blob
+also reports `descriptor_batches` with batch-level blocked op reasons, and the
+ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
+wrappers for ready-batch descriptor image materialization. The partitioner and
+delegates also expose `prepared_descriptor_batch`/
+`e1_litert_delegate_prepared_descriptor_batch` wrappers that package arena
+sizing, GEMM MMIO preamble values, and the descriptor image under
+`eliza.e1_npu_prepared_descriptor_batch.v1`. Those prepared batches now include
+`host_runtime_sequence` metadata (`eliza.e1_npu_host_runtime_sequence.v1`) for
+GEMM preamble writes, descriptor-memory staging writes, descriptor submission
+MMIO writes, and the `DESC_STATUS` completion-poll condition. However,
+arena-base assignment, tensor data population, DMA runtime ownership, and
+Android delegate integration remain unimplemented. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
 scalar-dot sparse INT4 2:4, scalar Q8.8 group-scaled INT4, INT2, FP8 E4M3,
 and scalar Q8.8 FP16/BF16 matmul, im2col Conv2D, direct depthwise/grouped Conv2D, attention
 QK/softmax/AV plus composed multi-head attention with host-generated causal and

@@ -17,6 +17,7 @@ work_items:
       - agentic-eda-survey-2512-23189v2
       - autoeda-mcp
       - chateda
+      - llm-eda-log-analysis
       - rtl-coder
       - verilog-eval
       - cvdp
@@ -65,14 +66,16 @@ work_items:
       - autoeda-mcp
       - orassistant
       - eda-corpus
+      - llm-eda-log-analysis
     target_area:
       - log_analysis
       - openroad_triage
       - evidence_navigation
     owner_scope: read-only local source index and citation smoke reports
     objective: >
-      Build a local, citation-required index over E1 EDA scripts, checks, and
-      source registries before allowing any agent to propose tool actions.
+      Build a local, citation-required index over E1 EDA scripts, checks,
+      source registries, and EDA log-triage methods before allowing any agent
+      to propose tool actions.
     deliverables:
       - scripts/ai_eda/build_local_eda_rag_index.py
       - build/ai_eda/rag_index/source_manifest.json
@@ -85,10 +88,12 @@ work_items:
       - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
     blocked_by:
       - Broader source corpus selection and license review
+      - No approved parser/schema for synthesis, OpenLane, formal, simulator, and signoff log tables
       - No write-capable agent action schema yet
     acceptance_criteria:
       - Index manifest is reproducible from current file hashes.
       - Citation smoke report names follow-up gates for each query.
+      - Log triage remains advisory and cites source/log hashes before naming fixes.
       - The index policy remains read-only.
   - id: p1-external-source-metadata-probe
     title: External AI/EDA Source Metadata Probe
@@ -393,6 +398,7 @@ work_items:
       - sangam-sva
       - fvdebug
       - siliconmind-v1
+      - uvmarvel
     target_area:
       - verification
       - formal_verification
@@ -402,8 +408,9 @@ work_items:
     owner_scope: dry-run verification-debug target reports only; no generated patches, testbenches, or assertion bindings
     objective: >
       Capture AI-assisted verification planning, PRO-V-style testbench/oracle
-      generation, SANGAM-style assertion refinement, and FVDebug-style
-      counterexample triage as target tasks behind deterministic E1 gates.
+      generation, UVMarvel-style UVM/subsystem testbench automation,
+      SANGAM-style assertion refinement, and FVDebug-style counterexample
+      triage as target tasks behind deterministic E1 gates.
     deliverables:
       - scripts/ai_eda/capture_verification_debug_targets.py
       - build/ai_eda/verification_debug_targets/validation/targets_report.json
@@ -418,6 +425,7 @@ work_items:
     blocked_by:
       - No archived failing E1 formal counterexample corpus
       - No waveform or trace causal-graph parser pinned for local reports
+      - No UVM-capable simulator/license, protocol IR, or coverage-to-cocotb correlation workflow for E1 subsystem verification
       - No reviewer disposition schema for AI-generated root-cause reports
       - No license-reviewed PRO-V or SiliconMind model integration path
     acceptance_criteria:
@@ -738,6 +746,7 @@ work_items:
     source_ids:
       - hlsfactory
       - hls-eval
+      - llm-dse
       - idse-hls
       - secda-dse
     target_area:
@@ -748,8 +757,8 @@ work_items:
     owner_scope: dry-run target capture only; no generated HLS or RTL
     objective: >
       Identify E1 runtime and NPU behaviors that could become HLS/accelerator
-      DSE tasks, while keeping generated HLS, generated RTL, and benchmark
-      claims blocked until deterministic gates exist.
+      DSE tasks, while keeping generated directives, generated HLS, generated
+      RTL, and benchmark claims blocked until deterministic gates exist.
     deliverables:
       - scripts/ai_eda/capture_hls_accelerator_targets.py
       - build/ai_eda/hls_accelerator_targets/<run-id>/targets_report.json
@@ -764,6 +773,7 @@ work_items:
     blocked_by:
       - No HLS backend selected or version-pinned
       - No generated HLS artifact isolation policy beyond build/ai_eda
+      - No pinned LLM-DSE environment, HLSyn input subset, prompt log, or directive-search replay manifest
       - External benchmark/framework license review not complete
       - No E1 HLS C-simulation or generated-RTL equivalence harness
     acceptance_criteria:
@@ -942,6 +952,7 @@ work_items:
     status: IN_PROGRESS
     source_ids:
       - fault-dft
+      - verirag-llm4dft
       - deeptpi
       - deft-atpg
       - lite-scan-instrumentation
@@ -955,18 +966,20 @@ work_items:
       - scan_insertion
       - test_point_insertion
       - manufacturing_test
-    owner_scope: dry-run target capture only; no scan insertion, test-point insertion, ATPG execution, or pattern generation
+    owner_scope: dry-run target capture only; no scan insertion, test-point insertion, RTL testability repair, ATPG execution, or pattern generation
     objective: >
-      Track open DFT tooling and AI-assisted ATPG/testability methods while
-      tying any future E1 use to scan-policy, netlist, manufacturing, and
-      downstream signoff gates.
+      Track open DFT tooling and AI-assisted ATPG/testability methods,
+      including retrieval-augmented RTL testability repair, while tying any
+      future E1 use to scan-policy, netlist, DFT-rule oracle, manufacturing,
+      and downstream signoff gates.
     deliverables:
       - scripts/ai_eda/capture_dft_atpg_targets.py
       - build/ai_eda/dft_atpg_targets/<run-id>/targets_report.json
     evidence_gate: >
       DFT/ATPG automation reports may only hash local RTL, constraints, and
-      manufacturing/signoff inputs; scan, test-point, ATPG, pattern, and fault
-      coverage claims require pinned backends and deterministic evidence.
+      manufacturing/signoff inputs; scan, test-point, RTL repair, ATPG,
+      pattern, and fault coverage claims require pinned backends and
+      deterministic evidence.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation
@@ -976,6 +989,7 @@ work_items:
       - No E1 scan architecture or scan IO contract
       - No reviewed gate-level DFT netlist flow
       - No ATPG backend selected, pinned, or license-reviewed
+      - No license-reviewed LLM4DFT/VeriDFT revision, local testability-rule oracle, or generated-repair quarantine workflow
       - No fault model, pattern format, coverage target, or tester interface contract
       - No before/after timing, area, power, or signoff evidence for scan/test-point insertion
     acceptance_criteria:

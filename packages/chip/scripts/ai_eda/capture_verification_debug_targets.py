@@ -119,6 +119,7 @@ def main() -> int:
             "sangam-sva",
             "fvdebug",
             "siliconmind-v1",
+            "uvmarvel",
         ],
         "policy": {
             "changes_rtl": False,
@@ -176,6 +177,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "uvm-testbench-automation-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future UVM/UVMarvel-style subsystem testbenches require a protocol IR, commercial-simulator availability, coverage logs, and cocotb/formal cross-checks before promotion",
+                "acceptance_gates": [
+                    "make cocotb-contract",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "assertion-self-refine-watch",
                 "status": "CAPTURED_NOT_BOUND",
                 "target": "future SANGAM-style SVA search must produce reviewed assertion candidates, not direct RTL bindings",
@@ -201,6 +212,7 @@ def main() -> int:
             "no archived failing formal counterexample corpus for E1",
             "no waveform/trace-to-causal-graph parser pinned for local formal failures",
             "no license-reviewed PRO-V, Saarthi, SANGAM, FVDebug, or SiliconMind integration path",
+            "no UVM-capable simulator/license, protocol IR, or coverage-to-cocotb correlation workflow for E1 subsystem verification",
             "no reviewer disposition schema for AI-suggested root causes or patches",
             "no deterministic source-promotion gate for AI-generated testbenches, assertions, or RTL fixes",
         ],

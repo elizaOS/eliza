@@ -6,8 +6,8 @@ checkout="${CHIPYARD_CHECKOUT:-$repo_dir/external/chipyard}"
 sim_dir="$checkout/sims/verilator"
 out_dir="$repo_dir/build/chipyard/eliza_rocket"
 log="$out_dir/verilator-linux-smoke.log"
-log_tmp="$out_dir/verilator-linux-smoke.log.tmp"
-raw_log="$out_dir/verilator-linux-smoke.raw.tmp"
+log_tmp=""
+raw_log=""
 lock_dir="$out_dir/verilator-linux-smoke.lock"
 config="${CHIPYARD_CONFIG:-ElizaRocketConfig}"
 config_package="${CHIPYARD_CONFIG_PACKAGE:-eliza}"
@@ -32,7 +32,15 @@ if ! mkdir "$lock_dir" 2>/dev/null; then
 	if [ -f "$lock_dir/pid" ]; then
 		lock_pid="$(cat "$lock_dir/pid" 2>/dev/null || true)"
 	fi
+	lock_args=""
 	if [ -n "$lock_pid" ] && kill -0 "$lock_pid" 2>/dev/null; then
+		lock_args="$(ps -p "$lock_pid" -o args= 2>/dev/null || true)"
+	fi
+	case "$lock_args" in
+		*run_chipyard_eliza_linux_smoke.sh*) ;;
+		*) lock_args="" ;;
+	esac
+	if [ -n "$lock_args" ]; then
 		printf 'STATUS: BLOCKED chipyard.verilator_linux_smoke\n'
 		printf '  simulator_path: external/chipyard/sims/verilator\n'
 		printf '  lock: %s\n' "${lock_dir#"$repo_dir"/}"
@@ -47,7 +55,15 @@ if ! mkdir "$lock_dir" 2>/dev/null; then
 	mkdir "$lock_dir"
 fi
 printf '%s\n' "$$" >"$lock_dir/pid"
+log_tmp="$(mktemp "$out_dir/verilator-linux-smoke.XXXXXX.log.tmp")"
+raw_log="$(mktemp "$out_dir/verilator-linux-smoke.XXXXXX.raw.tmp")"
 cleanup_lock() {
+	if [ -n "${log_tmp:-}" ] && [ -f "$log_tmp" ]; then
+		rm -f "$log_tmp"
+	fi
+	if [ -n "${raw_log:-}" ] && [ -f "$raw_log" ]; then
+		rm -f "$raw_log"
+	fi
 	rm -f "$lock_dir/pid"
 	rmdir "$lock_dir" 2>/dev/null || true
 }
@@ -213,6 +229,11 @@ command_text="$command_text $run_target"
 	printf 'eliza-evidence: raw_transcript_begin\n'
 } >"$log_tmp"
 : >"$raw_log"
+trace_out="$sim_dir/output/chipyard.harness.TestHarness.$config/$(basename -- "$binary_arg").out"
+if [ "$run_target" = "run-binary-fast" ] && [ -f "$trace_out" ]; then
+	rm -f "$trace_out"
+	printf 'eliza-evidence: removed_stale_trace=%s\n' "${trace_out#"$repo_dir"/}" >>"$log_tmp"
+fi
 
 set +e
 if [ "$break_sim_prereq" = "1" ]; then
