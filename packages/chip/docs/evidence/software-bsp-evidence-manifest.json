@@ -217,9 +217,8 @@
           "min_bytes": 160,
           "required_strings": [
             "eliza-evidence: target=aosp artifact=eliza_ai_soc_lunch",
-            "eliza-evidence: command=lunch eliza_ai_soc-userdebug",
+            "eliza-evidence: command=lunch eliza_ai_soc-trunk_staging-userdebug",
             "eliza-evidence: started_utc=",
-            "eliza_ai_soc-userdebug",
             "TARGET_PRODUCT=eliza_ai_soc",
             "eliza-evidence: ended_utc=",
             "eliza-evidence: status=PASS"
