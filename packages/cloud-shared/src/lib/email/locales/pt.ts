@@ -46,8 +46,7 @@ export const emailMessages: EmailMessages = {
     subject: "✓ Compra confirmada — créditos adicionados à sua conta",
   },
   containerShutdownWarning: {
-    subject:
-      '🚨 URGENTE: o container "{{containerName}}" será desligado em 48 horas',
+    subject: '🚨 URGENTE: o container "{{containerName}}" será desligado em 48 horas',
   },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Todos os direitos reservados.",

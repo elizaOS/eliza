@@ -5,7 +5,7 @@
  * English when the locale is unknown.
  */
 
-import { emailMessages as en, type EmailMessages } from "./locales/en";
+import { type EmailMessages, emailMessages as en } from "./locales/en";
 import { emailMessages as es } from "./locales/es";
 import { emailMessages as ja } from "./locales/ja";
 import { emailMessages as ko } from "./locales/ko";

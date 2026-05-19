@@ -46,8 +46,7 @@ export const emailMessages: EmailMessages = {
     subject: "✓ Đã xác nhận thanh toán — credit đã được thêm vào tài khoản",
   },
   containerShutdownWarning: {
-    subject:
-      '🚨 KHẨN: container "{{containerName}}" sẽ bị tắt trong 48 giờ',
+    subject: '🚨 KHẨN: container "{{containerName}}" sẽ bị tắt trong 48 giờ',
   },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Bảo lưu mọi quyền.",

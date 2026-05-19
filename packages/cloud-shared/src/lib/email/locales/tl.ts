@@ -46,8 +46,7 @@ export const emailMessages: EmailMessages = {
     subject: "✓ Kumpirmado ang purchase — naidagdag na ang credits sa account mo",
   },
   containerShutdownWarning: {
-    subject:
-      '🚨 URGENT: ang container na "{{containerName}}" ay ipa-shut down sa loob ng 48 oras',
+    subject: '🚨 URGENT: ang container na "{{containerName}}" ay ipa-shut down sa loob ng 48 oras',
   },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Lahat ng karapatan ay nakalaan.",

@@ -46,8 +46,7 @@ export const emailMessages: EmailMessages = {
     subject: "✓ Compra confirmada — créditos añadidos a tu cuenta",
   },
   containerShutdownWarning: {
-    subject:
-      '🚨 URGENTE: el contenedor "{{containerName}}" se apagará en 48 horas',
+    subject: '🚨 URGENTE: el contenedor "{{containerName}}" se apagará en 48 horas',
   },
   footer: {
     copyright: "© {{year}} Eliza Cloud. Todos los derechos reservados.",

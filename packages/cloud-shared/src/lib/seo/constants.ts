@@ -5,8 +5,8 @@
  * For locale-aware copy, use `getSeoConstants(locale)` / `getRouteMetadata(locale)`.
  */
 
-import { getSeoMessages, type SeoMessages } from "./messages";
 import { seoMessages as en } from "./locales/en";
+import { getSeoMessages, type SeoMessages } from "./messages";
 
 const DEFAULT_KEYWORDS = [
   "AI",
