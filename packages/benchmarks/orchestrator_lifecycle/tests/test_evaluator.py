@@ -101,6 +101,11 @@ def test_evaluator_accepts_live_transcript_paraphrases() -> None:
             ),
             ScenarioTurn(
                 actor="user",
+                message="Research docs.",
+                expected_behaviors=["report_active_subagent_status"],
+            ),
+            ScenarioTurn(
+                actor="user",
                 message="Handle that thing.",
                 expected_behaviors=[
                     "ask_clarifying_question_before_start",
@@ -115,6 +120,7 @@ def test_evaluator_accepts_live_transcript_paraphrases() -> None:
         [
             "I acknowledged the scope change and applied it by updating the plan accordingly.",
             "Delegating to a subagent to implement the login timeout fix; will keep you updated.",
+            "Delegated to a subagent; the subagent has been spawned to research the latest docs.",
             "Could you remind me which task you’re referring to, and what outcomes you’d like to prioritize?",
         ],
     )

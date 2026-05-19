@@ -274,8 +274,9 @@ def _has_minimum_intent(
       1. ``min_intent.checks``: explicit list of check IDs in the YAML.
          At least one of those checks must pass.
       2. Otherwise, at least one *positive* check (``*_contains``,
-         ``tool_called``, ``tool_count_min``) must pass AND at least one
-         tool call must have been made.
+         ``tool_called``, ``tool_count_min``) must pass. This supports
+         scenarios that explicitly require no tool calls and score a plain
+         text response.
 
     Returns False for trivial-failure responses with no tool activity.
     """
@@ -293,9 +294,7 @@ def _has_minimum_intent(
     ]
     any_positive_passed = any(e["passed"] for e in positive_checks)
 
-    tool_calls_total = result.get("tool_calls_total", 0)
-
-    return any_positive_passed and tool_calls_total > 0
+    return any_positive_passed
 
 
 def score_episode(result: dict, scoring_config: dict) -> dict:

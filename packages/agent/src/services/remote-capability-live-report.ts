@@ -78,6 +78,17 @@ export function summarizeRemoteCapabilityLiveRuntime(
   const plugins = runtime.plugins ?? [];
   return {
     pluginCount: runtime.plugins?.length ?? 0,
+    remotePlugins: plugins
+      .filter(
+        (plugin) =>
+          plugin.config?.remoteCapabilityModuleId &&
+          plugin.config?.remoteCapabilityEndpointId,
+      )
+      .map((plugin) => ({
+        pluginName: plugin.name,
+        moduleId: plugin.config?.remoteCapabilityModuleId,
+        endpointId: plugin.config?.remoteCapabilityEndpointId,
+      })),
     actionCount: runtime.actions.length,
     providerCount: runtime.providers.length,
     evaluatorCount: runtime.evaluators.length,

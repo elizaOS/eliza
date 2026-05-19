@@ -2427,8 +2427,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mt_bench": {
             "limit": 1,
-            "max_tokens": 256,
-            "judge_max_tokens": 256,
+            "max_tokens": 1024,
+            "temperature": 0.0,
+            "judge_max_tokens": 512,
             "judge_provider": "cerebras",
             "judge_model": "gpt-oss-120b",
             "judge_api_key_env": "CEREBRAS_API_KEY",

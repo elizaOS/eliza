@@ -1209,6 +1209,20 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   `prepare`, `prompt`, `process`, response-handler `evaluate`, and field
   `parse`/`handle`), so live evidence proves the endpoint was exercised through
   the standard RPC-like protocol, not only materialized in a manifest.
+- View-asset conformance now preserves manifest-declared asset metadata and
+  rejects fetched bundles whose content type or integrity value contradicts the
+  manifest. The live report validator also rejects artifacts whose recorded
+  manifest asset metadata disagrees with the fetched asset metadata.
+- Runtime live summaries include `runtime.remotePlugins`, keyed by plugin name,
+  endpoint id, and module id. The validator requires this runtime identity list
+  to match `sync.registeredModules` exactly, so count totals cannot stand in for
+  proof that the synced remote modules actually reached the runtime and stale
+  remote modules did not remain loaded.
+- Provider allowlist skips now emit rejected trust decisions (`trusted: false`,
+  `reason: "module-not-allowed"`) with endpoint, module, and plugin identity.
+  The live report validator requires every `sync.skipped` entry to have a
+  rejected trust decision, so skipped modules are auditable rather than just
+  unexplained plugin names.
 - `bun run --cwd packages/agent test:remote-capabilities:cloud-live` skipped
   locally because no `ELIZAOS_CLOUD_API_KEY` is configured. A real Cloud run
   remains a required live-provider observation before claiming the Cloud side

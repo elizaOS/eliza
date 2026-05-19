@@ -338,8 +338,7 @@ class HarnessClient:
         }
         if system_prompt:
             context["system_prompt"] = system_prompt
-        if config.temperature != 0.0:
-            context["temperature"] = config.temperature
+        context["temperature"] = config.temperature
         response = self._client.send_message(
             user_text,
             context=context,

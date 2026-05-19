@@ -65,6 +65,13 @@ describe("remote capability live report summaries", () => {
     });
     expect(runtime).toMatchObject({
       pluginCount: 1,
+      remotePlugins: [
+        {
+          pluginName: "@remote/surface",
+          moduleId: "surface-module",
+          endpointId: "surface-endpoint",
+        },
+      ],
       actionCount: 1,
       providerCount: 1,
       evaluatorCount: 1,

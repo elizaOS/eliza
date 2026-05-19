@@ -338,6 +338,13 @@ describe("remote capability endpoint providers", () => {
         trusted: true,
         reason: "allowed",
       }),
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "foreign-plugin",
+        pluginName: "@remote/foreign",
+        trusted: false,
+        reason: "module-not-allowed",
+      }),
     ]);
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
       "@remote/allowed",
@@ -429,6 +436,22 @@ describe("remote capability endpoint providers", () => {
     expect(result.sync.registered).toEqual([]);
     expect(result.sync.skipped).toEqual(["@remote/allowed"]);
     expect(result.sync.unloaded).toEqual(["@remote/retired"]);
+    expect(result.sync.trustDecisions).toEqual([
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "allowed-plugin",
+        pluginName: "@remote/allowed",
+        trusted: true,
+        reason: "allowed",
+      }),
+      expect.objectContaining({
+        endpointId: "shared-home",
+        moduleId: "retired-plugin",
+        pluginName: "@remote/retired",
+        trusted: false,
+        reason: "module-not-allowed",
+      }),
+    ]);
     expect(runtime.unloaded).toEqual(["@remote/retired"]);
     expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
       "@remote/allowed",

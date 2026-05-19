@@ -209,10 +209,12 @@ class LifecycleRunner:
                 ]
                 if param_strings:
                     text = (text + "\n" + " ".join(param_strings)).strip()
-            if text or attempt:
+            if text and not (attempt == 0 and _is_retryable_bridge_failure(text)):
+                return text
+            if attempt:
                 return text
             logger.debug(
-                "[orchestrator_lifecycle] empty bridge reply for %s; retrying once",
+                "[orchestrator_lifecycle] retryable bridge reply for %s; retrying once",
                 scenario_id,
             )
         return ""
@@ -291,6 +293,18 @@ _LIFECYCLE_SYSTEM_HINT = (
     "\n"
     "Use plain prose. The user message is the next lifecycle event."
 )
+
+
+def _is_retryable_bridge_failure(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    return any(
+        phrase in normalized
+        for phrase in (
+            "oops, something went wrong",
+            "something went wrong on my end",
+            "please try again",
+        )
+    )
 
 
 __all__: Sequence[str] = ("LifecycleRunner",)

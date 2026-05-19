@@ -199,6 +199,7 @@ describe("remote capability endpoint conformance", () => {
       assetResult: {
         path: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.path,
         contentType: "text/javascript",
+        manifestContentType: "text/javascript",
         byteLength: Buffer.from(
           CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.bodyBase64,
           "base64",
@@ -507,6 +508,63 @@ describe("remote capability endpoint conformance", () => {
       }),
     ).rejects.toThrow(
       'Capability endpoint "remote-endpoint" returned a non-JavaScript view asset path.',
+    );
+  });
+
+  it("fails when remote view asset content type does not match the manifest", async () => {
+    installMinimalFixtureFetch({
+      "plugin.asset.get": {
+        ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+        contentType: "application/javascript",
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["viewAsset"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned a view asset content type that does not match its manifest.',
+    );
+  });
+
+  it("fails when remote view asset integrity does not match the manifest", async () => {
+    installMinimalFixtureFetch(
+      {
+        "plugin.asset.get": {
+          ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+          integrity: "sha256-other",
+        },
+      },
+      {
+        modules: [
+          {
+            ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+            views: [
+              {
+                ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0],
+                integrity: "sha256-manifest",
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["viewAsset"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned a view asset integrity value that does not match its manifest.',
     );
   });
 });

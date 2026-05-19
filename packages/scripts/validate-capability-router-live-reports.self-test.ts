@@ -38,6 +38,10 @@ async function main(): Promise<void> {
     const partialDir = join(workspace, "partial");
     const failedRouteDir = join(workspace, "failed-route");
     const nonJavascriptAssetDir = join(workspace, "non-javascript-asset");
+    const mismatchedAssetManifestDir = join(
+      workspace,
+      "mismatched-asset-manifest",
+    );
     const missingAssetDigestDir = join(workspace, "missing-asset-digest");
     const malformedAssetDigestDir = join(workspace, "malformed-asset-digest");
     const mismatchDir = join(workspace, "mismatch");
@@ -89,6 +93,7 @@ async function main(): Promise<void> {
       workspace,
       "skipped-unloaded-overlap",
     );
+    const skippedMissingTrustDir = join(workspace, "skipped-missing-trust");
     const duplicateSkippedDir = join(workspace, "duplicate-skipped");
     const duplicateUnloadedDir = join(workspace, "duplicate-unloaded");
     const exercisedUnregisteredDir = join(workspace, "exercised-unregistered");
@@ -118,6 +123,14 @@ async function main(): Promise<void> {
       workspace,
       "runtime-plugin-undercount",
     );
+    const missingRuntimeRemotePluginDir = join(
+      workspace,
+      "missing-runtime-remote-plugin",
+    );
+    const staleRuntimeRemotePluginDir = join(
+      workspace,
+      "stale-runtime-remote-plugin",
+    );
     const missingRegisteredServiceDir = join(
       workspace,
       "missing-registered-service",
@@ -145,6 +158,7 @@ async function main(): Promise<void> {
     await mkdir(partialDir, { recursive: true });
     await mkdir(failedRouteDir, { recursive: true });
     await mkdir(nonJavascriptAssetDir, { recursive: true });
+    await mkdir(mismatchedAssetManifestDir, { recursive: true });
     await mkdir(missingAssetDigestDir, { recursive: true });
     await mkdir(malformedAssetDigestDir, { recursive: true });
     await mkdir(mismatchDir, { recursive: true });
@@ -172,6 +186,7 @@ async function main(): Promise<void> {
     await mkdir(registeredSkippedDir, { recursive: true });
     await mkdir(registeredUnloadedDir, { recursive: true });
     await mkdir(skippedUnloadedOverlapDir, { recursive: true });
+    await mkdir(skippedMissingTrustDir, { recursive: true });
     await mkdir(duplicateSkippedDir, { recursive: true });
     await mkdir(duplicateUnloadedDir, { recursive: true });
     await mkdir(exercisedUnregisteredDir, { recursive: true });
@@ -183,6 +198,8 @@ async function main(): Promise<void> {
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
     await mkdir(runtimePluginUndercountDir, { recursive: true });
+    await mkdir(missingRuntimeRemotePluginDir, { recursive: true });
+    await mkdir(staleRuntimeRemotePluginDir, { recursive: true });
     await mkdir(missingRegisteredServiceDir, { recursive: true });
     await mkdir(missingEvaluatorDir, { recursive: true });
     await mkdir(missingEventDir, { recursive: true });
@@ -297,6 +314,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(nonJavascriptAssetDir, "provider.json"),
       `${JSON.stringify(makeNonJavascriptAssetReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedAssetManifestDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedAssetManifestReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -464,6 +486,11 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
+      join(skippedMissingTrustDir, "provider.json"),
+      `${JSON.stringify(makeSkippedMissingTrustReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
       join(duplicateSkippedDir, "provider.json"),
       `${JSON.stringify(makeDuplicateSkippedReport(), null, 2)}\n`,
       "utf8",
@@ -496,6 +523,16 @@ async function main(): Promise<void> {
     await writeFile(
       join(missingModuleExercisesDir, "provider.json"),
       `${JSON.stringify(makeMissingModuleExercisesReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingRuntimeRemotePluginDir, "provider.json"),
+      `${JSON.stringify(makeMissingRuntimeRemotePluginReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(staleRuntimeRemotePluginDir, "provider.json"),
+      `${JSON.stringify(makeStaleRuntimeRemotePluginReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -845,6 +882,23 @@ async function main(): Promise<void> {
         `non-JavaScript asset report failed for the wrong reason: ${nonJavascriptAsset.output}`,
       );
     }
+    const mismatchedAssetManifest = await runValidator(
+      mismatchedAssetManifestDir,
+    );
+    if (mismatchedAssetManifest.exitCode === 0) {
+      throw new Error(
+        "mismatched asset manifest report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !mismatchedAssetManifest.output.includes(
+        "conformance.assetResult.manifestContentType must match",
+      )
+    ) {
+      throw new Error(
+        `mismatched asset manifest failed for the wrong reason: ${mismatchedAssetManifest.output}`,
+      );
+    }
     const missingAssetDigest = await runValidator(missingAssetDigestDir);
     if (missingAssetDigest.exitCode === 0) {
       throw new Error("missing asset digest report unexpectedly passed.");
@@ -1184,6 +1238,21 @@ async function main(): Promise<void> {
         `skipped/unloaded overlap failed for the wrong reason: ${skippedUnloadedOverlap.output}`,
       );
     }
+    const skippedMissingTrust = await runValidator(skippedMissingTrustDir);
+    if (skippedMissingTrust.exitCode === 0) {
+      throw new Error(
+        "skipped missing trust report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !skippedMissingTrust.output.includes(
+        "sync.skipped entries must have a rejected sync.trustDecisions entry",
+      )
+    ) {
+      throw new Error(
+        `skipped missing trust failed for the wrong reason: ${skippedMissingTrust.output}`,
+      );
+    }
     const duplicateSkipped = await runValidator(duplicateSkippedDir);
     if (duplicateSkipped.exitCode === 0) {
       throw new Error("duplicate skipped report unexpectedly passed.");
@@ -1300,6 +1369,40 @@ async function main(): Promise<void> {
     ) {
       throw new Error(
         `missing rpcCalls failed for the wrong reason: ${missingRpcCalls.output}`,
+      );
+    }
+    const missingRuntimeRemotePlugin = await runValidator(
+      missingRuntimeRemotePluginDir,
+    );
+    if (missingRuntimeRemotePlugin.exitCode === 0) {
+      throw new Error(
+        "missing runtime remote plugin report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !missingRuntimeRemotePlugin.output.includes(
+        "runtime.remotePlugins must include every sync.registeredModules entry",
+      )
+    ) {
+      throw new Error(
+        `missing runtime remote plugin failed for the wrong reason: ${missingRuntimeRemotePlugin.output}`,
+      );
+    }
+    const staleRuntimeRemotePlugin = await runValidator(
+      staleRuntimeRemotePluginDir,
+    );
+    if (staleRuntimeRemotePlugin.exitCode === 0) {
+      throw new Error(
+        "stale runtime remote plugin report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !staleRuntimeRemotePlugin.output.includes(
+        "runtime.remotePlugins must not include entries absent from sync.registeredModules",
+      )
+    ) {
+      throw new Error(
+        `stale runtime remote plugin failed for the wrong reason: ${staleRuntimeRemotePlugin.output}`,
       );
     }
     const manifestOnlyUnregistered = await runValidator(
@@ -1466,6 +1569,13 @@ function makeCompleteReport(
     },
     runtime: {
       pluginCount: 1,
+      remotePlugins: [
+        {
+          pluginName: "@remote/sample",
+          moduleId: "sample-module",
+          endpointId,
+        },
+      ],
       actionCount: 1,
       providerCount: 1,
       evaluatorCount: 1,
@@ -1542,6 +1652,14 @@ function makeCompleteExtraExercisesReport() {
     },
     runtime: {
       pluginCount: 2,
+      remotePlugins: [
+        ...report.runtime.remotePlugins,
+        {
+          pluginName: "@remote/second",
+          moduleId: "second-module",
+          endpointId: report.endpointId,
+        },
+      ],
       actionCount: 2,
       providerCount: 2,
       evaluatorCount: 2,
@@ -1627,6 +1745,14 @@ function makeCompletePartialModuleReport() {
     },
     runtime: {
       ...report.runtime,
+      remotePlugins: [
+        ...report.runtime.remotePlugins,
+        {
+          pluginName: "@remote/partial",
+          moduleId: "partial-module",
+          endpointId: report.endpointId,
+        },
+      ],
       pluginCount: 2,
       actionCount: 2,
     },
@@ -1687,6 +1813,7 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
     assetResult: {
       path: "/assets/sample.js",
       contentType: "text/javascript",
+      manifestContentType: "text/javascript",
       byteLength: 12,
       sha256:
         "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -1801,6 +1928,20 @@ function makeNonJavascriptAssetReport() {
         byteLength: 12,
         sha256:
           "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      },
+    },
+  };
+}
+
+function makeMismatchedAssetManifestReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      assetResult: {
+        ...report.conformance.assetResult,
+        manifestContentType: "application/javascript",
       },
     },
   };
@@ -2038,6 +2179,14 @@ function makeDuplicateRegisteredModuleReport() {
     },
     runtime: {
       ...report.runtime,
+      remotePlugins: [
+        ...report.runtime.remotePlugins,
+        {
+          pluginName: "@remote/manifest-only",
+          moduleId: "manifest-only-module",
+          endpointId: "sample-endpoint",
+        },
+      ],
       pluginCount: 2,
       actionCount: 2,
       providerCount: 2,
@@ -2068,6 +2217,14 @@ function makeDuplicateRegisteredPluginReport() {
     },
     runtime: {
       ...report.runtime,
+      remotePlugins: [
+        ...report.runtime.remotePlugins,
+        {
+          pluginName: "@remote/unexercised",
+          moduleId: "unexercised-module",
+          endpointId: "sample-endpoint",
+        },
+      ],
       pluginCount: 2,
     },
   };
@@ -2121,6 +2278,17 @@ function makeSkippedUnloadedOverlapReport() {
       ...report.sync,
       skipped: ["@remote/old"],
       unloaded: ["@remote/old"],
+    },
+  };
+}
+
+function makeSkippedMissingTrustReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    sync: {
+      ...report.sync,
+      skipped: ["@remote/foreign"],
     },
   };
 }
@@ -2334,6 +2502,35 @@ function makeMissingModuleExercisesReport() {
   };
 }
 
+function makeMissingRuntimeRemotePluginReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    runtime: {
+      ...report.runtime,
+      remotePlugins: [],
+    },
+  };
+}
+
+function makeStaleRuntimeRemotePluginReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    runtime: {
+      ...report.runtime,
+      remotePlugins: [
+        ...report.runtime.remotePlugins,
+        {
+          pluginName: "@remote/stale",
+          moduleId: "stale-module",
+          endpointId: "sample-endpoint",
+        },
+      ],
+    },
+  };
+}
+
 function makeMissingRpcCallsReport() {
   const report = makeCompleteReport("provider");
   const { rpcCalls: _rpcCalls, ...conformance } = report.conformance;
@@ -2445,6 +2642,14 @@ function makeRuntimePluginUndercountReport() {
     },
     runtime: {
       ...report.runtime,
+      remotePlugins: [
+        ...report.runtime.remotePlugins,
+        {
+          pluginName: "@remote/second",
+          moduleId: "second-module",
+          endpointId: "sample-endpoint",
+        },
+      ],
       actionCount: 2,
       providerCount: 2,
       evaluatorCount: 2,

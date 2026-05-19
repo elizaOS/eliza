@@ -80,6 +80,8 @@ export type RemoteCapabilityEndpointConformanceReport = {
     "path" | "contentType" | "integrity"
   > & {
     byteLength: number;
+    manifestContentType?: string;
+    manifestIntegrity?: string;
     sha256: string;
   };
   modelResult?: PluginInvokeModelResult;
@@ -275,9 +277,31 @@ export async function assertRemoteCapabilityEndpointConformance(
         `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset content type.`,
       );
     }
+    if (
+      target.view.contentType !== undefined &&
+      assetResult.contentType !== target.view.contentType
+    ) {
+      throw new Error(
+        `Capability endpoint "${options.endpoint.id}" returned a view asset content type that does not match its manifest.`,
+      );
+    }
+    if (
+      target.view.integrity !== undefined &&
+      assetResult.integrity !== target.view.integrity
+    ) {
+      throw new Error(
+        `Capability endpoint "${options.endpoint.id}" returned a view asset integrity value that does not match its manifest.`,
+      );
+    }
     report.assetResult = {
       path: assetResult.path,
       contentType: assetResult.contentType,
+      ...(target.view.contentType
+        ? { manifestContentType: target.view.contentType }
+        : {}),
+      ...(target.view.integrity
+        ? { manifestIntegrity: target.view.integrity }
+        : {}),
       ...(assetResult.integrity ? { integrity: assetResult.integrity } : {}),
       byteLength,
       sha256: createHash("sha256").update(assetBytes).digest("hex"),

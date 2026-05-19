@@ -1969,6 +1969,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         max_tokens = extra.get("max_tokens")
         if isinstance(max_tokens, int) and max_tokens > 0:
             args.extend(["--max-tokens", str(max_tokens)])
+        temperature = extra.get("temperature")
+        if (
+            isinstance(temperature, (int, float))
+            and not isinstance(temperature, bool)
+            and temperature >= 0
+        ):
+            args.extend(["--temperature", str(float(temperature))])
         judge_max_tokens = extra.get("judge_max_tokens")
         if isinstance(judge_max_tokens, int) and judge_max_tokens > 0:
             args.extend(["--judge-max-tokens", str(judge_max_tokens)])

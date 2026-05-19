@@ -85,6 +85,7 @@ type ReportKind = ValidatedReport["kind"];
 type RemoteModuleCountTotals = Record<RequiredRemoteModuleCountField, number>;
 type RemoteSyncEvidence = {
   registeredPluginCount: number;
+  registeredModuleKeys: Set<string>;
   registeredRemoteModuleCounts: RemoteModuleCountTotals;
 };
 
@@ -584,6 +585,34 @@ function validateReportFile(
   if (!/(?:java|ecma)script/i.test(assetContentType)) {
     throw new Error("conformance.assetResult.contentType must be JavaScript.");
   }
+  const manifestContentType = optionalString(
+    assetResult.manifestContentType,
+    "conformance.assetResult.manifestContentType",
+  );
+  if (
+    manifestContentType !== undefined &&
+    manifestContentType !== assetContentType
+  ) {
+    throw new Error(
+      "conformance.assetResult.manifestContentType must match conformance.assetResult.contentType.",
+    );
+  }
+  const manifestIntegrity = optionalString(
+    assetResult.manifestIntegrity,
+    "conformance.assetResult.manifestIntegrity",
+  );
+  const assetIntegrity = optionalString(
+    assetResult.integrity,
+    "conformance.assetResult.integrity",
+  );
+  if (
+    manifestIntegrity !== undefined &&
+    manifestIntegrity !== assetIntegrity
+  ) {
+    throw new Error(
+      "conformance.assetResult.manifestIntegrity must match conformance.assetResult.integrity.",
+    );
+  }
   const byteLength = requireNumber(
     assetResult.byteLength,
     "conformance.assetResult.byteLength",
@@ -1004,7 +1033,7 @@ function validateSyncEvidence(
         "sync.unloaded must not include plugins that are also registered.",
     },
   );
-  validatePluginNameList(sync.skipped, "sync.skipped", {
+  const skippedPluginNames = validatePluginNameList(sync.skipped, "sync.skipped", {
     disallow: registeredPluginNames,
     disallowMessage:
       "sync.skipped must not include plugins that are also registered.",
@@ -1018,8 +1047,20 @@ function validateSyncEvidence(
   );
   const trustedModuleIds = new Set<string>();
   const trustedModuleKeys = new Set<string>();
+  const rejectedPluginNames = new Set<string>();
   for (const [index, decision] of trustDecisions.entries()) {
     const item = requireObject(decision, `sync.trustDecisions[${index}]`);
+    if (item.endpointId !== undefined && item.endpointId !== endpointId) {
+      continue;
+    }
+    if (item.trusted === false) {
+      const pluginName = requireString(
+        item.pluginName,
+        `sync.trustDecisions[${index}].pluginName`,
+      );
+      rejectedPluginNames.add(pluginName);
+      continue;
+    }
     if (item.trusted === true && item.endpointId === endpointId) {
       const moduleId = requireString(
         item.moduleId,
@@ -1047,6 +1088,13 @@ function validateSyncEvidence(
       }
     }
   }
+  for (const pluginName of skippedPluginNames) {
+    if (!rejectedPluginNames.has(pluginName)) {
+      throw new Error(
+        "sync.skipped entries must have a rejected sync.trustDecisions entry.",
+      );
+    }
+  }
   if (trustedModuleIds.size === 0) {
     throw new Error(
       "sync.trustDecisions must include at least one trusted module for endpointId.",
@@ -1068,6 +1116,7 @@ function validateSyncEvidence(
   }
   return {
     registeredPluginCount: registered.length,
+    registeredModuleKeys,
     registeredRemoteModuleCounts,
   };
 }
@@ -1077,7 +1126,12 @@ function validateRuntimeEvidence(
   syncEvidence: RemoteSyncEvidence,
 ): void {
   const runtime = requireObject(value, "runtime");
-  const { registeredPluginCount, registeredRemoteModuleCounts } = syncEvidence;
+  const {
+    registeredPluginCount,
+    registeredModuleKeys,
+    registeredRemoteModuleCounts,
+  } = syncEvidence;
+  validateRuntimeRemotePlugins(runtime.remotePlugins, registeredModuleKeys);
   requirePositiveCountAtLeast(
     runtime.pluginCount,
     "runtime.pluginCount",
@@ -1158,6 +1212,48 @@ function validateRuntimeEvidence(
     "runtime.viewCount",
     registeredRemoteModuleCounts.viewCount,
   );
+}
+
+function validateRuntimeRemotePlugins(
+  value: unknown,
+  registeredModuleKeys: Set<string>,
+): void {
+  const remotePlugins = requireArray(value, "runtime.remotePlugins");
+  const runtimeModuleKeys = new Set<string>();
+  for (const [index, value] of remotePlugins.entries()) {
+    const item = requireObject(value, `runtime.remotePlugins[${index}]`);
+    const endpointId = requireString(
+      item.endpointId,
+      `runtime.remotePlugins[${index}].endpointId`,
+    );
+    const moduleId = requireString(
+      item.moduleId,
+      `runtime.remotePlugins[${index}].moduleId`,
+    );
+    const pluginName = requireString(
+      item.pluginName,
+      `runtime.remotePlugins[${index}].pluginName`,
+    );
+    const runtimeModuleKey = `${endpointId}\0${moduleId}\0${pluginName}`;
+    if (runtimeModuleKeys.has(runtimeModuleKey)) {
+      throw new Error("runtime.remotePlugins must not contain duplicates.");
+    }
+    runtimeModuleKeys.add(runtimeModuleKey);
+  }
+  for (const registeredModuleKey of registeredModuleKeys) {
+    if (!runtimeModuleKeys.has(registeredModuleKey)) {
+      throw new Error(
+        "runtime.remotePlugins must include every sync.registeredModules entry.",
+      );
+    }
+  }
+  for (const runtimeModuleKey of runtimeModuleKeys) {
+    if (!registeredModuleKeys.has(runtimeModuleKey)) {
+      throw new Error(
+        "runtime.remotePlugins must not include entries absent from sync.registeredModules.",
+      );
+    }
+  }
 }
 
 function validatePluginNameList(
@@ -1318,6 +1414,11 @@ function requireString(value: unknown, field: string): string {
     throw new Error(`${field} must be a non-empty string.`);
   }
   return value;
+}
+
+function optionalString(value: unknown, field: string): string | undefined {
+  if (value === undefined) return undefined;
+  return requireString(value, field);
 }
 
 function requireEndpointId(value: unknown, field: string): string {

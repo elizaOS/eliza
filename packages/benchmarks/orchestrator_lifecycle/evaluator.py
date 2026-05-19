@@ -50,6 +50,8 @@ BEHAVIOR_KEYWORDS: dict[str, list[str]] = {
         "progress update",
         "running",
         "in progress",
+        "subagent who will",
+        "subagent has been spawned",
         "subagent delegated to",
         "delegated to gather",
         "subagent delegate",

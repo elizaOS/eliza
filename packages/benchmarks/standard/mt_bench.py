@@ -101,6 +101,12 @@ _RATING_PATTERNS = (
         r"(?:\[\[|\[)?\s*(\d{1,2})(?:\s*/\s*10)?\s*(?:\]\]|\])?",
         re.IGNORECASE,
     ),
+    re.compile(
+        r"\b(?:rate|rated|give|gives)\s+(?:it\s+|this\s+)?(?:a\s+)?"
+        r"(\d{1,2})(?:\s*/\s*10)?\b",
+        re.IGNORECASE,
+    ),
+    re.compile(r"^\s*(\d{1,2})(?:\s*/\s*10)?\s*$", re.IGNORECASE),
 )
 
 
@@ -213,12 +219,14 @@ class MTBenchRunner:
         questions: Iterable[dict[str, object]] | None = None,
         max_tokens: int = DEFAULT_MAX_TOKENS,
         judge_max_tokens: int = DEFAULT_JUDGE_MAX_TOKENS,
+        temperature: float = 0.7,
     ) -> None:
         self._judge = judge
         self._judge_model = judge_model
         self._questions = list(questions) if questions is not None else None
         self._max_tokens = max_tokens
         self._judge_max_tokens = judge_max_tokens
+        self._temperature = temperature
 
     def run(
         self,
@@ -238,7 +246,11 @@ class MTBenchRunner:
         if not questions:
             raise RuntimeError("MT-Bench loaded zero questions")
 
-        cand_cfg = GenerationConfig(model=model, max_tokens=self._max_tokens, temperature=0.7)
+        cand_cfg = GenerationConfig(
+            model=model,
+            max_tokens=self._max_tokens,
+            temperature=self._temperature,
+        )
         judge_cfg = GenerationConfig(
             model=self._judge_model,
             max_tokens=self._judge_max_tokens,
@@ -423,6 +435,12 @@ class _MTBenchFactory(RunnerFactory):
             help="Cap on candidate generation per turn",
         )
         parser.add_argument(
+            "--temperature",
+            type=float,
+            default=0.7,
+            help="Candidate generation temperature (official MT-Bench commonly uses 0.7; smoke matrix can set 0.0 for comparability)",
+        )
+        parser.add_argument(
             "--judge-max-tokens",
             type=int,
             default=DEFAULT_JUDGE_MAX_TOKENS,
@@ -470,6 +488,7 @@ class _MTBenchFactory(RunnerFactory):
                 questions=list(SMOKE_QUESTIONS),
                 max_tokens=args.max_tokens,
                 judge_max_tokens=args.judge_max_tokens,
+                temperature=args.temperature,
             )
             return runner, mock_responses
 
@@ -479,6 +498,7 @@ class _MTBenchFactory(RunnerFactory):
             judge_model=args.judge_model,
             max_tokens=args.max_tokens,
             judge_max_tokens=args.judge_max_tokens,
+            temperature=args.temperature,
         )
         return runner, None
 

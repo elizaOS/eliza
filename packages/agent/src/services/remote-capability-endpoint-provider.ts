@@ -10,6 +10,7 @@ import {
 } from "./remote-capability-router.ts";
 import {
   type RemotePluginSyncResult,
+  type RemotePluginTrustDecision,
   type RemotePluginTrustPolicy,
   syncRemoteCapabilityPlugins,
 } from "./remote-plugin-adapter.ts";
@@ -70,10 +71,12 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
   const modules = (
     await service.plugin.listModules({ endpointId: provisioned.endpoint.id })
   ).modules;
-  const { trustedModules, skipped } = selectAllowedRemoteCapabilityModules(
-    modules,
-    allowedModuleIds,
-  );
+  const { trustedModules, skipped, skippedTrustDecisions } =
+    selectAllowedRemoteCapabilityModules(
+      modules,
+      provisioned.endpoint.id,
+      allowedModuleIds,
+    );
   const sync = await syncRemoteCapabilityPlugins(runtime, {
     unloadMissing: options.unloadMissing,
     unloadMissingEndpointIds: [provisioned.endpoint.id],
@@ -91,6 +94,10 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
       skipped: mergeSkippedRemoteCapabilityPlugins(sync.skipped, skipped, {
         unloaded: sync.unloaded,
       }),
+      trustDecisions: [
+        ...sync.trustDecisions,
+        ...skippedTrustDecisions,
+      ],
     },
   };
 }
@@ -176,25 +183,35 @@ function stripTrailingSlash(value: string): string {
 
 function selectAllowedRemoteCapabilityModules(
   modules: RemotePluginModuleManifest[],
+  endpointId: string,
   allowedModuleIds: string[] | undefined,
 ): {
   trustedModules: RemotePluginModuleManifest[];
   skipped: string[];
+  skippedTrustDecisions: RemotePluginTrustDecision[];
 } {
   if (allowedModuleIds === undefined) {
-    return { trustedModules: modules, skipped: [] };
+    return { trustedModules: modules, skipped: [], skippedTrustDecisions: [] };
   }
   const allowed = new Set(allowedModuleIds);
   const trustedModules: RemotePluginModuleManifest[] = [];
   const skipped: string[] = [];
+  const skippedTrustDecisions: RemotePluginTrustDecision[] = [];
   for (const module of modules) {
     if (allowed.has(module.id)) {
       trustedModules.push(module);
     } else {
       skipped.push(module.name);
+      skippedTrustDecisions.push({
+        endpointId,
+        moduleId: module.id,
+        pluginName: module.name,
+        trusted: false,
+        reason: "module-not-allowed",
+      });
     }
   }
-  return { trustedModules, skipped };
+  return { trustedModules, skipped, skippedTrustDecisions };
 }
 
 function mergeSkippedRemoteCapabilityPlugins(
