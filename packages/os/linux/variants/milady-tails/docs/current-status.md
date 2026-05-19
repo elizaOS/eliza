@@ -1,6 +1,6 @@
 # Current elizaOS Live Status
 
-Last updated: 2026-05-17.
+Last updated: 2026-05-19.
 
 This branch is a working demo/productization branch, not a finished
 enterprise release.
@@ -16,60 +16,57 @@ enterprise release.
 ```
 
 - The current HEAD source has now been rebuilt into a fresh canonical ISO at
-  `tails/binary.iso` / `out/binary.iso`. Do not use older named ISO copies in
-  `out/` for validation; they can be stale.
+  `out/binary.iso`. Do not use older named ISO copies in `out/` for
+  validation; they can be stale.
 
 ```text
-2ff679a74464dd1ad37c0202b58fc56c5dd64b6e9ce047945d6ee60fcb139faa
+fb706edd7016b415e53fc263c37d09ed26d7f0d8d3bced250bde5b1b3ea9bec8
 ```
 
 - Normal QEMU boot of that exact current-HEAD artifact reached the elizaOS
-  greeter, started a normal GNOME desktop, and showed the elizaOS app window
-  on the desktop.
+  greeter, started a normal GNOME desktop, and showed the elizaOS app
+  onboarding screen. This specifically proves the previous app backend
+  timeout is gone for the packaged runtime in this artifact.
 
 ## Current HEAD Caveat
 
 Current HEAD has QEMU visual evidence for boot, greeter, desktop, and app
-window startup. It has not yet been flashed/readback-tested to USB, booted on
-real hardware, or validated for real USB Persistent Storage create/unlock/delete
-behavior.
+onboarding startup. It has not yet been flashed/readback-tested to USB,
+booted on real hardware, or validated for real USB Persistent Storage
+create/unlock/delete behavior.
 
 ## Fixed Tonight
 
-The latest boot blocker was not branding or the app runtime. Debug boots showed
-that the live root filesystem could be left mode `0700`, preventing non-root
-system services from traversing `/` and causing D-Bus, polkit, GDM, and
-Persistent Storage startup failures.
+The latest app blocker was packaged-runtime completeness: the app window
+opened but the backend timed out because `@elizaos/plugin-app-manager` and
+`@elizaos/plugin-registry` were copied as package folders without runtime
+`dist/index.js` artifacts.
 
 The current artifact contains the fix:
 
-- `run-nosymfollow.mount.d/elizaos-root-mode.conf` documents the intended
-  `0755` directory mode for the inherited nosymfollow bind mount.
-- `elizaos-root-mode.service` runs after `run-nosymfollow.mount` and
-  `systemd-tmpfiles-setup.service`, then restores `/` plus
-  `/run/nosymfollow` to `0755`.
-- The earlier D-Bus and polkit working-directory drop-ins were removed because
-  they were symptom workarounds, not the root cause.
-- `milady.path` no longer participates in an ordering cycle with
-  `elizaos-update-verify.service`; the path unit can arm normally while
-  `milady.service` waits for verifier setup.
+- `just milady-app` now builds runtime JS for those first-party plugin
+  packages when their `dist/index.js` files are absent.
+- `static-smoke.sh` now checks that the staged overlay and installed chroot
+  copy both contain those plugin runtime artifacts.
+- The rebuilt ISO squashfs contains both plugin runtime artifacts under
+  `/opt/milady/Resources/app/eliza-dist/node_modules/@elizaos/`.
 
 ## Tonight Validation Plan
 
 Completed so far:
 
-1. Synced the root-mode and ordering-cycle fixes into the existing build
-   chroot.
-2. Repacked the fixed chroot into a fresh `tails/binary.iso`.
-3. Pointed `out/binary.iso` at that exact artifact.
-4. Verified the built squashfs contains the root-mode drop-in,
-   `elizaos-root-mode.service`, update verifier, and health-check fixes.
-5. Booted the exact artifact in QEMU and visually confirmed greeter, desktop,
-   and app window startup.
+1. Built the missing first-party plugin runtime artifacts.
+2. Re-prepared the staged app overlay and synced it into the existing chroot.
+3. Proved the packaged backend reaches `/api/auth/status` from the staged
+   runtime.
+4. Repacked the fixed chroot into `out/binary.iso`.
+5. Verified the built squashfs contains both plugin runtime artifacts.
+6. Booted the exact artifact in QEMU and visually confirmed greeter, desktop,
+   and app onboarding startup.
 
 Still required before claiming a final USB demo:
 
-1. Repeat guarded USB flash/readback for the `2ff679a7...` artifact.
+1. Repeat guarded USB flash/readback for the `fb706edd...` artifact.
 2. Boot that USB on real hardware.
 3. Validate real USB Persistent Storage create/unlock/delete behavior.
 4. Validate privacy/direct networking behavior for the app, renderer, and any
@@ -139,7 +136,7 @@ proof for embedded browser/OAuth paths, and real USB persistence validation.
 
 ## Still Pending
 
-- Repeat guarded USB flash/readback for the current `2ff679a7...` artifact.
+- Repeat guarded USB flash/readback for the current `fb706edd...` artifact.
 - Boot the USB on real hardware.
 - Validate real USB Persistent Storage create/unlock/delete behavior.
 - Validate privacy/direct networking behavior for the app, renderer, and any

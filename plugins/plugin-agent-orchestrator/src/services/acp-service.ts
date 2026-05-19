@@ -9,12 +9,12 @@ import {
   buildOpencodeAcpEnv,
   resolveVendoredOpencodeAcpCommand,
 } from "./opencode-config.js";
+import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   AcpSessionStore,
   InMemorySessionStore,
   type SessionStoreBackend,
 } from "./session-store.js";
-import { normalizeTaskAgentAdapter } from "./task-agent-routing.js";
 import {
   type AcpEventCallback,
   type AcpJsonRpcMessage,
@@ -920,6 +920,22 @@ export class AcpService extends Service {
     let finalText = "";
     let stopReason: string | undefined;
     const capturedToolOutputs = new Set<string>();
+    if (this.cliPath.includes("/") && !existsSync(this.cliPath)) {
+      const message = `acpx CLI is not available at ${this.cliPath}. Set ELIZA_ACP_CLI or install acpx.`;
+      if (opts.sessionId) {
+        this.emitSessionEvent(opts.sessionId, "error", {
+          message,
+          failureKind: "not_found",
+        });
+      }
+      return Promise.resolve({
+        code: 127,
+        signal: null,
+        stderr: message,
+        finalText: "",
+        durationMs: Date.now() - startedAt,
+      });
+    }
     return new Promise((resolveRun) => {
       const proc = spawn(this.cliPath, opts.args, {
         cwd: opts.workdir,

@@ -16,16 +16,16 @@ turn-by-turn directions.
 
 ---
 
-## Current status (2026-05-17)
+## Current status (2026-05-19)
 
 | | |
 |---|---|
 | **Phase 0 — Scaffold** | ✅ Done |
 | **Phase 1 — Base ISO builds + boots** | ✅ Done — base image builds and boots through QEMU via `-cdrom` |
-| **Phase 2 — elizaOS system branding** | ✅ Source implemented; QEMU visual path passed on prior artifact; latest polish needs rebuild |
+| **Phase 2 — elizaOS system branding** | ✅ Source implemented; current HEAD QEMU visual path passed |
 | **Phase 3 — Privacy mode** | 🔨 Source implemented; needs current-HEAD network/Tor validation |
-| **Phase 4 — Bake elizaOS app** | ✅ App payload/install path QEMU-passed on prior artifact; clean checkout still must run `just milady-app` before a full build |
-| **Phase 5 — Autolaunch** | ✅ Desktop/systemd wrapper QEMU-passed on prior artifact |
+| **Phase 4 — Bake elizaOS app** | ✅ App payload/install path QEMU-passed on current HEAD; clean checkout still must run `just milady-app` before a full build |
+| **Phase 5 — Autolaunch** | ✅ Desktop/systemd wrapper QEMU-passed on current HEAD |
 | **Phase 6 — Agent/broker** | 🔨 OS broker/env path implemented; approval-gated privileged actions still need hardening |
 | **Phase 7 — Persistence** | 🔨 Tails Persistent Storage row/hooks implemented; real USB persistence validation still pending |
 | **Phases 8–9** | 📋 Spec/backlog ([`docs/specs/`](./docs/specs/)), not release-complete |
@@ -56,9 +56,9 @@ What exists right now:
   approval-gated policy layer exists.
 - Privacy-mode, autolaunch, and `~/.eliza` Persistent Storage overlays are
   implemented locally. QEMU has proven the normal greeter/desktop/app path
-  on a prior ISO, and USB flash/readback passed for that same artifact. The
-  current gate is rebuilding HEAD, re-running QEMU, then validating real USB
-  boot, persistence, and privacy behavior.
+  on the current HEAD ISO, and USB flash/readback passed on a prior
+  artifact. The current gate is repeat USB flash/readback for this artifact,
+  then real USB boot, persistence, and privacy behavior.
 - The old root-level usbeliza Linux prototype was removed from this branch;
   this variant is the active Linux distro path.
 

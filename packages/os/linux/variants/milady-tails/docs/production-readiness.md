@@ -121,8 +121,8 @@ The production product should add these first:
 
 Clear near-term wins before marketing this as a production AI OS:
 
-1. Rebuild current HEAD and QEMU-test that exact ISO.
-2. Flash/readback the rebuilt ISO and boot it on real hardware.
+1. Repeat guarded USB flash/readback for the current QEMU-tested ISO.
+2. Boot the rebuilt ISO on real hardware.
 3. Prove Persistent Storage create/unlock/delete on a real USB.
 4. Prove Privacy Mode behavior for agent, renderer, embedded browser, and
    OAuth surfaces.
