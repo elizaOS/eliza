@@ -45,6 +45,8 @@ from benchmarks.registry import (
     _score_from_realm_json,
     _score_from_taubench_json,
     _score_from_voiceagentbench_json,
+    _score_from_voicebench_json,
+    _score_from_voicebench_quality_json,
     _score_from_webshop_json,
     get_benchmark_registry,
 )
@@ -78,6 +80,168 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["voicebench_quality"].directory == "voicebench-quality"
     assert adapters["voiceagentbench"].directory == "voiceagentbench"
     assert "elizaos_mmau" not in discover_adapters(_workspace_root()).all_directories
+
+
+def test_voice_audio_defaults_do_not_publish_mock_fixture_runs() -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+
+    voicebench_quality_extra = adapters["voicebench_quality"].default_extra_config
+    assert voicebench_quality_extra.get("fixtures") is not True
+    assert voicebench_quality_extra.get("mock") is not True
+    assert voicebench_quality_extra.get("stt_provider") == "groq"
+
+    voiceagentbench_extra = adapters["voiceagentbench"].default_extra_config
+    assert voiceagentbench_extra.get("mock") is not True
+    assert voiceagentbench_extra.get("no_judge") is not True
+
+
+def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_gauntlet_real_surfpool_backend",
+        lambda: False,
+    )
+    adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
+    assert adapter.agent_compatibility == ()
+    assert _is_harness_compatible(adapter, "eliza") is False
+    assert _is_harness_compatible(adapter, "hermes") is False
+    assert _is_harness_compatible(adapter, "openclaw") is False
+
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_gauntlet_real_surfpool_backend",
+        lambda: True,
+    )
+    adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
+
+
+def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("VOICEAGENTBENCH_STT_PROVIDER", raising=False)
+    monkeypatch.delenv("ELIZA_API_BASE", raising=False)
+    monkeypatch.delenv("ELIZA_BENCH_URL", raising=False)
+    monkeypatch.delenv("VOICEAGENTBENCH_DATA_PATH", raising=False)
+    monkeypatch.delenv("VOICEAGENTBENCH_REAL_DATA_PATH", raising=False)
+    orchestrator_adapters._VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voiceagentbench"]
+    assert adapter.agent_compatibility == ()
+
+    data_path = tmp_path / "voiceagentbench-real.jsonl"
+    data_path.write_text(
+        json.dumps(
+            {
+                "task_id": "real-audio-1",
+                "suite": "single",
+                "queries": [
+                    {
+                        "transcript": "Find the weather in Paris",
+                        "language": "en",
+                        "audio_b64": "UklGRg==",
+                    }
+                ],
+                "expected_tool_calls": [],
+                "tool_manifest": [],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("VOICEAGENTBENCH_DATA_PATH", str(data_path))
+    orchestrator_adapters._VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voiceagentbench"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "voiceagentbench"
+    ]
+    command = entry.build_command(
+        tmp_path / "out",
+        ModelSpec(provider="cerebras", model="eliza"),
+        {"agent": "eliza", "suite": "single", "limit": 1, "no_judge": True},
+    )
+    assert "--mock" not in command
+    assert "--data-path" in command
+    assert command[command.index("--data-path") + 1] == str(data_path)
+
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.setenv("VOICEAGENTBENCH_STT_PROVIDER", "eliza-runtime")
+    monkeypatch.setenv("ELIZA_API_BASE", "http://127.0.0.1:31337")
+    orchestrator_adapters._VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voiceagentbench"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+
+    command = entry.build_command(
+        tmp_path / "out-eliza-stt",
+        ModelSpec(provider="cerebras", model="hermes"),
+        {"agent": "hermes", "suite": "single", "limit": 1, "no_judge": True},
+    )
+    assert "--stt-provider" in command
+    assert command[command.index("--stt-provider") + 1] == "eliza-runtime"
+
+
+def test_voicebench_requires_real_audio_assets_for_eliza_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GROQ_API_KEY", raising=False)
+    monkeypatch.delenv("VOICEBENCH_DATASET", raising=False)
+    monkeypatch.delenv("VOICEBENCH_DATASET_PATH", raising=False)
+    monkeypatch.delenv("VOICEBENCH_AUDIO_PATH", raising=False)
+    orchestrator_adapters._VOICEBENCH_REAL_AUDIO_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voicebench"]
+    assert adapter.agent_compatibility == ()
+
+    audio_path = tmp_path / "sample.wav"
+    audio_path.write_bytes(b"RIFF")
+    manifest_path = tmp_path / "manifest.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "datasetName": "voicebench-real-smoke",
+                "samples": [
+                    {
+                        "id": "sample",
+                        "text": "hello",
+                        "audioPath": str(audio_path),
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GROQ_API_KEY", "test-key")
+    monkeypatch.setenv("VOICEBENCH_DATASET_PATH", str(manifest_path))
+    orchestrator_adapters._VOICEBENCH_REAL_AUDIO_AVAILABLE = None
+    adapter = discover_adapters(_workspace_root()).adapters["voicebench"]
+    assert adapter.agent_compatibility == ("eliza",)
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is False
+    assert _is_harness_compatible(adapter, "openclaw") is False
+
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "voicebench"
+    ]
+    command = entry.build_command(
+        tmp_path / "out",
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"iterations": 1},
+    )
+    assert "--profile=groq" in command
+    assert f"--dataset={manifest_path}" in command
+    with pytest.raises(ValueError, match="mock profile result"):
+        _score_from_voicebench_json(
+            {"profile": "mock", "summary": {"simple": {"avgEndToEndMs": 0.0}}}
+        )
 
 
 def test_synthetic_calibration_payloads_exercise_all_score_extractors(tmp_path: Path) -> None:
@@ -258,6 +422,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         "_has_hermes_sandbox_backend",
         lambda: True,
     )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_gauntlet_real_surfpool_backend",
+        lambda: False,
+    )
 
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -266,16 +435,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     )
     cells = {(cell.benchmark_id, cell.harness): cell for cell in report.cells}
 
-    for benchmark_id in (
-        "openclaw_bench",
-    ):
-        for harness in ("eliza", "hermes", "openclaw"):
-            cell = cells[(benchmark_id, harness)]
-            assert cell.compatible is False
-            assert cell.command is None
-            assert cell.reason == (
-                f"harness '{harness}' not in adapter compatibility (none)"
-            )
+    for harness in ("eliza", "hermes", "openclaw"):
+        cell = cells[("openclaw_bench", harness)]
+        assert cell.compatible is True
+        assert cell.command is not None
+        assert "openclaw-benchmark/eliza_adapter.py" in cell.command_display
 
     for benchmark_id in ("mmlu", "humaneval", "gsm8k", "mt_bench"):
         for harness in ("eliza", "hermes", "openclaw"):
@@ -291,6 +455,8 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         "configbench",
         "hyperliquid_bench",
         "interrupt_bench",
+        "eliza_1",
+        "framework",
         "orchestrator_lifecycle",
         "scambench",
         "vending_bench",
@@ -319,6 +485,14 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
                 assert cell.command[cell.command.index("--mode") + 1] == "eliza"
             if benchmark_id == "interrupt_bench":
                 assert "--mode=harness" in cell.command
+            if benchmark_id == "eliza_1":
+                assert "scripts/harness_runner.py" in cell.command_display
+                assert "--harness" in cell.command
+                assert cell.command[cell.command.index("--harness") + 1] == harness
+            if benchmark_id == "framework":
+                assert "benchmarks/framework/scripts/harness_runner.py" in cell.command_display
+                assert "--harness" in cell.command
+                assert cell.command[cell.command.index("--harness") + 1] == harness
             if benchmark_id == "orchestrator_lifecycle":
                 assert "--mode" in cell.command
                 assert cell.command[cell.command.index("--mode") + 1] == "bridge"
@@ -345,6 +519,22 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
                 f"harness '{harness}' not in adapter compatibility (hermes)"
             )
 
+    for harness in ("eliza", "hermes", "openclaw"):
+        cell = cells[("gauntlet", harness)]
+        assert cell.compatible is False
+        assert cell.command is None
+        assert cell.reason == (
+            f"harness '{harness}' not in adapter compatibility (none)"
+        )
+
+    for harness in ("eliza", "hermes", "openclaw"):
+        cell = cells[("vision_language", harness)]
+        assert cell.compatible is False
+        assert cell.command is None
+        assert cell.reason == (
+            f"harness '{harness}' not in adapter compatibility (none)"
+        )
+
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True
     assert compactbench_hermes.command is not None
@@ -354,11 +544,42 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     )
 
     compactbench_openclaw = cells[("compactbench", "openclaw")]
-    assert compactbench_openclaw.compatible is False
-    assert compactbench_openclaw.command is None
-    assert compactbench_openclaw.reason == (
-        "harness 'openclaw' not in adapter compatibility (eliza, hermes)"
+    assert compactbench_openclaw.compatible is True
+    assert compactbench_openclaw.command is not None
+    assert (
+        "eliza_compactbench/openclaw_compactor.py:OpenClawNativeToolCompactor"
+        in compactbench_openclaw.command
     )
+
+
+def test_real_matrix_compatible_commands_do_not_default_to_mock_or_stub(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_gauntlet_real_surfpool_backend",
+        lambda: False,
+    )
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    forbidden_terms = ("mock", "stub", "dummy", "dry-run", "dry_run", "no-judge", "no_judge")
+    offenders: list[str] = []
+    for cell in report.cells:
+        if not cell.compatible:
+            continue
+        command_text = " ".join(cell.command or []).lower()
+        extra_text = json.dumps(cell.effective_extra_config or {}, sort_keys=True).lower()
+        hits = [
+            term
+            for term in forbidden_terms
+            if term in command_text or term in extra_text
+        ]
+        if hits:
+            offenders.append(f"{cell.benchmark_id}/{cell.harness}: {', '.join(hits)}")
+    assert offenders == []
 
 
 def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
@@ -392,6 +613,17 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     assert voicebench_quality.extract_score(
         {"score": 0.75, "n": 2, "per_suite": {"openbookqa": 0.75}}
     ).score == 0.75
+    with pytest.raises(ValueError, match="mock or fixture result"):
+        _score_from_voicebench_quality_json(
+            {
+                "score": 1.0,
+                "n": 1,
+                "agent": "openclaw",
+                "judge_model": "fixture",
+                "mock": True,
+                "per_suite": {"openbookqa": 1.0},
+            }
+        )
 
     voiceagentbench = registry["voiceagentbench"]
     vab_command = voiceagentbench.build_command(
@@ -409,6 +641,15 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="mock agent result"):
         _score_from_voiceagentbench_json(
             {"pass_at_1": 1.0, "model_name": "mock", "tasks": [{"task_id": "t1"}]}
+        )
+    with pytest.raises(ValueError, match="fixture STT result"):
+        _score_from_voiceagentbench_json(
+            {
+                "pass_at_1": 1.0,
+                "model_name": "eliza",
+                "stt_provider": "fixture",
+                "tasks": [{"task_id": "t1"}],
+            }
         )
 
 
@@ -490,7 +731,7 @@ def test_live_gated_domain_benchmarks_have_no_key_smoke_routes(
         ModelSpec(provider="cerebras", model="gpt-oss-120b"),
         {"iterations": 1},
     )
-    assert "--profile=mock" in voicebench_command
+    assert "--profile=groq" in voicebench_command
 
 
 def test_eliza_1_score_rejects_all_adapter_errors(tmp_path: Path) -> None:
@@ -603,17 +844,14 @@ def test_hermes_native_envs_require_sandbox_backend(
         assert _is_harness_compatible(adapter, "openclaw") is False
 
 
-def test_direct_provider_benchmarks_are_not_published_as_harness_rows() -> None:
+def test_openclaw_bench_publishes_real_harness_rows() -> None:
     adapters = discover_adapters(_workspace_root()).adapters
 
-    for benchmark_id in (
-        "openclaw_bench",
-    ):
-        adapter = adapters[benchmark_id]
-        assert adapter.agent_compatibility == ()
-        assert _is_harness_compatible(adapter, "eliza") is False
-        assert _is_harness_compatible(adapter, "hermes") is False
-        assert _is_harness_compatible(adapter, "openclaw") is False
+    adapter = adapters["openclaw_bench"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
 
 def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
@@ -627,27 +865,22 @@ def test_standard_public_benchmarks_publish_real_harness_rows() -> None:
         assert _is_harness_compatible(adapter, "openclaw") is True
 
 
-def test_eliza_only_registry_bridges_are_not_published_as_cross_harness_rows() -> None:
-    adapters = discover_adapters(_workspace_root()).adapters
+def test_framework_publishes_real_harness_rows() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["framework"]
 
-    for benchmark_id in (
-        "framework",
-        "eliza_1",
-    ):
-        adapter = adapters[benchmark_id]
-        assert adapter.agent_compatibility == ("eliza",)
-        assert _is_harness_compatible(adapter, "eliza") is True
-        assert _is_harness_compatible(adapter, "hermes") is False
-        assert _is_harness_compatible(adapter, "openclaw") is False
-
-
-def test_compactbench_publishes_only_real_compactor_harnesses() -> None:
-    adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
-
-    assert adapter.agent_compatibility == ("eliza", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
-    assert _is_harness_compatible(adapter, "openclaw") is False
+    assert _is_harness_compatible(adapter, "openclaw") is True
+
+
+def test_compactbench_publishes_all_real_compactor_harnesses() -> None:
+    adapter = discover_adapters(_workspace_root()).adapters["compactbench"]
+
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
 
 def test_agentbench_routes_cross_harness_adapter_clients(
@@ -1085,7 +1318,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         evm,
         RunRequest(
             benchmarks=("evm",),
-            agent="eliza",
+            agent="openclaw",
             provider="cerebras",
             model="gpt-oss-120b",
             extra_config={},
@@ -1102,6 +1335,11 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
         repo_meta={},
     )
     env = evm.env_builder(ctx, evm) if evm.env_builder else {}
+    assert env["BENCHMARK_HARNESS"] == "openclaw"
+    assert env["ELIZA_BENCH_HARNESS"] == "openclaw"
+    assert env["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
+    assert env["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
+    assert env["MODEL_NAME"] == "cerebras/gpt-oss-120b"
     assert env["MAX_MESSAGES"] == "2"
 
     solana = adapters["solana"]
@@ -1344,13 +1582,46 @@ def test_openclaw_registry_command_and_result_locator(tmp_path: Path) -> None:
     assert command[command.index("--mode") + 1] == "execution"
     assert command[command.index("--model") + 1] == "kimi-k2"
 
-    result_path = tmp_path / "openclaw_setup_concept_123.json"
-    result_path.write_text('{"score":{"score":0.5}}', encoding="utf-8")
+    result_path = tmp_path / "openclaw_setup_exec_123.json"
+    result_path.write_text(
+        json.dumps(
+            {
+                "score": {"score": 0.5},
+                "harness": "openclaw",
+                "real_validation": {
+                    "mode": "execution",
+                    "scoring": "file_command_and_test_execution",
+                    "conceptual_scoring": False,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     assert entry.locate_result(tmp_path) == result_path
 
-    score = entry.extract_score({"score": {"score": 0.5}})
+    score = entry.extract_score(
+        {
+            "score": {"score": 0.5},
+            "harness": "openclaw",
+            "real_validation": {
+                "mode": "execution",
+                "scoring": "file_command_and_test_execution",
+                "conceptual_scoring": False,
+            },
+        }
+    )
     assert score.score == 0.5
     assert score.metrics["tasks_completed"] == 1
+    assert score.metrics["harness"] == "openclaw"
+
+    conceptual_path = tmp_path / "openclaw_setup_concept_124.json"
+    conceptual_path.write_text(
+        '{"mode":"conceptual","score":{"score":1.0}}',
+        encoding="utf-8",
+    )
+    assert entry.locate_result(tmp_path) == result_path
+    with pytest.raises(ValueError, match="conceptual result"):
+        entry.extract_score({"mode": "conceptual", "score": {"score": 1.0}})
 
 
 def test_clawbench_registry_routes_selected_harness_to_multi_harness_runner(
@@ -1464,7 +1735,7 @@ def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) ->
     assert command[command.index("--method") + 1] == (
         "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     )
-    assert adapter.agent_compatibility == ("eliza", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
 
 
 def test_compactbench_hermes_adapter_uses_native_tool_compactor(
@@ -1671,7 +1942,7 @@ def test_compare_label_runs_multi_harness_compactbench() -> None:
 
     effective = _effective_request(adapter, request)
 
-    assert adapter.agent_compatibility == ("eliza", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert effective.agent == "compare"
     assert _is_harness_compatible(adapter, "compare") is True
 
@@ -1743,7 +2014,7 @@ def test_adhdbench_adapter_defaults_to_bounded_quick_smoke(tmp_path: Path) -> No
     assert command[command.index("--ids") + 1] == "L0-002"
 
 
-def test_loca_adapter_gates_openclaw_until_native_loca_adapter_exists(tmp_path: Path) -> None:
+def test_loca_adapter_enables_openclaw_direct_openai_tool_path(tmp_path: Path) -> None:
     adapter = discover_adapters(_workspace_root()).adapters["loca_bench"]
     ctx = ExecutionContext(
         workspace_root=_workspace_root(),
@@ -1771,20 +2042,18 @@ def test_loca_adapter_gates_openclaw_until_native_loca_adapter_exists(tmp_path: 
     command = adapter.command_builder(ctx, adapter)
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
 
-    assert adapter.agent_compatibility == ("eliza", "hermes")
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
     assert _is_harness_compatible(adapter, "eliza") is True
     assert _is_harness_compatible(adapter, "hermes") is True
-    assert _is_harness_compatible(adapter, "openclaw") is False
+    assert _is_harness_compatible(adapter, "openclaw") is True
     assert "--allow-empty" not in command
     assert command[command.index("--max-context-size") + 1] == "1000000"
     assert command[command.index("--reset-size") + 1] == "500000"
     assert command[command.index("--reasoning-effort") + 1] == "low"
     assert env["MAX_CONVERSATION_TOKENS"] == "1000000"
     assert env["LOCA_HARNESS_TIMEOUT_S"] == "115"
-    # If a developer force-runs the unsupported OpenClaw smoke path, the env
-    # must make the direct OpenAI-compatible transport explicit. Compatibility
-    # gating above keeps this out of normal cross-agent matrices.
     assert env["LOCA_OPENCLAW_THINKING"] == "low"
+    assert env["LOCA_OPENCLAW_MODE"] == "direct-openai-compatible"
     assert env["OPENCLAW_DIRECT_OPENAI_COMPAT"] == "1"
     assert env["OPENCLAW_USE_CLI"] == "0"
 
@@ -2204,7 +2473,7 @@ def test_visualwebbench_registry_forwards_mock_mode(tmp_path: Path) -> None:
     assert command[command.index("--model") + 1] == "gpt-oss-120b"
 
 
-def test_vision_language_registry_runs_smoke_stub_to_explicit_output(
+def test_vision_language_registry_uses_real_runtime_unless_smoke_stub_is_explicit(
     tmp_path: Path,
 ) -> None:
     entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
@@ -2218,13 +2487,22 @@ def test_vision_language_registry_runs_smoke_stub_to_explicit_output(
     )
 
     assert command[:3] == ["bun", "run", "src/runner.ts"]
-    assert "--smoke" in command
-    assert "--stub" in command
+    assert "--smoke" not in command
+    assert "--stub" not in command
+    assert command[command.index("--tier") + 1] == "eliza-1-9b"
     assert command[command.index("--benchmark") + 1] == "screenspot"
     assert command[command.index("--samples") + 1] == "3"
     assert command[command.index("--output") + 1] == str(
         tmp_path / "vision-language-results.json"
     )
+
+    smoke_command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"sub_benchmark": "screenspot", "samples": 3, "smoke": True, "stub": True},
+    )
+    assert "--smoke" in smoke_command
+    assert "--stub" in smoke_command
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

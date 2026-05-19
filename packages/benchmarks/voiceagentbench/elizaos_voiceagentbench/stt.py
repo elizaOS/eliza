@@ -1,9 +1,8 @@
 """Speech-to-text shim for the cascaded baseline.
 
-The cascaded baseline transcribes a query's ``audio_bytes`` to text via
-Groq Whisper before forwarding to the agent's text path. Missing audio or
-missing credentials are hard failures so benchmark reports cannot silently use
-ground-truth transcripts.
+The cascaded baseline transcribes a query's ``audio_bytes`` to text before
+forwarding to the agent's text path. Missing audio or missing credentials are
+hard failures so benchmark reports cannot silently use ground-truth transcripts.
 
 Direct-audio adapters (future work) bypass this shim entirely.
 """
@@ -80,8 +79,69 @@ class FixtureTranscriptSTT:
         return query.transcript
 
 
-def build_stt(*, mock: bool = False) -> STTBackend:
+class ElizaRuntimeSTT:
+    """Local Eliza runtime STT backend.
+
+    This posts real audio bytes to an OpenAI-compatible transcription route
+    exposed by a local Eliza runtime. It is intentionally not a transcript
+    fallback: missing audio, missing endpoint configuration, HTTP failures, or
+    empty text all fail the benchmark run.
+    """
+
+    def __init__(
+        self,
+        *,
+        base_url: str | None = None,
+        model: str = "whisper-large-v3-turbo",
+    ) -> None:
+        resolved = (
+            base_url
+            or os.environ.get("ELIZA_API_BASE")
+            or os.environ.get("ELIZA_BENCH_URL")
+            or ""
+        ).strip()
+        if not resolved:
+            raise RuntimeError(
+                "ElizaRuntimeSTT requires ELIZA_API_BASE or ELIZA_BENCH_URL."
+            )
+        self._url = f"{resolved.rstrip('/')}/v1/audio/transcriptions"
+        self._model = os.environ.get("VOICEAGENTBENCH_STT_MODEL") or model
+
+    def transcribe(self, query: AudioQuery) -> str:
+        if query.audio_bytes is None:
+            raise RuntimeError(
+                "VoiceAgentBench task is missing audio bytes; refusing to use "
+                "ground-truth transcript as STT output."
+            )
+        import httpx
+
+        with httpx.Client(timeout=60.0) as client:
+            response = client.post(
+                self._url,
+                files={"file": ("query.wav", query.audio_bytes, "audio/wav")},
+                data={
+                    "model": self._model,
+                    "language": query.language,
+                    "response_format": "json",
+                },
+            )
+        response.raise_for_status()
+        payload = response.json()
+        text = payload.get("text") if isinstance(payload, dict) else None
+        if not isinstance(text, str) or not text.strip():
+            raise RuntimeError(f"Eliza STT returned no transcript: {payload!r}")
+        return text
+
+
+def build_stt(*, mock: bool = False, provider: str = "groq") -> STTBackend:
     """Build the real STT backend."""
     if mock:
         return FixtureTranscriptSTT()
-    return GroqWhisperSTT()
+    selected = provider.strip().lower()
+    if selected == "groq":
+        return GroqWhisperSTT()
+    if selected == "eliza-runtime":
+        return ElizaRuntimeSTT()
+    raise ValueError(
+        f"unsupported STT provider {provider!r}; expected 'groq' or 'eliza-runtime'"
+    )

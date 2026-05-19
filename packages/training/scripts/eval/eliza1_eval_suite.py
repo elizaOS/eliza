@@ -754,6 +754,27 @@ def _run_e2e_loop_bench(
         return cache[cache_key]
     if not hasattr(ctx, "_e2e_cache"):
         ctx._e2e_cache = cache  # type: ignore[attr-defined]
+    precomputed = (
+        os.environ.get("ELIZA_EVAL_ENDURANCE_REPORT")
+        if turns >= 30
+        else os.environ.get("ELIZA_EVAL_E2E_REPORT")
+    )
+    if precomputed:
+        source = Path(precomputed)
+        try:
+            report = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            result: dict[str, Any] = {
+                "status": "not-run",
+                "reason": f"could not load precomputed e2e report {source}: {exc}",
+            }
+            cache[cache_key] = result
+            return result
+        report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
+        out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
+        _json_write(out_json, report)
+        cache[cache_key] = report
+        return report
     if _BUN is None:
         result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
         cache[cache_key] = result

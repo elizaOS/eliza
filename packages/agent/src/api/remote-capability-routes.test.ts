@@ -82,7 +82,7 @@ function makePluginRuntime(): IAgentRuntime {
         services: [],
         routes: plugin.routes ?? [],
       })),
-  } as Partial<IAgentRuntime> as IAgentRuntime & {
+  } as unknown as IAgentRuntime & {
     actions: NonNullable<Plugin["actions"]>;
     providers: NonNullable<Plugin["providers"]>;
     evaluators: NonNullable<Plugin["evaluators"]>;
@@ -102,7 +102,7 @@ function makeCtx(
   const json = vi.fn();
   const error = vi.fn();
   const ctx = {
-    req: {} as http.IncomingMessage,
+    req: { headers: {} } as http.IncomingMessage,
     res: {} as http.ServerResponse,
     method: "POST",
     pathname: "/api/capability-router/connect",
@@ -223,6 +223,38 @@ describe("handleRemoteCapabilityRoutes", () => {
     expect(end).toHaveBeenCalledWith(undefined);
     expect(json).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it("blocks remote dynamic assets for restricted mobile platforms", async () => {
+    const getAsset = vi.fn();
+    const router = {
+      plugin: { getAsset },
+    } as unknown as ElizaCapabilityRouter;
+    const runtime = {
+      getService: () => router,
+    } as Partial<IAgentRuntime> as IAgentRuntime;
+    const { ctx, json, error } = makeCtx(
+      {},
+      {
+        method: "GET",
+        pathname:
+          "/api/capability-router/assets/device/remote-demo/assets/remote-view.js",
+        runtime,
+        req: {
+          headers: { "x-eliza-platform": "ios" },
+        } as unknown as http.IncomingMessage,
+      },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "Dynamic capability asset loading is not permitted on this platform.",
+      403,
+    );
+    expect(getAsset).not.toHaveBeenCalled();
+    expect(json).not.toHaveBeenCalled();
   });
 
   it("rejects remote asset proxy paths with traversal segments", async () => {
@@ -804,6 +836,69 @@ describe("handleRemoteCapabilityRoutes", () => {
     });
   });
 
+  it("connects URL-backed provider endpoints through the product route", async () => {
+    const connectEndpointProvider = vi.fn().mockResolvedValue({
+      providerId: "home-machine",
+      endpoint: {
+        id: "home-runner",
+        baseUrl: "https://home.example.test/capability",
+        token: "home-secret",
+      },
+      sync: syncResult,
+    });
+    const { ctx, json } = makeCtx(
+      {
+        provider: "home-machine",
+        endpoint: {
+          id: "home-runner",
+          baseUrl: "https://home.example.test/capability/",
+          token: "home-secret",
+        },
+        allowedModuleIds: ["remote-plugin"],
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(connectEndpointProvider).toHaveBeenCalledWith(
+      ctx.runtime,
+      expect.objectContaining({
+        provider: expect.objectContaining({ id: "home-machine" }),
+        provisionOptions: {
+          baseUrl: "https://home.example.test/capability",
+          endpointId: "home-runner",
+          token: "home-secret",
+          allowedModuleIds: ["remote-plugin"],
+        },
+      }),
+    );
+    expect(json.mock.calls[0]?.[1]).toMatchObject({
+      success: true,
+      mode: "home-machine",
+      provider: "home-machine",
+      endpoint: {
+        id: "home-runner",
+        baseUrl: "https://home.example.test/capability",
+        hasToken: true,
+      },
+      persisted: true,
+    });
+    expect(ctx.persistConfigEnv).toHaveBeenCalledWith(
+      "ELIZA_CAPABILITY_ROUTER_URLS",
+      JSON.stringify([
+        {
+          id: "home-runner",
+          baseUrl: "https://home.example.test/capability",
+          token: "home-secret",
+        },
+      ]),
+    );
+    expect(ctx.config?.env?.vars?.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toBe(
+      JSON.stringify({ "home-runner": ["remote-plugin"] }),
+    );
+  });
+
   it("merges persisted endpoints by id", async () => {
     const connectEndpointProvider = vi.fn().mockResolvedValue({
       providerId: "direct",
@@ -905,6 +1000,30 @@ describe("handleRemoteCapabilityRoutes", () => {
       "Request body must include either 'endpoint' or 'cloud'.",
       400,
     );
+    expect(json).not.toHaveBeenCalled();
+  });
+
+  it("rejects unknown endpoint provider modes", async () => {
+    const connectEndpointProvider = vi.fn();
+    const { ctx, error, json } = makeCtx(
+      {
+        provider: "satellite",
+        endpoint: {
+          id: "satellite",
+          baseUrl: "https://satellite.example.test",
+        },
+      },
+      { connectEndpointProvider },
+    );
+
+    await expect(handleRemoteCapabilityRoutes(ctx)).resolves.toBe(true);
+
+    expect(error).toHaveBeenCalledWith(
+      ctx.res,
+      "provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.",
+      400,
+    );
+    expect(connectEndpointProvider).not.toHaveBeenCalled();
     expect(json).not.toHaveBeenCalled();
   });
 

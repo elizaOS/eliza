@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { lookupBaseline, runOneBenchmark } from "../src/runner.ts";
-import { createStubRuntime } from "../src/runtime-resolver.ts";
+import { createStubRuntime, resolveRuntime } from "../src/runtime-resolver.ts";
 
 describe("runOneBenchmark", () => {
   it("runs the textvqa smoke fixture end-to-end against the stub runtime", async () => {
@@ -70,6 +70,19 @@ describe("runOneBenchmark", () => {
     const round = JSON.parse(readFileSync(target, "utf8"));
     expect(round.benchmark).toBe("docvqa");
     expect(Array.isArray(round.samples)).toBe(true);
+  });
+});
+
+describe("resolveRuntime", () => {
+  it("fails closed instead of falling back to stub for full runs", async () => {
+    await expect(
+      resolveRuntime({ tier: "missing-real-tier", forceStub: false }),
+    ).rejects.toThrow(/no real IMAGE_DESCRIPTION runtime available/);
+  });
+
+  it("still allows explicit stub smoke runtime", async () => {
+    const runtime = await resolveRuntime({ tier: "missing-real-tier", forceStub: true });
+    expect(runtime.id).toBe("missing-real-tier-stub");
   });
 });
 

@@ -96,6 +96,7 @@ def _text_fetcher(
     readme: str = "Eliza-1 training dataset\n",
     manifest: str = '{"schema":"eliza.eliza1_training_manifest.v1"}\n',
     model_manifests: Mapping[str, str] | None = None,
+    aggregate_reports: Mapping[str, str] | None = None,
 ):
     payloads = {
         "https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/README.md": readme,
@@ -114,6 +115,13 @@ def _text_fetcher(
         ] = "\n".join(
             f"{'a' * 64}  {rel}" for rel in build_plan()[tier].required_files
         ) + "\n"
+        payloads[
+            f"https://huggingface.co/elizaos/eliza-1/raw/main/bundles/{tier}/evals/aggregate.json"
+        ] = (
+            aggregate_reports[tier]
+            if aggregate_reports and tier in aggregate_reports
+            else '{"passed":true,"gateReport":{"passed":true,"failures":[]}}\n'
+        )
 
     def fetch(url: str) -> str:
         return payloads[url]
@@ -210,24 +218,44 @@ def test_hf_release_audit_blocks_manifest_backend_failures() -> None:
     )
 
 
-def test_hf_release_audit_blocks_manifest_eval_gate_failures() -> None:
+def test_hf_release_audit_blocks_aggregate_eval_gate_failures() -> None:
     bad_manifest = __import__("json").loads(_passing_model_manifest("4b"))
-    bad_manifest["evals"]["textEval"]["passed"] = False
-    bad_manifest["evals"]["thirtyTurnOk"] = False
+    bad_aggregate = (
+        '{"passed":false,"gateReport":{"passed":false,'
+        '"failures":["text_eval: text_eval=0.4 >= 0.62",'
+        '"thirty_turn_ok: missing measurement results.thirty_turn_ok"]}}\n'
+    )
 
     report = audit_hf_release(
         fetch_json=_fetcher(),
-        fetch_text=_text_fetcher(model_manifests={"4b": __import__("json").dumps(bad_manifest)}),
+        fetch_text=_text_fetcher(
+            model_manifests={"4b": __import__("json").dumps(bad_manifest)},
+            aggregate_reports={"4b": bad_aggregate},
+        ),
     )
 
     assert not report.ok
     failed = [check for check in report.checks if not check["ok"]]
     assert any(
         check["name"] == "4b manifest eval gates passed"
-        and "evals.textEval.passed: False" in check["detail"]
-        and "evals.thirtyTurnOk: False" in check["detail"]
+        and "text_eval: text_eval=0.4 >= 0.62" in check["detail"]
+        and "thirty_turn_ok: missing measurement" in check["detail"]
         for check in failed
     )
+
+
+def test_hf_release_audit_prefers_aggregate_over_provisional_manifest_flags() -> None:
+    manifest = __import__("json").loads(_passing_model_manifest("0_8b"))
+    manifest["evals"]["asrWer"]["passed"] = False
+    manifest["evals"]["dflash"] = {"passed": False}
+    manifest["evals"]["expressive"] = {"passed": False}
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(model_manifests={"0_8b": __import__("json").dumps(manifest)}),
+    )
+
+    assert report.ok, report.render()
 
 
 def test_hf_release_audit_blocks_manifest_lfs_hash_mismatch() -> None:
@@ -278,11 +306,14 @@ def test_hf_release_audit_summary_groups_failures() -> None:
     paths.remove("bundles/4b/evals/cuda_verify.json")
     bad_manifest = __import__("json").loads(_passing_model_manifest("4b"))
     bad_manifest["kernels"]["verifiedBackends"]["cuda"]["status"] = "skipped"
-    bad_manifest["evals"]["textEval"]["passed"] = False
+    bad_aggregate = '{"passed":false,"gateReport":{"passed":false,"failures":["text_eval: low"]}}\n'
 
     report = audit_hf_release(
         fetch_json=_fetcher(model_paths=paths),
-        fetch_text=_text_fetcher(model_manifests={"4b": __import__("json").dumps(bad_manifest)}),
+        fetch_text=_text_fetcher(
+            model_manifests={"4b": __import__("json").dumps(bad_manifest)},
+            aggregate_reports={"4b": bad_aggregate},
+        ),
     )
 
     summary = report.summary()

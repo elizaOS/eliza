@@ -28,7 +28,12 @@ import {
   unregisterPluginViews,
 } from "../api/views-registry.ts";
 import { loadElizaConfig, saveElizaConfig } from "../config/config.ts";
-import { importAppRouteModule } from "./app-package-modules.ts";
+import {
+  importAppRouteModule,
+  registerRuntimeAppRouteModule,
+  unregisterRuntimeAppRouteModule,
+} from "./app-package-modules.ts";
+import { installRuntimePluginLifecycle } from "../runtime/plugin-lifecycle.ts";
 import {
   createRemoteCapabilityFetchHandler,
   RemoteCapabilityRouterService,
@@ -45,6 +50,8 @@ const remoteModule: RemotePluginModuleManifest = {
   name: "@remote/demo",
   version: "1.2.3",
   description: "Remote demo plugin.",
+  priority: 90,
+  contexts: ["general", "remote-demo"],
   config: {
     REMOTE_MODE: "demo",
     retryCount: 2,
@@ -120,6 +127,19 @@ const remoteModule: RemotePluginModuleManifest = {
       capabilityDescription: "Remote demo service.",
       methods: ["lookup", "stop"],
       config: { region: "remote" },
+    },
+  ],
+  componentTypes: [
+    {
+      name: "remote-demo.component",
+      schema: {
+        type: "object",
+        properties: {
+          message: { type: "string", description: "Remote message." },
+          priority: { type: "number" },
+        },
+        required: ["message"],
+      },
     },
   ],
   widgets: [
@@ -210,6 +230,9 @@ describe("remote plugin adapter", () => {
     for (const pluginName of registeredViewPlugins) {
       unregisterPluginViews(pluginName);
     }
+    unregisterRuntimeAppRouteModule("@remote/demo");
+    unregisterRuntimeAppRouteModule("@remote/plugin-weather");
+    unregisterRuntimeAppRouteModule("@remote/weather");
   });
 
   it("materializes remote manifests as normal plugin contributions", async () => {
@@ -420,6 +443,9 @@ describe("remote plugin adapter", () => {
       },
       navTabs: [{ id: "remote.demo", path: "/remote-demo" }],
     });
+    expect(plugin.priority).toBe(90);
+    expect(plugin.contexts).toEqual(["general", "remote-demo"]);
+    expect(plugin.componentTypes).toEqual(remoteModule.componentTypes);
     expect(plugin.services?.[0]?.serviceType).toBe("remote_demo_service");
     const remoteService = await plugin.services?.[0]?.start(runtime);
     expect(remoteService).toMatchObject({
@@ -809,7 +835,7 @@ describe("remote plugin adapter", () => {
         >
       )?.REMOTE_TEXT?.(runtime, { prompt: "model prompt" }),
     ).resolves.toBe("remote model result");
-    expect(plugin.priority).toBe(75);
+    expect(plugin.priority).toBe(90);
 
     expect(calls).toEqual(
       expect.arrayContaining([
@@ -1312,6 +1338,37 @@ describe("remote plugin adapter", () => {
     });
   });
 
+  it("rejects remote app bridges that collide with existing runtime app route modules", async () => {
+    const runtime = makeRuntime(makeRouter());
+    registerRuntimeAppRouteModule("@remote/demo", {
+      handleAppRoutes: async () => true,
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            services: [],
+            models: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" app bridge route key "demo" would collide with an existing runtime app route module.',
+    });
+  });
+
   it("enforces remote plugin trust policy before registration", async () => {
     const runtime = makeRuntime(makeRouter());
     const trustedModule = {
@@ -1560,6 +1617,115 @@ describe("remote plugin adapter", () => {
     });
   });
 
+  it("rejects duplicate model declarations across remote modules", async () => {
+    const runtime = makeRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            services: [],
+          },
+          {
+            ...remoteModule,
+            id: "remote-model-copy",
+            name: "@remote/model-copy",
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            services: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote model collision for "REMOTE_TEXT" between modules "remote-demo" and "remote-model-copy".',
+    });
+  });
+
+  it("rejects remote models that collide with local runtime models", async () => {
+    const runtime = makeRuntime(makeRouter(), {
+      plugins: [
+        {
+          name: "@local/model",
+          description: "Local model plugin",
+          models: {
+            REMOTE_TEXT: async () => ({ text: "local" }) as never,
+          } as never,
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            actions: [],
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            services: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin "remote-demo" model "REMOTE_TEXT" would collide with an existing runtime model.',
+    });
+  });
+
+  it("rejects named component reuse from a different registered remote module", async () => {
+    const registeredRemote = createRemoteCapabilityPlugin(remoteModule);
+    const runtime = makeRuntime(makeRouter(), {
+      plugins: [registeredRemote],
+      actions: registeredRemote.actions,
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...remoteModule,
+            id: "remote-action-copy",
+            name: "@remote/action-copy",
+            providers: [],
+            evaluators: [],
+            responseHandlerEvaluators: [],
+            responseHandlerFieldEvaluators: [],
+            routes: [],
+            services: [],
+            models: [],
+          },
+        ],
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote action name collision for "REMOTE_DEMO" between registered module "remote-demo" and module "remote-action-copy".',
+    });
+  });
+
   it("rejects remote actions and providers that collide with local runtime components", async () => {
     const runtime = makeRuntime(makeRouter(), {
       actions: [
@@ -1634,6 +1800,7 @@ describe("remote plugin adapter", () => {
             responseHandlerEvaluators: [],
             responseHandlerFieldEvaluators: [],
             services: [],
+            models: [],
           },
         ],
       }),
@@ -1747,6 +1914,90 @@ describe("remote plugin adapter", () => {
       trustDecisions: [],
     });
     expect(unloaded).toEqual(["@remote/demo"]);
+  });
+
+  it("removes stale runtime contributions when a remote module disappears", async () => {
+    const module: RemotePluginModuleManifest = {
+      id: "volatile-remote",
+      name: "@remote/volatile",
+      capabilityEndpointId: "device-a",
+      actions: [
+        {
+          name: "VOLATILE_ACTION",
+          description: "Action removed with the remote module.",
+        },
+      ],
+      providers: [
+        {
+          name: "VOLATILE_CONTEXT",
+          description: "Provider removed with the remote module.",
+        },
+      ],
+      routes: [
+        {
+          method: "POST",
+          path: "/volatile/route",
+          public: true,
+        },
+      ],
+      views: [
+        {
+          id: "volatile.view",
+          label: "Volatile View",
+          bundleUrl: "https://device-a.example/volatile-view.js",
+        },
+      ],
+    };
+    const runtime = makeLifecycleRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [module],
+        trustPolicy: {
+          allowedEndpointIds: ["device-a"],
+          allowedModuleIds: ["volatile-remote"],
+          requireEndpointId: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [expect.objectContaining({ name: "@remote/volatile" })],
+      unloaded: [],
+    });
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/volatile",
+    ]);
+    expect(runtime.actions.map((action) => action.name)).toEqual([
+      "VOLATILE_ACTION",
+    ]);
+    expect(runtime.providers.map((provider) => provider.name)).toEqual([
+      "VOLATILE_CONTEXT",
+    ]);
+    expect(runtime.routes.map((route) => route.path)).toEqual([
+      "/volatile/route",
+    ]);
+    expect(getView("volatile.view")).toMatchObject({
+      pluginName: "@remote/volatile",
+      bundleUrl: "https://device-a.example/volatile-view.js",
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [],
+        unloadMissing: true,
+        unloadMissingEndpointIds: ["device-a"],
+      }),
+    ).resolves.toEqual({
+      registered: [],
+      unloaded: ["@remote/volatile"],
+      skipped: [],
+      trustDecisions: [],
+    });
+
+    expect(runtime.plugins).toEqual([]);
+    expect(runtime.actions).toEqual([]);
+    expect(runtime.providers).toEqual([]);
+    expect(runtime.routes).toEqual([]);
+    expect(getView("volatile.view")).toBeUndefined();
   });
 
   it("bootstraps to no-op when the remote router is not configured", async () => {
@@ -3404,6 +3655,82 @@ function makeExecutableRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
     }
     await registerPluginViews(plugin);
   };
+  return runtime;
+}
+
+function makeLifecycleRuntime(router: ElizaCapabilityRouter): IAgentRuntime {
+  const runtime = makeRuntime(router, {
+    plugins: [],
+    actions: [],
+    providers: [],
+    evaluators: [],
+    responseHandlerEvaluators: [],
+    responseHandlerFieldEvaluators: [],
+    routes: [],
+    events: {},
+    services: new Map(),
+    serviceTypes: new Map(),
+    servicePromises: new Map(),
+    servicePromiseHandlers: new Map(),
+    startingServices: new Map(),
+    serviceRegistrationStatus: new Map(),
+    sendHandlers: new Map(),
+    models: new Map(),
+    logger: {
+      debug: vi.fn(),
+      warn: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+    },
+  } as never);
+  runtime.registerAction = (action) => {
+    runtime.actions.push(action);
+  };
+  runtime.registerProvider = (provider) => {
+    runtime.providers.push(provider);
+  };
+  runtime.registerEvaluator = (evaluator) => {
+    runtime.evaluators.push(evaluator);
+  };
+  runtime.registerEvent = (event, handler) => {
+    const handlers = runtime.events[event] ?? [];
+    handlers.push(handler);
+    runtime.events[event] = handlers;
+  };
+  runtime.registerModel = (modelType, handler, provider) => {
+    const modelMap = (runtime as unknown as {
+      models: Map<string, Array<{ handler: unknown; provider: string }>>;
+    }).models;
+    const key = String(modelType);
+    const handlers = modelMap.get(key) ?? [];
+    handlers.push({ handler, provider });
+    modelMap.set(key, handlers);
+  };
+  runtime.registerService = async () => {};
+  runtime.registerPlugin = async (plugin) => {
+    runtime.plugins.push(plugin);
+    for (const action of plugin.actions ?? []) {
+      runtime.registerAction(action);
+    }
+    for (const provider of plugin.providers ?? []) {
+      runtime.registerProvider(provider);
+    }
+    for (const evaluator of plugin.evaluators ?? []) {
+      runtime.registerEvaluator(evaluator);
+    }
+    for (const [event, handlers] of Object.entries(plugin.events ?? {})) {
+      for (const handler of handlers) {
+        runtime.registerEvent(event as never, handler as never);
+      }
+    }
+    for (const [modelType, handler] of Object.entries(plugin.models ?? {})) {
+      if (typeof handler === "function") {
+        runtime.registerModel(modelType as never, handler as never, plugin.name);
+      }
+    }
+    runtime.routes.push(...(plugin.routes ?? []));
+  };
+  installRuntimePluginLifecycle(runtime as never);
   return runtime;
 }
 

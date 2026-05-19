@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+	CAPABILITY_ROUTER_PROTOCOL_FIXTURE,
 	CapabilityError,
 	RuntimeBrokerCapabilityRouter,
 	UnavailableCapabilityRouter,
@@ -244,6 +245,71 @@ describe("capability router", () => {
 		await expect(router.git.status({ root: "/repo" })).rejects.toBe(expected);
 	});
 
+	it("keeps the canonical capability-router protocol fixture decoder-valid", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				if (method === "plugin.modules.list") {
+					return { modules: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module] };
+				}
+				if (method === "plugin.action.invoke") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action;
+				}
+				if (method === "plugin.provider.get") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider;
+				}
+				if (method === "plugin.route.call") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route;
+				}
+				if (method === "plugin.asset.get") {
+					return CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset;
+				}
+				throw new Error(`unexpected method ${method}`);
+			},
+		});
+
+		await expect(router.plugin.listModules()).resolves.toEqual({
+			modules: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
+		});
+		await expect(
+			router.plugin.invokeAction({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				action: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.actions[0].name,
+				content: { text: "fixture" },
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action);
+		await expect(
+			router.plugin.getProvider({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				provider: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.providers[0].name,
+				state: {},
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider);
+		await expect(
+			router.plugin.callRoute({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				method: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.routes[0].method,
+				path: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.routes[0].path,
+				headers: {},
+				body: { fixture: true },
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route);
+		await expect(
+			router.plugin.getAsset({
+				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
+				path: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0].bundlePath ?? "",
+			}),
+		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset);
+		expect(calls).toEqual([
+			"plugin.modules.list",
+			"plugin.action.invoke",
+			"plugin.provider.get",
+			"plugin.route.call",
+			"plugin.asset.get",
+		]);
+	});
+
 	it("routes remote plugin module manifests and invocation through the runtime broker", async () => {
 		const calls: Array<{ method: string; params?: object }> = [];
 		const router = new RuntimeBrokerCapabilityRouter({
@@ -288,6 +354,22 @@ describe("capability router", () => {
 										capabilityDescription: "Remote weather service.",
 										methods: ["lookup"],
 										config: { unit: "fahrenheit" },
+									},
+								],
+								componentTypes: [
+									{
+										name: "weather.component",
+										schema: {
+											type: "object",
+											properties: {
+												city: { type: "string" },
+												unit: {
+													type: "string",
+													enumValues: ["fahrenheit", "celsius"],
+												},
+											},
+											required: ["city"],
+										},
 									},
 								],
 								widgets: [
@@ -407,6 +489,22 @@ describe("capability router", () => {
 							capabilityDescription: "Remote weather service.",
 							methods: ["lookup"],
 							config: { unit: "fahrenheit" },
+						},
+					],
+					componentTypes: [
+						{
+							name: "weather.component",
+							schema: {
+								type: "object",
+								properties: {
+									city: { type: "string" },
+									unit: {
+										type: "string",
+										enumValues: ["fahrenheit", "celsius"],
+									},
+								},
+								required: ["city"],
+							},
 						},
 					],
 					widgets: [

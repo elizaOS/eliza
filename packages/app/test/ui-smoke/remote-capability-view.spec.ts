@@ -142,6 +142,9 @@ test("settings connects a remote capability endpoint and opens its view", async 
     await openSettingsSection(page, /^Capabilities\b/);
 
     await page
+      .getByLabel("Capability endpoint provider")
+      .selectOption("home-machine");
+    await page
       .getByLabel("Capability router endpoint URL")
       .fill(remote.baseUrl);
     await page.getByLabel("Capability router endpoint ID").fill("live-product");
@@ -158,6 +161,7 @@ test("settings connects a remote capability endpoint and opens its view", async 
     ).toBeVisible();
     await expect(page.getByText("@remote/capability-live")).toBeVisible();
     expect(connectPayload).toMatchObject({
+      provider: "home-machine",
       endpoint: {
         id: "live-product",
         baseUrl: remote.baseUrl,

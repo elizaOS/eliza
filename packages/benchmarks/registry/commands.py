@@ -965,15 +965,13 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         benchmark = str(extra.get("vision_benchmark") or extra.get("sub_benchmark") or "textvqa").strip().lower()
         if benchmark not in {"textvqa", "docvqa", "chartqa", "screenspot", "osworld"}:
             benchmark = "textvqa"
-        tier = str(extra.get("tier") or "stub").strip() or "stub"
+        tier = str(extra.get("tier") or "eliza-1-9b").strip() or "eliza-1-9b"
         samples = extra.get("samples")
         sample_count = str(samples if isinstance(samples, int) and samples > 0 else 5)
         args = [
             "bun",
             "run",
             "src/runner.ts",
-            "--smoke",
-            "--stub",
             "--tier",
             tier,
             "--benchmark",
@@ -983,6 +981,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir / "vision-language-results.json"),
         ]
+        if extra.get("smoke") is True:
+            args.append("--smoke")
+        if extra.get("stub") is True or (model.provider or "").strip().lower() == "mock":
+            args.append("--stub")
         _ = model
         return args
 
@@ -1210,11 +1212,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             "--output",
             str(output_dir),
         ]
-        # Default to mock mode unless clone_mainnet is set
         clone_mainnet = extra.get("clone_mainnet")
         if clone_mainnet is True:
             args.append("--clone-mainnet")
-        else:
+        elif extra.get("mock") is True or (model.provider or "").strip().lower() == "mock":
             args.append("--mock")
         seed = extra.get("seed")
         if isinstance(seed, int) and seed > 0:
@@ -1316,7 +1317,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         return args
 
     def _openclaw_bench_result(output_dir: Path) -> Path:
-        return find_latest_file(output_dir, glob_pattern="openclaw_*.json")
+        return find_latest_file(output_dir, glob_pattern="openclaw_*_exec_*.json")
 
     # ConfigBench - secrets + plugin-manager security benchmark (Bun runtime)
     def _configbench_cmd(output_dir: Path, model: ModelSpec, extra: Mapping[str, JSONValue]) -> list[str]:
@@ -1369,8 +1370,6 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             profile = profile_raw.strip().lower()
         elif extra.get("mock") is True or provider_name == "mock":
             profile = "mock"
-        elif not os.environ.get("GROQ_API_KEY"):
-            profile = "mock"
         elif provider_name == "elevenlabs":
             profile = "elevenlabs"
         else:
@@ -1384,6 +1383,14 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset.strip():
             args.append(f"--dataset={dataset.strip()}")
+        else:
+            env_dataset = (
+                os.environ.get("VOICEBENCH_DATASET")
+                or os.environ.get("VOICEBENCH_DATASET_PATH")
+                or ""
+            ).strip()
+            if env_dataset:
+                args.append(f"--dataset={env_dataset}")
         _ = model
         return args
 
@@ -1447,10 +1454,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         """Build the elizaos-voicebench CLI invocation.
 
         ``model.model`` selects the agent backend (``eliza``/``hermes``/
-        ``openclaw``/``echo``); defaults to ``echo`` for hermetic runs.
-        Provider ``mock`` (or no provider + no agent override) flips on
-        ``--mock`` so the run uses bundled fixtures + a stub judge and
-        does not need an API key.
+        ``openclaw``/``echo``). Defaults to ``eliza`` for real harness
+        runs. Provider ``mock``, explicit ``mock``, or the ``echo`` agent
+        flips on ``--mock`` so smoke runs remain opt-in.
         """
         agent_raw = extra.get("agent")
         if isinstance(agent_raw, str) and agent_raw.strip():
@@ -1458,7 +1464,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         elif model.model in {"eliza", "hermes", "openclaw", "echo"}:
             agent = str(model.model)
         else:
-            agent = "echo"
+            agent = "eliza"
         provider_name = (model.provider or "").strip().lower()
         mock_flag = bool(extra.get("mock")) or provider_name == "mock" or agent == "echo"
         args = [
@@ -2069,9 +2075,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
     ) -> list[str]:
         """Build the VoiceAgentBench CLI invocation.
 
-        ``model.model`` selects the agent backend: ``mock`` for hermetic
-        smoke runs (no env vars needed); ``eliza`` / ``hermes`` /
-        ``openclaw`` for cascaded-STT adapter runs. Default is ``mock``.
+        ``model.model`` selects the agent backend: ``mock`` for explicit
+        hermetic smoke runs (no env vars needed); ``eliza`` / ``hermes`` /
+        ``openclaw`` for cascaded-STT adapter runs. Default is ``eliza``.
         """
         agent_raw = extra.get("agent") or extra.get("harness")
         if isinstance(agent_raw, str) and agent_raw.strip():
@@ -2079,7 +2085,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         elif model.model in {"mock", "eliza", "hermes", "openclaw"}:
             agent = str(model.model)
         else:
-            agent = "mock"
+            agent = "eliza"
         args = [
             python,
             "-m",
@@ -2107,9 +2113,24 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         data_path = extra.get("data_path")
         if isinstance(data_path, str) and data_path.strip():
             args.extend(["--data-path", data_path.strip()])
+        else:
+            env_data_path = (
+                os.environ.get("VOICEAGENTBENCH_DATA_PATH")
+                or os.environ.get("VOICEAGENTBENCH_REAL_DATA_PATH")
+                or ""
+            ).strip()
+            if env_data_path:
+                args.extend(["--data-path", env_data_path])
         judge_model = extra.get("judge_model")
         if isinstance(judge_model, str) and judge_model.strip():
             args.extend(["--judge-model", judge_model.strip()])
+        stt_provider = extra.get("stt_provider")
+        if isinstance(stt_provider, str) and stt_provider.strip():
+            args.extend(["--stt-provider", stt_provider.strip()])
+        else:
+            env_stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip()
+            if env_stt_provider:
+                args.extend(["--stt-provider", env_stt_provider])
         return args
 
     def _voiceagentbench_result(output_dir: Path) -> Path:
@@ -2238,7 +2259,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="Runs locally; uses mock LLM unless wired to runtime in benchmark code.",
+                notes=(
+                    "Runs locally through the selected harness/provider for real matrix rows; "
+                    "explicit provider=mock is only for non-publishable smoke checks."
+                ),
             ),
             build_command=_mint_cmd,
             locate_result=_mint_result,
@@ -2252,7 +2276,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="By default runs with mock runtime; --elizaos path is not fully model-wired yet.",
+                notes=(
+                    "Runs sample AgentBench tasks through the selected harness/provider. "
+                    "Mock runtime is only available through explicit mock configuration and "
+                    "is not a real matrix score."
+                ),
             ),
             build_command=_agentbench_cmd,
             locate_result=_agentbench_result,
@@ -2266,7 +2294,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="Provider-specific SDKs required for openai/anthropic; mock works without keys.",
+                notes=(
+                    "Real matrix rows require the selected provider credentials. "
+                    "Explicit mock mode is limited to smoke checks."
+                ),
             ),
             build_command=_contextbench_cmd,
             locate_result=_contextbench_result,
@@ -2281,8 +2312,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 env_vars=(),
                 paths=(),
                 notes=(
-                    "Can run sample dry-runs without credentials; bridge/full runs "
-                    "require dataset/runtime setup and typically a provider API key."
+                    "Real bridge/full runs require dataset/runtime setup and the selected "
+                    "provider API key. Dry-run/sample modes are smoke-only."
                 ),
             ),
             build_command=_terminalbench_cmd,
@@ -2297,7 +2328,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="Sample/mock runs need no credentials. Full GAIA/provider runs require dataset and provider key setup.",
+                notes=(
+                    "Real GAIA/provider runs require dataset and provider key setup. "
+                    "Sample/mock runs are smoke-only and not publishable real scores."
+                ),
             ),
             build_command=_gaia_cmd,
             locate_result=_gaia_result,
@@ -2311,7 +2345,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="Uses the GAIA runner with orchestrator profile defaults; safe sample/mock runs avoid gated HF access and provider keys.",
+                notes=(
+                    "Uses the GAIA runner with orchestrator profile defaults. Real rows "
+                    "use provider-backed execution; sample/mock paths are smoke-only."
+                ),
             ),
             build_command=_gaia_orchestrated_cmd,
             locate_result=_gaia_orchestrated_result,
@@ -2325,7 +2362,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=("benchmark-data/tau-bench",),
-                notes="Defaults to mock mode; use extra real_llm=true to enable real LLM.",
+                notes=(
+                    "Real matrix rows use provider-backed LLM execution. Explicit mock mode "
+                    "is available only for smoke checks."
+                ),
             ),
             build_command=_tau_cmd,
             locate_result=_tau_result,
@@ -2398,7 +2438,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="Uses sample tasks by default; mock/sample runs need no credentials. --hf or real providers need their dataset/key setup.",
+                notes=(
+                    "Real provider runs need dataset/key setup. Sample/mock paths are "
+                    "smoke-only and not publishable real matrix scores."
+                ),
             ),
             build_command=_mind2web_cmd,
             locate_result=_mind2web_result,
@@ -2412,7 +2455,11 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
             requirements=BenchmarkRequirements(
                 env_vars=(),
                 paths=(),
-                notes="Uses bundled JSONL fixture and dry-run mode by default. --hf streams from Hugging Face when datasets is installed.",
+                notes=(
+                    "Real rows use the selected harness/provider. Bundled fixtures and "
+                    "dry-run mode are smoke-only; --hf streams from Hugging Face when "
+                    "datasets is installed."
+                ),
             ),
             build_command=_visualwebbench_cmd,
             locate_result=_visualwebbench_result,
@@ -2427,8 +2474,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 env_vars=(),
                 paths=(),
                 notes=(
-                    "Orchestrator smoke uses bundled fixtures with the deterministic "
-                    "stub runtime. Full runs require upstream datasets/model assets."
+                    "Full runs require a real IMAGE_DESCRIPTION runtime and upstream "
+                    "datasets/model assets. Explicit --smoke --stub is smoke-only and "
+                    "is excluded from the real harness matrix."
                 ),
             ),
             build_command=_vision_language_cmd,
@@ -2499,8 +2547,9 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 paths=("benchmarks/gauntlet/scenarios",),
                 notes=(
                     "Uses ElizaOS agent with full message pipeline. "
-                    "Runs in mock mode by default (no Surfpool needed). "
-                    "Set clone_mainnet=true for real program testing (requires surfpool). "
+                    "Real rows require Surfpool plus deployable or clone-backed Solana "
+                    "program state; mock mode is smoke-only. Set clone_mainnet=true "
+                    "only when the installed Surfpool supports the required clone path. "
                     "Scores: Task Completion (30%), Safety (40%), Efficiency (20%), Capital (10%)."
                 ),
             ),
@@ -2571,10 +2620,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                 env_vars=(),
                 paths=("benchmarks/voicebench/run.sh", "benchmarks/voicebench/typescript/src/bench.ts"),
                 notes=(
-                    "Bun runtime via run.sh. Profiles: mock (no credentials, scoreable smoke artifact), "
-                    "groq (needs GROQ_API_KEY), "
+                    "Bun runtime via run.sh. Real profiles: groq (needs GROQ_API_KEY), "
                     "elevenlabs (needs GROQ_API_KEY and ELEVENLABS_API_KEY). Audio fixture resolved from "
                     "VOICEBENCH_AUDIO_PATH or repo defaults. "
+                    "The mock profile is smoke-only and rejected by the real scorer. "
                     "Reports avg/p95/p99 end-to-end latency; lower is better."
                 ),
             ),
@@ -2625,8 +2674,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                     "Cascaded STT (Groq Whisper) → text adapter (eliza/hermes/openclaw). "
                     "Judged suites scored by gpt-oss-120b on Cerebras. "
                     "Score is the unweighted mean of per-suite scores in [0, 1]; "
-                    "higher is better. Set extra.mock=true (or provider=mock) for "
-                    "a hermetic smoke run with no API keys."
+                    "higher is better. extra.mock=true/provider=mock is smoke-only "
+                    "and rejected by the real scorer."
                 ),
             ),
             build_command=_voicebench_quality_cmd,
@@ -2799,9 +2848,10 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
                     "packages/benchmarks/voiceagentbench/fixtures",
                 ),
                 notes=(
-                    "model.model selects the agent backend: 'mock' for hermetic fixture runs (no env vars needed); "
-                    "'eliza'/'hermes'/'openclaw' for cascaded-STT adapter runs. "
-                    "GROQ_API_KEY is required for real Whisper transcription when audio bytes are present; "
+                    "model.model selects the agent backend: 'mock' for smoke-only fixture runs; "
+                    "'eliza'/'hermes'/'openclaw' for real cascaded-STT adapter runs. "
+                    "Real runs require audio_b64 records plus either GROQ_API_KEY for Whisper "
+                    "or VOICEAGENTBENCH_STT_PROVIDER=eliza-runtime with ELIZA_API_BASE/ELIZA_BENCH_URL. "
                     "CEREBRAS_API_KEY is required for the multi-turn coherence judge (gpt-oss-120b). "
                     "Set extra.mock=true and extra.suite=single|parallel|sequential|multi-turn|safety|multilingual|all. "
                     "Score: pass@1 across all (task, seed) pairs. Higher is better."

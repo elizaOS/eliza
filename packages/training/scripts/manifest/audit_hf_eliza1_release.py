@@ -254,6 +254,32 @@ def _eval_gate_blockers(evals: Any, *, prefix: str = "evals") -> list[str]:
     return blockers
 
 
+def _aggregate_gate_blockers(aggregate: Mapping[str, Any]) -> list[str]:
+    """Return publish-blocking eval failures from an aggregate eval blob.
+
+    ``manifest.evals`` records every measured/provisional sub-metric for the
+    runtime resolver, including non-required/provisional rows that can be
+    false while the publish gate still passes. The eval suite's
+    ``aggregate.gateReport`` is the authoritative gate-engine verdict, so the
+    HF audit should prefer it whenever the aggregate is available.
+    """
+
+    gate_report = aggregate.get("gateReport")
+    if not isinstance(gate_report, Mapping):
+        passed = aggregate.get("passed")
+        if passed is True:
+            return []
+        if passed is False:
+            return ["aggregate.passed: False"]
+        return ["aggregate.gateReport: missing"]
+    if gate_report.get("passed") is True:
+        return []
+    failures = gate_report.get("failures")
+    if isinstance(failures, list) and failures:
+        return [str(failure) for failure in failures]
+    return [f"gateReport.passed: {gate_report.get('passed')!r}"]
+
+
 def _manifest_lfs_hash_blockers(
     manifest: Mapping[str, Any],
     *,
@@ -394,7 +420,13 @@ def audit_hf_release(
             ", ".join(backend_blockers[:8]) + (f" (+{len(backend_blockers) - 8} more)" if len(backend_blockers) > 8 else ""),
         )
 
-        eval_blockers = _eval_gate_blockers(manifest.get("evals"))
+        try:
+            aggregate_text = fetch_text(_raw_model_url(model_repo, f"{prefix}evals/aggregate.json"))
+            aggregate = json.loads(aggregate_text)
+        except (RuntimeError, json.JSONDecodeError):
+            eval_blockers = _eval_gate_blockers(manifest.get("evals"))
+        else:
+            eval_blockers = _aggregate_gate_blockers(aggregate)
         report.check(
             f"{tier} manifest eval gates passed",
             not eval_blockers,

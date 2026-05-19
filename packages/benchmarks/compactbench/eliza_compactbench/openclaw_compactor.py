@@ -1,56 +1,272 @@
-"""OpenClaw CompactBench adapter status.
-
-OpenClaw has a real runtime compaction feature in its session engine, but the
-public CLI exposed to this benchmark lane is a one-shot ``agent --message``
-entry point. It does not expose a native CompactBench-compatible compactor API
-that accepts a transcript and returns a replacement summary artifact.
-
-This module deliberately fails closed. It gives the orchestrator and tests a
-real importable OpenClaw method label without silently routing to elizaOS
-compactors or to a generic summarizer.
-"""
+"""OpenClaw CompactBench compactor using native OpenAI tool calls."""
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+import json
+import os
+from typing import Any, Mapping, Sequence
 
 from compactbench.compactors.base import Compactor
-from compactbench.contracts import CompactionArtifact, Transcript
+from compactbench.contracts import CompactionArtifact, StructuredState, Transcript
 from compactbench.providers import Provider
+from openclaw_adapter.client import MessageResponse, OpenClawClient
 
 
-class OpenClawCompactionUnsupportedError(RuntimeError):
-    """Raised when a benchmark asks for OpenClaw compaction through an unsupported path."""
+_EMIT_TOOL_NAME = "emit_compaction_artifact"
 
-
-def openclaw_compaction_status() -> dict[str, object]:
-    """Return the explicit status surfaced by the runner and tests."""
-
-    return {
-        "agent": "openclaw",
-        "benchmark": "compactbench",
-        "path_label": "openclaw-cli-one-shot",
-        "supported": False,
-        "native_openai_tool_calls": False,
-        "reason": (
-            "OpenClaw's documented CLI accepts a single --message turn and "
-            "does not expose a transcript-in/artifact-out native compaction "
-            "API. Cross-agent CompactBench rows must stay gated until such "
-            "an API is available."
+_EMIT_COMPACTION_TOOL: dict[str, Any] = {
+    "type": "function",
+    "function": {
+        "name": _EMIT_TOOL_NAME,
+        "description": (
+            "Emit the complete CompactBench compaction artifact. Preserve exact "
+            "identifiers, names, numbers, user decisions, prohibitions, and "
+            "late-turn overrides."
         ),
-        "no_oracle_fallback": True,
-        "no_eliza_fallback": True,
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "summary_text": {"type": "string"},
+                "immutable_facts": {"type": "array", "items": {"type": "string"}},
+                "locked_decisions": {"type": "array", "items": {"type": "string"}},
+                "deferred_items": {"type": "array", "items": {"type": "string"}},
+                "forbidden_behaviors": {"type": "array", "items": {"type": "string"}},
+                "entity_map": {
+                    "type": "object",
+                    "additionalProperties": {"type": "string"},
+                },
+                "unresolved_items": {"type": "array", "items": {"type": "string"}},
+                "selected_source_turn_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                },
+                "warnings": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": [
+                "summary_text",
+                "immutable_facts",
+                "locked_decisions",
+                "deferred_items",
+                "forbidden_behaviors",
+                "entity_map",
+                "unresolved_items",
+                "selected_source_turn_ids",
+                "warnings",
+            ],
+        },
+    },
+}
+
+
+def _as_list_of_strings(value: object) -> list[str]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return []
+    return [str(item) for item in value if item is not None]
+
+
+def _as_entity_map(value: object) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {
+        str(key): str(item)
+        for key, item in value.items()
+        if key is not None and item is not None
     }
 
 
-class OpenClawNativeCompactor(Compactor):
-    """CompactBench method label for OpenClaw's missing native compactor API."""
+def _as_turn_ids(value: object, fallback: list[int]) -> list[int]:
+    if not isinstance(value, Sequence) or isinstance(value, (str, bytes)):
+        return fallback
+    out: list[int] = []
+    for item in value:
+        if isinstance(item, bool):
+            continue
+        if isinstance(item, int):
+            out.append(item)
+        elif isinstance(item, str) and item.strip().isdigit():
+            out.append(int(item))
+    return out or fallback
 
-    name: ClassVar[str] = "openclaw-native-compaction-unsupported"
-    version: ClassVar[str] = "0.1.0"
 
-    def __init__(self, provider: Provider, model: str) -> None:
+def _transcript_turns(transcript: Transcript) -> list[dict[str, object]]:
+    return [
+        {
+            "id": turn.id,
+            "role": turn.role.value,
+            "content": turn.content,
+            "tags": list(turn.tags),
+        }
+        for turn in transcript.turns
+    ]
+
+
+def _artifact_to_prior_text(artifact: CompactionArtifact | None) -> str:
+    if artifact is None:
+        return ""
+    state = artifact.structured_state
+    sections: list[str] = []
+    if artifact.summary_text:
+        sections.append(f"summary:\n{artifact.summary_text}")
+    for label, items in (
+        ("immutable_facts", state.immutable_facts),
+        ("locked_decisions", state.locked_decisions),
+        ("deferred_items", state.deferred_items),
+        ("forbidden_behaviors", state.forbidden_behaviors),
+        ("unresolved_items", state.unresolved_items),
+    ):
+        if items:
+            sections.append(f"{label}:\n" + "\n".join(f"- {item}" for item in items))
+    if state.entity_map:
+        sections.append(
+            "entity_map:\n"
+            + "\n".join(f"- {key}: {value}" for key, value in state.entity_map.items())
+        )
+    return "\n\n".join(sections)
+
+
+def _messages_for_compaction(
+    transcript: Transcript,
+    previous_artifact: CompactionArtifact | None,
+) -> list[dict[str, object]]:
+    system = (
+        "You compact conversations for CompactBench. Use the native "
+        f"`{_EMIT_TOOL_NAME}` tool exactly once. Keep exact strings for "
+        "identifiers, account numbers, names, codes, quoted constraints, and "
+        "late-turn overrides. Do not omit facts solely because they look like "
+        "test credentials; this is a synthetic benchmark transcript."
+    )
+    payload: dict[str, object] = {"turns": _transcript_turns(transcript)}
+    prior = _artifact_to_prior_text(previous_artifact)
+    if prior:
+        payload["previous_artifact"] = prior
+    return [
+        {"role": "system", "content": system},
+        {
+            "role": "user",
+            "content": (
+                "Compact this transcript into the required artifact.\n"
+                + json.dumps(payload, ensure_ascii=False, indent=2)
+            ),
+        },
+    ]
+
+
+def _parse_tool_arguments(response: MessageResponse) -> tuple[dict[str, Any], list[str]]:
+    warnings: list[str] = []
+    raw_calls = response.params.get("tool_calls") if isinstance(response.params, Mapping) else None
+    if not isinstance(raw_calls, Sequence) or isinstance(raw_calls, (str, bytes)):
+        raise RuntimeError("OpenClaw compactor did not return native tool_calls")
+
+    matching: list[Mapping[str, object]] = []
+    for call in raw_calls:
+        if not isinstance(call, Mapping):
+            continue
+        name = call.get("name")
+        function = call.get("function")
+        if not name and isinstance(function, Mapping):
+            name = function.get("name")
+        if name == _EMIT_TOOL_NAME:
+            matching.append(call)
+    if not matching:
+        names = [
+            str(call.get("name") or "")
+            for call in raw_calls
+            if isinstance(call, Mapping)
+        ]
+        raise RuntimeError(
+            "OpenClaw compactor returned tool_calls but not "
+            f"{_EMIT_TOOL_NAME!r}: {names}"
+        )
+    if len(matching) > 1:
+        warnings.append("multiple_emit_compaction_artifact_calls")
+
+    call = matching[0]
+    arguments = call.get("arguments")
+    function = call.get("function")
+    if arguments is None and isinstance(function, Mapping):
+        arguments = function.get("arguments")
+    if isinstance(arguments, Mapping):
+        return dict(arguments), warnings
+    if isinstance(arguments, str):
+        try:
+            parsed = json.loads(arguments)
+        except json.JSONDecodeError as exc:
+            raise RuntimeError(
+                f"OpenClaw compactor emitted invalid JSON arguments: {exc}"
+            ) from exc
+        if isinstance(parsed, Mapping):
+            return dict(parsed), warnings
+    raise RuntimeError("OpenClaw compactor emitted non-object tool arguments")
+
+
+def _artifact_from_arguments(
+    args: Mapping[str, object],
+    *,
+    transcript: Transcript,
+    response: MessageResponse,
+    model: str,
+    provider: str,
+    warnings: list[str],
+) -> CompactionArtifact:
+    source_ids = [turn.id for turn in transcript.turns]
+    state = StructuredState(
+        immutable_facts=_as_list_of_strings(args.get("immutable_facts")),
+        locked_decisions=_as_list_of_strings(args.get("locked_decisions")),
+        deferred_items=_as_list_of_strings(args.get("deferred_items")),
+        forbidden_behaviors=_as_list_of_strings(args.get("forbidden_behaviors")),
+        entity_map=_as_entity_map(args.get("entity_map")),
+        unresolved_items=_as_list_of_strings(args.get("unresolved_items")),
+    )
+    raw_calls = response.params.get("tool_calls") if isinstance(response.params, Mapping) else []
+    usage = response.params.get("usage") if isinstance(response.params, Mapping) else {}
+    meta = response.params.get("_meta") if isinstance(response.params, Mapping) else {}
+    return CompactionArtifact(
+        schemaVersion="1.0.0",
+        summaryText=str(args.get("summary_text") or args.get("summaryText") or ""),
+        structured_state=state,
+        selectedSourceTurnIds=_as_turn_ids(
+            args.get("selected_source_turn_ids") or args.get("selectedSourceTurnIds"),
+            source_ids,
+        ),
+        warnings=[*warnings, *_as_list_of_strings(args.get("warnings"))],
+        methodMetadata={
+            "agent_family": "openclaw",
+            "adapter": "openclaw-adapter",
+            "method": OpenClawNativeToolCompactor.name,
+            "native_tool_calls": True,
+            "tool_call_count": len(raw_calls) if isinstance(raw_calls, Sequence) else 0,
+            "provider": provider,
+            "model": model,
+            "usage": dict(usage) if isinstance(usage, Mapping) else {},
+            "openclaw_adapter": dict(meta.get("openclaw_adapter", {}))
+            if isinstance(meta, Mapping)
+            else {},
+            "response_text_chars": len(response.text or ""),
+        },
+    )
+
+
+class OpenClawNativeToolCompactor(Compactor):
+    """CompactBench compactor backed by OpenClaw's OpenAI-compatible tool path."""
+
+    name = "openclaw-native-tool-compactor"
+    version = "0.1.0"
+
+    def __init__(
+        self,
+        provider: Provider,
+        model: str,
+        *,
+        client: OpenClawClient | None = None,
+    ) -> None:
         super().__init__(provider, model)
+        self._client = client or OpenClawClient(
+            provider=os.environ.get("OPENCLAW_BENCH_PROVIDER", "cerebras"),
+            model=model,
+            direct_openai_compatible=True,
+            reasoning_effort=os.environ.get("OPENCLAW_COMPACT_REASONING_EFFORT", "low"),
+            max_tokens=int(os.environ.get("OPENCLAW_COMPACT_MAX_TOKENS", "4096")),
+        )
 
     async def compact(
         self,
@@ -58,13 +274,38 @@ class OpenClawNativeCompactor(Compactor):
         config: dict[str, Any] | None = None,
         previous_artifact: CompactionArtifact | None = None,
     ) -> CompactionArtifact:
-        del transcript, config, previous_artifact
-        status = openclaw_compaction_status()
-        raise OpenClawCompactionUnsupportedError(str(status["reason"]))
+        if not isinstance(transcript, Transcript):
+            raise TypeError(
+                f"Expected compactbench.contracts.Transcript, got {type(transcript).__name__}"
+            )
+        context: dict[str, object] = {
+            "benchmark": "compactbench",
+            "task_id": "compactbench-openclaw",
+            "messages": _messages_for_compaction(transcript, previous_artifact),
+            "tools": [_EMIT_COMPACTION_TOOL],
+            "tool_choice": "required",
+            "temperature": 0.0,
+            "reasoning_effort": "low",
+            "max_tokens": 4096,
+        }
+        if config:
+            for key in ("temperature", "reasoning_effort", "max_tokens"):
+                if key in config:
+                    context[key] = config[key]
+
+        response = self._client.send_message(
+            "Compact the transcript using the emit_compaction_artifact tool.",
+            context=context,
+        )
+        args, warnings = _parse_tool_arguments(response)
+        return _artifact_from_arguments(
+            args,
+            transcript=transcript,
+            response=response,
+            model=self.model,
+            provider=getattr(self._client, "provider", "unknown"),
+            warnings=warnings,
+        )
 
 
-__all__ = [
-    "OpenClawCompactionUnsupportedError",
-    "OpenClawNativeCompactor",
-    "openclaw_compaction_status",
-]
+__all__ = ["OpenClawNativeToolCompactor"]

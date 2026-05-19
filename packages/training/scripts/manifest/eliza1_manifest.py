@@ -244,7 +244,7 @@ VOICE_BACKENDS_BY_TIER: Final[Mapping[str, tuple[str, ...]]] = {
 }
 
 KOKORO_REQUIRED_ARTIFACTS: Final[tuple[str, ...]] = (
-    "kokoro/model_q4.onnx",
+    "kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
     "kokoro/tokenizer.json",
     "kokoro/voices/af_bella.bin",
 )

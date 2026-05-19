@@ -656,6 +656,18 @@ def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
     reporting convention). Higher is better.
     """
     root = expect_dict(data, ctx="voicebench_quality:root")
+    agent = str(root.get("agent") or "").strip().lower()
+    judge_model = str(root.get("judge_model") or "").strip().lower()
+    is_fixture_result = (
+        root.get("mock") is True
+        or root.get("fixtures") is True
+        or agent == "echo"
+        or judge_model == "fixture"
+    )
+    if is_fixture_result:
+        raise ValueError(
+            "voicebench_quality: mock or fixture result is not publishable as a real harness score"
+        )
     score = expect_float(
         get_required(root, "score", ctx="voicebench_quality:root"),
         ctx="voicebench_quality:score",
@@ -670,6 +682,7 @@ def _score_from_voicebench_quality_json(data: JSONValue) -> ScoreExtraction:
         "agent": root.get("agent") or "",
         "judge_model": root.get("judge_model") or "",
         "stt_provider": root.get("stt_provider") or "",
+        "mock": root.get("mock") or False,
         "n": root.get("n") or 0,
         "elapsed_s": root.get("elapsed_s") or 0,
     }
@@ -730,6 +743,8 @@ def _score_from_voicebench_json(data: JSONValue) -> ScoreExtraction:
     rest of the matrix. Latency stays in metrics for performance comparison.
     """
     root = expect_dict(data, ctx="voicebench:root")
+    if str(root.get("profile") or "").strip().lower() == "mock":
+        raise ValueError("voicebench: mock profile result is not publishable as a real harness score")
     summary = expect_dict(get_required(root, "summary", ctx="voicebench:root"), ctx="voicebench:summary")
     if not summary:
         raise ValueError("voicebench: empty summary block")
@@ -1053,6 +1068,9 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
     model_name = get_optional(root, "model_name") or ""
     if str(model_name).strip().lower() == "mock":
         raise ValueError("voiceagentbench: mock agent result is not publishable as a real harness score")
+    stt_provider = str(get_optional(root, "stt_provider") or "").strip().lower()
+    if stt_provider == "fixture":
+        raise ValueError("voiceagentbench: fixture STT result is not publishable as a real harness score")
     pass_at_1 = expect_float(
         get_required(root, "pass_at_1", ctx="voiceagentbench:root"),
         ctx="voiceagentbench:pass_at_1",
@@ -1071,6 +1089,7 @@ def _score_from_voiceagentbench_json(data: JSONValue) -> ScoreExtraction:
             "total_latency_ms": get_optional(root, "total_latency_ms") or 0,
             "model_name": get_optional(root, "model_name") or "",
             "judge_model_name": get_optional(root, "judge_model_name") or "",
+            "stt_provider": stt_provider,
         },
     )
 
@@ -1254,6 +1273,13 @@ def _score_from_clawbench_json(data: JSONValue) -> ScoreExtraction:
 
 def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="openclaw:root")
+    mode = str(get_optional(root, "mode") or "").strip().lower()
+    scoring_type = str(get_optional(root, "scoring_type") or "").strip().lower()
+    real_validation = get_optional(root, "real_validation")
+    if mode == "conceptual" or scoring_type == "conceptual_understanding":
+        raise ValueError("openclaw_bench: conceptual result is not publishable as a real harness score")
+    if isinstance(real_validation, dict) and real_validation.get("conceptual_scoring") is True:
+        raise ValueError("openclaw_bench: conceptual result is not publishable as a real harness score")
     overall_raw = get_optional(root, "overall_score")
     if isinstance(overall_raw, (int, float)):
         overall = float(overall_raw)
@@ -1273,7 +1299,9 @@ def _score_from_openclaw_bench_json(data: JSONValue) -> ScoreExtraction:
         metrics={
             "overall_score": overall,
             "tasks_completed": tasks_completed,
-            "mode": get_optional(root, "mode") or root.get("scoring_type") or "",
+            "mode": mode or scoring_type or "",
+            "harness": get_optional(root, "harness") or "",
+            "real_validation": real_validation if isinstance(real_validation, dict) else {},
         },
     )
 

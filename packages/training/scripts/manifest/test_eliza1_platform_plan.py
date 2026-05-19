@@ -83,15 +83,16 @@ def test_imagegen_required_files_match_tier_defaults() -> None:
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
-    assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
+    kokoro_gguf = "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
+    assert kokoro_gguf in plan["0_8b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
-    assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
+    assert kokoro_gguf in plan["2b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
-    assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
+    assert kokoro_gguf in plan["4b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["4b"].required_files
-    assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
+    assert kokoro_gguf in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
-    assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
+    assert kokoro_gguf not in plan["27b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b"].required_files
 
 
