@@ -2,7 +2,7 @@ diff --git a/android/build.gradle b/android/build.gradle
 index 772361a..dca211f 100644
 --- a/android/build.gradle
 +++ b/android/build.gradle
-@@ -5,6 +5,22 @@ ext {
+@@ -5,6 +5,27 @@ ext {
      androidxEspressoCoreVersion = project.hasProperty('androidxEspressoCoreVersion') ? rootProject.ext.androidxEspressoCoreVersion : '3.6.1'
  }
  
@@ -22,10 +22,15 @@ index 772361a..dca211f 100644
 +    return candidates.find { new File(it).isDirectory() } ?: ''
 +}
 +
++def resolveElizaSkipDflashAndroidLib = { ->
++    return project.findProperty('elizaSkipForkLlamaLib') == 'true' ||
++        System.getenv('ELIZA_ANDROID_SKIP_FORK_LLAMA_LIB') == '1'
++}
++
  buildscript {
      repositories {
          google()
-@@ -18,7 +34,7 @@ buildscript {
+@@ -18,7 +40,7 @@ buildscript {
  apply plugin: 'com.android.library'
  
  android {
@@ -34,7 +39,7 @@ index 772361a..dca211f 100644
      compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 35
      defaultConfig {
          minSdkVersion project.hasProperty('minSdkVersion') ? rootProject.ext.minSdkVersion : 23
-@@ -30,26 +46,33 @@ android {
+@@ -30,26 +52,34 @@ android {
          ndk {
              abiFilters 'arm64-v8a'
          }
@@ -42,7 +47,8 @@ index 772361a..dca211f 100644
 +        externalNativeBuild {
 +            cmake {
 +                arguments "-DELIZA_REPO_ROOT=${resolveElizaRepoRoot()}",
-+                    "-DELIZA_DFLASH_ANDROID_LIBDIR=${resolveElizaDflashAndroidLibDir()}"
++                    "-DELIZA_DFLASH_ANDROID_LIBDIR=${resolveElizaDflashAndroidLibDir()}",
++                    "-DELIZA_SKIP_DFLASH_ANDROID_LIB=${resolveElizaSkipDflashAndroidLib() ? 'ON' : 'OFF'}"
 +            }
 +        }
      }
@@ -72,7 +78,7 @@ index 772361a..dca211f 100644
      }
      
      compileOptions {
-@@ -64,13 +87,6 @@ android {
+@@ -64,13 +94,6 @@ android {
              }
          }
      }
@@ -90,7 +96,7 @@ diff --git a/android/src/main/CMakeLists.txt b/android/src/main/CMakeLists.txt
 index f849d84..2c5a9dc 100644
 --- a/android/src/main/CMakeLists.txt
 +++ b/android/src/main/CMakeLists.txt
-@@ -1,131 +1,88 @@
+@@ -1,131 +1,107 @@
 -cmake_minimum_required(VERSION 3.10)
 +cmake_minimum_required(VERSION 3.22)
  
@@ -106,6 +112,25 @@ index f849d84..2c5a9dc 100644
 -    ${LLAMACPP_LIB_DIR}/ggml-cpu
 -    ${LLAMACPP_LIB_DIR}/tools/mtmd
 -)
++option(ELIZA_SKIP_DFLASH_ANDROID_LIB "Build a no-op JNI library for Android smoke builds without DFlash libs" OFF)
++
++find_library(LOG_LIB log)
++find_library(ANDROID_LIB android)
++
++if(ELIZA_SKIP_DFLASH_ANDROID_LIB)
++    file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp" "extern \"C\" int eliza_dflash_stub() { return 0; }\n")
++    add_library(llama-cpp-arm64 SHARED "${CMAKE_CURRENT_BINARY_DIR}/eliza-dflash-stub.cpp")
++    target_link_libraries(llama-cpp-arm64 PRIVATE ${LOG_LIB} ${ANDROID_LIB})
++    set_target_properties(
++        llama-cpp-arm64
++        PROPERTIES
++        OUTPUT_NAME "llama-cpp-arm64"
++        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/jniLibs/arm64-v8a"
++    )
++    message(STATUS "Building Eliza DFlash JNI smoke stub for Android ARM64")
++    return()
++endif()
++
 +if(NOT DEFINED ELIZA_REPO_ROOT)
 +    message(FATAL_ERROR "ELIZA_REPO_ROOT is required for the Eliza DFlash Android JNI bridge")
 +endif()
@@ -258,7 +283,7 @@ index f849d84..2c5a9dc 100644
 +add_library(
 +    llama-cpp-arm64
 +    SHARED
-+    ${ELIZA_REPO_ROOT}/packages/native-plugins/llama/android/eliza-dflash-jni.cpp
++    ${ELIZA_REPO_ROOT}/packages/native/plugins/llama/android/eliza-dflash-jni.cpp
 +    ${ELIZA_LLAMA_CPP_DIR}/common/json-schema-to-grammar.cpp
 +)
 +
