@@ -930,10 +930,3 @@ export class Eliza1EotClassifier implements EotClassifier {
 		await this.scorer.dispose();
 	}
 }
-
-export async function createBundledLiveKitTurnDetector(_opts?: {
-	modelDir?: string;
-	revision?: string;
-}): Promise<EotClassifier | null> {
-	return null;
-}
