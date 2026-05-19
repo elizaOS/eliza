@@ -60,7 +60,9 @@ build-image:
 build: build-image
 	@mkdir -p $(OUT_DIR)
 	$(DOCKER) run --rm --privileged \
-	    -v "$(OUT_DIR):/work/out" \
+	    -v "$(HERE):/build" \
+	    -v "$(OUT_DIR):/out" \
+	    -e ELIZAOS_OUT_DIR=/out \
 	    $(IMAGE_TAG)
 
 qemu-virt-boot:

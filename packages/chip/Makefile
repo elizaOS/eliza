@@ -761,7 +761,8 @@ mpki-eval-model:
 	cocotb-cache-stride cocotb-cache-bdi cocotb-cache-bdi-roundtrip \
 	cocotb-cache-berti cocotb-cache-ipcp cocotb-cache-spp \
 	cocotb-cache-best-offset cocotb-cache-fdip cocotb-cache-hawkeye \
-	cocotb-cache-mockingjay cocotb-cache-coherence-vectors \
+	cocotb-cache-mockingjay cocotb-cache-mockingjay-accuracy \
+	cocotb-cache-coherence-vectors \
 	formal-cache champsim-prefetch-sweep mockingjay-vs-lru-sweep \
 	lmbench-cache-curve stream-cache-bench pointer-chase-cache-bench
 
@@ -841,6 +842,12 @@ cocotb-cache-hawkeye:
 cocotb-cache-mockingjay:
 	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
 	  COCOTB_MODULE=test_mockingjay COCOTB_TOPLEVEL=e1_mockingjay \
+	  scripts/run_cocotb_cache.sh
+
+cocotb-cache-mockingjay-accuracy:
+	@PYTHON=$(COCOTB_PYTHON) COCOTB_DIR=verify/cocotb/cache \
+	  COCOTB_MODULE=test_mockingjay_accuracy \
+	  COCOTB_TOPLEVEL=e1_mockingjay_prod_tb \
 	  scripts/run_cocotb_cache.sh
 
 cocotb-cache-coherence-vectors:

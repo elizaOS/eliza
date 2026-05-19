@@ -7923,7 +7923,7 @@ entries:
       - drc
       - rule_deck_generation
     priority: P2
-    source_url: https://arxiv.org/abs/2605.06936
+    source_url: https://arxiv.org/abs/2605.15669
     code_url: https://github.com/snu-mllab/Rule2DRC
     model_url: null
     dataset_url: null
@@ -7944,6 +7944,99 @@ entries:
     risk:
       - Incorrect generated DRC rules can create false clean signoff or mask
         yield-critical violations.
+  - id: drc-coder
+    name: DRC-Coder
+    kind: multi_agent_llm_drc_checker_generation
+    stage:
+      - physical_verification
+      - drc
+      - rule_deck_generation
+      - multimodal_layout_reasoning
+    priority: P2
+    source_url: https://arxiv.org/abs/2412.05311
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: external_llm_method
+    e1_fit: >
+      Relevant multi-agent/VLM DRC-code-generation method for understanding
+      design-rule text, figures, and layout reports, but not an E1 signoff
+      backend.
+    integration_action: >
+      Keep as method reference only; no foundry rule text, layout image, or
+      generated checker code may be imported until data-rights, prompt, model,
+      and output quarantine controls exist.
+    evidence_gate: >
+      Any generated checker requires rule-source hashes, layout/report hashes,
+      prompt/model revisions, generated-code hashes, commercial/open-tool
+      correlation, false-positive/false-negative review, and signoff
+      disposition.
+    risk:
+      - Multimodal rule interpretation can overfit small layout sets and create
+        checker code that misses unseen geometry, hierarchy, or process-rule
+        interactions.
+  - id: structural-eda-code-verification
+    name: Structural Verification For EDA Code Generation
+    kind: structural_contract_verifier_for_eda_code_generation
+    stage:
+      - physical_verification
+      - eda_code_generation
+      - tool_agent_governance
+      - pre_execution_verification
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.18834
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model
+    e1_fit: >
+      Useful governance method for checking structural dependencies in
+      generated EDA scripts before tool execution, including physical
+      verification and layout-processing scripts.
+    integration_action: >
+      Track as pre-execution guardrail reference; do not use generated EDA code
+      until a local schema maps commands, prerequisites, artifacts, and
+      reviewer disposition.
+    evidence_gate: >
+      Any structural verifier use requires dependency-graph schema hashes,
+      command whitelist, artifact preconditions, generated-script hashes,
+      dry-run diagnostics, deterministic replay, and review.
+    risk:
+      - Structural contracts can prove prerequisite consistency without proving
+        tool semantics, signoff correctness, or generated script safety.
+  - id: opendrc
+    name: OpenDRC
+    kind: open_source_gpu_drc_engine
+    stage:
+      - physical_verification
+      - drc
+      - layout_signoff
+      - gpu_acceleration
+    priority: P3
+    source_url: https://doi.org/10.1109/DAC56929.2023.10247734
+    code_url: https://github.com/opendrc/opendrc
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open DRC-engine reference for physical-verification scalability,
+      but E1 currently relies on local OpenLane/KLayout/Magic/Netgen evidence.
+    integration_action: >
+      Keep as backend watchlist only until license, build, rule-deck mapping,
+      and correlation against local DRC reports are reviewed.
+    evidence_gate: >
+      Any OpenDRC run requires pinned revision, build logs, rule-deck mapping,
+      layout hashes, before/after report correlation against KLayout/Magic or
+      commercial tools, and reviewer disposition.
+    risk:
+      - A faster DRC engine does not validate rule completeness, foundry
+        authorization, LVS, antenna, extraction, or manufacturing signoff.
   - id: posteda-bench
     name: PostEDA-Bench
     kind: post_eda_drc_ppa_optimization_benchmark
@@ -7952,7 +8045,7 @@ entries:
       - drc_fixing
       - post_route_optimization
     priority: P2
-    source_url: https://arxiv.org/abs/2605.15669
+    source_url: https://arxiv.org/abs/2605.06936
     code_url: null
     model_url: null
     dataset_url: null
@@ -8856,6 +8949,129 @@ entries:
     risk:
       - Academic package-planning assumptions may not match E1 vendor stack-up,
         thermal limits, SI/PI, or known-good-die yield.
+  - id: rapidchiplet
+    name: RapidChiplet
+    kind: chiplet_design_space_exploration_tool
+    stage:
+      - chiplet_package
+      - architecture_dse
+      - interposer_planning
+      - system_modeling
+    priority: P2
+    source_url: https://arxiv.org/abs/2311.06081
+    code_url: https://github.com/spcl/rapidchiplet
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for fast chiplet architecture and package DSE if E1 ever
+      evaluates monolithic versus multi-die partitioning.
+    integration_action: >
+      Track as blocked DSE candidate only; E1 has no approved chiplet
+      partition, package stack, die-to-die PHY, or vendor cost/yield model.
+    evidence_gate: >
+      Any run requires pinned revision, input architecture and package
+      manifests, objective-function hashes, output hashes, cost/yield/thermal
+      assumptions, deterministic local gates, and reviewer disposition.
+    risk:
+      - Fast package-DSE results can hide unsupported assumptions about die
+        floorplans, interposer routing, PHY availability, cost, yield, and
+        thermal constraints.
+  - id: placeit-chiplet-topology
+    name: PlaceIT
+    kind: chiplet_interconnect_topology_synthesis_method
+    stage:
+      - chiplet_package
+      - die_to_die_interconnect
+      - topology_synthesis
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2502.01449
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: not_found
+    model_status: no_model
+    e1_fit: >
+      Relevant methodology for placement-aware inter-chiplet topology
+      synthesis, but E1 currently has no chiplet placement, die-to-die PHY, or
+      topology budget.
+    integration_action: >
+      Keep as method reference only until reproducible code/assets, topology
+      constraints, and local package evidence exist.
+    evidence_gate: >
+      Any topology proposal requires source graph hashes, physical placement
+      constraints, package/bump maps, PHY assumptions, traffic manifests,
+      simulator logs, SI/PI review, and architecture review.
+    risk:
+      - Topology metrics can look strong while ignoring PHY macro area,
+        package routing, thermal coupling, clock/reset, firmware, and software
+        contracts.
+  - id: diffchip-chiplet-placement
+    name: DiffChip
+    kind: differentiable_chiplet_placement_method
+    stage:
+      - chiplet_package
+      - thermal_aware_placement
+      - package_codesign
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2502.16633
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: not_found
+    model_status: no_model
+    e1_fit: >
+      Useful thermal-aware chiplet placement reference if E1 evaluates
+      multi-die packaging, but current package and thermal models are blocked.
+    integration_action: >
+      Keep as paper-only target capture until code/assets, package stack,
+      power maps, and thermal calibration are available.
+    evidence_gate: >
+      Any placement use requires pinned implementation, package stack and
+      material assumptions, power-map hashes, thermal solver logs, SI/PI
+      constraints, before/after package evidence, and reviewer disposition.
+    risk:
+      - Differentiable placement may optimize a simplified thermal/package
+        model that does not match vendor stack-up, assembly limits, warpage,
+        SI/PI, or manufacturing constraints.
+  - id: tdpnavigator-placer
+    name: TDPNavigator-Placer
+    kind: multi_agent_rl_chiplet_placement_method
+    stage:
+      - chiplet_package
+      - thermal_aware_placement
+      - wirelength_optimization
+      - multi_agent_rl
+    priority: P2
+    source_url: https://arxiv.org/abs/2602.11187
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: not_found
+    model_status: no_model
+    e1_fit: >
+      Useful current reference for multi-agent RL tradeoffs between wirelength
+      and thermal objectives in 2.5D systems, but E1 has no chiplet package or
+      calibrated thermal stack.
+    integration_action: >
+      Keep as paper-only target capture until code/assets, training setup,
+      reward definitions, package stack, power maps, and replay evidence exist.
+    evidence_gate: >
+      Any RL-based placement proposal requires pinned implementation, seeds,
+      reward definitions, package and material assumptions, power-map hashes,
+      thermal/wirelength logs, before/after package evidence, and reviewer
+      disposition.
+    risk:
+      - Multi-agent rewards can overfit simplified package environments and
+        produce Pareto fronts that do not survive SI/PI, manufacturing, thermal
+        calibration, or architecture review.
   - id: chipletpart
     name: ChipletPart
     kind: chiplet_partitioning_tool

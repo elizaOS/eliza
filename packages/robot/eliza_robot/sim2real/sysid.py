@@ -90,22 +90,46 @@ async def _probe_joint(
     get exercised in a range the PD controller can actually track.
     """
     samples: list[tuple[float, float]] = []
+    has_read = callable(getattr(backend, "read_joint_positions", None))
+    from eliza_robot.bridge.isaaclab.joint_map import (
+        joint_name_to_servo_id, radians_to_pulse,
+    )
     for delta in delta_angles:
         q = home_rad + delta
+        # Real-robot path needs both joint_positions (radians) and a
+        # positions list in pulse units. MuJoCo backend uses joint_positions
+        # only.
+        try:
+            sid = joint_name_to_servo_id(joint)
+            pulse = int(radians_to_pulse(float(q), sid))
+            positions = [{"id": int(sid), "position": pulse}]
+        except Exception:
+            positions = []
         await _send(backend, "servo.set", {
             "duration": settle_s,
             "joint_positions": {joint: float(q)},
-            "positions": [],
+            "positions": positions,
         })
         await asyncio.sleep(settle_s + 0.1)
-        events = await backend.poll_events()
-        observed = None
-        for e in events:
-            if e.event != "telemetry.basic":
-                continue
-            jp = e.data.get("joint_positions") or {}
-            if joint in jp:
-                observed = float(jp[joint])
+        observed: float | None = None
+        # Prefer an explicit service-call read (real AiNex). Falls back to
+        # telemetry.basic for sim backends that emit joint_positions in
+        # events.
+        if has_read:
+            try:
+                positions_map = await backend.read_joint_positions()  # type: ignore[attr-defined]
+                if joint in positions_map:
+                    observed = float(positions_map[joint])
+            except Exception:
+                pass
+        if observed is None:
+            events = await backend.poll_events()
+            for e in events:
+                if e.event != "telemetry.basic":
+                    continue
+                jp = e.data.get("joint_positions") or {}
+                if joint in jp:
+                    observed = float(jp[joint])
         if observed is not None:
             samples.append((float(q), observed))
     return samples

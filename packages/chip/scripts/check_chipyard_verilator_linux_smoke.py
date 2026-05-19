@@ -605,7 +605,7 @@ def parse_log_metadata() -> dict[str, object]:
             last_progress = line
         elif any(marker in line for marker in PROGRESS_MARKERS):
             last_progress = line
-        if "fatal error:" in line:
+        if "fatal error:" in line or "%Fatal:" in line:
             fatal_errors = metadata["fatal_errors"]
             if isinstance(fatal_errors, list):
                 fatal_errors.append(line.strip())
@@ -617,7 +617,11 @@ def parse_log_metadata() -> dict[str, object]:
             exceptions = metadata["exceptions"]
             if isinstance(exceptions, list):
                 exceptions.append(line.strip())
-        if "*** FAILED ***" in line:
+        if (
+            "*** FAILED ***" in line
+            or "Assertion failed in TestDriver" in line
+            or "Verilog $stop" in line
+        ):
             sim_failures = metadata["sim_failures"]
             if isinstance(sim_failures, list):
                 sim_failures.append(line.strip())
@@ -763,6 +767,18 @@ def classify_smoke_progress(
                 "treat the simulator pass marker as non-Linux evidence; rerun with "
                 "cycle-accurate UART serial enabled or a Linux boot marker source "
                 "before claiming generated AP Linux boot"
+            ),
+        }
+    if "OpenSBI" in log_text and (
+        "Assertion failed in TestDriver" in log_text or "Verilog $stop" in log_text
+    ):
+        return {
+            "stage": "opensbi_banner_then_testdriver_assert",
+            "next_step": (
+                "debug the generated TestDriver assertion after the OpenSBI banner; "
+                "if this is the generated max-cycle watchdog, rerun with a larger "
+                "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
+                "to reach OpenSBI handoff and Linux boot markers"
             ),
         }
     if has_accepted_opensbi_markers(log_text):
@@ -1027,7 +1043,7 @@ def main() -> int:
         fatal_errors = log_metadata.get("fatal_errors")
         if isinstance(fatal_errors, list):
             for fatal_error in fatal_errors:
-                blockers.append(f"{rel(LOG)} records build fatal error: {fatal_error}")
+                blockers.append(f"{rel(LOG)} records fatal error: {fatal_error}")
         exceptions = log_metadata.get("exceptions")
         if isinstance(exceptions, list):
             for exception in exceptions:

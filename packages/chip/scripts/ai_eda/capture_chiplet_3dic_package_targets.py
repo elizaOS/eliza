@@ -129,6 +129,10 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "tap-2p5d",
+            "rapidchiplet",
+            "placeit-chiplet-topology",
+            "diffchip-chiplet-placement",
+            "tdpnavigator-placer",
             "chipletpart",
             "chiplet-network-sim",
             "eco-chip",
@@ -179,6 +183,18 @@ def main() -> int:
                 ],
             },
             {
+                "id": "rapid-chiplet-dse-watch",
+                "status": "CAPTURED_NOT_EXPLORED",
+                "target": "future RapidChiplet, PlaceIT, DiffChip, or TDPNavigator-style DSE must remain advisory until package stack, power maps, traffic manifests, PHY assumptions, reward definitions, output hashes, and local replay evidence are reviewed",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make package-cross-probe-check",
+                    "make power-thermal-evidence-check",
+                    "make board-package-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "ucie-die-to-die-interface-watch",
                 "status": "CAPTURED_NOT_INTEGRATED",
                 "target": "future UCIe or die-to-die interface work must prove protocol, PHY, bump map, clock/reset, firmware, Linux, and verification contracts before source changes",
@@ -217,6 +233,7 @@ def main() -> int:
             "no UCIe or other die-to-die RTL, PHY collateral, verification suite, firmware contract, Linux contract, or package pin/bump evidence",
             "no package vendor stack-up, SI/PI extraction, thermal stack, warpage, assembly, known-good-die, or yield evidence",
             "no license-reviewed external chiplet/package simulator, placement, topology, or LLM-agent implementation with pinned revisions and local replay",
+            "no approved RapidChiplet, PlaceIT, DiffChip, or TDPNavigator-style flow with pinned revisions/assets, package stack, power maps, traffic manifests, PHY assumptions, rewards/seeds where applicable, output hashes, thermal/SI/PI evidence, and reviewer disposition",
             "no release gate allowing AI-generated chiplet partitioning, package changes, interposer routing, or die-to-die interfaces to bypass architecture, RTL, PD, software, package, manufacturing, and review gates",
         ],
     }

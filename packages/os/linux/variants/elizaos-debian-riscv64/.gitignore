@@ -1,0 +1,16 @@
+# live-build / debootstrap working state — large, often root-owned, recreated
+# on every build. Never check in.
+.build/
+.lock
+.ruff_cache/
+cache/
+chroot/
+chroot.packages.install
+binary/
+local/
+config/binary
+config/bootstrap
+config/chroot
+config/common
+config/debian-installer
+config/source

@@ -350,8 +350,9 @@ affect source, release claims, or tapeout-facing artifacts.
     gates, and review.
 36. Use `scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation`
     to keep chiplet partitioning, 2.5D/3DIC placement/topology, UCIe/die-to-die
-    standards, package metadata exchange, cost/yield models, and LLM/agentic
-    chiplet co-design work behind E1 package and architecture gates. Do not
+    standards, RapidChiplet/PlaceIT/DiffChip/TDPNavigator-style package DSE,
+    package metadata exchange, cost/yield models, and LLM/agentic chiplet
+    co-design work behind E1 package and architecture gates. Do not
     generate chiplet partitions, interposer layouts, package/bump maps,
     die-to-die interfaces, SI/PI/thermal models, RTL, PD configs, board/package
     edits, simulator outputs, or cost/yield/performance/signoff claims without
@@ -377,10 +378,12 @@ affect source, release claims, or tapeout-facing artifacts.
     simulation/STA/OpenLane/power gates, and review.
 39. Use `scripts/ai_eda/capture_physical_verification_targets.py --run-id validation`
     to keep KLayout DRC, Magic DRC/LVS, Netgen LVS, OpenROAD antenna checking,
-    Rule2DRC-style generated deck research, and post-EDA repair benchmarks
+    Rule2DRC/DRC-Coder-style generated deck research, OpenDRC backend
+    watchlist, structural EDA-code verification, and post-EDA repair benchmarks
     behind physical-verification governance. Do not generate or run DRC decks,
-    layout repairs, LVS waivers, antenna fixes, Tcl, patches, or AI signoff
-    triage, and do not claim DRC, LVS, antenna, physical signoff, or release
+    layout repairs, LVS waivers, antenna fixes, Tcl, patches, structural
+    verifier approvals, OpenDRC reports, or AI signoff triage, and do not claim
+    DRC, LVS, antenna, physical signoff, or release
     readiness without exact tool revisions, rule-deck hashes, layout/netlist
     hashes, before/after logs, deterministic extraction/STA/power/
     manufacturing/commercial-EDA gates where applicable, and review.

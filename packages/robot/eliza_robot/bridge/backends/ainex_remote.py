@@ -140,9 +140,14 @@ class AinexRemoteBackend(BridgeBackend):
             "ros_robot_controller/SetBusServosPosition",
         )
         self._servo_pub.advertise()
-        # Service
+        # Service handles.
         self._walking_cmd_srv = roslibpy.Service(
             self._ros, "/walking/command", "ainex_interfaces/SetWalkingCommand"
+        )
+        self._servo_pos_srv = roslibpy.Service(
+            self._ros,
+            "/ros_robot_controller/bus_servo/get_position",
+            "ros_robot_controller/GetBusServosPosition",
         )
 
         # Subscribers — store on _state under a lock.
@@ -365,6 +370,49 @@ class AinexRemoteBackend(BridgeBackend):
                 },
             )
         return [telemetry]
+
+    async def read_joint_positions(self, servo_ids: list[int] | None = None) -> dict[str, float]:
+        """Synchronously call /ros_robot_controller/bus_servo/get_position and
+        return {joint_name: radians}. Used by sys-ID and trajectory loggers.
+        """
+        if self._ros is None or not self._ros.is_connected:
+            return {}
+        import roslibpy
+
+        from eliza_robot.bridge.isaaclab.joint_map import (
+            pulse_to_radians,
+            servo_id_to_joint_name,
+        )
+
+        ids = servo_ids or list(range(1, 25))
+        loop = asyncio.get_event_loop()
+        fut: asyncio.Future = loop.create_future()
+
+        def _on_response(resp):
+            try:
+                positions = {}
+                for item in resp.get("position", []):
+                    sid = int(item["id"])
+                    pulse = int(item["position"])
+                    name = servo_id_to_joint_name(sid)
+                    positions[name] = pulse_to_radians(pulse, sid)
+                loop.call_soon_threadsafe(fut.set_result, positions)
+            except Exception as exc:
+                loop.call_soon_threadsafe(fut.set_exception, exc)
+
+        def _on_error(err):
+            loop.call_soon_threadsafe(
+                fut.set_exception, RuntimeError(f"get_position failed: {err}")
+            )
+
+        self._servo_pos_srv.call(
+            roslibpy.ServiceRequest({"id": ids}),
+            callback=_on_response, errback=_on_error, timeout=3.0,
+        )
+        try:
+            return await asyncio.wait_for(fut, timeout=4.0)
+        except (asyncio.TimeoutError, Exception):
+            return {}
 
     def snapshot_camera(self, _camera: str = "head") -> np.ndarray | None:
         """Decode the most recent /camera/image_raw/compressed frame to RGB."""
