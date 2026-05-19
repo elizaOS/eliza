@@ -36,6 +36,7 @@
 	"dependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*",
+		"lucide-react": "^1.16.0",
 		"react": "^19.0.0"
 	},
 	"peerDependencies": {
