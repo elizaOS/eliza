@@ -74,12 +74,15 @@ module e1_npu (
     logic [31:0] op_b_q;
     logic [31:0] acc_q;
     logic [3:0]  opcode_q;
+    logic        dot16_ternary_mode_q;
     logic [63:0] datapath_wide;
     logic signed [31:0] mac_s16_sum;
     logic signed [31:0] dot4_s8_sum;
     logic signed [31:0] dot8_s4_sum;
     logic signed [31:0] sdot4_s4_2_4_sum;
     logic signed [31:0] dot16_s2_sum;
+    logic signed [31:0] dot16_ternary_sum;
+    logic        dot16_ternary_invalid;
     logic signed [31:0] dot4_fp8_e4m3_sum;
 
     logic [31:0] scratch [0:SCRATCH_WORDS-1];
@@ -230,6 +233,50 @@ module e1_npu (
             4'd14: s2_lane = sx2(word[29:28]);
             default: s2_lane = sx2(word[31:30]);
         endcase
+    endfunction
+
+    // Decode a ternary 2-bit lane as 00=0, 01=+1, 10=-1. Reserved encoding
+    // 11 is rejected by dot16_ternary_invalid and never reaches this path.
+    function automatic logic signed [31:0] t2_lane(input logic [31:0] word, input logic [3:0] lane);
+        logic [1:0] raw;
+        unique case (lane)
+            4'd0:  raw = word[1:0];
+            4'd1:  raw = word[3:2];
+            4'd2:  raw = word[5:4];
+            4'd3:  raw = word[7:6];
+            4'd4:  raw = word[9:8];
+            4'd5:  raw = word[11:10];
+            4'd6:  raw = word[13:12];
+            4'd7:  raw = word[15:14];
+            4'd8:  raw = word[17:16];
+            4'd9:  raw = word[19:18];
+            4'd10: raw = word[21:20];
+            4'd11: raw = word[23:22];
+            4'd12: raw = word[25:24];
+            4'd13: raw = word[27:26];
+            4'd14: raw = word[29:28];
+            default: raw = word[31:30];
+        endcase
+        unique case (raw)
+            2'b00:  t2_lane = 32'sd0;
+            2'b01:  t2_lane = 32'sd1;
+            2'b10:  t2_lane = -32'sd1;
+            default: t2_lane = 32'sd0;
+        endcase
+    endfunction
+
+    // 16-lane reduce-OR over (a[i+1:i] == 2'b11) | (b[i+1:i] == 2'b11).
+    function automatic logic ternary_reserved_present(
+        input logic [31:0] word_a,
+        input logic [31:0] word_b
+    );
+        logic flag;
+        flag = 1'b0;
+        for (int unsigned lane = 0; lane < 16; lane++) begin
+            if (word_a[(lane*2) +: 2] == 2'b11) flag = 1'b1;
+            if (word_b[(lane*2) +: 2] == 2'b11) flag = 1'b1;
+        end
+        ternary_reserved_present = flag;
     endfunction
 
     function automatic logic signed [31:0] fp8_e4m3_to_q8_8(input logic [7:0] value);
@@ -425,6 +472,25 @@ module e1_npu (
             (s2_lane(op_a_q, 4'd14) * s2_lane(op_b_q, 4'd14)) +
             (s2_lane(op_a_q, 4'd15) * s2_lane(op_b_q, 4'd15)) +
             $signed(acc_q);
+        dot16_ternary_sum =
+            (t2_lane(op_a_q, 4'd0) * t2_lane(op_b_q, 4'd0)) +
+            (t2_lane(op_a_q, 4'd1) * t2_lane(op_b_q, 4'd1)) +
+            (t2_lane(op_a_q, 4'd2) * t2_lane(op_b_q, 4'd2)) +
+            (t2_lane(op_a_q, 4'd3) * t2_lane(op_b_q, 4'd3)) +
+            (t2_lane(op_a_q, 4'd4) * t2_lane(op_b_q, 4'd4)) +
+            (t2_lane(op_a_q, 4'd5) * t2_lane(op_b_q, 4'd5)) +
+            (t2_lane(op_a_q, 4'd6) * t2_lane(op_b_q, 4'd6)) +
+            (t2_lane(op_a_q, 4'd7) * t2_lane(op_b_q, 4'd7)) +
+            (t2_lane(op_a_q, 4'd8) * t2_lane(op_b_q, 4'd8)) +
+            (t2_lane(op_a_q, 4'd9) * t2_lane(op_b_q, 4'd9)) +
+            (t2_lane(op_a_q, 4'd10) * t2_lane(op_b_q, 4'd10)) +
+            (t2_lane(op_a_q, 4'd11) * t2_lane(op_b_q, 4'd11)) +
+            (t2_lane(op_a_q, 4'd12) * t2_lane(op_b_q, 4'd12)) +
+            (t2_lane(op_a_q, 4'd13) * t2_lane(op_b_q, 4'd13)) +
+            (t2_lane(op_a_q, 4'd14) * t2_lane(op_b_q, 4'd14)) +
+            (t2_lane(op_a_q, 4'd15) * t2_lane(op_b_q, 4'd15)) +
+            $signed(acc_q);
+        dot16_ternary_invalid = ternary_reserved_present(op_a_q, op_b_q);
         dot4_fp8_e4m3_sum =
             ((fp8_e4m3_to_q8_8(op_a_q[7:0]) * fp8_e4m3_to_q8_8(op_b_q[7:0])) >>> 8) +
             ((fp8_e4m3_to_q8_8(op_a_q[15:8]) * fp8_e4m3_to_q8_8(op_b_q[15:8])) >>> 8) +
@@ -442,7 +508,9 @@ module e1_npu (
             OP_MIN_U32: datapath_wide = {32'h0, (op_a_q < op_b_q) ? op_a_q : op_b_q};
             OP_DOT8_S4: datapath_wide = {{32{dot8_s4_sum[31]}}, dot8_s4_sum};
             OP_SDOT4_S4_2_4: datapath_wide = {{32{sdot4_s4_2_4_sum[31]}}, sdot4_s4_2_4_sum};
-            OP_DOT16_S2: datapath_wide = {{32{dot16_s2_sum[31]}}, dot16_s2_sum};
+            OP_DOT16_S2: datapath_wide = dot16_ternary_mode_q
+                ? {{32{dot16_ternary_sum[31]}}, dot16_ternary_sum}
+                : {{32{dot16_s2_sum[31]}}, dot16_s2_sum};
             OP_DOT4_FP8_E4M3: datapath_wide = {{32{dot4_fp8_e4m3_sum[31]}}, dot4_fp8_e4m3_sum};
             OP_EXP2_NEG_Q0_8: datapath_wide = {32'h0, exp2_neg_q0_8(op_a_q[7:0])};
             OP_RELU4_S8: datapath_wide = {
@@ -470,6 +538,7 @@ module e1_npu (
             op_b_q <= 32'h0;
             acc_q <= 32'h0;
             opcode_q <= OP_ADD;
+            dot16_ternary_mode_q <= 1'b0;
             gemm_m <= 2'h0;
             gemm_n <= 2'h0;
             gemm_k <= 3'h0;
@@ -524,9 +593,14 @@ module e1_npu (
             if (busy_count != 3'h0) begin
                 busy_count <= busy_count - 3'h1;
                 if (busy_count == 3'h1) begin
-                    {result_hi, result} <= datapath_wide;
-                    if (!desc_busy) begin
-                        status <= 32'h0000_0002;
+                    if ((opcode_q == OP_DOT16_S2) && dot16_ternary_mode_q && dot16_ternary_invalid) begin
+                        status <= 32'h0000_0006;
+                        perf_errors <= perf_errors + 32'd1;
+                    end else begin
+                        {result_hi, result} <= datapath_wide;
+                        if (!desc_busy) begin
+                            status <= 32'h0000_0002;
+                        end
                     end
                 end
             end
@@ -541,6 +615,10 @@ module e1_npu (
                     perf_macs <= perf_macs + 32'd1;
                     if (gemm_l == gemm_k - 3'd1) begin
                         scratch_write_i32(gemm_c_addr[5:2], gemm_acc + (gemm_a_value * gemm_b_value));
+                        // Final MAC step of an output cell: one A byte (or
+                        // nibble) read, one B byte (or nibble) read, four
+                        // bytes written for the int32 accumulator.
+                        perf_scratch_bytes <= perf_scratch_bytes + 32'd6;
                         gemm_acc <= 32'sh0;
                         gemm_l <= 3'h0;
                         if (gemm_j == gemm_n - 2'd1) begin
@@ -560,6 +638,9 @@ module e1_npu (
                     end else begin
                         gemm_acc <= gemm_acc + (gemm_a_value * gemm_b_value);
                         gemm_l <= gemm_l + 3'd1;
+                        // Non-final MAC step: one A byte (or nibble) read
+                        // and one B byte (or nibble) read.
+                        perf_scratch_bytes <= perf_scratch_bytes + 32'd2;
                     end
                 end
             end
@@ -572,6 +653,8 @@ module e1_npu (
                     perf_errors <= perf_errors + 32'd1;
                 end else begin
                     scratch_write_byte(vec_dst_addr, relu_s8(scratch_read_byte(vec_src_addr)));
+                    // One byte read from source, one byte written to destination.
+                    perf_scratch_bytes <= perf_scratch_bytes + 32'd2;
                     if (vec_i == vec_len - 6'd1) begin
                         vec_i <= 6'h0;
                         vec_busy <= 1'b0;
@@ -586,6 +669,18 @@ module e1_npu (
 
             if (desc_busy) begin
                 desc_timeout_count <= desc_timeout_count + 32'd1;
+                // Count cycles the descriptor engine spends in an AXI memory
+                // wait state (descriptor fetch, tensor stream, or writeback)
+                // regardless of handshake completion; this gives a power-per-
+                // counter proxy for memory-bound stalls.
+                if (desc_state == DESC_FETCH_ADDR ||
+                    desc_state == DESC_FETCH_DATA ||
+                    desc_state == DESC_STREAM_ADDR ||
+                    desc_state == DESC_STREAM_DATA ||
+                    desc_state == DESC_WRITE_ADDR ||
+                    desc_state == DESC_WRITE_RESP) begin
+                    perf_stall_cycles <= perf_stall_cycles + 32'd1;
+                end
                 if (desc_timeout_count >= DESC_TIMEOUT_LIMIT) begin
                     desc_busy <= 1'b0;
                     desc_state <= DESC_IDLE;
@@ -644,6 +739,7 @@ module e1_npu (
                                     scratch_stream_write_word(desc_stream_word_addr, m_axil_rdata);
                                     desc_bytes_read <= desc_bytes_read + 32'd4;
                                     desc_read_beats <= desc_read_beats + 32'd1;
+                                    perf_scratch_bytes <= perf_scratch_bytes + 32'd4;
                                     if ((desc_stream_done + 6'd4) >= desc_stream_len) begin
                                         desc_stream_done <= desc_stream_done + 6'd4;
                                         desc_state <= DESC_LAUNCH;
@@ -723,6 +819,7 @@ module e1_npu (
                                 op_b_q <= desc_words[2];
                                 acc_q <= desc_words[3];
                                 opcode_q <= desc_opcode;
+                                dot16_ternary_mode_q <= (desc_opcode == OP_DOT16_S2) && cmd_param[1];
                                 perf_ops <= perf_ops + 32'd1;
                                 desc_state <= DESC_WAIT;
                             end
@@ -753,6 +850,7 @@ module e1_npu (
                                 end else begin
                                     desc_bytes_written <= desc_bytes_written + 32'd4;
                                     desc_write_beats <= desc_write_beats + 32'd1;
+                                    perf_scratch_bytes <= perf_scratch_bytes + 32'd4;
                                     if ((desc_write_done + 6'd4) >= desc_write_len) begin
                                         desc_write_done <= desc_write_done + 6'd4;
                                         desc_state <= DESC_ADVANCE;
@@ -825,8 +923,15 @@ module e1_npu (
                             desc_bytes_written <= 32'h0;
                             desc_read_beats <= 32'h0;
                             desc_write_beats <= 32'h0;
+                            perf_stall_cycles <= 32'h0;
+                            perf_scratch_bytes <= 32'h0;
+                            perf_thermal_throttle <= 32'h0;
                         end
                     end
+                    // PERF_THERMAL_THROTTLE is a simulation-only host-writable
+                    // shadow latch until a real thermal HAL drives it; each
+                    // write increments the counter.
+                    6'h1f: perf_thermal_throttle <= perf_thermal_throttle + 32'd1;
                     6'h03: begin
                         if (wdata[0] && busy_count == 3'h0 && !gemm_busy && !vec_busy && !desc_busy) begin
                             if (cmd_param[0]) begin
@@ -888,6 +993,7 @@ module e1_npu (
                                 op_b_q <= op_b;
                                 acc_q <= acc;
                                 opcode_q <= opcode;
+                                dot16_ternary_mode_q <= (opcode == OP_DOT16_S2) && cmd_param[1];
                                 perf_ops <= perf_ops + 32'd1;
                             end else begin
                                 status <= 32'h0000_0006;
@@ -946,6 +1052,9 @@ module e1_npu (
             6'h1a: rdata = desc_bytes_written;
             6'h1b: rdata = desc_read_beats;
             6'h1c: rdata = desc_write_beats;
+            6'h1d: rdata = perf_stall_cycles;
+            6'h1e: rdata = perf_scratch_bytes;
+            6'h1f: rdata = perf_thermal_throttle;
             6'h20: rdata = scratch[0];
             6'h21: rdata = scratch[1];
             6'h22: rdata = scratch[2];

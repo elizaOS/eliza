@@ -45,34 +45,107 @@
       "DESC_BYTES_WRITTEN": "0x68",
       "DESC_READ_BEATS": "0x6c",
       "DESC_WRITE_BEATS": "0x70",
+      "PERF_STALL_CYCLES": "0x74",
+      "PERF_SCRATCH_BYTES": "0x78",
+      "PERF_THERMAL_THROTTLE": "0x7c",
       "SCRATCH": "0x80"
+    },
+    "register_followups": {
+      "claim_boundary": "BSP header parity is tracked here so the contract surfaces the gap without unblocking downstream consumers",
+      "bsp_header_pending": [
+        "PERF_STALL_CYCLES",
+        "PERF_SCRATCH_BYTES",
+        "PERF_THERMAL_THROTTLE"
+      ]
     },
     "scratch_bytes": 64,
     "perf_clear_register": "PERF_ERRORS",
     "perf_clear_write_value": "0x1"
   },
-  "perf_counters_planned": {
-    "claim_boundary": "no RTL counter exists for any field below; the npu_rtl_ops sub-agent will assign final MMIO offsets when the counters land, and this spec entry must be updated with those offsets in the same commit",
+  "perf_counters_added": {
+    "claim_boundary": "RTL counters landed at the offsets recorded below; BSP header parity is tracked separately in mmio.register_followups",
     "entries": [
       {
         "name": "PERF_STALL_CYCLES",
-        "pending_rtl_offset": true,
-        "description": "Cycles the NPU spent stalled waiting for descriptor, scratchpad, or AXI completion that did not retire a MAC or accepted operation; required for power-per-counter attribution at L1/L2",
+        "offset": "0x74",
+        "description": "Cycles the descriptor engine spent in an AXI memory-wait state (descriptor fetch, tensor stream, or writeback) regardless of handshake completion; provides a power-per-counter proxy for memory-bound stalls at L1/L2",
         "sources": ["accelergy_repo", "timeloop_paper"]
       },
       {
         "name": "PERF_SCRATCH_BYTES",
-        "pending_rtl_offset": true,
-        "description": "Total scratchpad bytes accessed (read plus write) by accepted operations; complements DESC_BYTES_READ/DESC_BYTES_WRITTEN by exposing on-die SRAM bandwidth used by the GEMM/VRELU datapath rather than the DMA stream path",
+        "offset": "0x78",
+        "description": "Total scratchpad bytes accessed (read plus write) by accepted GEMM/VRELU/stream/writeback paths; complements DESC_BYTES_READ/DESC_BYTES_WRITTEN by exposing on-die SRAM bandwidth used by the datapath",
         "sources": ["accelergy_repo", "timeloop_paper"]
       },
       {
         "name": "PERF_THERMAL_THROTTLE",
-        "pending_rtl_offset": true,
-        "description": "Cycles or events the NPU spent in a throttled clock/voltage state driven by the platform thermal hint or an internal thermal counter; required so the L2_SINGLE_TILE perf report can separate stall from throttle and so the L5 power/thermal manifest can compute sustained perf/W against measured throttle state",
+        "offset": "0x7c",
+        "description": "Host-writable shadow latch that increments on every MMIO write; simulation-only proxy for a future thermal HAL that will drive the counter from platform telemetry. Cleared with the PERF_ERRORS write-clear together with the other perf counters",
+        "claim_boundary": "simulation_only_host_writable_shadow_latch_not_silicon_thermal_throttle_evidence",
         "sources": ["accelergy_repo", "timeloop_paper", "trainium2_aws_docs"]
       }
     ]
+  },
+  "stablehlo_subset_import": {
+    "module": "compiler/runtime/e1_npu_stablehlo.py",
+    "schema": "eliza.e1_npu_stablehlo_subset.v1",
+    "supported_rank2_dot_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot"
+    ],
+    "supported_rank2_dot_precisions": [
+      "int8",
+      "int4",
+      "int2",
+      "bitnet_int2",
+      "fp8_e4m3",
+      "fp16",
+      "float16",
+      "bf16",
+      "bfloat16",
+      "sparse_int4_2_4",
+      "int4_group_scaled",
+      "group_scaled_int4",
+      "w4a8_gs"
+    ],
+    "supported_rank4_batch_matmul_ops": [
+      "stablehlo.batch_matmul"
+    ],
+    "supported_rank4_batch_matmul_precisions": [
+      "int8",
+      "int4"
+    ],
+    "supported_convolution_ops": [
+      "stablehlo.convolution"
+    ],
+    "supported_convolution_precisions": [
+      "int8",
+      "int4"
+    ],
+    "supported_add_ops": [
+      "stablehlo.add",
+      "stablehlo.residual_add",
+      "stablehlo.bias_add"
+    ],
+    "supported_add_precisions": [
+      "int8"
+    ],
+    "supported_mlp_ops": [
+      "stablehlo.mlp"
+    ],
+    "supported_mlp_precisions": [
+      "int8"
+    ],
+    "supported_attention_ops": [
+      "stablehlo.attention_qk",
+      "stablehlo.attention_av"
+    ],
+    "supported_attention_precisions": [
+      "int8",
+      "int4"
+    ],
+    "validation": "StableHLO subset parser accepts stablehlo.dot_general and stablehlo.dot rank-2 records for every bounded low-precision matmul smoke precision, stablehlo.batch_matmul rank-4 [B,H,M,K]x[B,H,K,N] records for INT8/INT4, batch-1 NHWC/HWIO stablehlo.convolution records for INT8/INT4, stablehlo.add/stablehlo.residual_add/stablehlo.bias_add INT8 matrix records, bounded stablehlo.mlp INT8 ReLU records, and bounded rank-4 stablehlo.attention_qk/stablehlo.attention_av INT8/INT4 records that dispatch through lower_attention_qk_smoke/lower_attention_av_smoke. It validates M/N/K against the local 3x3x7 tile envelope, rejects empty modules, duplicate op names, shape mismatches, unsupported layouts, unsupported activation, unsupported add/bias/attention shapes, and unsupported precision before lowering, emits parser-only LoweringPlan records mapping each precision/op to the existing runtime_api/schema smoke target, materializes only those checked runtime smoke graph records from required tensor fields and static op attributes, and dispatches materialized modules through lower_stablehlo_module_smoke with dispatch_order/lowering_plans metadata and without CPU fallback for covered smoke ops",
+    "claim_boundary": "stablehlo_subset_parser_only_not_mlir_pipeline_graph_partitioner_or_production_compiler_backend"
   },
   "opcodes": {
     "ADD": 0,
@@ -91,6 +164,23 @@
     "DOT16_S2": 13,
     "DOT4_FP8_E4M3": 14,
     "EXP2_NEG_Q0_8": 15
+  },
+  "cmd_param_flags": {
+    "DESC_SUBMIT": "0x1",
+    "DOT16_TERNARY": "0x2"
+  },
+  "dot16_s2_modes": {
+    "default": {
+      "lane_encoding": "two's-complement signed INT2 in [-2, +1]",
+      "claim_boundary": "int2_packed_dot_prototype"
+    },
+    "ternary": {
+      "cmd_param_flag": "CMD_PARAM[1]=1",
+      "lane_encoding": "0b00=0, 0b01=+1, 0b10=-1, 0b11 reserved",
+      "reserved_encoding_behavior": "any 0b11 in OP_A or OP_B fails closed: CTRL_STATUS.error set, PERF_ERRORS incremented, RESULT/RESULT_HI unchanged",
+      "claim_boundary": "bitnet_ternary_prototype_dot16_only_not_tensor_int2_gemm_or_bitnet_compiler_backend",
+      "sources": ["bitnet_b1_58_paper", "bitnet_a4_8_paper", "bitnet_2b4t_hf"]
+    }
   },
   "gemm_s8_limits": {
     "m_max": 3,
@@ -154,6 +244,33 @@
     "claim_boundary": "sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
     "not_claimed": "No sparse tensor GEMM, sparse tensor-core throughput, hardware metadata scheduler, pruning/calibration flow, Android delegate, or production compiler backend is implemented"
   },
+  "group_scaled_int4_matmul_lowering_smoke": {
+    "runtime_api": "lower_group_scaled_int4_matmul_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot",
+      "tflite.fully_connected",
+      "tflite.batch_matmul",
+      "tflite.matmul",
+      "eliza.group_scaled_int4_matmul",
+      "eliza.awq_int4_matmul"
+    ],
+    "supported_precisions": [
+      "int4_group_scaled",
+      "group_scaled_int4",
+      "w4a8_gs"
+    ],
+    "mapped_opcodes": [
+      "MUL_LO",
+      "ADD"
+    ],
+    "layout": "signed INT8 activation matrix, signed INT4 weight matrix, and per-K-group per-output-column signed Q8.8 scale matrix",
+    "lowering": "Host validates signed INT8 activations, signed INT4 weights, positive group_size, and signed Q8.8 per-group scales, dispatches each activation-weight scalar product through MUL_LO and ADD, then applies every group scale through MUL_LO and accumulates scaled Q8.8 group contributions through ADD",
+    "claim_boundary": "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
+    "not_claimed": "No GEMM_S4_GS32/GEMM_S4_GS64/GEMM_S4_GS128 RTL opcode, tensor group-scaled INT4 GEMM, BF16 scale decode, graph partitioning, Android delegate, or production compiler backend is implemented"
+  },
   "int2_matmul_lowering_smoke": {
     "runtime_api": "lower_int2_matmul_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
@@ -202,6 +319,56 @@
     "claim_boundary": "fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
     "not_claimed": "No tensor FP8 GEMM, FP8 systolic path, FP16/BF16 accumulation, graph partitioning, quantization calibration, Android delegate, or production compiler backend is implemented"
   },
+  "fp16_matmul_lowering_smoke": {
+    "runtime_api": "lower_fp16_matmul_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_fp16_matmul_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot",
+      "tflite.fully_connected",
+      "tflite.batch_matmul",
+      "tflite.matmul",
+      "eliza.fp16_matmul"
+    ],
+    "supported_precisions": [
+      "fp16",
+      "float16"
+    ],
+    "mapped_opcodes": [
+      "MUL_LO",
+      "ADD"
+    ],
+    "layout": "raw IEEE FP16 finite normal/zero matrices converted by host to signed Q8.8 matrices with signed Q8.8 accumulator output",
+    "lowering": "Host validates raw FP16 16-bit matrices, rejects NaN/Inf/subnormal values, converts finite normal/zero values to signed Q8.8, dispatches every scalar product through MUL_LO, host requantizes each Q16.16 product back to Q8.8, and dispatches accumulation through ADD",
+    "claim_boundary": "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend",
+    "not_claimed": "No tensor FP16 GEMM, FP16 systolic path, FP16 accumulator, graph partitioning, quantization calibration, Android delegate, or production compiler backend is implemented"
+  },
+  "bf16_matmul_lowering_smoke": {
+    "runtime_api": "lower_bf16_matmul_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_bf16_matmul_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.dot_general",
+      "stablehlo.dot",
+      "tflite.fully_connected",
+      "tflite.batch_matmul",
+      "tflite.matmul",
+      "eliza.bf16_matmul"
+    ],
+    "supported_precisions": [
+      "bf16",
+      "bfloat16"
+    ],
+    "mapped_opcodes": [
+      "MUL_LO",
+      "ADD"
+    ],
+    "layout": "raw BF16 finite normal/zero matrices converted by host to signed Q8.8 matrices with signed Q8.8 accumulator output",
+    "lowering": "Host validates raw BF16 16-bit matrices, rejects NaN/Inf/subnormal values, converts finite normal/zero values to signed Q8.8, dispatches every scalar product through MUL_LO, host requantizes each Q16.16 product back to Q8.8, and dispatches accumulation through ADD",
+    "claim_boundary": "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend",
+    "not_claimed": "No tensor BF16 GEMM, BF16 systolic path, BF16 accumulator, graph partitioning, quantization calibration, Android delegate, or production compiler backend is implemented"
+  },
   "conv2d_lowering_smoke": {
     "runtime_api": "lower_conv2d_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
@@ -226,11 +393,61 @@
     "claim_boundary": "single_conv2d_im2col_smoke_only_not_production_compiler_backend",
     "not_claimed": "No general convolution lowering, SAME padding, strided/dilated convolution, grouped/depthwise convolution, graph partitioning, hardware scheduler, Android delegate, or production compiler backend is implemented"
   },
+  "depthwise_conv2d_lowering_smoke": {
+    "runtime_api": "lower_depthwise_conv2d_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_depthwise_conv2d_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.depthwise_convolution",
+      "tflite.depthwise_conv_2d",
+      "eliza.depthwise_conv2d"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "layout": {
+      "input": "NHWC",
+      "filter": "HWCM",
+      "batch": 1,
+      "padding": "VALID",
+      "stride": 1,
+      "dilation": 1
+    },
+    "lowering": "Host iterates output pixels, channels, and depth multipliers directly without im2col, dispatching every depthwise MAC through scalar OP_MUL_LO and OP_ADD",
+    "claim_boundary": "depthwise_conv2d_direct_scalar_smoke_only_not_vector_depthwise_or_production_compiler_backend",
+    "not_claimed": "No vector depthwise datapath, grouped convolution, SAME padding, strided/dilated depthwise convolution, fused activation, Android delegate, or production compiler backend is implemented"
+  },
+  "grouped_conv2d_lowering_smoke": {
+    "runtime_api": "lower_grouped_conv2d_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_grouped_conv2d_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.convolution",
+      "tflite.conv_2d",
+      "eliza.grouped_conv2d"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "layout": {
+      "input": "NHWC",
+      "filter": "HWIO",
+      "groups": "explicit groups field, 1 < groups < input_channels",
+      "batch": 1,
+      "padding": "VALID",
+      "stride": 1,
+      "dilation": 1
+    },
+    "lowering": "Host iterates output pixels, groups, group-local input channels, and group-local output channels directly without im2col, dispatching every grouped convolution MAC through scalar OP_MUL_LO and OP_ADD",
+    "claim_boundary": "grouped_conv2d_direct_scalar_smoke_only_not_vector_grouped_conv_or_production_compiler_backend",
+    "not_claimed": "No vector grouped-convolution datapath, depthwise convolution fallback, SAME padding, strided/dilated grouped convolution, fused activation, Android delegate, or production compiler backend is implemented"
+  },
   "attention_qk_lowering_smoke": {
     "runtime_api": "lower_attention_qk_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
     "schema": "eliza.e1_npu_attention_qk_smoke.v1",
     "supported_source_ops": [
+      "stablehlo.attention_qk",
       "stablehlo.dot_general",
       "tflite.batch_matmul",
       "eliza.attention_qk"
@@ -266,6 +483,7 @@
     "module": "compiler/runtime/e1_npu_lowering.py",
     "schema": "eliza.e1_npu_attention_av_smoke.v1",
     "supported_source_ops": [
+      "stablehlo.attention_av",
       "stablehlo.dot_general",
       "tflite.batch_matmul",
       "eliza.attention_av"
@@ -292,9 +510,9 @@
       "int8"
     ],
     "layout": "rank-4 [batch][heads][tokens][head_dim] query/key tensors plus [batch][heads][key_tokens][value_dim] value tensors and optional boolean mask",
-    "lowering": "Composes lower_attention_qk_smoke, host QK-score requantization, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, and host context requantization across batch/head slices",
+    "lowering": "Composes lower_attention_qk_smoke, host QK-score requantization, optional host-generated causal or sliding_window mask_mode, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, and host context requantization across batch/head slices",
     "claim_boundary": "multihead_attention_qk_exp2_softmax_av_smoke_only_not_fused_flash_attention_or_production_compiler_backend",
-    "not_claimed": "No fused flash attention kernel, exact exp/e softmax, scale fusion, KV-cache paging/update, graph partitioning, Android delegate, production compiler backend, or sustained transformer decode performance is implemented"
+    "not_claimed": "No fused flash attention kernel, exact exp/e softmax, scale fusion, sliding-window sparse attention hardware, KV-cache paging/update, graph partitioning, Android delegate, production compiler backend, or sustained transformer decode performance is implemented"
   },
   "kv_cache_update_lowering_smoke": {
     "runtime_api": "lower_kv_cache_update_smoke",
@@ -313,6 +531,23 @@
     "claim_boundary": "kv_cache_update_s8_scalar_append_smoke_only_not_paged_or_dma_cache",
     "not_claimed": "No paged KV cache, cache eviction, circular buffer, DMA-backed cache update, multi-batch decode cache manager, Android delegate, graph compiler, or production compiler backend is implemented"
   },
+  "qkv_projection_lowering_smoke": {
+    "runtime_api": "lower_qkv_projection_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_qkv_projection_smoke.v1",
+    "supported_source_ops": [
+      "eliza.qkv_projection",
+      "stablehlo.qkv_projection",
+      "tflite.qkv_projection"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "layout": "signed INT8 input matrix plus packed signed INT8 [Q|K|V] projection weight matrix with equal Q/K/V output widths",
+    "lowering": "Host validates packed QKV projection shape, dispatches the packed projection through one lower_matmul_smoke GEMM_S8 tiled lowering, slices the packed accumulator into Q/K/V matrices, and applies host-side Q/K/V requantization",
+    "claim_boundary": "qkv_projection_packed_gemm_smoke_only_not_fused_attention_or_production_compiler_backend",
+    "not_claimed": "No fused attention kernel, fused RoPE, KV-cache update, multi-head layout scheduler, Android delegate, graph compiler, or production compiler backend is implemented"
+  },
   "decode_attention_lowering_smoke": {
     "runtime_api": "lower_decode_attention_smoke",
     "module": "compiler/runtime/e1_npu_lowering.py",
@@ -326,9 +561,9 @@
       "int8"
     ],
     "layout": "rank-4 query tensor plus fixed-capacity rank-4 key/value caches, rank-4 new key/value tensors, and per-head cache lengths",
-    "lowering": "Composes lower_kv_cache_update_smoke, host cache-view materialization with padded cache-lane mask, and lower_attention_smoke so the runtime appends K/V tokens and computes QK-softmax-AV attention over the updated cache",
+    "lowering": "Composes lower_kv_cache_update_smoke, host cache-view materialization with optional cache_window recent-token compaction and padded cache-lane mask, and lower_attention_smoke so the runtime appends K/V tokens and computes QK-softmax-AV attention over the updated cache",
     "claim_boundary": "decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend",
-    "not_claimed": "No paged KV cache, cache eviction, circular buffer, DMA-backed cache update, fused flash attention, multi-batch cache manager, Android delegate, graph compiler, or production transformer decode kernel is implemented"
+    "not_claimed": "No paged KV cache, hardware cache eviction, circular buffer, DMA-backed cache update, fused flash attention, multi-batch cache manager, Android delegate, graph compiler, or production transformer decode kernel is implemented"
   },
   "mlp_lowering_smoke": {
     "runtime_api": "lower_mlp_smoke",
@@ -345,7 +580,7 @@
     "activation": "relu",
     "lowering": "Host validates the two projection shapes, runs up-projection MACs through GEMM_S8, requantizes the hidden int32 accumulator to int8, runs activation through VRELU_S8, then runs down-projection MACs through GEMM_S8",
     "claim_boundary": "transformer_mlp_relu_smoke_only_not_gelu_or_production_compiler_backend",
-    "not_claimed": "No GELU/SwiGLU, fused bias add, fused residual add, normalization, activation fusion, graph partitioning, Android delegate, or production compiler backend is implemented"
+    "not_claimed": "No GELU/SwiGLU inside lower_mlp_smoke, fused bias add, fused residual add, normalization, activation fusion, graph partitioning, Android delegate, or production compiler backend is implemented"
   },
   "swiglu_lowering_smoke": {
     "runtime_api": "lower_swiglu_smoke",
@@ -362,7 +597,60 @@
     "activation": "linear_gate",
     "lowering": "Runs up-projection and gate-projection MACs through GEMM_S8, requantizes both hidden int32 accumulators to int8, dispatches elementwise gate products through scalar OP_MUL_LO, applies a fixed-point gate shift plus int8 saturation on host, then runs down-projection MACs through GEMM_S8",
     "claim_boundary": "swiglu_s8_scalar_gate_smoke_only_not_silu_or_production_compiler_backend",
-    "not_claimed": "No SiLU/sigmoid approximation, vector gate datapath, fused SwiGLU kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
+    "not_claimed": "No exact SiLU/sigmoid, vector gate datapath, fused SwiGLU kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
+  },
+  "swiglu_silu_gate_lowering_smoke": {
+    "runtime_api": "lower_swiglu_smoke",
+    "schema": "eliza.e1_npu_swiglu_smoke.v1",
+    "supported_source_ops": [
+      "eliza.swiglu",
+      "eliza.gated_mlp",
+      "stablehlo.swiglu",
+      "tflite.swiglu"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "activation": "silu",
+    "lowering": "Runs up-projection and gate-projection MACs through GEMM_S8, requantizes both hidden int32 accumulators to int8, routes the gate tensor through lower_silu_smoke using EXP2_NEG_Q0_8, OP_SUB, and OP_MUL_LO scalar arithmetic, dispatches elementwise up*SiLU(gate) products through scalar OP_MUL_LO, applies a fixed-point gate shift plus int8 saturation on host, then runs down-projection MACs through GEMM_S8",
+    "claim_boundary": "swiglu_s8_silu_gate_smoke_only_not_fused_vector_swiglu_or_production_compiler_backend",
+    "not_claimed": "No exact sigmoid, vector gate datapath, fused SwiGLU kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
+  },
+  "silu_lowering_smoke": {
+    "runtime_api": "lower_silu_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_silu_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.silu",
+      "tflite.silu",
+      "eliza.silu",
+      "eliza.approx_silu"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "activation": "silu_exp2_q0_8_piecewise",
+    "lowering": "Host validates signed INT8 matrix inputs, dispatches every sigmoid decay approximation through EXP2_NEG_Q0_8, dispatches nonnegative sigmoid reconstruction through OP_SUB, dispatches every x*sigmoid product through OP_MUL_LO, and applies the final Q0.8 shift plus INT8 saturation on host",
+    "claim_boundary": "silu_s8_exp2_piecewise_smoke_only_not_exact_sigmoid_or_vector_activation",
+    "not_claimed": "No exact sigmoid, exact SiLU, vector activation datapath, fused SwiGLU kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
+  },
+  "gelu_lowering_smoke": {
+    "runtime_api": "lower_gelu_smoke",
+    "module": "compiler/runtime/e1_npu_lowering.py",
+    "schema": "eliza.e1_npu_gelu_smoke.v1",
+    "supported_source_ops": [
+      "stablehlo.gelu",
+      "tflite.gelu",
+      "eliza.gelu",
+      "eliza.quick_gelu"
+    ],
+    "supported_precisions": [
+      "int8"
+    ],
+    "activation": "quick_gelu_exp2_q0_8",
+    "lowering": "Host validates signed INT8 matrix inputs, dispatches every 1.703125*x scale through OP_MUL_LO, dispatches every sigmoid decay approximation through EXP2_NEG_Q0_8, dispatches nonnegative sigmoid reconstruction through OP_SUB, dispatches every x*sigmoid product through OP_MUL_LO, and applies final Q0.8 shift plus INT8 saturation on host",
+    "claim_boundary": "gelu_s8_quick_exp2_piecewise_smoke_only_not_exact_gelu_or_vector_activation",
+    "not_claimed": "No exact erf/tanh GELU, exact sigmoid, vector activation datapath, fused MLP activation kernel, graph partitioning, Android delegate, or production compiler backend is implemented"
   },
   "bias_add_lowering_smoke": {
     "runtime_api": "lower_bias_add_smoke",
@@ -370,6 +658,7 @@
     "schema": "eliza.e1_npu_bias_add_smoke.v1",
     "supported_source_ops": [
       "stablehlo.add",
+      "stablehlo.bias_add",
       "tflite.add",
       "eliza.bias_add"
     ],
@@ -386,6 +675,7 @@
     "schema": "eliza.e1_npu_residual_add_smoke.v1",
     "supported_source_ops": [
       "stablehlo.add",
+      "stablehlo.residual_add",
       "tflite.add",
       "eliza.residual_add"
     ],
@@ -424,9 +714,9 @@
     "supported_precisions": [
       "int8"
     ],
-    "lowering": "Composes lower_rmsnorm_smoke, Q/K/V lower_matmul_smoke projections, host Q/K/V requantization, lower_rope_smoke, lower_attention_qk_smoke, host QK-score requantization, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, lower_bias_add_smoke, lower_residual_add_smoke, a second lower_rmsnorm_smoke, lower_swiglu_smoke, and a final lower_residual_add_smoke for a batch-1 single-head decoder block",
+    "lowering": "Composes lower_rmsnorm_smoke, either Q/K/V lower_matmul_smoke projections or one optional lower_qkv_projection_smoke packed-QKV projection with host Q/K/V slicing, host Q/K/V requantization, lower_rope_smoke, lower_attention_qk_smoke, host QK-score requantization, optional host-generated causal or sliding_window attention_mask_mode, lower_attention_softmax_smoke, host Q0.8 attention-weight requantization, lower_attention_av_smoke, lower_bias_add_smoke, lower_residual_add_smoke, a second lower_rmsnorm_smoke, lower_swiglu_smoke with optional SiLU-gated swiglu_activation, and a final lower_residual_add_smoke for a batch-1 single-head decoder block",
     "claim_boundary": "modern_decoder_block_single_head_exp2_softmax_smoke_only_not_multihead_kv_cache_or_production_compiler_backend",
-    "not_claimed": "No exact exp/e softmax, scaling fusion, multi-head merge, KV-cache paging/update, vector norm/RoPE/gate/softmax datapaths, fused kernels, Android delegate, graph compiler, or production compiler backend is implemented"
+    "not_claimed": "No exact exp/e softmax, scaling fusion, multi-head merge, KV-cache paging/update, sliding-window sparse attention hardware, vector norm/RoPE/gate/softmax datapaths, fused kernels, Android delegate, graph compiler, or production compiler backend is implemented"
   },
   "rope_lowering_smoke": {
     "runtime_api": "lower_rope_smoke",
@@ -499,6 +789,66 @@
     "implemented": "Four-word descriptor fetch requires word0 valid_owner[31], advances a 3-bit head/tail ring only after accepted execution, launches existing scalar/GEMM datapath operations, optionally streams aligned descriptor-sourced DRAM words into the 64-byte scratchpad, counts read beats/bytes, supports aligned streamed GEMM output writeback through word2 when writeback_request[30] is set, counts write beats/bytes, rejects malformed or scalar writeback requests fail-closed, and faults autonomously on descriptor timeout",
     "not_claimed": "This is a local RTL prototype path only; it is not an Android NNAPI, coherent IOMMU, production queue-depth, production DMA engine, vector writeback, scalar writeback, or phone-class accelerator proof"
   },
+  "command_buffer_submission": {
+    "runtime_api": "submit",
+    "module": "compiler/runtime/e1_npu_runtime.py",
+    "state": "runtime_descriptor_batching",
+    "descriptor_type": "NpuStreamDescriptor",
+    "max_entries": 7,
+    "descriptor_bytes": 16,
+    "staging": "CommandBuffer.descriptor_image returns a deterministic word-addressed descriptor image and CommandBuffer.stage writes that image through a caller-provided 32-bit memory writer before submit arms the existing descriptor ring",
+    "completion": "Submit arms DESC_BASE/DESC_HEAD/DESC_TAIL once through submit_descriptors and waits for one descriptor completion proof for the staged batch",
+    "claim_boundary": "command_buffer_descriptor_batching_smoke_only_not_scheduler_iommu_or_production_dma_runtime",
+    "not_claimed": "No graph scheduler, dependency tracking, coherent IOMMU staging, production DMA allocator, Android delegate command stream, or queue-depth proof beyond the current 3-bit local RTL ring is implemented"
+  },
+  "partitioner_command_buffer_batches": {
+    "module": "compiler/runtime/e1_npu_partitioner.py",
+    "schema": "eliza.e1_npu_partition_report.v1",
+    "state": "contiguous_supported_op_batching",
+    "uses": "CommandBuffer.MAX_ENTRIES",
+    "emits": "command_buffer_batches with op_names, runtime_apis, descriptor_slots, and command_buffer_max_entries",
+    "behavior": "The partitioner walks StableHLO subset ops in order, starts a batch only for contiguous supported ops, splits supported runs at CommandBuffer.MAX_ENTRIES, and never batches across CPU fallback entries",
+    "claim_boundary": "partitioner_command_buffer_batching_smoke_only_not_dependency_scheduler",
+    "not_claimed": "No dependency scheduler, tensor lifetime allocator, memory planner, cross-fallback fusion, asynchronous queue ownership, Android delegate command stream, or production compiler backend is implemented"
+  },
+  "delegate_command_buffer_preprocess": {
+    "modules": [
+      "compiler/runtime/e1_executorch_delegate.py",
+      "compiler/runtime/e1_litert_delegate.py"
+    ],
+    "state": "prototype_delegate_blob_includes_partitioner_batches",
+    "schemas": [
+      "eliza.e1_executorch_delegate.v1",
+      "eliza.e1_litert_delegate.v1"
+    ],
+    "emits": "descriptor_specs plus command_buffer_batches copied from the shared partitioner report",
+    "claim_boundary": "delegate_preprocess_command_buffer_metadata_only_not_binary_kernels_or_android_delegate",
+    "not_claimed": "No native ExecuTorch backend, LiteRT shared library, Android NNAPI delegate, binary kernel codegen, tensor memory allocation, graph scheduling, or production runtime integration is implemented"
+  },
+  "delegate_tensor_arena_preprocess": {
+    "modules": [
+      "compiler/runtime/e1_npu_partitioner.py",
+      "compiler/runtime/e1_executorch_delegate.py",
+      "compiler/runtime/e1_litert_delegate.py"
+    ],
+    "schema": "eliza.e1_npu_tensor_arena_plan.v1",
+    "state": "metadata_only_linear_tensor_arena",
+    "emits": "tensor_arena_plan with 4-byte aligned offsets, tensor names, roles, shapes, dtypes, byte sizes, and total_bytes",
+    "claim_boundary": "tensor_arena_metadata_only_not_lifetime_allocator_or_dma_planner",
+    "not_claimed": "No tensor lifetime reuse, alias analysis, DMA placement, cache-coherent allocator, Android AHardwareBuffer integration, or production memory planner is implemented"
+  },
+  "delegate_runtime_binding_preprocess": {
+    "modules": [
+      "compiler/runtime/e1_npu_partitioner.py",
+      "compiler/runtime/e1_executorch_delegate.py",
+      "compiler/runtime/e1_litert_delegate.py"
+    ],
+    "schema": "eliza.e1_npu_runtime_binding_plan.v1",
+    "state": "metadata_only_runtime_field_to_arena_bindings",
+    "emits": "runtime_binding_plan mapping lowering required_graph_fields and result tensors to tensor_arena_plan offsets, byte sizes, dtypes, shapes, command_buffer_batch_index, descriptor_codegen_ready, ready_ops, blocked_ops, and unresolved_inputs for required fields without arena allocations",
+    "claim_boundary": "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen",
+    "not_claimed": "No binary descriptor codegen, DMA address assignment, tensor lifetime reuse, dependency scheduling, Android delegate integration, or production compiler backend is implemented"
+  },
   "precision_matrix": [
     {
       "precision": "INT8",
@@ -508,7 +858,7 @@
     {
       "precision": "INT4",
       "state": "supported_prototype",
-      "path": "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse metadata dot, bounded sparse INT4 matmul lowering smoke, and bounded GEMM_S4 through 64-byte MMIO scratchpad; no compiler path"
+      "path": "DOT8_S4 packed dot, SDOT4_S4_2_4 sparse metadata dot, bounded sparse and group-scaled INT4 matmul lowering smoke, and bounded GEMM_S4 through 64-byte MMIO scratchpad; no compiler path"
     },
     {
       "precision": "INT2",
@@ -516,14 +866,21 @@
       "path": "DOT16_S2 packed scalar dot prototype plus bounded scalar-dot INT2 matmul lowering smoke; no tensor INT2 GEMM/compiler path"
     },
     {
+      "precision": "BITNET_TERNARY",
+      "state": "supported_prototype",
+      "path": "DOT16_S2 with CMD_PARAM[1]=1 selects ternary {-1, 0, +1} lane decode (0b00=0, 0b01=+1, 0b10=-1); the reserved 0b11 encoding is rejected by the RTL through CTRL_STATUS.error and PERF_ERRORS. No tensor INT2 GEMM, BitNet compiler backend, or sustained TOPS evidence is implied",
+      "claim_boundary": "bitnet_ternary_prototype_dot16_only_not_tensor_int2_gemm_or_bitnet_compiler_backend",
+      "sources": ["bitnet_b1_58_paper", "bitnet_a4_8_paper", "bitnet_2b4t_hf"]
+    },
+    {
       "precision": "FP16",
-      "state": "blocked",
-      "path": "no opcode, datapath, compiler lowering, or measured benchmark path"
+      "state": "supported_prototype",
+      "path": "raw FP16 finite normal/zero matrices converted by host to signed Q8.8, then bounded scalar MUL_LO/ADD matmul lowering smoke; no tensor FP16 GEMM/compiler path"
     },
     {
       "precision": "BF16",
-      "state": "blocked",
-      "path": "no opcode, datapath, compiler lowering, or measured benchmark path"
+      "state": "supported_prototype",
+      "path": "raw BF16 finite normal/zero matrices converted by host to signed Q8.8, then bounded scalar MUL_LO/ADD matmul lowering smoke; no tensor BF16 GEMM/compiler path"
     },
     {
       "precision": "FP8",
@@ -564,10 +921,10 @@
     },
     {
       "precision": "INT4_GROUP_SCALED",
-      "state": "blocked_l1_planned",
-      "phase": "L1_planned",
-      "path": "Group-scaled W4A16 INT4 weights with per-group INT8 or BF16 scale at group sizes 32, 64, 128; packed INT4 weight storage (two lanes per byte, low nibble first), INT8-or-higher activations, signed int32 accumulator, host-side scale application; no RTL or compiler support exists today",
-      "claim_boundary": "no group-scaled INT4 RTL opcode (GEMM_S4_GS32/64/128) or compiler lowering exists today",
+      "state": "supported_prototype",
+      "phase": "L0_scalar_smoke",
+      "path": "Bounded W4A8 group-scaled INT4 matmul smoke with signed Q8.8 per-group scales applied through scalar MUL_LO/ADD; no GEMM_S4_GS32/GEMM_S4_GS64/GEMM_S4_GS128 RTL opcode or compiler support exists today",
+      "claim_boundary": "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
       "sources": ["gptq_paper", "awq_paper", "omniquant_paper", "hqq_repo"]
     }
   ],
@@ -622,7 +979,7 @@
     "Architecture documentation names each manifest perf counter",
     "Descriptor queue registers expose only the local RTL 3-bit ring and must not be treated as production queue-depth or Android accelerator support",
     "DMA tensor streaming evidence must include DESC_BYTES_READ and DESC_BYTES_WRITTEN from the measured NPU path when writeback_request[30] is used",
-    "Precision support beyond DOT4_S8, DOT8_S4, SDOT4_S4_2_4, DOT16_S2, DOT4_FP8_E4M3, RELU4_S8, VRELU_S8, GEMM_S8, and GEMM_S4 must remain blocked until the precision matrix and runtime tests identify the measured path",
+    "Precision support beyond DOT4_S8, DOT8_S4, SDOT4_S4_2_4, DOT16_S2, DOT4_FP8_E4M3, FP16/BF16 scalar Q8.8 MUL_LO/ADD smoke paths, RELU4_S8, VRELU_S8, GEMM_S8, and GEMM_S4 must remain blocked until the precision matrix and runtime tests identify the measured path",
     "Verilator GEMM smoke test checks unsupported_ops, cycles, macs, ops, and errors counters",
     "Android HAL/NNAPI acceleration remains blocked without e1_npu_nnapi.proof.json plus VTS/CTS/SELinux evidence",
     "Benchmark evidence must bind model hashes, transcript hashes, perf counters, DMA traces, and CPU fallback accounting"
@@ -633,7 +990,7 @@
       "160 dense INT8 peak TOPS target evidence",
       "80 dense INT8 sustained TOPS target evidence",
       "512 sparse INT4 peak TOPS target evidence",
-      "BF16, FP16, FP8 tensor execution beyond scalar E4M3 dot, and INT2 tensor execution beyond scalar packed dot",
+      "BF16, FP16, FP8 tensor execution beyond scalar Q8.8/E4M3 smoke paths, and INT2 tensor execution beyond scalar packed dot",
       "64 MiB local SRAM",
       "20 TB/s local SRAM bandwidth",
       "180 GB/s external memory bandwidth evidence",

@@ -8,11 +8,33 @@ from cocotb.triggers import RisingEdge, Timer
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from coverage_helpers import CoverPointSet, axi_resp_name  # noqa: E402
+
 from compiler.runtime.e1_npu_runtime import (  # noqa: E402
     E1NpuRuntime,
     golden_gemm_s4,
     golden_gemm_s8,
 )
+
+NPU_OPCODES = (
+    E1NpuRuntime.OP_ADD,
+    E1NpuRuntime.OP_SUB,
+    E1NpuRuntime.OP_MUL_LO,
+    E1NpuRuntime.OP_MAC_S16,
+    E1NpuRuntime.OP_DOT4_S8,
+    E1NpuRuntime.OP_DOT8_S4,
+    E1NpuRuntime.OP_SDOT4_S4_2_4,
+    E1NpuRuntime.OP_DOT16_S2,
+    E1NpuRuntime.OP_DOT4_FP8_E4M3,
+    E1NpuRuntime.OP_RELU4_S8,
+    E1NpuRuntime.OP_MAX_U32,
+    E1NpuRuntime.OP_MIN_U32,
+    E1NpuRuntime.OP_GEMM_S8,
+    E1NpuRuntime.OP_GEMM_S4,
+    E1NpuRuntime.OP_VRELU_S8,
+)
+AXI_RESP_BINS = ("OKAY", "SLVERR", "DECERR")
 
 
 async def reset(dut):
@@ -681,6 +703,14 @@ async def npu_descriptor_streams_gemm_and_writes_result_back_to_dram(dut):
 async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
+    cover = CoverPointSet("npu")
+    cover.declare("opcode", "runtime_opcode", NPU_OPCODES)
+    cover.declare("axi_resp", "descriptor_rresp", AXI_RESP_BINS)
+    # Descriptor reads in this test exercise the OKAY path; the SLVERR/DECERR
+    # paths are covered by the timeout / malformed-writeback tests above and
+    # are recorded as declared-but-unhit so the merge step surfaces them as
+    # known gaps rather than silently passing.
+    cover.sample("axi_resp", "descriptor_rresp", axi_resp_name(0))
 
     scalar_cases = [
         ("add", E1NpuRuntime.OP_ADD, 7, 11, 0, 18),
@@ -744,22 +774,26 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
         observed = await runtime_run(dut, opcode, a, b, acc)
         assert observed == expected
         covered_opcodes.add(opcode)
+        cover.sample("opcode", "runtime_opcode", opcode)
 
     a = [[1, -2, 3], [4, 5, -6]]
     b = [[7, -8], [9, 10], [-11, 12]]
     observed_gemm = await runtime_gemm_s8(dut, a, b)
     assert observed_gemm == golden_gemm_s8(a, b)
     covered_opcodes.add(E1NpuRuntime.OP_GEMM_S8)
+    cover.sample("opcode", "runtime_opcode", E1NpuRuntime.OP_GEMM_S8)
 
     a_s4 = [[7, -8, 3], [-4, 5, -6]]
     b_s4 = [[-7, 6], [5, -4], [3, -2]]
     observed_gemm_s4 = await runtime_gemm_s4(dut, a_s4, b_s4)
     assert observed_gemm_s4 == golden_gemm_s4(a_s4, b_s4)
     covered_opcodes.add(E1NpuRuntime.OP_GEMM_S4)
+    cover.sample("opcode", "runtime_opcode", E1NpuRuntime.OP_GEMM_S4)
 
     observed_vrelu = await runtime_vrelu_s8(dut, [-128, -3, 0, 5, 127, -1])
     assert observed_vrelu == [0, 0, 0, 5, 127, 0]
     covered_opcodes.add(E1NpuRuntime.OP_VRELU_S8)
+    cover.sample("opcode", "runtime_opcode", E1NpuRuntime.OP_VRELU_S8)
 
     perf_cycles = await runtime_read32(dut, E1NpuRuntime.PERF_CYCLES)
     perf_macs = await runtime_read32(dut, E1NpuRuntime.PERF_MACS)
@@ -826,3 +860,204 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
     out = REPO_ROOT / "build/reports/npu_cocotb_coverage.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(coverage, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+    cover.write_json(extra={"covered_opcode_names": coverage["covered_opcode_names"]})
+
+
+def pack_ternary(values):
+    """Encode {-1, 0, +1} lanes into the RTL ternary 2-bit packing."""
+    word = 0
+    for index, value in enumerate(values):
+        if value == 0:
+            bits = 0b00
+        elif value == 1:
+            bits = 0b01
+        elif value == -1:
+            bits = 0b10
+        else:
+            raise ValueError("ternary lane must be -1, 0, or +1")
+        word |= bits << (2 * index)
+    return word
+
+
+def golden_dot16_ternary(a_values, b_values, acc=0):
+    return acc + sum(a * b for a, b in zip(a_values, b_values, strict=True))
+
+
+async def run_dot16_ternary(dut, a_values, b_values, acc=0):
+    a_packed = pack_ternary(a_values)
+    b_packed = pack_ternary(b_values)
+    await write_reg(dut, 3, 2)
+    await write_reg(dut, 0x0C, 0x2)
+    await write_reg(dut, 0, a_packed)
+    await write_reg(dut, 1, b_packed)
+    await write_reg(dut, 5, acc)
+    await write_reg(dut, 4, E1NpuRuntime.OP_DOT16_S2)
+    await write_reg(dut, 3, 1)
+    return await poll_done(dut, cycles=64)
+
+
+@cocotb.test()
+async def npu_dot16_ternary_all_zero_returns_acc(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    status = await run_dot16_ternary(dut, [0] * 16, [0] * 16, acc=42)
+    assert status == 0x2, f"status=0x{status:08x}"
+    assert await read_reg(dut, 2) == 42
+    assert await read_reg(dut, 0x17) == 0
+
+
+@cocotb.test()
+async def npu_dot16_ternary_all_plus_one_sums_to_sixteen(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    status = await run_dot16_ternary(dut, [1] * 16, [1] * 16)
+    assert status == 0x2, f"status=0x{status:08x}"
+    assert await read_reg(dut, 2) == 16
+
+
+@cocotb.test()
+async def npu_dot16_ternary_all_minus_one_sums_to_sixteen(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    status = await run_dot16_ternary(dut, [-1] * 16, [-1] * 16)
+    assert status == 0x2, f"status=0x{status:08x}"
+    assert await read_reg(dut, 2) == 16
+
+
+@cocotb.test()
+async def npu_dot16_ternary_mixed_matches_golden(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    a = [1, -1, 0, 1, 1, -1, 0, -1, 1, 1, 0, -1, 0, -1, 1, -1]
+    b = [-1, 1, 0, 1, 1, -1, 1, 1, -1, 1, 0, 1, 1, -1, 1, 1]
+    expected = golden_dot16_ternary(a, b, acc=5) & 0xFFFF_FFFF
+
+    status = await run_dot16_ternary(dut, a, b, acc=5)
+    assert status == 0x2, f"status=0x{status:08x}"
+    assert await read_reg(dut, 2) == expected
+
+
+@cocotb.test()
+async def npu_dot16_ternary_rejects_reserved_encoding(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    a_packed = pack_ternary([1, -1, 0, 0] + [0] * 12) | (0b11 << (2 * 3))
+    b_packed = pack_ternary([1, 1, 1, 1] + [0] * 12)
+    await write_reg(dut, 3, 2)
+    await write_reg(dut, 0x0C, 0x2)
+    await write_reg(dut, 0, a_packed)
+    await write_reg(dut, 1, b_packed)
+    await write_reg(dut, 5, 0)
+    await write_reg(dut, 4, E1NpuRuntime.OP_DOT16_S2)
+    result_before = await read_reg(dut, 2)
+    await write_reg(dut, 3, 1)
+    assert await poll_done(dut, cycles=64) == 0x6
+    assert await read_reg(dut, 0x17) == 1
+    assert await read_reg(dut, 2) == result_before
+
+    await write_reg(dut, 3, 2)
+    status = await run_dot16_ternary(dut, [0] * 16, [0] * 16)
+    assert status == 0x2
+
+
+@cocotb.test()
+async def npu_dot16_s2_signed_int2_path_unchanged_when_ternary_flag_clear(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    a_values = [1, -1, -2, 0, 1, 1, -2, -1, 0, 1, -1, -2, 1, 0, -2, 1]
+    b_values = [-2, 1, 1, -1, 1, -2, 0, -1, 1, 1, -2, -1, 0, -2, 1, 1]
+    expected = (sum(a * b for a, b in zip(a_values, b_values, strict=True)) + 5) & 0xFFFF_FFFF
+
+    await write_reg(dut, 3, 2)
+    await write_reg(dut, 0x0C, 0x0)
+    await write_reg(dut, 0, pack_s2(a_values))
+    await write_reg(dut, 1, pack_s2(b_values))
+    await write_reg(dut, 5, 5)
+    await write_reg(dut, 4, E1NpuRuntime.OP_DOT16_S2)
+    await write_reg(dut, 3, 1)
+    assert await poll_done(dut, cycles=64) == 0x2
+    assert await read_reg(dut, 2) == expected
+
+
+@cocotb.test()
+async def npu_perf_scratch_bytes_increments_on_vrelu(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    await write_reg(dut, 0x17, 1)
+    assert await read_reg(dut, 0x1E) == 0
+
+    observed = await runtime_vrelu_s8(dut, [-5, 0, 7, -1, 2, 9])
+    assert observed == [0, 0, 7, 0, 2, 9]
+    assert await read_reg(dut, 0x1E) == 12
+
+
+@cocotb.test()
+async def npu_perf_scratch_bytes_increments_on_gemm_s8(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    a = [[1, -2], [3, -4]]
+    b = [[5, 6], [-7, 8]]
+    observed = await runtime_gemm_s8(dut, a, b)
+    assert observed == golden_gemm_s8(a, b)
+    # Per output cell the RTL increments PERF_SCRATCH_BYTES by 2 on each
+    # non-final MAC step (A byte + B byte read) and by 6 on the final MAC
+    # step (final A+B read plus the 4-byte int32 C writeback). For K=2
+    # that is 2 + 6 = 8 bytes per cell across 4 cells.
+    expected_bytes = 4 * (2 + 6)
+    assert await read_reg(dut, 0x1E) == expected_bytes
+
+
+@cocotb.test()
+async def npu_perf_stall_cycles_counts_descriptor_memory_wait(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    reader = cocotb.start_soon(
+        descriptor_read_responder(
+            dut,
+            {
+                0x4000: 0x8000_0000,
+                0x4004: 7,
+                0x4008: 11,
+                0x400C: 0,
+            },
+        )
+    )
+    await write_reg(dut, 0x17, 1)
+    await write_reg(dut, 0x10, 0x4000)
+    await write_reg(dut, 0x11, 1)
+    await write_reg(dut, 0x12, 0)
+    await write_reg(dut, 0x0C, 1)
+    await write_reg(dut, 0x03, 1)
+    assert await poll_done(dut, cycles=64) == 0x2
+    reader.kill()
+
+    stall_cycles = await read_reg(dut, 0x1D)
+    # Each of the four descriptor word fetches drives at least one cycle in
+    # DESC_FETCH_ADDR and one cycle in DESC_FETCH_DATA before the read
+    # response retires.
+    assert stall_cycles >= 8
+
+
+@cocotb.test()
+async def npu_perf_thermal_throttle_increments_on_host_writes(dut):
+    cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
+    await reset(dut)
+
+    assert await read_reg(dut, 0x1F) == 0
+    await write_reg(dut, 0x1F, 0)
+    await write_reg(dut, 0x1F, 0)
+    await write_reg(dut, 0x1F, 0)
+    assert await read_reg(dut, 0x1F) == 3
+
+    await write_reg(dut, 0x17, 1)
+    assert await read_reg(dut, 0x1F) == 0

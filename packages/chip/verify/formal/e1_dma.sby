@@ -8,8 +8,12 @@ smtbmc bitwuzla
 
 [script]
 read -formal e1_dma.sv e1_dma_formal.sv
+read -formal -sv reset_properties.sv
+read -formal -sv cdc_properties.sv
 prep -top e1_dma_formal
 
 [files]
 rtl/dma/e1_dma.sv
 verify/formal/e1_dma_formal.sv
+verify/properties/reset_properties.sv
+verify/properties/cdc_properties.sv

@@ -5,6 +5,24 @@ claim_boundary: |
   built clang prints every mandatory extension via
   `--print-supported-extensions`.
 
+round3_attempt:
+  status: BLOCKED
+  blocked_stage: toolchain_extensions
+  blocked_reason: |
+    scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2
+    cannot run the toolchain extensions probe because build/llvm-stage2/bin/clang
+    is absent. Root cause is upstream of compiler-agent: the canonical container
+    build is BLOCKED by an out-of-domain requirements.txt regression (see
+    docs/evidence/compiler/llvm-build-evidence.yaml::round3_attempt).
+  pin_layer_status:
+    llvm_pin_sha: PASS (de3ee84346d6dcf77ac20fe5c8acc95594886cbc)
+    march_default: PASS (rva23u64)
+    extensions_baseline: PASS (21 extensions present in llvm-pin.json)
+    release_flags_default: PASS (-march=rva23u64 in release_flags_default)
+    iree_pin_sha: PASS (d9a3dd15a5 round-2 pinned)
+    aosp_branch_pin: PASS (round-2 pinned)
+    toolchain_extensions: BLOCKED (stage-2 clang missing)
+
 mandatory_extensions:
   - I
   - M
@@ -33,6 +51,8 @@ required_artifacts:
     purpose: extensions_baseline list
   - path: scripts/check_rva23_compliance.py
     purpose: gate
+  - path: build/reports/compiler/llvm-rva23-extensions.txt
+    purpose: stage-2 clang --print-supported-extensions snapshot for the toolchain check
 
 verification_commands:
   - scripts/check_rva23_compliance.py --strict --toolchain build/llvm-stage2

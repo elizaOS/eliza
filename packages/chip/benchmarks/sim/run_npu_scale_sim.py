@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -209,10 +210,46 @@ def process_corner_entry(config: NpuScaleConfig, corner: ProcessCorner, estimate
     }
 
 
+def run_timeloop_energy(config_name: str) -> dict | None:
+    """Invoke ``run_npu_timeloop.py`` and merge its energy column.
+
+    Returns ``None`` when the Timeloop tools are missing (blocked) so the
+    caller can record the gap explicitly. Never fabricates energy numbers.
+    """
+    script = Path(__file__).resolve().parent / "run_npu_timeloop.py"
+    if not script.is_file():
+        return None
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(script), "--config", config_name],
+            cwd=ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=900,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if completed.returncode != 0 and not completed.stdout:
+        return None
+    try:
+        return json.loads(completed.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run deterministic NPU architecture scale model")
     parser.add_argument("--config", choices=sorted(CONFIGS), default=OPEN_2028_FIRST.name)
     parser.add_argument("--out", type=Path)
+    parser.add_argument(
+        "--with-timeloop-energy",
+        action="store_true",
+        help=(
+            "Invoke benchmarks/sim/run_npu_timeloop.py to attach modeled "
+            "joules-per-inference. Fails closed if the tools are missing."
+        ),
+    )
     args = parser.parse_args()
 
     config = CONFIGS[args.config]
@@ -278,6 +315,27 @@ def main() -> int:
             "process_corner_claim_boundary": "modeled_derates_only_not_14a_pdk_or_signoff_evidence",
         },
     }
+    if args.with_timeloop_energy:
+        energy_report = run_timeloop_energy(config.name)
+        if energy_report is None:
+            report["timeloop_energy"] = {
+                "status": "blocked",
+                "reason": (
+                    "benchmarks/sim/run_npu_timeloop.py did not produce a "
+                    "parseable JSON report (typically because timeloop / "
+                    "accelergy binaries are missing)."
+                ),
+            }
+        else:
+            report["timeloop_energy"] = energy_report
+            energy = None
+            if isinstance(energy_report, dict):
+                summary_block = energy_report.get("summary")
+                if isinstance(summary_block, dict):
+                    energy = summary_block.get("energy_joules_per_inference")
+            if energy is not None and isinstance(report["summary"], dict):
+                report["summary"]["energy_joules_per_inference"] = energy
+
     text = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.out:
         output = args.out if args.out.is_absolute() else ROOT / args.out

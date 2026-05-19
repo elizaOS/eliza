@@ -174,3 +174,11 @@ C
     > "$BUILD_REPORT_DIR/llvm-hello-rva23.dump"
 
 emit_status "PASS" "llvm.cross_compile_smoke"
+
+# Capture the stage-2 clang's reported RVA23 extension list so
+# scripts/check_rva23_compliance.py --toolchain build/llvm-stage2 has a
+# deterministic input even when the binary is not available later.
+"$STAGE2_CLANG" --print-supported-extensions \
+    > "$BUILD_REPORT_DIR/llvm-rva23-extensions.txt" 2>&1
+
+emit_status "PASS" "llvm.rva23_extensions_dump"

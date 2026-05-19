@@ -103,6 +103,15 @@ phases:
       - NNAPI delegate acceleration
       - model compiler coverage
       - phone-class TOPS
+    todo_dma_writeback_generalization:
+      claim_boundary: spec_only_no_rtl_yet_l1_remains_blocked_until_widened_writeback_lands
+      doc_anchor: docs/arch/npu.md "DMA writeback path (planned, L1)"
+      moves_when_writeback_lands:
+        - desc_writeback_cfg_ok currently gates writeback to OP_GEMM_S8/OP_GEMM_S4 only; widens to every opcode that produces a scratchpad result tile
+        - DESC_BYTES_WRITTEN / DESC_WRITE_BEATS go non-zero for the opcodes added to the writeback path
+        - PERF_SCRATCH_BYTES counts the source-read traffic emitted by the writeback master
+        - DESC_STATUS[7] (malformed writeback request) narrows to truly unsupported configurations (unaligned destinations, partial-word writes, vector writeback against scalar opcodes that the spec excludes)
+        - benchmarks/capabilities/e1_npu_nnapi.proof.json populates dma_trace_bytes_written and perf_counter_dma_bytes_written with measured non-zero values
 
   - id: L2_SINGLE_TILE_ACCELERATOR
     status: planned_blocked

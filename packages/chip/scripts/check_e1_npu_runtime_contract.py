@@ -9,7 +9,17 @@ ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "docs/spec-db/e1-npu-runtime-contract.json"
 RUNTIME = ROOT / "compiler/runtime/e1_npu_runtime.py"
 LOWERING = ROOT / "compiler/runtime/e1_npu_lowering.py"
+STABLEHLO = ROOT / "compiler/runtime/e1_npu_stablehlo.py"
+RUNTIME_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime.py"
+COMMAND_BUFFER_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_commandbuffer.py"
+STABLEHLO_TEST = ROOT / "compiler/runtime/test_e1_npu_stablehlo.py"
 RUNTIME_SIM_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_sim.py"
+PARTITIONER = ROOT / "compiler/runtime/e1_npu_partitioner.py"
+PARTITIONER_TEST = ROOT / "compiler/runtime/test_e1_partitioner.py"
+EXECUTORCH_DELEGATE = ROOT / "compiler/runtime/e1_executorch_delegate.py"
+EXECUTORCH_DELEGATE_TEST = ROOT / "compiler/runtime/test_e1_executorch_delegate.py"
+LITERT_DELEGATE = ROOT / "compiler/runtime/e1_litert_delegate.py"
+LITERT_DELEGATE_TEST = ROOT / "compiler/runtime/test_e1_litert_delegate.py"
 ARCH_DOC = ROOT / "docs/arch/npu.md"
 BSP_HEADER = ROOT / "sw/linux/drivers/e1/e1_platform_contract.h"
 GENERATED_PLATFORM_HEADER = ROOT / "sw/platform/generated/e1_platform.h"
@@ -37,7 +47,17 @@ def main() -> int:
         CONTRACT,
         RUNTIME,
         LOWERING,
+        STABLEHLO,
+        RUNTIME_TEST,
+        COMMAND_BUFFER_TEST,
+        STABLEHLO_TEST,
         RUNTIME_SIM_TEST,
+        PARTITIONER,
+        PARTITIONER_TEST,
+        EXECUTORCH_DELEGATE,
+        EXECUTORCH_DELEGATE_TEST,
+        LITERT_DELEGATE,
+        LITERT_DELEGATE_TEST,
         ARCH_DOC,
         BSP_HEADER,
         GENERATED_PLATFORM_HEADER,
@@ -54,6 +74,213 @@ def main() -> int:
     boundary = contract.get("claim_boundary", "")
     if "not_phone_class_ai_accelerator" not in boundary:
         errors.append("contract must stay fail-closed for phone-class accelerator claims")
+
+    stablehlo_import = contract.get("stablehlo_subset_import", {})
+    expected_stablehlo_precisions = {
+        "int8",
+        "int4",
+        "int2",
+        "bitnet_int2",
+        "fp8_e4m3",
+        "fp16",
+        "float16",
+        "bf16",
+        "bfloat16",
+        "sparse_int4_2_4",
+        "int4_group_scaled",
+        "group_scaled_int4",
+        "w4a8_gs",
+    }
+    if stablehlo_import.get("module") != "compiler/runtime/e1_npu_stablehlo.py":
+        errors.append("StableHLO subset contract must identify e1_npu_stablehlo.py")
+    if set(stablehlo_import.get("supported_rank2_dot_ops", [])) != {
+        "stablehlo.dot_general",
+        "stablehlo.dot",
+    }:
+        errors.append("StableHLO subset contract must cover dot_general and dot")
+    if set(stablehlo_import.get("supported_rank2_dot_precisions", [])) != (
+        expected_stablehlo_precisions
+    ):
+        errors.append("StableHLO subset contract precision set mismatch")
+    if set(stablehlo_import.get("supported_rank4_batch_matmul_ops", [])) != {
+        "stablehlo.batch_matmul"
+    }:
+        errors.append("StableHLO subset contract must cover bounded batch_matmul")
+    if set(stablehlo_import.get("supported_rank4_batch_matmul_precisions", [])) != {
+        "int8",
+        "int4",
+    }:
+        errors.append("StableHLO subset batch_matmul precision set mismatch")
+    if set(stablehlo_import.get("supported_convolution_ops", [])) != {"stablehlo.convolution"}:
+        errors.append("StableHLO subset contract must cover stablehlo.convolution")
+    if set(stablehlo_import.get("supported_convolution_precisions", [])) != {
+        "int8",
+        "int4",
+    }:
+        errors.append("StableHLO subset convolution precision set mismatch")
+    if set(stablehlo_import.get("supported_add_ops", [])) != {
+        "stablehlo.add",
+        "stablehlo.residual_add",
+        "stablehlo.bias_add",
+    }:
+        errors.append("StableHLO subset contract must cover stablehlo add aliases")
+    if set(stablehlo_import.get("supported_add_precisions", [])) != {"int8"}:
+        errors.append("StableHLO subset add precision set mismatch")
+    if set(stablehlo_import.get("supported_mlp_ops", [])) != {"stablehlo.mlp"}:
+        errors.append("StableHLO subset contract must cover stablehlo.mlp")
+    if set(stablehlo_import.get("supported_mlp_precisions", [])) != {"int8"}:
+        errors.append("StableHLO subset mlp precision set mismatch")
+    if set(stablehlo_import.get("supported_attention_ops", [])) != {
+        "stablehlo.attention_qk",
+        "stablehlo.attention_av",
+    }:
+        errors.append("StableHLO subset contract must cover attention_qk/attention_av")
+    if set(stablehlo_import.get("supported_attention_precisions", [])) != {"int8", "int4"}:
+        errors.append("StableHLO subset attention precision set mismatch")
+    stablehlo_validation = str(stablehlo_import.get("validation", ""))
+    for token in (
+        "stablehlo.attention_qk",
+        "stablehlo.attention_av",
+        "lower_attention_qk_smoke",
+        "lower_attention_av_smoke",
+    ):
+        if token not in stablehlo_validation:
+            errors.append(f"StableHLO subset contract validation missing {token!r}")
+    if (
+        stablehlo_import.get("claim_boundary")
+        != "stablehlo_subset_parser_only_not_mlir_pipeline_graph_partitioner_or_production_compiler_backend"
+    ):
+        errors.append("StableHLO subset claim boundary must remain parser-only")
+    stablehlo_text = STABLEHLO.read_text()
+    stablehlo_test_text = STABLEHLO_TEST.read_text()
+    for token in (
+        "OP_DOT",
+        "OP_ADD",
+        "OP_BIAS_ADD",
+        "OP_RESIDUAL_ADD",
+        "OP_MLP",
+        "OP_ATTENTION_QK",
+        "OP_ATTENTION_AV",
+        "OP_BATCH_MATMUL",
+        "OP_CONVOLUTION",
+        "Add",
+        "BiasAdd",
+        "ResidualAdd",
+        "BatchMatmul",
+        "Convolution",
+        "Mlp",
+        "AttentionQk",
+        "AttentionAv",
+        "SUPPORTED_PRECISIONS",
+        "bitnet_int2",
+        "fp16",
+        "bf16",
+        "sparse_int4_2_4",
+        "int4_group_scaled",
+        "w4a8_gs",
+        "SUPPORTED_OPS",
+        "LoweringPlan",
+        "plan_module_lowerings",
+        "plan_op_lowering",
+        "materialize_lowering_graph",
+        "materialize_op_lowering_graph",
+        "materialize_module_lowering_graphs",
+        "MODULE_EMPTY",
+        "DUPLICATE_OP_NAME",
+        "_BATCH_MATMUL_LOWERING_TARGETS",
+        "_CONVOLUTION_LOWERING_TARGETS",
+        "_RESIDUAL_ADD_LOWERING_TARGETS",
+        "_BIAS_ADD_LOWERING_TARGETS",
+        "_MLP_LOWERING_TARGETS",
+        "_ATTENTION_QK_LOWERING_TARGETS",
+        "_ATTENTION_AV_LOWERING_TARGETS",
+        "_DOT_LOWERING_TARGETS",
+        "_validate_dot_general",
+        "_validate_batch_matmul",
+        "_validate_convolution",
+        "_validate_add",
+        "_validate_bias_add",
+        "_validate_residual_add",
+        "_validate_mlp",
+        "_validate_attention_qk",
+        "_validate_attention_av",
+        "_check_tile_bounds",
+    ):
+        if token not in stablehlo_text:
+            errors.append(f"StableHLO subset missing token {token!r}")
+    for token in (
+        "test_stablehlo_subset_accepts_low_precision_rank2_dot_smoke_precisions",
+        "test_stablehlo_subset_accepts_stablehlo_dot_alias_for_matmul_smoke",
+        "test_stablehlo_subset_plans_runtime_lowering_targets_for_low_precision_dot_modes",
+        "test_stablehlo_subset_plans_bounded_batch_matmul_runtime_lowering",
+        "test_stablehlo_subset_rejects_batch_matmul_unsupported_precision_and_shape",
+        "test_stablehlo_subset_materializes_batch_matmul_smoke_graph_from_plan",
+        "test_stablehlo_subset_plans_bounded_convolution_runtime_lowering",
+        "test_stablehlo_subset_plans_add_and_bias_add_runtime_lowering",
+        "test_stablehlo_subset_plans_mlp_runtime_lowering",
+        "test_stablehlo_subset_accepts_attention_qk_and_av_smoke_records",
+        "test_stablehlo_subset_plans_attention_qk_and_av_runtime_lowering",
+        "test_stablehlo_subset_rejects_convolution_unsupported_precision_and_shape",
+        "test_stablehlo_subset_rejects_add_and_bias_add_unsupported_shapes",
+        "test_stablehlo_subset_rejects_mlp_unsupported_activation_precision_and_shape",
+        "test_stablehlo_subset_rejects_attention_unsupported_precision_and_shape",
+        "test_stablehlo_subset_materializes_convolution_smoke_graph_from_plan",
+        "test_stablehlo_subset_materializes_add_and_bias_add_smoke_graphs_from_plan",
+        "test_stablehlo_subset_materializes_mlp_smoke_graph_from_plan",
+        "test_stablehlo_subset_materializes_attention_qk_and_av_smoke_graphs_from_plan",
+        "test_stablehlo_subset_plans_required_graph_fields_for_metadata_backed_precisions",
+        "test_stablehlo_subset_materializes_runtime_smoke_graph_from_plan",
+        "test_stablehlo_subset_materializes_metadata_backed_runtime_graphs",
+        "test_stablehlo_subset_rejects_empty_modules_and_duplicate_op_names",
+        "UNSUPPORTED_PRECISION",
+        "TILE_M_OUT_OF_RANGE",
+    ):
+        if token not in stablehlo_test_text:
+            errors.append(f"StableHLO subset test missing token {token!r}")
+    lowering_text = LOWERING.read_text()
+    runtime_test_text = RUNTIME_TEST.read_text()
+    for token in (
+        "LoweredStableHloModuleResult",
+        "LoweredBatchMatmulResult",
+        "lower_batch_matmul_smoke",
+        "lower_conv2d_smoke",
+        "lower_residual_add_smoke",
+        "lower_bias_add_smoke",
+        "lower_mlp_smoke",
+        "lower_attention_qk_smoke",
+        "lower_attention_av_smoke",
+        "SUPPORTED_BATCH_MATMUL_SCHEMA",
+        "SUPPORTED_CONV2D_SCHEMA",
+        "lower_stablehlo_module_smoke",
+        "materialize_module_lowering_graphs",
+        "host_iterates_batch_heads",
+        "dispatch_order",
+        "lowering_plans",
+        "all_npu_dispatch",
+        "stablehlo_smoke_module_dispatch_only_not_mlir_pipeline_graph_partitioner",
+        "lower_fp8_matmul_smoke",
+        "host_materializes_im2col",
+        "lower_sparse_int4_matmul_smoke",
+        "lower_group_scaled_int4_matmul_smoke",
+        "stablehlo.attention_qk",
+        "stablehlo.attention_av",
+    ):
+        if token not in lowering_text:
+            errors.append(f"StableHLO module smoke dispatch missing token {token!r}")
+    for token in (
+        "test_stablehlo_module_smoke_dispatches_materialized_dot_graphs_without_cpu_fallback",
+        "test_batch_matmul_smoke_reuses_tiled_matmul_without_cpu_fallback",
+        "test_stablehlo_module_smoke_dispatches_batch_matmul_graph_without_cpu_fallback",
+        "test_stablehlo_module_smoke_dispatches_convolution_graph_without_cpu_fallback",
+        "test_stablehlo_module_smoke_dispatches_add_and_bias_add_without_cpu_fallback",
+        "test_stablehlo_module_smoke_dispatches_mlp_without_cpu_fallback",
+        "test_stablehlo_module_smoke_dispatches_attention_qk_and_av_without_cpu_fallback",
+        "test_batch_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio",
+        "test_stablehlo_module_smoke_rejects_invalid_import_before_touching_mmio",
+        "DUPLICATE_OP_NAME",
+    ):
+        if token not in runtime_test_text:
+            errors.append(f"StableHLO module smoke dispatch test missing token {token!r}")
 
     current = contract.get("current_capability", {})
     if current.get("classification") != "L0_RTL_UNIT":
@@ -164,10 +391,11 @@ def main() -> int:
     for required in ("INT4", "INT8", "INT2", "FP16", "BF16", "FP8"):
         if required not in precision:
             errors.append(f"runtime precision matrix missing {required}")
-    for blocked in ("FP16", "BF16"):
-        if precision.get(blocked) != "blocked":
+    for scalar_float16 in ("FP16", "BF16"):
+        if precision.get(scalar_float16) != "supported":
             errors.append(
-                f"runtime must report {blocked} as blocked, got {precision.get(blocked)!r}"
+                f"runtime must report {scalar_float16} scalar Q8.8 smoke as supported, "
+                f"got {precision.get(scalar_float16)!r}"
             )
     if precision.get("FP8") != "supported":
         errors.append(f"runtime must report FP8 as supported, got {precision.get('FP8')!r}")
@@ -184,6 +412,8 @@ def main() -> int:
             header_text,
         )
     }
+    register_followups = contract.get("mmio", {}).get("register_followups", {})
+    bsp_header_pending = set(register_followups.get("bsp_header_pending", []))
     for name, offset in registers.items():
         if name.startswith("PERF_") and name not in arch_text:
             errors.append(f"architecture doc missing perf register {name}")
@@ -192,12 +422,126 @@ def main() -> int:
         header_name = {
             "DEBUG": "TRACE",
         }.get(name, name)
+        if name in bsp_header_pending:
+            # BSP header parity for the new perf counters lands in a follow-up
+            # commit owned by the BSP/platform scope; runtime + RTL + arch doc
+            # still have to agree on the offset here.
+            continue
         actual_offset = header_offsets.get(header_name)
         if actual_offset != hex_to_int(offset):
             errors.append(f"BSP header E1_NPU_{header_name}_OFFSET {actual_offset!r} != {offset}")
         generated_token = f"#define E1_NPU_{header_name}_OFFSET 0x{hex_to_int(offset):02X}UL"
         if generated_token not in generated_header_text:
             errors.append(f"generated platform header missing {generated_token}")
+
+    perf_added = contract.get("perf_counters_added", {})
+    added_entries = {entry.get("name"): entry for entry in perf_added.get("entries", [])}
+    expected_added = {
+        "PERF_STALL_CYCLES": "0x74",
+        "PERF_SCRATCH_BYTES": "0x78",
+        "PERF_THERMAL_THROTTLE": "0x7c",
+    }
+    for counter_name, expected_offset in expected_added.items():
+        if counter_name not in registers:
+            errors.append(f"contract mmio.registers missing {counter_name}")
+        elif registers[counter_name] != expected_offset:
+            errors.append(
+                f"contract mmio.registers {counter_name}={registers[counter_name]!r} "
+                f"!= {expected_offset!r}"
+            )
+        entry = added_entries.get(counter_name)
+        if entry is None:
+            errors.append(f"contract perf_counters_added missing {counter_name}")
+            continue
+        if entry.get("offset") != expected_offset:
+            errors.append(
+                f"contract perf_counters_added {counter_name} offset mismatch: "
+                f"{entry.get('offset')!r} != {expected_offset!r}"
+            )
+        if counter_name not in arch_text:
+            errors.append(f"architecture doc missing perf counter {counter_name}")
+        runtime_const = getattr(runtime, counter_name, None)
+        if runtime_const != base + hex_to_int(expected_offset):
+            errors.append(
+                f"runtime {counter_name} address {runtime_const!r} "
+                f"!= contract base + {expected_offset}"
+            )
+    if expected_added.keys() - bsp_header_pending:
+        errors.append(
+            "mmio.register_followups.bsp_header_pending must list every "
+            "newly added perf counter while the BSP header parity is a follow-up"
+        )
+    thermal_entry = added_entries.get("PERF_THERMAL_THROTTLE", {})
+    if "simulation_only" not in str(thermal_entry.get("claim_boundary", "")):
+        errors.append(
+            "PERF_THERMAL_THROTTLE must keep a simulation-only claim boundary "
+            "until a thermal HAL drives it"
+        )
+
+    dot16_modes = contract.get("dot16_s2_modes", {})
+    ternary_mode = dot16_modes.get("ternary", {})
+    if ternary_mode.get("cmd_param_flag") != "CMD_PARAM[1]=1":
+        errors.append("contract dot16_s2_modes.ternary must declare CMD_PARAM[1]=1 selector")
+    if "0b00=0" not in ternary_mode.get("lane_encoding", ""):
+        errors.append(
+            "contract dot16_s2_modes.ternary lane_encoding must document the "
+            "0b00=0/0b01=+1/0b10=-1/0b11=reserved decode"
+        )
+    if "fails closed" not in ternary_mode.get("reserved_encoding_behavior", ""):
+        errors.append(
+            "contract dot16_s2_modes.ternary must declare fail-closed rejection "
+            "for the reserved 0b11 encoding"
+        )
+    if (
+        ternary_mode.get("claim_boundary")
+        != "bitnet_ternary_prototype_dot16_only_not_tensor_int2_gemm_or_bitnet_compiler_backend"
+    ):
+        errors.append("contract dot16_s2_modes.ternary claim boundary must remain prototype-only")
+    cmd_param_flags = contract.get("cmd_param_flags", {})
+    if cmd_param_flags.get("DOT16_TERNARY") != "0x2":
+        errors.append("contract cmd_param_flags.DOT16_TERNARY must be 0x2")
+    if cmd_param_flags.get("DESC_SUBMIT") != "0x1":
+        errors.append("contract cmd_param_flags.DESC_SUBMIT must be 0x1")
+    if getattr(runtime, "CMD_PARAM_DOT16_TERNARY", None) != 0x2:
+        errors.append("runtime must expose CMD_PARAM_DOT16_TERNARY = 0x2")
+    if getattr(runtime, "CMD_PARAM_DESC_SUBMIT", None) != 0x1:
+        errors.append("runtime must expose CMD_PARAM_DESC_SUBMIT = 0x1")
+    if not hasattr(runtime, "dot16_ternary"):
+        errors.append("runtime must expose dot16_ternary helper")
+    if not hasattr(runtime, "extended_perf"):
+        errors.append("runtime must expose extended_perf for new counters")
+    if not hasattr(runtime, "increment_thermal_throttle"):
+        errors.append(
+            "runtime must expose increment_thermal_throttle to drive the "
+            "simulation-only thermal latch"
+        )
+    probe_writes.clear()
+    instance.dot16_ternary([0] * 16, [0] * 16)
+    if (runtime.CMD_PARAM, runtime.CMD_PARAM_DOT16_TERNARY) not in probe_writes:
+        errors.append("dot16_ternary must arm CMD_PARAM[1]")
+    if (runtime.OPCODE, runtime.OP_DOT16_S2) not in probe_writes:
+        errors.append("dot16_ternary must submit OP_DOT16_S2")
+    extended_keys = set(instance.extended_perf())
+    required_extended = {"stall_cycles", "scratch_bytes", "thermal_throttle"}
+    if extended_keys != required_extended:
+        errors.append(
+            f"runtime extended_perf keys {sorted(extended_keys)} != {sorted(required_extended)}"
+        )
+    contract_precision_matrix = {
+        entry.get("precision"): entry
+        for entry in contract.get("precision_matrix", [])
+        if isinstance(entry, dict)
+    }
+    bitnet_entry = contract_precision_matrix.get("BITNET_TERNARY", {})
+    if bitnet_entry.get("state") != "supported_prototype":
+        errors.append("contract precision_matrix must declare BITNET_TERNARY supported_prototype")
+    if (
+        bitnet_entry.get("claim_boundary")
+        != "bitnet_ternary_prototype_dot16_only_not_tensor_int2_gemm_or_bitnet_compiler_backend"
+    ):
+        errors.append(
+            "contract precision_matrix BITNET_TERNARY claim boundary must remain prototype-only"
+        )
 
     for name in ("DESC_BASE", "DESC_HEAD", "DESC_TAIL", "DESC_STATUS", "CMD_PARAM"):
         token = f"E1_NPU_{name}_OFFSET"
@@ -249,7 +593,6 @@ def main() -> int:
         errors.append("matmul lowering smoke tile_shape_limit must match current GEMM bounds")
     if "accumulates int32 split-K partial outputs" not in str(lowering.get("tiled_dispatch", "")):
         errors.append("matmul lowering smoke must describe bounded M/N/K tiled dispatch")
-    lowering_text = LOWERING.read_text()
     for token in (
         "lower_matmul_smoke",
         "_dispatch_tiled",
@@ -304,6 +647,45 @@ def main() -> int:
     ):
         if token not in lowering_text:
             errors.append(f"sparse INT4 matmul lowering smoke missing token {token!r}")
+
+    group_scaled_int4_lowering = contract.get("group_scaled_int4_matmul_lowering_smoke", {})
+    if group_scaled_int4_lowering.get("runtime_api") != "lower_group_scaled_int4_matmul_smoke":
+        errors.append(
+            "group-scaled INT4 matmul lowering smoke must identify "
+            "lower_group_scaled_int4_matmul_smoke"
+        )
+    if (
+        group_scaled_int4_lowering.get("claim_boundary")
+        != "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend"
+    ):
+        errors.append(
+            "group-scaled INT4 matmul lowering smoke claim boundary must remain scalar-only"
+        )
+    if set(group_scaled_int4_lowering.get("supported_precisions", [])) != {
+        "int4_group_scaled",
+        "group_scaled_int4",
+        "w4a8_gs",
+    }:
+        errors.append(
+            "group-scaled INT4 matmul lowering smoke must be limited to group-scaled INT4"
+        )
+    for required in ("signed Q8.8 per-group scales", "MUL_LO", "ADD"):
+        if required not in str(group_scaled_int4_lowering.get("lowering", "")):
+            errors.append(f"group-scaled INT4 matmul contract missing {required!r}")
+    for token in (
+        "SUPPORTED_GROUP_SCALED_INT4_MATMUL_SCHEMA",
+        "lower_group_scaled_int4_matmul_smoke",
+        "_validate_group_scaled_int4_matmul_shape",
+        "host_applies_group_scales",
+        "host_uses_q8_8_scales",
+        "group_dot_products",
+        "scales_q8_8",
+        "eliza.group_scaled_int4_matmul",
+        "eliza.awq_int4_matmul",
+        "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"group-scaled INT4 matmul lowering smoke missing token {token!r}")
 
     int2_matmul_lowering = contract.get("int2_matmul_lowering_smoke", {})
     if int2_matmul_lowering.get("runtime_api") != "lower_int2_matmul_smoke":
@@ -361,6 +743,52 @@ def main() -> int:
         if token not in lowering_text:
             errors.append(f"FP8 matmul lowering smoke missing token {token!r}")
 
+    fp16_matmul_lowering = contract.get("fp16_matmul_lowering_smoke", {})
+    if fp16_matmul_lowering.get("runtime_api") != "lower_fp16_matmul_smoke":
+        errors.append("FP16 matmul lowering smoke must identify lower_fp16_matmul_smoke")
+    if (
+        fp16_matmul_lowering.get("claim_boundary")
+        != "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend"
+    ):
+        errors.append("FP16 matmul lowering smoke claim boundary must remain scalar-Q8.8-only")
+    if set(fp16_matmul_lowering.get("supported_precisions", [])) != {"fp16", "float16"}:
+        errors.append("FP16 matmul lowering smoke must be limited to fp16/float16")
+    for required in ("converts finite normal/zero values to signed Q8.8", "MUL_LO", "ADD"):
+        if required not in str(fp16_matmul_lowering.get("lowering", "")):
+            errors.append(f"FP16 matmul contract missing {required!r}")
+
+    bf16_matmul_lowering = contract.get("bf16_matmul_lowering_smoke", {})
+    if bf16_matmul_lowering.get("runtime_api") != "lower_bf16_matmul_smoke":
+        errors.append("BF16 matmul lowering smoke must identify lower_bf16_matmul_smoke")
+    if (
+        bf16_matmul_lowering.get("claim_boundary")
+        != "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend"
+    ):
+        errors.append("BF16 matmul lowering smoke claim boundary must remain scalar-Q8.8-only")
+    if set(bf16_matmul_lowering.get("supported_precisions", [])) != {"bf16", "bfloat16"}:
+        errors.append("BF16 matmul lowering smoke must be limited to bf16/bfloat16")
+    for required in ("converts finite normal/zero values to signed Q8.8", "MUL_LO", "ADD"):
+        if required not in str(bf16_matmul_lowering.get("lowering", "")):
+            errors.append(f"BF16 matmul contract missing {required!r}")
+    for token in (
+        "SUPPORTED_FP16_MATMUL_SCHEMA",
+        "SUPPORTED_BF16_MATMUL_SCHEMA",
+        "lower_fp16_matmul_smoke",
+        "lower_bf16_matmul_smoke",
+        "_fp16_bits_to_q8_8",
+        "_bf16_bits_to_q8_8",
+        "runtime.mul_lo",
+        "runtime.add",
+        "host_converts_float16_to_q8_8",
+        "host_requantizes_products",
+        "eliza.fp16_matmul",
+        "eliza.bf16_matmul",
+        "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend",
+        "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"FP16/BF16 matmul lowering smoke missing token {token!r}")
+
     conv2d_lowering = contract.get("conv2d_lowering_smoke", {})
     if conv2d_lowering.get("runtime_api") != "lower_conv2d_smoke":
         errors.append("conv2d lowering smoke must identify lower_conv2d_smoke runtime API")
@@ -389,6 +817,77 @@ def main() -> int:
         if token not in lowering_text:
             errors.append(f"conv2d lowering smoke missing token {token!r}")
 
+    depthwise_conv2d_lowering = contract.get("depthwise_conv2d_lowering_smoke", {})
+    if depthwise_conv2d_lowering.get("runtime_api") != "lower_depthwise_conv2d_smoke":
+        errors.append(
+            "depthwise conv2d lowering smoke must identify lower_depthwise_conv2d_smoke runtime API"
+        )
+    if (
+        depthwise_conv2d_lowering.get("claim_boundary")
+        != "depthwise_conv2d_direct_scalar_smoke_only_not_vector_depthwise_or_production_compiler_backend"
+    ):
+        errors.append(
+            "depthwise conv2d lowering smoke claim boundary must remain vector/backend blocked"
+        )
+    if set(depthwise_conv2d_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("depthwise conv2d lowering smoke must be limited to int8")
+    depthwise_layout = depthwise_conv2d_lowering.get("layout", {})
+    if depthwise_layout.get("input") != "NHWC" or depthwise_layout.get("filter") != "HWCM":
+        errors.append("depthwise conv2d lowering smoke must document NHWC/HWCM layout")
+    depthwise_lowering = str(depthwise_conv2d_lowering.get("lowering", ""))
+    for required in ("OP_MUL_LO", "OP_ADD", "without im2col"):
+        if required not in depthwise_lowering:
+            errors.append(f"depthwise conv2d contract missing {required!r}")
+    for token in (
+        "lower_depthwise_conv2d_smoke",
+        "_validate_depthwise_conv2d_shape",
+        "_depthwise_conv2d_direct",
+        "_golden_depthwise_conv2d",
+        "host_uses_direct_depthwise_loops",
+        "host_materializes_im2col=False",
+        "stablehlo.depthwise_convolution",
+        "tflite.depthwise_conv_2d",
+        "eliza.depthwise_conv2d",
+        "depthwise_conv2d_direct_scalar_smoke_only_not_vector_depthwise_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"depthwise conv2d lowering smoke missing token {token!r}")
+
+    grouped_conv2d_lowering = contract.get("grouped_conv2d_lowering_smoke", {})
+    if grouped_conv2d_lowering.get("runtime_api") != "lower_grouped_conv2d_smoke":
+        errors.append(
+            "grouped conv2d lowering smoke must identify lower_grouped_conv2d_smoke runtime API"
+        )
+    if (
+        grouped_conv2d_lowering.get("claim_boundary")
+        != "grouped_conv2d_direct_scalar_smoke_only_not_vector_grouped_conv_or_production_compiler_backend"
+    ):
+        errors.append(
+            "grouped conv2d lowering smoke claim boundary must remain vector/backend blocked"
+        )
+    if set(grouped_conv2d_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("grouped conv2d lowering smoke must be limited to int8")
+    grouped_layout = grouped_conv2d_lowering.get("layout", {})
+    if grouped_layout.get("input") != "NHWC" or grouped_layout.get("filter") != "HWIO":
+        errors.append("grouped conv2d lowering smoke must document NHWC/HWIO layout")
+    grouped_lowering = str(grouped_conv2d_lowering.get("lowering", ""))
+    for required in ("OP_MUL_LO", "OP_ADD", "without im2col", "groups"):
+        if required not in grouped_lowering:
+            errors.append(f"grouped conv2d contract missing {required!r}")
+    for token in (
+        "lower_grouped_conv2d_smoke",
+        "_validate_grouped_conv2d_shape",
+        "_grouped_conv2d_direct",
+        "_golden_grouped_conv2d",
+        "host_uses_direct_grouped_loops",
+        "host_materializes_im2col=False",
+        "SUPPORTED_GROUPED_CONV2D_OPS",
+        "eliza.grouped_conv2d",
+        "grouped_conv2d_direct_scalar_smoke_only_not_vector_grouped_conv_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"grouped conv2d lowering smoke missing token {token!r}")
+
     attention_qk_lowering = contract.get("attention_qk_lowering_smoke", {})
     if attention_qk_lowering.get("runtime_api") != "lower_attention_qk_smoke":
         errors.append(
@@ -410,6 +909,7 @@ def main() -> int:
         "_validate_attention_qk_shape",
         "host_transposes_keys",
         "host_iterates_heads",
+        "stablehlo.attention_qk",
         "stablehlo.dot_general",
         "tflite.batch_matmul",
         "eliza.attention_qk",
@@ -475,6 +975,7 @@ def main() -> int:
         "_validate_attention_av_shape",
         "requires_prequantized_attention",
         "host_iterates_heads",
+        "stablehlo.attention_av",
         "stablehlo.dot_general",
         "tflite.batch_matmul",
         "eliza.attention_av",
@@ -496,6 +997,7 @@ def main() -> int:
     attention_lowering_text = str(attention_lowering.get("lowering", ""))
     for required in (
         "lower_attention_qk_smoke",
+        "optional host-generated causal or sliding_window mask_mode",
         "lower_attention_softmax_smoke",
         "lower_attention_av_smoke",
         "host QK-score requantization",
@@ -507,9 +1009,15 @@ def main() -> int:
         "SUPPORTED_ATTENTION_SCHEMA",
         "lower_attention_smoke",
         "_zero_attention_logits",
+        "_causal_attention_mask",
+        "_sliding_window_attention_mask",
+        "mask_mode",
+        "mask_window",
         "computes_qk_scores",
         "computes_attention_softmax",
         "requires_prequantized_attention",
+        "host_generates_causal_mask",
+        "host_generates_sliding_window_mask",
         "host_requantizes_qk_scores",
         "host_requantizes_attention_weights",
         "host_requantizes_context",
@@ -549,6 +1057,41 @@ def main() -> int:
         if token not in lowering_text:
             errors.append(f"kv_cache_update lowering smoke missing token {token!r}")
 
+    qkv_projection_lowering = contract.get("qkv_projection_lowering_smoke", {})
+    if qkv_projection_lowering.get("runtime_api") != "lower_qkv_projection_smoke":
+        errors.append("qkv_projection lowering smoke must identify lower_qkv_projection_smoke")
+    if (
+        qkv_projection_lowering.get("claim_boundary")
+        != "qkv_projection_packed_gemm_smoke_only_not_fused_attention_or_production_compiler_backend"
+    ):
+        errors.append("qkv_projection claim boundary must remain packed-projection-smoke-only")
+    if set(qkv_projection_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("qkv_projection lowering smoke must be limited to int8")
+    qkv_projection_text = str(qkv_projection_lowering.get("lowering", ""))
+    for required in (
+        "lower_matmul_smoke",
+        "slices the packed accumulator into Q/K/V",
+        "host-side Q/K/V requantization",
+    ):
+        if required not in qkv_projection_text:
+            errors.append(f"qkv_projection contract missing {required!r}")
+    for token in (
+        "SUPPORTED_QKV_PROJECTION_SCHEMA",
+        "SUPPORTED_QKV_PROJECTION_OPS",
+        "lower_qkv_projection_smoke",
+        "_validate_qkv_projection_shape",
+        "_slice_columns",
+        "packed_accumulator",
+        "host_slices_packed_qkv",
+        "host_requantizes_qkv",
+        "eliza.qkv_projection",
+        "stablehlo.qkv_projection",
+        "tflite.qkv_projection",
+        "qkv_projection_packed_gemm_smoke_only_not_fused_attention_or_production_compiler_backend",
+    ):
+        if token not in lowering_text:
+            errors.append(f"qkv_projection lowering smoke missing token {token!r}")
+
     decode_attention_lowering = contract.get("decode_attention_lowering_smoke", {})
     if decode_attention_lowering.get("runtime_api") != "lower_decode_attention_smoke":
         errors.append("decode_attention lowering smoke must identify lower_decode_attention_smoke")
@@ -563,6 +1106,7 @@ def main() -> int:
     for required in (
         "lower_kv_cache_update_smoke",
         "host cache-view materialization",
+        "optional cache_window recent-token compaction",
         "lower_attention_smoke",
     ):
         if required not in decode_attention_text:
@@ -574,6 +1118,9 @@ def main() -> int:
         "updates_kv_cache",
         "computes_attention_over_cache",
         "host_materializes_cache_view",
+        "host_applies_decode_cache_window",
+        "decode_cache_window",
+        "cache_window",
         "eliza.decode_attention",
         "stablehlo.decode_attention",
         "tflite.decode_attention",
@@ -624,6 +1171,8 @@ def main() -> int:
         "lower_swiglu_smoke",
         "_validate_swiglu_shape",
         "_golden_swiglu_hidden",
+        "gate_activated",
+        "gate_activation_result",
         "host_applies_gate_shift_and_saturation",
         "runtime.mul_lo",
         "stablehlo.swiglu",
@@ -633,6 +1182,98 @@ def main() -> int:
     ):
         if token not in lowering_text:
             errors.append(f"SwiGLU lowering smoke missing token {token!r}")
+
+    swiglu_silu_lowering = contract.get("swiglu_silu_gate_lowering_smoke", {})
+    if swiglu_silu_lowering.get("runtime_api") != "lower_swiglu_smoke":
+        errors.append("SwiGLU SiLU-gate smoke must identify lower_swiglu_smoke runtime API")
+    if swiglu_silu_lowering.get("activation") != "silu":
+        errors.append("SwiGLU SiLU-gate smoke must identify silu activation")
+    if (
+        swiglu_silu_lowering.get("claim_boundary")
+        != "swiglu_s8_silu_gate_smoke_only_not_fused_vector_swiglu_or_production_compiler_backend"
+    ):
+        errors.append("SwiGLU SiLU-gate smoke claim boundary must remain fused-vector blocked")
+    if set(swiglu_silu_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("SwiGLU SiLU-gate smoke must be limited to int8")
+    swiglu_silu_lowering_text = str(swiglu_silu_lowering.get("lowering", ""))
+    for required in ("lower_silu_smoke", "EXP2_NEG_Q0_8", "OP_SUB", "OP_MUL_LO"):
+        if required not in swiglu_silu_lowering_text:
+            errors.append(f"SwiGLU SiLU-gate smoke contract missing {required!r}")
+    for token in (
+        "swiglu_s8_silu_gate_smoke_only_not_fused_vector_swiglu_or_production_compiler_backend",
+        'activation in {"silu", "swiglu_silu"}',
+        "gate_activated",
+        "gate_activation_result",
+        "lower_silu_smoke",
+    ):
+        if token not in lowering_text:
+            errors.append(f"SwiGLU SiLU-gate smoke missing token {token!r}")
+
+    silu_lowering = contract.get("silu_lowering_smoke", {})
+    if silu_lowering.get("runtime_api") != "lower_silu_smoke":
+        errors.append("SiLU lowering smoke must identify lower_silu_smoke runtime API")
+    if (
+        silu_lowering.get("claim_boundary")
+        != "silu_s8_exp2_piecewise_smoke_only_not_exact_sigmoid_or_vector_activation"
+    ):
+        errors.append("SiLU lowering smoke claim boundary must remain approximation-only")
+    if set(silu_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("SiLU lowering smoke must be limited to int8")
+    silu_lowering_text = str(silu_lowering.get("lowering", ""))
+    for required in ("EXP2_NEG_Q0_8", "OP_SUB", "OP_MUL_LO", "Q0.8 shift"):
+        if required not in silu_lowering_text:
+            errors.append(f"SiLU lowering smoke contract missing {required!r}")
+    for token in (
+        "SUPPORTED_SILU_SCHEMA",
+        "SUPPORTED_SILU_OPS",
+        "lower_silu_smoke",
+        "_silu_s8_scalar_approx",
+        "_golden_silu_s8_approx",
+        "runtime.exp2_neg_q0_8",
+        "runtime.sub",
+        "runtime.mul_lo",
+        "host_applies_shift_and_saturation",
+        "stablehlo.silu",
+        "tflite.silu",
+        "eliza.silu",
+        "silu_s8_exp2_piecewise_smoke_only_not_exact_sigmoid_or_vector_activation",
+    ):
+        if token not in lowering_text:
+            errors.append(f"SiLU lowering smoke missing token {token!r}")
+
+    gelu_lowering = contract.get("gelu_lowering_smoke", {})
+    if gelu_lowering.get("runtime_api") != "lower_gelu_smoke":
+        errors.append("GELU lowering smoke must identify lower_gelu_smoke runtime API")
+    if (
+        gelu_lowering.get("claim_boundary")
+        != "gelu_s8_quick_exp2_piecewise_smoke_only_not_exact_gelu_or_vector_activation"
+    ):
+        errors.append("GELU lowering smoke claim boundary must remain approximation-only")
+    if set(gelu_lowering.get("supported_precisions", [])) != {"int8"}:
+        errors.append("GELU lowering smoke must be limited to int8")
+    gelu_lowering_text = str(gelu_lowering.get("lowering", ""))
+    for required in ("OP_MUL_LO", "EXP2_NEG_Q0_8", "OP_SUB", "Q0.8 shift"):
+        if required not in gelu_lowering_text:
+            errors.append(f"GELU lowering smoke contract missing {required!r}")
+    for token in (
+        "SUPPORTED_GELU_SCHEMA",
+        "SUPPORTED_GELU_OPS",
+        "lower_gelu_smoke",
+        "_quick_gelu_s8_scalar_approx",
+        "_golden_quick_gelu_s8_approx",
+        "runtime.exp2_neg_q0_8",
+        "runtime.sub",
+        "runtime.mul_lo",
+        "scalar_scale_mul_count",
+        "scalar_gate_mul_count",
+        "host_applies_shift_and_saturation",
+        "stablehlo.gelu",
+        "tflite.gelu",
+        "eliza.quick_gelu",
+        "gelu_s8_quick_exp2_piecewise_smoke_only_not_exact_gelu_or_vector_activation",
+    ):
+        if token not in lowering_text:
+            errors.append(f"GELU lowering smoke missing token {token!r}")
 
     bias_add_lowering = contract.get("bias_add_lowering_smoke", {})
     if bias_add_lowering.get("runtime_api") != "lower_bias_add_smoke":
@@ -653,6 +1294,7 @@ def main() -> int:
         "host_saturates_int8",
         "scalar_add_count",
         "stablehlo.add",
+        "stablehlo.bias_add",
         "tflite.add",
         "eliza.bias_add",
         "bias_add_s8_scalar_broadcast_smoke_only_not_vector_or_production_compiler_backend",
@@ -680,6 +1322,7 @@ def main() -> int:
         "host_saturates_int8",
         "scalar_add_count",
         "stablehlo.add",
+        "stablehlo.residual_add",
         "tflite.add",
         "eliza.residual_add",
         "residual_add_s8_scalar_smoke_only_not_vector_or_production_compiler_backend",
@@ -737,7 +1380,11 @@ def main() -> int:
         "lower_attention_qk_smoke",
         "lower_attention_softmax_smoke",
         "lower_attention_av_smoke",
+        "lower_qkv_projection_smoke",
+        "host Q/K/V slicing",
         "lower_swiglu_smoke",
+        "optional SiLU-gated swiglu_activation",
+        "optional host-generated causal or sliding_window attention_mask_mode",
         "host QK-score requantization",
         "host Q0.8 attention-weight requantization",
     ):
@@ -750,6 +1397,15 @@ def main() -> int:
         "computes_qk_scores",
         "computes_attention_softmax",
         "requires_prequantized_attention",
+        "attention_mask_mode",
+        "attention_mask_window",
+        "host_generates_causal_mask",
+        "host_generates_sliding_window_mask",
+        "packed_qkv_weight",
+        "qkv_projection",
+        "host_slices_packed_qkv",
+        "swiglu_activation",
+        "gate_activation_result",
         "host_requantizes_qkv",
         "host_requantizes_qk_scores",
         "host_requantizes_attention_weights",
@@ -855,9 +1511,15 @@ def main() -> int:
         for entry in contract.get("precision_matrix", [])
         if isinstance(entry, dict)
     }
-    for blocked in ("FP16", "BF16"):
-        if contract_precision.get(blocked) != "blocked":
-            errors.append(f"contract precision matrix must keep {blocked} blocked")
+    for scalar_float16 in ("FP16", "BF16"):
+        if contract_precision.get(scalar_float16) != "supported_prototype":
+            errors.append(
+                f"contract precision matrix must identify {scalar_float16} supported_prototype"
+            )
+    if contract_precision.get("INT4_GROUP_SCALED") != "supported_prototype":
+        errors.append(
+            "contract precision matrix must identify INT4_GROUP_SCALED supported_prototype"
+        )
     if contract_precision.get("FP8") != "supported_prototype":
         errors.append("contract precision matrix must identify FP8 supported_prototype")
     descriptor_queue = contract.get("descriptor_queue_submission", {})
@@ -879,6 +1541,169 @@ def main() -> int:
         if token not in descriptor_queue.get("required_error_reporting", []):
             errors.append(f"descriptor queue error reporting missing {token}")
 
+    command_buffer = contract.get("command_buffer_submission", {})
+    if command_buffer.get("runtime_api") != "submit":
+        errors.append("command buffer submission must identify submit runtime API")
+    if command_buffer.get("state") != "runtime_descriptor_batching":
+        errors.append("command buffer submission must describe runtime_descriptor_batching")
+    if command_buffer.get("descriptor_type") != "NpuStreamDescriptor":
+        errors.append("command buffer submission must use NpuStreamDescriptor entries")
+    if command_buffer.get("max_entries") != 7:
+        errors.append("command buffer submission must stay within the 3-bit RTL ring window")
+    if command_buffer.get("descriptor_bytes") != 16:
+        errors.append("command buffer submission must document four-word descriptors")
+    if (
+        command_buffer.get("claim_boundary")
+        != "command_buffer_descriptor_batching_smoke_only_not_scheduler_iommu_or_production_dma_runtime"
+    ):
+        errors.append("command buffer claim boundary must remain smoke-only")
+    command_buffer_text = COMMAND_BUFFER_TEST.read_text()
+    runtime_text = RUNTIME.read_text()
+    for token in (
+        "CommandBuffer",
+        "descriptor_image",
+        "stage",
+        "NpuStreamDescriptor",
+        "submit",
+        "MAX_ENTRIES",
+        "DESCRIPTOR_BYTES",
+    ):
+        if token not in runtime_text:
+            errors.append(f"runtime command buffer missing token {token!r}")
+    for token in (
+        "test_command_buffer_descriptor_image_is_word_addressed_and_contiguous",
+        "test_command_buffer_stage_writes_descriptor_image_once",
+        "test_command_buffer_stage_rejects_invalid_writer_and_empty_buffer",
+        "test_runtime_submit_dispatches_multi_entry_buffer_with_one_completion_wait",
+        "NpuDescriptorSubmission",
+    ):
+        if token not in command_buffer_text:
+            errors.append(f"command buffer test missing token {token!r}")
+
+    partition_batches = contract.get("partitioner_command_buffer_batches", {})
+    if partition_batches.get("module") != "compiler/runtime/e1_npu_partitioner.py":
+        errors.append("partitioner command-buffer batches must identify e1_npu_partitioner.py")
+    if partition_batches.get("state") != "contiguous_supported_op_batching":
+        errors.append("partitioner command-buffer batches must describe contiguous batching")
+    if partition_batches.get("uses") != "CommandBuffer.MAX_ENTRIES":
+        errors.append("partitioner command-buffer batches must use CommandBuffer.MAX_ENTRIES")
+    if (
+        partition_batches.get("claim_boundary")
+        != "partitioner_command_buffer_batching_smoke_only_not_dependency_scheduler"
+    ):
+        errors.append("partitioner command-buffer batching claim boundary must remain smoke-only")
+    partitioner_text = PARTITIONER.read_text()
+    partitioner_test_text = PARTITIONER_TEST.read_text()
+    for token in (
+        "PartitionCommandBufferBatch",
+        "command_buffer_batches",
+        "CommandBuffer.MAX_ENTRIES",
+        "TensorArenaPlan",
+        "TensorArenaAllocation",
+        "tensor_arena_plan",
+        "eliza.e1_npu_tensor_arena_plan.v1",
+        "tensor_arena_metadata_only_not_lifetime_allocator_or_dma_planner",
+        "RuntimeBindingPlan",
+        "RuntimeTensorBinding",
+        "RuntimeUnresolvedBinding",
+        "runtime_binding_plan",
+        "eliza.e1_npu_runtime_binding_plan.v1",
+        "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen",
+        "descriptor_codegen_ready",
+        "unresolved_inputs",
+        "descriptor_slots",
+        "partitioner_command_buffer_batching_smoke_only_not_dependency_scheduler",
+    ):
+        if token not in partitioner_text:
+            errors.append(f"partitioner command-buffer batching missing token {token!r}")
+    for token in (
+        "test_partition_report_groups_contiguous_supported_ops_into_command_buffer_batches",
+        "test_partition_report_does_not_batch_across_cpu_fallback_ops",
+        "test_partition_report_emits_runtime_binding_plan_from_arena_offsets",
+        "test_partition_report_runtime_binding_plan_records_unresolved_metadata_fields",
+        "PartitionCommandBufferBatch",
+    ):
+        if token not in partitioner_test_text:
+            errors.append(f"partitioner command-buffer test missing token {token!r}")
+
+    delegate_preprocess = contract.get("delegate_command_buffer_preprocess", {})
+    if delegate_preprocess.get("state") != "prototype_delegate_blob_includes_partitioner_batches":
+        errors.append("delegate command-buffer preprocess must describe prototype batch blobs")
+    if (
+        delegate_preprocess.get("claim_boundary")
+        != "delegate_preprocess_command_buffer_metadata_only_not_binary_kernels_or_android_delegate"
+    ):
+        errors.append("delegate command-buffer preprocess claim boundary must remain metadata-only")
+    if set(delegate_preprocess.get("modules", [])) != {
+        "compiler/runtime/e1_executorch_delegate.py",
+        "compiler/runtime/e1_litert_delegate.py",
+    }:
+        errors.append("delegate command-buffer preprocess must cover ExecuTorch and LiteRT")
+    executorch_text = EXECUTORCH_DELEGATE.read_text()
+    executorch_test_text = EXECUTORCH_DELEGATE_TEST.read_text()
+    litert_text = LITERT_DELEGATE.read_text()
+    litert_test_text = LITERT_DELEGATE_TEST.read_text()
+    for token, text, label in (
+        ("command_buffer_batches", executorch_text, "ExecuTorch delegate"),
+        ("tensor_arena_plan", executorch_text, "ExecuTorch delegate"),
+        ("runtime_binding_plan", executorch_text, "ExecuTorch delegate"),
+        ("descriptor_codegen_ready", executorch_test_text, "ExecuTorch delegate test"),
+        ("unresolved_inputs", executorch_test_text, "ExecuTorch delegate test"),
+        ("partition_report.command_buffer_batches", executorch_text, "ExecuTorch delegate"),
+        ("partition_report.tensor_arena_plan", executorch_text, "ExecuTorch delegate"),
+        ("partition_report.runtime_binding_plan", executorch_text, "ExecuTorch delegate"),
+        ("command_buffer_batches", litert_text, "LiteRT delegate"),
+        ("tensor_arena_plan", litert_text, "LiteRT delegate"),
+        ("runtime_binding_plan", litert_text, "LiteRT delegate"),
+        ("descriptor_codegen_ready", litert_test_text, "LiteRT delegate test"),
+        ("partition_report.command_buffer_batches", litert_text, "LiteRT delegate"),
+        ("partition_report.tensor_arena_plan", litert_text, "LiteRT delegate"),
+        ("partition_report.runtime_binding_plan", litert_text, "LiteRT delegate"),
+        ("command_buffer_batches", executorch_test_text, "ExecuTorch delegate test"),
+        ("tensor_arena_plan", executorch_test_text, "ExecuTorch delegate test"),
+        ("runtime_binding_plan", executorch_test_text, "ExecuTorch delegate test"),
+        (
+            "partitioner_command_buffer_batching_smoke_only",
+            executorch_test_text,
+            "ExecuTorch delegate test",
+        ),
+        ("command_buffer_batches", litert_test_text, "LiteRT delegate test"),
+        ("tensor_arena_plan", litert_test_text, "LiteRT delegate test"),
+        ("runtime_binding_plan", litert_test_text, "LiteRT delegate test"),
+        (
+            "partitioner_command_buffer_batching_smoke_only",
+            litert_test_text,
+            "LiteRT delegate test",
+        ),
+    ):
+        if token not in text:
+            errors.append(f"{label} missing token {token!r}")
+
+    delegate_arena = contract.get("delegate_tensor_arena_preprocess", {})
+    if delegate_arena.get("schema") != "eliza.e1_npu_tensor_arena_plan.v1":
+        errors.append("delegate tensor arena preprocess must identify tensor arena schema")
+    if delegate_arena.get("state") != "metadata_only_linear_tensor_arena":
+        errors.append("delegate tensor arena preprocess must remain metadata-only")
+    if (
+        delegate_arena.get("claim_boundary")
+        != "tensor_arena_metadata_only_not_lifetime_allocator_or_dma_planner"
+    ):
+        errors.append("delegate tensor arena claim boundary must remain allocator-blocked")
+
+    runtime_bindings = contract.get("delegate_runtime_binding_preprocess", {})
+    if runtime_bindings.get("schema") != "eliza.e1_npu_runtime_binding_plan.v1":
+        errors.append("delegate runtime binding preprocess must identify runtime binding schema")
+    if runtime_bindings.get("state") != "metadata_only_runtime_field_to_arena_bindings":
+        errors.append("delegate runtime binding preprocess must remain metadata-only")
+    for token in ("descriptor_codegen_ready", "ready_ops", "blocked_ops", "unresolved_inputs"):
+        if token not in runtime_bindings.get("emits", ""):
+            errors.append(f"delegate runtime binding contract missing {token}")
+    if (
+        runtime_bindings.get("claim_boundary")
+        != "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen"
+    ):
+        errors.append("delegate runtime binding claim boundary must remain descriptor-blocked")
+
     runtime_sim_text = RUNTIME_SIM_TEST.read_text()
     for token in (
         "gemm_s8",
@@ -889,16 +1714,22 @@ def main() -> int:
         "golden_vrelu_s8",
         "lower_matmul_smoke",
         "lower_sparse_int4_matmul_smoke",
+        "lower_group_scaled_int4_matmul_smoke",
         "lower_int2_matmul_smoke",
         "lower_fp8_matmul_smoke",
         "lower_conv2d_smoke",
+        "lower_depthwise_conv2d_smoke",
+        "lower_grouped_conv2d_smoke",
         "lower_attention_smoke",
         "lower_attention_qk_smoke",
         "lower_attention_av_smoke",
         "lower_kv_cache_update_smoke",
+        "lower_qkv_projection_smoke",
         "lower_decode_attention_smoke",
         "lower_mlp_smoke",
         "lower_swiglu_smoke",
+        "lower_silu_smoke",
+        "lower_gelu_smoke",
         "lower_bias_add_smoke",
         "lower_residual_add_smoke",
         "lower_transformer_block_smoke",
@@ -908,21 +1739,37 @@ def main() -> int:
         "test_runtime_matmul_smoke_lowering_dispatches_multiple_tiles",
         "test_runtime_matmul_smoke_lowering_split_k_accumulates_npu_partials",
         "test_runtime_sparse_int4_matmul_smoke_dispatches_sdot4_chunks",
+        "test_runtime_group_scaled_int4_matmul_smoke_dispatches_scalar_scale_path",
         "test_runtime_int2_matmul_smoke_dispatches_dot16_chunks",
         "test_runtime_fp8_matmul_smoke_dispatches_dot4_chunks",
+        "test_runtime_fp16_matmul_smoke_dispatches_scalar_q8_8_path",
+        "test_runtime_bf16_matmul_smoke_dispatches_scalar_q8_8_path",
         "test_runtime_conv2d_smoke_lowering_dispatches_im2col_tiles",
+        "test_runtime_depthwise_conv2d_smoke_dispatches_direct_scalar_macs",
+        "test_runtime_grouped_conv2d_smoke_dispatches_direct_scalar_macs",
         "test_runtime_attention_smoke_dispatches_qk_softmax_av",
+        "test_runtime_attention_smoke_dispatches_generated_causal_mask",
+        "test_runtime_attention_smoke_dispatches_generated_sliding_window_mask",
         "test_runtime_attention_qk_smoke_lowering_dispatches_per_head_gemm",
         "test_runtime_attention_softmax_smoke_dispatches_scalar_exp2_path",
         "test_runtime_attention_av_smoke_lowering_dispatches_per_head_gemm",
         "test_runtime_kv_cache_update_smoke_dispatches_scalar_copies",
+        "test_runtime_qkv_projection_smoke_dispatches_packed_gemm_and_slices_qkv",
         "test_runtime_decode_attention_smoke_dispatches_kv_append_and_attention",
+        "test_runtime_decode_attention_smoke_dispatches_recent_cache_window",
         "test_runtime_transformer_mlp_smoke_dispatches_gemm_vrelu_gemm",
         "test_runtime_swiglu_smoke_dispatches_gemm_scalar_gate_gemm",
+        "test_runtime_swiglu_smoke_with_silu_gate_dispatches_exp2_gate_gemm",
+        "test_runtime_silu_smoke_dispatches_exp2_piecewise_scalar_activation",
+        "test_runtime_gelu_smoke_dispatches_quick_exp2_piecewise_scalar_activation",
         "test_runtime_bias_add_smoke_dispatches_broadcast_scalar_adds",
         "test_runtime_residual_add_smoke_dispatches_scalar_adds",
         "test_runtime_transformer_block_smoke_dispatches_composed_primitives",
         "test_runtime_modern_decoder_block_smoke_dispatches_composed_primitives",
+        "test_runtime_modern_decoder_block_smoke_dispatches_packed_qkv_projection",
+        "test_runtime_modern_decoder_block_smoke_dispatches_packed_qkv_silu_swiglu_gate",
+        "test_runtime_modern_decoder_block_smoke_dispatches_generated_causal_mask",
+        "test_runtime_modern_decoder_block_smoke_dispatches_generated_sliding_window_mask",
         "test_runtime_rope_smoke_dispatches_scalar_arithmetic",
         "test_runtime_rmsnorm_smoke_dispatches_scalar_arithmetic",
         "submit_descriptors",
@@ -933,7 +1780,6 @@ def main() -> int:
     ):
         if token not in runtime_sim_text:
             errors.append(f"runtime simulator test missing token {token!r}")
-    runtime_text = RUNTIME.read_text()
     for token in ("DESC_FLAG_VALID_OWNER", "DESC_FLAG_WRITEBACK_REQUEST"):
         if token not in runtime_text:
             errors.append(f"runtime missing descriptor flag token {token!r}")
