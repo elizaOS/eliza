@@ -178,7 +178,7 @@ method remount_liveos_sync () {
 method run () {
     unless ($self->space_available > $self->space_needed) {
         $self->fatal(
-            "There is too little available space on Tails system partition, aborting"
+            "There is too little available space on elizaOS system partition, aborting"
         );
     }
 

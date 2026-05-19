@@ -307,31 +307,57 @@ export function StartupShell() {
     <div
       data-testid="startup-shell-loading"
       data-startup-phase={phase}
-      className="flex items-center justify-center h-full w-full bg-[#ffe600] text-black overflow-hidden"
+      className="fixed inset-0 flex items-center justify-center overflow-hidden bg-[#F7F9FF] text-[#0B35F1]"
+      style={{ fontFamily: FONT }}
     >
       <div
-        className="relative z-10 flex flex-col items-center gap-5 px-6 text-center w-full"
-        style={{ maxWidth: 360 }}
+        aria-hidden="true"
+        className="absolute inset-0"
+        style={{
+          background:
+            "linear-gradient(135deg, #FFFFFF 0%, #F7F9FF 58%, #E9EEFF 100%)",
+        }}
+      />
+      <div
+        aria-hidden="true"
+        className="absolute inset-x-0 bottom-0 h-44"
+        style={{
+          background:
+            "linear-gradient(172deg, transparent 0 36%, rgba(11, 53, 241, 0.08) 36% 100%)",
+        }}
+      />
+      <div
+        className="relative z-10 flex w-full flex-col items-center gap-6 px-6 text-center"
+        style={{ maxWidth: 380 }}
       >
-        {/* Retro segmented progress bar — splash auto-continues to onboarding */}
+        <div className="flex items-center justify-center gap-3">
+          <img
+            src="./brand/favicons/favicon.svg"
+            alt=""
+            aria-hidden="true"
+            className="h-12 w-12"
+          />
+          <span className="text-4xl font-medium leading-none">elizaOS</span>
+        </div>
+
         <div className="w-full mt-2">
-          <div className="h-5 w-full border-2 border-black/70 bg-black/5 overflow-hidden">
+          <div className="h-3 w-full overflow-hidden rounded-full border border-[#0B35F1]/25 bg-white">
             <div
-              className="h-full bg-black/70 transition-all duration-700 ease-out"
+              className="h-full bg-[#0B35F1] transition-all duration-700 ease-out"
               style={{ width: `${progress}%` }}
             >
               <div
                 className="h-full w-full"
                 style={{
                   backgroundImage:
-                    "repeating-linear-gradient(90deg, transparent, transparent 6px, rgba(255,230,0,0.5) 6px, rgba(255,230,0,0.5) 8px)",
+                    "repeating-linear-gradient(90deg, transparent, transparent 8px, rgba(255,255,255,0.38) 8px, rgba(255,255,255,0.38) 10px)",
                 }}
               />
             </div>
           </div>
           <p
             style={{ fontFamily: FONT }}
-            className="mt-2 text-3xs text-black/50 uppercase animate-pulse"
+            className="mt-3 text-sm text-[#0B35F1]/70 animate-pulse"
           >
             {t(phaseToStatusKey(phase))}
           </p>
@@ -347,7 +373,7 @@ export function StartupShell() {
  */
 function BootstrapGateShell({ children }: { children: ReactNode }) {
   return (
-    <div className="relative flex min-h-full w-full flex-col bg-[#ffe600] text-black">
+    <div className="relative flex min-h-full w-full flex-col bg-[#F7F9FF] text-[#0B35F1]">
       <div className="relative z-10 flex flex-1 items-center justify-center px-4 pb-[max(1.5rem,var(--safe-area-bottom,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
         <div className="flex w-full max-w-[32rem] flex-col items-center gap-4">
           {children}

@@ -1,6 +1,6 @@
 [Unit]
-Description=Warn the user if Tails is running inside a virtual machine
-Documentation=https://tails.net/contribute/design/virtualization_support/
+Description=Warn the user if elizaOS is running inside a virtual machine
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 After=tails-wait-until-htpdate-has-succeeded.service
 
 [Service]

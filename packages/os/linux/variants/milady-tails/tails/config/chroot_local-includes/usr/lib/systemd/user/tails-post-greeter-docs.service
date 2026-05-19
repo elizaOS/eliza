@@ -1,6 +1,6 @@
 [Unit]
 Description=Open documentation requested at the Welcome Screen
-Documentation=https://tails.net/doc/first_steps/welcome_screen/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 ConditionUser=1000
 ConditionPathExists=/var/lib/gdm3/post-greeter-docs.url
 

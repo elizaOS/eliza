@@ -2,25 +2,25 @@
    change the color according to the password strength */
 .weak progress {
   background-image: none;
-  background-color: #ff6347;
+  background-color: #c9d6ff;
   border-style: none;
 }
 
 .fair progress {
   background-image: none;
-  background-color: #ffa500;
+  background-color: #9bb0ff;
   border-style: none;
 }
 
 .good progress {
   background-image: none;
-  background-color: #1e90ff;
+  background-color: #4f70f3;
   border-style: none;
 }
 
 .strong progress {
   background-image: none;
-  background-color: #32cd32;
+  background-color: #0b35f1;
   border-style: none;
 }
 

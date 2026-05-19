@@ -7,8 +7,9 @@ engineering docs, not as the primary user-facing brand.
 
 **Same greeter window every boot** — the only thing that changes is
 whether an encrypted persistence partition has been created on the USB.
-Status as of 2026-05-19: this is the intended v1 behavior. A recent ISO
-artifact proved the normal QEMU greeter/desktop/app-service path. Rebuild and
+Status as of 2026-05-19: this is the intended v1 behavior. The latest local
+ISO artifact proved the normal QEMU greeter/desktop/app-service path, including
+light elizaOS shell branding and close-to-window-list behavior. Rebuild and
 retest the exact release commit if the branch moves, and complete real-USB
 persistence/privacy validation before every storage and privacy row below is
 marked proven.
@@ -178,9 +179,10 @@ and sealed. They just don't see it that session.
 
 ## What's intended to be identical across all four combos
 
-This is the target v1.0 contract. The current HEAD still needs an ISO
-rebuild plus QEMU/USB validation before these rows can be treated as
-verified behavior.
+This is the target v1.0 contract. The current HEAD has QEMU proof for boot,
+greeter, desktop, app launch, and close/minimize UX. USB hardware,
+Persistent Storage, and privacy routing validation are still required before
+these rows can be treated as production-verified behavior.
 
 | Feature | Status |
 |---|---|

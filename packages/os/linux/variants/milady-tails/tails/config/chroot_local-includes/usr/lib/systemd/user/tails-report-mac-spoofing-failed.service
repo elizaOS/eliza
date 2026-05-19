@@ -1,6 +1,6 @@
 [Unit]
 Description=Report MAC address spoofing failure
-Documentation=https://tails.net/contribute/design/MAC_address/
+Documentation=file:///usr/share/doc/elizaos/website/doc.en.html
 ConditionUser=1000
 ConditionPathExists=/var/lib/live/config/tails.mac-spoofing-failed
 

@@ -66,11 +66,6 @@ while :; do
             HOME=/home/amnesia \
             XDG_RUNTIME_DIR="${runtime_dir}" \
             DBUS_SESSION_BUS_ADDRESS="${bus}" \
-            systemctl --user start --no-block elizaos-pill.service >/dev/null 2>&1 || true
-        runuser -u amnesia -- env \
-            HOME=/home/amnesia \
-            XDG_RUNTIME_DIR="${runtime_dir}" \
-            DBUS_SESSION_BUS_ADDRESS="${bus}" \
             systemctl --user start --no-block milady.service >/dev/null 2>&1 || true
     fi
     sleep "${interval}"

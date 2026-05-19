@@ -188,12 +188,15 @@ config:
 # Incremental rebuild: reuse the chroot/ from the last full build and
 # re-run only the squashfs + ISO assembly (~10 min). Use after editing
 # overlay files. Run a full `just build` first to create the chroot/.
-binary: milady-app
+sync-chroot:
+    scripts/sync-runtime-to-chroot.sh
+
+binary: milady-app sync-chroot
     ./build.sh binary
 
 # Low-CPU incremental rebuild. Still requires an existing chroot/ from a
 # previous full build.
-binary-cool: milady-app
+binary-cool: milady-app sync-chroot
     #!/usr/bin/env bash
     set -euo pipefail
     cpus="${ELIZAOS_BUILD_CPUS:-2}"
@@ -207,6 +210,11 @@ binary-cool: milady-app
 # Run CPU-light static checks only. No Docker, no QEMU, no ISO build.
 static-smoke:
     scripts/static-smoke.sh
+
+# Start the staged bundled runtime and prove the local API endpoints needed by
+# the desktop onboarding shell return successfully. No Docker, no QEMU.
+runtime-smoke:
+    scripts/runtime-api-smoke.sh
 
 # Boot the built chroot/ in systemd-nspawn — seconds, no QEMU. For
 # non-GUI sanity (do my systemd units parse? did my file land where I

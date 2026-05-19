@@ -108,10 +108,11 @@ activation requires:
 - no execution from user-writable staging paths; verified app runtimes must be
   materialized into a root-owned store first
 
-Current audit caveat: the verifier foundation exists, but the materialization
-path still needs hardened no-follow copy semantics or a root-owned quarantine
-before production use. Treat signed app/runtime updates as architecture in
-progress until that is fixed and tested.
+Current audit caveat: the verifier materializes signed runtimes into a
+root-owned store with no-symlink checks and copy-time rehashing, but the
+production updater still needs release keys, revocation metadata, downloader
+UX, rollback tests, and a stronger promotion token/root-owned health handoff
+before it should be marketed as a stable update channel.
 
 The Tails IUK stack already contains signed upgrade-description and target-file
 checks. elizaOS must not bypass that path for OS deltas. App/runtime manifests
