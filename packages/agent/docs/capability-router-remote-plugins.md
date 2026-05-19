@@ -947,10 +947,19 @@ The GitHub `Tests` workflow now runs `bun run test:remote-capabilities`,
 `bun run test:remote-capabilities:naming-audit`,
 `bun run test:remote-capabilities:source-build`,
 `bun run test:remote-capabilities:fixture-server`, and
-`bun run test:remote-capabilities:validate-live-reports:self-test`, and
+`bun run test:remote-capabilities:validate-live-reports:self-test`,
+`bun run test:remote-capabilities:github-live-evidence:self-test`, and
 `bun run test:remote-capabilities:docker` in the server job for pull requests
-and pushes. The validator self-test generates complete and partial live report
-fixtures so the artifact validator is itself covered without external
+and pushes. The live Cloud/provider artifact smokes are observed only on
+`workflow_dispatch` and `schedule`, where the final `test-status` gate treats
+the live jobs as strict. Use
+`gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun run
+test:remote-capabilities:github-live-evidence -` to prove a scheduled/manual
+run actually observed Cloud and provider live smoke, validation, and artifact
+upload steps. Push runs intentionally fail that evidence validator unless
+`--allow-unobserved` is passed, because skipped-success live jobs are not live
+artifact evidence. The validator self-test generates complete and partial live
+report fixtures so the artifact validator is itself covered without external
 credentials. The source-build smoke builds a temporary remote plugin source tree
 and consumes it only through the capability protocol, then repeats the same
 runtime path across a child-process endpoint. The fixture-server smoke builds a
@@ -1226,7 +1235,8 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 - `bun run test:remote-capabilities:live-ci-audit` passes and statically
   enforces that the workflow keeps the Cloud and provider live jobs wired to
   strict scheduled/manual observation, and that the final `test-status` gate
-  treats scheduled runs as strict, with required provider endpoints, strict
+  treats observed live runs (`workflow_dispatch` and `schedule`) as strict,
+  with required provider endpoints, strict
   live report validation, required artifact upload, and matching live report
   directories between smoke producers, validators, and uploaded artifacts. It
   also audits the package-level `test:remote-capabilities` script so live report

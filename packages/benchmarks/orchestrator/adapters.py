@@ -107,6 +107,14 @@ HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
     "Hyperliquid live execution unavailable "
     "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
 )
+VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON = (
+    "vision-language real eliza-1 VLM runtime/input bundle unavailable; "
+    "harness not run"
+)
+VISION_LANGUAGE_FIXED_RUNTIME_REASON = (
+    "vision-language currently runs the fixed eliza-1 VLM runtime only; "
+    "Hermes/OpenClaw harness adapters are not implemented"
+)
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
@@ -130,7 +138,7 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id == "voiceagentbench":
         return ALL_HARNESSES if _has_voiceagentbench_real_audio_dataset() else ()
     if benchmark_id == "vision_language":
-        return ALL_HARNESSES if _has_vision_language_real_inputs() else ()
+        return ("eliza",) if _has_vision_language_real_inputs() else ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
 
 

@@ -218,6 +218,144 @@ def test_rebuild_latest_preserves_valid_snapshots_missing_from_partial_db(
     assert index["latest"]["webshop::eliza"]["run_id"] == "run_webshop_old"
 
 
+def test_rebuild_latest_prunes_preserved_snapshot_excluded_by_current_compatibility(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    preserved = tmp_path / "latest" / "vision_language__hermes.json"
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    preserved.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "vision_language",
+                "benchmark_directory": "vision-language",
+                "agent": "hermes",
+                "status": "succeeded",
+                "score": 0.0,
+                "run_id": "run_stale_vision_hermes",
+                "run_group_id": "rg_old",
+                "signature": "sig-vision-hermes-old",
+                "comparison_signature": "cmp-vision-hermes-old",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "bfcl": _adapter("bfcl"),
+            "vision_language": _adapter("vision_language", agent_compatibility=("eliza",)),
+        },
+    )
+
+    assert not preserved.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert "vision_language::hermes" not in index["latest"]
+    assert index["matrix_contract"]["benchmarks"]["vision_language"]["cells"]["hermes"] == {
+        "required": False,
+        "state": "unsupported",
+        "status": "unsupported",
+        "score": None,
+        "run_id": None,
+    }
+
+
+def test_rebuild_latest_recomputes_warnings_for_preserved_snapshots(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_eliza",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    preserved = tmp_path / "latest" / "hermes_yc_bench__hermes.json"
+    preserved.parent.mkdir(parents=True, exist_ok=True)
+    preserved.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "hermes_yc_bench",
+                "benchmark_directory": "hermes-adapter",
+                "agent": "hermes",
+                "status": "succeeded",
+                "score": 0.56,
+                "run_id": "run_preserved_yc",
+                "run_group_id": "rg_old",
+                "signature": "sig-yc-old",
+                "comparison_signature": "cmp-yc-old",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+                "metrics": {
+                    "env_id": "yc_bench",
+                    "survival_rate": 1.0,
+                    "total_runs": 1,
+                },
+                "token_metrics": {
+                    "total_tokens": 0,
+                    "llm_call_count": 1,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                },
+                "publication_warnings": [
+                    "telemetry_missing_total_tokens",
+                    "single_llm_call",
+                ],
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "bfcl": _adapter("bfcl"),
+            "hermes_yc_bench": _adapter(
+                "hermes_yc_bench",
+                agent_compatibility=("hermes",),
+            ),
+        },
+    )
+
+    payload = json.loads(preserved.read_text(encoding="utf-8"))
+    assert "publication_warnings" not in payload
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert index["latest"]["hermes_yc_bench::hermes"]["run_id"] == "run_preserved_yc"
+
+
 def test_rebuild_latest_repairs_zero_sample_hermes_successes(
     tmp_path: Path,
 ) -> None:
@@ -621,6 +759,147 @@ def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
             )
         )
         assert "publication_warnings" not in payload
+
+
+def test_rebuild_latest_allows_tokenless_vision_language_runtime_rows(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["vision_language"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="vision_language",
+        agent="eliza",
+        run_id="run_vision",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "runtime_id": "eliza-1-9b",
+            "tier": "eliza-1-9b",
+            "sample_count": 5,
+            "error_count": 0,
+        },
+        token_metrics={
+            "total_tokens": 0,
+            "llm_call_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "telemetry_missing": False,
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"vision_language": _adapter("vision_language", agent_compatibility=("eliza",))},
+    )
+
+    payload = json.loads(
+        (tmp_path / "latest" / "vision_language__eliza.json").read_text(encoding="utf-8")
+    )
+    assert "publication_warnings" not in payload
+
+
+def test_rebuild_latest_allows_tokenless_voiceagentbench_real_rows(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["voiceagentbench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="voiceagentbench",
+        agent="openclaw",
+        run_id="run_voiceagentbench",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "model_name": "openclaw",
+            "stt_provider": "groq",
+            "pass_at_1": 1.0,
+        },
+        token_metrics={
+            "total_tokens": 0,
+            "llm_call_count": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "telemetry_missing": False,
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"voiceagentbench": _adapter("voiceagentbench", agent_compatibility=("openclaw",))},
+    )
+
+    payload = json.loads(
+        (tmp_path / "latest" / "voiceagentbench__openclaw.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "publication_warnings" not in payload
+
+
+def test_rebuild_latest_allows_tokenless_hermes_yc_bench_rows(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["hermes_yc_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hermes_yc_bench",
+        agent="hermes",
+        run_id="run_yc",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "env_id": "yc_bench",
+            "survival_rate": 1.0,
+            "avg_composite_score": 0.56,
+            "total_runs": 1,
+        },
+        token_metrics={
+            "total_tokens": 0,
+            "llm_call_count": 1,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "telemetry_missing": False,
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"hermes_yc_bench": _adapter("hermes_yc_bench", agent_compatibility=("hermes",))},
+    )
+
+    payload = json.loads(
+        (tmp_path / "latest" / "hermes_yc_bench__hermes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "publication_warnings" not in payload
 
 
 def test_rebuild_latest_indexes_cross_harness_comparison_signature(

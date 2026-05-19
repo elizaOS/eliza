@@ -800,6 +800,9 @@ def _native_upstream_review_blockers(text: str) -> list[str]:
     for fragment in NATIVE_UPSTREAM_REVIEW_REQUIRED_FRAGMENTS:
         if fragment.lower() not in lower_text:
             blockers.append(f"{fragment}: missing")
+    unresolved = sorted(set(re.findall(r"\{[a-zA-Z0-9_.-]+\}", text)))
+    if unresolved:
+        blockers.append("unresolved template placeholders: " + ", ".join(unresolved[:8]))
     return blockers
 
 

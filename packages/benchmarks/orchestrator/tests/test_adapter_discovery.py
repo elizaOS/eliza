@@ -605,8 +605,16 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count == 0
+    assert report.incompatible_cell_count == 2
     assert report.error_count == 0
+    incompatible = [cell for cell in report.cells if not cell.compatible]
+    assert {
+        (cell.benchmark_id, cell.harness, cell.reason)
+        for cell in incompatible
+    } == {
+        ("vision_language", "hermes", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
+        ("vision_language", "openclaw", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
+    }
 
     compatible = [cell for cell in report.cells if cell.compatible]
     assert compatible
@@ -837,9 +845,14 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
 
     for harness in ("eliza", "hermes", "openclaw"):
         cell = cells[("vision_language", harness)]
-        assert cell.compatible is True
-        assert cell.command
-        assert "src/runner.ts" in cell.command_display
+        if harness == "eliza":
+            assert cell.compatible is True
+            assert cell.command
+            assert "src/runner.ts" in cell.command_display
+        else:
+            assert cell.compatible is False
+            assert cell.command is None
+            assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON
 
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True

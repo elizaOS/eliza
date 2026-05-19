@@ -55,6 +55,13 @@ export const checks: Check[] = [
     message: "server CI must run the live report validator self-test.",
   },
   {
+    name: "GitHub live evidence validator self-test is a CI gate",
+    pattern:
+      /Remote capability GitHub live evidence self-test[\s\S]*test:remote-capabilities:github-live-evidence:self-test/,
+    message:
+      "server CI must run the GitHub live evidence validator self-test.",
+  },
+  {
     name: "live report validator self-test script exists",
     pattern:
       /"test:remote-capabilities:validate-live-reports:self-test"\s*:\s*"bun packages\/scripts\/validate-capability-router-live-reports\.self-test\.ts"/,
@@ -82,6 +89,22 @@ export const checks: Check[] = [
       /"test:remote-capabilities:live-ci-audit:self-test"\s*:\s*"bun packages\/scripts\/audit-capability-router-live-ci\.self-test\.ts"/,
     source: "root-package",
     message: "root package scripts must expose the live CI audit self-test.",
+  },
+  {
+    name: "GitHub live evidence validator script exists",
+    pattern:
+      /"test:remote-capabilities:github-live-evidence"\s*:\s*"bun packages\/scripts\/validate-capability-router-github-live-evidence\.ts"/,
+    source: "root-package",
+    message:
+      "root package scripts must expose the GitHub live evidence validator.",
+  },
+  {
+    name: "GitHub live evidence validator self-test script exists",
+    pattern:
+      /"test:remote-capabilities:github-live-evidence:self-test"\s*:\s*"bun packages\/scripts\/validate-capability-router-github-live-evidence\.self-test\.ts"/,
+    source: "root-package",
+    message:
+      "root package scripts must expose the GitHub live evidence validator self-test.",
   },
   {
     name: "canonical remote capability suite covers live report writer",
@@ -237,9 +260,9 @@ export const checks: Check[] = [
   },
   {
     name: "provider live job is required by test-status",
-    pattern: /strict_results="\$\{\{\s*github\.event_name == 'push' \|\| github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\s*\}\}"[\s\S]*for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
+    pattern: /strict_results="\$\{\{\s*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'\s*\}\}"[\s\S]*for pair in\s*\\[\s\S]*"cloud-live-e2e:\$\{\{\s*needs\.cloud-live-e2e\.result\s*\}\}"\s*\\[\s\S]*"provider-live-e2e:\$\{\{\s*needs\.provider-live-e2e\.result\s*\}\}"/,
     message:
-      "test-status must fail when cloud-live-e2e or provider-live-e2e are not successful on push, workflow_dispatch, or schedule.",
+      "test-status must fail when cloud-live-e2e or provider-live-e2e are not successful on workflow_dispatch or schedule.",
   },
   {
     name: "cloud live smoke is observed only on manual or scheduled runs",
