@@ -2,28 +2,29 @@
 """ChampSim prefetcher / replacement sweep wrapper.
 
 Drives the ChampSim simulator (https://github.com/ChampSim/ChampSim) over
-DPC-3 traces to produce per-prefetcher and per-replacement MPKI/IPC delta
-JSON. The wrapper assumes ChampSim is built under
-`external/ChampSim/bin/<config>` or that the path is supplied with
-`--champsim-bin`.
+DPC-3 traces and emits per-prefetcher / per-replacement MPKI/IPC JSON.
 
-This script is fail-closed:
-- If ChampSim is not installed -> writes a BLOCKED stub artifact under
-  `build/reports/cache/champsim_<mode>_blocked.json`.
-- If traces are missing -> writes a BLOCKED stub.
-- If `--blocked-evidence` is supplied, always writes a BLOCKED stub and
-  exits 0; this is used by the `make champsim-prefetch-sweep` and
-  `make mockingjay-vs-lru-sweep` fallback path.
+ChampSim bakes the prefetcher and replacement choice at configure time, so
+the wrapper expects one binary per variant under `external/ChampSim/bin/`:
 
-A successful sweep writes
-`docs/evidence/cache/champsim_prefetch_sweep_report.json` (prefetch mode)
-or `docs/evidence/cache/mockingjay_vs_lru_report.json`
-(mockingjay-vs-lru mode) only when explicit `--commit-evidence` is passed;
-otherwise output goes to a `build/reports/cache/` scratch path.
+  - prefetch mode:        champsim_pref_<name>   for each name in
+                          PREFETCH_SWEEP_PREFETCHERS
+  - mockingjay-vs-lru:    champsim_repl_<name>   for each name in
+                          MOCKINGJAY_SWEEP_REPLACEMENTS
 
-Phone-class MPKI / IPC delta claims remain BLOCKED until the academic
-infrastructure is wired in (ChampSim built locally, DPC-3 traces present)
-and committed evidence is recorded against the gate.
+The binaries are produced by `external/ChampSim/build-configs/*.json`
+passed to `./config.sh --join chain`. See
+`docs/evidence/cache/cache-evidence-gate.yaml` for the gate that consumes
+this output.
+
+Fail-closed:
+  - ChampSim base binary missing -> BLOCKED stub.
+  - No DPC-3 traces -> BLOCKED stub.
+  - Specific variant binary missing -> the variant row records
+    `status: missing_binary` but the rest of the sweep still runs.
+
+Phone-class IPC claims remain BLOCKED. The output is explicitly tagged
+`evidence_class: champsim_dpc3_traces_only`.
 """
 
 from __future__ import annotations
@@ -36,35 +37,59 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
+CHAMPSIM_BIN_DIR = ROOT / "external/ChampSim/bin"
 
+# Full sweep universe (for reporting); the variants actually exercised are
+# constrained to whichever variant binaries exist on disk.
 PREFETCHERS = (
     "no",
     "next_line",
     "ip_stride",
+    "spp_dev",
+    "va_ampm_lite",
+    # The following live behind third-party drop-ins (CRC submissions) and
+    # are not part of the upstream ChampSim 2024-12 module set:
     "berti",
     "ipcp",
     "bingo",
-    "spp",
     "bop",
     "pythia",
 )
 REPLACEMENTS = (
     "lru",
     "drrip",
+    "srrip",
+    "ship",
+    "random",
+    # Third-party CRC submissions (not in upstream ChampSim 2024-12):
     "hawkeye",
     "mockingjay",
 )
 
-PREFETCH_SWEEP_PREFETCHERS = ("no", "berti", "ipcp", "spp", "bop", "pythia")
-MOCKINGJAY_SWEEP_REPLACEMENTS = ("lru", "mockingjay")
-
-DEFAULT_TRACES = (
-    "DPC3_400.gcc_s.champsimtrace.xz",
-    "DPC3_403.gcc.champsimtrace.xz",
-    "DPC3_429.mcf.champsimtrace.xz",
+PREFETCH_SWEEP_PREFETCHERS = (
+    "no",
+    "next_line",
+    "ip_stride",
+    "spp_dev",
+    "va_ampm_lite",
 )
+MOCKINGJAY_SWEEP_REPLACEMENTS = (
+    "lru",
+    "drrip",
+    "ship",
+    "srrip",
+)
+
+# Prefetchers/replacements that we know are external-only (not built into
+# the upstream ChampSim 2024-12 tag); their absence is reported but not a
+# hard failure.
+EXTERNAL_ONLY_PREFETCHERS = {"berti", "ipcp", "bingo", "bop", "pythia"}
+EXTERNAL_ONLY_REPLACEMENTS = {"hawkeye", "mockingjay"}
+
+DEFAULT_TRACE_GLOBS = ("*.champsimtrace.xz", "*.champsimtrace")
 
 MODE_TO_SCHEMA = {
     "prefetch": "eliza.cache.champsim_prefetch_sweep.v1",
@@ -76,41 +101,38 @@ MODE_TO_EVIDENCE_NAME = {
 }
 
 
-def find_champsim_bin() -> str | None:
-    candidate_files = [
-        ROOT / "external/ChampSim/bin/champsim",
+def find_base_binary() -> str | None:
+    for cand in (
+        CHAMPSIM_BIN_DIR / "champsim",
         ROOT / "tools/bin/champsim",
-        ROOT / "tools/champsim",
-    ]
-    for cand in candidate_files:
+    ):
         if cand.is_file() and os.access(cand, os.X_OK):
             return str(cand)
-    # Scan external/ChampSim/bin for the first executable whose name starts
-    # with "champsim" (the upstream build emits named binaries like
-    # `champsim_default` etc.).
-    chip_bin_dir = ROOT / "external/ChampSim/bin"
-    if chip_bin_dir.is_dir():
-        for entry in sorted(chip_bin_dir.iterdir()):
-            if (
-                entry.is_file()
-                and os.access(entry, os.X_OK)
-                and entry.name.lower().startswith("champsim")
-            ):
-                return str(entry)
     return shutil.which("champsim")
+
+
+def find_variant_binary(mode: str, variant: str) -> str | None:
+    prefix = "champsim_pref_" if mode == "prefetch" else "champsim_repl_"
+    cand = CHAMPSIM_BIN_DIR / f"{prefix}{variant}"
+    if cand.is_file() and os.access(cand, os.X_OK):
+        return str(cand)
+    return None
 
 
 def find_traces() -> list[Path]:
     for candidate in (
-        ROOT / "external/ChampSim/traces",
         ROOT / "external/dpc3-traces",
+        ROOT / "external/ChampSim/traces",
         ROOT / "tools/dpc3-traces",
         Path(os.environ.get("DPC3_TRACE_DIR", "/dev/null")),
     ):
         if candidate.is_dir():
-            entries = sorted(candidate.glob("*.champsimtrace*"))
+            entries: list[Path] = []
+            for glob in DEFAULT_TRACE_GLOBS:
+                entries.extend(sorted(candidate.glob(glob)))
             if entries:
-                return entries
+                # Dedup + sort
+                return sorted(set(entries))
     return []
 
 
@@ -130,7 +152,7 @@ def write_blocked_stub(path: Path, mode: str, reason: str) -> None:
         else list(REPLACEMENTS),
         "next_unblock_steps": [
             "Install ChampSim under external/ChampSim/",
-            "Download DPC-3 traces to external/ChampSim/traces/",
+            "Download DPC-3 traces to external/dpc3-traces/",
             f"Rerun: python3 scripts/champsim_sweep.py --mode {mode}",
         ],
         "target_evidence_path": (f"docs/evidence/cache/{MODE_TO_EVIDENCE_NAME[mode]}"),
@@ -139,50 +161,212 @@ def write_blocked_stub(path: Path, mode: str, reason: str) -> None:
     print(f"ChampSim {mode} sweep BLOCKED ({reason}); wrote stub to {path}")
 
 
-def run_one(binary: str, trace: Path, prefetcher: str, replacement: str) -> dict:
+def run_one(
+    binary: str,
+    trace: Path,
+    warmup: int,
+    sim: int,
+    log_dir: Path,
+    label: str,
+) -> dict:
+    json_path = log_dir / f"{label}__{trace.stem}.json"
+    log_path = log_dir / f"{label}__{trace.stem}.log"
     cmd = [
         binary,
-        "--warmup_instructions",
-        "25_000_000",
-        "--simulation_instructions",
-        "25_000_000",
-        "--prefetcher",
-        prefetcher,
-        "--replacement",
-        replacement,
-        "--traces",
+        "--warmup-instructions",
+        str(warmup),
+        "--simulation-instructions",
+        str(sim),
+        "--hide-heartbeat",
+        "--json",
+        str(json_path),
         str(trace),
     ]
-    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=1200)
+    proc = subprocess.run(cmd, capture_output=True, text=True, check=False, timeout=3600)
+    log_path.write_text(
+        f"$ {' '.join(cmd)}\n--- STDOUT ---\n{proc.stdout}\n--- STDERR ---\n{proc.stderr}\n"
+    )
+    stats = parse_champsim_json(json_path)
     return {
         "trace": trace.name,
-        "prefetcher": prefetcher,
-        "replacement": replacement,
+        "label": label,
+        "binary": binary,
         "returncode": proc.returncode,
-        "stdout_tail": proc.stdout[-2000:] if proc.stdout else "",
-        "stderr_tail": proc.stderr[-2000:] if proc.stderr else "",
+        "warmup_instructions": warmup,
+        "simulation_instructions": sim,
+        "json_path": str(json_path.relative_to(ROOT)) if json_path.exists() else None,
+        "log_path": str(log_path.relative_to(ROOT)),
+        **stats,
     }
 
 
-def real_sweep(binary: str, traces: list[Path], mode: str) -> dict:
-    results: list[dict] = []
-    if mode == "prefetch":
-        for trace in traces[:6]:
-            for pref in PREFETCH_SWEEP_PREFETCHERS:
-                results.append(run_one(binary, trace, pref, "lru"))
-    else:
-        for trace in traces[:6]:
-            for repl in MOCKINGJAY_SWEEP_REPLACEMENTS:
-                results.append(run_one(binary, trace, "no", repl))
+def parse_champsim_json(json_path: Path) -> dict:
+    if not json_path.is_file():
+        return {"parsed": False, "parse_reason": "missing_json"}
+    try:
+        data = json.loads(json_path.read_text())
+    except json.JSONDecodeError as e:
+        return {"parsed": False, "parse_reason": f"json_decode_error:{e}"}
+    if not isinstance(data, list) or not data:
+        return {"parsed": False, "parse_reason": "unexpected_shape"}
+    run = data[0]
+    sim_block = run.get("sim", {}) or {}
+    cores = sim_block.get("cores", []) or []
+    if not cores:
+        return {"parsed": False, "parse_reason": "no_cores"}
+    core0 = cores[0]
+    ipc = core0.get("ipc")
+    instrs = core0.get("instructions")
+    cycles = core0.get("cycles")
+    # LLC stats live under cores[0].cpu0_LLC or sim.roi.LLC depending on
+    # version; we walk the cache list at the top level.
+    caches = sim_block.get("caches", []) or []
+    llc_stats: dict[str, float | int | str] = {}
+    l2c_stats: dict[str, float | int | str] = {}
+    l1d_stats: dict[str, float | int | str] = {}
+    for c in caches:
+        name = c.get("name", "")
+        if not isinstance(name, str):
+            continue
+        total_miss = sum(
+            int(c.get(t, {}).get("miss", 0))
+            for t in ("LOAD", "RFO", "PREFETCH", "WRITE", "TRANSLATION")
+            if isinstance(c.get(t), dict)
+        )
+        total_acc = sum(
+            int(c.get(t, {}).get("access", 0))
+            for t in ("LOAD", "RFO", "PREFETCH", "WRITE", "TRANSLATION")
+            if isinstance(c.get(t), dict)
+        )
+        block: dict[str, float | int | str] = {
+            "access": total_acc,
+            "miss": total_miss,
+            "hit": total_acc - total_miss,
+        }
+        if name.endswith("LLC"):
+            llc_stats = block
+        elif name.endswith("L2C"):
+            l2c_stats = block
+        elif name.endswith("L1D"):
+            l1d_stats = block
+    mpki = None
+    if instrs and llc_stats.get("miss") is not None:
+        mpki = 1000.0 * float(llc_stats["miss"]) / float(instrs)
     return {
-        "schema": MODE_TO_SCHEMA[mode],
-        "status": "real_sweep",
-        "mode": mode,
-        "captured_utc": dt.datetime.now(dt.UTC).isoformat(),
-        "champsim_binary": binary,
-        "trace_count": len(traces),
-        "results": results,
+        "parsed": True,
+        "ipc": ipc,
+        "instructions": instrs,
+        "cycles": cycles,
+        "llc": llc_stats,
+        "l2c": l2c_stats,
+        "l1d": l1d_stats,
+        "llc_mpki": mpki,
     }
+
+
+def aggregate(results: list[dict], group_by: str) -> dict[str, dict[str, Any]]:
+    by_label: dict[str, dict[str, Any]] = {}
+    for r in results:
+        label = r[group_by]
+        agg = by_label.setdefault(
+            label,
+            {
+                "runs": 0,
+                "parsed_runs": 0,
+                "sum_ipc": 0.0,
+                "sum_mpki": 0.0,
+                "trace_count": set(),
+            },
+        )
+        agg["runs"] += 1
+        agg["trace_count"].add(r["trace"])
+        if r.get("parsed") and r.get("ipc") is not None:
+            agg["parsed_runs"] += 1
+            agg["sum_ipc"] += float(r["ipc"])
+            if r.get("llc_mpki") is not None:
+                agg["sum_mpki"] += float(r["llc_mpki"])
+    out: dict[str, dict[str, Any]] = {}
+    for label, a in by_label.items():
+        n = max(a["parsed_runs"], 1)
+        out[label] = {
+            "runs": a["runs"],
+            "parsed_runs": a["parsed_runs"],
+            "trace_count": len(a["trace_count"]),
+            "mean_ipc": a["sum_ipc"] / n if a["parsed_runs"] else None,
+            "mean_llc_mpki": a["sum_mpki"] / n if a["parsed_runs"] else None,
+        }
+    return out
+
+
+def real_sweep(mode: str, traces: list[Path], warmup: int, sim: int, log_dir: Path) -> dict:
+    log_dir.mkdir(parents=True, exist_ok=True)
+    results: list[dict] = []
+    missing: list[str] = []
+
+    variants: tuple[str, ...]
+    if mode == "prefetch":
+        variants = PREFETCH_SWEEP_PREFETCHERS
+        external_only = EXTERNAL_ONLY_PREFETCHERS
+    else:
+        variants = MOCKINGJAY_SWEEP_REPLACEMENTS
+        external_only = EXTERNAL_ONLY_REPLACEMENTS
+
+    for variant in variants:
+        binary = find_variant_binary(mode, variant)
+        if binary is None:
+            note = "external_only" if variant in external_only else "binary_missing"
+            print(
+                f"[champsim_sweep] {mode}:{variant} -> SKIP ({note}); "
+                "build a variant binary if you want this row."
+            )
+            missing.append(variant)
+            continue
+        for trace in traces:
+            print(f"[champsim_sweep] running {variant} on {trace.name}")
+            res = run_one(binary, trace, warmup, sim, log_dir, variant)
+            results.append(res)
+
+    grouped = aggregate(results, group_by="label")
+    payload: dict[str, Any] = {
+        "schema": MODE_TO_SCHEMA[mode],
+        "status": "ok" if results else "blocked",
+        "mode": mode,
+        "evidence_class": "champsim_dpc3_traces_only",
+        "captured_utc": dt.datetime.now(dt.UTC).isoformat(),
+        "champsim_bin_dir": str(CHAMPSIM_BIN_DIR.relative_to(ROOT)),
+        "trace_count": len(traces),
+        "trace_files": [t.name for t in traces],
+        "warmup_instructions": warmup,
+        "simulation_instructions": sim,
+        "variants_requested": list(variants),
+        "variants_missing": missing,
+        "results": results,
+        "aggregate": grouped,
+    }
+    if mode == "mockingjay-vs-lru":
+        # Derive the LRU-vs-best-other-variant IPC delta for the gate.
+        lru = grouped.get("lru")
+        deltas: dict[str, dict[str, float | None]] = {}
+        if lru and lru.get("mean_ipc") is not None:
+            base = lru["mean_ipc"]
+            for variant, agg in grouped.items():
+                if variant == "lru" or agg.get("mean_ipc") is None:
+                    continue
+                deltas[variant] = {
+                    "mean_ipc": agg["mean_ipc"],
+                    "ipc_delta_pct": 100.0 * (agg["mean_ipc"] - base) / base,
+                    "llc_mpki_delta_pct": (
+                        100.0 * (agg["mean_llc_mpki"] - lru["mean_llc_mpki"]) / lru["mean_llc_mpki"]
+                    )
+                    if (lru.get("mean_llc_mpki") and agg.get("mean_llc_mpki") is not None)
+                    else None,
+                }
+        payload["lru_vs_others"] = {
+            "lru_mean_ipc": lru.get("mean_ipc") if lru else None,
+            "lru_mean_llc_mpki": lru.get("mean_llc_mpki") if lru else None,
+            "deltas": deltas,
+        }
+    return payload
 
 
 def main() -> int:
@@ -193,7 +377,23 @@ def main() -> int:
         default="prefetch",
         help="Which sweep to run (default: prefetch)",
     )
-    ap.add_argument("--champsim-bin", default=None, help="Override ChampSim binary path")
+    ap.add_argument(
+        "--traces",
+        default=None,
+        help="Override trace directory (defaults to external/dpc3-traces/)",
+    )
+    ap.add_argument(
+        "--warmup",
+        type=int,
+        default=10_000_000,
+        help="Warmup instructions per run (default: 10M)",
+    )
+    ap.add_argument(
+        "--sim",
+        type=int,
+        default=10_000_000,
+        help="Simulation instructions per run (default: 10M)",
+    )
     ap.add_argument("--output", default=None, help="Output JSON path (defaults to scratch)")
     ap.add_argument(
         "--commit-evidence",
@@ -213,6 +413,7 @@ def main() -> int:
     scratch = ROOT / f"build/reports/cache/champsim_{args.mode}_sweep.json"
     blocked = ROOT / f"build/reports/cache/champsim_{args.mode}_blocked.json"
     evidence = ROOT / f"docs/evidence/cache/{MODE_TO_EVIDENCE_NAME[args.mode]}"
+    log_dir = ROOT / f"build/reports/cache/champsim_{args.mode}_logs"
 
     if args.blocked_evidence:
         write_blocked_stub(blocked, args.mode, "blocked_evidence_forced")
@@ -220,21 +421,34 @@ def main() -> int:
 
     out_path = Path(args.output) if args.output else (evidence if args.commit_evidence else scratch)
 
-    binary = args.champsim_bin or find_champsim_bin()
-    if binary is None:
+    base = find_base_binary()
+    if base is None:
         write_blocked_stub(blocked, args.mode, "champsim_binary_missing")
         return 0
 
-    traces = find_traces()
+    if args.traces:
+        trace_dir = Path(args.traces)
+        traces: list[Path] = []
+        for glob in DEFAULT_TRACE_GLOBS:
+            traces.extend(sorted(trace_dir.glob(glob)))
+        traces = sorted(set(traces))
+    else:
+        traces = find_traces()
     if not traces:
         write_blocked_stub(blocked, args.mode, "champsim_traces_missing")
         return 0
 
-    artifact = real_sweep(binary, traces, args.mode)
+    artifact = real_sweep(args.mode, traces, args.warmup, args.sim, log_dir)
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text(json.dumps(artifact, indent=2) + "\n")
-    print(f"ChampSim {args.mode} sweep complete; {len(artifact['results'])} runs")
+    print(
+        f"ChampSim {args.mode} sweep complete; "
+        f"{len(artifact['results'])} runs across "
+        f"{len(artifact['variants_requested'])} variants"
+    )
     print(f"  evidence: {out_path}")
+    if artifact.get("variants_missing"):
+        print(f"  missing variants: {artifact['variants_missing']}")
     return 0
 
 

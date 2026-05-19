@@ -74,6 +74,13 @@ YOSYS_BIN = ROOT / "external/oss-cad-suite/bin/yosys"
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--module", required=True)
+    p.add_argument(
+        "--block-id",
+        default=None,
+        help="Block id stamped into the shape JSON (defaults to --module). "
+        "Use this when the block id in pd/asap7/config.asap7.yaml differs "
+        "from the SystemVerilog top-level module name.",
+    )
     p.add_argument("--rtl", action="append", required=True, type=Path)
     p.add_argument("--lib", action="append", required=True, type=Path)
     p.add_argument("--build-dir", required=True, type=Path)
@@ -397,7 +404,8 @@ def main() -> int:
 
     report = {
         "schema": "eliza.pd_asap7_leaf_shape.v1",
-        "block_id": args.module,
+        "block_id": args.block_id or args.module,
+        "rtl_top": args.module,
         "evidence_class": OUTPUT_EVIDENCE_CLASS,
         "pdk": PDK_ID,
         "corner": CORNER_ID,

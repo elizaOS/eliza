@@ -23,6 +23,8 @@ from e1_npu_runtime import (
     NpuRuntimeStatus,
     NpuStreamDescriptor,
     stage_host_runtime_sequence,
+    stage_prepared_descriptor_batch,
+    stage_prepared_descriptor_execution_batches,
 )
 from e1_npu_stablehlo import parse_module
 from test_e1_npu_runtime_sim import E1NpuMmioSim
@@ -268,6 +270,77 @@ def test_stage_host_runtime_sequence_is_fail_closed() -> None:
             write_mmio32=lambda _address, _value: None,
             write_mem32=lambda _address, _value: None,
         )
+    with pytest.raises(ValueError, match="require done bit"):
+        stage_host_runtime_sequence(
+            {
+                **sequence,
+                "completion_poll": {
+                    **sequence["completion_poll"],
+                    "requires_done_bit": False,
+                },
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="reject error bit"):
+        stage_host_runtime_sequence(
+            {
+                **sequence,
+                "completion_poll": {
+                    **sequence["completion_poll"],
+                    "rejects_error_bit": False,
+                },
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="GEMM preamble register metadata mismatch"):
+        stage_host_runtime_sequence(
+            {
+                **sequence,
+                "mmio_preamble_writes": [
+                    {
+                        **sequence["mmio_preamble_writes"][0],
+                        "writes": [
+                            {
+                                **sequence["mmio_preamble_writes"][0]["writes"][0],
+                                "register": "GEMM_BASE",
+                            },
+                            *sequence["mmio_preamble_writes"][0]["writes"][1:],
+                        ],
+                    }
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="descriptor submission register address mismatch"):
+        stage_host_runtime_sequence(
+            {
+                **sequence,
+                "submission_mmio_writes": [
+                    {
+                        **sequence["submission_mmio_writes"][0],
+                        "address": "0x10020044",
+                    },
+                    *sequence["submission_mmio_writes"][1:],
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="completion_poll register metadata mismatch"):
+        stage_host_runtime_sequence(
+            {
+                **sequence,
+                "completion_poll": {
+                    **sequence["completion_poll"],
+                    "register": "DESC_TAIL",
+                },
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
     with pytest.raises(ValueError, match="aligned uint32"):
         stage_host_runtime_sequence(
             {
@@ -286,6 +359,355 @@ def test_stage_host_runtime_sequence_is_fail_closed() -> None:
             write_mmio32=lambda _address, _value: None,
             write_mem32=lambda _address, _value: None,
         )
+
+
+def test_stage_prepared_descriptor_execution_batches_is_fail_closed() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+
+    with pytest.raises(TypeError, match="mapping"):
+        stage_prepared_descriptor_execution_batches(
+            object(),
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="schema"):
+        stage_prepared_descriptor_execution_batches(
+            {**prepared, "schema": "unknown"},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="count mismatch"):
+        stage_prepared_descriptor_execution_batches(
+            {**prepared, "execution_batch_count": 99},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    reversed_batches = list(reversed(prepared["prepared_execution_batches"]))
+    with pytest.raises(ValueError, match="ordered by execution_batch_index"):
+        stage_prepared_descriptor_execution_batches(
+            {**prepared, "prepared_execution_batches": reversed_batches},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="descriptor_stride_bytes must be positive"):
+        stage_prepared_descriptor_execution_batches(
+            {**prepared, "descriptor_stride_bytes": 0},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="required_runtime_steps mismatch"):
+        stage_prepared_descriptor_execution_batches(
+            {**prepared, "required_runtime_steps": ["populate_tensor_arena"]},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="arena_total_bytes"):
+        stage_prepared_descriptor_execution_batches(
+            {**prepared, "arena_total_bytes": 0},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    first_batch = {
+        **prepared["prepared_execution_batches"][0],
+        "arena_base": 0x8000_1000,
+    }
+    with pytest.raises(ValueError, match="arena_base does not match outer package"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    first_batch = {
+        **prepared["prepared_execution_batches"][0],
+        "arena_total_bytes": prepared["arena_total_bytes"] + 4,
+    }
+    with pytest.raises(ValueError, match="arena sizing does not match outer package"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    first_image = dict(first_batch["descriptor_command_buffer_image"])
+    first_image["batch_index"] = 1
+    first_batch["descriptor_command_buffer_image"] = first_image
+    with pytest.raises(ValueError, match="batch_index does not match descriptor image"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    first_batch = {
+        **prepared["prepared_execution_batches"][0],
+        "required_runtime_steps": ["populate_tensor_arena"],
+    }
+    with pytest.raises(ValueError, match="required_runtime_steps mismatch"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+
+
+def test_stage_prepared_descriptor_execution_batches_validates_bases_before_writes() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    first_image = dict(first_batch["descriptor_command_buffer_image"])
+    first_image["descriptor_base"] = 0x2200
+    first_batch["descriptor_command_buffer_image"] = first_image
+
+    with pytest.raises(ValueError, match="descriptor_base does not match"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_execution_batches_validates_submission_base() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    sequence = dict(first_batch["host_runtime_sequence"])
+    sequence["submission_mmio_writes"] = [
+        {**write, "value": 0x2200} if write["register"] == "DESC_BASE" else write
+        for write in sequence["submission_mmio_writes"]
+    ]
+    first_batch["host_runtime_sequence"] = sequence
+
+    with pytest.raises(ValueError, match="DESC_BASE does not match"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+
+
+def test_stage_prepared_descriptor_execution_batches_validates_descriptor_image_writes() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    sequence = dict(first_batch["host_runtime_sequence"])
+    sequence["descriptor_memory_writes"] = [
+        {**write, "value": 0} if write["address"] == "0x00002100" else write
+        for write in sequence["descriptor_memory_writes"]
+    ]
+    first_batch["host_runtime_sequence"] = sequence
+
+    with pytest.raises(ValueError, match="descriptor_memory_writes do not match"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_execution_batches_validates_mmio_preamble() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    first_batch = dict(prepared["prepared_execution_batches"][0])
+    sequence = dict(first_batch["host_runtime_sequence"])
+    preamble_entry = dict(sequence["mmio_preamble_writes"][0])
+    preamble_entry["writes"] = [
+        {**write, "value": 0} if write["register"] == "GEMM_CFG" else write
+        for write in preamble_entry["writes"]
+    ]
+    sequence["mmio_preamble_writes"] = [preamble_entry]
+    first_batch["host_runtime_sequence"] = sequence
+
+    with pytest.raises(ValueError, match="mmio_preamble_writes value mismatch"):
+        stage_prepared_descriptor_execution_batches(
+            {
+                **prepared,
+                "prepared_execution_batches": [
+                    first_batch,
+                    prepared["prepared_execution_batches"][1],
+                ],
+            },
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
+
+
+def test_stage_prepared_descriptor_batch_is_fail_closed() -> None:
+    prepared = (
+        partition_module(parse_module(_dot_payload()))
+        .prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+        .as_dict()
+    )
+    with pytest.raises(TypeError, match="mapping"):
+        stage_prepared_descriptor_batch(
+            object(),
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="schema"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "schema": "unknown"},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="required_runtime_steps mismatch"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "required_runtime_steps": ["populate_tensor_arena"]},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    with pytest.raises(ValueError, match="arena_alignment_bytes"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "arena_alignment_bytes": 0},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    image = dict(prepared["descriptor_command_buffer_image"])
+    image["descriptor_base"] = 0x2100
+    with pytest.raises(ValueError, match="descriptor_base does not match image"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "descriptor_command_buffer_image": image},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    image = dict(prepared["descriptor_command_buffer_image"])
+    image["arena_base"] = 0x8000_1000
+    with pytest.raises(ValueError, match="arena_base does not match descriptor image"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "descriptor_command_buffer_image": image},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+    image = dict(prepared["descriptor_command_buffer_image"])
+    image["batch_index"] = 1
+    with pytest.raises(ValueError, match="batch_index does not match descriptor image"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "descriptor_command_buffer_image": image},
+            write_mmio32=lambda _address, _value: None,
+            write_mem32=lambda _address, _value: None,
+        )
+
+
+def test_stage_prepared_descriptor_batch_validates_package_before_writes() -> None:
+    prepared = (
+        partition_module(parse_module(_dot_payload()))
+        .prepared_descriptor_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2000,
+        )
+        .as_dict()
+    )
+    mmio_writes: list[tuple[int, int]] = []
+    memory_writes: list[tuple[int, int]] = []
+    sequence = dict(prepared["host_runtime_sequence"])
+    sequence["descriptor_memory_writes"] = [
+        {**write, "value": 0} if write["address"] == "0x00002000" else write
+        for write in sequence["descriptor_memory_writes"]
+    ]
+
+    with pytest.raises(ValueError, match="descriptor_memory_writes do not match"):
+        stage_prepared_descriptor_batch(
+            {**prepared, "host_runtime_sequence": sequence},
+            write_mmio32=lambda address, value: mmio_writes.append((address, value)),
+            write_mem32=lambda address, value: memory_writes.append((address, value)),
+        )
+
+    assert mmio_writes == []
+    assert memory_writes == []
 
 
 def test_prepared_batch_host_runtime_sequence_stages_and_submits_in_sim() -> None:
@@ -311,13 +733,16 @@ def test_prepared_batch_host_runtime_sequence_stages_and_submits_in_sim() -> Non
         descriptor_memory[address] = value
         sim.write_mem32(address, value)
 
-    result = stage_host_runtime_sequence(
-        prepared["host_runtime_sequence"],
+    result = stage_prepared_descriptor_batch(
+        prepared,
         write_mmio32=sim.write32,
         write_mem32=write_descriptor_word,
     )
 
-    assert result["schema"] == "eliza.e1_npu_host_runtime_sequence_stage_result.v1"
+    assert result["schema"] == "eliza.e1_npu_prepared_descriptor_batch_stage_result.v1"
+    assert result["host_runtime_sequence_stage_result"]["schema"] == (
+        "eliza.e1_npu_host_runtime_sequence_stage_result.v1"
+    )
     assert result["mmio_writes"] == 9
     assert result["memory_writes"] == 4
     assert descriptor_memory == {
@@ -392,6 +817,87 @@ def test_prepared_execution_batch_host_runtime_sequence_stages_and_submits_in_si
     assert sim.runtime.descriptor_counters()["bytes_written"] == 24
     assert sim.runtime.descriptor_counters()["read_beats"] == 4
     assert sim.runtime.descriptor_counters()["write_beats"] == 6
+    assert {address: sim.memory[address] for address in range(0x8000_0020, 0x8000_0038, 4)} == {
+        0x8000_0020: 21,
+        0x8000_0024: 24,
+        0x8000_0028: 27,
+        0x8000_002C: 47,
+        0x8000_0030: 54,
+        0x8000_0034: 61,
+    }
+
+
+def test_prepared_descriptor_execution_batches_stage_and_submit_in_sim() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batches(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+        .as_dict()
+    )
+    sim = E1NpuMmioSim()
+    descriptor_memory: dict[int, int] = {}
+    for base, words in {
+        0x8000_0010: ([1, 2, 3, 4], [5, 6, 0, 0], [7, 8, 9, 10], [11, 12, 0, 0]),
+        0x8000_0038: ([1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 0, 0]),
+    }.items():
+        for word_index, values in enumerate(words):
+            sim.write_mem32(base + word_index * 4, _pack_u8(values))
+
+    def write_descriptor_word(address: int, value: int) -> None:
+        descriptor_memory[address] = value
+        sim.write_mem32(address, value)
+
+    result = stage_prepared_descriptor_execution_batches(
+        prepared,
+        write_mmio32=sim.write32,
+        write_mem32=write_descriptor_word,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_execution_batches.v1"
+    assert prepared["execution_batch_count"] == 2
+    assert [
+        batch["descriptor_command_buffer_image"]["descriptor_base"]
+        for batch in prepared["prepared_execution_batches"]
+    ] == [0x2100, 0x2140]
+    assert result == {
+        "schema": "eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1",
+        "execution_batch_count": 2,
+        "mmio_writes": 18,
+        "memory_writes": 8,
+        "batch_results": [
+            {
+                "schema": "eliza.e1_npu_host_runtime_sequence_stage_result.v1",
+                "mmio_writes": 9,
+                "memory_writes": 4,
+            },
+            {
+                "schema": "eliza.e1_npu_host_runtime_sequence_stage_result.v1",
+                "mmio_writes": 9,
+                "memory_writes": 4,
+            },
+        ],
+    }
+    assert descriptor_memory == {
+        0x2100: 0xD0000108,
+        0x2104: 0x8000_0010,
+        0x2108: 0x8000_0000,
+        0x210C: 0,
+        0x2140: 0xCC000108,
+        0x2144: 0x8000_0038,
+        0x2148: 0x8000_0020,
+        0x214C: 0,
+    }
+    assert sim.runtime.descriptor_counters()["bytes_read"] == 60
+    assert sim.runtime.descriptor_counters()["bytes_written"] == 40
+    assert {address: sim.memory[address] for address in range(0x8000_0000, 0x8000_0010, 4)} == {
+        0x8000_0000: 58,
+        0x8000_0004: 64,
+        0x8000_0008: 139,
+        0x8000_000C: 154,
+    }
     assert {address: sim.memory[address] for address in range(0x8000_0020, 0x8000_0038, 4)} == {
         0x8000_0020: 21,
         0x8000_0024: 24,

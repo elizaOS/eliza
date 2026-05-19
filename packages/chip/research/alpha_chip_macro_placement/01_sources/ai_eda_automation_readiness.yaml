@@ -395,6 +395,8 @@ stages:
   - id: dfm_yield_lithography
     rating: READY_DRY_RUN
     source_ids:
+      - agentictcad
+      - tcadgpt
       - litho-aware-ml-hotspot
       - dlhsd-hotspot-detection
       - lithohod
@@ -409,12 +411,13 @@ stages:
       - build/ai_eda/dfm_yield_lithography_targets/validation/targets_report.json
     next_gate: make pd-contract-check
     critical_review: >
-      ML hotspot detectors, differentiable lithography, ILT/OPC optimizers, and
-      wafer-defect classifiers are potentially useful after physical design is
-      real, but they are not signoff. E1 currently lacks final layout, foundry
-      decks, lithography kernels, mask rules, local hotspot labels, wafer maps,
-      and manufacturing inspection evidence, so the lane only captures targets
-      and blockers.
+      TCAD/DTCO agents, ML hotspot detectors, differentiable lithography,
+      ILT/OPC optimizers, and wafer-defect classifiers are potentially useful
+      after physical design and process authority are real, but they are not
+      signoff. E1 currently lacks final layout, foundry decks, TCAD decks,
+      simulator licenses, lithography kernels, mask rules, calibrated
+      process/device labels, local hotspot labels, wafer maps, and manufacturing
+      inspection evidence, so the lane only captures targets and blockers.
   - id: cpu_microarchitecture_ai
     rating: READY_DRY_RUN
     source_ids:
@@ -470,6 +473,8 @@ stages:
   - id: reliability_resilience_automation
     rating: READY_DRY_RUN
     source_ids:
+      - agentictcad
+      - tcadgpt
       - proton-em
       - emspice2
       - bti-hci-aging-models
@@ -488,12 +493,14 @@ stages:
       - build/ai_eda/reliability_resilience_targets/validation/targets_report.json
     next_gate: make process-14a-effects-check
     critical_review: >
-      Aging, EM, soft-error, and resilience automation can eventually guide
-      selective hardening, ECC/TMR/replay, derating, and PDN reliability work,
-      but those flows are easy to overclaim. E1 needs process-qualified models,
-      activity and mission profiles, deterministic fault manifests, simulator or
-      formal logs, PD/signoff evidence, before/after PPA, and review before any
-      generated mitigation or reliability claim can affect source or release.
+      TCAD/DTCO process-device modeling plus aging, EM, soft-error, and
+      resilience automation can eventually guide selective hardening,
+      ECC/TMR/replay, derating, and PDN reliability work, but those flows are
+      easy to overclaim. E1 needs process-qualified models, authorized TCAD
+      decks, calibration data, activity and mission profiles, deterministic
+      fault manifests, simulator or formal logs, PD/signoff evidence,
+      before/after PPA, and review before any generated assumption, mitigation,
+      or reliability claim can affect source or release.
   - id: placement_optimization
     rating: BLOCKED_NEEDS_EVIDENCE
     source_ids:
@@ -661,16 +668,27 @@ stages:
       - analoggenie
       - masala-chai
       - limca
+      - analogagent
+      - analogmaster
+      - vlm-cad
+      - circuitlm
+      - eeschematic
+      - analogcoder-pro
+      - analogcoder
+      - ams-net
     local_lane: p2-analog-mixed-signal-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_analog_mixed_signal_targets.py
       - build/ai_eda/analog_mixed_signal_targets/validation/targets_report.json
     next_gate: make padframe-check
     critical_review: >
-      Analog/AMS AI tools can help size, classify, and lay out circuits, but E1
-      currently lacks local SPICE specs, foundry pad cells, extracted models,
-      and SI/PI evidence. Keep this as target capture until deterministic analog
-      and package gates exist.
+      Analog/AMS AI tools can help size, classify, generate, visualize, and lay
+      out circuits, and the 2026 agentic/VLM wave adds stronger SPICE feedback,
+      schematic parsing, and explainable optimization loops. E1 currently lacks
+      local SPICE specs, foundry pad cells, extracted models, SI/PI evidence, a
+      quarantined analog-agent harness, and reviewed schematic/netlist dataset
+      snapshots. Keep this as target capture until deterministic analog,
+      package, simulator, dataset, and reviewer gates exist.
   - id: memory_interconnect_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -743,6 +761,8 @@ stages:
   - id: power_thermal_prediction
     rating: READY_DRY_RUN
     source_ids:
+      - agentictcad
+      - tcadgpt
       - deepoheat
       - thermal-generative-ai
       - thermedge-iredge
@@ -758,12 +778,13 @@ stages:
       - build/ai_eda/power_thermal_targets/validation/targets_report.json
     next_gate: make power-thermal-evidence-check
     critical_review: >
-      ML thermal, IR-drop, PDN, and RTL power predictors can screen hotspots,
-      power-integrity risk, and PDN template choices, but E1 still lacks
+      TCAD/DTCO device assumptions plus ML thermal, IR-drop, PDN, and RTL power
+      predictors can screen hotspots, power-integrity risk, and PDN template
+      choices, but E1 still lacks approved TCAD decks, device calibration,
       calibrated rail power traces, thermal traces, package/board thermal
       models, activity-aligned power maps, and repeated PDNSim/signoff labels.
-      Keep this lane as target capture until measured or deterministic labels
-      exist.
+      Keep this lane as target capture until authorized process data and
+      measured or deterministic labels exist.
   - id: floorplan_io_pdn_automation
     rating: READY_DRY_RUN
     source_ids:

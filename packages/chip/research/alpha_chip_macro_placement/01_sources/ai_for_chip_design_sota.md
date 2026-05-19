@@ -70,6 +70,25 @@ power, and manufacturing preparation.
   OpenROAD runs. Useful once there are enough repeated E1 PD runs to train or
   validate predictors.
 
+### Analog and mixed-signal agents
+
+- AnalogAgent paper: https://arxiv.org/abs/2603.23910
+- AnalogMaster paper: https://arxiv.org/abs/2604.20916
+- VLM-CAD paper: https://arxiv.org/abs/2601.07315
+- CircuitLM paper: https://arxiv.org/abs/2601.04505
+- EEschematic paper: https://arxiv.org/abs/2510.17002
+- AnalogCoder-Pro paper: https://arxiv.org/abs/2508.02518
+- AnalogCoder code: https://github.com/laiyao1/AnalogCoder
+- AMS-Net dataset site: https://ams-net.github.io/
+- Use: schematic/image/netlist parsing, analog topology generation, sizing,
+  SPICE feedback loops, VLM-grounded explainability, and analog dataset
+  governance.
+- E1 fit: target capture only. Do not generate SPICE, schematics, CircuitJSON,
+  analog layouts, padframe changes, foundry IP, or reusable analog memories for
+  E1 until exact prompts, model versions, memory snapshots, dataset snapshots,
+  SPICE/testbench decks, simulator logs, PVT sweeps, DRC/LVS/extraction,
+  package/SI-PI evidence, and human analog review exist.
+
 ## Placement and physical design research
 
 ### AlphaChip / Circuit Training
@@ -244,7 +263,19 @@ power, and manufacturing preparation.
   summaries are not evidence until tied to local artifact hashes, held-out
   tasks, formal/synthesis checks, and human review.
 
-## DFM, yield, lithography, and OPC
+## DTCO, TCAD, DFM, yield, lithography, and OPC
+
+### TCAD and device optimization
+
+- AgenticTCAD paper: https://arxiv.org/abs/2512.23742
+- TcadGPT paper: https://arxiv.org/abs/2601.10128
+- Use: future DTCO and device/process exploration only after exact TCAD decks,
+  simulator/tool identity, licenses, calibration data, generated deck hashes,
+  raw logs, and human process-device review exist.
+- E1 fit: metadata-only target capture. Do not generate TCAD decks, process
+  assumptions, leakage/self-heating assumptions, reliability corners, or
+  power/thermal inputs for E1 release without foundry-authorized collateral and
+  deterministic replay evidence.
 
 ### Hotspot detection
 

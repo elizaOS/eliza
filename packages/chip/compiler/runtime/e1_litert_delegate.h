@@ -114,6 +114,20 @@ int e1_litert_delegate_prepared_descriptor_execution_batch(
     uint8_t* prepared_json,
     size_t* prepared_json_size);
 
+/* Prepare metadata packages for all descriptor execution sub-batches into
+ * `prepared_json`. Descriptor bases are assigned as descriptor_base plus
+ * execution_batch_index multiplied by descriptor_stride_bytes; the caller still
+ * owns descriptor memory allocation and runtime execution. */
+int e1_litert_delegate_prepared_descriptor_execution_batches(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t descriptor_stride_bytes,
+    uint8_t* prepared_json,
+    size_t* prepared_json_size);
+
 /* Free the delegate handle and any internal partitioner state. */
 void e1_litert_delegate_destroy(E1LiteRtDelegate* delegate);
 

@@ -887,6 +887,54 @@ entries:
     license_status: paper_assets_review_required
     release_use: blocked_pending_code_or_asset_review
     allowed_current_use: citation_reference_only
+  - source_id: analogagent
+    asset_type: self_improving_llm_agent_analog_design
+    asset_url: https://arxiv.org/abs/2603.23910
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_agent_prompt_memory_spice_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: analogmaster
+    asset_type: llm_end_to_end_analog_image_to_layout
+    asset_url: https://arxiv.org/abs/2604.20916
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_image_netlist_layout_assets_and_signoff_review
+    allowed_current_use: methodology_reference_only
+  - source_id: vlm-cad
+    asset_type: vlm_explainable_analog_sizing
+    asset_url: https://arxiv.org/abs/2601.07315
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_parser_optimizer_spice_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: circuitlm
+    asset_type: multi_agent_circuit_schematic_generation
+    asset_url: https://arxiv.org/abs/2601.04505
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_code_data_component_library_and_erc_review
+    allowed_current_use: schematic_generation_risk_reference_only
+  - source_id: eeschematic
+    asset_type: multimodal_llm_analog_schematic_generation
+    asset_url: https://arxiv.org/abs/2510.17002
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_symbol_library_netlist_equivalence_and_review
+    allowed_current_use: schematic_visualization_method_reference_only
+  - source_id: analogcoder-pro
+    asset_type: multimodal_llm_analog_generation_optimization
+    asset_url: https://arxiv.org/abs/2508.02518
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_spice_waveform_and_review_harness
+    allowed_current_use: methodology_reference_only
+  - source_id: analogcoder
+    asset_type: training_free_llm_analog_code_generation
+    asset_url: https://github.com/laiyao1/AnalogCoder
+    license_status: review_required
+    release_use: blocked_pending_code_license_spice_and_review_harness
+    allowed_current_use: code_reference_only
+  - source_id: ams-net
+    asset_type: analog_mixed_signal_schematic_netlist_dataset
+    asset_url: https://ams-net.github.io/
+    license_status: review_required
+    release_use: blocked_pending_dataset_license_snapshot_and_non_overlap_review
+    allowed_current_use: dataset_governance_reference_only
   - source_id: archgym
     asset_type: architecture_dse_framework
     asset_url: https://github.com/srivatsankrishnan/oss-arch-gym

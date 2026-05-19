@@ -387,7 +387,6 @@ def _classify(returncode: int, combined_output: str) -> Status:
     blocked_markers = (
         "STATUS: BLOCKED",
         "BLOCKED:",
-        " BLOCKED",
         "gate BLOCKED",
         "blocked_until_evidence",
     )

@@ -84,8 +84,28 @@ path. The userspace runtime also has a `CommandBuffer` descriptor-batching
 abstraction with deterministic descriptor-image staging and single-completion
 submit plus a `stage_host_runtime_sequence` helper that replays prepared-batch
 MMIO and descriptor-memory writes and returns
-`eliza.e1_npu_host_runtime_sequence_stage_result.v1`. The simulator gate feeds
-the partitioner-produced prepared batch through this helper and observes
+`eliza.e1_npu_host_runtime_sequence_stage_result.v1` only when
+GEMM preamble, descriptor submission, and `completion_poll` register metadata
+labels/addresses match the runtime MMIO contract, and `completion_poll` requires
+the done bit, requires the done bit, and rejects the error bit. The
+`stage_prepared_descriptor_batch` helper validates
+`eliza.e1_npu_prepared_descriptor_batch.v1` packages and returns
+`eliza.e1_npu_prepared_descriptor_batch_stage_result.v1` after checking
+`arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
+`required_runtime_steps`, `descriptor_base`, `descriptor_memory_writes`, and
+`mmio_preamble_writes` against the packaged `descriptor_image` and
+`op_mmio_preamble`. The
+`stage_prepared_descriptor_execution_batches` helper validates ordered
+`eliza.e1_npu_prepared_descriptor_execution_batches.v1` packages and returns
+`eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1` after
+checking each descriptor image and `DESC_BASE` submission against
+`descriptor_base + execution_batch_index * descriptor_stride_bytes`, and
+checking `arena_base consistency`, arena sizing, `required_runtime_steps`, and
+`descriptor_memory_writes` exactly match the packaged
+`descriptor_image`. It also checks `mmio_preamble_writes` match
+`op_mmio_preamble` before staging. The
+simulator gate feeds the
+partitioner-produced prepared batch through these helpers and observes
 descriptor completion/counters in `E1NpuMmioSim`, including memory-backed
 descriptor parsing, tensor-byte scratchpad streaming, GEMM execution, and
 computed output writeback accounting, but this remains bounded RTL/runtime evidence rather than a tensor
@@ -124,6 +144,10 @@ as `e1_litert_delegate_execution_command_buffer_image`. The
 `e1_litert_delegate_prepared_descriptor_execution_batch` wrappers expose the
 same host-runtime package shape for materializable sub-batches, with simulator
 evidence for descriptor-base staging, submission, and computed tile writeback.
+The `prepared_descriptor_execution_batches` and
+`e1_litert_delegate_prepared_descriptor_execution_batches` wrappers package all
+execution sub-batches with checked `descriptor_stride_bytes`, while explicitly
+leaving descriptor memory allocation outside the claim boundary.
 The ExecuTorch/LiteRT delegate skeletons expose `descriptor_command_buffer_image`
 wrappers for ready-batch descriptor image materialization. The partitioner and
 delegates also expose `prepared_descriptor_batch`/

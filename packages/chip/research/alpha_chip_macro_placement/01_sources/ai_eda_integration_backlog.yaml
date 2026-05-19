@@ -864,16 +864,30 @@ work_items:
       - analoggenie
       - masala-chai
       - limca
+      - analogagent
+      - analogmaster
+      - vlm-cad
+      - circuitlm
+      - eeschematic
+      - analogcoder-pro
+      - analogcoder
+      - ams-net
     target_area:
       - analog_layout
       - analog_sizing
+      - analog_agent
+      - schematic_generation
+      - schematic_to_netlist
       - padframe
       - si_pi
       - mixed_signal
     owner_scope: dry-run target capture only; no SPICE, layout, padframe, or IP generation
     objective: >
-      Track analog and mixed-signal AI automation sources while tying any future
-      E1 use to local padframe, package, Wi-Fi IO, SI/PI, and process evidence.
+      Track analog and mixed-signal AI automation sources, including 2026
+      LLM/VLM analog agents, schematic parsers, sizing optimizers, and
+      schematic/netlist datasets, while tying any future E1 use to local
+      padframe, package, Wi-Fi IO, SI/PI, process, simulator, dataset, and
+      analog-review evidence.
     deliverables:
       - scripts/ai_eda/capture_analog_mixed_signal_targets.py
       - build/ai_eda/analog_mixed_signal_targets/<run-id>/targets_report.json
@@ -889,6 +903,8 @@ work_items:
       - No local analog SPICE specs or testbenches for E1
       - No foundry pad library selected or released
       - No IBIS, S-parameter, package parasitic, or rail impedance model
+      - No quarantined analog LLM/agent harness with pinned prompts, model versions, memory snapshots, SPICE decks, simulator logs, PVT sweeps, and reviewer disposition
+      - No license-reviewed analog schematic/netlist dataset with exact snapshot, non-overlap review, and parser baselines
       - No approved flow for AI-generated SPICE, layout, or foundry IP
     acceptance_criteria:
       - Report hashes local package, padframe, SI/PI, Wi-Fi IO, and process inputs.
@@ -1054,6 +1070,8 @@ work_items:
     priority: P1
     status: IN_PROGRESS
     source_ids:
+      - agentictcad
+      - tcadgpt
       - deepoheat
       - thermal-generative-ai
       - thermedge-iredge
@@ -1064,6 +1082,8 @@ work_items:
       - aieda
       - rtlmul
     target_area:
+      - dtco
+      - device_modeling
       - power_prediction
       - thermal_modeling
       - ir_drop_prediction
@@ -1071,8 +1091,9 @@ work_items:
       - ppa_prediction
     owner_scope: dry-run target capture only; no power maps, thermal maps, PDN edits, or signoff claims
     objective: >
-      Track AI-assisted power, thermal, IR-drop, and PDN sources while tying any
-      future E1 use to sustained measurement, package, PD signoff, and
+      Track AI-assisted TCAD-derived device assumptions, power, thermal,
+      IR-drop, and PDN sources while tying any future E1 use to authorized
+      process collateral, sustained measurement, package, PD signoff, and
       deterministic benchmark gates.
     deliverables:
       - scripts/ai_eda/capture_power_thermal_targets.py
@@ -1091,6 +1112,7 @@ work_items:
       - No package, board, airflow, heatsink, or phone skin thermal model calibrated to E1
       - No local OpenROAD/PDNSim IR-drop label corpus across repeated runs
       - No activity-aligned power map or vector-based post-route power evidence
+      - No approved TCAD/DTCO deck, model, simulator, calibration corpus, or process authority
       - No approved flow for AI-generated PDN, power map, thermal map, or signoff waiver
     acceptance_criteria:
       - Report hashes sustained power, thermal, benchmark, PD, package, and checker inputs.
@@ -1701,6 +1723,8 @@ work_items:
     priority: P1
     status: IN_PROGRESS
     source_ids:
+      - agentictcad
+      - tcadgpt
       - litho-aware-ml-hotspot
       - dlhsd-hotspot-detection
       - lithohod
@@ -1710,6 +1734,9 @@ work_items:
       - radai-wm811k-wafer-defect-model
       - pegasus-lpa
     target_area:
+      - dtco
+      - tcad
+      - device_optimization
       - dfm
       - yield
       - lithography
@@ -1718,10 +1745,11 @@ work_items:
       - wafer_defect_classification
     owner_scope: dry-run target capture only; no layout, mask, OPC, lithography simulation, model inference, yield prediction, signoff, or release claims
     objective: >
-      Track ML lithography hotspot detection, differentiable lithography,
-      inverse lithography/OPC, and wafer defect classification while keeping all
-      future E1 use behind foundry/process evidence, local layout hashes,
-      manufacturing gates, and human review.
+      Track TCAD/DTCO agents, executable TCAD LLMs, ML lithography hotspot
+      detection, differentiable lithography, inverse lithography/OPC, and wafer
+      defect classification while keeping all future E1 use behind
+      foundry/process evidence, TCAD decks, local layout hashes, manufacturing
+      gates, and human review.
     deliverables:
       - scripts/ai_eda/capture_dfm_yield_lithography_targets.py
       - build/ai_eda/dfm_yield_lithography_targets/<run-id>/targets_report.json
@@ -1743,6 +1771,7 @@ work_items:
       - No license-reviewed ICCAD, foundry, wafer-map, AOI, or E1 manufacturing dataset selected for local training or evaluation
       - No local held-out E1 layout clips with human-reviewed hotspot, false-positive, or repair labels
       - No wafer, lot, die, board, camera, SEM, inspection, or first-article measurement corpus for yield or defect models
+      - No approved TCAD deck, simulator license/backend, calibration corpus, or process/device authority
       - No approved flow for AI-generated layout, mask, OPC, DFM fixes, yield prediction, or signoff waivers
     acceptance_criteria:
       - Report hashes local source inventory, SOTA review, PD signoff, manufacturing release, OpenLane, formal, synthesis, and PD predictor inputs.
@@ -1866,6 +1895,8 @@ work_items:
     priority: P1
     status: IN_PROGRESS
     source_ids:
+      - agentictcad
+      - tcadgpt
       - proton-em
       - emspice2
       - bti-hci-aging-models
@@ -1879,6 +1910,8 @@ work_items:
       - ares-dnn-fault-injection
       - caliptra-error-injection
     target_area:
+      - dtco
+      - tcad
       - reliability
       - electromigration
       - aging
@@ -1887,11 +1920,11 @@ work_items:
       - resilience_mitigation
     owner_scope: dry-run target capture only; no fault injection, aging/EM analysis, RTL/netlist/layout/firmware changes, mitigation generation, signoff, or reliability claims
     objective: >
-      Track aging, electromigration, soft-error, formal/QEMU fault-injection,
-      NPU workload resilience, and ECC/TMR mitigation sources while keeping any
-      future E1 use behind process collateral, fault manifests, deterministic
-      simulator/formal logs, physical signoff, benchmark/runtime evidence, and
-      review.
+      Track TCAD/DTCO process-device assumptions, aging, electromigration,
+      soft-error, formal/QEMU fault-injection, NPU workload resilience, and
+      ECC/TMR mitigation sources while keeping any future E1 use behind process
+      collateral, fault manifests, deterministic simulator/formal logs,
+      physical signoff, benchmark/runtime evidence, and review.
     deliverables:
       - scripts/ai_eda/capture_reliability_resilience_targets.py
       - build/ai_eda/reliability_resilience_targets/<run-id>/targets_report.json
@@ -1914,6 +1947,7 @@ work_items:
       - No calibrated activity, temperature, voltage, PDN current-density, or lifetime mission-profile evidence
       - No reviewed RTL/formal/QEMU fault-injection harness for E1 with fault-site manifests, random seeds, signatures, and pass/fail taxonomy
       - No local labels linking fault campaigns, formal traces, simulator failures, or silicon logs to approved mitigations
+      - No approved TCAD/DTCO model, deck, simulator, calibration corpus, or process-device authority
       - No approved workflow for AI-generated ECC, TMR, replay, redundancy, hardening, derating, or reliability ECO changes
       - No signoff evidence showing EM/IR, aging timing, soft-error, safety, or reliability closure
     acceptance_criteria:

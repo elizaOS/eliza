@@ -58,6 +58,20 @@ require_tool() {
     fi
 }
 
+require_host_compiler() {
+    # Stage-1 needs a C++ host compiler. Prefer clang, fall back to gcc. Unlike
+    # require_tool, this never exits when only one of the two is missing.
+    if command -v clang >/dev/null 2>&1; then
+        return 0
+    fi
+    if command -v gcc >/dev/null 2>&1; then
+        return 0
+    fi
+    emit_status "BLOCKED" "llvm.tool_check[clang_or_gcc]"
+    echo "build_llvm_riscv: required tool clang or gcc missing" >&2
+    exit 2
+}
+
 verify_only=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -93,7 +107,7 @@ require_tool ninja
 require_tool git
 require_tool python3
 require_tool jq
-require_tool clang || require_tool gcc
+require_host_compiler
 
 LLVM_SHA="$(jq -r '.upstream.commit_sha' "$PIN_FILE")"
 LLVM_URL="$(jq -r '.upstream.url' "$PIN_FILE")"
@@ -115,17 +129,37 @@ if [ ! -d "$SRC_DIR/.git" ]; then
     exit 2
 fi
 
-git -C "$SRC_DIR" fetch --depth 1 origin "$LLVM_SHA"
-git -C "$SRC_DIR" checkout --detach "$LLVM_SHA"
+# When the repo is bind-mounted into the container as a different uid,
+# git refuses to operate without an explicit safe.directory exception.
+git config --global --add safe.directory "$repo_dir/$SRC_DIR" >/dev/null 2>&1 || true
+
+# If the pinned SHA is already checked out, skip the network fetch so this
+# script can run in restricted-network containers. Otherwise resolve via a
+# shallow fetch from the pinned origin.
+if [ "$(git -C "$SRC_DIR" rev-parse HEAD 2>/dev/null)" != "$LLVM_SHA" ]; then
+    git -C "$SRC_DIR" fetch --depth 1 origin "$LLVM_SHA"
+    git -C "$SRC_DIR" checkout --detach "$LLVM_SHA"
+fi
 
 mapfile -t STAGE1_ARGS < <(jq -r '.cmake.stage1_args[]' "$PIN_FILE")
 mapfile -t STAGE2_ARGS < <(jq -r '.cmake.stage2_args[]' "$PIN_FILE")
 
 mkdir -p "$STAGE1_DIR" "$STAGE2_DIR"
 
+# Cap parallel link jobs to keep linker memory under control. ThinLTO links
+# alone can consume 6-10 GiB each; ninja defaults to -j$nproc which OOMs the
+# typical 24-core / 32 GiB box. Honour an external override but default to a
+# safe value derived from physical RAM.
+total_mem_gib="$(awk '/MemTotal/ {printf "%d", $2/1024/1024}' /proc/meminfo)"
+default_link_jobs="$(( total_mem_gib / 6 ))"
+if [ "$default_link_jobs" -lt 1 ]; then default_link_jobs=1; fi
+if [ "$default_link_jobs" -gt 4 ]; then default_link_jobs=4; fi
+LLVM_PARALLEL_LINK_JOBS="${LLVM_PARALLEL_LINK_JOBS:-$default_link_jobs}"
+
 cmake -G "Ninja" \
     -S "$SRC_DIR/llvm" \
     -B "$STAGE1_DIR" \
+    "-DLLVM_PARALLEL_LINK_JOBS=${LLVM_PARALLEL_LINK_JOBS}" \
     "${STAGE1_ARGS[@]}"
 ninja -C "$STAGE1_DIR"
 
@@ -143,6 +177,7 @@ cmake -G "Ninja" \
     -B "$STAGE2_DIR" \
     -DCMAKE_C_COMPILER="$STAGE1_CLANG" \
     -DCMAKE_CXX_COMPILER="$STAGE1_CLANGXX" \
+    "-DLLVM_PARALLEL_LINK_JOBS=${LLVM_PARALLEL_LINK_JOBS}" \
     "${STAGE2_ARGS[@]}"
 ninja -C "$STAGE2_DIR"
 

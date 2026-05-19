@@ -30,6 +30,7 @@ from e1_litert_delegate import (
     e1_litert_delegate_partition,
     e1_litert_delegate_prepared_descriptor_batch,
     e1_litert_delegate_prepared_descriptor_execution_batch,
+    e1_litert_delegate_prepared_descriptor_execution_batches,
 )
 from e1_npu_stablehlo import StableHloParseError, StableHloValidationError
 
@@ -350,6 +351,26 @@ def test_delegate_prepares_descriptor_execution_batch_for_split_batch() -> None:
     assert prepared["host_runtime_sequence"]["mmio_preamble_writes"][0]["op_name"] == "dot1"
 
 
+def test_delegate_prepares_all_descriptor_execution_batches() -> None:
+    delegate = e1_litert_delegate_create()
+    prepared = e1_litert_delegate_prepared_descriptor_execution_batches(
+        delegate,
+        json.dumps(_mismatched_dot_payload()),
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        descriptor_stride_bytes=0x40,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_execution_batches.v1"
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["module"] == "litert_mismatched_dot"
+    assert prepared["execution_batch_count"] == 2
+    assert [
+        batch["descriptor_command_buffer_image"]["descriptor_base"]
+        for batch in prepared["prepared_execution_batches"]
+    ] == [0x2100, 0x2140]
+
+
 def test_delegate_descriptor_command_buffer_image_rejects_non_delegate_handle() -> None:
     with pytest.raises(TypeError, match="E1LiteRtDelegate"):
         e1_litert_delegate_descriptor_command_buffer_image(
@@ -392,6 +413,17 @@ def test_delegate_prepared_descriptor_execution_batch_rejects_non_delegate_handl
         )
 
 
+def test_delegate_prepared_descriptor_execution_batches_rejects_non_delegate_handle() -> None:
+    with pytest.raises(TypeError, match="E1LiteRtDelegate"):
+        e1_litert_delegate_prepared_descriptor_execution_batches(
+            object(),
+            json.dumps(_mismatched_dot_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            descriptor_stride_bytes=0x40,
+        )
+
+
 def test_header_file_exists_and_declares_expected_entry_points() -> None:
     header_path = Path(__file__).resolve().parent / "e1_litert_delegate.h"
     text = header_path.read_text(encoding="utf-8")
@@ -403,6 +435,7 @@ def test_header_file_exists_and_declares_expected_entry_points() -> None:
         "e1_litert_delegate_execution_command_buffer_image",
         "e1_litert_delegate_prepared_descriptor_batch",
         "e1_litert_delegate_prepared_descriptor_execution_batch",
+        "e1_litert_delegate_prepared_descriptor_execution_batches",
         "e1_litert_delegate_destroy",
         "E1_LITERT_DELEGATE_BACKEND_ID",
     ):

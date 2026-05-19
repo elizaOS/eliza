@@ -297,8 +297,12 @@ run_build() {
   local start_ts end_ts wall_seconds
   start_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   local rc=0
+  # AOSP's build/envsetup.sh references $TOP and other vars without :-
+  # fallbacks, which is incompatible with set -u inherited from this script.
+  # Disable nounset inside the build subshell only; set -e and set -o pipefail
+  # are still active so real build failures still propagate via the exit code.
   # shellcheck disable=SC1091
-  ( . build/envsetup.sh \
+  ( set +u; . build/envsetup.sh \
       && lunch "$LUNCH_TARGET" \
       && m -j"$JOBS" ) 2>&1 | tee "$build_log" || rc=$?
   end_ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)

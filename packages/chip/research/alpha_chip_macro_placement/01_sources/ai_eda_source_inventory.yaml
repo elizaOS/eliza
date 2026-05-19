@@ -5873,6 +5873,246 @@ entries:
     risk:
       - Analog IMC assumptions do not match the current E1 digital NPU path.
       - Classification accuracy and power claims are not transferable.
+  - id: analogagent
+    name: AnalogAgent
+    kind: self_improving_llm_agent_analog_design
+    stage:
+      - analog_design_assistance
+      - analog_sizing
+      - agentic_orchestration
+      - spice_optimization
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.23910
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Strong current signal for multi-agent analog design loops with
+      self-evolving memory, but E1 has no analog specs, SPICE decks, or
+      reviewer-approved promotion path.
+    integration_action: >
+      Track as blocked analog-agent methodology only; do not run agents,
+      preserve generated playbooks, or generate E1 circuits until a quarantined
+      SPICE/testbench/review harness exists.
+    evidence_gate: >
+      Any use requires exact prompts, model versions, memory snapshots, SPICE
+      decks, simulator versions, PVT sweeps, raw logs, layout feasibility, and
+      human analog review.
+    risk:
+      - Self-improving memory can preserve wrong analog heuristics.
+      - Benchmark Pass@1 does not prove PVT robustness, layout feasibility, or
+        manufacturability.
+  - id: analogmaster
+    name: AnalogMaster
+    kind: llm_end_to_end_analog_image_to_layout
+    stage:
+      - analog_image_to_netlist
+      - analog_sizing
+      - analog_placement
+      - analog_routing
+    priority: P1
+    source_url: https://arxiv.org/abs/2604.20916
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Relevant to full-stack analog IC automation, especially schematic
+      image-to-netlist and downstream sizing/layout, but E1 cannot accept
+      generated analog layout or netlists without foundry and SI/PI gates.
+    integration_action: >
+      Keep as target-capture context for future analog-image, netlist, sizing,
+      and layout review tasks only.
+    evidence_gate: >
+      Generated image parses, netlists, placements, or routes require source
+      image hashes, SPICE equivalence, simulator logs, DRC/LVS/extraction, PVT
+      sweeps, package/SI/PI checks, and reviewer signoff.
+    risk:
+      - Image-to-netlist errors can be visually plausible but electrically
+        wrong.
+      - End-to-end success rates can hide stage-local failures and missing
+        foundry constraints.
+  - id: vlm-cad
+    name: VLM-CAD
+    kind: vlm_explainable_analog_sizing
+    stage:
+      - analog_sizing
+      - schematic_understanding
+      - bayesian_optimization
+      - explainability
+    priority: P1
+    source_url: https://arxiv.org/abs/2601.07315
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_vlm_method
+    e1_fit: >
+      Useful guardrail direction because it anchors VLM schematic reasoning in
+      structural parsing and explainable optimization, but E1 lacks analog
+      schematics and measured/simulated sizing labels.
+    integration_action: >
+      Track as methodology for future explainable analog-sizing reports; no
+      current E1 sizing variables are exposed to VLM or optimizer loops.
+    evidence_gate: >
+      Any sizing recommendation requires schematic/netlist hashes, parser
+      outputs, simulator/tool versions, optimizer seeds, sensitivity reports,
+      PVT sweeps, and analog review.
+    risk:
+      - VLM interpretation can hallucinate despite structured parsing.
+      - Explainability artifacts do not replace simulator and layout evidence.
+  - id: circuitlm
+    name: CircuitLM
+    kind: multi_agent_circuit_schematic_generation
+    stage:
+      - schematic_generation
+      - circuit_json
+      - electrical_rule_checking
+      - agentic_orchestration
+    priority: P2
+    source_url: https://arxiv.org/abs/2601.04505
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: code_and_data_promised_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Relevant to schematic-structure generation and ERC-style checking, but
+      not a source of E1 analog or board schematics.
+    integration_action: >
+      Track as a future benchmark/checker reference only; generated
+      CircuitJSON or schematics cannot enter E1 source.
+    evidence_gate: >
+      Any generated schematic requires component library provenance, canonical
+      pinout hashes, deterministic ERC, SPICE or platform equivalence, package
+      constraints, and human review.
+    risk:
+      - Component grounding can still omit implicit analog constraints.
+      - ERC-clean schematics may fail performance, noise, stability, or layout
+        requirements.
+  - id: eeschematic
+    name: EEschematic
+    kind: multimodal_llm_analog_schematic_generation
+    stage:
+      - spice_to_schematic
+      - schematic_generation
+      - multimodal_reasoning
+    priority: P2
+    source_url: https://arxiv.org/abs/2510.17002
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_mllm_method
+    e1_fit: >
+      Useful for future human-readable schematic reconstruction from SPICE, but
+      E1 has no approved analog SPICE corpus for schematic generation.
+    integration_action: >
+      Keep as read-only methodology; do not generate schematics from E1 source
+      or imported SPICE until provenance and review gates exist.
+    evidence_gate: >
+      Schematic generation requires SPICE netlist hashes, symbol library
+      provenance, visual output hashes, electrical equivalence checks, and
+      analog reviewer disposition.
+    risk:
+      - Visually clean schematics can obscure electrical mistakes.
+      - Few-shot analog substructure examples may not cover E1 IO or pad cells.
+  - id: analogcoder-pro
+    name: AnalogCoder-Pro
+    kind: multimodal_llm_analog_generation_optimization
+    stage:
+      - analog_topology_generation
+      - analog_sizing
+      - waveform_feedback
+      - bayesian_optimization
+    priority: P1
+    source_url: https://arxiv.org/abs/2508.02518
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Strong related work for topology generation, simulation/waveform
+      diagnosis, and sizing optimization, but E1 has no route for generated
+      analog topology promotion.
+    integration_action: >
+      Track for future quarantined analog benchmark design only; no generated
+      circuit or reusable subcircuit library can affect E1.
+    evidence_gate: >
+      Any topology or sizing result requires exact benchmark split, generated
+      netlists, simulator logs, waveform artifacts, PVT/layout checks, and
+      human analog review.
+    risk:
+      - Simulation feedback can optimize incomplete specs.
+      - Reusable circuit libraries can leak benchmark or process assumptions.
+  - id: analogcoder
+    name: AnalogCoder
+    kind: training_free_llm_analog_code_generation
+    stage:
+      - analog_topology_generation
+      - spice_generation
+      - llm_code_generation
+    priority: P2
+    source_url: https://ojs.aaai.org/index.php/AAAI/article/view/32016
+    code_url: https://github.com/laiyao1/AnalogCoder
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Useful code-bearing reference for training-free analog SPICE generation
+      loops, but no generated analog code should enter E1 source.
+    integration_action: >
+      Keep as license-review and benchmark-method candidate only; do not import
+      code or run on E1 until a quarantine harness exists.
+    evidence_gate: >
+      Use requires pinned repository revision, license review, prompts,
+      generated SPICE hashes, simulator logs, PVT checks, and analog review.
+    risk:
+      - Generated SPICE can pass a narrow benchmark while violating practical
+        biasing, noise, stability, or layout constraints.
+      - Training-free prompting may be brittle across model versions.
+  - id: ams-net
+    name: AMS-Net
+    kind: analog_mixed_signal_schematic_netlist_dataset
+    stage:
+      - analog_dataset
+      - schematic_to_netlist
+      - spice_dataset
+      - multimodal_training
+    priority: P2
+    source_url: https://ams-net.github.io/
+    code_url: https://github.com/AMS-Net/ams.net.github.io
+    model_url: null
+    dataset_url: https://ams-net.github.io/
+    license_status: review_required
+    code_status: dataset_site_available_to_review
+    model_status: dataset_only
+    e1_fit: >
+      Relevant dataset direction for schematic/netlist parsing benchmarks, but
+      not an E1 analog source or training corpus until provenance is reviewed.
+    integration_action: >
+      Track for dataset-governance only; do not import schematics or SPICE into
+      E1 without license, contamination, and task-split review.
+    evidence_gate: >
+      Dataset use requires exact snapshot, license, schematic and netlist
+      hashes, non-overlap review, parser baselines, and quarantine reports.
+    risk:
+      - Generic analog examples may not match E1 process, IO, or package
+        constraints.
+      - Dataset provenance and generated/synthetic content boundaries need
+        review.
   - id: archgym
     name: ArchGym
     kind: architecture_dse_framework

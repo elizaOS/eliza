@@ -1,6 +1,7 @@
 {
   "schema": "eliza.pd_asap7_leaf_shape.v1",
   "block_id": "tage_table",
+  "rtl_top": "tage_table",
   "evidence_class": "predictive_finfet_shape_only_not_signoff",
   "pdk": "ASAP7",
   "corner": "RVT_TT_0p70V_25C",
@@ -15,7 +16,7 @@
     "param_overrides": [
       "ENTRIES=128"
     ],
-    "wall_clock_s": 7.77
+    "wall_clock_s": 6.71
   },
   "abc_target_period_ps": 333,
   "gate_count_total": 28625,

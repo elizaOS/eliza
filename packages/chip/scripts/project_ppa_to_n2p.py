@@ -372,7 +372,12 @@ def project_asap7_shapes(
         ]
     out: list[dict[str, Any]] = []
     rng = random.Random(MONTE_CARLO_SEED)
-    for shape_path in sorted(ASAP7_SHAPES_DIR.glob("*.json")):
+    # `*_shape.json` is the input contract emitted by
+    # scripts/run_asap7_leaf_synth.py. `*_projection_n2p.json` is the per-
+    # block projection emitted by this script, so excluding it here keeps the
+    # aggregate loop idempotent — running the projection twice does not
+    # re-project the projection.
+    for shape_path in sorted(ASAP7_SHAPES_DIR.glob("*_shape.json")):
         shape = load_json_mapping(shape_path)
         if shape is None:
             continue

@@ -29,6 +29,7 @@ from e1_executorch_delegate import (
     partition,
     prepared_descriptor_batch,
     prepared_descriptor_execution_batch,
+    prepared_descriptor_execution_batches,
     preprocess,
 )
 from e1_npu_stablehlo import StableHloValidationError, parse_module
@@ -358,6 +359,26 @@ def test_backend_prepares_descriptor_execution_batch_for_split_batch() -> None:
     assert prepared["host_runtime_sequence"]["mmio_preamble_writes"][0]["op_name"] == "dot1"
 
 
+def test_backend_prepares_all_descriptor_execution_batches() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    prepared = Backend().prepared_descriptor_execution_batches(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        descriptor_stride_bytes=0x40,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_execution_batches.v1"
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["module"] == "executorch_mismatched_dot"
+    assert prepared["execution_batch_count"] == 2
+    assert [
+        batch["descriptor_command_buffer_image"]["descriptor_base"]
+        for batch in prepared["prepared_execution_batches"]
+    ] == [0x2100, 0x2140]
+
+
 def test_prepared_descriptor_batch_wrapper_returns_prepared_dict() -> None:
     module = parse_module(_dot_only_payload())
 
@@ -383,6 +404,20 @@ def test_prepared_descriptor_execution_batch_wrapper_returns_prepared_dict() -> 
 
     assert prepared["backend_id"] == BACKEND_ID
     assert prepared["descriptor_command_buffer_image"]["execution_batch_index"] == 1
+
+
+def test_prepared_descriptor_execution_batches_wrapper_returns_prepared_dict() -> None:
+    module = parse_module(_mismatched_dot_payload())
+
+    prepared = prepared_descriptor_execution_batches(
+        module,
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        descriptor_stride_bytes=0x40,
+    )
+
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["execution_batch_count"] == 2
 
 
 def test_descriptor_command_buffer_image_wrapper_returns_image_dict() -> None:

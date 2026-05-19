@@ -4,6 +4,10 @@ The chip package should read like a publishable engineering artifact, not a
 work log. Keep the repository clean, evidence-driven, and suitable for external
 review.
 
+## Native over Docker on Linux x64
+
+On Linux x86_64 hosts, the entire chip toolchain is meant to run locally. `tools/env.sh` puts the native binaries first on `PATH` — Verilator, Icarus, Yosys, SymbiYosys, z3, OpenROAD, OpenLane, magic, klayout, netgen, QEMU, Renode, KiCad, OpenOCD, sigrok, RISC-V cross compilers — all sourced from `external/oss-cad-suite/`, `external/deb-tools/`, `external/openlane2/.venv/`, and `external/openroad/`. Use these directly; do not invoke Docker unless you are on a host where the native binary genuinely cannot be installed. The `run_openlane.sh` / `run_openroad.sh` wrappers already prefer the native binary and only fall back to Docker when none is on `PATH`. Docker remains documented for macOS and for reproducibility-pinned CI runs.
+
 ## Working Rules
 
 - Production quality is the default. Do not take shortcuts that weaken
