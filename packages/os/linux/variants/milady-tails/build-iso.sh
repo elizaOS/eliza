@@ -48,8 +48,12 @@ cleanup() {
     if [ -n "${BINARY_APT_HOOK_BACKUP}" ] && [ -e "${BINARY_APT_HOOK_BACKUP}" ]; then
         mv -f "${BINARY_APT_HOOK_BACKUP}" "${BINARY_APT_HOOK_BACKUP%.elizaos-binary-disabled}" 2>/dev/null || true
     fi
+    # Cleanup is best-effort: this script's exit code shouldn't change
+    # because of stale files in /build (which on CI is a host bind-mount
+    # with mixed uids — root-owned generated files vs runner-owned source
+    # files). The build itself has either succeeded or not by this point.
     for generated in "${GENERATED_SUBMODULES[@]}"; do
-        rm -rf "${generated}"
+        rm -rf "${generated}" 2>/dev/null || true
     done
     if [ "${GENERATED_GIT}" = "1" ] && [ -d "${SRC}/.git" ]; then
         if [ "${GENERATED_GIT_COMMITTED}" = "1" ]; then
@@ -68,15 +72,15 @@ cleanup() {
                 "${SRC}/config/chroot_local-includes/tmp/submodules" \
                 "${SRC}/config/chroot_sources/tails.chroot" \
                 "${SRC}/config/includes" \
-                "${SRC}/config/templates"
+                "${SRC}/config/templates" 2>/dev/null || true
             rm -f \
-                "${SRC}/config/chroot_local-includes/etc/apparmor.d/torbrowser.Browser.firefox"
+                "${SRC}/config/chroot_local-includes/etc/apparmor.d/torbrowser.Browser.firefox" 2>/dev/null || true
             rm -rf \
-                "${SRC}/config/chroot_local-includes/etc/apparmor.d/tunables/torbrowser"
+                "${SRC}/config/chroot_local-includes/etc/apparmor.d/tunables/torbrowser" 2>/dev/null || true
         fi
-        rm -rf "${SRC}/.git"
+        rm -rf "${SRC}/.git" 2>/dev/null || true
     fi
-    rm -rf "${SRC}/tmp"
+    rm -rf "${SRC}/tmp" 2>/dev/null || true
 }
 
 ensure_submodule_checkout() {

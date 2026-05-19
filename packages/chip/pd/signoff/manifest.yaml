@@ -186,7 +186,11 @@ required_artifacts:
   gate_netlist:
     min_bytes: 128
     globs:
+      - "pd/openlane/runs/*/final/nl/*.v"
+      - "pd/openlane/runs/*/final/pnl/*.v"
       - "pd/openlane/runs/*/final/verilog/gl/*.v"
+      - "runs/*/final/nl/*.v"
+      - "runs/*/final/pnl/*.v"
       - "runs/*/final/verilog/gl/*.v"
   corner_manifest:
     min_bytes: 64
@@ -206,15 +210,19 @@ required_artifacts:
     min_bytes: 128
     globs:
       - "pd/openlane/runs/*/final/spef/*.spef"
+      - "pd/openlane/runs/*/final/spef/**/*.spef"
       - "pd/openlane/runs/*/signoff/*.spef"
       - "runs/*/final/spef/*.spef"
+      - "runs/*/final/spef/**/*.spef"
       - "runs/*/signoff/*.spef"
   sdf:
     min_bytes: 128
     globs:
       - "pd/openlane/runs/*/final/sdf/*.sdf"
+      - "pd/openlane/runs/*/final/sdf/**/*.sdf"
       - "pd/openlane/runs/*/signoff/*.sdf"
       - "runs/*/final/sdf/*.sdf"
+      - "runs/*/final/sdf/**/*.sdf"
       - "runs/*/signoff/*.sdf"
   drc_report:
     min_bytes: 32

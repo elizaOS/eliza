@@ -18,13 +18,13 @@ selected_modeled_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
-  memory_sustained_gbps: 208.0
+  memory_sustained_gbps: 240.0
   ambient_c: 25.0
 optimized_summary:
   no_modeled_throttle: true
   max_die_temp_c: 78.10407520000001
   max_total_power_w: 4.56854
-  min_bandwidth_margin_gbps: 8.159999999999997
+  min_bandwidth_margin_gbps: 32.80000000000001
   min_composite_perf_per_w: 0.7762635365079037
   min_npu_int8_tops: 24.3936
   process_corner_count: 4
@@ -38,14 +38,14 @@ baseline_delta:
   optimized_has_modeled_throttle: false
   max_die_c_delta: -51.149102400000004
   max_power_w_delta: -4.206979999999999
-  min_bandwidth_margin_gbps_delta: 67.75999999999999
+  min_bandwidth_margin_gbps_delta: 92.4
   min_composite_perf_per_w_ratio: 2.246971643865274
 robustness_summary:
   pass: true
   case_count: 6
   max_die_temp_c: 89.58743576
   max_total_power_w: 4.676456999999999
-  min_bandwidth_margin_gbps: 0.1519999999999868
+  min_bandwidth_margin_gbps: 23.560000000000002
   min_composite_perf_per_w: 0.725014346244828
   min_npu_int8_tops: 23.17392
   failing_cases: []
@@ -59,7 +59,7 @@ design_deltas_required_before_claim:
     implementation_dependency: Add measured NPU datapath, compiler/runtime coverage, NNAPI proof, and calibrated power trace.
     release_blocker: sustained_power_thermal_evidence_check
   - id: memory_bandwidth_budget
-    modeled_target: 208.0 GB/s sustained memory bandwidth for no-throttle CPU+NPU+display/camera scenarios plus 5% guardband sensitivity.
+    modeled_target: 240.0 GB/s sustained memory bandwidth for no-throttle CPU+NPU+display/camera scenarios plus 5% guardband sensitivity.
     implementation_dependency: Add LPDDR-class controller/PHY, UMA/coherency, QoS, IOMMU/SMMU, and contended Android traces.
     release_blocker: memory_uma_claim_gate
   - id: thermal_budget

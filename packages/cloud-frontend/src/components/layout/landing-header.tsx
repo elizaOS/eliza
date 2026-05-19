@@ -8,14 +8,23 @@ import { BRAND_PATHS, LOGO_FILES } from "@elizaos/shared-brand";
 import { motion } from "framer-motion";
 import { Link, useNavigate } from "react-router-dom";
 import { useSessionAuth } from "@/lib/hooks/use-session-auth";
+import { useT } from "@/providers/I18nProvider";
 import UserMenu from "./user-menu";
 
 export default function LandingHeader() {
   const { ready, authenticated } = useSessionAuth();
   const navigate = useNavigate();
+  const t = useT();
 
   const launchEliza = () => navigate("/login?intent=launch");
   const openDashboard = () => navigate("/login?intent=dashboard");
+
+  const launchLabel = t("cloud.landing.launchEliza", {
+    defaultValue: "Launch Eliza",
+  });
+  const devDashboardLabel = t("cloud.landing.developerDashboard", {
+    defaultValue: "Developer Dashboard",
+  });
 
   return (
     <motion.header className="pointer-events-auto fixed top-0 left-0 z-[100] w-full bg-transparent">
@@ -36,13 +45,13 @@ export default function LandingHeader() {
                 to="/dashboard/agents"
                 className="inline-flex min-h-10 items-center justify-center rounded-sm bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] sm:min-h-11 sm:px-5"
               >
-                Launch Eliza
+                {launchLabel}
               </Link>
               <Link
                 to="/dashboard"
                 className="hidden min-h-11 items-center justify-center rounded-sm bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:inline-flex"
               >
-                Developer Dashboard
+                {devDashboardLabel}
               </Link>
               <UserMenu />
             </>
@@ -55,7 +64,7 @@ export default function LandingHeader() {
                 disabled={!ready}
                 type="button"
               >
-                Launch Eliza
+                {launchLabel}
               </button>
               <button
                 className="hidden min-h-11 items-center justify-center rounded-sm bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:inline-flex"
@@ -63,7 +72,7 @@ export default function LandingHeader() {
                 disabled={!ready}
                 type="button"
               >
-                Developer Dashboard
+                {devDashboardLabel}
               </button>
             </>
           )}

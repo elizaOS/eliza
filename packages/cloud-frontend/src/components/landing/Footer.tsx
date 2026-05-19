@@ -7,8 +7,12 @@
 
 import { BRAND_PATHS, EXTERNAL_URLS, LOGO_FILES } from "@elizaos/shared-brand";
 import { Link } from "react-router-dom";
+import { useT } from "@/providers/I18nProvider";
 
 export default function Footer() {
+  const t = useT();
+  const year = new Date().getFullYear();
+
   return (
     <footer className="relative bg-black" style={{ flexShrink: 0 }}>
       <div className="container mx-auto px-6 py-12 relative z-10">
@@ -22,11 +26,16 @@ export default function Footer() {
                 draggable={false}
               />
               <p className="max-w-[16rem] text-sm leading-relaxed text-white/74">
-                Eliza, everywhere.
+                {t("cloud.footer.tagline", {
+                  defaultValue: "Eliza, everywhere.",
+                })}
               </p>
             </div>
             <p className="text-sm text-white/70 whitespace-nowrap">
-              © 2026 Eliza Cloud · USA
+              {t("cloud.footer.copyright", {
+                defaultValue: "© {{year}} Eliza Cloud · USA",
+                year,
+              })}
             </p>
           </div>
 
@@ -36,37 +45,43 @@ export default function Footer() {
                 href={EXTERNAL_URLS.app}
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Download the app
+                {t("cloud.footer.downloadApp", {
+                  defaultValue: "Download the app",
+                })}
               </a>
               <a
                 href={EXTERNAL_URLS.os}
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Install elizaOS
+                {t("cloud.footer.installElizaOs", {
+                  defaultValue: "Install elizaOS",
+                })}
               </a>
             </div>
 
             <nav
-              aria-label="Footer"
+              aria-label={t("cloud.footer.ariaLabel", {
+                defaultValue: "Footer",
+              })}
               className="mt-4 flex flex-col gap-1.5 md:gap-2.5 text-right relative"
             >
               <Link
                 to="/docs"
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Docs
+                {t("cloud.footer.docs", { defaultValue: "Docs" })}
               </Link>
               <a
                 href="/privacy-policy"
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Privacy
+                {t("cloud.footer.privacy", { defaultValue: "Privacy" })}
               </a>
               <a
                 href="/terms-of-service"
                 className="text-base text-white transition-colors hover:text-[#FF5800]"
               >
-                Terms
+                {t("cloud.footer.terms", { defaultValue: "Terms" })}
               </a>
             </nav>
           </div>

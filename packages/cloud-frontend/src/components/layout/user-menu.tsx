@@ -47,6 +47,7 @@ import {
 } from "@/lib/hooks/use-session-auth";
 import { useChatStore } from "@/lib/stores/chat-store";
 import { useCredits } from "@/providers/CreditsProvider";
+import { useT } from "@/providers/I18nProvider";
 import { FeedbackModal } from "./feedback-modal";
 
 interface UserProfileResponse {
@@ -213,6 +214,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
   const navigate = useNavigate();
   const { creditBalance, isLoading: loadingCredits } = useCredits();
   const { clearChatData } = useChatStore();
+  const t = useT();
 
   // User profile state for avatar
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
@@ -314,12 +316,12 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
       <div className="flex items-center gap-2">
         <Link to={loginUrl}>
           <Button variant="ghost" size="sm" disabled={!ready}>
-            Log in
+            {t("cloud.userMenu.logIn", { defaultValue: "Log in" })}
           </Button>
         </Link>
         <Link to={loginUrl}>
           <Button size="sm" disabled={!ready}>
-            Sign Up
+            {t("cloud.header.signUp", { defaultValue: "Sign Up" })}
           </Button>
         </Link>
       </div>
@@ -435,7 +437,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
               <div className="flex items-center gap-2 border border-white/10 bg-white/5 px-2 py-1.5">
                 <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
                 <span className="text-xs text-muted-foreground">
-                  Loading...
+                  {t("cloud.userMenu.loading", { defaultValue: "Loading..." })}
                 </span>
               </div>
             ) : (
@@ -454,7 +456,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
                     )}
                   </span>
                   <span className="text-xs opacity-80 select-none">
-                    balance
+                    {t("cloud.userMenu.balance", { defaultValue: "balance" })}
                   </span>
                 </Badge>
               </Link>
@@ -464,36 +466,42 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
           <DropdownMenuItem asChild>
             <Link to="/dashboard/account">
               <UserCircle className="mr-2 h-4 w-4" />
-              <span>Account</span>
+              <span>{t("cloud.nav.account", { defaultValue: "Account" })}</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/dashboard/settings">
               <SettingsIcon className="mr-2 h-4 w-4" />
-              <span>Settings</span>
+              <span>
+                {t("cloud.nav.settings", { defaultValue: "Settings" })}
+              </span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/dashboard/settings?tab=billing">
               <Coins className="mr-2 h-4 w-4" />
-              <span>Billing</span>
+              <span>{t("cloud.nav.billing", { defaultValue: "Billing" })}</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/dashboard/api-keys">
               <Key className="mr-2 h-4 w-4" />
-              <span>API Keys</span>
+              <span>
+                {t("cloud.nav.apiKeys", { defaultValue: "API Keys" })}
+              </span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem asChild>
             <Link to="/docs">
               <BookOpen className="mr-2 h-4 w-4" />
-              <span>Docs</span>
+              <span>{t("cloud.nav.docs", { defaultValue: "Docs" })}</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem onClick={() => setFeedbackOpen(true)}>
             <MessageSquare className="mr-2 h-4 w-4" />
-            <span>Feedback</span>
+            <span>
+              {t("cloud.userMenu.feedback", { defaultValue: "Feedback" })}
+            </span>
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -501,7 +509,9 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
             onClick={onSignOut}
           >
             <LogOut className="mr-2 h-4 w-4" />
-            <span>Sign out</span>
+            <span>
+              {t("cloud.userMenu.signOut", { defaultValue: "Sign out" })}
+            </span>
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

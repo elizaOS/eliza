@@ -2,6 +2,12 @@
 set -eu
 
 repo_dir="$(CDPATH=; cd -- "$(dirname -- "$0")/.." && pwd)"
+if [ -d "$repo_dir/tools/bin" ]; then
+    PATH="$repo_dir/tools/bin:$PATH"
+fi
+if [ -d "$repo_dir/.venv/bin" ]; then
+    PATH="$repo_dir/.venv/bin:$PATH"
+fi
 firmware="$repo_dir/build/qemu/e1_qemu_firmware.elf"
 firmware_lock="$repo_dir/build/qemu/.e1_qemu_firmware.lock"
 smoke_log="$repo_dir/build/reports/renode_smoke.log"

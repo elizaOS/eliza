@@ -590,6 +590,20 @@ def files_for_run(run_dir: Path, run_root: str, globs: list[str]) -> list[Path]:
     return files
 
 
+def release_manifest_files(root: Path, run_dir: Path, files: list[Path]) -> list[Path]:
+    eligible: list[Path] = []
+    for path in files:
+        try:
+            payload = yaml.safe_load(path.read_text())
+        except yaml.YAMLError:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        if payload.get("design") == "e1_chip_top" and payload.get("status") == "complete":
+            eligible.append(path)
+    return eligible
+
+
 def choose_complete_run(
     root: Path, manifest: dict
 ) -> tuple[Path | None, dict[str, list[Path]], dict[Path, list[str]]]:
@@ -605,6 +619,8 @@ def choose_complete_run(
         missing: list[str] = []
         for name, spec in required.items():
             files = files_for_run(run_dir, run_root, spec["globs"])
+            if name == "run_manifest":
+                files = release_manifest_files(root, run_dir, files)
             if files:
                 artifacts[name] = files
             else:

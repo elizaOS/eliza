@@ -14,6 +14,7 @@ PRODUCT_MAKEFILES := \
     $(LOCAL_DIR)/products/eliza_panther_phone.mk \
     $(LOCAL_DIR)/products/eliza_shiba_phone.mk \
     $(LOCAL_DIR)/products/eliza_caiman_phone.mk \
+    $(LOCAL_DIR)/products/eliza_tegu_phone.mk \
     $(LOCAL_DIR)/products/eliza_openagent_ai_soc_phone.mk
 
 COMMON_LUNCH_CHOICES := \
@@ -22,4 +23,5 @@ COMMON_LUNCH_CHOICES := \
     eliza_panther_phone-trunk_staging-userdebug \
     eliza_shiba_phone-trunk_staging-userdebug \
     eliza_caiman_phone-trunk_staging-userdebug \
+    eliza_tegu_phone-trunk_staging-userdebug \
     eliza_openagent_ai_soc_phone-trunk_staging-userdebug

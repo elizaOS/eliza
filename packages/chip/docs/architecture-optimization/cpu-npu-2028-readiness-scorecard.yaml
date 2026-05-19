@@ -8,6 +8,7 @@ claim_boundary: >
 source_artifacts:
   optimized_work_order: docs/architecture-optimization/soc-optimized-operating-point.yaml
   optimizer_report: benchmarks/results/soc-optimized-operating-point.json
+  design_space_frontier: benchmarks/results/cpu-npu-2028-design-space-frontier.json
   modeled_benchmark_report: benchmarks/results/modeled-cpu-npu-2028-local/report.json
   modeled_benchmark_eval: benchmarks/results/cpu-npu-2028-modeled-eval.json
   burst_sustained_policy: benchmarks/results/cpu-npu-2028-burst-sustained-policy.json
@@ -15,7 +16,9 @@ source_artifacts:
   aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
   process_14a_eval: benchmarks/results/cpu-npu-2028-14a-process-eval.json
   competitive_envelope: benchmarks/results/cpu-npu-2028-competitive-envelope.json
+  tapeout_readiness_audit: benchmarks/results/cpu-npu-2028-tapeout-readiness-audit.json
   optimizer_command: make soc-optimization
+  design_space_frontier_command: make cpu-npu-design-space-frontier
   modeled_benchmark_command: make benchmark-modeled-cpu-npu
   modeled_benchmark_eval_command: make cpu-npu-modeled-benchmark-eval
   burst_sustained_policy_command: make cpu-npu-burst-sustained-policy
@@ -23,6 +26,7 @@ source_artifacts:
   aosp_governor_trace_command: make cpu-npu-aosp-governor-trace
   process_14a_eval_command: make cpu-npu-14a-process-eval
   competitive_envelope_command: make cpu-npu-competitive-envelope
+  tapeout_readiness_audit_command: make cpu-npu-tapeout-readiness-audit
   work_order_check_command: make soc-optimization-work-order
   scorecard_check_command: make cpu-npu-2028-readiness-scorecard
 modeled_operating_point:
@@ -32,7 +36,7 @@ modeled_operating_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
-  memory_sustained_gbps: 208.0
+  memory_sustained_gbps: 240.0
 modeled_constraints:
   max_die_c: 95.0
   min_bandwidth_margin_gbps: 0.0
@@ -42,7 +46,7 @@ modeled_summary:
   no_modeled_throttle: true
   max_die_temp_c: 78.10407520000001
   max_total_power_w: 4.56854
-  min_bandwidth_margin_gbps: 8.159999999999997
+  min_bandwidth_margin_gbps: 32.80000000000001
   min_composite_perf_per_w: 0.7762635365079037
   min_npu_int8_tops: 24.3936
   process_corner_count: 4
@@ -52,7 +56,7 @@ modeled_robustness:
   case_count: 6
   max_die_temp_c: 89.58743576
   max_total_power_w: 4.676456999999999
-  min_bandwidth_margin_gbps: 0.1519999999999868
+  min_bandwidth_margin_gbps: 23.560000000000002
   min_composite_perf_per_w: 0.725014346244828
   min_npu_int8_tops: 23.17392
   failing_cases: []

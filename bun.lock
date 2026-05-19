@@ -1910,6 +1910,7 @@
         "@capacitor/preferences": "^8.0.1",
         "@testing-library/dom": "^10.4.0",
         "@testing-library/react": "^16.3.2",
+        "@types/node": "25.6.2",
         "@types/nprogress": "^0.2.3",
         "@types/react": "^19.2.14",
         "@types/react-dom": "^19.2.3",
