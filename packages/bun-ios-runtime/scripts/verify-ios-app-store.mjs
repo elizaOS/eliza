@@ -48,6 +48,11 @@ const networkPolicyTextExtensions = new Set([
 ]);
 const networkUrlPattern =
   /\b(?:https?|wss?):\/\/(?:\[[^\]\s"'`<>]+\]|[^\s"'`<>/;)]+)/gi;
+const runtimePluginFallbackStringPatterns = [
+  /ElizaBunEngine missing symbol/i,
+  /ElizaBunEngine\.framework is not embedded/i,
+  /direct-link symbols are not compiled/i,
+];
 
 function argValue(name, fallback = null) {
   const prefix = `${name}=`;
@@ -236,6 +241,28 @@ function validateUnsafeRuntimeBinary(binary) {
       formatForbiddenRuntimeFindings({
         binary,
         importGroups,
+        stringPatterns,
+      }),
+    );
+  }
+}
+
+function validateRuntimePluginBinary(binary) {
+  if (!fs.existsSync(binary)) fail(`${binary} does not exist`);
+  const strings = run("strings", [binary]);
+  if (strings.status !== 0)
+    fail(`strings failed for ${binary}: ${strings.stderr.trim()}`);
+  const stringOutput = `${strings.stdout}\n${strings.stderr}`;
+  const stringPatterns = [
+    ...findForbiddenRuntimeStrings(stringOutput),
+    ...runtimePluginFallbackStringPatterns
+      .filter((pattern) => pattern.test(stringOutput))
+      .map((pattern) => pattern.source),
+  ];
+  if (stringPatterns.length > 0) {
+    fail(
+      formatForbiddenRuntimeFindings({
+        binary,
         stringPatterns,
       }),
     );
@@ -451,9 +478,10 @@ function validateXcframework(root, { target = "device" } = {}) {
   }
 }
 
-function entitlementsFor(pathToCode) {
+function entitlementsFor(pathToCode, { allowUnsigned = false } = {}) {
   const result = run("codesign", ["-d", "--entitlements", ":-", pathToCode]);
   if (result.status !== 0) {
+    if (allowUnsigned) return {};
     fail(
       `${pathToCode} is not code-signed or entitlements cannot be read: ${result.stderr.trim()}`,
     );
@@ -469,8 +497,8 @@ function entitlementsFor(pathToCode) {
   return parsePlist(tmp);
 }
 
-function validateEntitlements(pathToCode) {
-  const entitlements = entitlementsFor(pathToCode);
+function validateEntitlements(pathToCode, options = {}) {
+  const entitlements = entitlementsFor(pathToCode, options);
   const present = forbiddenEntitlements.filter((key) =>
     Object.hasOwn(entitlements, key),
   );
@@ -481,17 +509,17 @@ function validateEntitlements(pathToCode) {
   }
 }
 
-function validateApp(appPath) {
+function validateApp(appPath, options = {}) {
   if (!appPath.endsWith(".app"))
     fail(`--app must point at an .app bundle: ${appPath}`);
-  validateEntitlements(appPath);
+  validateEntitlements(appPath, options);
   const frameworkDir = path.join(
     appPath,
     "Frameworks",
     `${frameworkName}.framework`,
   );
   validateFramework(frameworkDir);
-  validateEntitlements(frameworkDir);
+  validateEntitlements(frameworkDir, options);
   const runtimePluginDir = path.join(
     appPath,
     "Frameworks",
@@ -501,8 +529,8 @@ function validateApp(appPath) {
     runtimePluginDir,
     runtimePluginFrameworkName,
   );
-  validateUnsafeRuntimeBinary(runtimePluginBinary);
-  validateEntitlements(runtimePluginDir);
+  validateRuntimePluginBinary(runtimePluginBinary);
+  validateEntitlements(runtimePluginDir, options);
   validateAppNetworkPolicy(appPath);
   console.log(
     `[bun-ios-runtime] verified App Store no-JIT profile for ${appPath}`,
@@ -511,6 +539,9 @@ function validateApp(appPath) {
 
 function main() {
   const app = argValue("--app", process.env.ELIZA_IOS_APP_PATH || "");
+  const allowUnsigned = Boolean(
+    argValue("--allow-unsigned", process.env.ELIZA_IOS_VERIFY_ALLOW_UNSIGNED || ""),
+  );
   const target = argValue(
     "--target",
     process.env.ELIZA_IOS_VERIFY_TARGET || "device",
@@ -521,7 +552,7 @@ function main() {
   );
 
   if (app) {
-    validateApp(path.resolve(app));
+    validateApp(path.resolve(app), { allowUnsigned });
   } else {
     validateXcframework(path.resolve(xcframework), { target });
   }

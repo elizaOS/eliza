@@ -1,5 +1,5 @@
 /**
- * VoicePrefixSteps — 7-step voice onboarding sub-flow (R10 §3).
+ * VoicePrefixSteps — 6-step voice onboarding sub-flow (R10 §3).
  *
  * Self-contained renderer: caller mounts <VoicePrefixSteps step={…} … />
  * inside the onboarding shell and supplies callbacks. Each step renders a
@@ -10,8 +10,7 @@
  * - `tier` from I9 (defaults to "GOOD" when unknown — never blocks the flow).
  * - `profilesClient` from I2 (defaults are baked into the adapter when the
  *   server endpoints aren't live yet).
- * - `onModelDownloadStart` from I5 (caller no-ops when versioning isn't
- *   wired — we fall through to "Continue in background").
+ * - `onModelDownloadStart` from I5 starts the local bundle in the background.
  */
 
 import { Crown, Mic, Sparkles, Volume2 } from "lucide-react";
@@ -44,12 +43,14 @@ export interface VoicePrefixStepsProps {
   tierSummary?: string;
   /** Adapter to I2's voice profile endpoints. */
   profilesClient: VoiceProfilesClient;
-  /** Caller plays a scripted greeting via the chosen TTS (step 4). */
-  onAgentSpeak?: (script: string) => void;
+  /** Caller plays a scripted greeting via the chosen TTS (final step). */
+  onAgentSpeak?: (script: string) => void | Promise<void>;
   /** Caller requests microphone permission. Returns true if granted. */
   onRequestMicPermission?: () => Promise<boolean>;
-  /** Caller kicks off voice model download (I5). No-op if not wired. */
-  onModelDownloadStart?: () => void;
+  /** Voice/model bundle readiness shown during device check. */
+  voiceBundleReadiness?: VoiceBundleReadiness;
+  /** Caller kicks off voice model download in the background. */
+  onModelDownloadStart?: () => void | Promise<void>;
   /** Caller advances to the next step. */
   onAdvance: (next: VoicePrefixStep | null) => void;
   /** Caller goes back. */
@@ -62,6 +63,23 @@ export interface VoicePrefixStepsProps {
   ) => void;
   /** Optional initial display name for the OWNER (e.g. from cloud profile). */
   initialOwnerDisplayName?: string;
+}
+
+export type VoiceBundleDownloadStatus =
+  | "checking"
+  | "available"
+  | "queued"
+  | "downloading"
+  | "ready"
+  | "failed"
+  | "unsupported";
+
+export interface VoiceBundleReadiness {
+  modelId: string;
+  status: VoiceBundleDownloadStatus;
+  message: string;
+  percent?: number | null;
+  canStartDownload: boolean;
 }
 
 interface VoiceCaptureState {
@@ -102,6 +120,21 @@ function blobToBase64(blob: Blob): Promise<string> {
   });
 }
 
+async function requestBrowserMicPermission(): Promise<boolean> {
+  if (typeof navigator === "undefined" || !navigator.mediaDevices) {
+    return false;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    for (const track of stream.getTracks()) {
+      track.stop();
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function VoicePrefixSteps(
   props: VoicePrefixStepsProps,
 ): React.ReactElement {
@@ -120,11 +153,11 @@ export function VoicePrefixSteps(
 
   return (
     <div
-      className="flex w-full flex-col gap-4"
+      className="flex max-h-full min-h-0 w-full flex-col gap-4"
       data-testid="voice-prefix-steps"
       data-step={props.step}
     >
-      <header className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted">
+      <header className="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs text-muted">
         <span
           data-testid="voice-prefix-progress"
           role="progressbar"
@@ -143,26 +176,28 @@ export function VoicePrefixSteps(
       </header>
 
       <h1
-        className="text-lg font-semibold"
+        className="shrink-0 text-2xl font-semibold"
         data-testid="voice-prefix-step-name"
         aria-live="polite"
       >
         {stepMeta.defaultName}
       </h1>
       <p
-        className="text-sm text-muted"
+        className="shrink-0 text-sm text-muted"
         data-testid="voice-prefix-step-subtitle"
       >
         {stepMeta.defaultSubtitle}
       </p>
 
-      <main className="rounded-lg border border-border/35 bg-card/40 p-4">
+      <main className="min-h-0 flex-1 overflow-y-auto border border-[#2a2d36] bg-[#0a0b0f]/72 p-4 shadow-[0_1px_0_rgba(255,255,255,0.05)_inset]">
         {props.step === "welcome" ? (
           <WelcomeStep {...props} onPermissionResolved={setWelcomeReady} />
         ) : props.step === "tier" ? (
-          <TierStep {...props} tier={tier} tierSummary={props.tierSummary} />
-        ) : props.step === "models" ? (
-          <ModelsStep {...props} />
+          <VoiceReadinessStep
+            {...props}
+            tier={tier}
+            tierSummary={props.tierSummary}
+          />
         ) : props.step === "agent-speaks" ? (
           <AgentSpeaksStep {...props} />
         ) : props.step === "user-speaks" ? (
@@ -174,11 +209,12 @@ export function VoicePrefixSteps(
         ) : null}
       </main>
 
-      <footer className="flex items-center justify-between">
+      <footer className="flex shrink-0 items-center justify-between gap-3">
         {previousVoicePrefixStep(props.step, tier) ? (
           <Button
             variant="ghost"
             size="sm"
+            className="min-h-11 px-4"
             onClick={() => {
               const prev = previousVoicePrefixStep(props.step, tier);
               if (prev) props.onAdvance(prev);
@@ -196,6 +232,7 @@ export function VoicePrefixSteps(
             <Button
               variant="ghost"
               size="sm"
+              className="min-h-11 px-4"
               onClick={() =>
                 props.onAdvance(nextVoicePrefixStep(props.step, tier))
               }
@@ -206,6 +243,7 @@ export function VoicePrefixSteps(
           ) : null}
           <Button
             size="sm"
+            className="min-h-11 px-5"
             disabled={continueDisabled}
             onClick={() =>
               props.onAdvance(nextVoicePrefixStep(props.step, tier))
@@ -239,16 +277,9 @@ function WelcomeStep(
     boolean | null
   >(null);
   const onRequest = React.useCallback(async () => {
-    if (!props.onRequestMicPermission) {
-      setPermissionGranted(true);
-      props.onPermissionResolved?.(true);
-      return;
-    }
-    const granted = await props.onRequestMicPermission();
+    const granted = await (props.onRequestMicPermission?.() ??
+      requestBrowserMicPermission());
     setPermissionGranted(granted);
-    // Either outcome counts as "user has decided" — Continue unlocks. The
-    // denial path keeps the warning message visible so the user knows they
-    // can still proceed but voice features will be limited.
     props.onPermissionResolved?.(true);
   }, [props.onRequestMicPermission, props.onPermissionResolved]);
 
@@ -290,14 +321,28 @@ function WelcomeStep(
   );
 }
 
-// ── Step 2 — Hardware tier ───────────────────────────────────────────────
+// ── Step 2 — Hardware tier + voice bundle download ───────────────────────
 
-function TierStep(
+function VoiceReadinessStep(
   props: VoicePrefixStepsProps & {
     tier: VoiceDeviceTier;
     tierSummary?: string;
   },
 ): React.ReactElement {
+  const readiness = props.voiceBundleReadiness;
+  const canStart =
+    Boolean(props.onModelDownloadStart) &&
+    Boolean(readiness?.canStartDownload) &&
+    readiness?.status !== "checking";
+  const busy =
+    readiness?.status === "checking" ||
+    readiness?.status === "queued" ||
+    readiness?.status === "downloading";
+  const percent =
+    typeof readiness?.percent === "number"
+      ? Math.max(0, Math.min(100, readiness.percent))
+      : null;
+
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-tier">
       <VoiceTierBanner tier={props.tier} summary={props.tierSummary} />
@@ -307,56 +352,105 @@ function TierStep(
           voice profile for speaker recognition.
         </p>
       ) : null}
-    </div>
-  );
-}
-
-// ── Step 3 — Models ──────────────────────────────────────────────────────
-
-function ModelsStep(props: VoicePrefixStepsProps): React.ReactElement {
-  const startedRef = React.useRef(false);
-  React.useEffect(() => {
-    if (startedRef.current) return;
-    startedRef.current = true;
-    props.onModelDownloadStart?.();
-  }, [props.onModelDownloadStart]);
-  return (
-    <div className="flex flex-col gap-3" data-testid="voice-prefix-models">
-      <p className="text-sm">
-        Downloading the voice bundle (ASR, turn detector, emotion classifier,
-        speaker encoder, VAD, wake-word, Kokoro voice). You can continue once
-        the essentials are in place — the rest finishes in the background.
-      </p>
-      <p
-        className="text-xs text-muted"
-        data-testid="voice-prefix-models-background"
+      <div
+        className="rounded-md border border-border/35 bg-bg/60 p-3"
+        data-testid="voice-prefix-bundle-readiness"
       >
-        Continue in background — the model panel in Settings shows progress.
-      </p>
+        <div className="flex flex-col gap-2">
+          <p className="text-sm font-medium">
+            {readiness?.status === "ready"
+              ? "Voice bundle ready"
+              : "Voice bundle"}
+          </p>
+          <p className="text-xs text-muted">
+            {readiness?.message ??
+              "Check local model availability, then continue while any download finishes."}
+          </p>
+          {percent !== null ? (
+            <div
+              className="h-1.5 overflow-hidden rounded-full bg-border/50"
+              role="progressbar"
+              aria-valuenow={percent}
+              aria-valuemin={0}
+              aria-valuemax={100}
+              data-testid="voice-prefix-bundle-progress"
+            >
+              <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
+            </div>
+          ) : null}
+          <div className="flex flex-wrap items-center gap-2">
+            {canStart ? (
+              <Button
+                size="sm"
+                variant="secondary"
+                onClick={() => void props.onModelDownloadStart?.()}
+                data-testid="voice-prefix-start-download"
+              >
+                Start download
+              </Button>
+            ) : null}
+            {busy ? (
+              <span
+                className="text-xs text-muted"
+                data-testid="voice-prefix-download-background"
+              >
+                You can continue while this finishes.
+              </span>
+            ) : null}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
-
-// ── Step 4 — Agent speaks ────────────────────────────────────────────────
 
 function AgentSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
-  const [played, setPlayed] = React.useState(false);
-  const onPlay = React.useCallback(() => {
-    props.onAgentSpeak?.(AGENT_GREETING_SCRIPT);
-    setPlayed(true);
+  const [playState, setPlayState] = React.useState<
+    "idle" | "playing" | "played" | "failed"
+  >("idle");
+  const [error, setError] = React.useState<string | null>(null);
+  const onPlay = React.useCallback(async () => {
+    if (!props.onAgentSpeak) {
+      setPlayState("failed");
+      setError("Voice playback is not available in this build.");
+      return;
+    }
+
+    setPlayState("playing");
+    setError(null);
+    try {
+      await props.onAgentSpeak(AGENT_GREETING_SCRIPT);
+      setPlayState("played");
+    } catch (err) {
+      setPlayState("failed");
+      setError(
+        err instanceof Error ? err.message : "Voice playback failed to start.",
+      );
+    }
   }, [props.onAgentSpeak]);
+  const played = playState === "played";
+  const playing = playState === "playing";
   return (
     <div
       className="flex flex-col gap-3"
       data-testid="voice-prefix-agent-speaks"
     >
       <p className="text-sm">
-        Press play to hear the agent introduce itself in the voice you selected.
+        Press play to hear Eliza before finishing setup.
       </p>
-      <Button onClick={onPlay} data-testid="voice-prefix-agent-speaks-play">
+      <Button
+        onClick={() => void onPlay()}
+        disabled={playing}
+        data-testid="voice-prefix-agent-speaks-play"
+      >
         <Volume2 className="mr-2 h-4 w-4" />
-        {played ? "Replay greeting" : "Play greeting"}
+        {playing ? "Playing..." : played ? "Replay greeting" : "Play greeting"}
       </Button>
+      {error ? (
+        <p className="text-xs text-warn" data-testid="voice-prefix-agent-error">
+          {error}
+        </p>
+      ) : null}
       <p className="rounded bg-bg/60 p-2 text-xs italic text-muted">
         {AGENT_GREETING_SCRIPT}
       </p>
@@ -364,7 +458,7 @@ function AgentSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   );
 }
 
-// ── Step 5 — User speaks ─────────────────────────────────────────────────
+// ── Step 3 — User speaks ─────────────────────────────────────────────────
 // Real capture: MediaRecorder → base64 → appendOwnerCapture per prompt.
 
 function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
@@ -588,7 +682,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
   );
 }
 
-// ── Step 6 — Owner confirm ───────────────────────────────────────────────
+// ── Step 4 — Owner confirm ───────────────────────────────────────────────
 
 function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   const [displayName, setDisplayName] = React.useState(
@@ -647,7 +741,7 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
   );
 }
 
-// ── Step 7 — Family ─────────────────────────────────────────────────────
+// ── Step 5 — Family ─────────────────────────────────────────────────────
 // Real capture flow: MediaRecorder → base64 → POST /api/voice/profiles/capture
 
 type FamilyCapturePhase =

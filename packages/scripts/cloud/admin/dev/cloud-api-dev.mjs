@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { createConnection } from "node:net";
 import path from "node:path";
 import process from "node:process";
 
 const repoRoot = path.resolve(import.meta.dirname, "../../../../..");
+const require = createRequire(import.meta.url);
 const rawArgs = process.argv.slice(2);
 const withControlPlane = rawArgs.includes("--with-control-plane");
 const args = rawArgs.filter((a) => a !== "--with-control-plane");
@@ -33,6 +35,12 @@ function bunExecutable() {
   if (process.env.npm_execpath?.includes("bun"))
     return process.env.npm_execpath;
   return "bun";
+}
+
+function wranglerScript() {
+  return require.resolve("wrangler/bin/wrangler.js", {
+    paths: [path.join(repoRoot, "packages", "cloud-api")],
+  });
 }
 
 function parsePGliteDataDir(url) {
@@ -154,9 +162,9 @@ async function main() {
   // WebSocket and dev:inspector flag don't work on the bun runtime).
   const useNodeWrangler =
     process.env.CLOUD_E2E === "1" && process.env.NODE_ENV === "test";
-  const wranglerCmd = useNodeWrangler ? "npx" : bun;
+  const wranglerCmd = useNodeWrangler ? process.execPath : bun;
   const wranglerSpawnArgs = useNodeWrangler
-    ? ["wrangler", ...wranglerArgs]
+    ? [wranglerScript(), ...wranglerArgs]
     : ["run", "wrangler", ...wranglerArgs];
   const wrangler = spawn(wranglerCmd, wranglerSpawnArgs, {
     cwd: path.join(repoRoot, "packages", "cloud-api"),

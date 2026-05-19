@@ -191,12 +191,12 @@ index c21cd8eaa76..4a7ad0464c7 100644
  #endif // ENABLE(JIT_CAGE)
  
 -#if PLATFORM(COCOA)
-+#if PLATFORM(COCOA) && !TARGET_OS_SIMULATOR
++#if PLATFORM(COCOA) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE)
  #include <wtf/spi/cocoa/MachVMSPI.h>
  #endif
  
 -#if OS(DARWIN)
-+#if OS(DARWIN) && !TARGET_OS_SIMULATOR
++#if OS(DARWIN) && (!defined(TARGET_OS_IPHONE) || !TARGET_OS_IPHONE)
  
  #include <mach/mach.h>
  #include <mach/mach_vm.h>

@@ -71,3 +71,16 @@ Search remains plugin-owned until `eliza.fs` has method parity:
 - Route local file reads/search in documents/browser-adjacent plugins through `eliza.fs` where desktop-only.
 - Keep GitHub API, provider APIs, app semantics, and voice semantics plugin-owned.
 - Decide whether `eliza.computer` is justified before changing computer-use, browser, or native screen/camera/canvas implementation.
+
+## Audited Follow-Up Candidates
+
+The current safe immediate routing set is still `plugin-coding-tools` FILE `ls/read/write`, SHELL, and WORKTREE Git. The next candidates need narrower interfaces before code moves:
+
+| Area | Current owner | Decision |
+| --- | --- | --- |
+| `plugin-coding-tools` grep/glob | `plugin-coding-tools` | Keep plugin-owned until `eliza.fs` exposes first-class search and glob/find methods with the documented parity. |
+| `plugin-coding-tools` edit | `plugin-coding-tools` | Keep plugin-owned until `eliza.fs` exposes a first-class edit/patch method. Do not route through generic `writeText`. |
+| `plugin-agent-orchestrator` coding sessions | `plugin-agent-orchestrator` | Keep session, workspace, runner, and credential semantics plugin-owned. Route only low-level process/filesystem work after a coding-session adapter is explicit. |
+| `plugin-computeruse` desktop control | `plugin-computeruse` | Keep plugin-owned until a reviewed `eliza.computer` surface exists. Screen, input, windows, clipboard, and app control are not just PTY calls. |
+| `plugin-codex-cli` auth files | `plugin-codex-cli` | Keep credential/auth semantics plugin-owned. File access can route later only if credential storage semantics stay intact. |
+| `plugin-github` credentials/API | `plugin-github` | Keep connector credentials and GitHub API plugin-owned. Route local repo operations only when they are actual local Git, not GitHub API work. |

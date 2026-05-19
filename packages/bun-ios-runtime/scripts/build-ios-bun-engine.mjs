@@ -654,6 +654,7 @@ function stageWebKitIfRequested(info) {
   const staged = path.join(sourceDir, "build", info.webkitStageName);
   if (!webkitBuildDir) {
     if (fs.existsSync(path.join(staged, "lib", "libJavaScriptCore.a"))) {
+      stageWebKitHeaders(staged, staged);
       validateStagedWebKit(staged);
       writeWebKitPackageMarker(staged);
       return staged;
@@ -671,15 +672,10 @@ function stageWebKitIfRequested(info) {
 
   const src = path.resolve(webkitBuildDir);
   const srcLib = path.join(src, "lib");
-  const headerRoots = [
-    path.join(src, "JavaScriptCore", "Headers"),
-    path.join(src, "JavaScriptCore", "PrivateHeaders"),
-    path.join(src, "JavaScriptCore", "DerivedSources", "inspector"),
-    path.join(src, "WTF", "Headers"),
-    path.join(src, "bmalloc", "Headers"),
-    path.join(src, "ICU", "Headers"),
-  ];
-  if (!fs.existsSync(srcLib) || !fs.existsSync(headerRoots[0])) {
+  if (
+    !fs.existsSync(srcLib) ||
+    !fs.existsSync(path.join(src, "JavaScriptCore", "Headers"))
+  ) {
     fail(
       `ELIZA_BUN_IOS_WEBKIT_BUILD_DIR must contain lib/ and JavaScriptCore/Headers/ (${src})`,
     );
@@ -696,6 +692,22 @@ function stageWebKitIfRequested(info) {
       );
     }
   }
+  stageWebKitHeaders(src, staged);
+  validateStagedWebKit(staged);
+  writeWebKitPackageMarker(staged);
+  return staged;
+}
+
+function stageWebKitHeaders(src, staged) {
+  const headerRoots = [
+    path.join(src, "JavaScriptCore", "Headers"),
+    path.join(src, "JavaScriptCore", "PrivateHeaders"),
+    path.join(src, "JavaScriptCore", "DerivedSources", "inspector"),
+    path.join(src, "WTF", "Headers"),
+    path.join(src, "bmalloc", "Headers"),
+    path.join(src, "ICU", "Headers"),
+  ];
+  fs.mkdirSync(path.join(staged, "include"), { recursive: true });
   for (const headerRoot of headerRoots) {
     if (fs.existsSync(headerRoot)) {
       fs.cpSync(headerRoot, path.join(staged, "include"), { recursive: true });
@@ -720,9 +732,6 @@ function stageWebKitIfRequested(info) {
   if (fs.existsSync(cmakeConfig)) {
     fs.copyFileSync(cmakeConfig, path.join(staged, "include", "cmakeconfig.h"));
   }
-  validateStagedWebKit(staged);
-  writeWebKitPackageMarker(staged);
-  return staged;
 }
 
 function validateStagedWebKit(webkitPath) {
@@ -873,7 +882,10 @@ function collectStaticInputs(buildDir, webkitPath) {
       fail(`no Bun object files found under ${objectDir}`);
     }
     run("ar", ["rcs", bundledArchive, ...objectPaths, bunZigObject]);
-    inputs.push({ kind: "force", path: bundledArchive });
+    inputs.push({
+      kind: info.target === "device" ? "normal" : "force",
+      path: bundledArchive,
+    });
   } else {
     fail(
       `CMake build did not produce ${cmakeArchive} or ${objectDir} + bun-zig.o`,
@@ -1023,6 +1035,8 @@ function linkFramework({ buildDir, webkitPath, info }) {
     "-install_name",
     `@rpath/${frameworkName}.framework/${frameworkName}`,
     `-Wl,-exported_symbols_list,${exportedSymbolsList}`,
+    "-Wl,-dead_strip",
+    "-Wl,-dead_strip_dylibs",
     "-o",
     binary,
     shimSource,
@@ -1039,6 +1053,7 @@ function linkFramework({ buildDir, webkitPath, info }) {
     "-lobjc",
     "-licucore",
     "-lresolv",
+    "-lsqlite3",
     "-framework",
     "Foundation",
     "-framework",
@@ -1061,7 +1076,10 @@ function createXcframework(frameworkDir) {
     }
   }
 
-  const output = `${artifact}.tmp-${process.pid}`;
+  const output = path.join(
+    path.dirname(artifact),
+    `${path.basename(artifact, ".xcframework")}.tmp-${process.pid}.xcframework`,
+  );
   fs.rmSync(output, { recursive: true, force: true });
   fs.mkdirSync(path.dirname(artifact), { recursive: true });
   const args = ["-create-xcframework", "-framework", frameworkDir];
@@ -1141,8 +1159,13 @@ function buildWithCmake() {
   });
 
   if (fs.existsSync(artifact)) {
-    validateXcframework(artifact);
-    return;
+    const hasRequestedLibrary = allIosXcframeworkLibraries(artifact).some(
+      (entry) => libraryMatchesTarget(entry, info),
+    );
+    if (hasRequestedLibrary) {
+      validateXcframework(artifact);
+      return;
+    }
   }
   const frameworkDir = linkFramework({ buildDir, webkitPath, info });
   createXcframework(frameworkDir);

@@ -73,6 +73,31 @@ interface FullBunRuntimeModule {
   ElizaBunRuntime: FullBunRuntimePlugin;
 }
 
+const IOS_FULL_BUN_ARGV = [
+  "bun",
+  "--no-install",
+  "public/agent/agent-bundle.js",
+  "ios-bridge",
+  "--stdio",
+];
+
+const IOS_FULL_BUN_ENV: Record<string, string> = {
+  ELIZA_PLATFORM: "ios",
+  ELIZA_MOBILE_PLATFORM: "ios",
+  ELIZA_RUNTIME_MODE: "local-safe",
+  RUNTIME_MODE: "local-safe",
+  LOCAL_RUNTIME_MODE: "local-safe",
+  ELIZA_IOS_LOCAL_BACKEND: "1",
+  ELIZA_IOS_BUN_STARTUP_TIMEOUT_MS: "300000",
+  ELIZA_PGLITE_DISABLE_EXTENSIONS: "0",
+  ELIZA_VAULT_BACKEND: "file",
+  ELIZA_DISABLE_VAULT_PROFILE_RESOLVER: "1",
+  ELIZA_DISABLE_AGENT_WALLET_BOOTSTRAP: "1",
+  ELIZA_HEADLESS: "1",
+  ELIZA_IOS_BRIDGE_TRANSPORT: "bun-host-ipc",
+  LOG_LEVEL: "error",
+};
+
 type ImportMetaEnvRecord = Record<string, string | boolean | undefined>;
 
 declare global {
@@ -381,12 +406,8 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
   }
   fullBunRuntime ??= (async () => {
     try {
-      // Resolve via a variable so the typechecker doesn't require the (often
-      // un-built) `@elizaos/capacitor-bun-runtime` package to be present —
-      // it only ships in the iOS app bundle. Mirrors `android-native-agent-transport.ts`.
-      const fullBunRuntimePluginId = "@elizaos/capacitor-bun-runtime";
       const mod = (await import(
-        /* @vite-ignore */ fullBunRuntimePluginId
+        "@elizaos/capacitor-bun-runtime"
       )) as FullBunRuntimeModule;
       const runtime = wrapFullBunRuntime(mod.ElizaBunRuntime);
       const currentStatus = await runtime.getStatus().catch(() => null);
@@ -395,14 +416,8 @@ async function getFullBunRuntime(): Promise<FullBunRuntimePlugin | null> {
       }
       const started = await runtime.start({
         engine: "bun",
-        argv: ["bun", "public/agent/agent-bundle.js", "ios-bridge", "--stdio"],
-        env: {
-          ELIZA_PLATFORM: "ios",
-          ELIZA_MOBILE_PLATFORM: "ios",
-          ELIZA_IOS_LOCAL_BACKEND: "1",
-          ELIZA_HEADLESS: "1",
-          LOG_LEVEL: "error",
-        },
+        argv: IOS_FULL_BUN_ARGV,
+        env: IOS_FULL_BUN_ENV,
       });
       if (!started.ok) {
         throw new Error(started.error ?? "runtime start returned ok=false");

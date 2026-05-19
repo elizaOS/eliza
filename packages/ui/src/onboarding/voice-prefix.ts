@@ -21,20 +21,18 @@
 export type VoicePrefixStep =
   | "welcome"
   | "tier"
-  | "models"
-  | "agent-speaks"
   | "user-speaks"
   | "owner-confirm"
-  | "family";
+  | "family"
+  | "agent-speaks";
 
 export const VOICE_PREFIX_STEPS: readonly VoicePrefixStep[] = [
   "welcome",
   "tier",
-  "models",
-  "agent-speaks",
   "user-speaks",
   "owner-confirm",
   "family",
+  "agent-speaks",
 ] as const;
 
 export interface VoicePrefixStepMeta {
@@ -66,25 +64,17 @@ export const VOICE_PREFIX_STEP_META: Record<
   tier: {
     id: "tier",
     nameKey: "onboarding.voice.tier.name",
-    defaultName: "Device check",
+    defaultName: "Voice readiness",
     subtitleKey: "onboarding.voice.tier.subtitle",
-    defaultSubtitle: "How your hardware will run voice.",
+    defaultSubtitle: "Check device fit and start the voice download.",
     optional: false,
-  },
-  models: {
-    id: "models",
-    nameKey: "onboarding.voice.models.name",
-    defaultName: "Models",
-    subtitleKey: "onboarding.voice.models.subtitle",
-    defaultSubtitle: "Download voice models.",
-    optional: true,
   },
   "agent-speaks": {
     id: "agent-speaks",
     nameKey: "onboarding.voice.agentspeaks.name",
-    defaultName: "Listen",
+    defaultName: "Greeting",
     subtitleKey: "onboarding.voice.agentspeaks.subtitle",
-    defaultSubtitle: "Hear the agent introduce itself.",
+    defaultSubtitle: "Hear Eliza speak before you finish.",
     optional: false,
   },
   "user-speaks": {
@@ -113,13 +103,9 @@ export const VOICE_PREFIX_STEP_META: Record<
   },
 };
 
-/** Tier-aware step list — POOR tier skips the local model download. */
 export function resolveVoicePrefixSteps(
   tier: "MAX" | "GOOD" | "OKAY" | "POOR" | null,
 ): readonly VoicePrefixStep[] {
-  if (tier === "POOR") {
-    return VOICE_PREFIX_STEPS.filter((s) => s !== "models");
-  }
   return VOICE_PREFIX_STEPS;
 }
 

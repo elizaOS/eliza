@@ -1,5 +1,7 @@
 import Foundation
+#if !ELIZA_IOS_FULL_BUN_ENGINE
 import JavaScriptCore
+#endif
 import Darwin.Mach
 
 #if ELIZA_IOS_INCLUDE_LLAMA

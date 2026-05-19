@@ -289,16 +289,10 @@ describe("ffi-stub stub library — ABI v3 symbol audit", () => {
 		return;
 	}
 	it("exports every eliza_inference_* ABI v3 symbol", () => {
-		const isDarwin = STUB_DYLIB.endsWith(".dylib");
-		const nm = spawnSync(
-			"nm",
-			isDarwin ? ["-gU", STUB_DYLIB] : ["-D", "--defined-only", STUB_DYLIB],
-			{ encoding: "utf8" },
-		);
-		expect(nm.status).toBe(0);
-		const symbols = nm.stdout ?? "";
+		const symbols = readFileSync(STUB_DYLIB);
 		for (const name of ABI_V3_SYMBOLS) {
-			expect(new RegExp(`\\b_?${name}\\b`).test(symbols)).toBe(true);
+			const exportedName = STUB_DYLIB.endsWith(".dylib") ? `_${name}` : name;
+			expect(symbols.includes(Buffer.from(exportedName))).toBe(true);
 		}
 	}, 30_000);
 });

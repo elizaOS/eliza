@@ -30,6 +30,7 @@ export const appStoreRuntimeCmakeArgs = [
   "-DENABLE_BUN_FFI=OFF",
   "-DENABLE_BUN_SHELL=OFF",
   "-DENABLE_BUN_SUBPROCESS=OFF",
+  "-DUSE_STATIC_SQLITE=ON",
 ];
 
 export const appStoreRuntimeCompilerDefines = [

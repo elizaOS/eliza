@@ -9,10 +9,85 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sqlite3.h>
 #include <sys/select.h>
 #include <sys/stat.h>
+#include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
+
+#if defined(ELIZA_IOS_DISABLE_DYNAMIC_LOADING)
+__attribute__((visibility("hidden"))) void *dlopen(
+    const char *path,
+    int mode) {
+  (void)path;
+  (void)mode;
+  errno = ENOTSUP;
+  return NULL;
+}
+
+__attribute__((visibility("hidden"))) void *dlsym(
+    void *handle,
+    const char *symbol) {
+  (void)handle;
+  (void)symbol;
+  errno = ENOTSUP;
+  return NULL;
+}
+
+__attribute__((visibility("hidden"))) int sqlite3_load_extension(
+    sqlite3 *db,
+    const char *zFile,
+    const char *zProc,
+    char **pzErrMsg) {
+  (void)db;
+  (void)zFile;
+  (void)zProc;
+  if (pzErrMsg) *pzErrMsg = NULL;
+  return SQLITE_ERROR;
+}
+#endif
+
+#if defined(ELIZA_IOS_DISABLE_PROCESS_SPAWN)
+__attribute__((visibility("hidden"))) pid_t fork(void) {
+  errno = ENOTSUP;
+  return -1;
+}
+
+__attribute__((visibility("hidden"))) int execve(
+    const char *path,
+    char *const argv[],
+    char *const envp[]) {
+  (void)path;
+  (void)argv;
+  (void)envp;
+  errno = ENOTSUP;
+  return -1;
+}
+
+__attribute__((visibility("hidden"))) int pthread_atfork(
+    void (*prepare)(void),
+    void (*parent)(void),
+    void (*child)(void)) {
+  (void)prepare;
+  (void)parent;
+  (void)child;
+  return 0;
+}
+#endif
+
+#if defined(ELIZA_IOS_NO_JIT)
+__attribute__((visibility("hidden"))) int mprotect(
+    void *addr,
+    size_t len,
+    int prot) {
+  (void)addr;
+  (void)len;
+  (void)prot;
+  errno = ENOTSUP;
+  return -1;
+}
+#endif
 
 enum {
   ELIZA_DEFAULT_CALL_TIMEOUT_MS = 120000,

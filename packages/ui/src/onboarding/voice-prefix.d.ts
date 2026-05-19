@@ -17,7 +17,7 @@
  * shell when `voicePrefixEnabled` is true. When complete it hands off to
  * the legacy 3-step flow.
  */
-export type VoicePrefixStep = "welcome" | "tier" | "models" | "agent-speaks" | "user-speaks" | "owner-confirm" | "family";
+export type VoicePrefixStep = "welcome" | "tier" | "user-speaks" | "owner-confirm" | "family" | "agent-speaks";
 export declare const VOICE_PREFIX_STEPS: readonly VoicePrefixStep[];
 export interface VoicePrefixStepMeta {
     id: VoicePrefixStep;

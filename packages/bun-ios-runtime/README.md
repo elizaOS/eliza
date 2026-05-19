@@ -67,6 +67,23 @@ can run without embedding the full engine framework. When the framework exists,
 `start()` defaults to `engine: "auto"` and will boot the full engine. Passing
 `engine: "bun"` requires the framework and returns an error if it is missing.
 
+## SwiftBun compatibility lane
+
+SwiftBun is tracked as an optional JavaScriptCore bridge candidate, not as a
+replacement for the TypeScript runtime or the full Bun framework path. The
+policy is documented in `SWIFT_BUN_COMPATIBILITY.md` and codified in
+`packages/app-core/src/platform/ios-runtime-backends.ts`.
+
+The approved production local iOS backend remains
+`ElizaBunEngine.xcframework`. A SwiftBun-compatible lane may be enabled only as
+an explicit compatibility spike until it implements the existing
+`ElizaBunRuntime` contract, proves `http_request` and `sendMessage` routing,
+and reports unsupported native capabilities truthfully.
+
+Both lanes are native iOS app-process lanes. Neither lane turns Swift into the
+agent runtime owner; the TypeScript agent bundle remains the runtime surface the
+app talks to.
+
 ## App Store execution profile
 
 Device/App Store builds of `ElizaBunEngine.xcframework` must be no-JIT and

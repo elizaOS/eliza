@@ -113,6 +113,7 @@ export interface SandboxCommandResult {
 
 export interface E2BSandboxClient {
   readonly sandboxId: string;
+  readonly workspacePrepared?: boolean;
   readonly files: {
     list(
       path: string,
@@ -282,6 +283,7 @@ class SatelliteHttpFactory implements E2BSandboxFactory {
 }
 
 class SatelliteHttpClient implements E2BSandboxClient {
+  readonly workspacePrepared = true;
   readonly files = {
     list: (path: string) => this.list(path),
     read: (
@@ -895,13 +897,15 @@ export class E2BSatelliteCapabilityRouterService
   }
 
   private async prepareSandbox(sandbox: E2BSandboxClient): Promise<void> {
-    await sandbox.commands.run(
-      `mkdir -p ${shellQuote(this.routerConfig.workdir)}`,
-      {
-        timeoutMs: this.routerConfig.requestTimeoutMs,
-        requestTimeoutMs: this.routerConfig.requestTimeoutMs,
-      },
-    );
+    if (!sandbox.workspacePrepared) {
+      await sandbox.commands.run(
+        `mkdir -p ${shellQuote(this.routerConfig.workdir)}`,
+        {
+          timeoutMs: this.routerConfig.requestTimeoutMs,
+          requestTimeoutMs: this.routerConfig.requestTimeoutMs,
+        },
+      );
+    }
     if (!this.routerConfig.bootstrapGitUrl) return;
     const exists = await sandbox.commands
       .run(

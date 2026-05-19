@@ -10,15 +10,14 @@ import {
 } from "./voice-prefix";
 
 describe("voice-prefix step graph", () => {
-  it("has 7 steps in the canonical order", () => {
+  it("has 6 steps in the canonical order", () => {
     expect(VOICE_PREFIX_STEPS).toEqual([
       "welcome",
       "tier",
-      "models",
-      "agent-speaks",
       "user-speaks",
       "owner-confirm",
       "family",
+      "agent-speaks",
     ]);
   });
 
@@ -29,51 +28,42 @@ describe("voice-prefix step graph", () => {
     }
   });
 
-  it("only marks family + models as optional", () => {
+  it("only marks family as optional", () => {
     expect(VOICE_PREFIX_STEP_META.family.optional).toBe(true);
-    expect(VOICE_PREFIX_STEP_META.models.optional).toBe(true);
     expect(VOICE_PREFIX_STEP_META.welcome.optional).toBe(false);
     expect(VOICE_PREFIX_STEP_META["owner-confirm"].optional).toBe(false);
   });
 });
 
 describe("resolveVoicePrefixSteps", () => {
-  it("returns the full 7-step list for MAX/GOOD/OKAY tiers", () => {
-    expect(resolveVoicePrefixSteps("MAX")).toHaveLength(7);
-    expect(resolveVoicePrefixSteps("GOOD")).toHaveLength(7);
-    expect(resolveVoicePrefixSteps("OKAY")).toHaveLength(7);
-    expect(resolveVoicePrefixSteps(null)).toHaveLength(7);
-  });
-
-  it("skips the models step on POOR tier", () => {
-    const steps = resolveVoicePrefixSteps("POOR");
-    expect(steps).toHaveLength(6);
-    expect(steps).not.toContain("models");
+  it("returns the full 6-step list for every tier", () => {
+    expect(resolveVoicePrefixSteps("MAX")).toHaveLength(6);
+    expect(resolveVoicePrefixSteps("GOOD")).toHaveLength(6);
+    expect(resolveVoicePrefixSteps("OKAY")).toHaveLength(6);
+    expect(resolveVoicePrefixSteps("POOR")).toHaveLength(6);
+    expect(resolveVoicePrefixSteps(null)).toHaveLength(6);
   });
 });
 
 describe("nextVoicePrefixStep / previousVoicePrefixStep", () => {
-  it("walks forward through the 7-step list", () => {
+  it("walks forward through the 6-step list", () => {
     expect(nextVoicePrefixStep("welcome", "GOOD")).toBe("tier");
-    expect(nextVoicePrefixStep("tier", "GOOD")).toBe("models");
-    expect(nextVoicePrefixStep("models", "GOOD")).toBe("agent-speaks");
-    expect(nextVoicePrefixStep("family", "GOOD")).toBeNull();
+    expect(nextVoicePrefixStep("tier", "GOOD")).toBe("user-speaks");
+    expect(nextVoicePrefixStep("family", "GOOD")).toBe("agent-speaks");
+    expect(nextVoicePrefixStep("agent-speaks", "GOOD")).toBeNull();
   });
 
   it("walks backward through the list", () => {
     expect(previousVoicePrefixStep("welcome", "GOOD")).toBeNull();
     expect(previousVoicePrefixStep("tier", "GOOD")).toBe("welcome");
-    expect(previousVoicePrefixStep("models", "GOOD")).toBe("tier");
-  });
-
-  it("skips models when POOR tier", () => {
-    expect(nextVoicePrefixStep("tier", "POOR")).toBe("agent-speaks");
-    expect(previousVoicePrefixStep("agent-speaks", "POOR")).toBe("tier");
+    expect(previousVoicePrefixStep("user-speaks", "GOOD")).toBe("tier");
+    expect(previousVoicePrefixStep("agent-speaks", "GOOD")).toBe("family");
   });
 
   it("voicePrefixIsComplete returns true only at the last step", () => {
-    expect(voicePrefixIsComplete("family", "GOOD")).toBe(true);
+    expect(voicePrefixIsComplete("agent-speaks", "GOOD")).toBe(true);
+    expect(voicePrefixIsComplete("family", "GOOD")).toBe(false);
     expect(voicePrefixIsComplete("owner-confirm", "GOOD")).toBe(false);
-    expect(voicePrefixIsComplete("family", "POOR")).toBe(true);
+    expect(voicePrefixIsComplete("agent-speaks", "POOR")).toBe(true);
   });
 });

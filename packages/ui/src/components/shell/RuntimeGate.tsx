@@ -2001,17 +2001,17 @@ function GateShell({
   return (
     <div
       data-testid="onboarding-ui-overlay"
-      className={`relative h-full max-h-[100dvh] min-h-0 w-full overflow-hidden text-white overscroll-none ${
+      className={`relative h-full max-h-full min-h-0 w-full overflow-hidden text-white overscroll-none ${
         lightMode ? "bg-[#1a1108]" : "bg-[#0a0805]"
       }`}
-      style={{ height: "100dvh" }}
+      style={{ height: "100%" }}
     >
       <div
         className="flex items-center gap-2"
         style={{
           position: "absolute",
-          top: "calc(var(--safe-area-top, 0px) + 0.75rem)",
-          right: "calc(var(--safe-area-right, 0px) + 1rem)",
+          top: "0.75rem",
+          right: "1rem",
           zIndex: 50,
         }}
       >
@@ -2031,20 +2031,22 @@ function GateShell({
         />
       </div>
 
-      <div className="relative z-10 flex h-full min-h-0 items-center justify-center px-3 pb-[calc(max(0.75rem,var(--safe-area-bottom,0px))_+_var(--keyboard-height,0px))] pt-[calc(var(--safe-area-top,0px)_+_3.75rem)] sm:px-6 md:px-8">
+      <div
+        className="relative z-10 flex h-full min-h-0 items-start justify-center px-3 pb-[calc(0.75rem_+_var(--keyboard-height,0px))] pt-14 sm:px-6 md:px-8"
+        style={{ alignItems: "flex-start" }}
+      >
         <div
-          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)]  sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
+          className="flex max-h-full min-h-0 w-full max-w-[64rem] flex-col items-center gap-3 overflow-y-auto border-2 border-black px-3 py-4 shadow-[9px_9px_0_rgba(0,0,0,0.62)] sm:gap-4 sm:px-6 sm:py-5 md:px-8 md:py-6"
           style={{
             borderRadius: 0,
             clipPath:
               "polygon(16px 0,100% 0,100% calc(100% - 16px),calc(100% - 16px) 100%,0 100%,0 16px)",
-            // Dark zine panel for both modes — white text reads consistently
-            // against either the gold-on-black or gold-on-cream collage. The
-            // dark theme image is busy (lots of gold accents) so the panel is
-            // slightly more opaque to keep content focus.
+            transform: "perspective(1200px) rotateX(0.8deg)",
             background: lightMode
               ? "rgba(20,16,10,0.78)"
               : "rgba(9,10,14,0.84)",
+            boxShadow:
+              "0 1px 0 rgba(255,255,255,0.08) inset, 0 -18px 32px rgba(0,0,0,0.34) inset, 9px 9px 0 rgba(0,0,0,0.62)",
           }}
         >
           {children}

@@ -14,26 +14,50 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { render } from "@testing-library/react";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-beforeAll(() => {
-  if (typeof window.matchMedia !== "function") {
-    Object.defineProperty(window, "matchMedia", {
-      writable: true,
-      value: vi.fn().mockImplementation((query: string) => ({
-        matches: false,
-        media: query,
-        onchange: null,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-        addListener: vi.fn(),
-        removeListener: vi.fn(),
-        dispatchEvent: vi.fn(),
-      })),
-    });
-  }
+beforeEach(() => {
+  Object.defineProperty(HTMLMediaElement.prototype, "pause", {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
+  Object.defineProperty(HTMLMediaElement.prototype, "play", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockResolvedValue(undefined),
+  });
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    writable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  });
+  Object.defineProperty(window, "requestAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: vi.fn((callback: FrameRequestCallback) => {
+      queueMicrotask(() => callback(0));
+      return 1;
+    }),
+  });
+  Object.defineProperty(window, "cancelAnimationFrame", {
+    configurable: true,
+    writable: true,
+    value: vi.fn(),
+  });
 });
+
+afterEach(() => cleanup());
 
 import { CloudVideoBackground } from "./backgrounds/CloudVideoBackground";
 
@@ -60,7 +84,7 @@ describe("App pre-agent cloud wiring", () => {
     expect(APP_TSX).toMatch(/text-txt/);
   });
 
-  it("CloudVideoBackground renders a <video> with cloud sources", () => {
+  it("CloudVideoBackground renders a <video> with cloud sources", async () => {
     const { container } = render(
       <CloudVideoBackground
         speed="8x"
@@ -75,6 +99,11 @@ describe("App pre-agent cloud wiring", () => {
     const video = container.querySelector("video");
     expect(video).not.toBeNull();
     expect(video?.getAttribute("poster")).toBe("/clouds/poster-960.jpg");
+    await waitFor(() => {
+      expect(container.querySelector("video")?.getAttribute("preload")).toBe(
+        "metadata",
+      );
+    });
     expect(container.querySelector("img")?.getAttribute("src")).toBe(
       "/clouds/poster-960.jpg",
     );

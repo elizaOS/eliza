@@ -54,7 +54,6 @@ export { SidebarPanel } from "./components/composites/sidebar/sidebar-panel";
 export { SidebarScrollRegion } from "./components/composites/sidebar/sidebar-scroll-region";
 export * from "./components/index";
 export { FormField, LanguageDropdown, ThemeToggle, } from "./components/index";
-export * from "./components/onboarding/states/index";
 export type { TranslateFn } from "./components/pages/config-page-sections";
 export type { MemoryRecord, VectorGraph2DBounds, VectorGraph2DLayout, ViewMode, } from "./components/pages/vector-browser-utils";
 export * from "./components/pages/vector-browser-utils";

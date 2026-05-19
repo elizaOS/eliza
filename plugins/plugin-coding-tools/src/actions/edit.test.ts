@@ -1,5 +1,9 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type IAgentRuntime,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setupEnv, type TestEnv } from "./_test-helpers.js";
 import { editFileHandler } from "./edit.js";
@@ -39,6 +43,35 @@ describe("EDIT", () => {
     const data = result.data as Record<string, unknown> | undefined;
     expect(data?.replacements).toBe(1);
     expect(data?.firstLine).toBe(2);
+  });
+
+  it("keeps edit plugin-owned until fs.patch parity exists", async () => {
+    const file = await seedFile("routed.txt", "alpha\nbeta\ngamma");
+    const guardedRuntime = {
+      ...env.runtime,
+      getService: <T>(serviceType: string): T | null => {
+        if (serviceType === CAPABILITY_ROUTER_SERVICE_TYPE) {
+          throw new Error("edit must not use the capability router yet");
+        }
+        return env.runtime.getService<T>(serviceType);
+      },
+    } as IAgentRuntime;
+
+    const result = await editFileHandler(
+      guardedRuntime,
+      env.message,
+      undefined,
+      {
+        parameters: {
+          file_path: file,
+          old_string: "beta",
+          new_string: "BETA",
+        },
+      },
+    );
+
+    expect(result.success).toBe(true);
+    expect(await fs.readFile(file, "utf8")).toBe("alpha\nBETA\ngamma");
   });
 
   it("fails on no_match when old_string isn't in the file", async () => {

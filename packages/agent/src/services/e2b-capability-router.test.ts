@@ -99,6 +99,13 @@ type SatelliteHttpServer = {
   close: () => Promise<void>;
 };
 
+type SatelliteRouteContext = {
+  request: Request;
+  url: URL;
+  body: unknown;
+  bodyText: string;
+};
+
 function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
@@ -181,42 +188,65 @@ async function handleSatelliteHttpRequest(
   request: Request,
   calls: SatelliteHttpCall[],
 ): Promise<Response> {
+  const context = await readSatelliteRouteContext(request);
+  recordSatelliteHttpCall(context, calls);
+  if (!isAuthorizedSatelliteRequest(request)) {
+    return jsonResponse(401, { error: "unauthorized" });
+  }
+  return satelliteRouteResponse(context);
+}
+
+async function readSatelliteRouteContext(
+  request: Request,
+): Promise<SatelliteRouteContext> {
   const url = new URL(request.url);
   const bodyText = methodMayHaveBody(request.method)
     ? await request.text()
     : "";
-  const body = parseRequestBody(request, bodyText);
+  return {
+    request,
+    url,
+    bodyText,
+    body: parseRequestBody(request, bodyText),
+  };
+}
+
+function recordSatelliteHttpCall(
+  context: SatelliteRouteContext,
+  calls: SatelliteHttpCall[],
+): void {
   calls.push({
-    method: request.method,
-    pathname: url.pathname,
-    authorization: request.headers.get("authorization"),
-    body,
+    method: context.request.method,
+    pathname: context.url.pathname,
+    authorization: context.request.headers.get("authorization"),
+    body: context.body,
   });
-  if (!isAuthorizedSatelliteRequest(request)) {
-    return jsonResponse(401, { error: "unauthorized" });
-  }
-  if (request.method === "GET" && url.pathname === "/v1/health") {
+}
+
+function satelliteRouteResponse(context: SatelliteRouteContext): Response {
+  const route = `${context.request.method} ${context.url.pathname}`;
+  if (route === "GET /v1/health") {
     return jsonResponse(200, { ok: true });
   }
-  if (request.method === "GET" && url.pathname === "/v1/fs/entries") {
-    return satelliteEntriesResponse(url);
+  if (route === "GET /v1/fs/entries") {
+    return satelliteEntriesResponse(context.url);
   }
-  if (request.method === "GET" && url.pathname === "/v1/fs/file") {
-    return new Response(`text:${url.searchParams.get("path") ?? ""}`, {
+  if (route === "GET /v1/fs/file") {
+    return new Response(`text:${context.url.searchParams.get("path") ?? ""}`, {
       status: 200,
       headers: { "content-type": "text/plain" },
     });
   }
-  if (request.method === "PUT" && url.pathname === "/v1/fs/file") {
-    const path = url.searchParams.get("path") ?? "";
+  if (route === "PUT /v1/fs/file") {
+    const path = context.url.searchParams.get("path") ?? "";
     return jsonResponse(200, {
       path,
       name: path.split("/").pop() ?? path,
-      bytesWritten: Buffer.byteLength(bodyText, "utf8"),
+      bytesWritten: Buffer.byteLength(context.bodyText, "utf8"),
     });
   }
-  if (request.method === "POST" && url.pathname === "/v1/processes/run") {
-    return satelliteProcessRunResponse(body);
+  if (route === "POST /v1/processes/run") {
+    return satelliteProcessRunResponse(context.body);
   }
   return jsonResponse(404, { error: "not found" });
 }
@@ -603,7 +633,6 @@ describe("E2BSatelliteCapabilityRouterService", () => {
       expect(git.operation.stdout).toContain("git");
       expect(server.calls.map((call) => call.pathname)).toEqual([
         "/v1/health",
-        "/v1/processes/run",
         "/v1/fs/entries",
         "/v1/fs/file",
         "/v1/fs/file",
@@ -644,7 +673,6 @@ describe("E2BSatelliteCapabilityRouterService", () => {
       expect(server.calls.map((call) => call.pathname)).toEqual([
         "/api/v1/coding-containers",
         "/v1/health",
-        "/v1/processes/run",
         "/v1/fs/entries",
       ]);
       expect(server.calls[0]).toMatchObject({

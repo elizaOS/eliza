@@ -25,7 +25,7 @@ Pod::Spec.new do |s|
   s.source = { :git => 'https://github.com/elizaOS/eliza.git', :tag => s.version.to_s }
   s.ios.deployment_target = '16.0'
   s.vendored_frameworks = framework_relpath
-  s.frameworks = 'Foundation', 'JavaScriptCore', 'Network', 'Security', 'SystemConfiguration'
+  s.frameworks = 'Foundation', 'Network', 'Security', 'SystemConfiguration'
   s.pod_target_xcconfig = {
     'OTHER_LDFLAGS' => '$(inherited) -ObjC'
   }

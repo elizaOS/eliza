@@ -1,8 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
-import { mkdir, mkdtemp, readFile, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  realpath,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import nodePath from "node:path";
-import { createHandler, ensureWorkspace, loadConfig } from "../src/index";
+import {
+  createHandler,
+  ensureWorkspace,
+  loadConfig,
+  type CodingSatelliteCommandRunner,
+} from "../src/index";
 
 let workspaceRoot = "";
 
@@ -14,12 +26,12 @@ afterEach(() => {
   workspaceRoot = "";
 });
 
-function handler() {
+function handler(commandRunner?: CodingSatelliteCommandRunner) {
   const config = loadConfig({
     ELIZA_CODING_WORKSPACE: workspaceRoot,
     ELIZA_SATELLITE_HTTP_TOKEN: "token",
   });
-  return createHandler(config);
+  return createHandler(config, commandRunner ? { commandRunner } : {});
 }
 
 function request(
@@ -98,13 +110,28 @@ describe("coding Satellite HTTP runner", () => {
         ELIZA_SATELLITE_HTTP_TOKEN: "token",
       }),
     );
-    const response = await handler()(
+    const commandCalls: Array<{ command: string; args: string[]; cwd: string }> =
+      [];
+    const workspaceRealPath = await realpath(workspaceRoot);
+    const response = await handler(async (payload) => {
+      commandCalls.push({
+        command: payload.command,
+        args: payload.args,
+        cwd: payload.cwd,
+      });
+      return {
+        stdout: `${payload.cwd}\n:ok`,
+        stderr: "",
+        exitCode: 0,
+        timedOut: false,
+      };
+    })(
       request("/v1/processes/run", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          command: "sh",
-          args: ["-lc", "pwd && printf ':ok'"],
+          command: "/bin/pwd",
+          args: [],
           cwd: ".",
           timeoutMs: 5000,
         }),
@@ -113,8 +140,11 @@ describe("coding Satellite HTTP runner", () => {
     const body = await response.json();
 
     expect(response.status).toBe(200);
-    expect(body.exitCode).toBe(0);
-    expect(body.stdout).toContain(workspaceRoot);
+    expect(body).toMatchObject({ exitCode: 0 });
+    expect(commandCalls).toEqual([
+      { command: "/bin/pwd", args: [], cwd: workspaceRealPath },
+    ]);
+    expect(body.stdout).toContain(workspaceRealPath);
     expect(body.stdout).toContain(":ok");
   });
 });

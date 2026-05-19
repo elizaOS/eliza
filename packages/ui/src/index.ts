@@ -194,7 +194,6 @@ export {
   LanguageDropdown,
   ThemeToggle,
 } from "./components/index";
-export * from "./components/onboarding/states/index";
 export type { TranslateFn } from "./components/pages/config-page-sections";
 export type {
   MemoryRecord,

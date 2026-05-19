@@ -1,5 +1,5 @@
 /**
- * VoicePrefixSteps — 7-step voice onboarding sub-flow (R10 §3).
+ * VoicePrefixSteps — 6-step voice onboarding sub-flow (R10 §3).
  *
  * Self-contained renderer: caller mounts <VoicePrefixSteps step={…} … />
  * inside the onboarding shell and supplies callbacks. Each step renders a
@@ -10,8 +10,7 @@
  * - `tier` from I9 (defaults to "GOOD" when unknown — never blocks the flow).
  * - `profilesClient` from I2 (defaults are baked into the adapter when the
  *   server endpoints aren't live yet).
- * - `onModelDownloadStart` from I5 (caller no-ops when versioning isn't
- *   wired — we fall through to "Continue in background").
+ * - `onModelDownloadStart` from I5 starts the local bundle in the background.
  */
 import * as React from "react";
 import type { VoiceCaptureSubmitResult, VoiceProfilesClient } from "../../api/client-voice-profiles";
@@ -26,12 +25,14 @@ export interface VoicePrefixStepsProps {
     tierSummary?: string;
     /** Adapter to I2's voice profile endpoints. */
     profilesClient: VoiceProfilesClient;
-    /** Caller plays a scripted greeting via the chosen TTS (step 4). */
-    onAgentSpeak?: (script: string) => void;
+    /** Caller plays a scripted greeting via the chosen TTS (final step). */
+    onAgentSpeak?: (script: string) => void | Promise<void>;
     /** Caller requests microphone permission. Returns true if granted. */
     onRequestMicPermission?: () => Promise<boolean>;
-    /** Caller kicks off voice model download (I5). No-op if not wired. */
-    onModelDownloadStart?: () => void;
+    /** Voice/model bundle readiness shown during device check. */
+    voiceBundleReadiness?: VoiceBundleReadiness;
+    /** Caller kicks off voice model download in the background. */
+    onModelDownloadStart?: () => void | Promise<void>;
     /** Caller advances to the next step. */
     onAdvance: (next: VoicePrefixStep | null) => void;
     /** Caller goes back. */
@@ -44,6 +45,14 @@ export interface VoicePrefixStepsProps {
     }) => void;
     /** Optional initial display name for the OWNER (e.g. from cloud profile). */
     initialOwnerDisplayName?: string;
+}
+export type VoiceBundleDownloadStatus = "checking" | "available" | "queued" | "downloading" | "ready" | "failed" | "unsupported";
+export interface VoiceBundleReadiness {
+    modelId: string;
+    status: VoiceBundleDownloadStatus;
+    message: string;
+    percent?: number | null;
+    canStartDownload: boolean;
 }
 export declare function VoicePrefixSteps(props: VoicePrefixStepsProps): React.ReactElement;
 export default VoicePrefixSteps;

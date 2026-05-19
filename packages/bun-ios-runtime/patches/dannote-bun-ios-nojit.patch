@@ -42,6 +42,23 @@ index cd5e677702..423b8ae7c1 100644
    setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig.exe)
  else()
    setx(ZIG_EXECUTABLE ${ZIG_PATH}/zig)
+diff --git a/cmake/targets/BuildLolHtml.cmake b/cmake/targets/BuildLolHtml.cmake
+index bceef9fc44..0c4196a682 100644
+--- a/cmake/targets/BuildLolHtml.cmake
++++ b/cmake/targets/BuildLolHtml.cmake
+@@ -17,7 +17,11 @@ else()
+ endif()
+ 
+ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+-  set(LOLHTML_RUST_TARGET "aarch64-apple-ios-sim")
++  if(CMAKE_OSX_SYSROOT MATCHES "iPhoneOS|iphoneos")
++    set(LOLHTML_RUST_TARGET "aarch64-apple-ios")
++  else()
++    set(LOLHTML_RUST_TARGET "aarch64-apple-ios-sim")
++  endif()
+   set(LOLHTML_LIBRARY ${LOLHTML_BUILD_PATH}/${LOLHTML_RUST_TARGET}/${LOLHTML_BUILD_TYPE}/${CMAKE_STATIC_LIBRARY_PREFIX}lolhtml${CMAKE_STATIC_LIBRARY_SUFFIX})
+ else()
+   set(LOLHTML_LIBRARY ${LOLHTML_BUILD_PATH}/${LOLHTML_BUILD_TYPE}/${CMAKE_STATIC_LIBRARY_PREFIX}lolhtml${CMAKE_STATIC_LIBRARY_SUFFIX})
 diff --git a/src/Global.zig b/src/Global.zig
 index 91fb6994a8..ddb0ebffae 100644
 --- a/src/Global.zig

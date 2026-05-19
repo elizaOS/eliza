@@ -2630,7 +2630,10 @@ export function resolveIosCustomPods({
         ]
       : []),
     ...(includeLlama && !appStoreBuild
-      ? [["LlamaCppCapacitor", "llama-cpp-capacitor"]]
+      ? [
+          ["LlamaCpp", "llama-cpp-capacitor"],
+          ["LlamaCppCapacitor", "llama-cpp-capacitor"],
+        ]
       : []),
     ...(includeFullBunEngine
       ? [["ElizaBunEngine", "@elizaos/bun-ios-runtime"]]
@@ -2642,7 +2645,10 @@ const IOS_INCOMPATIBLE_SPM_PLUGINS = new Set(
   IOS_OFFICIAL_PODS.map(([name]) => name),
 );
 
-const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set(["LlamaCppCapacitor"]);
+const IOS_COCOAPODS_OWNED_SPM_PLUGINS = new Set([
+  "LlamaCpp",
+  "LlamaCppCapacitor",
+]);
 
 const IOS_BONJOUR_SERVICES = [
   "_eliza-gw._tcp",
@@ -2741,6 +2747,14 @@ function overlayIos() {
 
 function isTruthyEnv(value) {
   return /^(1|true|yes|on)$/i.test(String(value ?? "").trim());
+}
+
+function resolveIosBuildConfiguration(env = process.env) {
+  const value = String(env.ELIZA_IOS_BUILD_CONFIGURATION ?? "Debug").trim();
+  if (value === "Debug" || value === "Release") return value;
+  throw new Error(
+    `ELIZA_IOS_BUILD_CONFIGURATION must be Debug or Release, got ${value}`,
+  );
 }
 
 function isFullIosBunEngineRequested(env = process.env) {
@@ -3547,47 +3561,79 @@ export function patchLlamaCppCapacitorPodspecForXcframework(
   } = {},
 ) {
   const podspecPath = path.join(packageDir, "LlamaCppCapacitor.podspec");
-  if (!fs.existsSync(podspecPath)) return;
-  const current = fs.readFileSync(podspecPath, "utf8");
-  let patched = current.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
-    `s.vendored_frameworks = '${xcframeworkRelPath}'`,
-  );
-  patched = patched.replace(
-    /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
-    "\n",
-  );
-  // The published podspec also injects `ios/Frameworks` into
-  // FRAMEWORK_SEARCH_PATHS, which contains the device-only
-  // `llama-cpp.framework` next to the xcframework. The linker scans
-  // -F paths in order and resolves `-framework llama-cpp` against the
-  // device-only slice first, producing
-  //   ld: building for 'iOS-simulator', but linking in dylib (...
-  //   /llama-cpp.framework/llama-cpp) built for 'iOS'
-  // on iphonesimulator builds. Drop the explicit search path so the
-  // xcframework's per-platform slice is picked up via the standard
-  // XCFrameworkIntermediates path the Xcode build system maintains.
-  patched = patched.replace(
-    /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
-    "\n",
-  );
-  if (patched !== current) {
-    fs.writeFileSync(podspecPath, patched, "utf8");
-    console.log(
-      "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework + dropped FRAMEWORK_SEARCH_PATHS device-only override.",
+  if (fs.existsSync(podspecPath)) {
+    const current = fs.readFileSync(podspecPath, "utf8");
+    let patched = current.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
     );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      /\n\s*s\.pod_target_xcconfig\s*=\s*\{\s*\n\s*['"]FRAMEWORK_SEARCH_PATHS['"]\s*=>\s*['"]\$\(inherited\) "\$\(PODS_TARGET_SRCROOT\)\/ios\/Frameworks"['"]\s*\n\s*\}\s*/m,
+      "\n",
+    );
+    // The published podspec also injects `ios/Frameworks` into
+    // FRAMEWORK_SEARCH_PATHS, which contains the device-only
+    // `llama-cpp.framework` next to the xcframework. The linker scans
+    // -F paths in order and resolves `-framework llama-cpp` against the
+    // device-only slice first, producing
+    //   ld: building for 'iOS-simulator', but linking in dylib (...
+    //   /llama-cpp.framework/llama-cpp) built for 'iOS'
+    // on iphonesimulator builds. Drop the explicit search path so the
+    // xcframework's per-platform slice is picked up via the standard
+    // XCFrameworkIntermediates path the Xcode build system maintains.
+    patched = patched.replace(
+      /\s*s\.pod_target_xcconfig\s*=\s*\{[^}]*'FRAMEWORK_SEARCH_PATHS'\s*=>\s*'[^']*'[^}]*\}\s*/,
+      "\n",
+    );
+    if (patched !== current) {
+      fs.writeFileSync(podspecPath, patched, "utf8");
+      console.log(
+        "[mobile-build] Patched llama-cpp-capacitor podspec for xcframework + dropped FRAMEWORK_SEARCH_PATHS device-only override.",
+      );
+    }
+  }
+
+  const llamaPodspecPath = path.join(packageDir, "LlamaCpp.podspec");
+  if (fs.existsSync(llamaPodspecPath)) {
+    const current = fs.readFileSync(llamaPodspecPath, "utf8");
+    let patched = current.replace(
+      /^\s*s\.source_files\s*=.*$/m,
+      "  s.source_files = []",
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.framework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/llama-cpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    patched = patched.replace(
+      "s.vendored_frameworks = 'ios/Frameworks/LlamaCpp.xcframework'",
+      `s.vendored_frameworks = '${xcframeworkRelPath}'`,
+    );
+    if (patched !== current) {
+      fs.writeFileSync(llamaPodspecPath, patched, "utf8");
+      console.log(
+        "[mobile-build] Patched LlamaCpp podspec for eliza-built xcframework.",
+      );
+    }
   }
 }
 
@@ -3659,9 +3705,7 @@ async function ensureIosLlamaCppVendoredFramework({
   // client), the pod is not generated and the vendored framework is not
   // referenced. Skipping here avoids spinning up xcodebuild for an
   // xcframework that nothing consumes.
-  const includeLlama =
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA) ||
-    isTruthyEnv(process.env.ELIZA_IOS_INCLUDE_LLAMA);
+  const includeLlama = shouldIncludeIosLlama();
   if (!includeLlama) return;
 
   if (process.platform !== "darwin") {
@@ -5418,7 +5462,12 @@ function configureIosLocalBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
-  setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  if (isIosAppStoreBuild()) {
+    process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
+    process.env.MILADY_IOS_INCLUDE_LLAMA = "0";
+  } else {
+    setDefaultProcessEnv("ELIZA_IOS_INCLUDE_LLAMA", "1");
+  }
   setDefaultProcessEnv(
     "ELIZA_IOS_BUILD_DESTINATION",
     "generic/platform=iOS Simulator",
@@ -5435,6 +5484,8 @@ export function configureIosAppStoreBuildDefaults() {
   setDefaultProcessEnv("RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("LOCAL_RUNTIME_MODE", "local-safe");
   setDefaultProcessEnv("VITE_ELIZA_RUNTIME_MODE", "local-safe");
+  process.env.ELIZA_IOS_INCLUDE_LLAMA = "0";
+  process.env.MILADY_IOS_INCLUDE_LLAMA = "0";
 }
 
 async function buildIos({ local = false } = {}) {
@@ -5446,6 +5497,17 @@ async function buildIos({ local = false } = {}) {
   } else {
     configureIosAppStoreBuildDefaults();
   }
+
+  const iosBuildPolicy = resolveMobileBuildPolicy(local ? "ios-local" : "ios");
+  setDefaultProcessEnv(
+    "ELIZA_CAPACITOR_BUILD_TARGET",
+    iosBuildPolicy.capacitorTarget,
+  );
+  setDefaultProcessEnv("ELIZA_BUILD_VARIANT", iosBuildPolicy.buildVariant);
+  setDefaultProcessEnv(
+    "ELIZA_RELEASE_AUTHORITY",
+    iosBuildPolicy.releaseAuthority,
+  );
 
   const buildTarget = resolveIosBuildTarget();
   const includesFullBunRuntime = shouldIncludeIosFullBunEngine();
@@ -5532,7 +5594,7 @@ async function buildIos({ local = false } = {}) {
       "-scheme",
       "App",
       "-configuration",
-      "Debug",
+      resolveIosBuildConfiguration(),
       "-destination",
       buildTarget.destination,
       "-sdk",

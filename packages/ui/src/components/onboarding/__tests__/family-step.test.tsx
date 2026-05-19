@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * Integration tests for FamilyStep (step 7 of voice prefix onboarding).
+ * Integration tests for FamilyStep.
  *
  * Covers:
  *   - Empty list → skip path (no capture needed, Continue works)
@@ -211,8 +211,7 @@ describe("FamilyStep", () => {
 
     fireEvent.click(screen.getByTestId("voice-prefix-continue"));
     expect(onAdvance).toHaveBeenCalledTimes(1);
-    // Family is the last step; next is null.
-    expect(onAdvance.mock.calls[0]?.[0]).toBeNull();
+    expect(onAdvance.mock.calls[0]?.[0]).toBe("agent-speaks");
   });
 
   it("captures one member: captureFamilyMember called once, entity bound, 'captured' badge shown", async () => {

@@ -1,7 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as os from "node:os";
 import * as path from "node:path";
-import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { SandboxService } from "../services/sandbox-service.js";
@@ -79,6 +84,26 @@ describe("GLOB", () => {
     expect(sortedNames.some((p) => p.endsWith("b.ts"))).toBe(true);
     expect(sortedNames.some((p) => p.endsWith("c.ts"))).toBe(true);
     expect(data?.truncated).toBe(false);
+    expect(result.text).toMatch(/3 files \(truncated=false\)/);
+  });
+
+  it("keeps glob plugin-owned until fs.glob parity exists", async () => {
+    const { runtime, message } = await buildRuntime();
+    const guardedRuntime = {
+      ...runtime,
+      getService: <T>(serviceType: string): T | null => {
+        if (serviceType === CAPABILITY_ROUTER_SERVICE_TYPE) {
+          throw new Error("glob must not use the capability router yet");
+        }
+        return runtime.getService<T>(serviceType);
+      },
+    } as IAgentRuntime;
+
+    const result = await globHandler(guardedRuntime, message, state, {
+      parameters: { pattern: "**/*.ts" },
+    });
+
+    expect(result.success).toBe(true);
     expect(result.text).toMatch(/3 files \(truncated=false\)/);
   });
 
