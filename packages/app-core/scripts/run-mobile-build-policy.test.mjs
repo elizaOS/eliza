@@ -243,11 +243,14 @@ test("resolveCapacitorCli supports hoisted workspace installs", () => {
   const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-capacitor-"));
   try {
     const tempAppDir = path.join(tempRoot, "packages", "app");
-    const capacitorCli = path.join(
-      tempRoot,
+    const capacitorPackage = path.join(
+      fs.realpathSync(tempRoot),
       "node_modules",
       "@capacitor",
       "cli",
+    );
+    const capacitorCli = path.join(
+      capacitorPackage,
       "bin",
       "capacitor",
     );
@@ -261,6 +264,36 @@ test("resolveCapacitorCli supports hoisted workspace installs", () => {
         repoRootValue: tempRoot,
       }),
       capacitorCli,
+    );
+  } finally {
+    fs.rmSync(tempRoot, { recursive: true, force: true });
+  }
+});
+
+test("resolveCapacitorCli supports Bun store workspace installs", () => {
+  const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-capacitor-"));
+  try {
+    const tempAppDir = path.join(tempRoot, "packages", "app");
+    const capacitorPackage = path.join(
+      tempRoot,
+      "node_modules",
+      ".bun",
+      "@capacitor+cli@8.3.4",
+      "node_modules",
+      "@capacitor",
+      "cli",
+    );
+    const capacitorCli = path.join(capacitorPackage, "bin", "capacitor");
+    fs.mkdirSync(path.dirname(capacitorCli), { recursive: true });
+    fs.mkdirSync(tempAppDir, { recursive: true });
+    fs.writeFileSync(capacitorCli, "#!/usr/bin/env node\n", "utf8");
+
+    assert.equal(
+      resolveCapacitorCli({
+        appDirValue: tempAppDir,
+        repoRootValue: tempRoot,
+      }),
+      path.join(fs.realpathSync(capacitorPackage), "bin", "capacitor"),
     );
   } finally {
     fs.rmSync(tempRoot, { recursive: true, force: true });
