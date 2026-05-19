@@ -7,11 +7,16 @@ Eliza agent through the gates D.5--D.13 from the AOSP simulator completion
 audit:
 
   * agent service alive (pidof <package> returns non-empty)
-  * /api/agent/self-status HTTP 200 with `agentId` shape
-  * llama smoke produces >= AOSP_AGENT_LLAMA_MIN_TOKENS tokens
-  * Kokoro TTS produces a valid RIFF/WAVE WAV
+  * /api/agent/self-status HTTP 200 with `agentId` shape and per-plugin
+    `status:"ready"` on the local-inference plugin set
+  * llama smoke produces >= AOSP_AGENT_LLAMA_MIN_TOKENS tokens within the
+    600s budget; the wall-clock seconds are emitted as LLAMA_WALL_S
+  * Kokoro TTS produces a valid RIFF/WAVE WAV and emits TTS_SAMPLES
   * Whisper STT reaches >= AOSP_AGENT_STT_MIN_OVERLAP token-overlap on the
     golden transcript
+  * Wakeword-cpp detection fires on the wakeword stimulus
+  * Silero VAD returns one or more speech segments on the speech+silence
+    fixture
   * (optional, opt-in) stable-diffusion sample is a valid PNG
 
 Every assertion is written as a `KEY=value` line on stdout so the parent
@@ -127,6 +132,18 @@ def token_overlap(hyp: str, ref: str) -> float:
     return len(H & R) / len(R)
 
 
+def wav_sample_count(path: Path) -> int:
+    """Return the per-channel sample count of a canonical RIFF/WAVE PCM file.
+
+    We avoid taking a soundfile/numpy dependency: the Python stdlib `wave`
+    module is enough for the sample counts we need for the smoke evidence.
+    """
+    import wave
+
+    with wave.open(str(path), "rb") as handle:
+        return handle.getnframes()
+
+
 def assert_riff_wave(path: Path) -> str:
     result = subprocess.run(
         ["file", str(path)],
@@ -183,11 +200,22 @@ def main() -> int:
     stt_min_overlap = env_float("AOSP_AGENT_STT_MIN_OVERLAP", 0.80)
     sd_optin = os.environ.get("AOSP_AGENT_SD_OPTIN", "0") == "1"
     sd_prompt = env("AOSP_AGENT_SD_PROMPT", "a single red apple on a white background")
+    wakeword_model = Path(env("AOSP_AGENT_WAKEWORD_MODEL"))
+    wakeword_audio = Path(env("AOSP_AGENT_WAKEWORD_AUDIO"))
+    vad_audio = Path(env("AOSP_AGENT_VAD_AUDIO"))
+    required_plugins_raw = env(
+        "AOSP_AGENT_REQUIRED_PLUGINS",
+        "local-inference",
+    )
+    required_plugins = [p.strip() for p in required_plugins_raw.split(",") if p.strip()]
 
     for path, label in (
         (apk, "AOSP_AGENT_APK"),
         (llama_model, "AOSP_AGENT_LLAMA_MODEL"),
         (golden_audio, "AOSP_AGENT_GOLDEN_AUDIO"),
+        (wakeword_model, "AOSP_AGENT_WAKEWORD_MODEL"),
+        (wakeword_audio, "AOSP_AGENT_WAKEWORD_AUDIO"),
+        (vad_audio, "AOSP_AGENT_VAD_AUDIO"),
     ):
         if not path.is_file():
             raise SystemExit(f"error: {label} path does not exist: {path}")
@@ -207,13 +235,56 @@ def main() -> int:
     if abi != "riscv64":
         raise SystemExit(f"error: device ABI is {abi!r}, expected riscv64")
 
-    # Install APK with runtime permissions granted.
-    run(adb_args(serial) + ["install", "-r", "-g", str(apk)])
+    # APK riscv64 jniLibs guard before install (cheap; avoids
+    # INSTALL_FAILED_NO_MATCHING_ABIS in a way the operator can triage).
+    unzip_listing = subprocess.run(
+        ["unzip", "-l", str(apk)],
+        text=True,
+        capture_output=True,
+        check=True,
+    ).stdout
+    if "lib/riscv64/" not in unzip_listing:
+        raise SystemExit(
+            f"error: {apk} has no lib/riscv64/ payload; check jniLibs/riscv64/ staging"
+        )
 
-    # Stage model + golden fixture.
+    abilist = adb_shell(serial, "getprop", "ro.product.cpu.abilist")
+    print(f"ro.product.cpu.abilist={abilist}")
+
+    # Install APK with runtime permissions granted (-g auto-grants).
+    install_result = subprocess.run(
+        adb_args(serial) + ["install", "-r", "-g", str(apk)],
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    install_combined = (install_result.stdout or "") + (install_result.stderr or "")
+    print(install_combined.strip())
+    if install_result.returncode != 0 or "INSTALL_FAILED" in install_combined:
+        print(f"INSTALL_RC={install_result.returncode}")
+        print(f"DEVICE_ABILIST={abilist}")
+        print("APK_NATIVE_LIBS=")
+        for line in unzip_listing.splitlines():
+            if "lib/" in line:
+                print(f"APK_NATIVE_LIBS_ENTRY={line.strip()}")
+        raise SystemExit(
+            f"error: adb install failed (rc={install_result.returncode}): {install_combined.strip()}"
+        )
+
+    pm_list = adb_shell(serial, "pm", "list", "packages", package)
+    if package not in pm_list:
+        raise SystemExit(
+            f"error: package {package} not present after install; pm list output: {pm_list!r}"
+        )
+    print(f"APK_INSTALLED={package}")
+
+    # Stage model + golden fixtures.
     run(adb_args(serial) + ["shell", "mkdir", "-p", device_dir])
     run(adb_args(serial) + ["push", str(llama_model), f"{device_dir}/llama.gguf"])
     run(adb_args(serial) + ["push", str(golden_audio), f"{device_dir}/golden.wav"])
+    run(adb_args(serial) + ["push", str(wakeword_model), f"{device_dir}/wakeword.gguf"])
+    run(adb_args(serial) + ["push", str(wakeword_audio), f"{device_dir}/wakeword.wav"])
+    run(adb_args(serial) + ["push", str(vad_audio), f"{device_dir}/vad.wav"])
 
     golden_transcript_path = out_dir / "eliza-cuttlefish-agent-golden-transcript.txt"
     golden_transcript_path.write_text(golden_transcript_text)
@@ -265,9 +336,37 @@ def main() -> int:
         )
     print("SELF_STATUS_JSON_SHAPE=ok")
 
+    plugins = self_status_payload.get("plugins")
+    if not isinstance(plugins, list):
+        raise SystemExit(
+            f"error: /api/agent/self-status missing plugins[]: {self_status_payload!r}"
+        )
+    plugin_by_name: dict[str, dict] = {}
+    for entry in plugins:
+        if isinstance(entry, dict):
+            name = entry.get("name") or entry.get("id")
+            if isinstance(name, str):
+                plugin_by_name[name] = entry
+        elif isinstance(entry, str):
+            plugin_by_name[entry] = {"name": entry, "status": "ready"}
+    print(f"SELF_STATUS_PLUGINS={','.join(sorted(plugin_by_name))}")
+    for required_plugin in required_plugins:
+        entry = plugin_by_name.get(required_plugin)
+        if entry is None:
+            raise SystemExit(
+                f"error: required plugin {required_plugin!r} missing from /api/agent/self-status"
+            )
+        status = entry.get("status") if isinstance(entry, dict) else None
+        if status != "ready":
+            raise SystemExit(
+                f"error: plugin {required_plugin!r} status is {status!r}, expected 'ready'"
+            )
+    print(f"SELF_STATUS_REQUIRED_PLUGINS_READY={','.join(required_plugins)}")
+
     # Llama smoke.
     llama_body_path = out_dir / "eliza-cuttlefish-agent-llama.json"
     llama_url = f"{base_url}/api/agent/llama"
+    llama_start = time.monotonic()
     llama_http, llama_raw = http_post_json(
         llama_url,
         {
@@ -277,8 +376,10 @@ def main() -> int:
         },
         timeout=600,
     )
+    llama_wall_s = time.monotonic() - llama_start
     llama_body_path.write_bytes(llama_raw)
     print(f"LLAMA_HTTP={llama_http}")
+    print(f"LLAMA_WALL_S={llama_wall_s:.2f}")
     if llama_http != 200:
         raise SystemExit(f"error: llama smoke returned HTTP {llama_http}")
     llama_payload = json.loads(llama_raw.decode("utf-8"))
@@ -312,6 +413,10 @@ def main() -> int:
     run(adb_args(serial) + ["pull", device_tts_path, str(local_tts_wav)])
     tts_file = assert_riff_wave(local_tts_wav)
     print(f"TTS_FILE={tts_file}")
+    tts_samples = wav_sample_count(local_tts_wav)
+    print(f"TTS_SAMPLES={tts_samples}")
+    if tts_samples <= 0:
+        raise SystemExit(f"error: TTS WAV has no samples: {local_tts_wav}")
     print("TTS_WAV=ok")
 
     # Whisper STT smoke.
@@ -336,6 +441,47 @@ def main() -> int:
         print("STT_OVERLAP_GE_0_80=false")
         raise SystemExit(f"error: STT token-overlap {overlap:.2f} < {stt_min_overlap:.2f}")
 
+    # Wakeword-cpp smoke.
+    wakeword_body_path = out_dir / "eliza-cuttlefish-agent-wakeword.json"
+    wakeword_url = f"{base_url}/api/agent/wakeword"
+    wakeword_http, wakeword_raw = http_post_json(
+        wakeword_url,
+        {
+            "model": f"{device_dir}/wakeword.gguf",
+            "in_path": f"{device_dir}/wakeword.wav",
+        },
+        timeout=300,
+    )
+    wakeword_body_path.write_bytes(wakeword_raw)
+    print(f"WAKEWORD_HTTP={wakeword_http}")
+    if wakeword_http != 200:
+        raise SystemExit(f"error: wakeword smoke returned HTTP {wakeword_http}")
+    wakeword_payload = json.loads(wakeword_raw.decode("utf-8"))
+    detected = bool(wakeword_payload.get("detected"))
+    print(f"WAKEWORD_DETECTED={'true' if detected else 'false'}")
+    if not detected:
+        raise SystemExit("error: wakeword did not fire on the stimulus fixture")
+
+    # Silero VAD smoke.
+    vad_body_path = out_dir / "eliza-cuttlefish-agent-vad.json"
+    vad_url = f"{base_url}/api/agent/vad"
+    vad_http, vad_raw = http_post_json(
+        vad_url,
+        {"in_path": f"{device_dir}/vad.wav"},
+        timeout=300,
+    )
+    vad_body_path.write_bytes(vad_raw)
+    print(f"VAD_HTTP={vad_http}")
+    if vad_http != 200:
+        raise SystemExit(f"error: VAD smoke returned HTTP {vad_http}")
+    vad_payload = json.loads(vad_raw.decode("utf-8"))
+    vad_segments = vad_payload.get("segments")
+    if not isinstance(vad_segments, list):
+        raise SystemExit(f"error: VAD body missing segments[]: {vad_payload!r}")
+    print(f"VAD_SEGMENTS={len(vad_segments)}")
+    if len(vad_segments) <= 0:
+        raise SystemExit("error: VAD returned zero segments on speech+silence fixture")
+
     # Optional stable-diffusion smoke.
     if sd_optin:
         sd_body_path = out_dir / "eliza-cuttlefish-agent-sd.json"
@@ -357,6 +503,40 @@ def main() -> int:
         print("SD_SAMPLE=ok")
     else:
         print("SD_SAMPLE=skipped_optin")
+
+    # Self-status final check: every required plugin must still be ready after
+    # the workload has run. This catches plugins that crashed during inference
+    # but kept the foreground service alive.
+    final_status_path = out_dir / "eliza-cuttlefish-agent-self-status-final.json"
+    final_code, final_body = http_get(self_status_url, timeout=30)
+    final_status_path.write_bytes(final_body)
+    print(f"SELF_STATUS_FINAL_HTTP={final_code}")
+    if final_code != 200:
+        raise SystemExit(f"error: final /api/agent/self-status returned HTTP {final_code}")
+    final_payload = json.loads(final_body.decode("utf-8"))
+    final_plugins_raw = final_payload.get("plugins")
+    if not isinstance(final_plugins_raw, list):
+        raise SystemExit("error: final /api/agent/self-status missing plugins[]")
+    final_plugin_by_name: dict[str, dict] = {}
+    for entry in final_plugins_raw:
+        if isinstance(entry, dict):
+            name = entry.get("name") or entry.get("id")
+            if isinstance(name, str):
+                final_plugin_by_name[name] = entry
+        elif isinstance(entry, str):
+            final_plugin_by_name[entry] = {"name": entry, "status": "ready"}
+    for required_plugin in required_plugins:
+        entry = final_plugin_by_name.get(required_plugin)
+        if entry is None:
+            raise SystemExit(
+                f"error: required plugin {required_plugin!r} missing from final self-status"
+            )
+        status = entry.get("status") if isinstance(entry, dict) else None
+        if status != "ready":
+            raise SystemExit(
+                f"error: final plugin {required_plugin!r} status is {status!r}, expected 'ready'"
+            )
+    print(f"SELF_STATUS_FINAL_PLUGINS_READY={','.join(required_plugins)}")
 
     # Forensic sidecars.
     for shell_cmd, sidecar_name, marker in (

@@ -57,19 +57,27 @@ required_android_evidence:
   - docs/evidence/android/eliza_ai_soc_cts_vts_plan.log
   - docs/evidence/android/cuttlefish_riscv64_smoke.log
   - docs/evidence/android/cuttlefish_riscv64_boot.log
+  - docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
   - docs/evidence/android/qemu_riscv64_smoke.log
   - docs/evidence/android/renode_e1_soc_smoke.log
 required_android_marker_evidence:
   - id: cuttlefish_agent_smoke
     evidence: docs/evidence/android/eliza_ai_soc_cuttlefish_agent_smoke.log
-    producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp cuttlefish-agent-smoke
+    producer: sw/aosp-device/agent-smoke-riscv64.sh --aosp /path/to/aosp
     operator_recipe: docs/android/cuttlefish-agent-smoke-operator-recipe.md
     required_markers:
       - AGENT_SERVICE=alive
       - SELF_STATUS_HTTP=200
       - LLAMA_TOKENS_GE_32=true
+      - LLAMA_WALL_S=
       - TTS_WAV=ok
+      - TTS_SAMPLES=
       - STT_OVERLAP_GE_0_80=true
+      - STT_OVERLAP=
+      - WAKEWORD_DETECTED=true
+      - VAD_SEGMENTS=
+      - SELF_STATUS_FINAL_HTTP=200
+      - SELF_STATUS_FINAL_PLUGINS_READY=local-inference
 required_simulated_peripherals:
   - id: rear_camera
     evidence: docs/evidence/android/peripherals/rear_camera_sim.log

@@ -35,25 +35,32 @@ A 32-core AOSP host with:
 
 ## End-to-end operator command sequence
 
-Set `AOSP=/path/to/aosp` and `REPO=/path/to/Eliza-AI-SoC` for clarity.
+Set `AOSP=/path/to/aosp` and `REPO=/path/to/packages/chip` for clarity.
 
 ```sh
-# 1. Build the AOSP host artifacts and boot Cuttlefish (existing stages).
-$REPO/sw/aosp-device/capture-aosp-evidence.sh "$AOSP" lunch
-$REPO/sw/aosp-device/capture-aosp-evidence.sh "$AOSP" vendorimage
-$REPO/sw/aosp-device/capture-aosp-evidence.sh "$AOSP" cuttlefish-smoke
-# At this point a CVD is live; record AOSP_ADB_SERIAL from the smoke log.
+# 1. Build the AOSP host artifacts and boot Cuttlefish (Task 28 + Task 29).
+$REPO/sw/aosp-device/build-aosp-riscv64.sh   # Task 28 owns this
+$REPO/sw/aosp-device/launch-cuttlefish-riscv64.sh   # Task 29 owns this
+# At this point a CVD is live; record AOSP_ADB_SERIAL from `adb devices`.
 
-# 2. Run the agent-smoke stage.
-export AOSP_ADB_SERIAL=<serial-from-cuttlefish-smoke-log>
-export AOSP_AGENT_APK=/abs/path/to/eliza-agent-riscv64.apk
-export AOSP_AGENT_LLAMA_MODEL=/abs/path/to/eliza-1.gguf
-export AOSP_AGENT_GOLDEN_AUDIO=/abs/path/to/golden.wav
-export AOSP_AGENT_GOLDEN_TRANSCRIPT="the quick brown fox jumps over the lazy dog"
-# Optional: opt into the stable-diffusion sample (slow).
-# export AOSP_AGENT_SD_OPTIN=1
+# 2. Run the agent-smoke pipeline. install -> start -> end-to-end smoke
+#    are exposed as three composable scripts; agent-smoke-riscv64.sh
+#    chains all three and archives the evidence transcript.
+$REPO/sw/aosp-device/agent-smoke-riscv64.sh \
+  --aosp "$AOSP" \
+  --serial=<serial-from-adb-devices> \
+  --apk=/abs/path/to/eliza-agent-riscv64.apk \
+  --llama-model=/abs/path/to/eliza-1.gguf \
+  --golden-audio=$REPO/sw/aosp-device/fixtures/golden-stt.wav \
+  --golden-transcript="$(cat $REPO/sw/aosp-device/fixtures/golden-stt-transcript.txt)" \
+  --wakeword-model=/abs/path/to/wakeword.gguf
+# Wakeword stimulus and VAD speech+silence fixtures default to repo-shipped
+# files under packages/chip/sw/aosp-device/fixtures/.
 
-$REPO/sw/aosp-device/capture-aosp-evidence.sh "$AOSP" cuttlefish-agent-smoke
+# Each phase can also be invoked directly for debugging:
+#   $REPO/sw/aosp-device/install-eliza-apk-riscv64.sh --apk=...
+#   $REPO/sw/aosp-device/start-eliza-agent-riscv64.sh --serial=...
+#   $REPO/sw/aosp-device/capture-aosp-evidence.sh "$AOSP" cuttlefish-agent-smoke
 
 # 3. Validate the resulting evidence.
 python3 $REPO/scripts/check_aosp_simulator_completion_gate.py
@@ -86,6 +93,10 @@ can override them when invoking it manually).
 | `AOSP_AGENT_STT_MIN_OVERLAP` | `0.80` | Whisper token-overlap pass threshold. |
 | `AOSP_AGENT_SD_OPTIN` | `0` | Set to `1` to run the stable-diffusion sample. |
 | `AOSP_AGENT_SD_PROMPT` | `a single red apple on a white background` | Stable-diffusion prompt (used only when opt-in). |
+| `AOSP_AGENT_WAKEWORD_MODEL` | `sw/aosp-device/fixtures/wakeword.gguf` | wakeword-cpp GGUF (supply locally; not committed). |
+| `AOSP_AGENT_WAKEWORD_AUDIO` | `sw/aosp-device/fixtures/wakeword-stimulus.wav` | wakeword stimulus WAV (repo-shipped fixture). |
+| `AOSP_AGENT_VAD_AUDIO` | `sw/aosp-device/fixtures/vad-speech-silence.wav` | speech+silence WAV (repo-shipped fixture). |
+| `AOSP_AGENT_REQUIRED_PLUGINS` | `local-inference` | Comma-separated list of plugins whose `status:"ready"` is asserted in `/api/agent/self-status`. |
 
 ## Evidence log markers
 
@@ -105,11 +116,15 @@ run it contains the standard provenance header
 | `AGENT_PID=<pid>` | The first pid returned by `pidof`. |
 | `SELF_STATUS_HTTP=200` | `GET /api/agent/self-status` returned HTTP 200. |
 | `SELF_STATUS_JSON_SHAPE=ok` | Response body decoded as JSON and contained `agentId`. |
-| `LLAMA_HTTP=200`, `LLAMA_TOKENS=<n>` | Llama HTTP status + token count returned by the agent. |
+| `SELF_STATUS_REQUIRED_PLUGINS_READY=<csv>` | Each plugin in `AOSP_AGENT_REQUIRED_PLUGINS` returned `status:"ready"`. |
+| `LLAMA_HTTP=200`, `LLAMA_TOKENS=<n>`, `LLAMA_WALL_S=<float>` | Llama HTTP status, token count, and wall-clock seconds. |
 | `LLAMA_TOKENS_GE_32=true` | `LLAMA_TOKENS >= AOSP_AGENT_LLAMA_MIN_TOKENS`. |
-| `TTS_HTTP=200`, `TTS_FILE=...RIFF...WAVE...`, `TTS_WAV=ok` | TTS HTTP status, `file(1)` description, and validation result. |
+| `TTS_HTTP=200`, `TTS_FILE=...RIFF...WAVE...`, `TTS_SAMPLES=<n>`, `TTS_WAV=ok` | TTS HTTP status, `file(1)` description, decoded sample count, and validation result. |
 | `STT_HTTP=200`, `STT_OVERLAP=<float>`, `STT_OVERLAP_GE_0_80=true` | Whisper HTTP status, token-overlap fraction, and pass flag against `AOSP_AGENT_STT_MIN_OVERLAP`. |
+| `WAKEWORD_HTTP=200`, `WAKEWORD_DETECTED=true` | wakeword-cpp HTTP status and detection flag on the stimulus fixture. |
+| `VAD_HTTP=200`, `VAD_SEGMENTS=<n>` | silero-vad HTTP status and number of speech segments returned on the speech+silence fixture. |
 | `SD_SAMPLE=ok` or `SD_SAMPLE=skipped_optin` | Stable-diffusion result (or opt-out marker). |
+| `SELF_STATUS_FINAL_HTTP=200`, `SELF_STATUS_FINAL_PLUGINS_READY=<csv>` | Final self-status sweep after every workload has run. |
 | `AGENT_LOGCAT=out/eliza-cuttlefish-agent-logcat.txt` | Path under the AOSP tree to the captured `logcat -d -b all`. |
 | `AGENT_DMESG=out/eliza-cuttlefish-agent-dmesg.txt` | Path to the device `dmesg` snapshot. |
 | `AGENT_GETPROP=out/eliza-cuttlefish-agent-getprop.txt` | Path to the device `getprop` snapshot. |

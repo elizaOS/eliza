@@ -53,11 +53,13 @@ class MuJocoBackend(BridgeBackend):
     telemetry derived from sensor data.
     """
 
-    def __init__(self, demo_env: Any) -> None:
+    def __init__(self, demo_env: Any, profile_id: str = "hiwonder-ainex") -> None:
         """Create a MuJoCo backend wrapping a ``DemoEnv`` instance.
 
         Args:
             demo_env: A ``training.mujoco.demo_env.DemoEnv`` instance.
+            profile_id: Robot profile id; the backend loads its action
+                library so `action.play` can interpolate scripted keyframes.
         """
         self._env = demo_env
         self._walk = _WalkState()
@@ -68,6 +70,10 @@ class MuJocoBackend(BridgeBackend):
         # walking and idles otherwise.
         self._gait_task: asyncio.Task[None] | None = None
         self._gait_controller: "BezierGaitController | None" = None  # lazy
+        # Active scripted-action task (so .play commands animate joint keyframes).
+        self._action_task: asyncio.Task[None] | None = None
+        self._profile_id = profile_id
+        self._action_library: dict[str, dict] = {}
 
     # ------------------------------------------------------------------
     # BridgeBackend interface
@@ -89,17 +95,82 @@ class MuJocoBackend(BridgeBackend):
             self._gait_controller = BezierGaitController()
         except Exception:
             self._gait_controller = None
+        # Load the profile's action library so `action.play` can actually
+        # animate scripted keyframes (stand / sit / wave / bow / custom).
+        try:
+            from eliza_robot.profiles.schema import load_profile
+
+            profile = load_profile(self._profile_id)
+            for name, group in profile.actions.groups.items():
+                self._action_library[name] = {
+                    "duration_s": float(group.duration_s),
+                    "frames": [
+                        {"t": float(f.t), "joints": dict(f.joints)}
+                        for f in group.frames
+                    ],
+                }
+        except Exception:
+            self._action_library = {}
 
     async def shutdown(self) -> None:
-        """Cancel the gait loop and close the MuJoCo environment."""
-        if self._gait_task is not None and not self._gait_task.done():
-            self._gait_task.cancel()
-            try:
-                await self._gait_task
-            except (asyncio.CancelledError, Exception):
-                pass
-            self._gait_task = None
+        """Cancel any background loops and close the MuJoCo environment."""
+        for task_attr in ("_gait_task", "_action_task"):
+            t = getattr(self, task_attr, None)
+            if t is not None and not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
+                setattr(self, task_attr, None)
         self._env.close()
+
+    async def _play_action_group(self, name: str) -> None:
+        """Animate a named keyframe group through MuJoCo PD control.
+
+        Interpolates linearly between frames at the env's physics timestep
+        for the group's `duration_s`. Keeps the commanded head pose
+        (`self._head`) layered on top so concurrent head commands persist.
+        """
+        group = self._action_library.get(name)
+        if group is None:
+            return
+        timestep = float(getattr(self._env.model.opt, "timestep", 0.002))
+        duration = max(0.05, float(group["duration_s"]))
+        frames = sorted(group["frames"], key=lambda f: f["t"])
+        # Tick rate: 50 Hz outer loop (matches gait loop cadence).
+        outer_dt = 0.02
+        steps_per_tick = max(1, int(outer_dt / timestep))
+        elapsed = 0.0
+        try:
+            while elapsed <= duration:
+                # Find bracketing frames at time `elapsed`.
+                prev = frames[0]
+                nxt = frames[-1]
+                for i, fr in enumerate(frames):
+                    if fr["t"] >= elapsed:
+                        nxt = fr
+                        prev = frames[i - 1] if i > 0 else fr
+                        break
+                t0, t1 = prev["t"], nxt["t"]
+                alpha = 0.0 if t1 <= t0 else (elapsed - t0) / (t1 - t0)
+                targets: dict[str, float] = {}
+                # Union of joints across the two bracketing frames.
+                names = set(prev["joints"].keys()) | set(nxt["joints"].keys())
+                for jname in names:
+                    a = float(prev["joints"].get(jname, nxt["joints"][jname]))
+                    b = float(nxt["joints"].get(jname, a))
+                    targets[jname] = (1.0 - alpha) * a + alpha * b
+                # Preserve commanded head pose.
+                targets["head_pan"] = float(self._head.pan)
+                targets["head_tilt"] = float(self._head.tilt)
+                self._last_telemetry = self._env.step_n(
+                    n=steps_per_tick, joint_targets=targets
+                )
+                await asyncio.sleep(outer_dt)
+                elapsed += outer_dt
+        except asyncio.CancelledError:
+            return
 
     async def _gait_loop(self) -> None:
         """Drive the robot with the Bezier gait controller at ~50 Hz while
@@ -241,8 +312,21 @@ class MuJocoBackend(BridgeBackend):
                         message = "joint_map import failed; provide joint_positions dict"
 
         elif cmd.command == "action.play":
-            # No-op in sim: just acknowledge.
-            pass
+            name = str(cmd.payload.get("name", ""))
+            if name in self._action_library:
+                # Cancel any previous action so the new one wins cleanly.
+                if self._action_task is not None and not self._action_task.done():
+                    self._action_task.cancel()
+                self._action_task = asyncio.create_task(self._play_action_group(name))
+            elif name == "":
+                ok = False
+                message = "action.play requires payload.name"
+            else:
+                ok = False
+                message = (
+                    f"action group '{name}' not in profile action library "
+                    f"(known: {sorted(self._action_library)})"
+                )
 
         else:
             ok = False

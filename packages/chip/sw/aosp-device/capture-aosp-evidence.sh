@@ -185,24 +185,31 @@ case "$mode" in
 		;;
 	sepolicy-build)
 		# shellcheck disable=SC2016
+		# Builds vendor_sepolicy.cil, selinux_policy, and
+		# sepolicy_neverallows so the log proves the policy compiled
+		# the HAL types. Emits SEPOLICY_BUILD=ok on RESULT=0.
 		run_capture \
 			eliza_ai_soc_sepolicy_build \
 			"$evidence_dir/eliza_ai_soc_sepolicy_build.log" \
-			"m vendor_sepolicy.cil selinux_policy" \
+			"m vendor_sepolicy.cil selinux_policy sepolicy_neverallows" \
 			compat_only \
 			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_MAKE_ARGS="$aosp_make_args" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
 				lunch "$AOSP_PRODUCT" >/dev/null &&
-				m ${AOSP_MAKE_ARGS:-} vendor_sepolicy.cil selinux_policy &&
+				m ${AOSP_MAKE_ARGS:-} vendor_sepolicy.cil selinux_policy sepolicy_neverallows &&
 				product_out="out/target/product/$AOSP_TARGET_PRODUCT" &&
-				echo "SEPOLICY_TARGETS=vendor_sepolicy.cil selinux_policy" &&
+				echo "SEPOLICY_TARGETS=vendor_sepolicy.cil selinux_policy sepolicy_neverallows" &&
 				find "$product_out" -name vendor_sepolicy.cil -o -name selinux_policy 2>/dev/null &&
 				grep -R -n -I "e1_npu_device" device/eliza "$product_out/vendor/etc/selinux" "$product_out/obj/ETC/vendor_sepolicy.cil_intermediates" 2>/dev/null &&
-				grep -R -n -I "hal_e1_npu_default" device/eliza "$product_out/vendor/etc/selinux" "$product_out/obj/ETC/vendor_sepolicy.cil_intermediates" 2>/dev/null
+				grep -R -n -I "hal_e1_npu_default" device/eliza "$product_out/vendor/etc/selinux" "$product_out/obj/ETC/vendor_sepolicy.cil_intermediates" 2>/dev/null &&
+				echo "SEPOLICY_BUILD=ok"
 			'
 		;;
 	selinux-neverallow)
 		# shellcheck disable=SC2016
+		# Standalone neverallow run. Records SEPOLICY_NEVERALLOW=ok when
+		# the build succeeds, which only happens if no neverallow rule
+		# fired against the e1_npu HAL types.
 		run_capture \
 			eliza_ai_soc_selinux_neverallow \
 			"$evidence_dir/eliza_ai_soc_selinux_neverallow.log" \
@@ -214,7 +221,8 @@ case "$mode" in
 				m ${AOSP_MAKE_ARGS:-} sepolicy_neverallows &&
 				product_out="out/target/product/$AOSP_TARGET_PRODUCT" &&
 				echo "SEPOLICY_TARGET=sepolicy_neverallows" &&
-				grep -R -n -I "e1_npu" device/eliza "$product_out/vendor/etc/selinux" "$product_out/obj/ETC/vendor_sepolicy.cil_intermediates" 2>/dev/null
+				grep -R -n -I "e1_npu" device/eliza "$product_out/vendor/etc/selinux" "$product_out/obj/ETC/vendor_sepolicy.cil_intermediates" 2>/dev/null &&
+				echo "SEPOLICY_NEVERALLOW=ok"
 			'
 		;;
 	cts-vts-plan)
@@ -480,6 +488,14 @@ case "$mode" in
 				fi &&
 				eval "$AOSP_RENODE_SMOKE_COMMAND"
 			'
+		;;
+	cvd-hal-smoke)
+		# Delegates to sw/aosp-device/check-cvd-hal-smoke.sh which
+		# boots Cuttlefish riscv64, runs adb shell lshal -i, and
+		# asserts vendor.eliza.e1_npu@1.0::IE1Npu/default is registered
+		# and INTERFACE_AVAILABLE. The driver script owns the evidence
+		# transcript layout and provenance markers.
+		exec "$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp"
 		;;
 	cts-subset)
 		run_capture \

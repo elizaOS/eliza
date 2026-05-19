@@ -186,7 +186,7 @@ def _build_backend_factory(name: str, config: RuntimeConfig) -> BackendFactory:
             from eliza_robot.sim.mujoco.demo_env import DemoEnv
 
             env = DemoEnv(target_position=config.mujoco_target_xyz)
-            return MuJocoBackend(env)
+            return MuJocoBackend(env, profile_id=config.profile_id)
 
         return _build_mujoco_backend
     raise ValueError(f"unsupported backend: {name}")
