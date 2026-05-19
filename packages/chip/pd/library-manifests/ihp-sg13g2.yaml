@@ -22,6 +22,35 @@ sram_compiler:
   modes_supported:
     - 1RW_single_port
 
+# Macros cross-referenced from pd/macros/manifest.yaml.
+# IHP publishes a compiler-generated SRAM macro set rather than a flexible
+# compiler. The manifest enumerates the macros the PD agent expects to use
+# from the IHP open distribution. LEF / GDS / Liberty are BLOCKED until the
+# IHP SRAM compiler is run locally.
+sram_macros:
+  source_of_truth: pd/macros/manifest.yaml
+  generator: ihp_open_pdk_sram_compiler
+  generator_pinned_commit: BLOCKED_pin_after_first_local_run
+  macros:
+    - name: e1_sram_4kb_1rw_sg13g2
+      kind: SRAM_1RW
+      words: 1024
+      word_size_bits: 32
+      intended_use:
+        - portability_smoke_only
+      lef: BLOCKED_run_ihp_compiler
+      gds: BLOCKED_run_ihp_compiler
+      lib: BLOCKED_run_ihp_compiler
+    - name: e1_sram_16kb_1rw_sg13g2
+      kind: SRAM_1RW
+      words: 4096
+      word_size_bits: 32
+      intended_use:
+        - portability_smoke_only
+      lef: BLOCKED_run_ihp_compiler
+      gds: BLOCKED_run_ihp_compiler
+      lib: BLOCKED_run_ihp_compiler
+
 io_ring_library:
   name: sg13g2_io
   version_pin: ihp-open-pdk-sg13g2-2024
