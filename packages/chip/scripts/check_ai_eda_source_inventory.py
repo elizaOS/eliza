@@ -479,6 +479,8 @@ REQUIRED_SOURCES = {
     "sigrok-cli",
     "ml-boot-failure-debug",
     "llm4sechw-debug",
+    "llm4sechw-oshd",
+    "chipbench-ai-aided-design",
     "rtlmul",
     "deeptpi",
     "deft-atpg",

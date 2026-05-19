@@ -14,7 +14,7 @@
     "mapper": "abc",
     "memory_inference": true,
     "param_overrides": [],
-    "wall_clock_s": 22.52
+    "wall_clock_s": 18.04
   },
   "abc_target_period_ps": 4000,
   "gate_count_total": 63814,

@@ -2978,6 +2978,73 @@ entries:
     risk:
       - Security/defect datasets may not represent E1 bugs.
       - Repair suggestions can remove symptoms without fixing root cause.
+  - id: llm4sechw-oshd
+    name: LLM4SecHW OSHD Dataset
+    kind: open_source_hardware_debug_dataset
+    stage:
+      - hardware_debug
+      - rtl_security
+      - defect_repair
+      - dataset_governance
+    priority: P2
+    source_url: https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD
+    license_status: review_required
+    code_status: dataset_only
+    model_status: no_model
+    e1_fit: >
+      Useful open hardware-debug corpus for studying defect-taxonomy and repair
+      examples, including open-source CPU/design history, but unsafe as an E1
+      training or repair corpus without contamination and license controls.
+    integration_action: >
+      Track as quarantined dataset candidate only; do not download, fine-tune,
+      prompt with, or use for E1 patch suggestions until exact snapshot,
+      licenses, overlap review, and reviewer disposition are archived.
+    evidence_gate: >
+      Dataset use requires exact HuggingFace revision, license review, file
+      manifest, source-project provenance, E1 overlap/contamination report,
+      quarantine path, model/prompt isolation, and generated-output review.
+    risk:
+      - Historical open-source fixes can overlap with E1-adjacent IP and
+        contaminate evaluation.
+      - Defect repairs may encode project-specific conventions or insecure
+        patterns.
+  - id: chipbench-ai-aided-design
+    name: ChipBench
+    kind: llm_chip_design_debug_reference_model_benchmark
+    stage:
+      - rtl_generation
+      - hardware_debug
+      - reference_model_generation
+      - benchmark
+      - dataset_governance
+    priority: P1
+    source_url: https://arxiv.org/abs/2601.21448
+    code_url: https://github.com/zhongkaiyu/ChipBench
+    model_url: null
+    dataset_url: https://github.com/zhongkaiyu/ChipBench
+    license_status: review_required
+    code_status: reported_available_to_review
+    model_status: benchmark_only
+    e1_fit: >
+      Highly relevant benchmark for realistic Verilog generation, debugging,
+      and Python/SystemC/CXXRTL reference-model generation; useful for
+      evaluating whether LLM hardware-debug claims are too broad for E1.
+    integration_action: >
+      Track for benchmark/governance only; do not import tasks or use scores as
+      E1 capability claims until exact revision, license, task split, overlap
+      review, and local replay harness are captured.
+    evidence_gate: >
+      Benchmark use requires pinned repository revision, license review, task
+      manifest, non-overlap review, model/prompt versions, generated artifacts,
+      lint/simulation/synthesis/formal logs where applicable, and reviewer
+      disposition.
+    risk:
+      - Benchmark success is not proof of E1 RTL, reference-model, or
+        post-silicon-debug readiness.
+      - Imported debug tasks can contaminate local held-out E1 evaluation.
   - id: fault-dft
     name: Fault DFT Toolchain
     kind: dft_atpg_toolchain

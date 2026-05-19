@@ -1627,6 +1627,8 @@ work_items:
       - sigrok-cli
       - ml-boot-failure-debug
       - llm4sechw-debug
+      - llm4sechw-oshd
+      - chipbench-ai-aided-design
     target_area:
       - post_silicon_validation
       - silicon_bringup
@@ -1634,13 +1636,16 @@ work_items:
       - riscv_compliance
       - lab_debug
       - boot_failure_triage
+      - hardware_debug_benchmark
+      - debug_dataset_governance
     owner_scope: dry-run target capture only; no hardware actions, generated lab scripts, test binaries, FPGA bitstreams, or compliance claims
     objective: >
       Track post-silicon debug methods, QED/trace-analysis approaches, RISC-V
       compatibility tests, random-instruction validation, cross-target
-      on-device tests, RISC-V debug/lab capture tooling, and ML/XAI
-      boot-failure triage while tying any future E1 use to QEMU/Renode, FPGA,
-      manufacturing, real-world, and lab evidence.
+      on-device tests, RISC-V debug/lab capture tooling, ML/XAI boot-failure
+      triage, LLM hardware-debug datasets, and LLM chip-debug benchmarks while
+      tying any future E1 use to QEMU/Renode, FPGA, manufacturing, real-world,
+      corpus-governance, benchmark, and lab evidence.
     deliverables:
       - scripts/ai_eda/capture_post_silicon_validation_targets.py
       - build/ai_eda/post_silicon_validation_targets/<run-id>/targets_report.json
@@ -1663,6 +1668,7 @@ work_items:
       - No trace schema for reset, boot, UART, JTAG, power, thermal, FPGA, or board observations
       - No pinned OpenOCD board configuration, RISC-V debug module transcript, probe inventory, or sigrok acquisition profile
       - No labeled boot-failure, post-silicon debug, or lab anomaly corpus for ML/XAI triage
+      - No approved LLM hardware-debug dataset or benchmark import with pinned revisions, licenses, task manifests, non-overlap review, replay logs, and reviewer disposition
       - No approved workflow for AI-generated lab scripts, test binaries, FPGA bitstreams, or hardware actions
     acceptance_criteria:
       - Report hashes local RISC-V compliance, QEMU/Renode, FPGA, package, board, benchmark, and release-gate inputs.

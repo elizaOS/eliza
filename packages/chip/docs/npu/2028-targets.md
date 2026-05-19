@@ -91,7 +91,7 @@ the done bit, requires the done bit, and rejects the error bit. The
 `stage_prepared_descriptor_batch` helper validates
 `eliza.e1_npu_prepared_descriptor_batch.v1` packages and returns
 `eliza.e1_npu_prepared_descriptor_batch_stage_result.v1` after checking
-`arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
+`batch_index`, `arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
 `required_runtime_steps`, `descriptor_base`, `descriptor_memory_writes`, and
 `mmio_preamble_writes` against the packaged `descriptor_image` and
 `op_mmio_preamble`. The
@@ -100,7 +100,8 @@ the done bit, requires the done bit, and rejects the error bit. The
 `eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1` after
 checking each descriptor image and `DESC_BASE` submission against
 `descriptor_base + execution_batch_index * descriptor_stride_bytes`, and
-checking `arena_base consistency`, arena sizing, `required_runtime_steps`, and
+checking `batch_index`/`execution_batch_index` identity, `arena_base consistency`,
+arena sizing, `required_runtime_steps`, and
 `descriptor_memory_writes` exactly match the packaged
 `descriptor_image`. It also checks `mmio_preamble_writes` match
 `op_mmio_preamble` before staging. The

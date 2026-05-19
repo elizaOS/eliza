@@ -865,6 +865,20 @@ def classify_smoke_progress(
                 "the current payload stage"
             ),
         }
+    if (
+        "[timeout-wrapper]" in log_text
+        and "status=timeout" in log_text
+        and not log_metadata.get("simdram_entry")
+        and "SimDRAM loaded ELF entry=" not in log_text
+    ):
+        return {
+            "stage": "simulator_model_build_timeout",
+            "next_step": (
+                "rerun after the generated Verilator model has finished compiling, "
+                "or increase CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS so the wall-clock "
+                "budget covers model build plus Linux simulation"
+            ),
+        }
     if log_metadata.get("simdram_entry") or "SimDRAM loaded ELF entry=" in log_text:
         return {
             "stage": "payload_loaded_no_cpu_progress",

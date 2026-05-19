@@ -935,6 +935,24 @@ entries:
     license_status: review_required
     release_use: blocked_pending_dataset_license_snapshot_and_non_overlap_review
     allowed_current_use: dataset_governance_reference_only
+  - source_id: llm4sechw-debug
+    asset_type: hardware_debug_llm_framework
+    asset_url: https://arxiv.org/abs/2401.16448
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_model_dataset_defect_patch_and_review_harness
+    allowed_current_use: hardware_debug_method_reference_only
+  - source_id: llm4sechw-oshd
+    asset_type: open_source_hardware_debug_dataset
+    asset_url: https://huggingface.co/datasets/KSU-HW-SEC/LLM4SecHW-OSHD
+    license_status: review_required
+    release_use: blocked_pending_dataset_snapshot_license_and_contamination_review
+    allowed_current_use: dataset_governance_reference_only
+  - source_id: chipbench-ai-aided-design
+    asset_type: llm_chip_design_debug_reference_model_benchmark
+    asset_url: https://github.com/zhongkaiyu/ChipBench
+    license_status: review_required
+    release_use: blocked_pending_benchmark_license_split_overlap_and_replay_review
+    allowed_current_use: benchmark_governance_reference_only
   - source_id: archgym
     asset_type: architecture_dse_framework
     asset_url: https://github.com/srivatsankrishnan/oss-arch-gym

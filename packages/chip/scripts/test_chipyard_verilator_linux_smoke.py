@@ -109,6 +109,17 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
     if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in timeout_progress["next_step"]:
         raise AssertionError(f"expected timeout-cycle guidance, got {timeout_progress}")
 
+    build_timeout = smoke.classify_smoke_progress(
+        "[timeout-wrapper] label=chipyard-generated-ap-linux-smoke status=timeout\n"
+        "g++ -include VTestDriver__pch.h.fast -c VTestDriver___024root__61.cpp\n",
+        no_trace,
+        {"raw_transcript_closed": True, "exit_code": "124"},
+    )
+    if build_timeout["stage"] != "simulator_model_build_timeout":
+        raise AssertionError(f"expected model-build timeout stage, got {build_timeout}")
+    if "CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS" not in build_timeout["next_step"]:
+        raise AssertionError(f"expected wall-time guidance, got {build_timeout}")
+
 
 def main() -> int:
     tests = (

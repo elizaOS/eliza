@@ -1574,6 +1574,7 @@ def main() -> int:
         "arena_total_bytes must be positive",
         "arena_alignment_bytes must be positive",
         "arena sizing does not match outer package",
+        "batch_index does not match descriptor image",
         "descriptor_stride_bytes",
         "DESC_BASE does not match descriptor_base",
         "requires_done_bit",

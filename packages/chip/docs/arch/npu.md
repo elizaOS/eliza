@@ -827,7 +827,7 @@ executing; it rejects sequences whose GEMM preamble, descriptor submission, or
 and rejects completion metadata that does not require the done
 bit or reject the error bit. `stage_prepared_descriptor_batch` validates an
 `eliza.e1_npu_prepared_descriptor_batch.v1` package, checks `descriptor_base`,
-`arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
+`batch_index`, `arena_base`, `arena_total_bytes`, `arena_alignment_bytes`,
 `required_runtime_steps`, `descriptor_memory_writes`, and
 `mmio_preamble_writes` against the packaged `descriptor_image` and
 `op_mmio_preamble`, then returns
@@ -839,7 +839,7 @@ returns `eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1`.
 Before writing descriptor memory or MMIO, it checks every descriptor image base
 and `DESC_BASE` submission value against the package-level `descriptor_base +
 execution_batch_index * descriptor_stride_bytes` contract, checks
-`arena_base consistency` and arena sizing across the outer package, inner packages, and
+`batch_index`/`execution_batch_index` identity, `arena_base consistency` and arena sizing across the outer package, inner packages, and
 descriptor images, checks `required_runtime_steps` on the outer and inner packages, and checks
 `descriptor_memory_writes` exactly match the packaged `descriptor_image`.
 It also checks `mmio_preamble_writes` match `op_mmio_preamble`, including op
