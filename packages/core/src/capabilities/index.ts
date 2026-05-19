@@ -1260,10 +1260,23 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		});
 		const object = requireObject(result, "plugin.asset.get");
 		const integrity = optionalString(object, "integrity", "plugin.asset.get");
+		const path = requireNonEmptyString(object, "path", "plugin.asset.get");
+		validateRemotePluginAssetPath(path, "path", "plugin.asset.get");
+		const contentType = requireNonEmptyString(
+			object,
+			"contentType",
+			"plugin.asset.get",
+		);
+		validateHeaderSafeString(contentType, "contentType", "plugin.asset.get");
+		const bodyBase64 = requireString(object, "bodyBase64", "plugin.asset.get");
+		validateBase64String(bodyBase64, "bodyBase64", "plugin.asset.get");
+		if (integrity !== undefined) {
+			validateHeaderSafeString(integrity, "integrity", "plugin.asset.get");
+		}
 		return {
-			path: requireString(object, "path", "plugin.asset.get"),
-			contentType: requireString(object, "contentType", "plugin.asset.get"),
-			bodyBase64: requireString(object, "bodyBase64", "plugin.asset.get"),
+			path,
+			contentType,
+			bodyBase64,
 			...(integrity === undefined ? {} : { integrity }),
 		};
 	}
@@ -2799,6 +2812,31 @@ function validateRemotePluginAssetPath(
 			method,
 			`${key} must not contain empty, current-directory, or parent-directory segments.`,
 		);
+	}
+}
+
+function validateHeaderSafeString(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (/[\r\n\0]/.test(value)) {
+		throw decodeError(method, `${key} must not contain control characters.`);
+	}
+}
+
+function validateBase64String(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (
+		value.length > 0 &&
+		!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+			value,
+		)
+	) {
+		throw decodeError(method, `${key} must be valid base64.`);
 	}
 }
 

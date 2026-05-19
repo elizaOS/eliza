@@ -569,7 +569,7 @@ function normalizeLocaNativeMessages(
       normalized.push({
         role: "assistant",
         content: typeof message.content === "string" ? message.content : "",
-        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
       continue;
     }
@@ -591,7 +591,7 @@ function normalizeLocaNativeMessages(
             : toolNamesById.get(toolCallId) || "tool";
       normalized.push({
         role: "tool",
-        id: toolCallId,
+        tool_call_id: toolCallId,
         name: toolName,
         content:
           typeof message.content === "string"
