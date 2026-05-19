@@ -1121,6 +1121,23 @@ def _write_release_evidence(
             backend: f"evals/{backend}_dispatch.json"
             for backend in SUPPORTED_BACKENDS_BY_TIER[tier]
         },
+        "structuredResponse": {
+            "status": "pass",
+            "handler": "HANDLE_RESPONSE",
+            "rules": [
+                "handle-response-tool-call",
+                "closed-action-enum",
+                "eliza-schema-guided-decode",
+                "dflash-prefill",
+                "deterministic-repair",
+            ],
+            "testReports": {
+                "plannerGrammar": "plugins/plugin-local-inference/src/services/__tests__/planner-grammar.test.ts",
+                "structuredOutput": "plugins/plugin-local-inference/src/services/structured-output.test.ts",
+                "dflashStructured": "plugins/plugin-local-inference/src/services/dflash-structured.test.ts",
+                "deterministicRepair": "plugins/plugin-local-inference/src/services/structured-output/deterministic-repair.test.ts",
+            },
+        },
         "platformEvidence": {
             "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json"
         },

@@ -84,12 +84,11 @@ def test_reindent_function_body_leaves_well_indented_body_alone() -> None:
     assert _reindent_function_body(body) == body
 
 
-def test_reindent_function_body_leaves_fully_unindented_body_alone() -> None:
-    """If every line is at column 0 (the model returned only a one-liner body
-    that the dedent path will handle elsewhere, or pure dedented prose),
-    leave it alone — we only fix the mixed-indent regression."""
+def test_reindent_function_body_indents_fully_unindented_body() -> None:
+    """A valid body returned at column 0 still needs to nest under the prompt's
+    function signature before execution."""
     body = "return a + b\n"
-    assert _reindent_function_body(body) == body
+    assert _reindent_function_body(body) == "    return a + b\n"
 
 
 def test_build_program_recovers_from_dropped_first_line_indent() -> None:
@@ -194,6 +193,20 @@ def test_humaneval_runner_raises_when_all_visible_outputs_empty(tmp_path: Path) 
             output_dir=tmp_path,
             limit=None,
         )
+
+
+def test_humaneval_runner_retries_empty_visible_output(tmp_path: Path) -> None:
+    runner = HumanEvalRunner(examples=list(SMOKE_FIXTURES[:1]), timeout_s=10.0)
+    result = runner.run(
+        client=MockClient(["", str(SMOKE_FIXTURES[0]["canonical_solution"])]),
+        model="m",
+        endpoint="http://mock",
+        output_dir=tmp_path,
+        limit=None,
+    )
+
+    assert result.metrics["score"] == 1.0
+    assert result.raw_json["empty_outputs"] == 0
 
 
 def test_humaneval_default_token_budget_allows_reasoning_models() -> None:

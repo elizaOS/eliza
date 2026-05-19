@@ -432,6 +432,40 @@ def test_rebuild_latest_warns_for_sample_task_sets(tmp_path: Path) -> None:
     assert "insufficient_n:2" in payload["publication_warnings"]
 
 
+def test_rebuild_latest_warns_for_sample_dataset_sources(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["gaia"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="gaia",
+        agent="eliza",
+        run_id="run_gaia_sample",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "overall_accuracy": 1.0,
+            "total_questions": 2,
+            "correct_answers": 2,
+            "dataset_source": "sample",
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 3},
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"gaia": _adapter("gaia")})
+
+    payload = json.loads(
+        (tmp_path / "latest" / "gaia__eliza.json").read_text(encoding="utf-8")
+    )
+    assert "sample_task_set" in payload["publication_warnings"]
+
+
 def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
     tmp_path: Path,
 ) -> None:

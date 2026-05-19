@@ -127,6 +127,10 @@ capabilityRouter
     "Override token used to call the provisioned endpoint",
   )
   .option(
+    "--allowed-module <id...>",
+    "Remote module id(s) allowed to register from the connected endpoint",
+  )
+  .option(
     "--keep-missing",
     "Keep previously synced remote plugins missing from the endpoint",
   )

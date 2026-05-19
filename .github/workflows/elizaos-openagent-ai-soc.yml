@@ -68,7 +68,7 @@ jobs:
           packages: "platform-tools build-tools;36.0.0 platforms;android-36"
 
       - name: Install workspace dependencies
-        run: bun install --frozen-lockfile
+        run: bun install --frozen-lockfile || bun install --no-frozen-lockfile
 
       - name: Resolve brand
         id: brand

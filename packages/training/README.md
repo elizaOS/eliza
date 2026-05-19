@@ -303,6 +303,106 @@ For cloud-tier runs see `scripts/train_vast.sh` and `scripts/CLOUD_VAST.md`.
 For inference see `scripts/inference/serve_vllm.py` (vLLM serve launcher) and
 `scripts/inference/serve_local.py`.
 
+## Running on a 12 GB consumer GPU (RTX 3060 / 4070 class)
+
+The registry's `qwen3.5-2b` default targets a 16 GB local GPU (seq_len=8192,
+budget=15.5 GB). On a 12 GB card that OOMs at the fp32 logits transient
+(B·S·V·4 bytes; Qwen vocab=248k makes this dominant). The `--low-vram-smoke`
+flag is a preset bundle that brings the SFT path inside a 12 GB envelope
+so the train→quant→bench plumbing can be validated end-to-end on commodity
+hardware before reaching for a rented H100/H200.
+
+```bash
+# 0.8B — the realistic tier for a 12 GB card. Smallest published eliza-1 base.
+uv run --extra train python scripts/train_local.py \
+    --registry-key qwen3.5-0.8b --low-vram-smoke
+
+# 2B — feasible inside 12 GB only with Liger + flash-linear-attention
+# kernels installed (see prerequisites below). Without those kernels the
+# 248k-vocab fp32 logits transient saturates the card and the run will
+# either OOM at the first backward pass or run unusably slowly.
+uv run --extra train python scripts/train_local.py \
+    --registry-key qwen3.5-2b --low-vram-smoke
+```
+
+What the preset overrides (CLI flags the caller passes still win):
+
+- `seq_len = 2048`                    (registry default 4096 for 0.8B, 8192 for 2B)
+- `per_device_batch_size = 1`
+- `gradient_accumulation_steps = 16`  (effective batch stays at 16)
+- `max_samples = 1000`
+- `epochs = 1`
+- `memory_budget_gb = 11.5`           (1.5 GB headroom under 12 GB)
+- Liger fused chunked-CE stays on (registry default, when installed and
+  Triton can JIT-compile — see the System Prerequisites section)
+- Activation checkpointing stays on (default in `train_local.py`)
+- APOLLO-Mini (registry default for 0.8B/2B/4B) remains the optimizer;
+  rank=1 keeps optimizer state effectively free.
+
+**Kernel prerequisites for the 2B path**. The preset's budget at 2B depends
+on two things being live:
+- Liger fused chunked-CE — cuts the fp32 logits transient ~4–8× on Qwen's
+  248k vocab. Requires Triton, which JIT-compiles a small CUDA helper at the
+  first kernel launch — `gcc`, `python3.x-dev`, and a CUDA toolkit Triton
+  can use must all be installed. Without them, `train_local.py` logs a
+  warning at startup and falls back to HF defaults.
+- Flash-linear-attention — the Qwen3.5 hybrid linear-attn layers (6 of 24
+  in the 0.8B/2B configs) have a fast Triton path through
+  https://github.com/fla-org/flash-linear-attention. Without it, transformers
+  falls back to a pure-PyTorch linear-attn implementation that is roughly
+  10× slower per step.
+
+When either kernel is missing, the 2B-on-12 GB path is effectively gated to
+preflight + small-step verification — full SFT will run but extremely slowly.
+The 0.8B preset is the realistic full-run option on stock WSL2 / no-toolchain
+hosts.
+
+**Verify the wiring without running SFT.** `--preflight-only` validates the
+preset's flag bundle, the dataset format, and the APOLLO classification
+without loading model weights or touching CUDA:
+
+```bash
+uv run --extra train python scripts/train_local.py \
+    --registry-key qwen3.5-2b --low-vram-smoke \
+    --train-file data/final-eliza1-smoke/train.jsonl \
+    --val-file data/final-eliza1-smoke/val.jsonl \
+    --preflight-only
+# → "low-vram-smoke preset → seq=2048 batch=1 accum=16 ... budget=11.5GB"
+# → "preflight ok: train=314/314 validation=39/39 optimizer=apollo_mini rank=1"
+```
+
+**Measured on RTX 3060 (12 GB, WSL2 Ubuntu, torch 2.12.0+cu130, no Liger
+JIT toolchain available, 314 smoke records in `data/final-eliza1-smoke/`):**
+
+| tier | preflight | peak VRAM (load + step 0) | notes                                               |
+|------|-----------|---------------------------|-----------------------------------------------------|
+| 0.8B | ok        | ~12.0 GB                  | runs to completion, but each step is slow without Liger + flash-linear-attn |
+| 2B   | ok        | ~12.0 GB                  | hits the 12 GB ceiling at the first backward without Liger; first step does not complete in a useful time window |
+
+The instrumentation callback (enabled because `--memory-budget-gb` is set)
+fails the run loud the moment `torch.cuda.max_memory_reserved()` exceeds
+the budget by more than 10 %.
+
+**Trade-offs:**
+
+- Training context window drops from 4–8k to 2k. Records longer than ~2k
+  rendered chars are right-truncated by the tokenizer. The smoke
+  trajectory dataset already fits inside 2k; for the real native
+  trajectory corpus pass `--max-chars 6000` (≈3× seq_len) so the
+  char-filter rejects oversized rows up front rather than wasting them.
+- Long-context behaviors (multi-turn agent traces, long tool outputs)
+  are NOT exercised at seq_len=2048. The resulting checkpoint is for
+  smoke / path-validation only, NOT for publishing.
+- Loss numbers from the smoke are not comparable to the registry-default
+  run — the effective sequence diet is different.
+
+**If it still OOMs**: the preset's headroom is conservative but real-world
+allocator fragmentation can still tip a 12 GB card over. Drop seq_len with
+`--low-vram-smoke --max-seq-len 1024` (or 768) and retry. If you cannot
+install the Liger / flash-linear-attention kernels (Windows / WSL2 without
+a CUDA toolkit and Python dev headers), prefer the 0.8B tier — it is the
+smallest published eliza-1 base and validates the same end-to-end pipeline.
+
 ## Memory budgets
 
 The full quantization stack at inference is:

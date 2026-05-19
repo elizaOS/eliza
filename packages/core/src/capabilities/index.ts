@@ -240,6 +240,21 @@ export type RemotePluginEvaluatorManifest = {
 	hasProcessor?: boolean;
 };
 
+export type RemotePluginResponseHandlerEvaluatorManifest = {
+	name: string;
+	description?: string;
+	priority?: number;
+};
+
+export type RemotePluginResponseHandlerFieldEvaluatorManifest = {
+	name: string;
+	description: string;
+	priority?: number;
+	schema: JsonObject;
+	hasParse?: boolean;
+	hasHandle?: boolean;
+};
+
 export type RemotePluginEventManifest = {
 	eventName: string;
 };
@@ -247,6 +262,27 @@ export type RemotePluginEventManifest = {
 export type RemotePluginModelManifest = {
 	modelType: string;
 	priority?: number;
+};
+
+export type RemotePluginServiceManifest = {
+	serviceType: string;
+	capabilityDescription?: string;
+	methods?: string[];
+	config?: JsonObject;
+};
+
+export type RemotePluginJsonSchemaDefinition = {
+	type: string;
+	properties?: Record<string, RemotePluginJsonSchemaDefinition>;
+	items?: RemotePluginJsonSchemaDefinition;
+	required?: string[];
+	enumValues?: string[];
+	description?: string;
+};
+
+export type RemotePluginComponentTypeManifest = {
+	name: string;
+	schema: RemotePluginJsonSchemaDefinition;
 };
 
 export type RemotePluginWidgetManifest = {
@@ -331,25 +367,45 @@ export type RemotePluginAppBridgeManifest = {
 	hooks: RemotePluginAppBridgeHook[];
 };
 
+export type RemotePluginLifecycleHook = "init" | "dispose" | "applyConfig";
+
+export type RemotePluginLifecycleManifest = {
+	hooks: RemotePluginLifecycleHook[];
+};
+
+export type RemotePluginConfigValue = string | number | boolean | null;
+export type RemotePluginConfig = Record<string, RemotePluginConfigValue>;
+
 export type RemotePluginModuleManifest = {
 	id: string;
 	name: string;
+	/** Assigned by an aggregating capability router so RPC calls stay bound to the endpoint that supplied this module. */
+	capabilityEndpointId?: string;
 	version?: string;
 	description?: string;
+	priority?: number;
+	contexts?: string[];
+	config?: RemotePluginConfig;
+	schema?: JsonObject;
 	actions?: RemotePluginActionManifest[];
 	providers?: RemotePluginProviderManifest[];
 	evaluators?: RemotePluginEvaluatorManifest[];
+	responseHandlerEvaluators?: RemotePluginResponseHandlerEvaluatorManifest[];
+	responseHandlerFieldEvaluators?: RemotePluginResponseHandlerFieldEvaluatorManifest[];
 	events?: RemotePluginEventManifest[];
 	models?: RemotePluginModelManifest[];
+	services?: RemotePluginServiceManifest[];
+	componentTypes?: RemotePluginComponentTypeManifest[];
 	widgets?: RemotePluginWidgetManifest[];
 	app?: RemotePluginAppManifest;
 	appBridge?: RemotePluginAppBridgeManifest;
+	lifecycle?: RemotePluginLifecycleManifest;
 	routes?: RemotePluginRouteManifest[];
 	views?: RemotePluginViewManifest[];
 	metadata?: JsonObject;
 };
 
-export type PluginListModulesParams = {
+export type PluginListModulesParams = CapabilityEndpointSelection & {
 	traceSessionId?: string;
 };
 
@@ -357,7 +413,7 @@ export type PluginListModulesResult = {
 	modules: RemotePluginModuleManifest[];
 };
 
-export type PluginInvokeActionParams = {
+export type PluginInvokeActionParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	action: string;
 	content?: JsonObject;
@@ -372,7 +428,7 @@ export type PluginInvokeActionResult = {
 	data?: JsonObject;
 };
 
-export type PluginGetProviderParams = {
+export type PluginGetProviderParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	provider: string;
 	state?: JsonObject;
@@ -385,7 +441,7 @@ export type PluginGetProviderResult = {
 	data?: JsonObject;
 };
 
-export type PluginCallRouteParams = {
+export type PluginCallRouteParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	method: string;
 	path: string;
@@ -401,7 +457,7 @@ export type PluginCallRouteResult = {
 	body?: JsonValue;
 };
 
-export type PluginGetAssetParams = {
+export type PluginGetAssetParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	path: string;
 	traceSessionId?: string;
@@ -414,7 +470,7 @@ export type PluginGetAssetResult = {
 	integrity?: string;
 };
 
-export type PluginEvaluatorShouldRunParams = {
+export type PluginEvaluatorShouldRunParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	evaluator: string;
 	message?: JsonObject;
@@ -449,7 +505,76 @@ export type PluginEvaluatorProcessResult = {
 	result?: JsonObject;
 };
 
-export type PluginHandleEventParams = {
+export type PluginResponseHandlerEvaluatorShouldRunParams =
+	CapabilityEndpointSelection & {
+		moduleId: string;
+		evaluator: string;
+		context?: JsonObject;
+		traceSessionId?: string;
+	};
+
+export type PluginResponseHandlerEvaluatorShouldRunResult = {
+	shouldRun: boolean;
+};
+
+export type PluginResponseHandlerEvaluatorEvaluateParams =
+	PluginResponseHandlerEvaluatorShouldRunParams;
+
+export type PluginResponseHandlerEvaluatorEvaluateResult = {
+	patch?: JsonObject;
+};
+
+export type PluginResponseHandlerFieldEvaluatorShouldRunParams =
+	CapabilityEndpointSelection & {
+		moduleId: string;
+		field: string;
+		context?: JsonObject;
+		traceSessionId?: string;
+	};
+
+export type PluginResponseHandlerFieldEvaluatorShouldRunResult = {
+	shouldRun: boolean;
+};
+
+export type PluginResponseHandlerFieldEvaluatorParseParams =
+	PluginResponseHandlerFieldEvaluatorShouldRunParams & {
+		value?: JsonValue;
+	};
+
+export type PluginResponseHandlerFieldEvaluatorParseResult = {
+	value?: JsonValue;
+	softFail?: boolean;
+};
+
+export type PluginResponseHandlerFieldEvaluatorHandleParams =
+	PluginResponseHandlerFieldEvaluatorParseParams & {
+		parsed?: JsonObject;
+	};
+
+export type PluginResponseHandlerFieldEvaluatorHandleResult = {
+	effect?: {
+		patch?: JsonObject;
+		preempt?: {
+			mode: "ack-and-stop" | "ignore" | "direct-reply";
+			reason: string;
+		};
+		debug?: string[];
+	};
+};
+
+export type PluginLifecycleCallParams = CapabilityEndpointSelection & {
+	moduleId: string;
+	hook: RemotePluginLifecycleHook;
+	config?: Record<string, string>;
+	context?: JsonObject;
+	traceSessionId?: string;
+};
+
+export type PluginLifecycleCallResult = {
+	ok: boolean;
+};
+
+export type PluginHandleEventParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	eventName: string;
 	payload?: JsonObject;
@@ -460,7 +585,7 @@ export type PluginHandleEventResult = {
 	handled: boolean;
 };
 
-export type PluginInvokeModelParams = {
+export type PluginInvokeModelParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	modelType: string;
 	params?: JsonValue;
@@ -471,7 +596,19 @@ export type PluginInvokeModelResult = {
 	result: JsonValue;
 };
 
-export type PluginCallAppBridgeParams = {
+export type PluginCallServiceParams = CapabilityEndpointSelection & {
+	moduleId: string;
+	serviceType: string;
+	method: string;
+	args?: JsonValue[];
+	traceSessionId?: string;
+};
+
+export type PluginCallServiceResult = {
+	result?: JsonValue;
+};
+
+export type PluginCallAppBridgeParams = CapabilityEndpointSelection & {
 	moduleId: string;
 	hook: RemotePluginAppBridgeHook;
 	context?: JsonObject;
@@ -526,12 +663,33 @@ export interface RemotePluginCapability {
 	processEvaluator(
 		params: PluginEvaluatorProcessParams,
 	): Promise<PluginEvaluatorProcessResult>;
+	shouldRunResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerEvaluatorShouldRunResult>;
+	evaluateResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorEvaluateParams,
+	): Promise<PluginResponseHandlerEvaluatorEvaluateResult>;
+	shouldRunResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorShouldRunResult>;
+	parseResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorParseParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorParseResult>;
+	handleResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorHandleParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorHandleResult>;
+	callLifecycle(
+		params: PluginLifecycleCallParams,
+	): Promise<PluginLifecycleCallResult>;
 	handleEvent(
 		params: PluginHandleEventParams,
 	): Promise<PluginHandleEventResult>;
 	invokeModel(
 		params: PluginInvokeModelParams,
 	): Promise<PluginInvokeModelResult>;
+	callService(
+		params: PluginCallServiceParams,
+	): Promise<PluginCallServiceResult>;
 	callAppBridge(
 		params: PluginCallAppBridgeParams,
 	): Promise<PluginCallAppBridgeResult>;
@@ -546,6 +704,246 @@ export interface ElizaCapabilityRouter {
 	readonly model: LocalModelCapability;
 	readonly plugin: RemotePluginCapability;
 }
+
+export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION = "2026-05-19" as const;
+
+export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
+	availability: {
+		environment: "server",
+		available: true,
+		capabilities: {
+			fs: false,
+			pty: false,
+			git: false,
+			model: false,
+			plugin: true,
+		},
+	},
+	module: {
+		id: "fixture-remote-plugin",
+		name: "@remote/fixture-plugin",
+		version: "1.0.0",
+		description: "Canonical capability-router remote plugin fixture.",
+		priority: 25,
+		contexts: ["developer", "remote-fixture"],
+		config: { fixtureMode: true },
+		schema: {
+			remote_fixture_records: {
+				id: "uuid",
+				label: "text",
+			},
+		},
+		actions: [
+			{
+				name: "FIXTURE_ACTION",
+				description: "Exercise a remote action through the protocol.",
+			},
+		],
+		providers: [
+			{
+				name: "FIXTURE_CONTEXT",
+				description: "Exercise a remote provider through the protocol.",
+			},
+		],
+		evaluators: [
+			{
+				name: "FIXTURE_EVALUATOR",
+				description: "Exercise a remote evaluator through the protocol.",
+				prompt: "Evaluate the fixture response.",
+				schema: { type: "object" },
+				hasPrepare: true,
+				hasProcessor: true,
+			},
+		],
+		responseHandlerEvaluators: [
+			{
+				name: "FIXTURE_RESPONSE_EVALUATOR",
+				description: "Exercise a response-handler evaluator.",
+			},
+		],
+		responseHandlerFieldEvaluators: [
+			{
+				name: "FIXTURE_FIELD_EVALUATOR",
+				description: "Exercise a response-handler field evaluator.",
+				schema: { type: "object" },
+				hasParse: true,
+				hasHandle: true,
+			},
+		],
+		events: [{ eventName: "fixture.event" }],
+		models: [{ modelType: "TEXT_SMALL", priority: 1 }],
+		services: [
+			{
+				serviceType: "fixture-service",
+				capabilityDescription: "Fixture remote service.",
+				methods: ["ping"],
+				config: { fixture: true },
+			},
+		],
+		componentTypes: [
+			{
+				name: "fixture.component",
+				schema: {
+					type: "object",
+					properties: {
+						label: { type: "string", description: "Fixture label." },
+						count: { type: "number" },
+					},
+					required: ["label"],
+				},
+			},
+		],
+		widgets: [
+			{
+				id: "fixture-widget",
+				slot: "chat-sidebar",
+				label: "Fixture Widget",
+				componentExport: "FixtureWidget",
+			},
+		],
+		app: {
+			displayName: "Fixture Remote App",
+			category: "developer",
+			launchType: "remote",
+			launchUrl: "https://fixture.example.test/app",
+			viewer: {
+				url: "https://fixture.example.test/viewer",
+				postMessageAuth: true,
+			},
+			session: {
+				mode: "spectate-and-steer",
+				features: ["commands", "telemetry"],
+			},
+			navTabs: [
+				{
+					id: "fixture-tab",
+					label: "Fixture",
+					path: "/apps/fixture",
+					componentExport: "FixtureTab",
+				},
+			],
+		},
+		appBridge: {
+			hooks: ["prepareLaunch", "handleAppRoutes"],
+		},
+		lifecycle: {
+			hooks: ["init", "dispose", "applyConfig"],
+		},
+		routes: [
+			{
+				method: "POST",
+				path: "/fixture/route",
+				public: true,
+				name: "fixture-route",
+			},
+		],
+		views: [
+			{
+				id: "fixture.view",
+				label: "Fixture View",
+				viewType: "gui",
+				bundlePath: "/assets/fixture-view.js",
+				contentType: "text/javascript",
+			},
+		],
+		metadata: {
+			fixtureVersion: CAPABILITY_ROUTER_PROTOCOL_FIXTURE_VERSION,
+		},
+	},
+	results: {
+		action: {
+			text: "fixture action",
+			data: { fixture: true },
+		},
+		provider: {
+			text: "fixture provider",
+			values: { fixture: true },
+		},
+		route: {
+			status: 209,
+			headers: { "x-capability-fixture": "yes" },
+			body: { fixtureRoute: true },
+		},
+		asset: {
+			path: "/assets/fixture-view.js",
+			contentType: "text/javascript",
+			bodyBase64: "ZXhwb3J0IGNvbnN0IGZpeHR1cmVWaWV3ID0gdHJ1ZTsK",
+		},
+		model: {
+			result: { text: "fixture model", fixture: true },
+		},
+		lifecycle: {
+			ok: true,
+		},
+		event: {
+			handled: true,
+		},
+		service: {
+			result: { text: "fixture service", fixture: true },
+		},
+		appBridge: {
+			result: {
+				handled: true,
+				status: 208,
+				headers: { "x-capability-fixture-bridge": "yes" },
+				body: { fixtureAppBridge: true },
+			},
+		},
+		evaluatorShouldRun: {
+			shouldRun: true,
+		},
+		evaluatorPrepare: {
+			prepared: { fixturePrepared: true },
+		},
+		evaluatorPrompt: {
+			prompt: "fixture evaluator prompt",
+		},
+		evaluatorProcess: {
+			result: { fixtureProcessed: true },
+		},
+		responseHandlerEvaluatorShouldRun: {
+			shouldRun: true,
+		},
+		responseHandlerEvaluatorEvaluate: {
+			patch: { fixtureResponsePatch: true },
+		},
+		responseHandlerFieldEvaluatorShouldRun: {
+			shouldRun: true,
+		},
+		responseHandlerFieldEvaluatorParse: {
+			value: { fixtureParsed: true },
+		},
+		responseHandlerFieldEvaluatorHandle: {
+			effect: {
+				patch: { fixtureHandled: true },
+				debug: ["fixture field handled"],
+			},
+		},
+	},
+} as const satisfies {
+	availability: CapabilityAvailability;
+	module: RemotePluginModuleManifest;
+	results: {
+		action: PluginInvokeActionResult;
+		provider: PluginGetProviderResult;
+		route: PluginCallRouteResult;
+		asset: PluginGetAssetResult;
+		model: PluginInvokeModelResult;
+		lifecycle: PluginLifecycleCallResult;
+		event: PluginHandleEventResult;
+		service: PluginCallServiceResult;
+		appBridge: PluginCallAppBridgeResult;
+		evaluatorShouldRun: PluginEvaluatorShouldRunResult;
+		evaluatorPrepare: PluginEvaluatorPrepareResult;
+		evaluatorPrompt: PluginEvaluatorPromptResult;
+		evaluatorProcess: PluginEvaluatorProcessResult;
+		responseHandlerEvaluatorShouldRun: PluginResponseHandlerEvaluatorShouldRunResult;
+		responseHandlerEvaluatorEvaluate: PluginResponseHandlerEvaluatorEvaluateResult;
+		responseHandlerFieldEvaluatorShouldRun: PluginResponseHandlerFieldEvaluatorShouldRunResult;
+		responseHandlerFieldEvaluatorParse: PluginResponseHandlerFieldEvaluatorParseResult;
+		responseHandlerFieldEvaluatorHandle: PluginResponseHandlerFieldEvaluatorHandleResult;
+	};
+};
 
 export type RuntimeBrokerCapabilityMethod =
 	| "fs.list"
@@ -565,8 +963,15 @@ export type RuntimeBrokerCapabilityMethod =
 	| "plugin.evaluator.prepare"
 	| "plugin.evaluator.prompt"
 	| "plugin.evaluator.process"
+	| "plugin.responseHandlerEvaluator.shouldRun"
+	| "plugin.responseHandlerEvaluator.evaluate"
+	| "plugin.responseHandlerFieldEvaluator.shouldRun"
+	| "plugin.responseHandlerFieldEvaluator.parse"
+	| "plugin.responseHandlerFieldEvaluator.handle"
+	| "plugin.lifecycle.call"
 	| "plugin.event.handle"
 	| "plugin.model.invoke"
+	| "plugin.service.call"
 	| "plugin.appBridge.call";
 
 export type RuntimeBrokerInvoke = (
@@ -666,6 +1071,52 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 					moduleId: params.moduleId,
 					evaluator: params.evaluator,
 				}),
+			shouldRunResponseHandlerEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerEvaluator.shouldRun",
+					{
+						moduleId: params.moduleId,
+						evaluator: params.evaluator,
+					},
+				),
+			evaluateResponseHandlerEvaluator: (params) =>
+				this.unavailable("plugin", "plugin.responseHandlerEvaluator.evaluate", {
+					moduleId: params.moduleId,
+					evaluator: params.evaluator,
+				}),
+			shouldRunResponseHandlerFieldEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerFieldEvaluator.shouldRun",
+					{
+						moduleId: params.moduleId,
+						field: params.field,
+					},
+				),
+			parseResponseHandlerFieldEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerFieldEvaluator.parse",
+					{
+						moduleId: params.moduleId,
+						field: params.field,
+					},
+				),
+			handleResponseHandlerFieldEvaluator: (params) =>
+				this.unavailable(
+					"plugin",
+					"plugin.responseHandlerFieldEvaluator.handle",
+					{
+						moduleId: params.moduleId,
+						field: params.field,
+					},
+				),
+			callLifecycle: (params) =>
+				this.unavailable("plugin", "plugin.lifecycle.call", {
+					moduleId: params.moduleId,
+					hook: params.hook,
+				}),
 			handleEvent: (params) =>
 				this.unavailable("plugin", "plugin.event.handle", {
 					moduleId: params.moduleId,
@@ -675,6 +1126,12 @@ export class UnavailableCapabilityRouter implements ElizaCapabilityRouter {
 				this.unavailable("plugin", "plugin.model.invoke", {
 					moduleId: params.moduleId,
 					modelType: params.modelType,
+				}),
+			callService: (params) =>
+				this.unavailable("plugin", "plugin.service.call", {
+					moduleId: params.moduleId,
+					serviceType: params.serviceType,
+					method: params.method,
 				}),
 			callAppBridge: (params) =>
 				this.unavailable("plugin", "plugin.appBridge.call", {
@@ -754,8 +1211,20 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			prepareEvaluator: (params) => this.preparePluginEvaluator(params),
 			promptEvaluator: (params) => this.promptPluginEvaluator(params),
 			processEvaluator: (params) => this.processPluginEvaluator(params),
+			shouldRunResponseHandlerEvaluator: (params) =>
+				this.shouldRunResponseHandlerEvaluator(params),
+			evaluateResponseHandlerEvaluator: (params) =>
+				this.evaluateResponseHandlerEvaluator(params),
+			shouldRunResponseHandlerFieldEvaluator: (params) =>
+				this.shouldRunResponseHandlerFieldEvaluator(params),
+			parseResponseHandlerFieldEvaluator: (params) =>
+				this.parseResponseHandlerFieldEvaluator(params),
+			handleResponseHandlerFieldEvaluator: (params) =>
+				this.handleResponseHandlerFieldEvaluator(params),
+			callLifecycle: (params) => this.callPluginLifecycle(params),
 			handleEvent: (params) => this.handlePluginEvent(params),
 			invokeModel: (params) => this.invokePluginModel(params),
+			callService: (params) => this.callPluginService(params),
 			callAppBridge: (params) => this.callPluginAppBridge(params),
 		};
 	}
@@ -962,6 +1431,9 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		params: PluginListModulesParams = {},
 	): Promise<PluginListModulesResult> {
 		const result = await this.request("plugin", "plugin.modules.list", {
+			...(params.endpointId === undefined
+				? {}
+				: { endpointId: params.endpointId }),
 			...(params.traceSessionId === undefined
 				? {}
 				: { traceSessionId: params.traceSessionId }),
@@ -979,7 +1451,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async invokePluginAction(
 		params: PluginInvokeActionParams,
 	): Promise<PluginInvokeActionResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.action.invoke",
+		);
+		validateRemotePluginCallTarget(
+			params.action,
+			"action",
+			"plugin.action.invoke",
+		);
 		const result = await this.request("plugin", "plugin.action.invoke", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			action: params.action,
 			...(params.content === undefined ? {} : { content: params.content }),
@@ -994,7 +1477,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async getPluginProvider(
 		params: PluginGetProviderParams,
 	): Promise<PluginGetProviderResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.provider.get",
+		);
+		validateRemotePluginCallTarget(
+			params.provider,
+			"provider",
+			"plugin.provider.get",
+		);
 		const result = await this.request("plugin", "plugin.provider.get", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			provider: params.provider,
 			...(params.state === undefined ? {} : { state: params.state }),
@@ -1008,7 +1502,26 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async callPluginRoute(
 		params: PluginCallRouteParams,
 	): Promise<PluginCallRouteResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.route.call",
+		);
+		validateRemotePluginRouteMethod(
+			params.method,
+			"method",
+			"plugin.route.call",
+			false,
+		);
+		validateRemotePluginPath(params.path, "path", "plugin.route.call");
+		if (params.headers !== undefined) {
+			validateHeaderRecord(params.headers, "headers", "plugin.route.call");
+		}
+		if (params.query !== undefined) {
+			validateRouteQueryRecord(params.query, "query", "plugin.route.call");
+		}
 		const result = await this.request("plugin", "plugin.route.call", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			method: params.method,
 			path: params.path,
@@ -1025,8 +1538,13 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 			"headers",
 			"plugin.route.call",
 		);
+		if (headers !== undefined) {
+			validateHeaderRecord(headers, "headers", "plugin.route.call");
+		}
+		const status = requireNumber(object, "status", "plugin.route.call");
+		validateHttpStatusCode(status, "status", "plugin.route.call");
 		return {
-			status: requireNumber(object, "status", "plugin.route.call"),
+			status,
 			...(headers === undefined ? {} : { headers }),
 			...(object.body === undefined ? {} : { body: object.body }),
 		};
@@ -1035,7 +1553,14 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async getPluginAsset(
 		params: PluginGetAssetParams,
 	): Promise<PluginGetAssetResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.asset.get",
+		);
+		validateRemotePluginAssetPath(params.path, "path", "plugin.asset.get");
 		const result = await this.request("plugin", "plugin.asset.get", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			path: params.path,
 			...(params.traceSessionId === undefined
@@ -1044,10 +1569,23 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		});
 		const object = requireObject(result, "plugin.asset.get");
 		const integrity = optionalString(object, "integrity", "plugin.asset.get");
+		const path = requireNonEmptyString(object, "path", "plugin.asset.get");
+		validateRemotePluginAssetPath(path, "path", "plugin.asset.get");
+		const contentType = requireNonEmptyString(
+			object,
+			"contentType",
+			"plugin.asset.get",
+		);
+		validateHeaderSafeString(contentType, "contentType", "plugin.asset.get");
+		const bodyBase64 = requireString(object, "bodyBase64", "plugin.asset.get");
+		validateBase64String(bodyBase64, "bodyBase64", "plugin.asset.get");
+		if (integrity !== undefined) {
+			validateHeaderSafeString(integrity, "integrity", "plugin.asset.get");
+		}
 		return {
-			path: requireString(object, "path", "plugin.asset.get"),
-			contentType: requireString(object, "contentType", "plugin.asset.get"),
-			bodyBase64: requireString(object, "bodyBase64", "plugin.asset.get"),
+			path,
+			contentType,
+			bodyBase64,
 			...(integrity === undefined ? {} : { integrity }),
 		};
 	}
@@ -1055,7 +1593,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async shouldRunPluginEvaluator(
 		params: PluginEvaluatorShouldRunParams,
 	): Promise<PluginEvaluatorShouldRunResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.shouldRun",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.shouldRun",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.shouldRun", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1078,7 +1627,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async preparePluginEvaluator(
 		params: PluginEvaluatorPrepareParams,
 	): Promise<PluginEvaluatorPrepareResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.prepare",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.prepare",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.prepare", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1095,7 +1655,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async promptPluginEvaluator(
 		params: PluginEvaluatorPromptParams,
 	): Promise<PluginEvaluatorPromptResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.prompt",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.prompt",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.prompt", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1115,7 +1686,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async processPluginEvaluator(
 		params: PluginEvaluatorProcessParams,
 	): Promise<PluginEvaluatorProcessResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.process",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.process",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.process", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			evaluator: params.evaluator,
 			...(params.message === undefined ? {} : { message: params.message }),
@@ -1136,10 +1718,253 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		return processorResult === undefined ? {} : { result: processorResult };
 	}
 
+	private async shouldRunResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerEvaluatorShouldRunResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.responseHandlerEvaluator.shouldRun",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.responseHandlerEvaluator.shouldRun",
+		);
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerEvaluator.shouldRun",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				evaluator: params.evaluator,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerEvaluator.shouldRun",
+		);
+		return {
+			shouldRun: requireBoolean(
+				object,
+				"shouldRun",
+				"plugin.responseHandlerEvaluator.shouldRun",
+			),
+		};
+	}
+
+	private async evaluateResponseHandlerEvaluator(
+		params: PluginResponseHandlerEvaluatorEvaluateParams,
+	): Promise<PluginResponseHandlerEvaluatorEvaluateResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.responseHandlerEvaluator.evaluate",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.responseHandlerEvaluator.evaluate",
+		);
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerEvaluator.evaluate",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				evaluator: params.evaluator,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerEvaluator.evaluate",
+		);
+		const patch = optionalJsonObject(
+			object,
+			"patch",
+			"plugin.responseHandlerEvaluator.evaluate",
+		);
+		return patch === undefined ? {} : { patch };
+	}
+
+	private async shouldRunResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorShouldRunParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorShouldRunResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+		);
+		validateRemotePluginCallTarget(
+			params.field,
+			"field",
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+		);
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				field: params.field,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerFieldEvaluator.shouldRun",
+		);
+		return {
+			shouldRun: requireBoolean(
+				object,
+				"shouldRun",
+				"plugin.responseHandlerFieldEvaluator.shouldRun",
+			),
+		};
+	}
+
+	private async parseResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorParseParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorParseResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.responseHandlerFieldEvaluator.parse",
+		);
+		validateRemotePluginCallTarget(
+			params.field,
+			"field",
+			"plugin.responseHandlerFieldEvaluator.parse",
+		);
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerFieldEvaluator.parse",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				field: params.field,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.value === undefined ? {} : { value: params.value }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerFieldEvaluator.parse",
+		);
+		const softFail = optionalBoolean(
+			object,
+			"softFail",
+			"plugin.responseHandlerFieldEvaluator.parse",
+		);
+		return {
+			...(object.value === undefined ? {} : { value: object.value }),
+			...(softFail === undefined ? {} : { softFail }),
+		};
+	}
+
+	private async handleResponseHandlerFieldEvaluator(
+		params: PluginResponseHandlerFieldEvaluatorHandleParams,
+	): Promise<PluginResponseHandlerFieldEvaluatorHandleResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.responseHandlerFieldEvaluator.handle",
+		);
+		validateRemotePluginCallTarget(
+			params.field,
+			"field",
+			"plugin.responseHandlerFieldEvaluator.handle",
+		);
+		const result = await this.request(
+			"plugin",
+			"plugin.responseHandlerFieldEvaluator.handle",
+			{
+				...endpointSelection(params),
+				moduleId: params.moduleId,
+				field: params.field,
+				...(params.context === undefined ? {} : { context: params.context }),
+				...(params.value === undefined ? {} : { value: params.value }),
+				...(params.parsed === undefined ? {} : { parsed: params.parsed }),
+				...(params.traceSessionId === undefined
+					? {}
+					: { traceSessionId: params.traceSessionId }),
+			},
+		);
+		const object = requireObject(
+			result,
+			"plugin.responseHandlerFieldEvaluator.handle",
+		);
+		return {
+			...(object.effect === undefined
+				? {}
+				: {
+						effect: requireResponseHandlerFieldEffect(
+							object.effect,
+							"plugin.responseHandlerFieldEvaluator.handle.effect",
+						),
+					}),
+		};
+	}
+
+	private async callPluginLifecycle(
+		params: PluginLifecycleCallParams,
+	): Promise<PluginLifecycleCallResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.lifecycle.call",
+		);
+		if (!isRemotePluginLifecycleHook(params.hook)) {
+			throw decodeError(
+				"plugin.lifecycle.call",
+				"hook must be a valid plugin lifecycle hook.",
+			);
+		}
+		const result = await this.request("plugin", "plugin.lifecycle.call", {
+			...endpointSelection(params),
+			moduleId: params.moduleId,
+			hook: params.hook,
+			...(params.config === undefined ? {} : { config: params.config }),
+			...(params.context === undefined ? {} : { context: params.context }),
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "plugin.lifecycle.call");
+		return {
+			ok: requireBoolean(object, "ok", "plugin.lifecycle.call"),
+		};
+	}
+
 	private async handlePluginEvent(
 		params: PluginHandleEventParams,
 	): Promise<PluginHandleEventResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.event.handle",
+		);
+		validateRemotePluginCallTarget(
+			params.eventName,
+			"eventName",
+			"plugin.event.handle",
+		);
 		const result = await this.request("plugin", "plugin.event.handle", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			eventName: params.eventName,
 			...(params.payload === undefined ? {} : { payload: params.payload }),
@@ -1156,7 +1981,18 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async invokePluginModel(
 		params: PluginInvokeModelParams,
 	): Promise<PluginInvokeModelResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.model.invoke",
+		);
+		validateRemotePluginCallTarget(
+			params.modelType,
+			"modelType",
+			"plugin.model.invoke",
+		);
 		const result = await this.request("plugin", "plugin.model.invoke", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			modelType: params.modelType,
 			...(params.params === undefined ? {} : { params: params.params }),
@@ -1173,10 +2009,50 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		};
 	}
 
+	private async callPluginService(
+		params: PluginCallServiceParams,
+	): Promise<PluginCallServiceResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.service.call",
+		);
+		validateRemotePluginCallTarget(
+			params.serviceType,
+			"serviceType",
+			"plugin.service.call",
+		);
+		validateRemotePluginServiceMethods([params.method], "plugin.service.call");
+		const result = await this.request("plugin", "plugin.service.call", {
+			...endpointSelection(params),
+			moduleId: params.moduleId,
+			serviceType: params.serviceType,
+			method: params.method,
+			...(params.args === undefined ? {} : { args: params.args }),
+			...(params.traceSessionId === undefined
+				? {}
+				: { traceSessionId: params.traceSessionId }),
+		});
+		const object = requireObject(result, "plugin.service.call");
+		return Object.hasOwn(object, "result") ? { result: object.result } : {};
+	}
+
 	private async callPluginAppBridge(
 		params: PluginCallAppBridgeParams,
 	): Promise<PluginCallAppBridgeResult> {
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.appBridge.call",
+		);
+		if (!isRemotePluginAppBridgeHook(params.hook)) {
+			throw decodeError(
+				"plugin.appBridge.call",
+				"hook must be a valid plugin app bridge hook.",
+			);
+		}
 		const result = await this.request("plugin", "plugin.appBridge.call", {
+			...endpointSelection(params),
 			moduleId: params.moduleId,
 			hook: params.hook,
 			...(params.context === undefined ? {} : { context: params.context }),
@@ -1284,10 +2160,32 @@ function isRemotePluginCapability(
 		typeof candidate.prepareEvaluator === "function" &&
 		typeof candidate.promptEvaluator === "function" &&
 		typeof candidate.processEvaluator === "function" &&
+		typeof candidate.shouldRunResponseHandlerEvaluator === "function" &&
+		typeof candidate.evaluateResponseHandlerEvaluator === "function" &&
+		typeof candidate.shouldRunResponseHandlerFieldEvaluator === "function" &&
+		typeof candidate.parseResponseHandlerFieldEvaluator === "function" &&
+		typeof candidate.handleResponseHandlerFieldEvaluator === "function" &&
+		typeof candidate.callLifecycle === "function" &&
 		typeof candidate.handleEvent === "function" &&
 		typeof candidate.invokeModel === "function" &&
+		typeof candidate.callService === "function" &&
 		typeof candidate.callAppBridge === "function"
 	);
+}
+
+function endpointSelection(params: CapabilityEndpointSelection): JsonObject {
+	if (params.endpointId === undefined) return {};
+	validateRemotePluginCallTarget(
+		params.endpointId,
+		"endpointId",
+		"capability.endpoint",
+	);
+	validateControlSafeString(
+		params.endpointId,
+		"endpointId",
+		"capability.endpoint",
+	);
+	return { endpointId: params.endpointId };
 }
 
 function requireObject(
@@ -1322,6 +2220,16 @@ function requireNonEmptyString(
 	throw decodeError(method, `${key} must be a non-empty string.`);
 }
 
+function requireRemotePluginModuleId(
+	object: JsonObject,
+	key: string,
+	method: string,
+): string {
+	const value = requireNonEmptyString(object, key, method);
+	validateRemotePluginModuleId(value, key, method);
+	return value;
+}
+
 function optionalString(
 	object: JsonObject,
 	key: string,
@@ -1353,6 +2261,35 @@ function optionalJsonObject(
 	if (value === undefined) return undefined;
 	if (isJsonObject(value)) return value;
 	throw decodeError(method, `${key} must be an object when present.`);
+}
+
+function optionalRemotePluginConfig(
+	object: JsonObject,
+	key: string,
+	method: string,
+): RemotePluginConfig | undefined {
+	const value = object[key];
+	if (value === undefined) return undefined;
+	if (!isJsonObject(value)) {
+		throw decodeError(method, `${key} must be an object when present.`);
+	}
+	const config: RemotePluginConfig = {};
+	for (const [configKey, configValue] of Object.entries(value)) {
+		if (
+			typeof configValue === "string" ||
+			(typeof configValue === "number" && Number.isFinite(configValue)) ||
+			typeof configValue === "boolean" ||
+			configValue === null
+		) {
+			config[configKey] = configValue;
+			continue;
+		}
+		throw decodeError(
+			method,
+			`${key}.${configKey} must be a string, number, boolean, or null.`,
+		);
+	}
+	return config;
 }
 
 function requireJsonObject(
@@ -1542,6 +2479,43 @@ function optionalBoolean(
 	throw decodeError(method, `${key} must be a boolean when present.`);
 }
 
+function requireResponseHandlerFieldEffect(
+	value: JsonValue,
+	method: string,
+): NonNullable<PluginResponseHandlerFieldEvaluatorHandleResult["effect"]> {
+	const object = requireObject(value, method);
+	const patch = optionalJsonObject(object, "patch", method);
+	const preempt =
+		object.preempt === undefined
+			? undefined
+			: requireResponseHandlerFieldPreempt(object.preempt, `${method}.preempt`);
+	const debug = optionalStringArray(object, "debug", method);
+	return {
+		...(patch === undefined ? {} : { patch }),
+		...(preempt === undefined ? {} : { preempt }),
+		...(debug === undefined ? {} : { debug }),
+	};
+}
+
+function requireResponseHandlerFieldPreempt(
+	value: JsonValue,
+	method: string,
+): NonNullable<
+	NonNullable<
+		PluginResponseHandlerFieldEvaluatorHandleResult["effect"]
+	>["preempt"]
+> {
+	const object = requireObject(value, method);
+	const mode = requireString(object, "mode", method);
+	if (mode !== "ack-and-stop" && mode !== "ignore" && mode !== "direct-reply") {
+		throw decodeError(method, "preempt.mode is not supported.");
+	}
+	return {
+		mode,
+		reason: requireString(object, "reason", method),
+	};
+}
+
 function requireGitOperation(
 	value: JsonValue | undefined,
 	method: string,
@@ -1589,8 +2563,17 @@ function requireRemotePluginModule(
 	method: string,
 ): RemotePluginModuleManifest {
 	const object = requireObject(value, method);
+	const capabilityEndpointId = optionalString(
+		object,
+		"capabilityEndpointId",
+		method,
+	);
 	const version = optionalString(object, "version", method);
 	const description = optionalString(object, "description", method);
+	const priority = optionalNumber(object, "priority", method);
+	const contexts = optionalStringArray(object, "contexts", method);
+	const config = optionalRemotePluginConfig(object, "config", method);
+	const schema = optionalJsonObject(object, "schema", method);
 	const actions = optionalArray(
 		object,
 		"actions",
@@ -1609,6 +2592,18 @@ function requireRemotePluginModule(
 		method,
 		requireRemotePluginEvaluator,
 	);
+	const responseHandlerEvaluators = optionalArray(
+		object,
+		"responseHandlerEvaluators",
+		method,
+		requireRemotePluginResponseHandlerEvaluator,
+	);
+	const responseHandlerFieldEvaluators = optionalArray(
+		object,
+		"responseHandlerFieldEvaluators",
+		method,
+		requireRemotePluginResponseHandlerFieldEvaluator,
+	);
 	const events = optionalArray(
 		object,
 		"events",
@@ -1620,6 +2615,18 @@ function requireRemotePluginModule(
 		"models",
 		method,
 		requireRemotePluginModel,
+	);
+	const services = optionalArray(
+		object,
+		"services",
+		method,
+		requireRemotePluginService,
+	);
+	const componentTypes = optionalArray(
+		object,
+		"componentTypes",
+		method,
+		requireRemotePluginComponentType,
 	);
 	const widgets = optionalArray(
 		object,
@@ -1635,6 +2642,10 @@ function requireRemotePluginModule(
 		object.appBridge === undefined
 			? undefined
 			: requireRemotePluginAppBridge(object.appBridge, `${method}.appBridge`);
+	const lifecycle =
+		object.lifecycle === undefined
+			? undefined
+			: requireRemotePluginLifecycle(object.lifecycle, `${method}.lifecycle`);
 	const routes = optionalArray(
 		object,
 		"routes",
@@ -1644,18 +2655,32 @@ function requireRemotePluginModule(
 	const views = optionalArray(object, "views", method, requireRemotePluginView);
 	const metadata = optionalJsonObject(object, "metadata", method);
 	return {
-		id: requireNonEmptyString(object, "id", method),
+		id: requireRemotePluginModuleId(object, "id", method),
 		name: requireNonEmptyString(object, "name", method),
+		...(capabilityEndpointId === undefined ? {} : { capabilityEndpointId }),
 		...(version === undefined ? {} : { version }),
 		...(description === undefined ? {} : { description }),
+		...(priority === undefined ? {} : { priority }),
+		...(contexts === undefined ? {} : { contexts }),
+		...(config === undefined ? {} : { config }),
+		...(schema === undefined ? {} : { schema }),
 		...(actions === undefined ? {} : { actions }),
 		...(providers === undefined ? {} : { providers }),
 		...(evaluators === undefined ? {} : { evaluators }),
+		...(responseHandlerEvaluators === undefined
+			? {}
+			: { responseHandlerEvaluators }),
+		...(responseHandlerFieldEvaluators === undefined
+			? {}
+			: { responseHandlerFieldEvaluators }),
 		...(events === undefined ? {} : { events }),
 		...(models === undefined ? {} : { models }),
+		...(services === undefined ? {} : { services }),
+		...(componentTypes === undefined ? {} : { componentTypes }),
 		...(widgets === undefined ? {} : { widgets }),
 		...(app === undefined ? {} : { app }),
 		...(appBridge === undefined ? {} : { appBridge }),
+		...(lifecycle === undefined ? {} : { lifecycle }),
 		...(routes === undefined ? {} : { routes }),
 		...(views === undefined ? {} : { views }),
 		...(metadata === undefined ? {} : { metadata }),
@@ -1745,6 +2770,38 @@ function requireRemotePluginEvaluator(
 	};
 }
 
+function requireRemotePluginResponseHandlerEvaluator(
+	value: JsonValue,
+	method: string,
+): RemotePluginResponseHandlerEvaluatorManifest {
+	const object = requireObject(value, method);
+	const description = optionalString(object, "description", method);
+	const priority = optionalNumber(object, "priority", method);
+	return {
+		name: requireNonEmptyString(object, "name", method),
+		...(description === undefined ? {} : { description }),
+		...(priority === undefined ? {} : { priority }),
+	};
+}
+
+function requireRemotePluginResponseHandlerFieldEvaluator(
+	value: JsonValue,
+	method: string,
+): RemotePluginResponseHandlerFieldEvaluatorManifest {
+	const object = requireObject(value, method);
+	const priority = optionalNumber(object, "priority", method);
+	const hasParse = optionalBoolean(object, "hasParse", method);
+	const hasHandle = optionalBoolean(object, "hasHandle", method);
+	return {
+		name: requireNonEmptyString(object, "name", method),
+		description: requireNonEmptyString(object, "description", method),
+		schema: requireObject(object.schema, `${method}.schema`),
+		...(priority === undefined ? {} : { priority }),
+		...(hasParse === undefined ? {} : { hasParse }),
+		...(hasHandle === undefined ? {} : { hasHandle }),
+	};
+}
+
 function requireRemotePluginEvent(
 	value: JsonValue,
 	method: string,
@@ -1765,6 +2822,157 @@ function requireRemotePluginModel(
 		modelType: requireNonEmptyString(object, "modelType", method),
 		...(priority === undefined ? {} : { priority }),
 	};
+}
+
+function requireRemotePluginService(
+	value: JsonValue,
+	method: string,
+): RemotePluginServiceManifest {
+	const object = requireObject(value, method);
+	const capabilityDescription = optionalString(
+		object,
+		"capabilityDescription",
+		method,
+	);
+	const methods = optionalStringArray(object, "methods", method);
+	validateRemotePluginServiceMethods(methods, method);
+	const config = optionalJsonObject(object, "config", method);
+	return {
+		serviceType: requireNonEmptyString(object, "serviceType", method),
+		...(capabilityDescription === undefined ? {} : { capabilityDescription }),
+		...(methods === undefined ? {} : { methods }),
+		...(config === undefined ? {} : { config }),
+	};
+}
+
+function requireRemotePluginComponentType(
+	value: JsonValue,
+	method: string,
+): RemotePluginComponentTypeManifest {
+	const object = requireObject(value, method);
+	return {
+		name: requireNonEmptyString(object, "name", method),
+		schema: requireRemotePluginJsonSchemaDefinition(
+			object.schema,
+			`${method}.schema`,
+		),
+	};
+}
+
+function requireRemotePluginJsonSchemaDefinition(
+	value: JsonValue,
+	method: string,
+): RemotePluginJsonSchemaDefinition {
+	const object = requireObject(value, method);
+	const propertiesValue = object.properties;
+	const properties =
+		propertiesValue === undefined
+			? undefined
+			: requireRemotePluginJsonSchemaProperties(propertiesValue, method);
+	const items =
+		object.items === undefined
+			? undefined
+			: requireRemotePluginJsonSchemaDefinition(
+					object.items,
+					`${method}.items`,
+				);
+	const required = optionalStringArray(object, "required", method);
+	const enumValues = optionalStringArray(object, "enumValues", method);
+	const description = optionalString(object, "description", method);
+	return {
+		type: requireNonEmptyString(object, "type", method),
+		...(properties === undefined ? {} : { properties }),
+		...(items === undefined ? {} : { items }),
+		...(required === undefined ? {} : { required }),
+		...(enumValues === undefined ? {} : { enumValues }),
+		...(description === undefined ? {} : { description }),
+	};
+}
+
+function requireRemotePluginJsonSchemaProperties(
+	value: JsonValue,
+	method: string,
+): Record<string, RemotePluginJsonSchemaDefinition> {
+	const object = requireObject(value, `${method}.properties`);
+	const properties: Record<string, RemotePluginJsonSchemaDefinition> = {};
+	for (const [key, property] of Object.entries(object)) {
+		properties[key] = requireRemotePluginJsonSchemaDefinition(
+			property,
+			`${method}.properties.${key}`,
+		);
+	}
+	return properties;
+}
+
+const REMOTE_SERVICE_RESERVED_METHODS = new Set([
+	"callRemote",
+	"constructor",
+	"hasOwnProperty",
+	"isPrototypeOf",
+	"propertyIsEnumerable",
+	"toLocaleString",
+	"toString",
+	"valueOf",
+	"__defineGetter__",
+	"__defineSetter__",
+	"__lookupGetter__",
+	"__lookupSetter__",
+	"__proto__",
+]);
+
+function validateRemotePluginServiceMethods(
+	methods: string[] | undefined,
+	method: string,
+): void {
+	if (methods === undefined) return;
+	const seen = new Set<string>();
+	for (const serviceMethod of methods) {
+		if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(serviceMethod)) {
+			throw decodeError(
+				method,
+				"methods must contain valid JavaScript method identifiers.",
+			);
+		}
+		if (seen.has(serviceMethod)) {
+			throw decodeError(
+				method,
+				"methods must not contain duplicate method names.",
+			);
+		}
+		seen.add(serviceMethod);
+		if (REMOTE_SERVICE_RESERVED_METHODS.has(serviceMethod)) {
+			throw decodeError(
+				method,
+				"methods must not include reserved local service method names.",
+			);
+		}
+	}
+}
+
+function validateRemotePluginCallTarget(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw decodeError(method, `${key} must be a non-empty string.`);
+	}
+	if (key === "moduleId") {
+		validateRemotePluginModuleId(value, key, method);
+	}
+}
+
+function validateRemotePluginModuleId(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!/^[A-Za-z0-9._-]+$/.test(value)) {
+		throw decodeError(
+			method,
+			`${key} must use letters, numbers, dots, underscores, or hyphens.`,
+		);
+	}
 }
 
 function requireRemotePluginWidget(
@@ -1816,6 +3024,9 @@ function requireRemotePluginApp(
 	const category = optionalString(object, "category", method);
 	const launchType = optionalString(object, "launchType", method);
 	const launchUrl = optionalNullableString(object, "launchUrl", method);
+	if (typeof launchUrl === "string") {
+		validateRemotePluginBrowserUrl(launchUrl, "launchUrl", method);
+	}
 	const icon = optionalNullableString(object, "icon", method);
 	const capabilities = optionalStringArray(object, "capabilities", method);
 	const minPlayers = optionalNullableNumber(object, "minPlayers", method);
@@ -1877,12 +3088,35 @@ function requireRemotePluginAppViewer(
 	const embedParams = optionalStringRecord(object, "embedParams", method);
 	const postMessageAuth = optionalBoolean(object, "postMessageAuth", method);
 	const sandbox = optionalString(object, "sandbox", method);
+	const url = requireNonEmptyString(object, "url", method);
+	validateRemotePluginBrowserUrl(url, "url", method);
 	return {
-		url: requireNonEmptyString(object, "url", method),
+		url,
 		...(embedParams === undefined ? {} : { embedParams }),
 		...(postMessageAuth === undefined ? {} : { postMessageAuth }),
 		...(sandbox === undefined ? {} : { sandbox }),
 	};
+}
+
+function validateRemotePluginBrowserUrl(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	try {
+		const parsed = new URL(value);
+		if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+			throw new Error("invalid protocol");
+		}
+		if (parsed.username || parsed.password) {
+			throw new Error("credentials are not allowed");
+		}
+	} catch {
+		throw decodeError(
+			method,
+			`${key} must be an absolute http(s) URL without embedded credentials.`,
+		);
+	}
 }
 
 function requireRemotePluginAppSession(
@@ -1945,11 +3179,13 @@ function requireRemotePluginAppNavTab(
 	const developerOnly = optionalBoolean(object, "developerOnly", method);
 	const group = optionalString(object, "group", method);
 	const componentExport = optionalString(object, "componentExport", method);
+	const path = requireNonEmptyString(object, "path", method);
+	validateRemotePluginPath(path, "path", method);
 	return {
 		id: requireNonEmptyString(object, "id", method),
 		label: requireNonEmptyString(object, "label", method),
 		...(icon === undefined ? {} : { icon }),
-		path: requireNonEmptyString(object, "path", method),
+		path,
 		...(order === undefined ? {} : { order }),
 		...(developerOnly === undefined ? {} : { developerOnly }),
 		...(group === undefined ? {} : { group }),
@@ -1989,32 +3225,95 @@ function isRemotePluginAppBridgeHook(
 	);
 }
 
+function requireRemotePluginLifecycle(
+	value: JsonValue,
+	method: string,
+): RemotePluginLifecycleManifest {
+	const object = requireObject(value, method);
+	const hooks = requireStringArray(object, "hooks", method);
+	if (hooks.length === 0) {
+		throw decodeError(method, "hooks must not be empty.");
+	}
+	if (hooks.some((hook) => !isRemotePluginLifecycleHook(hook))) {
+		throw decodeError(method, "hooks must be valid plugin lifecycle hooks.");
+	}
+	return {
+		hooks: hooks as RemotePluginLifecycleHook[],
+	};
+}
+
+function isRemotePluginLifecycleHook(
+	value: string,
+): value is RemotePluginLifecycleHook {
+	return value === "init" || value === "dispose" || value === "applyConfig";
+}
+
 function requireRemotePluginRoute(
 	value: JsonValue,
 	method: string,
 ): RemotePluginRouteManifest {
 	const object = requireObject(value, method);
 	const routeMethod = requireString(object, "method", method);
-	if (
-		routeMethod !== "GET" &&
-		routeMethod !== "POST" &&
-		routeMethod !== "PUT" &&
-		routeMethod !== "PATCH" &&
-		routeMethod !== "DELETE" &&
-		routeMethod !== "STATIC"
-	) {
-		throw decodeError(method, "method must be a valid plugin route method.");
-	}
+	validateRemotePluginRouteMethod(routeMethod, "method", method, true);
 	const name = optionalString(object, "name", method);
 	const isPublic = optionalBoolean(object, "public", method);
 	const description = optionalString(object, "description", method);
+	const path = requireNonEmptyString(object, "path", method);
+	validateRemotePluginPath(path, "path", method);
 	return {
 		method: routeMethod,
-		path: requireNonEmptyString(object, "path", method),
+		path,
 		...(name === undefined ? {} : { name }),
 		...(isPublic === undefined ? {} : { public: isPublic }),
 		...(description === undefined ? {} : { description }),
 	};
+}
+
+function validateRemotePluginRouteMethod(
+	value: string,
+	key: string,
+	method: string,
+	allowStatic: boolean,
+): asserts value is RemotePluginRouteManifest["method"] {
+	if (
+		value !== "GET" &&
+		value !== "POST" &&
+		value !== "PUT" &&
+		value !== "PATCH" &&
+		value !== "DELETE" &&
+		(allowStatic ? value !== "STATIC" : true)
+	) {
+		throw decodeError(method, `${key} must be a valid plugin route method.`);
+	}
+}
+
+function validateRemotePluginPath(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (
+		!value.startsWith("/") ||
+		value.startsWith("//") ||
+		value.includes("?") ||
+		value.includes("#") ||
+		value.includes("\\") ||
+		/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(value)
+	) {
+		throw decodeError(
+			method,
+			`${key} must be an absolute app path without URL scheme, query, hash, or backslash.`,
+		);
+	}
+	const segments = value === "/" ? [] : value.split("/").slice(1);
+	if (
+		segments.some((segment) => segment === "." || segment === ".." || !segment)
+	) {
+		throw decodeError(
+			method,
+			`${key} must not contain empty, current-directory, or parent-directory segments.`,
+		);
+	}
 }
 
 function requireRemotePluginView(
@@ -2028,6 +3327,12 @@ function requireRemotePluginView(
 	}
 	const bundlePath = optionalNonEmptyString(object, "bundlePath", method);
 	const bundleUrl = optionalNonEmptyString(object, "bundleUrl", method);
+	if (bundlePath !== undefined) {
+		validateRemotePluginAssetPath(bundlePath, "bundlePath", method);
+	}
+	if (bundleUrl !== undefined) {
+		validateRemotePluginBundleUrl(bundleUrl, "bundleUrl", method);
+	}
 	const contentType = optionalString(object, "contentType", method);
 	const integrity = optionalString(object, "integrity", method);
 	return {
@@ -2039,6 +3344,135 @@ function requireRemotePluginView(
 		...(contentType === undefined ? {} : { contentType }),
 		...(integrity === undefined ? {} : { integrity }),
 	};
+}
+
+function validateRemotePluginBundleUrl(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (value.startsWith("/")) {
+		validateRemotePluginPath(value, key, method);
+		return;
+	}
+	validateRemotePluginBrowserUrl(value, key, method);
+}
+
+function validateRemotePluginAssetPath(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	const path = value.trim();
+	if (
+		!path ||
+		path.includes("?") ||
+		path.includes("#") ||
+		path.includes("\\") ||
+		path.startsWith("//") ||
+		/^[a-zA-Z][a-zA-Z\d+.-]*:/.test(path)
+	) {
+		throw decodeError(
+			method,
+			`${key} must be an asset path without query, hash, URL scheme, or backslash.`,
+		);
+	}
+	const segments = path.replace(/^\/+/, "").split("/");
+	if (
+		segments.length === 0 ||
+		segments.some((segment) => !segment || segment === "." || segment === "..")
+	) {
+		throw decodeError(
+			method,
+			`${key} must not contain empty, current-directory, or parent-directory segments.`,
+		);
+	}
+}
+
+function validateHeaderSafeString(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!isControlSafeString(value)) {
+		throw decodeError(method, `${key} must not contain control characters.`);
+	}
+}
+
+function validateControlSafeString(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!isControlSafeString(value)) {
+		throw decodeError(method, `${key} must not contain control characters.`);
+	}
+}
+
+function isControlSafeString(value: string): boolean {
+	return !/[\r\n\0]/.test(value);
+}
+
+function validateHeaderRecord(
+	headers: Record<string, string>,
+	key: string,
+	method: string,
+): void {
+	for (const [headerName, headerValue] of Object.entries(headers)) {
+		if (
+			!headerName ||
+			/[\r\n\0]/.test(headerName) ||
+			!/^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(headerName)
+		) {
+			throw decodeError(method, `${key} must contain valid header names.`);
+		}
+		validateHeaderSafeString(headerValue, key, method);
+	}
+}
+
+function validateRouteQueryRecord(
+	query: Record<string, string | string[]>,
+	key: string,
+	method: string,
+): void {
+	for (const [queryKey, queryValue] of Object.entries(query)) {
+		if (!queryKey || !isControlSafeString(queryKey)) {
+			throw decodeError(method, `${key} must contain valid query keys.`);
+		}
+		const values = Array.isArray(queryValue) ? queryValue : [queryValue];
+		if (
+			values.some(
+				(value) => typeof value !== "string" || !isControlSafeString(value),
+			)
+		) {
+			throw decodeError(method, `${key} must contain valid query values.`);
+		}
+	}
+}
+
+function validateHttpStatusCode(
+	value: number,
+	key: string,
+	method: string,
+): void {
+	if (!Number.isInteger(value) || value < 100 || value > 599) {
+		throw decodeError(method, `${key} must be an integer HTTP status code.`);
+	}
+}
+
+function validateBase64String(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (
+		value.length > 0 &&
+		!/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(
+			value,
+		)
+	) {
+		throw decodeError(method, `${key} must be valid base64.`);
+	}
 }
 
 function requirePluginActionResult(

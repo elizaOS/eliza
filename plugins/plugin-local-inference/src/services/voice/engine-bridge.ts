@@ -1033,31 +1033,32 @@ export class EngineVoiceBridge {
 
 		// Wire speaker-attribution when a profile store is provided.
 		// The attribution pipeline wraps the encoder + diarizer + profile-store;
-		// encoder errors (SpeakerEncoderUnavailableError) are caught at the
+		// encoder errors (SpeakerEncoderGgmlUnavailableError) are caught at the
 		// runVoiceTurn level and treated as attribution-miss rather than turn
 		// failure (AGENTS.md §3: attribution is best-effort, voice turn is not).
-		// The real WespeakerEncoder is loaded lazily on first encode() call.
+		// The GGML encoder is loaded lazily on first encode() call.
 		let attributionPipeline: VoiceAttributionPipeline | null = null;
 		if (opts.profileStore) {
 			const bundleRootForEncoder = opts.bundleRoot;
-			// Lazy encoder: resolves on first encode() call so the sync start()
-			// path doesn't block on ORT initialization.
-			let resolvedEncoder: import("./speaker/encoder").SpeakerEncoder | null =
-				null;
+			// Lazy encoder: resolves on first encode() call.
+			let resolvedEncoder:
+				| import("./speaker/encoder-ggml").SpeakerEncoderGgml
+				| null = null;
 			let encoderLoadError: Error | null = null;
 			const lazyEncoder: import("./speaker/encoder").SpeakerEncoder = {
-				// Constants matching WespeakerEncoder static values.
-				modelId:
-					"wespeaker/resnet34-lm-int8" as import("./speaker/encoder").WespeakerModelId,
 				embeddingDim: 256,
 				sampleRate: 16_000,
 				async encode(pcm: Float32Array): Promise<Float32Array> {
 					if (encoderLoadError) throw encoderLoadError;
 					if (!resolvedEncoder) {
-						const { WespeakerEncoder } = await import("./speaker/encoder");
-						const modelPath = `${bundleRootForEncoder}/speaker/encoder.gguf`;
+						const { SpeakerEncoderGgmlImpl } = await import(
+							"./speaker/encoder-ggml"
+						);
+						const ggufPath = `${bundleRootForEncoder}/voice/speaker-encoder/wespeaker-resnet34-lm.gguf`;
 						try {
-							resolvedEncoder = await WespeakerEncoder.load(modelPath);
+							const impl = new SpeakerEncoderGgmlImpl({ ggufPath });
+							// Warm the FFI handle on first call.
+							resolvedEncoder = impl;
 						} catch (err) {
 							encoderLoadError =
 								err instanceof Error ? err : new Error(String(err));
@@ -1473,10 +1474,8 @@ export class EngineVoiceBridge {
 	 * word-confirm gate (W1) listens to. Resolves the adapter chain:
 	 *   fused `libelizainference` streaming ASR (final path, gated on a
 	 *   working decoder AND a bundled ASR model) → fused batch ASR over the
-	 *   same bundled model → whisper.cpp via the libwhisper_eliza_adapter FFI
-	 *   binding → `AsrUnavailableError`. The Eliza-1 bridge prefers the fused
-	 *   path; whisper.cpp is the cross-arch fallback (works on x86_64, arm64,
-	 *   riscv64) and replaces the previous OpenVINO Python-worker path.
+	 *   same bundled model → `AsrUnavailableError`. The Eliza-1 bridge runs
+	 *   only the fused path; the whisper.cpp interim fallback has been removed.
 	 *
 	 * Pass W1's `vad` event stream to gate decoding to active speech
 	 * windows. Caller owns the returned transcriber's lifecycle (`dispose()`).
@@ -1829,7 +1828,7 @@ function ensureContext(
  * model memory; nothing to mmap-acquire or evict. ASR is not served
  * from this path — callers that need ASR construct
  * `createStreamingTranscriber` directly (the chain in `transcriber.ts`
- * supports `whisper-cpp` without a bundle).
+ * supports `openvino-whisper` and `whisper.cpp` without a bundle).
  */
 function kokoroOnlyLifecycleLoaders(): VoiceLifecycleLoaders {
 	const noopMmap = (id: string): MmapRegionHandle => ({

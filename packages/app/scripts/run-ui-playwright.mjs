@@ -7,14 +7,16 @@ import { getFreePort } from "../test/utils/get-free-port.mjs";
 
 const appDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const repoRoot = path.resolve(appDir, "..", "..");
+const workspaceRoot = path.resolve(repoRoot, "..");
 const playwrightArgs = process.argv.slice(2);
 
 function resolvePlaywrightCommand() {
   const binaryName =
     process.platform === "win32" ? "playwright.cmd" : "playwright";
   for (const candidate of [
-    path.join(appDir, "node_modules", ".bin", binaryName),
+    path.join(workspaceRoot, "node_modules", ".bin", binaryName),
     path.join(repoRoot, "node_modules", ".bin", binaryName),
+    path.join(appDir, "node_modules", ".bin", binaryName),
   ]) {
     if (fs.existsSync(candidate)) {
       return candidate;

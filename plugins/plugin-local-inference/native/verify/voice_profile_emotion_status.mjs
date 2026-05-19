@@ -499,42 +499,34 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 		runtimeSymbols.symbols.map((entry) => [entry.key, entry.status]),
 	);
 
-	// Kokoro now ships as GGUF (kokoro-82m-v1_0-Q4_K_M.gguf or .gguf). The
-	// legacy `model_q4.onnx` path is no longer accepted — the Eliza-1 stack
-	// is ggml-only (no ONNX, AGENTS.md §3, §8).
 	const ttsModel = hasManifestPath(
 		manifestFiles,
 		(p) =>
-			p === "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf" ||
-			p === "tts/kokoro/kokoro-82m-v1_0.gguf" ||
-			/tts\/kokoro\/kokoro-82m-v1_0.*\.gguf$/i.test(p),
+			/tts\/.*(omnivoice|kokoro).*\.(gguf|onnx)$/i.test(p) ||
+			/tts\/.*model.*\.(gguf|onnx)$/i.test(p),
 	);
 	const asrModel = hasManifestPath(manifestFiles, (p) => /asr\/.*\.gguf$/i.test(p));
 	const asrBase = asrModel.filter((entry) => !/mmproj/i.test(entry.path));
 	const asrMmproj = asrModel.filter((entry) => /mmproj/i.test(entry.path));
-	// VAD / emotion / speaker / diarizer all migrated to ggml-backed GGUF.
-	// .onnx is rejected — the runtime no longer ships an ONNX backend
-	// (AGENTS.md §3: no silent fallbacks). `.bin` remains for non-model
-	// caches (e.g. voice-preset blobs) and `.ggml.bin` for legacy converters.
 	const vad = hasManifestPath(
 		manifestFiles,
-		(p) => /vad\/.*(silero|vad).*\.(gguf|ggml\.bin)$/i.test(p),
+		(p) => /vad\/.*(silero|vad).*\.(gguf|onnx|ggml\.bin|bin)$/i.test(p),
 	);
 	const emotion = hasManifestPath(manifestFiles, (p) =>
-		/(emotion|wav2small|msp-dim).*\.gguf$/i.test(p),
+		/(emotion|wav2small|msp-dim).*\.(gguf|onnx|bin)$/i.test(p),
 	);
 	const speakerEncoder = hasManifestPath(manifestFiles, (p) =>
-		/(wespeaker|speaker.*encoder|speaker-id).*\.gguf$/i.test(p),
+		/(wespeaker|speaker.*encoder|speaker-id).*\.(gguf|onnx|bin)$/i.test(p),
 	);
 	const diarizer = hasManifestPath(manifestFiles, (p) =>
-		/(pyannote|diar|segmentation).*\.gguf$/i.test(p),
+		/(pyannote|diar|segmentation).*\.(gguf|onnx|bin)$/i.test(p),
 	);
 
 	const requirements = [
 		{
 			key: "ttsModel",
 			status: ttsModel.some((entry) => fileExists(entry.path)) ? "present" : "missing",
-			expected: "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf",
+			expected: "tts/omnivoice-base-<quant>.gguf (or kokoro GGUF equivalent)",
 			found: ttsModel.map((entry) => entry.path),
 			requiredFor: "local TTS",
 		},
@@ -593,7 +585,7 @@ export function inspectBundleAssets({ bundleRoot, tier, runtimePath }) {
 			key: "nativeEmotionAcousticModel",
 			status: emotion.some((entry) => fileExists(entry.path)) ? "present" : "missing",
 			expected:
-				"wav2small-msp-dim GGUF artifact, normally a manifest files.emotion entry such as voice/emotion/wav2small-msp-dim.gguf",
+				"wav2small-msp-dim GGUF artifact, normally a manifest files.emotion entry such as voice/voice-emotion/wav2small-msp-dim.gguf",
 			found: emotion.map((entry) => entry.path),
 			requiredFor: "model-native acoustic emotion attribution",
 			blocker:

@@ -35,6 +35,8 @@ from pathlib import Path
 # directory must NOT come before it on sys.path because this file is itself
 # named `eliza_adapter.py` and would shadow the `eliza_adapter` package.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "eliza-adapter"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "hermes-adapter"))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "openclaw-adapter"))
 
 try:
     from eliza_adapter import ElizaClient, ElizaServerManager
@@ -218,6 +220,228 @@ class ConceptualBenchRunner:
         }
 
 
+def _selected_harness_name(raw: str | None = None) -> str:
+    return (
+        raw
+        or os.environ.get("BENCHMARK_HARNESS")
+        or os.environ.get("ELIZA_BENCH_HARNESS")
+        or ""
+    ).strip().lower()
+
+
+def _last_user_text(messages: list[dict]) -> str:
+    for message in reversed(messages):
+        if message.get("role") == "user":
+            return str(message.get("content") or "")
+    return ""
+
+
+def _first_system_text(messages: list[dict]) -> str:
+    for message in messages:
+        if message.get("role") == "system":
+            return str(message.get("content") or "")
+    return ""
+
+
+def _structured_action_system_prompt() -> str:
+    return (
+        "You are an expert software developer completing coding tasks in a sandbox. "
+        "Return exactly one JSON object and no prose. The object must have "
+        '"action":"BENCHMARK_ACTION" and a "params" object. The params object '
+        "must describe the concrete project files and shell setup operations for "
+        "the requested task. Use packageJson, tsconfigJson, gitignoreContents, "
+        "and directories fields for setup tasks. Do not answer with acknowledgements."
+    )
+
+
+def _structured_action_text(task_text: str) -> str:
+    return (
+        f"{task_text.strip()}\n\n"
+        "Return exactly this JSON shape, filled with the concrete setup data:\n"
+        "{"
+        '"action":"BENCHMARK_ACTION",'
+        '"params":{'
+        '"packageJson":{'
+        '"name":"weather-cli",'
+        '"version":"1.0.0",'
+        '"type":"module",'
+        '"scripts":{"build":"tsc","test":"node --test"}'
+        "},"
+        '"tsconfigJson":{"compilerOptions":{"target":"ES2022","module":"ESNext","moduleResolution":"Node","strict":true,"outDir":"dist","rootDir":"src"},"include":["src/**/*.ts"]},'
+        '"gitignoreContents":"node_modules\\ndist\\n",'
+        '"directories":{"src":"src","tests":"tests"}'
+        "}"
+        "}"
+    )
+
+
+def _load_first_json_object(text: str) -> dict | None:
+    decoder = json.JSONDecoder()
+    for index, char in enumerate(text):
+        if char != "{":
+            continue
+        try:
+            value, _end = decoder.raw_decode(text[index:])
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, dict):
+            return value
+    return None
+
+
+def _action_as_xml(text: str) -> str:
+    payload = _load_first_json_object(text)
+    if payload is None:
+        return ""
+    if not isinstance(payload, dict) or payload.get("action") != "BENCHMARK_ACTION":
+        return ""
+    params = payload.get("params")
+    if not isinstance(params, dict):
+        return ""
+
+    calls: list[dict] = []
+    package_json = params.get("packageJson") or params.get("package_json")
+    if isinstance(package_json, dict):
+        calls.append(
+            {
+                "tool": "write",
+                "args": {
+                    "path": "package.json",
+                    "content": json.dumps(package_json, ensure_ascii=False, indent=2),
+                },
+            }
+        )
+    tsconfig = params.get("tsconfigJson") or params.get("tsconfig_json")
+    if isinstance(tsconfig, dict):
+        calls.append(
+            {
+                "tool": "write",
+                "args": {
+                    "path": "tsconfig.json",
+                    "content": json.dumps(tsconfig, ensure_ascii=False, indent=2),
+                },
+            }
+        )
+    gitignore = params.get("gitignoreContents") or params.get("gitignore")
+    if isinstance(gitignore, str):
+        calls.append({"tool": "write", "args": {"path": ".gitignore", "content": gitignore}})
+
+    directories = params.get("directories")
+    if isinstance(directories, dict):
+        src_dir = str(directories.get("src") or "src")
+        tests_dir = str(directories.get("tests") or "tests")
+        calls.append(
+            {
+                "tool": "exec",
+                "args": {
+                    "command": (
+                        f"mkdir -p {src_dir} {tests_dir} && "
+                        f"touch {src_dir}/index.ts {tests_dir}/.gitkeep"
+                    )
+                },
+            }
+        )
+    if any(call["args"].get("path") == "package.json" for call in calls if call["tool"] == "write"):
+        calls.append({"tool": "exec", "args": {"command": "git init"}})
+
+    return "\n".join(
+        "<tool_call>" + json.dumps(call, ensure_ascii=False) + "</tool_call>"
+        for call in calls
+    )
+
+
+class HarnessExecutionRunner(BenchmarkRunner):
+    """Execution-mode OpenClaw benchmark routed through a real harness client."""
+
+    def __init__(
+        self,
+        *,
+        harness: str,
+        model: str,
+        use_docker: bool = False,
+        start_server: bool = False,
+    ) -> None:
+        super().__init__(
+            model=model,
+            api_key=os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("CEREBRAS_API_KEY")
+            or "harness",
+            use_docker=use_docker,
+        )
+        self.harness = harness
+        self._manager = None
+        self._client = self._build_client(start_server=start_server)
+        self._turn_index = 0
+
+    def close(self) -> None:
+        if self._manager is not None:
+            self._manager.stop()
+            self._manager = None
+
+    def _build_client(self, *, start_server: bool):
+        provider = (os.environ.get("BENCHMARK_MODEL_PROVIDER") or "cerebras").strip().lower()
+        timeout_s = float(os.environ.get("OPENCLAW_BENCH_HARNESS_TIMEOUT_S", "120"))
+        if self.harness == "hermes":
+            from hermes_adapter.client import HermesClient
+
+            return HermesClient(provider=provider, model=self.model, timeout_s=timeout_s)
+        if self.harness == "openclaw":
+            from openclaw_adapter.client import OpenClawClient
+
+            return OpenClawClient(
+                provider=provider,
+                model=self.model,
+                timeout_s=timeout_s,
+                direct_openai_compatible=True,
+                reasoning_effort=os.environ.get("OPENCLAW_BENCH_THINKING", "low"),
+            )
+        if self.harness == "eliza":
+            if not ELIZA_AVAILABLE:
+                raise RuntimeError("eliza_adapter package is unavailable")
+            if start_server or (
+                not os.environ.get("ELIZA_BENCH_URL")
+                or not os.environ.get("ELIZA_BENCH_TOKEN")
+            ):
+                self._manager = ElizaServerManager()
+                self._manager.start()
+                return self._manager.client
+            return ElizaClient(ELIZA_URL, token=os.environ.get("ELIZA_BENCH_TOKEN"))
+        raise RuntimeError(f"unsupported OpenClaw benchmark harness: {self.harness}")
+
+    def call_llm(self, messages: list) -> str:
+        self._turn_index += 1
+        if hasattr(self._client, "reset") and self._turn_index == 1:
+            self._client.reset("openclaw-bench", "openclaw_bench")
+        if self._turn_index > 1:
+            return "Done."
+        user_text = _last_user_text(messages)
+        harness_messages = [
+            {"role": "system", "content": _structured_action_system_prompt()},
+            {"role": "user", "content": _structured_action_text(user_text)},
+        ]
+        context = {
+            "benchmark": "openclaw_bench",
+            "task_id": "openclaw-bench",
+            "messages": harness_messages,
+            "system_prompt": _first_system_text(harness_messages),
+            "temperature": 0.1,
+            "max_tokens": 4000,
+        }
+        response = self._client.send_message(_last_user_text(harness_messages), context=context)
+        response_text = str(response.text or "")
+        action_xml = _action_as_xml(response_text)
+        if action_xml:
+            return action_xml
+        raw_action = response.params.get("BENCHMARK_ACTION") if isinstance(response.params, dict) else None
+        if isinstance(raw_action, dict):
+            action_xml = _action_as_xml(
+                json.dumps({"action": "BENCHMARK_ACTION", "params": raw_action})
+            )
+            if action_xml:
+                return action_xml
+        return response_text
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run OpenClaw benchmark with eliza",
@@ -246,6 +470,9 @@ Scoring modes:
                         help="Use Docker for sandbox isolation (execution mode)")
     parser.add_argument("--start-server", action="store_true",
                         help="Auto-start eliza benchmark server (conceptual mode)")
+    parser.add_argument("--harness", type=str, default=None,
+                        choices=["eliza", "hermes", "openclaw", "direct"],
+                        help="Route execution-mode LLM calls through a benchmark harness")
 
     args = parser.parse_args()
 
@@ -297,18 +524,46 @@ Scoring modes:
         )
 
         try:
-            runner = BenchmarkRunner(model=model, api_key=api_key, use_docker=args.docker)
+            harness = _selected_harness_name(args.harness)
+            if harness in {"eliza", "hermes", "openclaw"}:
+                runner = HarnessExecutionRunner(
+                    harness=harness,
+                    model=model,
+                    use_docker=args.docker,
+                    start_server=args.start_server,
+                )
+            else:
+                runner = BenchmarkRunner(model=model, api_key=api_key, use_docker=args.docker)
         except Exception as e:
             print(f"Error initializing runner: {e}")
             sys.exit(1)
 
-        if args.all:
-            result = runner.run_all()
-        elif args.task:
-            result = runner.run_scenario(args.task)
-        else:
-            print("Error: Specify --task or --all")
-            sys.exit(1)
+        try:
+            if args.all:
+                result = runner.run_all()
+            elif args.task:
+                result = runner.run_scenario(args.task)
+            else:
+                print("Error: Specify --task or --all")
+                sys.exit(1)
+        finally:
+            close = getattr(runner, "close", None)
+            if callable(close):
+                close()
+
+        selected_harness = _selected_harness_name(args.harness)
+        if selected_harness in {"eliza", "hermes", "openclaw"}:
+            result["harness"] = selected_harness
+            result["agent_type"] = f"{selected_harness}-benchmark-bridge"
+            result["model_provider"] = (
+                os.environ.get("BENCHMARK_MODEL_PROVIDER") or "cerebras"
+            )
+            result["model_name"] = model
+            result["real_validation"] = {
+                "mode": "execution",
+                "scoring": "file_command_and_test_execution",
+                "conceptual_scoring": False,
+            }
 
     else:
         # Legacy conceptual mode

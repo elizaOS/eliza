@@ -53,6 +53,18 @@ candidate inputs to reproducible gates, not as standalone evidence.
   Relevant for spec-to-SVA and assertion-generation experiments.
 - VerilogEval: <https://github.com/NVlabs/verilog-eval>. Useful benchmark
   before trusting any RTL-generation agent on E1 source.
+- CodeV-R1: <https://arxiv.org/abs/2505.24183>. RLVR Verilog model, code, and
+  dataset candidate; keep blocked until revisions, licenses, contamination,
+  and held-out E1 gates exist.
+- EvolVE / IC-RTL: <https://arxiv.org/abs/2601.18067>. Evolutionary Verilog
+  generation and PPA optimization reference with IC-RTL benchmark code; useful
+  only after benchmark overlap and local replay are reviewed.
+- VeriAgent: <https://arxiv.org/abs/2603.17613>. PPA-aware multi-agent RTL
+  generation method with evolving memory; method reference only until tool
+  schemas, prompts, memory hashes, and deterministic gates exist.
+- Open-LLM-ECO: <https://github.com/YiKangOY/Open-LLM-ECO>. QoR/ECO agent
+  placeholder repo for retrieve/schedule/reflect optimization; blocked until
+  real code/data, license, and OpenLane replay evidence exist.
 - PostEDA-Bench: <https://arxiv.org/abs/2605.06936>. Cautionary benchmark for
   post-route EDA agents.
 

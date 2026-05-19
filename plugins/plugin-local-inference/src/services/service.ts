@@ -606,9 +606,22 @@ export class LocalInferenceService {
 				`[imagegen] ${resolved.modelId} is not installed. Expected ${resolved.file} under the active Eliza-1 bundle root.`,
 			);
 		}
+		const companion = (file: string | undefined): string | undefined => {
+			if (!file) return undefined;
+			const fullPath = pathJoin(owner.bundleRoot as string, file);
+			if (!existsSync(fullPath)) {
+				throw new Error(
+					`[imagegen] ${resolved.modelId} companion asset is not installed. Expected ${file} under the active Eliza-1 bundle root.`,
+				);
+			}
+			return fullPath;
+		};
 		return {
 			modelKey: resolved.modelId,
 			modelPath: pathJoin(owner.bundleRoot, resolved.file),
+			splitDiffusionModel: resolved.splitDiffusionModel,
+			vae: companion(resolved.vae),
+			llm: companion(resolved.llm),
 			accelerator: "auto",
 		};
 	}

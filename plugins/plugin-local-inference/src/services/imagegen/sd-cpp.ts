@@ -9,9 +9,10 @@
  *     flavour (CPU / CUDA / Vulkan / Metal). Linking it as a Node addon
  *     would require maintaining a parallel build matrix to llama.cpp;
  *     we instead reuse the same binary shipped by the bundle installer.
- *   - The CLI is stable across versions (b8198+ has matched the same
- *     `--model …` / `--prompt …` / `-o …` surface for over a year), so
- *     contract drift is unlikely.
+ *   - The CLI is stable across versions for monolithic SD checkpoints
+ *     (`--model …` / `--prompt …` / `-o …`) and split diffusion assets
+ *     (`--diffusion-model …` plus companion encoders / VAE), so contract
+ *     drift is unlikely.
  *   - Diffusion runs in seconds, not milliseconds; the subprocess
  *     spawn cost is negligible relative to inference time.
  *
@@ -30,8 +31,8 @@
  * Accelerator flags (from `ImageGenLoadArgs.accelerator`):
  *
  *   - `"cuda"`  → no extra flag; relies on the CUDA-built binary.
- *   - `"vulkan"` → `--vulkan` (works on AMD + Intel + NV Vulkan paths).
- *   - `"cpu"`   → `--cpu` (forces CPU even on a GPU-built binary).
+ *   - `"vulkan"` → `--backend vulkan0` (works on AMD + Intel + NV Vulkan paths).
+ *   - `"cpu"`   → `--backend cpu --params-backend cpu` (forces CPU).
  *   - `"auto"`  → no extra flag; the binary's own auto-detection runs.
  *
  * GPU validation status (this host has no GPU):
@@ -83,7 +84,7 @@
  *     (acceptable: the eliza-1 phone tier does not require image-gen).
  */
 
-import { spawn } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { existsSync, promises as fs, mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
@@ -142,9 +143,9 @@ const DEFAULT_BIN = "sd";
 /**
  * Load (or in this case, "smoke-check") the sd-cpp backend. The binary
  * lives out-of-process; "loading" is verifying it exists and runs.
- * The actual model weights are passed per-call as `--model <path>`,
- * so the same binary serves multiple GGUFs without an explicit unload
- * step.
+ * The actual model weights are passed per-call as either `--model <path>`
+ * or `--diffusion-model <path>`, so the same binary serves multiple
+ * GGUFs without an explicit unload step.
  */
 export async function loadSdCppImageGenBackend(
 	opts: SdCppBackendOptions,
@@ -233,7 +234,9 @@ export async function loadSdCppImageGenBackend(
 
 			const args = buildArgs({
 				modelPath: opts.loadArgs.modelPath,
+				splitDiffusionModel: opts.loadArgs.splitDiffusionModel,
 				vae: opts.loadArgs.vae,
+				llm: opts.loadArgs.llm,
 				prompt: req.prompt,
 				negativePrompt: req.negativePrompt,
 				width,
@@ -342,6 +345,33 @@ function runCollect(
 	args: readonly string[],
 	spawnImpl?: SdCppSpawnLike,
 ): Promise<SdCppCommandResult> {
+	if (!spawnImpl) {
+		return new Promise<SdCppCommandResult>((resolve, reject) => {
+			execFile(binary, [...args], (error, stdout, stderr) => {
+				const code =
+					typeof (error as { code?: unknown } | null)?.code === "number"
+						? (error as { code: number }).code
+						: error
+							? null
+							: 0;
+				if (error && code === null) {
+					reject(error);
+					return;
+				}
+				resolve({
+					code,
+					stdout:
+						typeof stdout === "string"
+							? stdout
+							: (stdout as Buffer).toString("utf8"),
+					stderr:
+						typeof stderr === "string"
+							? stderr
+							: (stderr as Buffer).toString("utf8"),
+				});
+			});
+		});
+	}
 	return new Promise<SdCppCommandResult>((resolve, reject) => {
 		const proc = defaultSpawn(spawnImpl)(binary, args);
 		let stdout = "";
@@ -350,7 +380,7 @@ function runCollect(
 		const finish = (code: number | null) => {
 			if (settled) return;
 			settled = true;
-			resolve({ code, stdout, stderr });
+			setTimeout(() => resolve({ code, stdout, stderr }), 0);
 		};
 		collectOutput(proc.stdout, (chunk) => {
 			stdout += chunk;
@@ -505,7 +535,9 @@ function hasPositiveCudaEvidence(text: string): boolean {
 	) {
 		return false;
 	}
-	return /\b(sd_cuda|ggml_cuda|cuda|cublas|cudart)\b/.test(lower);
+	return /(^|[^a-z0-9])(sd_cuda|ggml_cuda|cublas|cudart)([^a-z0-9]|$)/.test(
+		lower,
+	);
 }
 
 function hasPositiveVulkanEvidence(text: string): boolean {
@@ -580,9 +612,11 @@ async function runSdCpp(
 	});
 }
 
-function buildArgs(input: {
+export function buildArgs(input: {
 	modelPath: string;
+	splitDiffusionModel?: boolean;
 	vae?: string;
+	llm?: string;
 	prompt: string;
 	negativePrompt?: string;
 	width: number;
@@ -595,7 +629,7 @@ function buildArgs(input: {
 	accelerator?: ImageGenLoadArgs["accelerator"];
 }): string[] {
 	const args: string[] = [
-		"--model",
+		input.splitDiffusionModel ? "--diffusion-model" : "--model",
 		input.modelPath,
 		"--prompt",
 		input.prompt,
@@ -615,6 +649,9 @@ function buildArgs(input: {
 	if (input.vae) {
 		args.push("--vae", input.vae);
 	}
+	if (input.llm) {
+		args.push("--llm", input.llm);
+	}
 	if (input.negativePrompt) {
 		args.push("--negative-prompt", input.negativePrompt);
 	}
@@ -622,9 +659,9 @@ function buildArgs(input: {
 		args.push("--sampling-method", input.scheduler);
 	}
 	if (input.accelerator === "vulkan") {
-		args.push("--vulkan");
+		args.push("--backend", "vulkan0");
 	} else if (input.accelerator === "cpu") {
-		args.push("--cpu");
+		args.push("--backend", "cpu", "--params-backend", "cpu");
 	}
 	// `auto` / `cuda` / `metal` rely on the binary build's defaults.
 	return args;

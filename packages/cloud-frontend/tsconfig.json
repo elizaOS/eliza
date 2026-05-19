@@ -33,6 +33,8 @@
       "@/packages/*": ["../cloud-shared/src/*"],
       "@elizaos/cloud-shared": ["../cloud-shared/src/index.ts"],
       "@elizaos/cloud-shared/*": ["../cloud-shared/src/*"],
+      "@elizaos/shared": ["../shared/src/index.ts"],
+      "@elizaos/shared/*": ["../shared/src/*"],
       "@elizaos/ui": ["../ui/src/cloud-ui/index.ts"],
       "@elizaos/ui/*": ["../ui/src/*"],
       "@elizaos/core": ["../core/src/index.node.ts"],
@@ -46,10 +48,15 @@
         "./node_modules/lucide-react",
         "../cloud-shared/node_modules/lucide-react"
       ],
-      "react": ["./node_modules/@types/react/index.d.ts"],
-      "react-dom": ["./node_modules/@types/react-dom/index.d.ts"],
-      "react/jsx-runtime": ["./node_modules/@types/react/jsx-runtime.d.ts"],
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "rollup": ["../../node_modules/rollup/dist/rollup.d.ts"],
+      "rollup/*": ["../../node_modules/rollup/dist/*"],
+      "@stwd/sdk": ["../../node_modules/@stwd/sdk/dist/index.d.ts"],
+      "@stwd/sdk/*": ["../../node_modules/@stwd/sdk/dist/*"],
+      "react": ["../../node_modules/@types/react"],
+      "react/*": ["../../node_modules/@types/react/*"],
+      "react-dom": ["../../node_modules/@types/react-dom"],
+      "react-dom/*": ["../../node_modules/@types/react-dom/*"]
     }
   },
   "include": ["src", "vite.config.ts"],

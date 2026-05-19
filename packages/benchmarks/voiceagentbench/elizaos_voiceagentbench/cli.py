@@ -17,6 +17,7 @@ import json
 import logging
 import os
 import re
+import importlib.util
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -38,7 +39,19 @@ logger = logging.getLogger("elizaos_voiceagentbench")
 
 SUITE_CHOICES = [s.value for s in Suite] + ["all"]
 AGENT_CHOICES = ["eliza", "hermes", "openclaw", "mock"]
+STT_CHOICES = ["groq", "eliza-runtime", "faster-whisper", "local-whisper"]
 _TOOL_ANNOTATION_RE = re.compile(r"\[tool:\s*([A-Za-z0-9_.-]+)\s+(\{.*?\})\]")
+
+
+def _default_stt_provider() -> str:
+    explicit = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip()
+    if explicit:
+        return explicit
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if importlib.util.find_spec("faster_whisper") is not None:
+        return "faster-whisper"
+    return "groq"
 
 
 async def _mock_agent(history: list[Any], _tools: list[dict[str, Any]]) -> Any:
@@ -135,6 +148,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Cerebras coherence-judge model id.",
     )
     parser.add_argument(
+        "--stt-provider",
+        choices=STT_CHOICES,
+        default=_default_stt_provider(),
+        help="Real STT backend for non-mock runs.",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="count", default=0
     )
     args = parser.parse_args(argv)
@@ -163,7 +182,8 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     agent = _build_agent(effective_agent)
-    stt = build_stt(mock=args.mock)
+    stt_provider = "fixture" if args.mock else args.stt_provider
+    stt = build_stt(mock=args.mock, provider=args.stt_provider)
     judge: CoherenceJudge | None
     if args.no_judge:
         judge = None
@@ -202,7 +222,9 @@ def main(argv: list[str] | None = None) -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     stamp = timestamp.replace(":", "-")
     out_path = output_dir / f"voiceagentbench_{effective_agent}_{args.suite}_{stamp}.json"
-    out_path.write_text(json.dumps(_report_to_json(report), indent=2, default=str))
+    payload = _report_to_json(report)
+    payload["stt_provider"] = stt_provider
+    out_path.write_text(json.dumps(payload, indent=2, default=str))
 
     summary = {
         "pass_at_1": report.pass_at_1,
@@ -213,6 +235,7 @@ def main(argv: list[str] | None = None) -> int:
         "mean_coherence": report.mean_coherence,
         "mean_safety": report.mean_safety,
         "tasks_run": len(report.tasks),
+        "stt_provider": stt_provider,
         "output_file": str(out_path),
     }
     print(json.dumps(summary, indent=2))

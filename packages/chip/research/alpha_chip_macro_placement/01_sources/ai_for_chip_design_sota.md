@@ -145,6 +145,10 @@ power, and manufacturing preparation.
   https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
 - ChipSeek: https://github.com/rong-hash/chipseek
 - RTLSeek: https://arxiv.org/abs/2603.27630
+- CodeV-R1: https://arxiv.org/abs/2505.24183
+- EvolVE / IC-RTL: https://arxiv.org/abs/2601.18067
+- VeriAgent: https://arxiv.org/abs/2603.17613
+- Open-LLM-ECO: https://github.com/YiKangOY/Open-LLM-ECO
 - OpenRTLSet: https://huggingface.co/datasets/ESCAD/OpenRTLSet
 - MG-Verilog: https://huggingface.co/datasets/GaTech-EIC/MG-Verilog
 - DeepCircuitX:
@@ -154,12 +158,14 @@ power, and manufacturing preparation.
   https://huggingface.co/datasets/AbiralArch/hardware-verilogeval-v2
 - LLM_4_Verilog: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
 - Use: metadata-only candidates for RTL model evaluation, EDA-feedback RL
-  post-training, future corpus curation, contamination checks, and held-out
-  benchmark construction.
+  post-training, evolutionary RTL/PPA search, multi-agent PPA optimization,
+  future corpus curation, contamination checks, and held-out benchmark
+  construction.
 - E1 fit: do not download weights or datasets yet. Every external model/corpus
-  or RL framework needs exact revision pins, file manifests, license review,
-  quarantine paths, benchmark de-duplication, reward/prompt/output hashes,
-  local lint/sim/synth/formal gates, and human disposition before any use.
+  or RL/evolutionary/agentic framework needs exact revision pins, file
+  manifests, license review, quarantine paths, benchmark de-duplication,
+  reward/search-trace/memory-state/prompt/output hashes, local
+  lint/sim/synth/formal/OpenLane gates, and human disposition before any use.
 
 ### Repository-Level RTL Evolution
 

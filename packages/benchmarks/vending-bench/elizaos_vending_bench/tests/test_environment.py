@@ -282,6 +282,58 @@ class TestVendingEnvironment:
         assert "Error" in result
         assert "Minimum order" in result
 
+    def test_action_place_order_allows_correction_after_failed_attempt(self) -> None:
+        """A failed order attempt should not consume the daily successful-order slot."""
+        env = VendingEnvironment(seed=42)
+
+        failed = env.action_place_order(
+            supplier_id="beverage_dist",
+            items={"water": 2},
+        )
+        result = env.action_place_order(
+            supplier_id="beverage_dist",
+            items={"water": 12, "soda_cola": 12},
+        )
+
+        assert "Minimum order" in failed
+        assert "placed successfully" in result
+        assert len(env.state.pending_orders) == 1
+
+    def test_action_place_order_rejects_second_successful_order_same_day(self) -> None:
+        """The environment enforces the prompt's one successful order per day rule."""
+        env = VendingEnvironment(seed=42)
+
+        first = env.action_place_order(
+            supplier_id="beverage_dist",
+            items={"water": 12, "soda_cola": 12},
+        )
+        second = env.action_place_order(
+            supplier_id="snack_co",
+            items={"chips_regular": 10},
+        )
+
+        assert "placed successfully" in first
+        assert "already been placed today" in second
+        assert len(env.state.pending_orders) == 1
+
+    def test_action_place_order_allows_new_successful_order_after_advance_day(self) -> None:
+        """The daily successful-order slot resets when simulation time advances."""
+        env = VendingEnvironment(seed=42)
+
+        first = env.action_place_order(
+            supplier_id="beverage_dist",
+            items={"water": 12, "soda_cola": 12},
+        )
+        env.action_advance_day()
+        second = env.action_place_order(
+            supplier_id="snack_co",
+            items={"chips_regular": 10},
+        )
+
+        assert "placed successfully" in first
+        assert "placed successfully" in second
+        assert len(env.state.pending_orders) == 2
+
     def test_action_collect_cash(self) -> None:
         """Test collecting cash from machine."""
         env = VendingEnvironment(seed=42)

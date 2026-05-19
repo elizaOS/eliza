@@ -1,3 +1,6 @@
+import { useState } from "react";
+import { fetchWithCsrf } from "../../api/csrf-client";
+
 interface TerminalPluginViewProps {
   id: string;
   label: string;
@@ -6,6 +9,19 @@ interface TerminalPluginViewProps {
   endpoints?: string[];
 }
 
+const commandButtonStyle = {
+  display: "block",
+  width: "100%",
+  border: 0,
+  borderRadius: 4,
+  background: "transparent",
+  color: "inherit",
+  cursor: "pointer",
+  font: "inherit",
+  padding: "4px 6px",
+  textAlign: "left" as const,
+};
+
 export function TerminalPluginView({
   id,
   label,
@@ -13,12 +29,81 @@ export function TerminalPluginView({
   commands = [],
   endpoints = [],
 }: TerminalPluginViewProps) {
+  const resolvedCommands = commands.length
+    ? commands
+    : ["get-state", "get-text", "refresh"];
+  const [transcript, setTranscript] = useState<
+    Array<{ id: number; command: string; status: string; output: string }>
+  >([]);
   const state = {
     viewType: "tui",
     viewId: id,
     label,
-    commandCount: commands.length,
+    commandCount: resolvedCommands.length,
     endpointCount: endpoints.length,
+  };
+  const runCommand = async (command: string) => {
+    const lineId = Date.now();
+    setTranscript((lines) => [
+      ...lines,
+      { id: lineId, command, status: "pending", output: "running..." },
+    ]);
+
+    window.dispatchEvent(
+      new CustomEvent("eliza:tui-command", {
+        detail: { viewId: id, command },
+      }),
+    );
+
+    try {
+      const response = await fetchWithCsrf(
+        `/api/views/${encodeURIComponent(id)}/interact?viewType=tui`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ capability: command, timeoutMs: 5_000 }),
+        },
+      );
+      const text = await response.text();
+      let parsed: unknown = text;
+      if (text) {
+        try {
+          parsed = JSON.parse(text);
+        } catch {
+          parsed = text;
+        }
+      }
+      if (!response.ok) {
+        throw new Error(
+          typeof parsed === "object" && parsed !== null && "error" in parsed
+            ? String((parsed as { error: unknown }).error)
+            : response.statusText,
+        );
+      }
+      setTranscript((lines) =>
+        lines.map((line) =>
+          line.id === lineId
+            ? {
+                ...line,
+                status: "ok",
+                output: JSON.stringify(parsed, null, 2),
+              }
+            : line,
+        ),
+      );
+    } catch (error) {
+      setTranscript((lines) =>
+        lines.map((line) =>
+          line.id === lineId
+            ? {
+                ...line,
+                status: "error",
+                output: error instanceof Error ? error.message : String(error),
+              }
+            : line,
+        ),
+      );
+    }
   };
 
   return (
@@ -50,13 +135,23 @@ export function TerminalPluginView({
         }}
       >
         <div style={{ color: "#a7f3d0", marginBottom: 10 }}>capabilities</div>
-        {(commands.length
-          ? commands
-          : ["get-state", "get-text", "refresh"]
-        ).map((command) => (
-          <div key={command} style={{ padding: "4px 0" }}>
+        {resolvedCommands.map((command, index) => (
+          <button
+            key={command}
+            type="button"
+            data-terminal-command={command}
+            aria-label={`Run ${command}`}
+            title={`Run ${command} (${index + 1})`}
+            style={commandButtonStyle}
+            onClick={() => {
+              void runCommand(command);
+            }}
+          >
             <span style={{ color: "#475569" }}>$</span> {command}
-          </div>
+            <span style={{ color: "#64748b", float: "right" }}>
+              {index + 1}
+            </span>
+          </button>
         ))}
         {endpoints.length > 0 && (
           <>
@@ -67,6 +162,28 @@ export function TerminalPluginView({
               <div key={endpoint} style={{ padding: "4px 0" }}>
                 <span style={{ color: "#475569" }}>GET</span> {endpoint}
               </div>
+            ))}
+          </>
+        )}
+        {transcript.length > 0 && (
+          <>
+            <div style={{ color: "#a7f3d0", margin: "18px 0 10px" }}>
+              output
+            </div>
+            {transcript.map((line) => (
+              <pre
+                key={line.id}
+                data-terminal-output={line.status}
+                style={{
+                  margin: "8px 0 0",
+                  overflowX: "auto",
+                  whiteSpace: "pre-wrap",
+                  color: line.status === "error" ? "#fca5a5" : "#cbd5e1",
+                }}
+              >
+                $ {line.command}
+                {"\n"}[{line.status}] {line.output}
+              </pre>
             ))}
           </>
         )}

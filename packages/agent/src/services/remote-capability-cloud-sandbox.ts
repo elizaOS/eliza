@@ -1,16 +1,13 @@
+import type { IAgentRuntime } from "@elizaos/core";
 import {
-  CAPABILITY_ROUTER_SERVICE_TYPE,
-  type IAgentRuntime,
-} from "@elizaos/core";
+  buildRemoteCapabilityEndpointTrustPolicy,
+  connectRemoteCapabilityEndpointProvider,
+  installRemoteCapabilityEndpoint,
+  type ProvisionedRemoteCapabilityEndpoint,
+  type RemoteCapabilityEndpointProvider,
+} from "./remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
-import {
-  type RemoteCapabilityRouterConfig,
-  RemoteCapabilityRouterService,
-} from "./remote-capability-router.ts";
-import {
-  type RemotePluginSyncResult,
-  syncRemoteCapabilityPlugins,
-} from "./remote-plugin-adapter.ts";
+import type { RemotePluginSyncResult } from "./remote-plugin-adapter.ts";
 
 const DEFAULT_CLOUD_PROVISION_TIMEOUT_MS = 120_000;
 const DEFAULT_CLOUD_PROVISION_POLL_MS = 2_000;
@@ -26,6 +23,7 @@ export type CloudCapabilitySandboxProvisionOptions = {
   pollIntervalMs?: number;
   fetch?: typeof fetch;
   onProgress?: (status: string, detail?: string) => void;
+  allowedModuleIds?: string[];
 };
 
 export type CloudCapabilitySandboxProvisionResult = {
@@ -43,6 +41,20 @@ export type ConnectCloudCapabilitySandboxOptions =
 export type ConnectCloudCapabilitySandboxResult =
   CloudCapabilitySandboxProvisionResult & {
     sync: RemotePluginSyncResult;
+  };
+
+export const cloudCapabilityEndpointProvider: RemoteCapabilityEndpointProvider<CloudCapabilitySandboxProvisionOptions> =
+  {
+    id: "cloud",
+    provision: async (
+      options,
+    ): Promise<ProvisionedRemoteCapabilityEndpoint> => ({
+      providerId: "cloud",
+      ...(await provisionCloudCapabilitySandbox(options)),
+      ...(options.allowedModuleIds === undefined
+        ? {}
+        : { allowedModuleIds: options.allowedModuleIds }),
+    }),
   };
 
 type CloudJsonResponse<T> = {
@@ -198,26 +210,39 @@ export async function connectCloudCapabilitySandbox(
   runtime: IAgentRuntime,
   options: ConnectCloudCapabilitySandboxOptions,
 ): Promise<ConnectCloudCapabilitySandboxResult> {
-  const provisioned = await provisionCloudCapabilitySandbox(options);
-  installRemoteCapabilityEndpoint(runtime, {
-    enabled: true,
-    endpoints: [provisioned.endpoint],
-    environment: "server",
-    requestTimeoutMs: options.requestTimeoutMs ?? 60_000,
-  });
-  const sync = await syncRemoteCapabilityPlugins(runtime, {
+  const result = await connectRemoteCapabilityEndpointProvider(runtime, {
+    provider: cloudCapabilityEndpointProvider,
+    provisionOptions: options,
     unloadMissing: options.unloadMissing,
+    requestTimeoutMs: options.requestTimeoutMs,
+    ...(options.allowedModuleIds === undefined
+      ? {}
+      : { allowedModuleIds: options.allowedModuleIds }),
   });
-  return { ...provisioned, sync };
+  assertCloudProvisionResult(result);
+  return {
+    agentId: result.agentId,
+    endpoint: result.endpoint,
+    ...(result.jobId === undefined ? {} : { jobId: result.jobId }),
+    sync: result.sync,
+  };
 }
 
-export function installRemoteCapabilityEndpoint(
-  runtime: IAgentRuntime,
-  config: RemoteCapabilityRouterConfig,
-): RemoteCapabilityRouterService {
-  const service = new RemoteCapabilityRouterService(runtime, config);
-  runtime.services.set(CAPABILITY_ROUTER_SERVICE_TYPE as never, [service]);
-  return service;
+export {
+  buildRemoteCapabilityEndpointTrustPolicy as buildEndpointTrustPolicy,
+  installRemoteCapabilityEndpoint,
+};
+
+function assertCloudProvisionResult(
+  result: ProvisionedRemoteCapabilityEndpoint,
+): asserts result is ProvisionedRemoteCapabilityEndpoint & {
+  agentId: string;
+} {
+  if (!result.agentId) {
+    throw new Error(
+      "Cloud capability sandbox provisioning returned no agent id.",
+    );
+  }
 }
 
 function endpointFromProvisionPayload(

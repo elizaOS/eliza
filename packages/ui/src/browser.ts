@@ -98,6 +98,7 @@ export { Textarea } from "./components/ui/textarea.tsx";
 export * from "./components/ui/toggle.tsx";
 export * from "./components/ui/tooltip.tsx";
 export { IconTooltip } from "./components/ui/tooltip-extended.tsx";
+export { TerminalPluginView } from "./components/views/TerminalPluginView.tsx";
 export type {
   VoicePillMessage,
   VoicePillProps,

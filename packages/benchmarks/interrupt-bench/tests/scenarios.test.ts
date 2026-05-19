@@ -9,7 +9,10 @@
 
 import { describe, expect, it } from "vitest";
 import { runScenario } from "../src/evaluator.ts";
+import { scoreScenario } from "../src/scorer.ts";
 import { loadScenarios } from "../src/scenarios.ts";
+import { SimulatorState } from "../src/state.ts";
+import { Trace } from "../src/trace.ts";
 
 describe("scenarios", () => {
   const all = loadScenarios();
@@ -67,4 +70,46 @@ describe("scenarios", () => {
       expect(result.score).toBeGreaterThanOrEqual(0.7);
     });
   }
+
+  it("coalesces rapid same-channel fragments before Stage-1", async () => {
+    const scenario = all.find((s) => s.id === "A1-fragmented-email-draft");
+    expect(scenario).toBeDefined();
+
+    const result = await runScenario(scenario!, { mode: "scripted" });
+    const stage1Calls = result.trace.filter((event) => event.type === "stage1_call");
+
+    expect(stage1Calls).toHaveLength(1);
+    expect(result.score).toBe(1);
+  });
+
+  it("does not score live harness transport latency as behavior", async () => {
+    const scenario = all.find((s) => s.id === "B1-pure-cancellation");
+    expect(scenario).toBeDefined();
+    const trace = new Trace(() => 0);
+    trace.push("stage1_response", {
+      detail: {
+        shouldRespond: "RESPOND",
+        llmLatencyMs: 5000,
+      },
+    });
+
+    const scripted = scoreScenario({
+      scenario: scenario!,
+      finalState: SimulatorState.fromSetup(scenario!.setup),
+      trace,
+      durationMs: 5000,
+      mode: "scripted",
+    });
+    const harnessLike = scoreScenario({
+      scenario: scenario!,
+      finalState: SimulatorState.fromSetup(scenario!.setup),
+      trace,
+      durationMs: 5000,
+      mode: "harness",
+    });
+
+    expect(scripted.axes.latency.raw).toBeLessThan(1);
+    expect(harnessLike.axes.latency.raw).toBe(1);
+    expect(harnessLike.axes.latency.notes[0]).toContain("skipped for harness mode");
+  });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-contacts",
-  "version": "2.0.0-beta.3",
+  "version": "2.0.0-beta.4",
   "type": "module",
   "description": "Android Contacts overlay app — wraps the @elizaos/capacitor-contacts native plugin.",
   "main": "./dist/index.js",
@@ -60,6 +60,11 @@
   ],
   "devDependencies": {
     "@biomejs/biome": "^2.4.14",
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17",

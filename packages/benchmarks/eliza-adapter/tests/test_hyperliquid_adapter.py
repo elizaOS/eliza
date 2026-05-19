@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import asyncio
+import json
 from dataclasses import dataclass
 
 from benchmarks.HyperliquidBench.types import HLBenchConfig, ScenarioKind, TradingScenario
-from eliza_adapter.hyperliquid import ElizaHyperliquidAgent
+from eliza_adapter.hyperliquid import ElizaHyperliquidAgent, _extract_json_plan
 
 
 @dataclass
@@ -25,6 +26,87 @@ class _MalformedPlanClient:
         self.messages.append(message)
         self.contexts.append(context)
         return _Response(text="I would place an ETH order, then cancel it.")
+
+
+def test_extract_json_plan_preserves_canonical_hyperliquid_schema() -> None:
+    raw_plan = {
+        "steps": [
+            {
+                "perp_orders": {
+                    "orders": [
+                        {
+                            "coin": "ETH",
+                            "side": "buy",
+                            "tif": "GTC",
+                            "sz": 0.01,
+                            "reduceOnly": False,
+                            "px": "mid+0%",
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+    assert _extract_json_plan(json.dumps(raw_plan)) == raw_plan
+
+
+def test_extract_json_plan_normalizes_openclaw_batch_actions() -> None:
+    raw_plan = """
+    {
+      "steps": [
+        {
+          "type": "batch",
+          "actions": [
+            {
+              "action": "open_perp",
+              "symbol": "BTC-PERP",
+              "side": "buy",
+              "size": 0.01,
+              "price": "market",
+              "demo_mode": true
+            },
+            {"action": "cancel_all", "symbol": "BTC-PERP", "demo_mode": true},
+            {
+              "action": "transfer",
+              "currency": "USD",
+              "amount": 100,
+              "to_account": "demo_account",
+              "demo_mode": true
+            },
+            {
+              "action": "set_leverage",
+              "symbol": "BTC-PERP",
+              "leverage": 2,
+              "demo_mode": true
+            }
+          ]
+        }
+      ]
+    }
+    """
+
+    assert _extract_json_plan(raw_plan) == {
+        "steps": [
+            {
+                "perp_orders": {
+                    "orders": [
+                        {
+                            "coin": "BTC",
+                            "side": "buy",
+                            "tif": "GTC",
+                            "sz": 0.01,
+                            "reduceOnly": False,
+                            "px": "mid+0%",
+                        }
+                    ]
+                }
+            },
+            {"cancel_all": {"coin": "BTC"}},
+            {"usd_class_transfer": {"toPerp": True, "usdc": 100.0}},
+            {"set_leverage": {"coin": "BTC", "leverage": 2, "cross": False}},
+        ]
+    }
 
 
 def test_hyperliquid_bridge_malformed_plans_fail_cleanly_after_bounded_retries(

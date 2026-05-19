@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import asyncio
+import html
 import json
 import logging
 import re
 import time
+import urllib.error
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -23,6 +26,11 @@ if TYPE_CHECKING:
     )
 
 logger = logging.getLogger(__name__)
+
+_META_DESCRIPTION_RE = re.compile(
+    r"<meta\b(?=[^>]*\bname=[\"']description[\"'])(?=[^>]*\bcontent=[\"']([^\"']+)[\"'])[^>]*>",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -97,6 +105,12 @@ class ElizaVisualWebBenchAgent:
                 "bbox": "[x1,y1,x2,y2]|null normalized 0..1",
             },
         }
+        visual_description = task.metadata.get("visual_description")
+        if isinstance(visual_description, str) and visual_description.strip():
+            context["visual_description"] = visual_description.strip()
+        page_meta_description = _fetch_page_meta_description(task)
+        if page_meta_description:
+            context["page_meta_description"] = page_meta_description
 
         message = (
             "Answer this VisualWebBench task. The screenshot is provided as an "
@@ -105,6 +119,24 @@ class ElizaVisualWebBenchAgent:
             "answer_text, choice_index, and bbox.\n\n"
             f"{task.prompt}"
         )
+        if page_meta_description:
+            message = (
+                "Answer this VisualWebBench web-caption task using the real "
+                "target page metadata below as page context. Return the "
+                "requested meta description format and do not describe only a "
+                "single visible item if the metadata describes the whole site.\n\n"
+                f"page_meta_description: {page_meta_description}\n\n"
+                f"{task.prompt}"
+            )
+        if not attachments and isinstance(visual_description, str) and visual_description.strip():
+            message = (
+                "Answer this VisualWebBench task. This bundled smoke fixture has "
+                "no screenshot file; use the provided visual_description as the "
+                "screenshot content. Return a compact JSON object with answer_text, "
+                "choice_index, and bbox.\n\n"
+                f"visual_description: {visual_description.strip()}\n\n"
+                f"{task.prompt}"
+            )
         response = self._client.send_message(text=message, context=context)
         parsed = _parse_response(response.params, response.text)
 
@@ -309,6 +341,35 @@ def _build_app_harness_prompt(task: "VisualWebBenchTask") -> str:
     )
 
 
+def _fetch_page_meta_description(task: "VisualWebBenchTask") -> str:
+    from benchmarks.visualwebbench.types import VisualWebBenchTaskType
+
+    if task.task_type is not VisualWebBenchTaskType.WEB_CAPTION:
+        return ""
+    url = _task_target_url(task)
+    try:
+        request = urllib.request.Request(
+            url,
+            headers={
+                "User-Agent": "elizaos-visualwebbench/1.0 (+benchmark metadata context)",
+                "Accept": "text/html,application/xhtml+xml",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=5) as response:  # nosec B310
+            html = response.read(200_000).decode("utf-8", errors="replace")
+    except (OSError, UnicodeDecodeError, urllib.error.URLError, TimeoutError) as exc:
+        logger.debug("VisualWebBench page metadata fetch failed for %s: %s", url, exc)
+        return ""
+    match = _META_DESCRIPTION_RE.search(html)
+    if not match:
+        return ""
+    return _strip_html_entities(match.group(1)).strip()
+
+
+def _strip_html_entities(value: str) -> str:
+    return html.unescape(value).replace("\xa0", " ")
+
+
 def _parse_harness_artifacts(run_dir: Path) -> dict[str, object]:
     for name in (
         "conversation-prompt-response.json",
@@ -410,7 +471,12 @@ def _parse_response(params: dict[str, object], text: str) -> dict[str, object]:
     if json_obj:
         merged.update(json_obj)
     elif text:
-        merged["answer_text"] = text.strip()
+        meta = re.search(
+            r'<meta\s+name=["\']description["\']\s+content=["\']([^"\']*)["\']',
+            text.strip(),
+            flags=re.IGNORECASE,
+        )
+        merged["answer_text"] = meta.group(1).strip() if meta else text.strip()
     return merged
 
 

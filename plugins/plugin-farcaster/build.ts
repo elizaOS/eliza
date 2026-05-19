@@ -18,11 +18,19 @@ async function build() {
 
   await rm(distDir, { recursive: true, force: true });
 
-  // Node build
+  // Node build.
+  //
+  // We deliberately bundle `index.ts` (the real entry) rather than the
+  // `index.node.ts` re-export shim. Bundling the shim triggers a Bun.build
+  // codegen bug where the inlined default export is renamed to `default2`
+  // but the corresponding `var default2 = ...` declaration is never emitted,
+  // producing an unimportable bundle (`"default2" is not declared in this
+  // file`). The output is renamed to `index.node.js` afterwards so the
+  // package.json `exports` map remains stable.
   const nodeStart = Date.now();
   console.log("🔨 Building @elizaos/plugin-farcaster for Node...");
   const nodeResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["index.ts"],
     outdir: join(distDir, "node"),
     target: "node",
     format: "esm",
@@ -33,6 +41,11 @@ async function build() {
   if (!nodeResult.success) {
     console.error("Node build failed:", nodeResult.logs);
     throw new Error("Node build failed");
+  }
+  {
+    const { rename } = await import("node:fs/promises");
+    await rename(join(distDir, "node", "index.js"), join(distDir, "node", "index.node.js"));
+    await rename(join(distDir, "node", "index.js.map"), join(distDir, "node", "index.node.js.map"));
   }
   console.log(`✅ Node build complete in ${((Date.now() - nodeStart) / 1000).toFixed(2)}s`);
 
@@ -54,11 +67,13 @@ async function build() {
   }
   console.log(`✅ Browser build complete in ${((Date.now() - browserStart) / 1000).toFixed(2)}s`);
 
-  // Node CJS build
+  // Node CJS build. Same rationale as the ESM build above: bundle `index.ts`
+  // directly and rename to `index.node.cjs` to avoid the Bun.build re-export
+  // shim codegen bug.
   const cjsStart = Date.now();
   console.log("🧱 Building @elizaos/plugin-farcaster for Node (CJS)...");
   const cjsResult = await Bun.build({
-    entrypoints: ["index.node.ts"],
+    entrypoints: ["index.ts"],
     outdir: join(distDir, "cjs"),
     target: "node",
     format: "cjs",
@@ -70,11 +85,10 @@ async function build() {
     console.error("CJS build failed:", cjsResult.logs);
     throw new Error("CJS build failed");
   }
-  try {
+  {
     const { rename } = await import("node:fs/promises");
-    await rename(join(distDir, "cjs", "index.node.js"), join(distDir, "cjs", "index.node.cjs"));
-  } catch (e) {
-    console.warn("CJS rename step warning:", e);
+    await rename(join(distDir, "cjs", "index.js"), join(distDir, "cjs", "index.node.cjs"));
+    await rename(join(distDir, "cjs", "index.js.map"), join(distDir, "cjs", "index.node.cjs.map"));
   }
   console.log(`✅ CJS build complete in ${((Date.now() - cjsStart) / 1000).toFixed(2)}s`);
 

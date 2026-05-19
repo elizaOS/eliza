@@ -321,7 +321,24 @@ def train(config: TrainingConfig) -> Path:
                 vocab_size=vocab_size,
                 device=model.device,
             )
+            # Skip-and-warn on NaN/Inf rather than poisoning the optimizer.
+            if not torch.isfinite(loss):
+                logger.warning(
+                    "epoch=%d step=%d non-finite loss (%s); skipping batch",
+                    epoch,
+                    step,
+                    loss.item(),
+                )
+                optimizer.zero_grad(set_to_none=True)
+                step += 1
+                continue
             loss.backward()
+
+            # Gradient clipping — without this, bf16 + AdamW can explode.
+            torch.nn.utils.clip_grad_norm_(
+                [p for p in model.parameters() if p.requires_grad],
+                max_norm=1.0,
+            )
 
             if (step + 1) % config.gradient_accumulation == 0:
                 optimizer.step()
@@ -375,30 +392,45 @@ def _iter_batches(records, batch_size, tokenizer, seq_len):
 
 
 def _eot_batch_loss(logits, last_token_idx, labels, im_end_id, vocab_size, device):
-    """Compute the EOT loss across a batch."""
+    """Compute the EOT loss across a batch.
+
+    bf16 logits can produce inf/nan through log_softmax — we cast to fp32
+    before the softmax. Per-example non-finite losses are filtered out
+    rather than poisoning the batch mean (which would skip the whole batch).
+    """
     import torch  # type: ignore
     import torch.nn.functional as F  # type: ignore
 
     # Extract the next-token logit for each row at its last position.
     batch_size = logits.shape[0]
     final_logits = logits[torch.arange(batch_size), last_token_idx]  # [B, V]
-    log_probs = F.log_softmax(final_logits, dim=-1)  # [B, V]
+    # Cast to fp32 for numerically-stable softmax/log.
+    log_probs = F.log_softmax(final_logits.float(), dim=-1)  # [B, V] in fp32
 
     labels = labels.to(device)
     losses = []
     for i in range(batch_size):
         if labels[i].item() == 1:
-            # Positive: maximize log P(im_end).
-            losses.append(-log_probs[i, im_end_id])
+            # Positive: maximize log P(im_end). Clamp to avoid -inf when
+            # the model assigns vanishing mass.
+            log_p_im_end = log_probs[i, im_end_id].clamp(min=-30.0)
+            losses.append(-log_p_im_end)
         else:
             # Negative: minimize P(im_end) by maximizing log P(not im_end).
             #   log P(not im_end) = log(1 - exp(log_probs[im_end]))
-            # Numerically stable: log1p(-exp(x)) for x < 0.
-            log_p_im_end = log_probs[i, im_end_id]
+            log_p_im_end = log_probs[i, im_end_id].clamp(min=-30.0, max=-1e-6)
             log_p_not_im_end = torch.log1p(-torch.exp(log_p_im_end).clamp(max=0.999999))
             losses.append(-log_p_not_im_end)
 
-    return torch.stack(losses).mean()
+    stacked = torch.stack(losses)
+    # Filter per-example non-finite losses; mean over the survivors.
+    finite_mask = torch.isfinite(stacked)
+    if finite_mask.any():
+        return stacked[finite_mask].mean()
+    # Whole batch was bad — return a finite zero so the outer skip-on-non-finite
+    # still records it as "skip"; outer loop also has skip-on-non-finite as a
+    # belt-and-suspenders guard.
+    return torch.tensor(float("nan"), device=device)
 
 
 # ---------------------------------------------------------------------------

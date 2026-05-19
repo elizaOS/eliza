@@ -21,6 +21,11 @@ import pytest
 from hermes_adapter.bfcl import build_bfcl_agent_fn
 from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
+from hermes_adapter.woobench import (
+    _WOOBENCH_SYSTEM_HINT,
+    build_hermes_woobench_agent_fn,
+    _turn_from_response as woobench_turn_from_response,
+)
 
 
 @pytest.fixture
@@ -103,6 +108,58 @@ def test_bfcl_agent_fn_raises_on_bridge_failure(fake_client: HermesClient) -> No
     with patch.object(HermesClient, "send_message", _boom):
         with pytest.raises(RuntimeError, match="BFCL"):
             _run(agent_fn("hi", []))
+
+
+def test_woobench_system_hint_allows_reflective_tarot() -> None:
+    assert "do not refuse ordinary tarot" in _WOOBENCH_SYSTEM_HINT
+    assert "safe fictional/reflective" in _WOOBENCH_SYSTEM_HINT
+    assert "Create at most one charge" in _WOOBENCH_SYSTEM_HINT
+
+
+def test_woobench_turn_synthesizes_visible_payment_text() -> None:
+    response = MessageResponse(
+        text="",
+        thought=None,
+        actions=[],
+        params={
+            "tool_calls": [
+                {
+                    "name": "CREATE_APP_CHARGE",
+                    "arguments": {"amount_usd": 15, "provider": "oxapay"},
+                }
+            ]
+        },
+    )
+
+    result = woobench_turn_from_response(response)
+
+    assert "full reading after $15.00" in result["text"]
+    assert result["actions"] == ["BENCHMARK_ACTION"]
+    assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
+
+
+def test_woobench_agent_fn_forwards_system_message_and_payment_actions(
+    fake_client: HermesClient,
+) -> None:
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_hermes_woobench_agent_fn(client=fake_client, model_name="m1")
+    captured: dict[str, Any] = {}
+
+    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+        captured["text"] = text
+        captured["context"] = context
+        return MessageResponse(text="reading", thought=None, actions=[], params={})
+
+    history = [{"role": "user", "content": "Can you read my cards?"}]
+    with patch.object(HermesClient, "send_message", _fake_send):
+        result = _run(agent_fn(history))
+
+    assert captured["text"] == "Can you read my cards?"
+    ctx = captured["context"]
+    assert ctx["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
+    assert ctx["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
+    assert ctx["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
+    assert result["text"] == "reading"
 
 
 def test_build_clawbench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:
@@ -286,3 +343,39 @@ def test_lifeops_agent_fn_recovers_json_text_tool_call(fake_client: HermesClient
     tc = turn.tool_calls[0]
     assert tc["function"]["name"] == "get_weather"
     assert tc["function"]["arguments"] == {"city": "Paris", "when": "tomorrow"}
+
+
+def test_lifeops_agent_fn_promotes_calendar_availability_call(fake_client: HermesClient) -> None:
+    _install_lifeops_stub()
+    from hermes_adapter.lifeops_bench import build_lifeops_bench_agent_fn
+
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_lifeops_bench_agent_fn(client=fake_client)
+
+    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+        return MessageResponse(
+            text="",
+            thought=None,
+            actions=[],
+            params={
+                "tool_calls": [
+                    {
+                        "name": "CALENDAR",
+                        "arguments": (
+                            '{"action":"search_events","windowStart":"2026-05-14T09:00:00Z",'
+                            '"windowEnd":"2026-05-14T10:00:00Z","intent":"availability"}'
+                        ),
+                        "id": "tc1",
+                    }
+                ]
+            },
+        )
+
+    with patch.object(HermesClient, "send_message", _fake_send):
+        turn = _run(agent_fn([{"role": "user", "content": "am I free Thursday?"}], []))
+
+    assert turn.tool_calls is not None
+    tc = turn.tool_calls[0]
+    assert tc["function"]["name"] == "CALENDAR_CHECK_AVAILABILITY"
+    assert tc["function"]["arguments"]["subaction"] == "check_availability"
+    assert tc["function"]["arguments"]["startAt"] == "2026-05-14T09:00:00Z"

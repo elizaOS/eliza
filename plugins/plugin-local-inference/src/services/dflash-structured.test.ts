@@ -23,12 +23,25 @@ interface CapturedRequest {
 	body: Record<string, unknown>;
 }
 
+const originalFetch = globalThis.fetch;
+
 function makeArgs(extra: Partial<DflashGenerateArgs> = {}): DflashGenerateArgs {
 	return { prompt: "say hello", ...extra };
 }
 
 afterEach(() => {
-	vi.unstubAllGlobals();
+	const vitestGlobals = vi as unknown as {
+		restoreAllMocks?: () => void;
+		unstubAllGlobals?: () => void;
+	};
+	if (vitestGlobals.unstubAllGlobals) {
+		vitestGlobals.unstubAllGlobals();
+	} else if (originalFetch) {
+		globalThis.fetch = originalFetch;
+	} else {
+		delete (globalThis as { fetch?: typeof fetch }).fetch;
+	}
+	vitestGlobals.restoreAllMocks?.();
 });
 
 function readFetchBody(init: RequestInit | undefined): string {
@@ -44,9 +57,8 @@ async function startMock(): Promise<{
 	close: () => Promise<void>;
 }> {
 	const captured: CapturedRequest[] = [];
-	vi.stubGlobal(
-		"fetch",
-		vi.fn(async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
+	const fetchMock = vi.fn(
+		async (input: Parameters<typeof fetch>[0], init?: RequestInit) => {
 			const rawUrl =
 				typeof input === "string" || input instanceof URL ? input : input.url;
 			const url = new URL(rawUrl);
@@ -71,13 +83,29 @@ async function startMock(): Promise<{
 				});
 			}
 			return new Response(null, { status: 404 });
-		}),
+		},
 	);
+	const vitestGlobals = vi as unknown as {
+		stubGlobal?: (name: string, value: unknown) => void;
+	};
+	if (vitestGlobals.stubGlobal) {
+		vitestGlobals.stubGlobal("fetch", fetchMock);
+	} else {
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+	}
 	return {
 		baseUrl: "http://dflash-structured.test",
 		captured,
 		close: async () => {
-			vi.unstubAllGlobals();
+			if (vitestGlobals.stubGlobal) {
+				(
+					vi as unknown as { unstubAllGlobals?: () => void }
+				).unstubAllGlobals?.();
+			} else if (originalFetch) {
+				globalThis.fetch = originalFetch;
+			} else {
+				delete (globalThis as { fetch?: typeof fetch }).fetch;
+			}
 		},
 	};
 }
@@ -372,14 +400,16 @@ describe("elizaHarnessSchemaFromSkeleton + guided decode wiring", () => {
 });
 
 describe("DflashLlamaServer.prewarmConversation", () => {
-	let saved: { baseUrl: string | null; cacheParallel: number };
+	let saved: { baseUrl: string | null; cacheParallel: number } | undefined;
 	afterEach(() => {
+		if (!saved) return;
 		const target = dflashLlamaServer as unknown as {
 			baseUrl: string | null;
 			cacheParallel: number;
 		};
 		target.baseUrl = saved.baseUrl;
 		target.cacheParallel = saved.cacheParallel;
+		saved = undefined;
 	});
 
 	it("fires a max_tokens:1 cache_prompt request against the pinned slot", async () => {

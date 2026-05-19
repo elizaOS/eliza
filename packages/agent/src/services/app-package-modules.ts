@@ -74,6 +74,10 @@ export function registerRuntimeAppRouteModule(
   runtimeAppRouteModules.set(runtimeAppRouteKey(appIdentifier), routeModule);
 }
 
+export function hasRuntimeAppRouteModule(appIdentifier: string): boolean {
+  return runtimeAppRouteModules.has(runtimeAppRouteKey(appIdentifier));
+}
+
 export function unregisterRuntimeAppRouteModule(appIdentifier: string): void {
   runtimeAppRouteModules.delete(runtimeAppRouteKey(appIdentifier));
 }

@@ -10,7 +10,9 @@ import pytest
 from elizaos_gaia import orchestrated
 from elizaos_gaia.orchestrated import (
     _capability_report,
+    _dotenv_value,
     _effective_provider_labels,
+    _model_env_updates,
     _model_api_base_for_config,
     _model_provider_for_config,
     _parse_required_capabilities,
@@ -83,6 +85,47 @@ def test_model_provider_normalizes_cerebras_override_to_openai(
 
     assert _model_provider_for_config("hermes") == "openai"
     assert _model_api_base_for_config("hermes") == "https://api.cerebras.ai/v1"
+
+
+def test_model_provider_ignores_inherited_eliza_server_provider_for_delegate(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("BENCHMARK_MODEL_PROVIDER", raising=False)
+    monkeypatch.setenv("ELIZA_PROVIDER", "eliza")
+
+    assert _model_provider_for_config("hermes") == "openai"
+    assert _model_provider_for_config("openclaw") == "openai"
+    assert _model_provider_for_config("eliza") == "eliza"
+
+
+def test_model_env_updates_mirrors_cerebras_key_for_openai_compatible_harness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("CEREBRAS_API_KEY", "csk-test-key")
+
+    updates = _model_env_updates(
+        "gpt-oss-120b",
+        "hermes",
+        tmp_path / "telemetry.jsonl",
+        "openai",
+        "https://api.cerebras.ai/v1",
+    )
+
+    assert updates["OPENAI_API_KEY"] == "csk-test-key"
+
+
+def test_dotenv_value_reads_local_env_without_overwriting_process_env(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".env").write_text(
+        "CEREBRAS_API_KEY='csk-from-file'\nOTHER=value\n",
+        encoding="utf-8",
+    )
+
+    assert _dotenv_value("CEREBRAS_API_KEY", start_dir=tmp_path / "child") == "csk-from-file"
+    assert _dotenv_value("MISSING", start_dir=tmp_path) == ""
 
 
 @pytest.mark.asyncio

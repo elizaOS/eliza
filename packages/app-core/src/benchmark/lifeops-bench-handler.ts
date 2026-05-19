@@ -136,6 +136,7 @@ const CALENDAR_SUBACTION_TO_GRANULAR: Record<string, string> = {
   cancel_event: "calendar.cancel_event",
   list_events: "calendar.list_events",
   search_events: "calendar.list_events",
+  check_availability: "calendar.list_events",
 };
 
 /**
@@ -155,7 +156,7 @@ export function translateUmbrellaAction(
       kwargs: {
         ...kwargs,
         source: kwargs.source ?? "gmail",
-        operation: kwargs.operation ?? "manage",
+        operation: "manage",
         manageOperation: kwargs.manageOperation ?? "archive",
       },
     };

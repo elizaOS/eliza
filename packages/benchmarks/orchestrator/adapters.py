@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import importlib.util
 import os
+import json
 import re
 import shlex
 import shutil
@@ -89,78 +91,92 @@ IGNORED_BENCHMARK_DIRS = {
 # tri-harness by default so `--all-harnesses` remains a full Eliza/Hermes/
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
-AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
-    # CompactBench has concrete Eliza and Hermes compactor methods. OpenClaw's
-    # current CLI path intentionally fails closed because it has no
-    # transcript-in/artifact-out native compactor API.
-    "compactbench": ("eliza", "hermes"),
-    # Vending-Bench currently has heuristic/direct providers and an Eliza TS
-    # bridge path. Hermes/OpenClaw labels would still exercise the Eliza bridge
-    # or a non-agent provider, so publish only the concrete Eliza harness row.
-    "vending_bench": ("eliza",),
-    # HyperliquidBench plan generation is wired to the Eliza TS bridge plus a
-    # deterministic Python smoke path. Hermes/OpenClaw labels do not yet select
-    # distinct harness implementations.
-    "hyperliquid_bench": ("eliza",),
-    # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
-    # is an explicit provider-level smoke mode, not native OpenClaw agent
-    # parity, so keep it out of cross-agent result matrices.
-    "loca_bench": ("eliza", "hermes"),
-    # The lifecycle benchmark's real bridge mode starts the Eliza benchmark
-    # server; simulate mode is deterministic and not a harness comparison.
-    "orchestrator_lifecycle": ("eliza",),
-    # ConfigBench currently has an in-process Eliza handler plus oracle/mock
-    # handlers. Hermes/OpenClaw rows were previously scored against the
-    # Perfect oracle fallback, which is not a real harness comparison.
-    "configbench": ("eliza",),
-    # FrameworkBench measures the local elizaOS TypeScript runtime with a mock
-    # LLM. It does not invoke Hermes/OpenClaw, so tri-harness labels are
-    # misleading until real per-harness framework drivers exist.
-    "framework": ("eliza",),
-    # VoiceBench currently instantiates the local TypeScript runtime directly
-    # for real profiles, with an explicit mock artifact path for no-key smoke
-    # validation. Hermes/OpenClaw labels would still run the same voicebench
-    # runtime/profile rather than distinct agent harnesses.
-    "voicebench": ("eliza",),
-    # VoiceAgentBench in this checkout only ships transcript fixtures and a
-    # deterministic mock path. Publishing it as Eliza/Hermes/OpenClaw would be
-    # larp until real audio fixtures or a direct-audio adapter are available.
-    "voiceagentbench": (),
-    # eliza-1 bench compares local eliza-1 decode modes / Cerebras reference
-    # mode, not Hermes/OpenClaw agent harnesses.
-    "eliza_1": ("eliza",),
-    # These tracks are native hermes-agent environments invoked through
-    # hermes_adapter/run_env_cli.py. Eliza/OpenClaw labels would still run the
-    # Hermes loop, so keep them Hermes-only until separate env drivers exist.
-    "hermes_tblite": ("hermes",),
-    "hermes_terminalbench_2": ("hermes",),
-    "hermes_yc_bench": ("hermes",),
-    "hermes_swe_env": ("hermes",),
-    # These benchmarks currently bypass the selected harness entirely. Keeping
-    # them out of real-agent publication is safer than emitting rows labeled as
-    # Eliza/Hermes/OpenClaw that all exercised the same direct-provider path.
-    "openclaw_bench": (),
-    "interrupt_bench": (),
-    "scambench": (),
-    # GAIA and WebShop are bridge-backed Eliza integrations in this checkout;
-    # Hermes/OpenClaw labels would still exercise the Eliza path.
-    "gaia": ("eliza",),
-    "gaia_orchestrated": ("eliza",),
-    "webshop": ("eliza",),
-}
+AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id in {"gaia", "gaia_orchestrated"}:
+        return ALL_HARNESSES if _has_gaia_official_dataset() else ()
+    if benchmark_id == "gauntlet":
+        return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
         "hermes_tblite",
         "hermes_terminalbench_2",
         "hermes_yc_bench",
         "hermes_swe_env",
     }:
-        return ("hermes",) if _has_hermes_sandbox_backend() else ()
-    if benchmark_id in {"voicebench", "voicebench_quality"} and not os.environ.get("GROQ_API_KEY"):
-        return ()
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
+    if benchmark_id == "voicebench":
+        return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
+    if benchmark_id == "voicebench_quality":
+        return ALL_HARNESSES if _has_voicebench_quality_real_inputs() else ()
+    if benchmark_id == "voiceagentbench":
+        return ALL_HARNESSES if _has_voiceagentbench_real_audio_dataset() else ()
+    if benchmark_id == "vision_language":
+        return ALL_HARNESSES if _has_vision_language_real_inputs() else ()
     return AGENT_COMPATIBILITY_OVERRIDES.get(benchmark_id, ALL_HARNESSES)
+
+
+_GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
+
+
+_GAIA_OFFICIAL_DATASET_AVAILABLE: bool | None = None
+
+
+def _has_gaia_official_dataset() -> bool:
+    """Return true when official GAIA can run without sample fallback."""
+    global _GAIA_OFFICIAL_DATASET_AVAILABLE
+    if _GAIA_OFFICIAL_DATASET_AVAILABLE is not None:
+        return _GAIA_OFFICIAL_DATASET_AVAILABLE
+    if os.environ.get("HF_TOKEN"):
+        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
+        return True
+    dataset_path = os.environ.get("GAIA_DATASET_PATH")
+    if dataset_path and Path(dataset_path).expanduser().exists():
+        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
+        return True
+    metadata_roots = (
+        Path.home() / ".cache" / "huggingface" / "hub" / "datasets--gaia-benchmark--GAIA" / "snapshots",
+        Path("packages/benchmarks/gaia/.cache/gaia")
+        / "datasets--gaia-benchmark--GAIA"
+        / "snapshots",
+    )
+    _GAIA_OFFICIAL_DATASET_AVAILABLE = any(
+        any(path.is_file() for path in root.glob("*/2023/validation/metadata.*"))
+        for root in metadata_roots
+        if root.exists()
+    )
+    return _GAIA_OFFICIAL_DATASET_AVAILABLE
+
+
+def _surfpool_start_help(binary: str) -> str:
+    try:
+        completed = subprocess.run(
+            [binary, "start", "--help"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return ""
+    return f"{completed.stdout}\n{completed.stderr}"
+
+
+def _has_gauntlet_real_surfpool_backend() -> bool:
+    """Return true only when Surfpool can run Gauntlet's real mainnet-backed path."""
+    global _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+    if _GAUNTLET_REAL_SURFPOOL_AVAILABLE is not None:
+        return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
+    binary = shutil.which("surfpool")
+    if not binary:
+        _GAUNTLET_REAL_SURFPOOL_AVAILABLE = False
+        return False
+    help_text = _surfpool_start_help(binary)
+    has_remote_datasource = "--rpc-url" in help_text or "--network" in help_text
+    has_noninteractive_mode = "--no-tui" in help_text
+    _GAUNTLET_REAL_SURFPOOL_AVAILABLE = has_remote_datasource and has_noninteractive_mode
+    return _GAUNTLET_REAL_SURFPOOL_AVAILABLE
 
 
 _HERMES_SANDBOX_BACKEND_AVAILABLE: bool | None = None
@@ -188,6 +204,253 @@ def _has_hermes_sandbox_backend() -> bool:
             pass
     _HERMES_SANDBOX_BACKEND_AVAILABLE = False
     return False
+
+
+_VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE: bool | None = None
+
+
+def _has_voiceagentbench_real_audio_dataset() -> bool:
+    """Return true only when VoiceAgentBench can run as a real voice benchmark."""
+    global _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
+    if _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE is not None:
+        return _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
+
+    stt_provider = os.environ.get("VOICEAGENTBENCH_STT_PROVIDER", "").strip().lower()
+    if not stt_provider:
+        if os.environ.get("GROQ_API_KEY"):
+            stt_provider = "groq"
+        elif importlib.util.find_spec("faster_whisper") is not None:
+            stt_provider = "faster-whisper"
+        else:
+            stt_provider = "groq"
+    if stt_provider == "groq":
+        stt_ready = bool(os.environ.get("GROQ_API_KEY"))
+    elif stt_provider == "eliza-runtime":
+        stt_ready = bool(
+            (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
+        )
+    elif stt_provider in {"faster-whisper", "local-whisper"}:
+        stt_ready = importlib.util.find_spec("faster_whisper") is not None
+    else:
+        stt_ready = False
+
+    data_path_raw = (
+        os.environ.get("VOICEAGENTBENCH_DATA_PATH")
+        or os.environ.get("VOICEAGENTBENCH_REAL_DATA_PATH")
+        or ""
+    ).strip()
+    if not stt_ready:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    if not data_path_raw:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
+        return _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE
+
+    path = Path(data_path_raw).expanduser()
+    if not path.is_file():
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    try:
+        with path.open("r", encoding="utf-8") as fh:
+            for raw in fh:
+                if not raw.strip():
+                    continue
+                row = json.loads(raw)
+                queries = row.get("queries") if isinstance(row, dict) else None
+                if not isinstance(queries, list):
+                    continue
+                for query in queries:
+                    if not isinstance(query, dict):
+                        continue
+                    audio_b64 = query.get("audio_b64")
+                    if isinstance(audio_b64, str) and audio_b64.strip():
+                        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = True
+                        return True
+    except Exception:
+        _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    _VOICEAGENTBENCH_REAL_AUDIO_AVAILABLE = False
+    return False
+
+
+_VOICEBENCH_REAL_AUDIO_AVAILABLE: bool | None = None
+_VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE: bool | None = None
+
+
+def _voicebench_quality_stt_provider() -> str:
+    explicit = (
+        os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+        or os.environ.get("VOICEBENCH_STT_PROVIDER")
+        or ""
+    ).strip().lower()
+    if explicit:
+        return explicit
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if importlib.util.find_spec("faster_whisper") is not None:
+        return "faster-whisper"
+    return "groq"
+
+
+def _has_voicebench_quality_real_inputs() -> bool:
+    """Return true only when VoiceBench-quality can run real audio + STT."""
+    global _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
+    if _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE is not None:
+        return _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE
+    if importlib.util.find_spec("datasets") is None:
+        _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = False
+        return False
+    stt_provider = _voicebench_quality_stt_provider()
+    if stt_provider == "groq":
+        ready = bool(os.environ.get("GROQ_API_KEY"))
+    elif stt_provider == "eliza-runtime":
+        ready = bool(
+            (os.environ.get("ELIZA_API_BASE") or os.environ.get("ELIZA_BENCH_URL") or "").strip()
+        )
+    elif stt_provider in {"faster-whisper", "local-whisper"}:
+        ready = importlib.util.find_spec("faster_whisper") is not None
+    else:
+        ready = False
+    _VOICEBENCH_QUALITY_REAL_INPUTS_AVAILABLE = ready
+    return ready
+
+
+def _voicebench_dir() -> Path:
+    return Path(__file__).resolve().parents[1] / "voicebench"
+
+
+def _eliza_state_dir() -> Path:
+    explicit = os.environ.get("ELIZA_STATE_DIR") or os.environ.get("MILADY_STATE_DIR")
+    if explicit:
+        return Path(explicit).expanduser()
+    namespace = os.environ.get("ELIZA_NAMESPACE") or "eliza"
+    return Path.home() / f".{namespace}"
+
+
+def _has_vision_language_bundle(tier: str = "eliza-1-9b") -> bool:
+    bundle = _eliza_state_dir() / "local-inference" / "models" / f"{tier}.bundle"
+    manifest = bundle / "eliza-1.manifest.json"
+    if not manifest.is_file():
+        return False
+    slug = tier.removeprefix("eliza-1-")
+    text_candidates = [
+        bundle / "text" / f"eliza-1-{slug}-64k.gguf",
+        bundle / "text" / f"eliza-1-{slug}-32k.gguf",
+        bundle / "text" / f"eliza-1-{slug}.gguf",
+    ]
+    vision = bundle / "vision" / f"mmproj-{slug}.gguf"
+    return vision.is_file() and any(path.is_file() for path in text_candidates)
+
+
+def _has_textvqa_real_inputs() -> bool:
+    data_dir = os.environ.get("TEXTVQA_DATA_DIR")
+    if not data_dir:
+        return True
+    root = Path(data_dir).expanduser()
+    return (root / "TextVQA_0.5.1_val.json").is_file() and (root / "train_images").is_dir()
+
+
+def _has_vision_language_real_inputs() -> bool:
+    tier = os.environ.get("VISION_LANGUAGE_TIER") or "eliza-1-9b"
+    return _has_vision_language_bundle(tier) and _has_textvqa_real_inputs()
+
+
+def _voicebench_resolve_audio_path(raw_path: str, manifest_path: Path) -> Path:
+    direct = Path(raw_path).expanduser()
+    if not direct.is_absolute():
+        direct = manifest_path.parent / direct
+    if direct.is_file():
+        return direct
+    marker = "benchmarks/voicebench/"
+    marker_index = raw_path.find(marker)
+    if marker_index >= 0:
+        remapped = _voicebench_dir() / raw_path[marker_index + len(marker) :]
+        if remapped.is_file():
+            return remapped
+    return direct
+
+
+def _voicebench_manifest_has_audio(manifest_path: Path) -> bool:
+    try:
+        root = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except Exception:
+        return False
+    samples = root.get("samples") if isinstance(root, dict) else None
+    if not isinstance(samples, list) or not samples:
+        return False
+    for sample in samples:
+        if not isinstance(sample, dict):
+            return False
+        raw_path = sample.get("audioPath") or sample.get("audio_path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            return False
+        if not _voicebench_resolve_audio_path(raw_path, manifest_path).is_file():
+            return False
+    return True
+
+
+def _has_voicebench_real_audio_assets() -> bool:
+    """Return true only when VoiceBench can run a publishable real voice profile."""
+    global _VOICEBENCH_REAL_AUDIO_AVAILABLE
+    if _VOICEBENCH_REAL_AUDIO_AVAILABLE is not None:
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+
+    profile = os.environ.get("VOICEBENCH_PROFILE", "").strip().lower()
+    if not profile:
+        profile = "local-cerebras" if os.environ.get("CEREBRAS_API_KEY") else "groq"
+
+    if profile == "local-cerebras":
+        if not os.environ.get("CEREBRAS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if importlib.util.find_spec("faster_whisper") is None:
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        say_bin = os.environ.get("VOICEBENCH_SAY_BIN", "").strip()
+        if say_bin:
+            if not Path(say_bin).expanduser().is_file():
+                _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+                return False
+        elif shutil.which("say") is None and not Path("/usr/bin/say").is_file():
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    elif profile in {"groq", "elevenlabs"}:
+        if not os.environ.get("GROQ_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+        if profile == "elevenlabs" and not os.environ.get("ELEVENLABS_API_KEY"):
+            _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+            return False
+    else:
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = False
+        return False
+
+    audio_path_raw = os.environ.get("VOICEBENCH_AUDIO_PATH", "").strip()
+    if audio_path_raw:
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = Path(audio_path_raw).expanduser().is_file()
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+
+    dataset_raw = (
+        os.environ.get("VOICEBENCH_DATASET")
+        or os.environ.get("VOICEBENCH_DATASET_PATH")
+        or ""
+    ).strip()
+    if dataset_raw:
+        manifest_path = Path(dataset_raw).expanduser()
+    elif profile == "local-cerebras":
+        _VOICEBENCH_REAL_AUDIO_AVAILABLE = importlib.util.find_spec("huggingface_hub") is not None
+        return _VOICEBENCH_REAL_AUDIO_AVAILABLE
+    else:
+        manifest_name = "manifest-elevenlabs.json" if profile == "elevenlabs" else "manifest-groq.json"
+        manifest_path = _voicebench_dir() / "fixtures" / manifest_name
+
+    _VOICEBENCH_REAL_AUDIO_AVAILABLE = (
+        manifest_path.is_file() and _voicebench_manifest_has_audio(manifest_path)
+    )
+    return _VOICEBENCH_REAL_AUDIO_AVAILABLE
 
 
 def _is_benchmark_directory(path: Path) -> bool:
@@ -279,7 +542,7 @@ def _make_registry_adapter(
             value = ctx.request.extra_config.get(extra_key)
             if isinstance(value, (int, float)) and value > 0:
                 env[env_key] = str(float(value))
-        if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench"} and harness == "openclaw":
+        if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench", "lifeops_bench"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
         if benchmark_id == "hyperliquid_bench":
@@ -417,9 +680,11 @@ def _command_configbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> li
     args = ["bun", "run", "src/index.ts", "--output", str(ctx.output_root)]
     agent = ctx.request.extra_config.get("agent")
     provider_name = ctx.request.provider.strip().lower()
-    if (
-        ctx.request.agent.lower() == "eliza"
-        or agent == "eliza"
+    harness = ctx.request.agent.strip().lower()
+    if harness in {"eliza", "hermes", "openclaw"}:
+        args.extend(["--harness", harness])
+    elif (
+        agent == "eliza"
         or ctx.request.extra_config.get("eliza") is True
         or provider_name == "eliza"
     ):
@@ -557,8 +822,31 @@ def _env_app_eval(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str,
 
 
 def _command_framework(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    mode = str(ctx.request.extra_config.get("mode", "harness")).strip().lower()
     flags = shlex.split(str(ctx.request.extra_config.get("flags", "")))
     output_path = ctx.output_root / "framework-results.json"
+    if mode != "typescript":
+        scenarios = str(ctx.request.extra_config.get("scenarios", "single-message"))
+        iterations = int(ctx.request.extra_config.get("iterations", 1) or 1)
+        generated_limit = int(ctx.request.extra_config.get("generated_limit", 3) or 3)
+        return [
+            sys.executable,
+            "benchmarks/framework/scripts/harness_runner.py",
+            "--harness",
+            ctx.request.agent.strip().lower(),
+            "--provider",
+            ctx.request.provider,
+            "--model",
+            ctx.request.model,
+            "--scenarios",
+            scenarios,
+            "--iterations",
+            str(max(1, iterations)),
+            "--generated-limit",
+            str(max(1, generated_limit)),
+            "--output",
+            str(output_path),
+        ]
     return [
         "bun",
         "run",
@@ -694,8 +982,16 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
         split = ctx.request.extra_config.get("split")
         if isinstance(split, str) and split.strip():
             args.extend(["--split", split.strip()])
-    elif bool(ctx.request.extra_config.get("sample", True)):
+    elif (
+        ctx.request.extra_config.get("sample") is True
+        or ctx.request.extra_config.get("use_sample_tasks") is True
+        or ctx.request.extra_config.get("mock") is True
+        or provider_lower == "mock"
+    ):
         args.append("--sample")
+    profile = ctx.request.extra_config.get("profile")
+    if isinstance(profile, str) and profile.strip() in {"small", "full"}:
+        args.extend(["--profile", profile.strip()])
 
     if bool(ctx.request.extra_config.get("trajectories", False)):
         args.append("--trajectories")
@@ -856,13 +1152,22 @@ def _command_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
 def _env_evm(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     existing = ctx.env.get("PYTHONPATH", "")
     adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
+    harness = str(
+        ctx.request.extra_config.get("agent")
+        or ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+    ).strip().lower()
     env: dict[str, str] = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
+        "BENCHMARK_HARNESS": harness,
+        "ELIZA_BENCH_HARNESS": harness,
     }
     model = _provider_model_name(ctx.request.provider, ctx.request.model)
     provider = ctx.request.provider.strip().lower()
     model_name = model if "/" in model or not provider else f"{provider}/{model}"
     env.update({
+        "BENCHMARK_MODEL_PROVIDER": provider,
+        "BENCHMARK_MODEL_NAME": model,
         "MODEL_NAME": model_name,
         "MAX_MESSAGES": str(int(ctx.request.extra_config.get("max_messages", 50))),
         "METRICS_DIR": str(ctx.output_root / "metrics"),
@@ -1002,7 +1307,7 @@ def _command_osworld(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
     provider_name = str(ctx.request.extra_config.get("provider_name", "docker")).strip()
     args.extend(["--provider_name", provider_name])
     observation_type = str(
-        ctx.request.extra_config.get("observation_type", "screenshot_a11y_tree")
+        ctx.request.extra_config.get("observation_type", "screenshot")
     ).strip()
     args.extend(["--observation_type", observation_type])
 
@@ -1097,10 +1402,34 @@ def _command_eliza_replay(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
 
 def _command_eliza_1(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
     task = str(ctx.request.extra_config.get("task", "should_respond")).strip()
-    mode = str(ctx.request.extra_config.get("mode", "cerebras")).strip()
     n_value = int(
         ctx.request.extra_config.get("n", ctx.request.extra_config.get("limit", 1))
     )
+    harness = (
+        ctx.request.extra_config.get("harness")
+        or ctx.request.agent
+        or os.environ.get("BENCHMARK_HARNESS")
+        or "eliza"
+    )
+    if task in {"should_respond", "should-respond"}:
+        args = [
+            sys.executable,
+            "scripts/harness_runner.py",
+            "--harness",
+            str(harness).strip().lower(),
+            "--model",
+            ctx.request.model,
+            "--n",
+            str(max(1, n_value)),
+            "--out",
+            str(ctx.output_root / "eliza-1-results.json"),
+        ]
+        limit = ctx.request.extra_config.get("limit")
+        if isinstance(limit, int) and limit > 0:
+            args.extend(["--limit", str(limit)])
+        return args
+
+    mode = str(ctx.request.extra_config.get("mode", "cerebras")).strip()
     args = [
         "bun",
         "run",
@@ -1256,7 +1585,7 @@ def _score_from_configbench(path: Path) -> ScoreSummary:
         if not isinstance(item, dict):
             continue
         name = str(item.get("handlerName", "")).lower()
-        if "eliza" in name:
+        if "eliza" in name or "harness bridge" in name:
             target = item
             break
     if target is None:
@@ -1562,11 +1891,14 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         or ctx.request.extra_config.get("harness")
         or ctx.request.agent
     ).strip().lower()
-    default_method = (
-        "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
-        if harness == "hermes"
-        else "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
-    )
+    if harness == "hermes":
+        default_method = "hermes_compactbench/compactors.py:HermesNativeToolCompactor"
+    elif harness == "openclaw":
+        default_method = (
+            "eliza_compactbench/openclaw_compactor.py:OpenClawNativeToolCompactor"
+        )
+    else:
+        default_method = "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     method = str(ctx.request.extra_config.get("method", default_method))
     compactbench_root = Path(adapter.cwd)
     venv_python = compactbench_root / ".venv" / "bin" / "python"
@@ -1614,6 +1946,7 @@ def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[
     env: dict[str, str] = {}
     if provider:
         env["HERMES_BENCH_PROVIDER"] = provider
+        env["OPENCLAW_BENCH_PROVIDER"] = provider
     return env
 
 
@@ -1848,17 +2181,20 @@ def _env_loca_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[st
         # LOCA relies on native OpenAI chat/tool payloads. OpenClaw's CLI
         # transport flattens those into text, so use the adapter's direct
         # OpenAI-compatible path for this benchmark-specific bridge.
+        env["LOCA_OPENCLAW_MODE"] = "direct-openai-compatible"
         env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
         env["OPENCLAW_USE_CLI"] = "0"
     return env
 
 
 def _command_interrupt_bench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:
+    harness = ctx.request.agent.strip().lower()
+    mode = "harness" if harness in {"eliza", "hermes", "openclaw"} else "cerebras"
     args = [
         "bun",
         "run",
         "src/runner.ts",
-        "--mode=cerebras",
+        f"--mode={mode}",
         f"--model={ctx.request.model}",
         f"--out={ctx.output_root}",
     ]
@@ -2021,8 +2357,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_new_tokens": 512,
         },
         "bfcl": {
-            "sample": 2,
-            "seed": 0,
+            "categories": ["multiple", "parallel"],
+            "max_per_category": 1,
         },
         "context_bench": {
             "quick": True,
@@ -2083,6 +2419,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "gauntlet": {
             "max_scenarios": 3,
+            "clone_mainnet": True,
         },
         "mmlu": {
             "limit": 2,
@@ -2090,25 +2427,24 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "mt_bench": {
             "limit": 1,
-            "max_tokens": 256,
-            "judge_max_tokens": 256,
+            "max_tokens": 1024,
+            "temperature": 0.0,
+            "judge_max_tokens": 512,
             "judge_provider": "cerebras",
             "judge_model": "gpt-oss-120b",
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {
-            "agent_max_turns": 6,
+            "agent_max_turns": 14,
             "domain": "retail",
             "max_tasks": 1,
             "num_trials": 1,
             "pass_k_values": [1],
-            "sample": True,
+            "user_strategy": "grounded",
         },
         "terminal_bench": {
             "max_tasks": 1,
-            "sample": True,
             "timeout": 180,
-            "no_docker": True,
             "no_markdown": True,
             "no_sessions": True,
             "no_leaderboard": True,
@@ -2119,11 +2455,12 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "visualwebbench": {
             "max_tasks": 1,
             "task_types": "web_caption",
+            "hf": True,
         },
         "vision_language": {
             "sub_benchmark": "textvqa",
             "samples": 5,
-            "tier": "stub",
+            "tier": "eliza-1-9b",
         },
         "abliteration-robustness": {
             "max_examples": 2,
@@ -2134,17 +2471,15 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "swe_bench": {
             "max_instances": 1,
-            "no_docker": True,
         },
         "swe_bench_orchestrated": {
             "max_instances": 1,
-            "no_docker": True,
             "execution_mode": "orchestrated",
             "providers": ["claude-code", "swe-agent", "codex"],
             "strict_capabilities": True,
         },
         "gaia_orchestrated": {
-            "dataset": "sample",
+            "dataset": "gaia",
             "max_questions": 5,
             "execution_mode": "orchestrated",
             "providers": ["claude-code", "swe-agent", "codex"],
@@ -2173,18 +2508,17 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "mmau": {
             "limit": 2,
             "no_traces": True,
+            "hf": True,
         },
         "voicebench_quality": {
             "suite": "openbookqa",
             "limit": 2,
-            "fixtures": True,
+            "stt_provider": _voicebench_quality_stt_provider(),
         },
         "voiceagentbench": {
             "suite": "single",
             "limit": 2,
             "seeds": 1,
-            "mock": True,
-            "no_judge": True,
         },
     }
     registry_dir_map = {
@@ -2343,6 +2677,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
                 "task": "should_respond",
                 "mode": "cerebras",
                 "n": 1,
+                "limit": 3,
             },
             default_timeout_seconds=1800,
         ),
@@ -2366,6 +2701,11 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             command_builder=_command_framework,
             result_patterns=["framework-results.json", "typescript-*.json", "results/*.json"],
             score_extractor=_score_from_framework,
+            default_extra_config={
+                "mode": "harness",
+                "scenarios": "single-message",
+                "iterations": 1,
+            },
         ),
         _make_extra_adapter(
             adapter_id="compactbench",
@@ -2477,7 +2817,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=score_extractor_factory.for_benchmark("webshop"),
             default_extra_config={
                 "max_tasks": 1,
-                "sample": True,
+                "max_turns": 6,
+                "profile": "small",
             },
         ),
         _make_extra_adapter(
@@ -2492,6 +2833,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "scenarios": [
                     "friend_supporter_tarot_01",
+                    "repeat_customer_tarot_01",
                 ],
                 "concurrency": 1,
                 "evaluator": "heuristic",
@@ -2541,8 +2883,9 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             default_extra_config={
                 "docker_cpu_cores": 2,
                 "headless": True,
-                "max_steps": 3,
+                "max_steps": 1,
                 "max_tasks": 1,
+                "observation_type": "screenshot",
                 "vm_ready_timeout_seconds": 21600,
             },
         ),

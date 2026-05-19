@@ -55,6 +55,11 @@ jobs:
         run: |
           echo "Release evidence gate is separate from scaffold CI: make ci-release-evidence"
 
+      - name: Fix permissions on docker-written reports
+        if: always()
+        continue-on-error: true
+        run: sudo chmod -R a+rX packages/chip/build packages/chip/verify || true
+
       - name: Upload regression artifacts
         uses: actions/upload-artifact@v4
         if: always()

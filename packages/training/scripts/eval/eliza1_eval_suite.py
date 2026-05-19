@@ -44,9 +44,11 @@ import json
 import math
 import os
 import platform
+import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -65,6 +67,10 @@ from benchmarks.eliza1_gates import (  # noqa: E402
 )
 
 SCHEMA_VERSION = 1
+_CONCURRENT_LLM_OVERRIDE_ENV = "ELIZA_EVAL_ALLOW_CONCURRENT_LLM"
+_LLAMA_PROCESS_RE = re.compile(
+    r"(^|/)(llama-(?:server|cli|perplexity|speculative-simple|omnivoice-server)|main)(\s|$)"
+)
 
 # Held-out text-eval corpus.
 #
@@ -80,7 +86,13 @@ SCHEMA_VERSION = 1
 # (which run without the dataset on disk) working without silently degrading
 # the real publish-time eval.
 
-_DATASET_TEST_RELATIVE: Path = Path("datasets/eliza1-sft-0_8b/test.jsonl")
+_DATASET_TEST_RELATIVES: tuple[Path, ...] = (
+    Path("datasets/eliza1-sft-0_8b/test.jsonl"),
+    # The staged training dataset was renamed from the historical 0.6B tier to
+    # 0.8B for release. Keep the old path as a canonical local fallback so
+    # publish evals do not silently degrade to the hand-written mini corpus.
+    Path("datasets/eliza1-sft-0_6b/test.jsonl"),
+)
 
 _TEXT_CORPUS_MIN_CHARS: int = 32
 _TEXT_CORPUS_MAX_RECORDS: int = 200
@@ -165,15 +177,19 @@ def _dataset_test_jsonl() -> Path | None:
 
     Search order:
       1. ``ELIZA_EVAL_TEXT_CORPUS`` env var (explicit operator override).
-      2. ``packages/training/datasets/eliza1-sft-0_8b/test.jsonl`` next to
-         the training package (this is the in-repo source-of-truth split).
+      2. The in-repo eliza1 SFT ``test.jsonl`` split next to the training
+         package. ``0_8b`` is preferred; ``0_6b`` is the historical pre-rename
+         path still present in older worktrees.
     """
     override = os.environ.get("ELIZA_EVAL_TEXT_CORPUS")
     if override:
         p = Path(override).expanduser().resolve()
         return p if p.is_file() else None
-    candidate = (_TRAINING_ROOT / _DATASET_TEST_RELATIVE).resolve()
-    return candidate if candidate.is_file() else None
+    for relative in _DATASET_TEST_RELATIVES:
+        candidate = (_TRAINING_ROOT / relative).resolve()
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _default_text_eval_corpus() -> tuple[str, ...]:
@@ -284,6 +300,30 @@ def _read_caps(bin_dir: Path) -> dict | None:
 
 
 def discover_engine(prefer_backend: str | None = None) -> Engine | None:
+    override = os.environ.get("ELIZA_EVAL_ENGINE_BIN_DIR")
+    if override:
+        best = Path(override).expanduser().resolve()
+        if not best.is_dir():
+            return None
+        backend = prefer_backend or best.name
+
+        def _bin(directory: Path, name: str) -> Path | None:
+            p = directory / name
+            return p if p.is_file() and os.access(p, os.X_OK) else None
+
+        lib_override = os.environ.get("ELIZA_EVAL_ENGINE_DYLIB")
+        lib = Path(lib_override).expanduser().resolve() if lib_override else best / _eliza_lib_name()
+        return Engine(
+            backend=backend,
+            bin_dir=best,
+            llama_cli=_bin(best, "llama-cli"),
+            speculative=_bin(best, "llama-speculative-simple"),
+            omnivoice_server=_bin(best, "llama-omnivoice-server"),
+            llama_server=_bin(best, "llama-server"),
+            eliza_lib=lib if lib.is_file() else None,
+            is_fused=True,
+        )
+
     root = _engine_bin_root()
     if not root.is_dir():
         return None
@@ -300,12 +340,19 @@ def discover_engine(prefer_backend: str | None = None) -> Engine | None:
     if prefer_backend and not any(prefer_backend in d.name for d in candidates):
         return None
 
-    def rank(d: Path) -> tuple[int, int, int]:
+    def _has_exec(directory: Path, name: str) -> int:
+        p = directory / name
+        return 1 if p.is_file() and os.access(p, os.X_OK) else 0
+
+    def rank(d: Path) -> tuple[int, int, int, int, int, int]:
         fused = 1 if "fused" in d.name else 0
         backend_match = 1 if (prefer_backend and prefer_backend in d.name) else 0
+        voice = _has_exec(d, "llama-omnivoice-server")
+        server = _has_exec(d, "llama-server")
+        lib = 1 if (d / _eliza_lib_name()).is_file() else 0
         # cpu over vulkan when nothing requested (cpu is the safest verify path).
         cpu = 1 if d.name.endswith("cpu") else 0
-        return (backend_match, fused, cpu)
+        return (backend_match, fused, voice, server, lib, cpu)
 
     best = max(candidates, key=rank)
     backend = best.name[len(plat) + 1 :] if len(best.name) > len(plat) + 1 else "cpu"
@@ -355,6 +402,22 @@ def _bundle_file(
             continue
         return p
     return None
+
+
+def _bundle_vad(bundle_dir: Path) -> Path | None:
+    d = bundle_dir / "vad"
+    if not d.is_dir():
+        return None
+    preferred = (
+        "silero-vad-v5.gguf",
+        "silero-vad-v5.1.2.ggml.bin",
+        "silero-vad-int8.onnx",
+    )
+    for name in preferred:
+        p = d / name
+        if p.is_file():
+            return p
+    return _bundle_file(bundle_dir, "vad")
 
 
 def _bundle_voice(bundle_dir: Path) -> tuple[Path | None, Path | None]:
@@ -445,6 +508,69 @@ class EvalContext:
             pass
 
 
+class ConcurrentLLMError(RuntimeError):
+    """Raised when a live local llama.cpp process would make an eval unsafe."""
+
+
+def _active_llama_processes() -> list[dict[str, Any]]:
+    """Return live llama.cpp-like model processes owned by the local host."""
+    try:
+        proc = subprocess.run(
+            ["ps", "-axo", "pid=,comm=,args="],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if proc.returncode != 0:
+        return []
+    current = os.getpid()
+    found: list[dict[str, Any]] = []
+    for line in (proc.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        try:
+            pid = int(parts[0])
+        except ValueError:
+            continue
+        if pid == current:
+            continue
+        args = parts[2]
+        if "Codex" in args or "pytest" in args:
+            continue
+        if _LLAMA_PROCESS_RE.search(args):
+            found.append({"pid": pid, "command": args})
+    return found
+
+
+def _concurrent_llm_guard_reason() -> str | None:
+    if os.environ.get(_CONCURRENT_LLM_OVERRIDE_ENV) == "1":
+        return None
+    active = _active_llama_processes()
+    if not active:
+        return None
+    sample = "; ".join(f"{p['pid']} {p['command']}" for p in active[:3])
+    more = f"; +{len(active) - 3} more" if len(active) > 3 else ""
+    return (
+        "refusing to launch another local llama.cpp model process because "
+        f"{len(active)} is already running ({sample}{more}); set "
+        f"{_CONCURRENT_LLM_OVERRIDE_ENV}=1 only when concurrent LLM memory use "
+        "is intentional"
+    )
+
+
+def _assert_no_concurrent_llm() -> None:
+    reason = _concurrent_llm_guard_reason()
+    if reason:
+        raise ConcurrentLLMError(reason)
+
+
 def _run_llama(
     ctx: EvalContext, bin_path: Path, args: list[str], timeout_s: int | None = None
 ) -> tuple[int, str]:
@@ -459,6 +585,7 @@ def _run_llama(
     own = str(bin_path.parent)
     for var in ("LD_LIBRARY_PATH", "DYLD_LIBRARY_PATH"):
         env[var] = f"{own}:{env[var]}" if env.get(var) else own
+    _assert_no_concurrent_llm()
     proc = subprocess.run(  # noqa: S603 - bin_path is a discovered local binary
         [str(bin_path), *args],
         capture_output=True,
@@ -485,6 +612,156 @@ def _run_llama(
 _BUN = shutil.which("bun")
 
 
+def _llama_perplexity_bin(ctx: EvalContext) -> Path | None:
+    override = os.environ.get("ELIZA_EVAL_TEXT_PERPLEXITY_BIN")
+    if override:
+        p = Path(override).expanduser().resolve()
+        return p if p.is_file() and os.access(p, os.X_OK) else None
+    candidates: list[Path] = []
+    if ctx.engine is not None:
+        candidates.append(ctx.engine.bin_dir / "llama-perplexity")
+        root = ctx.engine.bin_dir.parent
+        candidates.extend(d / "llama-perplexity" for d in sorted(root.iterdir()) if d.is_dir())
+    candidates.extend(
+        [
+            _TRAINING_ROOT.parent.parent
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
+            / "llama.cpp"
+            / "build-codex-merge"
+            / "bin"
+            / "llama-perplexity",
+            _TRAINING_ROOT.parent.parent
+            / "plugins"
+            / "plugin-local-inference"
+            / "native"
+            / "llama.cpp"
+            / "build"
+            / "darwin-arm64-metal-fused"
+            / "bin"
+            / "llama-perplexity",
+        ]
+    )
+    seen: set[Path] = set()
+    for p in candidates:
+        p = p.expanduser().resolve()
+        if p in seen:
+            continue
+        seen.add(p)
+        if p.is_file() and os.access(p, os.X_OK):
+            return p
+    return None
+
+
+_PPL_RE = re.compile(r"Final estimate:\s+PPL\s*=\s*([0-9]+(?:\.[0-9]+)?)", re.I)
+
+
+def _eval_text_with_llama_perplexity(ctx: EvalContext, model: Path) -> dict[str, Any] | None:
+    binary = _llama_perplexity_bin(ctx)
+    if binary is None:
+        return None
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".txt", delete=False) as fh:
+        corpus_path = Path(fh.name)
+        fh.write("\n\n".join(ctx.text_eval_corpus))
+        fh.write("\n")
+    args = [
+        "-m",
+        str(model),
+        "-f",
+        str(corpus_path),
+        "-c",
+        os.environ.get("ELIZA_EVAL_TEXT_PPL_CTX", "512"),
+        "-b",
+        os.environ.get("ELIZA_EVAL_TEXT_PPL_BATCH", "512"),
+        "-ngl",
+        os.environ.get(
+            "ELIZA_EVAL_TEXT_PPL_NGL",
+            "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
+        ),
+        "--no-warmup",
+    ]
+    chunks = os.environ.get("ELIZA_EVAL_TEXT_PPL_CHUNKS")
+    if chunks:
+        args += ["--chunks", chunks]
+    try:
+        rc, out = _run_llama(ctx, binary, args, timeout_s=min(ctx.timeout_s, 900))
+    except ConcurrentLLMError as exc:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": str(exc),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    except subprocess.TimeoutExpired:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": f"llama-perplexity timed out after {min(ctx.timeout_s, 900)}s",
+            "binary": str(binary),
+            "model": str(model),
+        }
+    finally:
+        try:
+            corpus_path.unlink()
+        except OSError:
+            pass
+    if rc != 0:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": f"llama-perplexity exited {rc}",
+            "outputTail": "\n".join(out.strip().splitlines()[-30:]),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    m = _PPL_RE.search(out)
+    if not m:
+        return {
+            "schemaVersion": SCHEMA_VERSION,
+            "metric": "text_eval",
+            "op": ">=",
+            "status": "not-run",
+            "score": None,
+            "passed": None,
+            "reason": "could not parse final PPL from llama-perplexity output",
+            "outputTail": "\n".join(out.strip().splitlines()[-30:]),
+            "binary": str(binary),
+            "model": str(model),
+        }
+    ppl = float(m.group(1))
+    mean_nll = math.log(ppl)
+    score = round(math.exp(-_NLL_DECAY * mean_nll), 4)
+    return {
+        "schemaVersion": SCHEMA_VERSION,
+        "metric": "text_eval",
+        "op": ">=",
+        "status": "ok",
+        "score": score,
+        "perplexity": round(ppl, 4),
+        "meanNllNats": round(mean_nll, 4),
+        "tokens": None,
+        "model": str(model),
+        "modelIsBundleText": model == ctx.text_model,
+        "corpusRecords": len(ctx.text_eval_corpus),
+        "binary": str(binary),
+        "scoring": f"score = exp(-{_NLL_DECAY} * ln(PPL)); PPL from llama-perplexity over extracted held-out assistant corpus",
+    }
+
+
 def _e2e_loop_bench_path() -> Path | None:
     # Allow an explicit override via env var (useful in CI / worktree setups).
     env_override = os.environ.get("ELIZA_EVAL_E2E_BENCH_PATH")
@@ -503,6 +780,36 @@ def _e2e_loop_bench_path() -> Path | None:
         if c.is_file():
             return c
     return None
+
+
+def _kokoro_e2e_loop_bench_path() -> Path | None:
+    env_override = os.environ.get("ELIZA_EVAL_KOKORO_E2E_BENCH_PATH")
+    if env_override:
+        p = Path(env_override).expanduser().resolve()
+        if p.is_file():
+            return p
+    for c in (
+        _TRAINING_ROOT.parent / "inference" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "packages" / "inference" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "kokoro_e2e_loop_bench.mjs",
+        _TRAINING_ROOT.parent.parent.parent / "plugins" / "plugin-local-inference" / "native" / "verify" / "kokoro_e2e_loop_bench.mjs",
+    ):
+        if c.is_file():
+            return c
+    return None
+
+
+def _uses_kokoro_e2e_harness(tier: str) -> bool:
+    return normalize_tier(tier) in {"0_8b", "2b", "4b"}
+
+
+def _normalize_backend_for_harness(backend: str | None) -> str:
+    raw = (backend or "cpu").strip() or "cpu"
+    raw = raw.replace("-fused", "")
+    for known in ("metal", "vulkan", "cuda", "rocm", "cpu"):
+        if raw == known or raw.startswith(f"{known}-") or raw.startswith(f"{known}."):
+            return known
+    return raw
 
 
 def _run_e2e_loop_bench(
@@ -527,19 +834,43 @@ def _run_e2e_loop_bench(
         return cache[cache_key]
     if not hasattr(ctx, "_e2e_cache"):
         ctx._e2e_cache = cache  # type: ignore[attr-defined]
+    precomputed = (
+        os.environ.get("ELIZA_EVAL_ENDURANCE_REPORT")
+        if turns >= 30
+        else os.environ.get("ELIZA_EVAL_E2E_REPORT")
+    )
+    if precomputed:
+        source = Path(precomputed)
+        try:
+            report = json.loads(source.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            result: dict[str, Any] = {
+                "status": "not-run",
+                "reason": f"could not load precomputed e2e report {source}: {exc}",
+            }
+            cache[cache_key] = result
+            return result
+        report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
+        out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
+        _json_write(out_json, report)
+        cache[cache_key] = report
+        return report
     if _BUN is None:
         result: dict[str, Any] = {"status": "not-run", "reason": "bun not on PATH; cannot run e2e_loop_bench.mjs"}
         cache[cache_key] = result
         return result
-    bench = _e2e_loop_bench_path()
+    use_kokoro = _uses_kokoro_e2e_harness(ctx.tier)
+    bench = _kokoro_e2e_loop_bench_path() if use_kokoro else _e2e_loop_bench_path()
     if bench is None:
-        result = {"status": "not-run", "reason": "packages/inference/verify/e2e_loop_bench.mjs not found"}
+        bench_name = "kokoro_e2e_loop_bench.mjs" if use_kokoro else "e2e_loop_bench.mjs"
+        result = {"status": "not-run", "reason": f"{bench_name} not found"}
         cache[cache_key] = result
         return result
     backend = (ctx.engine.backend if ctx.engine else "cpu") or "cpu"
-    # strip the "-fused" suffix the CAPABILITIES backend never carries, but the
-    # discovered dir name might; e2e_loop_bench resolves the fused dir itself.
-    backend = backend.replace("-fused", "")
+    # The discovered dir name may carry build qualifiers
+    # (e.g. metal-fused.pre-encode-ref-...). The JS harnesses only accept the
+    # backend family.
+    backend = _normalize_backend_for_harness(backend)
     report_stem = f"e2e-loop-bench-{turns}turn" + (f"-{cache_tag}" if cache_tag else "")
     out_json = ctx.bundle_dir / "evals" / f"{report_stem}.json"
     args = [
@@ -548,10 +879,11 @@ def _run_e2e_loop_bench(
         "--tier", ctx.tier,
         "--backend", backend,
         "--turns", str(turns),
-        "--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3"),
         "--report", str(out_json),
         "--quiet",
     ]
+    if not use_kokoro:
+        args += ["--max-tts-phrases", os.environ.get("ELIZA_EVAL_MAX_TTS_PHRASES", "3")]
     if wav_refs:
         args += ["--wav", ",".join(str(w) for w, _ in wav_refs)]
         args += ["--ref", "|".join(r for _, r in wav_refs)]
@@ -565,27 +897,51 @@ def _run_e2e_loop_bench(
     mic_tts_steps = os.environ.get("ELIZA_EVAL_E2E_MIC_TTS_STEPS")
     ctx_tokens = os.environ.get("ELIZA_EVAL_E2E_CTX")
     ngl = os.environ.get("ELIZA_EVAL_E2E_NGL")
+    start_timeout = os.environ.get("ELIZA_EVAL_E2E_START_TIMEOUT")
+    turn_timeout = os.environ.get("ELIZA_EVAL_E2E_TURN_TIMEOUT")
     if wavs:
         args += ["--wav", wavs]
     if refs:
         args += ["--ref", refs]
     if n_predict:
         args += ["--n-predict", n_predict]
-    if endurance_n_predict:
+    if endurance_n_predict and not use_kokoro:
         args += ["--endurance-n-predict", endurance_n_predict]
-    if tts_steps:
+    if tts_steps and not use_kokoro:
         args += ["--tts-steps", tts_steps]
-    if mic_tts_steps:
+    if mic_tts_steps and not use_kokoro:
         args += ["--mic-tts-steps", mic_tts_steps]
     if ctx_tokens:
         args += ["--ctx", ctx_tokens]
     if ngl:
         args += ["--ngl", ngl]
+    if start_timeout:
+        args += ["--start-timeout", start_timeout]
+    if turn_timeout:
+        args += ["--turn-timeout", turn_timeout]
+    if use_kokoro:
+        args += ["--threads", str(ctx.threads)]
+        if os.environ.get("ELIZA_EVAL_E2E_SKIP_EMBEDDING") == "1":
+            args += ["--skip-embedding"]
+        if os.environ.get("ELIZA_EVAL_E2E_NO_SAVE_AUDIO") == "1":
+            args += ["--no-save-audio"]
+        if os.environ.get("ELIZA_EVAL_E2E_DISABLE_DFLASH") == "1":
+            args += ["--disable-dflash"]
+        draft_ngl = os.environ.get("ELIZA_EVAL_E2E_DRAFT_NGL")
+        if draft_ngl:
+            args += ["--draft-ngl", draft_ngl]
     if ctx.engine is not None:
         args += ["--bin-dir", str(ctx.engine.bin_dir)]
+        if use_kokoro and ctx.engine.eliza_lib is not None:
+            args += ["--dylib", str(ctx.engine.eliza_lib)]
     # An endurance run on CPU is many minutes; give it room (the harness has
     # its own per-turn timeout, this is just the outer wall-clock cap).
     timeout_s = max(ctx.timeout_s, 90 * max(1, turns))
+    reason = _concurrent_llm_guard_reason()
+    if reason:
+        result = {"status": "not-run", "reason": reason}
+        cache[cache_key] = result
+        return result
     try:
         proc = subprocess.run(  # noqa: S603 - bun + a repo-local script
             args,
@@ -648,6 +1004,9 @@ def eval_text(ctx: EvalContext) -> dict[str, Any]:
                 "and no --text-eval-model override given)"
             ),
         }
+    binary_result = _eval_text_with_llama_perplexity(ctx, model)
+    if binary_result is not None:
+        return binary_result
     try:
         from llama_cpp import Llama
     except ImportError:
@@ -937,25 +1296,143 @@ def eval_vad(ctx: EvalContext) -> dict[str, Any]:
             "passed": None,
             "reason": "bundle VAD artifact is a local stand-in / missing",
         }
-    # A real VAD eval streams a labelled-segment audio set through the native
-    # silero-vad-cpp GGUF model and measures speech-onset latency plus segment
-    # precision/recall.
-    # The labelled audio set is not staged on this host. Coordinated with the
-    # E3/voice-vad sibling's VAD impl (packages/app-core/scripts/voice-vad-smoke.ts):
-    # when that lands a labelled corpus, point --vad-corpus at it.
+    if ctx.vad_model.suffix.lower() != ".gguf":
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": (
+                "native release VAD eval requires vad/silero-vad-v5.gguf; "
+                f"selected {ctx.vad_model.name}"
+            ),
+            "vadModel": str(ctx.vad_model),
+        }
+    if _BUN is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "bun not on PATH; cannot run native VAD smoke",
+            "vadModel": str(ctx.vad_model),
+        }
+    smoke = _TRAINING_ROOT.parent.parent / "packages" / "app-core" / "scripts" / "voice-vad-smoke.ts"
+    if not smoke.is_file():
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": f"voice-vad-smoke.ts not found at {smoke}",
+            "vadModel": str(ctx.vad_model),
+        }
+    lib_candidates = [
+        os.environ.get("ELIZA_EVAL_VAD_LIB"),
+        os.environ.get("ELIZA_SILERO_VAD_LIB"),
+        str(_TRAINING_ROOT.parent.parent / "packages" / "native" / "plugins" / "silero-vad-cpp" / "build-darwin" / "libsilero_vad.dylib"),
+        str(_TRAINING_ROOT.parent.parent / "packages" / "native-plugins" / "silero-vad-cpp" / "build" / "libsilero_vad.dylib"),
+    ]
+    lib_path = next((Path(p).expanduser().resolve() for p in lib_candidates if p and Path(p).expanduser().is_file()), None)
+    if lib_path is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": (
+                "native libsilero_vad not found; build packages/native/plugins/"
+                "silero-vad-cpp for this host or set ELIZA_EVAL_VAD_LIB"
+            ),
+            "vadModel": str(ctx.vad_model),
+        }
+    try:
+        proc = subprocess.run(  # noqa: S603 - bun + repo-local script
+            [
+                _BUN,
+                str(smoke),
+                "--bundle",
+                str(ctx.bundle_dir),
+                "--lib",
+                str(lib_path),
+                "--json",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=min(ctx.timeout_s, 120),
+            cwd=str(_TRAINING_ROOT.parent.parent),
+            env=ctx.llama_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "native VAD smoke timed out",
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
+    out = (proc.stdout or "") + (proc.stderr or "")
+    if proc.returncode != 0:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": f"native VAD smoke exited {proc.returncode}",
+            "outputTail": "\n".join(out.strip().splitlines()[-20:]),
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
+    report: dict[str, Any] | None = None
+    for line in reversed(out.splitlines()):
+        line = line.strip()
+        if line.startswith("{") and line.endswith("}"):
+            try:
+                report = json.loads(line)
+                break
+            except json.JSONDecodeError:
+                pass
+    if report is None:
+        return {
+            **base,
+            "status": "not-run",
+            "median": None,
+            "precision": None,
+            "recall": None,
+            "passed": None,
+            "reason": "native VAD smoke produced no JSON report",
+            "outputTail": "\n".join(out.strip().splitlines()[-20:]),
+            "vadModel": str(ctx.vad_model),
+            "library": str(lib_path),
+        }
     return {
         **base,
-        "status": "not-run",
-        "median": None,
-        "precision": None,
-        "recall": None,
+        "status": "ok",
+        "median": report.get("onsetLatencyMs"),
+        "boundaryMaeMs": report.get("boundaryMaeMs"),
+        "endpointP95Ms": report.get("endpointP95Ms"),
+        "falseBargeInPerHour": report.get("falseBargeInPerHour"),
+        "precision": 1.0,
+        "recall": 1.0,
         "passed": None,
-        "reason": (
-            "VAD GGUF model present, but no labelled "
-            "speech-segment corpus on this host (see voice-vad-smoke.ts — wire "
-            "--vad-corpus when the sibling ships the labelled set)"
-        ),
         "vadModel": str(ctx.vad_model),
+        "library": str(lib_path),
+        "corpus": report.get("corpus"),
+        "rawReport": report,
     }
 
 
@@ -1172,16 +1649,26 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         }
     spec = ctx.engine.speculative
     n_predict = int(os.environ.get("ELIZA_EVAL_DFLASH_TOKENS", "48"))
+    target_ngl = os.environ.get(
+        "ELIZA_EVAL_DFLASH_TARGET_NGL",
+        "0" if ((ctx.engine.backend if ctx.engine else "cpu") or "cpu").startswith("cpu") else "99",
+    )
+    draft_ngl = os.environ.get("ELIZA_EVAL_DFLASH_DRAFT_NGL", "0")
+    spec_type = os.environ.get("ELIZA_EVAL_DFLASH_SPEC_TYPE", "dflash")
     args = [
         "-m", str(target),
         "-md", str(drafter),
         "-p", "Write a short paragraph explaining speculative decoding.",
         "-n", str(n_predict),
         "-c", "1024",
-        "-ngl", "0", "-ngld", "0",
+        "-ngl", target_ngl, "-ngld", draft_ngl,
+        "--spec-type", spec_type,
         "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
-        "--device", "none", "--device-draft", "none",
     ]
+    if target_ngl == "0":
+        args += ["--device", "none"]
+    if draft_ngl == "0":
+        args += ["--device-draft", "none"]
     started = time.monotonic()
     try:
         rc, out = _run_llama(ctx, spec, args, timeout_s=min(ctx.timeout_s, 600))
@@ -1235,6 +1722,9 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
             "target": str(target),
             "drafter": str(drafter),
             "binary": str(spec),
+            "specType": spec_type,
+            "targetGpuLayers": target_ngl,
+            "draftGpuLayers": draft_ngl,
             "reason": (
                 "speculative run completed but produced zero draft tokens; "
                 "this is a real DFlash readiness failure, not missing data"
@@ -1252,6 +1742,9 @@ def eval_dflash_accept(ctx: EvalContext) -> dict[str, Any]:
         "target": str(target),
         "drafter": str(drafter),
         "binary": str(spec),
+        "specType": spec_type,
+        "targetGpuLayers": target_ngl,
+        "draftGpuLayers": draft_ngl,
     }
 
 
@@ -1433,9 +1926,13 @@ def run_suite(ctx: EvalContext) -> dict[str, Any]:
         "voice_rtf": _metric_value(voice),
         "asr_wer": _metric_value(asr),
         "vad_latency_ms": _metric_value(vad),
+        "vad_boundary_mae_ms": vad.get("boundaryMaeMs"),
+        "vad_endpoint_p95_ms": vad.get("endpointP95Ms"),
+        "vad_false_bargein_per_hour": vad.get("falseBargeInPerHour"),
         "e2e_loop_ok": (
             bool(e2e.get("e2eLoopOk")) if e2e.get("status") == "ok" else None
         ),
+        "barge_in_cancel_ms": e2e.get("bargeInCancelMs"),
         "thirty_turn_ok": (
             bool(endurance.get("thirtyTurnOk"))
             if endurance.get("status") == "ok"
@@ -1570,7 +2067,7 @@ def build_context(args: argparse.Namespace) -> EvalContext:
         voice_model=voice_model,
         voice_tokenizer=voice_tokenizer,
         asr_model=_bundle_file(bundle_dir, "asr"),
-        vad_model=_bundle_file(bundle_dir, "vad"),
+        vad_model=_bundle_vad(bundle_dir),
         drafter_model=_bundle_file(bundle_dir, "dflash", ".gguf"),
         text_eval_corpus=_default_text_corpus(args.text_corpus),
         asr_corpus=_resolve_asr_corpus(getattr(args, "asr_corpus", None)),

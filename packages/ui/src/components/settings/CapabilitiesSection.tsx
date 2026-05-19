@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, PlugZap } from "lucide-react";
+import { AlertTriangle, Cloud, Loader2, PlugZap } from "lucide-react";
 import {
   type FormEvent,
   type ReactNode,
@@ -29,6 +29,15 @@ interface AutoTrainingStatusResponse {
 
 type CapabilityRouterConnectResponse = {
   success?: boolean;
+  mode?:
+    | "endpoint"
+    | "cloud"
+    | "e2b"
+    | "home-machine"
+    | "mobile-companion"
+    | "desktop-companion";
+  provider?: "e2b" | "home-machine" | "mobile-companion" | "desktop-companion";
+  agentId?: string;
   endpoint?: {
     id?: string;
     baseUrl?: string;
@@ -51,9 +60,20 @@ export function CapabilitiesSection() {
   >(null);
   const [autoTrainingLoading, setAutoTrainingLoading] = useState(true);
   const [autoTrainingSaving, setAutoTrainingSaving] = useState(false);
+  const [capabilityConnectMode, setCapabilityConnectMode] = useState<
+    "endpoint" | "cloud"
+  >("endpoint");
+  const [capabilityEndpointProvider, setCapabilityEndpointProvider] = useState<
+    "direct" | "e2b" | "home-machine" | "mobile-companion" | "desktop-companion"
+  >("direct");
   const [capabilityEndpointUrl, setCapabilityEndpointUrl] = useState("");
   const [capabilityEndpointId, setCapabilityEndpointId] = useState("");
   const [capabilityEndpointToken, setCapabilityEndpointToken] = useState("");
+  const [capabilityCloudApiBase, setCapabilityCloudApiBase] = useState("");
+  const [capabilityCloudAuthToken, setCapabilityCloudAuthToken] = useState("");
+  const [capabilityCloudName, setCapabilityCloudName] = useState("");
+  const [capabilityCloudBio, setCapabilityCloudBio] = useState("");
+  const [capabilityAllowedModules, setCapabilityAllowedModules] = useState("");
   const [capabilityConnectLoading, setCapabilityConnectLoading] =
     useState(false);
   const [capabilityConnectError, setCapabilityConnectError] = useState<
@@ -124,8 +144,26 @@ export function CapabilitiesSection() {
     async (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault();
       const baseUrl = capabilityEndpointUrl.trim();
-      if (!baseUrl) {
+      const cloudApiBase = capabilityCloudApiBase.trim();
+      const cloudAuthToken = capabilityCloudAuthToken.trim();
+      const cloudName = capabilityCloudName.trim();
+      if (capabilityConnectMode === "endpoint" && !baseUrl) {
         setCapabilityConnectError("Endpoint URL is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+      if (capabilityConnectMode === "cloud" && !cloudApiBase) {
+        setCapabilityConnectError("Cloud API base URL is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+      if (capabilityConnectMode === "cloud" && !cloudAuthToken) {
+        setCapabilityConnectError("Cloud auth token is required.");
+        setCapabilityConnectResult(null);
+        return;
+      }
+      if (capabilityConnectMode === "cloud" && !cloudName) {
+        setCapabilityConnectError("Cloud sandbox name is required.");
         setCapabilityConnectResult(null);
         return;
       }
@@ -133,24 +171,67 @@ export function CapabilitiesSection() {
       setCapabilityConnectLoading(true);
       setCapabilityConnectError(null);
       setCapabilityConnectResult(null);
+      const allowedModuleIds = [
+        ...new Set(
+          capabilityAllowedModules
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+        ),
+      ];
       try {
         const response = await client.fetch<CapabilityRouterConnectResponse>(
           "/api/capability-router/connect",
           {
             method: "POST",
-            body: JSON.stringify({
-              endpoint: {
-                baseUrl,
-                ...(capabilityEndpointId.trim()
-                  ? { id: capabilityEndpointId.trim() }
-                  : {}),
-                ...(capabilityEndpointToken.trim()
-                  ? { token: capabilityEndpointToken.trim() }
-                  : {}),
-              },
-              persist: true,
-              unloadMissing: false,
-            }),
+            body: JSON.stringify(
+              capabilityConnectMode === "endpoint"
+                ? {
+                    ...(capabilityEndpointProvider === "direct"
+                      ? {}
+                      : { provider: capabilityEndpointProvider }),
+                    endpoint: {
+                      baseUrl,
+                      ...(capabilityEndpointId.trim()
+                        ? { id: capabilityEndpointId.trim() }
+                        : {}),
+                      ...(capabilityEndpointToken.trim()
+                        ? { token: capabilityEndpointToken.trim() }
+                        : {}),
+                    },
+                    persist: true,
+                    unloadMissing: false,
+                    ...(allowedModuleIds.length === 0
+                      ? {}
+                      : { allowedModuleIds }),
+                  }
+                : {
+                    cloud: {
+                      cloudApiBase,
+                      authToken: cloudAuthToken,
+                      name: cloudName,
+                      ...(capabilityCloudBio.trim()
+                        ? {
+                            bio: capabilityCloudBio
+                              .split("\n")
+                              .map((item) => item.trim())
+                              .filter(Boolean),
+                          }
+                        : {}),
+                      ...(capabilityEndpointId.trim()
+                        ? { endpointId: capabilityEndpointId.trim() }
+                        : {}),
+                      ...(capabilityEndpointToken.trim()
+                        ? { token: capabilityEndpointToken.trim() }
+                        : {}),
+                      ...(allowedModuleIds.length === 0
+                        ? {}
+                        : { allowedModuleIds }),
+                    },
+                    persist: true,
+                    unloadMissing: false,
+                  },
+            ),
           },
         );
         setCapabilityConnectResult(response);
@@ -164,7 +245,18 @@ export function CapabilitiesSection() {
         setCapabilityConnectLoading(false);
       }
     },
-    [capabilityEndpointId, capabilityEndpointToken, capabilityEndpointUrl],
+    [
+      capabilityAllowedModules,
+      capabilityCloudApiBase,
+      capabilityCloudAuthToken,
+      capabilityCloudBio,
+      capabilityCloudName,
+      capabilityConnectMode,
+      capabilityEndpointId,
+      capabilityEndpointProvider,
+      capabilityEndpointToken,
+      capabilityEndpointUrl,
+    ],
   );
 
   return (
@@ -257,6 +349,99 @@ export function CapabilitiesSection() {
             </div>
           </div>
         </div>
+        <div
+          className="inline-flex rounded-md border border-border p-0.5"
+          role="group"
+          aria-label="Capability router connection mode"
+        >
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs ${
+              capabilityConnectMode === "endpoint"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-strong"
+            }`}
+            aria-pressed={capabilityConnectMode === "endpoint"}
+            onClick={() => setCapabilityConnectMode("endpoint")}
+          >
+            <PlugZap className="h-3.5 w-3.5" aria-hidden />
+            Endpoint
+          </button>
+          <button
+            type="button"
+            className={`inline-flex items-center gap-1 rounded px-2 py-1 text-2xs ${
+              capabilityConnectMode === "cloud"
+                ? "bg-accent text-accent-foreground"
+                : "text-muted-strong"
+            }`}
+            aria-pressed={capabilityConnectMode === "cloud"}
+            onClick={() => setCapabilityConnectMode("cloud")}
+          >
+            <Cloud className="h-3.5 w-3.5" aria-hidden />
+            Cloud
+          </button>
+        </div>
+        {capabilityConnectMode === "cloud" ? (
+          <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+            <Input
+              value={capabilityCloudApiBase}
+              onChange={(event) =>
+                setCapabilityCloudApiBase(event.target.value)
+              }
+              placeholder="https://api.elizacloud.ai"
+              aria-label="Capability cloud API base URL"
+              autoComplete="url"
+              inputMode="url"
+            />
+            <Input
+              value={capabilityCloudAuthToken}
+              onChange={(event) =>
+                setCapabilityCloudAuthToken(event.target.value)
+              }
+              placeholder="Cloud API token"
+              aria-label="Capability cloud auth token"
+              type="password"
+              autoComplete="off"
+            />
+            <Input
+              value={capabilityCloudName}
+              onChange={(event) => setCapabilityCloudName(event.target.value)}
+              placeholder="Remote Tools Sandbox"
+              aria-label="Capability cloud sandbox name"
+              autoComplete="off"
+            />
+            <Input
+              value={capabilityCloudBio}
+              onChange={(event) => setCapabilityCloudBio(event.target.value)}
+              placeholder="Sandbox bio"
+              aria-label="Capability cloud sandbox bio"
+              autoComplete="off"
+            />
+          </div>
+        ) : null}
+        {capabilityConnectMode === "endpoint" ? (
+          <label className="block min-w-0">
+            <span className="mb-1 block text-2xs text-muted">
+              Capability endpoint provider
+            </span>
+            <select
+              value={capabilityEndpointProvider}
+              onChange={(event) =>
+                setCapabilityEndpointProvider(
+                  event.target.value as typeof capabilityEndpointProvider,
+                )
+              }
+              aria-label="Capability endpoint provider"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm outline-none ring-offset-background transition-colors focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              <option value="direct">Direct endpoint</option>
+              <option value="e2b">E2B sandbox</option>
+              <option value="home-machine">Home machine</option>
+              <option value="mobile-companion">Mobile companion</option>
+              <option value="desktop-companion">Desktop companion</option>
+            </select>
+          </label>
+        ) : null}
         <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_10rem]">
           <Input
             value={capabilityEndpointUrl}
@@ -265,6 +450,7 @@ export function CapabilitiesSection() {
             aria-label="Capability router endpoint URL"
             autoComplete="url"
             inputMode="url"
+            disabled={capabilityConnectMode === "cloud"}
           />
           <Input
             value={capabilityEndpointId}
@@ -274,13 +460,22 @@ export function CapabilitiesSection() {
             autoComplete="off"
           />
         </div>
-        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_auto]">
+        <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
           <Input
             value={capabilityEndpointToken}
             onChange={(event) => setCapabilityEndpointToken(event.target.value)}
             placeholder="Bearer token"
             aria-label="Capability router endpoint token"
             type="password"
+            autoComplete="off"
+          />
+          <Input
+            value={capabilityAllowedModules}
+            onChange={(event) =>
+              setCapabilityAllowedModules(event.target.value)
+            }
+            placeholder="module-id, other-module"
+            aria-label="Allowed remote module IDs"
             autoComplete="off"
           />
           <Button type="submit" disabled={capabilityConnectLoading}>

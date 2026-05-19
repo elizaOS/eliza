@@ -42,6 +42,23 @@
     "rocm": "evals/rocm_dispatch.json",
     "cpu": "evals/cpu_dispatch.json"
   },
+  "structuredResponse": {
+    "status": "pass",
+    "handler": "HANDLE_RESPONSE",
+    "rules": [
+      "handle-response-tool-call",
+      "closed-action-enum",
+      "eliza-schema-guided-decode",
+      "dflash-prefill",
+      "deterministic-repair"
+    ],
+    "testReports": {
+      "plannerGrammar": "plugins/plugin-local-inference/src/services/__tests__/planner-grammar.test.ts",
+      "structuredOutput": "plugins/plugin-local-inference/src/services/structured-output.test.ts",
+      "dflashStructured": "plugins/plugin-local-inference/src/services/dflash-structured.test.ts",
+      "deterministicRepair": "plugins/plugin-local-inference/src/services/structured-output/deterministic-repair.test.ts"
+    }
+  },
   "platformEvidence": {
     "darwin-arm64-metal": "evidence/platform/darwin-arm64-metal.json",
     "ios-arm64-metal": "evidence/platform/ios-arm64-metal.json",

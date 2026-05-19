@@ -1,11 +1,18 @@
 // @vitest-environment jsdom
 
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import userEvent from "@testing-library/user-event";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { fetchWithCsrf } from "../../api/csrf-client";
 import { TerminalPluginView } from "./TerminalPluginView";
+
+vi.mock("../../api/csrf-client", () => ({
+  fetchWithCsrf: vi.fn(),
+}));
 
 afterEach(() => {
   cleanup();
+  vi.mocked(fetchWithCsrf).mockReset();
 });
 
 describe("TerminalPluginView", () => {
@@ -47,5 +54,73 @@ describe("TerminalPluginView", () => {
     expect(screen.getByText("get-state")).toBeTruthy();
     expect(screen.getByText("get-text")).toBeTruthy();
     expect(screen.getByText("refresh")).toBeTruthy();
+  });
+
+  it("exposes commands as keyboard-selectable terminal controls", async () => {
+    vi.mocked(fetchWithCsrf).mockResolvedValue(
+      new Response(JSON.stringify({ success: true, result: { ok: true } }), {
+        status: 200,
+      }),
+    );
+    const events: unknown[] = [];
+    const handler = (event: Event) => {
+      events.push((event as CustomEvent).detail);
+    };
+    window.addEventListener("eliza:tui-command", handler);
+
+    try {
+      render(
+        <TerminalPluginView
+          id="model-tester"
+          label="Model Tester"
+          commands={["run-all-probes", "open-history"]}
+        />,
+      );
+
+      const firstCommand = screen.getByRole("button", {
+        name: "Run run-all-probes",
+      });
+      firstCommand.focus();
+      expect(document.activeElement).toBe(firstCommand);
+
+      await userEvent.keyboard("{Enter}");
+      expect(events).toEqual([
+        { viewId: "model-tester", command: "run-all-probes" },
+      ]);
+      expect(fetchWithCsrf).toHaveBeenCalledWith(
+        "/api/views/model-tester/interact?viewType=tui",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            capability: "run-all-probes",
+            timeoutMs: 5_000,
+          }),
+        },
+      );
+      expect(await screen.findByText(/"ok": true/)).toBeTruthy();
+    } finally {
+      window.removeEventListener("eliza:tui-command", handler);
+    }
+  });
+
+  it("renders command failures in the terminal transcript", async () => {
+    vi.mocked(fetchWithCsrf).mockResolvedValue(
+      new Response(JSON.stringify({ error: "unsupported capability" }), {
+        status: 400,
+        statusText: "Bad Request",
+      }),
+    );
+
+    render(
+      <TerminalPluginView id="wallet" label="Wallet" commands={["swap"]} />,
+    );
+
+    await userEvent.click(screen.getByRole("button", { name: "Run swap" }));
+
+    expect(await screen.findByText(/unsupported capability/)).toBeTruthy();
+    expect(
+      document.querySelector('[data-terminal-output="error"]'),
+    ).toBeTruthy();
   });
 });

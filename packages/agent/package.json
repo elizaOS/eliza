@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/agent",
-  "version": "2.0.0-beta.3",
+  "version": "2.0.0-beta.4",
   "description": "Standalone elizaOS-based agent and backend server package.",
   "type": "module",
   "license": "MIT",
@@ -46,8 +46,11 @@
     "format:fix": "bunx @biomejs/biome format --write src",
     "pack:dry-run": "cd dist && npm pack --dry-run",
     "test": "vitest run --config vitest.config.ts",
-    "test:remote-capabilities": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts packages/agent/src/services/remote-capability-router.test.ts packages/agent/src/services/remote-capability-cloud-sandbox.test.ts packages/agent/src/api/remote-capability-routes.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/core/src/capabilities/index.test.ts --coverage.enabled=false",
-    "test:remote-capabilities:docker": "cd ../.. && ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE=1 bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts --coverage.enabled=false"
+    "test:remote-capabilities": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts packages/agent/src/services/remote-capability-router.test.ts packages/agent/src/services/remote-capability-endpoint-provider.test.ts packages/agent/src/services/remote-capability-endpoint-conformance.test.ts packages/agent/src/services/remote-capability-cloud-sandbox.test.ts packages/agent/src/services/remote-capability-live-report.test.ts packages/agent/src/api/remote-capability-routes.test.ts packages/agent/src/__tests__/views-registry-integration.test.ts packages/core/src/capabilities/index.test.ts --coverage.enabled=false",
+    "test:remote-capabilities:source-build": "cd ../.. && bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"builds a remote plugin from source|loads a built remote plugin from a separate capability server process\" --coverage.enabled=false",
+    "test:remote-capabilities:docker": "cd ../.. && ELIZA_REMOTE_CAPABILITY_DOCKER_SMOKE=1 bunx vitest run packages/agent/src/services/remote-plugin-adapter.test.ts -t \"Docker container capability server\" --coverage.enabled=false",
+    "test:remote-capabilities:cloud-live": "cd ../.. && ELIZA_REMOTE_CAPABILITY_CLOUD_LIVE=1 bunx vitest run packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts --coverage.enabled=false",
+    "test:remote-capabilities:provider-live": "cd ../.. && ELIZA_REMOTE_CAPABILITY_PROVIDER_LIVE=1 bunx vitest run packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts --coverage.enabled=false"
   },
   "exports": {
     ".": {
@@ -117,6 +120,21 @@
       },
       "import": "./dist/runtime/*.js",
       "default": "./dist/runtime/*.js"
+    },
+    "./auth/*": {
+      "types": "./src/auth/*.ts",
+      "eliza-source": {
+        "types": "./src/auth/*.ts",
+        "import": "./src/auth/*.ts",
+        "default": "./src/auth/*.ts"
+      },
+      "bun": {
+        "types": "./src/auth/*.ts",
+        "import": "./src/auth/*.ts",
+        "default": "./src/auth/*.ts"
+      },
+      "import": "./dist/auth/*.js",
+      "default": "./dist/auth/*.js"
     },
     "./services/app-session-gate": {
       "types": "./src/services/app-session-gate.d.ts",

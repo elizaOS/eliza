@@ -2,13 +2,12 @@
  * Integration tests for `EngineVoiceBridge.startKokoroOnly` — the entry
  * point that constructs a Kokoro-backed bridge without an Eliza-1 bundle.
  *
- * No `vi.mock` here: `KokoroGgufRuntime` is the HTTP/llama-server
- * adapter and never opens a model file; `KokoroTtsBackend` only
- * constructs the adapter. The tests exercise the real classes against
- * a fake layout pointing at a never-read path.
+ * No `vi.mock` here: the runtimes are constructed lazily, and
+ * `KokoroTtsBackend` works the same way. The tests exercise the real
+ * classes against a fake layout pointing at a never-read path.
  *
  * The standalone integration script at `scripts/test-kokoro-tts.mjs`
- * covers the GGUF path against staged artifacts on disk.
+ * covers the real-ORT path against staged artifacts on disk.
  */
 
 import { mkdtempSync, rmSync } from "node:fs";
@@ -29,12 +28,11 @@ function makeKokoroConfig(rootOverride?: string): KokoroEngineDiscoveryResult {
 	return {
 		layout: {
 			root: rootOverride ?? "/tmp/fake-kokoro",
-			modelFile: "kokoro-82m-v1_0.gguf",
+			modelFile: "kokoro-v1.0.onnx",
 			voicesDir: path.join(rootOverride ?? "/tmp/fake-kokoro", "voices"),
 			sampleRate: 24_000,
 		},
 		defaultVoiceId: "af_bella",
-		runtimeKind: "gguf",
 	};
 }
 

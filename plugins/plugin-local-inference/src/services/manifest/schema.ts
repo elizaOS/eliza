@@ -200,16 +200,20 @@ export const Eliza1LineageSchema = z.object({
 	vad: lineageEntry.optional(),
 	wakeword: lineageEntry.optional(),
 	// Voice Wave 2 (2026-05-14): semantic end-of-turn detector lineage. When
-	// `files.turn` ships the bundled `livekit/turn-detector` GGUF (the
+	// `files.turn` ships the bundled `livekit/turn-detector` ONNX (the
 	// ≤1.7B-tier `v1.2.2-en` SmolLM2 distill or the ≥4B-tier `v0.4.1-intl`
-	// pruned Qwen2.5-0.5B), this records the upstream repo + license.
+	// pruned Qwen2.5-0.5B), this records the upstream repo + license. Apache-2.0
+	// fallback path is `latishab/turnsense`.
 	turn: lineageEntry.optional(),
 	// Voice Wave 2 (2026-05-14): acoustic-prosody emotion classifier lineage.
-	// When `files.emotion` ships the bundled `wav2small-msp-dim-int8.gguf`
-	// (72K params, ~120 KB), this records the audeering teacher repo + license
-	// as research-only attribution (the audeering teacher is CC-BY-NC-SA-4.0
+	// When `files.emotion` ships the bundled Wav2Small student GGUF (72K
+	// params), this records the audeering teacher repo + license as
+	// research-only attribution (the audeering teacher is CC-BY-NC-SA-4.0
 	// and NEVER bundled — only the Apache-2.0 student is shipped, distilled
-	// via `packages/training/scripts/emotion/distill_wav2small.py`).
+	// via `packages/training/scripts/emotion/distill_wav2small.py`). The
+	// SamLowe/roberta-base-go_emotions text classifier may optionally also
+	// ship under this slot when the operator enables the text-classifier
+	// shadow path; see R3-emotion.md §2.
 	emotion: lineageEntry.optional(),
 });
 
@@ -230,13 +234,12 @@ export const Eliza1FilesSchema = z.object({
 	dflash: z.array(Eliza1FileEntrySchema),
 	cache: z.array(Eliza1FileEntrySchema).min(1),
 	// Wave-6 (2026-05-10): the omni bundle ships a per-bundle dedicated
-	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers) and
-	// a Silero-VAD GGUF + an optional openWakeWord GGUF (replacing the
-	// previous three-file ONNX layout — the combined GGUF carries the
-	// mel filterbank + speech embedding model + every per-phrase head).
-	// All three are optional in the schema — the 0_8b tier intentionally
-	// omits the dedicated embedding (pools from text backbone) and a
-	// tier may ship without wake-word support.
+	// embedding model (Qwen3-Embedding-GGUF on non-lite tiers), a
+	// Silero-VAD GGUF, and an optional openWakeWord GGUF (the combined GGUF
+	// carries the mel filterbank + speech embedding model + every per-phrase
+	// head). All three are optional in the schema — the 0_8b tier
+	// intentionally omits the dedicated embedding (pools from text backbone)
+	// and a tier may ship without wake-word support.
 	//
 	// Schema-level optionality: empty array = "this bundle does not
 	// ship this component"; the validator enforces tier-specific
@@ -253,11 +256,13 @@ export const Eliza1FilesSchema = z.object({
 	// Voice Wave 2 (2026-05-14): bundled semantic turn detector. Optional —
 	// when omitted, the runtime falls back to `HeuristicEotClassifier` (the
 	// deterministic punctuation/conjunction baseline). When present, the
-	// runtime loads the GGUF via `LiveKitTurnDetector` (which dispatches to
-	// the GGML-backed `LiveKitGgmlTurnDetector`) and pre-warms it at
-	// voice-session start. Tier mapping is data-driven:
-	// 0_8b/2b ship the EN-only SmolLM2-135M distill (~40 MB Q8 GGUF);
-	// 4b/9b/27b ship the multilingual pruned Qwen2.5-0.5B (~280 MB Q8 GGUF).
+	// runtime loads the model via `LiveKitTurnDetector` (or
+	// `TurnsenseEotClassifier` for the Apache-2.0 fallback) and pre-warms it
+	// at voice-session start. Tier mapping is data-driven (see
+	// `stage_turn_detector` in
+	// `packages/training/scripts/manifest/stage_eliza1_bundle_assets.py`):
+	// 0_8b/2b ship the EN-only SmolLM2-135M distill; 4b/9b/27b ship the
+	// multilingual pruned Qwen2.5-0.5B.
 	turn: z.array(Eliza1FileEntrySchema).optional(),
 	// Eliza-1 EOT LoRA adapter — optional, complements `turn`. When
 	// present, the runtime layers this adapter onto the in-process
@@ -269,15 +274,14 @@ export const Eliza1FilesSchema = z.object({
 	// `packages/training/scripts/turn_detector/configs/turn_detector_eliza1_drafter.yaml`.
 	eotLoraAdapter: z.array(Eliza1FileEntrySchema).optional(),
 	// Voice Wave 2 (2026-05-14): bundled acoustic-prosody emotion classifier
-	// (Wav2Small student, ~120 KB int8 GGUF). Optional — when omitted, the
-	// runtime falls back to the lexicon + audio-prosody heuristic path inside
+	// (Wav2Small student, GGUF). Optional — when omitted, the runtime falls
+	// back to the lexicon + audio-prosody heuristic path inside
 	// `attributeVoiceEmotion()` (no acoustic-model evidence row). When present,
-	// the runtime loads the GGUF via `VoiceEmotionClassifier` (ggml-backed),
-	// runs it on `isFinal` transcript snapshots, and fuses the output with the
-	// Stage-1 text-emotion field via the single fusion point in
-	// `emotion-attribution.ts`.
+	// the runtime loads the GGUF via `VoiceEmotionClassifier`, runs it on
+	// `isFinal` transcript snapshots, and fuses the output with the Stage-1
+	// text-emotion field via the single fusion point in `emotion-attribution.ts`.
 	// All tiers ship the same Wav2Small student (the on-device budget is
-	// dominated by the LM, not this 120 KB head); a 0_8b bundle may still
+	// dominated by the LM, not this small head); a 0_8b bundle may still
 	// choose to omit it to save the cold-start cost.
 	emotion: z.array(Eliza1FileEntrySchema).optional(),
 });

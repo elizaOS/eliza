@@ -6,6 +6,7 @@ import {
   type CodingAgentTaskThreadDetail,
   client,
   EmptyWidgetState,
+  TerminalPluginView,
   useApp,
   WidgetSection,
 } from "@elizaos/ui";
@@ -948,4 +949,70 @@ export function CodingAgentTasksPanel({
       )}
     </WidgetSection>
   );
+}
+
+export function TaskCoordinatorTuiView() {
+  return (
+    <TerminalPluginView
+      id="task-coordinator"
+      label="Task Coordinator TUI"
+      description="Terminal coding agent task coordinator"
+      commands={[
+        "list-sessions",
+        "list-task-threads",
+        "open-thread",
+        "stop-session",
+        "refresh",
+      ]}
+      endpoints={[
+        "/api/coding-agents",
+        "/api/coding-agents/coordinator/threads",
+        "/api/coding-agents/coordinator/status",
+      ]}
+    />
+  );
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "list-sessions" || capability === "refresh") {
+    return client.getCodingAgentStatus();
+  }
+
+  if (capability === "list-task-threads") {
+    return client.listCodingAgentTaskThreads({
+      includeArchived: params?.includeArchived === true,
+      search: typeof params?.search === "string" ? params.search : undefined,
+      limit: typeof params?.limit === "number" ? params.limit : 30,
+    });
+  }
+
+  if (capability === "open-thread") {
+    const threadId =
+      typeof params?.threadId === "string" ? params.threadId.trim() : "";
+    if (threadId) {
+      return client.getCodingAgentTaskThread(threadId);
+    }
+    const [firstThread] = await client.listCodingAgentTaskThreads({
+      includeArchived: false,
+      limit: 1,
+    });
+    return firstThread ? client.getCodingAgentTaskThread(firstThread.id) : null;
+  }
+
+  if (capability === "stop-session") {
+    const sessionId =
+      typeof params?.sessionId === "string" ? params.sessionId.trim() : "";
+    if (!sessionId) {
+      return {
+        stopped: false,
+        reason: "sessionId is required to stop a coding agent session",
+      };
+    }
+    return client.stopCodingAgent(sessionId);
+  }
+
+  throw new Error(`Task Coordinator TUI does not support "${capability}".`);
 }

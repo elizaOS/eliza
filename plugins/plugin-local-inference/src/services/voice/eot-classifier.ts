@@ -13,24 +13,19 @@
  *   P(done) ≥ 0.6 AND silence ≥ 20 ms  → enter PAUSE_TENTATIVE early (start drafter)
  *   P(done) < 0.4                        → extend hangover by 50 ms (mid-clause)
  *
- * Available implementations:
+ * Three implementations ship:
  *
  *   `HeuristicEotClassifier` — deterministic, zero-latency, no model load.
- *     Always available baseline.
- *
- *   `LiveKitTurnDetector` — local GGUF-backed LiveKit turn detector. Wraps
- *     `LiveKitGgmlTurnDetector` (`eot-classifier-ggml.ts`); the upstream
- *     ONNX path has been retired. Two upstream revisions are bundled as
- *     GGUFs: `v1.2.2-en` (SmolLM2-135M, ~40 MB Q8 GGUF) for mobile tiers,
- *     and `v0.4.1-intl` (pruned Qwen2.5-0.5B, ~280 MB Q8 GGUF, 14
- *     languages) for desktop tiers.
+ *     This is the baseline; it is always available.
  *
  *   `RemoteEotClassifier` — fail-closed HTTP adapter for a real model server.
  *     It throws on network/parse errors so callers never mistake a synthetic
  *     fallback for a measured turn signal.
  *
- *   `Eliza1EotClassifier` — reuse the already-loaded chat target model for
- *     a P(`<|im_end|>`) read (LoRA hot-swap path; see `eliza1-eot-scorer`).
+ *   `Eliza1EotClassifier` — uses the already-loaded text model to compute
+ *     P(`<|im_end|>` | partial transcript). Zero additional model weights.
+ *
+ *   The GGUF-backed LiveKit detector lives in `eot-classifier-ggml.ts`.
  *
  * Cancellation contract (handshake with VoiceTurnController / R11): the
  * classifier emits a `VoiceTurnSignal` per partial transcript. It NEVER
@@ -39,20 +34,11 @@
  * suppress (via `BargeInCancelToken.signal` with reason `"turn-suppressed"`).
  */
 
-import { access } from "node:fs/promises";
-import { homedir } from "node:os";
-import path from "node:path";
 import type {
 	Eliza1EotScoreResult,
 	Eliza1EotScorerOptions,
 } from "./eliza1-eot-scorer";
 import { Eliza1EotScorer } from "./eliza1-eot-scorer";
-import {
-	createBundledLiveKitGgmlTurnDetector,
-	EotGgmlUnavailableError,
-	LiveKitGgmlTurnDetector,
-	type LiveKitGgmlTurnDetectorOptions,
-} from "./eot-classifier-ggml";
 
 // ---------------------------------------------------------------------------
 // Interface
@@ -135,8 +121,18 @@ export function turnSignalFromProbability(args: {
 /**
  * Rules-of-thumb EOT classifier. The rules fire in priority order; the first
  * match wins.
+ *
+ * Priority  Signal                                       P(done)
+ * --------  -------------------------------------------  -------
+ *   1       Sentence-final punctuation (. ! ?)            0.95
+ *   2       Question-tag words ("right?", "yeah?", "ok?") 0.85
+ *   3       Short utterance (< 3 words)                   0.70
+ *   4       Trailing conjunction (and/but/or/because/…)   0.15
+ *   5       Last word is a preposition or article         0.20
+ *   6       No signal                                     0.50
  */
 export class HeuristicEotClassifier implements EotClassifier {
+	/** Conjunctions that strongly suggest the user is mid-clause. */
 	private static readonly TRAILING_CONJUNCTIONS = new Set([
 		"and",
 		"but",
@@ -162,6 +158,7 @@ export class HeuristicEotClassifier implements EotClassifier {
 		"whose",
 	]);
 
+	/** Prepositions and articles that suggest an incomplete NP follows. */
 	private static readonly TRAILING_INCOMPLETE = new Set([
 		"a",
 		"an",
@@ -197,6 +194,7 @@ export class HeuristicEotClassifier implements EotClassifier {
 		"via",
 	]);
 
+	/** Question-tag suffixes that end an utterance (case-insensitive). */
 	private static readonly QUESTION_TAGS = [
 		"right?",
 		"yeah?",
@@ -215,15 +213,18 @@ export class HeuristicEotClassifier implements EotClassifier {
 		const text = partialTranscript.trim();
 		if (text.length === 0) return Promise.resolve(0.5);
 
+		// Rule 1 — sentence-final punctuation.
 		if (/[.!?]$/.test(text)) {
 			return Promise.resolve(0.95);
 		}
 
+		// Rule 2 — question-tag words at the end.
 		const lower = text.toLowerCase();
 		for (const tag of HeuristicEotClassifier.QUESTION_TAGS) {
 			if (lower.endsWith(tag)) return Promise.resolve(0.85);
 		}
 
+		// Split into words for word-level checks.
 		const words = text
 			.toLowerCase()
 			.replace(/[^a-z0-9'\s-]/gi, "")
@@ -233,16 +234,20 @@ export class HeuristicEotClassifier implements EotClassifier {
 
 		const lastWord = words[words.length - 1].replace(/[',;:-]+$/, "");
 
+		// Rule 3 — short utterance (< 3 words) → likely complete.
 		if (words.length < 3) return Promise.resolve(0.7);
 
+		// Rule 4 — trailing conjunction → mid-clause.
 		if (HeuristicEotClassifier.TRAILING_CONJUNCTIONS.has(lastWord)) {
 			return Promise.resolve(0.15);
 		}
 
+		// Rule 5 — trailing preposition or article → incomplete NP.
 		if (HeuristicEotClassifier.TRAILING_INCOMPLETE.has(lastWord)) {
 			return Promise.resolve(0.2);
 		}
 
+		// Rule 6 — no signal.
 		return Promise.resolve(0.5);
 	}
 
@@ -257,20 +262,21 @@ export class HeuristicEotClassifier implements EotClassifier {
 }
 
 // ---------------------------------------------------------------------------
-// LiveKit turn detector — GGUF/GGML path
+// Tier-aware GGUF variant resolver (shared with eot-classifier-ggml.ts)
 // ---------------------------------------------------------------------------
 
-/** HF repo holding the LiveKit turn detector GGUF variants. */
+/**
+ * Resolve which upstream revision a given Eliza-1 tier should bundle.
+ * Mobile/small tiers (`0_8b`, `2b`) get the English-only variant;
+ * desktop/server tiers (`4b`+) get the multilingual variant.
+ *
+ * Accepts both bare tier ids (`"4b"`) and prefixed catalog ids
+ * (`"eliza-1-4b"`).
+ */
 export const LIVEKIT_TURN_DETECTOR_HF_REPO = "livekit/turn-detector";
 export const LIVEKIT_TURN_DETECTOR_EN_REVISION = "v1.2.2-en";
 export const LIVEKIT_TURN_DETECTOR_INTL_REVISION = "v0.4.1-intl";
 
-/**
- * Resolve the upstream revision a given Eliza-1 tier should bundle.
- * Mobile/small tiers (`0_8b`, `2b`) get the EN-only SmolLM2-135M
- * distill (`v1.2.2-en`); desktop tiers (`4b`+) get the multilingual
- * pruned Qwen2.5-0.5B (`v0.4.1-intl`).
- */
 export function turnDetectorRevisionForTier(
 	tierId: string,
 ):
@@ -285,121 +291,34 @@ export function turnDetectorRevisionForTier(
 	return LIVEKIT_TURN_DETECTOR_INTL_REVISION;
 }
 
-export const DEFAULT_LIVEKIT_TURN_DETECTOR_DIR = path.join(
-	homedir(),
-	".eliza",
-	"local-inference",
-	"models",
-	"turn-detector",
-	"livekit-turn-detector",
-);
-
-export interface LiveKitTurnDetectorOptions {
-	/** Directory containing the GGUF and tokenizer files. */
-	modelDir?: string;
-	/** GGUF filename inside `modelDir`. */
-	ggufFilename?: string;
-	/** Upstream revision tag for telemetry. */
-	revision?: string;
-	/** Max history tokens. LiveKit's published runner uses 128. */
-	maxHistoryTokens?: number;
-	/** CPU execution threads. Default: 2. */
-	threads?: number;
-	/** Optional model label for telemetry. */
-	model?: string;
-}
-
-/**
- * Local LiveKit text turn detector. Thin wrapper over
- * `LiveKitGgmlTurnDetector` so callers keep importing the same name the
- * previous ONNX-backed implementation exposed.
- */
-export class LiveKitTurnDetector implements EotClassifier {
-	private readonly inner: LiveKitGgmlTurnDetector;
-
-	constructor(opts: LiveKitTurnDetectorOptions & { ggufPath?: string }) {
-		const ggufPath =
-			opts.ggufPath ??
-			path.join(
-				opts.modelDir ?? DEFAULT_LIVEKIT_TURN_DETECTOR_DIR,
-				opts.ggufFilename ?? "turn-detector-en-q8.gguf",
-			);
-		const innerOpts: LiveKitGgmlTurnDetectorOptions = {
-			ggufPath,
-			...(opts.revision !== undefined ? { revision: opts.revision } : {}),
-			...(opts.maxHistoryTokens !== undefined
-				? { maxHistoryTokens: opts.maxHistoryTokens }
-				: {}),
-			...(opts.model !== undefined ? { model: opts.model } : {}),
-			...(opts.threads !== undefined ? { threads: opts.threads } : {}),
-		};
-		this.inner = new LiveKitGgmlTurnDetector(innerOpts);
-	}
-
-	async score(partialTranscript: string): Promise<number> {
-		return this.inner.score(partialTranscript);
-	}
-
-	async signal(partialTranscript: string): Promise<VoiceTurnSignal> {
-		return this.inner.signal(partialTranscript);
-	}
-
-	async dispose(): Promise<void> {
-		await this.inner.dispose();
-	}
-}
-
-/**
- * Construct a `LiveKitTurnDetector` if the bundle has the GGUF on
- * disk. Returns `null` if no GGUF is found — the caller falls back to
- * {@link HeuristicEotClassifier}.
- *
- * Resolution order is delegated to `createBundledLiveKitGgmlTurnDetector`.
- */
-export async function createBundledLiveKitTurnDetector(
-	opts: LiveKitTurnDetectorOptions = {},
-): Promise<LiveKitTurnDetector | null> {
-	try {
-		const inner = await createBundledLiveKitGgmlTurnDetector({
-			...(opts.modelDir !== undefined ? { modelDir: opts.modelDir } : {}),
-			...(opts.revision !== undefined ? { revision: opts.revision } : {}),
-			...(opts.maxHistoryTokens !== undefined
-				? { maxHistoryTokens: opts.maxHistoryTokens }
-				: {}),
-			...(opts.threads !== undefined ? { threads: opts.threads } : {}),
-		});
-		if (!inner) return null;
-		// Re-construct the wrapper so the public surface stays
-		// `LiveKitTurnDetector`. The inner ggml detector is the same shape
-		// either way.
-		return new LiveKitTurnDetector({
-			ggufPath: inner.ggufPath,
-			...(opts.revision !== undefined ? { revision: opts.revision } : {}),
-			...(opts.maxHistoryTokens !== undefined
-				? { maxHistoryTokens: opts.maxHistoryTokens }
-				: {}),
-			...(opts.threads !== undefined ? { threads: opts.threads } : {}),
-		});
-	} catch (err) {
-		if (err instanceof EotGgmlUnavailableError) return null;
-		throw err;
-	}
-}
-
 // ---------------------------------------------------------------------------
 // Remote model adapter
 // ---------------------------------------------------------------------------
 
 export interface RemoteEotClassifierOptions {
+	/**
+	 * HTTP endpoint to POST the partial transcript to. Expected to return JSON
+	 * with a `p_done` field: `{ "p_done": 0.92 }`.
+	 *
+	 * Example: LiveKit turn-detector inference endpoint or a custom model server.
+	 */
 	endpoint: string;
+	/**
+	 * Timeout in milliseconds for each HTTP request. Default 200 ms — the
+	 * classifier must be faster than the silence hangover it's trying to beat.
+	 */
 	timeoutMs?: number;
+	/** Optional model label for telemetry. */
 	model?: string;
 }
 
 /**
  * Remote EOT classifier. POSTs `{ transcript: string }` to `endpoint`
- * and expects `{ p_done: number }` back. Fail-closed: no fallback score
- * is manufactured on network or parse errors.
+ * and expects `{ p_done: number }` back.
+ *
+ * Intended to be wired to a real LiveKit turn-detector HTTP API or a custom
+ * model inference server. This adapter fails closed: no fallback score is
+ * manufactured on network or parse errors.
  */
 export class RemoteEotClassifier implements EotClassifier {
 	private readonly endpoint: string;
@@ -461,11 +380,22 @@ export class RemoteEotClassifier implements EotClassifier {
 // Thresholds (shared constants so tests and state machine stay in sync)
 // ---------------------------------------------------------------------------
 
+/** P(done) ≥ this AND silence ≥ EOT_COMMIT_SILENCE_MS → commit immediately. */
 export const EOT_COMMIT_THRESHOLD = 0.9;
+
+/** P(done) ≥ this AND silence ≥ EOT_TENTATIVE_SILENCE_MS → enter PAUSE_TENTATIVE early. */
 export const EOT_TENTATIVE_THRESHOLD = 0.6;
+
+/** P(done) < this → extend hangover by EOT_HANGOVER_EXTENSION_MS. */
 export const EOT_MID_CLAUSE_THRESHOLD = 0.4;
+
+/** Minimum silence (ms) required alongside P ≥ EOT_COMMIT_THRESHOLD to commit. */
 export const EOT_COMMIT_SILENCE_MS = 50;
+
+/** Minimum silence (ms) required alongside P ≥ EOT_TENTATIVE_THRESHOLD to start drafter. */
 export const EOT_TENTATIVE_SILENCE_MS = 20;
+
+/** How many ms to add to the pause hangover when P < EOT_MID_CLAUSE_THRESHOLD. */
 export const EOT_HANGOVER_EXTENSION_MS = 50;
 
 // ---------------------------------------------------------------------------
@@ -475,9 +405,14 @@ export const EOT_HANGOVER_EXTENSION_MS = 50;
 export type { Eliza1EotScoreResult, Eliza1EotScorerOptions };
 
 /**
- * Eliza-1 EOT classifier. Reuses the already-loaded text model (the
- * eliza-1 drafter — same model DFlash keeps warm for speculative
- * decoding) to compute P(`<|im_end|>` | partial transcript).
+ * Eliza-1 EOT classifier. Reuses the already-loaded text model (typically
+ * the eliza-1 drafter — same model DFlash keeps warm for speculative
+ * decoding) to compute P(`<|im_end|>` | partial transcript). Optionally
+ * loads a fine-tuned EOT LoRA adapter on top of the base weights — see
+ * `packages/training/scripts/turn_detector/` for the training recipe.
+ *
+ * Unlike the GGUF-backed `LiveKitGgmlTurnDetector`, this classifier ships
+ * zero additional model weights — it leans on what's already in RAM.
  */
 export class Eliza1EotClassifier implements EotClassifier {
 	private readonly scorer: Eliza1EotScorer;
@@ -508,40 +443,9 @@ export class Eliza1EotClassifier implements EotClassifier {
 	}
 }
 
-// ---------------------------------------------------------------------------
-// Removed ONNX/HF assets (kept as no-ops for back-compat)
-// ---------------------------------------------------------------------------
-
-/**
- * @deprecated The runtime no longer loads ONNX turn-detector graphs;
- * every variant ships as a GGUF and runs through `LiveKitGgmlTurnDetector`.
- * Kept as a sentinel string so legacy bundle stagers do not break at
- * import-time. Consume via the GGUF asset paths in
- * `eot-classifier-ggml.ts` instead.
- */
-export const DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX = "onnx/model_q8.onnx";
-
-/** @deprecated Legacy filename — see `DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX`. */
-export const LEGACY_LIVEKIT_TURN_DETECTOR_ONNX = "model_quantized.onnx";
-
-/**
- * @deprecated Convenience helper for callers that need to test whether
- * the *file* exists on disk. The runtime no longer loads ONNX, so this
- * is purely an artifact-presence probe used by the bundle stager.
- */
-export async function bundleHasLegacyOnnxTurnDetector(
-	modelDir: string,
-): Promise<boolean> {
-	for (const candidate of [
-		DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
-		LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
-	]) {
-		try {
-			await access(path.join(modelDir, candidate));
-			return true;
-		} catch {
-			// keep probing
-		}
-	}
-	return false;
+export async function createBundledLiveKitTurnDetector(_opts?: {
+	modelDir?: string;
+	revision?: string;
+}): Promise<EotClassifier | null> {
+	return null;
 }

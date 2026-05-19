@@ -52,6 +52,14 @@ export default defineConfig({
         replacement: path.join(monorepoRoot, "packages/vault/src/$1"),
       },
       {
+        find: /^@elizaos\/tui$/,
+        replacement: path.join(monorepoRoot, "packages/tui/src/index.ts"),
+      },
+      {
+        find: /^@elizaos\/tui\/(.+)$/,
+        replacement: path.join(monorepoRoot, "packages/tui/src/$1"),
+      },
+      {
         find: /^@elizaos\/plugin-cli$/,
         replacement: path.join(
           repoRoot,

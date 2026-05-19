@@ -17,6 +17,7 @@ export interface CapabilityRouterConnectOptions {
   requestTimeoutMs?: string;
   provisionTimeoutMs?: string;
   pollIntervalMs?: string;
+  allowedModule?: string[];
   json?: boolean;
 }
 
@@ -35,7 +36,9 @@ type ConnectPayload = {
     token?: string;
     timeoutMs?: number;
     pollIntervalMs?: number;
+    allowedModuleIds?: string[];
   };
+  allowedModuleIds?: string[];
   unloadMissing?: boolean;
   persist?: boolean;
   requestTimeoutMs?: number;
@@ -131,9 +134,11 @@ function buildConnectPayload(
   const unloadMissing = options.keepMissing
     ? false
     : (options.unloadMissing ?? true);
+  const allowedModuleIds = normalizeStringList(options.allowedModule);
   const base = {
     unloadMissing,
     persist: options.persist ?? true,
+    ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
     ...(requestTimeoutMs === undefined ? {} : { requestTimeoutMs }),
   };
 
@@ -202,6 +207,7 @@ function buildConnectPayload(
           : {}),
         ...(timeoutMs === undefined ? {} : { timeoutMs }),
         ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
+        ...(allowedModuleIds.length === 0 ? {} : { allowedModuleIds }),
       },
     };
   }
@@ -237,6 +243,11 @@ function parsePositiveInteger(
     return new Error(`${label} must be a positive integer.`);
   }
   return parsed;
+}
+
+function normalizeStringList(values: string[] | undefined): string[] {
+  if (!values?.length) return [];
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
 
 function fail(

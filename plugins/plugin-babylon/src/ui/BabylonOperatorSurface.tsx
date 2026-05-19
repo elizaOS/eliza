@@ -19,7 +19,7 @@ import {
   toneForViewerAttachment,
   useApp,
 } from "@elizaos/app-core";
-import { Button, Input } from "@elizaos/ui";
+import { Button, Input, TerminalPluginView } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   type BabylonAgentSummaryEnvelope,
@@ -562,4 +562,81 @@ export function BabylonOperatorSurface({
       </div>
     </section>
   );
+}
+
+export function BabylonTuiView() {
+  return (
+    <TerminalPluginView
+      id="babylon"
+      label="Babylon TUI"
+      description="Terminal Babylon prediction market operator dashboard"
+      commands={[
+        "get-state",
+        "refresh-agent-status",
+        "open-live-dashboard",
+        "send-team-message",
+      ]}
+      endpoints={[
+        "/api/apps/babylon/agent/status",
+        "/api/apps/babylon/team/dashboard",
+        "/api/apps/babylon/markets",
+      ]}
+    />
+  );
+}
+
+async function readBabylonJson(response: Response): Promise<unknown> {
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      text || `[babylon] ${response.status} ${response.statusText}`.trim(),
+    );
+  }
+  return text ? JSON.parse(text) : {};
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "get-state" || capability === "refresh-agent-status") {
+    const [status, dashboard, markets] = await Promise.all([
+      fetch("/api/apps/babylon/agent/status", {
+        headers: { Accept: "application/json" },
+      }).then(readBabylonJson),
+      fetch("/api/apps/babylon/team/dashboard", {
+        headers: { Accept: "application/json" },
+      }).then(readBabylonJson),
+      fetch("/api/apps/babylon/markets?pageSize=5", {
+        headers: { Accept: "application/json" },
+      }).then(readBabylonJson),
+    ]);
+    return { status, dashboard, markets };
+  }
+
+  if (capability === "open-live-dashboard") {
+    return {
+      path: "/babylon",
+      endpoints: [
+        "/api/apps/babylon/agent/status",
+        "/api/apps/babylon/team/dashboard",
+        "/api/apps/babylon/markets",
+      ],
+    };
+  }
+
+  if (capability === "send-team-message") {
+    const content =
+      typeof params?.content === "string" && params.content.trim()
+        ? params.content.trim()
+        : "Terminal status check";
+    const response = await fetch("/api/apps/babylon/team/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    });
+    return readBabylonJson(response);
+  }
+
+  throw new Error(`Babylon TUI does not support "${capability}".`);
 }

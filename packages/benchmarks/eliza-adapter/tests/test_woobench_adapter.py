@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 from eliza_adapter.client import MessageResponse
-from eliza_adapter.woobench import build_eliza_bridge_agent_fn
+from eliza_adapter.woobench import _WOOBENCH_SYSTEM_HINT, build_eliza_bridge_agent_fn
 
 
 class _FakeClient:
@@ -18,6 +18,7 @@ class _FakeClient:
         return {"ok": True, "benchmark": benchmark}
 
     def send_message(self, text: str, context: dict[str, object]) -> MessageResponse:
+        self.last_context = context
         return MessageResponse(
             text=f"reply to {text}",
             thought=None,
@@ -51,3 +52,87 @@ def test_woobench_adapter_resets_when_conversation_object_is_reused() -> None:
 
     assert len(client.reset_task_ids) == 2
     assert client.reset_task_ids[0] != client.reset_task_ids[1]
+
+
+def test_woobench_adapter_forwards_system_message_and_payment_actions() -> None:
+    client = _FakeClient()
+    agent_fn = build_eliza_bridge_agent_fn(client=client, model_name="test-model")
+
+    asyncio.run(agent_fn([{"role": "user", "content": "read my cards"}]))
+
+    context = client.last_context
+    assert context["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
+    assert context["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
+    assert context["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
+    assert context["tools"][0]["function"]["name"] == "CREATE_APP_CHARGE"
+
+
+def test_woobench_adapter_synthesizes_visible_payment_text() -> None:
+    class _PaymentClient(_FakeClient):
+        def send_message(self, text: str, context: dict[str, object]) -> MessageResponse:
+            self.last_context = context
+            return MessageResponse(
+                text="",
+                thought=None,
+                actions=["BENCHMARK_ACTION"],
+                params={
+                    "tool_calls": [
+                        {
+                            "type": "function",
+                            "function": {
+                                "name": "CREATE_APP_CHARGE",
+                                "arguments": '{"amount_usd": 10, "provider": "oxapay"}',
+                            },
+                        }
+                    ]
+                },
+                metadata={},
+            )
+
+    client = _PaymentClient()
+    agent_fn = build_eliza_bridge_agent_fn(client=client)
+
+    result = asyncio.run(agent_fn([{"role": "user", "content": "read my cards"}]))
+
+    assert "full reading after $10.00" in result.text
+    assert result.actions == ["BENCHMARK_ACTION"]
+
+
+def test_woobench_adapter_removes_payment_tools_after_payment_check() -> None:
+    class _StateClient(_FakeClient):
+        def __init__(self) -> None:
+            super().__init__()
+            self.contexts: list[dict[str, object]] = []
+            self.calls = 0
+
+        def send_message(self, text: str, context: dict[str, object]) -> MessageResponse:
+            self.contexts.append(context)
+            self.calls += 1
+            if self.calls == 1:
+                params = {"BENCHMARK_ACTION": {"command": "CREATE_APP_CHARGE", "amount_usd": 10}}
+            elif self.calls == 2:
+                params = {"BENCHMARK_ACTION": {"command": "CHECK_PAYMENT"}}
+            else:
+                params = {}
+            return MessageResponse(
+                text="ok",
+                thought=None,
+                actions=["BENCHMARK_ACTION"] if params else [],
+                params=params,
+                metadata={},
+            )
+
+    client = _StateClient()
+    agent_fn = build_eliza_bridge_agent_fn(client=client)
+    history = [{"role": "user", "content": "read my cards"}]
+
+    asyncio.run(agent_fn(history))
+    history.extend([{"role": "assistant", "content": "ok"}, {"role": "user", "content": "paid"}])
+    asyncio.run(agent_fn(history))
+    history.extend([{"role": "assistant", "content": "ok"}, {"role": "user", "content": "continue"}])
+    asyncio.run(agent_fn(history))
+
+    assert [tool["function"]["name"] for tool in client.contexts[1]["tools"]] == ["CHECK_PAYMENT"]
+    assert client.contexts[2]["tools"] == []
+    assert client.contexts[2]["tool_choice"] == "none"
+    assert "already been paid and verified" in client.contexts[2]["system_prompt"]

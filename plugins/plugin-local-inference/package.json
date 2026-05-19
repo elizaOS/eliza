@@ -1,6 +1,6 @@
 {
 	"name": "@elizaos/plugin-local-inference",
-	"version": "2.0.0-beta.3",
+	"version": "2.0.0-beta.4",
 	"description": "Eliza-1 local provider plus HTTP routes for local model catalog, downloads, hardware detection, and chat commands.",
 	"type": "module",
 	"main": "dist/index.js",
@@ -82,19 +82,19 @@
 		"phonemizer": "^1.2.1"
 	},
 	"optionalDependencies": {
-		"llama-cpp-capacitor": "0.1.5"
+		"node-llama-cpp": "3.18.1"
 	},
 	"peerDependencies": {
 		"@elizaos/core": "workspace:*",
 		"@elizaos/shared": "workspace:*"
 	},
 	"peerDependenciesMeta": {
-		"llama-cpp-capacitor": {
+		"node-llama-cpp": {
 			"optional": true
 		}
 	},
 	"trustedDependencies": [
-		"llama-cpp-capacitor"
+		"node-llama-cpp"
 	],
 	"devDependencies": {
 		"@biomejs/biome": "^2.4.14",

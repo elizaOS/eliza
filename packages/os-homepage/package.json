@@ -39,6 +39,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "playwright": "^1.59.1",
+    "rollup-plugin-visualizer": "^7.0.1",
     "typescript": "^6.0.3"
   }
 }

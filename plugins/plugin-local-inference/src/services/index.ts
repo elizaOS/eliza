@@ -79,6 +79,11 @@ export {
 } from "./handler-registry";
 export { assessFit, probeHardware } from "./hardware";
 export {
+	createImageDescriptionRuntime,
+	type ImageDescriptionRuntime,
+	type ImageDescriptionRuntimeOptions,
+} from "./image-description-runtime";
+export {
 	InferenceTelemetry,
 	inferenceTelemetry,
 	type TelemetryTags,

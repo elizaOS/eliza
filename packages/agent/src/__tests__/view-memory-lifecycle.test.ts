@@ -12,7 +12,7 @@
 
 import { EventEmitter } from "node:events";
 import type { Plugin, ViewDeclaration } from "@elizaos/core";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   getView,
   listViews,
@@ -101,7 +101,7 @@ describe("repeated register/unregister cycles", () => {
 
   it("re-registering after unregister yields exactly the original view ids", async () => {
     const plugin = makePlugin("bounded-plugin", 3);
-    const expectedIds = plugin.views!.map((v) => v.id).sort();
+    const expectedIds = plugin.views?.map((v) => v.id).sort();
 
     for (let i = 0; i < 10; i++) {
       await register(plugin);
@@ -233,7 +233,7 @@ describe("WeakRef collectability after unregister", () => {
     const plugin = makePlugin("weakref-plugin", 1);
     await register(plugin);
 
-    const viewId = plugin.views![0].id;
+    const viewId = plugin.views?.[0].id;
     const entry = getView(viewId);
     expect(entry).toBeDefined();
 
@@ -285,7 +285,7 @@ describe("no EventEmitter listener accumulation", () => {
 
     const listenerFns: Array<() => void> = [];
 
-    async function loadCycle(i: number): Promise<void> {
+    async function loadCycle(_i: number): Promise<void> {
       const fn = () => {};
       listenerFns.push(fn);
       emitter.on(EVENT, fn);

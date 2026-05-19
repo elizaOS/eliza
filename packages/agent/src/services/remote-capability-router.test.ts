@@ -68,6 +68,65 @@ describe("remote capability router", () => {
     });
   });
 
+  it("rejects ambiguous or malformed remote endpoint configuration", () => {
+    expect(
+      () =>
+        new RemoteCapabilityRouterService(makeRuntime(), {
+          enabled: true,
+          endpoints: [
+            { id: "device", baseUrl: "https://device.example" },
+            { id: " device ", baseUrl: "https://other-device.example" },
+          ],
+          environment: "server",
+          requestTimeoutMs: 1000,
+        }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "CAPABILITY_DECODE_FAILED",
+        method: "capability-router.configure",
+        message:
+          'Remote capability endpoint id "device" is configured more than once.',
+      }),
+    );
+
+    expect(
+      () =>
+        new RemoteCapabilityRouterService(makeRuntime(), {
+          enabled: true,
+          endpoints: [
+            { id: "device", baseUrl: "https://device.example/" },
+            { id: "cloud", baseUrl: "https://device.example" },
+          ],
+          environment: "server",
+          requestTimeoutMs: 1000,
+        }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "CAPABILITY_DECODE_FAILED",
+        method: "capability-router.configure",
+        message:
+          'Remote capability endpoint URL "https://device.example" is configured more than once.',
+      }),
+    );
+
+    expect(
+      () =>
+        new RemoteCapabilityRouterService(makeRuntime(), {
+          enabled: true,
+          endpoints: [{ id: "device", baseUrl: "file:///tmp/capability" }],
+          environment: "server",
+          requestTimeoutMs: 1000,
+        }),
+    ).toThrowError(
+      expect.objectContaining({
+        code: "CAPABILITY_DECODE_FAILED",
+        method: "capability-router.configure",
+        message:
+          "Remote capability endpoint baseUrl must be an absolute http(s) URL.",
+      }),
+    );
+  });
+
   it("routes capability calls through the canonical HTTP invoke endpoint", async () => {
     const calls: Array<{
       url: string;
@@ -266,6 +325,18 @@ describe("remote capability router", () => {
             {
               id: "remote-demo",
               name: "@remote/demo",
+              config: {
+                REMOTE_MODE: "demo",
+                retryCount: 2,
+                enabled: true,
+                nullable: null,
+              },
+              schema: {
+                remote_demo_records: {
+                  id: "uuid",
+                  message: "text",
+                },
+              },
               actions: [
                 {
                   name: "REMOTE_DEMO",
@@ -280,8 +351,34 @@ describe("remote capability router", () => {
                   schema: { type: "object" },
                 },
               ],
+              responseHandlerEvaluators: [
+                {
+                  name: "REMOTE_RESPONSE_HANDLER",
+                  description: "Run remote response handler.",
+                  priority: 20,
+                },
+              ],
+              responseHandlerFieldEvaluators: [
+                {
+                  name: "remoteHints",
+                  description: "Remote field hints.",
+                  priority: 30,
+                  schema: { type: "array", items: { type: "string" } },
+                  hasParse: true,
+                  hasHandle: true,
+                },
+              ],
+              lifecycle: { hooks: ["init", "dispose", "applyConfig"] },
               events: [{ eventName: "REMOTE_EVENT" }],
               models: [{ modelType: "REMOTE_TEXT", priority: 25 }],
+              services: [
+                {
+                  serviceType: "remote_demo_service",
+                  capabilityDescription: "Remote demo service.",
+                  methods: ["lookup"],
+                  config: { region: "remote" },
+                },
+              ],
               routes: [{ method: "POST", path: "/demo" }],
               views: [
                 {
@@ -307,8 +404,28 @@ describe("remote capability router", () => {
         processEvaluator: async () => ({
           result: { success: true, text: "remote evaluator processed" },
         }),
+        shouldRunResponseHandlerEvaluator: async () => ({ shouldRun: true }),
+        evaluateResponseHandlerEvaluator: async () => ({
+          patch: { reply: "remote response handler" },
+        }),
+        shouldRunResponseHandlerFieldEvaluator: async () => ({
+          shouldRun: true,
+        }),
+        parseResponseHandlerFieldEvaluator: async () => ({
+          value: ["REMOTE_HINT"],
+        }),
+        handleResponseHandlerFieldEvaluator: async () => ({
+          effect: {
+            patch: { candidateActionNames: ["REMOTE_DEMO"] },
+            debug: ["remote field handled"],
+          },
+        }),
+        callLifecycle: async () => ({ ok: true }),
         handleEvent: async () => ({ handled: true }),
         invokeModel: async () => ({ result: "remote model text" }),
+        callService: async () => ({
+          result: { ok: true, service: "remote-demo" },
+        }),
         callAppBridge: async () => ({
           result: { launchUrl: "https://device.test/prepared" },
         }),
@@ -327,10 +444,26 @@ describe("remote capability router", () => {
         modules: [
           {
             id: "remote-demo",
+            config: {
+              REMOTE_MODE: "demo",
+              retryCount: 2,
+              enabled: true,
+              nullable: null,
+            },
+            schema: {
+              remote_demo_records: {
+                id: "uuid",
+                message: "text",
+              },
+            },
             actions: [{ name: "REMOTE_DEMO" }],
             evaluators: [{ name: "REMOTE_EVALUATOR" }],
+            responseHandlerEvaluators: [{ name: "REMOTE_RESPONSE_HANDLER" }],
+            responseHandlerFieldEvaluators: [{ name: "remoteHints" }],
+            lifecycle: { hooks: ["init", "dispose", "applyConfig"] },
             events: [{ eventName: "REMOTE_EVENT" }],
             models: [{ modelType: "REMOTE_TEXT", priority: 25 }],
+            services: [{ serviceType: "remote_demo_service" }],
             routes: [{ method: "POST", path: "/demo" }],
             views: [{ id: "demo", bundlePath: "/assets/demo.js" }],
           },
@@ -370,6 +503,66 @@ describe("remote capability router", () => {
       result: { prompt: "remote evaluator prompt" },
     });
 
+    const responseHandlerEvaluator = await handler(
+      new Request("https://device.test/v1/capabilities/invoke", {
+        method: "POST",
+        body: JSON.stringify({
+          method: "plugin.responseHandlerEvaluator.evaluate",
+          params: {
+            moduleId: "remote-demo",
+            evaluator: "REMOTE_RESPONSE_HANDLER",
+            context: { messageHandler: { processMessage: "RESPOND" } },
+          },
+        }),
+      }),
+    );
+    await expect(responseHandlerEvaluator.json()).resolves.toMatchObject({
+      ok: true,
+      result: { patch: { reply: "remote response handler" } },
+    });
+
+    const responseHandlerField = await handler(
+      new Request("https://device.test/v1/capabilities/invoke", {
+        method: "POST",
+        body: JSON.stringify({
+          method: "plugin.responseHandlerFieldEvaluator.handle",
+          params: {
+            moduleId: "remote-demo",
+            field: "remoteHints",
+            value: ["REMOTE_HINT"],
+            parsed: { remoteHints: ["REMOTE_HINT"] },
+          },
+        }),
+      }),
+    );
+    await expect(responseHandlerField.json()).resolves.toMatchObject({
+      ok: true,
+      result: {
+        effect: {
+          patch: { candidateActionNames: ["REMOTE_DEMO"] },
+          debug: ["remote field handled"],
+        },
+      },
+    });
+
+    const lifecycle = await handler(
+      new Request("https://device.test/v1/capabilities/invoke", {
+        method: "POST",
+        body: JSON.stringify({
+          method: "plugin.lifecycle.call",
+          params: {
+            moduleId: "remote-demo",
+            hook: "init",
+            config: { mode: "test" },
+          },
+        }),
+      }),
+    );
+    await expect(lifecycle.json()).resolves.toMatchObject({
+      ok: true,
+      result: { ok: true },
+    });
+
     const event = await handler(
       new Request("https://device.test/v1/capabilities/invoke", {
         method: "POST",
@@ -404,6 +597,25 @@ describe("remote capability router", () => {
     await expect(model.json()).resolves.toMatchObject({
       ok: true,
       result: { result: "remote model text" },
+    });
+
+    const service = await handler(
+      new Request("https://device.test/v1/capabilities/invoke", {
+        method: "POST",
+        body: JSON.stringify({
+          method: "plugin.service.call",
+          params: {
+            moduleId: "remote-demo",
+            serviceType: "remote_demo_service",
+            method: "lookup",
+            args: [{ query: "demo" }],
+          },
+        }),
+      }),
+    );
+    await expect(service.json()).resolves.toMatchObject({
+      ok: true,
+      result: { result: { ok: true, service: "remote-demo" } },
     });
 
     const appBridge = await handler(
@@ -532,6 +744,82 @@ describe("remote capability router", () => {
       { url: "https://cloud.example/v1/capabilities/invoke" },
       { url: "https://cloud.example/v1/capabilities/invoke" },
     ]);
+  });
+
+  it("rejects unsafe remote view bundle paths before exposing browser import URLs", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "device-plugin",
+              name: "@remote/device",
+              views: [
+                {
+                  id: "device-view",
+                  label: "Device View",
+                  bundlePath: "../secrets.js",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin asset path "../secrets.js" must not contain empty, current-directory, or parent-directory segments.',
+    });
+  });
+
+  it("rejects unsafe remote view bundle URLs before exposing browser import URLs", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "device-plugin",
+              name: "@remote/device",
+              views: [
+                {
+                  id: "device-view",
+                  label: "Device View",
+                  bundleUrl: "javascript:alert(1)",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin bundleUrl "javascript:alert(1)" must be an absolute http(s) URL without embedded credentials.',
+    });
   });
 
   it("routes low-level capabilities to explicit endpoint ids", async () => {
@@ -667,6 +955,36 @@ describe("remote capability router", () => {
       code: "CAPABILITY_DECODE_FAILED",
       capability: "plugin",
       method: "plugin.modules.list",
+    });
+  });
+
+  it("rejects ambiguous remote plugin module ids before routing", async () => {
+    globalThis.fetch = vi.fn(async () =>
+      jsonResponse({
+        ok: true,
+        result: {
+          modules: [
+            {
+              id: "bad:plugin",
+              name: "@remote/bad",
+            },
+          ],
+        },
+      }),
+    ) as unknown as typeof fetch;
+    const service = new RemoteCapabilityRouterService(makeRuntime(), {
+      enabled: true,
+      endpoints: [{ id: "device", baseUrl: "https://device.example" }],
+      environment: "server",
+      requestTimeoutMs: 1000,
+    });
+
+    await expect(service.plugin.listModules()).rejects.toMatchObject({
+      code: "CAPABILITY_DECODE_FAILED",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        "Remote endpoint device returned a plugin module with invalid id.",
     });
   });
 

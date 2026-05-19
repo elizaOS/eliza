@@ -1155,16 +1155,12 @@ async function main() {
     return finish(out, args, logFn);
   }
   if (!tierUsesOmniVoice(tier)) {
-    // Kokoro now ships as GGUF via the ggml runtime — the legacy `model_q4.onnx`
-    // path is gone (no ONNX in the Eliza-1 inference stack, AGENTS.md §3).
-    const kokoroModel = (() => {
-      const root = path.join(bundleDir, "tts", "kokoro");
-      for (const f of ["kokoro-82m-v1_0-Q4_K_M.gguf", "kokoro-82m-v1_0.gguf"]) {
-        const p = path.join(root, f);
-        if (fs.existsSync(p)) return p;
-      }
-      return path.join(root, "kokoro-82m-v1_0-Q4_K_M.gguf");
-    })();
+    // Kokoro bundles use GGUF artifacts via the fork; discover by scanning tts/kokoro/
+    const kokoroDir = path.join(bundleDir, "tts", "kokoro");
+    const kokoroGgufs = fs.existsSync(kokoroDir)
+      ? fs.readdirSync(kokoroDir).filter((f) => f.endsWith(".gguf"))
+      : [];
+    const kokoroModelPresent = kokoroGgufs.some((f) => !/token/i.test(f));
     const out = {
       ...baseReport,
       status: "needs-harness",
@@ -1172,7 +1168,7 @@ async function main() {
       bundleArtifacts: {
         text: !!isRealGguf(files.text),
         drafter: files.drafter ? !!isRealGguf(files.drafter, 10_000_000) : null,
-        kokoroModel: fs.existsSync(kokoroModel),
+        kokoroModel: kokoroModelPresent,
         ttsModel: null,
         ttsCodec: null,
         asr: !!isRealGguf(files.asr, 1_000_000),

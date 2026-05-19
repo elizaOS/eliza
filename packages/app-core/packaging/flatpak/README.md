@@ -114,12 +114,19 @@ flatpak info --show-permissions ai.elizaos.App
 When you're ready to submit the store variant to Flathub:
 
 1. **Vendor the npm tree as offline sources.** Flathub's build
-   infrastructure does not allow network access during `build`. Run:
+   infrastructure does not allow network access during `build`. The
+   `test-flatpak.yml` CI workflow regenerates `node-sources.json` on
+   every run via `./generate-sources.sh` and uploads it as the
+   `flatpak-node-sources` artifact. To refresh the committed copy
+   locally (Linux only):
    ```bash
-   flatpak-node-generator npm package-lock.json -o npm-sources.json
+   ./generate-sources.sh        # writes node-sources.json next to this README
    ```
-   Add the generated `npm-sources.json` to the `elizaos-app` module's
-   `sources:` list and remove the `--share=network` build-arg.
+   Or download the CI artifact from the most recent successful
+   `Test Flatpak Build` workflow run on `develop` and drop it next to
+   this README. Once `node-sources.json` is committed, the manifest can
+   build offline (`npm install -g --offline`) and the
+   `build-options.build-args: --share=network` shim is no longer needed.
 2. **Replace screenshot URLs** in `ai.elizaos.App.metainfo.xml`. Three
    placeholder `<screenshot>` entries currently point at
    `https://app.elizaos.ai/screenshots/{dashboard,onboarding,plugins}.png`

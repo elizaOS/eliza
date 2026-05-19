@@ -114,6 +114,10 @@ class CascadedSTTAgent:
         transcript = ""
         if self._stt_fn is not None and sample.audio_bytes is not None:
             transcript = await self._stt_fn(sample.audio_bytes)
+        if not transcript and sample.audio_bytes is None:
+            metadata_transcript = sample.metadata.get("transcript")
+            if isinstance(metadata_transcript, str):
+                transcript = metadata_transcript
         prompt = format_mcq_prompt(sample, transcript=transcript)
         raw_answer = await self._agent_fn(prompt, sample.audio_bytes)
         letters = choice_letters(sample.choices)

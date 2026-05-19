@@ -47,6 +47,8 @@ def _args(tmp_path: Path, tier: str) -> argparse.Namespace:
         asr_repo=None,
         asr_file=None,
         asr_mmproj_file=None,
+        asr_requantize=None,
+        llama_quantize_bin=None,
         include_vad_onnx_fallback=False,
         skip_wakeword=False,
         # Voice Wave 2: turn detector defaults — skip during dry runs because
@@ -90,6 +92,7 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         (tmp_path / "4b" / "vad" / "silero-vad-v5.gguf").as_posix(),
     ) in staged
     assert report["asrMmprojRemotePath"] == "mmproj-Qwen3-ASR-0.6B-Q8_0.gguf"
+    assert report["asrRequantize"] is None
     assert report["vad"] == {
         "nativeRepo": stage.VAD_NATIVE_REPO,
         "nativeRemotePath": "voice/vad/silero-vad-v5.gguf",
@@ -114,6 +117,111 @@ def test_stage_dry_run_uses_qwen_asr_gguf_and_native_vad(
         dst = (tmp_path / "4b" / rel).as_posix()
         assert dst in ww
         assert ww[dst].startswith(stage.WAKEWORD_RELEASE)
+
+
+def test_stage_0_8b_dry_run_records_asr_q4_requantize_plan(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    args = _args(tmp_path, "0_8b")
+    report = stage.stage_assets(args)
+
+    req = report["asrRequantize"]
+    assert req["kind"] == "gguf-requantize"
+    assert req["quant"] == "Q4_K_M"
+    assert req["allowRequantize"] is True
+    assert req["sourceRepo"] == "ggml-org/Qwen3-ASR-0.6B-GGUF"
+    assert req["sourceRemotePath"] == "Qwen3-ASR-0.6B-Q8_0.gguf"
+    assert req["path"] == (tmp_path / "0_8b" / "asr" / "eliza-1-asr.gguf").as_posix()
+
+
+def test_stage_asr_requantize_can_be_disabled(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    args = _args(tmp_path, "0_8b")
+    args.asr_requantize = "none"
+    report = stage.stage_assets(args)
+
+    assert report["asrRequantize"] is None
+
+
+def test_real_stage_requantizes_0_8b_asr_when_quantizer_is_supplied(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    calls: list[dict[str, object]] = []
+
+    def fake_copy_hf_file(**kwargs):
+        destination = kwargs["destination"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"q8-source")
+        return {
+            "repo": kwargs["repo_id"],
+            "revision": kwargs["revision"],
+            "remotePath": kwargs["remote_path"],
+            "path": str(destination),
+            "sizeBytes": destination.stat().st_size,
+            "sha256": "0" * 64,
+        }
+
+    def fake_download_url_file(**kwargs):
+        destination = kwargs["destination"]
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_bytes(b"onnx-payload")
+        return {
+            "url": kwargs["url"],
+            "path": str(destination),
+            "sizeBytes": destination.stat().st_size,
+            "sha256": "0" * 64,
+        }
+
+    def fake_requantize_gguf_file(**kwargs):
+        destination = kwargs["destination"]
+        destination.write_bytes(b"q4-asr")
+        calls.append(kwargs)
+        return {
+            "path": str(destination),
+            "sourcePath": str(kwargs["source"]),
+            "quant": kwargs["quant"],
+            "allowRequantize": kwargs["allow_requantize"],
+            "kind": "gguf-requantize",
+            "sizeBytes": destination.stat().st_size,
+            "sha256": stage.sha256_file(destination),
+        }
+
+    monkeypatch.setattr(stage, "HfApi", FakeHfApi)
+    monkeypatch.setattr(stage, "copy_hf_file", fake_copy_hf_file)
+    monkeypatch.setattr(stage, "download_url_file", fake_download_url_file)
+    monkeypatch.setattr(stage, "requantize_gguf_file", fake_requantize_gguf_file)
+    monkeypatch.setattr(stage, "validate_manifest", lambda *args, **kwargs: ())
+
+    args = _args(tmp_path, "0_8b")
+    args.dry_run = False
+    args.llama_quantize_bin = tmp_path / "llama-quantize"
+    bundle = tmp_path / "0_8b"
+    (bundle / "evidence").mkdir(parents=True)
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps({"id": "eliza-1-0_8b", "tier": "0_8b", "files": {}}) + "\n",
+        encoding="utf-8",
+    )
+    (bundle / "evidence" / "release.json").write_text(
+        json.dumps({"schemaVersion": 1, "tier": "0_8b", "weights": []}) + "\n",
+        encoding="utf-8",
+    )
+
+    report = stage.stage_assets(args)
+
+    assert calls
+    assert calls[0]["quant"] == "Q4_K_M"
+    assert calls[0]["allow_requantize"] is True
+    assert not (bundle / "asr" / "eliza-1-asr.source.gguf").exists()
+    assert (bundle / "asr" / "eliza-1-asr.gguf").read_bytes() == b"q4-asr"
+    assert report["asrRequantize"]["sha256"] == stage.sha256_file(
+        bundle / "asr" / "eliza-1-asr.gguf"
+    )
 
 
 def test_skip_wakeword_omits_wake_graphs(tmp_path: Path, monkeypatch) -> None:
@@ -218,6 +326,7 @@ def test_real_stage_writes_evidence_report_without_downloading(
     monkeypatch.setattr(stage, "validate_manifest", lambda *args, **kwargs: ())
     args = _args(tmp_path, "0_8b")
     args.dry_run = False
+    args.asr_requantize = "none"
     bundle = tmp_path / "0_8b"
     (bundle / "evidence").mkdir(parents=True)
     (bundle / "eliza-1.manifest.json").write_text(

@@ -2066,6 +2066,49 @@ function isCommitSha(ref) {
   return /^[0-9a-f]{7,40}$/i.test(ref);
 }
 
+function formatHelpText() {
+  return [
+    "Usage: node build-llama-cpp-dflash.mjs [options]",
+    "",
+    "Targets (use --target one or more times, or --all):",
+    ...SUPPORTED_TARGETS.map(
+      (t) =>
+        `  ${t}${FUSED_TARGETS.has(t) ? "  (fused: text + omnivoice TTS in one build)" : ""}`,
+    ),
+    "",
+    "Fused targets build the merged in-fork OmniVoice tree at",
+    "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/.",
+    "Text + TTS share one llama.cpp build, one ggml pin, one kernel set.",
+    "See plugins/plugin-local-inference/native/AGENTS.md.",
+    "",
+    "Source: by default the in-repo submodule plugins/plugin-local-inference/native/llama.cpp",
+    `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
+    "ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF to build from a standalone clone",
+    "(~/.cache/eliza-dflash/eliza-llama-cpp) instead.",
+    "",
+    "Options:",
+    "  --target <triple>      Build a specific target (repeatable).",
+    "  --all                  Build every host-compatible target.",
+    "  --dry-run              Print cmake invocations without running.",
+    "  --backend <name>       Legacy single-target backend selector.",
+    "  --ref <git-ref>        Branch/tag/SHA of the fork to build (standalone-clone mode only;",
+    "                         the submodule is pinned to its gitlink commit).",
+    "  --out-dir <path>       Override the output directory (single target).",
+    "  --cache-dir <path>     Override the source checkout dir (forces standalone-clone mode).",
+    "  --jobs N | -j N        Parallel build jobs.",
+    "",
+    "Environment:",
+    "  ELIZA_DFLASH_LLAMA_CPP_REMOTE / ELIZA_DFLASH_LLAMA_CPP_REF",
+    "                         Build from a standalone clone of the given fork/ref instead of",
+    "                         the in-repo submodule.",
+    "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=1",
+    "                         For darwin-arm64-metal only, opt in to the",
+    "                         temporary spiritbuun/buun-llama-cpp runtime",
+    "                         bridge that can load general.architecture=dflash-draft.",
+    "                         Bridge CAPABILITIES.json is diagnostic and publishable=false.",
+  ].join("\n");
+}
+
 function parseArgs(argv) {
   const args = {
     cacheDir: defaultSourceCheckoutDir(),
@@ -2111,48 +2154,7 @@ function parseArgs(argv) {
     else if (arg === "--jobs" || arg === "-j")
       args.jobs = Number.parseInt(next(), 10);
     else if (arg === "--help" || arg === "-h") {
-      console.log(
-        [
-          "Usage: node build-llama-cpp-dflash.mjs [options]",
-          "",
-          "Targets (use --target one or more times, or --all):",
-          ...SUPPORTED_TARGETS.map(
-            (t) =>
-              `  ${t}${FUSED_TARGETS.has(t) ? "  (fused: text + omnivoice TTS in one build)" : ""}`,
-          ),
-          "",
-          "Fused targets build the merged in-fork OmniVoice tree at",
-          "plugins/plugin-local-inference/native/llama.cpp/tools/omnivoice/.",
-          "Text + TTS share one llama.cpp build, one ggml pin, one kernel set.",
-          "See plugins/plugin-local-inference/native/AGENTS.md.",
-          "",
-          "Source: by default the in-repo submodule plugins/plugin-local-inference/native/llama.cpp",
-          `(elizaOS/llama.cpp @ ${REF}). Pass --ref / --cache-dir or set`,
-          "ELIZA_DFLASH_LLAMA_CPP_REMOTE / _REF to build from a standalone clone",
-          "(~/.cache/eliza-dflash/eliza-llama-cpp) instead.",
-          "",
-          "Options:",
-          "  --target <triple>      Build a specific target (repeatable).",
-          "  --all                  Build every host-compatible target.",
-          "  --dry-run              Print cmake invocations without running.",
-          "  --backend <name>       Legacy single-target backend selector.",
-          "  --ref <git-ref>        Branch/tag/SHA of the fork to build (standalone-clone mode only;",
-          "                         the submodule is pinned to its gitlink commit).",
-          "  --out-dir <path>       Override the output directory (single target).",
-          "  --cache-dir <path>     Override the source checkout dir (forces standalone-clone mode).",
-          "  --jobs N | -j N        Parallel build jobs.",
-          "",
-          "Environment:",
-          "  ELIZA_DFLASH_LLAMA_CPP_REMOTE / ELIZA_DFLASH_LLAMA_CPP_REF",
-          "                         Build from a standalone clone of the given fork/ref instead of",
-          "                         the in-repo submodule.",
-          "  ELIZA_DFLASH_LEGACY_DRAFTER_RUNTIME=1",
-          "                         For darwin-arm64-metal only, opt in to the",
-          "                         temporary spiritbuun/buun-llama-cpp runtime",
-          "                         bridge that can load general.architecture=dflash-draft.",
-          "                         Bridge CAPABILITIES.json is diagnostic and publishable=false.",
-        ].join("\n"),
-      );
+      console.log(formatHelpText());
       process.exit(0);
     } else {
       throw new Error(`Unknown argument: ${arg}`);
@@ -4492,7 +4494,19 @@ function build(args) {
   }
 }
 
-if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+function isCliEntrypoint(argvPath) {
+  if (!argvPath) return false;
+  const resolvedArgvPath = path.resolve(argvPath);
+  if (resolvedArgvPath === __filename) return true;
+  try {
+    return fs.realpathSync.native(resolvedArgvPath) ===
+      fs.realpathSync.native(__filename);
+  } catch {
+    return false;
+  }
+}
+
+if (isCliEntrypoint(process.argv[1])) {
   try {
     build(parseArgs(process.argv.slice(2)));
   } catch (err) {
@@ -4512,6 +4526,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
 export {
   cudaCapabilityRuntimeReady,
   cudaRuntimeDispatchStatus,
+  formatHelpText,
+  parseArgs,
   probeCudaShippedKernelSymbols,
   readCudaRuntimeDispatchEvidence,
   writeCapabilities,

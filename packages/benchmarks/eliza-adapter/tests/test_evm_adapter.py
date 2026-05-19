@@ -72,3 +72,11 @@ def test_format_skill_error_prefers_stderr() -> None:
 def test_format_skill_error_falls_back_to_error() -> None:
     result = {"results": [], "error": "Bun exit 1: top-level summary"}
     assert "top-level summary" in ElizaBridgeEVMExplorer._format_skill_error(result)
+
+
+def test_evm_explorer_records_selected_harness(monkeypatch) -> None:
+    monkeypatch.setenv("BENCHMARK_HARNESS", "openclaw")
+    explorer = ElizaBridgeEVMExplorer(client=object())
+
+    assert explorer._metrics["harness"] == "openclaw"
+    assert explorer._metrics["agent_type"] == "openclaw-benchmark-bridge"

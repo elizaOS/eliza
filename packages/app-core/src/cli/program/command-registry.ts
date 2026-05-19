@@ -1,6 +1,7 @@
 import type { Command } from "commander";
 import { registerAuthCommand } from "./register.auth";
 import { registerBenchmarkCommand } from "./register.benchmark";
+import { registerCapabilityRouterCommand } from "./register.capability-router";
 import { registerConfigCli } from "./register.config";
 import { registerConfigureCommand } from "./register.configure";
 import { registerDashboardCommand } from "./register.dashboard";
@@ -17,6 +18,7 @@ export function registerProgramCommands(
 ) {
   registerStartCommand(program);
   registerBenchmarkCommand(program);
+  registerCapabilityRouterCommand(program);
   registerSetupCommand(program);
   registerDoctorCommand(program);
   registerDbCommand(program);

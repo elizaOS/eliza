@@ -73,10 +73,6 @@ export {
 	type VoiceTurnEvents,
 } from "./engine-bridge";
 export {
-	bundleHasLegacyOnnxTurnDetector,
-	createBundledLiveKitTurnDetector,
-	DEFAULT_LIVEKIT_TURN_DETECTOR_DIR,
-	DEFAULT_LIVEKIT_TURN_DETECTOR_ONNX,
 	Eliza1EotClassifier,
 	type Eliza1EotScoreResult,
 	type Eliza1EotScorerOptions,
@@ -88,12 +84,9 @@ export {
 	EOT_TENTATIVE_THRESHOLD,
 	type EotClassifier,
 	HeuristicEotClassifier,
-	LEGACY_LIVEKIT_TURN_DETECTOR_ONNX,
 	LIVEKIT_TURN_DETECTOR_EN_REVISION,
 	LIVEKIT_TURN_DETECTOR_HF_REPO,
 	LIVEKIT_TURN_DETECTOR_INTL_REVISION,
-	LiveKitTurnDetector,
-	type LiveKitTurnDetectorOptions,
 	RemoteEotClassifier,
 	type RemoteEotClassifierOptions,
 	turnDetectorRevisionForTier,
@@ -250,9 +243,19 @@ export {
 	PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID,
 	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
 	PYANNOTE_WINDOW_SECONDS,
-	PyannoteDiarizer,
 	type PyannoteDiarizerModelId,
 } from "./speaker/diarizer";
+export {
+	DIARIZER_GGML_FRAMES_PER_WINDOW,
+	DIARIZER_GGML_MIN_SAMPLES,
+	DIARIZER_GGML_NUM_CLASSES,
+	DIARIZER_GGML_SAMPLE_RATE,
+	DIARIZER_GGML_WINDOW_SAMPLES,
+	DiarizerGgml,
+	type DiarizerGgmlOptions,
+	type DiarizerGgmlOutput,
+	DiarizerGgmlUnavailableError,
+} from "./speaker/diarizer-ggml";
 export {
 	averageEmbeddings,
 	type SpeakerEncoder,
@@ -265,6 +268,16 @@ export {
 	WespeakerEncoder,
 	type WespeakerModelId,
 } from "./speaker/encoder";
+export {
+	SPEAKER_GGML_EMBEDDING_DIM,
+	SPEAKER_GGML_MIN_SAMPLES,
+	SPEAKER_GGML_SAMPLE_RATE,
+	type SpeakerEncoderGgml,
+	SpeakerEncoderGgmlImpl,
+	type SpeakerEncoderGgmlOptions,
+	SpeakerEncoderGgmlUnavailableError,
+	voiceSpeakerDistance,
+} from "./speaker/encoder-ggml";
 export {
 	type AttributedVoiceObservation,
 	attributeVoiceImprintObservations,

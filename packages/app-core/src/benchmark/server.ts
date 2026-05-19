@@ -91,6 +91,60 @@ autoWireCerebras();
 const BENCH_TOKEN = process.env.ELIZA_BENCH_TOKEN?.trim() || null;
 const OPENROUTER_PLUGIN_MODULE: string = "@elizaos/plugin-openrouter";
 
+const OPENAI_COMPAT_MAX_ATTEMPTS = envPositiveInt(
+  "CEREBRAS_BENCH_MAX_ATTEMPTS",
+  4,
+);
+const OPENAI_COMPAT_RETRY_BASE_MS = envPositiveInt(
+  "CEREBRAS_BENCH_RETRY_BASE_MS",
+  4000,
+);
+const OPENAI_COMPAT_RETRY_MAX_MS = envPositiveInt(
+  "CEREBRAS_BENCH_RETRY_MAX_MS",
+  30000,
+);
+
+function envPositiveInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRetryableOpenAiCompatibleStatus(status: number): boolean {
+  return status === 408 || status === 409 || status === 429 || status >= 500;
+}
+
+function openAiCompatibleRetryDelayMs(
+  response: Response,
+  attempt: number,
+): number {
+  const retryAfter = response.headers.get("retry-after");
+  if (retryAfter) {
+    const seconds = Number.parseFloat(retryAfter);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.min(Math.ceil(seconds * 1000), OPENAI_COMPAT_RETRY_MAX_MS);
+    }
+    const timestamp = Date.parse(retryAfter);
+    if (Number.isFinite(timestamp)) {
+      return Math.min(
+        Math.max(timestamp - Date.now(), 0),
+        OPENAI_COMPAT_RETRY_MAX_MS,
+      );
+    }
+  }
+  return (
+    Math.min(
+      OPENAI_COMPAT_RETRY_BASE_MS * 2 ** Math.max(attempt - 1, 0),
+      OPENAI_COMPAT_RETRY_MAX_MS,
+    ) + Math.floor(Math.random() * 250)
+  );
+}
+
 function normalizeBenchmarkTaskAgentEnv(): void {
   const benchmarkRequested = process.env.BENCHMARK_TASK_AGENT?.trim();
   const requested =
@@ -175,7 +229,12 @@ function isOsworldBenchmarkName(benchmark: string): boolean {
 
 function isActionCallingBenchmarkName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
-  return normalized === "action-calling" || normalized === "action_calling";
+  return (
+    normalized === "action-calling" ||
+    normalized === "action_calling" ||
+    normalized === "tau_bench" ||
+    normalized === "tau-bench"
+  );
 }
 
 function normalizeActionCallingNativeMessages(
@@ -390,26 +449,45 @@ async function callOpenAiCompatibleActionCalling(params: {
 } | null> {
   const config = resolveOpenAiCompatibleActionCallingConfig();
   if (!config) return null;
-  const response = await fetch(chatCompletionsUrl(config.baseUrl), {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: config.model,
-      messages: params.messages,
-      tools: params.tools,
-      tool_choice:
-        params.toolChoice === "none"
-          ? "none"
-          : params.toolChoice === "auto"
-            ? "required"
-            : params.toolChoice || "required",
-      max_tokens: params.maxTokens,
-      temperature: params.temperature,
-    }),
+  const requestBody = JSON.stringify({
+    model: config.model,
+    messages: params.messages,
+    tools: params.tools,
+    tool_choice:
+      params.toolChoice === "none"
+        ? "none"
+        : params.toolChoice === "auto"
+          ? "required"
+          : params.toolChoice || "required",
+    max_tokens: params.maxTokens,
+    temperature: params.temperature,
   });
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= OPENAI_COMPAT_MAX_ATTEMPTS; attempt += 1) {
+    response = await fetch(chatCompletionsUrl(config.baseUrl), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: requestBody,
+    });
+    if (
+      response.ok ||
+      !isRetryableOpenAiCompatibleStatus(response.status) ||
+      attempt >= OPENAI_COMPAT_MAX_ATTEMPTS
+    ) {
+      break;
+    }
+    const delayMs = openAiCompatibleRetryDelayMs(response, attempt);
+    elizaLogger.warn(
+      `[bench] OpenAI-compatible action-calling request failed (${response.status}); retrying in ${delayMs}ms (attempt ${attempt}/${OPENAI_COMPAT_MAX_ATTEMPTS})`,
+    );
+    await sleep(delayMs);
+  }
+  if (!response) {
+    throw new Error("OpenAI-compatible action-calling request was not sent");
+  }
   if (!response.ok) {
     const body = await response.text().catch(() => "");
     throw new Error(
@@ -429,6 +507,71 @@ async function callOpenAiCompatibleActionCalling(params: {
   return {
     text: typeof message.content === "string" ? message.content : "",
     toolCalls: normalizeLocaNativeToolCalls(message.tool_calls),
+    usage: normalizeOpenAiCompatibleUsage(payload.usage, config.provider),
+  };
+}
+
+async function callOpenAiCompatibleText(params: {
+  prompt: string;
+  maxTokens: number;
+  temperature: number;
+}): Promise<{
+  text: string;
+  usage: BenchmarkLlmCallUsage | null;
+} | null> {
+  const config = resolveOpenAiCompatibleActionCallingConfig();
+  if (!config) return null;
+  const requestBody = JSON.stringify({
+    model: config.model,
+    messages: [{ role: "user", content: params.prompt }],
+    max_tokens: params.maxTokens,
+    temperature: params.temperature,
+    ...(config.provider === "cerebras" ? { reasoning_effort: "low" } : {}),
+  });
+  let response: Response | null = null;
+  for (let attempt = 1; attempt <= OPENAI_COMPAT_MAX_ATTEMPTS; attempt += 1) {
+    response = await fetch(chatCompletionsUrl(config.baseUrl), {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: requestBody,
+    });
+    if (
+      response.ok ||
+      !isRetryableOpenAiCompatibleStatus(response.status) ||
+      attempt >= OPENAI_COMPAT_MAX_ATTEMPTS
+    ) {
+      break;
+    }
+    const delayMs = openAiCompatibleRetryDelayMs(response, attempt);
+    elizaLogger.warn(
+      `[bench] OpenAI-compatible text request failed (${response.status}); retrying in ${delayMs}ms (attempt ${attempt}/${OPENAI_COMPAT_MAX_ATTEMPTS})`,
+    );
+    await sleep(delayMs);
+  }
+  if (!response) {
+    throw new Error("OpenAI-compatible text request was not sent");
+  }
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(
+      `OpenAI-compatible text request failed (${response.status}): ${body.slice(0, 500)}`,
+    );
+  }
+  const payload = (await response.json()) as Record<string, unknown>;
+  const choice = Array.isArray(payload.choices)
+    ? (payload.choices[0] as Record<string, unknown> | undefined)
+    : undefined;
+  const message =
+    choice?.message &&
+    typeof choice.message === "object" &&
+    !Array.isArray(choice.message)
+      ? (choice.message as Record<string, unknown>)
+      : {};
+  return {
+    text: typeof message.content === "string" ? message.content : "",
     usage: normalizeOpenAiCompatibleUsage(payload.usage, config.provider),
   };
 }
@@ -523,7 +666,7 @@ function normalizeLocaNativeMessages(
       normalized.push({
         role: "assistant",
         content: typeof message.content === "string" ? message.content : "",
-        ...(toolCalls.length > 0 ? { toolCalls } : {}),
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
       });
       continue;
     }
@@ -545,7 +688,7 @@ function normalizeLocaNativeMessages(
             : toolNamesById.get(toolCallId) || "tool";
       normalized.push({
         role: "tool",
-        id: toolCallId,
+        tool_call_id: toolCallId,
         name: toolName,
         content:
           typeof message.content === "string"
@@ -2148,14 +2291,12 @@ export async function startBenchmarkServer() {
             Array.isArray(benchmarkContext.tools) &&
             benchmarkContext.tools.length > 0
           ) {
-            const nativeMessages = normalizeActionCallingNativeMessages(
-              text,
-              benchmarkContext,
-            );
-            const openAiMessages = normalizeActionCallingOpenAiMessages(
-              text,
-              benchmarkContext,
-            );
+            const nativeMessages = _isTauBenchmarkName(session.benchmark)
+              ? _normalizeTauNativeMessages(text, benchmarkContext)
+              : normalizeActionCallingNativeMessages(text, benchmarkContext);
+            const openAiMessages = _isTauBenchmarkName(session.benchmark)
+              ? nativeMessages
+              : normalizeActionCallingOpenAiMessages(text, benchmarkContext);
             const maxTokens =
               typeof benchmarkContext.max_tokens === "number"
                 ? benchmarkContext.max_tokens
@@ -2637,21 +2778,35 @@ export async function startBenchmarkServer() {
             isVisualWebBenchmarkName(session.benchmark) ||
             isOsworldBenchmarkName(session.benchmark)
           ) {
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 4096;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
             const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
             activeUsageBuffer = turnUsageBuffer;
             let nativeResult: unknown;
             try {
-              nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+              const directResult = await callOpenAiCompatibleText({
                 prompt: composedPrompt,
-                maxTokens:
-                  typeof benchmarkContext.max_tokens === "number"
-                    ? benchmarkContext.max_tokens
-                    : 4096,
-                temperature:
-                  typeof benchmarkContext.temperature === "number"
-                    ? benchmarkContext.temperature
-                    : 0,
+                maxTokens,
+                temperature,
               });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = directResult.text;
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  prompt: composedPrompt,
+                  maxTokens,
+                  temperature,
+                });
+              }
             } finally {
               activeUsageBuffer = null;
             }

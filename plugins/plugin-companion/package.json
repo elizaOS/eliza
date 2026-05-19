@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-companion",
-  "version": "2.0.0-beta.3",
+  "version": "2.0.0-beta.4",
   "type": "module",
   "description": "Companion app package with the VRM scene runtime and avatar utilities.",
   "main": "./dist/index.js",
@@ -48,6 +48,9 @@
     "@biomejs/biome": "^2.4.14",
     "@pixiv/three-vrm": "^3.5.2",
     "@playwright/test": "^1.58.2",
+    "@testing-library/react": "^16.3.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "@storybook/addon-a11y": "^10.0.0",
     "@storybook/addon-docs": "^10.0.0",
     "@storybook/addon-themes": "^10.0.0",

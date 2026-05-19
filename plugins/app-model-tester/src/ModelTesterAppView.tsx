@@ -1,4 +1,5 @@
 import type { OverlayAppContext } from "@elizaos/ui/components/apps/overlay-app-api";
+import { TerminalPluginView } from "@elizaos/ui";
 import { Button } from "@elizaos/ui/components/ui/button";
 import { Spinner } from "@elizaos/ui/components/ui/spinner";
 import {
@@ -430,6 +431,85 @@ export function ModelTesterAppView({ exitToApps, t }: OverlayAppContext) {
       </div>
     </div>
   );
+}
+
+export function ModelTesterTuiView() {
+  return (
+    <TerminalPluginView
+      id="model-tester"
+      label="Model Tester TUI"
+      description="Terminal probes for Eliza-1 text, voice, audio, and vision models"
+      commands={[
+        "get-status",
+        "run-text-small",
+        "run-transcription",
+        "run-vision",
+        "run-vad",
+      ]}
+      endpoints={["/api/model-tester/status", "/api/model-tester/run"]}
+    />
+  );
+}
+
+const MODEL_TESTER_COMMAND_TO_TEST: Record<string, TestId> = {
+  "run-text-small": "text-small",
+  "run-transcription": "transcription",
+  "run-vision": "image-description",
+  "run-vad": "vad",
+};
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      text ||
+        `[model-tester] ${response.status} ${response.statusText}`.trim(),
+    );
+  }
+  return (text ? JSON.parse(text) : {}) as T;
+}
+
+export async function interact(
+  capability: string,
+  params?: Record<string, unknown>,
+): Promise<unknown> {
+  if (capability === "get-status") {
+    const response = await fetch("/api/model-tester/status", {
+      headers: { Accept: "application/json" },
+    });
+    return readJsonResponse(response);
+  }
+
+  const test = MODEL_TESTER_COMMAND_TO_TEST[capability];
+  if (test) {
+    const response = await fetch("/api/model-tester/run", {
+      method: "POST",
+      headers: { "content-type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        test,
+        prompt:
+          typeof params?.prompt === "string" ? params.prompt : DEFAULT_PROMPT,
+        imageDataUrl:
+          typeof params?.imageDataUrl === "string"
+            ? params.imageDataUrl
+            : undefined,
+        audioDataUrl:
+          typeof params?.audioDataUrl === "string"
+            ? params.audioDataUrl
+            : undefined,
+        pcmSamples: Array.isArray(params?.pcmSamples)
+          ? params.pcmSamples
+          : undefined,
+        sampleRateHz:
+          typeof params?.sampleRateHz === "number"
+            ? params.sampleRateHz
+            : undefined,
+      }),
+    });
+    return readJsonResponse(response);
+  }
+
+  throw new Error(`Model Tester TUI does not support "${capability}".`);
 }
 
 function StatusPill({ ready }: { ready: boolean }) {

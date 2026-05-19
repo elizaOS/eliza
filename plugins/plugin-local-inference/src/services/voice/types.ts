@@ -400,9 +400,9 @@ export interface VerifierStreamEvent {
 //      decides "is there acoustic activity right now". A rising edge wakes
 //      the response pipeline (KV-prefill, drafter preload, first-filler
 //      pre-generation) speculatively.
-//   2. The Silero v5 GGUF VAD (silero-vad-cpp, ggml-backed) is the
-//      *authoritative* speech/no-speech signal. It gates ASR (skip
-//      silent frames) and drives turn-taking.
+//   2. The Silero VAD GGUF (via silero-vad-cpp FFI) is the *authoritative*
+//      speech/no-speech signal. It gates ASR (skip silent frames) and
+//      drives turn-taking.
 //
 // Both run on every mic frame. The RMS gate never substitutes for Silero —
 // if the native VAD runtime is unavailable that is a hard "VAD unavailable"
@@ -463,8 +463,8 @@ export type EnergyGateListener = (event: EnergyGateEvent) => void;
 /**
  * Subscribable VAD event stream. `VadDetector` (`voice/vad.ts`) is the
  * concrete implementation; the streaming transcriber and the barge-in
- * controller take this structural view so they don't pull in the native
- * silero-vad-cpp bun:ffi surface.
+ * controller take this structural view so they don't pull in the optional
+ * `onnxruntime-node` surface.
  */
 export interface VadEventSource {
 	onVadEvent(listener: VadEventListener): () => void;
@@ -672,7 +672,7 @@ export type VoiceSchedulerTelemetryListener = (
 // ---------------------------------------------------------------------------
 // Shared interfaces extracted here to break circular dependencies between
 // vad.ts ↔ vad-ggml.ts, wake-word.ts ↔ wake-word-ggml.ts, and
-// transcriber.ts ↔ whisper-cpp-asr.ts.
+// transcriber.ts ↔ openvino-whisper-asr.ts.
 // ---------------------------------------------------------------------------
 
 /** Minimal VAD model contract consumed by SileroVadGgml and qwen-toolkit adapter. */
@@ -691,5 +691,5 @@ export interface WakeWordModel {
 	reset(): void;
 }
 
-/** Streaming PCM decoder function type consumed by WhisperCppStreamingTranscriber. */
+/** Streaming PCM decoder function type consumed by OpenVinoWhisperAsr. */
 export type StreamingPcmDecoder = (pcm16k: Float32Array) => Promise<string>;

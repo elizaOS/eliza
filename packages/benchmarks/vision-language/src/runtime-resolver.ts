@@ -3,12 +3,12 @@
  *
  * The bench is layered to be skippable cleanly:
  *   - When `--smoke --stub` is passed (or the local-inference plugin can't
- *     be imported), we return `createStubRuntime()` — a deterministic
- *     vision Q&A that lets the runner exercise scoring + reporting without
- *     loading any model.
+ *     be imported), explicit `--smoke --stub` runs return
+ *     `createStubRuntime()` — a deterministic vision Q&A that lets the runner
+ *     exercise scoring + reporting without loading any model.
  *   - Otherwise we attempt to instantiate plugin-local-inference's
- *     IMAGE_DESCRIPTION pipeline against the requested tier. The pipeline
- *     reuses the same engine resolution path as the eliza-1 text bench.
+ *     IMAGE_DESCRIPTION pipeline against the requested tier. Full runs fail
+ *     closed when no real runtime is available.
  *
  * `useModel(IMAGE_DESCRIPTION, ...)` is the canonical entrypoint per
  * CLAUDE.md / Task 15 spec.
@@ -67,8 +67,11 @@ async function tryLoadPluginVision(
   let mod: AppCoreVisionLike | null = null;
   for (const spec of candidates) {
     try {
-      mod = (await import(spec)) as AppCoreVisionLike;
-      break;
+      const candidate = (await import(spec)) as AppCoreVisionLike;
+      if (typeof candidate.createImageDescriptionRuntime === "function") {
+        mod = candidate;
+        break;
+      }
     } catch {
       // try next
     }
@@ -200,10 +203,10 @@ export async function resolveRuntime(args: {
   if (args.tier === "stub") return createStubRuntime();
   const plugin = await tryLoadPluginVision(args.tier as Eliza1TierId);
   if (plugin) return plugin;
-  // No model available — fall back to the stub so smoke runs always
-  // complete. Full runs surface the unavailability via the report's
-  // `runtime` field.
-  return createStubRuntime(args.tier);
+  throw new Error(
+    `no real IMAGE_DESCRIPTION runtime available for tier '${args.tier}'. ` +
+      "Use --smoke --stub only for explicit non-publishable smoke runs.",
+  );
 }
 
 void HERE;

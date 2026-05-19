@@ -99,7 +99,9 @@ vi.mock("./structured-output", () => ({
 describe("DflashLlamaServer catalog disable reason", () => {
 	it("launches target-only when the catalog disables DFlash", async () => {
 		const registry = await import("./registry");
-		vi.mocked(registry.listInstalledModels).mockResolvedValue([
+		(
+			registry.listInstalledModels as unknown as ReturnType<typeof vi.fn>
+		).mockResolvedValue([
 			{
 				id: "target-model",
 				displayName: "Target model",

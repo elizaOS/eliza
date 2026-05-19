@@ -46,10 +46,11 @@ export function usePollingTrajectories(
           signal: ctrl.signal,
         });
         if (cancelled) return;
-        const active =
-          list.trajectories.find((t) => t.status === "active") ?? null;
-        const last =
-          list.trajectories.find((t) => t.status !== "active") ?? null;
+        const trajectories = Array.isArray(list.trajectories)
+          ? list.trajectories
+          : [];
+        const active = trajectories.find((t) => t.status === "active") ?? null;
+        const last = trajectories.find((t) => t.status !== "active") ?? null;
 
         const [activeDetail, lastDetail] = await Promise.all([
           active

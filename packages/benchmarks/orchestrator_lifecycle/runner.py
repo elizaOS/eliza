@@ -174,40 +174,50 @@ class LifecycleRunner:
         self, *, turn: ScenarioTurn, task_id: str, scenario_id: str
     ) -> str:
         assert self._client is not None
-        try:
-            response = self._client.send_message(
-                text=turn.message,
-                context={
-                    "benchmark": "orchestrator_lifecycle",
-                    "task_id": task_id,
-                    "scenario_id": scenario_id,
-                    "model_name": self.config.model,
-                    "expected_behaviors": list(turn.expected_behaviors),
-                    "forbidden_behaviors": list(turn.forbidden_behaviors),
-                    "system_hint": _LIFECYCLE_SYSTEM_HINT,
-                },
-            )
-        except Exception as exc:
-            logger.warning(
-                "[orchestrator_lifecycle] bridge call failed for %s: %s",
+        base_context = {
+            "benchmark": "orchestrator_lifecycle",
+            "task_id": task_id,
+            "scenario_id": scenario_id,
+            "model_name": self.config.model,
+            "expected_behaviors": list(turn.expected_behaviors),
+            "forbidden_behaviors": list(turn.forbidden_behaviors),
+            "system_hint": _LIFECYCLE_SYSTEM_HINT,
+        }
+        for attempt in range(2):
+            context = dict(base_context)
+            if attempt:
+                context["retry_empty_response"] = True
+            try:
+                response = self._client.send_message(text=turn.message, context=context)
+            except Exception as exc:
+                logger.warning(
+                    "[orchestrator_lifecycle] bridge call failed for %s: %s",
+                    scenario_id,
+                    exc,
+                )
+                return ""
+            text = (response.text or "").strip()
+            # Some agent responses come back primarily through tool-call params
+            # (e.g. {action: "PAUSE_TASK", note: "..."}) when the planner picks
+            # an action with no follow-up REPLY. Surface those param values to
+            # the keyword evaluator so a structured action is still scored.
+            if response.params:
+                param_strings = [
+                    str(v)
+                    for v in response.params.values()
+                    if isinstance(v, (str, int, float)) and str(v).strip()
+                ]
+                if param_strings:
+                    text = (text + "\n" + " ".join(param_strings)).strip()
+            if text and not (attempt == 0 and _is_retryable_bridge_failure(text)):
+                return text
+            if attempt:
+                return text
+            logger.debug(
+                "[orchestrator_lifecycle] retryable bridge reply for %s; retrying once",
                 scenario_id,
-                exc,
             )
-            return ""
-        text = (response.text or "").strip()
-        # Some agent responses come back primarily through tool-call params
-        # (e.g. {action: "PAUSE_TASK", note: "..."}) when the planner picks
-        # an action with no follow-up REPLY. Surface those param values to
-        # the keyword evaluator so a structured action is still scored.
-        if response.params:
-            param_strings = [
-                str(v)
-                for v in response.params.values()
-                if isinstance(v, (str, int, float)) and str(v).strip()
-            ]
-            if param_strings:
-                text = (text + "\n" + " ".join(param_strings)).strip()
-        return text
+        return ""
 
     # ------------------------------------------------------------------
     # Deterministic fallback (smoke-test mode only)
@@ -283,6 +293,18 @@ _LIFECYCLE_SYSTEM_HINT = (
     "\n"
     "Use plain prose. The user message is the next lifecycle event."
 )
+
+
+def _is_retryable_bridge_failure(text: str) -> bool:
+    normalized = " ".join(text.lower().split())
+    return any(
+        phrase in normalized
+        for phrase in (
+            "oops, something went wrong",
+            "something went wrong on my end",
+            "please try again",
+        )
+    )
 
 
 __all__: Sequence[str] = ("LifecycleRunner",)

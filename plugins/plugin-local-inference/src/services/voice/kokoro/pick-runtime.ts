@@ -1,17 +1,14 @@
 /**
  * Kokoro runtime selector — picks between the fork's llama-server
- * `/v1/audio/speech` route (`KokoroGgufRuntime`, the default) and the
- * mock runtime (tests only). The legacy ONNX runtime path has been
- * retired: every on-device model loads as GGUF.
+ * `/v1/audio/speech` route (`KokoroGgufRuntime`), the ONNX runtime used by
+ * release verification, and the mock runtime (tests only).
  *
  * The env knob is `KOKORO_BACKEND`:
  *
  *   fork  (default)  → KokoroGgufRuntime → POST /v1/audio/speech on the
- *                       running llama-server / omnivoice.
+ *                       running llama-server.
+ *   onnx             → KokoroOnnxRuntime → bundled ONNX model + voice pack.
  *   mock             → KokoroMockRuntime. Tests only.
- *
- * Throws on the deprecated `onnx` value so a stale env does not silently
- * disable voice (AGENTS.md §3).
  */
 
 import {
@@ -19,20 +16,23 @@ import {
 	type KokoroGgufRuntimeOptions,
 	KokoroMockRuntime,
 	type KokoroMockRuntimeOptions,
+	KokoroOnnxRuntime,
+	type KokoroOnnxRuntimeOptions,
 	type KokoroRuntime,
 } from "./kokoro-runtime";
 
-export type KokoroBackendId = "fork" | "mock";
+export type KokoroBackendId = "fork" | "onnx" | "mock";
 
 export interface KokoroBackendInputs {
 	/** Override the env-resolved backend (tests / programmatic selection). */
 	backend?: KokoroBackendId;
-	/** Default backend derived from the discovered model layout. Used when
-	 *  no explicit backend and no `KOKORO_BACKEND` env override are set. */
+	/** Default backend derived from the discovered model layout. Used when no
+	 *  explicit backend and no `KOKORO_BACKEND` env override are set. */
 	defaultBackend?: KokoroBackendId;
-	/** Construction options for the fork (HTTP) path. Required when
-	 *  backend === "fork". */
+	/** Construction options for the fork (HTTP) path. Used iff backend === "fork". */
 	fork?: KokoroGgufRuntimeOptions;
+	/** Construction options for the ONNX path. Used iff backend === "onnx". */
+	onnx?: KokoroOnnxRuntimeOptions;
 	/** Construction options for the mock path. */
 	mock?: KokoroMockRuntimeOptions;
 	/** Override the process.env source. */
@@ -47,23 +47,18 @@ export interface KokoroBackendDecision {
 }
 
 /**
- * Resolve the `KOKORO_BACKEND` env variable. Throws on an unrecognized
- * value or the deprecated `onnx` value — silent fallback would hide a
- * misconfiguration (AGENTS.md §3 "no silent fallback").
+ * Resolve the `KOKORO_BACKEND` env variable. Throws on an unrecognized value
+ * — silent fallback would hide a misconfiguration (AGENTS.md §3 "no silent
+ * fallback").
  */
 export function readKokoroBackendFromEnv(
 	env: NodeJS.ProcessEnv = process.env,
 ): KokoroBackendId | undefined {
 	const raw = env.KOKORO_BACKEND?.trim().toLowerCase();
 	if (!raw) return undefined;
-	if (raw === "fork" || raw === "mock") return raw;
-	if (raw === "onnx") {
-		throw new Error(
-			"[voice/kokoro] KOKORO_BACKEND=onnx is no longer supported — every on-device model loads as GGUF. Unset KOKORO_BACKEND or set it to 'fork'.",
-		);
-	}
+	if (raw === "fork" || raw === "onnx" || raw === "mock") return raw;
 	throw new Error(
-		`[voice/kokoro] KOKORO_BACKEND must be one of 'fork', 'mock' (got '${raw}')`,
+		`[voice/kokoro] KOKORO_BACKEND must be one of 'fork', 'onnx', 'mock' (got '${raw}')`,
 	);
 }
 
@@ -74,6 +69,10 @@ export function readKokoroBackendFromEnv(
  *   2. Else env (`KOKORO_BACKEND`).
  *   3. Else `inputs.defaultBackend`.
  *   4. Else default → `fork`.
+ *
+ * If the chosen backend's options block is missing the call throws a
+ * structured error (no silent downgrade). Callers must wire the options
+ * for the backends they enable.
  */
 export function pickKokoroRuntimeBackend(
 	inputs: KokoroBackendInputs,
@@ -101,6 +100,24 @@ export function pickKokoroRuntimeBackend(
 						? "model layout default → fork (llama-server /v1/audio/speech)"
 						: "default → fork (llama-server /v1/audio/speech)",
 			runtime: new KokoroGgufRuntime(inputs.fork),
+		};
+	}
+
+	if (backend === "onnx") {
+		if (!inputs.onnx) {
+			throw new Error(
+				"[voice/kokoro] KOKORO_BACKEND=onnx requires `inputs.onnx` " +
+					"(layout + optional SHA/runtime options).",
+			);
+		}
+		return {
+			backend,
+			reason: inputs.backend
+				? "explicit backend=onnx (bundled ONNX runtime)"
+				: fromEnv
+					? `KOKORO_BACKEND=${fromEnv} → onnx (bundled ONNX runtime)`
+					: "model layout default → onnx (bundled ONNX runtime)",
+			runtime: new KokoroOnnxRuntime(inputs.onnx),
 		};
 	}
 

@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -142,11 +143,118 @@ def test_discover_engine_honors_missing_preferred_backend(tmp_path: Path, monkey
     assert suite.discover_engine("cpu") is None
 
 
+def test_discover_engine_prefers_fused_voice_capable_dir(tmp_path: Path, monkeypatch) -> None:
+    root = tmp_path / "state" / "local-inference" / "bin" / "dflash"
+    plain_fused = root / f"{suite._platform_tag()}-metal-fused"
+    voice_fused = root / f"{suite._platform_tag()}-metal-fused-with-voice"
+    for engine_dir in (plain_fused, voice_fused):
+        engine_dir.mkdir(parents=True)
+        for name in ("llama-server", "llama-speculative-simple"):
+            p = engine_dir / name
+            p.write_text("#!/bin/sh\n")
+            os.chmod(p, 0o755)
+        (engine_dir / suite._eliza_lib_name()).write_text("x")
+    voice_server = voice_fused / "llama-omnivoice-server"
+    voice_server.write_text("#!/bin/sh\n")
+    os.chmod(voice_server, 0o755)
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / "state"))
+
+    engine = suite.discover_engine("metal")
+
+    assert engine is not None
+    assert engine.bin_dir == voice_fused
+    assert engine.omnivoice_server == voice_server
+
+
 def test_find_verify_dir_prefers_native_plugin_verify() -> None:
     verify_dir = suite._find_verify_dir()
 
     assert verify_dir is not None
     assert verify_dir.as_posix().endswith("plugins/plugin-local-inference/native/verify")
+
+
+def test_e2e_harness_selection_routes_small_tiers_to_kokoro() -> None:
+    assert suite._uses_kokoro_e2e_harness("0_8b") is True
+    assert suite._uses_kokoro_e2e_harness("2b") is True
+    assert suite._uses_kokoro_e2e_harness("4b") is True
+    assert suite._uses_kokoro_e2e_harness("9b") is False
+    assert suite._uses_kokoro_e2e_harness("27b-256k") is False
+
+
+def test_normalize_backend_for_harness_strips_fused_build_suffix() -> None:
+    assert suite._normalize_backend_for_harness("metal-fused.pre-encode-ref-20260515-025231") == "metal"
+    assert suite._normalize_backend_for_harness("vulkan-fused") == "vulkan"
+    assert suite._normalize_backend_for_harness("cuda.release") == "cuda"
+    assert suite._normalize_backend_for_harness(None) == "cpu"
+
+
+def test_concurrent_llm_guard_detects_live_llama_process(monkeypatch) -> None:
+    ps_out = (
+        " 111 /Applications/Ollama.app/Contents/Resources/ollama serve\n"
+        " 222 /tmp/bin/llama-server /tmp/bin/llama-server --model model.gguf\n"
+        " 333 /usr/bin/python pytest\n"
+    )
+
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(returncode=0, stdout=ps_out, stderr="")
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+    monkeypatch.delenv(suite._CONCURRENT_LLM_OVERRIDE_ENV, raising=False)
+
+    reason = suite._concurrent_llm_guard_reason()
+
+    assert reason is not None
+    assert "llama.cpp model process" in reason
+    assert "222" in reason
+    assert "Ollama" not in reason
+
+
+def test_concurrent_llm_guard_honors_override(monkeypatch) -> None:
+    def fake_run(*args, **kwargs):
+        return SimpleNamespace(
+            returncode=0,
+            stdout=" 222 /tmp/bin/llama-server /tmp/bin/llama-server --model model.gguf\n",
+            stderr="",
+        )
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+    monkeypatch.setenv(suite._CONCURRENT_LLM_OVERRIDE_ENV, "1")
+
+    assert suite._concurrent_llm_guard_reason() is None
+
+
+def test_e2e_bench_guard_records_not_run_before_launch(tmp_path: Path, monkeypatch) -> None:
+    bundle = _make_real_bundle(tmp_path)
+    ctx = suite.EvalContext(
+        bundle_dir=bundle,
+        tier="0_8b",
+        engine=_fake_engine(tmp_path / "bin"),
+        text_model=None,
+        text_eval_model=None,
+        voice_model=None,
+        voice_tokenizer=None,
+        asr_model=None,
+        vad_model=None,
+        drafter_model=None,
+        text_eval_corpus=("hello",),
+        asr_corpus=None,
+        threads=2,
+        timeout_s=30,
+    )
+    monkeypatch.setattr(suite, "_BUN", "/bin/false")
+    monkeypatch.setattr(suite, "_kokoro_e2e_loop_bench_path", lambda: tmp_path / "bench.mjs")
+    (tmp_path / "bench.mjs").write_text("// fake\n")
+    monkeypatch.setattr(suite, "_concurrent_llm_guard_reason", lambda: "one LLM at a time")
+
+    def fake_run(*args, **kwargs):
+        raise AssertionError("bench should not launch when guard is active")
+
+    monkeypatch.setattr(suite.subprocess, "run", fake_run)
+
+    report = suite._run_e2e_loop_bench(ctx, 1)
+
+    assert report["status"] == "not-run"
+    assert report["reason"] == "one LLM at a time"
 
 
 def test_dispatch_targets_for_metal_include_runtime_smoke() -> None:
@@ -258,6 +366,7 @@ def _run_real(bundle: Path, monkeypatch, *, bench_report: dict | None, bench_rep
     )
     monkeypatch.setattr(suite, "eval_text", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "text_eval", "op": ">=", "status": "not-run", "score": None, "passed": None, "reason": "skipped in test"})
     monkeypatch.setattr(suite, "eval_dflash_accept", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "dflash_acceptance", "op": ">=", "status": "not-run", "acceptanceRate": None, "speedup": None, "passed": None, "reason": "skipped in test"})
+    monkeypatch.setattr(suite, "eval_vad", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "vad_latency_ms", "op": "<=", "status": "not-run", "median": None, "passed": None, "reason": "skipped in test"})
 
     def _fake_bench(ctx, turns):
         return (bench_report_30 if (turns >= 8 and bench_report_30 is not None) else bench_report)
@@ -305,7 +414,53 @@ def test_bench_bridge_runners_record_real_numbers_when_bench_ok(tmp_path: Path, 
     assert agg["results"]["voice_rtf"] == 6.2
     assert agg["results"]["asr_wer"] == 1.0
     assert agg["results"]["e2e_loop_ok"] is True
+    assert agg["results"]["barge_in_cancel_ms"] == 5.0
     assert agg["results"]["thirty_turn_ok"] is False
+
+
+def test_precomputed_e2e_reports_feed_eval_blobs(tmp_path: Path, monkeypatch) -> None:
+    bundle = _make_real_bundle(tmp_path)
+    report = {
+        **_OK_BENCH,
+        "thirtyTurnOk": True,
+        "summary": {
+            **_OK_BENCH["summary"],
+            "ramWithinBudget": True,
+            "serverPeakRssMb": 1309,
+        },
+    }
+    report_path = tmp_path / "kokoro-30turn.json"
+    report_path.write_text(json.dumps(report), encoding="utf-8")
+    monkeypatch.setenv("ELIZA_EVAL_E2E_REPORT", str(report_path))
+    monkeypatch.setenv("ELIZA_EVAL_ENDURANCE_REPORT", str(report_path))
+
+    def _no_bench(*args, **kwargs):
+        raise AssertionError("precomputed report should avoid launching bench")
+
+    bin_dir = bundle.parent / "bin"
+    monkeypatch.setattr(suite, "discover_engine", lambda *a, **k: _fake_engine(bin_dir))
+    monkeypatch.setattr(
+        suite,
+        "eval_dispatch",
+        lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "backend": "cpu", "status": "not-run", "runtimeReady": False, "passed": None, "reason": "skipped in test"},
+    )
+    monkeypatch.setattr(suite, "eval_text", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "text_eval", "op": ">=", "status": "not-run", "score": None, "passed": None, "reason": "skipped in test"})
+    monkeypatch.setattr(suite, "eval_dflash_accept", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "dflash_acceptance", "op": ">=", "status": "not-run", "acceptanceRate": None, "speedup": None, "passed": None, "reason": "skipped in test"})
+    monkeypatch.setattr(suite, "eval_vad", lambda ctx: {"schemaVersion": suite.SCHEMA_VERSION, "metric": "vad_latency_ms", "op": "<=", "status": "not-run", "median": None, "passed": None, "reason": "skipped in test"})
+    monkeypatch.setattr(suite, "_BUN", "/bin/false")
+    monkeypatch.setattr(suite.subprocess, "run", _no_bench)
+    args = suite.argparse.Namespace(bundle_dir=bundle, tier="0_8b", backend=None, text_eval_model=None, text_corpus=None, threads=2, timeout=30)
+    agg = suite.run_suite(suite.build_context(args))
+
+    e2e = json.loads((bundle / "evals" / "e2e-loop.json").read_text())
+    end = json.loads((bundle / "evals" / "endurance.json").read_text())
+    copied = json.loads((bundle / "evals" / "e2e-loop-bench-30turn.json").read_text())
+    assert e2e["status"] == "ok" and e2e["e2eLoopOk"] is True
+    assert end["status"] == "ok" and end["thirtyTurnOk"] is True
+    assert end["ramWithinBudget"] is True
+    assert copied["summary"]["serverPeakRssMb"] == 1309
+    assert agg["results"]["e2e_loop_ok"] is True
+    assert agg["results"]["thirty_turn_ok"] is True
 
 
 def test_bench_bridge_runners_record_not_run_when_bench_fails(tmp_path: Path, monkeypatch) -> None:

@@ -11,7 +11,7 @@
  *      `ModelType.TEXT_SMALL` / `TEXT_LARGE` handlers (see
  *      `ensure-local-inference-handler.ts`).
  *
- * Dynamic import keeps the binding optional: if `capacitor-llama` is not
+ * Dynamic import keeps the binding optional: if `node-llama-cpp` is not
  * installed, `available()` returns false and callers surface a clear error
  * instead of crashing the process.
  */
@@ -415,7 +415,7 @@ interface LlamaBindingModule {
 }
 
 /**
- * In-process llama.cpp backend backed by `capacitor-llama` 3.18.1.
+ * In-process llama.cpp backend backed by `node-llama-cpp` 3.18.1.
  *
  * Stock GGUF only. Does NOT support `--lookahead`, n-gram drafter, MoE
  * expert offload (`-ot`), `--parallel` continuous batching, or DFlash
@@ -427,7 +427,7 @@ interface LlamaBindingModule {
  * `LlamaModelOptions`.
  */
 export class NodeLlamaCppBackend implements LocalInferenceBackend {
-	readonly id = "capacitor-llama" as const;
+	readonly id = "node-llama-cpp" as const;
 
 	private llama: Llama | null = null;
 	private loadedModel: LlamaModel | null = null;
@@ -497,7 +497,7 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 
 		if (!(await this.available()) || !this.bindingModule) {
 			throw new Error(
-				"capacitor-llama (in-process llama.cpp binding) is not available in this build; install the desktop libllama dylibs or the llama-cpp-capacitor mobile binding to enable local inference",
+				"node-llama-cpp is not installed in this build; add it as a dependency to enable local inference",
 			);
 		}
 
@@ -763,16 +763,23 @@ export class NodeLlamaCppBackend implements LocalInferenceBackend {
 	}
 
 	private async loadBinding(): Promise<LlamaBindingModule | null> {
-		// node-llama-cpp has been removed. The canonical in-process llama.cpp
-		// path is now `@elizaos/plugin-local-inference`'s
-		// `adapters/capacitor-llama` adapter, which loads the vendored
-		// libllama.so via `bun:ffi` on desktop and via `llama-cpp-capacitor`'s
-		// JNI binding on mobile. This `NodeLlamaCppBackend` class is kept as a
-		// no-op stub so `available()` returns false and the dispatcher always
-		// routes to the `llama-server` backend (or the FFI streaming backend
-		// it wraps). Removing the class entirely requires reworking the
-		// dispatcher's two-backend assumption — tracked as a follow-up.
-		return null;
+		try {
+			const mod = (await import("node-llama-cpp")) as unknown;
+			if (
+				mod &&
+				typeof mod === "object" &&
+				"getLlama" in mod &&
+				"LlamaChatSession" in mod &&
+				"LlamaGrammar" in mod &&
+				typeof (mod as { getLlama: unknown }).getLlama === "function"
+			) {
+				// ChatMLChatWrapper is optional — older builds don't have it.
+				return mod as LlamaBindingModule;
+			}
+			return null;
+		} catch {
+			return null;
+		}
 	}
 }
 
@@ -1054,7 +1061,7 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "capacitor-llama" | "llama-server" | null {
+	activeBackendId(): "node-llama-cpp" | "llama-server" | null {
 		return this.dispatcher.activeBackendId();
 	}
 
@@ -1145,7 +1152,7 @@ export class LocalInferenceEngine {
 				!dflashRequired()
 			) {
 				console.warn(
-					"[local-inference] llama-server backend unavailable; falling back to capacitor-llama:",
+					"[local-inference] llama-server backend unavailable; falling back to node-llama-cpp:",
 					err instanceof Error ? err.message : String(err),
 				);
 				await this.nodeBackend.load(plan);
@@ -1166,8 +1173,8 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Vision describe via the running llama-server's mtmd path. Requires
-	 * the llama-server backend (the in-process capacitor-llama adapter
-	 * does not expose mmproj yet — see `services/vision/capacitor-llama.ts`
+	 * the llama-server backend (the in-process node-llama-cpp adapter
+	 * does not expose mmproj yet — see `services/vision/node-llama-cpp.ts`
 	 * for the planned mtmd binding). The mmproj GGUF must have been
 	 * declared by the active catalog tier and present on disk under the
 	 * bundle root; if not, the dflash-server load did not pass `--mmproj`
@@ -1262,7 +1269,7 @@ export class LocalInferenceEngine {
 	 * Returns the Anthropic-shape `LocalUsageBlock` alongside the text so
 	 * agentic callers can surface cache-hit telemetry without re-scraping
 	 * `/metrics` themselves. Falls back to a zero-counter usage block on
-	 * the capacitor-llama backend (which doesn't expose Prometheus
+	 * the node-llama-cpp backend (which doesn't expose Prometheus
 	 * metrics).
 	 */
 	async generateInConversation(
@@ -1322,7 +1329,7 @@ export class LocalInferenceEngine {
 	 * fly so the slot derivation matches the real request). Idempotent /
 	 * cheap to call repeatedly: `cache_prompt: true` reuses the prefix so a
 	 * second call is a no-op forward pass. Only meaningful on the
-	 * llama-server backend — the capacitor-llama session pool already pins
+	 * llama-server backend — the node-llama-cpp session pool already pins
 	 * by cache key, so this is a no-op (returns false) there. Returns true
 	 * when a pre-warm request was issued.
 	 */
@@ -1408,7 +1415,7 @@ export class LocalInferenceEngine {
 	/**
 	 * Emit a one-line warning when the running `--parallel` slot count is
 	 * below the recommended value (high-water mark + headroom). Returns true
-	 * when a warning was emitted. No-op for the capacitor-llama backend (its
+	 * when a warning was emitted. No-op for the node-llama-cpp backend (its
 	 * session pool sizes itself). The actual resize is `maybeAutoResizeParallel()`
 	 * — kept separate from this hot-path check so a `useModel` call never
 	 * blocks on (or is interrupted by) a server restart; the auto-resize is
@@ -1792,13 +1799,8 @@ export class LocalInferenceEngine {
 				"[voice] useEliza1Eot:true requested but the in-process text model is not loaded — load a node-llama-cpp model before starting the voice session, or set useEliza1Eot:false.",
 			);
 		}
-		// Resolver order (J1.d single-runtime policy): prefer the
-		// fork-served GGUF over the legacy ONNX path. The GGUF binding
-		// loads the Qwen2-style decoder through `capacitor-llama` (the
-		// canonical fork wrapper), so the resolved path drops ONNX +
-		// `@huggingface/transformers` entirely. The ONNX fallback exists
-		// as a one-release deprecation runway and is retired in the
-		// follow-up J3 wave.
+		// Resolver order: prefer Eliza-1 in-process scorer, then GGUF (node-llama-cpp),
+		// then heuristic fallback. The ONNX path was removed.
 		const ggmlTurnDetector =
 			opts.turnDetector === false
 				? undefined
@@ -1816,17 +1818,11 @@ export class LocalInferenceEngine {
 				: (opts.turnDetector ??
 					eliza1EotClassifier ??
 					ggmlTurnDetector ??
-					(await eotMod.createBundledLiveKitTurnDetector({
-						...(opts.turnDetectorModelDir
-							? { modelDir: opts.turnDetectorModelDir }
-							: {}),
-						...(tierRevision ? { revision: tierRevision } : {}),
-					})) ??
 					new eotMod.HeuristicEotClassifier());
 		if (turnDetector) {
 			try {
-				// Load tokenizer/ONNX and warm one short pass while the session is
-				// arming, so the first real user pause does not pay model-load latency.
+				// Warm one short pass while the session is arming, so the first
+				// real user pause does not pay model-load latency.
 				await turnDetector.score("yes");
 			} catch (err) {
 				throw new VoiceStartupError(
@@ -2495,7 +2491,7 @@ export class LocalInferenceEngine {
 
 	/**
 	 * Active server's parallel slot count, or 1 when no llama-server
-	 * backend is running (the capacitor-llama path has its own pool).
+	 * backend is running (the node-llama-cpp path has its own pool).
 	 */
 	private activeParallel(): number {
 		if (this.activeBackendId() === "llama-server") {
@@ -2562,7 +2558,7 @@ export class LocalInferenceEngine {
 		_mode: "prefer" | "force",
 		loraPath: string | undefined,
 	): import("./voice/eot-classifier").Eliza1EotClassifier | null {
-		if (this.dispatcher.activeBackendId() !== "capacitor-llama") return null;
+		if (this.dispatcher.activeBackendId() !== "node-llama-cpp") return null;
 		const model = this.nodeBackend.getLoadedLlamaModel();
 		if (!model) return null;
 		const eotMod =

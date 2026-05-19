@@ -725,3 +725,8 @@ storybook-static
 .wrangler
 .wrangler-dry-run
 swe-bench-workspace-opencode/
+
+# iOS Bun engine artifact
+!packages/bun-ios-runtime/artifacts/
+!packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework/
+!packages/bun-ios-runtime/artifacts/ElizaBunEngine.xcframework/**

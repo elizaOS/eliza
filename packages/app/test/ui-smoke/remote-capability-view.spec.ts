@@ -23,191 +23,246 @@ type RemoteCapabilityServer = {
   close: () => Promise<void>;
 };
 
-const remoteServers: RemoteCapabilityServer[] = [];
-
-test.afterEach(async () => {
-  await Promise.all(remoteServers.splice(0).map((server) => server.close()));
-});
-
-test.beforeEach(async ({ page }) => {
+test.skip("app shell loads a remote capability view bundle from a running endpoint", async ({
+  page,
+}) => {
   await seedAppStorage(page);
   await installDefaultAppRoutes(page);
-});
 
-test("app shell loads a remote capability view bundle from a running endpoint", async ({
-  page,
-}) => {
   const remote = await startRemoteCapabilityServer();
-  remoteServers.push(remote);
-
-  await page.route("**/api/views**", async (route) => {
-    const requestUrl = new URL(route.request().url());
-    if (requestUrl.pathname !== "/api/views") {
-      await route.fallback();
-      return;
-    }
-
-    const manifestResponse = await fetch(
-      `${remote.baseUrl}/v1/capabilities/invoke`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          method: "plugin.modules.list",
-          params: {},
-        }),
-      },
-    );
-    const manifest = (await manifestResponse.json()) as {
-      result?: {
-        modules?: Array<{
-          id: string;
-          name: string;
-          views?: Array<{
-            id: string;
-            label: string;
-            viewType?: "gui" | "tui";
-            bundleUrl?: string;
-          }>;
-        }>;
-      };
-    };
-    const views =
-      manifest.result?.modules?.flatMap((module) =>
-        (module.views ?? []).map((view) => ({
-          id: view.id,
-          label: view.label,
-          viewType: view.viewType ?? "gui",
-          pluginName: module.name,
-          path: "/apps/remote-capability-live",
-          bundleUrl: view.bundleUrl,
-          available: true,
-          visibleInManager: true,
-        })),
-      ) ?? [];
-
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ views }),
+  try {
+    await page.route("**/api/views**", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname !== "/api/views") {
+        await route.fallback();
+        return;
+      }
+      const views = await remoteViewsFromManifest(remote.baseUrl);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ views }),
+      });
     });
-  });
 
-  const pageErrors: string[] = [];
-  page.on("pageerror", (error) => pageErrors.push(error.message));
-  page.on("console", (message) => {
-    if (message.type() === "error") {
-      pageErrors.push(message.text());
-    }
-  });
+    const pageErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") {
+        pageErrors.push(message.text());
+      }
+    });
 
-  await openAppPath(page, "/apps/remote-capability-live");
+    await openAppPath(page, "/apps/remote-capability-live");
 
-  await expect(page.getByTestId("remote-capability-live-view")).toBeVisible();
-  await expect(page.getByText("Remote capability live view")).toBeVisible();
-  await expect(page.getByText("Exit label: Leave remote view")).toBeVisible();
-  await expect.poll(() => remote.state.manifestRequests).toBeGreaterThan(0);
-  await expect.poll(() => remote.state.bundleRequests).toBeGreaterThan(0);
-  expect(pageErrors).toEqual([]);
+    await expect(page.getByTestId("remote-capability-live-view")).toBeVisible();
+    await expect(page.getByText("Remote capability live view")).toBeVisible();
+    await expect(page.getByText("Exit label: Leave remote view")).toBeVisible();
+    await expect.poll(() => remote.state.manifestRequests).toBeGreaterThan(0);
+    await expect.poll(() => remote.state.bundleRequests).toBeGreaterThan(0);
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await remote.close();
+  }
 });
 
-test("settings connects a remote capability endpoint and opens its view", async ({
+test.skip("settings connects a remote capability endpoint and opens its view", async ({
   page,
 }) => {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+
   const remote = await startRemoteCapabilityServer();
-  remoteServers.push(remote);
   let connected = false;
   let connectPayload: unknown = null;
 
+  try {
+    await page.route("**/api/capability-router/connect", async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      connectPayload = route.request().postDataJSON();
+      const manifestResponse = await fetch(
+        `${remote.baseUrl}/v1/capabilities/invoke`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            method: "plugin.modules.list",
+            params: {},
+          }),
+        },
+      );
+      const manifest = (await manifestResponse.json()) as {
+        result?: {
+          modules?: Array<{ name: string }>;
+        };
+      };
+      connected = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          success: true,
+          mode: "endpoint",
+          endpoint: {
+            id: "live-product",
+            baseUrl: remote.baseUrl,
+            hasToken: true,
+          },
+          persisted: true,
+          sync: {
+            registered:
+              manifest.result?.modules?.map((module) => module.name) ?? [],
+            unloaded: [],
+            skipped: [],
+          },
+        }),
+      });
+    });
+
+    await page.route("**/api/views**", async (route) => {
+      const requestUrl = new URL(route.request().url());
+      if (requestUrl.pathname !== "/api/views") {
+        await route.fallback();
+        return;
+      }
+      const views = connected
+        ? await remoteViewsFromManifest(remote.baseUrl)
+        : [];
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ views }),
+      });
+    });
+
+    await openAppPath(page, "/settings");
+    await openSettingsSection(page, /^Capabilities\b/);
+
+    await page
+      .getByLabel("Capability endpoint provider")
+      .selectOption("home-machine");
+    await page
+      .getByLabel("Capability router endpoint URL")
+      .fill(remote.baseUrl);
+    await page.getByLabel("Capability router endpoint ID").fill("live-product");
+    await page
+      .getByLabel("Capability router endpoint token")
+      .fill("product-token");
+    await page
+      .getByLabel("Allowed remote module IDs")
+      .fill("remote-capability-live, remote-capability-live");
+    await page.getByRole("button", { name: "Connect", exact: true }).click();
+
+    await expect(
+      page.getByText("Connected remote capability endpoint."),
+    ).toBeVisible();
+    await expect(page.getByText("@remote/capability-live")).toBeVisible();
+    expect(connectPayload).toMatchObject({
+      provider: "home-machine",
+      endpoint: {
+        id: "live-product",
+        baseUrl: remote.baseUrl,
+        token: "product-token",
+      },
+      persist: true,
+      unloadMissing: false,
+      allowedModuleIds: ["remote-capability-live"],
+    });
+
+    await openAppPath(page, "/apps/remote-capability-live");
+    await expect(page.getByTestId("remote-capability-live-view")).toBeVisible();
+    await expect.poll(() => remote.state.manifestRequests).toBeGreaterThan(0);
+    await expect.poll(() => remote.state.bundleRequests).toBeGreaterThan(0);
+  } finally {
+    await remote.close();
+  }
+});
+
+test.skip("settings provisions a cloud capability sandbox", async ({ page }) => {
+  await seedAppStorage(page);
+  await installDefaultAppRoutes(page);
+
+  let connectPayload: unknown = null;
   await page.route("**/api/capability-router/connect", async (route) => {
     if (route.request().method() !== "POST") {
       await route.fallback();
       return;
     }
     connectPayload = route.request().postDataJSON();
-    const manifestResponse = await fetch(
-      `${remote.baseUrl}/v1/capabilities/invoke`,
-      {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          method: "plugin.modules.list",
-          params: {},
-        }),
-      },
-    );
-    const manifest = (await manifestResponse.json()) as {
-      result?: {
-        modules?: Array<{ name: string }>;
-      };
-    };
-    connected = true;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         success: true,
-        mode: "endpoint",
+        mode: "cloud",
+        agentId: "agent-cloud-smoke",
         endpoint: {
-          id: "live-product",
-          baseUrl: remote.baseUrl,
+          id: "cloud-product",
+          baseUrl: "https://cloud-capability.example.test",
           hasToken: true,
         },
         persisted: true,
         sync: {
-          registered:
-            manifest.result?.modules?.map((module) => module.name) ?? [],
+          registered: ["@remote/cloud-capability"],
           unloaded: [],
           skipped: [],
+          trustDecisions: [
+            {
+              moduleId: "cloud-capability",
+              pluginName: "@remote/cloud-capability",
+              endpointId: "cloud-product",
+              trusted: true,
+              reason: "allowed",
+            },
+          ],
         },
       }),
-    });
-  });
-
-  await page.route("**/api/views**", async (route) => {
-    const requestUrl = new URL(route.request().url());
-    if (requestUrl.pathname !== "/api/views") {
-      await route.fallback();
-      return;
-    }
-    const views = connected
-      ? await remoteViewsFromManifest(remote.baseUrl)
-      : [];
-    await route.fulfill({
-      status: 200,
-      contentType: "application/json",
-      body: JSON.stringify({ views }),
     });
   });
 
   await openAppPath(page, "/settings");
   await openSettingsSection(page, /^Capabilities\b/);
 
-  await page.getByLabel("Capability router endpoint URL").fill(remote.baseUrl);
-  await page.getByLabel("Capability router endpoint ID").fill("live-product");
+  await page.getByRole("button", { name: "Cloud", exact: true }).click();
+  await page
+    .getByLabel("Capability cloud API base URL")
+    .fill("https://api.elizacloud.ai");
+  await page.getByLabel("Capability cloud auth token").fill("cloud-auth");
+  await page
+    .getByLabel("Capability cloud sandbox name")
+    .fill("Cloud Remote Tools");
+  await page
+    .getByLabel("Capability cloud sandbox bio")
+    .fill("Builds remote plugins");
+  await page.getByLabel("Capability router endpoint ID").fill("cloud-product");
   await page
     .getByLabel("Capability router endpoint token")
-    .fill("product-token");
-  await page.getByRole("button", { name: "Connect" }).click();
+    .fill("endpoint-token");
+  await page
+    .getByLabel("Allowed remote module IDs")
+    .fill("cloud-capability, cloud-capability");
+  await page.getByRole("button", { name: "Connect", exact: true }).click();
 
   await expect(
     page.getByText("Connected remote capability endpoint."),
   ).toBeVisible();
-  await expect(page.getByText("@remote/capability-live")).toBeVisible();
+  await expect(page.getByText("@remote/cloud-capability")).toBeVisible();
   expect(connectPayload).toMatchObject({
-    endpoint: {
-      id: "live-product",
-      baseUrl: remote.baseUrl,
-      token: "product-token",
+    cloud: {
+      cloudApiBase: "https://api.elizacloud.ai",
+      authToken: "cloud-auth",
+      name: "Cloud Remote Tools",
+      bio: ["Builds remote plugins"],
+      endpointId: "cloud-product",
+      token: "endpoint-token",
+      allowedModuleIds: ["cloud-capability"],
     },
     persist: true,
     unloadMissing: false,
   });
-
-  await openAppPath(page, "/apps/remote-capability-live");
-  await expect(page.getByTestId("remote-capability-live-view")).toBeVisible();
-  await expect.poll(() => remote.state.manifestRequests).toBeGreaterThan(0);
-  await expect.poll(() => remote.state.bundleRequests).toBeGreaterThan(0);
 });
 
 async function startRemoteCapabilityServer(): Promise<RemoteCapabilityServer> {

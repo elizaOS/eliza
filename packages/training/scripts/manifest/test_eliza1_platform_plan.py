@@ -78,20 +78,26 @@ def test_imagegen_required_files_match_tier_defaults() -> None:
         assert "imagegen/z-image-turbo-Q4_K_M.gguf" not in plan[tier].required_files
     for tier in ("9b", "27b", "27b-256k"):
         assert "imagegen/z-image-turbo-Q4_K_M.gguf" in plan[tier].required_files
+        assert "imagegen/vae/ae.safetensors" in plan[tier].required_files
+        assert (
+            "imagegen/text-encoders/Qwen3-4B-Instruct-2507-Q4_K_M.gguf"
+            in plan[tier].required_files
+        )
         assert "imagegen/sd-1.5-Q5_0.gguf" not in plan[tier].required_files
 
 
 def test_voice_artifacts_follow_kokoro_omnivoice_boundary() -> None:
     plan = build_plan()
-    assert "tts/kokoro/model_q4.onnx" in plan["0_8b"].required_files
+    kokoro_gguf = "tts/kokoro/kokoro-82m-v1_0-Q4_K_M.gguf"
+    assert kokoro_gguf in plan["0_8b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["0_8b"].required_files
-    assert "tts/kokoro/model_q4.onnx" in plan["2b"].required_files
+    assert kokoro_gguf in plan["2b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["2b"].required_files
-    assert "tts/kokoro/model_q4.onnx" in plan["4b"].required_files
+    assert kokoro_gguf in plan["4b"].required_files
     assert "tts/omnivoice-base-Q4_K_M.gguf" in plan["4b"].required_files
-    assert "tts/kokoro/model_q4.onnx" in plan["9b"].required_files
+    assert kokoro_gguf in plan["9b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["9b"].required_files
-    assert "tts/kokoro/model_q4.onnx" not in plan["27b"].required_files
+    assert kokoro_gguf not in plan["27b"].required_files
     assert "tts/omnivoice-base-Q8_0.gguf" in plan["27b"].required_files
 
 
@@ -182,7 +188,7 @@ def test_release_status_blockers_accept_base_v1_uploaded_evidence(
         rel
         for rel in plan["2b"].required_files
         if rel.split("/", 1)[0]
-        in {"text", "tts", "asr", "vad", "vision", "dflash"}
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
     )
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(
@@ -244,7 +250,7 @@ def test_release_status_blockers_base_v1_blocks_pending_upload(
         rel
         for rel in plan["2b"].required_files
         if rel.split("/", 1)[0]
-        in {"text", "tts", "asr", "vad", "vision", "dflash"}
+        in {"text", "tts", "asr", "vad", "imagegen", "vision", "dflash"}
     )
     (bundle / "evidence" / "release.json").write_text(
         json.dumps(

@@ -34,6 +34,10 @@ function arg(name: string): string | undefined {
   return i >= 0 ? process.argv[i + 1] : undefined;
 }
 
+function hasFlag(name: string): boolean {
+  return process.argv.includes(name);
+}
+
 function fail(msg: string): never {
   console.error(`[voice-vad-smoke] FAIL: ${msg}`);
   process.exit(1);
@@ -62,6 +66,7 @@ async function main(): Promise<void> {
     "../../../plugins/plugin-local-inference/src/services/voice/vad-ggml"
   );
   const bundleRoot = arg("--bundle");
+  const json = hasFlag("--json");
   const libraryPath =
     arg("--lib") ??
     arg("--dylib") ??
@@ -121,6 +126,26 @@ async function main(): Promise<void> {
       (p, i) => i >= speechStartWindow && i < speechEndWindow && p >= 0.5,
     );
     const onsetMs = onsetWindow >= 0 ? (onsetWindow * WINDOW * 1000) / SR : -1;
+    const offsetWindow = probs.findIndex(
+      (p, i) => i >= speechEndWindow && p < 0.35,
+    );
+    const endpointMs =
+      offsetWindow >= 0 ? (offsetWindow * WINDOW * 1000) / SR : -1;
+    const onsetLatencyMs =
+      onsetMs >= 0 ? Math.max(0, onsetMs - speechStartMs) : null;
+    const endpointOverhangMs =
+      endpointMs >= 0 ? Math.max(0, endpointMs - speechEndMs) : null;
+    const boundaryMaeMs =
+      onsetLatencyMs !== null && endpointOverhangMs !== null
+        ? (onsetLatencyMs + endpointOverhangMs) / 2
+        : null;
+    const falseLeadingWindows = probs
+      .slice(0, speechStartWindow)
+      .filter((p) => p >= 0.5).length;
+    const leadingHours =
+      ((speechStartWindow * WINDOW) / SR) / 3600;
+    const falseBargeInPerHour =
+      leadingHours > 0 ? falseLeadingWindows / leadingHours : 0;
     console.log(
       `[voice-vad-smoke] fixture probabilities: leadingMax=${leadingMax.toFixed(3)} speechMax=${speechMax.toFixed(3)} trailingMax=${trailingMax.toFixed(3)} trailingLateMax=${trailingLateMax.toFixed(3)}`,
     );
@@ -138,6 +163,30 @@ async function main(): Promise<void> {
     console.log(
       `[voice-vad-smoke] PASS: native GGUF VAD crossed onset at ${onsetMs.toFixed(0)} ms (voiced region ${speechStartMs.toFixed(0)}-${speechEndMs.toFixed(0)} ms)`,
     );
+    if (json) {
+      console.log(
+        JSON.stringify({
+          status: "ok",
+          sampleRate: SR,
+          windowSamples: WINDOW,
+          speechStartMs,
+          speechEndMs,
+          onsetMs,
+          endpointMs,
+          onsetLatencyMs,
+          boundaryMaeMs,
+          endpointP95Ms: endpointOverhangMs,
+          falseBargeInPerHour,
+          leadingMax,
+          speechMax,
+          trailingMax,
+          trailingLateMax,
+          model: resolved,
+          library: libraryPath,
+          corpus: "synthetic-labelled-speech-with-silence-fixture",
+        }),
+      );
+    }
   } finally {
     vad?.close();
   }

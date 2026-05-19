@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/shared",
-  "version": "2.0.0-beta.3",
+  "version": "2.0.0-beta.4",
   "description": "Shared code for Eliza agent and app-core.",
   "type": "module",
   "main": "./dist/index.js",
@@ -101,6 +101,31 @@
       "types": "./dist/runtime-env.d.ts",
       "import": "./dist/runtime-env.js",
       "default": "./dist/runtime-env.js"
+    },
+    "./brand": {
+      "types": "./dist/brand/index.d.ts",
+      "import": "./dist/brand/index.js",
+      "default": "./dist/brand/index.js"
+    },
+    "./brand-classic": {
+      "types": "./dist/brand-classic/index.d.ts",
+      "import": "./dist/brand-classic/index.js",
+      "default": "./dist/brand-classic/index.js"
+    },
+    "./checkout": {
+      "types": "./dist/checkout/index.d.ts",
+      "import": "./dist/checkout/index.js",
+      "default": "./dist/checkout/index.js"
+    },
+    "./hardware-catalog": {
+      "types": "./dist/hardware-catalog/index.d.ts",
+      "import": "./dist/hardware-catalog/index.js",
+      "default": "./dist/hardware-catalog/index.js"
+    },
+    "./steward-session-client": {
+      "types": "./dist/steward-session-client/index.d.ts",
+      "import": "./dist/steward-session-client/index.js",
+      "default": "./dist/steward-session-client/index.js"
     },
     "./*.css": "./dist/*.css",
     "./*": {

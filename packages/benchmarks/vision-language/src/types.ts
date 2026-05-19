@@ -153,6 +153,10 @@ export interface VisionRuntime {
 export interface BenchReport {
   schemaVersion: "vision-language-bench-v1";
   tier: string;
+  /** Runtime implementation used for prediction. Stub runtimes are not publishable. */
+  runtime_id: string;
+  /** True only for checked-in fixture smoke runs. Smoke reports are not publishable. */
+  smoke: boolean;
   benchmark: BenchmarkName;
   generatedAt: string;
   sample_count: number;

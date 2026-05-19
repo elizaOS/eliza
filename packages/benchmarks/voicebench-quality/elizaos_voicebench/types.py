@@ -120,3 +120,4 @@ class VoiceBenchResult:
     suite_details: list[SuiteResult] = field(default_factory=list)
     judge_model: str = ""
     stt_provider: str = ""
+    mock: bool = False

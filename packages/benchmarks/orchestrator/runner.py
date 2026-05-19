@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import shlex
 import subprocess
@@ -443,6 +444,20 @@ def _required_env_for_request(adapter: BenchmarkAdapter, request: RunRequest) ->
             return (provider_key or "CEREBRAS_API_KEY",)
         return ()
 
+    if adapter.id == "voicebench_quality":
+        stt_provider = str(
+            request.extra_config.get("stt_provider")
+            or os.environ.get("VOICEBENCH_QUALITY_STT_PROVIDER")
+            or os.environ.get("VOICEBENCH_STT_PROVIDER")
+            or "groq"
+        ).strip().lower()
+        required = ["CEREBRAS_API_KEY"]
+        if stt_provider == "groq":
+            required.append("GROQ_API_KEY")
+        elif stt_provider == "eliza-runtime":
+            required.append("ELIZA_BENCH_URL" if os.environ.get("ELIZA_BENCH_URL") else "ELIZA_API_BASE")
+        return tuple(required)
+
     provider = request.provider.strip().lower()
     required = list(adapter.required_env)
     provider_key = PROVIDER_KEY_ENV.get(provider)
@@ -476,9 +491,6 @@ def _ensure_viewer_snapshot(
 
 def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
     summary, records = summarize_trajectory(run_root)
-    # P0b: Never silently substitute prompt_chars/4 for real tokens. If the
-    # adapter didn't emit usage we surface ``None`` here and let the
-    # publication gate quarantine the result downstream.
     has_real_prompt = summary.prompt_tokens > 0
     has_real_completion = summary.completion_tokens > 0
     has_real_total = summary.total_tokens > 0
@@ -537,7 +549,101 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
         }
         for record in records
     ]
+    token_metrics = _complete_token_metrics(
+        token_metrics,
+        trajectory_summary=trajectory_summary,
+        result_json_path=None,
+    )
     return trajectory_summary, token_metrics, cache_metrics, performance_metrics, trajectory_rows
+
+
+def _estimated_tokens_from_chars(chars: Any) -> int:
+    if isinstance(chars, bool) or not isinstance(chars, (int, float)) or chars <= 0:
+        return 0
+    return int(math.ceil(float(chars) / 4.0))
+
+
+def _sum_result_generated_tokens(value: Any) -> int:
+    if isinstance(value, dict):
+        total = 0
+        for key, item in value.items():
+            if key in {"tokens_generated", "generated_tokens"} and isinstance(item, (int, float)) and not isinstance(item, bool):
+                total += int(item)
+            else:
+                total += _sum_result_generated_tokens(item)
+        return total
+    if isinstance(value, list):
+        return sum(_sum_result_generated_tokens(item) for item in value)
+    return 0
+
+
+def _result_generated_token_estimate(result_json_path: Any) -> int:
+    if not result_json_path:
+        return 0
+    path = Path(str(result_json_path))
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return 0
+    return _sum_result_generated_tokens(payload)
+
+
+def _complete_token_metrics(
+    token_metrics: dict[str, Any] | None,
+    *,
+    trajectory_summary: dict[str, Any] | None,
+    result_json_path: Any,
+) -> dict[str, Any]:
+    """Return numeric token metrics, using explicit estimates when telemetry is absent."""
+
+    tokens = dict(token_metrics or {})
+    summary = trajectory_summary or {}
+    prompt = tokens.get("prompt_tokens")
+    completion = tokens.get("completion_tokens")
+    total = tokens.get("total_tokens")
+    calls = tokens.get("llm_call_count")
+    turns = summary.get("turns")
+    prompt_chars = summary.get("prompt_chars")
+
+    source: str | None = tokens.get("token_estimate_source")
+    if not isinstance(calls, (int, float)) or isinstance(calls, bool):
+        calls = turns if isinstance(turns, (int, float)) and not isinstance(turns, bool) else 0
+    calls = int(calls)
+
+    if not isinstance(prompt, (int, float)) or isinstance(prompt, bool):
+        prompt = _estimated_tokens_from_chars(prompt_chars)
+        if prompt:
+            source = source or "prompt_chars_div_4"
+            tokens["estimated_prompt_tokens"] = prompt
+        else:
+            prompt = 0
+
+    if not isinstance(completion, (int, float)) or isinstance(completion, bool):
+        generated = _result_generated_token_estimate(result_json_path)
+        if generated:
+            completion = generated
+            source = source or "result_tokens_generated"
+            tokens["estimated_completion_tokens"] = completion
+        elif isinstance(total, (int, float)) and not isinstance(total, bool):
+            completion = max(0, int(total) - int(prompt))
+        else:
+            completion = 0
+
+    if not isinstance(total, (int, float)) or isinstance(total, bool) or int(total) < int(prompt) + int(completion):
+        total = int(prompt) + int(completion)
+        if source is not None:
+            tokens["estimated_total_tokens"] = total
+
+    tokens["llm_call_count"] = calls
+    tokens["prompt_tokens"] = int(prompt)
+    tokens["completion_tokens"] = int(completion)
+    tokens["total_tokens"] = int(total)
+    tokens["avg_prompt_tokens"] = (int(prompt) / calls) if calls else 0
+    tokens["avg_completion_tokens"] = (int(completion) / calls) if calls else 0
+    tokens["telemetry_missing"] = source is not None
+    if source is not None:
+        tokens["token_estimate_source"] = source
+    return tokens
 
 
 SYNTHETIC_AGENT_SUFFIX = "_v1"
@@ -632,7 +738,10 @@ def _publication_warnings(
     n_value = metrics.get("n")
     if isinstance(n_value, (int, float)) and n_value <= 2:
         warnings.append(f"insufficient_n:{n_value!r}")
-    if metrics.get("sample") is True:
+    dataset_source = metrics.get("dataset_source")
+    if metrics.get("sample") is True or (
+        isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample"
+    ):
         warnings.append("sample_task_set")
     if metrics.get("interrupted") is True:
         warnings.append("interrupted_run")
@@ -1122,7 +1231,11 @@ def _rebuild_latest_result_snapshots(
     }
     for (benchmark_id, agent), row in sorted(latest_by_key.items()):
         metrics = row.get("metrics") or {}
-        token_metrics = row.get("token_metrics") or {}
+        token_metrics = _complete_token_metrics(
+            row.get("token_metrics") or {},
+            trajectory_summary=row.get("trajectory_summary") or {},
+            result_json_path=row.get("result_json_path"),
+        )
         is_synthetic = _is_synthetic_agent(agent)
         if is_synthetic:
             target_dir = baselines_dir
@@ -1256,7 +1369,11 @@ def _rebuild_latest_result_snapshots(
 
     for (benchmark_id, agent), row in sorted(quarantine_by_key.items()):
         metrics = row.get("metrics") or {}
-        token_metrics = row.get("token_metrics") or {}
+        token_metrics = _complete_token_metrics(
+            row.get("token_metrics") or {},
+            trajectory_summary=row.get("trajectory_summary") or {},
+            result_json_path=row.get("result_json_path"),
+        )
         quarantine_reason = _publication_quarantine_reason(
             status=str(row.get("status") or ""),
             agent=agent,

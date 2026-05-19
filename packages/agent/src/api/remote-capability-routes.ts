@@ -1,24 +1,38 @@
 import type http from "node:http";
-import type {
-  IAgentRuntime,
-  JsonObject,
-  RouteHelpers,
-  RouteRequestMeta,
+import {
+  CAPABILITY_ROUTER_SERVICE_TYPE,
+  CapabilityError,
+  type ElizaCapabilityRouter,
+  type IAgentRuntime,
+  type JsonObject,
+  type RouteHelpers,
+  type RouteRequestMeta,
 } from "@elizaos/core";
 import {
   type ConnectCloudCapabilitySandboxOptions,
   type ConnectCloudCapabilitySandboxResult,
   connectCloudCapabilitySandbox,
-  installRemoteCapabilityEndpoint,
 } from "../services/remote-capability-cloud-sandbox.ts";
-import type {
-  RemoteCapabilityEndpointConfig,
-  RemoteCapabilityRouterConfig,
-} from "../services/remote-capability-router.ts";
 import {
-  type RemotePluginSyncResult,
-  syncRemoteCapabilityPlugins,
-} from "../services/remote-plugin-adapter.ts";
+  type ConnectRemoteCapabilityEndpointProviderOptions,
+  type ConnectRemoteCapabilityEndpointProviderResult,
+  connectRemoteCapabilityEndpointProvider,
+  directRemoteCapabilityEndpointProvider,
+  type RemoteCapabilityEndpointProvider,
+} from "../services/remote-capability-endpoint-provider.ts";
+import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
+import {
+  desktopCompanionCapabilityEndpointProvider,
+  e2bCapabilityEndpointProvider,
+  homeMachineCapabilityEndpointProvider,
+  mobileCompanionCapabilityEndpointProvider,
+  type UrlRemoteCapabilityEndpointProviderOptions,
+} from "../services/remote-capability-url-endpoint-providers.ts";
+import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter.ts";
+import {
+  detectClientPlatform,
+  isDynamicLoadingAllowed,
+} from "./platform-detect.ts";
 
 type JsonBodyReader = <T = Record<string, unknown>>(
   req: http.IncomingMessage,
@@ -34,14 +48,10 @@ export interface RemoteCapabilityRouteContext
   readJsonBody: JsonBodyReader;
   saveConfig?: (config: CapabilityRouterPersistConfig) => void;
   persistConfigEnv?: (key: string, value: string) => Promise<void>;
-  installEndpoint?: (
+  connectEndpointProvider?: <TOptions>(
     runtime: IAgentRuntime,
-    config: RemoteCapabilityRouterConfig,
-  ) => unknown;
-  syncPlugins?: (
-    runtime: IAgentRuntime,
-    options: { unloadMissing?: boolean },
-  ) => Promise<RemotePluginSyncResult>;
+    options: ConnectRemoteCapabilityEndpointProviderOptions<TOptions>,
+  ) => Promise<ConnectRemoteCapabilityEndpointProviderResult>;
   connectCloudSandbox?: (
     runtime: IAgentRuntime,
     options: ConnectCloudCapabilitySandboxOptions,
@@ -51,9 +61,11 @@ export interface RemoteCapabilityRouteContext
 type ConnectBody = {
   endpoint?: unknown;
   cloud?: unknown;
+  provider?: unknown;
   unloadMissing?: unknown;
   persist?: unknown;
   requestTimeoutMs?: unknown;
+  allowedModuleIds?: unknown;
 };
 
 type DirectEndpointBody = {
@@ -61,6 +73,22 @@ type DirectEndpointBody = {
   baseUrl?: unknown;
   token?: unknown;
 };
+
+type EndpointProviderMode =
+  | "direct"
+  | "e2b"
+  | "home-machine"
+  | "mobile-companion"
+  | "desktop-companion";
+
+type DirectEndpointProviderOptions = {
+  endpoint: RemoteCapabilityEndpointConfig;
+  allowedModuleIds?: string[];
+};
+
+type EndpointProviderOptions =
+  | DirectEndpointProviderOptions
+  | UrlRemoteCapabilityEndpointProviderOptions;
 
 type CloudBody = {
   cloudApiBase?: unknown;
@@ -71,6 +99,7 @@ type CloudBody = {
   token?: unknown;
   timeoutMs?: unknown;
   pollIntervalMs?: unknown;
+  allowedModuleIds?: unknown;
 };
 
 export async function handleRemoteCapabilityRoutes(
@@ -78,6 +107,35 @@ export async function handleRemoteCapabilityRoutes(
 ): Promise<boolean> {
   const { req, res, method, pathname, runtime, readJsonBody, json, error } =
     ctx;
+
+  if (pathname.startsWith("/api/capability-router/assets/")) {
+    if (!runtime) {
+      error(res, "Agent runtime unavailable", 503);
+      return true;
+    }
+    if (method !== "GET" && method !== "HEAD") {
+      error(res, "Method not allowed", 405);
+      return true;
+    }
+    if (!isDynamicLoadingAllowed(detectClientPlatform(req))) {
+      error(
+        res,
+        "Dynamic capability asset loading is not permitted on this platform.",
+        403,
+      );
+      return true;
+    }
+    try {
+      await serveCapabilityRouterAssetProxy(ctx, runtime);
+    } catch (err) {
+      error(
+        res,
+        err instanceof Error ? err.message : "Failed to load remote asset.",
+        err instanceof CapabilityError ? 502 : 400,
+      );
+    }
+    return true;
+  }
 
   if (pathname !== "/api/capability-router/connect") {
     return false;
@@ -103,6 +161,10 @@ export async function handleRemoteCapabilityRoutes(
   const unloadMissing =
     typeof body.unloadMissing === "boolean" ? body.unloadMissing : true;
   const persist = typeof body.persist === "boolean" ? body.persist : true;
+  const allowedModuleIds = parseOptionalStringArray(
+    body.allowedModuleIds,
+    "allowedModuleIds",
+  );
   const requestTimeoutMs = optionalPositiveInteger(
     body.requestTimeoutMs,
     "requestTimeoutMs",
@@ -111,46 +173,74 @@ export async function handleRemoteCapabilityRoutes(
     error(res, requestTimeoutMs.message, 400);
     return true;
   }
+  if (body.endpoint !== undefined && body.cloud !== undefined) {
+    error(
+      res,
+      "Request body must include only one of 'endpoint' or 'cloud'.",
+      400,
+    );
+    return true;
+  }
 
   try {
     if (body.endpoint !== undefined) {
+      const providerMode = parseEndpointProviderMode(body.provider);
       const endpoint = parseDirectEndpoint(body.endpoint);
-      const installEndpoint =
-        ctx.installEndpoint ?? installRemoteCapabilityEndpoint;
-      installEndpoint(runtime, {
-        enabled: true,
-        endpoints: [endpoint],
-        environment: "server",
+      const connectEndpointProvider =
+        ctx.connectEndpointProvider ?? connectRemoteCapabilityEndpointProvider;
+      const provider = getEndpointProvider(providerMode);
+      const result = await connectEndpointProvider(runtime, {
+        provider,
+        provisionOptions: buildEndpointProvisionOptions(
+          providerMode,
+          endpoint,
+          allowedModuleIds,
+        ),
+        unloadMissing,
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
+        ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
       });
-      const sync = await (ctx.syncPlugins ?? syncRemoteCapabilityPlugins)(
-        runtime,
-        { unloadMissing },
-      );
+      const persistedEndpoint = result.endpoint ?? endpoint;
       if (persist) {
-        await persistEndpoint(ctx, endpoint);
+        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds);
       }
       json(res, {
         success: true,
-        mode: "endpoint",
-        endpoint: redactEndpoint(endpoint),
+        mode: providerMode === "direct" ? "endpoint" : providerMode,
+        ...(providerMode === "direct" ? {} : { provider: providerMode }),
+        endpoint: redactEndpoint(persistedEndpoint),
         persisted: persist,
-        sync: serializeSyncResult(sync),
+        sync: serializeSyncResult(result.sync),
       });
       return true;
     }
 
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
+      if (
+        allowedModuleIds !== undefined &&
+        cloud.allowedModuleIds !== undefined
+      ) {
+        error(
+          res,
+          "Cloud requests must set allowedModuleIds either at the top level or inside 'cloud', not both.",
+          400,
+        );
+        return true;
+      }
+      const cloudAllowedModuleIds = allowedModuleIds ?? cloud.allowedModuleIds;
       const connectCloudSandbox =
         ctx.connectCloudSandbox ?? connectCloudCapabilitySandbox;
       const result = await connectCloudSandbox(runtime, {
         ...cloud,
         unloadMissing,
+        ...(cloudAllowedModuleIds === undefined
+          ? {}
+          : { allowedModuleIds: cloudAllowedModuleIds }),
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
       });
       if (persist) {
-        await persistEndpoint(ctx, result.endpoint);
+        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds);
       }
       json(res, {
         success: true,
@@ -178,6 +268,89 @@ export async function handleRemoteCapabilityRoutes(
   }
 }
 
+async function serveCapabilityRouterAssetProxy(
+  ctx: RemoteCapabilityRouteContext,
+  runtime: IAgentRuntime,
+): Promise<void> {
+  const { res, pathname, method } = ctx;
+  const parsed = parseAssetProxyPath(pathname);
+  const router = getRuntimeCapabilityRouter(runtime);
+  const asset = await router.plugin.getAsset({
+    endpointId: parsed.endpointId,
+    moduleId: parsed.moduleId,
+    path: parsed.assetPath,
+  });
+  const body = Buffer.from(asset.bodyBase64, "base64");
+  const headers: Record<string, string | number> = {
+    "Content-Type": asset.contentType,
+    "Content-Length": body.byteLength,
+    "Cache-Control": "no-cache",
+    ...(asset.integrity === undefined
+      ? {}
+      : { "X-Eliza-Asset-Integrity": asset.integrity }),
+  };
+  const response = res as {
+    writeHead?: (
+      status: number,
+      headers: Record<string, string | number>,
+    ) => void;
+    setHeader?: (name: string, value: string | number) => void;
+    end?: (chunk?: unknown) => void;
+  };
+  if (typeof response.writeHead === "function") {
+    response.writeHead(200, headers);
+  } else if (typeof response.setHeader === "function") {
+    for (const [key, value] of Object.entries(headers)) {
+      response.setHeader(key, value);
+    }
+  }
+  response.end?.(method === "HEAD" ? undefined : body);
+}
+
+function parseAssetProxyPath(pathname: string): {
+  endpointId: string;
+  moduleId: string;
+  assetPath: string;
+} {
+  const prefix = "/api/capability-router/assets/";
+  const remainder = pathname.slice(prefix.length);
+  const [encodedEndpointId, encodedModuleId, ...assetParts] =
+    remainder.split("/");
+  if (!encodedEndpointId || !encodedModuleId || assetParts.length === 0) {
+    throw new Error(
+      "Capability asset URL must include endpoint id, module id, and path.",
+    );
+  }
+  const endpointId = decodeURIComponent(encodedEndpointId);
+  const moduleId = decodeURIComponent(encodedModuleId);
+  const assetSegments = assetParts.map((part) => decodeURIComponent(part));
+  const hasUnsafeSegment = assetSegments.some(
+    (part) => !part || part === "." || part === ".." || part.includes("\\"),
+  );
+  const assetPath = `/${assetSegments.join("/")}`;
+  if (!endpointId.trim() || !moduleId.trim() || assetPath === "/") {
+    throw new Error(
+      "Capability asset URL must include endpoint id, module id, and path.",
+    );
+  }
+  if (hasUnsafeSegment) {
+    throw new Error("Capability asset URL path is not valid.");
+  }
+  return { endpointId, moduleId, assetPath };
+}
+
+function getRuntimeCapabilityRouter(
+  runtime: IAgentRuntime,
+): ElizaCapabilityRouter {
+  const router = runtime.getService?.(
+    CAPABILITY_ROUTER_SERVICE_TYPE,
+  ) as unknown as ElizaCapabilityRouter | null;
+  if (!router) {
+    throw new Error("Capability router service is not available.");
+  }
+  return router;
+}
+
 type CapabilityRouterPersistConfig = {
   env?: {
     vars?: Record<string, string>;
@@ -192,6 +365,7 @@ function persistEndpoint(
     "config" | "saveConfig" | "persistConfigEnv"
   >,
   endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds?: string[],
 ): Promise<void> {
   const config = ctx.config;
   const saveConfig = ctx.saveConfig;
@@ -204,6 +378,7 @@ function persistEndpoint(
   return persistEndpointInner(
     { config, saveConfig, persistConfigEnv },
     endpoint,
+    allowedModuleIds,
   );
 }
 
@@ -214,6 +389,7 @@ async function persistEndpointInner(
     persistConfigEnv: (key: string, value: string) => Promise<void>;
   },
   endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds?: string[],
 ): Promise<void> {
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
@@ -223,6 +399,14 @@ async function persistEndpointInner(
         vars.ELIZA_CAPABILITY_ROUTER_URLS,
     ),
     endpoint,
+  );
+  const moduleAllowlists = mergePersistedModuleAllowlists(
+    readPersistedModuleAllowlists(
+      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES ??
+        vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES,
+    ),
+    endpoint.id,
+    allowedModuleIds,
   );
   const sanitizedEndpoints = endpoints.map(
     ({ token: _token, ...item }) => item,
@@ -234,11 +418,59 @@ async function persistEndpointInner(
   );
   vars.ELIZA_CAPABILITY_ROUTER_ENABLED = "true";
   vars.ELIZA_CAPABILITY_ROUTER_URLS = JSON.stringify(sanitizedEndpoints);
+  if (Object.keys(moduleAllowlists).length > 0) {
+    vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+      JSON.stringify(moduleAllowlists);
+  } else {
+    delete vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+  }
   ctx.config.env = {
     ...env,
     vars,
   };
   ctx.saveConfig(ctx.config);
+}
+
+function readPersistedModuleAllowlists(
+  value: string | undefined,
+): Record<string, string[]> {
+  if (!value?.trim()) return {};
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const result: Record<string, string[]> = {};
+    for (const [endpointId, moduleIds] of Object.entries(parsed)) {
+      if (!endpointId.trim() || !Array.isArray(moduleIds)) continue;
+      const normalized = normalizeStringList(moduleIds);
+      if (normalized.length > 0) {
+        result[endpointId.trim()] = normalized;
+      }
+    }
+    return result;
+  } catch {
+    return {};
+  }
+}
+
+function mergePersistedModuleAllowlists(
+  existing: Record<string, string[]>,
+  endpointId: string,
+  allowedModuleIds: string[] | undefined,
+): Record<string, string[]> {
+  const next = { ...existing };
+  if (allowedModuleIds === undefined) {
+    delete next[endpointId];
+    return next;
+  }
+  const normalized = normalizeStringList(allowedModuleIds);
+  if (normalized.length === 0) {
+    delete next[endpointId];
+  } else {
+    next[endpointId] = normalized;
+  }
+  return next;
 }
 
 function readPersistedEndpoints(
@@ -306,6 +538,59 @@ function parseDirectEndpoint(value: unknown): RemoteCapabilityEndpointConfig {
   };
 }
 
+function parseEndpointProviderMode(value: unknown): EndpointProviderMode {
+  if (value === undefined || value === null || value === "") return "direct";
+  const provider = requireNonEmptyString(value, "provider");
+  if (
+    provider === "direct" ||
+    provider === "e2b" ||
+    provider === "home-machine" ||
+    provider === "mobile-companion" ||
+    provider === "desktop-companion"
+  ) {
+    return provider;
+  }
+  throw new Error(
+    `provider must be one of direct, e2b, home-machine, mobile-companion, or desktop-companion.`,
+  );
+}
+
+function getEndpointProvider(
+  providerMode: EndpointProviderMode,
+): RemoteCapabilityEndpointProvider<EndpointProviderOptions> {
+  switch (providerMode) {
+    case "direct":
+      return directRemoteCapabilityEndpointProvider() as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "e2b":
+      return e2bCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "home-machine":
+      return homeMachineCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "mobile-companion":
+      return mobileCompanionCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+    case "desktop-companion":
+      return desktopCompanionCapabilityEndpointProvider as RemoteCapabilityEndpointProvider<EndpointProviderOptions>;
+  }
+}
+
+function buildEndpointProvisionOptions(
+  providerMode: EndpointProviderMode,
+  endpoint: RemoteCapabilityEndpointConfig,
+  allowedModuleIds: string[] | undefined,
+): EndpointProviderOptions {
+  if (providerMode === "direct") {
+    return {
+      endpoint,
+      ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    };
+  }
+  return {
+    baseUrl: endpoint.baseUrl,
+    endpointId: endpoint.id,
+    ...(endpoint.token === undefined ? {} : { token: endpoint.token }),
+    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+  };
+}
+
 function parseCloudOptions(
   value: unknown,
 ): Omit<
@@ -314,6 +599,10 @@ function parseCloudOptions(
 > {
   const body = requireObject(value, "cloud") as CloudBody;
   const bio = parseOptionalStringArray(body.bio, "cloud.bio");
+  const allowedModuleIds = parseOptionalStringArray(
+    body.allowedModuleIds,
+    "cloud.allowedModuleIds",
+  );
   const endpointId = optionalNonEmptyString(
     body.endpointId,
     "cloud.endpointId",
@@ -333,6 +622,7 @@ function parseCloudOptions(
     ...(bio === undefined ? {} : { bio }),
     ...(endpointId === undefined ? {} : { endpointId }),
     ...optionalToken(body.token, "cloud.token"),
+    ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
     ...(timeoutMs === undefined ? {} : { timeoutMs }),
     ...(pollIntervalMs === undefined ? {} : { pollIntervalMs }),
   };
@@ -343,6 +633,7 @@ function serializeSyncResult(sync: RemotePluginSyncResult): JsonObject {
     registered: sync.registered.map((plugin) => plugin.name),
     unloaded: sync.unloaded,
     skipped: sync.skipped,
+    trustDecisions: sync.trustDecisions,
   };
 }
 
@@ -387,6 +678,11 @@ function requireHttpUrl(value: unknown, field: string): string {
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error(`${field} must use http or https.`);
   }
+  if (parsed.username || parsed.password) {
+    throw new Error(`${field} must not include embedded credentials.`);
+  }
+  parsed.hash = "";
+  parsed.search = "";
   return parsed.toString().replace(/\/+$/, "");
 }
 
@@ -414,5 +710,9 @@ function parseOptionalStringArray(
   if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
     throw new Error(`${field} must be an array of strings.`);
   }
-  return value;
+  return normalizeStringList(value);
+}
+
+function normalizeStringList(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
 }
