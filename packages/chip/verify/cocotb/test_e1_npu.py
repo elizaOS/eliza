@@ -33,6 +33,7 @@ NPU_OPCODES = (
     E1NpuRuntime.OP_GEMM_S8,
     E1NpuRuntime.OP_GEMM_S4,
     E1NpuRuntime.OP_VRELU_S8,
+    E1NpuRuntime.OP_EXP2_NEG_Q0_8,
 )
 AXI_RESP_BINS = ("OKAY", "SLVERR", "DECERR")
 
@@ -370,16 +371,18 @@ async def npu_scalar_opcodes_match_expected_results(dut):
 
 
 @cocotb.test()
-async def npu_rejects_invalid_opcode_and_clears_error_irq(dut):
+async def npu_exp2_opcode_completes_and_clears_done_irq(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
-    await write_reg(dut, 4, 0xF)
-    assert await read_reg(dut, 4) == 0xF
+    await write_reg(dut, 0, 0xFD)
+    await write_reg(dut, 4, E1NpuRuntime.OP_EXP2_NEG_Q0_8)
+    assert await read_reg(dut, 4) == E1NpuRuntime.OP_EXP2_NEG_Q0_8
     await write_reg(dut, 3, 1)
-    assert await poll_done(dut) == 0x6
+    assert await poll_done(dut) == 0x2
+    assert await read_reg(dut, 2) == 32
     assert int(dut.irq.value) == 1
-    assert await read_reg(dut, 0x17) == 1
+    assert await read_reg(dut, 0x17) == 0
 
     await write_reg(dut, 3, 2)
     assert await read_reg(dut, 3) == 0
@@ -767,6 +770,7 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
         ),
         ("max_u32", E1NpuRuntime.OP_MAX_U32, 0x0000_0001, 0xFFFF_FFFE, 0, 0xFFFF_FFFE),
         ("min_u32", E1NpuRuntime.OP_MIN_U32, 0x0000_0001, 0xFFFF_FFFE, 0, 1),
+        ("exp2_neg_q0_8", E1NpuRuntime.OP_EXP2_NEG_Q0_8, 0x0000_00FD, 0, 0, 32),
     ]
 
     covered_opcodes = set()
@@ -837,7 +841,7 @@ async def npu_runtime_abi_sequence_matches_rtl_and_writes_coverage(dut):
             "unaligned_base_rejects": True,
             "pending_depth_bits": "DESC_STATUS[21:19]",
             "pending_depth_semantics": "(DESC_HEAD - DESC_TAIL) modulo 8; 0 is empty, not a full-ring encoding",
-            "dma_backed_tensor_execution": True,
+            "dma_backed_tensor_execution": False,
             "valid_owner_bit_required": True,
             "malformed_writeback_request_fails_closed": True,
         },

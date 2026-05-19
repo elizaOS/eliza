@@ -18,6 +18,7 @@ lb config noauto \
     --linux-flavours riscv64 \
     --archive-areas "main" \
     --bootloaders grub-efi \
+    --uefi-secure-boot disable \
     --binary-image iso-hybrid \
     --apt-recommends false \
     --debian-installer none \

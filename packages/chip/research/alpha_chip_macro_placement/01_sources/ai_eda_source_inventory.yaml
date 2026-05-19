@@ -5384,6 +5384,70 @@ entries:
     risk:
       - Sky130-trained estimates may not transfer to E1 process assumptions.
       - Chain-of-thought style predictions are not engineering evidence.
+  - id: archpower
+    name: ArchPower
+    kind: architecture_level_cpu_power_dataset
+    stage:
+      - power_prediction
+      - cpu_microarchitecture
+      - simulator_optimization
+      - dataset_intake
+    priority: P1
+    source_url: https://arxiv.org/abs/2512.06854
+    code_url: https://github.com/hkust-zhiyao/ArchPower
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/zqj23333/ArchPower
+    license_status: MIT_reported_dataset_terms_review_required
+    code_status: available_to_review
+    model_status: no_public_model
+    e1_fit: >
+      Strong candidate for early CPU/AP power-model methodology because it
+      exposes architecture/event features and fine-grained simulated power
+      labels before full implementation.
+    integration_action: >
+      Track as external dataset/code candidate only; do not train, import, or
+      claim E1 CPU power accuracy until revisions, licenses, feature mapping,
+      workload overlap, and local calibration are reviewed.
+    evidence_gate: >
+      Use requires pinned GitHub/Hugging Face revisions, dataset license review,
+      feature-schema mapping to E1 CPU/AP counters, simulator/workload hashes,
+      held-out local calibration labels, and reviewer disposition.
+    risk:
+      - External CPU configurations and workloads may not match E1 CPU/AP,
+        process, voltage, frequency, or memory hierarchy assumptions.
+      - Dataset labels are simulated power labels, not measured E1 evidence.
+  - id: autopower
+    name: AutoPower
+    kind: few_shot_architecture_power_model
+    stage:
+      - power_prediction
+      - cpu_microarchitecture
+      - simulator_optimization
+      - model_training
+    priority: P1
+    source_url: https://arxiv.org/abs/2508.12294
+    code_url: https://github.com/hkust-zhiyao/AutoPower
+    model_url: null
+    dataset_url: null
+    license_status: code_and_paper_terms_review_required
+    code_status: reported_available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Useful method reference for few-shot CPU/AP power modeling by decoupling
+      clock, SRAM, and other power groups when only a small local calibration
+      set exists.
+    integration_action: >
+      Keep as target-capture context until E1 has local architecture features,
+      known-configuration labels, workload manifests, and calibration evidence.
+    evidence_gate: >
+      Any AutoPower-style model requires pinned code revision, license review,
+      feature extraction hashes, local calibration samples, train/test split
+      manifest, error analysis, and power/thermal reviewer approval.
+    risk:
+      - Few-shot accuracy can be overstated if calibration configurations are
+        not representative of E1 operating points.
+      - Clock/SRAM group assumptions can miss SoC fabric, NPU, DMA, and leakage
+        interactions.
   - id: hlsfactory
     name: HLSFactory
     kind: hls_dataset_framework
@@ -7604,6 +7668,37 @@ entries:
     risk:
       - Generated gated clocks can create CDC, reset, scan, glitch, timing, and
         enable-polarity failures.
+  - id: lighter-clock-gating
+    name: Lighter
+    kind: open_source_clock_gating_tool
+    stage:
+      - low_power
+      - clock_gating
+      - synthesis
+      - power_optimization
+    priority: P1
+    source_url: https://woset-workshop.github.io/PDFs/2024/15_Lighter_An_Open_Source_Auto.pdf
+    code_url: https://github.com/AUCOHL/Lighter
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical open Yosys-plugin backend candidate for automatic register
+      clock gating with supported Sky130 and GF180 standard-cell libraries.
+    integration_action: >
+      Track as backend watchlist only; do not run or promote generated
+      clock-gated netlists until E1 has ICG-cell policy, scan enable, CDC/RDC,
+      equivalence, timing, and power evidence.
+    evidence_gate: >
+      Lighter use requires pinned plugin revision, library map hashes,
+      before/after RTL or netlist hashes, equivalence, synthesis, STA, DFT,
+      CDC/RDC, power reports, and reviewer approval.
+    risk:
+      - Plugin/library-map assumptions can create gated-clock structures that
+        are incompatible with E1 reset, scan, clock, or timing policy.
+      - Benchmark power reductions from external designs are not E1 evidence.
   - id: codmas-rtlopt
     name: CODMAS And RTLOPT
     kind: llm_clock_gating_optimization_method
@@ -7631,6 +7726,38 @@ entries:
     risk:
       - Benchmark clock-gating transformations may not transfer to E1 SoC reset,
         scan, clock, and protocol constraints.
+  - id: rtl-opt-benchmark
+    name: RTL-OPT
+    kind: rtl_ppa_optimization_benchmark
+    stage:
+      - low_power
+      - rtl_optimization
+      - ppa
+      - benchmark_evaluation
+    priority: P1
+    source_url: https://arxiv.org/abs/2601.01765
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: benchmark_method
+    e1_fit: >
+      Useful benchmark reference because it evaluates RTL optimization quality
+      with functional checks and PPA, including power, rather than only syntax.
+    integration_action: >
+      Track as evaluation-method context for future low-power RTL edits; no
+      benchmark task, generated RTL, or PPA claim is imported into E1 without
+      asset review and local non-overlap checks.
+    evidence_gate: >
+      Use requires exact benchmark assets, license review, task manifest,
+      synthesis setup hashes, functional/equivalence logs, non-overlap review,
+      before/after PPA reports, and reviewer disposition.
+    risk:
+      - Small benchmark tasks can underrepresent E1 SoC protocol, reset, and
+        power-domain behavior.
+      - PPA results are sensitive to synthesis tool, library, clock target, and
+        constraint setup.
   - id: prompting-for-power
     name: Prompting for Power
     kind: low_power_rtl_generation_benchmark

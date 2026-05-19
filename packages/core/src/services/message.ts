@@ -2745,9 +2745,13 @@ function formatRoleGateForPrompt(
  * one task name per call.
  */
 function selectMessageHandlerTask(
-	availableContexts: readonly ContextDefinition[],
+	_availableContexts: readonly ContextDefinition[],
 ): OptimizedPromptTask {
-	return availableContexts.length > 0 ? "context_routing" : "should_respond";
+	// context_routing was retired (inferContextRoutingFromText is pure regex,
+	// no LLM call to optimize); the message-handler template falls back to the
+	// should_respond task for both the contexts-available and contexts-empty
+	// callers.
+	return "should_respond";
 }
 
 function renderMessageHandlerInstructions(

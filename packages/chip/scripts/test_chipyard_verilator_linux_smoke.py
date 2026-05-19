@@ -74,6 +74,27 @@ def test_path_repair_check_and_rewrite_modes() -> None:
             raise AssertionError("stale path survived rewrite")
 
 
+def test_generated_model_artifact_failure_classifier_is_narrow() -> None:
+    generated_failures = (
+        "make: *** No rule to make target 'generated-src/mm/VTestDriver.d', needed by 'sim'.\n",
+        "fatal error: generated-src/chipyard.harness.TestHarness.ElizaRocketConfig/"
+        "VTestDriver___024root.h: No such file or directory\n",
+        "cc1plus: fatal error: mm/VTestDriver__ALL.cpp: No such file or directory\n",
+    )
+    for log_text in generated_failures:
+        if not smoke.is_generated_model_artifact_failure(log_text):
+            raise AssertionError(f"expected generated artifact failure: {log_text}")
+
+    unrelated_failures = (
+        "fatal error: linux/init.h: No such file or directory\n",
+        "make: *** No rule to make target 'payload.elf', needed by 'run-binary'.\n",
+        "%Error: generated-src/TestDriver.v:147: Verilog $stop\n",
+    )
+    for log_text in unrelated_failures:
+        if smoke.is_generated_model_artifact_failure(log_text):
+            raise AssertionError(f"unexpected generated artifact classification: {log_text}")
+
+
 def test_smoke_progress_classification_distinguishes_stages() -> None:
     complete_log = {"raw_transcript_closed": True}
     no_trace = {"bootrom_to_payload_handoff": False}
@@ -148,6 +169,7 @@ def main() -> int:
         test_non_container_absolute_path_is_not_flagged_by_this_gate,
         test_path_rewrite_replaces_work_root_deterministically,
         test_path_repair_check_and_rewrite_modes,
+        test_generated_model_artifact_failure_classifier_is_narrow,
         test_smoke_progress_classification_distinguishes_stages,
     )
     for test in tests:

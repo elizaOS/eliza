@@ -1,0 +1,40 @@
+{
+  "checkpoint": "/home/shaw/milady/eliza/packages/robot/checkpoints/text_conditioned_v2",
+  "calibration": "calibration/ainex_192_168_1_218_full.json",
+  "host": "192.168.1.218:9090",
+  "policy_hz": 8.0,
+  "episode_s": 4.0,
+  "prompts": [
+    {
+      "prompt": "stand still",
+      "duration_s": 15.29,
+      "matched_task": "stand_up",
+      "similarity": 0.711,
+      "steps_completed": 32
+    },
+    {
+      "prompt": "wave hello",
+      "duration_s": 10.19,
+      "matched_task": "wave_right",
+      "similarity": 0.714,
+      "steps_completed": 32
+    },
+    {
+      "prompt": "turn left",
+      "duration_s": 10.54,
+      "matched_task": "turn_left",
+      "similarity": 0.826,
+      "steps_completed": 32
+    },
+    {
+      "prompt": "walk forward",
+      "duration_s": 9.5,
+      "matched_task": "walk_forward",
+      "similarity": 0.751,
+      "steps_completed": 32
+    }
+  ],
+  "divergence_samples": 4,
+  "divergence_mean_rms_mrad": 425.81795492054624,
+  "divergence_max_rms_mrad": 569.9410085626969
+}

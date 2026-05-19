@@ -1,17 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
 /*
- * Eliza E1 Demo - complete bootable device tree source.
+ * Eliza E1 Linux-capable SoC projection device tree.
  *
- * Covers the Linux-capable RISC-V scaffold described in:
- *   sw/platform/e1_platform_contract.json
- *   docs/arch/memory-map.md
- *   docs/arch/interrupts.md
- *
- * Import into an external Linux tree:
- *   cp sw/linux/dts/eliza-e1.dts \
- *      <linux>/arch/riscv/boot/dts/eliza/eliza-e1.dts
- *
- * All MMIO base addresses match the platform contract.
+ * This file is a static BSP contract artifact. It does not claim that Linux
+ * has booted on generated RTL; boot proof remains gated by checked-in
+ * Chipyard/OpenSBI/Linux transcripts.
  */
 
 /dts-v1/;
@@ -24,78 +17,83 @@
 	#size-cells = <1>;
 
 	chosen {
-		bootargs = "console=e1UART0,115200 root=/dev/ram rw earlycon";
+		bootargs = "console=ttyS0,115200 root=/dev/ram rw earlycon";
 		stdout-path = &uart0;
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <10000000>;
+
+		cpu0: cpu@0 {
+			compatible = "riscv";
+			device_type = "cpu";
+			reg = <0>;
+			riscv,isa = "rv64gc";
+			mmu-type = "riscv,sv39";
+			status = "okay";
+
+			cpu0_intc: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+				#interrupt-cells = <1>;
+			};
+		};
 	};
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x80000000 0x08000000>;
+		reg = <0x80000000 0x10000000>;
 	};
 
-		wifi_pwrseq: wifi-pwrseq {
-			compatible = "mmc-pwrseq-simple";
-			status = "disabled";
-		/*
-		 * Stub for a Murata Type 1DX / CYW4343W-class external module.
-		 * Bind WIFI_EN/WIFI_RST_N to real GPIO phandles after e1-chip
-		 * grows a GPIO/pinctrl-backed SDIO host integration.
-		 */
+	wifi_pwrseq: wifi-pwrseq {
+		compatible = "mmc-pwrseq-simple";
+		status = "disabled";
 		post-power-on-delay-ms = <200>;
-			/* reset-gpios = <&gpioX N GPIO_ACTIVE_LOW>; required before enable. */
-		};
+	};
 
-		cpus {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			timebase-frequency = <10000000>;
-
-			cpu0: cpu@0 {
-				compatible = "riscv";
-				device_type = "cpu";
-				reg = <0>;
-				riscv,isa = "rv64imac";
-				status = "okay";
-
-				cpu0_intc: interrupt-controller {
-					compatible = "riscv,cpu-intc";
-					interrupt-controller;
-					#interrupt-cells = <1>;
-				};
-			};
-		};
-
-		soc {
+	soc {
 		compatible = "simple-bus";
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges;
 
 		clint0: clint@2000000 {
-			compatible = "e1,clint-1.0";
+			compatible = "riscv,clint0", "e1,clint-1.0";
 			reg = <0x02000000 0x00010000>;
 			interrupts-extended = <&cpu0_intc 3>, <&cpu0_intc 7>;
 		};
 
 		plic0: interrupt-controller@c000000 {
-			compatible = "e1,plic-1.0";
-			reg = <0x0C000000 0x00001000>;
+			compatible = "riscv,plic0", "e1,plic-1.0";
+			reg = <0x0c000000 0x04000000>;
 			interrupt-controller;
+			#address-cells = <0>;
 			#interrupt-cells = <1>;
-			riscv,ndev = <8>;
+			riscv,ndev = <32>;
 			interrupts-extended = <&cpu0_intc 11>;
 		};
 
 		uart0: serial@10001000 {
-			compatible = "e1,uart-1.0";
+			compatible = "ns16550a", "e1,uart-1.0";
 			reg = <0x10001000 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <1>;
-			clock-frequency = <10000000>;
+			clock-frequency = <50000000>;
+			reg-shift = <0>;
 			status = "okay";
 		};
 
-		e1_npu: npu@10020000 {
+		dma@10010000 {
+			compatible = "eliza,e1-dma", "e1,dma-1.0";
+			reg = <0x10010000 0x00001000>;
+			interrupt-parent = <&plic0>;
+			interrupts = <2>;
+			status = "okay";
+		};
+
+		npu@10020000 {
 			compatible = "eliza,e1-npu", "e1,npu-1.0";
 			reg = <0x10020000 0x00001000>;
 			interrupt-parent = <&plic0>;
@@ -103,25 +101,16 @@
 			status = "okay";
 		};
 
-		e1_dma: dma@10010000 {
-			compatible = "e1,dma-1.0";
-			reg = <0x10010000 0x00001000>;
-			interrupt-parent = <&plic0>;
-			interrupts = <2>;
-			status = "okay";
-		};
-
-		e1_display: display@10030000 {
-			compatible = "e1,display-1.0";
+		display@10030000 {
+			compatible = "eliza,e1-display", "e1,display-1.0";
 			reg = <0x10030000 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <4>;
 			status = "okay";
 		};
 
-		sdio0: mmc@10050000 {
+		mmc@10050000 {
 			compatible = "e1,sdio-host-1.0";
-			status = "disabled";
 			reg = <0x10050000 0x00001000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
@@ -129,11 +118,7 @@
 			non-removable;
 			cap-sd-highspeed;
 			mmc-pwrseq = <&wifi_pwrseq>;
-			/*
-			 * WIFI_SDIO_CLK/CMD/D0/D1/D2/D3: RTL host, pinctrl,
-			 * regulators, clocks, and GPIO-backed power sequencing are
-			 * not implemented. Keep disabled until real phandles exist.
-			 */
+			status = "disabled";
 
 			wifi@1 {
 				compatible = "brcm,bcm4329-fmac";
@@ -141,14 +126,10 @@
 			};
 		};
 
-			uart1: uart@10051000 {
-				compatible = "e1,uart-1.0";
-				status = "disabled";
-				reg = <0x10051000 0x00001000>;
-			/*
-			 * BT_UART_TX/RX/CTS_N/RTS_N: RTL UART and flow-control
-			 * pinctrl are not implemented.
-			 */
+		serial@10051000 {
+			compatible = "ns16550a", "e1,uart-1.0";
+			reg = <0x10051000 0x00001000>;
+			status = "disabled";
 
 			bluetooth {
 				compatible = "brcm,bcm43438-bt";

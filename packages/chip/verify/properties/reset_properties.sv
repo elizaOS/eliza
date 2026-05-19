@@ -36,52 +36,61 @@ module reset_props #(
     input  logic [BUS_W-1:0]  observed_bus
 );
 
-    default clocking cb @(posedge clk); endclocking
     // Reset properties intentionally do NOT disable on rst_n: they exist
-    // to police behavior around the reset edge itself.
+    // to police behavior around the reset edge itself. Every property below
+    // carries an explicit clock event for Yosys/SymbiYosys compatibility.
 
-    // 1. Sticky-low reset: while ``rst_n`` is low, it remains low across
-    //    successive posedges of ``clk``. Bounces inside a half-cycle are
-    //    fine; the property polices clocked observation only.
-    property p_reset_holds_low;
-        @(posedge clk) !rst_n |=> !rst_n || rst_n;
-    endproperty
-    // Note: the trivial RHS keeps the property syntactically valid while
-    // still failing on async resets that disappear synchronously between
-    // posedges via an explicit cover below.
+    logic rst_n_q;
+    logic reset_release_seen;
+    logic reset_release_pending;
+    logic [$clog2(POST_RESET_DELAY + 1)-1:0] post_reset_count;
 
-    a_reset_holds_low: assert property (p_reset_holds_low);
+    always_ff @(posedge clk) begin
+        rst_n_q <= rst_n;
 
-    // 2. Reset release X-propagation: one cycle after rst_n=1, no X bits
-    //    on the observed bus. This catches uninitialised flops that do not
-    //    have a reset value.
-    property p_reset_release_no_x;
-        @(posedge clk) $rose(rst_n) |-> ##1 !$isunknown(observed_bus);
-    endproperty
+        if (!rst_n) begin
+            reset_release_seen <= 1'b0;
+            reset_release_pending <= 1'b0;
+            post_reset_count <= '0;
+        end else if (!rst_n_q) begin
+            reset_release_seen <= 1'b1;
+            reset_release_pending <= 1'b1;
+            post_reset_count <= '0;
+        end else if (reset_release_seen && post_reset_count < POST_RESET_DELAY) begin
+            reset_release_pending <= 1'b0;
+            post_reset_count <= post_reset_count + 1'b1;
+        end else begin
+            reset_release_pending <= 1'b0;
+        end
 
-    a_reset_release_no_x: assert property (p_reset_release_no_x);
+        // 1. Reset release X-propagation: one cycle after rst_n=1, no X bits
+        //    on the observed bus. This catches uninitialised flops that do not
+        //    have a reset value.
+        if (rst_n && reset_release_pending) begin
+            assert (!$isunknown(observed_bus));
+        end
 
-    // 3. Post-reset X-quiescence: ``POST_RESET_DELAY`` cycles after the
-    //    rising edge of ``rst_n``, the observed bus is X-free for the
-    //    foreseeable horizon. This is a soft variant of (2) that allows a
-    //    short settling window for paths with deep combinational fan-in.
-    property p_post_reset_settled;
-        @(posedge clk) $rose(rst_n) |-> ##POST_RESET_DELAY !$isunknown(observed_bus);
-    endproperty
+        // 2. Post-reset X-quiescence: ``POST_RESET_DELAY`` cycles after the
+        //    rising edge of ``rst_n``, the observed bus is X-free. This is a
+        //    soft variant of (1) that allows a short settling window for paths
+        //    with deep combinational fan-in.
+        if (rst_n && reset_release_seen && post_reset_count >= POST_RESET_DELAY) begin
+            assert (!$isunknown(observed_bus));
+        end
 
-    a_post_reset_settled: assert property (p_post_reset_settled);
+        // 3. Reset assertion forces the bus to a defined value (no X). This
+        //    is a separate gate from (1) because we want to detect mis-coded
+        //    flops that drive X during reset.
+        if (!rst_n) begin
+            assert (!$isunknown(observed_bus));
+        end
 
-    // 4. Reset assertion forces the bus to a defined value (no X). This is
-    //    a separate gate from (2) because we want to detect mis-coded
-    //    flops that drive X during reset.
-    a_reset_no_x_during_assert: assert property (
-        @(posedge clk) !rst_n |-> !$isunknown(observed_bus)
-    );
+        cover (rst_n && !rst_n_q);
+        cover (!rst_n && rst_n_q);
+    end
 
     // Cover the entry/exit edges so SBY surfaces them when the design is
     // wired up correctly.
-    c_reset_rises:  cover property (@(posedge clk) $rose(rst_n));
-    c_reset_falls:  cover property (@(posedge clk) $fell(rst_n));
 
 endmodule
 

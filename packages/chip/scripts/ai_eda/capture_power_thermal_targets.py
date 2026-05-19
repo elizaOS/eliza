@@ -119,6 +119,8 @@ def main() -> int:
             "openpdn",
             "aieda",
             "rtlmul",
+            "archpower",
+            "autopower",
         ],
         "policy": {
             "generates_power_map": False,
@@ -187,6 +189,16 @@ def main() -> int:
                     "make synth",
                 ],
             },
+            {
+                "id": "architecture-power-model-intake-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future ArchPower or AutoPower-style CPU/AP power models require pinned datasets, feature mappings, local calibration labels, train/test splits, and error analysis before any E1 simulator or power claim",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make cpu-npu-burst-sustained-policy",
+                    "make power-thermal-evidence-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no calibrated E1 rail power trace, thermal trace, frequency trace, or workload transcript",
@@ -194,6 +206,7 @@ def main() -> int:
             "no local OpenROAD/PDNSim IR-drop label corpus across repeated runs",
             "no activity-aligned power map or vector-based post-route power evidence",
             "no approved TCAD/DTCO deck, device model, simulator, calibration corpus, or process authority for E1 device-level power and thermal assumptions",
+            "no approved ArchPower dataset intake, AutoPower code revision, E1 CPU/AP feature mapping, or held-out local calibration labels",
             "no approved flow for AI-generated PDN, power map, thermal map, or signoff waiver",
         ],
     }
