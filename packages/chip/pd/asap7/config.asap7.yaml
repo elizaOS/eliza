@@ -59,6 +59,26 @@ blocks:
     output_report: docs/evidence/process/asap7/slc_slice_shape.json
     status: blocked_until_orfs_flow_executed
 
+  - id: npu_tile_rf_leaf
+    role: leaf_sub_block_finfet_shape
+    rtl_top: e1_npu
+    rtl_files:
+      - rtl/npu/e1_npu.sv
+    clock_target_mhz: 2000
+    leaf_block_only: true
+    leaf_scope:
+      - The first 64-entry register-file slice inside e1_npu (synthesized
+        standalone with ABC mapped to asap7sc7p5t at the 27 nm routing pitch).
+      - Power and area shape are extracted from the leaf netlist and tagged
+        leaf_only so they are not aggregated into top-level NPU area.
+    output_report: docs/evidence/process/asap7/npu_tile_rf_leaf_shape.json
+    status: blocked_until_orfs_flow_executed
+    notes: >
+      Leaf sub-block characterization. ORFS runs the same flow as the parent
+      tile but on the constrained leaf top so an early sub-block shape is
+      available before the full tile closes. This is not a substitute for
+      hierarchical PnR.
+
 projection_pipeline:
   next_step: scripts/project_ppa_to_n2p.py
   scaling_factors_source: docs/pd/process-node-selection.md

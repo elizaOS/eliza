@@ -38,18 +38,47 @@ project those shapes to TSMC N2P / A14 / Intel 14A class using
 
 ## Flow
 
-The expected flow is OpenROAD ORFS (the OpenROAD project flow), not OpenLane 2.
+The expected flow is OpenROAD ORFS (OpenROAD-flow-scripts), not OpenLane 2.
 ORFS supports ASAP7 natively. The flow consumes the same `rtl/` source set as
 the OpenLane lanes; only the PDK + cell library + clock target differ.
 
 ```sh
-make asap7-flow              # invokes the ORFS docker entrypoint per block
-make asap7-shape-report      # emits projection_only JSON shape per block
+make -C pd/asap7 check         # preflight: PDK + ORFS reachable?
+make -C pd/asap7 clone-asap7   # one-shot ASAP7 PDK clone
+make -C pd/asap7 clone-orfs    # one-shot OpenROAD-flow-scripts clone
+make -C pd/asap7 all           # run all blocks + leaf
+make -C pd/asap7 leaf-shape    # run only the leaf sub-block (npu_tile_rf_leaf)
 ```
 
 The block list is defined in `config.asap7.yaml` and mirrors the OpenLane
 top-level RTL set. Each block is run separately because ASAP7 is intended for
 per-block shape characterization, not flat top-down closure.
+
+### Block tiers
+
+- **Tier 1 — Wrapper blocks** (`big_core_shell`, `npu_tile`, `slc_slice`)
+  drive the existing module tops and emit a `*_shape.json` post-route shape
+  report under `docs/evidence/process/asap7/`.
+- **Tier 2 — Leaf sub-blocks** (`npu_tile_rf_leaf`) characterize a single
+  representative sub-block (the first 64-entry NPU register-file slice
+  inside `e1_npu`). Outputs are tagged `leaf_only` so they are not aggregated
+  into top-level NPU area. The intent is to land a first sub-block shape
+  before the full tile closes.
+
+### Fail-closed contract
+
+Each block runs through `scripts/run_asap7_block.sh`, which:
+
+1. Verifies `external/pdks/asap7` exists, otherwise emits `BLOCKED:` with the
+   clone command and exits 1.
+2. Verifies an ORFS path is reachable (either `ORFS_FLOW_HOME` local checkout
+   or a docker image), otherwise emits `BLOCKED:` and exits 1.
+3. Confirms the block id is declared in `config.asap7.yaml`.
+4. After ORFS post-route, verifies the operator-produced shape JSON carries
+   `evidence_class: predictive_finfet_shape_only_not_signoff` and
+   `pdk: ASAP7`; rejects anything that misses the tag.
+
+No partial / silent / placeholder evidence is ever emitted.
 
 ## Outputs
 
