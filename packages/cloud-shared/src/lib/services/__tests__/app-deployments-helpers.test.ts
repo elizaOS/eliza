@@ -7,11 +7,7 @@
  */
 import { describe, expect, test } from "bun:test";
 import { ApiError } from "../../api/cloud-worker-errors";
-import {
-  assertDeployable,
-  deploymentIdFor,
-  publicStatusFor,
-} from "../app-deployments-helpers";
+import { assertDeployable, deploymentIdFor, publicStatusFor } from "../app-deployments-helpers";
 
 describe("publicStatusFor", () => {
   test("maps draft to DRAFT", () => {

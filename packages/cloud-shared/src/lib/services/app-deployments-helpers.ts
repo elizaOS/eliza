@@ -32,10 +32,7 @@ export function publicStatusFor(persisted: AppDeploymentStatus): DeploymentStatu
   return PERSISTED_TO_PUBLIC[persisted];
 }
 
-export function deploymentIdFor(app: {
-  id: string;
-  last_deployed_at: Date | null;
-}): string {
+export function deploymentIdFor(app: { id: string; last_deployed_at: Date | null }): string {
   const ts = app.last_deployed_at?.toISOString() ?? "0";
   return `${app.id}:${ts}`;
 }
