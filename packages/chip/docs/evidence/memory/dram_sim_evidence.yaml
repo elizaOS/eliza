@@ -1,0 +1,179 @@
+schema: eliza.memory.dram_sim_evidence.v1
+status: dramsim3_behavioral_simulation
+evidence_class: dramsim3_behavioral_simulation
+captured_utc: "2026-05-19T21:54:21Z"
+
+scope:
+  - compiler/runtime/dramsim_wrap/runner.py
+  - compiler/runtime/dramsim_wrap/trace_gen.py
+  - compiler/runtime/dramsim_wrap/configs/lpddr5x_10667.ini
+  - compiler/runtime/dramsim_wrap/configs/lpddr5x_10667_dramsim3.ini
+  - compiler/runtime/dramsim_wrap/configs/lpddr6_14400.ini
+  - compiler/runtime/dramsim_wrap/configs/lpddr6_14400_dramsim3.ini
+  - external/dramsim3 (git@29817593, built locally)
+
+context: >
+  The DRAMSim3 wrapper drives the academic DRAMSim3 controller model
+  with the LPDDR5X-10667 and LPDDR6-14400 SKU geometries and reports
+  controller-side bandwidth and latency. DRAMSim3 ships LPDDR4 as its
+  highest LPDDR protocol class, so the SKU .ini files are
+  LPDDR4-protocol approximations: bus width, channel count, and tCK
+  match the SKU data rate, but LPDDR5/6 features (bank-group reorg,
+  link/on-die ECC, sub-channels, WCK split) are not modeled.
+
+  This evidence is behavioural-simulator-only. It exercises the
+  controller-side timing of a single representative trace generator
+  and never satisfies the phone-class bandwidth gate in
+  docs/evidence/memory/uma-dram-evidence-gate.yaml. The LPDDR PHY
+  itself remains closed-IP BLOCKED per
+  docs/evidence/memory/lpddr-phy-procurement.yaml.
+
+simulator_limitations:
+  - DRAMSim3 protocol class is LPDDR4 with scaled tCK; LPDDR5X/6
+    bank-group reorg, link ECC, on-die ECC, sub-channel splitting,
+    and refresh-management commands are not modeled.
+  - TraceBasedCPU is single-threaded; the maximum issue rate is one
+    transaction per command cycle across all channels, so measured
+    sustained bandwidth tracks DRAMSim3's queue depth (cmd_queue_size,
+    trans_queue_size) rather than the PHY's peak. The built-in
+    `-s stream` StreamCPU mode produces similar utilisation in this
+    configuration.
+  - Modeled aperture is 16 GiB for both SKUs (4 channels x 4096 MiB
+    per DRAMSim3 LPDDR4 capacity math). The LPDDR6 AI SKU's 24 GiB
+    density is documented in lpddr6_14400.ini but cannot be modeled
+    without changing protocol geometry.
+  - LPDDR6 .ini widens the device bus from 24 to 32 bits to satisfy
+    DRAMSim3's LPDDR4 lane legality check; per-pin data rate is
+    preserved via tCK.
+  - All numbers are controller-side; no PHY training, vref, ZQ, or
+    duty-cycle adjustment is in the loop. The DRAM-controller stub
+    in rtl/memory/dram_ctrl/e1_dram_ctrl.sv is verified separately
+    via docs/evidence/memory/dram_ctrl_evidence.yaml.
+
+build_provenance:
+  upstream_url: https://github.com/umd-memsys/DRAMsim3
+  upstream_commit: 29817593b3389f1337235d63cac515024ab8fd6e
+  clone_command: git clone --depth 1 https://github.com/umd-memsys/DRAMsim3.git external/dramsim3
+  build_command: cmake -S external/dramsim3 -B external/dramsim3/build -DCMAKE_BUILD_TYPE=Release && cmake --build external/dramsim3/build --target dramsim3main -j
+  built_binary: external/dramsim3/build/dramsim3main
+  build_dependencies:
+    - cmake (>=3.0)
+    - g++ (C++17)
+    - jsoncpp headers (vendored under external/dramsim3/ext)
+
+sweep:
+  cycle_budget: 500000
+  workloads:
+    - microbench
+    - stream_copy
+    - stream_scale
+    - stream_add
+    - stream_triad
+    - pointer_chase
+  trace_generator: compiler/runtime/dramsim_wrap/trace_gen.py
+  trace_record_format: "<hex_addr> <READ|WRITE> <cycle>"
+  access_granularity_bytes: 64
+  stream_elements_per_kernel: 200000
+  pointer_chase_transactions: 60000
+  bytes_per_dramsim3_access: 32
+
+skus:
+  - id: lpddr5x_10667
+    standard: LPDDR5X-10667
+    bus_width_bits: 64
+    channels: 4
+    bits_per_channel: 16
+    capacity_gib: 16
+    data_rate_mtps: 10667
+    tck_ns: 0.1875
+    jedec_peak_bandwidth_gbps: 85.336
+    sustained_bandwidth_gbps:
+      microbench: 22.41
+      stream_copy: 15.00
+      stream_scale: 15.00
+      stream_add: 13.38
+      stream_triad: 13.38
+      pointer_chase: 20.48
+    p95_read_latency_ns:
+      microbench: 134.43
+      stream_copy: 374.80
+      stream_scale: 374.80
+      stream_add: 315.18
+      stream_triad: 315.18
+      pointer_chase: 31.31
+    report_paths:
+      - build/reports/memory/dramsim3_lpddr5x_10667_microbench.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_copy.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_scale.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_add.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_stream_triad.json
+      - build/reports/memory/dramsim3_lpddr5x_10667_pointer_chase.json
+
+  - id: lpddr6_14400
+    standard: LPDDR6-14400
+    bus_width_bits: 96
+    channels: 4
+    bits_per_channel: 24
+    capacity_gib: 24
+    data_rate_mtps: 14400
+    tck_ns: 0.1389
+    jedec_peak_bandwidth_gbps: 172.8
+    sustained_bandwidth_gbps:
+      microbench: 27.52
+      stream_copy: 19.47
+      stream_scale: 19.47
+      stream_add: 13.70
+      stream_triad: 13.70
+      pointer_chase: 27.65
+    p95_read_latency_ns:
+      microbench: 109.86
+      stream_copy: 277.92
+      stream_scale: 277.92
+      stream_add: 254.17
+      stream_triad: 254.17
+      pointer_chase: 32.92
+    report_paths:
+      - build/reports/memory/dramsim3_lpddr6_14400_microbench.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_copy.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_scale.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_add.json
+      - build/reports/memory/dramsim3_lpddr6_14400_stream_triad.json
+      - build/reports/memory/dramsim3_lpddr6_14400_pointer_chase.json
+
+jedec_sanity_check:
+  description: >
+    Measured sustained bandwidth must stay strictly below the JEDEC
+    peak for each SKU. Sustained / peak utilisation is documented for
+    context; high utilisation would indicate an unrealistic model.
+  results:
+    - sku: lpddr5x_10667
+      peak_gbps: 85.336
+      best_sustained_gbps: 22.41
+      best_sustained_workload: microbench
+      sustained_over_peak_ratio: 0.263
+      passes_sanity: true
+    - sku: lpddr6_14400
+      peak_gbps: 172.8
+      best_sustained_gbps: 27.65
+      best_sustained_workload: pointer_chase
+      sustained_over_peak_ratio: 0.160
+      passes_sanity: true
+
+claim_rules:
+  - All DRAMSim3 results are simulator_only and never satisfy
+    docs/evidence/memory/uma-dram-evidence-gate.yaml
+    phone_2028_target_profile thresholds.
+  - DRAMSim3 reports are controller-side timing approximations only;
+    the LPDDR5X/LPDDR6 PHY itself remains BLOCKED on closed-IP
+    procurement per docs/evidence/memory/lpddr-phy-procurement.yaml.
+  - Sustained bandwidth in this evidence reflects DRAMSim3's
+    TraceBasedCPU + controller queue depth and is materially below
+    JEDEC peak. Real silicon evidence is required to claim any
+    higher utilisation.
+  - These numbers must not be quoted as phone-class measurements,
+    real-target sustained bandwidth, or post-silicon timing.
+
+next_commands:
+  rebuild_dramsim3: cmake -S external/dramsim3 -B external/dramsim3/build -DCMAKE_BUILD_TYPE=Release && cmake --build external/dramsim3/build --target dramsim3main -j
+  run_sweep: make dramsim-sweep
+  unit_tests: python3 -m unittest compiler.runtime.dramsim_wrap.test_runner
