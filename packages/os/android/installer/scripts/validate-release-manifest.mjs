@@ -7,10 +7,11 @@ const args = process.argv.slice(2);
 
 function usage() {
   console.log(`Usage:
-  validate-release-manifest.mjs MANIFEST.json [--artifact-dir DIR]
+  validate-release-manifest.mjs MANIFEST.json [--artifact-dir DIR] [--allow-placeholders]
 
 Validates the Android release manifest shape without requiring devices.
-When --artifact-dir is provided, artifact sizes and SHA-256 hashes are checked.`);
+When --artifact-dir is provided, artifact sizes and SHA-256 hashes are checked.
+Use --allow-placeholders only for checked-in pre-release draft manifests.`);
 }
 
 function die(message) {
@@ -21,6 +22,7 @@ function die(message) {
 function parseArgs(argv) {
   let manifestPath = '';
   let artifactDir = '';
+  let allowPlaceholders = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '-h' || arg === '--help') {
@@ -33,12 +35,16 @@ function parseArgs(argv) {
       index += 1;
       continue;
     }
+    if (arg === '--allow-placeholders') {
+      allowPlaceholders = true;
+      continue;
+    }
     if (arg.startsWith('--')) die(`unknown argument: ${arg}`);
     if (manifestPath) die(`unexpected extra argument: ${arg}`);
     manifestPath = arg;
   }
   if (!manifestPath) die('provide a manifest path');
-  return { manifestPath, artifactDir };
+  return { manifestPath, artifactDir, allowPlaceholders };
 }
 
 function readJson(path) {
@@ -57,7 +63,7 @@ function isObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
-function validateManifest(manifest) {
+function validateManifest(manifest, { allowPlaceholders = false } = {}) {
   const errors = [];
   expect(isObject(manifest), errors, '$', 'manifest must be an object');
   if (!isObject(manifest)) return errors;
@@ -107,9 +113,13 @@ function validateManifest(manifest) {
       partitions.add(artifact.partition);
       expect(typeof artifact.filename === 'string' && /^[^/\\]+\.img$/.test(artifact.filename), errors, `${path}.filename`, 'must be a local .img filename');
       expect(typeof artifact.sha256 === 'string' && /^[a-fA-F0-9]{64}$/.test(artifact.sha256), errors, `${path}.sha256`, 'must be 64 hex characters');
-      expect(typeof artifact.sha256 !== 'string' || artifact.sha256.toLowerCase() !== '0'.repeat(64), errors, `${path}.sha256`, 'must not be the all-zero placeholder; populate with a real checksum before validating');
+      if (!allowPlaceholders) {
+        expect(typeof artifact.sha256 !== 'string' || artifact.sha256.toLowerCase() !== '0'.repeat(64), errors, `${path}.sha256`, 'must not be the all-zero placeholder; populate with a real checksum before validating');
+      }
       expect(Number.isInteger(artifact.sizeBytes) && artifact.sizeBytes > 0, errors, `${path}.sizeBytes`, 'must be a positive integer');
-      expect(!Number.isInteger(artifact.sizeBytes) || artifact.sizeBytes > 1, errors, `${path}.sizeBytes`, 'must not be the sentinel value 1; populate with the real artifact size');
+      if (!allowPlaceholders) {
+        expect(!Number.isInteger(artifact.sizeBytes) || artifact.sizeBytes > 1, errors, `${path}.sizeBytes`, 'must not be the sentinel value 1; populate with the real artifact size');
+      }
       expect(typeof artifact.required === 'boolean', errors, `${path}.required`, 'must be boolean');
       expect(fastbootModes.has(artifact.fastbootMode), errors, `${path}.fastbootMode`, 'must be bootloader or fastbootd');
     });
@@ -156,9 +166,9 @@ function validateArtifacts(manifest, artifactDir) {
   return errors;
 }
 
-const { manifestPath, artifactDir } = parseArgs(args);
+const { manifestPath, artifactDir, allowPlaceholders } = parseArgs(args);
 const manifest = readJson(manifestPath);
-const errors = [...validateManifest(manifest), ...validateArtifacts(manifest, artifactDir)];
+const errors = [...validateManifest(manifest, { allowPlaceholders }), ...validateArtifacts(manifest, artifactDir)];
 if (errors.length > 0) {
   errors.forEach((error) => console.error(`error: ${error}`));
   process.exit(1);

@@ -31,9 +31,9 @@ assert_contains() {
 BIN_DIR="$TMP_DIR/bin"
 ARTIFACT_DIR="$TMP_DIR/artifacts"
 mkdir -p "$BIN_DIR" "$ARTIFACT_DIR"
-printf '\0' >"$ARTIFACT_DIR/boot.img"
-printf '\1' >"$ARTIFACT_DIR/vendor_boot.img"
-printf '\2' >"$ARTIFACT_DIR/super.img"
+printf 'boot-image-fixture\n' >"$ARTIFACT_DIR/boot.img"
+printf 'vendor-boot-image-fixture\n' >"$ARTIFACT_DIR/vendor_boot.img"
+printf 'super-image-fixture\n' >"$ARTIFACT_DIR/super.img"
 
 cat >"$BIN_DIR/adb" <<'EOF'
 #!/usr/bin/env bash

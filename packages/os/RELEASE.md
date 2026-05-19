@@ -9,7 +9,7 @@ Short, mechanical steps for cutting a new OS release. Anything not on this list 
 - `scripts/update-release-manifest.mjs` — sets `sha256`, `sizeBytes`, `downloadUrl`, status on one artifact entry.
 - `scripts/validate-release-manifest.mjs` — schema check; pass `--require-publishable-checksums` for strict mode.
 - `scripts/generate-release-checksums.mjs` — fills the manifest by hashing local artifact files.
-- `android/installer/scripts/validate-release-manifest.mjs` — separate validator for the Android per-partition manifest. Rejects all-zero placeholder hashes.
+- `android/installer/scripts/validate-release-manifest.mjs` — separate validator for the Android per-partition manifest. Rejects all-zero placeholder hashes by default; use `--allow-placeholders` only for checked-in pre-release draft manifests.
 
 ## Steps
 
