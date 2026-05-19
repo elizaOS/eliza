@@ -2,7 +2,16 @@
 import { renameSync, rmSync } from "node:fs";
 import { $ } from "bun";
 
-const external = [/^@elizaos\//];
+// Externals:
+//  - All @elizaos/* workspace packages stay external so we don't double-bundle them.
+//  - `undici` must be external. Bundling undici 8.x produces a `CacheStorage`
+//    constructor that calls Node's internal `webidl.util.markAsUncloneable`,
+//    which is not present in Bun. Bun's native fetch/WebSocket cover the call
+//    sites, so importing undici from the runtime works; bundling it does not.
+//    Some workspace deps (notably @elizaos/plugin-elizacloud) end up inlined
+//    here via Bun.build's workspace resolution despite the @elizaos/* regex,
+//    which is how undici reaches this bundle in the first place.
+const external = [/^@elizaos\//, "undici"];
 
 console.log("🔨 Building @elizaos/plugin-wallet...");
 const start = Date.now();

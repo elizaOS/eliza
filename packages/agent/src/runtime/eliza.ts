@@ -404,6 +404,63 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
     return;
   }
   _coreStaticPluginsRegistrationPromise = (async () => {
+    // Per-plugin timing + timeout. Converts a silent boot hang into a named,
+    // attributable failure: the log line tells you which plugin is stuck,
+    // and the timeout prevents one bad module (e.g. plugin-sql opening
+    // PGlite on a locked data dir) from holding the container forever.
+    //
+    // plugin-sql is required — if it times out we throw. Optional plugins
+    // resolve to `null` on timeout so the boot continues without them.
+    const bootTimeoutMs = Number(
+      process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
+    );
+    const transformersResolve = (() => {
+      try {
+        return createRequire(import.meta.url).resolve(
+          "@huggingface/transformers",
+        );
+      } catch {
+        return "<unresolved>";
+      }
+    })();
+    logger.info(
+      `[boot] resolving plugins (timeout=${bootTimeoutMs}ms) transformers=${transformersResolve}`,
+    );
+
+    const trackImport = async <T>(
+      name: string,
+      loader: () => Promise<T>,
+      { required }: { required: boolean },
+    ): Promise<T | null> => {
+      const startedAt = Date.now();
+      let timer: ReturnType<typeof setTimeout> | null = null;
+      const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          reject(new Error(`plugin ${name} timed out after ${bootTimeoutMs}ms`));
+        }, bootTimeoutMs);
+        if (typeof timer.unref === "function") timer.unref();
+      });
+      try {
+        const result = await Promise.race([loader(), timeout]);
+        logger.info(`[boot] ${name} loaded in ${Date.now() - startedAt}ms`);
+        return result;
+      } catch (err) {
+        const elapsed = Date.now() - startedAt;
+        if (required) {
+          logger.error(
+            `[boot] ${name} FAILED after ${elapsed}ms: ${formatError(err)}`,
+          );
+          throw err;
+        }
+        logger.warn(
+          `[boot] ${name} skipped after ${elapsed}ms: ${formatError(err)}`,
+        );
+        return null;
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    };
+
     const [
       pluginSql,
       pluginLocalEmbedding,
@@ -420,21 +477,79 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
       pluginOpenai,
       pluginGoogle,
     ] = await Promise.all([
-      getPluginSql(),
-      getPluginLocalEmbedding(),
-      getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
-      getOptionalPlugin("@elizaos/plugin-shell"),
-      getOptionalPlugin("@elizaos/plugin-coding-tools"),
-      getOptionalPlugin("@elizaos/plugin-commands"),
-      getOptionalPlugin("@elizaos/plugin-video"),
-      getOptionalPlugin("@elizaos/plugin-background-runner"),
-      getOptionalPlugin("@elizaos/plugin-elizacloud"),
-      getOptionalPlugin("@elizaos/plugin-ollama"),
-      getOptionalPlugin("@elizaos/plugin-mlx"),
-      getOptionalPlugin("@elizaos/plugin-anthropic"),
-      getOptionalPlugin("@elizaos/plugin-openai"),
-      getOptionalPlugin("@elizaos/plugin-google"),
+      trackImport("@elizaos/plugin-sql", () => getPluginSql(), {
+        required: true,
+      }),
+      trackImport(
+        "@elizaos/plugin-local-inference",
+        () => getPluginLocalEmbedding(),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-agent-orchestrator",
+        () => getOptionalPlugin("@elizaos/plugin-agent-orchestrator"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-shell",
+        () => getOptionalPlugin("@elizaos/plugin-shell"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-coding-tools",
+        () => getOptionalPlugin("@elizaos/plugin-coding-tools"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-commands",
+        () => getOptionalPlugin("@elizaos/plugin-commands"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-video",
+        () => getOptionalPlugin("@elizaos/plugin-video"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-background-runner",
+        () => getOptionalPlugin("@elizaos/plugin-background-runner"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-elizacloud",
+        () => getOptionalPlugin("@elizaos/plugin-elizacloud"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-ollama",
+        () => getOptionalPlugin("@elizaos/plugin-ollama"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-mlx",
+        () => getOptionalPlugin("@elizaos/plugin-mlx"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-anthropic",
+        () => getOptionalPlugin("@elizaos/plugin-anthropic"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-openai",
+        () => getOptionalPlugin("@elizaos/plugin-openai"),
+        { required: false },
+      ),
+      trackImport(
+        "@elizaos/plugin-google",
+        () => getOptionalPlugin("@elizaos/plugin-google"),
+        { required: false },
+      ),
     ]);
+
+    if (!pluginSql) {
+      throw new Error("[boot] @elizaos/plugin-sql failed to load");
+    }
 
     Object.assign(STATIC_ELIZA_PLUGINS, {
       "@elizaos/plugin-sql": pluginSql,
