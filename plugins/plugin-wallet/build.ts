@@ -2,16 +2,24 @@
 import { renameSync, rmSync } from "node:fs";
 import { $ } from "bun";
 
-// Externals:
-//  - All @elizaos/* workspace packages stay external so we don't double-bundle them.
-//  - `undici` must be external. Bundling undici 8.x produces a `CacheStorage`
-//    constructor that calls Node's internal `webidl.util.markAsUncloneable`,
-//    which is not present in Bun. Bun's native fetch/WebSocket cover the call
-//    sites, so importing undici from the runtime works; bundling it does not.
-//    Some workspace deps (notably @elizaos/plugin-elizacloud) end up inlined
-//    here via Bun.build's workspace resolution despite the @elizaos/* regex,
-//    which is how undici reaches this bundle in the first place.
-const external = [/^@elizaos\//, "undici"];
+type PackageJson = {
+  dependencies?: Record<string, string>;
+  peerDependencies?: Record<string, string>;
+};
+
+async function externalsFromPackageJson(
+  pkgJsonPath: string,
+): Promise<string[]> {
+  const pkg = (await Bun.file(pkgJsonPath).json()) as PackageJson;
+  const deps = Object.keys(pkg.dependencies ?? {});
+  const peers = Object.keys(pkg.peerDependencies ?? {});
+  return [...new Set([...deps, ...peers])];
+}
+
+// Externalize anything in dependencies + peerDependencies so transitive Node-internal API users (undici, ws, etc.) aren't inlined.
+// Workspace `@elizaos/*` packages are already listed in package.json, so the
+// previous `/^@elizaos\//` regex is redundant once we read from package.json.
+const external = await externalsFromPackageJson("./package.json");
 
 console.log("🔨 Building @elizaos/plugin-wallet...");
 const start = Date.now();

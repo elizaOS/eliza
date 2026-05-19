@@ -157,7 +157,7 @@ export function PendingInvitesList({
 
                 {/* Expiration Warning */}
                 {isExpiringSoon && (
-                  <div className="flex items-center gap-1.5 text-xs font-mono text-[#FF5800]">
+                  <div className="flex items-center gap-1.5 text-xs font-mono text-[var(--brand-orange)]">
                     <Clock className="h-3.5 w-3.5" />
                     <span>
                       Expires{" "}

@@ -214,7 +214,7 @@ export function BillingTab({ user }: BillingTabProps) {
         <div className="relative z-10 space-y-6">
           {/* Header */}
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
               Credit Balance
             </h3>
@@ -256,7 +256,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       }}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "card"
-                          ? "bg-[#FF5800] border-[#FF5800] text-white"
+                          ? "bg-[var(--brand-orange)] border-[var(--brand-orange)] text-white"
                           : "bg-transparent border-[rgba(255,255,255,0.2)] text-white/60 hover:border-[rgba(255,255,255,0.4)]"
                       }`}
                     >
@@ -270,7 +270,7 @@ export function BillingTab({ user }: BillingTabProps) {
                       }}
                       className={`flex items-center gap-2 px-4 py-2 font-mono text-sm border transition-colors ${
                         paymentMethod === "crypto"
-                          ? "bg-[#FF5800] border-[#FF5800] text-white"
+                          ? "bg-[var(--brand-orange)] border-[var(--brand-orange)] text-white"
                           : "bg-transparent border-[rgba(255,255,255,0.2)] text-white/60 hover:border-[rgba(255,255,255,0.4)]"
                       }`}
                     >
@@ -387,7 +387,7 @@ export function BillingTab({ user }: BillingTabProps) {
           {/* Header */}
           <div className="flex flex-col gap-2">
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+              <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
               <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
                 Invoices
               </h3>
@@ -427,7 +427,7 @@ export function BillingTab({ user }: BillingTabProps) {
               {/* Table Rows */}
               {loadingInvoices ? (
                 <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">
-                  <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
+                  <Loader2 className="h-6 w-6 animate-spin text-[var(--brand-orange)]" />
                 </div>
               ) : invoices.length === 0 ? (
                 <div className="flex items-center justify-center p-8 border-l border-r border-b border-brand-surface">

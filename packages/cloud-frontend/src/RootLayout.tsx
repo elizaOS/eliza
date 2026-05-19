@@ -38,7 +38,7 @@ export default function RootLayout() {
     <>
       <Helmet>
         <html lang="en" />
-        <body className="font-sans antialiased selection:bg-[#FF5800] selection:text-white" />
+        <body className="font-sans antialiased selection:bg-[var(--brand-orange)] selection:text-white" />
         <title>Eliza Cloud - Launch Eliza</title>
         <meta
           name="description"
@@ -94,7 +94,7 @@ export default function RootLayout() {
               <NavigationProgress />
               <a
                 href="#main"
-                className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[#FF5800]"
+                className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[200] focus:bg-black focus:px-3 focus:py-2 focus:text-sm focus:text-white focus:outline focus:outline-2 focus:outline-[var(--brand-orange)]"
               >
                 Skip to content
               </a>

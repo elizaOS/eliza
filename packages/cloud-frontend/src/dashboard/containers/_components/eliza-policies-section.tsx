@@ -89,7 +89,7 @@ export function ElizaPoliciesSection({ agentId }: ElizaPoliciesSectionProps) {
           <button
             type="button"
             onClick={fetchPolicies}
-            className="font-mono text-[11px] text-[#FF5800] hover:text-[#FF5800]/70 transition-colors mt-2"
+            className="font-mono text-[11px] text-[var(--brand-orange)] hover:text-[var(--brand-orange)]/70 transition-colors mt-2"
           >
             RETRY
           </button>

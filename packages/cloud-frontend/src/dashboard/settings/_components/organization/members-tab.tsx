@@ -177,7 +177,7 @@ export function MembersTab({ user }: MembersTabProps) {
         {/* Members List */}
         {isLoadingMembers ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+            <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
           </div>
         ) : (
           <MembersList
@@ -198,7 +198,7 @@ export function MembersTab({ user }: MembersTabProps) {
             </h3>
             {isLoadingInvites ? (
               <div className="flex items-center justify-center py-8">
-                <Loader2 className="h-6 w-6 animate-spin text-[#FF5800]" />
+                <Loader2 className="h-6 w-6 animate-spin text-[var(--brand-orange)]" />
               </div>
             ) : (
               <PendingInvitesList

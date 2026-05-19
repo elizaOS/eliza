@@ -108,14 +108,14 @@ function getPricingIcon(pricing: ApiEndpoint["pricing"]) {
   if (pricing.isFree) return <Sparkles className="h-4 w-4 text-green-400" />;
   if (pricing.isVariable)
     return <TrendingUp className="h-4 w-4 text-orange-400" />;
-  return <Coins className="h-4 w-4 text-[#FF5800]" />;
+  return <Coins className="h-4 w-4 text-[var(--brand-orange)]" />;
 }
 
 function getPricingStyle(pricing: ApiEndpoint["pricing"]) {
   if (!pricing) return "";
   if (pricing.isFree) return "bg-green-500/20 text-green-400";
   if (pricing.isVariable) return "bg-orange-500/20 text-orange-400";
-  return "bg-[#FF5800]/20 text-[#FF5800]";
+  return "bg-[var(--brand-orange)]/20 text-[var(--brand-orange)]";
 }
 
 function resolveApiUrl() {
@@ -335,7 +335,7 @@ export default function ApiExplorerPage() {
                     placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500 focus:border-[#FF5800]/50 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50 sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
+                    className="h-7 w-full rounded-sm border border-white/10 bg-neutral-900 pl-7 pr-7 text-[11px] text-white placeholder:text-neutral-500 focus:border-[var(--brand-orange)]/50 focus:outline-none focus:ring-1 focus:ring-[var(--brand-orange)]/50 sm:h-9 sm:w-48 sm:rounded-sm sm:pl-9 sm:pr-8 sm:text-sm"
                   />
                   {searchQuery && (
                     <button
@@ -366,7 +366,7 @@ export default function ApiExplorerPage() {
                       className={cn(
                         "flex h-7 shrink-0 items-center gap-1 rounded-sm border px-2 text-[11px] font-medium transition-colors sm:h-9 sm:gap-2 sm:rounded-sm sm:px-3 sm:text-xs",
                         selectedCategory === category
-                          ? "bg-[#FF5800]/10 text-[#FF5800] border-[#FF5800]/30"
+                          ? "bg-[var(--brand-orange)]/10 text-[var(--brand-orange)] border-[var(--brand-orange)]/30"
                           : "bg-neutral-900/50 text-neutral-400 border-white/5 hover:text-white hover:border-white/10",
                       )}
                     >
@@ -375,7 +375,7 @@ export default function ApiExplorerPage() {
                         className={cn(
                           "text-[11px] sm:text-xs font-semibold",
                           selectedCategory === category
-                            ? "text-[#FF5800]"
+                            ? "text-[var(--brand-orange)]"
                             : "text-neutral-500",
                         )}
                       >
@@ -469,7 +469,7 @@ export default function ApiExplorerPage() {
                 <button
                   type="button"
                   onClick={handleCopyJson}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[#FF5800] text-white rounded-sm hover:bg-[#FF5800]/90 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium bg-[var(--brand-orange)] text-white rounded-sm hover:bg-[var(--brand-orange)]/90 transition-colors"
                 >
                   {copied === "json" ? (
                     <Check className="h-3.5 w-3.5" />

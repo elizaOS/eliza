@@ -41,7 +41,7 @@ const SNAPSHOT_TYPE_LABELS: Record<BackupRecord["snapshotType"], string> = {
 
 const SNAPSHOT_TYPE_STYLES: Record<BackupRecord["snapshotType"], string> = {
   auto: "border-blue-500/40 bg-blue-500/10 text-blue-400",
-  manual: "border-[#FF5800]/40 bg-[#FF5800]/10 text-[#FF9B66]",
+  manual: "border-[var(--brand-orange)]/40 bg-[var(--brand-orange)]/10 text-[#FF9B66]",
   "pre-shutdown": "border-purple-500/40 bg-purple-500/10 text-purple-400",
 };
 
@@ -180,7 +180,7 @@ export function ElizaAgentBackupsPanel({
         <div className="flex flex-col gap-4 border-b border-white/10 pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="mb-1 flex flex-wrap items-center gap-2">
-              <span className="inline-block h-2 w-2 rounded-full bg-[#FF5800]" />
+              <span className="inline-block h-2 w-2 rounded-full bg-[var(--brand-orange)]" />
               <h2
                 className="text-xl font-normal text-white"
                 style={{ fontFamily: "var(--font-roboto-mono)" }}

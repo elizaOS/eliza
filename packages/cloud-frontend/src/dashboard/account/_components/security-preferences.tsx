@@ -16,7 +16,7 @@ export function SecurityPreferences() {
       <div className="relative z-10 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Shield className="h-5 w-5 text-[#FF5800]" />
+            <Shield className="h-5 w-5 text-[var(--brand-orange)]" />
             <h3 className="text-lg font-bold text-white">
               Security & Preferences
             </h3>

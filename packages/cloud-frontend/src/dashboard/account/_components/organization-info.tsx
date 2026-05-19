@@ -37,7 +37,7 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
       <div className="relative z-10 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Building2 className="h-5 w-5 text-[#FF5800]" />
+            <Building2 className="h-5 w-5 text-[var(--brand-orange)]" />
             <h3 className="text-lg font-bold text-white">Organization</h3>
           </div>
           <p className="text-sm text-white/60">
@@ -65,7 +65,7 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
-                <CreditCard className="h-4 w-4 text-[#FF5800]" />
+                <CreditCard className="h-4 w-4 text-[var(--brand-orange)]" />
                 Balance
               </p>
               <p className="font-semibold text-lg text-white">
@@ -86,7 +86,7 @@ export function OrganizationInfo({ organization }: OrganizationInfoProps) {
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#FF5800]" />
+                <Calendar className="h-4 w-4 text-[var(--brand-orange)]" />
                 Member Since
               </p>
               <p className="text-sm text-white">

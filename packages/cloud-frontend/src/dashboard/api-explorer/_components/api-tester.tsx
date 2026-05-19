@@ -592,26 +592,26 @@ export function ApiTester({
       {endpoint.pricing && (
         <Card className="border-border/60 bg-background/60 rounded-sm overflow-hidden">
           <div
-            className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-green-500" : endpoint.pricing.isVariable ? "bg-orange-500" : "bg-[#FF5800]"}`}
+            className={`h-1 w-full ${endpoint.pricing.isFree ? "bg-green-500" : endpoint.pricing.isVariable ? "bg-orange-500" : "bg-[var(--brand-orange)]"}`}
           />
           <CardContent className="pt-4">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-3">
                 <div
-                  className={`p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-green-500/10" : endpoint.pricing.isVariable ? "bg-orange-500/10" : "bg-[#FF5800]/10"}`}
+                  className={`p-2.5 rounded-sm ${endpoint.pricing.isFree ? "bg-green-500/10" : endpoint.pricing.isVariable ? "bg-orange-500/10" : "bg-[var(--brand-orange)]/10"}`}
                 >
                   {endpoint.pricing.isFree ? (
                     <Sparkles className={`h-5 w-5 text-green-400`} />
                   ) : endpoint.pricing.isVariable ? (
                     <TrendingUp className={`h-5 w-5 text-orange-400`} />
                   ) : (
-                    <Coins className={`h-5 w-5 text-[#FF5800]`} />
+                    <Coins className={`h-5 w-5 text-[var(--brand-orange)]`} />
                   )}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
                     <span
-                      className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-green-400" : endpoint.pricing.isVariable ? "text-orange-400" : "text-[#FF5800]"}`}
+                      className={`text-xl font-bold ${endpoint.pricing.isFree ? "text-green-400" : endpoint.pricing.isVariable ? "text-orange-400" : "text-[var(--brand-orange)]"}`}
                     >
                       {formatEndpointPrice(endpoint.pricing)}
                     </span>
@@ -645,7 +645,7 @@ export function ApiTester({
         <Button
           onClick={executeTest}
           disabled={isLoading || (endpoint.requiresAuth && isAuthLoading)}
-          className="gap-2 bg-[#471E08] text-[#FF5800] hover:bg-[#5A2610] active:bg-[#6B2E18] border-0"
+          className="gap-2 bg-[#471E08] text-[var(--brand-orange)] hover:bg-[#5A2610] active:bg-[#6B2E18] border-0"
         >
           {isLoading ? (
             <LoaderIcon className="h-4 w-4 animate-spin" />

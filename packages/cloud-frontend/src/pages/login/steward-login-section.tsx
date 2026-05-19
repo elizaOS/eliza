@@ -407,7 +407,7 @@ export default function StewardLoginSection() {
           if (e.key === "Enter") handlePasskey();
         }}
         disabled={isLoading}
-        className="w-full border border-white/20 bg-black px-4 py-3 text-white placeholder:text-white/40 outline-none transition focus:border-white focus:ring-2 focus:ring-[#FF5800]/40 disabled:opacity-50"
+        className="w-full border border-white/20 bg-black px-4 py-3 text-white placeholder:text-white/40 outline-none transition focus:border-white focus:ring-2 focus:ring-[var(--brand-orange)]/40 disabled:opacity-50"
         autoComplete="email webauthn"
       />
 
@@ -417,7 +417,7 @@ export default function StewardLoginSection() {
             type="button"
             onClick={handlePasskey}
             disabled={isLoading}
-            className="flex flex-1 items-center justify-center gap-2 bg-[#FF5800] px-4 py-3 font-semibold text-white transition-colors hover:bg-[#FF5800]/85 disabled:opacity-50"
+            className="flex flex-1 items-center justify-center gap-2 bg-[var(--brand-orange)] px-4 py-3 font-semibold text-white transition-colors hover:bg-[var(--brand-orange)]/85 disabled:opacity-50"
           >
             {loading === "passkey" ? <Spinner /> : <PasskeyIcon />} Passkey
           </button>

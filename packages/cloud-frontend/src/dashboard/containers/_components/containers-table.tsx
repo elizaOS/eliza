@@ -238,7 +238,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   searchQuery: e.target.value,
                 }))
               }
-              className="pl-9 h-10 rounded-sm border-white/10 bg-black/40 text-white placeholder:text-neutral-500 focus-visible:ring-[#FF5800]/50"
+              className="pl-9 h-10 rounded-sm border-white/10 bg-black/40 text-white placeholder:text-neutral-500 focus-visible:ring-[var(--brand-orange)]/50"
             />
           </div>
           <Select
@@ -345,7 +345,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                       <div className="space-y-1">
                         <Link
                           to={`/dashboard/containers/${container.id}`}
-                          className="font-medium text-white hover:text-[#FF5800] transition-colors"
+                          className="font-medium text-white hover:text-[var(--brand-orange)] transition-colors"
                         >
                           {container.name}
                         </Link>
@@ -492,7 +492,7 @@ export function ContainersTable({ containers }: ContainersTableProps) {
                   <div className="min-w-0 space-y-1">
                     <Link
                       to={`/dashboard/containers/${container.id}`}
-                      className="block truncate font-medium text-white transition-colors hover:text-[#FF5800]"
+                      className="block truncate font-medium text-white transition-colors hover:text-[var(--brand-orange)]"
                     >
                       {container.name}
                     </Link>

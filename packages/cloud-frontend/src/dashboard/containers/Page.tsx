@@ -62,7 +62,7 @@ export default function ContainersPage() {
                   label="Total Containers"
                   value={stats.total}
                   accent="orange"
-                  icon={<Server className="h-5 w-5 text-[#FF5800]" />}
+                  icon={<Server className="h-5 w-5 text-[var(--brand-orange)]" />}
                 />
                 <DashboardStatCard
                   label="Running"

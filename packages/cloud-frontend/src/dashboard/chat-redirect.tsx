@@ -67,7 +67,7 @@ export default function DashboardChatRedirectPage() {
         <div className="flex items-center justify-center gap-2">
           <Link
             to="/dashboard/agents"
-            className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium border border-[#FF5800] bg-[#FF5800] text-black hover:bg-[#FF5800]/90 transition-colors"
+            className="inline-flex items-center gap-1.5 h-9 px-3 text-sm font-medium border border-[var(--brand-orange)] bg-[var(--brand-orange)] text-black hover:bg-[var(--brand-orange)]/90 transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
             Create an agent

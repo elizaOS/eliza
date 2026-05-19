@@ -73,7 +73,7 @@ export function AnalyticsFilters() {
             value={granularity}
             onValueChange={(value) => updateFilters({ granularity: value })}
           >
-            <SelectTrigger className="w-[160px] rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
+            <SelectTrigger className="w-[160px] rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[var(--brand-orange)]">
               <SelectValue>
                 {granularity.charAt(0).toUpperCase() + granularity.slice(1)}
               </SelectValue>
@@ -109,7 +109,7 @@ export function AnalyticsFilters() {
 
         {activeRange === "custom" ? (
           <span className="flex items-center gap-1 rounded-sm border border-white/20 bg-white/10 px-3 py-1 text-xs">
-            <Sparkles className="h-3.5 w-3.5 text-[#FF5800]" />
+            <Sparkles className="h-3.5 w-3.5 text-[var(--brand-orange)]" />
             Custom range detected
           </span>
         ) : null}

@@ -227,7 +227,7 @@ export default function AdminPage() {
             <DashboardStatCard
               label="Flagged Users"
               value={overview.flaggedUsers}
-              icon={<UserX className="h-4 w-4 text-[#FF5800]" />}
+              icon={<UserX className="h-4 w-4 text-[var(--brand-orange)]" />}
               accent="orange"
             />
             <DashboardStatCard

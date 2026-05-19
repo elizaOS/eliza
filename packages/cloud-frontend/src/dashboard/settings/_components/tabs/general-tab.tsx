@@ -225,7 +225,7 @@ export function GeneralTab({ user }: GeneralTabProps) {
                 onCheckedChange={(checked) =>
                   updateForm({ responseNotifications: checked })
                 }
-                className="data-[state=checked]:bg-[#FF5800] flex-shrink-0"
+                className="data-[state=checked]:bg-[var(--brand-orange)] flex-shrink-0"
               />
             </div>
           </div>
@@ -245,7 +245,7 @@ export function GeneralTab({ user }: GeneralTabProps) {
                 onCheckedChange={(checked) =>
                   updateForm({ emailNotifications: checked })
                 }
-                className="data-[state=checked]:bg-[#FF5800] flex-shrink-0"
+                className="data-[state=checked]:bg-[var(--brand-orange)] flex-shrink-0"
               />
             </div>
           </div>

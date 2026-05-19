@@ -34,13 +34,13 @@ export default function Footer() {
             <div className="flex flex-col gap-1.5 text-right relative">
               <a
                 href={EXTERNAL_URLS.app}
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[var(--brand-orange)]"
               >
                 Download the app
               </a>
               <a
                 href={EXTERNAL_URLS.os}
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[var(--brand-orange)]"
               >
                 Install elizaOS
               </a>
@@ -52,19 +52,19 @@ export default function Footer() {
             >
               <Link
                 to="/docs"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[var(--brand-orange)]"
               >
                 Docs
               </Link>
               <a
                 href="/privacy-policy"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[var(--brand-orange)]"
               >
                 Privacy
               </a>
               <a
                 href="/terms-of-service"
-                className="text-base text-white transition-colors hover:text-[#FF5800]"
+                className="text-base text-white transition-colors hover:text-[var(--brand-orange)]"
               >
                 Terms
               </a>

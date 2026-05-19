@@ -80,7 +80,7 @@ export default function StewardEmailCallbackPage() {
   if (status === "error") {
     return (
       <Frame>
-        <div className="bg-[#FF5800] p-4 text-black">
+        <div className="bg-[var(--brand-orange)] p-4 text-black">
           <AlertTriangle className="h-8 w-8" />
         </div>
         <h1 className="text-lg font-semibold text-white">Sign-in failed</h1>
@@ -109,7 +109,7 @@ export default function StewardEmailCallbackPage() {
 
   return (
     <Frame>
-      <Loader2 className="h-12 w-12 animate-spin text-[#FF5800]" />
+      <Loader2 className="h-12 w-12 animate-spin text-[var(--brand-orange)]" />
       <h1 className="text-lg font-semibold text-white">
         Verifying sign-in link...
       </h1>

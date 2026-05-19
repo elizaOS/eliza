@@ -27,13 +27,13 @@ export function ElizaAgentTabs({ agentId, children }: ElizaAgentTabsProps) {
             onClick={() => setActiveTab(tab)}
             className={`relative shrink-0 px-5 py-3 font-mono text-[11px] uppercase tracking-[0.2em] transition-colors ${
               activeTab === tab
-                ? "text-[#FF5800]"
+                ? "text-[var(--brand-orange)]"
                 : "text-white/40 hover:text-white/70"
             }`}
           >
             {tab}
             {activeTab === tab && (
-              <span className="absolute bottom-0 left-0 right-0 h-px bg-[#FF5800]" />
+              <span className="absolute bottom-0 left-0 right-0 h-px bg-[var(--brand-orange)]" />
             )}
           </button>
         ))}

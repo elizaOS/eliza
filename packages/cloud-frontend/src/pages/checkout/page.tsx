@@ -122,7 +122,7 @@ export default function CheckoutPage() {
             className="mb-8 h-9 w-auto"
             draggable={false}
           />
-          <p className="text-xs font-bold uppercase text-[#FF5800]">preorder</p>
+          <p className="text-xs font-bold uppercase text-[var(--brand-orange)]">preorder</p>
           <h1 className="mt-3 max-w-xl break-words text-4xl font-extrabold leading-[0.9] text-white sm:text-5xl md:text-7xl">
             {product.name}
           </h1>
@@ -157,7 +157,7 @@ export default function CheckoutPage() {
                       aria-label={`Select ${color.name}`}
                       className={`size-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-black ${
                         selectedColor.id === color.id
-                          ? "ring-2 ring-[#FF5800]"
+                          ? "ring-2 ring-[var(--brand-orange)]"
                           : "ring-1 ring-white/30"
                       }`}
                       key={color.id}
@@ -204,7 +204,7 @@ export default function CheckoutPage() {
                 )}
               </div>
               {checkoutError ? (
-                <p className="text-sm font-medium text-[#FF5800]">
+                <p className="text-sm font-medium text-[var(--brand-orange)]">
                   {checkoutError}
                 </p>
               ) : null}
@@ -220,7 +220,7 @@ export default function CheckoutPage() {
                 <Link
                   className={`p-3 transition-colors ${
                     item.sku === product.sku
-                      ? "bg-[#FF5800] text-black"
+                      ? "bg-[var(--brand-orange)] text-black"
                       : "bg-black hover:bg-white/10"
                   }`}
                   key={item.sku}

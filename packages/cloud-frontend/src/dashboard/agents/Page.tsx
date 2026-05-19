@@ -78,7 +78,7 @@ export default function AgentDashboardPage() {
         <DashboardPageContainer className="space-y-6">
           <div className="space-y-1.5">
             <div className="flex items-center gap-2">
-              <span className="inline-block size-2 bg-[#FF5800]" />
+              <span className="inline-block size-2 bg-[var(--brand-orange)]" />
               <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
                 Instances
               </p>

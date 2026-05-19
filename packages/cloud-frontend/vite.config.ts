@@ -6,6 +6,7 @@ import react from "@vitejs/plugin-react";
 import remarkFrontmatter from "remark-frontmatter";
 import remarkGfm from "remark-gfm";
 import remarkMdxFrontmatter from "remark-mdx-frontmatter";
+import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, loadEnv } from "vite";
 
 // Resolve aliases. Aliases that previously pointed at `cloud/packages/{lib,db,
@@ -148,6 +149,12 @@ export default defineConfig(({ mode }) => {
       },
       react({ include: /\.(jsx|tsx|mdx)$/ }),
       tailwindcss(),
+      visualizer({
+        filename: "dist/stats.html",
+        gzipSize: true,
+        brotliSize: false,
+        template: "treemap",
+      }) as never,
       // Resolve `@/lib/*`, `@/db/*`, `@/types/*`, `@/components/*` with
       // local-first / cloud-shared-fallback semantics. Some files (utils.ts,
       // toast-adapter, hooks, providers, chat-store) moved from cloud-shared
@@ -244,6 +251,9 @@ export default defineConfig(({ mode }) => {
         "react-router",
         "react-router-dom",
         "@tanstack/react-query",
+        "@tanstack/query-core",
+        "tslib",
+        "buffer",
       ],
       alias: [
         // The upstream `inherits` package's main entry tries
@@ -410,6 +420,22 @@ export default defineConfig(({ mode }) => {
       // Keep the build warning budget explicit so import and resolver warnings
       // still stand out in CI output.
       chunkSizeWarningLimit: 3000,
+      // Restrict <link rel="modulepreload"> in the generated index.html to the
+      // entry's react + core runtime only. Wallet, docs, charts, and other
+      // route-specific vendor chunks are dynamic-import deps of lazy routes;
+      // preloading them all on the landing page wastes bandwidth (the prior
+      // behavior preloaded 22 vendor-wallet chunks before the user navigated
+      // anywhere). The dynamic-import callsite still triggers preload via
+      // Vite's __vitePreload helper at navigation time.
+      modulePreload: {
+        polyfill: false,
+        resolveDependencies: (_filename, deps) =>
+          deps.filter(
+            (dep) =>
+              /vendor-react|rolldown-runtime/.test(dep) ||
+              dep.endsWith(".css"),
+          ),
+      },
       rolldownOptions: {
         output: {
           codeSplitting: {

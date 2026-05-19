@@ -33,7 +33,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={launchEliza}
-            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[#0B35F1] sm:text-lg"
+            className="inline-flex min-h-14 items-center justify-center gap-2 rounded-[3px] bg-black px-8 py-4 text-base font-medium text-white transition hover:bg-[var(--brand-blue)] sm:text-lg"
           >
             Launch Eliza
             <ArrowRight className="h-5 w-5" />
@@ -41,7 +41,7 @@ export default function HeroSection() {
           <button
             type="button"
             onClick={openDashboard}
-            className="inline-flex min-h-14 items-center justify-center rounded-[3px] bg-[#FF5800] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
+            className="inline-flex min-h-14 items-center justify-center rounded-[3px] bg-[var(--brand-orange)] px-7 py-4 text-base font-medium text-black transition hover:bg-black hover:text-white"
           >
             Developer Dashboard
           </button>

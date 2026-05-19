@@ -155,7 +155,7 @@ export function AuthManager({
               type="text"
               placeholder="Enter custom API key..."
               onChange={(e) => onTokenChange(e.target.value)}
-              className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[#FF5800]/50"
+              className="w-full h-9 px-3 rounded-sm border border-white/10 bg-black/40 text-white text-sm placeholder:text-neutral-500 focus:outline-none focus:ring-1 focus:ring-[var(--brand-orange)]/50"
             />
             <button
               type="button"

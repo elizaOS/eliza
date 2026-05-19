@@ -122,7 +122,7 @@ function CopyButton({ text }: { text: string }) {
 function SectionHeader({ label }: { label: string }) {
   return (
     <div className="flex items-center gap-2 mb-3">
-      <span className="inline-block size-1.5 bg-[#FF5800]" />
+      <span className="inline-block size-1.5 bg-[var(--brand-orange)]" />
       <p className="font-mono text-[11px] uppercase tracking-[0.32em] text-white/60">
         {label}
       </p>

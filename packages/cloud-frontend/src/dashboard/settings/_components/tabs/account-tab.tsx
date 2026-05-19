@@ -108,7 +108,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
           <div className="flex flex-col lg:flex-row items-start justify-between gap-4 w-full">
             <div className="flex flex-col gap-2 max-w-xl">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+                <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
                 <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
                   Build, deploy, and monitor your ai agents
                 </h3>
@@ -221,7 +221,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
         <div className="relative z-10 space-y-4 md:space-y-6">
           {/* Section Header */}
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h3 className="text-sm md:text-base font-mono text-[#e1e1e1] uppercase">
               Account
             </h3>
@@ -239,7 +239,7 @@ export function AccountTab({ user, onTabChange }: AccountTabProps) {
               className="relative bg-[rgba(255,88,0,0.25)] px-4 py-2.5 hover:bg-[rgba(255,88,0,0.35)] transition-colors group disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
             >
               <CornerBrackets size="sm" className="opacity-70" />
-              <span className="relative z-10 text-[#FF5800] font-mono font-medium text-sm whitespace-nowrap">
+              <span className="relative z-10 text-[var(--brand-orange)] font-mono font-medium text-sm whitespace-nowrap">
                 {isLoggingOut ? "Logging out..." : "Log out"}
               </span>
             </button>

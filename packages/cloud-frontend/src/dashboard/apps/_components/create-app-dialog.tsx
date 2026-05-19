@@ -204,7 +204,7 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
           <DialogFooter>
             <Button
               onClick={handleClose}
-              className="bg-[#FF5800] hover:bg-[#FF5800]/90 w-full sm:w-auto"
+              className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 w-full sm:w-auto"
             >
               Set Markup &amp; Earnings →
             </Button>
@@ -285,7 +285,7 @@ export function CreateAppDialog({ open, onOpenChange }: CreateAppDialogProps) {
             <Button
               type="submit"
               disabled={!canSubmit}
-              className="bg-[#FF5800] hover:bg-[#FF5800]/90 w-full sm:w-auto"
+              className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 w-full sm:w-auto"
             >
               {isLoading ? (
                 <>

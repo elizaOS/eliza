@@ -281,7 +281,7 @@ export default function AppChargePaymentPage() {
     ? "border-green-300/30 bg-green-400/10 text-green-100"
     : isExpired
       ? "border-orange-300/30 bg-orange-400/10 text-orange-100"
-      : "border-[#0B35F1]/30 bg-[#0B35F1]/10 text-white";
+      : "border-[var(--brand-blue)]/30 bg-[var(--brand-blue)]/10 text-white";
   const shortId = charge.id.slice(0, 8);
 
   return (
@@ -354,7 +354,7 @@ export default function AppChargePaymentPage() {
           )}
 
           {returnedFromPayment && !isPaid && !isExpired && (
-            <div className="mt-7 flex items-center gap-3 border border-[#0B35F1]/25 bg-[#0B35F1]/10 p-3 text-sm text-white">
+            <div className="mt-7 flex items-center gap-3 border border-[var(--brand-blue)]/25 bg-[var(--brand-blue)]/10 p-3 text-sm text-white">
               <Loader2 className="h-5 w-5 shrink-0 animate-spin text-blue-200" />
               <span>Waiting for confirmation.</span>
             </div>

@@ -76,7 +76,7 @@ export default function AgentChatPage() {
           to={`/dashboard/agents/${agent.id}`}
           className="group inline-flex items-center gap-2 text-sm text-white/50 hover:text-white transition-colors"
         >
-          <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[#FF5800]/40 transition-colors">
+          <div className="flex items-center justify-center w-7 h-7 border border-white/10 bg-black/40 group-hover:border-[var(--brand-orange)]/40 transition-colors">
             <ArrowLeft className="h-3.5 w-3.5" />
           </div>
           <span>Back to agent</span>
@@ -84,8 +84,8 @@ export default function AgentChatPage() {
 
         <div className="space-y-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 border border-[#FF5800]/25 bg-[#FF5800]/10">
-              <MessageCircle className="h-5 w-5 text-[#FF5800]" />
+            <div className="flex items-center justify-center w-10 h-10 border border-[var(--brand-orange)]/25 bg-[var(--brand-orange)]/10">
+              <MessageCircle className="h-5 w-5 text-[var(--brand-orange)]" />
             </div>
             <div className="min-w-0">
               <h1

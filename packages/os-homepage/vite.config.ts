@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
+import { visualizer } from "rollup-plugin-visualizer";
 import { defineConfig, type Plugin } from "vite";
 
 const packageDir = path.dirname(fileURLToPath(import.meta.url));
@@ -58,9 +59,19 @@ function pruneStaticAssets(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), spa404Fallback(), pruneStaticAssets()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    spa404Fallback(),
+    pruneStaticAssets(),
+    visualizer({
+      filename: "dist/stats.html",
+      gzipSize: true,
+      brotliSize: true,
+    }) as Plugin,
+  ],
   resolve: {
-    dedupe: ["react", "react-dom", "react-router", "react-router-dom"],
+    dedupe: ["react", "react-dom", "react-router", "react-router-dom", "zod"],
     alias: {
       "@": path.resolve(packageDir, "./src"),
       "@elizaos/ui": path.resolve(

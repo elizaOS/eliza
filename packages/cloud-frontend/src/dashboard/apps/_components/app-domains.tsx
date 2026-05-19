@@ -245,7 +245,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
             <div>
               <h3 className="text-sm font-medium text-white flex items-center gap-2">
-                <Globe className="h-4 w-4 text-[#FF5800]" />
+                <Globe className="h-4 w-4 text-[var(--brand-orange)]" />
                 Domains
               </h3>
               <p className="text-xs text-neutral-500 mt-1">
@@ -259,7 +259,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                 <Button
                   onClick={() => setShowAddForm(true)}
                   size="sm"
-                  className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white rounded-sm"
+                  className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white rounded-sm"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
                   Add Domain
@@ -382,7 +382,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                               setNewDomain("");
                             }
                           }}
-                          className="flex-1 bg-black/30 border-white/10 focus:border-[#FF5800]/50 rounded-sm placeholder:text-neutral-600"
+                          className="flex-1 bg-black/30 border-white/10 focus:border-[var(--brand-orange)]/50 rounded-sm placeholder:text-neutral-600"
                         />
                         <div className="flex gap-2">
                           <Button
@@ -391,7 +391,7 @@ export function AppDomains({ appId }: AppDomainsProps) {
                             className={`h-9 px-4 ${
                               isAdding || !newDomain.trim()
                                 ? "bg-neutral-700 text-neutral-400"
-                                : "bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+                                : "bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white"
                             }`}
                           >
                             {isAdding ? (

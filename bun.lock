@@ -747,7 +747,7 @@
         "ioredis-mock": "^8.13.1",
         "prettier": "3.6.2",
         "typescript": "5.8.3",
-        "uuid": "13.0.0",
+        "uuid": "14.0.0",
       },
     },
     "packages/cloud-shared": {
@@ -1707,6 +1707,7 @@
         "@types/three": "^0.184.0",
         "@vitejs/plugin-react": "^6.0.0",
         "playwright": "^1.59.1",
+        "rollup-plugin-visualizer": "^7.0.1",
         "tailwindcss": "^4",
         "tw-animate-css": "^1.4.0",
         "typescript": "^6.0.3",
@@ -2620,7 +2621,7 @@
         "ox": "0.14.20",
         "undici": "8.2.0",
         "viem": "^2.48.8",
-        "ws": "8.18.3",
+        "ws": "8.20.1",
       },
       "devDependencies": {
         "@biomejs/biome": "^2.4.14",
@@ -11646,15 +11647,11 @@
 
     "@elizaos/operator/typescript": ["typescript@5.8.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-p1diW6TqL9L07nNxvRMM7hMMw4c5XOo/1ibL4aAIGmSAt9slTE1Xgw5KWuof2uTOvCg9BY7ZRi+GaF+7sfgPeQ=="],
 
-    "@elizaos/operator/uuid": ["uuid@13.0.0", "", { "bin": { "uuid": "dist-node/bin/uuid" } }, "sha512-XQegIaBTVUjSHliKqcnFqYypAd4S+WCYt5NIeRs6w/UAry7z8Y9j5ZwRRL4kzq9U3sD6v+85er9FvkEaBpji2w=="],
-
     "@elizaos/plugin-discord/undici": ["undici@6.24.1", "", {}, "sha512-sC+b0tB1whOCzbtlx20fx3WgCXwkW627p4EA9uM+/tNNPkSS+eSEld6pAs9nDv7WbY1UUljBMYPtu9BCOrCWKA=="],
 
     "@elizaos/plugin-elizacloud/@noble/curves": ["@noble/curves@1.9.1", "", { "dependencies": { "@noble/hashes": "1.8.0" } }, "sha512-k11yZxZg+t+gWvBbIswW0yoJlu8cHOC7dhunwOzoWH/mXGBiYyR4YY6hAEK/3EUs4UpB8la1RfdRpeGsFHkWsA=="],
 
     "@elizaos/plugin-elizacloud/@noble/hashes": ["@noble/hashes@1.8.0", "", {}, "sha512-jCs9ldd7NwzpgXDIf6P3+NrHh9/sD6CQdxHyjQI+h/6rDNo88ypBxxz45UDuZHz9r3tNz7N/VInSVoVdtXEI4A=="],
-
-    "@elizaos/plugin-elizacloud/ws": ["ws@8.18.3", "", { "peerDependencies": { "bufferutil": "^4.0.1", "utf-8-validate": ">=5.0.2" }, "optionalPeers": ["bufferutil", "utf-8-validate"] }, "sha512-PEIGCY5tSlUt50cqyMXfCzX+oOPqN0vuGqWzbcJ2xvnkzkq46oOpz7dQaTDBdfICb4N14+GARUDw2XV2N4tvzg=="],
 
     "@elizaos/plugin-social-alpha/@tailwindcss/postcss": ["@tailwindcss/postcss@4.2.4", "", { "dependencies": { "@alloc/quick-lru": "^5.2.0", "@tailwindcss/node": "4.2.4", "@tailwindcss/oxide": "4.2.4", "postcss": "^8.5.6", "tailwindcss": "4.2.4" } }, "sha512-wgAVj6nUWAolAu8YFvzT2cTBIElWHkjZwFYovF+xsqKsW2ADxM/X2opxj5NsF/qVccAOjRNe8X2IdPzMsWyHTg=="],
 

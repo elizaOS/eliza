@@ -92,7 +92,7 @@ function AgentConsoleOverview({
       <div className="border border-white/10 bg-black p-5">
         <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
           <div className="max-w-2xl space-y-3">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[#FF5800]">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-[var(--brand-orange)]">
               Agent console
             </p>
             <div className="space-y-2">
@@ -110,7 +110,7 @@ function AgentConsoleOverview({
           <div className="flex shrink-0 flex-col gap-2 sm:flex-row md:flex-col">
             <Link
               to={chatPath}
-              className="inline-flex h-10 items-center justify-center gap-2 border border-[#FF5800] bg-[#FF5800] px-4 text-sm font-medium text-black transition-colors hover:bg-[#FF5800]/90"
+              className="inline-flex h-10 items-center justify-center gap-2 border border-[var(--brand-orange)] bg-[var(--brand-orange)] px-4 text-sm font-medium text-black transition-colors hover:bg-[var(--brand-orange)]/90"
             >
               <MessageCircle className="h-4 w-4" />
               {primaryAgent ? "Open agent chat" : "Go to my agent"}
@@ -161,9 +161,9 @@ function AgentConsoleOverview({
             <Link
               key={section.title}
               to={section.to}
-              className="group flex items-start gap-3 border border-white/10 bg-black p-4 transition-colors hover:border-[#FF5800]/40 hover:bg-white/[0.03]"
+              className="group flex items-start gap-3 border border-white/10 bg-black p-4 transition-colors hover:border-[var(--brand-orange)]/40 hover:bg-white/[0.03]"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[#FF5800]">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center border border-white/10 bg-black text-[var(--brand-orange)]">
                 <Icon className="h-4 w-4" />
               </span>
               <span className="min-w-0 flex-1">
@@ -171,7 +171,7 @@ function AgentConsoleOverview({
                   <span className="text-sm font-medium text-white">
                     {section.title}
                   </span>
-                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-[#FF5800]" />
+                  <ArrowRight className="h-4 w-4 shrink-0 text-white/30 transition-colors group-hover:text-[var(--brand-orange)]" />
                 </span>
                 <span className="mt-1 block text-xs leading-5 text-white/55">
                   {section.description}

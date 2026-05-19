@@ -67,7 +67,7 @@ export function SidebarBottomPanel({
 
             <Link
               to={loginHref}
-              className="flex w-full items-center justify-center gap-1.5 bg-[#FF5800] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[#FF5800]/90"
+              className="flex w-full items-center justify-center gap-1.5 bg-[var(--brand-orange)] px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-[var(--brand-orange)]/90"
             >
               <UserPlus className="h-3.5 w-3.5" />
               <span>Sign Up</span>
@@ -83,11 +83,11 @@ export function SidebarBottomPanel({
 
             <div className="mt-1 space-y-1 text-[10px] text-white/30">
               <div className="flex items-center gap-1.5">
-                <div className="h-1 w-1 rounded-full bg-[#FF5800]/60" />
+                <div className="h-1 w-1 rounded-full bg-[var(--brand-orange)]/60" />
                 <span>Unlimited chats</span>
               </div>
               <div className="flex items-center gap-1.5">
-                <div className="h-1 w-1 rounded-full bg-[#FF5800]/60" />
+                <div className="h-1 w-1 rounded-full bg-[var(--brand-orange)]/60" />
                 <span>Custom agents</span>
               </div>
             </div>

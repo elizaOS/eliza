@@ -313,7 +313,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   setFormData({ ...formData, name: e.target.value })
                 }
                 autoFocus
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
               />
             </div>
 
@@ -332,7 +332,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   setFormData({ ...formData, description: e.target.value })
                 }
                 rows={3}
-                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                className="rounded-sm border-white/10 bg-black/40 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
               />
             </div>
 
@@ -388,7 +388,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                   )
                 }
               >
-                <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[#FF5800]">
+                <SelectTrigger className="rounded-sm border-white/10 bg-black/40 text-white focus:ring-1 focus:ring-[var(--brand-orange)]">
                   <SelectValue placeholder="Select a limit" />
                 </SelectTrigger>
                 <SelectContent className="rounded-sm border-white/10 bg-black/90">
@@ -426,7 +426,7 @@ export function ApiKeysPageClient({ keys, summary }: ApiKeysPageClientProps) {
                     }
                     min={100}
                     step={100}
-                    className="rounded-sm border-white/10 bg-black/60 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[#FF5800] focus:border-[#FF5800]"
+                    className="rounded-sm border-white/10 bg-black/60 text-white placeholder:text-white/40 focus:ring-1 focus:ring-[var(--brand-orange)] focus:border-[var(--brand-orange)]"
                   />
                 </div>
               )}

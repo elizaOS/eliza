@@ -90,9 +90,9 @@ function StepIndicator({ state }: { state: StepState }) {
     case "active":
       return (
         <div
-          className={`${base} bg-[#FF5800]/15 border border-[#FF5800]/30 relative`}
+          className={`${base} bg-[var(--brand-orange)]/15 border border-[var(--brand-orange)]/30 relative`}
         >
-          <Loader2 className="h-3 w-3 text-[#FF5800] animate-spin" />
+          <Loader2 className="h-3 w-3 text-[var(--brand-orange)] animate-spin" />
         </div>
       );
     case "error":
@@ -498,7 +498,7 @@ export function CreateElizaAgentDialog({
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
                     disabled={busy}
-                    className="bg-black/40 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-[#FF5800]/50"
+                    className="bg-black/40 border-white/10 text-white placeholder:text-white/25 focus-visible:ring-[var(--brand-orange)]/50"
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
                         e.preventDefault();
@@ -590,8 +590,8 @@ export function CreateElizaAgentDialog({
 
                 {/* Cost notice */}
                 {autoStart && (
-                  <div className="flex items-start gap-2.5 border border-[#FF5800]/15 bg-[#FF5800]/5 px-3 py-2.5">
-                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[#FF5800] rounded-full" />
+                  <div className="flex items-start gap-2.5 border border-[var(--brand-orange)]/15 bg-[var(--brand-orange)]/5 px-3 py-2.5">
+                    <div className="shrink-0 mt-0.5 w-1.5 h-1.5 bg-[var(--brand-orange)] rounded-full" />
                     <div className="space-y-0.5">
                       <p className="text-[11px] font-mono text-white/70">
                         {formatHourlyRate(AGENT_PRICING.RUNNING_HOURLY_RATE)}

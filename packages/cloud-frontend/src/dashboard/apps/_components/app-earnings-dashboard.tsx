@@ -166,7 +166,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-12">
-        <Loader2 className="h-8 w-8 animate-spin text-[#FF5800]" />
+        <Loader2 className="h-8 w-8 animate-spin text-[var(--brand-orange)]" />
       </div>
     );
   }
@@ -243,7 +243,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                 onClick={() => {
                   navigate(`/dashboard/apps/${appId}?tab=monetization`);
                 }}
-                className="bg-[#FF5800] hover:bg-[#FF5800]/80 text-white"
+                className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80 text-white"
               >
                 Enable Monetization
               </Button>
@@ -272,7 +272,7 @@ export function AppEarningsDashboard({ appId }: AppEarningsDashboardProps) {
                   </p>
                 )}
               </div>
-              <TrendingUp className="h-5 w-5 text-[#FF5800]" />
+              <TrendingUp className="h-5 w-5 text-[var(--brand-orange)]" />
             </div>
           </div>
 

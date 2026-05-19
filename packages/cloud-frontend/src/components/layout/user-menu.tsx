@@ -392,7 +392,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
         <DropdownMenuTrigger asChild>
           <Button
             variant="ghost"
-            className="relative h-8 w-8 border-white/10 bg-white/5 p-0 hover:border-[#FF5800]/50 hover:bg-white/10 md:h-10 md:w-10"
+            className="relative h-8 w-8 border-white/10 bg-white/5 p-0 hover:border-[var(--brand-orange)]/50 hover:bg-white/10 md:h-10 md:w-10"
           >
             <Avatar className="h-8 w-8 md:h-10 md:w-10 rounded-sm">
               {userProfile?.avatar && (
@@ -402,7 +402,7 @@ function UserMenuInner({ preserveWhileUnauthed = false }: UserMenuProps) {
                   className="object-cover"
                 />
               )}
-              <AvatarFallback className="rounded-sm bg-[#FF5800]/15 font-semibold text-white">
+              <AvatarFallback className="rounded-sm bg-[var(--brand-orange)]/15 font-semibold text-white">
                 {initials}
               </AvatarFallback>
             </Avatar>

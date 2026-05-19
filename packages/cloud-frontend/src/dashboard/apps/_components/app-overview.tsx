@@ -189,9 +189,9 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
     <div className="space-y-4">
       {/* New API Key Alert */}
       {showKey && displayApiKey && (
-        <div className="p-4 rounded-sm bg-[#FF5800]/10 border border-[#FF5800]/20">
+        <div className="p-4 rounded-sm bg-[var(--brand-orange)]/10 border border-[var(--brand-orange)]/20">
           <div className="flex items-start gap-3">
-            <Key className="h-5 w-5 text-[#FF5800] mt-0.5 shrink-0" />
+            <Key className="h-5 w-5 text-[var(--brand-orange)] mt-0.5 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium text-white mb-2">
                 Your API Key (shown once)
@@ -257,7 +257,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-white flex items-center gap-2">
-              <Key className="h-4 w-4 text-[#FF5800]" />
+              <Key className="h-4 w-4 text-[var(--brand-orange)]" />
               API Key
             </h3>
             <AlertDialog>
@@ -287,7 +287,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
                   <AlertDialogAction
                     onClick={handleRegenerateApiKey}
-                    className="bg-[#FF5800] hover:bg-[#FF5800]/80"
+                    className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/80"
                   >
                     Regenerate
                   </AlertDialogAction>
@@ -337,7 +337,7 @@ export function AppOverview({ app, showApiKey }: AppOverviewProps) {
         {/* Basic Info Card */}
         <div className="bg-neutral-900 rounded-sm p-4 space-y-4">
           <h3 className="text-sm font-medium text-white flex items-center gap-2">
-            <Globe className="h-4 w-4 text-[#FF5800]" />
+            <Globe className="h-4 w-4 text-[var(--brand-orange)]" />
             App Information
           </h3>
 
@@ -485,7 +485,7 @@ function InfoRow({
           href={href}
           target={href.startsWith("mailto:") ? undefined : "_blank"}
           rel={href.startsWith("mailto:") ? undefined : "noopener noreferrer"}
-          className="text-sm text-white hover:text-[#FF5800] transition-colors flex items-center gap-1 mt-0.5"
+          className="text-sm text-white hover:text-[var(--brand-orange)] transition-colors flex items-center gap-1 mt-0.5"
         >
           {icon}
           <span className="truncate">{value}</span>

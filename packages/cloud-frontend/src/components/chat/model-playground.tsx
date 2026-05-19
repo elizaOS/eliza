@@ -179,7 +179,7 @@ export function ModelPlayground() {
         <section className="flex min-h-0 flex-col overflow-hidden border border-white/10 bg-black/30">
           <div className="flex items-center justify-between border-b border-white/10 px-5 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-none border border-[#FF5800]/20 bg-[#FF5800]/10 text-[#FF5800]">
+              <div className="flex h-10 w-10 items-center justify-center rounded-none border border-[var(--brand-orange)]/20 bg-[var(--brand-orange)]/10 text-[var(--brand-orange)]">
                 <Sparkles className="h-5 w-5" />
               </div>
               <div>
@@ -208,7 +208,7 @@ export function ModelPlayground() {
             {messages.length === 0 ? (
               <div className="flex h-full items-center justify-center">
                 <div className="max-w-xl border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
-                  <Badge className="border-[#FF5800]/20 bg-[#FF5800]/10 text-[#FF9A62]">
+                  <Badge className="border-[var(--brand-orange)]/20 bg-[var(--brand-orange)]/10 text-[#FF9A62]">
                     Prompt Lab
                   </Badge>
                   <h2 className="mt-4 text-xl font-semibold text-white">
@@ -238,7 +238,7 @@ export function ModelPlayground() {
                         className={cn(
                           "max-w-[90%] whitespace-pre-wrap border px-4 py-3 text-sm leading-6 md:max-w-[80%]",
                           message.role === "user"
-                            ? "border-[#FF5800]/20 bg-[#FF5800]/10 text-white"
+                            ? "border-[var(--brand-orange)]/20 bg-[var(--brand-orange)]/10 text-white"
                             : "border-white/10 bg-white/[0.03] text-white/90",
                         )}
                       >
@@ -307,7 +307,7 @@ export function ModelPlayground() {
         <aside className="flex min-h-0 flex-col gap-4 overflow-auto border border-white/10 bg-black/30 p-4">
           <div className="border border-white/10 bg-white/[0.02] p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-white">
-              <SlidersHorizontal className="h-4 w-4 text-[#FF5800]" />
+              <SlidersHorizontal className="h-4 w-4 text-[var(--brand-orange)]" />
               Session
             </div>
 

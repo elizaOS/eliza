@@ -269,7 +269,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
             placeholder="Search MCPs..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full h-8 bg-white/5 border border-white/10 rounded-full pl-9 pr-4 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-[#FF5800]/50 transition-colors"
+            className="w-full h-8 bg-white/5 border border-white/10 rounded-full pl-9 pr-4 text-xs text-white placeholder:text-white/40 focus:outline-none focus:border-[var(--brand-orange)]/50 transition-colors"
           />
         </div>
 
@@ -283,7 +283,7 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
               className={cn(
                 "h-8 px-3.5 text-xs border rounded-full transition-colors capitalize",
                 categoryFilter === cat
-                  ? "bg-[#FF5800]/20 border-[#FF5800]/50 text-white"
+                  ? "bg-[var(--brand-orange)]/20 border-[var(--brand-orange)]/50 text-white"
                   : "bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:border-white/30 hover:text-white",
               )}
             >
@@ -518,10 +518,10 @@ export function MCPsSection({ servers, className }: MCPsSectionProps) {
                   type="button"
                   onClick={() => testMcpServer(selectedServer)}
                   disabled={testingServer === selectedServer.id}
-                  className="flex items-center gap-2 px-6 py-2 bg-[#FF5800]/20 border border-[#FF5800]/30 text-[#FF5800] hover:bg-[#FF5800]/30 transition-colors rounded-sm text-sm disabled:opacity-50"
+                  className="flex items-center gap-2 px-6 py-2 bg-[var(--brand-orange)]/20 border border-[var(--brand-orange)]/30 text-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/30 transition-colors rounded-sm text-sm disabled:opacity-50"
                 >
                   {testingServer === selectedServer.id ? (
-                    <span className="h-4 w-4 border-2 border-[#FF5800]/30 border-t-[#FF5800] rounded-full animate-spin" />
+                    <span className="h-4 w-4 border-2 border-[var(--brand-orange)]/30 border-t-[var(--brand-orange)] rounded-full animate-spin" />
                   ) : (
                     <Play className="h-4 w-4" />
                   )}
@@ -629,7 +629,7 @@ function MCPCard({
               )}
               <span>{server.pricing.description}</span>
             </div>
-            <span className="text-white/30 group-hover:text-[#FF5800] transition-colors">
+            <span className="text-white/30 group-hover:text-[var(--brand-orange)] transition-colors">
               View details
             </span>
           </div>

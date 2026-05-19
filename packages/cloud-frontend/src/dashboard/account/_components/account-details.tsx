@@ -35,7 +35,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
       <div className="relative z-10 space-y-6">
         <div>
           <div className="flex items-center gap-2 mb-2">
-            <Info className="h-5 w-5 text-[#FF5800]" />
+            <Info className="h-5 w-5 text-[var(--brand-orange)]" />
             <h3 className="text-lg font-bold text-white">Account Details</h3>
           </div>
           <p className="text-sm text-white/60">
@@ -125,7 +125,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#FF5800]" />
+                <Calendar className="h-4 w-4 text-[var(--brand-orange)]" />
                 Account Created
               </p>
               <p className="text-sm text-white">
@@ -135,7 +135,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
 
             <div className="space-y-1">
               <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-[#FF5800]" />
+                <Calendar className="h-4 w-4 text-[var(--brand-orange)]" />
                 Last Updated
               </p>
               <p className="text-sm text-white">
@@ -148,7 +148,7 @@ export function AccountDetails({ user }: AccountDetailsProps) {
             {user.wallet_address && (
               <div className="space-y-1">
                 <p className="text-xs text-white/50 uppercase tracking-wide flex items-center gap-2">
-                  <Wallet className="h-4 w-4 text-[#FF5800]" />
+                  <Wallet className="h-4 w-4 text-[var(--brand-orange)]" />
                   Wallet Address
                 </p>
                 <p className="font-mono text-xs break-all text-white">

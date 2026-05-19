@@ -115,7 +115,7 @@ export function AutoTopUpCard() {
       <BrandCard className="relative">
         <CornerBrackets size="sm" className="opacity-50" />
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="h-5 w-5 animate-spin text-[#FF5800]" />
+          <Loader2 className="h-5 w-5 animate-spin text-[var(--brand-orange)]" />
         </div>
       </BrandCard>
     );
@@ -130,7 +130,7 @@ export function AutoTopUpCard() {
       <div className="relative z-10 space-y-6">
         <div className="flex flex-col gap-2">
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-[#FF5800]" />
+            <div className="w-2 h-2 rounded-full bg-[var(--brand-orange)]" />
             <h3 className="text-base font-mono text-[#e1e1e1] uppercase">
               Auto Top-Up (Card)
             </h3>
@@ -157,7 +157,7 @@ export function AutoTopUpCard() {
             checked={enabled}
             onCheckedChange={setEnabled}
             disabled={saving || !!noPaymentMethod}
-            className="data-[state=checked]:bg-[#FF5800] flex-shrink-0"
+            className="data-[state=checked]:bg-[var(--brand-orange)] flex-shrink-0"
           />
         </div>
 
@@ -202,7 +202,7 @@ export function AutoTopUpCard() {
             type="button"
             onClick={handleSave}
             disabled={saving || !!validationError || !!noPaymentMethod}
-            className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white font-mono"
+            className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white font-mono"
           >
             {saving ? (
               <>

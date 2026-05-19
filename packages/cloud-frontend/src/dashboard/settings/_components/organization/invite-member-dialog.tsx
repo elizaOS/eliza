@@ -86,7 +86,7 @@ export function InviteMemberDialog({
       <DialogContent className="bg-neutral-950 border border-brand-surface p-4 sm:p-6 max-w-[95vw] sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white font-mono">
-            <Mail className="h-5 w-5 text-[#FF5800]" />
+            <Mail className="h-5 w-5 text-[var(--brand-orange)]" />
             Invite Team Member
           </DialogTitle>
           <DialogDescription className="text-white/60 font-mono text-xs md:text-sm">
@@ -130,7 +130,7 @@ export function InviteMemberDialog({
               htmlFor="role"
               className="flex items-center gap-2 text-white font-mono text-sm"
             >
-              <UserCog className="h-4 w-4 text-[#FF5800]" />
+              <UserCog className="h-4 w-4 text-[var(--brand-orange)]" />
               Role
             </Label>
             <Select

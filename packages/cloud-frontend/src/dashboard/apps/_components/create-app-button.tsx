@@ -17,7 +17,7 @@ export function CreateAppButton() {
     <>
       <Button
         onClick={() => setIsOpen(true)}
-        className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white"
+        className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white"
         data-onboarding="apps-create"
       >
         <Plus className="h-4 w-4 mr-2" />

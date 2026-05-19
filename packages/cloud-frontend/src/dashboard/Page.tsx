@@ -79,7 +79,7 @@ export default function DashboardPage() {
           <DashboardPageStack className="pt-4 md:pt-6">
             <section className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
               <div className="max-w-2xl">
-                <p className="text-sm font-medium uppercase tracking-normal text-[#FF5800]">
+                <p className="text-sm font-medium uppercase tracking-normal text-[var(--brand-orange)]">
                   elizaOS Platform / Eliza Cloud
                 </p>
                 <h1 className="mt-2 text-3xl font-semibold tracking-normal text-white md:text-4xl">

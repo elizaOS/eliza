@@ -255,7 +255,7 @@ export function ContainerDeploymentHistory({
                 </div>
                 <div className="text-center p-4 rounded-sm border border-white/10 bg-black/20">
                   <p
-                    className="text-2xl font-medium text-[#FF5800]"
+                    className="text-2xl font-medium text-[var(--brand-orange)]"
                     style={{ fontFamily: "var(--font-roboto-mono)" }}
                   >
                     ${totalCost.toFixed(2)}
@@ -333,7 +333,7 @@ export function ContainerDeploymentHistory({
                             </div>
                           )}
                           <span
-                            className="font-medium text-[#FF5800]"
+                            className="font-medium text-[var(--brand-orange)]"
                             style={{ fontFamily: "var(--font-roboto-mono)" }}
                           >
                             ${Number(deployment.cost).toFixed(2)}

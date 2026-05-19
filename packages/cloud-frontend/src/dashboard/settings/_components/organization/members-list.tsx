@@ -214,7 +214,7 @@ export function MembersList({
                     </Select>
                   ) : (
                     <span
-                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-[#FF5800]/20 text-[#FF5800] border-[#FF5800]/40" : member.role === "admin" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-white/60 border-white/10"}`}
+                      className={`px-2 py-1 border text-xs font-mono uppercase flex items-center gap-1.5 ${member.role === "owner" ? "bg-[var(--brand-orange)]/20 text-[var(--brand-orange)] border-[var(--brand-orange)]/40" : member.role === "admin" ? "bg-white/10 text-white border-white/20" : "bg-white/5 text-white/60 border-white/10"}`}
                     >
                       {getRoleIcon(member.role)}
                       <span className="capitalize">{member.role}</span>

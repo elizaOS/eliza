@@ -24,7 +24,7 @@ export function DeployFromCLI() {
         className="flex w-full items-start justify-between gap-3 p-4 text-left transition-colors hover:bg-white/5 sm:items-center"
       >
         <div className="flex min-w-0 items-start gap-3 sm:items-center">
-          <Terminal className="h-5 w-5 shrink-0 text-[#FF5800]" />
+          <Terminal className="h-5 w-5 shrink-0 text-[var(--brand-orange)]" />
           <div className="min-w-0">
             <p className="text-sm font-medium text-white">Deploy from CLI</p>
             <p className="text-xs text-neutral-500">

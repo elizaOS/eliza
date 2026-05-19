@@ -84,7 +84,7 @@ export function FeedbackModal({
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-white">
-            <MessageSquare className="h-5 w-5 text-[#FF5800]" />
+            <MessageSquare className="h-5 w-5 text-[var(--brand-orange)]" />
             Send Feedback
           </DialogTitle>
           <DialogDescription className="text-white/60">
@@ -102,7 +102,7 @@ export function FeedbackModal({
               placeholder="Your name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[#FF5800] focus-visible:ring-[#FF5800]/20"
+              className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[var(--brand-orange)] focus-visible:ring-[var(--brand-orange)]/20"
             />
           </div>
 
@@ -116,7 +116,7 @@ export function FeedbackModal({
               placeholder="your@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[#FF5800] focus-visible:ring-[#FF5800]/20"
+              className="bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[var(--brand-orange)] focus-visible:ring-[var(--brand-orange)]/20"
             />
           </div>
 
@@ -129,7 +129,7 @@ export function FeedbackModal({
               placeholder="Share your thoughts, suggestions, or report an issue..."
               value={comment}
               onChange={(e) => setComment(e.target.value)}
-              className="min-h-[120px] bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[#FF5800] focus-visible:ring-[#FF5800]/20 resize-none"
+              className="min-h-[120px] bg-white/5 border-white/10 text-white placeholder:text-white/40 focus-visible:border-[var(--brand-orange)] focus-visible:ring-[var(--brand-orange)]/20 resize-none"
               required
             />
           </div>
@@ -146,7 +146,7 @@ export function FeedbackModal({
             <Button
               type="submit"
               disabled={isSubmitting}
-              className="bg-[#FF5800] hover:bg-[#FF5800]/90 text-white"
+              className="bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-white"
             >
               {isSubmitting ? (
                 <>
