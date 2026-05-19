@@ -5,7 +5,7 @@
  *
  * The runtime keeps a `LlamaModel` resident for chat generation. Voice
  * EOT scoring is a single forward pass over the formatted Qwen chat
- * prompt with the trailing `<|im_end|>` removed. `node-llama-cpp`'s
+ * prompt with the trailing `<|im_end|>` removed. `capacitor-llama`'s
  * `LlamaContextSequence.controlledEvaluate()` returns the next-token
  * probability distribution, so we simply read the entry for the
  * `<|im_end|>` token id — no sampling loop, no KV-cache growth on the
@@ -24,7 +24,7 @@
 
 import path from "node:path";
 
-// `node-llama-cpp` 3.18.1 surface we depend on. We avoid importing the
+// `capacitor-llama` 3.18.1 surface we depend on. We avoid importing the
 // type directly so the binding stays an optional peer dep — callers pass
 // the model through a structural type.
 export interface LlamaModelLike {

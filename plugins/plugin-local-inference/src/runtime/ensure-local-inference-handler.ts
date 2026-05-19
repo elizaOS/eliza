@@ -826,7 +826,7 @@ function registerDeviceBridgeLoader(runtime: AgentRuntime): void {
  * is safe on every platform; we only attempt registration when one of the
  * triggers fires.
  *
- * riscv64 rationale: `node-llama-cpp` ships prebuilts only for
+ * riscv64 rationale: `capacitor-llama` ships prebuilts only for
  * linux-{x64,arm64}, darwin-arm64, win-x64. Riscv64 hosts have no native
  * NAPI binding option; the vendored `libllama.so` cross-built by Wave 2 is
  * the only in-process llama.cpp path. The FFI loader satisfies the same

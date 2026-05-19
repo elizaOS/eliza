@@ -14,7 +14,7 @@
  *     inside the Android process via `bun:ffi`. Wired here so the gate is
  *     in place ahead of sub-task 2 — the AOSP build flag flips this on.
  *
- *   - `process.arch === "riscv64"`: `node-llama-cpp` has no riscv64 prebuild
+ *   - `process.arch === "riscv64"`: `capacitor-llama` has no riscv64 prebuild
  *     and we can't NAPI-build it on-device, so the in-process FFI path
  *     (same loader contract as the AOSP path) is the only viable option.
  *     Auto-firing here keeps the riscv64 mobile boot path zero-config; an
