@@ -576,6 +576,8 @@ interface DesktopSession {
 	tokenBuf: Int32Array;
 	pieceBuf: Uint8Array;
 	emittedFirstToken: boolean;
+	/** Snapshotted at openSession; nextStep never re-reads has_drafter. */
+	usingDrafter: boolean;
 }
 
 /**
@@ -1284,6 +1286,7 @@ export class DesktopLlamaAdapter {
 			// plain decode runs.
 			this.detachDrafterFromCtx(ctxIdx);
 		}
+		const usingDrafter = this.drafterAttached[ctxIdx] === true;
 		// Sampler chain.
 		const sp = this.shim.eliza_llama_sampler_chain_params_default();
 		let sampler: Pointer;
@@ -1331,6 +1334,7 @@ export class DesktopLlamaAdapter {
 			tokenBuf: new Int32Array(1),
 			pieceBuf: new Uint8Array(256),
 			emittedFirstToken: false,
+			usingDrafter,
 		});
 		return stream;
 	}
@@ -1358,20 +1362,19 @@ export class DesktopLlamaAdapter {
 		) {
 			return;
 		}
-		// Load model once if not already loaded.
 		if (
-			this.drafterModelPtr === null ||
+			this.drafterModelPtr !== null &&
 			this.drafterModelPath !== opts.drafterPath
 		) {
-			// Detach any drafter still attached anywhere (the shared model
-			// changes), then free the old model + load the new one.
-			for (let i = 0; i < this.ctxPool.length; i++) {
-				if (this.drafterAttached[i]) this.detachDrafterFromCtx(i);
-			}
-			if (this.drafterModelPtr !== null) {
-				this.llama.llama_model_free(this.drafterModelPtr);
-				this.drafterModelPtr = null;
-			}
+			throw new Error(
+				`[desktop-llama] drafter path immutable for pool lifecycle: ` +
+					`loaded='${this.drafterModelPath}', requested='${opts.drafterPath}'. ` +
+					`Call detachDrafter() (frees the shared model and detaches from all ctxs) ` +
+					`before switching paths.`,
+			);
+		}
+		// Load model once if not already loaded.
+		if (this.drafterModelPtr === null) {
 			const mp = this.shim.eliza_llama_model_params_default();
 			try {
 				this.shim.eliza_llama_model_params_set_n_gpu_layers(mp, 999);
@@ -1463,7 +1466,7 @@ export class DesktopLlamaAdapter {
 		// internally and accumulates drafter counters on the ctx. We
 		// snapshot before/after and diff to report per-step
 		// `drafterDrafted` / `drafterAccepted` on the LlmStreamStep.
-		const usingDrafter = this.shim.eliza_llama_context_has_drafter(ctx) === 1;
+		const usingDrafter = sess.usingDrafter;
 		const statsBefore = usingDrafter ? this.readDflashStats(ctx) : null;
 
 		for (let i = 0; i < maxTokensPerStep; i++) {

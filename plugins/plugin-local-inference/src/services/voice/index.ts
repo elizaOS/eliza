@@ -243,7 +243,6 @@ export {
 	PYANNOTE_SEGMENTATION_3_FP32_MODEL_ID,
 	PYANNOTE_SEGMENTATION_3_INT8_MODEL_ID,
 	PYANNOTE_WINDOW_SECONDS,
-	PyannoteDiarizer,
 	type PyannoteDiarizerModelId,
 } from "./speaker/diarizer";
 export {

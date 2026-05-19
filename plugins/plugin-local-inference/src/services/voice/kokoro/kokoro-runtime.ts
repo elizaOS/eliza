@@ -159,7 +159,7 @@ export class KokoroGgufRuntime implements KokoroRuntime {
 
 function decodePhonemesForGgufBody(seq: KokoroPhonemeSequence): string {
 	// The upstream spec ships the raw phoneme string; the server tokenises
-	// it the same way the ONNX export does. Sending ids would require a
+	// it the same way the server-side tokenizer does. Sending ids would require a
 	// server-side schema for `input_ids` which the OpenAI-compat endpoint
 	// does not have.
 	return seq.phonemes;

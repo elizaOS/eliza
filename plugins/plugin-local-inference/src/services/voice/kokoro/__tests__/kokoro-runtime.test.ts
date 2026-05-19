@@ -1,12 +1,6 @@
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-	KokoroGgufRuntime,
-	KokoroMockRuntime,
-} from "../kokoro-runtime";
+import { KokoroGgufRuntime, KokoroMockRuntime } from "../kokoro-runtime";
 import type { KokoroVoicePack } from "../types";
 
 const OLD_ENV = { ...process.env };
@@ -131,66 +125,5 @@ describe("KokoroGgufRuntime", () => {
 			sampleRate: 24_000,
 		});
 		expect(() => runtime.dispose()).not.toThrow();
-	});
-});
-
-describe("KokoroOnnxRuntime", () => {
-	it("passes explicit ONNX session memory and threading options", async () => {
-		const root = await mkdtemp(join(tmpdir(), "kokoro-onnx-"));
-		const voicesDir = join(root, "voices");
-		await writeFile(join(root, "model.onnx"), "onnx");
-		await mkdir(voicesDir);
-		await writeFile(
-			join(voicesDir, "af_test.bin"),
-			Buffer.from(new Float32Array([0.1, 0.2, 0.3, 0.4]).buffer),
-		);
-
-		let createOptions: unknown;
-		class Tensor {
-			constructor(
-				readonly type: string,
-				readonly data: unknown,
-				readonly dims: number[],
-			) {}
-		}
-		const session = {
-			inputNames: ["input_ids", "style", "speed"],
-			run: async () => ({
-				waveform: { data: new Float32Array([0, 0.1]) },
-			}),
-		};
-		const runtime = new KokoroOnnxRuntime({
-			layout: {
-				root,
-				modelFile: "model.onnx",
-				voicesDir,
-				sampleRate: 24_000,
-			},
-			intraOpNumThreads: 2,
-			enableCpuMemArena: false,
-			enableMemPattern: false,
-			loadOrt: async () => ({
-				Tensor,
-				InferenceSession: {
-					create: async (_modelPath: string, options: unknown) => {
-						createOptions = options;
-						return session;
-					},
-				},
-			}),
-		});
-
-		await runtime.synthesize({
-			phonemes: { ids: Int32Array.from([1]), phonemes: "a" },
-			voice: { ...makeVoice(), dim: 4 },
-			cancelSignal: { cancelled: false },
-			onChunk: () => undefined,
-		});
-
-		expect(createOptions).toMatchObject({
-			intraOpNumThreads: 2,
-			enableCpuMemArena: false,
-			enableMemPattern: false,
-		});
 	});
 });

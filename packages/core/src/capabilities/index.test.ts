@@ -757,6 +757,77 @@ describe("capability router", () => {
 		expect(calls).toEqual([]);
 	});
 
+	it("rejects outbound remote plugin route calls with unsafe query keys", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return { status: 200 };
+			},
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+				query: { "city\r\nx-injected": "sf" },
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "query must contain valid query keys.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin route calls with unsafe query values", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return { status: 200 };
+			},
+		});
+
+		await expect(
+			router.plugin.callRoute({
+				moduleId: "remote-weather",
+				method: "GET",
+				path: "/weather/sf",
+				query: { city: ["sf", "oakland\r\nx-injected: yes"] },
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.route.call",
+			message: "query must contain valid query values.",
+		});
+		expect(calls).toEqual([]);
+	});
+
+	it("rejects outbound remote plugin calls with unsafe endpoint ids", async () => {
+		const calls: string[] = [];
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async (method) => {
+				calls.push(method);
+				return {};
+			},
+		});
+
+		await expect(
+			router.plugin.invokeAction({
+				endpointId: "primary\r\nsecondary",
+				moduleId: "remote-weather",
+				action: "WEATHER_LOOKUP",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "capability.endpoint",
+			message: "endpointId must not contain control characters.",
+		});
+		expect(calls).toEqual([]);
+	});
+
 	it("rejects outbound remote plugin asset requests with unsafe paths", async () => {
 		const calls: string[] = [];
 		const router = new RuntimeBrokerCapabilityRouter({

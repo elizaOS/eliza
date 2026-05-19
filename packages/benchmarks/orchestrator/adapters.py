@@ -94,21 +94,10 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {
     # current CLI path intentionally fails closed because it has no
     # transcript-in/artifact-out native compactor API.
     "compactbench": ("eliza", "hermes"),
-    # Vending-Bench currently has heuristic/direct providers and an Eliza TS
-    # bridge path. Hermes/OpenClaw labels would still exercise the Eliza bridge
-    # or a non-agent provider, so publish only the concrete Eliza harness row.
-    "vending_bench": ("eliza",),
-    # HyperliquidBench plan generation is wired to the Eliza TS bridge plus a
-    # deterministic Python smoke path. Hermes/OpenClaw labels do not yet select
-    # distinct harness implementations.
-    "hyperliquid_bench": ("eliza",),
     # LOCA has real Eliza and Hermes proxy paths. OpenClaw's current LOCA path
     # is an explicit provider-level smoke mode, not native OpenClaw agent
     # parity, so keep it out of cross-agent result matrices.
     "loca_bench": ("eliza", "hermes"),
-    # The lifecycle benchmark's real bridge mode starts the Eliza benchmark
-    # server; simulate mode is deterministic and not a harness comparison.
-    "orchestrator_lifecycle": ("eliza",),
     # ConfigBench currently has an in-process Eliza handler plus oracle/mock
     # handlers. Hermes/OpenClaw rows were previously scored against the
     # Perfect oracle fallback, which is not a real harness comparison.

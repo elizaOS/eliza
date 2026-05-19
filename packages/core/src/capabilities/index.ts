@@ -1191,8 +1191,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async invokePluginAction(
 		params: PluginInvokeActionParams,
 	): Promise<PluginInvokeActionResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.action.invoke");
-		validateRemotePluginCallTarget(params.action, "action", "plugin.action.invoke");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.action.invoke",
+		);
+		validateRemotePluginCallTarget(
+			params.action,
+			"action",
+			"plugin.action.invoke",
+		);
 		const result = await this.request("plugin", "plugin.action.invoke", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1209,8 +1217,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async getPluginProvider(
 		params: PluginGetProviderParams,
 	): Promise<PluginGetProviderResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.provider.get");
-		validateRemotePluginCallTarget(params.provider, "provider", "plugin.provider.get");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.provider.get",
+		);
+		validateRemotePluginCallTarget(
+			params.provider,
+			"provider",
+			"plugin.provider.get",
+		);
 		const result = await this.request("plugin", "plugin.provider.get", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1226,7 +1242,11 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async callPluginRoute(
 		params: PluginCallRouteParams,
 	): Promise<PluginCallRouteResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.route.call");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.route.call",
+		);
 		validateRemotePluginRouteMethod(
 			params.method,
 			"method",
@@ -1236,6 +1256,9 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 		validateRemotePluginPath(params.path, "path", "plugin.route.call");
 		if (params.headers !== undefined) {
 			validateHeaderRecord(params.headers, "headers", "plugin.route.call");
+		}
+		if (params.query !== undefined) {
+			validateRouteQueryRecord(params.query, "query", "plugin.route.call");
 		}
 		const result = await this.request("plugin", "plugin.route.call", {
 			...endpointSelection(params),
@@ -1270,7 +1293,11 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async getPluginAsset(
 		params: PluginGetAssetParams,
 	): Promise<PluginGetAssetResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.asset.get");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.asset.get",
+		);
 		validateRemotePluginAssetPath(params.path, "path", "plugin.asset.get");
 		const result = await this.request("plugin", "plugin.asset.get", {
 			...endpointSelection(params),
@@ -1306,8 +1333,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async shouldRunPluginEvaluator(
 		params: PluginEvaluatorShouldRunParams,
 	): Promise<PluginEvaluatorShouldRunResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.evaluator.shouldRun");
-		validateRemotePluginCallTarget(params.evaluator, "evaluator", "plugin.evaluator.shouldRun");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.shouldRun",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.shouldRun",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.shouldRun", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1332,8 +1367,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async preparePluginEvaluator(
 		params: PluginEvaluatorPrepareParams,
 	): Promise<PluginEvaluatorPrepareResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.evaluator.prepare");
-		validateRemotePluginCallTarget(params.evaluator, "evaluator", "plugin.evaluator.prepare");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.prepare",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.prepare",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.prepare", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1352,8 +1395,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async promptPluginEvaluator(
 		params: PluginEvaluatorPromptParams,
 	): Promise<PluginEvaluatorPromptResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.evaluator.prompt");
-		validateRemotePluginCallTarget(params.evaluator, "evaluator", "plugin.evaluator.prompt");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.prompt",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.prompt",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.prompt", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1375,8 +1426,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async processPluginEvaluator(
 		params: PluginEvaluatorProcessParams,
 	): Promise<PluginEvaluatorProcessResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.evaluator.process");
-		validateRemotePluginCallTarget(params.evaluator, "evaluator", "plugin.evaluator.process");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.evaluator.process",
+		);
+		validateRemotePluginCallTarget(
+			params.evaluator,
+			"evaluator",
+			"plugin.evaluator.process",
+		);
 		const result = await this.request("plugin", "plugin.evaluator.process", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1604,7 +1663,11 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async callPluginLifecycle(
 		params: PluginLifecycleCallParams,
 	): Promise<PluginLifecycleCallResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.lifecycle.call");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.lifecycle.call",
+		);
 		if (!isRemotePluginLifecycleHook(params.hook)) {
 			throw decodeError(
 				"plugin.lifecycle.call",
@@ -1630,8 +1693,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async handlePluginEvent(
 		params: PluginHandleEventParams,
 	): Promise<PluginHandleEventResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.event.handle");
-		validateRemotePluginCallTarget(params.eventName, "eventName", "plugin.event.handle");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.event.handle",
+		);
+		validateRemotePluginCallTarget(
+			params.eventName,
+			"eventName",
+			"plugin.event.handle",
+		);
 		const result = await this.request("plugin", "plugin.event.handle", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1650,8 +1721,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async invokePluginModel(
 		params: PluginInvokeModelParams,
 	): Promise<PluginInvokeModelResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.model.invoke");
-		validateRemotePluginCallTarget(params.modelType, "modelType", "plugin.model.invoke");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.model.invoke",
+		);
+		validateRemotePluginCallTarget(
+			params.modelType,
+			"modelType",
+			"plugin.model.invoke",
+		);
 		const result = await this.request("plugin", "plugin.model.invoke", {
 			...endpointSelection(params),
 			moduleId: params.moduleId,
@@ -1673,8 +1752,16 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async callPluginService(
 		params: PluginCallServiceParams,
 	): Promise<PluginCallServiceResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.service.call");
-		validateRemotePluginCallTarget(params.serviceType, "serviceType", "plugin.service.call");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.service.call",
+		);
+		validateRemotePluginCallTarget(
+			params.serviceType,
+			"serviceType",
+			"plugin.service.call",
+		);
 		validateRemotePluginServiceMethods([params.method], "plugin.service.call");
 		const result = await this.request("plugin", "plugin.service.call", {
 			...endpointSelection(params),
@@ -1693,7 +1780,11 @@ export class RuntimeBrokerCapabilityRouter implements ElizaCapabilityRouter {
 	private async callPluginAppBridge(
 		params: PluginCallAppBridgeParams,
 	): Promise<PluginCallAppBridgeResult> {
-		validateRemotePluginCallTarget(params.moduleId, "moduleId", "plugin.appBridge.call");
+		validateRemotePluginCallTarget(
+			params.moduleId,
+			"moduleId",
+			"plugin.appBridge.call",
+		);
 		if (!isRemotePluginAppBridgeHook(params.hook)) {
 			throw decodeError(
 				"plugin.appBridge.call",
@@ -1823,9 +1914,18 @@ function isRemotePluginCapability(
 }
 
 function endpointSelection(params: CapabilityEndpointSelection): JsonObject {
-	return params.endpointId === undefined
-		? {}
-		: { endpointId: params.endpointId };
+	if (params.endpointId === undefined) return {};
+	validateRemotePluginCallTarget(
+		params.endpointId,
+		"endpointId",
+		"capability.endpoint",
+	);
+	validateControlSafeString(
+		params.endpointId,
+		"endpointId",
+		"capability.endpoint",
+	);
+	return { endpointId: params.endpointId };
 }
 
 function requireObject(
@@ -2818,7 +2918,7 @@ function validateRemotePluginRouteMethod(
 	key: string,
 	method: string,
 	allowStatic: boolean,
-): void {
+): asserts value is RemotePluginRouteManifest["method"] {
 	if (
 		value !== "GET" &&
 		value !== "POST" &&
@@ -2851,9 +2951,7 @@ function validateRemotePluginPath(
 	}
 	const segments = value === "/" ? [] : value.split("/").slice(1);
 	if (
-		segments.some(
-			(segment) => segment === "." || segment === ".." || !segment,
-		)
+		segments.some((segment) => segment === "." || segment === ".." || !segment)
 	) {
 		throw decodeError(
 			method,
@@ -2940,9 +3038,23 @@ function validateHeaderSafeString(
 	key: string,
 	method: string,
 ): void {
-	if (/[\r\n\0]/.test(value)) {
+	if (!isControlSafeString(value)) {
 		throw decodeError(method, `${key} must not contain control characters.`);
 	}
+}
+
+function validateControlSafeString(
+	value: string,
+	key: string,
+	method: string,
+): void {
+	if (!isControlSafeString(value)) {
+		throw decodeError(method, `${key} must not contain control characters.`);
+	}
+}
+
+function isControlSafeString(value: string): boolean {
+	return !/[\r\n\0]/.test(value);
 }
 
 function validateHeaderRecord(
@@ -2959,6 +3071,26 @@ function validateHeaderRecord(
 			throw decodeError(method, `${key} must contain valid header names.`);
 		}
 		validateHeaderSafeString(headerValue, key, method);
+	}
+}
+
+function validateRouteQueryRecord(
+	query: Record<string, string | string[]>,
+	key: string,
+	method: string,
+): void {
+	for (const [queryKey, queryValue] of Object.entries(query)) {
+		if (!queryKey || !isControlSafeString(queryKey)) {
+			throw decodeError(method, `${key} must contain valid query keys.`);
+		}
+		const values = Array.isArray(queryValue) ? queryValue : [queryValue];
+		if (
+			values.some(
+				(value) => typeof value !== "string" || !isControlSafeString(value),
+			)
+		) {
+			throw decodeError(method, `${key} must contain valid query values.`);
+		}
 	}
 }
 

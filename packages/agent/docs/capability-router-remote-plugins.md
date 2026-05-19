@@ -427,12 +427,14 @@ When multiple endpoints are configured:
   `capabilityEndpointId`, and the materialized plugin carries that endpoint id
   on every remote plugin RPC.
 - Outbound remote route RPC calls validate callable HTTP methods, local absolute
-  app paths, and safe request headers before crossing the capability boundary.
-  Outbound remote asset RPC calls validate safe asset paths before dispatch.
+  app paths, safe request headers, and safe query keys/values before crossing
+  the capability boundary. Outbound remote asset RPC calls validate safe asset
+  paths before dispatch.
 - Outbound remote plugin RPC calls validate module ids and target identifiers
   such as action, provider, evaluator, event, model, service, lifecycle, and app
   bridge names before crossing the capability boundary. Service method calls use
-  the same identifier and reserved-name rules as service manifests.
+  the same identifier and reserved-name rules as service manifests. Explicit
+  endpoint ids on routed RPC calls are also validated before dispatch.
 - Remote route and app-bridge route calls do not copy local or remote
   authorization, cookie, API-key, or auth-token headers across the boundary.
   Endpoint authentication stays in the capability-router transport layer instead
