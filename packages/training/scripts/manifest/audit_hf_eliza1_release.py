@@ -139,6 +139,7 @@ QUANTIZATION_KERNEL_TARGETS = {
 NATIVE_UPSTREAM_REVIEW_PATH = "evidence/upstream/native-upstream-review-2026-05-19.md"
 IMAGEGEN_RUNTIME_EVIDENCE_PATH = "evidence/imagegen/sd-cpp-runtime.json"
 FINETUNE_COMPARISON_EVIDENCE_PATH = "evidence/training/fine-tune-comparison.json"
+TEXT_CONTEXT_VARIANT_EVIDENCE_PATH = "evidence/text/context-variants-2026-05-19.json"
 FINETUNE_REQUIRED_METRICS = frozenset(
     {
         "eliza_bench",
@@ -791,6 +792,58 @@ def _native_upstream_review_blockers(text: str) -> list[str]:
     return blockers
 
 
+def _text_context_variant_evidence_blockers(evidence: Mapping[str, Any]) -> list[str]:
+    blockers: list[str] = []
+    if evidence.get("schema") != "eliza.eliza1_text_context_variant_audit.v1":
+        blockers.append(f"schema: {evidence.get('schema')!r}")
+    if evidence.get("repo") != ELIZA_1_HF_REPO:
+        blockers.append(f"repo: {evidence.get('repo')!r}")
+    if evidence.get("passed") is not True:
+        blockers.append(f"passed: {evidence.get('passed')!r}")
+    if evidence.get("blockers") not in ([], None):
+        blockers.append("blockers: non-empty")
+    if evidence.get("legacy27b1mPaths") not in ([], None):
+        blockers.append("legacy27b1mPaths: non-empty")
+    contexts = evidence.get("expectedContexts")
+    if contexts != ["128k", "256k"]:
+        blockers.append(f"expectedContexts: {contexts!r}")
+    results = evidence.get("results")
+    if not isinstance(results, list):
+        blockers.append("results: missing")
+        return blockers
+    by_tier = {
+        result.get("tier"): result
+        for result in results
+        if isinstance(result, Mapping) and isinstance(result.get("tier"), str)
+    }
+    for tier, expected_contexts in CONTEXTS_BY_TIER.items():
+        result = by_tier.get(tier)
+        if not isinstance(result, Mapping):
+            blockers.append(f"{tier}: missing")
+            continue
+        if result.get("passed") is not True:
+            blockers.append(f"{tier}.passed: {result.get('passed')!r}")
+        required = result.get("requiredContexts")
+        if not isinstance(required, list):
+            blockers.append(f"{tier}.requiredContexts: missing")
+            continue
+        by_context = {
+            item.get("context"): item
+            for item in required
+            if isinstance(item, Mapping) and isinstance(item.get("context"), str)
+        }
+        for ctx in expected_contexts:
+            item = by_context.get(ctx)
+            if not isinstance(item, Mapping):
+                blockers.append(f"{tier}.{ctx}: missing")
+                continue
+            if item.get("existsOnHub") is not True:
+                blockers.append(f"{tier}.{ctx}.existsOnHub: {item.get('existsOnHub')!r}")
+            if item.get("blockers") not in ([], None):
+                blockers.append(f"{tier}.{ctx}.blockers: non-empty")
+    return blockers
+
+
 def _imagegen_runtime_blockers(evidence: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     if evidence.get("status") != "pass":
@@ -1162,6 +1215,29 @@ def audit_hf_release(
             bool(upstream_review) and not upstream_review_blockers,
             ", ".join(upstream_review_blockers[:8])
             + (f" (+{len(upstream_review_blockers) - 8} more)" if len(upstream_review_blockers) > 8 else ""),
+        )
+    report.check(
+        "text context variant audit evidence present",
+        TEXT_CONTEXT_VARIANT_EVIDENCE_PATH in model_paths,
+        TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
+    )
+    try:
+        text_context_evidence = json.loads(
+            fetch_text(_raw_model_url(model_repo, TEXT_CONTEXT_VARIANT_EVIDENCE_PATH))
+        )
+    except (RuntimeError, json.JSONDecodeError) as exc:
+        report.check("text context variant audit evidence passed", False, str(exc))
+    else:
+        text_context_blockers = (
+            _text_context_variant_evidence_blockers(text_context_evidence)
+            if isinstance(text_context_evidence, Mapping)
+            else ["not an object"]
+        )
+        report.check(
+            "text context variant audit evidence passed",
+            not text_context_blockers,
+            ", ".join(text_context_blockers[:8])
+            + (f" (+{len(text_context_blockers) - 8} more)" if len(text_context_blockers) > 8 else ""),
         )
     report.check(
         "imagegen runtime evidence present",

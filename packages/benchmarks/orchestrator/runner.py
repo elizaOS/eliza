@@ -738,7 +738,10 @@ def _publication_warnings(
     n_value = metrics.get("n")
     if isinstance(n_value, (int, float)) and n_value <= 2:
         warnings.append(f"insufficient_n:{n_value!r}")
-    if metrics.get("sample") is True:
+    dataset_source = metrics.get("dataset_source")
+    if metrics.get("sample") is True or (
+        isinstance(dataset_source, str) and dataset_source.strip().lower() == "sample"
+    ):
         warnings.append("sample_task_set")
     if metrics.get("interrupted") is True:
         warnings.append("interrupted_run")

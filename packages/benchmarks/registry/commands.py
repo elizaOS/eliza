@@ -537,9 +537,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
             args.extend(["--dataset", dataset])
-        elif not os.getenv("HF_TOKEN"):
-            # Default to sample dataset when HF gated GAIA access is unavailable.
-            args.extend(["--dataset", "sample"])
+        else:
+            args.extend(["--dataset", "gaia"])
         dataset_path = extra.get("dataset_path")
         if isinstance(dataset_path, str) and dataset_path.strip():
             args.extend(["--dataset-path", dataset_path])
@@ -549,7 +548,7 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         else:
             args.extend(["--max-questions", "3"])
         quick = extra.get("quick_test")
-        if quick is None or quick is True:
+        if quick is True:
             args.append("--quick-test")
         return args
 
@@ -576,6 +575,8 @@ def get_benchmark_registry(repo_root: Path) -> list[BenchmarkDefinition]:
         dataset = extra.get("dataset")
         if isinstance(dataset, str) and dataset in {"gaia", "sample", "jsonl"}:
             args.extend(["--dataset", dataset])
+        else:
+            args.extend(["--dataset", "gaia"])
         max_q = extra.get("max_questions")
         if isinstance(max_q, int) and max_q > 0:
             args.extend(["--max-questions", str(max_q)])

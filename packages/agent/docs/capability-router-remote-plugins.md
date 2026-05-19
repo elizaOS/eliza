@@ -990,6 +990,8 @@ authorization headers, API keys, passwords, secrets, bearer/basic auth values,
 and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
 and that same module id must also appear in the trusted registered module set.
+Every registered module id must be exercised by at least one conformance RPC
+target recorded in `conformance.moduleExercises`.
 `sync.registered` and `sync.registeredModules` must not contain duplicate
 materialized plugin/module identities, and every registered module must have a
 unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied
@@ -1141,7 +1143,8 @@ packages/agent/src/services/remote-capability-endpoint-conformance.test.ts
   values, unknown provider-family reports, missing required provider-family
   observations, exercised RPC targets without `moduleId:target` syntax,
   exercised RPC targets that reference unobserved module ids, exercised RPC
-  targets from manifest-only modules that did not register locally, duplicate
+  targets from manifest-only modules that did not register locally, registered
+  modules that were never exercised by conformance RPC, duplicate
   manifest module ids, duplicate materialized plugin/module registration
   identities, duplicate trust decisions, sync trust decisions for unobserved
   modules, and reports that claim a plugin was both registered and

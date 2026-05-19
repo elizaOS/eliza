@@ -95,6 +95,8 @@ AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
+    if benchmark_id in {"gaia", "gaia_orchestrated"}:
+        return ALL_HARNESSES if _has_gaia_official_dataset() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -116,6 +118,35 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
 
 
 _GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
+
+
+_GAIA_OFFICIAL_DATASET_AVAILABLE: bool | None = None
+
+
+def _has_gaia_official_dataset() -> bool:
+    """Return true when official GAIA can run without sample fallback."""
+    global _GAIA_OFFICIAL_DATASET_AVAILABLE
+    if _GAIA_OFFICIAL_DATASET_AVAILABLE is not None:
+        return _GAIA_OFFICIAL_DATASET_AVAILABLE
+    if os.environ.get("HF_TOKEN"):
+        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
+        return True
+    dataset_path = os.environ.get("GAIA_DATASET_PATH")
+    if dataset_path and Path(dataset_path).expanduser().exists():
+        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
+        return True
+    metadata_roots = (
+        Path.home() / ".cache" / "huggingface" / "hub" / "datasets--gaia-benchmark--GAIA" / "snapshots",
+        Path("packages/benchmarks/gaia/.cache/gaia")
+        / "datasets--gaia-benchmark--GAIA"
+        / "snapshots",
+    )
+    _GAIA_OFFICIAL_DATASET_AVAILABLE = any(
+        any(path.is_file() for path in root.glob("*/2023/validation/metadata.*"))
+        for root in metadata_roots
+        if root.exists()
+    )
+    return _GAIA_OFFICIAL_DATASET_AVAILABLE
 
 
 def _surfpool_start_help(binary: str) -> str:
@@ -2446,7 +2477,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "strict_capabilities": True,
         },
         "gaia_orchestrated": {
-            "dataset": "sample",
+            "dataset": "gaia",
             "max_questions": 5,
             "execution_mode": "orchestrated",
             "providers": ["claude-code", "swe-agent", "codex"],

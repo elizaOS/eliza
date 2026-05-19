@@ -559,7 +559,10 @@ def test_default_env_maps_profile_reasoning_effort_to_provider_env() -> None:
     assert env["CEREBRAS_REASONING_EFFORT"] == "low"
 
 
-def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
+def test_cross_matrix_validation_constructs_all_compatible_cells(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -593,6 +596,27 @@ def test_cross_matrix_validation_constructs_all_compatible_cells() -> None:
     assert all(cell.reason for cell in incompatible)
 
 
+def test_gaia_matrix_rows_require_official_dataset_access(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: False)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    gaia_cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id in {"gaia", "gaia_orchestrated"}
+    ]
+
+    assert len(gaia_cells) == 6
+    assert all(cell.compatible is False for cell in gaia_cells)
+    assert all("not in adapter compatibility" in str(cell.reason) for cell in gaia_cells)
+
+
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -616,6 +640,7 @@ def test_cross_matrix_validation_redacts_secret_config_values() -> None:
 def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(
         orchestrator_adapters,
         "_has_hermes_sandbox_backend",

@@ -18,6 +18,7 @@ from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
     MODEL_API,
     NATIVE_UPSTREAM_REVIEW_PATH,
     QUANTIZATION_SIDECARS,
+    TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
     audit_hf_release,
 )
 from scripts.manifest.eliza1_manifest import (  # noqa: E402
@@ -55,6 +56,7 @@ def _complete_model_paths() -> list[str]:
         NATIVE_UPSTREAM_REVIEW_PATH,
         IMAGEGEN_RUNTIME_EVIDENCE_PATH,
         FINETUNE_COMPARISON_EVIDENCE_PATH,
+        TEXT_CONTEXT_VARIANT_EVIDENCE_PATH,
     ]
     for tier, tier_plan in build_plan().items():
         paths.append(f"bundles/{tier}/eliza-1.manifest.json")
@@ -115,6 +117,7 @@ def _text_fetcher(
     *,
     model_readme: str | None = None,
     upstream_review: str | None = None,
+    text_context_variants: str | None = None,
     imagegen_runtime: str | None = None,
     finetune_comparison: str | None = None,
     readme: str = "Eliza-1 training dataset\n",
@@ -135,6 +138,9 @@ def _text_fetcher(
         f"https://huggingface.co/elizaos/eliza-1/raw/main/{NATIVE_UPSTREAM_REVIEW_PATH}": upstream_review
         if upstream_review is not None
         else _passing_upstream_review(),
+        f"https://huggingface.co/elizaos/eliza-1/raw/main/{TEXT_CONTEXT_VARIANT_EVIDENCE_PATH}": text_context_variants
+        if text_context_variants is not None
+        else _passing_text_context_variants(),
         f"https://huggingface.co/elizaos/eliza-1/raw/main/{IMAGEGEN_RUNTIME_EVIDENCE_PATH}": imagegen_runtime
         if imagegen_runtime is not None
         else _passing_imagegen_runtime(),
@@ -241,6 +247,52 @@ def _passing_upstream_review() -> str:
             "- Release impact: image generation memory and platform support.",
             "- Next action: pin binary and rerun imagegen checks.",
         ]
+    )
+
+
+def _passing_text_context_variants() -> str:
+    results = []
+    for tier, tier_plan in build_plan().items():
+        required = []
+        for ctx in tier_plan.contexts:
+            tokens = int(ctx[:-1]) * 1024
+            if tier == "27b-256k":
+                rel = f"text/eliza-1-27b-{ctx}.gguf"
+            else:
+                rel = f"text/eliza-1-{tier}-{ctx}.gguf"
+            required.append(
+                {
+                    "context": ctx,
+                    "expectedCtxTokens": tokens,
+                    "path": f"bundles/{tier}/{rel}",
+                    "existsOnHub": True,
+                    "lfsSha256": "a" * 64,
+                    "manifestEntry": {
+                        "ctx": tokens,
+                        "path": rel,
+                        "sha256": "a" * 64,
+                    },
+                    "blockers": [],
+                }
+            )
+        results.append(
+            {
+                "tier": tier,
+                "requiredContexts": required,
+                "extraTextGgufs": [],
+                "passed": True,
+            }
+        )
+    return __import__("json").dumps(
+        {
+            "schema": "eliza.eliza1_text_context_variant_audit.v1",
+            "repo": ELIZA_1_HF_REPO,
+            "passed": True,
+            "expectedContexts": ["128k", "256k"],
+            "blockers": [],
+            "legacy27b1mPaths": [],
+            "results": results,
+        }
     )
 
 

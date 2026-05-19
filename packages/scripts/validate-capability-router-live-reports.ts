@@ -457,6 +457,45 @@ function validateReportFile(
       validateExercisedTargetModule(surface, target, observedModuleIds),
     );
   }
+  if (conformance.moduleExercises !== undefined) {
+    for (const [index, value] of requireArray(
+      conformance.moduleExercises,
+      "conformance.moduleExercises",
+    ).entries()) {
+      const exercise = requireObject(
+        value,
+        `conformance.moduleExercises[${index}]`,
+      );
+      const surface = requireRequiredSurface(
+        exercise.surface,
+        `conformance.moduleExercises[${index}].surface`,
+      );
+      const moduleId = requireString(
+        exercise.moduleId,
+        `conformance.moduleExercises[${index}].moduleId`,
+      );
+      const target = requireString(
+        exercise.target,
+        `conformance.moduleExercises[${index}].target`,
+      );
+      if (target !== exercised[surface]) {
+        throw new Error(
+          `conformance.moduleExercises[${index}].target must match conformance.exercised.${surface}.`,
+        );
+      }
+      const targetModuleId = validateExercisedTargetModule(
+        surface,
+        target,
+        observedModuleIds,
+      );
+      if (targetModuleId !== moduleId) {
+        throw new Error(
+          `conformance.moduleExercises[${index}].target must start with moduleId.`,
+        );
+      }
+      exercisedModuleIds.add(moduleId);
+    }
+  }
 
   requireObject(conformance.actionResult, "conformance.actionResult");
   requireObject(conformance.providerResult, "conformance.providerResult");
@@ -695,6 +734,14 @@ function validateExercisedTargetModule(
     );
   }
   return moduleId;
+}
+
+function requireRequiredSurface(value: unknown, field: string): RequiredSurface {
+  const surface = requireString(value, field);
+  if (!REQUIRED_SURFACES.includes(surface as RequiredSurface)) {
+    throw new Error(`${field} must be a required remote capability surface.`);
+  }
+  return surface as RequiredSurface;
 }
 
 function validateSyncEvidence(

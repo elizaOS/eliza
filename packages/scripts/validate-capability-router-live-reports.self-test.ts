@@ -83,6 +83,10 @@ async function main(): Promise<void> {
       workspace,
       "registered-unexercised",
     );
+    const mismatchedModuleExerciseDir = join(
+      workspace,
+      "mismatched-module-exercise",
+    );
     const manifestOnlyUnregisteredDir = join(
       workspace,
       "manifest-only-unregistered",
@@ -145,6 +149,7 @@ async function main(): Promise<void> {
     await mkdir(duplicateUnloadedDir, { recursive: true });
     await mkdir(exercisedUnregisteredDir, { recursive: true });
     await mkdir(registeredUnexercisedDir, { recursive: true });
+    await mkdir(mismatchedModuleExerciseDir, { recursive: true });
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
     await mkdir(runtimePluginUndercountDir, { recursive: true });
@@ -410,6 +415,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(registeredUnexercisedDir, "provider.json"),
       `${JSON.stringify(makeRegisteredUnexercisedReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(mismatchedModuleExerciseDir, "provider.json"),
+      `${JSON.stringify(makeMismatchedModuleExerciseReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1107,6 +1117,23 @@ async function main(): Promise<void> {
         `registered unexercised failed for the wrong reason: ${registeredUnexercised.output}`,
       );
     }
+    const mismatchedModuleExercise = await runValidator(
+      mismatchedModuleExerciseDir,
+    );
+    if (mismatchedModuleExercise.exitCode === 0) {
+      throw new Error(
+        "mismatched module exercise report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !mismatchedModuleExercise.output.includes(
+        "target must match conformance.exercised.action",
+      )
+    ) {
+      throw new Error(
+        `mismatched module exercise failed for the wrong reason: ${mismatchedModuleExercise.output}`,
+      );
+    }
     const manifestOnlyUnregistered = await runValidator(
       manifestOnlyUnregisteredDir,
     );
@@ -1282,6 +1309,13 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
       "responseHandlerFieldEvaluator",
     ].map((surface) => [surface, `sample-module:${surface}`]),
   );
+  const moduleExercises = Object.entries(exercised).map(
+    ([surface, target]) => ({
+      surface,
+      moduleId: "sample-module",
+      target,
+    }),
+  );
   return {
     endpointId,
     availability: {
@@ -1298,6 +1332,7 @@ function makeCompleteConformance(endpointId = "sample-endpoint") {
     moduleCount: 1,
     moduleIds: ["sample-module"],
     exercised,
+    moduleExercises,
     actionResult: {},
     providerResult: {},
     routeResult: { status: 200 },
@@ -1778,6 +1813,86 @@ function makeExercisedUnregisteredReport() {
   };
 }
 
+function makeRegisteredUnexercisedReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleCount: 2,
+      moduleIds: ["sample-module", "unexercised-module"],
+    },
+    sync: {
+      ...report.sync,
+      registered: ["@remote/sample", "@remote/unexercised"],
+      registeredModules: [
+        {
+          pluginName: "@remote/sample",
+          moduleId: "sample-module",
+          endpointId: "sample-endpoint",
+          ...makeRegisteredModuleCounts(),
+        },
+        {
+          pluginName: "@remote/unexercised",
+          moduleId: "unexercised-module",
+          endpointId: "sample-endpoint",
+          ...makeRegisteredModuleCounts(),
+        },
+      ],
+      trustDecisions: [
+        {
+          moduleId: "sample-module",
+          pluginName: "@remote/sample",
+          endpointId: "sample-endpoint",
+          trusted: true,
+          reason: "allowed",
+        },
+        {
+          moduleId: "unexercised-module",
+          pluginName: "@remote/unexercised",
+          endpointId: "sample-endpoint",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    },
+    runtime: {
+      ...report.runtime,
+      pluginCount: 2,
+      actionCount: 2,
+      providerCount: 2,
+      evaluatorCount: 2,
+      responseHandlerEvaluatorCount: 2,
+      responseHandlerFieldEvaluatorCount: 2,
+      routeCount: 2,
+      modelCount: 2,
+      serviceCount: 2,
+      appBridgeCount: 2,
+      lifecycleCount: 2,
+      widgetCount: 2,
+      componentTypeCount: 2,
+      viewCount: 2,
+    },
+  };
+}
+
+function makeMismatchedModuleExerciseReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleExercises: [
+        {
+          surface: "action",
+          moduleId: "sample-module",
+          target: "sample-module:different-action",
+        },
+      ],
+    },
+  };
+}
+
 function makeManifestOnlyUnregisteredReport() {
   const report = makeCompleteReport("provider");
   return {
@@ -1820,6 +1935,18 @@ function makeRuntimePluginUndercountReport() {
       ...report.conformance,
       moduleCount: 2,
       moduleIds: ["sample-module", "second-module"],
+      exercised: {
+        ...report.conformance.exercised,
+        service: "second-module:service",
+      },
+      moduleExercises: [
+        ...report.conformance.moduleExercises,
+        {
+          surface: "service",
+          moduleId: "second-module",
+          target: "second-module:service",
+        },
+      ],
     },
     sync: {
       ...report.sync,
