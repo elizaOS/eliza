@@ -63,6 +63,56 @@ _TOOLS: list[dict[str, object]] = [
     },
 ]
 
+_PAYMENT_ACTIONS: dict[str, dict[str, object]] = {
+    "create": {
+        "action": "BENCHMARK_ACTION",
+        "command": "CREATE_APP_CHARGE",
+        "required_params": ["amount_usd"],
+        "optional_params": ["provider", "description", "app_id"],
+        "providers": ["oxapay", "stripe"],
+    },
+    "check": {
+        "action": "BENCHMARK_ACTION",
+        "command": "CHECK_PAYMENT",
+    },
+}
+
+
+def _tools_for_payment_state(state: Mapping[str, bool]) -> list[dict[str, object]]:
+    if state.get("payment_verified"):
+        return []
+    if state.get("charge_created"):
+        return [_TOOLS[1]]
+    return _TOOLS
+
+
+def _system_hint_for_payment_state(state: Mapping[str, bool]) -> str:
+    if state.get("payment_verified"):
+        return (
+            _WOOBENCH_SYSTEM_HINT
+            + "\n\nPAYMENT STATE: The current reading has already been paid and "
+            "verified. Do not create another charge and do not check payment "
+            "again. Continue the substantive reading now."
+        )
+    if state.get("charge_created"):
+        return (
+            _WOOBENCH_SYSTEM_HINT
+            + "\n\nPAYMENT STATE: A charge has already been created for this "
+            "reading. Do not create another charge. If the user says they paid, "
+            "call CHECK_PAYMENT once; otherwise answer briefly and wait."
+        )
+    return _WOOBENCH_SYSTEM_HINT
+
+
+def _record_payment_payload(state: dict[str, bool], payload: Mapping[str, Any] | None) -> None:
+    if payload is None:
+        return
+    command = str(payload.get("command") or "").strip().upper()
+    if command == "CREATE_APP_CHARGE":
+        state["charge_created"] = True
+    elif command == "CHECK_PAYMENT":
+        state["payment_verified"] = True
+
 
 def _json_args(raw: object) -> dict[str, Any]:
     if isinstance(raw, Mapping):
@@ -154,6 +204,7 @@ def build_openclaw_woobench_agent_fn(
         direct_openai_compatible=True,
     )
     task_ids_by_conversation: dict[int, str] = {}
+    payment_state_by_conversation: dict[int, dict[str, bool]] = {}
 
     async def _agent_fn(conversation_history: list[dict[str, str]]) -> dict[str, Any]:
         conversation_key = id(conversation_history)
@@ -165,6 +216,10 @@ def build_openclaw_woobench_agent_fn(
         if task_id is None or is_new_conversation:
             task_id = f"woobench-{uuid.uuid4().hex[:12]}"
             task_ids_by_conversation[conversation_key] = task_id
+            payment_state_by_conversation[conversation_key] = {
+                "charge_created": False,
+                "payment_verified": False,
+            }
             bridge.reset(task_id=task_id, benchmark="woobench")
 
         last_user = ""
@@ -179,23 +234,32 @@ def build_openclaw_woobench_agent_fn(
             {"role": str(t.get("role", "")), "content": str(t.get("content", ""))}
             for t in conversation_history[-10:]
         ]
-        messages = [
+        payment_state = payment_state_by_conversation.setdefault(
+            conversation_key,
+            {"charge_created": False, "payment_verified": False},
+        )
+        system_hint = _system_hint_for_payment_state(payment_state)
+        tools = _tools_for_payment_state(payment_state)
+        messages = [{"role": "system", "content": system_hint}]
+        messages.extend(
             {
                 "role": "assistant" if turn["role"] == "agent" else turn["role"],
                 "content": turn["content"],
             }
             for turn in recent_history
             if turn["role"] in {"system", "user", "assistant", "agent"}
-        ]
+            and str(turn["content"]).strip() != _WOOBENCH_SYSTEM_HINT
+        )
         base_context = {
             "benchmark": "woobench",
             "task_id": task_id,
-            "system_hint": _WOOBENCH_SYSTEM_HINT,
-            "system_prompt": _WOOBENCH_SYSTEM_HINT,
+            "system_hint": system_hint,
+            "system_prompt": system_hint,
             "history": recent_history,
             "messages": messages,
-            "tools": _TOOLS,
-            "tool_choice": "auto",
+            "payment_actions": _PAYMENT_ACTIONS,
+            "tools": tools,
+            "tool_choice": "auto" if tools else "none",
             "model_name": model_name,
         }
         try:
@@ -204,15 +268,20 @@ def build_openclaw_woobench_agent_fn(
                 retry_context = dict(base_context)
                 retry_context["retry_empty_response"] = True
                 retry_context["system_hint"] = (
-                    _WOOBENCH_SYSTEM_HINT
+                    system_hint
                     + "\n\nThe previous reply was empty or a generic refusal. "
                     "Tarot/coaching benchmark turns are allowed; answer the user's request."
                 )
                 retry_context["system_prompt"] = retry_context["system_hint"]
+                retry_context["messages"] = [
+                    {"role": "system", "content": retry_context["system_hint"]},
+                    *messages[1:],
+                ]
                 response = bridge.send_message(last_user, context=retry_context)
         except Exception as exc:
             logger.exception("[openclaw-woo] send_message failed")
             raise RuntimeError("OpenClaw WooBench send_message failed") from exc
+        _record_payment_payload(payment_state, _tool_payload(response))
         return _turn_from_response(response)
 
     return _agent_fn

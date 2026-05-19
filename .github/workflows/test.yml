@@ -101,6 +101,9 @@ jobs:
       - name: Remote capability live CI audit
         run: bun run test:remote-capabilities:live-ci-audit
 
+      - name: Remote capability live CI audit self-test
+        run: bun run test:remote-capabilities:live-ci-audit:self-test
+
       - name: Remote capability naming audit
         run: bun run test:remote-capabilities:naming-audit
 

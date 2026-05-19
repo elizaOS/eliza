@@ -220,10 +220,13 @@ function readStringArrayLiteral(fileName: string, variableName: string): string[
 			if (
 				ts.isIdentifier(declaration.name) &&
 				declaration.name.text === variableName &&
-				declaration.initializer &&
-				ts.isArrayLiteralExpression(declaration.initializer)
+				declaration.initializer
 			) {
-				return declaration.initializer.elements.map((element) => {
+				const initializer = unwrapExpression(declaration.initializer);
+				if (!ts.isArrayLiteralExpression(initializer)) {
+					throw new Error(`${variableName} must be a string array.`);
+				}
+				return initializer.elements.map((element) => {
 					if (!ts.isStringLiteral(element)) {
 						throw new Error(`${variableName} must contain only string literals.`);
 					}
@@ -307,6 +310,13 @@ function propertyNameText(name: ts.PropertyName): string {
 		return name.text;
 	}
 	throw new Error("Unsupported computed property name.");
+}
+
+function unwrapExpression(expression: ts.Expression): ts.Expression {
+	if (ts.isAsExpression(expression) || ts.isTypeAssertionExpression(expression)) {
+		return unwrapExpression(expression.expression);
+	}
+	return expression;
 }
 
 function memberNames(members: ts.NodeArray<ts.TypeElement>): string[] {

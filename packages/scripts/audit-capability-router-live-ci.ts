@@ -1,7 +1,6 @@
 import { readFileSync } from "node:fs";
 
 const workflowPath = ".github/workflows/test.yml";
-const workflow = readFileSync(workflowPath, "utf8");
 
 type Check = {
   name: string;
@@ -9,11 +8,23 @@ type Check = {
   message: string;
 };
 
-const checks: Check[] = [
+export type LiveCiAuditFailure = {
+  workflowPath: string;
+  name: string;
+  message: string;
+};
+
+export const checks: Check[] = [
   {
     name: "cloud live job is required by test-status",
     pattern: /needs:\s*[\s\S]*-\s*cloud-live-e2e[\s\S]*-\s*provider-live-e2e/,
     message: "test-status must depend on cloud-live-e2e and provider-live-e2e.",
+  },
+  {
+    name: "live CI audit self-test is a CI gate",
+    pattern:
+      /Remote capability live CI audit self-test[\s\S]*test:remote-capabilities:live-ci-audit:self-test/,
+    message: "server CI must run the live CI audit self-test.",
   },
   {
     name: "provider live job is required by test-status",
@@ -36,9 +47,16 @@ const checks: Check[] = [
       "cloud live validation must require count, freshness, CI identity, file identity, and GitHub env matching.",
   },
   {
+    name: "cloud live smoke writes reports to the validated directory",
+    pattern:
+      /Remote capability cloud sandbox live smoke[\s\S]*ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports\/remote-capabilities\/cloud\s*\n[\s\S]*Validate remote capability cloud live report[\s\S]*reports\/remote-capabilities\/cloud/,
+    message:
+      "cloud live smoke must write reports to the same directory that validation consumes.",
+  },
+  {
     name: "provider live smoke requires the three primary endpoint secrets",
     pattern:
-      /missing_required=\(\)[\s\S]*ELIZA_REMOTE_CAPABILITY_E2B_URL[\s\S]*ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL[\s\S]*ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL/,
+      /missing_required=\(\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_E2B_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_HOME_MACHINE_URL"\)[\s\S]*missing_required\+=\("ELIZA_REMOTE_CAPABILITY_MOBILE_COMPANION_URL"\)/,
     message:
       "provider live smoke must require E2B, home-machine, and mobile-companion endpoints for observed runs.",
   },
@@ -57,6 +75,13 @@ const checks: Check[] = [
       "provider live validation must require E2B, home-machine, mobile-companion, freshness, CI identity, file identity, and GitHub env matching.",
   },
   {
+    name: "provider live smoke writes reports to the validated directory",
+    pattern:
+      /Remote capability URL-backed provider live smoke[\s\S]*ELIZA_REMOTE_CAPABILITY_LIVE_REPORT_DIR: reports\/remote-capabilities\/providers\s*\n[\s\S]*Validate remote capability provider live reports[\s\S]*reports\/remote-capabilities\/providers/,
+    message:
+      "provider live smoke must write reports to the same directory that validation consumes.",
+  },
+  {
     name: "cloud live reports are uploaded as required artifacts",
     pattern:
       /remote-capability-cloud-live-report[\s\S]*path: reports\/remote-capabilities\/cloud\/\*\.json[\s\S]*if-no-files-found: error/,
@@ -71,15 +96,34 @@ const checks: Check[] = [
   },
 ];
 
-const failures = checks.filter((check) => !check.pattern.test(workflow));
-
-if (failures.length > 0) {
-  for (const failure of failures) {
-    console.error(`${workflowPath}: ${failure.name}: ${failure.message}`);
-  }
-  process.exit(1);
+export function validateCapabilityRouterLiveCi(
+  workflow: string,
+  options: { workflowPath?: string } = {},
+): LiveCiAuditFailure[] {
+  const path = options.workflowPath ?? workflowPath;
+  return checks
+    .filter((check) => !check.pattern.test(workflow))
+    .map((check) => ({
+      workflowPath: path,
+      name: check.name,
+      message: check.message,
+    }));
 }
 
-console.log(
-  `Capability-router live CI audit passed (${checks.length} checks).`,
-);
+if (import.meta.main) {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const failures = validateCapabilityRouterLiveCi(workflow, { workflowPath });
+
+  if (failures.length > 0) {
+    for (const failure of failures) {
+      console.error(
+        `${failure.workflowPath}: ${failure.name}: ${failure.message}`,
+      );
+    }
+    process.exit(1);
+  }
+
+  console.log(
+    `Capability-router live CI audit passed (${checks.length} checks).`,
+  );
+}

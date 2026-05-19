@@ -23,6 +23,7 @@ from hermes_adapter.clawbench import build_clawbench_agent_fn
 from hermes_adapter.client import HermesClient, MessageResponse
 from hermes_adapter.woobench import (
     _WOOBENCH_SYSTEM_HINT,
+    build_hermes_woobench_agent_fn,
     _turn_from_response as woobench_turn_from_response,
 )
 
@@ -135,6 +136,30 @@ def test_woobench_turn_synthesizes_visible_payment_text() -> None:
     assert "full reading after $15.00" in result["text"]
     assert result["actions"] == ["BENCHMARK_ACTION"]
     assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
+
+
+def test_woobench_agent_fn_forwards_system_message_and_payment_actions(
+    fake_client: HermesClient,
+) -> None:
+    with patch.object(HermesClient, "wait_until_ready", return_value=None):
+        agent_fn = build_hermes_woobench_agent_fn(client=fake_client, model_name="m1")
+    captured: dict[str, Any] = {}
+
+    def _fake_send(self: HermesClient, text: str, context: Any = None) -> MessageResponse:
+        captured["text"] = text
+        captured["context"] = context
+        return MessageResponse(text="reading", thought=None, actions=[], params={})
+
+    history = [{"role": "user", "content": "Can you read my cards?"}]
+    with patch.object(HermesClient, "send_message", _fake_send):
+        result = _run(agent_fn(history))
+
+    assert captured["text"] == "Can you read my cards?"
+    ctx = captured["context"]
+    assert ctx["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
+    assert ctx["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
+    assert ctx["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
+    assert result["text"] == "reading"
 
 
 def test_build_clawbench_agent_fn_returns_async_callable(fake_client: HermesClient) -> None:

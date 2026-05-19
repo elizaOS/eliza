@@ -22,6 +22,7 @@ from openclaw_adapter.mind2web import build_mind2web_agent_fn
 from openclaw_adapter.mint import build_mint_agent_fn
 from openclaw_adapter.woobench import (
     _WOOBENCH_SYSTEM_HINT,
+    build_openclaw_woobench_agent_fn,
     _turn_from_response as woobench_turn_from_response,
 )
 
@@ -156,6 +157,29 @@ def test_woobench_turn_synthesizes_visible_payment_text() -> None:
     assert "full reading after $10.00" in result["text"]
     assert result["actions"] == ["BENCHMARK_ACTION"]
     assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
+
+
+def test_woobench_agent_fn_forwards_system_message_and_payment_actions(
+    client: OpenClawClient,
+) -> None:
+    agent_fn = build_openclaw_woobench_agent_fn(client=client, model_name="m1")
+    captured: dict[str, Any] = {}
+
+    def _fake_send(self: OpenClawClient, text: str, context: Any = None) -> MessageResponse:
+        captured["text"] = text
+        captured["context"] = context
+        return MessageResponse(text="reading", thought=None, actions=[], params={})
+
+    history = [{"role": "user", "content": "Can you read my cards?"}]
+    with patch.object(OpenClawClient, "send_message", _fake_send):
+        result = _run(agent_fn(history))
+
+    assert captured["text"] == "Can you read my cards?"
+    ctx = captured["context"]
+    assert ctx["messages"][0] == {"role": "system", "content": _WOOBENCH_SYSTEM_HINT}
+    assert ctx["payment_actions"]["create"]["command"] == "CREATE_APP_CHARGE"
+    assert ctx["payment_actions"]["check"]["command"] == "CHECK_PAYMENT"
+    assert result["text"] == "reading"
 
 
 # ---------------------------------------------------------------------------

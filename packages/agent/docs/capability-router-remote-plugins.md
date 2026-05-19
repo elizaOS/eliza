@@ -1196,7 +1196,14 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 - `bun run test:remote-capabilities:live-ci-audit` passes and statically
   enforces that the workflow keeps the Cloud and provider live jobs wired to
   strict scheduled/manual observation, required provider endpoints, strict live
-  report validation, and required artifact upload.
+  report validation, required artifact upload, and matching live report
+  directories between smoke producers, validators, and uploaded artifacts.
+- `bun run test:remote-capabilities:live-ci-audit:self-test` mutates those
+  report-directory env vars, artifact upload paths, scheduled/manual live
+  observation gates, Cloud freshness/identity validation flags, provider
+  allowed/required lists, and provider GitHub-env matching, and proves the
+  live-CI audit fails when smoke output no longer feeds the validator/artifact
+  path or when the Cloud/E2B/home/mobile observation contract is weakened.
 - Provider live reports include `endpointUrlSha256`, a SHA-256 fingerprint of
   the normalized endpoint base URL. The live report validator requires this
   fingerprint for provider artifacts and rejects duplicates across the provider
@@ -1228,8 +1235,9 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
   fixture server, and every non-list plugin RPC method must appear in endpoint
   conformance plus the live report validator's required-method matrix. The
   audit also rejects validator-required plugin methods that are not canonical
-  non-list RPC methods. This keeps protocol expansion from bypassing the
-  full-surface proof path.
+  non-list RPC methods, and verifies endpoint conformance surfaces, validator
+  required surfaces, and validator method-matrix keys stay in exact agreement.
+  This keeps protocol expansion from bypassing the full-surface proof path.
 - Endpoint conformance reports type `rpcCalls.method` from the core
   `RuntimeBrokerCapabilityMethod` plugin-method union, excluding only
   `plugin.modules.list`, so conformance evidence cannot drift to ad-hoc method
@@ -1250,7 +1258,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 | Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints, URL-backed E2B/home/mobile/desktop-companion providers, and Cloud provisioning payloads.                                                                                                                                                                                                                                                                                                                                      | Implemented with focused smokes                                                                                 |
 | Frontend bundles load from remote plugins                  | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles on web/desktop. The same proxy is blocked for iOS/Android clients to respect dynamic-code-loading policy.                                                                                                                                                                                                                | Implemented for web/desktop; restricted on app-store mobile                                                     |
 | Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, duplicate/colliding identities are rejected, and restart bootstrap derives trust from persisted endpoint/module config.                                                                                                                                                                                                                                                                                        | Implemented                                                                                                     |
-| Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; a live-CI audit statically enforces that Cloud and URL-backed provider smokes stay wired to scheduled/manual observation, strict live report validation, required provider endpoints, and required artifact upload. Provider live report validation also requires unique redacted endpoint URL fingerprints across provider artifacts.             | Implemented, live provider observations pending                                                                 |
+| Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; a live-CI audit statically enforces that Cloud and URL-backed provider smokes stay wired to scheduled/manual observation, strict live report validation, required provider endpoints, required artifact upload, and matching report directories from smoke output through validation/upload. Provider live report validation also requires unique redacted endpoint URL fingerprints across provider artifacts. | Implemented, live provider observations pending                                                                 |
 | Real Cloud sandbox provider                                | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge when `ELIZAOS_CLOUD_API_KEY` is present.                                                                                                                                                                                            | Implemented but must be observed green                                                                          |
 | E2B/home-machine/mobile provider coverage                  | Exported URL-backed providers normalize and validate concrete E2B, home-machine, mobile-companion, and desktop-companion endpoints; focused conformance exercises E2B/home/mobile through action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge/view/asset RPC; optional scheduled/manual provider-live CI smokes use the reusable endpoint conformance harness against configured real endpoints. | Implemented for URL-backed provider layer; live endpoint observations pending                                   |
 

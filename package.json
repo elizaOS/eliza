@@ -124,6 +124,7 @@
     "capability-router:fixture-server": "bun packages/scripts/capability-router-fixture-server.ts",
     "test:remote-capabilities:surface-audit": "bun packages/scripts/audit-capability-router-plugin-surface.ts",
     "test:remote-capabilities:live-ci-audit": "bun packages/scripts/audit-capability-router-live-ci.ts",
+    "test:remote-capabilities:live-ci-audit:self-test": "bun packages/scripts/audit-capability-router-live-ci.self-test.ts",
     "test:remote-capabilities:naming-audit": "bun packages/scripts/audit-capability-router-naming.ts",
     "test:remote-capabilities:naming-audit:self-test": "bun packages/scripts/audit-capability-router-naming.self-test.ts",
     "test:remote-capabilities:fixture-server": "bun packages/scripts/capability-router-fixture-conformance-smoke.ts",
