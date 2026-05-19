@@ -602,6 +602,17 @@ export class DesktopLlamaAdapter {
 	private modelPtr: Pointer | null = null;
 	/** Pool of `llama_context` instances. Index 0 is allocated by `loadModel()`. */
 	private ctxPool: Pointer[] = [];
+	/**
+	 * Serializes concurrent resizeParallel() callers. The C-side
+	 * llama_init_from_model is itself thread-safe (Metal registry uses
+	 * static std::mutex; CUDA/Vulkan ctx ctors are independent) and
+	 * bun:ffi calls block the JS thread, so within one call the for-loop
+	 * inside resizeParallel is already safe. This lock exists so future
+	 * `await`s added inside resizeParallel cannot let two callers
+	 * interleave pool mutations (push/pop on ctxPool, hasDecodedFlags,
+	 * drafterAttached).
+	 */
+	private growLock: Promise<unknown> = Promise.resolve();
 	/** Per-ctx KV-decoded flag (drives the `memory_clear` guard between sessions). */
 	private hasDecodedFlags: boolean[] = [];
 	/** Per-ctx attached drafter — `null` when no drafter on that ctx. */
@@ -880,66 +891,76 @@ export class DesktopLlamaAdapter {
 	 * Returns true when the pool size actually changed, false on no-op.
 	 */
 	async resizeParallel(target: number): Promise<boolean> {
-		if (!this.modelPtr || !this.loadOpts) {
-			throw new Error("[desktop-llama] resizeParallel before model load");
-		}
-		if (target < 1) {
-			throw new Error(
-				`[desktop-llama] resizeParallel target must be >= 1, got ${target}`,
-			);
-		}
-		const current = this.ctxPool.length;
-		if (target === current) return false;
-		if (target < current) {
-			// Refuse to shrink while sessions are still pinned to outgoing slots.
-			for (const sess of this.sessions.values()) {
-				if (sess.ctxIdx >= target) {
+		const prev = this.growLock;
+		let release!: () => void;
+		this.growLock = new Promise<void>((r) => {
+			release = r;
+		});
+		try {
+			await prev;
+			if (!this.modelPtr || !this.loadOpts) {
+				throw new Error("[desktop-llama] resizeParallel before model load");
+			}
+			if (target < 1) {
+				throw new Error(
+					`[desktop-llama] resizeParallel target must be >= 1, got ${target}`,
+				);
+			}
+			const current = this.ctxPool.length;
+			if (target === current) return false;
+			if (target < current) {
+				// Refuse to shrink while sessions are still pinned to outgoing slots.
+				for (const sess of this.sessions.values()) {
+					if (sess.ctxIdx >= target) {
+						throw new Error(
+							`[desktop-llama] cannot shrink pool to ${target}: session pinned to ctxIdx=${sess.ctxIdx}`,
+						);
+					}
+				}
+				for (let i = current - 1; i >= target; i--) {
+					const ctx = this.ctxPool[i];
+					if (ctx !== undefined) this.llama.llama_free(ctx);
+					this.ctxPool.pop();
+					this.hasDecodedFlags.pop();
+					this.drafterAttached.pop();
+				}
+				return true;
+			}
+			// Grow: allocate (target - current) additional ctxs.
+			for (let i = current; i < target; i++) {
+				const cp = this.shim.eliza_llama_context_params_default();
+				let nextCtx: Pointer;
+				try {
+					const ctxSize = this.loadOpts.contextSize ?? 4096;
+					const nBatch = this.loadOpts.nBatch ?? 256;
+					const threads = this.loadOpts.threads ?? defaultThreads();
+					this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
+					this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
+					this.shim.eliza_llama_context_params_set_n_ubatch(
+						cp,
+						this.loadOpts.nUBatch ?? nBatch,
+					);
+					this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
+					this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
+					this.shim.eliza_llama_context_params_set_embeddings(cp, false);
+					this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
+					nextCtx = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
+				} finally {
+					this.shim.eliza_llama_context_params_free(cp);
+				}
+				if (!nextCtx) {
 					throw new Error(
-						`[desktop-llama] cannot shrink pool to ${target}: session pinned to ctxIdx=${sess.ctxIdx}`,
+						`[desktop-llama] llama_init_from_model failed when growing pool to ${target}`,
 					);
 				}
-			}
-			for (let i = current - 1; i >= target; i--) {
-				const ctx = this.ctxPool[i];
-				if (ctx !== undefined) this.llama.llama_free(ctx);
-				this.ctxPool.pop();
-				this.hasDecodedFlags.pop();
-				this.drafterAttached.pop();
+				this.ctxPool.push(nextCtx);
+				this.hasDecodedFlags.push(false);
+				this.drafterAttached.push(false);
 			}
 			return true;
+		} finally {
+			release();
 		}
-		// Grow: allocate (target - current) additional ctxs.
-		for (let i = current; i < target; i++) {
-			const cp = this.shim.eliza_llama_context_params_default();
-			let nextCtx: Pointer;
-			try {
-				const ctxSize = this.loadOpts.contextSize ?? 4096;
-				const nBatch = this.loadOpts.nBatch ?? 256;
-				const threads = this.loadOpts.threads ?? defaultThreads();
-				this.shim.eliza_llama_context_params_set_n_ctx(cp, ctxSize);
-				this.shim.eliza_llama_context_params_set_n_batch(cp, nBatch);
-				this.shim.eliza_llama_context_params_set_n_ubatch(
-					cp,
-					this.loadOpts.nUBatch ?? nBatch,
-				);
-				this.shim.eliza_llama_context_params_set_n_threads(cp, threads);
-				this.shim.eliza_llama_context_params_set_n_threads_batch(cp, threads);
-				this.shim.eliza_llama_context_params_set_embeddings(cp, false);
-				this.shim.eliza_llama_context_params_set_offload_kqv(cp, true);
-				nextCtx = this.shim.eliza_llama_init_from_model(this.modelPtr, cp);
-			} finally {
-				this.shim.eliza_llama_context_params_free(cp);
-			}
-			if (!nextCtx) {
-				throw new Error(
-					`[desktop-llama] llama_init_from_model failed when growing pool to ${target}`,
-				);
-			}
-			this.ctxPool.push(nextCtx);
-			this.hasDecodedFlags.push(false);
-			this.drafterAttached.push(false);
-		}
-		return true;
 	}
 
 	/**
