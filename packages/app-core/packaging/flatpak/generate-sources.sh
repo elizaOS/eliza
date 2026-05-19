@@ -44,6 +44,18 @@ trap 'rm -rf "$WORK_DIR"' EXIT
 echo "[generate-sources] Resolving elizaos dependency closure in $WORK_DIR" >&2
 (
   cd "$WORK_DIR"
+  # Seed a minimal package.json with a `name` field. Without this,
+  # `npm install --package-lock-only` writes a `package.json` that
+  # only contains a `dependencies` block, and flatpak-node-generator
+  # 0.1.1 crashes with `KeyError: 'name'` when it parses the root
+  # package entry of the resulting lockfile.
+  cat > package.json <<'PKG'
+{
+  "name": "elizaos-flatpak-sources-shim",
+  "version": "0.0.0",
+  "private": true
+}
+PKG
   # `npm install --package-lock-only` writes the lockfile without
   # actually fetching/extracting tarballs into node_modules. We just
   # need the resolved graph for flatpak-node-generator.
