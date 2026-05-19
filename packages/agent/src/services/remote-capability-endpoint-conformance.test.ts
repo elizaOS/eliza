@@ -489,6 +489,49 @@ describe("remote capability endpoint conformance", () => {
     );
   });
 
+  it("fails when remote route conformance does not return a body", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        status: 204,
+        headers: { "x-capability-fixture": "yes" },
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned an empty route result.',
+    );
+  });
+
+  it("fails when remote route conformance returns an empty body", async () => {
+    installMinimalFixtureFetch({
+      "plugin.route.call": {
+        status: 200,
+        headers: { "x-capability-fixture": "yes" },
+        body: {},
+      },
+    });
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["route"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" returned an empty route result.',
+    );
+  });
+
   it.each([
     [
       "plugin.action.invoke",

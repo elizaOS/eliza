@@ -235,15 +235,7 @@ export async function assertRemoteCapabilityEndpointConformance(
       headers: {},
       body: options.routeBody ?? { conformance: true },
     });
-    if (
-      typeof report.routeResult.status !== "number" ||
-      report.routeResult.status < 200 ||
-      report.routeResult.status > 299
-    ) {
-      throw new Error(
-        `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
-      );
-    }
+    assertRouteResult(options.endpoint.id, report.routeResult);
     recordExercise(
       report,
       exerciseCounts,
@@ -678,6 +670,34 @@ function assertProviderResult(
   }
 }
 
+function assertRouteResult(
+  endpointId: string,
+  result: PluginCallRouteResult,
+): void {
+  if (
+    typeof result.status !== "number" ||
+    result.status < 200 ||
+    result.status > 299
+  ) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned a non-2xx route status.`,
+    );
+  }
+  if (!hasMeaningfulRouteBody(result.body)) {
+    throw new Error(
+      `Capability endpoint "${endpointId}" returned an empty route result.`,
+    );
+  }
+}
+
+function hasMeaningfulRouteBody(value: JsonValue | undefined): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
+}
+
 function assertModelResult(
   endpointId: string,
   result: PluginInvokeModelResult,
@@ -983,15 +1003,7 @@ async function exerciseUncoveredModules(
         headers: {},
         body: options.routeBody ?? { conformance: true },
       });
-      if (
-        typeof result.status !== "number" ||
-        result.status < 200 ||
-        result.status > 299
-      ) {
-        throw new Error(
-          `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
-        );
-      }
+      assertRouteResult(options.endpoint.id, result);
       recordExercise(
         report,
         exerciseCounts,

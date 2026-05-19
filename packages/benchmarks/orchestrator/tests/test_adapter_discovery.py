@@ -15,6 +15,7 @@ import pytest
 from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     _score_from_app_eval,
     _score_from_compactbench,
     _score_from_eliza_1,
@@ -46,6 +47,7 @@ from benchmarks.registry import (
     _score_from_contextbench_json,
     _score_from_gauntlet_json,
     _score_from_gsm8k_json,
+    _score_from_hyperliquid_bench_json,
     _score_from_mind2web_json,
     _score_from_mmau_json,
     _score_from_mint_json,
@@ -125,6 +127,11 @@ def test_gauntlet_requires_clone_capable_surfpool_for_real_harness_rows(
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
     )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hyperliquid_live_backend",
+        lambda: True,
+    )
     adapter = discover_adapters(_workspace_root()).adapters["gauntlet"]
     assert adapter.agent_compatibility == ()
     assert _is_harness_compatible(adapter, "eliza") is False
@@ -162,6 +169,11 @@ def test_gauntlet_accepts_current_surfpool_remote_datasource_help(
 def test_gauntlet_surfpool_manager_uses_current_mainnet_datasource_cli(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.syspath_prepend(str(_workspace_root() / "benchmarks" / "gauntlet" / "src"))
+    for module_name in list(sys.modules):
+        if module_name == "gauntlet" or module_name.startswith("gauntlet."):
+            del sys.modules[module_name]
+
     from gauntlet.harness.surfpool import SurfpoolConfig, SurfpoolManager
 
     manager = SurfpoolManager(
@@ -231,6 +243,27 @@ def test_gauntlet_rejects_mock_or_offline_execution_artifacts() -> None:
 
     payload["metadata"]["execution"]["offline_mode"] = False  # type: ignore[index]
     assert _score_from_gauntlet_json(payload).score == 0.75
+
+
+def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
+    payload = {
+        "final_score": 3.5,
+        "total_score": 3.5,
+        "base": 3.0,
+        "bonus": 0.5,
+        "penalty": 0.0,
+        "total_scenarios": 1,
+        "passed_scenarios": 1,
+        "mode": "eliza",
+        "model": "gpt-oss-120b",
+        "network": "testnet",
+        "demo_mode": True,
+    }
+    with pytest.raises(ValueError, match="demo-mode result"):
+        _score_from_hyperliquid_bench_json(payload)
+
+    payload["demo_mode"] = False
+    assert _score_from_hyperliquid_bench_json(payload).score == 3.5
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -563,6 +596,7 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -614,7 +648,53 @@ def test_gaia_matrix_rows_require_official_dataset_access(
 
     assert len(gaia_cells) == 6
     assert all(cell.compatible is False for cell in gaia_cells)
-    assert all("not in adapter compatibility" in str(cell.reason) for cell in gaia_cells)
+    assert all(
+        cell.reason == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+        for cell in gaia_cells
+    )
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    ["HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"],
+)
+def test_gaia_official_dataset_gate_accepts_hf_token_aliases(
+    monkeypatch: pytest.MonkeyPatch,
+    env_name: str,
+) -> None:
+    for name in orchestrator_adapters.HUGGINGFACE_TOKEN_ENV_VARS:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv(env_name, "token-value")
+    orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
+    try:
+        assert orchestrator_adapters._has_gaia_official_dataset() is True
+    finally:
+        orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
+
+
+def test_hyperliquid_matrix_rows_require_live_credentials(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: False)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id == "hyperliquid_bench"
+    ]
+
+    assert len(cells) == 3
+    assert all(cell.compatible is False for cell in cells)
+    assert all(
+        cell.reason == orchestrator_adapters.HYPERLIQUID_LIVE_UNAVAILABLE_REASON
+        for cell in cells
+    )
 
 
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:
@@ -650,6 +730,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         orchestrator_adapters,
         "_has_gauntlet_real_surfpool_backend",
         lambda: False,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hyperliquid_live_backend",
+        lambda: True,
     )
 
     report = build_cross_matrix_report(
@@ -1515,7 +1600,7 @@ def test_standard_academic_adapters_default_to_bounded_smoke(tmp_path: Path) -> 
     assert mt_command[mt_command.index("--judge-provider") + 1] == "cerebras"
     assert mt_command[mt_command.index("--judge-model") + 1] == "gpt-oss-120b"
     assert mt_command[mt_command.index("--judge-api-key-env") + 1] == "CEREBRAS_API_KEY"
-    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "256"
+    assert mt_command[mt_command.index("--judge-max-tokens") + 1] == "512"
 
 
 def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
@@ -1557,7 +1642,11 @@ def test_taubench_adapter_defaults_to_single_real_task(tmp_path: Path) -> None:
     assert command.count("--agent-max-turns") == 1
 
 
-def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> None:
+def test_remaining_smoke_defaults_bound_expensive_adapters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     adapters = discover_adapters(_workspace_root()).adapters
     expected_flags = {
         "configbench": ("--limit", "1"),
@@ -1676,6 +1765,7 @@ def test_remaining_smoke_defaults_bound_expensive_adapters(tmp_path: Path) -> No
     )
     command = adapter.command_builder(ctx, adapter)
     env = adapter.env_builder(ctx, adapter) if adapter.env_builder else {}
+    assert "--no-demo" in command
     assert command[command.index("--max-steps") + 1] == "1"
     assert command[command.index("--max-iterations") + 1] == "2"
     assert env["ELIZA_BENCH_HTTP_TIMEOUT"] == "90.0"

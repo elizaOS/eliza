@@ -89,6 +89,7 @@ type RemoteModuleCountTotals = Record<RequiredRemoteModuleCountField, number>;
 type RemoteSyncEvidence = {
   registeredPluginCount: number;
   registeredModuleKeys: Set<string>;
+  registeredModuleCountsByKey: Map<string, RemoteModuleCountTotals>;
   registeredRemoteModuleCounts: RemoteModuleCountTotals;
 };
 
@@ -416,6 +417,7 @@ function validateReportFile(
     validateCiEvidence(report.ci, options.matchGithubEnv);
   }
   if (kind === "cloud") {
+    rejectReportFields(report, ["provider", "providerId", "endpointUrlSha256"]);
     requireString(report.agentId, "agentId");
     requireHttpBaseUrl(report.cloudApiBase, "cloudApiBase");
   }
@@ -423,6 +425,13 @@ function validateReportFile(
     kind === "provider"
       ? requireProviderName(report.provider, "provider")
       : undefined;
+  if (kind === "provider") {
+    rejectReportFields(report, ["agentId", "cloudApiBase"]);
+    const providerId = requireProviderName(report.providerId, "providerId");
+    if (providerId !== provider) {
+      throw new Error("providerId must match provider.");
+    }
+  }
   const endpointUrlSha256 =
     kind === "provider"
       ? requireSha256(report.endpointUrlSha256, "endpointUrlSha256")
@@ -573,6 +582,11 @@ function validateReportFile(
       "conformance.routeResult.status must be a 2xx HTTP status.",
     );
   }
+  if (!isMeaningfulJsonEvidence(routeResult.body)) {
+    throw new Error(
+      "conformance.routeResult.body must be a non-empty JSON value.",
+    );
+  }
   const assetResult = requireObject(
     conformance.assetResult,
     "conformance.assetResult",
@@ -671,6 +685,16 @@ function validateReportFile(
     ...(provider === undefined ? {} : { provider }),
     ...(endpointUrlSha256 === undefined ? {} : { endpointUrlSha256 }),
   };
+}
+
+function rejectReportFields(
+  report: Record<string, unknown>,
+  fields: string[],
+): void {
+  const field = fields.find((candidate) => Object.hasOwn(report, candidate));
+  if (field) {
+    throw new Error(`${field} must not be present for ${report.kind} reports.`);
+  }
 }
 
 function validateRpcCalls(
@@ -963,6 +987,10 @@ function validateSyncEvidence(
     );
   }
   const registeredModuleKeys = new Set<string>();
+  const registeredModuleCountsByKey = new Map<
+    string,
+    RemoteModuleCountTotals
+  >();
   const registeredRemoteModuleCounts = Object.fromEntries(
     REQUIRED_REMOTE_MODULE_COUNT_FIELDS.map((field) => [field, 0]),
   ) as RemoteModuleCountTotals;
@@ -1016,6 +1044,15 @@ function validateSyncEvidence(
       throw new Error("sync.registeredModules must not contain duplicates.");
     }
     registeredModuleKeys.add(registeredModuleKey);
+    registeredModuleCountsByKey.set(
+      registeredModuleKey,
+      Object.fromEntries(
+        REQUIRED_REMOTE_MODULE_COUNT_FIELDS.map((field) => [
+          field,
+          item[field] as number,
+        ]),
+      ) as RemoteModuleCountTotals,
+    );
   }
   for (const [field, count] of Object.entries(registeredRemoteModuleCounts)) {
     if (count <= 0) {
@@ -1131,6 +1168,7 @@ function validateSyncEvidence(
   return {
     registeredPluginCount: registered.length,
     registeredModuleKeys,
+    registeredModuleCountsByKey,
     registeredRemoteModuleCounts,
   };
 }
@@ -1143,9 +1181,14 @@ function validateRuntimeEvidence(
   const {
     registeredPluginCount,
     registeredModuleKeys,
+    registeredModuleCountsByKey,
     registeredRemoteModuleCounts,
   } = syncEvidence;
-  validateRuntimeRemotePlugins(runtime.remotePlugins, registeredModuleKeys);
+  validateRuntimeRemotePlugins(
+    runtime.remotePlugins,
+    registeredModuleKeys,
+    registeredModuleCountsByKey,
+  );
   requirePositiveCountAtLeast(
     runtime.pluginCount,
     "runtime.pluginCount",
@@ -1231,6 +1274,7 @@ function validateRuntimeEvidence(
 function validateRuntimeRemotePlugins(
   value: unknown,
   registeredModuleKeys: Set<string>,
+  registeredModuleCountsByKey: Map<string, RemoteModuleCountTotals>,
 ): void {
   const remotePlugins = requireArray(value, "runtime.remotePlugins");
   const runtimeModuleKeys = new Set<string>();
@@ -1251,6 +1295,22 @@ function validateRuntimeRemotePlugins(
     const runtimeModuleKey = `${endpointId}\0${moduleId}\0${pluginName}`;
     if (runtimeModuleKeys.has(runtimeModuleKey)) {
       throw new Error("runtime.remotePlugins must not contain duplicates.");
+    }
+    const registeredCounts = registeredModuleCountsByKey.get(runtimeModuleKey);
+    if (!registeredCounts) {
+      runtimeModuleKeys.add(runtimeModuleKey);
+      continue;
+    }
+    for (const field of REQUIRED_REMOTE_MODULE_COUNT_FIELDS) {
+      const runtimeCount = requireNonNegativeInteger(
+        item[field],
+        `runtime.remotePlugins[${index}].${field}`,
+      );
+      if (runtimeCount !== registeredCounts[field]) {
+        throw new Error(
+          `runtime.remotePlugins[${index}].${field} must match sync.registeredModules.`,
+        );
+      }
     }
     runtimeModuleKeys.add(runtimeModuleKey);
   }
@@ -1353,6 +1413,14 @@ function validateAssetIntegritySha256(
       "conformance.assetResult.integrity must match conformance.assetResult.sha256.",
     );
   }
+}
+
+function isMeaningfulJsonEvidence(value: unknown): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value === "string") return value.trim().length > 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return true;
 }
 
 function validateModelResult(value: unknown): void {

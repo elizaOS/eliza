@@ -384,7 +384,7 @@ def test_rebuild_latest_publishes_estimated_token_rows_with_warning(
     assert set(index["latest"]) == {"action-calling::eliza"}
 
 
-def test_rebuild_latest_warns_for_sample_task_sets(tmp_path: Path) -> None:
+def test_rebuild_latest_quarantines_sample_task_sets(tmp_path: Path) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)
     create_run_group(
@@ -420,9 +420,11 @@ def test_rebuild_latest_warns_for_sample_task_sets(tmp_path: Path) -> None:
         {"webshop": _adapter("webshop")},
     )
 
+    assert not (tmp_path / "latest" / "webshop__eliza.json").exists()
     payload = json.loads(
-        (tmp_path / "latest" / "webshop__eliza.json").read_text(encoding="utf-8")
+        (tmp_path / "quarantine" / "webshop__eliza.json").read_text(encoding="utf-8")
     )
+    assert payload["quarantine_reason"] == "sample_task_set"
     assert "sample_task_set" in payload["publication_warnings"]
     assert "insufficient_total_instances:1" in payload["publication_warnings"]
     assert "insufficient_total_samples:2" in payload["publication_warnings"]
@@ -432,7 +434,7 @@ def test_rebuild_latest_warns_for_sample_task_sets(tmp_path: Path) -> None:
     assert "insufficient_n:2" in payload["publication_warnings"]
 
 
-def test_rebuild_latest_warns_for_sample_dataset_sources(tmp_path: Path) -> None:
+def test_rebuild_latest_quarantines_sample_dataset_sources(tmp_path: Path) -> None:
     conn = connect_database(tmp_path / "orchestrator.sqlite")
     initialize_database(conn)
     create_run_group(
@@ -460,10 +462,53 @@ def test_rebuild_latest_warns_for_sample_dataset_sources(tmp_path: Path) -> None
 
     _rebuild_latest_result_snapshots(conn, tmp_path, {"gaia": _adapter("gaia")})
 
+    assert not (tmp_path / "latest" / "gaia__eliza.json").exists()
     payload = json.loads(
-        (tmp_path / "latest" / "gaia__eliza.json").read_text(encoding="utf-8")
+        (tmp_path / "quarantine" / "gaia__eliza.json").read_text(encoding="utf-8")
     )
+    assert payload["quarantine_reason"] == "sample_task_set"
     assert "sample_task_set" in payload["publication_warnings"]
+
+
+def test_rebuild_latest_quarantines_demo_mode_results(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["hyperliquid_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hyperliquid_bench",
+        agent="eliza",
+        run_id="run_hl_demo",
+        started_at="2026-05-12T00:00:00+00:00",
+        metrics={
+            "final_score": 3.5,
+            "total_scenarios": 1,
+            "demo_mode": True,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 3},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"hyperliquid_bench": _adapter("hyperliquid_bench")},
+    )
+
+    assert not (tmp_path / "latest" / "hyperliquid_bench__eliza.json").exists()
+    payload = json.loads(
+        (tmp_path / "quarantine" / "hyperliquid_bench__eliza.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert payload["quarantine_reason"] == "demo_mode"
+    assert "demo_mode" in payload["publication_warnings"]
 
 
 def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
@@ -986,6 +1031,60 @@ def test_rebuild_latest_prunes_scoreless_preserved_snapshot_from_partial_db(
         conn,
         tmp_path,
         {"bfcl": _adapter("bfcl"), "webshop": _adapter("webshop")},
+    )
+
+    assert (tmp_path / "latest" / "bfcl__eliza.json").exists()
+    assert not fake_latest.exists()
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert set(index["latest"]) == {"bfcl::eliza"}
+
+
+def test_rebuild_latest_prunes_sample_preserved_snapshot_from_partial_db(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["bfcl"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="bfcl",
+        agent="eliza",
+        run_id="run_bfcl",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+    fake_latest = tmp_path / "latest" / "gaia__eliza.json"
+    fake_latest.parent.mkdir(parents=True, exist_ok=True)
+    fake_latest.write_text(
+        json.dumps(
+            {
+                "benchmark_id": "gaia",
+                "benchmark_directory": "gaia",
+                "agent": "eliza",
+                "status": "succeeded",
+                "score": 1.0,
+                "metrics": {"dataset_source": "sample"},
+                "run_id": "fake_gaia_sample",
+                "run_group_id": "rg_old",
+                "signature": "sig-fake",
+                "comparison_signature": "cmp-fake",
+                "updated_at": "2026-05-11T00:00:00+00:00",
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"bfcl": _adapter("bfcl"), "gaia": _adapter("gaia")},
     )
 
     assert (tmp_path / "latest" / "bfcl__eliza.json").exists()

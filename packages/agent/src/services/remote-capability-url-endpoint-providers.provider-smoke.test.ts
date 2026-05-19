@@ -137,6 +137,7 @@ describe("URL-backed remote capability endpoint providers live smoke", () => {
           schemaVersion: 1,
           kind: "provider",
           provider: target.label,
+          providerId: result.providerId,
           endpointUrlSha256: summarizeRemoteCapabilityEndpointUrlFingerprint(
             options.baseUrl,
           ),

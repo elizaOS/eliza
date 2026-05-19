@@ -92,11 +92,28 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
+GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON = (
+    "official GAIA dataset access unavailable "
+    "(set HF_TOKEN/HUGGINGFACE_HUB_TOKEN or GAIA_DATASET_PATH, "
+    "or pre-cache gaia-benchmark/GAIA); "
+    "harness not run"
+)
+HUGGINGFACE_TOKEN_ENV_VARS: tuple[str, ...] = (
+    "HF_TOKEN",
+    "HUGGINGFACE_HUB_TOKEN",
+    "HUGGINGFACE_TOKEN",
+)
+HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
+    "Hyperliquid live execution unavailable "
+    "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
+)
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
     if benchmark_id in {"gaia", "gaia_orchestrated"}:
         return ALL_HARNESSES if _has_gaia_official_dataset() else ()
+    if benchmark_id == "hyperliquid_bench":
+        return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -122,13 +139,15 @@ _GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
 
 _GAIA_OFFICIAL_DATASET_AVAILABLE: bool | None = None
 
+_HYPERLIQUID_LIVE_AVAILABLE: bool | None = None
+
 
 def _has_gaia_official_dataset() -> bool:
     """Return true when official GAIA can run without sample fallback."""
     global _GAIA_OFFICIAL_DATASET_AVAILABLE
     if _GAIA_OFFICIAL_DATASET_AVAILABLE is not None:
         return _GAIA_OFFICIAL_DATASET_AVAILABLE
-    if os.environ.get("HF_TOKEN"):
+    if any(os.environ.get(name) for name in HUGGINGFACE_TOKEN_ENV_VARS):
         _GAIA_OFFICIAL_DATASET_AVAILABLE = True
         return True
     dataset_path = os.environ.get("GAIA_DATASET_PATH")
@@ -147,6 +166,15 @@ def _has_gaia_official_dataset() -> bool:
         if root.exists()
     )
     return _GAIA_OFFICIAL_DATASET_AVAILABLE
+
+
+def _has_hyperliquid_live_backend() -> bool:
+    """Return true when Hyperliquid can run outside demo/smoke mode."""
+    global _HYPERLIQUID_LIVE_AVAILABLE
+    if _HYPERLIQUID_LIVE_AVAILABLE is not None:
+        return _HYPERLIQUID_LIVE_AVAILABLE
+    _HYPERLIQUID_LIVE_AVAILABLE = bool(os.environ.get("HL_PRIVATE_KEY"))
+    return _HYPERLIQUID_LIVE_AVAILABLE
 
 
 def _surfpool_start_help(binary: str) -> str:
@@ -2404,6 +2432,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_iterations": 2,
             "eliza_bench_http_timeout_s": 90,
             "hl_bench_command_timeout_s": 60,
+            "no_demo": True,
         },
         "gsm8k": {
             "limit": 2,

@@ -243,6 +243,15 @@ function firstExisting(...c) {
   return c.find((p) => p && fs.existsSync(p)) || null;
 }
 
+function readJsonIfPresent(p) {
+  if (!p || !fs.existsSync(p)) return null;
+  try {
+    return JSON.parse(fs.readFileSync(p, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
 function bundleFiles(bundleDir, tier) {
   const text = firstExisting(
     ...fs
@@ -263,18 +272,17 @@ function bundleFiles(bundleDir, tier) {
     : [];
   const ttsTok = ttsGgufs.find((f) => /token/i.test(f));
   const ttsBase = ttsGgufs.find((f) => !/token/i.test(f)) || ttsGgufs[0];
-  let manifest = null;
   const manifestPath = path.join(bundleDir, "eliza-1.manifest.json");
-  if (fs.existsSync(manifestPath)) {
-    try {
-      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    } catch {
-      manifest = null;
-    }
-  }
+  const manifest = readJsonIfPresent(manifestPath);
+  const dflashDisabledPolicy = firstExisting(
+    path.join(bundleDir, "dflash", `dflash-disabled-${tier}.release-policy.json`),
+    path.join(bundleDir, "dflash", "dflash-disabled.release-policy.json"),
+  );
   return {
     text,
     drafter,
+    dflashDisabledPolicy,
+    dflashDisabled: !!dflashDisabledPolicy,
     ttsModel: ttsBase ? path.join(ttsDir, ttsBase) : null,
     ttsCodec: ttsTok ? path.join(ttsDir, ttsTok) : null,
     asr: firstExisting(
@@ -1177,14 +1185,15 @@ async function main() {
     };
     return finish(out, args, logFn);
   }
-  if (!isRealGguf(files.text) || !isRealGguf(files.drafter, 10_000_000) || !isRealGguf(files.ttsModel) || !isRealGguf(files.ttsCodec) || !isRealGguf(files.asr, 1_000_000)) {
+  const drafterReady = files.dflashDisabled || isRealGguf(files.drafter, 10_000_000);
+  if (!isRealGguf(files.text) || !drafterReady || !isRealGguf(files.ttsModel) || !isRealGguf(files.ttsCodec) || !isRealGguf(files.asr, 1_000_000)) {
     const out = {
       ...baseReport,
       status: "needs-bundle",
       reason: "bundle is missing one of text/drafter/tts-model/tts-codec/asr GGUFs (stand-in or incomplete)",
       bundleArtifacts: {
         text: !!isRealGguf(files.text),
-        drafter: !!isRealGguf(files.drafter, 10_000_000),
+        drafter: files.dflashDisabled ? "disabled-by-policy" : !!isRealGguf(files.drafter, 10_000_000),
         ttsModel: !!isRealGguf(files.ttsModel),
         ttsCodec: !!isRealGguf(files.ttsCodec),
         asr: !!isRealGguf(files.asr, 1_000_000),
@@ -1221,9 +1230,6 @@ async function main() {
     };
     const serverArgs = [
       "-m", files.text,
-      "-md", files.drafter,
-      "--spec-type", "dflash",
-      "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
       "--port", String(port),
       "-c", String(args.ctx),
       "-ngl", String(args.ngl),
@@ -1231,7 +1237,17 @@ async function main() {
       "--no-warmup",
       "--metrics",
     ];
-    logFn(`starting fused llama-server: ${path.basename(engine.dir)} port=${port} text=${path.basename(files.text)} drafter=${path.basename(files.drafter)}`);
+    if (!files.dflashDisabled) {
+      serverArgs.splice(2, 0,
+        "-md", files.drafter,
+        "--spec-type", "dflash",
+        "--spec-draft-n-min", "2", "--spec-draft-n-max", "6",
+      );
+    }
+    logFn(
+      `starting fused llama-server: ${path.basename(engine.dir)} port=${port} text=${path.basename(files.text)} ` +
+        (files.dflashDisabled ? `drafter=disabled (${path.basename(files.dflashDisabledPolicy)})` : `drafter=${path.basename(files.drafter)}`),
+    );
     const srvLog = fs.createWriteStream(path.join(tmpDir, "server.log"));
     serverChild = spawn(engine.server, serverArgs, { cwd: engine.dir, env, stdio: ["ignore", "pipe", "pipe"] });
     serverChild.stdout.pipe(srvLog);
@@ -1376,10 +1392,10 @@ async function main() {
     const flowCompletedOk = turnReports.length > 0 &&
       turnReports.every((r) => r.gen.firstTokenMs != null && r.tts.audioSec != null && r.tts.audioSec > 0 && r.totalTurnMs != null);
     const requiredOptimizations = {
-      dflashDraftingActive: summary.dflashDraftedTotal > 0,
+      dflashDraftingActive: files.dflashDisabled ? null : summary.dflashDraftedTotal > 0,
       streamingTtsActive: bargeIn?.ttsStreamSupported === true,
     };
-    const optimizationReadyOk = Object.values(requiredOptimizations).every(Boolean);
+    const optimizationReadyOk = Object.values(requiredOptimizations).filter((v) => v !== null).every(Boolean);
     const e2eLoopOk = flowCompletedOk;
     const thirtyTurnOk = totalTurns >= 30 ? flowCompletedOk && !leakSuspected && (ramWithinBudget !== false) : null;
     summary.flowCompletedOk = flowCompletedOk;
