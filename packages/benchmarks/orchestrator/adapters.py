@@ -2434,7 +2434,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "judge_api_key_env": "CEREBRAS_API_KEY",
         },
         "tau_bench": {
-            "agent_max_turns": 10,
+            "agent_max_turns": 14,
             "domain": "retail",
             "max_tasks": 1,
             "num_trials": 1,

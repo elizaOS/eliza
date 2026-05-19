@@ -22,8 +22,12 @@ void llama_model_dflash_draft::load_arch_hparams(llama_model_loader & ml) {
     ml.get_key(LLM_KV_DFLASH_MASK_TOKEN_ID,        hparams.dflash_mask_token_id, false);
     ml.get_key(LLM_KV_DFLASH_N_TARGET_FEATURES,    hparams.dflash_n_target_features, false);
 
-    const std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
-    const int kid = gguf_find_key(ml.metadata, key.c_str());
+    std::string key = ml.llm_kv(LLM_KV_DFLASH_TARGET_LAYER_IDS);
+    int kid = gguf_find_key(ml.metadata, key.c_str());
+    if (kid < 0) {
+        key = "dflash.target_layer_ids";
+        kid = gguf_find_key(ml.metadata, key.c_str());
+    }
     if (kid >= 0 && gguf_get_kv_type(ml.metadata, kid) == GGUF_TYPE_ARRAY) {
         const enum gguf_type arr_type = gguf_get_arr_type(ml.metadata, kid);
         const size_t n = gguf_get_arr_n(ml.metadata, kid);
@@ -37,6 +41,13 @@ void llama_model_dflash_draft::load_arch_hparams(llama_model_loader & ml) {
             }
         }
     }
+    if (hparams.dflash_n_target_layers > 0) {
+        const uint32_t derived_n_target_features =
+            hparams.n_embd * hparams.dflash_n_target_layers;
+        if (hparams.dflash_n_target_features == 25600) {
+            hparams.dflash_n_target_features = derived_n_target_features;
+        }
+    }
 
     switch (hparams.n_layer) {
         case 5: type = LLM_TYPE_0_6B; break;
@@ -46,6 +57,14 @@ void llama_model_dflash_draft::load_arch_hparams(llama_model_loader & ml) {
 
 void llama_model_dflash_draft::load_arch_tensors(llama_model_loader &) {
     LLAMA_LOAD_LOCALS;
+
+    if (hparams.dflash_n_target_layers > 0) {
+        const uint32_t derived_n_target_features =
+            hparams.n_embd * hparams.dflash_n_target_layers;
+        if (hparams.dflash_n_target_features == 25600) {
+            hparams.dflash_n_target_features = derived_n_target_features;
+        }
+    }
 
     // Shared from the target model at runtime. The DFlash GGUF does not carry
     // standalone token or output embeddings.
@@ -61,7 +80,7 @@ void llama_model_dflash_draft::load_arch_tensors(llama_model_loader &) {
         auto & layer = layers[i];
 
         layer.attn_norm      = create_tensor(tn(LLM_TENSOR_ATTN_NORM,      "weight", i), {n_embd}, 0);
-        layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_ATTN_POST_NORM, "weight", i), {n_embd}, 0);
+        layer.attn_post_norm = create_tensor(tn(LLM_TENSOR_FFN_NORM,       "weight", i), {n_embd}, 0);
 
         layer.wq = create_tensor(tn(LLM_TENSOR_ATTN_Q,   "weight", i), {n_embd, n_embd_head_k * n_head}, 0);
         layer.wk = create_tensor(tn(LLM_TENSOR_ATTN_K,   "weight", i), {n_embd, n_embd_gqa}, 0);

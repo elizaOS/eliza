@@ -1,6 +1,7 @@
 import {
   CAPABILITY_ROUTER_SERVICE_TYPE,
   type IAgentRuntime,
+  type RemotePluginModuleManifest,
 } from "@elizaos/core";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 import {
@@ -69,16 +70,29 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
   const modules = (
     await service.plugin.listModules({ endpointId: provisioned.endpoint.id })
   ).modules;
+  const { trustedModules, skipped } = selectAllowedRemoteCapabilityModules(
+    modules,
+    allowedModuleIds,
+  );
   const sync = await syncRemoteCapabilityPlugins(runtime, {
     unloadMissing: options.unloadMissing,
     unloadMissingEndpointIds: [provisioned.endpoint.id],
-    modules,
+    modules: trustedModules,
     trustPolicy: buildRemoteCapabilityEndpointTrustPolicy(
       provisioned.endpoint.id,
       allowedModuleIds,
     ),
   });
-  return { ...provisioned, allowedModuleIds, sync };
+  return {
+    ...provisioned,
+    allowedModuleIds,
+    sync: {
+      ...sync,
+      skipped: mergeSkippedRemoteCapabilityPlugins(sync.skipped, skipped, {
+        unloaded: sync.unloaded,
+      }),
+    },
+  };
 }
 
 export function directRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpointProvider<{
@@ -158,4 +172,41 @@ function mergeRemoteCapabilityEndpoints(
 
 function stripTrailingSlash(value: string): string {
   return value.replace(/\/+$/, "");
+}
+
+function selectAllowedRemoteCapabilityModules(
+  modules: RemotePluginModuleManifest[],
+  allowedModuleIds: string[] | undefined,
+): {
+  trustedModules: RemotePluginModuleManifest[];
+  skipped: string[];
+} {
+  if (allowedModuleIds === undefined) {
+    return { trustedModules: modules, skipped: [] };
+  }
+  const allowed = new Set(allowedModuleIds);
+  const trustedModules: RemotePluginModuleManifest[] = [];
+  const skipped: string[] = [];
+  for (const module of modules) {
+    if (allowed.has(module.id)) {
+      trustedModules.push(module);
+    } else {
+      skipped.push(module.name);
+    }
+  }
+  return { trustedModules, skipped };
+}
+
+function mergeSkippedRemoteCapabilityPlugins(
+  existing: string[],
+  additional: string[],
+  options: { unloaded: string[] },
+): string[] {
+  const unloaded = new Set(options.unloaded);
+  const skipped = new Set<string>();
+  for (const pluginName of [...existing, ...additional]) {
+    if (unloaded.has(pluginName)) continue;
+    skipped.add(pluginName);
+  }
+  return [...skipped];
 }

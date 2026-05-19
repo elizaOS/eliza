@@ -516,6 +516,14 @@ export async function assertRemoteCapabilityEndpointConformance(
     );
   }
 
+  await exerciseUncoveredModules(
+    router,
+    options,
+    report,
+    modules,
+    exerciseCounts,
+  );
+
   return report;
 }
 
@@ -562,14 +570,310 @@ function recordExercise(
   surface: RemoteCapabilityEndpointConformanceSurface,
   moduleId: string,
   target: string,
+  options: { summarize?: boolean } = {},
 ): void {
-  report.exercised[surface] = `${moduleId}:${target}`;
+  if (options.summarize !== false) {
+    report.exercised[surface] = `${moduleId}:${target}`;
+  }
   report.moduleExercises.push({
     surface,
     moduleId,
     target: `${moduleId}:${target}`,
   });
   exerciseCounts.set(moduleId, (exerciseCounts.get(moduleId) ?? 0) + 1);
+}
+
+async function exerciseUncoveredModules(
+  router: RemoteCapabilityRouterService,
+  options: RemoteCapabilityEndpointConformanceOptions,
+  report: RemoteCapabilityEndpointConformanceReport,
+  modules: RemotePluginModuleManifest[],
+  exerciseCounts: Map<string, number>,
+): Promise<void> {
+  for (const module of modules) {
+    if ((exerciseCounts.get(module.id) ?? 0) > 0) continue;
+    const action = module.actions?.[0];
+    if (action) {
+      await router.plugin.invokeAction({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        action: action.name,
+        content: options.actionContent ?? {
+          text: "capability-router conformance action",
+        },
+      });
+      recordExercise(report, exerciseCounts, "action", module.id, action.name, {
+        summarize: false,
+      });
+      continue;
+    }
+    const provider = module.providers?.[0];
+    if (provider) {
+      await router.plugin.getProvider({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        provider: provider.name,
+        state: {},
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "provider",
+        module.id,
+        provider.name,
+        { summarize: false },
+      );
+      continue;
+    }
+    const route = module.routes?.[0];
+    if (route) {
+      const result = await router.plugin.callRoute({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        method: route.method,
+        path: route.path,
+        headers: {},
+        body: options.routeBody ?? { conformance: true },
+      });
+      if (
+        typeof result.status !== "number" ||
+        result.status < 200 ||
+        result.status > 299
+      ) {
+        throw new Error(
+          `Capability endpoint "${options.endpoint.id}" returned a non-2xx route status.`,
+        );
+      }
+      recordExercise(
+        report,
+        exerciseCounts,
+        "route",
+        module.id,
+        `${route.method} ${route.path}`,
+        { summarize: false },
+      );
+      continue;
+    }
+    const view = module.views?.find((candidate) => candidate.bundlePath);
+    if (view?.bundlePath) {
+      const assetResult = await router.plugin.getAsset({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        path: view.bundlePath,
+      });
+      const assetBytes = Buffer.from(assetResult.bodyBase64, "base64");
+      if (assetBytes.byteLength === 0) {
+        throw new Error(
+          `Capability endpoint "${options.endpoint.id}" returned an empty view asset.`,
+        );
+      }
+      if (!/\.(?:js|mjs)$/i.test(assetResult.path)) {
+        throw new Error(
+          `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset path.`,
+        );
+      }
+      if (!/(?:java|ecma)script/i.test(assetResult.contentType)) {
+        throw new Error(
+          `Capability endpoint "${options.endpoint.id}" returned a non-JavaScript view asset content type.`,
+        );
+      }
+      recordExercise(
+        report,
+        exerciseCounts,
+        "viewAsset",
+        module.id,
+        view.bundlePath,
+        { summarize: false },
+      );
+      continue;
+    }
+    const model = module.models?.[0];
+    if (model) {
+      await router.plugin.invokeModel({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        modelType: model.modelType,
+        params: { prompt: "capability-router conformance model" },
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "model",
+        module.id,
+        model.modelType,
+        { summarize: false },
+      );
+      continue;
+    }
+    const hook = module.lifecycle?.hooks?.[0];
+    if (hook) {
+      await router.plugin.callLifecycle({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        hook,
+        context: { conformance: true },
+      });
+      recordExercise(report, exerciseCounts, "lifecycle", module.id, hook, {
+        summarize: false,
+      });
+      continue;
+    }
+    const event = module.events?.[0];
+    if (event) {
+      await router.plugin.handleEvent({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        eventName: event.eventName,
+        payload: { conformance: true },
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "event",
+        module.id,
+        event.eventName,
+        { summarize: false },
+      );
+      continue;
+    }
+    const service = module.services?.find(
+      (candidate) => candidate.methods?.[0],
+    );
+    const method = service?.methods?.[0];
+    if (service && method) {
+      await router.plugin.callService({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        serviceType: service.serviceType,
+        method,
+        args: [{ conformance: true }],
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "service",
+        module.id,
+        `${service.serviceType}.${method}`,
+        { summarize: false },
+      );
+      continue;
+    }
+    const appBridgeHook = module.appBridge?.hooks?.[0];
+    if (appBridgeHook) {
+      await router.plugin.callAppBridge({
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        hook: appBridgeHook,
+        context: {
+          method: "GET",
+          pathname: "/capability-router-conformance",
+          path: "/capability-router-conformance",
+          query: {},
+          headers: {},
+        },
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "appBridge",
+        module.id,
+        appBridgeHook,
+        { summarize: false },
+      );
+      continue;
+    }
+    const evaluator = module.evaluators?.[0];
+    if (evaluator) {
+      const common = {
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        evaluator: evaluator.name,
+        message: { text: "capability-router conformance evaluator" },
+        state: {},
+        options: {},
+      };
+      await router.plugin.shouldRunEvaluator(common);
+      const prepare = await router.plugin.prepareEvaluator(common);
+      const prompt = await router.plugin.promptEvaluator({
+        ...common,
+        ...(prepare.prepared === undefined
+          ? {}
+          : { prepared: prepare.prepared }),
+      });
+      await router.plugin.processEvaluator({
+        ...common,
+        ...(prepare.prepared === undefined
+          ? {}
+          : { prepared: prepare.prepared }),
+        output: { prompt: prompt.prompt },
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "evaluator",
+        module.id,
+        evaluator.name,
+        { summarize: false },
+      );
+      continue;
+    }
+    const responseEvaluator = module.responseHandlerEvaluators?.[0];
+    if (responseEvaluator) {
+      const common = {
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        evaluator: responseEvaluator.name,
+        context: { conformance: true },
+      };
+      await router.plugin.shouldRunResponseHandlerEvaluator(common);
+      await router.plugin.evaluateResponseHandlerEvaluator(common);
+      recordExercise(
+        report,
+        exerciseCounts,
+        "responseHandlerEvaluator",
+        module.id,
+        responseEvaluator.name,
+        { summarize: false },
+      );
+      continue;
+    }
+    const responseField = module.responseHandlerFieldEvaluators?.[0];
+    if (responseField) {
+      const common = {
+        endpointId: options.endpoint.id,
+        moduleId: module.id,
+        field: responseField.name,
+        context: { conformance: true },
+      };
+      await router.plugin.shouldRunResponseHandlerFieldEvaluator(common);
+      const parse = await router.plugin.parseResponseHandlerFieldEvaluator({
+        ...common,
+        value: { raw: true },
+      });
+      await router.plugin.handleResponseHandlerFieldEvaluator({
+        ...common,
+        value: { raw: true },
+        ...(parse.value === undefined ||
+        typeof parse.value !== "object" ||
+        parse.value === null ||
+        Array.isArray(parse.value)
+          ? {}
+          : { parsed: parse.value }),
+      });
+      recordExercise(
+        report,
+        exerciseCounts,
+        "responseHandlerFieldEvaluator",
+        module.id,
+        responseField.name,
+        { summarize: false },
+      );
+      continue;
+    }
+    throw new Error(
+      `Capability endpoint "${options.endpoint.id}" module "${module.id}" did not expose an exercisable remote plugin surface.`,
+    );
+  }
 }
 
 function findActionTarget(modules: RemotePluginModuleManifest[]) {

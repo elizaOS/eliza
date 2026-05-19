@@ -539,6 +539,11 @@ modules stamped by the installed endpoint can enter the runtime. Connect
 requests may also provide `allowedModuleIds` to pin the exact remote modules
 that are allowed to register from that endpoint; the CLI exposes this as
 `elizaos capability-router connect --allowed-module <module-id...>`.
+Endpoint-provider connects apply module allowlists before sync, so a shared
+remote endpoint can expose multiple modules while the agent materializes only
+the trusted subset and records non-allowlisted plugin names in `sync.skipped`.
+The lower-level sync/register APIs remain strict and raise a structured trust
+error when asked to register a non-allowlisted module directly.
 Cloud connect requests accept module allowlists either at the top level or
 inside the `cloud` object. Supplying both is rejected so a trust policy cannot
 silently prefer one source over another.
@@ -991,7 +996,10 @@ and URLs with embedded credentials anywhere in the artifact. Every exercised RPC
 target must also start with one of the module ids observed in the live manifest,
 and that same module id must also appear in the trusted registered module set.
 Every registered module id must be exercised by at least one conformance RPC
-target recorded in `conformance.moduleExercises`.
+target recorded in `conformance.moduleExercises`. The conformance harness keeps
+the required surface summary in `conformance.exercised`, then performs
+additional cheap RPC calls for untouched modules so multi-module endpoints still
+produce per-module exercise evidence without overwriting the summary target.
 `sync.registered` and `sync.registeredModules` must not contain duplicate
 materialized plugin/module identities, and every registered module must have a
 unique trusted `sync.trustDecisions` entry, so full-surface evidence is tied

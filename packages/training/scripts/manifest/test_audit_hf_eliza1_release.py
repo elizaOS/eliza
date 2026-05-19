@@ -490,6 +490,39 @@ def _passing_dataset_live_audit() -> str:
     )
 
 
+def _passing_active_sft_manifest() -> str:
+    return __import__("json").dumps(
+        {
+            "schema": "eliza.eliza1_sft_0_8b_manifest.v1",
+            "base_model": "Qwen/Qwen3.5-0.8B",
+            "published_name": "eliza-1-0_8b",
+            "counts": {"train": 116, "val": 6, "test": 3, "total": 125},
+            "privacy_filter": {
+                "backend": "privacy_filter_trajectories.redact_value (canonical inline filter)",
+                "rows_changed": True,
+                "markers_introduced": 10,
+                "real_user_trajectories_consumed": 0,
+            },
+            "cerebras_augmented": 0,
+        }
+    )
+
+
+def _passing_active_sft_validation() -> str:
+    return __import__("json").dumps(
+        {
+            "schema": "eliza.eliza1_sft_0_8b_validation.v1",
+            "passed": True,
+            "blockers": [],
+            "splits": {
+                "train": {"rows": 116, "sha256": "a" * 64},
+                "val": {"rows": 6, "sha256": "b" * 64},
+                "test": {"rows": 3, "sha256": "c" * 64},
+            },
+        }
+    )
+
+
 def _passing_dflash_target_meta(tier: str) -> str:
     return __import__("json").dumps(
         {
@@ -1524,6 +1557,53 @@ def test_hf_release_audit_blocks_dirty_dataset_live_audit() -> None:
         and "hashMismatches: non-empty" in check["detail"]
         and "secretScan.passed: False" in check["detail"]
         and "rowCounts total: 1425 != manifest 1426" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_active_sft_package() -> None:
+    paths = _complete_dataset_paths()
+    paths.remove(f"{ACTIVE_TEXT_SFT_ROOT}/validation.json")
+
+    report = audit_hf_release(fetch_json=_fetcher(dataset_paths=paths), fetch_text=_text_fetcher())
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset active 0_8b SFT package present"
+        and f"{ACTIVE_TEXT_SFT_ROOT}/validation.json" in check["detail"]
+        for check in failed
+    )
+    assert any(
+        check["name"] == "dataset active 0_8b SFT validation passed"
+        and f"{ACTIVE_TEXT_SFT_ROOT}/validation.json" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_dirty_active_sft_validation() -> None:
+    manifest = __import__("json").loads(_passing_active_sft_manifest())
+    validation = __import__("json").loads(_passing_active_sft_validation())
+    manifest["base_model"] = "Qwen/Qwen3.5-0.8B-legacy"
+    manifest["privacy_filter"]["real_user_trajectories_consumed"] = 1
+    validation["passed"] = False
+    validation["splits"]["train"]["rows"] = 115
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(
+            active_sft_manifest=__import__("json").dumps(manifest),
+            active_sft_validation=__import__("json").dumps(validation),
+        ),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "dataset active 0_8b SFT validation passed"
+        and "manifest.base_model: 'Qwen/Qwen3.5-0.8B-legacy'" in check["detail"]
+        and "validation.passed: False" in check["detail"]
+        and "validation.splits.train.rows: 115 != 116" in check["detail"]
         for check in failed
     )
 

@@ -205,8 +205,18 @@ function patchArchCpp(source, rel) {
   out = insertAfter(
     out,
     '    { LLM_ARCH_QWEN35MOE,        "qwen35moe"        },\n',
-    '    { LLM_ARCH_DFLASH_DRAFT,     "dflash-draft"     },\n',
+    '    { LLM_ARCH_DFLASH_DRAFT,     "dflash"           },\n',
     rel,
+  );
+  out = insertAfter(
+    out,
+    "llm_arch llm_arch_from_string(const std::string & name) {\n",
+    `    if (name == "dflash-draft") {
+        return LLM_ARCH_DFLASH_DRAFT;
+    }
+`,
+    rel,
+    'if (name == "dflash-draft")',
   );
   out = insertAfter(
     out,
@@ -222,7 +232,7 @@ function patchArchCpp(source, rel) {
   out = insertAfter(
     out,
     '    { LLM_TENSOR_OUTPUT,                                 "output" },\n',
-    '    { LLM_TENSOR_DFLASH_FC,                              "dflash_fc" },\n    { LLM_TENSOR_DFLASH_HIDDEN_NORM,                     "dflash_hidden_norm" },\n',
+    '    { LLM_TENSOR_DFLASH_FC,                              "fc" },\n    { LLM_TENSOR_DFLASH_HIDDEN_NORM,                     "hidden_norm" },\n',
     rel,
   );
   // Older llama.cpp pins kept the per-architecture tensor set in
@@ -475,7 +485,8 @@ function patchModelCpp(source, rel, metadataExpr = "ml.metadata") {
 function verifyDflashDrafterArchPatch(llamaCppRoot, modelRel) {
   const requiredMarkers = [
     ["src/llama-arch.h", "LLM_ARCH_DFLASH_DRAFT"],
-    ["src/llama-arch.cpp", '"dflash-draft"'],
+    ["src/llama-arch.cpp", '"dflash"'],
+    ["src/llama-arch.cpp", 'if (name == "dflash-draft")'],
     ["src/llama-hparams.h", "dflash_n_target_features"],
     ["src/llama-model.h", "dflash_hidden_norm"],
     ["src/models/models.h", "llm_build_dflash_draft"],

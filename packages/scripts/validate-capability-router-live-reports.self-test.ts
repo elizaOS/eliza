@@ -14,6 +14,10 @@ async function main(): Promise<void> {
   );
   try {
     const completeDir = join(workspace, "complete");
+    const completeExtraExercisesDir = join(
+      workspace,
+      "complete-extra-exercises",
+    );
     const cloudOnlyDir = join(workspace, "cloud-only");
     const ciDir = join(workspace, "ci");
     const malformedCiDir = join(workspace, "malformed-ci");
@@ -83,9 +87,13 @@ async function main(): Promise<void> {
       workspace,
       "registered-unexercised",
     );
-    const mismatchedModuleExerciseDir = join(
+    const missingSummaryModuleExerciseDir = join(
       workspace,
-      "mismatched-module-exercise",
+      "missing-summary-module-exercise",
+    );
+    const duplicateModuleExerciseDir = join(
+      workspace,
+      "duplicate-module-exercise",
     );
     const missingModuleExercisesDir = join(
       workspace,
@@ -108,6 +116,7 @@ async function main(): Promise<void> {
     const missingServiceDir = join(workspace, "missing-service");
     const missingFieldEvaluatorDir = join(workspace, "missing-field-evaluator");
     await mkdir(completeDir, { recursive: true });
+    await mkdir(completeExtraExercisesDir, { recursive: true });
     await mkdir(cloudOnlyDir, { recursive: true });
     await mkdir(ciDir, { recursive: true });
     await mkdir(malformedCiDir, { recursive: true });
@@ -153,7 +162,8 @@ async function main(): Promise<void> {
     await mkdir(duplicateUnloadedDir, { recursive: true });
     await mkdir(exercisedUnregisteredDir, { recursive: true });
     await mkdir(registeredUnexercisedDir, { recursive: true });
-    await mkdir(mismatchedModuleExerciseDir, { recursive: true });
+    await mkdir(missingSummaryModuleExerciseDir, { recursive: true });
+    await mkdir(duplicateModuleExerciseDir, { recursive: true });
     await mkdir(missingModuleExercisesDir, { recursive: true });
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
@@ -170,6 +180,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(completeDir, "provider.json"),
       `${JSON.stringify(makeCompleteReport("provider"), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(completeExtraExercisesDir, "provider.json"),
+      `${JSON.stringify(makeCompleteExtraExercisesReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -423,8 +438,13 @@ async function main(): Promise<void> {
       "utf8",
     );
     await writeFile(
-      join(mismatchedModuleExerciseDir, "provider.json"),
-      `${JSON.stringify(makeMismatchedModuleExerciseReport(), null, 2)}\n`,
+      join(missingSummaryModuleExerciseDir, "provider.json"),
+      `${JSON.stringify(makeMissingSummaryModuleExerciseReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(duplicateModuleExerciseDir, "provider.json"),
+      `${JSON.stringify(makeDuplicateModuleExerciseReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -472,6 +492,14 @@ async function main(): Promise<void> {
     if (complete.exitCode !== 0) {
       throw new Error(
         `complete reports should validate, got ${complete.exitCode}: ${complete.output}`,
+      );
+    }
+    const completeExtraExercises = await runValidator(
+      completeExtraExercisesDir,
+    );
+    if (completeExtraExercises.exitCode !== 0) {
+      throw new Error(
+        `complete extra exercise reports should validate, got ${completeExtraExercises.exitCode}: ${completeExtraExercises.output}`,
       );
     }
     const cloudKind = await runValidator(cloudOnlyDir, "--kind", "cloud");
@@ -1127,21 +1155,38 @@ async function main(): Promise<void> {
         `registered unexercised failed for the wrong reason: ${registeredUnexercised.output}`,
       );
     }
-    const mismatchedModuleExercise = await runValidator(
-      mismatchedModuleExerciseDir,
+    const missingSummaryModuleExercise = await runValidator(
+      missingSummaryModuleExerciseDir,
     );
-    if (mismatchedModuleExercise.exitCode === 0) {
+    if (missingSummaryModuleExercise.exitCode === 0) {
       throw new Error(
-        "mismatched module exercise report unexpectedly passed validation.",
+        "missing summary module exercise report unexpectedly passed validation.",
       );
     }
     if (
-      !mismatchedModuleExercise.output.includes(
-        "target must match conformance.exercised.action",
+      !missingSummaryModuleExercise.output.includes(
+        "moduleExercises must include conformance.exercised.action",
       )
     ) {
       throw new Error(
-        `mismatched module exercise failed for the wrong reason: ${mismatchedModuleExercise.output}`,
+        `missing summary module exercise failed for the wrong reason: ${missingSummaryModuleExercise.output}`,
+      );
+    }
+    const duplicateModuleExercise = await runValidator(
+      duplicateModuleExerciseDir,
+    );
+    if (duplicateModuleExercise.exitCode === 0) {
+      throw new Error(
+        "duplicate module exercise report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !duplicateModuleExercise.output.includes(
+        "conformance.moduleExercises must not contain duplicates",
+      )
+    ) {
+      throw new Error(
+        `duplicate module exercise failed for the wrong reason: ${duplicateModuleExercise.output}`,
       );
     }
     const missingModuleExercises = await runValidator(
@@ -1315,6 +1360,65 @@ function makeCompleteReport(
       widgetCount: 1,
       componentTypeCount: 1,
       viewCount: 1,
+    },
+  };
+}
+
+function makeCompleteExtraExercisesReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleCount: 2,
+      moduleIds: ["sample-module", "second-module"],
+      moduleExercises: [
+        ...report.conformance.moduleExercises,
+        {
+          surface: "action",
+          moduleId: "second-module",
+          target: "second-module:extra-action",
+        },
+      ],
+    },
+    sync: {
+      ...report.sync,
+      registered: ["@remote/sample", "@remote/second"],
+      registeredModules: [
+        ...report.sync.registeredModules,
+        {
+          pluginName: "@remote/second",
+          moduleId: "second-module",
+          endpointId: report.endpointId,
+          ...makeRegisteredModuleCounts(),
+        },
+      ],
+      trustDecisions: [
+        ...report.sync.trustDecisions,
+        {
+          moduleId: "second-module",
+          pluginName: "@remote/second",
+          endpointId: report.endpointId,
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    },
+    runtime: {
+      pluginCount: 2,
+      actionCount: 2,
+      providerCount: 2,
+      evaluatorCount: 2,
+      responseHandlerEvaluatorCount: 2,
+      responseHandlerFieldEvaluatorCount: 2,
+      routeCount: 2,
+      modelCount: 2,
+      serviceCount: 2,
+      appBridgeCount: 2,
+      lifecycleCount: 2,
+      widgetCount: 2,
+      componentTypeCount: 2,
+      viewCount: 2,
     },
   };
 }
@@ -1912,7 +2016,7 @@ function makeRegisteredUnexercisedReport() {
   };
 }
 
-function makeMismatchedModuleExerciseReport() {
+function makeMissingSummaryModuleExerciseReport() {
   const report = makeCompleteReport("provider");
   return {
     ...report,
@@ -1924,6 +2028,20 @@ function makeMismatchedModuleExerciseReport() {
           moduleId: "sample-module",
           target: "sample-module:different-action",
         },
+      ],
+    },
+  };
+}
+
+function makeDuplicateModuleExerciseReport() {
+  const report = makeCompleteReport("provider");
+  return {
+    ...report,
+    conformance: {
+      ...report.conformance,
+      moduleExercises: [
+        ...report.conformance.moduleExercises,
+        report.conformance.moduleExercises[0],
       ],
     },
   };

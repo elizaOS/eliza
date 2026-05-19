@@ -460,6 +460,7 @@ function validateReportFile(
     );
   }
   const summarizedModuleExerciseTargets = new Set<string>();
+  const moduleExerciseKeys = new Set<string>();
   for (const [index, value] of requireArray(
     conformance.moduleExercises,
     "conformance.moduleExercises",
@@ -490,6 +491,13 @@ function validateReportFile(
         `conformance.moduleExercises[${index}].target must start with moduleId.`,
       );
     }
+    const exerciseKey = `${surface}\0${moduleId}\0${target}`;
+    if (moduleExerciseKeys.has(exerciseKey)) {
+      throw new Error(
+        "conformance.moduleExercises must not contain duplicates.",
+      );
+    }
+    moduleExerciseKeys.add(exerciseKey);
     exercisedModuleIds.add(moduleId);
     if (target === exercisedTargetsBySurface.get(surface)) {
       summarizedModuleExerciseTargets.add(`${surface}\0${target}`);

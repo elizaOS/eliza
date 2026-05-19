@@ -346,6 +346,105 @@ describe("remote capability endpoint conformance", () => {
     );
   });
 
+  it("adds module exercise evidence for modules not covered by required summary surfaces", async () => {
+    const modules = Array.from({ length: 13 }, (_, index) => ({
+      ...CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module,
+      id: `remote-plugin-${index}`,
+      name: `@remote/plugin-${index}`,
+      actions: [
+        {
+          name: `REMOTE_ACTION_${index}`,
+          description: `Run remote plugin ${index}.`,
+        },
+      ],
+    }));
+    installMinimalFixtureFetch(
+      {
+        "plugin.action.invoke":
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
+      },
+      { modules },
+    );
+
+    const report = await assertRemoteCapabilityEndpointConformance({
+      endpoint: {
+        id: "remote-endpoint",
+        baseUrl: "https://remote.example.test",
+      },
+      requiredSurfaces: ["action"],
+    });
+
+    expect(report.exercised).toEqual({
+      action: "remote-plugin-0:REMOTE_ACTION_0",
+    });
+    expect(report.moduleExercises).toEqual(
+      modules.map((module, index) => ({
+        surface: "action",
+        moduleId: module.id,
+        target: `${module.id}:REMOTE_ACTION_${index}`,
+      })),
+    );
+  });
+
+  it("can backfill module exercise evidence through non-basic plugin surfaces", async () => {
+    installMinimalFixtureFetch(
+      {
+        "plugin.action.invoke":
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
+        "plugin.service.call":
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service,
+      },
+      {
+        modules: [
+          {
+            id: "action-module",
+            name: "@remote/action-module",
+            actions: [
+              {
+                name: "ACTION_MODULE_RUN",
+                description: "Run the action module.",
+              },
+            ],
+          },
+          {
+            id: "service-only-module",
+            name: "@remote/service-only-module",
+            services: [
+              {
+                serviceType: "service-only",
+                methods: ["ping"],
+              },
+            ],
+          },
+        ],
+      },
+    );
+
+    const report = await assertRemoteCapabilityEndpointConformance({
+      endpoint: {
+        id: "remote-endpoint",
+        baseUrl: "https://remote.example.test",
+      },
+      requiredSurfaces: ["action"],
+    });
+
+    expect(report.exercised).toEqual({
+      action: "action-module:ACTION_MODULE_RUN",
+    });
+    expect(report.moduleExercises).toEqual([
+      {
+        surface: "action",
+        moduleId: "action-module",
+        target: "action-module:ACTION_MODULE_RUN",
+      },
+      {
+        surface: "service",
+        moduleId: "service-only-module",
+        target: "service-only-module:service-only.ping",
+      },
+    ]);
+  });
+
   it("fails when remote route conformance returns a non-2xx status", async () => {
     installMinimalFixtureFetch({
       "plugin.route.call": {

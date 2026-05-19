@@ -136,6 +136,12 @@ describe("patchDflashDrafterArch", () => {
       fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
     ).toMatch(/"dflash-draft"/);
     expect(
+      fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
+    ).toMatch(/"dflash"/);
+    expect(
+      fs.readFileSync(path.join(root, "src/llama-arch.cpp"), "utf8"),
+    ).toMatch(/name == "dflash-draft"/);
+    expect(
       fs.readFileSync(path.join(root, "src/llama-model.cpp"), "utf8"),
     ).toMatch(/std::make_unique<llm_build_dflash_draft>/);
     expect(
