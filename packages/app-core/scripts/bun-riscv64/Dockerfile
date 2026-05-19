@@ -77,7 +77,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # kitware tarball pinned by sha256.
 # ----------------------------------------------------------------------------
 ARG CMAKE_VERSION=3.30.5
-ARG CMAKE_SHA256=ea540feff8d3acd2a0d5b86b96f37193b0fc14da727edbeae37dc16b96b2c01b
+ARG CMAKE_SHA256=f747d9b23e1a252a8beafb4ed2bc2ddf78cff7f04a8e4de19f4ff88e9b51dc9d
 RUN set -eux; \
     cd /tmp; \
     curl -fsSL -o cmake.tar.gz "https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz"; \
@@ -129,7 +129,7 @@ RUN set -eux; \
     curl -fsSL https://sh.rustup.rs -o rustup-init.sh; \
     sh rustup-init.sh -y --no-modify-path --default-toolchain ${RUST_NIGHTLY} \
         --profile minimal \
-        --component rust-src rustfmt clippy; \
+        --component rust-src --component rustfmt --component clippy; \
     rm rustup-init.sh; \
     rustup target add --toolchain ${RUST_NIGHTLY} riscv64gc-unknown-linux-musl; \
     rustc +${RUST_NIGHTLY} --version; \
@@ -140,15 +140,15 @@ RUN set -eux; \
 # QEMU. Verified by sha256 from bun-version.json.
 # ----------------------------------------------------------------------------
 ARG ZIG_VERSION=0.14.1
-ARG ZIG_SHA256=f59edda88a04c7d8e09ed5db4e6acaba4a4e1e2e75a4abce6451aa6e1ddf6cc3
+ARG ZIG_SHA256=24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c
 RUN set -eux; \
     cd /tmp; \
-    curl -fsSL -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-linux-x86_64-${ZIG_VERSION}.tar.xz"; \
+    curl -fsSL -o zig.tar.xz "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"; \
     # If the upstream sha256 file disagrees with our pin, fail loudly — we
     # never silently accept a different binary.
     echo "${ZIG_SHA256}  zig.tar.xz" | sha256sum -c - || (echo "Zig tarball sha256 mismatch; bump ZIG_SHA256 in bun-version.json + Dockerfile in lockstep" && exit 1); \
     tar -xJf zig.tar.xz -C /opt; \
-    ln -s "/opt/zig-linux-x86_64-${ZIG_VERSION}/zig" /usr/local/bin/zig; \
+    ln -s "/opt/zig-x86_64-linux-${ZIG_VERSION}/zig" /usr/local/bin/zig; \
     rm zig.tar.xz; \
     zig version
 
