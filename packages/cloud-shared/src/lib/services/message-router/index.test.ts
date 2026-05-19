@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { agentPhoneContacts } from "../../../db/schemas";
 
 const blooioApiRequest = mock();
 const secretsGet = mock();
@@ -15,17 +16,14 @@ const dbWrite = {
 };
 
 mock.module("../../../db/client", () => ({
+  db: {},
+  dbRead: {},
   dbWrite,
-}));
-
-mock.module("../../../db/schemas", () => ({
-  agentPhoneContacts: {
-    provider: "provider",
-    contact_identifier: "contact_identifier",
-    agent_id: "agent_id",
-  },
-  agentPhoneNumbers: {},
-  phoneMessageLog: {},
+  getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
+  runWithDbCache: (fn: () => unknown) => fn(),
+  runWithDbCacheAsync: async (fn: () => Promise<unknown>) => fn(),
+  withReadDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
+  withWriteDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
 }));
 
 mock.module("../secrets", () => ({
@@ -102,7 +100,11 @@ describe("MessageRouterService contact recording", () => {
     );
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: ["provider", "contact_identifier", "agent_id"],
+        target: [
+          agentPhoneContacts.provider,
+          agentPhoneContacts.contact_identifier,
+          agentPhoneContacts.agent_id,
+        ],
         set: expect.objectContaining({
           organization_id: "agent-org",
           user_id: "agent-user",

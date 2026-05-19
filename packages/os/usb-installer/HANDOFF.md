@@ -10,6 +10,7 @@ Last updated: 2026-05-19
 - PR: https://github.com/elizaOS/eliza/pull/7803
 - Verified PR head: `d3eb80c11ebeb72739a9ad59cada31b8a682ed9f`
 - Latest merged `origin/develop`: `d32b6a4461`
+- Latest local CI-fix validation: 2026-05-19 23:55 UTC
 
 ## What This Package Is
 
@@ -75,6 +76,20 @@ behind the backend contract and future signed/elevated helpers.
   - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
     against `scsi_debug`: wrote with `sudo -n dd`, read back, SHA-256 matched,
     and module cleanup was verified;
+  - `git diff --check` passed.
+- Follow-up local validation on 2026-05-19 after isolating package-wide cloud
+  test mocks that failed CI:
+  - `bun run verify:cloud` passed;
+  - `bun run test:cloud` passed: 266 tests across 28 files;
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 76 tests,
+    with the opt-in virtual block-device test skipped by default;
+  - `bun run --cwd packages/os/usb-installer typecheck` passed;
+  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `bun run --cwd packages/os/usb-installer build` passed;
+  - `bun run --cwd packages/os/usb-installer test:e2e` passed: 6 Playwright
+    tests covering desktop/mobile render and guarded wizard success flow;
+  - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+    against `scsi_debug`, and cleanup left `scsi_debug` unloaded;
   - `git diff --check` passed.
 - Disk cleanup on 2026-05-19:
   - removed ignored/generated stale ISO artifacts and root `dist/`;

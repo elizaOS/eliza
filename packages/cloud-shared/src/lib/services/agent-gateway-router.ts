@@ -282,13 +282,7 @@ export class AgentGatewayRouterService {
     organizationId: string;
     provider: "twilio" | "blooio" | "whatsapp";
     senderId: string;
-  }): Promise<{
-    target?: ResolvedAgentTarget;
-    reason?: AgentGatewayRouteReason;
-    agentId?: string;
-    userId?: string;
-    organizationId?: string;
-  }> {
+  }): Promise<PhoneTargetResolution> {
     const senderId = args.senderId.trim();
     if (!senderId) {
       return {

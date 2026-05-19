@@ -52,21 +52,6 @@ mock.module("../../db/repositories/agent-sandboxes", () => ({
   },
 }));
 
-mock.module("../../db/schemas", () => ({
-  agentPhoneNumbers: {
-    id: "id",
-    agent_id: "agent_id",
-    organization_id: "organization_id",
-    is_active: "is_active",
-  },
-  phoneMessageLog: {
-    phone_number_id: "phone_number_id",
-    direction: "direction",
-    to_number: "to_number",
-    created_at: "created_at",
-  },
-}));
-
 mock.module("./agent-gateway-relay", () => ({
   agentGatewayRelayService: {
     listOwnerSessions,

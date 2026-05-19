@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { phoneGatewayDevices } from "../../db/schemas";
 
 const values = mock();
 const onConflictDoUpdate = mock();
@@ -12,19 +13,17 @@ const insertBuilder = {
 };
 
 mock.module("../../db/client", () => ({
+  db: {},
+  dbRead: {},
   dbWrite: {
     insert: mock(() => insertBuilder),
     execute,
   },
-}));
-
-mock.module("../../db/schemas", () => ({
-  phoneGatewayDevices: {
-    id: "id",
-    provider: "provider",
-    phone_number: "phone_number",
-    bridge_id: "bridge_id",
-  },
+  getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
+  runWithDbCache: (fn: () => unknown) => fn(),
+  runWithDbCacheAsync: async (fn: () => Promise<unknown>) => fn(),
+  withReadDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
+  withWriteDb: async (fn: (db: unknown) => Promise<unknown>) => fn({}),
 }));
 
 const { registerPhoneGatewayDevice } = await import("./phone-gateway-devices");
@@ -66,15 +65,18 @@ describe("registerPhoneGatewayDevice", () => {
         phone_account_label: "Eliza Cloud Gateway",
         friendly_name: "Eliza Cloud Gateway",
         send_method: "bluebubbles-local-bridge",
-        cloud_webhook_url:
-          "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
+        cloud_webhook_url: "https://api.elizacloud.ai/api/webhooks/blooio/local?bridge=bluebubbles",
         metadata: '{"eventType":"new-message"}',
         is_active: true,
       }),
     );
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: ["provider", "phone_number", "bridge_id"],
+        target: [
+          phoneGatewayDevices.provider,
+          phoneGatewayDevices.phone_number,
+          phoneGatewayDevices.bridge_id,
+        ],
         set: expect.objectContaining({
           organization_id: "org-1",
           phone_account_id: "+14159611510",

@@ -25,10 +25,19 @@ mock.module("@ai-sdk/openai", () => ({
   createOpenAI: mock(() => ({
     chat: mock(() => "mock-model"),
   })),
+  openai: mock(() => "mock-openai-model"),
 }));
 
 mock.module("ai", () => ({
+  APICallError: class APICallError extends Error {},
+  RetryError: class RetryError extends Error {},
+  convertToModelMessages: mock((messages: unknown) => messages),
+  embed: mock(async () => ({ embedding: [] })),
+  embedMany: mock(async () => ({ embeddings: [] })),
   generateText,
+  streamText: mock(() => {
+    throw new Error("streamText is not implemented in onboarding-chat tests");
+  }),
 }));
 
 mock.module("../eliza-managed-launch", () => ({
@@ -46,7 +55,7 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat } = await import("./onboarding-chat");
+const { runOnboardingChat } = await import("./onboarding-chat.ts?test=onboarding-chat");
 
 describe("runOnboardingChat", () => {
   beforeEach(() => {
@@ -111,9 +120,7 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
 
-    expect(result.reply).toBe(
-      "Open <https://elizacloud.ai/dashboard/containers>.",
-    );
+    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/containers>.");
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {

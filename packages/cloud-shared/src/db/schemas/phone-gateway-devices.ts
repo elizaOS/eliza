@@ -1,13 +1,5 @@
 import type { InferInsertModel, InferSelectModel } from "drizzle-orm";
-import {
-  boolean,
-  index,
-  pgTable,
-  text,
-  timestamp,
-  uniqueIndex,
-  uuid,
-} from "drizzle-orm/pg-core";
+import { boolean, index, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { phoneProviderEnum } from "./agent-phone-numbers";
 
 /**
@@ -42,18 +34,14 @@ export const phoneGatewayDevices = pgTable(
     last_seen_at: timestamp("last_seen_at"),
   },
   (table) => ({
-    provider_phone_bridge_idx: uniqueIndex(
-      "phone_gateway_devices_provider_phone_bridge_idx",
-    ).on(table.provider, table.phone_number, table.bridge_id),
-    organization_idx: index("phone_gateway_devices_organization_idx").on(
-      table.organization_id,
-    ),
-    phone_number_idx: index("phone_gateway_devices_phone_number_idx").on(
+    provider_phone_bridge_idx: uniqueIndex("phone_gateway_devices_provider_phone_bridge_idx").on(
+      table.provider,
       table.phone_number,
+      table.bridge_id,
     ),
-    is_active_idx: index("phone_gateway_devices_is_active_idx").on(
-      table.is_active,
-    ),
+    organization_idx: index("phone_gateway_devices_organization_idx").on(table.organization_id),
+    phone_number_idx: index("phone_gateway_devices_phone_number_idx").on(table.phone_number),
+    is_active_idx: index("phone_gateway_devices_is_active_idx").on(table.is_active),
   }),
 );
 
