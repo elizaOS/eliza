@@ -69,15 +69,16 @@ def dominates(left: dict[str, Any], right: dict[str, Any]) -> bool:
     strictly_better = (
         float(left_s["min_composite_perf_per_w"]) > float(right_s["min_composite_perf_per_w"])
         or float(left_s["min_npu_int8_tops"]) > float(right_s["min_npu_int8_tops"])
-        or float(left_s["min_bandwidth_margin_gbps"])
-        > float(right_s["min_bandwidth_margin_gbps"])
+        or float(left_s["min_bandwidth_margin_gbps"]) > float(right_s["min_bandwidth_margin_gbps"])
         or float(left_s["max_total_power_w"]) < float(right_s["max_total_power_w"])
         or float(left_s["max_die_temp_c"]) < float(right_s["max_die_temp_c"])
     )
     return better_or_equal and strictly_better
 
 
-def compact_candidate(report: dict[str, Any], summary: dict[str, Any], args: Namespace) -> dict[str, Any]:
+def compact_candidate(
+    report: dict[str, Any], summary: dict[str, Any], args: Namespace
+) -> dict[str, Any]:
     robust_cases = opt.robustness_cases(report, args)
     robust_summary = opt.robustness_summary(robust_cases)
     config = report["config"]
@@ -100,7 +101,9 @@ def build_report() -> dict[str, Any]:
     feasible_count = 0
 
     for cpu_power in opt.frange(args.cpu_power_min_w, args.cpu_power_max_w, args.cpu_power_step_w):
-        for npu_power in opt.frange(args.npu_power_min_w, args.npu_power_max_w, args.npu_power_step_w):
+        for npu_power in opt.frange(
+            args.npu_power_min_w, args.npu_power_max_w, args.npu_power_step_w
+        ):
             for npu_tops in opt.frange(args.npu_tops_min, args.npu_tops_max, args.npu_tops_step):
                 for memory_gbps in opt.irange(
                     args.memory_sustained_min_gbps,
