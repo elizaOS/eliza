@@ -5,18 +5,32 @@ import {
   aiBillingRecords,
   type NewAiBillingRecord,
 } from "../schemas/ai-billing-records";
+import { logger } from "../../lib/utils/logger";
 
 export type { AiBillingRecord, NewAiBillingRecord };
 
 export class AiBillingRecordsRepository {
   async createDeduped(data: NewAiBillingRecord): Promise<AiBillingRecord> {
-    const [created] = await dbWrite
-      .insert(aiBillingRecords)
-      .values(data)
-      .onConflictDoNothing({
-        target: [aiBillingRecords.organization_id, aiBillingRecords.idempotency_key],
-      })
-      .returning();
+    let insertResult: AiBillingRecord[] | undefined;
+    try {
+      insertResult = await dbWrite
+        .insert(aiBillingRecords)
+        .values(data)
+        .onConflictDoNothing({
+          target: [aiBillingRecords.organization_id, aiBillingRecords.idempotency_key],
+        })
+        .returning();
+    } catch (err) {
+      const cause = err instanceof Error ? (err.cause as Error | undefined) : undefined;
+      logger.error("[AiBillingRecordsRepository] insert failed", {
+        error: err instanceof Error ? err.message : String(err),
+        cause: cause?.message ?? cause,
+        organizationId: data.organization_id,
+        idempotencyKey: data.idempotency_key,
+      });
+      throw err;
+    }
+    const [created] = insertResult;
 
     if (created) return created;
 
