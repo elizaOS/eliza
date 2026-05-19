@@ -547,6 +547,95 @@ describe("capability router", () => {
 		]);
 	});
 
+	it("routes remote plugin asset reads through the runtime broker", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				path: "/assets/weather.js",
+				contentType: "text/javascript",
+				bodyBase64: Buffer.from("export const weather = true;").toString(
+					"base64",
+				),
+				integrity: "sha256-weather",
+			}),
+		});
+
+		await expect(
+			router.plugin.getAsset({
+				moduleId: "remote-weather",
+				path: "/assets/weather.js",
+			}),
+		).resolves.toEqual({
+			path: "/assets/weather.js",
+			contentType: "text/javascript",
+			bodyBase64: "ZXhwb3J0IGNvbnN0IHdlYXRoZXIgPSB0cnVlOw==",
+			integrity: "sha256-weather",
+		});
+	});
+
+	it("rejects remote plugin assets with unsafe returned paths", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				path: "../secret.js",
+				contentType: "text/javascript",
+				bodyBase64: Buffer.from("export default {};").toString("base64"),
+			}),
+		});
+
+		await expect(
+			router.plugin.getAsset({
+				moduleId: "remote-weather",
+				path: "/assets/weather.js",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.asset.get",
+			message:
+				"path must not contain empty, current-directory, or parent-directory segments.",
+		});
+	});
+
+	it("rejects remote plugin assets with unsafe content types", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				path: "/assets/weather.js",
+				contentType: "text/javascript\r\nx-injected: yes",
+				bodyBase64: Buffer.from("export default {};").toString("base64"),
+			}),
+		});
+
+		await expect(
+			router.plugin.getAsset({
+				moduleId: "remote-weather",
+				path: "/assets/weather.js",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.asset.get",
+			message: "contentType must not contain control characters.",
+		});
+	});
+
+	it("rejects remote plugin assets with invalid base64 bodies", async () => {
+		const router = new RuntimeBrokerCapabilityRouter({
+			invokeRuntime: async () => ({
+				path: "/assets/weather.js",
+				contentType: "text/javascript",
+				bodyBase64: "not base64!",
+			}),
+		});
+
+		await expect(
+			router.plugin.getAsset({
+				moduleId: "remote-weather",
+				path: "/assets/weather.js",
+			}),
+		).rejects.toMatchObject({
+			code: "CAPABILITY_DECODE_FAILED",
+			method: "plugin.asset.get",
+			message: "bodyBase64 must be valid base64.",
+		});
+	});
+
 	it("rejects remote plugin manifests with empty module identifiers", async () => {
 		const router = new RuntimeBrokerCapabilityRouter({
 			invokeRuntime: async () => ({

@@ -367,8 +367,11 @@ GET /v1/capabilities/assets/:moduleId/<asset-path>
 ```
 
 The capability server resolves that request through `plugin.asset.get` and
-returns the decoded asset bytes with the declared content type. Local plugins
-should continue to use `bundlePath`.
+returns the decoded asset bytes with the declared content type. The RPC result
+is decoded before an HTTP response is built: returned asset paths must satisfy
+the same safe asset-path rules as `bundlePath`, `contentType` and `integrity`
+must not contain response-splitting control characters, and `bodyBase64` must
+be valid standard base64. Local plugins should continue to use `bundlePath`.
 
 ## Runtime Integration
 
@@ -649,6 +652,8 @@ Current focused tests cover:
 - remote frontend asset path validation before browser import URL creation and
   before same-origin asset proxy dispatch,
 - remote frontend bundle URL validation before browser import URL exposure,
+- remote asset RPC response validation before decoded bytes and content-type
+  metadata are exposed through the asset proxy,
 - browser-facing view registry and `/api/views` metadata for remote absolute
   bundle URLs,
 - app-shell `DynamicViewLoader` behavior for absolute remote bundle URLs,
