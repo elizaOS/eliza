@@ -138,6 +138,10 @@ def main() -> int:
             "hintpilot",
             "llm-veriopt",
             "xdsl-rvv-lowering",
+            "autocomp-kernel-optimization",
+            "accelopt",
+            "v-seek-riscv-llm-inference",
+            "riscv-itree-semantics",
         ],
         "policy": {
             "changes_source": False,
@@ -223,6 +227,18 @@ def main() -> int:
                     "make no-hardware-action-check",
                 ],
             },
+            {
+                "id": "llm-accelerator-kernel-optimization-watch",
+                "status": "CAPTURED_NOT_OPTIMIZED",
+                "target": "future Autocomp, AccelOpt, or V-Seek-style generated kernels must stay quarantined until target adapters, prompts/models, memories, generated sources, compiler/simulator logs, correctness tests, and benchmark replay are reviewed",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 compiler/runtime/test_e1_npu_runtime.py",
+                    "python3 compiler/runtime/test_e1_npu_runtime_sim.py",
+                    "make benchmark-parser-test",
+                    "make no-hardware-action-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no pinned LLVM stage-2 toolchain, IREE build, or compiler version evidence accepted as release-grade",
@@ -231,6 +247,7 @@ def main() -> int:
             "no local RISC-V simulator/runtime evidence proving generated kernels are semantically equivalent and ABI-compatible",
             "no before/after benchmark evidence with target metadata, thermal/power state, compiler flags, raw logs, and calibration",
             "no model or autotuner revision selected for MLGO, MetaSchedule, Ansor, agentic compiler optimization, or LLM vectorization",
+            "no approved target adapter, prompt/model revision, optimization-memory quarantine, generated-kernel corpus, semantic-equivalence evidence, or replayed benchmark logs for Autocomp, AccelOpt, or V-Seek-style optimization",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

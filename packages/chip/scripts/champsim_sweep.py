@@ -215,43 +215,57 @@ def parse_champsim_json(json_path: Path) -> dict:
     if not cores:
         return {"parsed": False, "parse_reason": "no_cores"}
     core0 = cores[0]
-    ipc = core0.get("ipc")
     instrs = core0.get("instructions")
     cycles = core0.get("cycles")
-    # LLC stats live under cores[0].cpu0_LLC or sim.roi.LLC depending on
-    # version; we walk the cache list at the top level.
-    caches = sim_block.get("caches", []) or []
-    llc_stats: dict[str, float | int | str] = {}
-    l2c_stats: dict[str, float | int | str] = {}
-    l1d_stats: dict[str, float | int | str] = {}
-    for c in caches:
-        name = c.get("name", "")
-        if not isinstance(name, str):
-            continue
-        total_miss = sum(
-            int(c.get(t, {}).get("miss", 0))
-            for t in ("LOAD", "RFO", "PREFETCH", "WRITE", "TRANSLATION")
-            if isinstance(c.get(t), dict)
-        )
-        total_acc = sum(
-            int(c.get(t, {}).get("access", 0))
-            for t in ("LOAD", "RFO", "PREFETCH", "WRITE", "TRANSLATION")
-            if isinstance(c.get(t), dict)
-        )
-        block: dict[str, float | int | str] = {
-            "access": total_acc,
+    ipc = None
+    if isinstance(instrs, int) and isinstance(cycles, int) and cycles > 0:
+        ipc = float(instrs) / float(cycles)
+
+    # ChampSim 2024-12 emits cache-level stats at sim.LLC / sim.cpu0_L2C /
+    # sim.cpu0_L1D as `{LOAD: {hit: [n], miss: [n]}, RFO: ..., ...}` —
+    # one element per CPU. Aggregate across access types + CPUs.
+    def _sum_cache_block(cache: dict) -> dict[str, int]:
+        total_hit = 0
+        total_miss = 0
+        for kind in ("LOAD", "RFO", "PREFETCH", "WRITE", "TRANSLATION"):
+            block = cache.get(kind)
+            if not isinstance(block, dict):
+                continue
+            hits = block.get("hit") or []
+            misses = block.get("miss") or []
+            if isinstance(hits, list):
+                total_hit += sum(int(x) for x in hits)
+            elif isinstance(hits, int):
+                total_hit += hits
+            if isinstance(misses, list):
+                total_miss += sum(int(x) for x in misses)
+            elif isinstance(misses, int):
+                total_miss += misses
+        return {
+            "hit": total_hit,
             "miss": total_miss,
-            "hit": total_acc - total_miss,
+            "access": total_hit + total_miss,
         }
-        if name.endswith("LLC"):
-            llc_stats = block
-        elif name.endswith("L2C"):
-            l2c_stats = block
-        elif name.endswith("L1D"):
-            l1d_stats = block
-    mpki = None
+
+    llc_stats: dict[str, int] = {}
+    l2c_stats: dict[str, int] = {}
+    l1d_stats: dict[str, int] = {}
+    llc = sim_block.get("LLC")
+    if isinstance(llc, dict):
+        llc_stats = _sum_cache_block(llc)
+    l2c = sim_block.get("cpu0_L2C")
+    if isinstance(l2c, dict):
+        l2c_stats = _sum_cache_block(l2c)
+    l1d = sim_block.get("cpu0_L1D")
+    if isinstance(l1d, dict):
+        l1d_stats = _sum_cache_block(l1d)
+
+    llc_mpki = None
     if instrs and llc_stats.get("miss") is not None:
-        mpki = 1000.0 * float(llc_stats["miss"]) / float(instrs)
+        llc_mpki = 1000.0 * float(llc_stats["miss"]) / float(instrs)
+    l2c_mpki = None
+    if instrs and l2c_stats.get("miss") is not None:
+        l2c_mpki = 1000.0 * float(l2c_stats["miss"]) / float(instrs)
     return {
         "parsed": True,
         "ipc": ipc,
@@ -260,7 +274,8 @@ def parse_champsim_json(json_path: Path) -> dict:
         "llc": llc_stats,
         "l2c": l2c_stats,
         "l1d": l1d_stats,
-        "llc_mpki": mpki,
+        "llc_mpki": llc_mpki,
+        "l2c_mpki": l2c_mpki,
     }
 
 
@@ -274,7 +289,8 @@ def aggregate(results: list[dict], group_by: str) -> dict[str, dict[str, Any]]:
                 "runs": 0,
                 "parsed_runs": 0,
                 "sum_ipc": 0.0,
-                "sum_mpki": 0.0,
+                "sum_llc_mpki": 0.0,
+                "sum_l2c_mpki": 0.0,
                 "trace_count": set(),
             },
         )
@@ -284,7 +300,9 @@ def aggregate(results: list[dict], group_by: str) -> dict[str, dict[str, Any]]:
             agg["parsed_runs"] += 1
             agg["sum_ipc"] += float(r["ipc"])
             if r.get("llc_mpki") is not None:
-                agg["sum_mpki"] += float(r["llc_mpki"])
+                agg["sum_llc_mpki"] += float(r["llc_mpki"])
+            if r.get("l2c_mpki") is not None:
+                agg["sum_l2c_mpki"] += float(r["l2c_mpki"])
     out: dict[str, dict[str, Any]] = {}
     for label, a in by_label.items():
         n = max(a["parsed_runs"], 1)
@@ -293,7 +311,8 @@ def aggregate(results: list[dict], group_by: str) -> dict[str, dict[str, Any]]:
             "parsed_runs": a["parsed_runs"],
             "trace_count": len(a["trace_count"]),
             "mean_ipc": a["sum_ipc"] / n if a["parsed_runs"] else None,
-            "mean_llc_mpki": a["sum_mpki"] / n if a["parsed_runs"] else None,
+            "mean_llc_mpki": a["sum_llc_mpki"] / n if a["parsed_runs"] else None,
+            "mean_l2c_mpki": a["sum_l2c_mpki"] / n if a["parsed_runs"] else None,
         }
     return out
 

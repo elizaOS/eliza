@@ -130,6 +130,27 @@ candidate inputs to reproducible gates, not as standalone evidence.
   features versus opaque attribution scores.
 - PostEDA-Bench: <https://arxiv.org/abs/2605.06936>. Cautionary benchmark for
   post-route EDA agents.
+- Autocomp: <https://arxiv.org/abs/2505.18574> and
+  <https://github.com/ucb-bar/autocomp>. LLM-driven tensor-accelerator kernel
+  optimization reference. E1 status: compiler-kernel method reference only
+  until target adapters, prompts, model revisions, generated source hashes,
+  compiler/simulator logs, correctness tests, benchmark replay, and review are
+  captured.
+- AccelOpt: <https://arxiv.org/abs/2511.15915> and
+  <https://github.com/zhang677/AccelOpt>. Self-improving LLM agent for
+  accelerator-kernel optimization with model/dataset assets. E1 status:
+  benchmark-governance reference only until code, model, dataset, optimization
+  memory, contamination, replay, and license reviews are complete.
+- V-Seek: <https://arxiv.org/abs/2503.17422>. RISC-V LLM inference kernel
+  optimization reference using the llama.cpp runtime lineage
+  <https://github.com/ggml-org/llama.cpp>. E1 status: blocked from runtime use
+  until target ISA profiles, compiler flags, binary hashes, simulator/hardware
+  logs, workload hashes, calibrated metrics, and reviewer disposition exist.
+- Interaction Tree Semantics for RISC-V:
+  <https://arxiv.org/abs/2605.04933>. Formal semantics reference for RISC-V
+  compiler/hardware/software contract reasoning. E1 status: paper-assets review
+  only until formalization assets, theorem logs, subset coverage, generated
+  source hashes, and review are pinned.
 
 ## E1 integration ranking
 
@@ -145,3 +166,8 @@ candidate inputs to reproducible gates, not as standalone evidence.
 6. Use LLM/agent EDA as orchestration around existing gates. All generated RTL,
    Tcl, placements, and reports must pass the same lint, simulation, formal,
    STA, DRC, and routed-PPA evidence requirements as hand-written work.
+7. Use compiler-autotuning target capture for Autocomp, AccelOpt, V-Seek, and
+   formal RISC-V semantics. Do not import generated kernels, reuse optimization
+   memories, run models, change binaries, or make kernel/proof claims without
+   target adapters, pinned revisions, semantic-equivalence evidence,
+   simulator/runtime logs, benchmark replay, and review.

@@ -73,6 +73,13 @@ class NoiseProfile:
 
     rng_seed: int = 0
 
+    # When True, the injector ONLY applies fixed per-unit perturbations
+    # (motor strength, joint offsets, network latency) — no per-sample
+    # IMU / joint / marker stochastic noise. Useful for verifying that
+    # calibration recovers the calibrable quantities without an
+    # irreducible-noise floor in the way of the RMS metric.
+    deterministic_only: bool = False
+
 
 @dataclass
 class GroundTruth:
@@ -149,7 +156,13 @@ class NoiseInjectorBackend(BridgeBackend):
         )
         await asyncio.sleep(latency_ms / 1000.0)
 
-        # Perturb servo.set joint targets before forwarding.
+        # Perturb servo.set joint targets before forwarding — apply ONLY
+        # motor_strength to the outgoing command (multiplicative
+        # mis-calibration models "this servo over- or under-rotates per
+        # commanded angle"). joint_offsets are added on the OBSERVATION
+        # side only (see poll_events) — that models "this servo's encoder
+        # is biased". Splitting the two cleanly means the calibration
+        # loop can recover the truth offset 1:1 instead of 2× it.
         if cmd.command == "servo.set":
             payload = dict(cmd.payload)
             jp = payload.get("joint_positions")
@@ -158,9 +171,8 @@ class NoiseInjectorBackend(BridgeBackend):
                 joint_keys = list(jp.keys())
                 for i, name in enumerate(joint_keys):
                     val = float(jp[name])
-                    # Apply motor strength + joint offset
                     idx = i % len(self._motor_strengths)
-                    perturbed[name] = val * self._motor_strengths[idx] + self._joint_offsets[idx]
+                    perturbed[name] = val * self._motor_strengths[idx]
                 payload["joint_positions"] = perturbed
             cmd = CommandEnvelope(
                 request_id=cmd.request_id,
@@ -183,21 +195,27 @@ class NoiseInjectorBackend(BridgeBackend):
                 out.append(e)
                 continue
             data = dict(e.data)
-            # IMU noise
-            data["imu_roll"] = float(data.get("imu_roll", 0.0)) + self._np_rng.normal(
-                0.0, p.imu_noise_rad_std
+            # IMU noise — additive gaussian on roll/pitch; suppressed
+            # in deterministic_only mode so the calibration loop has a
+            # clean signal to recover.
+            imu_sigma = 0.0 if p.deterministic_only else p.imu_noise_rad_std
+            data["imu_roll"] = float(data.get("imu_roll", 0.0)) + (
+                self._np_rng.normal(0.0, imu_sigma) if imu_sigma > 0 else 0.0
             )
-            data["imu_pitch"] = float(data.get("imu_pitch", 0.0)) + self._np_rng.normal(
-                0.0, p.imu_noise_rad_std
+            data["imu_pitch"] = float(data.get("imu_pitch", 0.0)) + (
+                self._np_rng.normal(0.0, imu_sigma) if imu_sigma > 0 else 0.0
             )
-            # Joint position noise (per joint, smaller than the offset)
+            # Joint position observation = true_pos + joint_offset (the
+            # FIXED per-joint perturbation that calibration recovers) +
+            # optional per-sample noise.
+            joint_noise_sigma = 0.0 if p.deterministic_only else 0.005
             jp = data.get("joint_positions")
             if isinstance(jp, dict):
                 noisy: dict[str, float] = {}
                 for i, (name, val) in enumerate(jp.items()):
                     idx = i % len(self._joint_offsets)
-                    noisy[name] = float(val) + self._joint_offsets[idx] + float(
-                        self._np_rng.normal(0.0, 0.005)
+                    noisy[name] = float(val) + self._joint_offsets[idx] + (
+                        self._np_rng.normal(0.0, joint_noise_sigma) if joint_noise_sigma > 0 else 0.0
                     )
                 data["joint_positions"] = noisy
             data["battery_mv"] = int(self._battery_mv)
