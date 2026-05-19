@@ -458,18 +458,26 @@ stages:
       - hintpilot
       - llm-veriopt
       - xdsl-rvv-lowering
+      - autocomp-kernel-optimization
+      - accelopt
+      - v-seek-riscv-llm-inference
+      - riscv-itree-semantics
     local_lane: p1-compiler-autotuning-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_compiler_autotuning_targets.py
       - build/ai_eda/compiler_autotuning_targets/validation/targets_report.json
     next_gate: python3 scripts/check_compiler_versions.py
     critical_review: >
-      Compiler ML, schedule search, RVV intrinsic generation, and profile-guided
-      binary optimization can directly improve E1 software and NPU kernels, but
-      they also directly change shipped code and binaries. E1 needs pinned
-      toolchains, corpus provenance, simulator/runtime correctness, benchmark
-      calibration, and review before generated schedules, profiles, intrinsics,
-      compiler models, or binaries can affect source or claims.
+      Compiler ML, schedule search, RVV intrinsic generation, agentic
+      accelerator-kernel optimization, optimization-memory reuse, formal
+      RISC-V semantics, and profile-guided binary optimization can directly
+      improve E1 software and NPU kernels, but they also directly change
+      shipped code and binaries. E1 needs pinned toolchains, corpus
+      provenance, target adapters, generated-kernel quarantine,
+      simulator/runtime correctness, semantic-equivalence evidence, benchmark
+      calibration, and review before generated schedules, profiles,
+      intrinsics, kernels, compiler models, optimization memories, or binaries
+      can affect source or claims.
   - id: reliability_resilience_automation
     rating: READY_DRY_RUN
     source_ids:

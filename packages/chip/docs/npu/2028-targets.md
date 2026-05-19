@@ -95,7 +95,9 @@ requires the done bit and rejects the error bit. The
 `required_runtime_steps`, `descriptor_base`, `descriptor_memory_writes`, and
 `mmio_preamble_writes` against the packaged `descriptor_words`,
 `descriptor_image`, and `op_mmio_preamble`, including descriptor image
-`op_names`. The
+`submission` base/head/tail, descriptor word0 `valid_owner`,
+`stream_to_scratch`, byte-count/scratch bounds, GEMM-only aligned
+`writeback_request`, and `op_names`. The
 `stage_prepared_descriptor_execution_batches` helper validates ordered
 `eliza.e1_npu_prepared_descriptor_execution_batches.v1` packages and returns
 `eliza.e1_npu_prepared_descriptor_execution_batches_stage_result.v1` after
@@ -104,8 +106,13 @@ checking each descriptor image and `DESC_BASE` submission against
 checking `batch_index`/`execution_batch_index` identity, `arena_base consistency`,
 arena sizing, `required_runtime_steps`, and
 `descriptor_words` and `descriptor_memory_writes` exactly match the packaged
-`descriptor_image`. It also checks descriptor image `op_names` and
-`mmio_preamble_writes` match `op_mmio_preamble` before staging. The
+`descriptor_image`. It rejects descriptors whose word0 is missing the
+`valid_owner` or `stream_to_scratch` bit, rejects unaligned or out-of-bounds
+stream byte ranges, rejects non-GEMM or unaligned writeback requests, checks
+descriptor image `submission` base/head/tail and `submission_mmio_writes`
+against the descriptor count, then checks descriptor image `op_names` and
+`mmio_preamble_writes` match
+`op_mmio_preamble` before staging. The
 simulator gate feeds the
 partitioner-produced prepared batch through these helpers and observes
 descriptor completion/counters in `E1NpuMmioSim`, including memory-backed

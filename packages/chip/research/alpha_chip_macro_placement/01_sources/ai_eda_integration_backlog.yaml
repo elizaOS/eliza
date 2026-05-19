@@ -1855,29 +1855,37 @@ work_items:
       - hintpilot
       - llm-veriopt
       - xdsl-rvv-lowering
+      - autocomp-kernel-optimization
+      - accelopt
+      - v-seek-riscv-llm-inference
+      - riscv-itree-semantics
     target_area:
       - compiler
       - riscv_vector
       - autotuning
       - profile_guided_optimization
       - tensor_kernel_scheduling
+      - accelerator_kernel_optimization
       - llm_code_optimization
+      - formal_semantics
     owner_scope: dry-run target capture only; no generated code, compiler execution, autotuning, LLM execution, binary/profile changes, or performance claims
     objective: >
       Track MLGO, tensor-kernel autotuning, RVV intrinsic generation,
-      profile-guided binary optimization, and agentic compiler optimization
-      while keeping any future E1 use behind compiler/toolchain provenance,
-      semantic correctness, simulator/runtime logs, benchmark evidence, and
-      review.
+      profile-guided binary optimization, agentic compiler optimization,
+      accelerator-kernel optimization, optimization-memory reuse, and formal
+      RISC-V semantics while keeping any future E1 use behind
+      compiler/toolchain provenance, semantic correctness, simulator/runtime
+      logs, benchmark evidence, and review.
     deliverables:
       - scripts/ai_eda/capture_compiler_autotuning_targets.py
       - build/ai_eda/compiler_autotuning_targets/<run-id>/targets_report.json
     evidence_gate: >
       Compiler automation reports may only hash local compiler, runtime,
       benchmark, toolchain, and evidence-gate artifacts; generated kernels,
-      compiler models, schedules, profiles, relinked binaries, and performance
-      claims require exact source/binary hashes, tool versions, correctness
-      tests, simulator/runtime logs, benchmark calibration, and review.
+      optimization memories, compiler models, schedules, profiles, relinked
+      binaries, and performance claims require exact source/binary hashes,
+      tool versions, correctness tests, simulator/runtime logs, benchmark
+      calibration, semantic-equivalence evidence, and review.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation
@@ -1892,10 +1900,11 @@ work_items:
       - No local RISC-V simulator/runtime evidence proving generated kernels are semantically equivalent and ABI-compatible
       - No before/after benchmark evidence with target metadata, thermal/power state, compiler flags, raw logs, and calibration
       - No model or autotuner revision selected for MLGO, MetaSchedule, Ansor, agentic compiler optimization, or LLM vectorization
+      - No approved target adapter, prompt/model revision, optimization-memory quarantine, generated-kernel corpus, semantic-equivalence evidence, or replayed benchmark logs for Autocomp, AccelOpt, or V-Seek-style optimization
     acceptance_criteria:
       - Report hashes local source inventory, SOTA review, LLVM/IREE pins, runtime lowering/tests, AutoFDO/Propeller/BOLT harnesses, RVV autovec suite, compiler docs, and compiler reports.
       - Report states no source, compiler, codegen, binary, runtime, generated code, intrinsic, profile, compiler run, autotuning, LLM/model, benchmark, download, corpus import, prediction, performance claim, or release action is enabled.
-      - Candidate tasks list deterministic source inventory, compiler-version, RVV autovec, runtime, NPU contract, benchmark parser/calibration, simulator metric, scale feasibility, software contract, docs, and no-hardware-action gates.
+      - Candidate tasks list deterministic source inventory, compiler-version, RVV autovec, runtime, NPU contract, accelerator-kernel quarantine, benchmark parser/calibration, simulator metric, scale feasibility, software contract, docs, and no-hardware-action gates.
   - id: p1-reliability-resilience-target-capture
     title: Reliability, Aging, EM, And Soft-Error Target Capture
     priority: P1

@@ -401,10 +401,30 @@ power, and manufacturing preparation.
 - HINTPILOT:
   https://openreview.net/pdf/1dad91bc6d5c443a15d5e88f1504a5532cfde1b0.pdf
 - LLM-VeriOpt: https://samainsworth.github.io/LLM-VeriOpt-CGO2026.pdf
+- Autocomp: https://arxiv.org/abs/2505.18574 and
+  https://github.com/ucb-bar/autocomp
+- AccelOpt: https://arxiv.org/abs/2511.15915 and
+  https://github.com/zhang677/AccelOpt
 - Use: LLM/agent loops that use compiler diagnostics, tests, verification, or
-  hints to rewrite code or guide compiler decisions.
-- E1 fit: target capture only. Generated source, hints, and profiles need local
-  semantic tests, compile logs, performance logs, and human disposition.
+  hints to rewrite code, generate accelerator kernels, or guide compiler
+  decisions.
+- E1 fit: target capture only. Generated source, hints, profiles, optimization
+  memories, and accelerator kernels need local semantic tests, compile logs,
+  simulator/runtime replay, performance logs, and human disposition.
+
+### RISC-V runtime kernels and formal semantics
+
+- V-Seek: https://arxiv.org/abs/2503.17422 with upstream runtime reference
+  https://github.com/ggml-org/llama.cpp
+- Interaction Tree Semantics for RISC-V:
+  https://arxiv.org/abs/2605.04933
+- Use: optimize RISC-V inference kernels and provide formal semantics for
+  compiler/hardware/software contract reasoning.
+- E1 fit: blocked proof and benchmark evidence. Runtime kernel changes require
+  target ISA profiles, compiler flags, binary hashes, simulator or hardware
+  logs, workload hashes, calibrated metrics, and review; formal semantics
+  require pinned formalization assets, theorem/proof logs, source/generated
+  hashes, and declared RISC-V subset coverage before any equivalence claim.
 
 ## Reliability, aging, EM, and resilience
 

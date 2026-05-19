@@ -61,6 +61,21 @@ def find_latest_run(run_dir: Path) -> Path | None:
     return candidates[0] if candidates else None
 
 
+def find_latest_complete_run(run_dir: Path, cfg: dict) -> Path | None:
+    """Return the most recent run directory that contains utilization data."""
+    if not run_dir.exists():
+        return None
+    candidates = sorted(
+        (p for p in run_dir.iterdir() if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        if parse_utilization(candidate, cfg) is not None:
+            return candidate
+    return None
+
+
 def parse_utilization(run: Path, cfg: dict) -> float | None:
     keys = cfg.get("report_keys") or ["utilization"]
     regex = cfg.get("report_regex")
@@ -134,18 +149,16 @@ def main() -> int:
     if args.utilization is not None:
         observed = args.utilization
     else:
-        run = args.run or find_latest_run(DEFAULT_RUN_DIR)
-        if run is None:
-            print(
-                f"STATUS: BLOCKED pd-util-check - no run directory present at "
-                f"{DEFAULT_RUN_DIR.relative_to(ROOT)} and --utilization not given"
-            )
-            return 0
-        observed_value = parse_utilization(run, cfg)
-        if observed_value is None:
+        if args.run is not None:
+            run = args.run
+            observed_value = parse_utilization(run, cfg)
+        else:
+            run = find_latest_complete_run(DEFAULT_RUN_DIR, cfg)
+            observed_value = parse_utilization(run, cfg) if run is not None else None
+        if run is None or observed_value is None:
             print(
                 f"STATUS: BLOCKED pd-util-check - no utilization key found in "
-                f"{run.relative_to(ROOT)}; expected keys {cfg.get('report_keys')}"
+                f"{DEFAULT_RUN_DIR.relative_to(ROOT)}; expected keys {cfg.get('report_keys')}"
             )
             return 0
         observed = observed_value

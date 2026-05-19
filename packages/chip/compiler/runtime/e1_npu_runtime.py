@@ -314,12 +314,12 @@ def stage_prepared_descriptor_batch(
     _validate_descriptor_image_arena_base(image, arena_base, "prepared descriptor batch")
     _validate_descriptor_image_batch_index(image, batch_index, "prepared descriptor batch")
     _validate_descriptor_image_op_names(prepared, image)
-    _validate_descriptor_image_words(image, descriptor_base)
+    descriptor_count = _validate_descriptor_image_words(image, descriptor_base)
     sequence = prepared.get("host_runtime_sequence")
     if not isinstance(sequence, Mapping):
         raise ValueError("prepared descriptor batch requires host_runtime_sequence")
     _validate_sequence_mmio_preamble(prepared, sequence)
-    _validate_sequence_submission_base(sequence, descriptor_base)
+    _validate_descriptor_submission(image, sequence, descriptor_base, descriptor_count)
     _validate_sequence_descriptor_memory_writes(sequence, image)
     result = stage_host_runtime_sequence(
         sequence,
@@ -418,12 +418,12 @@ def stage_prepared_descriptor_execution_batches(
             raise ValueError(
                 "prepared execution batch descriptor_base does not match descriptor_stride_bytes"
             )
-        _validate_descriptor_image_words(image, expected_descriptor_base)
+        descriptor_count = _validate_descriptor_image_words(image, expected_descriptor_base)
         sequence = batch.get("host_runtime_sequence")
         if not isinstance(sequence, Mapping):
             raise ValueError("prepared execution batch requires host_runtime_sequence")
         _validate_sequence_mmio_preamble(batch, sequence)
-        _validate_sequence_submission_base(sequence, expected_descriptor_base)
+        _validate_descriptor_submission(image, sequence, expected_descriptor_base, descriptor_count)
         _validate_sequence_descriptor_memory_writes(sequence, image)
         sequences.append(sequence)
 
@@ -515,10 +515,12 @@ def _validate_descriptor_image_op_names(batch: Mapping[str, Any], image: Mapping
         raise ValueError("prepared execution batch op_names do not match op_mmio_preamble")
 
 
-def _validate_descriptor_image_words(image: Mapping[str, Any], descriptor_base: int) -> None:
+def _validate_descriptor_image_words(image: Mapping[str, Any], descriptor_base: int) -> int:
     descriptor_words = image.get("descriptor_words")
     if not isinstance(descriptor_words, list) or not descriptor_words:
         raise ValueError("prepared execution batch requires descriptor_words metadata")
+    if len(descriptor_words) > CommandBuffer.MAX_ENTRIES:
+        raise ValueError("prepared execution batch descriptor_words exceed RTL ring window")
     expected: dict[int, int] = {}
     for descriptor_index, words in enumerate(descriptor_words):
         if not isinstance(words, list) or len(words) != 4:
@@ -526,12 +528,22 @@ def _validate_descriptor_image_words(image: Mapping[str, Any], descriptor_base: 
         for word_index, word in enumerate(words):
             if not isinstance(word, int) or word < 0 or word > 0xFFFF_FFFF:
                 raise ValueError("prepared execution batch descriptor_words value must be a uint32")
+            if word_index == 0 and not word & E1NpuRuntime.DESC_FLAG_VALID_OWNER:
+                raise ValueError(
+                    "prepared execution batch descriptor word0 missing valid_owner bit"
+                )
+            if word_index == 0:
+                _validate_descriptor_word0(word)
             address = (
                 descriptor_base + descriptor_index * CommandBuffer.DESCRIPTOR_BYTES + word_index * 4
             )
             if address > 0xFFFF_FFFF:
                 raise ValueError("prepared execution batch descriptor_image address exceeds uint32")
             expected[address] = word
+        if words[0] & E1NpuRuntime.DESC_FLAG_WRITEBACK_REQUEST and words[2] & 0x3:
+            raise ValueError(
+                "prepared execution batch descriptor writeback address must be aligned"
+            )
     descriptor_image = image.get("descriptor_image")
     if not isinstance(descriptor_image, Mapping) or not descriptor_image:
         raise ValueError("prepared execution batch requires descriptor_image metadata")
@@ -543,19 +555,75 @@ def _validate_descriptor_image_words(image: Mapping[str, Any], descriptor_base: 
         materialized[parsed_address] = value
     if materialized != expected:
         raise ValueError("prepared execution batch descriptor_words do not match descriptor_image")
+    return len(descriptor_words)
 
 
-def _validate_sequence_submission_base(sequence: Mapping[str, Any], expected_base: int) -> None:
+def _validate_descriptor_word0(word0: int) -> None:
+    opcode = word0 & 0xF
+    stream_to_scratch = bool(word0 & E1NpuRuntime.DESC_FLAG_STREAM_TO_SCRATCH)
+    writeback_request = bool(word0 & E1NpuRuntime.DESC_FLAG_WRITEBACK_REQUEST)
+    scratch_offset = (word0 >> 16) & 0x3F
+    byte_count = (word0 >> 24) & 0x3F
+    if not stream_to_scratch:
+        raise ValueError("prepared execution batch descriptor word0 missing stream_to_scratch bit")
+    if byte_count == 0 or byte_count & 0x3:
+        raise ValueError(
+            "prepared execution batch descriptor byte_count must be positive and aligned"
+        )
+    if scratch_offset & 0x3 or scratch_offset + byte_count > E1NpuRuntime.SCRATCH_BYTES:
+        raise ValueError("prepared execution batch descriptor stream exceeds scratchpad")
+    if writeback_request and opcode not in (E1NpuRuntime.OP_GEMM_S8, E1NpuRuntime.OP_GEMM_S4):
+        raise ValueError("prepared execution batch writeback_request requires GEMM opcode")
+
+
+def _validate_descriptor_submission(
+    image: Mapping[str, Any],
+    sequence: Mapping[str, Any],
+    expected_base: int,
+    descriptor_count: int,
+) -> None:
+    submission = image.get("submission")
+    if not isinstance(submission, Mapping):
+        raise ValueError("prepared execution batch requires descriptor submission metadata")
+    base = _aligned_uint32(
+        submission.get("base"), "prepared execution batch descriptor submission base"
+    )
+    head = _nonnegative_int(
+        submission.get("head"), "prepared execution batch descriptor submission head"
+    )
+    tail = _nonnegative_int(
+        submission.get("tail"), "prepared execution batch descriptor submission tail"
+    )
+    if base != expected_base:
+        raise ValueError("prepared execution batch submission base does not match descriptor_base")
+    if head != 0:
+        raise ValueError("prepared execution batch submission head must be zero")
+    if tail != descriptor_count:
+        raise ValueError("prepared execution batch submission tail does not match descriptor_words")
+
+    sequence_submission: dict[str, int] = {}
     for write in _required_sequence_list(sequence, "submission_mmio_writes"):
         if not isinstance(write, Mapping):
             raise TypeError("host runtime sequence write entry must be a mapping")
-        if write.get("register") != "DESC_BASE":
+        register = write.get("register")
+        if register not in {"DESC_BASE", "DESC_HEAD", "DESC_TAIL"}:
             continue
         _address, value = _sequence_write_address_value(write)
-        if value != expected_base:
-            raise ValueError("prepared execution batch DESC_BASE does not match descriptor_base")
-        return
-    raise ValueError("prepared execution batch requires DESC_BASE submission write")
+        sequence_submission[register] = value
+    expected_submission = {
+        "DESC_BASE": base,
+        "DESC_HEAD": head,
+        "DESC_TAIL": tail,
+    }
+    missing = set(expected_submission) - set(sequence_submission)
+    if missing:
+        raise ValueError("prepared execution batch submission_mmio_writes missing register")
+    if sequence_submission["DESC_BASE"] != expected_submission["DESC_BASE"]:
+        raise ValueError("prepared execution batch DESC_BASE does not match descriptor_base")
+    if sequence_submission["DESC_HEAD"] != expected_submission["DESC_HEAD"]:
+        raise ValueError("prepared execution batch DESC_HEAD does not match submission")
+    if sequence_submission["DESC_TAIL"] != expected_submission["DESC_TAIL"]:
+        raise ValueError("prepared execution batch DESC_TAIL does not match submission")
 
 
 def _validate_sequence_descriptor_memory_writes(

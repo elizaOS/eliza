@@ -24,7 +24,9 @@ report_keys:
   - utilization
   - core_utilization
   - placement_utilization
+  - design__instance__utilization
+  - design__instance__utilization__stdcell
 
 # Optional grep pattern for plain-text utilization reports.
 # Captures a decimal number on the same line as one of the keys above.
-report_regex: '(?P<key>core_utilization|utilization|placement_utilization|utilization_fraction)\s*[:=]\s*(?P<value>[0-9]+\.?[0-9]*)'
+report_regex: '(?P<key>core_utilization|utilization|placement_utilization|utilization_fraction|design__instance__utilization)\s*[:=]\s*(?P<value>[0-9]+\.?[0-9]*)'
