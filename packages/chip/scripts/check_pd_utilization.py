@@ -14,6 +14,7 @@ Fails closed when:
 - the run report is missing
 - the parsed utilization exceeds the threshold
 """
+
 from __future__ import annotations
 
 import argparse
@@ -31,13 +32,11 @@ DEFAULT_RUN_DIR = ROOT / "pd/openlane/runs"
 
 def load_threshold(design: str) -> tuple[float, dict]:
     if not THRESHOLD_FILE.exists():
-        raise SystemExit(
-            f"FAIL: util_threshold.yaml missing: {THRESHOLD_FILE.relative_to(ROOT)}"
-        )
+        raise SystemExit(f"FAIL: util_threshold.yaml missing: {THRESHOLD_FILE.relative_to(ROOT)}")
     with THRESHOLD_FILE.open("r", encoding="utf-8") as fh:
         cfg = yaml.safe_load(fh) or {}
     if not isinstance(cfg, dict):
-        raise SystemExit(f"FAIL: util_threshold.yaml malformed (not a mapping)")
+        raise SystemExit("FAIL: util_threshold.yaml malformed (not a mapping)")
     default = cfg.get("max_utilization")
     if not isinstance(default, (int, float)):
         raise SystemExit("FAIL: util_threshold.max_utilization missing or non-numeric")

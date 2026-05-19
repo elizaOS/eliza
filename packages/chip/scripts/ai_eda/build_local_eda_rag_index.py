@@ -75,6 +75,21 @@ SOURCE_SET = (
         "ai_eda_runner",
     ),
     (
+        "routing_congestion_targets_runner",
+        "scripts/ai_eda/capture_routing_congestion_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "clock_tree_targets_runner",
+        "scripts/ai_eda/capture_clock_tree_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "extraction_parasitic_targets_runner",
+        "scripts/ai_eda/capture_extraction_parasitic_targets.py",
+        "ai_eda_runner",
+    ),
+    (
         "analog_mixed_signal_targets_runner",
         "scripts/ai_eda/capture_analog_mixed_signal_targets.py",
         "ai_eda_runner",
@@ -137,6 +152,76 @@ SOURCE_SET = (
     (
         "cpu_microarchitecture_targets_runner",
         "scripts/ai_eda/capture_cpu_microarchitecture_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "compiler_autotuning_targets_runner",
+        "scripts/ai_eda/capture_compiler_autotuning_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "reliability_resilience_targets_runner",
+        "scripts/ai_eda/capture_reliability_resilience_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "external_model_corpus_intake_targets_runner",
+        "scripts/ai_eda/capture_external_model_corpus_intake_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "benchmark_evaluation_hygiene_targets_runner",
+        "scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "eda_tool_agent_interop_targets_runner",
+        "scripts/ai_eda/capture_eda_tool_agent_interop_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "spec_traceability_targets_runner",
+        "scripts/ai_eda/capture_spec_traceability_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "ip_register_contract_targets_runner",
+        "scripts/ai_eda/capture_ip_register_contract_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "memory_macro_library_targets_runner",
+        "scripts/ai_eda/capture_memory_macro_library_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "chiplet_3dic_package_targets_runner",
+        "scripts/ai_eda/capture_chiplet_3dic_package_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "logic_synthesis_targets_runner",
+        "scripts/ai_eda/capture_logic_synthesis_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "netlist_equivalence_targets_runner",
+        "scripts/ai_eda/capture_netlist_equivalence_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "physical_verification_targets_runner",
+        "scripts/ai_eda/capture_physical_verification_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "placement_legalization_targets_runner",
+        "scripts/ai_eda/capture_placement_legalization_targets.py",
+        "ai_eda_runner",
+    ),
+    (
+        "floorplan_io_pdn_targets_runner",
+        "scripts/ai_eda/capture_floorplan_io_pdn_targets.py",
         "ai_eda_runner",
     ),
     (
@@ -316,6 +401,50 @@ SMOKE_QUERIES = (
         ],
     },
     {
+        "id": "netlist_equivalence_targets",
+        "query": "Which local sources define netlist equivalence, LEC, and post-synthesis consistency target capture?",
+        "required_source_ids": ["netlist_equivalence_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation",
+            "make formal",
+            "make synth",
+        ],
+    },
+    {
+        "id": "physical_verification_targets",
+        "query": "Which local sources define physical verification, DRC/LVS, and antenna target capture?",
+        "required_source_ids": ["physical_verification_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_physical_verification_targets.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "make antenna-metadata-check",
+        ],
+    },
+    {
+        "id": "placement_legalization_targets",
+        "query": "Which local sources define placement, legalization, density, and generative-placement target capture?",
+        "required_source_ids": ["placement_legalization_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+        ],
+    },
+    {
+        "id": "floorplan_io_pdn_targets",
+        "query": "Which local sources define floorplan, IO placement, tapcell, and PDN target capture?",
+        "required_source_ids": ["floorplan_io_pdn_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_floorplan_io_pdn_targets.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "make power-thermal-evidence-check",
+        ],
+    },
+    {
         "id": "board_package_fpga_targets",
         "query": "Which local sources define board, package, manufacturing, and FPGA AI target capture?",
         "required_source_ids": ["board_package_fpga_targets_runner", "ai_eda_readiness"],
@@ -361,6 +490,148 @@ SMOKE_QUERIES = (
             "make branch-prediction-check",
             "make mpki-eval",
             "python3 scripts/check_cache_hierarchy.py",
+        ],
+    },
+    {
+        "id": "compiler_autotuning_targets",
+        "query": "Which local sources define compiler, RVV, profile-guided, and kernel-autotuning AI target capture?",
+        "required_source_ids": ["compiler_autotuning_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation",
+            "python3 scripts/check_compiler_versions.py",
+            "python3 scripts/run_rvv_autovec_suite.py",
+            "python3 compiler/runtime/test_e1_npu_runtime.py",
+        ],
+    },
+    {
+        "id": "reliability_resilience_targets",
+        "query": "Which local sources define aging, electromigration, soft-error, and fault-injection AI target capture?",
+        "required_source_ids": ["reliability_resilience_targets_runner", "ai_eda_readiness"],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_reliability_resilience_targets.py --run-id validation",
+            "make process-14a-effects-check",
+            "make power-thermal-evidence-check",
+            "make memory-interconnect-contract-check",
+        ],
+    },
+    {
+        "id": "external_model_corpus_intake_targets",
+        "query": "Which local sources define external HuggingFace and GitHub model/corpus intake policy?",
+        "required_source_ids": [
+            "external_model_corpus_intake_targets_runner",
+            "ai_eda_external_probe_summary",
+            "ai_eda_readiness",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+            "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
+            "make no-hardware-action-check",
+        ],
+    },
+    {
+        "id": "benchmark_evaluation_hygiene_targets",
+        "query": "Which local sources define HDL benchmark contamination and evaluation hygiene policy?",
+        "required_source_ids": [
+            "benchmark_evaluation_hygiene_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_backlog",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
+            "make no-hardware-action-check",
+            "make rtl-check",
+        ],
+    },
+    {
+        "id": "eda_tool_agent_interop_targets",
+        "query": "Which local sources define EDA tool-agent command governance and commercial copilot boundaries?",
+        "required_source_ids": [
+            "eda_tool_agent_interop_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_provenance",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_eda_tool_agent_interop_targets.py --run-id validation",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "make no-hardware-action-check",
+            "make docs-check",
+        ],
+    },
+    {
+        "id": "spec_traceability_targets",
+        "query": "Which local sources define requirements-to-RTL traceability and requirement coverage gates?",
+        "required_source_ids": [
+            "spec_traceability_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_backlog",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_spec_traceability_targets.py --run-id validation",
+            "make platform-contract-check",
+            "make cocotb-contract",
+            "make no-hardware-action-check",
+        ],
+    },
+    {
+        "id": "ip_register_contract_targets",
+        "query": "Which local sources define IP, register-map, and platform-contract automation boundaries?",
+        "required_source_ids": [
+            "ip_register_contract_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_backlog",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_ip_register_contract_targets.py --run-id validation",
+            "make platform-contract-check",
+            "make npu-runtime-contract-check",
+            "make no-hardware-action-check",
+        ],
+    },
+    {
+        "id": "memory_macro_library_targets",
+        "query": "Which local sources define SRAM macro, memory compiler, and library automation boundaries?",
+        "required_source_ids": [
+            "memory_macro_library_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_backlog",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_memory_macro_library_targets.py --run-id validation",
+            "make pdk-portability-check",
+            "make memory-evidence-template-check",
+            "make pd-signoff-manifest-check",
+        ],
+    },
+    {
+        "id": "chiplet_3dic_package_targets",
+        "query": "Which local sources define chiplet, 2.5D/3DIC, UCIe, and package co-design boundaries?",
+        "required_source_ids": [
+            "chiplet_3dic_package_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_backlog",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation",
+            "make package-cross-probe-check",
+            "make memory-interconnect-contract-check",
+            "make power-thermal-evidence-check",
+        ],
+    },
+    {
+        "id": "logic_synthesis_targets",
+        "query": "Which local sources define logic synthesis, technology mapping, and gate-level QoR automation boundaries?",
+        "required_source_ids": [
+            "logic_synthesis_targets_runner",
+            "ai_eda_readiness",
+            "ai_eda_backlog",
+        ],
+        "required_followup_gates": [
+            "python3 scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation",
+            "make synth",
+            "make formal",
+            "make pd-signoff-manifest-check",
         ],
     },
 )

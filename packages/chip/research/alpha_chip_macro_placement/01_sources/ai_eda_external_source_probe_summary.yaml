@@ -8,17 +8,19 @@ policy:
   release_use_allowed: false
   license_metadata_is_advisory_until_manual_review: true
 summary:
-  http_200: 7
-  http_403: 63
-  skipped: 3
+  http_200: 23
+  http_403: 100
+  skipped: 5
   github_assets_reached: 1
-  huggingface_assets_reached: 3
+  huggingface_assets_reached: 19
 metadata_probe_limitations:
-  - Latest validation probe hit GitHub API HTTP_403 for most GitHub assets,
-    including DFT, memory/interconnect, power/thermal, hardware-security,
-    CDC/RDC orchestration, software/BSP/firmware, RTL rewrite/equivalence, and
-    board/package/FPGA sources; keep release use blocked and rerun after
-    rate-limit/auth conditions improve.
+  - Latest validation probe reached HuggingFace metadata for many model and
+    dataset assets but still hit GitHub API HTTP_403 for most GitHub assets,
+    including model/corpus companion repos, DFT, memory/interconnect,
+    power/thermal, hardware-security, CDC/RDC orchestration,
+    software/BSP/firmware, RTL rewrite/equivalence, and board/package/FPGA
+    sources; keep release use blocked and rerun after rate-limit/auth
+    conditions improve.
 observed_license_hints:
   - source_id: chipcraftx-rtlgen-7b
     asset: huggingface_model
@@ -32,6 +34,38 @@ observed_license_hints:
     asset: huggingface_dataset
     observed_license: apache-2.0
     release_use: blocked_until_dataset_review
+  - source_id: openrtlset
+    asset: huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_revision_license_manifest_and_contamination_review
+  - source_id: mg-verilog
+    asset: github_code_and_huggingface_dataset
+    observed_license: mit_reported_review_required
+    release_use: blocked_until_dataset_code_and_contamination_review
+  - source_id: metrex
+    asset: github_code_and_huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_pdk_label_license_and_local_error_review
+  - source_id: circuitnet-3
+    asset: github_code_and_huggingface_dataset
+    observed_license: apache-2.0_reported_review_required
+    release_use: blocked_until_revision_label_technology_and_license_review
+  - source_id: veriforge-deepseek-coder
+    asset: huggingface_model
+    observed_license: apache-2.0_reported_review_required
+    release_use: blocked_until_model_card_base_model_and_eval_review
+  - source_id: llm-eda-opencores
+    asset: huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_opencores_source_license_review
+  - source_id: hardware-verilogeval-v2-hf
+    asset: huggingface_dataset
+    observed_license: research_educational_terms_review_required
+    release_use: blocked_until_upstream_equivalence_and_terms_review
+  - source_id: llm4verilog-dataset
+    asset: huggingface_dataset
+    observed_license: review_required
+    release_use: blocked_until_generation_method_license_and_contamination_review
   - source_id: circuitnet
     asset: github_code_and_dataset
     observed_license: BSD-3-Clause

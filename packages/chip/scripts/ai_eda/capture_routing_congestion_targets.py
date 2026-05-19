@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture dry-run timing-closure and ECO automation targets for E1."""
+"""Capture dry-run routing, congestion, and DRC automation targets for E1."""
 
 from __future__ import annotations
 
@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[2]
-DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/timing_closure_targets"
-CLAIM_BOUNDARY = "timing_closure_target_capture_only_no_constraint_or_eco_change"
+DEFAULT_OUT_ROOT = ROOT / "build/ai_eda/routing_congestion_targets"
+CLAIM_BOUNDARY = "routing_congestion_target_capture_only_no_route_or_layout_change"
 
 INPUT_ARTIFACTS = (
     "research/alpha_chip_macro_placement/01_sources/ai_eda_source_inventory.yaml",
@@ -23,22 +23,23 @@ INPUT_ARTIFACTS = (
     "research/alpha_chip_macro_placement/01_sources/ai_eda_automation_readiness.yaml",
     "research/alpha_chip_macro_placement/01_sources/ai_eda_sota_review.md",
     "research/alpha_chip_macro_placement/01_sources/ai_for_chip_design_sota.md",
-    "pd/constraints/e1_soc.sdc",
-    "pd/constraints/e1_pd_smoke.sdc",
-    "pd/constraints/e1_soc_gf180.sdc",
     "pd/openlane/config.sky130.json",
     "pd/openlane/config.gf180.json",
+    "pd/openlane/config.ihp-sg13g2.json",
+    "pd/openlane/run.sh",
     "pd/signoff/manifest.yaml",
-    "docs/evidence/pd/multi-corner-sta-evidence.yaml",
-    "docs/evidence/pd/multi-corner-sta-RUN_2026-05-19_05-08-54.json",
+    "pd/constraints/e1_pd_smoke.sdc",
+    "pd/constraints/e1_soc.sdc",
     "docs/evidence/pd/post-route-ppa-validator.yaml",
     "docs/evidence/pd/dft-evidence.yaml",
+    "docs/evidence/pd/multi-corner-sta-evidence.yaml",
     "docs/evidence/power/pdn-signoff-gate.yaml",
     "docs/pd/high-fanout-routing-pressure-2026-05-18.json",
     "docs/pd/signoff/openlane_release_run_monitor_2026-05-19.md",
     "docs/pd/signoff/openlane_repairantennas_blocker_RUN_2026-05-19_01-52-14.md",
     "docs/pd/signoff/si-pi/local-gap-report.md",
-    "scripts/run_yosys.sh",
+    "research/alpha_chip_macro_placement/01_sources/openroad_openlane_validation.md",
+    "scripts/ai_eda/capture_openroad_ml_snapshot.py",
     "scripts/check_openlane_run_preflight.py",
     "scripts/check_pd_closure.py",
     "scripts/check_pd_signoff.py",
@@ -46,20 +47,22 @@ INPUT_ARTIFACTS = (
     "build/ai_eda/rag_index/source_manifest.json",
 )
 
-TIMING_METRIC_KEYS = (
-    "timing__setup__wns",
-    "timing__setup__tns",
-    "timing__setup_vio__count",
-    "timing__setup_r2r__ws",
-    "timing__setup_r2r_vio__count",
-    "timing__hold__wns",
-    "timing__hold__tns",
-    "timing__hold_vio__count",
-    "timing__hold_r2r__ws",
-    "timing__hold_r2r_vio__count",
+ROUTE_METRIC_KEYS = (
+    "design__wirelength",
+    "route__wirelength",
+    "route__vias",
+    "route__drc_errors",
+    "route__antenna_violations",
+    "route__wirelength__estimated",
+    "route__wirelength__max",
+    "route__wirelength__min",
     "design__max_slew_violation__count",
     "design__max_cap_violation__count",
     "design__max_fanout_violation__count",
+    "timing__setup__wns",
+    "timing__setup__tns",
+    "timing__hold__wns",
+    "timing__hold__tns",
 )
 
 
@@ -89,14 +92,6 @@ def command_entry(command: str) -> dict[str, str | None]:
     }
 
 
-def latest_metrics_path() -> Path | None:
-    metrics = sorted(
-        (ROOT / "pd/openlane/runs").glob("RUN_*/final/metrics.json"),
-        key=lambda path: path.stat().st_mtime,
-    )
-    return metrics[-1] if metrics else None
-
-
 def load_json(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text())
@@ -105,11 +100,25 @@ def load_json(path: Path) -> dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-def timing_metrics(path: Path | None) -> dict[str, Any]:
+def latest_metrics_path() -> Path | None:
+    metrics = sorted(
+        (ROOT / "pd/openlane/runs").glob("RUN_*/final/metrics.json"),
+        key=lambda path: path.stat().st_mtime,
+    )
+    return metrics[-1] if metrics else None
+
+
+def latest_run_dir(metrics_path: Path | None) -> Path | None:
+    if metrics_path is None:
+        return None
+    return metrics_path.parents[1]
+
+
+def route_metrics(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {}
     metrics = load_json(path)
-    return {key: metrics.get(key) for key in TIMING_METRIC_KEYS if key in metrics}
+    return {key: metrics.get(key) for key in ROUTE_METRIC_KEYS if key in metrics}
 
 
 def report_sample(path: Path, patterns: tuple[str, ...], limit: int = 12) -> list[str]:
@@ -125,30 +134,45 @@ def report_sample(path: Path, patterns: tuple[str, ...], limit: int = 12) -> lis
     return samples
 
 
-def latest_run_dir(metrics_path: Path | None) -> Path | None:
-    if metrics_path is None:
-        return None
-    return metrics_path.parents[1]
-
-
-def timing_report_artifacts(run_dir: Path | None) -> list[dict[str, Any]]:
+def routing_artifacts(run_dir: Path | None) -> list[dict[str, Any]]:
     if run_dir is None:
         return []
-    candidates = [
-        run_dir / "final/metrics.json",
-        *sorted(run_dir.glob("*openroad-sta*/wns.max.rpt")),
-        *sorted(run_dir.glob("*openroad-sta*/wns.min.rpt")),
-        *sorted(run_dir.glob("*openroad-resizertiming*/openroad-resizertiming*.log")),
-    ]
+    patterns = (
+        "*openroad-globalrouting*/openroad-globalrouting*.log",
+        "*openroad-globalrouting*/or_metrics_out.json",
+        "*openroad-globalrouting*/antenna.rpt",
+        "*openroad-globalrouting*/after_grt.guide",
+        "*openroad-detailedrouting*/openroad-detailedrouting*.log",
+        "*openroad-detailedrouting*/or_metrics_out.json",
+        "*openroad-detailedrouting*/*.drc",
+        "*odb-reportwirelength*/wire_lengths.csv",
+        "*magic-drc*/magic-drc.log",
+        "*klayout-drc*/klayout-drc.log",
+    )
+    paths: list[Path] = []
+    for pattern in patterns:
+        paths.extend(sorted(run_dir.glob(pattern)))
     entries: list[dict[str, Any]] = []
-    for path in candidates[:12]:
+    for path in paths[:24]:
         if not path.is_file():
             continue
         entries.append(
             {
                 "path": rel(path),
                 "sha256": sha256_file(path),
-                "samples": report_sample(path, (r"wns", r"tns", r"slack", r"violation")),
+                "samples": report_sample(
+                    path,
+                    (
+                        r"overflow",
+                        r"congestion",
+                        r"violation",
+                        r"drc",
+                        r"antenna",
+                        r"wire",
+                        r"via",
+                        r"route",
+                    ),
+                ),
             }
         )
     return entries
@@ -166,106 +190,91 @@ def main() -> int:
     metrics_path = latest_metrics_path()
     run_dir = latest_run_dir(metrics_path)
     report = {
-        "schema": "eliza.ai_eda.timing_closure_targets.v1",
+        "schema": "eliza.ai_eda.routing_congestion_targets.v1",
         "run_id": args.run_id,
         "created_at_utc": datetime.now(UTC).replace(microsecond=0).isoformat(),
         "mode": "dry-run",
-        "status": "TARGET_CAPTURE_ONLY_NO_ECO_OR_CONSTRAINT_CHANGE",
+        "status": "TARGET_CAPTURE_ONLY_NO_ROUTE_OR_LAYOUT_CHANGE",
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
-            "timingpredict",
-            "e2eslack",
-            "timingllm",
-            "fluxeda",
-            "openroad-resizer",
-            "openphysyn",
-            "learning-driven-gate-sizing",
-            "fusionsizer",
-            "iccad-2024-gate-sizing-benchmark",
-            "ir-aware-eco-rl",
+            "circuitnet",
+            "circuitnet-2",
+            "routeplacer",
+            "openroad-fastroute",
+            "openroad-tritonroute",
+            "cugr",
+            "dr-cu",
         ],
         "policy": {
-            "changes_constraints": False,
             "changes_rtl": False,
             "changes_netlist": False,
+            "changes_def": False,
+            "changes_odb": False,
+            "changes_gds": False,
+            "changes_guides": False,
+            "changes_constraints": False,
             "changes_pd_config": False,
             "runs_openroad": False,
-            "runs_sta": False,
-            "runs_synthesis": False,
-            "runs_external_optimizer": False,
+            "runs_openlane": False,
+            "runs_router": False,
+            "runs_drc": False,
+            "runs_antenna_check": False,
+            "runs_model": False,
             "runs_llm_or_agent": False,
             "downloads_external_assets": False,
-            "applies_eco": False,
-            "applies_gate_sizing": False,
-            "applies_buffer_insertion": False,
-            "applies_pin_swapping": False,
-            "applies_gate_cloning": False,
+            "imports_external_dataset": False,
+            "generates_route_guide": False,
+            "generates_congestion_map": False,
+            "generates_drc_fix": False,
             "generates_tcl": False,
-            "generates_constraints": False,
-            "generates_netlist_patch": False,
+            "generates_patch": False,
             "prediction_generated": False,
+            "routability_claim_allowed": False,
+            "drc_claim_allowed": False,
             "timing_claim_allowed": False,
-            "power_integrity_claim_allowed": False,
             "signoff_claim_allowed": False,
             "release_use_allowed": False,
         },
         "input_artifacts": [artifact_entry(path) for path in INPUT_ARTIFACTS],
         "latest_openlane_run": rel(run_dir) if run_dir else None,
-        "timing_metrics": timing_metrics(metrics_path),
-        "timing_report_artifacts": timing_report_artifacts(run_dir),
+        "route_metrics": route_metrics(metrics_path),
+        "routing_artifacts": routing_artifacts(run_dir),
         "optional_commands": [
             command_entry("openroad"),
-            command_entry("sta"),
-            command_entry("yosys"),
+            command_entry("openlane"),
+            command_entry("klayout"),
+            command_entry("magic"),
         ],
         "candidate_actions": [
             {
-                "id": "pre-route-slack-prediction-dataset",
+                "id": "route-log-and-congestion-label-capture",
                 "status": "CAPTURED_NOT_TRAINED",
-                "target": "build local timing-label rows from SDC, netlist, DEF/ODB, and STA reports",
+                "target": "build local labels from OpenROAD global route, detailed route, wirelength, antenna, DRC, DEF, ODB, and signoff artifacts",
                 "acceptance_gates": [
-                    "python3 scripts/check_pd_closure.py",
+                    "python3 scripts/ai_eda/capture_routing_congestion_targets.py --run-id validation",
+                    "python3 scripts/check_ai_eda_source_inventory.py",
                     "make openlane-run-preflight-check",
                     "make pd-signoff-manifest-check",
+                    "python3 scripts/check_pd_closure.py",
                 ],
             },
             {
-                "id": "constraint-review-suggestions",
-                "status": "CAPTURED_NOT_APPLIED",
-                "target": "review SDC completeness and IO-delay assumptions",
+                "id": "ml-routability-triage-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future CircuitNet/RoutePlacer-style predictors may rank placement or route-risk candidates only after held-out E1 labels exist",
                 "acceptance_gates": [
                     "make docs-check",
-                    "python3 scripts/check_pd_closure.py",
                     "make no-hardware-action-check",
+                    "make pd-signoff-manifest-check",
+                    "make power-thermal-evidence-check",
                 ],
             },
             {
-                "id": "openroad-resizer-eco-search",
+                "id": "router-parameter-sweep-watch",
                 "status": "CAPTURED_NOT_EXECUTED",
-                "target": "future advisory sweep over repair_design, repair_timing, gate sizing, buffer insertion, pin swapping, and gate cloning knobs",
+                "target": "future FastRoute/TritonRoute/CU-GR/Dr.CU parameter sweeps must remain isolated until routed DEF/ODB/GDS, DRC, antenna, timing, power, and signoff evidence is archived",
                 "acceptance_gates": [
                     "make openlane-run-preflight-check",
-                    "python3 scripts/check_pd_closure.py",
-                    "make pd-signoff-manifest-check",
-                    "make synth",
-                ],
-            },
-            {
-                "id": "ml-gate-sizing-buffer-insertion-watch",
-                "status": "CAPTURED_NOT_APPLIED",
-                "target": "future ML/RL/differentiable gate sizing and buffer insertion must remain advisory until before/after STA, power, area, DRC, antenna, and routability evidence exists",
-                "acceptance_gates": [
-                    "python3 scripts/ai_eda/capture_timing_closure_targets.py --run-id validation",
-                    "make power-thermal-evidence-check",
-                    "make pd-signoff-manifest-check",
-                    "make no-hardware-action-check",
-                ],
-            },
-            {
-                "id": "metal-only-and-post-route-eco-watch",
-                "status": "CAPTURED_NOT_MODIFIED",
-                "target": "future post-route or metal-only ECO suggestions require localized changed-object manifests and cannot bypass DRC/LVS/antenna/STA/signoff gates",
-                "acceptance_gates": [
                     "make pd-signoff-manifest-check",
                     "make manufacturing-artifacts-check",
                     "make real-world-gates-check",
@@ -273,19 +282,17 @@ def main() -> int:
             },
         ],
         "blocked_by": [
-            "no timing predictor trained or calibrated on E1 runs",
-            "no version-pinned external timing dataset or model",
-            "no approved write-capable ECO command schema",
-            "no before/after E1 ECO corpus with gate-sizing, buffer-insertion, pin-swapping, gate-cloning, route, DRC, antenna, STA, and power labels",
-            "no license-reviewed external gate-sizing or ECO optimizer with pinned revisions, seeds, and replay manifests",
-            "current report is advisory and cannot waive STA or signoff failures",
+            "no held-out E1 routing and DRC label corpus across repeated OpenLane runs",
+            "no approved write-capable route-guide or router-parameter command schema",
+            "no license-reviewed external routing dataset import or model checkpoint",
+            "current report is advisory and cannot waive global routing, detailed routing, DRC, antenna, timing, power, or signoff failures",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / "targets_report.json"
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n")
-    print(f"STATUS: PASS ai_eda.timing_closure.targets {rel(path)}")
+    print(f"STATUS: PASS ai_eda.routing_congestion.targets {rel(path)}")
     return 0
 
 

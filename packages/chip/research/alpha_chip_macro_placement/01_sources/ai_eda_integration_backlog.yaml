@@ -167,6 +167,59 @@ work_items:
       - Report records commands, Python modules, and local external paths.
       - Report policy forbids installs, clones, downloads, and release use.
       - Checker rejects reports that allow release use.
+  - id: p1-eda-tool-agent-interop-target-capture
+    title: EDA Tool-Agent Interoperability Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - agentic-eda-survey-2512-23189v2
+      - autoeda-mcp
+      - chateda
+      - mcp4eda
+      - synopsys-ai-copilot
+      - cadence-jedai
+      - cadence-chipstack-ai-super-agent
+      - siemens-fuse-eda-ai-agent
+      - phoenix-bench
+    target_area:
+      - agentic_orchestration
+      - eda_tool_control
+      - commercial_eda
+      - command_allowlist
+      - reproducible_replay
+    owner_scope: dry-run target capture only; no agent execution, MCP server startup, commercial API call, EDA tool invocation, generated Tcl/shell, source edit, PD config edit, signoff, or release use
+    objective: >
+      Track MCP-style open EDA wrappers, write-capable EDA agents, commercial
+      copilots, and hardware-agent benchmarks while keeping every executable
+      action behind typed command schemas, explicit scopes, commercial license
+      review, local replay manifests, deterministic gates, and human review.
+    deliverables:
+      - scripts/ai_eda/capture_eda_tool_agent_interop_targets.py
+      - build/ai_eda/eda_tool_agent_interop_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Tool-agent reports may only hash local registry, provenance, commercial
+      EDA gate, no-hardware action matrix, RAG, backend preflight, and
+      OpenROAD/OpenLane wrapper artifacts. Any real agent action requires an
+      allowlisted typed command, exact tool version, read/write scope, input
+      hashes, stdout/stderr log, output hashes, rollback path, local
+      deterministic gate, and reviewer disposition.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_eda_tool_agent_interop_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No approved write-capable EDA agent command schema or command allowlist
+      - No policy separating read-only RAG answers from executable Tcl, shell, simulator, synthesis, PnR, signoff, or release actions
+      - No commercial Synopsys, Cadence, Siemens, Ansys, or foundry tool license and data-handling review for AI copilot output
+      - No local replay harness that can reproduce AI-generated EDA actions from archived inputs, commands, logs, and output hashes
+      - No accepted MCP server version, authentication model, sandbox policy, or artifact quarantine path for E1
+      - No evidence that hardware-agent benchmark success transfers to E1 multi-file RTL, PD, verification, or software integration tasks
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, external probe summary, backlog, readiness, SOTA review, commercial EDA gate, no-hardware matrix, RAG/backend scripts, OpenROAD/OpenLane wrappers, and validation reports.
+      - Report states no agent, MCP server, open-source EDA, commercial EDA, external API, Tcl, shell, RTL, testbench, constraint, waiver, simulation, synthesis, PnR, signoff, source, PD config, prediction, productivity claim, PPA claim, signoff claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, RAG, no-hardware-action, docs, commercial-EDA, OpenLane preflight, physical closure, PD signoff, benchmark hygiene, RTL, formal, and cocotb gates.
   - id: p1-openroad-openlane-autotune
     title: OpenROAD/OpenLane Autotune Harness
     priority: P1
@@ -204,6 +257,63 @@ work_items:
       - Dry-run manifest explicitly blocks PPA/signoff claims.
       - Executed mode is unavailable until OpenLane preflight is unblocked.
       - Predictor outputs are advisory only.
+  - id: p1-placement-legalization-target-capture
+    title: Placement, Legalization, And Density Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - openroad-gpl
+      - openroad-dpl
+      - google-circuit-training
+      - tilos-macroplacement
+      - autodmp
+      - dreamplace
+      - xplace
+      - chipdiffusion
+      - diffplace
+      - flowplace
+      - chipbench-d
+      - routeplacer
+    target_area:
+      - global_placement
+      - detailed_placement
+      - legalization
+      - density_optimization
+      - generative_placement
+      - placement_benchmarking
+    owner_scope: dry-run target capture only; no floorplan, placement, DEF, ODB, GDS, PD config, constraints, netlist, density, padding, macro-placement, Tcl, patch, model, benchmark import, or tool execution
+    objective: >
+      Capture local E1 OpenROAD/OpenLane global-placement, detailed-placement,
+      legalization, filler, placement-check, DEF/ODB, metrics, and signoff
+      context for future AI-assisted placement triage while quarantining
+      diffusion, flow-matching, RL, GPU-placement, and benchmark-derived
+      placement outputs.
+    deliverables:
+      - scripts/ai_eda/capture_placement_legalization_targets.py
+      - build/ai_eda/placement_legalization_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Placement automation may only hash local inputs and artifacts until
+      before/after placement, legalization, route, STA, DRC/LVS/antenna, power,
+      manufacturing, commercial-EDA where applicable, and reviewer evidence
+      pass on pinned configs, layouts, commands, logs, and outputs.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No repeated completed E1 OpenLane placement-to-route runs with held-out labels for placement model validation
+      - No accepted write-capable schema for placement, density, padding, legalizer, filler, DEF, ODB, Tcl, or macro-placement edits
+      - No license-reviewed import path for external placement benchmarks, generated placements, or pretrained placement models
+      - Current PD closure evidence is not release-clean
+    acceptance_criteria:
+      - Report hashes source registry, placement notes, OpenLane configs, constraints, signoff manifests, post-route evidence, OpenROAD/OpenLane placement artifacts, RAG, routing, timing, and physical-verification target inputs.
+      - Report states no floorplan, placement, DEF, ODB, GDS, PD-config, constraint, netlist, OpenROAD, OpenLane, global-placement, detailed-placement, legalization, filler, model, LLM, download, benchmark import, placement generation, density/padding change, macro placement, Tcl, patch, prediction, QoR, timing, routability, signoff, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, placement capture, RAG, OpenLane preflight, PD signoff, PD closure, routing, timing, physical verification, no-hardware-action, docs, PD snapshot, autotune, synthesis, power, and commercial-EDA gates.
   - id: p1-llm4dv-cocotb-stimulus-loop
     title: Coverage-Directed cocotb Stimulus Search
     priority: P1
@@ -502,6 +612,50 @@ work_items:
       - Dataset creation is reproducible from archived run artifacts.
       - Predictor labels are never used as signoff evidence.
       - License/provenance for any external training data is recorded.
+  - id: p1-routing-congestion-target-capture
+    title: Routing Congestion And DRC Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - circuitnet
+      - circuitnet-2
+      - routeplacer
+      - openroad-fastroute
+      - openroad-tritonroute
+      - cugr
+      - dr-cu
+    target_area:
+      - global_routing
+      - detailed_routing
+      - congestion_analysis
+      - drc
+      - routability_prediction
+    owner_scope: dry-run target capture only; no route guide, DEF, ODB, GDS, Tcl, constraint, PD config, or source edits
+    objective: >
+      Capture local E1 route logs, global-route guides, detailed-route DRC
+      markers, wirelength reports, antenna reports, and signoff references for
+      future AI-assisted routing triage and routability predictors.
+    deliverables:
+      - scripts/ai_eda/capture_routing_congestion_targets.py
+      - build/ai_eda/routing_congestion_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Routing automation output is advisory only until before/after OpenLane
+      and OpenROAD route artifacts, DRC, antenna, STA, power, manufacturing,
+      and PD signoff evidence pass on hashed inputs and outputs.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_routing_congestion_targets.py --run-id validation
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+    blocked_by:
+      - No held-out E1 route/congestion/DRC label corpus across repeated OpenLane runs
+      - No approved write-capable route-guide or router-parameter command schema
+      - No license-reviewed external routing dataset import or model checkpoint
+      - Current PD closure evidence is not release-clean
+    acceptance_criteria:
+      - Report hashes local PD configs, constraints, route logs, DRC/antenna/wirelength artifacts, signoff manifests, and RAG inputs.
+      - Report states no route guide, DEF, ODB, GDS, Tcl, model, prediction, DRC fix, PD config, or source artifact is generated or changed.
   - id: p1-simulator-benchmark-optimization
     title: Simulator And Benchmark Optimization Target Capture
     priority: P1
@@ -626,6 +780,10 @@ work_items:
       - timingllm
       - fluxeda
       - openroad-resizer
+      - openphysyn
+      - learning-driven-gate-sizing
+      - fusionsizer
+      - iccad-2024-gate-sizing-benchmark
       - ir-aware-eco-rl
     target_area:
       - timing_closure
@@ -635,14 +793,16 @@ work_items:
     owner_scope: dry-run target capture only; no constraint, RTL, netlist, or ECO edits
     objective: >
       Capture local E1 timing constraints, OpenLane timing metrics, STA report
-      hashes, and resizer-log references for future AI-assisted timing triage
-      and ECO search.
+      hashes, resizer-log references, and blocked ECO candidate boundaries for
+      future AI-assisted timing triage, gate sizing, buffer insertion,
+      pin-swapping, gate-cloning, and localized ECO search.
     deliverables:
       - scripts/ai_eda/capture_timing_closure_targets.py
       - build/ai_eda/timing_closure_targets/<run-id>/targets_report.json
     evidence_gate: >
       Timing automation output is advisory only until OpenSTA/OpenLane confirms
-      before/after metrics on hashed artifacts and PD signoff checkers pass.
+      before/after metrics on hashed artifacts and PD, power, DRC, antenna,
+      manufacturing, and signoff checkers pass.
     validation_commands:
       - python3 scripts/check_ai_eda_source_inventory.py
       - python3 scripts/ai_eda/capture_timing_closure_targets.py --run-id validation
@@ -652,9 +812,13 @@ work_items:
       - No approved write-capable ECO command schema
       - Current STA/signoff closure is not release-clean
       - External timing datasets and code need license review
+      - No before/after E1 ECO corpus for sizing, buffering, pin-swapping,
+        cloning, routing legality, DRC, antenna, STA, and power labels
     acceptance_criteria:
-      - Report hashes SDC, config, signoff, metrics, and timing report inputs.
-      - Report states no constraints, RTL, netlist, or ECO actions are changed.
+      - Report hashes SDC, config, signoff, metrics, timing report, and
+        physical-design evidence inputs.
+      - Report states no constraints, RTL, netlist, PD config, Tcl, or ECO
+        actions are changed or generated.
       - Candidate actions list deterministic PD follow-up gates.
   - id: p2-analog-mixed-signal-target-capture
     title: Analog/Mixed-Signal AI Target Capture
@@ -897,6 +1061,63 @@ work_items:
       - Report hashes sustained power, thermal, benchmark, PD, package, and checker inputs.
       - Report states no power, thermal, IR-drop, TOPS/W, or generated-PDN claim is made.
       - Candidate tasks list deterministic power, thermal, PD signoff, board/package, and synthesis gates.
+  - id: p1-floorplan-io-pdn-target-capture
+    title: Floorplan, IO Placement, Tapcell, And PDN Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - openroad-ifp
+      - openroad-ioplacer
+      - openroad-tapcell
+      - openroad-pdn
+      - openlane-floorplanning
+      - floorset
+      - piano-floorplanner
+      - ibm-fp-opt
+      - nl2gds
+      - openpdn
+    target_area:
+      - floorplanning
+      - io_placement
+      - pin_assignment
+      - tapcell
+      - pdn_generation
+      - power_integrity
+    owner_scope: dry-run target capture only; no die/core area, macro placement, IO placement, pin order, padframe, tap/endcap, track, PDN, DEF, ODB, GDS, PD config, constraint, Tcl, patch, model, or benchmark import
+    objective: >
+      Capture local E1 floorplan, IO pin-order, padframe, tap/endcap, PDN,
+      package, SI/PI, DEF/ODB, metrics, and signoff context for future
+      AI-assisted floorplanning and pin/PDN triage while quarantining generated
+      floorplans, pin assignments, and power grids.
+    deliverables:
+      - scripts/ai_eda/capture_floorplan_io_pdn_targets.py
+      - build/ai_eda/floorplan_io_pdn_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Floorplan/IO/PDN automation may only hash local inputs until before/after
+      package, padframe, SI/PI, power, route, STA, DRC/LVS/antenna,
+      manufacturing, commercial-EDA where applicable, and reviewer evidence
+      pass on pinned configs, layouts, commands, logs, and outputs.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_floorplan_io_pdn_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+      - make padframe-check
+      - make power-thermal-evidence-check
+      - make pdn-workload-signoff
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No accepted write-capable schema for die/core area, IO placement, pin order, padframe, tap/endcap, track, PDN, DEF, ODB, Tcl, or patch edits
+      - No repeated completed E1 OpenLane floorplan-to-signoff corpus with held-out labels for AI floorplanning or PDN validation
+      - No license-reviewed import path for external floorplanning datasets, generated floorplans, or pretrained floorplanning models
+      - Current PD closure and commercial signoff evidence are not release-clean
+    acceptance_criteria:
+      - Report hashes source registry, OpenLane floorplan configs, pin order, padframe, PDN budget, SI/PI evidence, package docs, checker scripts, floorplan artifacts, RAG, placement, power, and board/package target inputs.
+      - Report states no floorplan, die/core, macro placement, IO placement, pin-order, padframe, PDN, tapcell, endcap, track, DEF, ODB, GDS, PD-config, constraint, OpenROAD/OpenLane, model, LLM, download, benchmark import, Tcl, patch, prediction, floorplan, pinout, PDN, signoff, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, floorplan capture, OpenLane preflight, PD signoff, PD closure, placement, power, board/package, padframe, SI/PI/PDN, manufacturing, commercial-EDA, no-hardware-action, and docs gates.
   - id: p1-hardware-security-target-capture
     title: Hardware Security AI Target Capture
     priority: P1
@@ -1130,6 +1351,144 @@ work_items:
       - Report hashes local package, KiCad, FPGA, Wi-Fi/RF, manufacturing, and checker inputs.
       - Report states no schematic, PCB, package, pinout, FPGA, fab, or release claim is enabled.
       - Candidate tasks list deterministic pinout, package cross-probe, KiCad, FPGA, Wi-Fi/RF, manufacturing, real-world, and product gates.
+  - id: p1-clock-tree-target-capture
+    title: Clock Tree And Clock-Network Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - openroad-cts
+      - tritoncts
+      - gan-cts
+      - cts-bench
+      - openroad-two-phase-clock
+    target_area:
+      - clock_tree_synthesis
+      - clock_network
+      - skew_latency_prediction
+      - timing_closure
+      - physical_design
+    owner_scope: dry-run target capture only; no RTL, netlist, DEF, ODB, SDC, CTS, clocking, Tcl, or PD config edits
+    objective: >
+      Capture local E1 CTS reports, clock/skew reports, post-CTS timing repair
+      logs, DEF/ODB snapshots, timing constraints, and signoff references for
+      future AI-assisted skew, latency, hold-risk, and clock-network triage.
+    deliverables:
+      - scripts/ai_eda/capture_clock_tree_targets.py
+      - build/ai_eda/clock_tree_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Clock-tree automation output is advisory only until before/after CTS,
+      STA, DFT, CDC/RDC, power, routing, manufacturing, and PD signoff evidence
+      pass on hashed inputs and outputs.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_clock_tree_targets.py --run-id validation
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+      - python3 scripts/ai_eda/capture_cdc_rdc_targets.py --run-id validation
+      - python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation
+    blocked_by:
+      - No held-out E1 CTS/skew/latency label corpus across repeated OpenLane runs
+      - No approved write-capable CTS, clock-buffer, useful-skew, or clocking-conversion command schema
+      - No license-reviewed external CTS dataset import or model checkpoint
+      - Current PD closure evidence is not release-clean
+    acceptance_criteria:
+      - Report hashes local CTS, clock, skew, post-CTS timing, constraints, PD config, signoff, and RAG inputs.
+      - Report states no clock tree, RTL, netlist, DEF, ODB, SDC, Tcl, model, prediction, clocking conversion, PD config, signoff claim, or source artifact is generated or changed.
+  - id: p1-extraction-parasitic-target-capture
+    title: Extraction, SPEF, And Parasitic Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - openroad-openrcx
+      - openlane-timing-corners
+      - magic-extraction
+      - capbench
+    target_area:
+      - parasitic_extraction
+      - spef_generation
+      - multi_corner_sta
+      - signal_integrity
+      - capacitance_prediction
+    owner_scope: dry-run target capture only; no layout, DEF, ODB, GDS, SPEF, SDF, SPICE, extraction-rule, Tcl, SI waiver, or PD config edits
+    objective: >
+      Capture local E1 OpenRCX SPEF files, RCX logs, Magic extracted SPICE,
+      SDF outputs, multi-corner STA references, timing-corner manifests, and
+      signoff references for future AI-assisted parasitic and SI triage.
+    deliverables:
+      - scripts/ai_eda/capture_extraction_parasitic_targets.py
+      - build/ai_eda/extraction_parasitic_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Extraction automation output is advisory only until before/after SPEF,
+      SDF, SPICE, multi-corner STA, SI, DRC/LVS, antenna, route, power, and PD
+      signoff evidence pass on hashed inputs and outputs.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_extraction_parasitic_targets.py --run-id validation
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+    blocked_by:
+      - No held-out E1 parasitic extraction or coupling-capacitance label corpus
+      - No approved write-capable SPEF, SDF, SPICE, extraction-rule, or SI-waiver command schema
+      - No license-reviewed external capacitance-extraction dataset import or model checkpoint
+      - Current PD closure and multi-corner SI evidence are not release-clean
+    acceptance_criteria:
+      - Report hashes local OpenRCX, SPEF, SDF, Magic extraction, SPICE, timing-corner, signoff, and RAG inputs.
+      - Report states no layout, DEF, ODB, GDS, SPEF, SDF, SPICE, extraction rule, model, prediction, SI waiver, Tcl, PD config, or signoff claim is generated or changed.
+  - id: p1-physical-verification-target-capture
+    title: Physical Verification, DRC/LVS, And Antenna Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - klayout-drc
+      - magic-drc-lvs
+      - netgen-lvs
+      - openroad-antenna-check
+      - rule2drc
+      - posteda-bench
+    target_area:
+      - physical_verification
+      - drc
+      - lvs
+      - antenna
+      - layout_repair
+      - signoff
+    owner_scope: dry-run target capture only; no layout, GDS, DEF, ODB, netlist, PDK-rule, PD config, constraint, DRC deck, waiver, antenna fix, Tcl, patch, tool run, or signoff claim
+    objective: >
+      Capture local E1 KLayout, Magic, Netgen, OpenROAD/OpenLane DRC/LVS/XOR,
+      antenna, and signoff artifacts as hashed targets for future AI-assisted
+      physical-verification log triage while quarantining generated decks,
+      layout repairs, waivers, and antenna fixes.
+    deliverables:
+      - scripts/ai_eda/capture_physical_verification_targets.py
+      - build/ai_eda/physical_verification_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Physical-verification automation is advisory only until before/after DRC,
+      LVS, XOR, antenna, extraction, STA, power, manufacturing, commercial-EDA
+      where applicable, and reviewer evidence pass on pinned layouts, decks,
+      netlists, configs, and logs.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_physical_verification_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+      - make antenna-metadata-check
+      - make manufacturing-artifacts-check
+      - make commercial-eda-gate
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No foundry-approved DRC/LVS/antenna signoff deck, waiver policy, or commercial-signoff correlation for E1
+      - No accepted AI-generated DRC deck, layout repair, antenna fix, or LVS waiver workflow with deterministic before/after artifacts
+      - Current PD closure evidence is not release-clean
+      - No release gate allowing AI physical-verification output to bypass deterministic tool and reviewer gates
+    acceptance_criteria:
+      - Report hashes source registry, PD configs, signoff manifests, antenna blockers, OpenLane DRC/LVS/XOR/antenna artifacts, routing, extraction, DFM, and RAG inputs.
+      - Report states no layout, GDS, DEF, ODB, netlist, PDK-rule, PD-config, constraint, KLayout, Magic, Netgen, OpenROAD, OpenLane, DRC, LVS, XOR, antenna, model, LLM, download, deck, fix, waiver, Tcl, patch, prediction, signoff, or release action is enabled.
+      - Candidate tasks list deterministic inventory, physical-verification capture, RAG, OpenLane preflight, signoff, PD closure, antenna, manufacturing, commercial-EDA, no-hardware-action, docs, routing, extraction, DFM, power, and real-world gates.
   - id: p1-low-power-intent-target-capture
     title: Low-Power, DVFS, Clock-Gating, And UPF Target Capture
     priority: P1
@@ -1389,3 +1748,581 @@ work_items:
       - Report hashes local source inventory, SOTA review, BPU docs/RTL, cache docs/RTL, benchmark scripts, MPKI output, ChampSim sweep output, and cache evidence gates.
       - Report states no RTL, branch predictor, cache policy, prefetcher, simulator, model, trace import, prediction, IPC, MPKI, area/power, product-performance, or release action is enabled.
       - Candidate tasks list deterministic source inventory, branch-prediction, MPKI, BPU cocotb/formal, cache hierarchy, ChampSim, memory, benchmark, RTL, synthesis, formal, docs, and no-hardware-action gates.
+  - id: p1-compiler-autotuning-target-capture
+    title: Compiler Autotuning And RVV Codegen Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - llvm-mlgo
+      - google-ml-compiler-opt
+      - tvm-meta-schedule
+      - ansor
+      - autofdo
+      - llvm-propeller
+      - bolt
+      - intrintrans-rvv
+      - vecintrinbench
+      - simdbench
+      - agentic-code-optimization
+      - hintpilot
+      - llm-veriopt
+      - xdsl-rvv-lowering
+    target_area:
+      - compiler
+      - riscv_vector
+      - autotuning
+      - profile_guided_optimization
+      - tensor_kernel_scheduling
+      - llm_code_optimization
+    owner_scope: dry-run target capture only; no generated code, compiler execution, autotuning, LLM execution, binary/profile changes, or performance claims
+    objective: >
+      Track MLGO, tensor-kernel autotuning, RVV intrinsic generation,
+      profile-guided binary optimization, and agentic compiler optimization
+      while keeping any future E1 use behind compiler/toolchain provenance,
+      semantic correctness, simulator/runtime logs, benchmark evidence, and
+      review.
+    deliverables:
+      - scripts/ai_eda/capture_compiler_autotuning_targets.py
+      - build/ai_eda/compiler_autotuning_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Compiler automation reports may only hash local compiler, runtime,
+      benchmark, toolchain, and evidence-gate artifacts; generated kernels,
+      compiler models, schedules, profiles, relinked binaries, and performance
+      claims require exact source/binary hashes, tool versions, correctness
+      tests, simulator/runtime logs, benchmark calibration, and review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation
+      - python3 scripts/check_compiler_versions.py
+      - python3 scripts/run_rvv_autovec_suite.py
+      - python3 compiler/runtime/test_e1_npu_runtime.py
+      - python3 compiler/runtime/test_e1_npu_runtime_sim.py
+    blocked_by:
+      - No pinned LLVM stage-2 toolchain, IREE build, or compiler version evidence accepted as release-grade
+      - No license-reviewed compiler corpus, RVV intrinsic corpus, tensor-kernel corpus, or profile corpus imported for E1
+      - No approved workflow for AI-generated RVV intrinsics, compiler pass changes, schedule changes, profile data, or binaries
+      - No local RISC-V simulator/runtime evidence proving generated kernels are semantically equivalent and ABI-compatible
+      - No before/after benchmark evidence with target metadata, thermal/power state, compiler flags, raw logs, and calibration
+      - No model or autotuner revision selected for MLGO, MetaSchedule, Ansor, agentic compiler optimization, or LLM vectorization
+    acceptance_criteria:
+      - Report hashes local source inventory, SOTA review, LLVM/IREE pins, runtime lowering/tests, AutoFDO/Propeller/BOLT harnesses, RVV autovec suite, compiler docs, and compiler reports.
+      - Report states no source, compiler, codegen, binary, runtime, generated code, intrinsic, profile, compiler run, autotuning, LLM/model, benchmark, download, corpus import, prediction, performance claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, compiler-version, RVV autovec, runtime, NPU contract, benchmark parser/calibration, simulator metric, scale feasibility, software contract, docs, and no-hardware-action gates.
+  - id: p1-reliability-resilience-target-capture
+    title: Reliability, Aging, EM, And Soft-Error Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - proton-em
+      - emspice2
+      - bti-hci-aging-models
+      - sofia-soft-error-framework
+      - arm-ethos-u55-soft-error
+      - ibex-seu-formal
+      - bec-soft-error-llvm
+      - hamartia-fault-injection
+      - fies-qemu-fault-injection
+      - tensorfi
+      - ares-dnn-fault-injection
+      - caliptra-error-injection
+    target_area:
+      - reliability
+      - electromigration
+      - aging
+      - soft_error
+      - fault_injection
+      - resilience_mitigation
+    owner_scope: dry-run target capture only; no fault injection, aging/EM analysis, RTL/netlist/layout/firmware changes, mitigation generation, signoff, or reliability claims
+    objective: >
+      Track aging, electromigration, soft-error, formal/QEMU fault-injection,
+      NPU workload resilience, and ECC/TMR mitigation sources while keeping any
+      future E1 use behind process collateral, fault manifests, deterministic
+      simulator/formal logs, physical signoff, benchmark/runtime evidence, and
+      review.
+    deliverables:
+      - scripts/ai_eda/capture_reliability_resilience_targets.py
+      - build/ai_eda/reliability_resilience_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Reliability automation reports may only hash local process, PDN, power,
+      thermal, memory, runtime, RTL, and evidence-gate artifacts. Fault
+      campaigns, lifetime estimates, ECC/TMR/redundancy changes, and EM/IR or
+      soft-error claims require exact source/layout/binary hashes, process
+      models, fault libraries, seeds, logs, signatures, before/after PPA, and
+      review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_reliability_resilience_targets.py --run-id validation
+      - make process-14a-effects-check
+      - make power-thermal-evidence-check
+      - make memory-interconnect-contract-check
+      - make no-hardware-action-check
+    blocked_by:
+      - No E1 process-qualified BTI, HCI, TDDB, EM, SER, or radiation fault-rate model
+      - No calibrated activity, temperature, voltage, PDN current-density, or lifetime mission-profile evidence
+      - No reviewed RTL/formal/QEMU fault-injection harness for E1 with fault-site manifests, random seeds, signatures, and pass/fail taxonomy
+      - No local labels linking fault campaigns, formal traces, simulator failures, or silicon logs to approved mitigations
+      - No approved workflow for AI-generated ECC, TMR, replay, redundancy, hardening, derating, or reliability ECO changes
+      - No signoff evidence showing EM/IR, aging timing, soft-error, safety, or reliability closure
+    acceptance_criteria:
+      - Report hashes local source inventory, SOTA review, process effects, PDN/current/signoff artifacts, cache/memory/runtime/RTL artifacts, power evidence contracts, and reliability-related gate scripts.
+      - Report states no RTL, netlist, layout, PDN, firmware, fault insertion, fault campaign, aging/EM analysis, formal/simulator/model run, mitigation generation, external download, prediction, reliability claim, signoff claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, process, power/thermal, PD signoff, formal, cocotb, QEMU, runtime, NPU contract, benchmark, memory, RTL, synth, and no-hardware-action gates.
+  - id: p1-external-model-corpus-intake-target-capture
+    title: External Model And Corpus Intake Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - openrtlset
+      - mg-verilog
+      - metrex
+      - circuitnet-3
+      - veriforge-deepseek-coder
+      - llm-eda-opencores
+      - hardware-verilogeval-v2-hf
+      - llm4verilog-dataset
+      - siliconmind-v1
+      - chipcraftx-rtlgen-7b
+      - codev-sva
+      - radai-wm811k-wafer-defect-model
+    target_area:
+      - model_registry
+      - corpus_governance
+      - huggingface
+      - github
+      - rtl_generation
+      - physical_design_prediction
+      - dataset_license_review
+    owner_scope: dry-run target capture only; no external asset import, dataset/model download, local corpus export, training, fine-tuning, inference, evaluation, generated source, or release use
+    objective: >
+      Track HuggingFace and GitHub models/datasets for RTL generation,
+      verification, metric reasoning, physical-design prediction, SVA datasets,
+      and wafer-defect modeling while keeping every external asset behind exact
+      revision pins, license review, contamination checks, quarantine paths,
+      deterministic local gates, and reviewer disposition.
+    deliverables:
+      - scripts/ai_eda/capture_external_model_corpus_intake_targets.py
+      - build/ai_eda/external_model_corpus_intake_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      External model/corpus reports may only hash local registry, provenance,
+      probe, RAG, RTL-eval, and PD snapshot artifacts. Any import or execution
+      requires exact file manifests, licenses, storage path, no-training-data
+      leakage checks, prompt/output hashes, local lint/sim/synth/formal or
+      signoff gates, and review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation
+      - python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation
+      - python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run
+      - make no-hardware-action-check
+    blocked_by:
+      - No approved external model or corpus license review for release use
+      - No pinned HuggingFace dataset/model revisions, file manifests, or storage quarantine policy
+      - No contamination or de-duplication report comparing external RTL corpora against E1 tasks and benchmark prompts
+      - No local evaluator allowed to download weights, import datasets, train, fine-tune, run inference, or generate source
+      - No held-out E1 task suite with lint, simulation, synthesis, formal, and reviewer disposition for external models
+      - No technology-matched label corpus proving MetRex, CircuitNet 3.0, or other public labels transfer to E1
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, external probe summary/report, SOTA docs, training input notes, RTL eval plan, probe/eval/RAG scripts, CFM capture, PD snapshot capture, RAG manifest, and RTL eval report.
+      - Report states no external asset import, dataset/model/code download, local corpus export, training, fine-tuning, inference, evaluation, RTL/assertion/layout generation, source change, prediction, model/dataset quality claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, external probe, RTL dry-run eval, RAG, OpenROAD snapshot, circuit foundation capture, docs, RTL, synth, PD signoff, physical closure, cocotb, formal, and no-hardware-action gates.
+  - id: p1-benchmark-evaluation-hygiene-target-capture
+    title: Benchmark Contamination And Evaluation Hygiene Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - vericontaminated
+      - verilog-eval
+      - rtllm
+      - cvdp
+      - protocolllm
+      - openrtlset
+      - mg-verilog
+      - llm-eda-opencores
+      - hardware-verilogeval-v2-hf
+      - llm4verilog-dataset
+      - llmsanitize
+      - min-k-prob-contamination
+    target_area:
+      - benchmark_governance
+      - contamination_review
+      - corpus_governance
+      - evaluation_reproducibility
+      - held_out_tasks
+    owner_scope: dry-run target capture only; no benchmark import, dataset/model download, contamination detector execution, prompt export, model run, evaluation run, generated RTL, score claim, or release use
+    objective: >
+      Track HDL benchmark contamination, held-out task construction, near-
+      duplicate review, evaluator reproducibility, and public score limits so
+      AI/EDA model results cannot be mistaken for E1 design evidence.
+    deliverables:
+      - scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py
+      - build/ai_eda/benchmark_evaluation_hygiene_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Benchmark hygiene reports may only hash local registry, provenance,
+      probe, RAG, external intake, and dry-run RTL-eval artifacts. Any real
+      benchmark or held-out E1 evaluation needs exact revisions, file and task
+      manifests, license review, private prompt handling, contamination and
+      near-duplicate review, tool versions, simulator/synthesis/formal logs,
+      seeds, generated artifact hashes, and reviewer disposition.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation
+      - python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No approved benchmark import path with exact revisions, licenses, manifests, and quarantine directory
+      - No contamination report comparing public HDL benchmarks, external RTL corpora, model training disclosures, and held-out E1 tasks
+      - No near-duplicate scanner accepted for Verilog/SystemVerilog normalization, generated prompt variants, and source-license provenance
+      - No policy for preserving private E1 evaluation prompts outside training, public issue text, or generated feedback loops
+      - No benchmark-score protocol tying model outputs to lint, simulation, synthesis, formal, seeds, tool versions, and reviewer disposition
+      - No release gate allowing public benchmark pass rates to substitute for E1 integration evidence
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, probe summary/report, backlog, readiness, SOTA docs, training input notes, RTL eval plan/report, external intake report, probe/eval/RAG scripts, and RAG manifest.
+      - Report states no benchmark, dataset, model, code, prompt, score, contamination detector, inference, evaluation, generated RTL, source change, quality claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, external probe, external intake, RTL dry-run eval, RAG, docs, no-hardware-action, RTL, cocotb, formal, and synth gates.
+  - id: p1-spec-traceability-target-capture
+    title: Spec-To-RTL Traceability And Requirement Coverage Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - incrertl
+      - llm-fsm
+      - spec2assertion
+      - coverassert
+      - qimeng-codev-sva
+      - assertionforge
+      - sangam-sva
+      - codev-sva
+      - protocolllm
+      - vericontaminated
+    target_area:
+      - requirements_traceability
+      - spec_to_rtl
+      - assertion_generation
+      - requirement_coverage
+      - incremental_rtl_impact
+    owner_scope: dry-run target capture only; no requirement/spec/RTL/assertion/testbench changes, prompt export, parser/model execution, formal/simulation/synthesis run, trace matrix generation, generated SVA/RTL/patch, claim, or release use
+    objective: >
+      Track requirements-to-RTL, incremental spec evolution, NL-to-SVA,
+      FSM/protocol specification evaluation, and requirement coverage sources
+      while keeping every generated artifact behind stable requirement IDs,
+      source hashes, quarantine, deterministic E1 gates, and review.
+    deliverables:
+      - scripts/ai_eda/capture_spec_traceability_targets.py
+      - build/ai_eda/spec_traceability_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Spec traceability reports may only hash local registry, provenance,
+      architecture docs, spec-db contracts, RTL gap work orders, assertion
+      candidates, RAG, and checker scripts. Any real trace matrix, spec edit,
+      RTL change, assertion, or patch requires stable requirement IDs, exact
+      source/RTL/test hashes, non-overlap and license review, prompt/output
+      hashes, vacuity checks, deterministic formal/cocotb/synthesis/platform
+      gates, and reviewer disposition.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_spec_traceability_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make platform-contract-check
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No approved stable requirement-ID scheme spanning E1 docs, spec-db, RTL modules, assertions, tests, and work orders
+      - No reviewed trace matrix generator for SystemVerilog ranges, SVA candidates, cocotb tests, formal properties, and generated software contracts
+      - No local policy for AI-generated requirement changes or spec edits
+      - No accepted NL-to-SVA or spec-to-RTL backend with license review, contamination review, prompt quarantine, and deterministic replay
+      - No equivalence or impact-analysis gate proving incremental RTL updates preserve unaffected behavior
+      - No coverage metric tying natural-language requirements to formal, cocotb, synthesis, and platform-contract evidence
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, architecture contracts, spec-db contracts, platform contract, RTL gap work order, assertion candidates, traceability-adjacent capture scripts, and RAG manifest.
+      - Report states no requirement/spec/RTL/assertion/testbench changes, prompt export, LLM/model/parser/formal/simulation/synthesis run, generated trace matrix, generated RTL/SVA/patch, traceability claim, requirement coverage claim, assertion quality claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, RAG, platform contract, docs, RTL rewrite capture, RTL, formal, synth, verification debug capture, cocotb contract, no-hardware-action, benchmark hygiene, RTL dry-run eval, NPU runtime, NPU target, and memory-interconnect gates.
+  - id: p1-ip-register-contract-target-capture
+    title: IP, Register-Map, And Platform-Contract Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - systemrdl-standard
+      - peakrdl
+      - peakrdl-ipxact
+      - opentitan-reggen
+      - ip-xact-standard
+      - fusesoc
+      - edalize
+      - bender
+      - siliconcompiler
+      - rggen
+    target_area:
+      - ip_integration
+      - register_generation
+      - platform_contract
+      - software_abi
+      - dependency_management
+    owner_scope: dry-run target capture only; no external IP import, generator run, EDA flow run, platform contract edit, register-map edit, RTL/header/device-tree/driver change, generated collateral, LLM execution, claim, or release use
+    objective: >
+      Track register-description languages, register generators, IP-XACT
+      metadata, and IP dependency/orchestration tools while keeping AI
+      suggestions advisory and preserving E1's checked platform-contract gates.
+    deliverables:
+      - scripts/ai_eda/capture_ip_register_contract_targets.py
+      - build/ai_eda/ip_register_contract_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      IP/register reports may only hash local platform contracts, generated
+      headers, docs, spec-db contracts, RTL register blocks, and checker
+      scripts. Any real generator adoption, IP import, register-map change, or
+      ABI change requires exact tool/IP revisions, license review, file
+      manifests, generated output hashes, ABI diffs, platform/Linux/software
+      contract gates, RTL/cocotb/synthesis evidence, and review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_ip_register_contract_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make platform-contract-check
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No approved SystemRDL, IP-XACT, Hjson, or RgGen source-of-truth selected for E1 register maps
+      - No migration policy from sw/platform/e1_platform_contract.json to an external register/IP generator
+      - No license-reviewed external IP dependency manifest with revisions, file hashes, bus interfaces, reset domains, and clock domains
+      - No AI-to-contract review workflow for generated register fields, memory-map regions, interrupts, DT bindings, headers, or driver ABI changes
+      - No local proof that generated register RTL, headers, docs, UVM/RAL, and software bindings remain synchronized with E1 RTL
+      - No release gate allowing generated IP/register collateral to bypass platform, Linux, RTL, cocotb, synthesis, and review gates
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, platform contract, generated headers, memory map, Android/NPU docs, spec-db contracts, generator/checker scripts, representative RTL register packages, and RAG manifest.
+      - Report states no external IP import, IP download, generator/EDA flow run, platform-contract edit, register-map edit, RTL/header/device-tree/driver change, generated collateral, LLM run, prediction, quality claim, correctness claim, platform-contract claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, platform contract, NPU runtime, docs, external source probe, no-hardware-action, RTL, cocotb contract, spec traceability, memory-interconnect, Linux platform, software contract, Buildroot, AOSP, and NPU target gates.
+  - id: p1-memory-macro-library-target-capture
+    title: Memory Macro, SRAM Compiler, And Library Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - openram
+      - dffram
+      - cacti
+      - destiny-memory-model
+      - nvsim
+      - neurosim
+      - sram-compiler-openroad
+      - sram-yield-estimation
+    target_area:
+      - memory_macro
+      - sram_compiler
+      - library_characterization
+      - physical_design
+      - yield_modeling
+    owner_scope: dry-run target capture only; no external macro import, PDK download, memory compiler run, estimator run, OpenLane/OpenROAD run, DRC/LVS/extraction, RTL/PD/library edit, generated macro, prediction, signoff claim, or release use
+    objective: >
+      Track open SRAM compilers, generated-memory fallbacks, cache/memory
+      estimators, OpenROAD/OpenLane macro integration patterns, and SRAM
+      yield/Vmin watchlists while keeping all macro, Liberty, LEF, GDS, and
+      PPA decisions behind local process, memory, RTL, synthesis, PD, and
+      reviewer gates.
+    deliverables:
+      - scripts/ai_eda/capture_memory_macro_library_targets.py
+      - build/ai_eda/memory_macro_library_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Memory macro reports may only hash local macro manifests, OpenRAM configs,
+      library/corner manifests, RTL wrappers, memory/process evidence gates,
+      and checker scripts. Any compiler, estimator, macro swap, or generated
+      collateral requires exact revisions, PDK provenance, input/config hashes,
+      output hashes, DRC/LVS/extraction, STA, OpenLane integration, RTL/synth
+      gates, and review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_memory_macro_library_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make pdk-portability-check
+      - make memory-uma-claim-gate
+      - make memory-evidence-template-check
+      - make memory-interconnect-contract-check
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No approved external memory compiler revision, PDK setup, or generated SRAM macro manifest for release use
+      - No executed DRC, LVS, extraction, Liberty, LEF, GDS, antenna, STA, OpenLane, and PD signoff evidence for generated or swapped SRAM macros
+      - No calibrated CACTI, DESTINY, NVSim, NeuroSim, or AI estimator correlation against E1 macro layouts and timing corners
+      - No foundry-approved SRAM yield, Vmin, redundancy, BIST, repair, or aging model
+      - No release gate allowing AI-selected memory macros or library corners to bypass local PDK, memory, RTL, synthesis, PD, and review gates
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, macro manifests, OpenRAM configs, library/corner manifests, RTL SRAM/cache wrappers, process/memory evidence gates, PDK/memory/PD checker scripts, and RAG manifest.
+      - Report states no PDK/macro download, external macro import, memory compiler/estimator/model run, OpenLane/OpenROAD run, DRC/LVS/extraction, RTL/PD/library edit, generated macro/model/BIST/repair collateral, prediction, PPA/Vmin/yield/signoff claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, memory macro capture, RAG, PDK portability, memory UMA, memory evidence templates, memory interconnect, process, PD signoff, RTL, synth, power/thermal, no-hardware-action, docs, and OpenLane preflight gates.
+  - id: p1-chiplet-3dic-package-target-capture
+    title: Chiplet, 2.5D/3DIC, And Advanced-Package Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - tap-2p5d
+      - chipletpart
+      - chiplet-network-sim
+      - eco-chip
+      - ucie-standard
+      - chipsalliance-cde
+      - mahl-chiplet
+      - chico-agent
+      - ds2sc-agent
+    target_area:
+      - chiplet_package
+      - architecture_partitioning
+      - die_to_die_interconnect
+      - package_codesign
+      - system_modeling
+    owner_scope: dry-run target capture only; no chiplet partition, interposer layout, UCIe/die-to-die interface, package/bump map, SI/PI/thermal model, architecture edit, RTL edit, PD edit, board/package edit, external simulator run, LLM/agent run, prediction, signoff claim, or release use
+    objective: >
+      Track chiplet partitioning, 2.5D/3DIC placement/topology, die-to-die
+      standards, package metadata exchange, cost/yield models, and LLM/agentic
+      chiplet co-design work while keeping every output behind E1 architecture,
+      package, memory, power/thermal, RTL, PD, software, manufacturing, and
+      reviewer gates.
+    deliverables:
+      - scripts/ai_eda/capture_chiplet_3dic_package_targets.py
+      - build/ai_eda/chiplet_3dic_package_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Chiplet/package reports may only hash local source registries, package
+      pinout/bonding/padframe artifacts, manufacturing blockers, power/thermal
+      and memory evidence gates, SI/PI gaps, checker scripts, and RAG
+      manifests. Any real chiplet or package automation requires exact tool
+      revisions, source/license review, architecture constraints, input/output
+      hashes, package/vendor assumptions, deterministic local gates, and
+      reviewer disposition.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make package-cross-probe-check
+      - make board-package-evidence-check
+      - make padframe-check
+      - make memory-interconnect-contract-check
+      - make power-thermal-evidence-check
+      - make manufacturing-artifacts-check
+      - make real-world-gates-check
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No selected E1 chiplet architecture, die partition, interposer, bridge, organic substrate, bump map, or die-to-die PHY
+      - No UCIe or other die-to-die RTL, PHY collateral, verification suite, firmware contract, Linux contract, or package pin/bump evidence
+      - No package vendor stack-up, SI/PI extraction, thermal stack, warpage, assembly, known-good-die, or yield evidence
+      - No license-reviewed external chiplet/package simulator, placement, topology, or LLM-agent implementation with pinned revisions and local replay
+      - No release gate allowing AI-generated chiplet partitioning, package changes, interposer routing, or die-to-die interfaces to bypass architecture, RTL, PD, software, package, manufacturing, and review gates
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, package pinout, bonding, padframe, package docs, manufacturing blockers, memory/power/process evidence gates, SI/PI gaps, checker scripts, and RAG manifest.
+      - Report states no architecture, package, pinout, padframe, board, RTL, PD config, chiplet partition, interposer layout, UCIe/die-to-die interface, package/bump map, SI/PI/thermal model, EDA flow, external simulator, LLM/agent, external download, prediction, cost/yield/performance claim, signoff claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, chiplet capture, package cross-probe, memory interconnect, platform contract, padframe, RTL, cocotb contract, power/thermal, PD signoff, board/package, manufacturing, real-world, no-hardware-action, and docs gates.
+  - id: p1-logic-synthesis-target-capture
+    title: Logic Synthesis, Technology Mapping, And Gate-Level QoR Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - yosys
+      - abc
+      - mockturtle
+      - aigverse
+      - openabc-d
+      - openls-dgf
+      - drills
+      - lsoracle
+      - abc-rl
+      - boils
+    target_area:
+      - logic_synthesis
+      - technology_mapping
+      - gate_level_qor
+      - formal_equivalence
+      - recipe_search
+    owner_scope: dry-run target capture only; no RTL edit, synthesis script edit, constraint edit, netlist edit, PD config edit, synthesis run, ABC run, formal run, OpenLane run, LLM/agent run, external download, generated recipe, generated mapping, generated netlist, prediction, QoR claim, equivalence claim, signoff claim, or release use
+    objective: >
+      Track open synthesis backends, logic-network libraries, public synthesis
+      datasets, and ML/RL/Bayesian synthesis recipe optimizers while keeping
+      every candidate recipe, mapping, netlist, and QoR claim behind local E1
+      RTL, synthesis, equivalence/formal, cocotb, STA/OpenLane, power, and
+      reviewer gates.
+    deliverables:
+      - scripts/ai_eda/capture_logic_synthesis_targets.py
+      - build/ai_eda/logic_synthesis_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Logic synthesis reports may only hash local RTL, synthesis scripts,
+      reports, netlist artifacts, PD configs, STA/signoff evidence, and checker
+      scripts. Any real synthesis optimization requires exact tool/model
+      revisions, script and source hashes, generated netlist hashes,
+      equivalence/formal evidence, deterministic synthesis/STA/OpenLane/power
+      gates, and reviewer disposition.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make synth
+      - make formal
+      - make rtl-check
+      - make cocotb-contract
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No accepted E1 synthesis optimization corpus with pinned RTL, scripts, Liberty, SDC, netlist, log, STA, and OpenLane artifact hashes
+      - Current make synth is blocked until the local synthesis source list includes every referenced module and generated macro wrapper intentionally
+      - No local equivalence policy for accepting alternative ABC/Yosys recipes or gate-level transformations
+      - No license-reviewed external synthesis optimizer, dataset, model, or RL environment with pinned revisions and replay manifests
+      - No release gate allowing AI-generated synthesis scripts, technology mappings, netlists, constraints, or QoR claims to bypass RTL, formal, cocotb, synthesis, OpenLane, STA, power, and review gates
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, Makefile, Yosys scripts, representative RTL modules, OpenLane config, STA/DFT/commercial-EDA/scale evidence, high-fanout reports, synthesis reports/netlist when present, checker scripts, and RAG manifest.
+      - Report states no RTL edit, synthesis script edit, constraint edit, netlist edit, PD config edit, synthesis/ABC/formal/OpenLane/LLM/agent run, external download, recipe/mapping/netlist generation, prediction, QoR claim, equivalence claim, signoff claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, logic synthesis capture, synth, formal, RTL, OpenLane preflight, PD signoff, power/thermal, cocotb contract, platform contract, no-hardware-action, and docs gates.
+  - id: p1-netlist-equivalence-target-capture
+    title: Netlist Equivalence, LEC, And Post-Synthesis Consistency Target Capture
+    priority: P1
+    status: IN_PROGRESS
+    source_ids:
+      - yosys-eqy
+      - yosys-equivalence
+      - circt-lec
+      - abc
+      - datapath-cec-hybrid-sweeping
+    target_area:
+      - netlist_equivalence
+      - formal
+      - logic_synthesis
+      - physical_design
+      - ai_rewrite_safety
+    owner_scope: dry-run target capture only; no RTL edit, netlist edit, synthesis/formal script edit, constraint edit, PD config edit, Yosys/EQY/ABC/CIRCT/formal/OpenLane/LLM run, external download, generated miter, generated equivalence script, generated proof, waiver, patch, prediction, equivalence claim, timing/QoR claim, signoff claim, or release use
+    objective: >
+      Track open LEC and equivalence-checking flows for RTL-to-netlist,
+      before/after synthesis optimization, post-PD netlist consistency, and
+      AI-generated RTL/netlist quarantine while keeping every proof, waiver,
+      miter, and generated script behind local E1 formal, simulation, synthesis,
+      STA/OpenLane, power, and reviewer gates.
+    deliverables:
+      - scripts/ai_eda/capture_netlist_equivalence_targets.py
+      - build/ai_eda/netlist_equivalence_targets/<run-id>/targets_report.json
+    evidence_gate: >
+      Netlist-equivalence reports may only hash source registries, RTL,
+      synthesis/formal scripts, generated netlists when present, OpenLane final
+      netlists/constraints when present, PD/signoff evidence, checker scripts,
+      and RAG manifests. Any real LEC requires exact tool/solver revisions,
+      input and output netlist hashes, assumptions for memories, black boxes,
+      resets, x-propagation, hierarchy, logs, counterexamples, and review.
+    validation_commands:
+      - python3 scripts/check_ai_eda_source_inventory.py
+      - python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation
+      - python3 scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation
+      - python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation
+      - python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation
+      - make synth
+      - make formal
+      - make rtl-check
+      - make cocotb-contract
+      - make openlane-run-preflight-check
+      - make pd-signoff-manifest-check
+      - python3 scripts/check_pd_closure.py
+      - make no-hardware-action-check
+      - make docs-check
+    blocked_by:
+      - No accepted E1 EQY, Yosys equiv_*, ABC CEC, or CIRCT LEC harness with pinned assumptions and solver revisions
+      - No release-quality black-box, SRAM, reset, x-propagation, hierarchy, clocking, and unmapped-cell equivalence policy
+      - Current synthesis/formal evidence is still blocked by local RTL/source-list and checker availability issues
+      - No release gate allowing AI-generated miters, LEC scripts, waivers, proofs, RTL, netlists, or synthesis recipes to bypass deterministic gates and review
+    acceptance_criteria:
+      - Report hashes local inventory, provenance, backlog, readiness, SOTA docs, Makefile, Yosys/formal scripts, RTL modules, synthesis reports/netlists when present, OpenLane final netlists/constraints when present, PD/signoff evidence, checker scripts, and RAG manifest.
+      - Report states no RTL, netlist, synthesis script, formal script, constraint, PD config, EDA flow, LLM/agent, external download, miter/script/proof/waiver/patch generation, prediction, equivalence/timing/QoR/signoff claim, or release action is enabled.
+      - Candidate tasks list deterministic source inventory, netlist equivalence capture, logic synthesis capture, RTL rewrite equivalence capture, RAG, synth, formal, RTL, cocotb contract, OpenLane preflight, PD signoff, PD closure, power/thermal, platform, no-hardware-action, and docs gates.

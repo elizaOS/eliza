@@ -125,6 +125,25 @@ power, and manufacturing preparation.
   Do not trust generated architectural RTL without lint, simulation, formal,
   and synthesis gates.
 
+### HuggingFace RTL models and corpora
+
+- SiliconMind-V1:
+  https://huggingface.co/AS-SiliconMind/SiliconMind-V1-Qwen3-8B
+- VeriForge DeepSeek Coder:
+  https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
+- OpenRTLSet: https://huggingface.co/datasets/ESCAD/OpenRTLSet
+- MG-Verilog: https://huggingface.co/datasets/GaTech-EIC/MG-Verilog
+- LLM-EDA OpenCores: https://huggingface.co/datasets/LLM-EDA/opencores
+- Hardware VerilogEval v2:
+  https://huggingface.co/datasets/AbiralArch/hardware-verilogeval-v2
+- LLM_4_Verilog: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
+- Use: metadata-only candidates for RTL model evaluation, future corpus
+  curation, contamination checks, and held-out benchmark construction.
+- E1 fit: do not download weights or datasets yet. Every external model/corpus
+  needs exact revision pins, file manifests, license review, quarantine paths,
+  benchmark de-duplication, prompt/output hashes, local lint/sim/synth/formal
+  gates, and human disposition before any use.
+
 ### ChatEDA and EDA Corpus
 
 - ChatEDA repo: https://github.com/wuhy68/ChatEDA
@@ -237,6 +256,115 @@ power, and manufacturing preparation.
   approved traces and promoted through cache hierarchy, memory/UMA, RTL,
   synthesis, power, and benchmark gates.
 
+## Compiler autotuning, RVV codegen, and profile-guided binaries
+
+### ML-guided compiler heuristics
+
+- LLVM MLGO: https://llvm.org/docs/MLGO.html
+- Google ML Compiler Opt: https://github.com/google/ml-compiler-opt
+- Use: replace compiler heuristics such as inlining or register-allocation
+  choices with learned policies trained from corpora.
+- E1 fit: blocked compiler infrastructure. Toolchain, corpus, model, and
+  benchmark evidence must exist before ML-guided compiler decisions can affect
+  any binary.
+
+### Tensor-kernel schedule search
+
+- TVM MetaSchedule:
+  https://tvm.apache.org/docs/deep_dive/tensor_ir/tutorials/meta_schedule.html
+- Ansor: https://arxiv.org/abs/2006.06762
+- Use: search schedules for tensor kernels and operator implementations.
+- E1 fit: target capture only. E1 needs a real target, workload corpus,
+  simulator/runtime logs, and before/after benchmarks before schedule search
+  can tune CPU/RVV fallback or NPU host kernels.
+
+### Profile-guided and post-link optimization
+
+- AutoFDO: https://github.com/google/autofdo
+- LLVM Propeller: https://github.com/google/llvm-propeller
+- BOLT:
+  https://github.com/llvm/llvm-project/tree/main/bolt
+- Use: use sampled profiles or binary instrumentation to reorder code, improve
+  locality, and optimize hot paths.
+- E1 fit: blocked until profile capture, compiler stage 2, binary hashes,
+  benchmark metadata, and rollback evidence exist.
+
+### RVV and SIMD generation
+
+- IntrinTrans: https://arxiv.org/abs/2510.10119
+- VecIntrinBench: https://arxiv.org/abs/2511.18867
+- SimdBench: https://arxiv.org/abs/2507.15224
+- xDSL RVV lowering: https://arxiv.org/abs/2603.17800
+- Use: generate, migrate, or lower SIMD/RVV intrinsic code and benchmark model
+  quality on vector tasks.
+- E1 fit: quarantined-code workflow only. Generated intrinsics or lowerings must
+  pass compile, disassembly, simulator correctness, runtime-contract, and
+  benchmark gates before review.
+
+### Agentic compiler optimization
+
+- Agentic Code Optimization:
+  https://arxiv.org/abs/2604.04238
+- HINTPILOT:
+  https://openreview.net/pdf/1dad91bc6d5c443a15d5e88f1504a5532cfde1b0.pdf
+- LLM-VeriOpt: https://samainsworth.github.io/LLM-VeriOpt-CGO2026.pdf
+- Use: LLM/agent loops that use compiler diagnostics, tests, verification, or
+  hints to rewrite code or guide compiler decisions.
+- E1 fit: target capture only. Generated source, hints, and profiles need local
+  semantic tests, compile logs, performance logs, and human disposition.
+
+## Reliability, aging, EM, and resilience
+
+### Aging and electromigration
+
+- PROTON: https://doi.org/10.1109/SMACD58065.2023.10192229
+- EMspice 2.0: https://par.nsf.gov/servlets/purl/10542838
+- NBTI/HCI aging models: https://zenodo.org/records/2558154
+- Use: assess BTI/HCI aging, electromigration, thermomigration, IR drop, and
+  lifetime risks from process, PDN, thermal, activity, and mission-profile
+  inputs.
+- E1 fit: target capture only. E1 lacks process-qualified aging/EM models,
+  routed current-density evidence, calibrated activity, mission profiles, and
+  signoff decks, so these methods cannot support lifetime or reliability
+  claims yet.
+
+### Soft-error and fault-injection campaigns
+
+- SOFIA:
+  https://www.sciencedirect.com/science/article/pii/S1383762122002028
+- Arm Ethos-U55 soft-error study: https://arxiv.org/abs/2404.09317
+- Ibex SEU formal evaluation: https://arxiv.org/abs/2405.12089
+- Hamartia:
+  https://research.nvidia.com/publication/2018-06_hamartia-fast-and-accurate-error-injection-framework
+- FIES: https://github.com/ahoeller/fies
+- Use: run or structure RTL, formal, simulator, QEMU, and workload-level fault
+  campaigns; rank vulnerable state and compare mitigations.
+- E1 fit: blocked from execution until there is an E1 fault-library schema,
+  fault-site manifest, seed policy, pass/fail taxonomy, deterministic logs, and
+  review path.
+
+### Compiler and workload reliability
+
+- BEC: https://arxiv.org/abs/2401.05753
+- TensorFI: https://github.com/DependableSystemsLab/TensorFI
+- Ares: https://alugupta.github.io/ares/
+- Use: prune fault campaigns, transform software for soft-error resilience, or
+  inject faults into ML workloads to assess output sensitivity.
+- E1 fit: useful future bridge between compiler, runtime, and NPU evidence, but
+  it needs exact source/model/input/runtime hashes and simulator or hardware
+  correlation.
+
+### ECC and error-handling references
+
+- Caliptra error injection and SRAM ECC requirements:
+  https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md
+- Use: learn from an open security IP's distinction between intrusive and
+  non-intrusive error injection, ECC, error logging, and firmware-visible
+  error-handling requirements.
+- E1 fit: requirements inspiration only. ECC, TMR, replay, redundancy, or
+  selective-hardening proposals must pass RTL/spec, cocotb/formal, synthesis,
+  firmware contract, and review gates before source changes.
+
 ## Synthesis, timing, power, and routability predictors
 
 ### OpenABC-D
@@ -252,9 +380,92 @@ power, and manufacturing preparation.
 - Repo: https://github.com/circuitnet/CircuitNet
 - Site: https://circuitnet.github.io/
 - CircuitNet 2.0 paper: https://openreview.net/forum?id=nMFSUjxMIl
+- CircuitNet 3.0 dataset:
+  https://huggingface.co/datasets/SKLP-EDA-LAB/CircuitNet3.0
+- MetRex dataset: https://huggingface.co/datasets/scale-lab/MetRex
+- MetRex paper: https://arxiv.org/abs/2411.03471
 - Use: ML datasets/code for congestion, DRC, IR drop, and net-delay prediction.
 - E1 fit: train/evaluate risk predictors from DEF/netlist features once E1 has
   enough generated PD runs.
+
+### Timing Closure and ECO
+
+- TimingPredict: https://github.com/PKU-IDEA/TimingPredict
+- E2ESlack: https://arxiv.org/abs/2501.07564
+- TimingLLM: https://arxiv.org/abs/2604.23602
+- FluxEDA: https://arxiv.org/abs/2603.25243
+- OpenROAD Resizer:
+  https://openroad.readthedocs.io/en/latest/main/src/rsz/README.html
+- OpenPhySyn: https://github.com/scale-lab/OpenPhySyn
+- Learning-driven gate sizing: https://arxiv.org/abs/2403.08193
+- FusionSizer:
+  https://yibolin.com/publications/papers/OPT_ICCAD2024_Du.pdf
+- 2024 ICCAD gate-sizing benchmark:
+  https://github.com/ASU-VDA-Lab/2024_ICCAD_Contest_Gate_Sizing_Benchmark
+- IR-aware ECO RL: https://dl.acm.org/doi/10.1145/3670474.3685945
+- Use: predict timing risk, triage STA reports, and study gate-sizing,
+  buffer-insertion, pin-swapping, gate-cloning, and localized ECO search.
+- E1 fit: advisory capture only. The local lane hashes SDC, OpenLane metrics,
+  STA/resizer reports, PD signoff manifests, and known blockers, while every
+  write-capable ECO remains blocked until before/after netlist, DEF/ODB,
+  timing, power, DRC, antenna, manufacturing, and signoff evidence exists.
+
+### Routing, Congestion, and DRC
+
+- OpenROAD FastRoute:
+  https://openroad.readthedocs.io/en/latest/main/src/grt/README.html
+- OpenROAD TritonRoute:
+  https://openroad.readthedocs.io/en/latest/main/src/drt/README.html
+- CU-GR: https://github.com/cuhk-eda/cu-gr
+- Dr.CU: https://github.com/cuhk-eda/dr-cu
+- RoutePlacer / RouteGNN: https://arxiv.org/abs/2406.02651
+- CircuitNet and CircuitNet 2.0:
+  https://github.com/circuitnet/CircuitNet
+- Use: global-routing and detailed-routing evidence capture, routability risk
+  prediction, congestion/overflow/DRC triage, wirelength/via/antenna label
+  capture, and future router-parameter search.
+- E1 fit: target capture only. The local lane may hash route logs, route
+  guides, routed DEF/ODB references, DRC reports, antenna reports, wirelength
+  reports, PD configs, and signoff manifests, but no route guide, DEF, ODB,
+  GDS, Tcl, DRC fix, router parameter, or predictor output can enter source or
+  release evidence without before/after OpenLane/OpenROAD, DRC, antenna, STA,
+  power, manufacturing, and signoff gates.
+
+### Clock Tree and Clock Network
+
+- OpenROAD CTS:
+  https://openroad.readthedocs.io/en/latest/main/src/cts/README.html
+- TritonCTS: https://github.com/The-OpenROAD-Project/TritonCTS
+- GAN-CTS: https://gtcad.gatech.edu/www/papers/08942063.pdf
+- CTS-Bench: https://arxiv.org/abs/2602.19330
+- OpenROAD two-phase clocking conversion: https://arxiv.org/abs/2605.05374
+- Use: CTS report capture, skew/latency/clock-buffer label capture, post-CTS
+  hold-risk triage, useful-skew candidate review, CTS benchmark/task design,
+  and research-only clocking-conversion tracking.
+- E1 fit: target capture only. The local lane may hash CTS reports, clock and
+  skew reports, post-CTS timing repair logs, DEF/ODB snapshots, SDC inputs, and
+  signoff manifests, but generated clock trees, clock constraints, Tcl, useful
+  skew, clock-buffer edits, latch/two-phase conversion, model predictions, and
+  signoff claims remain blocked until before/after STA, DFT, CDC/RDC, power,
+  routing, manufacturing, and PD signoff evidence exists.
+
+### Extraction, SPEF, and Parasitics
+
+- OpenROAD OpenRCX:
+  https://openroad.readthedocs.io/en/latest/main/src/rcx/README.html
+- OpenLane timing-corner flow:
+  https://openlane2.readthedocs.io/en/latest/usage/timing_corners.html
+- Magic extraction: http://opencircuitdesign.com/magic/
+- CapBench: https://github.com/THU-numbda/CapBench
+- Use: SPEF/RCX log capture, Magic extracted SPICE capture, SDF and
+  timing-corner manifest capture, parasitic-feature label construction,
+  capacitance-extraction benchmark tracking, and future SI/crosstalk triage.
+- E1 fit: target capture only. The local lane may hash OpenRCX SPEFs, RCX logs,
+  Magic SPICE output, SDF files, multi-corner STA evidence, timing-corner
+  manifests, and signoff references, but generated SPEF, SDF, SPICE, extraction
+  rules, SI waivers, RC predictions, model runs, and timing/signoff claims stay
+  blocked until before/after extraction, STA, DRC/LVS, antenna, route, power,
+  and signoff evidence exists.
 
 ## Low-power intent, DVFS, and clock gating
 
@@ -414,3 +625,104 @@ power, and manufacturing preparation.
     Do not generate BPU/cache/prefetch RTL, run unreviewed simulators/models, or
     claim IPC/MPKI/product gains without local traces, deterministic RTL and
     benchmark gates, and review.
+12. Compiler autotuning target capture with
+    `scripts/ai_eda/capture_compiler_autotuning_targets.py --run-id validation`.
+    Do not generate RVV intrinsics, tune schedules, embed MLGO models, apply
+    AutoFDO/Propeller/BOLT profiles, or claim binary/kernel speedups without
+    pinned toolchains, correctness tests, simulator/runtime logs, benchmark
+    evidence, and review.
+13. Reliability and resilience target capture with
+    `scripts/ai_eda/capture_reliability_resilience_targets.py --run-id validation`.
+    Do not run fault injection, aging/EM analysis, or generated mitigations, and
+    do not claim reliability, lifetime, SER, EM/IR, or safety closure without
+    process models, mission profiles, fault manifests, simulator/formal logs,
+    PD/signoff evidence, before/after PPA, and review.
+14. External model/corpus intake target capture with
+    `scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation`.
+    Do not download HuggingFace/GitHub models or datasets, export local corpora,
+    train, fine-tune, run inference, run evaluation, or promote generated source
+    without exact revisions, license review, file manifests, contamination
+    checks, quarantine paths, deterministic local gates, and review.
+15. Benchmark contamination and evaluation hygiene target capture with
+    `scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation`.
+    Do not import public HDL benchmarks, export held-out E1 prompts, run models,
+    run contamination detectors, generate RTL, or make benchmark score claims
+    without exact revisions, task hashes, license review, non-overlap reports,
+    near-duplicate checks, deterministic local gates, and review.
+16. EDA tool-agent interoperability target capture with
+    `scripts/ai_eda/capture_eda_tool_agent_interop_targets.py --run-id validation`.
+    Do not start MCP servers, call commercial copilots, invoke EDA tools,
+    generate Tcl/shell/constraints/waivers/source, or claim productivity, PPA,
+    signoff, or release readiness without typed command schemas, explicit
+    read/write scopes, license and data-handling review, local replay
+    manifests, deterministic gates, and review.
+17. Spec-to-RTL traceability target capture with
+    `scripts/ai_eda/capture_spec_traceability_targets.py --run-id validation`.
+    Do not change requirements, specs, RTL, assertions, or testbenches, and do
+    not generate trace matrices, SVAs, patches, or requirement-coverage claims
+    without stable requirement IDs, source hashes, non-overlap review, vacuity
+    checks, deterministic local gates, and review.
+18. IP/register/platform-contract target capture with
+    `scripts/ai_eda/capture_ip_register_contract_targets.py --run-id validation`.
+    Do not import external IP, run register generators or EDA flows, edit
+    memory maps, headers, device trees, drivers, or RTL, or claim register/ABI
+    correctness without pinned revisions, license review, generated output
+    hashes, ABI diffs, deterministic local gates, and review.
+19. Memory macro/library target capture with
+    `scripts/ai_eda/capture_memory_macro_library_targets.py --run-id validation`.
+    Do not download PDKs or macros, import external memory collateral, run
+    OpenRAM/DFFRAM/CACTI/DESTINY/NVSim/NeuroSim or AI estimators, edit RTL, PD
+    configs, Liberty, LEF, or GDS, or claim SRAM area, timing, power, Vmin,
+    yield, signoff, or release readiness without pinned revisions, generated
+    artifact hashes, DRC/LVS/extraction, STA, OpenLane evidence, deterministic
+    local gates, and review.
+20. Chiplet/2.5D/3DIC/package co-design target capture with
+    `scripts/ai_eda/capture_chiplet_3dic_package_targets.py --run-id validation`.
+    Do not generate chiplet partitions, interposer layouts, die-to-die
+    interfaces, package or bump maps, SI/PI/thermal models, architecture edits,
+    RTL edits, PD configs, board/package edits, simulator outputs, or
+    cost/yield/performance/signoff claims without exact revisions,
+    source/license review, package and architecture constraints, deterministic
+    local gates, and review.
+21. Logic synthesis and technology-mapping target capture with
+    `scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation`.
+    Do not generate or apply ABC/Yosys recipes, technology mappings,
+    constraints, netlists, or gate-level rewrites, and do not claim area,
+    timing, power, equivalence, signoff, or release improvement without exact
+    tool/model revisions, source/script hashes, output hashes, formal or
+    equivalence evidence, deterministic synthesis/STA/OpenLane/power gates, and
+    review.
+22. Netlist equivalence and LEC target capture with
+    `scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation`.
+    Do not run EQY, Yosys equivalence commands, ABC CEC, CIRCT LEC, or
+    generated LEC harnesses, and do not generate miters, waivers, proof logs,
+    RTL, netlists, scripts, or optimization patches without exact tool/solver
+    revisions, input/output hashes, black-box, memory, reset, x-propagation,
+    hierarchy, and clock assumptions, deterministic formal/simulation/
+    synthesis/STA/OpenLane/power gates, and review.
+23. Physical verification, DRC/LVS, and antenna target capture with
+    `scripts/ai_eda/capture_physical_verification_targets.py --run-id validation`.
+    Do not run KLayout, Magic, Netgen, OpenROAD/OpenLane signoff steps, DRC,
+    LVS, XOR, antenna checks, generated DRC decks, layout fixes, waivers, Tcl,
+    or patches, and do not claim DRC, LVS, antenna, physical signoff, or release
+    readiness without pinned tool and rule-deck revisions, layout/netlist
+    hashes, before/after deterministic logs, extraction/STA/power/
+    manufacturing/commercial-EDA gates where applicable, and review.
+24. Placement, legalization, density, and generative placement target capture
+    with
+    `scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation`.
+    Do not run OpenROAD/OpenLane placement, external placers, diffusion or
+    flow-matching models, benchmark imports, density/padding edits, legalizer
+    changes, filler placement, Tcl, or patches, and do not claim placement QoR,
+    timing, routability, signoff, or release readiness without pinned tool,
+    model, data, config, DEF/ODB, legalizer, route, STA, physical-verification,
+    power, and reviewer evidence.
+25. Floorplan, IO placement, tapcell, and PDN target capture with
+    `scripts/ai_eda/capture_floorplan_io_pdn_targets.py --run-id validation`.
+    Do not run OpenROAD/OpenLane floorplanning, generated floorplans,
+    pin-assignment optimizers, tap/endcap changes, PDN generation, NL-to-GDS
+    agents, benchmark imports, Tcl, or patches, and do not claim floorplan,
+    pinout, PDN, signoff, or release readiness without pinned tool/data/config
+    revisions, package and padframe cross-probe, SI/PI, route, STA,
+    DRC/LVS/antenna, power, manufacturing, commercial-EDA where applicable, and
+    reviewer evidence.

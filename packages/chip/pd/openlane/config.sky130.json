@@ -53,9 +53,9 @@
         "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice"
       ],
       "instances": {
-        "u_soc/u_weight_buffer/u_sram": {
-          "location": null,
-          "orientation": null
+        "u_soc.u_weight_buffer.u_sram": {
+          "location": [300, 300],
+          "orientation": "N"
         }
       }
     }

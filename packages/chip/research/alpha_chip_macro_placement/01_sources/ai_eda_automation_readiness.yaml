@@ -21,6 +21,12 @@ stages:
       - autoeda-mcp
       - chateda
       - orassistant
+      - mcp4eda
+      - synopsys-ai-copilot
+      - cadence-jedai
+      - cadence-chipstack-ai-super-agent
+      - siemens-fuse-eda-ai-agent
+      - phoenix-bench
     local_lane: p1-local-eda-rag-log-triage
     current_artifacts:
       - scripts/ai_eda/build_local_eda_rag_index.py
@@ -29,12 +35,46 @@ stages:
     critical_review: >
       Agents are useful for context retrieval and run triage, but write-capable
       tool agents need typed command schemas and archived logs.
+  - id: eda_tool_agent_interoperability
+    rating: READY_DRY_RUN
+    source_ids:
+      - agentic-eda-survey-2512-23189v2
+      - autoeda-mcp
+      - chateda
+      - mcp4eda
+      - synopsys-ai-copilot
+      - cadence-jedai
+      - cadence-chipstack-ai-super-agent
+      - siemens-fuse-eda-ai-agent
+      - phoenix-bench
+    local_lane: p1-eda-tool-agent-interop-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_eda_tool_agent_interop_targets.py
+      - build/ai_eda/eda_tool_agent_interop_targets/validation/targets_report.json
+    next_gate: python3 scripts/ai_eda/capture_eda_tool_agent_interop_targets.py --run-id validation
+    critical_review: >
+      MCP-style EDA wrappers and commercial copilots are the most direct path
+      to AI orchestration across tools, but they are also the highest-risk
+      automation boundary. E1 should keep them as target capture only until
+      command schemas, read/write scopes, commercial license and data-handling
+      review, local replay manifests, deterministic gates, and reviewer
+      disposition exist; no generated Tcl, shell, constraints, waivers, source
+      edits, tool runs, signoff claims, or release use are allowed by this
+      lane.
   - id: external_source_provenance
     rating: READY_DRY_RUN
     source_ids:
       - rtl-coder
       - verilog-eval
       - cvdp
+      - openrtlset
+      - mg-verilog
+      - metrex
+      - circuitnet-3
+      - veriforge-deepseek-coder
+      - llm-eda-opencores
+      - hardware-verilogeval-v2-hf
+      - llm4verilog-dataset
       - chipcraftx-rtlgen-7b
       - circuitnet
       - zigzag
@@ -48,6 +88,115 @@ stages:
     critical_review: >
       Metadata probing helps prioritize real integrations, but license hints
       from APIs are advisory until a human review pins exact versions.
+  - id: external_model_corpus_intake
+    rating: READY_DRY_RUN
+    source_ids:
+      - openrtlset
+      - mg-verilog
+      - metrex
+      - circuitnet-3
+      - veriforge-deepseek-coder
+      - llm-eda-opencores
+      - hardware-verilogeval-v2-hf
+      - llm4verilog-dataset
+      - siliconmind-v1
+      - chipcraftx-rtlgen-7b
+      - codev-sva
+      - radai-wm811k-wafer-defect-model
+    local_lane: p1-external-model-corpus-intake-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_external_model_corpus_intake_targets.py
+      - build/ai_eda/external_model_corpus_intake_targets/validation/targets_report.json
+    next_gate: python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation
+    critical_review: >
+      HuggingFace and GitHub now contain useful RTL models, Verilog corpora,
+      metric-reasoning datasets, CircuitNet-style PD corpora, SVA datasets, and
+      wafer-defect models. E1 should treat them as metadata-only candidates
+      until exact revisions, licenses, file manifests, contamination checks,
+      quarantine paths, deterministic local gates, and reviewer dispositions
+      exist; no weights, datasets, training, inference, or generated source are
+      allowed by this lane.
+  - id: benchmark_evaluation_hygiene
+    rating: READY_DRY_RUN
+    source_ids:
+      - vericontaminated
+      - verilog-eval
+      - rtllm
+      - cvdp
+      - protocolllm
+      - openrtlset
+      - mg-verilog
+      - llm-eda-opencores
+      - hardware-verilogeval-v2-hf
+      - llm4verilog-dataset
+      - llmsanitize
+      - min-k-prob-contamination
+    local_lane: p1-benchmark-evaluation-hygiene-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py
+      - build/ai_eda/benchmark_evaluation_hygiene_targets/validation/targets_report.json
+    next_gate: python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation
+    critical_review: >
+      Public HDL benchmarks and external RTL corpora are useful for measuring
+      tool direction, but benchmark pass rates can be contaminated by training
+      overlap, mirror drift, prompt leakage, evaluator version drift, and
+      syntax-only success. E1 needs held-out task hashes, non-overlap review,
+      exact benchmark revisions, simulator/synthesis/formal logs, and reviewer
+      disposition before any public or private benchmark score can influence
+      source, claims, or release decisions.
+  - id: spec_traceability_and_requirement_coverage
+    rating: READY_DRY_RUN
+    source_ids:
+      - incrertl
+      - llm-fsm
+      - spec2assertion
+      - coverassert
+      - qimeng-codev-sva
+      - assertionforge
+      - sangam-sva
+      - codev-sva
+      - protocolllm
+      - vericontaminated
+    local_lane: p1-spec-traceability-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_spec_traceability_targets.py
+      - build/ai_eda/spec_traceability_targets/validation/targets_report.json
+    next_gate: python3 scripts/ai_eda/capture_spec_traceability_targets.py --run-id validation
+    critical_review: >
+      Requirements-to-RTL traceability is the safest path for AI to help E1
+      evolve: it can connect docs, spec-db contracts, RTL modules, assertions,
+      tests, and work orders before generating changes. It is still not design
+      evidence by itself. E1 needs stable requirement IDs, source hashes,
+      non-overlap review, generated-output quarantine, formal/cocotb/synthesis
+      gates, vacuity checks, and reviewer disposition before any AI-generated
+      trace matrix, RTL, assertion, spec edit, or patch can affect source or
+      release claims.
+  - id: ip_register_contract_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - systemrdl-standard
+      - peakrdl
+      - peakrdl-ipxact
+      - opentitan-reggen
+      - ip-xact-standard
+      - fusesoc
+      - edalize
+      - bender
+      - siliconcompiler
+      - rggen
+    local_lane: p1-ip-register-contract-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_ip_register_contract_targets.py
+      - build/ai_eda/ip_register_contract_targets/validation/targets_report.json
+    next_gate: python3 scripts/ai_eda/capture_ip_register_contract_targets.py --run-id validation
+    critical_review: >
+      Register-map, IP packaging, and platform-contract generators can reduce
+      ABI drift across RTL, docs, Linux/Buildroot/AOSP, and tests. AI is useful
+      only as review assistance here: the source of truth must be a pinned
+      structured contract or generator input. E1 must not import external IP,
+      generate registers, or alter memory maps, headers, device trees, drivers,
+      or RTL until revisions, licenses, file manifests, generated artifacts,
+      platform gates, software gates, RTL gates, and reviewer disposition exist.
   - id: local_backend_readiness
     rating: READY_DRY_RUN
     source_ids:
@@ -176,6 +325,27 @@ stages:
     critical_review: >
       Predictors can prioritize runs after local label capture, but are not
       signoff and currently lack held-out E1 validation.
+  - id: routing_congestion_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - circuitnet
+      - circuitnet-2
+      - routeplacer
+      - openroad-fastroute
+      - openroad-tritonroute
+      - cugr
+      - dr-cu
+    local_lane: p1-routing-congestion-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_routing_congestion_targets.py
+      - build/ai_eda/routing_congestion_targets/validation/targets_report.json
+    next_gate: make pd-signoff-manifest-check
+    critical_review: >
+      Routing and congestion predictors can rank risky placements or router
+      settings, and open routers can provide comparison backends, but no output
+      can change route guides, DEF/ODB/GDS, Tcl, or PD config until before/after
+      routing, DRC, antenna, STA, power, manufacturing, and signoff evidence
+      exists.
   - id: circuit_foundation_models
     rating: READY_DRY_RUN
     source_ids:
@@ -243,6 +413,62 @@ stages:
       but E1 needs pinned simulators, trace provenance, held-out workloads,
       before/after RTL evidence, and synthesis/formal/cocotb gates before any
       generated policy can affect source or product claims.
+  - id: compiler_autotuning_and_codegen
+    rating: READY_DRY_RUN
+    source_ids:
+      - llvm-mlgo
+      - google-ml-compiler-opt
+      - tvm-meta-schedule
+      - ansor
+      - autofdo
+      - llvm-propeller
+      - bolt
+      - intrintrans-rvv
+      - vecintrinbench
+      - simdbench
+      - agentic-code-optimization
+      - hintpilot
+      - llm-veriopt
+      - xdsl-rvv-lowering
+    local_lane: p1-compiler-autotuning-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_compiler_autotuning_targets.py
+      - build/ai_eda/compiler_autotuning_targets/validation/targets_report.json
+    next_gate: python3 scripts/check_compiler_versions.py
+    critical_review: >
+      Compiler ML, schedule search, RVV intrinsic generation, and profile-guided
+      binary optimization can directly improve E1 software and NPU kernels, but
+      they also directly change shipped code and binaries. E1 needs pinned
+      toolchains, corpus provenance, simulator/runtime correctness, benchmark
+      calibration, and review before generated schedules, profiles, intrinsics,
+      compiler models, or binaries can affect source or claims.
+  - id: reliability_resilience_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - proton-em
+      - emspice2
+      - bti-hci-aging-models
+      - sofia-soft-error-framework
+      - arm-ethos-u55-soft-error
+      - ibex-seu-formal
+      - bec-soft-error-llvm
+      - hamartia-fault-injection
+      - fies-qemu-fault-injection
+      - tensorfi
+      - ares-dnn-fault-injection
+      - caliptra-error-injection
+    local_lane: p1-reliability-resilience-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_reliability_resilience_targets.py
+      - build/ai_eda/reliability_resilience_targets/validation/targets_report.json
+    next_gate: make process-14a-effects-check
+    critical_review: >
+      Aging, EM, soft-error, and resilience automation can eventually guide
+      selective hardening, ECC/TMR/replay, derating, and PDN reliability work,
+      but those flows are easy to overclaim. E1 needs process-qualified models,
+      activity and mission profiles, deterministic fault manifests, simulator or
+      formal logs, PD/signoff evidence, before/after PPA, and review before any
+      generated mitigation or reliability claim can affect source or release.
   - id: placement_optimization
     rating: BLOCKED_NEEDS_EVIDENCE
     source_ids:
@@ -258,6 +484,34 @@ stages:
     critical_review: >
       Placement AI can reduce search time, but E1 is blocked until OpenLane
       baseline runs complete and routed QoR is archived.
+  - id: placement_legalization_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - openroad-gpl
+      - openroad-dpl
+      - google-circuit-training
+      - tilos-macroplacement
+      - autodmp
+      - dreamplace
+      - xplace
+      - chipdiffusion
+      - diffplace
+      - flowplace
+      - chipbench-d
+      - routeplacer
+    local_lane: p1-placement-legalization-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_placement_legalization_targets.py
+      - build/ai_eda/placement_legalization_targets/validation/targets_report.json
+    next_gate: make openlane-run-preflight-check
+    critical_review: >
+      Placement, legalization, density, and padding decisions determine the
+      physical-design search space for routing, timing, antenna, DRC, and power.
+      OpenROAD GPL/DPL are the deterministic local references; generative
+      placement, diffusion, flow-matching, RL, and GPU placement frameworks are
+      useful only as quarantined target-capture context until E1 has repeated
+      completed runs, held-out local labels, exact legalizer replay, downstream
+      route/STA/physical-verification/power gates, and reviewer signoff.
   - id: npu_architecture_dse
     rating: READY_DRY_RUN
     source_ids:
@@ -352,6 +606,10 @@ stages:
       - timingllm
       - fluxeda
       - openroad-resizer
+      - openphysyn
+      - learning-driven-gate-sizing
+      - fusionsizer
+      - iccad-2024-gate-sizing-benchmark
       - ir-aware-eco-rl
     local_lane: p1-timing-closure-target-capture
     current_artifacts:
@@ -359,9 +617,10 @@ stages:
       - build/ai_eda/timing_closure_targets/validation/targets_report.json
     next_gate: python3 scripts/check_pd_closure.py
     critical_review: >
-      Timing-prediction, report-triage, and ECO-search methods can prioritize
-      closure work, but they cannot waive STA. E1 must keep outputs advisory
-      until before/after OpenSTA/OpenLane and signoff evidence exists.
+      Timing-prediction, report-triage, gate-sizing, buffer-insertion, and
+      ECO-search methods can prioritize closure work, but they cannot waive
+      STA. E1 must keep outputs advisory until before/after OpenSTA/OpenLane,
+      power, DRC, antenna, manufacturing, and signoff evidence exists.
   - id: analog_mixed_signal_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -405,6 +664,29 @@ stages:
       without cache coherence, IOMMU/SMMU, QoS, LPDDR, or real contention
       evidence. Keep this lane as target capture until local simulator and
       memory-contract gates define the design space.
+  - id: memory_macro_library_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - openram
+      - dffram
+      - cacti
+      - destiny-memory-model
+      - nvsim
+      - neurosim
+      - sram-compiler-openroad
+      - sram-yield-estimation
+    local_lane: p1-memory-macro-library-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_memory_macro_library_targets.py
+      - build/ai_eda/memory_macro_library_targets/validation/targets_report.json
+    next_gate: make pdk-portability-check
+    critical_review: >
+      SRAM compilers, generated-memory fallbacks, cache/memory estimators, and
+      AI yield/Vmin methods can accelerate memory planning, but they are not
+      signoff evidence. E1 must keep every macro, Liberty, LEF, GDS, timing,
+      power, area, yield, BIST, repair, and corner change blocked until local
+      PDK provenance, DRC/LVS/extraction, STA, RTL, synthesis, OpenLane, and
+      reviewer gates exist.
   - id: dft_and_manufacturing_test
     rating: READY_DRY_RUN
     source_ids:
@@ -451,6 +733,33 @@ stages:
       models, activity-aligned power maps, and repeated PDNSim/signoff labels.
       Keep this lane as target capture until measured or deterministic labels
       exist.
+  - id: floorplan_io_pdn_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - openroad-ifp
+      - openroad-ioplacer
+      - openroad-tapcell
+      - openroad-pdn
+      - openlane-floorplanning
+      - floorset
+      - piano-floorplanner
+      - ibm-fp-opt
+      - nl2gds
+      - openpdn
+    local_lane: p1-floorplan-io-pdn-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_floorplan_io_pdn_targets.py
+      - build/ai_eda/floorplan_io_pdn_targets/validation/targets_report.json
+    next_gate: make openlane-run-preflight-check
+    critical_review: >
+      Floorplan, IO pin, tap/endcap, and PDN choices define the downstream
+      feasibility envelope for placement, routing, timing, SI/PI, power, and
+      package integration. OpenROAD IFP, IO placement, tapcell, and PDN are the
+      deterministic local references; FloorSet, pin-assignment-aware
+      floorplanning, industrial FP-OPT, NL2GDS-style agents, and OpeNPDN remain
+      target-capture context until E1 has repeated completed runs, package and
+      padframe cross-probe evidence, SI/PI and power labels, deterministic
+      signoff replay, and reviewer signoff.
   - id: hardware_security_ai
     rating: READY_DRY_RUN
     source_ids:
@@ -519,6 +828,78 @@ stages:
       evidence, SI/PI/DFM review, RF/regulatory evidence, and FPGA hardware
       bring-up. Keep this lane as target capture until all board, package,
       manufacturing, and FPGA gates define a safe promotion path.
+  - id: chiplet_3dic_package_codesign
+    rating: READY_DRY_RUN
+    source_ids:
+      - tap-2p5d
+      - chipletpart
+      - chiplet-network-sim
+      - eco-chip
+      - ucie-standard
+      - chipsalliance-cde
+      - mahl-chiplet
+      - chico-agent
+      - ds2sc-agent
+    local_lane: p1-chiplet-3dic-package-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_chiplet_3dic_package_targets.py
+      - build/ai_eda/chiplet_3dic_package_targets/validation/targets_report.json
+    next_gate: make package-cross-probe-check
+    critical_review: >
+      Chiplet, 2.5D, 3DIC, UCIe, and package co-design automation can explore
+      partitioning, die-to-die fabrics, cost/yield, thermal, and SI/PI
+      tradeoffs, but E1 is currently a monolithic scaffold with no chiplet
+      architecture, PHY, interposer, package stack, bump map, or vendor
+      collateral. Keep all outputs as target capture until architecture, RTL,
+      memory, software, package, power/thermal, manufacturing, and review gates
+      define a promotion path.
+  - id: logic_synthesis_optimization
+    rating: READY_DRY_RUN
+    source_ids:
+      - yosys
+      - abc
+      - mockturtle
+      - aigverse
+      - openabc-d
+      - openls-dgf
+      - drills
+      - lsoracle
+      - abc-rl
+      - boils
+    local_lane: p1-logic-synthesis-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_logic_synthesis_targets.py
+      - build/ai_eda/logic_synthesis_targets/validation/targets_report.json
+    next_gate: make synth
+    critical_review: >
+      ML/RL/Bayesian synthesis recipe search, logic-network libraries, and
+      public synthesis datasets can improve area, depth, timing, and power
+      exploration, but they sit on the critical correctness path. E1 must keep
+      generated recipes, technology mappings, constraints, and netlists outside
+      source until RTL, synthesis, equivalence/formal, cocotb, STA/OpenLane,
+      power, and review gates prove the before/after behavior and QoR.
+  - id: netlist_equivalence_lec
+    rating: READY_DRY_RUN
+    source_ids:
+      - yosys-eqy
+      - yosys-equivalence
+      - circt-lec
+      - abc
+      - datapath-cec-hybrid-sweeping
+    local_lane: p1-netlist-equivalence-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_netlist_equivalence_targets.py
+      - build/ai_eda/netlist_equivalence_targets/validation/targets_report.json
+    next_gate: make formal
+    critical_review: >
+      LEC and netlist equivalence are required before any AI-generated RTL,
+      synthesis recipe, technology mapping, or netlist optimization can be
+      trusted. EQY, Yosys equiv_* flows, ABC CEC, CIRCT LEC, and current
+      datapath CEC research provide useful harness options, but E1 must first
+      define black-box, memory, reset, x-propagation, hierarchy, clocking,
+      solver, and post-PD netlist policies. Keep this lane as target capture
+      until deterministic formal, simulation, synthesis, STA/OpenLane, power,
+      and review gates accept a specific LEC harness.
   - id: low_power_intent_automation
     rating: READY_DRY_RUN
     source_ids:
@@ -544,6 +925,66 @@ stages:
       Keep this lane as target capture until generated power intent and
       clock-gating edits can be checked by RTL, formal, synthesis, DFT, CDC/RDC,
       power/thermal, and physical-design gates.
+  - id: clock_tree_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - openroad-cts
+      - tritoncts
+      - gan-cts
+      - cts-bench
+      - openroad-two-phase-clock
+    local_lane: p1-clock-tree-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_clock_tree_targets.py
+      - build/ai_eda/clock_tree_targets/validation/targets_report.json
+    next_gate: make pd-signoff-manifest-check
+    critical_review: >
+      CTS and clock-network automation can prioritize skew, latency, insertion
+      delay, and post-CTS hold-risk triage, but it sits on the functional and
+      physical signoff path. E1 must keep generated clock trees, SDC/Tcl,
+      useful-skew settings, and clocking conversions advisory-only until
+      before/after CTS, STA, DFT, CDC/RDC, power, routing, manufacturing, and
+      signoff evidence exists.
+  - id: extraction_parasitic_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - openroad-openrcx
+      - openlane-timing-corners
+      - magic-extraction
+      - capbench
+    local_lane: p1-extraction-parasitic-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_extraction_parasitic_targets.py
+      - build/ai_eda/extraction_parasitic_targets/validation/targets_report.json
+    next_gate: make pd-signoff-manifest-check
+    critical_review: >
+      Parasitic extraction and SPEF/SDF handling directly define post-route
+      timing credibility. ML capacitance extraction and SI assistants can help
+      prioritize review, but E1 must keep generated SPEF, SDF, SPICE,
+      extraction rules, SI waivers, and RC predictions advisory-only until
+      before/after multi-corner STA, DRC/LVS, antenna, routing, power, and
+      signoff evidence exists.
+  - id: physical_verification_automation
+    rating: READY_DRY_RUN
+    source_ids:
+      - klayout-drc
+      - magic-drc-lvs
+      - netgen-lvs
+      - openroad-antenna-check
+      - rule2drc
+      - posteda-bench
+    local_lane: p1-physical-verification-target-capture
+    current_artifacts:
+      - scripts/ai_eda/capture_physical_verification_targets.py
+      - build/ai_eda/physical_verification_targets/validation/targets_report.json
+    next_gate: make pd-signoff-manifest-check
+    critical_review: >
+      DRC, LVS, XOR, and antenna automation is on the release-critical physical
+      signoff path. AI can help triage logs and cluster violations, but E1 must
+      keep generated DRC decks, layout repairs, LVS waivers, antenna fixes,
+      Tcl, and patches advisory-only until pinned rule decks, layouts, netlists,
+      reports, before/after deterministic gates, commercial correlation where
+      applicable, and reviewer signoff exist.
   - id: post_silicon_validation_automation
     rating: READY_DRY_RUN
     source_ids:

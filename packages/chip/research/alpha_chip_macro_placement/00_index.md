@@ -29,6 +29,17 @@ flow, and judged by physical-design evidence rather than proxy reward alone.
   GDS, ODB, and metrics under
   `pd/openlane/runs/RUN_2026-05-19_03-33-45/final`.
 
+## Current research notes
+
+- `01_sources/ai_eda_literature_and_tools_2026-05-19.md`: SOTA AI-for-EDA
+  projects, placement tools, surrogate models, and agent/LLM EDA references.
+- `03_datasets/training_and_reference_inputs_2026-05-19.md`: public benchmark,
+  dataset, and open-chip references for AlphaChip-style curriculum work.
+- `05_experiments/placement_validation_ladder_2026-05-19.md`: scoring ladder
+  from CT proxy cost through OpenROAD/OpenLane routed evidence.
+- `06_e1_notes/softmacro_benchmark_2026-05-19.md`: live E1 soft-macro
+  benchmark results and run commands.
+
 ## Practical pipeline
 
 1. Build the Circuit Training Docker image.

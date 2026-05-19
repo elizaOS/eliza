@@ -99,6 +99,158 @@ entries:
     risk:
       - LLM-generated EDA scripts can be syntactically plausible and wrong.
       - Published agent demos may not reproduce on the E1 OpenLane flow.
+  - id: synopsys-ai-copilot
+    name: Synopsys.ai Copilot
+    kind: commercial_eda_ai_copilot
+    stage:
+      - agentic_orchestration
+      - commercial_eda
+      - rtl_to_gds
+      - verification
+      - signoff
+    priority: P1
+    source_url: https://www.synopsys.com/ai.html
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: commercial_tool_terms_review_required
+    code_status: unavailable_commercial
+    model_status: unavailable_commercial
+    e1_fit: >
+      Commercial SOTA context for AI-assisted EDA workflows, useful for
+      understanding where vendor copilots can reduce setup and debug effort.
+    integration_action: >
+      Track only as capability reference until commercial tool access,
+      data-handling terms, exact versions, and local replay gates exist.
+    evidence_gate: >
+      Any vendor copilot output requires license review, command transcript,
+      input/output hashes, local deterministic replay, signoff gate mapping,
+      and human review before it can affect source or claims.
+    risk:
+      - Proprietary models and tool integrations are not reproducible in this
+        repo without vendor access and data-use review.
+      - Copilot suggestions can generate unsafe Tcl or signoff assumptions.
+  - id: cadence-jedai
+    name: Cadence JedAI Platform
+    kind: commercial_eda_ai_platform
+    stage:
+      - agentic_orchestration
+      - commercial_eda
+      - verification
+      - physical_design
+      - analytics
+    priority: P1
+    source_url: https://www.cadence.com/en_US/home/tools/cadence-ai-platform.html
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: commercial_tool_terms_review_required
+    code_status: unavailable_commercial
+    model_status: unavailable_commercial
+    e1_fit: >
+      Commercial SOTA reference for ML/AI analytics spanning implementation,
+      verification, and signoff data, but not open release evidence.
+    integration_action: >
+      Keep as blocked commercial-tool context; only mirror the local evidence
+      pattern with open tools until vendor access and terms are approved.
+    evidence_gate: >
+      Any use requires commercial license approval, data residency review,
+      exact tool/model versions, run manifests, before/after deterministic
+      local checks, and reviewer disposition.
+    risk:
+      - Closed analytics and proprietary training data cannot be audited here.
+      - Vendor dashboard improvements can be mistaken for E1 signoff evidence.
+  - id: cadence-chipstack-ai-super-agent
+    name: Cadence ChipStack AI Super Agent
+    kind: commercial_agentic_eda_platform
+    stage:
+      - agentic_orchestration
+      - commercial_eda
+      - physical_design
+      - verification
+      - signoff
+    priority: P1
+    source_url: https://www.cadence.com/en_US/home/company/newsroom/press-releases/pr/2026/cadence-launches-chipstack-ai-super-agent-for-chip-design.html
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: commercial_tool_terms_review_required
+    code_status: unavailable_commercial
+    model_status: unavailable_commercial
+    e1_fit: >
+      Current commercial agentic EDA direction for multi-step chip-design task
+      automation; useful to benchmark local fail-closed orchestration policy.
+    integration_action: >
+      Track as commercial SOTA context only; do not call external services or
+      accept generated tool actions without vendor and local gate approval.
+    evidence_gate: >
+      Any agentic design action requires tool/version pins, command allowlist,
+      artifact quarantine, logs, deterministic replay, local E1 gates, and
+      human review.
+    risk:
+      - External agent services can expose unreleased design data.
+      - Autonomous tool actions can alter source, constraints, or signoff setup.
+  - id: siemens-fuse-eda-ai-agent
+    name: Siemens Fuse EDA AI Agent
+    kind: commercial_eda_ai_agent
+    stage:
+      - agentic_orchestration
+      - commercial_eda
+      - physical_design
+      - verification
+      - signoff
+    priority: P1
+    source_url: https://news.siemens.com/en-gb/siemens-fuse-eda-ai-agent/
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: commercial_tool_terms_review_required
+    code_status: unavailable_commercial
+    model_status: unavailable_commercial
+    e1_fit: >
+      Current commercial reference for natural-language EDA interaction and
+      tool guidance; relevant to future E1 command-agent boundaries.
+    integration_action: >
+      Keep as blocked commercial capability reference until licenses, data
+      handling, and reproducible local replay are resolved.
+    evidence_gate: >
+      Any generated setup, script, debug advice, or report interpretation needs
+      local command logs, tool versions, output hashes, accepted E1 gates, and
+      reviewer disposition.
+    risk:
+      - Closed assistant behavior cannot be reproduced or audited locally.
+      - Natural-language tool guidance may omit assumptions and corner cases.
+  - id: phoenix-bench
+    name: Phoenix-bench
+    kind: hardware_engineering_agent_benchmark
+    stage:
+      - agentic_orchestration
+      - rtl_generation
+      - verification
+      - benchmark
+      - repository_localization
+    priority: P1
+    source_url: https://arxiv.org/abs/2605.15226
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant benchmark direction for multi-file hardware-agent tasks, but
+      external benchmark success is not proof that agents can patch E1 safely.
+    integration_action: >
+      Use as methodology context for future quarantined E1 tasks that require
+      file localization, deterministic tests, and review before source changes.
+    evidence_gate: >
+      Hardware-agent benchmark use requires exact task hashes, non-overlap
+      review, generated patch quarantine, local lint/sim/formal logs, and human
+      review before any generated patch is promoted.
+    risk:
+      - Benchmark tasks may not reflect E1 SoC integration, PD, firmware, and
+        verification contracts.
+      - Public tasks can be contaminated by future model training.
   - id: rtl-coder
     name: RTL-Coder
     kind: code_model
@@ -178,6 +330,363 @@ entries:
     risk:
       - Hugging Face mirrors may not preserve upstream licensing exactly.
       - Benchmark success can overstate readiness for production RTL.
+  - id: rtllm
+    name: RTLLM
+    kind: rtl_generation_benchmark
+    stage:
+      - rtl_generation
+      - benchmark
+      - evaluation_hygiene
+    priority: P1
+    source_url: https://arxiv.org/abs/2308.05345
+    code_url: https://github.com/hkust-zhiyao/RTLLM
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Important public RTL-generation benchmark context, especially because
+      later contamination analysis compares RTLLM against VerilogEval.
+    integration_action: >
+      Treat as benchmark metadata only until exact revision, license,
+      simulator, task hashes, and non-overlap checks are archived.
+    evidence_gate: >
+      Any RTLLM score claim requires pinned benchmark version, prompt/task
+      hashes, simulator logs, synthesis or formal follow-up where applicable,
+      contamination review, and reviewer disposition.
+    risk:
+      - Public benchmark tasks may be present in model training data.
+      - Pass rates on short tasks can hide integration and waveform failures.
+  - id: vericontaminated
+    name: VeriContaminated
+    kind: verilog_benchmark_contamination_study
+    stage:
+      - rtl_generation
+      - benchmark
+      - evaluation_hygiene
+      - corpus_governance
+    priority: P0
+    source_url: https://arxiv.org/abs/2503.13572
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Directly relevant warning that Verilog benchmark pass rates can be
+      inflated or ambiguous when training-corpus overlap is not controlled.
+    integration_action: >
+      Add a benchmark hygiene lane before promoting any public HDL benchmark,
+      public RTL model, or E1 held-out prompt set into evidence.
+    evidence_gate: >
+      Evaluation claims require exact benchmark revisions, prompt and task
+      hashes, model training disclosures, contamination-screening method,
+      non-overlap report, tool logs, and review.
+    risk:
+      - Contamination detectors are imperfect and can miss paraphrased or
+        semantically equivalent leakage.
+      - A contamination study does not validate any E1 RTL output by itself.
+  - id: protocolllm
+    name: ProtocolLLM
+    kind: systemverilog_protocol_benchmark
+    stage:
+      - rtl_generation
+      - verification
+      - benchmark
+      - evaluation_hygiene
+    priority: P1
+    source_url: https://arxiv.org/abs/2506.07945
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful benchmark direction because protocol RTL needs timing-accurate
+      behavior and waveform-level checks, closer to E1 integration risk than
+      syntax-only tasks.
+    integration_action: >
+      Track as evaluation methodology only; E1 protocol prompts must remain
+      private, held out, and tied to local waveform, cocotb, and formal gates.
+    evidence_gate: >
+      Any adapted protocol evaluation requires task hashes, waveform oracle,
+      simulator transcript, formal or cocotb result, non-overlap review, and
+      reviewer disposition.
+    risk:
+      - Public protocol tasks can become training data after release.
+      - Waveform-level success still does not prove full SoC integration.
+  - id: openrtlset
+    name: OpenRTLSet
+    kind: rtl_training_dataset
+    stage:
+      - rtl_generation
+      - model_training
+      - corpus_governance
+    priority: P1
+    source_url: https://huggingface.co/datasets/ESCAD/OpenRTLSet
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/ESCAD/OpenRTLSet
+    license_status: review_required
+    code_status: dataset_only
+    model_status: no_model
+    e1_fit: >
+      Large open RTL corpus candidate for future model evaluation or adaptation
+      because it emphasizes traceable GitHub origins and permissive licensing.
+    integration_action: >
+      Track as an external corpus candidate only; do not import until exact
+      revision, file manifest, source licenses, and contamination checks exist.
+    evidence_gate: >
+      Any use requires dataset revision pinning, license audit, de-duplication
+      against E1 eval prompts, parser/lint stats, and quarantine path.
+    risk:
+      - GitHub-derived RTL can include incompatible licenses or low-quality code.
+      - Training corpus overlap can contaminate benchmark or E1 task evaluation.
+  - id: mg-verilog
+    name: MG-Verilog
+    kind: multi_grained_rtl_dataset
+    stage:
+      - rtl_generation
+      - model_training
+      - corpus_governance
+    priority: P1
+    source_url: https://arxiv.org/abs/2407.01910
+    code_url: https://github.com/GATECH-EIC/mg-verilog
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/GaTech-EIC/MG-Verilog
+    license_status: MIT_reported_review_required
+    code_status: available_to_review
+    model_status: dataset_only
+    e1_fit: >
+      Useful corpus reference because it covers multi-granular descriptions and
+      Verilog code samples for LLM-assisted RTL generation.
+    integration_action: >
+      Keep as candidate evaluation/training input until license, provenance,
+      and contamination review are complete.
+    evidence_gate: >
+      Dataset use requires revision hashes, source provenance, train/test
+      split, Verilog parser/lint results, and reviewer disposition.
+    risk:
+      - Description-code pairs can encode generated or simplified tasks that do
+        not match production SoC RTL.
+  - id: llmsanitize
+    name: LLMSanitize
+    kind: contamination_detection_toolkit
+    stage:
+      - corpus_governance
+      - evaluation_hygiene
+      - benchmark
+    priority: P2
+    source_url: https://github.com/ntunlp/LLMSanitize
+    code_url: https://github.com/ntunlp/LLMSanitize
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Adjacent non-EDA toolkit for contamination detection methods that can
+      inform future benchmark and corpus hygiene, but not as a turnkey HDL
+      verifier.
+    integration_action: >
+      Track method concepts only until E1 has a Verilog-aware normalized-token,
+      parser-aware, and license-aware contamination workflow.
+    evidence_gate: >
+      Any use requires pinned tool version, exact dataset manifests, normalized
+      comparison rules, false-positive review, and no source promotion from
+      detector output alone.
+    risk:
+      - NLP contamination tools may not understand Verilog structure, macros,
+        generated variants, or simulator semantics.
+  - id: min-k-prob-contamination
+    name: Min-K Percent Probability Contamination Detection
+    kind: contamination_detection_method
+    stage:
+      - corpus_governance
+      - evaluation_hygiene
+      - benchmark
+    priority: P2
+    source_url: https://arxiv.org/abs/2310.16789
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Adjacent method cited by Verilog contamination work for black-box or
+      limited-access model contamination triage.
+    integration_action: >
+      Use as methodology context only; do not infer clean E1 evaluation from a
+      single probabilistic detector.
+    evidence_gate: >
+      Contamination review requires multiple methods, task hashes, model
+      identity, prompt variants, corpus manifests, and human review.
+    risk:
+      - Probability-based signals can be unavailable for closed models or noisy
+        for domain-specific HDL tokens.
+      - Clean-looking scores are not proof that benchmark data was unseen.
+  - id: metrex
+    name: MetRex
+    kind: verilog_metric_reasoning_dataset
+    stage:
+      - rtl_generation
+      - ppa_prediction
+      - metric_reasoning
+    priority: P2
+    source_url: https://arxiv.org/abs/2411.03471
+    code_url: https://github.com/scale-lab/MetRex
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/scale-lab/MetRex
+    license_status: review_required
+    code_status: available_to_review
+    model_status: dataset_and_models_available_to_review
+    e1_fit: >
+      Useful for studying whether LLMs can reason about area, delay, and static
+      power from Verilog and post-synthesis metrics.
+    integration_action: >
+      Use only as target-capture context until E1 has a technology-matched
+      synthesis corpus and local error analysis.
+    evidence_gate: >
+      Any metric claim needs exact synthesis setup, PDK/library hashes, split
+      policy, local held-out E1 error, and review.
+    risk:
+      - Sky130/Yosys metric labels may not transfer to E1 target technology or
+        physical implementation effects.
+  - id: circuitnet-3
+    name: CircuitNet 3.0
+    kind: multimodal_circuit_design_dataset
+    stage:
+      - physical_design
+      - timing_prediction
+      - power_prediction
+      - representation_learning
+    priority: P1
+    source_url: https://huggingface.co/datasets/SKLP-EDA-LAB/CircuitNet3.0
+    code_url: https://github.com/sklp-eda-lab/iclr-circuitnet_3.0
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/SKLP-EDA-LAB/CircuitNet3.0
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: dataset_only
+    e1_fit: >
+      Important current multimodal dataset for RTL, netlist, layout-oriented
+      features, timing, and power prediction research.
+    integration_action: >
+      Track as auxiliary PD/timing/power corpus only; do not train or import
+      until technology, label, split, and storage provenance are pinned.
+    evidence_gate: >
+      Predictor use requires dataset revision, label semantics, technology
+      assumptions, train/validation split, local E1 label comparison, and review.
+    risk:
+      - Public labels and process assumptions may not transfer to E1 flows.
+  - id: veriforge-deepseek-coder
+    name: VeriForge DeepSeek Coder Verilog Model
+    kind: verilog_generation_model
+    stage:
+      - rtl_generation
+      - model_registry
+      - huggingface_model
+    priority: P2
+    source_url: https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
+    code_url: null
+    model_url: https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: model_card_to_review
+    model_status: available_to_review
+    e1_fit: >
+      Small Verilog-focused model candidate for future local dry-run RTL task
+      experiments if base-model and fine-tune terms are acceptable.
+    integration_action: >
+      Do not download weights; keep as metadata-only candidate until exact
+      revision, model card, training data, and evaluation policy are reviewed.
+    evidence_gate: >
+      Model use requires weight revision, prompt/output hashes, isolated
+      generated artifacts, lint/sim/synth/formal gates, and human review.
+    risk:
+      - Fine-tuned code models can generate plausible but unsynthesizable RTL.
+  - id: llm-eda-opencores
+    name: LLM-EDA OpenCores Dataset
+    kind: rtl_instruction_dataset
+    stage:
+      - rtl_generation
+      - corpus_governance
+    priority: P2
+    source_url: https://huggingface.co/datasets/LLM-EDA/opencores
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/LLM-EDA/opencores
+    license_status: review_required
+    code_status: dataset_only
+    model_status: no_model
+    e1_fit: >
+      Small instruction/code dataset that can be useful for parser and prompt
+      smoke tests after OpenCores provenance and license review.
+    integration_action: >
+      Keep as external metadata only; do not import examples into E1 source or
+      tests until redistribution and contamination risks are resolved.
+    evidence_gate: >
+      Dataset use requires source module provenance, license review, exact
+      revision, parser/lint logs, and held-out task separation.
+    risk:
+      - OpenCores modules can have mixed licenses and dated coding style.
+  - id: hardware-verilogeval-v2-hf
+    name: Hardware VerilogEval v2 HuggingFace Mirror
+    kind: rtl_eval_dataset_mirror
+    stage:
+      - rtl_generation
+      - verification
+      - benchmark
+    priority: P2
+    source_url: https://huggingface.co/datasets/AbiralArch/hardware-verilogeval-v2
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/AbiralArch/hardware-verilogeval-v2
+    license_status: research_educational_terms_review_required
+    code_status: dataset_only
+    model_status: no_model
+    e1_fit: >
+      Convenient mirror of VerilogEval v2-style problems for model comparison
+      after upstream/source terms are reviewed.
+    integration_action: >
+      Track as benchmark metadata only; prefer primary benchmark sources when
+      making any model-quality comparison.
+    evidence_gate: >
+      Benchmark use requires exact revision, upstream equivalence, simulator
+      version, generated output quarantine, pass/fail logs, and review.
+    risk:
+      - Mirrors can mix source terms or diverge from primary benchmark content.
+  - id: llm4verilog-dataset
+    name: LLM_4_Verilog Dataset
+    kind: rtl_instruction_dataset
+    stage:
+      - rtl_generation
+      - model_training
+      - corpus_governance
+    priority: P2
+    source_url: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
+    license_status: review_required
+    code_status: dataset_only
+    model_status: no_model
+    e1_fit: >
+      Current curated Verilog instruction dataset candidate for future training
+      or evaluation experiments if provenance is acceptable.
+    integration_action: >
+      Keep as metadata-only source until dataset generation, source licenses,
+      and contamination checks are reviewed.
+    evidence_gate: >
+      Dataset use requires HuggingFace revision, source generation method,
+      license review, parser/lint stats, and held-out E1 task separation.
+    risk:
+      - Curated instruction datasets can hide generated descriptions or
+        benchmark leakage.
   - id: openllm-rtl
     name: OpenLLM-RTL
     kind: benchmark
@@ -204,6 +713,148 @@ entries:
     risk:
       - Benchmark tasks may not match E1 integration constraints.
       - License terms need review before use.
+  - id: incrertl
+    name: IncreRTL
+    kind: traceability_guided_incremental_rtl_generation
+    stage:
+      - requirements_traceability
+      - rtl_generation
+      - incremental_design
+      - verification
+    priority: P1
+    source_url: https://arxiv.org/abs/2603.25769
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Directly relevant to evolving E1 specs without losing traceability from
+      requirements to affected RTL, tests, and evidence gates.
+    integration_action: >
+      Track as methodology only until E1 has stable requirement IDs, a local
+      trace matrix, and quarantine for generated incremental patches.
+    evidence_gate: >
+      Any incremental RTL proposal requires requirement IDs, before/after spec
+      hashes, impacted RTL/test/SVA artifacts, lint/simulation/formal/synthesis
+      logs, equivalence or non-regression evidence, and reviewer disposition.
+    risk:
+      - Requirement localization can miss hidden cross-module dependencies.
+      - Incremental patch success on benchmarks does not prove E1 integration.
+  - id: llm-fsm
+    name: LLM-FSM
+    kind: fsm_rtl_generation_benchmark
+    stage:
+      - requirements_traceability
+      - rtl_generation
+      - formal_verification
+      - benchmark
+    priority: P1
+    source_url: https://arxiv.org/abs/2602.07032
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful benchmark direction because E1 control blocks are often FSM-like
+      and need behavioral checking beyond syntactic Verilog validity.
+    integration_action: >
+      Keep as evaluation methodology only; E1 FSM tasks need private prompt
+      quarantine, formal/cocotb checks, and contamination review.
+    evidence_gate: >
+      Any FSM generation claim requires task hashes, expected transition
+      behavior, formal or cocotb traces, synthesis checks, and review.
+    risk:
+      - Public FSM tasks may be simpler than SoC reset, interrupt, DMA, and NPU
+        control behavior.
+      - Benchmark exposure can contaminate future model evaluations.
+  - id: spec2assertion
+    name: Spec2Assertion
+    kind: natural_language_to_sva_method
+    stage:
+      - requirements_traceability
+      - assertion_generation
+      - formal_verification
+      - verification
+    priority: P1
+    source_url: https://arxiv.org/abs/2405.01819
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant for turning E1 natural-language interface contracts into SVA
+      candidates while keeping generated properties outside source until proven.
+    integration_action: >
+      Use as method context for reviewed assertion candidates linked to docs,
+      RTL hashes, and formal/cocotb gates.
+    evidence_gate: >
+      Generated assertions must remain candidates until bound to exact RTL,
+      simulated or formally proven, reviewed for vacuity, and accepted by gate.
+    risk:
+      - Natural-language ambiguity can produce vacuous or over-constraining
+        assertions.
+      - SVA syntax correctness does not prove requirement coverage.
+  - id: coverassert
+    name: CoverAssert
+    kind: nl_to_assertion_or_coverage_method
+    stage:
+      - requirements_traceability
+      - assertion_generation
+      - coverage
+      - verification
+    priority: P2
+    source_url: https://arxiv.org/abs/2502.16373
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful for studying whether natural-language requirements can seed
+      assertion and cover-point candidates for E1 interfaces.
+    integration_action: >
+      Track only as candidate-generation context until local vacuity,
+      reachability, formal, and simulation gates exist.
+    evidence_gate: >
+      Any candidate must cite source requirement text, RTL hash, property
+      intent, formal or cocotb result, coverage effect, and review.
+    risk:
+      - Coverage-oriented prompts can create superficial cover points.
+      - Local reset, handshake, and backpressure semantics may be missed.
+  - id: qimeng-codev-sva
+    name: Qimeng-CodeV-SVA
+    kind: assertion_generation_model_or_dataset
+    stage:
+      - requirements_traceability
+      - assertion_generation
+      - formal_verification
+    priority: P2
+    source_url: https://arxiv.org/abs/2603.14239
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: model_or_dataset_assets_to_review
+    e1_fit: >
+      Relevant to SVA generation for E1 interface contracts, especially if
+      paired with existing CodeV-SVA dataset governance.
+    integration_action: >
+      Keep as metadata-only source until model/dataset revisions, license,
+      contamination, and local formal gates are resolved.
+    evidence_gate: >
+      Any generated SVA requires exact model/data revision, prompt/output hash,
+      RTL binding, formal/simulation result, vacuity review, and human signoff.
+    risk:
+      - Assertion model training data may overlap public benchmark tasks.
+      - Generated properties can pass vacuously or constrain legal behavior.
   - id: chipcraftx-rtlgen-7b
     name: ChipCraftX RTLGen 7B
     kind: huggingface_model
@@ -754,6 +1405,341 @@ entries:
     risk:
       - GPU placement acceleration is not the same as AI optimization.
       - Integration cost may exceed near-term E1 benefit.
+  - id: openroad-gpl
+    name: OpenROAD Global Placement
+    kind: deterministic_global_placement_tool
+    stage:
+      - global_placement
+      - placement
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/gpl/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic local reference for E1 global placement, density,
+      routability-driven placement, timing-driven placement, and placement
+      parameter evidence.
+    integration_action: >
+      Hash GPL inputs, logs, metrics, DEF/ODB outputs, and OpenLane configs
+      before any AI placement triage or parameter sweep is accepted.
+    evidence_gate: >
+      Placement changes require before/after config, DEF, ODB, metrics, route,
+      STA, DRC/LVS/antenna, power, manufacturing, and signoff evidence.
+    risk:
+      - Better HPWL or density can still worsen routability, timing, antenna,
+        or DRC.
+  - id: openroad-dpl
+    name: OpenROAD Detailed Placement and Legalization
+    kind: deterministic_detailed_placement_legalizer
+    stage:
+      - detailed_placement
+      - legalization
+      - placement
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/dpl/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic local reference for E1 detailed placement, legalization,
+      placement padding, filler insertion, and placement checks.
+    integration_action: >
+      Hash DPL logs, placement legality reports, filler choices, DEF/ODB
+      outputs, and follow-on signoff artifacts before any AI legalizer action.
+    evidence_gate: >
+      Legalization or filler changes require exact command manifests, input and
+      output layout hashes, placement legality, route, STA, DRC/LVS/antenna,
+      power, and reviewer evidence.
+    risk:
+      - Legalization can repair overlaps while creating timing, congestion,
+        filler, well-tap, antenna, or DRC regressions.
+  - id: openroad-ifp
+    name: OpenROAD Initialize Floorplan
+    kind: deterministic_floorplan_initialization_tool
+    stage:
+      - floorplanning
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/ifp/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic local reference for die/core area, utilization, aspect
+      ratio, track, and row setup before E1 placement, routing, and PDN.
+    integration_action: >
+      Hash floorplan configs, generated DEF/ODB, and signoff context before any
+      AI floorplan recommendation is considered.
+    evidence_gate: >
+      Floorplan changes require before/after config, DEF/ODB/GDS, route, STA,
+      DRC/LVS/antenna, PDN, power, package, and review evidence.
+    risk:
+      - Small die/core or track changes can invalidate every downstream PnR and
+        signoff artifact.
+  - id: openroad-ioplacer
+    name: OpenROAD IO Placement
+    kind: deterministic_io_pin_placement_tool
+    stage:
+      - io_placement
+      - pin_assignment
+      - floorplanning
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/ppl/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic local reference for E1 IO pin placement, pin-order files,
+      and package/padframe cross-probe evidence.
+    integration_action: >
+      Hash pin-order, padframe, package, DEF/ODB, and IO-placement logs before
+      any AI pin assignment suggestion.
+    evidence_gate: >
+      Pin assignment changes require RTL/package/padframe cross-probe, SI/PI,
+      routing, timing, DRC/LVS/antenna, board, and review evidence.
+    risk:
+      - Pin movement can break package, board, firmware, Linux, routing, SI/PI,
+        or timing assumptions.
+  - id: openroad-tapcell
+    name: OpenROAD Tapcell And Endcap Insertion
+    kind: deterministic_tap_endcap_tool
+    stage:
+      - floorplanning
+      - tapcell
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/tap/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic local reference for tapcell, endcap, boundary, and macro
+      halo setup in E1 floorplanning.
+    integration_action: >
+      Hash tap/endcap commands, config, DEF/ODB output, and DRC follow-up
+      evidence before any AI-generated tapcell setting.
+    evidence_gate: >
+      Tap/endcap changes require layout hashes, well-tap/endcap reports,
+      DRC/LVS, route, STA, power, and reviewer evidence.
+    risk:
+      - Tap/endcap changes can create latch-up, well, DRC, filler, and row
+        continuity failures.
+  - id: openroad-pdn
+    name: OpenROAD PDN Generator
+    kind: deterministic_power_grid_generation_tool
+    stage:
+      - pdn_generation
+      - floorplanning
+      - power_integrity
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/pdn/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic local reference for E1 power-grid generation and PDN policy
+      capture before placement, routing, IR-drop, and signoff.
+    integration_action: >
+      Hash PDN configs, generated grid artifacts, failed-via reports, budget
+      files, and SI/PI evidence before any AI PDN recommendation.
+    evidence_gate: >
+      PDN changes require rail budget, package/pad assumptions, DEF/ODB/GDS,
+      PDNSim or equivalent evidence, IR/EM, route, DRC/LVS, power, and review.
+    risk:
+      - Generated grids can satisfy template rules while failing IR, EM,
+        routing, DRC, macro connection, or package constraints.
+  - id: openlane-floorplanning
+    name: OpenLane Floorplanning Flow
+    kind: open_source_floorplanning_flow
+    stage:
+      - floorplanning
+      - io_placement
+      - pdn_generation
+      - physical_design
+    priority: P1
+    source_url: https://openlane.readthedocs.io/en/2023.09.07/flow_overview.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenLane
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local E1 flow context for init_floorplan, IO pin placement, tap/endcap,
+      PDN, macro placement, and OpenROAD floorplan handoff.
+    integration_action: >
+      Hash OpenLane configs, pin-order files, floorplan Tcl, run artifacts, and
+      preflight blockers before any AI floorplan or pin/PDN recommendation.
+    evidence_gate: >
+      OpenLane floorplanning changes require run manifests, DEF/ODB/GDS,
+      package/padframe cross-probe, route, STA, DRC/LVS/antenna, PDN, power,
+      and review evidence.
+    risk:
+      - Flow-level config edits can change multiple OpenROAD stages and obscure
+        root-cause attribution.
+  - id: xplace
+    name: Xplace 3.0
+    kind: gpu_placement_framework
+    stage:
+      - global_placement
+      - detailed_placement
+      - routability_optimization
+      - timing_optimization
+    priority: P2
+    source_url: https://github.com/cuhk-eda/Xplace
+    code_url: https://github.com/cuhk-eda/Xplace
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Current open placement framework for comparing deterministic GPU
+      placement, detailed-routability, and timing optimization ideas.
+    integration_action: >
+      Track as future isolated replay context only; do not import benchmarks or
+      produce E1 placements without pinned builds and signoff replay.
+    evidence_gate: >
+      Any Xplace experiment requires source revision, benchmark/license review,
+      command logs, placement hashes, and downstream OpenROAD/OpenLane route,
+      timing, physical verification, and power evidence.
+    risk:
+      - Benchmark speed or routability does not prove transfer to E1 constraints
+        or OpenLane signoff.
+  - id: chipdiffusion
+    name: ChipDiffusion
+    kind: diffusion_chip_placement_model
+    stage:
+      - macro_placement
+      - generative_placement
+      - placement_optimization
+    priority: P2
+    source_url: https://arxiv.org/abs/2407.12282
+    code_url: https://github.com/vint-1/chipdiffusion
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: trainable_model_code
+    e1_fit: >
+      Relevant current generative-placement direction for macro placement and
+      placement candidate generation, but only after E1 has stable placement
+      constraints and routed labels.
+    integration_action: >
+      Keep as citation/code-review context; no generated placement may enter E1
+      without quarantine, license review, exact inputs, and signoff replay.
+    evidence_gate: >
+      Diffusion placement claims require model revision, training/evaluation
+      data provenance, prompt/config hashes, output placement hashes, legalizer
+      reports, routing, STA, DRC/LVS/antenna, power, and review.
+    risk:
+      - Synthetic or public benchmark placements may optimize proxy metrics and
+        fail local legality, macro, routing, or timing constraints.
+  - id: diffplace
+    name: DiffPlace
+    kind: conditional_diffusion_vlsi_placement_method
+    stage:
+      - generative_placement
+      - macro_placement
+      - standard_cell_placement
+    priority: P2
+    source_url: https://arxiv.org/abs/2510.15897
+    code_url: https://github.com/HySonLab/DiffPlace
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: available_to_review
+    model_status: paper_code_to_review
+    e1_fit: >
+      Current diffusion-placement research for simultaneous placement
+      generation; useful as SOTA context, not as release evidence.
+    integration_action: >
+      Track only as a quarantined model-code reference until local E1
+      benchmark splits, legalizer replay, and downstream signoff are available.
+    evidence_gate: >
+      Generated placements require exact model/code/data revisions, input and
+      output hashes, legalization, route, STA, physical verification, power,
+      manufacturing, and reviewer gates.
+    risk:
+      - Simultaneous generative placement can hide legality and routability
+        failures behind proxy-quality metrics.
+  - id: flowplace
+    name: FlowPlace
+    kind: flow_matching_chip_placement_method
+    stage:
+      - generative_placement
+      - flow_matching
+      - placement_optimization
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.23658
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model_selected
+    e1_fit: >
+      Very recent flow-matching placement direction; relevant as SOTA context
+      for faster generative placement, but not yet selected for local use.
+    integration_action: >
+      Keep as citation-only until code, data, license, and local replay
+      artifacts are selected.
+    evidence_gate: >
+      Flow-matching placement use requires code/data revisions, generated
+      placement hashes, legalizer reports, route, STA, DRC/LVS/antenna, power,
+      and reviewer evidence.
+    risk:
+      - Fresh paper claims may be benchmark-specific and lack public,
+        license-reviewed reproducibility assets.
+  - id: chipbench-d
+    name: ChiPBench-D
+    kind: ai_chip_placement_benchmark_dataset
+    stage:
+      - placement_benchmark
+      - physical_design
+      - dataset_evaluation
+    priority: P2
+    source_url: https://huggingface.co/datasets/MIRA-Lab/ChiPBench-D
+    code_url: https://github.com/MIRALab-USTC/ChiPBench
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/MIRA-Lab/ChiPBench-D
+    license_status: review_required
+    code_status: available_to_review
+    model_status: benchmark_only
+    e1_fit: >
+      Placement benchmark and design-file corpus context for evaluating
+      AI-based chip placement algorithms after license and split controls.
+    integration_action: >
+      Track as external benchmark only; do not download or mix with E1 artifacts
+      until quarantine, license, and contamination gates exist.
+    evidence_gate: >
+      Benchmark use requires exact dataset revision, license review, file
+      manifest, split manifest, non-overlap check, local replay commands, and
+      no release-use promotion from public benchmark scores.
+    risk:
+      - Public benchmark design files can contaminate local evaluation or fail
+        to represent E1 technology, hierarchy, and flow constraints.
   - id: routeplacer
     name: RoutePlacer / RouteGNN
     kind: routability_predictor
@@ -781,6 +1767,116 @@ entries:
     risk:
       - Reported routability improvements may depend on benchmark/floorplan mix.
       - Without local labels this remains only research context.
+  - id: openroad-fastroute
+    name: OpenROAD FastRoute
+    kind: global_routing_tool
+    stage:
+      - physical_design
+      - global_routing
+      - congestion_analysis
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/grt/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local OpenROAD global-routing stage is the deterministic reference for
+      congestion, antenna, route guide, and routability labels.
+    integration_action: >
+      Hash FastRoute/OpenROAD global-routing logs and guide artifacts for
+      future advisory predictors; do not let AI modify route guides or Tcl.
+    evidence_gate: >
+      Any global-routing change requires command manifests, input/output
+      DEF/ODB/guide hashes, congestion/overflow evidence, antenna checks,
+      downstream detailed routing, DRC, STA, power, and signoff manifests.
+    risk:
+      - Global-route improvement can still fail detailed routing or DRC.
+      - Route guides can mask timing, antenna, and power regressions.
+  - id: openroad-tritonroute
+    name: OpenROAD TritonRoute
+    kind: detailed_routing_tool
+    stage:
+      - physical_design
+      - detailed_routing
+      - drc
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/drt/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local OpenROAD detailed-routing stage is the deterministic reference for
+      routed DEF/ODB, DRC markers, antenna impact, and post-route labels.
+    integration_action: >
+      Capture detailed-route logs, DRC reports, and routed artifact hashes
+      before any ML or agentic router triage is considered actionable.
+    evidence_gate: >
+      Detailed-route changes require routed DEF/ODB/GDS hashes, DRC and antenna
+      reports, STA, power/PDN evidence, signoff manifests, and review.
+    risk:
+      - Detailed routing can trade off DRC cleanup against timing, antenna, and
+        metal-density constraints.
+      - Router logs are not release evidence without independent signoff gates.
+  - id: cugr
+    name: CU-GR
+    kind: global_routing_tool
+    stage:
+      - global_routing
+      - physical_design
+      - routing_optimization
+    priority: P2
+    source_url: https://github.com/cuhk-eda/cu-gr
+    code_url: https://github.com/cuhk-eda/cu-gr
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open global-router reference for future comparison against
+      OpenROAD routing labels, but not part of the current E1 flow.
+    integration_action: >
+      Keep as a code-review and method reference until a pinned, isolated
+      router replay harness exists.
+    evidence_gate: >
+      CU-GR experiments need pinned source revisions, command logs, design
+      input hashes, routed/guide outputs, DRC/antenna/STA evidence, and signoff.
+    risk:
+      - External router assumptions may not match OpenLane PDK/rule setup.
+      - A faster or cleaner global route does not prove detailed-route closure.
+  - id: dr-cu
+    name: Dr.CU
+    kind: detailed_routing_tool
+    stage:
+      - detailed_routing
+      - physical_design
+      - drc
+    priority: P2
+    source_url: https://github.com/cuhk-eda/dr-cu
+    code_url: https://github.com/cuhk-eda/dr-cu
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open detailed-router reference for future route-quality comparison
+      after E1 has stable routed OpenLane baselines.
+    integration_action: >
+      Track as an isolated future backend; no Dr.CU route output is imported
+      into source or release evidence.
+    evidence_gate: >
+      Dr.CU experiments need pinned source revisions, rule/setup provenance,
+      routed artifact hashes, DRC/antenna/STA/power evidence, and signoff.
+    risk:
+      - Detailed-router rule compatibility is process and flow specific.
+      - Router output can be legal in one checker and fail another signoff gate.
   - id: orassistant
     name: ORAssistant
     kind: eda_assistant
@@ -1850,6 +2946,119 @@ entries:
     risk:
       - Template library and PDK assumptions may not match E1 or Sky130.
       - A safe-by-construction claim still needs local signoff verification.
+  - id: floorset
+    name: FloorSet
+    kind: vlsi_floorplanning_dataset
+    stage:
+      - floorplanning
+      - dataset_evaluation
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2405.05480
+    code_url: https://github.com/IntelLabs/FloorSet
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/IntelLabs/FloorSet
+    license_status: review_required
+    code_status: available_to_review
+    model_status: benchmark_only
+    e1_fit: >
+      Useful floorplanning benchmark context with constraints and validation
+      code, but not directly representative of E1 package, IO, PDN, and PDK
+      constraints.
+    integration_action: >
+      Track as external benchmark only; do not import or train on it until
+      quarantine, license, non-overlap, and local replay gates exist.
+    evidence_gate: >
+      FloorSet use requires exact revision, license review, file manifest, split
+      manifest, non-overlap check, local task mapping, and no release-use claim.
+    risk:
+      - Synthetic floorplanning labels may not transfer to E1 hierarchy,
+        padframe, power grid, timing, or routing constraints.
+  - id: piano-floorplanner
+    name: Piano Pin-Assignment-Aware Floorplanner
+    kind: pin_assignment_aware_floorplanning_method
+    stage:
+      - floorplanning
+      - pin_assignment
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2508.13161
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model_selected
+    e1_fit: >
+      Relevant SOTA direction for tying floorplan decisions to pin assignment,
+      but E1 must keep it citation-only until local package and pin constraints
+      are stable.
+    integration_action: >
+      Track as method context for future pin/floorplan co-optimization
+      governance.
+    evidence_gate: >
+      Pin/floorplan claims require package and padframe hashes, pin-order diffs,
+      DEF/ODB/GDS, route, STA, SI/PI, DRC/LVS/antenna, power, and review.
+    risk:
+      - Pin-aware floorplanning can improve proxy wirelength while breaking
+        board, package, power, or timing assumptions.
+  - id: ibm-fp-opt
+    name: IBM AI-Driven Floorplanning Optimization
+    kind: ai_floorplanning_optimization_method
+    stage:
+      - floorplanning
+      - macro_placement
+      - rtl_to_gds_optimization
+    priority: P2
+    source_url: https://research.ibm.com/publications/design-optimization-of-asic-designs-via-ai-driven-rtl-to-gds-optimization-with-floorplanning
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model_selected
+    e1_fit: >
+      Current industrial AI floorplanning reference for floorplan size and macro
+      placement exploration, useful as context for future E1 OpenLane sweeps.
+    integration_action: >
+      Keep as citation-only until reproducible code, data, and local replay
+      commands exist.
+    evidence_gate: >
+      AI floorplanning optimization claims require exact flow versions,
+      before/after configs and layouts, route, STA, DRC/LVS/antenna, power,
+      package, manufacturing, and reviewer evidence.
+    risk:
+      - Industrial flow results may not transfer to open PDK/OpenLane E1
+        scaffolding or incomplete PD evidence.
+  - id: nl2gds
+    name: NL2GDS
+    kind: llm_open_source_chip_design_interface
+    stage:
+      - floorplanning
+      - agentic_eda
+      - rtl_to_gds
+    priority: P2
+    source_url: https://arxiv.org/abs/2603.05489
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model_selected
+    e1_fit: >
+      Recent LLM interface direction for open-source chip design; relevant to
+      future natural-language floorplan or flow commands only behind typed
+      command schemas.
+    integration_action: >
+      Track as agentic-EDA context; do not allow natural-language commands to
+      mutate E1 floorplan, PDN, or source artifacts.
+    evidence_gate: >
+      NL-to-GDS actions require typed command manifests, exact tool versions,
+      input/output hashes, replay logs, deterministic gates, and reviewer
+      disposition.
+    risk:
+      - Natural-language tool control can silently produce Tcl, config, or
+        layout changes outside approved scopes.
   - id: aieda
     name: AiEDA
     kind: ai_eda_data_library
@@ -2325,6 +3534,923 @@ entries:
     risk:
       - RVV ISA/profile assumptions may not match E1 CPU integration.
       - Correct-looking intrinsic code can be semantically or ABI-incompatible.
+  - id: llvm-mlgo
+    name: LLVM MLGO
+    kind: ml_guided_compiler_optimization
+    stage:
+      - compiler
+      - llvm
+      - machine_learning
+      - profile_guided_optimization
+    priority: P1
+    source_url: https://llvm.org/docs/MLGO.html
+    code_url: https://github.com/llvm/llvm-project
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_with_LLVM_exception_review_required
+    code_status: upstream_framework_available
+    model_status: framework_not_model
+    e1_fit: >
+      Directly relevant to future LLVM inlining, register-allocation, and
+      learned heuristic experiments for E1 once a pinned toolchain and corpus
+      exist.
+    integration_action: >
+      Track as compiler infrastructure; do not train or embed models until
+      compiler corpus, train/test split, and version evidence are reviewed.
+    evidence_gate: >
+      MLGO use requires pinned LLVM SHA, corpus hashes, extracted feature logs,
+      model revision, compile logs, benchmark evidence, and release review.
+    risk:
+      - Learned compiler heuristics can regress unrepresented workloads.
+      - Model embedding into the compiler changes binary provenance.
+  - id: google-ml-compiler-opt
+    name: Google ML Compiler Opt
+    kind: mlgo_training_infrastructure
+    stage:
+      - compiler
+      - llvm
+      - machine_learning
+      - training_infrastructure
+    priority: P2
+    source_url: https://github.com/google/ml-compiler-opt
+    code_url: https://github.com/google/ml-compiler-opt
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: trainable_method
+    e1_fit: >
+      Useful infrastructure for ML-guided LLVM optimization experiments, but
+      E1 lacks a compiler corpus and accepted benchmark suite.
+    integration_action: >
+      Keep as a blocked optional backend until license, dependencies, corpus,
+      and reproducibility policy are reviewed.
+    evidence_gate: >
+      Training infrastructure use requires source revision, dependency lock,
+      corpus manifest, model artifacts, evaluation logs, and benchmark gates.
+    risk:
+      - Training pipelines are dependency-heavy and easy to make unreproducible.
+      - Compiler-model wins can be benchmark-specific.
+  - id: tvm-meta-schedule
+    name: TVM MetaSchedule
+    kind: tensor_kernel_autotuning
+    stage:
+      - compiler
+      - tensor_compiler
+      - autotuning
+      - schedule_search
+    priority: P1
+    source_url: https://tvm.apache.org/docs/deep_dive/tensor_ir/tutorials/meta_schedule.html
+    code_url: https://github.com/apache/tvm
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: search_framework
+    e1_fit: >
+      Relevant to future tensor-kernel schedule search for E1 CPU/RVV fallback
+      and NPU software lowering once targets and benchmark harnesses are real.
+    integration_action: >
+      Track as target capture only; do not tune or import TVM artifacts until
+      target, workload, runtime, and benchmark evidence exist.
+    evidence_gate: >
+      Schedule claims require workload hashes, target config, schedule traces,
+      compiler/runtime logs, correctness tests, and before/after benchmarks.
+    risk:
+      - Autotuned schedules can overfit simulator or host artifacts.
+      - TVM target assumptions may not match E1 RVV/NPU ABI.
+  - id: ansor
+    name: Ansor
+    kind: tensor_program_auto_scheduler
+    stage:
+      - compiler
+      - tensor_compiler
+      - autotuning
+      - schedule_search
+    priority: P2
+    source_url: https://arxiv.org/abs/2006.06762
+    code_url: https://github.com/apache/tvm
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: search_framework
+    e1_fit: >
+      Foundational tensor-program autoscheduler reference for future schedule
+      search comparisons, but not currently executable evidence for E1.
+    integration_action: >
+      Track alongside TVM MetaSchedule as research context.
+    evidence_gate: >
+      Any use requires workload/target hashes, search logs, correctness tests,
+      compiler flags, runtime logs, and benchmark evidence.
+    risk:
+      - Search cost and schedule portability can be poor on new targets.
+      - Historical results may not reflect current TVM MetaSchedule behavior.
+  - id: autofdo
+    name: AutoFDO
+    kind: sampled_profile_guided_optimization
+    stage:
+      - compiler
+      - profile_guided_optimization
+      - binary_optimization
+    priority: P1
+    source_url: https://github.com/google/autofdo
+    code_url: https://github.com/google/autofdo
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_reported_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future compiler and kernel profile-guided optimization once
+      E1 has representative workloads and perf/sample profile capture.
+    integration_action: >
+      Keep local AutoFDO harness blocked until LLVM stage 2, perf, profiles,
+      and benchmark evidence are available.
+    evidence_gate: >
+      AutoFDO claims need binary hashes, sample profiles, converter versions,
+      compiler flags, before/after logs, and benchmark calibration.
+    risk:
+      - Profiles from nonrepresentative workloads can regress product paths.
+      - Profile artifacts change binary provenance and reproducibility.
+  - id: llvm-propeller
+    name: LLVM Propeller
+    kind: profile_guided_relinker
+    stage:
+      - compiler
+      - binary_layout
+      - profile_guided_optimization
+    priority: P2
+    source_url: https://github.com/google/llvm-propeller
+    code_url: https://github.com/google/llvm-propeller
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_with_LLVM_exception_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful profile-guided binary layout technique for future system images,
+      but E1 has no accepted profiles or stage-2 LLVM evidence yet.
+    integration_action: >
+      Track through the existing Propeller harness only; block relinked binaries
+      from release until profile and benchmark evidence exists.
+    evidence_gate: >
+      Propeller use requires input binary hashes, profile hashes, linker
+      version, relink logs, before/after benchmarks, and review.
+    risk:
+      - Layout optimization can regress cold paths or unprofiled workloads.
+      - Relinked binaries require strict provenance tracking.
+  - id: bolt
+    name: LLVM BOLT
+    kind: binary_optimizer
+    stage:
+      - compiler
+      - binary_optimization
+      - profile_guided_optimization
+    priority: P2
+    source_url: https://github.com/llvm/llvm-project/tree/main/bolt
+    code_url: https://github.com/llvm/llvm-project/tree/main/bolt
+    model_url: null
+    dataset_url: null
+    license_status: Apache-2.0_with_LLVM_exception_review_required
+    code_status: upstream_tool_available
+    model_status: no_model
+    e1_fit: >
+      Relevant post-link optimizer for future E1 host tools, runtime binaries,
+      or kernel/userland experiments once profile capture is real.
+    integration_action: >
+      Keep the local BOLT harness blocked until llvm-bolt, profiles, and
+      before/after benchmark gates are present.
+    evidence_gate: >
+      BOLT claims need input/output binary hashes, profile hashes, command logs,
+      tool version, benchmark logs, and rollback plan.
+    risk:
+      - Binary rewriting can break symbols, unwind info, or debugability.
+      - Performance gains depend heavily on profile quality.
+  - id: vecintrinbench
+    name: VecIntrinBench
+    kind: riscv_vector_intrinsic_benchmark
+    stage:
+      - compiler
+      - riscv_vector
+      - intrinsic_translation
+      - benchmark
+    priority: P2
+    source_url: https://arxiv.org/abs/2511.18867
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: benchmark_method
+    e1_fit: >
+      Useful benchmark direction for RISC-V vector intrinsic migration, but E1
+      lacks imported tasks and simulator-backed RVV correctness evidence.
+    integration_action: >
+      Track as a future benchmark source; do not import tasks without license
+      and corpus review.
+    evidence_gate: >
+      Intrinsic benchmark use needs task provenance, before/after source hashes,
+      compiler version, simulator correctness, and performance logs.
+    risk:
+      - Benchmark tasks may not represent E1 kernels.
+      - LLM-generated intrinsics can be fast but semantically wrong.
+  - id: simdbench
+    name: SimdBench
+    kind: simd_intrinsic_codegen_benchmark
+    stage:
+      - compiler
+      - simd
+      - intrinsic_generation
+      - benchmark
+    priority: P2
+    source_url: https://arxiv.org/abs/2507.15224
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: benchmark_method
+    e1_fit: >
+      Relevant for evaluating LLM SIMD/RVV intrinsic generation quality, but it
+      is not E1 correctness or performance evidence.
+    integration_action: >
+      Track as benchmark context only until tasks, licenses, and local compiler
+      gates are reviewed.
+    evidence_gate: >
+      SIMD codegen claims require task hashes, generated source hashes,
+      compiler/simulator logs, correctness checks, and benchmark comparison.
+    risk:
+      - Generic SIMD tasks may miss RVV VLA and ABI constraints.
+      - Passing examples can still be nonportable or undefined.
+  - id: agentic-code-optimization
+    name: Agentic Code Optimization Via Compiler-LLM Cooperation
+    kind: agentic_compiler_optimization
+    stage:
+      - compiler
+      - llm_optimization
+      - code_generation
+      - testing_feedback
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.04238
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Relevant method for using compiler tools and tests as an LLM optimization
+      loop, but generated code must stay quarantined for E1.
+    integration_action: >
+      Track as target capture only; require correctness and performance gates
+      before any generated code is considered.
+    evidence_gate: >
+      Agentic optimization needs prompt/model logs, generated source hashes,
+      tests, compiler diagnostics, benchmark logs, and reviewer disposition.
+    risk:
+      - Generated optimizations can exploit undefined behavior.
+      - Test-generated validation may miss real workload semantics.
+  - id: hintpilot
+    name: HINTPILOT
+    kind: llm_compiler_hint_synthesis
+    stage:
+      - compiler
+      - llm_optimization
+      - compiler_hints
+      - autotuning
+    priority: P3
+    source_url: https://openreview.net/pdf/1dad91bc6d5c443a15d5e88f1504a5532cfde1b0.pdf
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Relevant for future compiler-hint search, but E1 has no accepted hint
+      surface or benchmark corpus.
+    integration_action: >
+      Keep as research-only source until hints are tied to pinned compiler
+      versions and deterministic benchmarks.
+    evidence_gate: >
+      Compiler hints require source hashes, hint manifests, compiler logs,
+      before/after benchmark logs, and review.
+    risk:
+      - Hints may overfit one compiler revision.
+      - Generated hints can reduce portability or maintainability.
+  - id: llm-veriopt
+    name: LLM-VeriOpt
+    kind: verified_llm_compiler_optimization
+    stage:
+      - compiler
+      - llm_optimization
+      - verification
+      - reinforcement_learning
+    priority: P3
+    source_url: https://samainsworth.github.io/LLM-VeriOpt-CGO2026.pdf
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: external_llm_method
+    e1_fit: >
+      Useful verification-guided compiler optimization direction, but no local
+      implementation or E1 verification harness is selected.
+    integration_action: >
+      Track as future guardrail pattern for generated compiler optimizations.
+    evidence_gate: >
+      Verified optimization needs formal/equivalence or exhaustive tests,
+      generated source hashes, compiler logs, and performance evidence.
+    risk:
+      - Verification scope may not cover undefined behavior or ABI details.
+      - Paper-level workflow is not enough for reproducible E1 evidence.
+  - id: xdsl-rvv-lowering
+    name: xDSL RVV Lowering
+    kind: mlir_rvv_lowering_method
+    stage:
+      - compiler
+      - mlir
+      - riscv_vector
+      - lowering
+    priority: P3
+    source_url: https://arxiv.org/abs/2603.17800
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future MLIR-to-RVV lowering gaps for E1 CPU fallback kernels,
+      but current E1 compiler work is IREE/NPU descriptor oriented.
+    integration_action: >
+      Track as compiler roadmap context until code/assets and RVV tests are
+      available.
+    evidence_gate: >
+      Lowering changes require MLIR test hashes, generated RVV assembly,
+      compiler version, simulator correctness, and benchmark evidence.
+    risk:
+      - Lowering paths can diverge from upstream LLVM/MLIR behavior.
+      - RVV generated code may not match E1 target profile.
+  - id: proton-em
+    name: PROTON Physics-Based Electromigration Assessment
+    kind: electromigration_assessment_framework
+    stage:
+      - reliability
+      - electromigration
+      - power_integrity
+      - physical_design
+    priority: P1
+    source_url: https://www.researchgate.net/publication/372799105_PROTON_-_A_Python_Framework_for_Physics-Based_Electromigration_Assessment_on_Contemporary_VLSI_Power_Grids
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future EM screening, but E1 lacks process-qualified current,
+      temperature, interconnect, and mission-profile evidence.
+    integration_action: >
+      Keep as target-capture context until PD signoff, PDN current, thermal,
+      and process collateral exist.
+    evidence_gate: >
+      EM use requires netlist/layout hashes, extracted interconnect, current
+      density, temperature map, process model, tool version, and signoff review.
+    risk:
+      - Physics parameters may not transfer across process nodes or stacks.
+      - EM estimates can be overclaimed without calibrated current and thermal data.
+  - id: emspice2
+    name: EMSpice 2.1 Electromigration and IR-Drop Analysis
+    kind: em_ir_drop_analysis_tool
+    stage:
+      - reliability
+      - electromigration
+      - ir_drop
+      - thermal_modeling
+    priority: P1
+    source_url: https://arxiv.org/abs/2507.00270
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for coupled EM, IR, Joule heating, and thermal-map
+      workflows after E1 has extracted PDN and temperature evidence.
+    integration_action: >
+      Track as future signoff-adjacent research only; do not feed release gates
+      until local signoff artifacts and model provenance exist.
+    evidence_gate: >
+      Coupled EM/IR analysis needs extracted layout, resistance network,
+      workload currents, thermal maps, model cards, tool logs, and reviewer signoff.
+    risk:
+      - Missing thermal or activity provenance can make results misleading.
+      - Paper-level workflow is not a substitute for foundry-qualified signoff.
+  - id: bti-hci-aging-models
+    name: BTI and HCI Circuit-Level Aging Models
+    kind: aging_modeling_method
+    stage:
+      - reliability
+      - aging
+      - bti
+      - hci
+    priority: P1
+    source_url: https://publica.fraunhofer.de/handle/publica/402110
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation
+    model_status: process_specific_models_required
+    e1_fit: >
+      Useful guardrail for future lifetime analysis, but E1 has no selected
+      aging model, voltage/temperature mission profile, or qualified PDK data.
+    integration_action: >
+      Record as a blocked reliability lane until process, activity, voltage,
+      and temperature evidence are available.
+    evidence_gate: >
+      Aging claims require process-qualified BTI/HCI models, mission profile,
+      aged timing libraries or SPICE cards, STA comparisons, and review.
+    risk:
+      - Aging models are process and environment specific.
+      - Lifetime claims can be false without mission-profile and voltage evidence.
+  - id: sofia-soft-error-framework
+    name: SOFIA Soft-Error Analysis Framework
+    kind: soft_error_framework
+    stage:
+      - reliability
+      - soft_error
+      - fault_injection
+      - mitigation_analysis
+    priority: P2
+    source_url: https://ieeexplore.ieee.org/document/7345166
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future soft-error campaign structure, but no E1 fault-site
+      taxonomy or radiation model is approved.
+    integration_action: >
+      Keep as method context for fail-closed fault-campaign manifests.
+    evidence_gate: >
+      Soft-error analysis needs fault model, injection sites, seeds, workload
+      signatures, simulator/formal logs, and mitigation review.
+    risk:
+      - Campaign pruning can hide vulnerable states.
+      - External tool assumptions may not match E1 RTL or workload behavior.
+  - id: arm-ethos-u55-soft-error
+    name: Arm Ethos-U55 Soft-Error Resiliency Study
+    kind: npu_soft_error_study
+    stage:
+      - reliability
+      - npu
+      - soft_error
+      - fault_injection
+    priority: P1
+    source_url: https://arxiv.org/abs/2404.09317
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation
+    model_status: statistical_method_reported
+    e1_fit: >
+      Strong cautionary reference for NPU resilience, but Ethos-U55 results are
+      not transferable evidence for E1.
+    integration_action: >
+      Use as target-capture context for future E1 NPU fault campaigns and
+      selective-hardening review gates.
+    evidence_gate: >
+      E1 NPU resilience requires local RTL fault campaigns, model/workload
+      hashes, signatures, statistical confidence, area costs, and review.
+    risk:
+      - Industrial NPU structure differs from the E1 scaffold.
+      - Selective protection can overfit to one workload or fault model.
+  - id: ibex-seu-formal
+    name: Formal SEU Evaluation on a RISC-V Core
+    kind: formal_seu_evaluation_method
+    stage:
+      - reliability
+      - formal_verification
+      - riscv
+      - soft_error
+    priority: P1
+    source_url: https://arxiv.org/abs/2405.12089
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant for future CPU/AP upset analysis, but E1 currently lacks a
+      signed-off formal SEU harness for the AP path.
+    integration_action: >
+      Track as a possible formal campaign pattern after CPU/AP integration
+      evidence exists.
+    evidence_gate: >
+      Formal SEU claims need exact core RTL, fault model, formal properties,
+      tool versions, proof logs, and bounded-environment review.
+    risk:
+      - Formal properties may miss software-visible failure modes.
+      - Core-specific results cannot be imported as E1 evidence.
+  - id: bec-soft-error-llvm
+    name: BEC Bit-Level Static Analysis for Soft Errors
+    kind: compiler_static_reliability_analysis
+    stage:
+      - reliability
+      - compiler
+      - soft_error
+      - riscv
+    priority: P2
+    source_url: https://arxiv.org/abs/2401.05753
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future RISC-V software reliability and pruning of fault
+      campaigns, but no E1 compiler workflow is approved for mitigation changes.
+    integration_action: >
+      Track as read-only compiler reliability context until toolchain and
+      workload provenance are pinned.
+    evidence_gate: >
+      Compiler reliability analysis needs LLVM revision, pass configuration,
+      workload IR hashes, simulator signatures, and review before any change.
+    risk:
+      - Static pruning can miss dynamic microarchitectural effects.
+      - Reliability-aware transformations can change performance or ABI behavior.
+  - id: hamartia-fault-injection
+    name: Hamartia Fault Injection
+    kind: architecture_fault_injection_framework
+    stage:
+      - reliability
+      - fault_injection
+      - architecture_simulation
+      - workload_analysis
+    priority: P2
+    source_url: https://github.com/DependableSystemsLab/hamartia
+    code_url: https://github.com/DependableSystemsLab/hamartia
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful as external fault-injection inspiration, but not wired to E1
+      simulators, CPU/AP state, or NPU runtime signatures.
+    integration_action: >
+      Keep out of source-changing flows until an E1-specific campaign runner
+      and quarantine directory are designed.
+    evidence_gate: >
+      Fault-injection use requires binary/workload hashes, injection manifest,
+      seeds, simulator version, output signatures, and reviewer disposition.
+    risk:
+      - Architecture-level injections may not reflect RTL fault behavior.
+      - Campaign results can be nondeterministic without strict seed handling.
+  - id: fies-qemu-fault-injection
+    name: FIES QEMU-Based Fault Injection
+    kind: qemu_fault_injection_framework
+    stage:
+      - reliability
+      - qemu
+      - fault_injection
+      - software_countermeasures
+    priority: P2
+    source_url: https://github.com/ahoeller/fies
+    code_url: https://github.com/ahoeller/fies
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future software-visible fault campaigns once E1 QEMU or
+      Linux payload evidence is stable.
+    integration_action: >
+      Treat as a blocked research source until E1 has a QEMU fault model and
+      pass/fail taxonomy.
+    evidence_gate: >
+      QEMU fault campaigns require emulator revision, fault XML, workload image
+      hashes, seed logs, console output, and countermeasure review.
+    risk:
+      - Emulator-level state faults may diverge from silicon failure modes.
+      - Fault campaigns can corrupt evidence if not quarantined.
+  - id: tensorfi
+    name: TensorFI
+    kind: neural_network_fault_injection_framework
+    stage:
+      - reliability
+      - machine_learning
+      - fault_injection
+      - npu
+    priority: P2
+    source_url: https://github.com/DependableSystemsLab/TensorFI
+    code_url: https://github.com/DependableSystemsLab/TensorFI
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful for workload-level ML resilience concepts, but TensorFlow-level
+      injection is not E1 NPU RTL or runtime evidence.
+    integration_action: >
+      Keep as target-capture context until model, activation, runtime, and NPU
+      simulator evidence can be linked.
+    evidence_gate: >
+      ML fault-injection claims need model hashes, input sets, injection sites,
+      random seeds, golden outputs, runtime logs, and review.
+    risk:
+      - Framework-level injection may not model hardware datapath faults.
+      - Accuracy impacts can be workload and quantization specific.
+  - id: ares-dnn-fault-injection
+    name: Ares DNN Resilience Framework
+    kind: dnn_fault_injection_framework
+    stage:
+      - reliability
+      - machine_learning
+      - fault_injection
+      - npu
+    priority: P2
+    source_url: https://alugupta.github.io/ares/
+    code_url: https://github.com/alugubilli/ares
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant as a DNN-specific fault-injection reference, but it does not
+      prove E1 NPU resilience without local RTL/runtime linkage.
+    integration_action: >
+      Track as future ML resilience campaign context with release use blocked.
+    evidence_gate: >
+      DNN resilience analysis requires model/input hashes, injection-point
+      manifests, seeds, hardware/runtime mapping, golden outputs, and review.
+    risk:
+      - DNN-layer fault models may miss accelerator control-path failures.
+      - Reported resilience can depend heavily on model topology and dataset.
+  - id: caliptra-error-injection
+    name: Caliptra Error Injection and Security Resilience
+    kind: root_of_trust_error_injection_reference
+    stage:
+      - reliability
+      - security
+      - fault_injection
+      - firmware
+    priority: P2
+    source_url: https://github.com/chipsalliance/caliptra-rtl
+    code_url: https://github.com/chipsalliance/caliptra-rtl
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open-source reference for root-of-trust error handling patterns,
+      but Caliptra assets are not E1 security or lifecycle evidence.
+    integration_action: >
+      Keep as comparative source until E1 has a reviewed root-of-trust,
+      lifecycle, and firmware fault-injection plan.
+    evidence_gate: >
+      Security error-injection claims require local RTL/firmware hashes,
+      lifecycle state tests, fault campaigns, logs, and security review.
+    risk:
+      - Root-of-trust assumptions differ from the current E1 scaffold.
+      - Security fault tests can be unsafe if imported without threat modeling.
+  - id: openrtlset
+    name: OpenRTLSet
+    kind: verilog_training_dataset
+    stage:
+      - external_corpus
+      - rtl_generation
+      - dataset_intake
+      - license_review
+    priority: P1
+    source_url: https://huggingface.co/datasets/ESCAD/OpenRTLSet
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/ESCAD/OpenRTLSet
+    license_status: review_required
+    code_status: no_code
+    model_status: no_model
+    e1_fit: >
+      Relevant as RTL corpus context for future model evaluation, but no
+      OpenRTLSet samples are imported into this repository.
+    integration_action: >
+      Keep behind external-corpus intake checks, license review, de-duplication,
+      and contamination analysis before any local use.
+    evidence_gate: >
+      Dataset use requires exact dataset revision, license disposition,
+      quarantine path, de-duplication report, contamination scan, and review.
+    risk:
+      - Corpus contents can contaminate evaluation prompts or copied RTL.
+      - License or provenance gaps can block release use.
+  - id: mg-verilog
+    name: MG-Verilog
+    kind: verilog_instruction_dataset
+    stage:
+      - external_corpus
+      - rtl_generation
+      - instruction_tuning
+      - license_review
+    priority: P1
+    source_url: https://arxiv.org/abs/2407.01910
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/GaTech-EIC/MG-Verilog
+    license_status: review_required
+    code_status: no_code
+    model_status: no_model
+    e1_fit: >
+      Useful for future HDL instruction-following evaluation, but not local E1
+      RTL evidence and not imported.
+    integration_action: >
+      Track as external dataset candidate only; require license and
+      contamination review before any training or evaluation.
+    evidence_gate: >
+      Any use needs pinned revision, prompt/source provenance, train/test split
+      review, duplicate checks, tool logs, and reviewer approval.
+    risk:
+      - Multi-grained prompts may overlap public benchmark tasks.
+      - Fine-tuning data can introduce unreviewed RTL patterns.
+  - id: metrex
+    name: MetRex
+    kind: verilog_metric_reasoning_benchmark
+    stage:
+      - external_corpus
+      - rtl_metrics
+      - benchmark_evaluation
+      - llm_evaluation
+    priority: P2
+    source_url: https://arxiv.org/abs/2411.03471
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to future RTL metric reasoning, but E1 metric claims must come
+      from local synthesis, lint, and signoff artifacts.
+    integration_action: >
+      Keep as benchmark context until assets, license terms, and local
+      evaluator wiring are reviewed.
+    evidence_gate: >
+      Metric benchmark use requires exact asset hashes, metric definitions,
+      evaluator version, expected outputs, logs, and reviewer disposition.
+    risk:
+      - Metric reasoning can be mistaken for measured PPA or correctness.
+      - Benchmark labels may not match E1 synthesis or PD flows.
+  - id: circuitnet-3
+    name: CircuitNet 3.0
+    kind: multimodal_eda_dataset
+    stage:
+      - external_corpus
+      - physical_design
+      - dataset_intake
+      - layout_prediction
+    priority: P1
+    source_url: https://huggingface.co/datasets/SKLP-EDA-LAB/CircuitNet3.0
+    code_url: https://github.com/sklp-eda-lab/iclr-circuitnet_3.0/
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/SKLP-EDA-LAB/CircuitNet3.0
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful external PD dataset reference, but its technology, labels, and
+      splits are not E1 signoff evidence.
+    integration_action: >
+      Treat as external corpus candidate only until technology mapping,
+      license, split, and local error-analysis gates exist.
+    evidence_gate: >
+      CircuitNet use requires dataset revision, license review, split manifest,
+      feature schema, technology assumptions, local validation logs, and review.
+    risk:
+      - Dataset labels may not transfer to E1 process, floorplan, or constraints.
+      - ML predictions can be overclaimed as physical signoff.
+  - id: veriforge-deepseek-coder
+    name: VeriForge DeepSeek-Coder Fine-Tune
+    kind: external_rtl_generation_model
+    stage:
+      - external_model
+      - rtl_generation
+      - model_intake
+      - license_review
+    priority: P1
+    source_url: https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
+    code_url: null
+    model_url: https://huggingface.co/louijiec/veriforge-deepseek-coder-1.3b-instruct
+    dataset_url: null
+    license_status: review_required
+    code_status: no_code
+    model_status: external_weights_available
+    e1_fit: >
+      Relevant as an external HDL model candidate, but no weights are downloaded
+      and no generated RTL is accepted as evidence.
+    integration_action: >
+      Keep model intake blocked pending license review, exact revision pinning,
+      dry-run evaluation, and quarantine policy.
+    evidence_gate: >
+      Model use requires model-card terms, weight revision, prompt/output logs,
+      deterministic evaluator results, quarantine path, and human review.
+    risk:
+      - Generated RTL can be incorrect, derivative, or license-contaminated.
+      - Model-card terms may block release use.
+  - id: llm-eda-opencores
+    name: LLM-EDA OpenCores Dataset
+    kind: opencores_hdl_dataset
+    stage:
+      - external_corpus
+      - rtl_generation
+      - dataset_intake
+      - license_review
+    priority: P1
+    source_url: https://huggingface.co/datasets/LLM-EDA/opencores
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/LLM-EDA/opencores
+    license_status: review_required
+    code_status: no_code
+    model_status: no_model
+    e1_fit: >
+      Useful external HDL corpus reference, but OpenCores-derived data must not
+      enter E1 source without provenance and license review.
+    integration_action: >
+      Track as blocked corpus candidate with release use disabled.
+    evidence_gate: >
+      Corpus intake requires upstream source mapping, license audit,
+      de-duplication, contamination checks, exact revision, and review.
+    risk:
+      - Mixed upstream licenses can contaminate generated RTL.
+      - Aggregated datasets can lose original provenance.
+  - id: hardware-verilogeval-v2-hf
+    name: Hardware VerilogEval v2
+    kind: verilog_eval_dataset
+    stage:
+      - external_corpus
+      - rtl_generation
+      - benchmark_evaluation
+      - license_review
+    priority: P2
+    source_url: https://huggingface.co/datasets
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets
+    license_status: review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant as a future HDL model-evaluation corpus, but the exact dataset
+      revision and terms are not yet accepted locally.
+    integration_action: >
+      Keep as a named intake target until exact Hugging Face asset, revision,
+      license, and evaluator contract are pinned.
+    evidence_gate: >
+      Evaluation use requires exact dataset repo/revision, task schema,
+      expected outputs, simulator logs, license review, and reviewer approval.
+    risk:
+      - Ambiguous dataset identity can make results unreproducible.
+      - Benchmark tasks may overlap training data or be too synthetic for E1.
+  - id: llm4verilog-dataset
+    name: LLM4Verilog Dataset
+    kind: verilog_instruction_dataset
+    stage:
+      - external_corpus
+      - rtl_generation
+      - instruction_tuning
+      - license_review
+    priority: P2
+    source_url: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
+    code_url: null
+    model_url: null
+    dataset_url: https://huggingface.co/datasets/NOKHAB-Lab/LLM_4_Verilog
+    license_status: review_required
+    code_status: no_code
+    model_status: no_model
+    e1_fit: >
+      Useful HDL instruction dataset context, but it is not imported and cannot
+      justify E1 RTL changes or quality claims.
+    integration_action: >
+      Track as external corpus candidate only, pending provenance, license,
+      de-duplication, and contamination review.
+    evidence_gate: >
+      Dataset use requires pinned revision, license review, prompt/source
+      provenance, split manifest, duplicate scan, evaluation logs, and review.
+    risk:
+      - Instruction pairs can encode unverified or non-synthesizable RTL.
+      - Dataset provenance gaps can block downstream generated code use.
   - id: opensbi
     name: OpenSBI
     kind: riscv_supervisor_firmware
@@ -2661,6 +4787,126 @@ entries:
       - Timing repair can create area, power, slew, cap, hold, or routing
         regressions.
       - A single clean metric does not prove release closure.
+  - id: openphysyn
+    name: OpenPhySyn
+    kind: physical_synthesis_tool
+    stage:
+      - timing_closure
+      - physical_synthesis
+      - eco_search
+    priority: P1
+    source_url: https://github.com/scale-lab/OpenPhySyn
+    code_url: https://github.com/scale-lab/OpenPhySyn
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant as an open physical-synthesis reference for sizing, buffering,
+      and placement-aware timing repair, especially as historical context for
+      OpenROAD-style ECO flows.
+    integration_action: >
+      Track as citation and code-review context only; E1 timing capture may
+      cite it, but no external physical-synthesis pass is run or imported.
+    evidence_gate: >
+      Any physical-synthesis or ECO use requires pinned source revisions,
+      replayed commands, before/after netlist and DEF/ODB hashes, STA,
+      DRC/antenna, power, and signoff evidence.
+    risk:
+      - Historical physical-synthesis code can diverge from current OpenROAD
+        interfaces and technology assumptions.
+      - Timing-focused edits can regress hold, routing, area, or power.
+  - id: learning-driven-gate-sizing
+    name: Learning-Driven Gate Sizing
+    kind: ml_gate_sizing_method
+    stage:
+      - timing_closure
+      - gate_sizing
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2403.08193
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation_found
+    model_status: trainable_method
+    e1_fit: >
+      Useful SOTA reference for data-driven gate-sizing search, but not a
+      release path until E1 has local before/after ECO labels and leakage,
+      timing, area, routing, and signoff checks.
+    integration_action: >
+      Keep in timing-closure target capture as an advisory watch item for
+      future local dataset construction and leakage-safe evaluation.
+    evidence_gate: >
+      Gate-sizing claims require local training/evaluation splits, exact
+      liberty/netlist/DEF/SDC hashes, before/after OpenSTA metrics, power/area
+      reports, DRC/antenna checks, and reviewer approval.
+    risk:
+      - Learned sizing policies can overfit benchmark timing distributions.
+      - Prediction or optimization output can hide hold, power, routability, or
+        library-corner regressions.
+  - id: fusionsizer
+    name: FusionSizer
+    kind: placement_aware_gate_sizing_method
+    stage:
+      - timing_closure
+      - gate_sizing
+      - placement_optimization
+    priority: P2
+    source_url: https://yibolin.com/publications/papers/OPT_ICCAD2024_Du.pdf
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation_found
+    model_status: trainable_method
+    e1_fit: >
+      Relevant to joint placement and gate-sizing optimization, but E1 can only
+      consume it as a method reference until local placement, STA, and signoff
+      labels exist.
+    integration_action: >
+      Add to the ECO watch lane for future route-aware sizing experiments
+      guarded by OpenLane/OpenSTA and signoff manifests.
+    evidence_gate: >
+      Placement-aware sizing claims require pinned flow inputs, pre/post
+      placement and routing hashes, STA, congestion/routability, DRC/antenna,
+      power, area, and signoff evidence.
+    risk:
+      - Placement and sizing co-optimization may assume objective functions or
+        commercial-flow data unavailable in the E1 open flow.
+      - Improvements on one corner can regress other corners or physical checks.
+  - id: iccad-2024-gate-sizing-benchmark
+    name: 2024 ICCAD Contest Gate Sizing Benchmark
+    kind: gate_sizing_benchmark
+    stage:
+      - timing_closure
+      - gate_sizing
+      - benchmark_evaluation
+    priority: P2
+    source_url: https://github.com/ASU-VDA-Lab/2024_ICCAD_Contest_Gate_Sizing_Benchmark
+    code_url: https://github.com/ASU-VDA-Lab/2024_ICCAD_Contest_Gate_Sizing_Benchmark
+    model_url: null
+    dataset_url: https://github.com/ASU-VDA-Lab/2024_ICCAD_Contest_Gate_Sizing_Benchmark
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful public benchmark reference for evaluating gate-sizing methods, but
+      benchmark results do not transfer to E1 without local flow calibration.
+    integration_action: >
+      Track for future contamination-aware benchmark evaluation and schema
+      design; do not import benchmark assets into release evidence without
+      license and provenance review.
+    evidence_gate: >
+      Any benchmark-based sizing claim needs pinned benchmark revision,
+      contamination review, replay logs, local E1 comparison, and explicit
+      separation from release signoff evidence.
+    risk:
+      - Contest benchmark objectives and libraries may not match E1 constraints.
+      - External benchmark use can contaminate model evaluation if splits and
+        provenance are not controlled.
   - id: ir-aware-eco-rl
     name: IR-Aware ECO Timing Optimization With Reinforcement Learning
     kind: rl_timing_eco_method
@@ -4127,3 +6373,1827 @@ entries:
     risk:
       - Latch-based or two-phase conversion can invalidate simple reset,
         verification, timing, and scan assumptions.
+  - id: openroad-cts
+    name: OpenROAD Clock Tree Synthesis
+    kind: clock_tree_synthesis_tool
+    stage:
+      - clock_tree_synthesis
+      - physical_design
+      - timing_closure
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/cts/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local deterministic CTS reference for clock sinks, buffers, insertion
+      delay, skew, and post-CTS timing repair labels.
+    integration_action: >
+      Hash CTS reports, skew reports, clock reports, DEF/ODB snapshots, and
+      post-CTS timing logs for future advisory skew/latency triage.
+    evidence_gate: >
+      CTS changes require command manifests, before/after DEF/ODB/netlist
+      hashes, clock reports, setup/hold STA, DFT/CDC/RDC checks, power, routing,
+      and signoff evidence.
+    risk:
+      - Clock-tree edits can improve skew while regressing hold, power, DFT, or
+        routing.
+      - CTS logs are not signoff evidence without downstream STA and PD gates.
+  - id: tritoncts
+    name: TritonCTS
+    kind: clock_tree_synthesis_tool
+    stage:
+      - clock_tree_synthesis
+      - physical_design
+      - timing_closure
+    priority: P2
+    source_url: https://github.com/The-OpenROAD-Project/TritonCTS
+    code_url: https://github.com/The-OpenROAD-Project/TritonCTS
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Historical open CTS implementation useful as OpenROAD CTS context, but
+      not a separate E1 backend.
+    integration_action: >
+      Keep as method and code-review reference only; E1 uses local OpenLane CTS
+      artifacts as the evidence source.
+    evidence_gate: >
+      Any standalone CTS experiment needs pinned sources, constraints, clock
+      library provenance, before/after DEF/ODB/netlist hashes, STA, DFT, CDC/RDC,
+      power, route, and signoff evidence.
+    risk:
+      - Legacy CTS assumptions can diverge from current OpenROAD/OpenLane flows.
+      - Clock balancing can hide hold and scan-clock issues.
+  - id: gan-cts
+    name: GAN-CTS
+    kind: ml_clock_tree_synthesis_method
+    stage:
+      - clock_tree_synthesis
+      - generative_modeling
+      - physical_design
+    priority: P2
+    source_url: https://gtcad.gatech.edu/www/papers/08942063.pdf
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_reference_implementation_found
+    model_status: trainable_method
+    e1_fit: >
+      Relevant early reference for generative CTS structures, but unusable for
+      E1 decisions until local clock-tree labels and deterministic validation
+      exist.
+    integration_action: >
+      Track as SOTA method context for future held-out skew and latency
+      prediction, not as a source of generated CTS artifacts.
+    evidence_gate: >
+      Generated or predicted clock trees require model/data provenance,
+      before/after clock reports, STA, DFT, CDC/RDC, power, route, and signoff.
+    risk:
+      - Generated clock trees can look balanced while violating physical,
+        timing, test, or clock-domain assumptions.
+      - Training data distribution may not match E1 or open PDK flows.
+  - id: cts-bench
+    name: CTS-Bench
+    kind: clock_tree_synthesis_benchmark
+    stage:
+      - clock_tree_synthesis
+      - benchmark_evaluation
+      - llm_evaluation
+    priority: P2
+    source_url: https://arxiv.org/abs/2602.19330
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: benchmark_only
+    e1_fit: >
+      Useful benchmark reference for evaluating AI reasoning about CTS, but
+      benchmark performance does not prove E1 clock-tree quality.
+    integration_action: >
+      Use as evaluation-context only after E1 has local CTS tasks, artifacts,
+      and contamination controls.
+    evidence_gate: >
+      CTS benchmark claims require pinned task definitions, contamination
+      review, local CTS artifact hashes, deterministic STA/PD gates, and review.
+    risk:
+      - Text benchmark success can diverge from physical CTS implementation.
+      - Prompted CTS advice can miss DFT, CDC/RDC, and physical-design effects.
+  - id: openroad-openrcx
+    name: OpenROAD OpenRCX
+    kind: parasitic_extraction_tool
+    stage:
+      - parasitic_extraction
+      - spef_generation
+      - static_timing_analysis
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/rcx/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local deterministic SPEF and parasitic-extraction reference for post-route
+      timing labels, RC corner manifests, and future RC-aware triage.
+    integration_action: >
+      Hash OpenRCX logs, SPEF files, corner manifests, and post-route STA inputs
+      before any ML parasitic approximation or SI assistant is considered.
+    evidence_gate: >
+      Extraction changes require pinned extraction rules, before/after
+      DEF/ODB/GDS/SPEF/SDF/SPICE hashes, multi-corner STA, route, DRC, antenna,
+      power, and signoff evidence.
+    risk:
+      - SPEF or RC-corner errors can silently invalidate timing conclusions.
+      - Approximate parasitics cannot replace signoff extraction or STA.
+  - id: openlane-timing-corners
+    name: OpenLane Timing Corners and SPEF Flow
+    kind: timing_corner_flow
+    stage:
+      - parasitic_extraction
+      - multi_corner_sta
+      - physical_design
+    priority: P1
+    source_url: https://openlane2.readthedocs.io/en/latest/usage/timing_corners.html
+    code_url: https://github.com/efabless/openlane2
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant flow reference for connecting SPEF min/max/nom corners to E1
+      OpenLane and OpenSTA evidence.
+    integration_action: >
+      Treat as flow semantics context while the local extraction lane captures
+      concrete E1 files and hashes.
+    evidence_gate: >
+      Multi-corner timing claims require exact library, SDC, SPEF, SDF, netlist,
+      DEF/ODB/GDS, STA, and signoff artifact hashes.
+    risk:
+      - Corner naming and min/max semantics can be misapplied across flows.
+      - Flow documentation is not evidence for local signoff completeness.
+  - id: magic-extraction
+    name: Magic Extraction
+    kind: layout_extraction_tool
+    stage:
+      - parasitic_extraction
+      - spice_extraction
+      - drc_lvs
+      - physical_design
+    priority: P1
+    source_url: http://opencircuitdesign.com/magic/
+    code_url: https://github.com/RTimothyEdwards/magic
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local OpenLane extraction stage for SPICE and extraction feedback files,
+      complementary to OpenRCX SPEF evidence.
+    integration_action: >
+      Hash Magic extraction logs, SPICE output, feedback, and extracted cell
+      files as advisory extraction evidence inputs.
+    evidence_gate: >
+      Extracted SPICE or layout-derived claims require layout hashes, rule-deck
+      provenance, extraction logs, LVS/DRC, STA where applicable, and review.
+    risk:
+      - Extraction output is rule-deck and hierarchy dependent.
+      - SPICE extraction does not by itself prove STA, SI, or release closure.
+  - id: klayout-drc
+    name: KLayout DRC
+    kind: physical_verification_drc_tool
+    stage:
+      - physical_verification
+      - drc
+      - layout_signoff
+    priority: P1
+    source_url: https://www.klayout.org/downloads/master/doc-qt5/manual/drc_basic.html
+    code_url: https://github.com/KLayout/klayout
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local deterministic DRC reference for KLayout report capture, DRC marker
+      triage, and future AI-assisted physical-verification log review.
+    integration_action: >
+      Hash KLayout DRC logs and reports as signoff inputs; do not accept
+      generated decks, fixes, or waivers without local rule and layout evidence.
+    evidence_gate: >
+      DRC claims require pinned rule decks, layout hashes, report hashes,
+      version metadata, blocker disposition, and reviewer signoff.
+    risk:
+      - Open DRC decks may not be foundry-certified or complete for release
+        signoff.
+      - Generated DRC fixes can trade local cleanups for LVS, timing, antenna,
+        or manufacturing regressions.
+  - id: magic-drc-lvs
+    name: Magic DRC and LVS Context
+    kind: physical_verification_drc_lvs_tool
+    stage:
+      - physical_verification
+      - drc
+      - lvs
+      - extraction
+    priority: P1
+    source_url: http://opencircuitdesign.com/magic/
+    code_url: https://github.com/RTimothyEdwards/magic
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Complements KLayout and Netgen by providing Magic DRC/extraction/LVS
+      context for OpenLane signoff-stage log triage.
+    integration_action: >
+      Treat as deterministic checker context only; AI may classify logs but
+      cannot edit layouts, rules, or waivers without before/after evidence.
+    evidence_gate: >
+      Magic DRC/LVS conclusions require exact rule-deck provenance, layout and
+      netlist hashes, logs, extracted views where applicable, and review.
+    risk:
+      - Rule-deck differences can produce divergent DRC/LVS conclusions across
+        Magic, KLayout, Netgen, and commercial tools.
+  - id: netgen-lvs
+    name: Netgen LVS
+    kind: layout_vs_schematic_tool
+    stage:
+      - physical_verification
+      - lvs
+      - netlist_consistency
+    priority: P1
+    source_url: http://opencircuitdesign.com/netgen/
+    code_url: https://github.com/RTimothyEdwards/netgen
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local LVS report source for comparing extracted layout netlists against
+      intended circuit netlists in OpenLane signoff evidence.
+    integration_action: >
+      Hash Netgen LVS scripts and logs; keep AI waiver or mismatch diagnosis
+      advisory-only until manually reviewed with exact netlist/layout hashes.
+    evidence_gate: >
+      LVS closure requires extracted/source netlist hashes, setup script hashes,
+      tool version, mismatch logs, waiver disposition, and reviewer signoff.
+    risk:
+      - Black boxes, generated memories, hierarchy mapping, and device
+        equivalence rules can hide or manufacture LVS mismatches.
+  - id: openroad-antenna-check
+    name: OpenROAD Antenna Checker
+    kind: antenna_violation_checker
+    stage:
+      - physical_verification
+      - routing
+      - antenna
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/ant/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Local antenna-check reference for E1 OpenLane routing and repair-antenna
+      evidence, especially before any AI route or layout fix is considered.
+    integration_action: >
+      Hash antenna reports, repair logs, and metadata blockers; generated
+      antenna fixes remain blocked until route, DRC, LVS, STA, and review pass.
+    evidence_gate: >
+      Antenna claims require route/layout hashes, antenna rule provenance,
+      before/after check logs, repair logs, DRC/LVS/STA follow-up, and review.
+    risk:
+      - Antenna repair can perturb routing, timing, DRC, extraction, or power
+        integrity.
+  - id: rule2drc
+    name: Rule2DRC
+    kind: llm_generated_drc_script_research
+    stage:
+      - physical_verification
+      - drc
+      - rule_deck_generation
+    priority: P2
+    source_url: https://arxiv.org/abs/2605.06936
+    code_url: https://github.com/snu-mllab/Rule2DRC
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Current research direction for translating natural-language design rules
+      into executable DRC scripts, useful only as a quarantined reference for
+      rule-deck governance.
+    integration_action: >
+      Keep as citation/code-review context; no generated DRC script may enter
+      E1 signoff without rule-source provenance and independent tool evidence.
+    evidence_gate: >
+      Generated DRC scripts require source rule hashes, generated script hashes,
+      test-layout coverage, KLayout/Magic/commercial correlation where
+      available, false-positive/false-negative review, and signoff disposition.
+    risk:
+      - Incorrect generated DRC rules can create false clean signoff or mask
+        yield-critical violations.
+  - id: posteda-bench
+    name: PostEDA-Bench
+    kind: post_eda_drc_ppa_optimization_benchmark
+    stage:
+      - physical_verification
+      - drc_fixing
+      - post_route_optimization
+    priority: P2
+    source_url: https://arxiv.org/abs/2605.15669
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model
+    e1_fit: >
+      Current benchmark context for post-EDA layout repair and DRC/PPA
+      optimization; relevant to future E1 signoff triage but not release
+      evidence.
+    integration_action: >
+      Track as benchmark context only until code/data licenses, task overlap,
+      and local before/after DRC/LVS/STA/power gates are accepted.
+    evidence_gate: >
+      Any post-EDA repair needs layout/netlist hashes, patch hashes, DRC/LVS,
+      extraction, STA, antenna, power, manufacturing gates, and review.
+    risk:
+      - Benchmark repair objectives may improve proxy PPA or DRC counts while
+        violating process, LVS, timing, antenna, or manufacturability constraints.
+  - id: capbench
+    name: CapBench
+    kind: ml_capacitance_extraction_benchmark
+    stage:
+      - parasitic_extraction
+      - capacitance_prediction
+      - benchmark_evaluation
+    priority: P2
+    source_url: https://arxiv.org/abs/2604.11202
+    code_url: https://github.com/THU-numbda/CapBench
+    model_url: null
+    dataset_url: https://github.com/THU-numbda/CapBench
+    license_status: review_required
+    code_status: available_to_review
+    model_status: benchmark_only
+    e1_fit: >
+      Useful SOTA benchmark direction for ML capacitance extraction, but E1
+      cannot use benchmark scores as extracted-parasitic evidence.
+    integration_action: >
+      Track as future evaluation context after local E1 SPEF/capacitance labels,
+      split controls, and license review exist.
+    evidence_gate: >
+      ML capacitance claims require pinned benchmark/model revisions, local
+      held-out E1 extracted labels, error analysis, STA impact, and signoff
+      replay.
+    risk:
+      - Capacitance prediction error can be small on average while breaking
+        critical paths or SI-sensitive nets.
+      - External benchmark distributions may not match E1 routing or PDK rules.
+  - id: proton-em
+    name: PROTON Electromigration Assessment
+    kind: physics_based_em_tool
+    stage:
+      - reliability
+      - electromigration
+      - pdn
+      - physical_design
+    priority: P2
+    source_url: https://doi.org/10.1109/SMACD58065.2023.10192229
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: open_source_claim_to_verify
+    model_status: no_model
+    e1_fit: >
+      Useful reference for future EM/PDN reliability assessment because it
+      frames power-grid reliability as a physics-based workflow rather than a
+      pure predictor.
+    integration_action: >
+      Track as target-capture context only until E1 has routed PDN geometry,
+      current-density evidence, process limits, and signoff logs.
+    evidence_gate: >
+      Any use requires exact PDN/layout hashes, rule decks or constraints,
+      current maps, thermal conditions, tool revision, raw logs, and signoff
+      review.
+    risk:
+      - Public papers do not replace foundry EM rules or signoff decks.
+      - EM estimates can be invalid without activity, temperature, and mission
+        profile evidence.
+  - id: emspice2
+    name: EMspice 2.0
+    kind: multiphysics_electromigration_analysis
+    stage:
+      - reliability
+      - electromigration
+      - ir_drop
+      - thermal
+    priority: P2
+    source_url: https://par.nsf.gov/servlets/purl/10542838
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: physics_model
+    e1_fit: >
+      Relevant to future coupled EM, thermomigration, and IR-drop screening for
+      E1 PDN closure.
+    integration_action: >
+      Keep as research context until local PDN extraction, activity, thermal,
+      and signoff artifacts exist.
+    evidence_gate: >
+      Coupled EM/IR claims require PDN extraction hashes, thermal setup,
+      activity provenance, solver settings, and signoff correlation.
+    risk:
+      - Multiphysics setup errors can produce precise but invalid lifetime
+        estimates.
+  - id: bti-hci-aging-models
+    name: NBTI and HCI Models for Circuit-Level Aging Simulations
+    kind: aging_model_methodology
+    stage:
+      - reliability
+      - aging
+      - spice
+      - standard_cell
+    priority: P2
+    source_url: https://zenodo.org/records/2558154
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: paper_or_assets_to_review
+    model_status: process_specific_models
+    e1_fit: >
+      Useful methodology reference for BTI/HCI aging integration across EDA
+      environments, but not directly applicable without E1 process collateral.
+    integration_action: >
+      Record blocker requirements for process-qualified aging models and
+      circuit-level setup before any derating or timing closure claims.
+    evidence_gate: >
+      Aging claims need process model provenance, SPICE setup, duty cycle,
+      voltage/temperature stress, aged-library timing, STA, and review.
+    risk:
+      - Process-specific aging models cannot be generalized across nodes.
+  - id: sofia-soft-error-framework
+    name: SOFIA Soft Error Assessment Framework
+    kind: soft_error_assessment_framework
+    stage:
+      - reliability
+      - soft_error
+      - fault_injection
+      - mitigation
+    priority: P2
+    source_url: https://www.sciencedirect.com/science/article/pii/S1383762122002028
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: ml_correlation_method
+    e1_fit: >
+      Relevant as a pattern for automated soft-error assessment, ML-assisted
+      susceptibility analysis, and mitigation comparison.
+    integration_action: >
+      Keep as target-capture context until E1 has deterministic fault campaigns
+      and mitigation review gates.
+    evidence_gate: >
+      Soft-error mitigation claims require fault-site manifests, seeds,
+      workload signatures, simulator/formal logs, classification policy, and
+      before/after area/power/timing review.
+    risk:
+      - ML correlations can hide untested fault modes or workload dependence.
+  - id: arm-ethos-u55-soft-error
+    name: Characterizing Soft-Error Resiliency in Arm Ethos-U55
+    kind: npu_soft_error_study
+    stage:
+      - reliability
+      - npu
+      - fault_injection
+      - safety
+    priority: P2
+    source_url: https://arxiv.org/abs/2404.09317
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: statistical_fault_model
+    e1_fit: >
+      Strong analogy for E1 NPU resilience because it uses large-scale fault
+      analysis to identify selective protection opportunities.
+    integration_action: >
+      Use as a benchmark for future NPU fault-campaign design, not as direct
+      evidence for E1 reliability.
+    evidence_gate: >
+      E1 NPU resilience claims need E1 RTL/runtime hashes, workload and model
+      provenance, fault-site sampling, signatures, mitigation area/timing
+      evidence, and review.
+    risk:
+      - Ethos-U55 findings do not transfer to E1 microarchitecture.
+  - id: ibex-seu-formal
+    name: Formal Verification for SEU Evaluation in RISC-V Ibex
+    kind: formal_soft_error_evaluation
+    stage:
+      - reliability
+      - soft_error
+      - formal
+      - riscv
+    priority: P2
+    source_url: https://arxiv.org/abs/2405.12089
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful pattern for model-checking sequential upset effects in a RISC-V
+      core without relying only on simulation fault injection.
+    integration_action: >
+      Keep as future formal campaign context until E1 CPU/AP RTL and formal
+      properties are strong enough for SEU injection.
+    evidence_gate: >
+      Formal SEU claims require exact RTL, fault model, bound/depth, property
+      set, solver logs, proof coverage, and counterexample triage.
+    risk:
+      - Bounded formal proofs can miss longer-latency fault propagation.
+  - id: bec-soft-error-llvm
+    name: BEC Bit-Level Static Analysis for Reliability Against Soft Errors
+    kind: compiler_static_reliability_analysis
+    stage:
+      - reliability
+      - soft_error
+      - compiler
+      - riscv
+    priority: P2
+    source_url: https://arxiv.org/abs/2401.05753
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: implementation_reported_assets_to_review
+    model_status: static_analysis_method
+    e1_fit: >
+      Relevant to future E1 software and kernel reliability because it targets
+      LLVM/RISC-V fault-campaign pruning and reliability-aware transforms.
+    integration_action: >
+      Track with compiler autotuning and reliability lanes until the LLVM tool
+      chain, workloads, and fault model are pinned.
+    evidence_gate: >
+      Any transform requires compiler revision, IR/source hashes, RISC-V
+      simulator logs, fault-pruning validation, benchmark impact, and review.
+    risk:
+      - Static pruning can under-approximate microarchitectural and memory
+        system fault behavior.
+  - id: hamartia-fault-injection
+    name: Hamartia Error Injection Framework
+    kind: hierarchical_fault_injection_framework
+    stage:
+      - reliability
+      - soft_error
+      - fault_injection
+      - simulator
+    priority: P2
+    source_url: https://research.nvidia.com/publication/2018-06_hamartia-fast-and-accurate-error-injection-framework
+    code_url: http://lph.ece.utexas.edu/users/hamartia/
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: error_model_framework
+    e1_fit: >
+      Useful architecture for hierarchical fault injection that combines
+      realistic low-level error patterns with faster higher-level campaigns.
+    integration_action: >
+      Keep as reference only; do not import or run until license, build, and E1
+      fault-model mapping are reviewed.
+    evidence_gate: >
+      Fault-injection use requires tool revision, target binary/RTL hashes,
+      fault library, seeds, campaign manifest, signatures, and review.
+    risk:
+      - GPU/application-oriented assumptions may not map to E1 CPU/NPU RTL.
+  - id: fies-qemu-fault-injection
+    name: FIES QEMU Fault Injection
+    kind: qemu_fault_injection_tool
+    stage:
+      - reliability
+      - soft_error
+      - qemu
+      - firmware
+    priority: P2
+    source_url: https://github.com/ahoeller/fies
+    code_url: https://github.com/ahoeller/fies
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Potential future way to fault-inject boot or firmware behavior in a QEMU
+      flow before hardware exists.
+    integration_action: >
+      Track only; E1 QEMU fault injection needs a forked build, fault-library
+      schema, and no-hardware gate before execution.
+    evidence_gate: >
+      QEMU fault campaigns require QEMU revision, binary hashes, fault XML,
+      seed policy, logs, signatures, and blocked hardware-action proof.
+    risk:
+      - QEMU-level faults can diverge from RTL, timing, and physical fault
+        behavior.
+  - id: tensorfi
+    name: TensorFI
+    kind: ml_application_fault_injection_framework
+    stage:
+      - reliability
+      - machine_learning
+      - fault_injection
+      - workload
+    priority: P3
+    source_url: https://arxiv.org/abs/2004.01743
+    code_url: https://github.com/DependableSystemsLab/TensorFI
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful as application-level ML workload fault-injection context for future
+      NPU software resilience studies.
+    integration_action: >
+      Keep outside hardware evidence until E1 has a TensorFlow/TFLite workload,
+      NPU delegate, and simulator/hardware correlation.
+    evidence_gate: >
+      ML workload resilience claims require model/input hashes, operator fault
+      policy, target runtime, simulator or hardware transcript, and review.
+    risk:
+      - Application-level injections do not prove RTL or silicon resilience.
+  - id: ares-dnn-fault-injection
+    name: Ares DNN Fault Injection
+    kind: dnn_fault_injection_framework
+    stage:
+      - reliability
+      - machine_learning
+      - fault_injection
+      - workload
+    priority: P3
+    source_url: https://alugupta.github.io/ares/
+    code_url: https://github.com/alugupta/ares
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Lightweight DNN fault-injection reference for future workload-level NPU
+      resilience triage.
+    integration_action: >
+      Track as external project only; do not run against E1 workloads until
+      model, input, runtime, and result schemas are defined.
+    evidence_gate: >
+      Any result requires exact model/input/runtime hashes, injected fault
+      manifest, output comparator, simulator/hardware logs, and review.
+    risk:
+      - Validated DNN-level behavior may still miss accelerator control-path
+        and memory-system failures.
+  - id: caliptra-error-injection
+    name: Caliptra SRAM ECC and Error Injection Requirements
+    kind: open_security_ip_reliability_reference
+    stage:
+      - reliability
+      - ecc
+      - memory
+      - firmware
+    priority: P2
+    source_url: https://github.com/chipsalliance/caliptra-rtl/blob/main/docs/CaliptraIntegrationSpecification.md
+    code_url: https://github.com/chipsalliance/caliptra-rtl
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open reference for SRAM ECC, error logging, and intrusive versus
+      non-intrusive injection policy in security-sensitive IP.
+    integration_action: >
+      Use as requirements inspiration for E1 memory/cache reliability evidence,
+      not as drop-in IP or proof.
+    evidence_gate: >
+      ECC or error-injection changes require RTL/spec hashes, firmware-visible
+      register contracts, cocotb/formal tests, synthesis, and review.
+    risk:
+      - Security IP requirements may be stricter or structurally different than
+        E1 SoC needs.
+  - id: systemrdl-standard
+    name: SystemRDL
+    kind: register_description_language_standard
+    stage:
+      - ip_integration
+      - register_generation
+      - software_contract
+      - verification
+    priority: P1
+    source_url: https://www.accellera.org/downloads/standards/systemrdl
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: standard_terms_review_required
+    code_status: standard_only
+    model_status: no_model
+    e1_fit: >
+      Candidate source-of-truth format for generated E1 register maps, headers,
+      docs, UVM/RAL-style collateral, and software-visible ABI checks.
+    integration_action: >
+      Track as a possible migration target; do not replace the current platform
+      contract until generators and gates are reviewed.
+    evidence_gate: >
+      Adoption requires exact standard version, generator revision, generated
+      artifacts, RTL/header/doc diff, platform-contract checks, and review.
+    risk:
+      - Migration can silently change offsets, reset values, access modes, or
+        software ABI.
+  - id: peakrdl
+    name: PeakRDL
+    kind: systemrdl_toolchain
+    stage:
+      - ip_integration
+      - register_generation
+      - documentation
+      - verification
+    priority: P1
+    source_url: https://github.com/SystemRDL/PeakRDL
+    code_url: https://github.com/SystemRDL/PeakRDL
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Practical open toolchain for generating register collateral from
+      SystemRDL if E1 standardizes on an RDL source.
+    integration_action: >
+      Keep as candidate backend only; generated artifacts must remain outside
+      source until exact revision, templates, and gates are approved.
+    evidence_gate: >
+      Use requires pinned package versions, source RDL hash, generated output
+      hashes, platform/Linux/RTL checks, and review.
+    risk:
+      - Generator templates may not match E1 coding style or ABI requirements.
+  - id: peakrdl-ipxact
+    name: PeakRDL IP-XACT
+    kind: ipxact_register_interchange_tool
+    stage:
+      - ip_integration
+      - register_generation
+      - metadata_interchange
+    priority: P2
+    source_url: https://github.com/SystemRDL/PeakRDL-ipxact
+    code_url: https://github.com/SystemRDL/PeakRDL-ipxact
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful if E1 imports or exports IP-XACT register metadata for external
+      IP, verification, or commercial-tool handoff.
+    integration_action: >
+      Track as metadata interchange only until IP-XACT schema version and
+      generator semantics are reviewed.
+    evidence_gate: >
+      IP-XACT conversion requires source and output hashes, schema version,
+      round-trip checks, register diff, and review.
+    risk:
+      - Round-trip conversion can lose field access policy, resets, arrays, or
+        vendor extensions.
+  - id: opentitan-reggen
+    name: OpenTitan Reggen
+    kind: hjson_register_generator
+    stage:
+      - ip_integration
+      - register_generation
+      - documentation
+      - verification
+    priority: P1
+    source_url: https://opentitan.org/book/util/reggen/index.html
+    code_url: https://github.com/lowRISC/opentitan
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Mature open register-generation pattern for RTL, docs, headers, and DV
+      collateral that could inform E1 platform-contract generation.
+    integration_action: >
+      Track as reference only; do not import templates or generated output until
+      license and format migration are reviewed.
+    evidence_gate: >
+      Any use requires exact OpenTitan revision, Hjson input hash, generated
+      artifact hashes, ABI diff, local gates, and review.
+    risk:
+      - OpenTitan-specific conventions may not map cleanly to E1 software and
+        RTL contracts.
+  - id: ip-xact-standard
+    name: IP-XACT
+    kind: ip_metadata_standard
+    stage:
+      - ip_integration
+      - register_generation
+      - packaging
+      - tool_interoperability
+    priority: P2
+    source_url: https://www.accellera.org/downloads/standards/ip-xact
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: standard_terms_review_required
+    code_status: standard_only
+    model_status: no_model
+    e1_fit: >
+      Useful interchange format for IP metadata, bus interfaces, registers, and
+      vendor-tool handoff if E1 later imports packaged IP.
+    integration_action: >
+      Keep as standard context until an IP import/export path and schema
+      validation gate exist.
+    evidence_gate: >
+      Any use requires schema version, source IP manifest, generated metadata,
+      license review, local integration gates, and reviewer disposition.
+    risk:
+      - Vendor extensions and incomplete metadata can make packaged IP unsafe.
+  - id: fusesoc
+    name: FuseSoC
+    kind: rtl_ip_package_manager
+    stage:
+      - ip_integration
+      - dependency_management
+      - simulation
+      - build_orchestration
+    priority: P2
+    source_url: https://github.com/olofk/fusesoc
+    code_url: https://github.com/olofk/fusesoc
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Candidate reference for reproducible HDL dependency manifests and target
+      metadata if E1 imports open IP blocks.
+    integration_action: >
+      Track as dependency-management context only until external IP intake rules
+      and local gates are accepted.
+    evidence_gate: >
+      Any imported core needs exact revision, license, file manifest, target
+      configuration, simulator logs, synthesis logs, and review.
+    risk:
+      - Package metadata does not prove IP quality, license compatibility, or
+        integration correctness.
+  - id: edalize
+    name: Edalize
+    kind: eda_tool_abstraction_library
+    stage:
+      - ip_integration
+      - build_orchestration
+      - simulation
+      - synthesis
+    priority: P2
+    source_url: https://github.com/olofk/edalize
+    code_url: https://github.com/olofk/edalize
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful abstraction layer for running different EDA backends behind
+      manifests, but E1 already has Make/script gates that remain authoritative.
+    integration_action: >
+      Track as orchestration reference only; do not replace local gates without
+      replay manifests and evidence parity.
+    evidence_gate: >
+      Use requires pinned version, generated command manifests, output hashes,
+      equivalent Make gates, and review.
+    risk:
+      - Tool abstraction can hide backend-specific options and nondeterminism.
+  - id: bender
+    name: Bender
+    kind: systemverilog_dependency_manager
+    stage:
+      - ip_integration
+      - dependency_management
+      - rtl_build
+    priority: P2
+    source_url: https://github.com/pulp-platform/bender
+    code_url: https://github.com/pulp-platform/bender
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for pinned SystemVerilog dependency manifests if E1
+      imports PULP-style or other external RTL packages.
+    integration_action: >
+      Track as dependency-management candidate only; no external RTL import is
+      allowed without license and gate review.
+    evidence_gate: >
+      Any dependency change requires lockfile, file hashes, license triage,
+      lint/sim/synth/formal gates, and review.
+    risk:
+      - Dependency graphs can introduce incompatible licenses or unsupported
+        generators.
+  - id: siliconcompiler
+    name: SiliconCompiler
+    kind: open_source_eda_flow_orchestrator
+    stage:
+      - ip_integration
+      - flow_orchestration
+      - synthesis
+      - physical_design
+    priority: P2
+    source_url: https://github.com/siliconcompiler/siliconcompiler
+    code_url: https://github.com/siliconcompiler/siliconcompiler
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open orchestration reference for assembling tool flows and
+      dependency metadata, but E1 release evidence remains in local Make gates.
+    integration_action: >
+      Track as flow-manifest context; do not run or replace E1 OpenLane/OpenROAD
+      gates without reproducible local manifests and review.
+    evidence_gate: >
+      Use requires pinned version, tool manifests, design file hashes, run logs,
+      local gate equivalence, and reviewer disposition.
+    risk:
+      - Flow-level success may not match E1-specific signoff and evidence
+        requirements.
+  - id: rggen
+    name: RgGen
+    kind: register_map_generator
+    stage:
+      - ip_integration
+      - register_generation
+      - documentation
+      - verification
+    priority: P2
+    source_url: https://github.com/rggen/rggen
+    code_url: https://github.com/rggen/rggen
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Alternative open register generator for RTL, docs, and verification
+      collateral if E1 outgrows the current JSON contract generator.
+    integration_action: >
+      Track as backend candidate only; generated output must remain quarantined
+      until local ABI and RTL gates pass.
+    evidence_gate: >
+      Any use requires pinned generator version, source map hash, generated
+      artifact hashes, register diff, local checks, and review.
+    risk:
+      - Generated register semantics may not match E1 reset, access, and
+        software ABI conventions.
+  - id: openram
+    name: OpenRAM
+    kind: open_source_sram_compiler
+    stage:
+      - memory_macro
+      - physical_design
+      - library_characterization
+    priority: P1
+    source_url: https://github.com/VLSIDA/OpenRAM
+    code_url: https://github.com/VLSIDA/OpenRAM
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Closest open reference for generating SRAM macro collateral matching the
+      existing E1 Sky130 OpenRAM configs and macro manifest.
+    integration_action: >
+      Keep as blocked compiler candidate until revisions, PDK setup, generated
+      artifact hashes, and local DRC/LVS/STA/OpenLane gates are accepted.
+    evidence_gate: >
+      Any use requires pinned compiler and PDK revisions, config hash, Liberty,
+      LEF, GDS, Verilog, timing-corner hashes, DRC/LVS/extraction logs, STA,
+      OpenLane integration logs, and review.
+    risk:
+      - Compiler success does not prove macro correctness, timing, Vmin, yield,
+        or signoff closure for E1.
+  - id: dffram
+    name: DFFRAM
+    kind: open_source_sram_like_memory_generator
+    stage:
+      - memory_macro
+      - physical_design
+      - openlane_integration
+    priority: P2
+    source_url: https://github.com/AUCOHL/DFFRAM
+    code_url: https://github.com/AUCOHL/DFFRAM
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful open reference for small generated memories and OpenLane-oriented
+      integration patterns when compiled SRAM is unavailable.
+    integration_action: >
+      Track as fallback memory-generator context only; no E1 macro substitution
+      is allowed without area, timing, power, and signoff evidence.
+    evidence_gate: >
+      Any use requires exact revision, generator inputs, generated collateral
+      hashes, RTL wrapper checks, synthesis, OpenLane, DRC/LVS, STA, and review.
+    risk:
+      - Flip-flop or latch-based memories can be much larger and behave
+        differently from foundry SRAM macros.
+  - id: cacti
+    name: CACTI
+    kind: cache_memory_model
+    stage:
+      - memory_macro
+      - cache_modeling
+      - architecture_dse
+    priority: P2
+    source_url: https://github.com/HewlettPackard/cacti
+    code_url: https://github.com/HewlettPackard/cacti
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful for advisory cache/SRAM area, timing, and power exploration before
+      running expensive local PD experiments.
+    integration_action: >
+      Track as estimator-only; do not treat estimates as E1 PPA evidence until
+      calibrated against local macro and OpenLane data.
+    evidence_gate: >
+      Estimates require pinned version, input deck hash, technology assumptions,
+      calibration data, comparison against local macro collateral, and review.
+    risk:
+      - Model assumptions may not match Sky130, IHP, advanced-node foundry
+        SRAMs, compiler options, or E1 activity.
+  - id: destiny-memory-model
+    name: DESTINY
+    kind: memory_power_area_timing_model
+    stage:
+      - memory_macro
+      - architecture_dse
+      - emerging_memory
+    priority: P3
+    source_url: https://code.ornl.gov/3d_cache_modeling_tool/destiny
+    code_url: https://code.ornl.gov/3d_cache_modeling_tool/destiny
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Advisory reference for broader memory technology exploration, especially
+      if future E1 variants consider non-SRAM memory structures.
+    integration_action: >
+      Keep as research-only until a reviewed memory technology target and
+      calibration corpus exist.
+    evidence_gate: >
+      Any use requires pinned source, technology/input assumptions, generated
+      report hashes, calibration notes, and an explicit non-signoff label.
+    risk:
+      - Emerging-memory estimates can be misleading for near-term SRAM macro
+        implementation decisions.
+  - id: nvsim
+    name: NVSim
+    kind: nonvolatile_memory_model
+    stage:
+      - memory_macro
+      - architecture_dse
+      - emerging_memory
+    priority: P3
+    source_url: https://github.com/SEAL-UCSB/NVSim
+    code_url: https://github.com/SEAL-UCSB/NVSim
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Research-only reference for nonvolatile memory modeling, not a direct E1
+      SRAM implementation source.
+    integration_action: >
+      Keep outside release flows unless a future E1 memory technology study
+      explicitly scopes it.
+    evidence_gate: >
+      Any use requires version pinning, input-deck hashes, technology
+      assumptions, calibration evidence, and reviewer disposition.
+    risk:
+      - Nonvolatile memory assumptions do not transfer to current E1 SRAM and
+        cache macro gates.
+  - id: neurosim
+    name: NeuroSim
+    kind: cim_memory_estimator
+    stage:
+      - memory_macro
+      - ai_accelerator_dse
+      - compute_in_memory
+    priority: P3
+    source_url: https://github.com/neurosim/DNN_NeuroSim_V1.4
+    code_url: https://github.com/neurosim/DNN_NeuroSim_V1.4
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful only as context for memory-centric AI accelerator exploration; E1
+      does not currently implement compute-in-memory macros.
+    integration_action: >
+      Track as research context; do not use outputs for current E1 SRAM, NPU,
+      power, or product claims.
+    evidence_gate: >
+      Any study requires pinned version, workload/input hashes, process
+      assumptions, calibration notes, and explicit non-release status.
+    risk:
+      - Compute-in-memory models can encourage architecture claims that are not
+        implemented in the E1 RTL or macro plan.
+  - id: sram-compiler-openroad
+    name: OpenROAD SRAM Macro And Memory-Compiler Integration
+    kind: open_pd_memory_macro_flow_reference
+    stage:
+      - memory_macro
+      - physical_design
+      - openlane_integration
+    priority: P1
+    source_url: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant reference for keeping memory macro collateral connected to open
+      RTL-to-GDS flows, PD configs, and signoff manifests.
+    integration_action: >
+      Track as flow reference only; E1 remains governed by local OpenLane and
+      PD evidence gates.
+    evidence_gate: >
+      Macro integration requires config hashes, macro file hashes, placement
+      and PDN evidence, DRC/LVS/STA logs, signoff manifests, and review.
+    risk:
+      - Flow examples may rely on specific platforms or macros that do not
+        match E1's target PDKs and wrappers.
+  - id: sram-yield-estimation
+    name: SRAM Yield And Vmin Estimation Watchlist
+    kind: memory_yield_model_watchlist
+    stage:
+      - memory_macro
+      - yield_modeling
+      - reliability
+    priority: P3
+    source_url: https://arxiv.org/search/?query=SRAM+yield+Vmin+machine+learning&searchtype=all
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Watchlist for AI-assisted SRAM yield, Vmin, redundancy, BIST, and repair
+      methods once foundry/process data and macro characterization exist.
+    integration_action: >
+      Keep blocked until a specific paper/code asset, foundry model, and local
+      memory-test evidence path are selected.
+    evidence_gate: >
+      Any use requires source selection, license review, process/model
+      provenance, local test evidence, generated artifact hashes, and review.
+    risk:
+      - Public SRAM yield papers usually lack foundry-specific data and cannot
+        support E1 release claims.
+  - id: tap-2p5d
+    name: TAP-2.5D
+    kind: chiplet_package_planning_tool
+    stage:
+      - chiplet_package
+      - interposer_planning
+      - architecture_dse
+    priority: P2
+    source_url: https://github.com/bu-icsg/TAP-2.5D
+    code_url: https://github.com/bu-icsg/TAP-2.5D
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for 2.5D chiplet planning and package-aware DSE if E1
+      ever splits functions across dies.
+    integration_action: >
+      Track as citation/code candidate only; E1 has no approved chiplet
+      partition, interposer, or die-to-die PHY.
+    evidence_gate: >
+      Any use requires pinned revision, input manifests, package assumptions,
+      output hashes, cost/yield limits, local package and architecture gates,
+      and review.
+    risk:
+      - Academic package-planning assumptions may not match E1 vendor stack-up,
+        thermal limits, SI/PI, or known-good-die yield.
+  - id: chipletpart
+    name: ChipletPart
+    kind: chiplet_partitioning_tool
+    stage:
+      - chiplet_package
+      - architecture_partitioning
+      - physical_design
+    priority: P2
+    source_url: https://github.com/ABKGroup/ChipletPart
+    code_url: https://github.com/ABKGroup/ChipletPart
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant for future partitioning studies across CPU, NPU, memory, IO, and
+      analog/PHY blocks, but not for current monolithic E1 source edits.
+    integration_action: >
+      Keep as blocked DSE candidate until a chiplet objective function and
+      package/manufacturing evidence model exist.
+    evidence_gate: >
+      Partition proposals need source graph hashes, constraints, output hashes,
+      architecture review, RTL/software impact review, package gates, and
+      before/after deterministic checks.
+    risk:
+      - Partitioning can break latency, coherency, reset, clocking, firmware,
+        software ABI, test, and package assumptions.
+  - id: chiplet-network-sim
+    name: Chiplet Network Simulator
+    kind: chiplet_interconnect_simulator
+    stage:
+      - chiplet_package
+      - die_to_die_interconnect
+      - simulator
+    priority: P2
+    source_url: https://github.com/Yinxiao-Feng/chiplet-network-sim
+    code_url: https://github.com/Yinxiao-Feng/chiplet-network-sim
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for modeling die-to-die traffic, topology, latency, and
+      bandwidth if E1 investigates chiplet fabrics.
+    integration_action: >
+      Track as simulator candidate only; no E1 chiplet interconnect exists.
+    evidence_gate: >
+      Any run requires pinned source, workload/traffic manifests, topology
+      hashes, calibration assumptions, local memory/interconnect gates, and
+      review.
+    risk:
+      - Simulator results do not prove RTL, package, PHY, SI/PI, or product
+        performance.
+  - id: eco-chip
+    name: ECO-CHIP
+    kind: chiplet_cost_carbon_yield_model
+    stage:
+      - chiplet_package
+      - cost_modeling
+      - sustainability
+      - yield_modeling
+    priority: P3
+    source_url: https://github.com/ASU-VDA-Lab/ECO-CHIP
+    code_url: https://github.com/ASU-VDA-Lab/ECO-CHIP
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Advisory context for chiplet cost, carbon, and yield tradeoffs if E1
+      later compares monolithic and multi-die variants.
+    integration_action: >
+      Keep outside release flows until vendor cost, process, yield, and package
+      inputs are approved.
+    evidence_gate: >
+      Any use requires version pinning, input provenance, vendor/process
+      assumptions, output hashes, non-release status, and review.
+    risk:
+      - Generic cost/yield models can easily overstate savings without
+        vendor-specific data.
+  - id: ucie-standard
+    name: Universal Chiplet Interconnect Express
+    kind: die_to_die_interconnect_standard
+    stage:
+      - chiplet_package
+      - die_to_die_interconnect
+      - protocol
+    priority: P1
+    source_url: https://www.uciexpress.org/specification
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: standard_terms_review_required
+    code_status: standard_only
+    model_status: no_model
+    e1_fit: >
+      Primary standards context for future die-to-die interface planning, but
+      E1 currently has no UCIe PHY, controller, bump map, or verification plan.
+    integration_action: >
+      Track as standard reference only until IP/license, PHY, package, RTL,
+      firmware, and software contracts are selected.
+    evidence_gate: >
+      Any use requires standard version, IP/license review, PHY collateral,
+      RTL/verification evidence, package bump maps, SI/PI evidence, and review.
+    risk:
+      - Protocol compliance does not solve PHY availability, package routing,
+        power integrity, thermal, test, or software integration.
+  - id: chipsalliance-cde
+    name: CHIPS Alliance Chiplet Design Exchange
+    kind: chiplet_metadata_interchange
+    stage:
+      - chiplet_package
+      - ip_integration
+      - tool_interoperability
+    priority: P2
+    source_url: https://github.com/chipsalliance/CDE
+    code_url: https://github.com/chipsalliance/CDE
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful metadata direction for future chiplet/IP package interchange and
+      tool integration.
+    integration_action: >
+      Track as interchange reference; do not import package metadata until a
+      chiplet source-of-truth and schema gate exist.
+    evidence_gate: >
+      Any use requires schema version, metadata hashes, IP/package provenance,
+      tool round-trip checks, local package gates, and review.
+    risk:
+      - Metadata interchange can omit signoff-critical electrical, thermal,
+        test, and assembly assumptions.
+  - id: mahl-chiplet
+    name: Multi-Agent LLM-Guided Hierarchical Chiplet Design
+    kind: llm_chiplet_design_method
+    stage:
+      - chiplet_package
+      - agentic_orchestration
+      - architecture_dse
+    priority: P2
+    source_url: https://arxiv.org/abs/2504.20037
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant SOTA direction for agentic chiplet architecture exploration,
+      but not directly executable release evidence.
+    integration_action: >
+      Keep as method context for future fail-closed chiplet agents with typed
+      commands and local replay.
+    evidence_gate: >
+      Any agent output requires prompts, inputs, output hashes, deterministic
+      package/architecture gates, no external release use, and human review.
+    risk:
+      - LLM agents can produce plausible chiplet plans that ignore package,
+        SI/PI, thermal, verification, and software constraints.
+  - id: chico-agent
+    name: CHICO-Agent
+    kind: llm_chiplet_codesign_agent
+    stage:
+      - chiplet_package
+      - agentic_orchestration
+      - architecture_dse
+    priority: P2
+    source_url: https://arxiv.org/abs/2504.13435
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant to natural-language chiplet co-design workflows, especially for
+      coordinating architecture and package constraints.
+    integration_action: >
+      Track as paper-only SOTA until code/assets, licenses, and local E1 gates
+      are reviewed.
+    evidence_gate: >
+      Any generated chiplet plan requires source hashes, constraint manifests,
+      deterministic package/RTL/software gates, and reviewer disposition.
+    risk:
+      - Co-design agents can hide unsupported assumptions about PHYs, package
+        stack-ups, yield, and tool availability.
+  - id: ds2sc-agent
+    name: DS2SC-Agent
+    kind: datasheet_to_systemc_agent
+    stage:
+      - chiplet_package
+      - system_modeling
+      - simulator
+    priority: P2
+    source_url: https://arxiv.org/abs/2506.19059
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant if future package, PHY, or IP datasheets need executable
+      SystemC-style models before RTL integration.
+    integration_action: >
+      Keep as target-capture context only; do not generate or import SystemC
+      models without license, prompt, and deterministic simulation gates.
+    evidence_gate: >
+      Any model requires datasheet license review, input/output hashes,
+      generated-source quarantine, simulator logs, equivalence expectations,
+      and review.
+    risk:
+      - Datasheet-derived models can miss electrical, timing, protocol, and
+        errata details needed for chiplet or package signoff.
+  - id: yosys
+    name: Yosys
+    kind: open_source_logic_synthesis_tool
+    stage:
+      - logic_synthesis
+      - rtl_to_netlist
+      - formal
+    priority: P1
+    source_url: https://github.com/YosysHQ/yosys
+    code_url: https://github.com/YosysHQ/yosys
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: local_tool_available
+    model_status: no_model
+    e1_fit: >
+      Primary open synthesis and formal-prep backend for E1; it is the anchor
+      for any future AI-guided synthesis recipe or netlist optimization.
+    integration_action: >
+      Keep Yosys commands deterministic and checked through local Make gates;
+      AI may only propose recipe candidates after source and script hashes are
+      captured.
+    evidence_gate: >
+      Any synthesis change needs RTL, script, Liberty, constraint, netlist, log,
+      timing, area, and reviewer hashes plus formal/cocotb follow-up.
+    risk:
+      - Changing pass order, mapping, or script options can silently alter
+        QoR, hierarchy, debugability, or functionality.
+  - id: abc
+    name: ABC
+    kind: logic_synthesis_and_verification_framework
+    stage:
+      - logic_synthesis
+      - technology_mapping
+      - formal
+    priority: P1
+    source_url: https://github.com/berkeley-abc/abc
+    code_url: https://github.com/berkeley-abc/abc
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Core logic-optimization engine behind many open synthesis flows and a
+      common target for ML/RL recipe optimization.
+    integration_action: >
+      Track as backend context; do not accept generated ABC recipes without
+      equivalence, synthesis, STA, and OpenLane evidence.
+    evidence_gate: >
+      ABC recipe changes require exact ABC/Yosys versions, input AIG/netlist
+      hashes, output netlist hashes, equivalence checks, STA/QoR reports, and
+      review.
+    risk:
+      - Recipe improvements on benchmarks may not transfer to E1 RTL, target
+        libraries, constraints, or sequential structures.
+  - id: yosys-eqy
+    name: YosysHQ EQY
+    kind: formal_equivalence_checking_tool
+    stage:
+      - formal
+      - netlist_equivalence
+      - logic_synthesis
+    priority: P1
+    source_url: https://yosyshq.readthedocs.io/projects/eqy/en/latest/
+    code_url: https://github.com/YosysHQ/eqy
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Candidate open equivalence-checking flow for proving RTL-to-netlist or
+      before/after synthesis transformations when E1 defines a pinned miter,
+      black-box, memory, reset, and solver policy.
+    integration_action: >
+      Track as a primary LEC harness candidate; do not generate EQY jobs or
+      accept proof logs until tool versions, input netlists, assumptions, and
+      review gates are pinned.
+    evidence_gate: >
+      Any use requires exact EQY/Yosys/solver versions, RTL and netlist hashes,
+      EQY script hashes, black-box assumptions, proof logs, counterexample
+      triage, and reviewer disposition.
+    risk:
+      - Incorrect black-box, reset, x-propagation, hierarchy, or memory models
+        can make a proof irrelevant or mask real mismatches.
+  - id: yosys-equivalence
+    name: Yosys Equivalence Checking Commands
+    kind: synthesis_native_equivalence_flow
+    stage:
+      - formal
+      - netlist_equivalence
+      - logic_synthesis
+    priority: P1
+    source_url: https://yosyshq.readthedocs.io/projects/yosys/en/latest/cmd/index_passes_equiv.html
+    code_url: https://github.com/YosysHQ/yosys
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Relevant for local equiv_make/equiv_simple/equiv_status-style checks
+      around Yosys-generated synthesis outputs and candidate AI recipe changes.
+    integration_action: >
+      Keep as local harness context until E1 has deterministic equivalence
+      scripts, accepted assumptions, solver pins, and failure triage evidence.
+    evidence_gate: >
+      Equivalence evidence requires input/output netlist hashes, script hashes,
+      Yosys version, solver/version context, result logs, and review.
+    risk:
+      - Equivalence-command success depends on setup quality and can be
+        insufficient for sequential, memory, or black-box-heavy comparisons.
+  - id: circt-lec
+    name: CIRCT Logical Equivalence Checking
+    kind: compiler_ir_logical_equivalence_checker
+    stage:
+      - formal
+      - netlist_equivalence
+      - compiler_ir
+    priority: P2
+    source_url: https://circt.llvm.org/docs/Tools/circt-lec/
+    code_url: https://github.com/llvm/circt
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful reference for CIRCT/MLIR-oriented logical equivalence checks and
+      future compiler-to-hardware transformations, but not yet an accepted E1
+      netlist signoff gate.
+    integration_action: >
+      Track as secondary LEC context; any use needs pinned IR/netlist lowering
+      boundaries and deterministic comparison artifacts.
+    evidence_gate: >
+      CIRCT LEC evidence requires tool revision, IR/netlist hashes, lowering
+      assumptions, solver logs, counterexample triage, and review.
+    risk:
+      - IR-level equivalence can miss downstream synthesis, library, physical,
+        or integration assumptions unless scoped very tightly.
+  - id: datapath-cec-hybrid-sweeping
+    name: SAT-Based CEC With Datapath Hybrid Sweeping
+    kind: combinational_equivalence_research_method
+    stage:
+      - formal
+      - netlist_equivalence
+      - arithmetic_datapath
+    priority: P2
+    source_url: https://arxiv.org/abs/2507.00584
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: no_public_code_selected
+    model_status: no_model
+    e1_fit: >
+      Current research context for arithmetic/datapath CEC scalability; useful
+      for NPU/datapath mismatch triage once E1 has local failing miters.
+    integration_action: >
+      Keep as citation context only until source, license, benchmark coverage,
+      and local E1 datapath counterexamples are available.
+    evidence_gate: >
+      Research-method adoption requires code or reproducible algorithm
+      revision, benchmark overlap review, local miter hashes, logs,
+      counterexample comparison, and reviewer disposition.
+    risk:
+      - Paper-level CEC results may not transfer to E1 hierarchy, memories,
+        black boxes, sequential logic, or physical-design netlists.
+  - id: mockturtle
+    name: Mockturtle
+    kind: logic_network_synthesis_library
+    stage:
+      - logic_synthesis
+      - logic_networks
+      - technology_mapping
+    priority: P2
+    source_url: https://github.com/lsils/mockturtle
+    code_url: https://github.com/lsils/mockturtle
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful research library for AIG/MIG/XAG-style logic-network experiments
+      and possible future synthesis-feature extraction.
+    integration_action: >
+      Track as library candidate only; no transformed network enters E1 source
+      without deterministic equivalence and synthesis gates.
+    evidence_gate: >
+      Any use requires pinned revision, parser/network hashes, transformed
+      output hashes, equivalence logs, synthesis/STA comparison, and review.
+    risk:
+      - Library-level logic-network wins can fail after technology mapping,
+        physical synthesis, timing closure, or scan insertion.
+  - id: aigverse
+    name: Aigverse
+    kind: aig_logic_network_python_toolkit
+    stage:
+      - logic_synthesis
+      - graph_features
+      - technology_mapping
+    priority: P2
+    source_url: https://github.com/marcelwa/aigverse
+    code_url: https://github.com/marcelwa/aigverse
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Candidate toolkit for read-only AIG feature extraction and synthesis
+      dataset construction if E1 creates a local synthesis-label corpus.
+    integration_action: >
+      Keep as feature-extraction context until license, parser coverage, and
+      local label schema are accepted.
+    evidence_gate: >
+      Feature extraction requires input netlist/AIG hashes, extractor version,
+      output hashes, privacy/license review, and downstream deterministic tasks.
+    risk:
+      - Extracted graph features can lose RTL hierarchy, timing constraints, or
+        sequential semantics needed for engineering decisions.
+  - id: openls-dgf
+    name: OpenLS-DGF
+    kind: logic_synthesis_dataset
+    stage:
+      - logic_synthesis
+      - dataset_governance
+      - technology_mapping
+    priority: P2
+    source_url: https://github.com/Logic-Factory/ACE/blob/master/OpenLS-DGF/readme.md
+    code_url: https://github.com/Logic-Factory/ACE
+    model_url: null
+    dataset_url: https://github.com/Logic-Factory/ACE/blob/master/OpenLS-DGF/readme.md
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful public dataset direction for synthesis optimization, but not a
+      substitute for E1-specific RTL, library, constraint, and OpenLane labels.
+    integration_action: >
+      Track as external dataset candidate only; do not import until license,
+      benchmark overlap, and contamination review are complete.
+    evidence_gate: >
+      Any import requires exact revision, file manifest, license review,
+      non-overlap report, quarantine path, and held-out E1 validation.
+    risk:
+      - Public synthesis benchmarks can overfit recipes and may not represent
+        E1 hierarchy, constraints, memories, or target libraries.
+  - id: drills
+    name: DRiLLS
+    kind: rl_logic_synthesis_optimizer
+    stage:
+      - logic_synthesis
+      - reinforcement_learning
+      - recipe_search
+    priority: P2
+    source_url: https://github.com/scale-lab/DRiLLS
+    code_url: https://github.com/scale-lab/DRiLLS
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Reference for RL-driven synthesis recipe search around ABC-like command
+      sequences.
+    integration_action: >
+      Track as blocked optimizer candidate until E1 has a synthesis corpus,
+      equivalence gate, and replay manifest.
+    evidence_gate: >
+      Use requires pinned code, environment, seed, command sequence, input and
+      output hashes, equivalence, synthesis/STA/OpenLane reports, and review.
+    risk:
+      - RL search can optimize benchmark proxy metrics while breaking local
+        constraints, debugability, or downstream timing.
+  - id: lsoracle
+    name: LSOracle
+    kind: logic_synthesis_oracle_model
+    stage:
+      - logic_synthesis
+      - recipe_selection
+      - ppa_prediction
+    priority: P2
+    source_url: https://github.com/LNIS-Projects/LSOracle
+    code_url: https://github.com/LNIS-Projects/LSOracle
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: model_or_weights_review_required
+    e1_fit: >
+      Relevant SOTA direction for choosing synthesis optimization recipes from
+      circuit features.
+    integration_action: >
+      Keep as model/code candidate only; no recipe choice affects E1 until
+      local held-out error analysis and gates exist.
+    evidence_gate: >
+      Any use requires model revision, training data provenance, feature hashes,
+      prediction logs, before/after synthesis evidence, and review.
+    risk:
+      - Oracle predictions trained on public circuits may mis-rank E1 modules.
+  - id: abc-rl
+    name: ABC-RL
+    kind: rl_logic_synthesis_recipe_search
+    stage:
+      - logic_synthesis
+      - reinforcement_learning
+      - recipe_search
+    priority: P2
+    source_url: https://github.com/NYU-MLDA/ABC-RL
+    code_url: https://github.com/NYU-MLDA/ABC-RL
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: model_or_weights_review_required
+    e1_fit: >
+      Current open ML/RL synthesis optimizer candidate for ABC command sequence
+      exploration.
+    integration_action: >
+      Track as external optimizer; block execution until revisions, environment,
+      seeds, licenses, and local replay gates exist.
+    evidence_gate: >
+      Use requires exact code/model revision, seeds, command logs, input/output
+      hashes, equivalence, synthesis/STA/OpenLane comparisons, and review.
+    risk:
+      - Search results are nondeterministic and can overfit to area/depth
+        proxies that miss timing, power, and physical design effects.
+  - id: boils
+    name: BOiLS
+    kind: bayesian_optimization_logic_synthesis
+    stage:
+      - logic_synthesis
+      - bayesian_optimization
+      - recipe_search
+    priority: P2
+    source_url: https://arxiv.org/abs/2111.06178
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_or_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful SOTA reference for Bayesian optimization of logic synthesis flows.
+    integration_action: >
+      Keep as paper/reference context unless code and license are reviewed.
+    evidence_gate: >
+      Any implementation requires source revision, search space manifest,
+      objective definition, seed, output hashes, equivalence, QoR reports, and
+      review.
+    risk:
+      - Search objectives can improve benchmark QoR while degrading E1 timing,
+        power, routability, or verification confidence.

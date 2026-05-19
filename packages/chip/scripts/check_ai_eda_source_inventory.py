@@ -66,6 +66,21 @@ HLS_TARGETS_CLAIM_BOUNDARY = "hls_target_capture_only_no_generated_hls_or_rtl"
 TIMING_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_timing_closure_targets.py"
 TIMING_TARGETS_BUILD = ROOT / "build/ai_eda/timing_closure_targets"
 TIMING_TARGETS_CLAIM_BOUNDARY = "timing_closure_target_capture_only_no_constraint_or_eco_change"
+ROUTING_CONGESTION_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_routing_congestion_targets.py"
+ROUTING_CONGESTION_TARGETS_BUILD = ROOT / "build/ai_eda/routing_congestion_targets"
+ROUTING_CONGESTION_TARGETS_CLAIM_BOUNDARY = (
+    "routing_congestion_target_capture_only_no_route_or_layout_change"
+)
+CLOCK_TREE_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_clock_tree_targets.py"
+CLOCK_TREE_TARGETS_BUILD = ROOT / "build/ai_eda/clock_tree_targets"
+CLOCK_TREE_TARGETS_CLAIM_BOUNDARY = "clock_tree_target_capture_only_no_cts_or_clocking_change"
+EXTRACTION_PARASITIC_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_extraction_parasitic_targets.py"
+)
+EXTRACTION_PARASITIC_TARGETS_BUILD = ROOT / "build/ai_eda/extraction_parasitic_targets"
+EXTRACTION_PARASITIC_TARGETS_CLAIM_BOUNDARY = (
+    "extraction_parasitic_target_capture_only_no_spef_or_signoff_claim"
+)
 ANALOG_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_analog_mixed_signal_targets.py"
 ANALOG_TARGETS_BUILD = ROOT / "build/ai_eda/analog_mixed_signal_targets"
 ANALOG_TARGETS_CLAIM_BOUNDARY = (
@@ -139,13 +154,166 @@ CPU_MICROARCHITECTURE_TARGETS_BUILD = ROOT / "build/ai_eda/cpu_microarchitecture
 CPU_MICROARCHITECTURE_TARGETS_CLAIM_BOUNDARY = (
     "cpu_microarchitecture_target_capture_only_no_rtl_perf_or_product_claim"
 )
+COMPILER_AUTOTUNING_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_compiler_autotuning_targets.py"
+COMPILER_AUTOTUNING_TARGETS_BUILD = ROOT / "build/ai_eda/compiler_autotuning_targets"
+COMPILER_AUTOTUNING_TARGETS_CLAIM_BOUNDARY = (
+    "compiler_autotuning_target_capture_only_no_codegen_binary_or_perf_claim"
+)
+RELIABILITY_RESILIENCE_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_reliability_resilience_targets.py"
+)
+RELIABILITY_RESILIENCE_TARGETS_BUILD = ROOT / "build/ai_eda/reliability_resilience_targets"
+RELIABILITY_RESILIENCE_TARGETS_CLAIM_BOUNDARY = (
+    "reliability_resilience_target_capture_only_no_fault_aging_or_signoff_claim"
+)
+EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_external_model_corpus_intake_targets.py"
+)
+EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_BUILD = (
+    ROOT / "build/ai_eda/external_model_corpus_intake_targets"
+)
+EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_CLAIM_BOUNDARY = (
+    "external_model_corpus_intake_capture_only_no_import_training_or_inference"
+)
+BENCHMARK_EVALUATION_HYGIENE_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py"
+)
+BENCHMARK_EVALUATION_HYGIENE_TARGETS_BUILD = (
+    ROOT / "build/ai_eda/benchmark_evaluation_hygiene_targets"
+)
+BENCHMARK_EVALUATION_HYGIENE_TARGETS_CLAIM_BOUNDARY = (
+    "benchmark_evaluation_hygiene_capture_only_no_import_or_score_claim"
+)
+EDA_TOOL_AGENT_INTEROP_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_eda_tool_agent_interop_targets.py"
+)
+EDA_TOOL_AGENT_INTEROP_TARGETS_BUILD = ROOT / "build/ai_eda/eda_tool_agent_interop_targets"
+EDA_TOOL_AGENT_INTEROP_TARGETS_CLAIM_BOUNDARY = (
+    "eda_tool_agent_interop_capture_only_no_tool_invocation_or_source_change"
+)
+SPEC_TRACEABILITY_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_spec_traceability_targets.py"
+SPEC_TRACEABILITY_TARGETS_BUILD = ROOT / "build/ai_eda/spec_traceability_targets"
+SPEC_TRACEABILITY_TARGETS_CLAIM_BOUNDARY = (
+    "spec_traceability_capture_only_no_rtl_assertion_or_requirement_change"
+)
+IP_REGISTER_CONTRACT_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_ip_register_contract_targets.py"
+)
+IP_REGISTER_CONTRACT_TARGETS_BUILD = ROOT / "build/ai_eda/ip_register_contract_targets"
+IP_REGISTER_CONTRACT_TARGETS_CLAIM_BOUNDARY = (
+    "ip_register_contract_capture_only_no_ip_import_or_register_change"
+)
+MEMORY_MACRO_LIBRARY_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_memory_macro_library_targets.py"
+)
+MEMORY_MACRO_LIBRARY_TARGETS_BUILD = ROOT / "build/ai_eda/memory_macro_library_targets"
+MEMORY_MACRO_LIBRARY_TARGETS_CLAIM_BOUNDARY = (
+    "memory_macro_library_capture_only_no_macro_generation_or_library_claim"
+)
+CHIPLET_3DIC_PACKAGE_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_chiplet_3dic_package_targets.py"
+)
+CHIPLET_3DIC_PACKAGE_TARGETS_BUILD = ROOT / "build/ai_eda/chiplet_3dic_package_targets"
+CHIPLET_3DIC_PACKAGE_TARGETS_CLAIM_BOUNDARY = (
+    "chiplet_3dic_package_capture_only_no_package_or_architecture_claim"
+)
+LOGIC_SYNTHESIS_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_logic_synthesis_targets.py"
+LOGIC_SYNTHESIS_TARGETS_BUILD = ROOT / "build/ai_eda/logic_synthesis_targets"
+LOGIC_SYNTHESIS_TARGETS_CLAIM_BOUNDARY = "logic_synthesis_capture_only_no_netlist_or_qor_claim"
+NETLIST_EQUIVALENCE_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_netlist_equivalence_targets.py"
+NETLIST_EQUIVALENCE_TARGETS_BUILD = ROOT / "build/ai_eda/netlist_equivalence_targets"
+NETLIST_EQUIVALENCE_TARGETS_CLAIM_BOUNDARY = (
+    "netlist_equivalence_target_capture_only_no_lec_or_equivalence_claim"
+)
+PHYSICAL_VERIFICATION_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_physical_verification_targets.py"
+)
+PHYSICAL_VERIFICATION_TARGETS_BUILD = ROOT / "build/ai_eda/physical_verification_targets"
+PHYSICAL_VERIFICATION_TARGETS_CLAIM_BOUNDARY = (
+    "physical_verification_capture_only_no_drc_lvs_or_layout_claim"
+)
+PLACEMENT_LEGALIZATION_TARGETS_SCRIPT = (
+    ROOT / "scripts/ai_eda/capture_placement_legalization_targets.py"
+)
+PLACEMENT_LEGALIZATION_TARGETS_BUILD = ROOT / "build/ai_eda/placement_legalization_targets"
+PLACEMENT_LEGALIZATION_TARGETS_CLAIM_BOUNDARY = (
+    "placement_legalization_target_capture_only_no_placement_or_pd_change"
+)
+FLOORPLAN_IO_PDN_TARGETS_SCRIPT = ROOT / "scripts/ai_eda/capture_floorplan_io_pdn_targets.py"
+FLOORPLAN_IO_PDN_TARGETS_BUILD = ROOT / "build/ai_eda/floorplan_io_pdn_targets"
+FLOORPLAN_IO_PDN_TARGETS_CLAIM_BOUNDARY = (
+    "floorplan_io_pdn_target_capture_only_no_floorplan_or_power_grid_change"
+)
 
 REQUIRED_SOURCES = {
     "agentic-eda-survey-2512-23189v2",
     "autoeda-mcp",
+    "synopsys-ai-copilot",
+    "cadence-jedai",
+    "cadence-chipstack-ai-super-agent",
+    "siemens-fuse-eda-ai-agent",
+    "phoenix-bench",
     "rtl-coder",
     "verilog-eval",
     "cvdp",
+    "openrtlset",
+    "mg-verilog",
+    "metrex",
+    "circuitnet-3",
+    "veriforge-deepseek-coder",
+    "llm-eda-opencores",
+    "hardware-verilogeval-v2-hf",
+    "llm4verilog-dataset",
+    "vericontaminated",
+    "rtllm",
+    "protocolllm",
+    "llmsanitize",
+    "min-k-prob-contamination",
+    "incrertl",
+    "llm-fsm",
+    "spec2assertion",
+    "coverassert",
+    "qimeng-codev-sva",
+    "systemrdl-standard",
+    "peakrdl",
+    "peakrdl-ipxact",
+    "opentitan-reggen",
+    "ip-xact-standard",
+    "fusesoc",
+    "edalize",
+    "bender",
+    "siliconcompiler",
+    "rggen",
+    "openram",
+    "dffram",
+    "cacti",
+    "destiny-memory-model",
+    "nvsim",
+    "neurosim",
+    "sram-compiler-openroad",
+    "sram-yield-estimation",
+    "tap-2p5d",
+    "chipletpart",
+    "chiplet-network-sim",
+    "eco-chip",
+    "ucie-standard",
+    "chipsalliance-cde",
+    "mahl-chiplet",
+    "chico-agent",
+    "ds2sc-agent",
+    "yosys",
+    "abc",
+    "yosys-eqy",
+    "yosys-equivalence",
+    "circt-lec",
+    "datapath-cec-hybrid-sweeping",
+    "mockturtle",
+    "aigverse",
+    "openls-dgf",
+    "drills",
+    "lsoracle",
+    "abc-rl",
+    "boils",
     "circuitnet",
     "circuitnet-2",
     "circuit-foundation-model-survey",
@@ -171,8 +339,49 @@ REQUIRED_SOURCES = {
     "pythia-prefetcher",
     "mockingjay-cache-replacement",
     "drishti-cache-replacement",
+    "llvm-mlgo",
+    "google-ml-compiler-opt",
+    "tvm-meta-schedule",
+    "ansor",
+    "autofdo",
+    "llvm-propeller",
+    "bolt",
+    "vecintrinbench",
+    "simdbench",
+    "agentic-code-optimization",
+    "hintpilot",
+    "llm-veriopt",
+    "xdsl-rvv-lowering",
+    "proton-em",
+    "emspice2",
+    "bti-hci-aging-models",
+    "sofia-soft-error-framework",
+    "arm-ethos-u55-soft-error",
+    "ibex-seu-formal",
+    "bec-soft-error-llvm",
+    "hamartia-fault-injection",
+    "fies-qemu-fault-injection",
+    "tensorfi",
+    "ares-dnn-fault-injection",
+    "caliptra-error-injection",
+    "openroad-gpl",
+    "openroad-dpl",
+    "openroad-ifp",
+    "openroad-ioplacer",
+    "openroad-tapcell",
+    "openroad-pdn",
+    "openlane-floorplanning",
+    "floorset",
+    "piano-floorplanner",
+    "ibm-fp-opt",
+    "nl2gds",
     "google-circuit-training",
     "autodmp",
+    "xplace",
+    "chipdiffusion",
+    "diffplace",
+    "flowplace",
+    "chipbench-d",
     "orassistant",
     "zigzag",
     "timeloop-accelergy",
@@ -222,6 +431,20 @@ REQUIRED_SOURCES = {
     "poet-rtl-ppa",
     "rtl-ppa-sog",
     "openroad-two-phase-clock",
+    "openroad-cts",
+    "tritoncts",
+    "gan-cts",
+    "cts-bench",
+    "openroad-openrcx",
+    "openlane-timing-corners",
+    "magic-extraction",
+    "klayout-drc",
+    "magic-drc-lvs",
+    "netgen-lvs",
+    "openroad-antenna-check",
+    "rule2drc",
+    "posteda-bench",
+    "capbench",
     "pro-v",
     "saarthi-formal-verification",
     "sangam-sva",
@@ -258,7 +481,15 @@ REQUIRED_SOURCES = {
     "timingllm",
     "fluxeda",
     "openroad-resizer",
+    "openphysyn",
+    "learning-driven-gate-sizing",
+    "fusionsizer",
+    "iccad-2024-gate-sizing-benchmark",
     "ir-aware-eco-rl",
+    "openroad-fastroute",
+    "openroad-tritonroute",
+    "cugr",
+    "dr-cu",
     "align-analoglayout",
     "autockt",
     "genie-asi",
@@ -280,6 +511,7 @@ REQUIRED_SOURCES = {
 REQUIRED_WORK_ITEMS = {
     "p0-ai-eda-critical-sota-review",
     "p1-local-eda-rag-log-triage",
+    "p1-eda-tool-agent-interop-target-capture",
     "p1-external-source-metadata-probe",
     "p1-local-ai-eda-backend-preflight",
     "p1-openroad-openlane-autotune",
@@ -290,6 +522,9 @@ REQUIRED_WORK_ITEMS = {
     "p1-rtlmul-ppa-advisory",
     "p1-hls-accelerator-target-capture",
     "p1-timing-closure-target-capture",
+    "p1-routing-congestion-target-capture",
+    "p1-clock-tree-target-capture",
+    "p1-extraction-parasitic-target-capture",
     "p2-analog-mixed-signal-target-capture",
     "p1-memory-interconnect-target-capture",
     "p1-dft-atpg-target-capture",
@@ -305,6 +540,19 @@ REQUIRED_WORK_ITEMS = {
     "p1-circuit-foundation-model-target-capture",
     "p1-dfm-yield-lithography-target-capture",
     "p1-cpu-microarchitecture-target-capture",
+    "p1-compiler-autotuning-target-capture",
+    "p1-reliability-resilience-target-capture",
+    "p1-external-model-corpus-intake-target-capture",
+    "p1-benchmark-evaluation-hygiene-target-capture",
+    "p1-spec-traceability-target-capture",
+    "p1-ip-register-contract-target-capture",
+    "p1-memory-macro-library-target-capture",
+    "p1-chiplet-3dic-package-target-capture",
+    "p1-logic-synthesis-target-capture",
+    "p1-netlist-equivalence-target-capture",
+    "p1-physical-verification-target-capture",
+    "p1-placement-legalization-target-capture",
+    "p1-floorplan-io-pdn-target-capture",
     "p2-rtl-model-evaluation-harness",
     "p2-e1-pd-predictor-dataset",
     "p2-dft-atpg-watch",
@@ -462,7 +710,15 @@ def check_readiness(source_ids: set[str], errors: list[str]) -> None:
     seen = {stage.get("id") for stage in stages if isinstance(stage, dict)}
     for required in (
         "rtl_generation",
+        "eda_tool_agent_interoperability",
         "external_source_provenance",
+        "external_model_corpus_intake",
+        "benchmark_evaluation_hygiene",
+        "spec_traceability_and_requirement_coverage",
+        "ip_register_contract_automation",
+        "memory_macro_library_automation",
+        "chiplet_3dic_package_codesign",
+        "logic_synthesis_optimization",
         "local_backend_readiness",
         "verification_stimulus",
         "assertion_generation",
@@ -470,6 +726,8 @@ def check_readiness(source_ids: set[str], errors: list[str]) -> None:
         "circuit_foundation_models",
         "dfm_yield_lithography",
         "cpu_microarchitecture_ai",
+        "compiler_autotuning_and_codegen",
+        "reliability_resilience_automation",
         "placement_optimization",
         "npu_architecture_dse",
         "software_bsp_and_firmware",
@@ -1075,9 +1333,25 @@ def check_timing_closure_targets(source_ids: set[str], errors: list[str]) -> Non
             policy.get("changes_constraints") is not False
             or policy.get("changes_rtl") is not False
             or policy.get("changes_netlist") is not False
+            or policy.get("changes_pd_config") is not False
             or policy.get("runs_openroad") is not False
+            or policy.get("runs_sta") is not False
+            or policy.get("runs_synthesis") is not False
+            or policy.get("runs_external_optimizer") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
             or policy.get("applies_eco") is not False
+            or policy.get("applies_gate_sizing") is not False
+            or policy.get("applies_buffer_insertion") is not False
+            or policy.get("applies_pin_swapping") is not False
+            or policy.get("applies_gate_cloning") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_constraints") is not False
+            or policy.get("generates_netlist_patch") is not False
             or policy.get("prediction_generated") is not False
+            or policy.get("timing_claim_allowed") is not False
+            or policy.get("power_integrity_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
             or policy.get("release_use_allowed") is not False
         ):
             fail(errors, f"{label}: timing target policy allows unsafe use")
@@ -1103,6 +1377,284 @@ def check_timing_closure_targets(source_ids: set[str], errors: list[str]) -> Non
         }
         if "python3 scripts/check_pd_closure.py" not in gates:
             fail(errors, f"{label}: missing PD closure follow-up gate")
+        for required_gate in (
+            "make no-hardware-action-check",
+            "make pd-signoff-manifest-check",
+            "make power-thermal-evidence-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_routing_congestion_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not ROUTING_CONGESTION_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {ROUTING_CONGESTION_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not ROUTING_CONGESTION_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in ROUTING_CONGESTION_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.routing_congestion_targets.v1":
+            fail(errors, f"{label}: unexpected routing congestion targets schema")
+        if report.get("claim_boundary") != ROUTING_CONGESTION_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe routing congestion claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_ROUTE_OR_LAYOUT_CHANGE":
+            fail(errors, f"{label}: routing target capture must not edit route or layout")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing routing congestion policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("changes_def") is not False
+            or policy.get("changes_odb") is not False
+            or policy.get("changes_gds") is not False
+            or policy.get("changes_guides") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_router") is not False
+            or policy.get("runs_drc") is not False
+            or policy.get("runs_antenna_check") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_external_dataset") is not False
+            or policy.get("generates_route_guide") is not False
+            or policy.get("generates_congestion_map") is not False
+            or policy.get("generates_drc_fix") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("routability_claim_allowed") is not False
+            or policy.get("drc_claim_allowed") is not False
+            or policy.get("timing_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: routing congestion policy allows unsafe use")
+        if not report.get("candidate_actions"):
+            fail(errors, f"{label}: routing congestion report must contain candidate actions")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale routing input hash")
+        for artifact in report.get("routing_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale routing artifact hash")
+        gates = {
+            gate
+            for action in report.get("candidate_actions") or []
+            if isinstance(action, dict)
+            for gate in action.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/ai_eda/capture_routing_congestion_targets.py --run-id validation",
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "make no-hardware-action-check",
+            "make power-thermal-evidence-check",
+            "make manufacturing-artifacts-check",
+            "make real-world-gates-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_clock_tree_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not CLOCK_TREE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {CLOCK_TREE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not CLOCK_TREE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(path for path in CLOCK_TREE_TARGETS_BUILD.iterdir() if path.is_dir()):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.clock_tree_targets.v1":
+            fail(errors, f"{label}: unexpected clock tree targets schema")
+        if report.get("claim_boundary") != CLOCK_TREE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe clock tree claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_CTS_OR_CLOCKING_CHANGE":
+            fail(errors, f"{label}: clock tree target capture must not edit CTS or clocking")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing clock tree policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("changes_def") is not False
+            or policy.get("changes_odb") is not False
+            or policy.get("changes_sdc") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("changes_clocking_scheme") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_cts") is not False
+            or policy.get("runs_sta") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_external_dataset") is not False
+            or policy.get("generates_clock_tree") is not False
+            or policy.get("generates_clock_constraints") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("skew_claim_allowed") is not False
+            or policy.get("hold_claim_allowed") is not False
+            or policy.get("power_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: clock tree policy allows unsafe use")
+        if not report.get("candidate_actions"):
+            fail(errors, f"{label}: clock tree report must contain candidate actions")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale clock tree input hash")
+        for artifact in report.get("clock_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale clock tree artifact hash")
+        gates = {
+            gate
+            for action in report.get("candidate_actions") or []
+            if isinstance(action, dict)
+            for gate in action.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/ai_eda/capture_clock_tree_targets.py --run-id validation",
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "make no-hardware-action-check",
+            "make power-thermal-evidence-check",
+            "make rtl-check",
+            "make formal",
+            "python3 scripts/ai_eda/capture_cdc_rdc_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_extraction_parasitic_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not EXTRACTION_PARASITIC_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {EXTRACTION_PARASITIC_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not EXTRACTION_PARASITIC_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in EXTRACTION_PARASITIC_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.extraction_parasitic_targets.v1":
+            fail(errors, f"{label}: unexpected extraction/parasitic targets schema")
+        if report.get("claim_boundary") != EXTRACTION_PARASITIC_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe extraction/parasitic claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_SPEF_OR_EXTRACTION_CHANGE":
+            fail(errors, f"{label}: extraction target capture must not edit SPEF or extraction")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing extraction/parasitic policy")
+        elif (
+            policy.get("changes_layout") is not False
+            or policy.get("changes_def") is not False
+            or policy.get("changes_odb") is not False
+            or policy.get("changes_gds") is not False
+            or policy.get("changes_spef") is not False
+            or policy.get("changes_sdf") is not False
+            or policy.get("changes_spice") is not False
+            or policy.get("changes_extraction_rules") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_rcx") is not False
+            or policy.get("runs_magic") is not False
+            or policy.get("runs_sta") is not False
+            or policy.get("runs_si_analysis") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_external_dataset") is not False
+            or policy.get("generates_spef") is not False
+            or policy.get("generates_sdf") is not False
+            or policy.get("generates_spice") is not False
+            or policy.get("generates_rc_prediction") is not False
+            or policy.get("generates_si_waiver") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("extraction_claim_allowed") is not False
+            or policy.get("timing_claim_allowed") is not False
+            or policy.get("si_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: extraction/parasitic policy allows unsafe use")
+        if not report.get("candidate_actions"):
+            fail(errors, f"{label}: extraction/parasitic report must contain candidate actions")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale extraction input hash")
+        for artifact in report.get("extraction_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale extraction artifact hash")
+        gates = {
+            gate
+            for action in report.get("candidate_actions") or []
+            if isinstance(action, dict)
+            for gate in action.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/ai_eda/capture_extraction_parasitic_targets.py --run-id validation",
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "make no-hardware-action-check",
+            "make power-thermal-evidence-check",
+            "make manufacturing-artifacts-check",
+            "make real-world-gates-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
 
 
 def check_analog_mixed_signal_targets(source_ids: set[str], errors: list[str]) -> None:
@@ -2102,6 +2654,1239 @@ def check_cpu_microarchitecture_targets(source_ids: set[str], errors: list[str])
                 fail(errors, f"{label}: missing follow-up gate {required_gate}")
 
 
+def check_compiler_autotuning_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not COMPILER_AUTOTUNING_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {COMPILER_AUTOTUNING_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not COMPILER_AUTOTUNING_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in COMPILER_AUTOTUNING_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.compiler_autotuning_targets.v1":
+            fail(errors, f"{label}: unexpected compiler autotuning targets schema")
+        if report.get("claim_boundary") != COMPILER_AUTOTUNING_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe compiler autotuning claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_COMPILER_AUTOTUNING_EXECUTION":
+            fail(errors, f"{label}: compiler autotuning capture must not execute tools")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing compiler autotuning target policy")
+        elif (
+            policy.get("changes_source") is not False
+            or policy.get("changes_compiler") is not False
+            or policy.get("changes_codegen") is not False
+            or policy.get("changes_binary") is not False
+            or policy.get("changes_runtime") is not False
+            or policy.get("generates_code") is not False
+            or policy.get("generates_intrinsics") is not False
+            or policy.get("generates_profiles") is not False
+            or policy.get("runs_compiler") is not False
+            or policy.get("runs_autotuner") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("runs_ml_model") is not False
+            or policy.get("runs_benchmarks") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("imports_external_corpus") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("compiler_perf_claim_allowed") is not False
+            or policy.get("kernel_perf_claim_allowed") is not False
+            or policy.get("binary_release_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: compiler autotuning target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: compiler autotuning target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale compiler autotuning hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/check_compiler_versions.py",
+            "python3 scripts/run_rvv_autovec_suite.py",
+            "python3 compiler/runtime/test_e1_npu_runtime.py",
+            "python3 compiler/runtime/test_e1_npu_runtime_sim.py",
+            "make npu-runtime-contract-check",
+            "make benchmark-parser-test",
+            "make benchmark-calibration-test",
+            "make no-hardware-action-check",
+            "make benchmark-sim-metrics",
+            "make npu-scale-sim-check",
+            "make scale-feasibility-gate",
+            "make software-contract-check",
+            "make docs-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_reliability_resilience_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not RELIABILITY_RESILIENCE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {RELIABILITY_RESILIENCE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not RELIABILITY_RESILIENCE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in RELIABILITY_RESILIENCE_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.reliability_resilience_targets.v1":
+            fail(errors, f"{label}: unexpected reliability resilience targets schema")
+        if report.get("claim_boundary") != RELIABILITY_RESILIENCE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe reliability resilience claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_RELIABILITY_RESILIENCE_EXECUTION":
+            fail(errors, f"{label}: reliability resilience capture must not execute tools")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing reliability resilience target policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("changes_layout") is not False
+            or policy.get("changes_pdn") is not False
+            or policy.get("changes_firmware") is not False
+            or policy.get("inserts_faults") is not False
+            or policy.get("runs_fault_injection") is not False
+            or policy.get("runs_aging_analysis") is not False
+            or policy.get("runs_em_analysis") is not False
+            or policy.get("runs_formal") is not False
+            or policy.get("runs_simulator") is not False
+            or policy.get("runs_ml_model") is not False
+            or policy.get("generates_mitigation") is not False
+            or policy.get("generates_ecc_or_tmr") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("imports_external_corpus") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("reliability_claim_allowed") is not False
+            or policy.get("aging_lifetime_claim_allowed") is not False
+            or policy.get("soft_error_claim_allowed") is not False
+            or policy.get("em_ir_signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: reliability resilience target policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: reliability resilience target report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale reliability resilience hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make process-14a-effects-check",
+            "make power-thermal-evidence-check",
+            "make pd-signoff-manifest-check",
+            "make formal",
+            "make cocotb-npu",
+            "make qemu-check",
+            "make no-hardware-action-check",
+            "python3 compiler/runtime/test_e1_npu_runtime.py",
+            "python3 compiler/runtime/test_e1_npu_runtime_sim.py",
+            "make npu-runtime-contract-check",
+            "make benchmark-sim-metrics",
+            "make memory-evidence-template-check",
+            "make memory-interconnect-contract-check",
+            "make rtl-check",
+            "make synth",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_external_model_corpus_intake_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.external_model_corpus_intake_targets.v1":
+            fail(errors, f"{label}: unexpected external model corpus intake schema")
+        if report.get("claim_boundary") != EXTERNAL_MODEL_CORPUS_INTAKE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe external model corpus intake claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_EXTERNAL_MODEL_CORPUS_IMPORT":
+            fail(errors, f"{label}: external model corpus intake must not import assets")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing external model corpus intake policy")
+        elif (
+            policy.get("imports_external_assets") is not False
+            or policy.get("downloads_datasets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("downloads_code") is not False
+            or policy.get("exports_local_corpus") is not False
+            or policy.get("trains_model") is not False
+            or policy.get("fine_tunes_model") is not False
+            or policy.get("runs_inference") is not False
+            or policy.get("runs_eval") is not False
+            or policy.get("generates_rtl") is not False
+            or policy.get("generates_assertions") is not False
+            or policy.get("generates_layout_features") is not False
+            or policy.get("changes_source") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("model_quality_claim_allowed") is not False
+            or policy.get("dataset_quality_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: external model corpus intake policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: external model corpus intake report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale external intake hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "python3 scripts/ai_eda/capture_openroad_ml_snapshot.py --run-id validation",
+            "python3 scripts/ai_eda/capture_circuit_foundation_model_targets.py --run-id validation",
+            "make docs-check",
+            "make rtl-check",
+            "make synth",
+            "make pd-signoff-manifest-check",
+            "make physical-closure-work-order-check",
+            "make cocotb-npu",
+            "make formal",
+            "make no-hardware-action-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_benchmark_evaluation_hygiene_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not BENCHMARK_EVALUATION_HYGIENE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {BENCHMARK_EVALUATION_HYGIENE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not BENCHMARK_EVALUATION_HYGIENE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in BENCHMARK_EVALUATION_HYGIENE_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.benchmark_evaluation_hygiene_targets.v1":
+            fail(errors, f"{label}: unexpected benchmark evaluation hygiene schema")
+        if report.get("claim_boundary") != BENCHMARK_EVALUATION_HYGIENE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe benchmark evaluation hygiene claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_BENCHMARK_IMPORT_OR_EVALUATION":
+            fail(errors, f"{label}: benchmark evaluation hygiene must not import or evaluate")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing benchmark evaluation hygiene policy")
+        elif (
+            policy.get("imports_benchmarks") is not False
+            or policy.get("downloads_benchmarks") is not False
+            or policy.get("downloads_datasets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("downloads_code") is not False
+            or policy.get("exports_e1_tasks") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_inference") is not False
+            or policy.get("runs_eval") is not False
+            or policy.get("runs_contamination_detector") is not False
+            or policy.get("generates_prompts") is not False
+            or policy.get("generates_rtl") is not False
+            or policy.get("changes_source") is not False
+            or policy.get("score_claim_allowed") is not False
+            or policy.get("contamination_claim_allowed") is not False
+            or policy.get("model_quality_claim_allowed") is not False
+            or policy.get("benchmark_quality_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: benchmark evaluation hygiene policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: benchmark evaluation hygiene report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale benchmark hygiene hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
+            "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "make docs-check",
+            "make no-hardware-action-check",
+            "make rtl-check",
+            "make cocotb-npu",
+            "make formal",
+            "make synth",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_eda_tool_agent_interop_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not EDA_TOOL_AGENT_INTEROP_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {EDA_TOOL_AGENT_INTEROP_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not EDA_TOOL_AGENT_INTEROP_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in EDA_TOOL_AGENT_INTEROP_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.eda_tool_agent_interop_targets.v1":
+            fail(errors, f"{label}: unexpected EDA tool-agent interop schema")
+        if report.get("claim_boundary") != EDA_TOOL_AGENT_INTEROP_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe EDA tool-agent interop claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_EDA_TOOL_AGENT_EXECUTION":
+            fail(errors, f"{label}: EDA tool-agent interop must not execute tools")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing EDA tool-agent interop policy")
+        elif (
+            policy.get("executes_agent") is not False
+            or policy.get("invokes_open_source_eda") is not False
+            or policy.get("invokes_commercial_eda") is not False
+            or policy.get("calls_external_api") is not False
+            or policy.get("starts_mcp_server") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_shell") is not False
+            or policy.get("generates_rtl") is not False
+            or policy.get("generates_testbench") is not False
+            or policy.get("generates_constraints") is not False
+            or policy.get("generates_waivers") is not False
+            or policy.get("runs_simulation") is not False
+            or policy.get("runs_synthesis") is not False
+            or policy.get("runs_place_and_route") is not False
+            or policy.get("runs_signoff") is not False
+            or policy.get("changes_source") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("tool_quality_claim_allowed") is not False
+            or policy.get("productivity_claim_allowed") is not False
+            or policy.get("ppa_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: EDA tool-agent interop policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: EDA tool-agent interop report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale EDA tool-agent interop hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
+            "make commercial-eda-gate",
+            "make openlane-run-preflight-check",
+            "make physical-closure-work-order-check",
+            "make pd-signoff-manifest-check",
+            "make docs-check",
+            "make no-hardware-action-check",
+            "make rtl-check",
+            "make formal",
+            "make cocotb-npu",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_spec_traceability_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not SPEC_TRACEABILITY_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {SPEC_TRACEABILITY_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not SPEC_TRACEABILITY_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in SPEC_TRACEABILITY_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.spec_traceability_targets.v1":
+            fail(errors, f"{label}: unexpected spec traceability schema")
+        if report.get("claim_boundary") != SPEC_TRACEABILITY_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe spec traceability claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_SPEC_TRACEABILITY_EXECUTION":
+            fail(errors, f"{label}: spec traceability capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing spec traceability policy")
+        elif (
+            policy.get("changes_requirements") is not False
+            or policy.get("changes_specs") is not False
+            or policy.get("changes_rtl") is not False
+            or policy.get("changes_assertions") is not False
+            or policy.get("changes_testbench") is not False
+            or policy.get("exports_private_prompts") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_parser") is not False
+            or policy.get("runs_formal") is not False
+            or policy.get("runs_simulation") is not False
+            or policy.get("runs_synthesis") is not False
+            or policy.get("generates_trace_matrix") is not False
+            or policy.get("generates_rtl") is not False
+            or policy.get("generates_sva") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("traceability_claim_allowed") is not False
+            or policy.get("requirement_coverage_claim_allowed") is not False
+            or policy.get("assertion_quality_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: spec traceability policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: spec traceability report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale spec traceability hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_verification_debug_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+            "python3 scripts/ai_eda/evaluate_rtl_model.py --run-id validation --dry-run",
+            "make platform-contract-check",
+            "make docs-check",
+            "make rtl-check",
+            "make formal",
+            "make synth",
+            "make cocotb-contract",
+            "make no-hardware-action-check",
+            "make cocotb-npu",
+            "make npu-runtime-contract-check",
+            "make npu-2028-target-check",
+            "make memory-interconnect-contract-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_ip_register_contract_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not IP_REGISTER_CONTRACT_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {IP_REGISTER_CONTRACT_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not IP_REGISTER_CONTRACT_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in IP_REGISTER_CONTRACT_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.ip_register_contract_targets.v1":
+            fail(errors, f"{label}: unexpected IP/register contract schema")
+        if report.get("claim_boundary") != IP_REGISTER_CONTRACT_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe IP/register contract claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_IP_REGISTER_CONTRACT_EXECUTION":
+            fail(errors, f"{label}: IP/register contract capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing IP/register contract policy")
+        elif (
+            policy.get("imports_external_ip") is not False
+            or policy.get("downloads_ip") is not False
+            or policy.get("runs_generator") is not False
+            or policy.get("runs_eda_flow") is not False
+            or policy.get("changes_platform_contract") is not False
+            or policy.get("changes_register_map") is not False
+            or policy.get("changes_rtl") is not False
+            or policy.get("changes_headers") is not False
+            or policy.get("changes_device_tree") is not False
+            or policy.get("changes_driver") is not False
+            or policy.get("generates_rtl") is not False
+            or policy.get("generates_headers") is not False
+            or policy.get("generates_docs") is not False
+            or policy.get("generates_ipxact") is not False
+            or policy.get("generates_systemrdl") is not False
+            or policy.get("runs_llm") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("ip_quality_claim_allowed") is not False
+            or policy.get("register_correctness_claim_allowed") is not False
+            or policy.get("platform_contract_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: IP/register contract policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: IP/register contract report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale IP/register contract hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
+            "python3 scripts/ai_eda/capture_spec_traceability_targets.py --run-id validation",
+            "make platform-contract-check",
+            "make npu-runtime-contract-check",
+            "make docs-check",
+            "make no-hardware-action-check",
+            "make rtl-check",
+            "make cocotb-contract",
+            "make memory-interconnect-contract-check",
+            "python3 scripts/check_linux_platform_contract.py",
+            "make software-contract-check",
+            "make buildroot-check",
+            "make aosp-bsp-check",
+            "make npu-2028-target-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_memory_macro_library_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not MEMORY_MACRO_LIBRARY_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {MEMORY_MACRO_LIBRARY_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not MEMORY_MACRO_LIBRARY_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in MEMORY_MACRO_LIBRARY_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.memory_macro_library_targets.v1":
+            fail(errors, f"{label}: unexpected memory macro/library schema")
+        if report.get("claim_boundary") != MEMORY_MACRO_LIBRARY_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe memory macro/library claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_MEMORY_MACRO_LIBRARY_EXECUTION":
+            fail(errors, f"{label}: memory macro/library capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing memory macro/library policy")
+        elif (
+            policy.get("downloads_pdk_or_macros") is not False
+            or policy.get("imports_external_macro") is not False
+            or policy.get("runs_memory_compiler") is not False
+            or policy.get("runs_memory_estimator") is not False
+            or policy.get("runs_ai_model") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_drc_lvs_extraction") is not False
+            or policy.get("changes_rtl") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("changes_liberty") is not False
+            or policy.get("changes_lef") is not False
+            or policy.get("changes_gds") is not False
+            or policy.get("generates_macro") is not False
+            or policy.get("generates_memory_model") is not False
+            or policy.get("generates_bist_or_repair") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("area_timing_power_claim_allowed") is not False
+            or policy.get("vmin_yield_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: memory macro/library policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: memory macro/library report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale memory macro/library hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_memory_macro_library_targets.py --run-id validation",
+            "make pdk-portability-check",
+            "make memory-uma-claim-gate",
+            "make memory-evidence-template-check",
+            "make memory-interconnect-contract-check",
+            "make process-14a-effects-check",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "make rtl-check",
+            "make synth",
+            "make power-thermal-evidence-check",
+            "make no-hardware-action-check",
+            "make docs-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_chiplet_3dic_package_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not CHIPLET_3DIC_PACKAGE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {CHIPLET_3DIC_PACKAGE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not CHIPLET_3DIC_PACKAGE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in CHIPLET_3DIC_PACKAGE_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.chiplet_3dic_package_targets.v1":
+            fail(errors, f"{label}: unexpected chiplet/3DIC package schema")
+        if report.get("claim_boundary") != CHIPLET_3DIC_PACKAGE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe chiplet/3DIC package claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_CHIPLET_3DIC_PACKAGE_EXECUTION":
+            fail(errors, f"{label}: chiplet/3DIC package capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing chiplet/3DIC package policy")
+        elif (
+            policy.get("changes_architecture") is not False
+            or policy.get("changes_package") is not False
+            or policy.get("changes_pinout") is not False
+            or policy.get("changes_padframe") is not False
+            or policy.get("changes_board") is not False
+            or policy.get("changes_rtl") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("generates_chiplet_partition") is not False
+            or policy.get("generates_interposer_layout") is not False
+            or policy.get("generates_ucie_or_die_to_die_interface") is not False
+            or policy.get("generates_package_or_bump_map") is not False
+            or policy.get("generates_si_pi_thermal_model") is not False
+            or policy.get("runs_eda_flow") is not False
+            or policy.get("runs_external_simulator") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("cost_yield_perf_claim_allowed") is not False
+            or policy.get("package_release_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: chiplet/3DIC package policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: chiplet/3DIC package report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale chiplet/3DIC package hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "make package-cross-probe-check",
+            "make memory-interconnect-contract-check",
+            "make platform-contract-check",
+            "make padframe-check",
+            "make rtl-check",
+            "make cocotb-contract",
+            "make power-thermal-evidence-check",
+            "make pd-signoff-manifest-check",
+            "make board-package-evidence-check",
+            "make manufacturing-artifacts-check",
+            "make real-world-gates-check",
+            "make no-hardware-action-check",
+            "make docs-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_logic_synthesis_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not LOGIC_SYNTHESIS_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {LOGIC_SYNTHESIS_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not LOGIC_SYNTHESIS_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in LOGIC_SYNTHESIS_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.logic_synthesis_targets.v1":
+            fail(errors, f"{label}: unexpected logic synthesis schema")
+        if report.get("claim_boundary") != LOGIC_SYNTHESIS_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe logic synthesis claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_LOGIC_SYNTHESIS_EXECUTION":
+            fail(errors, f"{label}: logic synthesis capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing logic synthesis policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_synthesis_script") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("runs_synthesis") is not False
+            or policy.get("runs_abc") is not False
+            or policy.get("runs_formal") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("generates_abc_recipe") is not False
+            or policy.get("generates_netlist") is not False
+            or policy.get("generates_mapping") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("area_timing_power_claim_allowed") is not False
+            or policy.get("equivalence_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: logic synthesis policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: logic synthesis report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale logic synthesis hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation",
+            "make synth",
+            "make formal",
+            "make rtl-check",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "make power-thermal-evidence-check",
+            "make cocotb-contract",
+            "make platform-contract-check",
+            "make no-hardware-action-check",
+            "make docs-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_netlist_equivalence_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not NETLIST_EQUIVALENCE_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {NETLIST_EQUIVALENCE_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not NETLIST_EQUIVALENCE_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in NETLIST_EQUIVALENCE_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.netlist_equivalence_targets.v1":
+            fail(errors, f"{label}: unexpected netlist equivalence schema")
+        if report.get("claim_boundary") != NETLIST_EQUIVALENCE_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe netlist equivalence claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_LEC_OR_EQUIVALENCE_EXECUTION":
+            fail(errors, f"{label}: netlist equivalence capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing netlist equivalence policy")
+        elif (
+            policy.get("changes_rtl") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("changes_synthesis_script") is not False
+            or policy.get("changes_formal_script") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("runs_yosys") is not False
+            or policy.get("runs_eqy") is not False
+            or policy.get("runs_abc") is not False
+            or policy.get("runs_circt_lec") is not False
+            or policy.get("runs_formal") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("generates_miter") is not False
+            or policy.get("generates_equivalence_script") is not False
+            or policy.get("generates_proof") is not False
+            or policy.get("generates_waiver") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("equivalence_claim_allowed") is not False
+            or policy.get("timing_claim_allowed") is not False
+            or policy.get("qor_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: netlist equivalence policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: netlist equivalence report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale netlist equivalence hash")
+        for artifact in report.get("openlane_netlist_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale OpenLane netlist hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_logic_synthesis_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+            "python3 scripts/ai_eda/build_local_eda_rag_index.py --run-id validation",
+            "make synth",
+            "make formal",
+            "make rtl-check",
+            "make cocotb-contract",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "make power-thermal-evidence-check",
+            "make platform-contract-check",
+            "make no-hardware-action-check",
+            "make docs-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_physical_verification_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not PHYSICAL_VERIFICATION_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {PHYSICAL_VERIFICATION_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not PHYSICAL_VERIFICATION_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in PHYSICAL_VERIFICATION_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.physical_verification_targets.v1":
+            fail(errors, f"{label}: unexpected physical verification schema")
+        if report.get("claim_boundary") != PHYSICAL_VERIFICATION_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe physical verification claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_DRC_LVS_OR_LAYOUT_CHANGE":
+            fail(errors, f"{label}: physical verification capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing physical verification policy")
+        elif (
+            policy.get("changes_layout") is not False
+            or policy.get("changes_gds") is not False
+            or policy.get("changes_def") is not False
+            or policy.get("changes_odb") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("changes_pdk_rules") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("runs_klayout") is not False
+            or policy.get("runs_magic") is not False
+            or policy.get("runs_netgen") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_drc") is not False
+            or policy.get("runs_lvs") is not False
+            or policy.get("runs_xor") is not False
+            or policy.get("runs_antenna_check") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_foundry_data") is not False
+            or policy.get("generates_drc_deck") is not False
+            or policy.get("generates_drc_fix") is not False
+            or policy.get("generates_lvs_waiver") is not False
+            or policy.get("generates_antenna_fix") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("drc_claim_allowed") is not False
+            or policy.get("lvs_claim_allowed") is not False
+            or policy.get("antenna_claim_allowed") is not False
+            or policy.get("physical_signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: physical verification policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: physical verification report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale physical verification hash")
+        for artifact in report.get("physical_verification_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale physical verification artifact hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_physical_verification_targets.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "make antenna-metadata-check",
+            "make docs-check",
+            "make no-hardware-action-check",
+            "make manufacturing-artifacts-check",
+            "make commercial-eda-gate",
+            "python3 scripts/ai_eda/capture_routing_congestion_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_extraction_parasitic_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_dfm_yield_lithography_targets.py --run-id validation",
+            "make power-thermal-evidence-check",
+            "make real-world-gates-check",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_placement_legalization_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not PLACEMENT_LEGALIZATION_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {PLACEMENT_LEGALIZATION_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not PLACEMENT_LEGALIZATION_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in PLACEMENT_LEGALIZATION_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.placement_legalization_targets.v1":
+            fail(errors, f"{label}: unexpected placement/legalization schema")
+        if report.get("claim_boundary") != PLACEMENT_LEGALIZATION_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe placement/legalization claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_PLACEMENT_OR_PD_CHANGE":
+            fail(errors, f"{label}: placement/legalization capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing placement/legalization policy")
+        elif (
+            policy.get("changes_floorplan") is not False
+            or policy.get("changes_placement") is not False
+            or policy.get("changes_def") is not False
+            or policy.get("changes_odb") is not False
+            or policy.get("changes_gds") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("changes_netlist") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_global_placement") is not False
+            or policy.get("runs_detailed_placement") is not False
+            or policy.get("runs_legalization") is not False
+            or policy.get("runs_filler_placement") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("downloads_model_weights") is not False
+            or policy.get("imports_external_benchmarks") is not False
+            or policy.get("generates_placement") is not False
+            or policy.get("generates_density_change") is not False
+            or policy.get("generates_padding_change") is not False
+            or policy.get("generates_macro_placement") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("placement_qor_claim_allowed") is not False
+            or policy.get("timing_claim_allowed") is not False
+            or policy.get("routability_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: placement/legalization policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: placement/legalization report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale placement/legalization hash")
+        for artifact in report.get("placement_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(
+                        errors,
+                        f"{label}/{path_value}: stale placement/legalization artifact hash",
+                    )
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "python3 scripts/ai_eda/capture_routing_congestion_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_timing_closure_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_physical_verification_targets.py --run-id validation",
+            "make no-hardware-action-check",
+            "make docs-check",
+            "python3 scripts/ai_eda/capture_openroad_ml_snapshot.py --run-id validation",
+            "scripts/ai_eda/run_openroad_autotune_e1.sh --run-id validation",
+            "make synth",
+            "make power-thermal-evidence-check",
+            "make commercial-eda-gate",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
+def check_floorplan_io_pdn_targets(source_ids: set[str], errors: list[str]) -> None:
+    if not FLOORPLAN_IO_PDN_TARGETS_SCRIPT.is_file():
+        fail(errors, f"missing {FLOORPLAN_IO_PDN_TARGETS_SCRIPT.relative_to(ROOT)}")
+    if not FLOORPLAN_IO_PDN_TARGETS_BUILD.is_dir():
+        return
+    for run_dir in sorted(
+        path for path in FLOORPLAN_IO_PDN_TARGETS_BUILD.iterdir() if path.is_dir()
+    ):
+        report = load_json(run_dir / "targets_report.json", errors)
+        label = str(run_dir.relative_to(ROOT))
+        if not isinstance(report, dict):
+            continue
+        if report.get("schema") != "eliza.ai_eda.floorplan_io_pdn_targets.v1":
+            fail(errors, f"{label}: unexpected floorplan/IO/PDN schema")
+        if report.get("claim_boundary") != FLOORPLAN_IO_PDN_TARGETS_CLAIM_BOUNDARY:
+            fail(errors, f"{label}: unsafe floorplan/IO/PDN claim boundary")
+        if report.get("status") != "TARGET_CAPTURE_ONLY_NO_FLOORPLAN_IO_OR_PDN_CHANGE":
+            fail(errors, f"{label}: floorplan/IO/PDN capture must not execute")
+        for source_id in report.get("source_ids") or []:
+            if source_id not in source_ids:
+                fail(errors, f"{label}: unknown source_id {source_id}")
+        policy = report.get("policy")
+        if not isinstance(policy, dict):
+            fail(errors, f"{label}: missing floorplan/IO/PDN policy")
+        elif (
+            policy.get("changes_floorplan") is not False
+            or policy.get("changes_die_area") is not False
+            or policy.get("changes_core_area") is not False
+            or policy.get("changes_macro_placement") is not False
+            or policy.get("changes_io_placement") is not False
+            or policy.get("changes_pin_order") is not False
+            or policy.get("changes_padframe") is not False
+            or policy.get("changes_pdn") is not False
+            or policy.get("changes_tapcell") is not False
+            or policy.get("changes_endcap") is not False
+            or policy.get("changes_tracks") is not False
+            or policy.get("changes_def") is not False
+            or policy.get("changes_odb") is not False
+            or policy.get("changes_gds") is not False
+            or policy.get("changes_pd_config") is not False
+            or policy.get("changes_constraints") is not False
+            or policy.get("runs_openroad") is not False
+            or policy.get("runs_openlane") is not False
+            or policy.get("runs_floorplan") is not False
+            or policy.get("runs_ioplacer") is not False
+            or policy.get("runs_tapcell") is not False
+            or policy.get("runs_pdngen") is not False
+            or policy.get("runs_pdn_analysis") is not False
+            or policy.get("runs_model") is not False
+            or policy.get("runs_llm_or_agent") is not False
+            or policy.get("downloads_external_assets") is not False
+            or policy.get("imports_external_benchmarks") is not False
+            or policy.get("generates_floorplan") is not False
+            or policy.get("generates_pin_assignment") is not False
+            or policy.get("generates_pdn") is not False
+            or policy.get("generates_tcl") is not False
+            or policy.get("generates_patch") is not False
+            or policy.get("prediction_generated") is not False
+            or policy.get("floorplan_claim_allowed") is not False
+            or policy.get("pinout_claim_allowed") is not False
+            or policy.get("pdn_claim_allowed") is not False
+            or policy.get("signoff_claim_allowed") is not False
+            or policy.get("release_use_allowed") is not False
+        ):
+            fail(errors, f"{label}: floorplan/IO/PDN policy allows unsafe use")
+        tasks = report.get("candidate_tasks")
+        if not isinstance(tasks, list) or not tasks:
+            fail(errors, f"{label}: floorplan/IO/PDN report must contain tasks")
+        for artifact in report.get("input_artifacts") or []:
+            path_value = artifact.get("path")
+            if artifact.get("status") == "PRESENT" and isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale floorplan/IO/PDN hash")
+        for artifact in report.get("floorplan_artifacts") or []:
+            path_value = artifact.get("path")
+            if isinstance(path_value, str):
+                path = ROOT / path_value
+                if not path.is_file() or artifact.get("sha256") != sha256_file(path):
+                    fail(errors, f"{label}/{path_value}: stale floorplan/IO/PDN artifact hash")
+        gates = {
+            gate
+            for task in tasks or []
+            if isinstance(task, dict)
+            for gate in task.get("acceptance_gates", [])
+        }
+        for required_gate in (
+            "python3 scripts/check_ai_eda_source_inventory.py",
+            "python3 scripts/ai_eda/capture_floorplan_io_pdn_targets.py --run-id validation",
+            "make openlane-run-preflight-check",
+            "make pd-signoff-manifest-check",
+            "python3 scripts/check_pd_closure.py",
+            "python3 scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation",
+            "python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation",
+            "make padframe-check",
+            "make no-hardware-action-check",
+            "make docs-check",
+            "python3 scripts/ai_eda/capture_board_package_fpga_targets.py --run-id validation",
+            "make power-thermal-evidence-check",
+            "make pdn-workload-signoff",
+            "make manufacturing-artifacts-check",
+            "make commercial-eda-gate",
+        ):
+            if required_gate not in gates:
+                fail(errors, f"{label}: missing follow-up gate {required_gate}")
+
+
 def main() -> int:
     errors: list[str] = []
     source_ids = check_inventory(errors)
@@ -2120,6 +3905,9 @@ def main() -> int:
     check_rtlmul_ppa(source_ids, errors)
     check_hls_accelerator_targets(source_ids, errors)
     check_timing_closure_targets(source_ids, errors)
+    check_routing_congestion_targets(source_ids, errors)
+    check_clock_tree_targets(source_ids, errors)
+    check_extraction_parasitic_targets(source_ids, errors)
     check_analog_mixed_signal_targets(source_ids, errors)
     check_memory_interconnect_targets(source_ids, errors)
     check_dft_atpg_targets(source_ids, errors)
@@ -2135,6 +3923,20 @@ def main() -> int:
     check_circuit_foundation_model_targets(source_ids, errors)
     check_dfm_yield_lithography_targets(source_ids, errors)
     check_cpu_microarchitecture_targets(source_ids, errors)
+    check_compiler_autotuning_targets(source_ids, errors)
+    check_reliability_resilience_targets(source_ids, errors)
+    check_external_model_corpus_intake_targets(source_ids, errors)
+    check_benchmark_evaluation_hygiene_targets(source_ids, errors)
+    check_eda_tool_agent_interop_targets(source_ids, errors)
+    check_spec_traceability_targets(source_ids, errors)
+    check_ip_register_contract_targets(source_ids, errors)
+    check_memory_macro_library_targets(source_ids, errors)
+    check_chiplet_3dic_package_targets(source_ids, errors)
+    check_logic_synthesis_targets(source_ids, errors)
+    check_netlist_equivalence_targets(source_ids, errors)
+    check_physical_verification_targets(source_ids, errors)
+    check_placement_legalization_targets(source_ids, errors)
+    check_floorplan_io_pdn_targets(source_ids, errors)
     check_openroad_autotune(errors)
     check_rtl_eval(errors)
     check_pd_predictor(errors)
