@@ -1,0 +1,312 @@
+import { CAPABILITY_ROUTER_PROTOCOL_FIXTURE } from "@elizaos/core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
+
+const originalFetch = globalThis.fetch;
+
+describe("remote capability endpoint conformance", () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it("exercises the standard plugin RPC surfaces through the capability-router client", async () => {
+    const calls: Array<{ url: string; method?: string; params?: unknown }> = [];
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as {
+            method?: string;
+            params?: Record<string, unknown>;
+          })
+        : undefined;
+      calls.push({ url: String(url), method: body?.method, params: body?.params });
+      if (String(url) === "https://remote.example.test/v1/capabilities") {
+        return jsonResponse({
+          environment: "server",
+          available: true,
+          capabilities: {
+            fs: false,
+            pty: false,
+            git: false,
+            model: false,
+            plugin: true,
+          },
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.modules.list"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: {
+            modules: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module],
+          },
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.action.invoke"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.provider.get"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.route.call"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.asset.get"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.model.invoke"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.lifecycle.call"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.event.handle"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.event,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.service.call"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service,
+        });
+      }
+      if (
+        String(url) ===
+          "https://remote.example.test/v1/capabilities/invoke" &&
+        body?.method === "plugin.appBridge.call"
+      ) {
+        return jsonResponse({
+          ok: true,
+          result: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge,
+        });
+      }
+      if (String(url).endsWith("/v1/capabilities/invoke")) {
+        const resultByMethod: Record<string, unknown> = {
+          "plugin.evaluator.shouldRun":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
+          "plugin.evaluator.prepare":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare,
+          "plugin.evaluator.prompt":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt,
+          "plugin.evaluator.process":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess,
+          "plugin.responseHandlerEvaluator.shouldRun":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+              .responseHandlerEvaluatorShouldRun,
+          "plugin.responseHandlerEvaluator.evaluate":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+              .responseHandlerEvaluatorEvaluate,
+          "plugin.responseHandlerFieldEvaluator.shouldRun":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+              .responseHandlerFieldEvaluatorShouldRun,
+          "plugin.responseHandlerFieldEvaluator.parse":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+              .responseHandlerFieldEvaluatorParse,
+          "plugin.responseHandlerFieldEvaluator.handle":
+            CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+              .responseHandlerFieldEvaluatorHandle,
+        };
+        if (body?.method && body.method in resultByMethod) {
+          return jsonResponse({ ok: true, result: resultByMethod[body.method] });
+        }
+      }
+      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+          token: "remote-token",
+        },
+      }),
+    ).resolves.toMatchObject({
+      endpointId: "remote-endpoint",
+      moduleCount: 1,
+      moduleIds: [CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id],
+      exercised: {
+        action: "fixture-remote-plugin:FIXTURE_ACTION",
+        provider: "fixture-remote-plugin:FIXTURE_CONTEXT",
+        route: "fixture-remote-plugin:POST /fixture/route",
+        viewAsset: "fixture-remote-plugin:/assets/fixture-view.js",
+        model: "fixture-remote-plugin:TEXT_SMALL",
+        lifecycle: "fixture-remote-plugin:init",
+        event: "fixture-remote-plugin:fixture.event",
+        service: "fixture-remote-plugin:fixture-service.ping",
+        appBridge: "fixture-remote-plugin:prepareLaunch",
+        evaluator: "fixture-remote-plugin:FIXTURE_EVALUATOR",
+        responseHandlerEvaluator:
+          "fixture-remote-plugin:FIXTURE_RESPONSE_EVALUATOR",
+        responseHandlerFieldEvaluator:
+          "fixture-remote-plugin:FIXTURE_FIELD_EVALUATOR",
+      },
+      actionResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.action,
+      providerResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.provider,
+      routeResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.route,
+      assetResult: {
+        path: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.path,
+        contentType: "text/javascript",
+        byteLength: Buffer.from(
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset.bodyBase64,
+          "base64",
+        ).byteLength,
+      },
+      modelResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.model,
+      lifecycleResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.lifecycle,
+      eventResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.event,
+      serviceResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.service,
+      appBridgeResult: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.appBridge,
+      evaluatorResult: {
+        shouldRun: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorShouldRun,
+        prepare: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrepare,
+        prompt: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorPrompt,
+        process: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.evaluatorProcess,
+      },
+      responseHandlerEvaluatorResult: {
+        shouldRun:
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+            .responseHandlerEvaluatorShouldRun,
+        evaluate:
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+            .responseHandlerEvaluatorEvaluate,
+      },
+      responseHandlerFieldEvaluatorResult: {
+        shouldRun:
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+            .responseHandlerFieldEvaluatorShouldRun,
+        parse:
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+            .responseHandlerFieldEvaluatorParse,
+        handle:
+          CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results
+            .responseHandlerFieldEvaluatorHandle,
+      },
+    });
+    expect(calls.map((call) => call.method ?? "availability")).toEqual([
+      "availability",
+      "plugin.modules.list",
+      "plugin.action.invoke",
+      "plugin.provider.get",
+      "plugin.route.call",
+      "plugin.asset.get",
+      "plugin.model.invoke",
+      "plugin.lifecycle.call",
+      "plugin.event.handle",
+      "plugin.service.call",
+      "plugin.appBridge.call",
+      "plugin.evaluator.shouldRun",
+      "plugin.evaluator.prepare",
+      "plugin.evaluator.prompt",
+      "plugin.evaluator.process",
+      "plugin.responseHandlerEvaluator.shouldRun",
+      "plugin.responseHandlerEvaluator.evaluate",
+      "plugin.responseHandlerFieldEvaluator.shouldRun",
+      "plugin.responseHandlerFieldEvaluator.parse",
+      "plugin.responseHandlerFieldEvaluator.handle",
+    ]);
+  });
+
+  it("fails when a required remote plugin surface is missing", async () => {
+    globalThis.fetch = vi.fn(async (url: string | URL, init?: RequestInit) => {
+      const body = init?.body
+        ? (JSON.parse(String(init.body)) as { method?: string })
+        : undefined;
+      if (String(url) === "https://remote.example.test/v1/capabilities") {
+        return jsonResponse({
+          environment: "server",
+          available: true,
+          capabilities: {
+            fs: false,
+            pty: false,
+            git: false,
+            model: false,
+            plugin: true,
+          },
+        });
+      }
+      if (body?.method === "plugin.modules.list") {
+        return jsonResponse({
+          ok: true,
+          result: {
+            modules: [{ id: "remote-plugin", name: "@remote/conformance" }],
+          },
+        });
+      }
+      return jsonResponse({ ok: false, error: { message: "unexpected" } }, 404);
+    }) as unknown as typeof fetch;
+
+    await expect(
+      assertRemoteCapabilityEndpointConformance({
+        endpoint: {
+          id: "remote-endpoint",
+          baseUrl: "https://remote.example.test",
+        },
+        requiredSurfaces: ["action"],
+      }),
+    ).rejects.toThrow(
+      'Capability endpoint "remote-endpoint" did not expose a remote action.',
+    );
+  });
+});
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
