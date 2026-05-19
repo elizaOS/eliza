@@ -1,0 +1,94 @@
+schema: eliza.sensor_bom.v1
+as_of: 2026-05-19
+status: planning_binding_no_bonded_pins_no_fabricated_board
+claim_boundary: >
+  Planning sensor BOM. No I2C/I3C controller is bonded out, no sensors are
+  mounted on a board. Promotion requires bonded I2C and sensor INT pins,
+  board layout, and per-sensor probe transcripts.
+sensors:
+  - role: imu_6dof_or_9dof
+    part: BMI323
+    vendor: Bosch Sensortec
+    datasheet_url: https://www.bosch-sensortec.com/products/motion-sensors/imus/bmi323/
+    mainline_driver: drivers/iio/imu/bmi323/
+    interface: I2C or SPI
+    i2c_address_7bit: 0x68
+    features:
+      - 16-bit 3-axis accelerometer (±2/±4/±8/±16 g)
+      - 16-bit 3-axis gyroscope (±125/±250/±500/±1000/±2000 dps)
+      - 6 kB FIFO for batch reads
+      - Built-in interrupt engine (motion, freefall, step counter)
+    android_hal: Sensor HAL 2.x (Composite IMU)
+  - role: barometric_pressure
+    part: BMP390
+    vendor: Bosch Sensortec
+    datasheet_url: https://www.bosch-sensortec.com/products/environmental-sensors/pressure-sensors/bmp390/
+    mainline_driver: drivers/iio/pressure/bmp280-core.c
+    interface: I2C or SPI
+    i2c_address_7bit: 0x76
+    features:
+      - 300–1250 hPa range
+      - Relative accuracy ±0.03 hPa (±25 cm)
+      - 24-bit ADC for pressure + temperature
+    android_hal: Sensor HAL Pressure
+  - role: magnetometer
+    part: AK09918
+    vendor: Asahi Kasei Microdevices
+    datasheet_url: https://www.akm.com/global/en/products/electronic-compass/ak09918/
+    mainline_driver: drivers/iio/magnetometer/ak8975.c (family driver, AK09918 supported)
+    interface: I2C
+    i2c_address_7bit: 0x0C
+    features:
+      - ±4900 µT range, 0.15 µT/LSB resolution
+      - Low power (1.1 µA at 1 Hz sampling)
+    android_hal: Sensor HAL Magnetometer
+  - role: ambient_light_and_proximity
+    part: TSL2591
+    vendor: AMS-OSRAM (formerly TAOS)
+    datasheet_url: https://ams-osram.com/products/sensors/ambient-light-color-spectral-proximity-sensors/ams-tsl2591-light-to-digital-converter
+    mainline_driver: drivers/iio/light/tsl2591.c
+    interface: I2C
+    i2c_address_7bit: 0x29
+    features:
+      - 600M:1 dynamic range light sensor
+      - Both full-spectrum and IR channel
+      - Programmable interrupt
+    android_hal: Sensor HAL Light (proximity needs supplementary IR LED + receiver per panel design)
+host_interfaces:
+  i2c_bus:
+    bus_id: SENSOR_I2C
+    speed_khz_default: 400
+    speed_khz_max: 1000
+    signals:
+      - {contract: SENSOR_I2C_SCL, module_role: i2c_clock, direction_at_soc: output}
+      - {contract: SENSOR_I2C_SDA, module_role: i2c_data, direction_at_soc: bidirectional}
+  interrupts:
+    signals:
+      - {contract: IMU_INT1, module_role: bmi323_int1, direction_at_soc: input, default_pull: down}
+      - {contract: IMU_INT2, module_role: bmi323_int2, direction_at_soc: input, default_pull: down}
+      - {contract: BARO_INT, module_role: bmp390_int, direction_at_soc: input, default_pull: down}
+      - {contract: MAG_DRDY, module_role: ak09918_data_ready, direction_at_soc: input, default_pull: down}
+      - {contract: ALS_INT, module_role: tsl2591_int, direction_at_soc: input, default_pull: up}
+power_sequence:
+  status: required_not_implemented
+  rails:
+    - {name: VDD_3V0_SENSORS, owner: PMIC_LDO5, status: missing, voltage_v: 3.0}
+    - {name: VDDIO_1V8, owner: PMIC_LDO_or_buck_peri, status: missing, voltage_v: 1.8}
+  ordered_steps:
+    - Apply VDDIO_1V8 first.
+    - Apply VDD_3V0_SENSORS within 100 ms.
+    - Each sensor self-tests on power-up; firmware probes via I2C.
+android_hal:
+  framework: Android Sensors HAL 2.x (AIDL)
+  vintf_entry_planned: android.hardware.sensors@2.1-service.eliza_ai_soc
+  evidence_required:
+    - Per-sensor IIO probe transcript (cat /sys/bus/iio/devices/iio:device*/name)
+    - Sensor service dumpsys transcript
+    - Calibration data captured at known-orientation reference
+forbidden_claims:
+  - sensors_running
+  - calibrated
+  - SensorService_running
+cross_references:
+  - docs/architecture-optimization/phone-platform.md
+  - research/mobile_platform_2026/02_analysis/sensors_audio_thermal.md

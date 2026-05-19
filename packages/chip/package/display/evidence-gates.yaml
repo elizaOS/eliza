@@ -1,0 +1,55 @@
+schema: eliza.display_evidence_gates.v1
+manifest: display_evidence_gates
+status: blocked_no_dsi_controller_no_panel_no_board
+claim_policy: interface_only_no_display_implementation_claim
+release_gate: display_product_claim
+panel_binding: package/display/v0-dsi-720x1280.yaml
+required_artifacts:
+  - id: dsi_controller_rtl_present
+    description: e1_dsi_tx RTL block exists with cocotb coverage.
+    status: missing
+    blocking: true
+  - id: dsi_pins_bonded
+    description: DSI lanes (CLK_P/N + D0_P/N + D1_P/N) bonded in package/e1-demo-pinout.yaml.
+    status: missing
+    blocking: true
+  - id: panel_selected
+    description: Panel part selected from package/display/v0-dsi-720x1280.yaml#panel_candidates.
+    status: missing
+    blocking: true
+  - id: panel_driver_upstream
+    description: Mainline drivers/gpu/drm/panel/panel-*.c covers the selected panel.
+    status: pending_panel_selection
+    blocking: true
+  - id: drm_kms_probe_transcript
+    description: modetest -M dsi-0 transcript showing the DSI connector and a valid mode.
+    status: missing
+    blocking: true
+  - id: surfaceflinger_boot_log
+    description: SurfaceFlinger boot log on the eliza_ai_soc Android image.
+    status: missing
+    blocking: true
+  - id: power_sequence_validated
+    description: Oscilloscope captures showing DSI power rails and DISP_RESET_N timing within panel spec.
+    status: missing
+    blocking: true
+fail_closed_until_each_artifact_passes: true
+evidence_record_requirements:
+  required_fields:
+    - blocker_id
+    - artifact_name
+    - source_path
+    - captured_at
+    - captured_by
+    - board_or_platform_revision
+    - panel_part
+    - sha256
+    - acceptance_status
+    - acceptance_criteria
+    - raw_log_or_capture
+    - linked_release_blocker
+    - reviewer
+cross_references:
+  - docs/arch/display.md
+  - docs/architecture-optimization/phone-platform.md
+  - research/mobile_platform_2026/03_implementation/platform_path_for_e1.md
