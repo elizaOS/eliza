@@ -3791,6 +3791,175 @@ entries:
     risk:
       - Adversarial Trojan RTL is unsafe to mix with production design sources.
       - Small target IP set may not represent SoC-scale E1 attack surfaces.
+  - id: ai-hardware-security-verification-survey
+    name: AI-Assisted Hardware Security Verification
+    kind: hardware_security_verification_survey
+    stage:
+      - hardware_security
+      - threat_modeling
+      - security_test_plan_generation
+      - simulation_driven_analysis
+      - formal_verification
+    priority: P1
+    source_url: https://arxiv.org/abs/2604.01572
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_only
+    code_status: no_reference_implementation
+    model_status: no_model
+    e1_fit: >
+      Useful taxonomy for asset identification, threat modeling, security test
+      plans, simulation-driven analysis, formal checks, and countermeasure
+      reasoning on accelerator-style RTL such as the E1 NPU.
+    integration_action: >
+      Use as methodology input for local security target capture only; do not
+      accept LLM-generated security plans or countermeasures without local
+      evidence gates and human security review.
+    evidence_gate: >
+      Security-verification automation requires threat-model IDs, RTL hashes,
+      generated-plan quarantine, simulation/formal logs, benchmark provenance,
+      reviewer disposition, and no-hardware-action compliance.
+    risk:
+      - Survey and case-study results are not an executable E1 security flow.
+      - LLM threat models can miss SoC-specific assets, firmware interactions,
+        debug paths, or lifecycle states.
+  - id: safetune-rtl-poisoning
+    name: SafeTune
+    kind: rtl_llm_finetuning_poisoning_defense
+    stage:
+      - hardware_security
+      - corpus_governance
+      - rtl_generation
+      - model_training_security
+      - trojan_detection
+    priority: P1
+    source_url: https://arxiv.org/abs/2604.27238
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Directly relevant to E1 external model/corpus intake because poisoned
+      fine-tuning data can cause syntactically valid RTL to contain hardware
+      Trojan behavior that normal functionality tests may miss.
+    integration_action: >
+      Track as a mandatory risk in external RTL model and corpus governance.
+      Do not fine-tune or import generated training data until poisoning,
+      prompt-security, structural anomaly, and license checks exist.
+    evidence_gate: >
+      Any RTL fine-tuning corpus requires exact source manifests, poisoning and
+      near-duplicate review, structural anomaly reports, prompt-security
+      classification, generated RTL quarantine, lint/sim/formal/synthesis
+      gates, and human security review.
+    risk:
+      - Poisoned data can preserve functional correctness while adding hidden
+        trigger or leakage behavior.
+      - Security filters can overfit synthetic Trojan patterns and miss E1
+        integration-specific attacks.
+  - id: trojanloc
+    name: TrojanLoC
+    kind: llm_rtl_trojan_localization_method
+    stage:
+      - hardware_security
+      - trojan_detection
+      - rtl_review
+      - line_level_localization
+      - dataset_evaluation
+    priority: P2
+    source_url: https://arxiv.org/abs/2512.00591
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: external_rtl_finetuned_llm_reported
+    e1_fit: >
+      Relevant because it targets line-level RTL Trojan localization rather
+      than only module-level detection, which matches review needs for imported
+      or AI-generated E1 RTL.
+    integration_action: >
+      Keep as a blocked advisory method until TrojanInS or other datasets,
+      model details, licenses, and local clean/dirty E1 labels are reviewed.
+    evidence_gate: >
+      TrojanLoC-style use requires exact model and dataset revisions, RTL
+      hashes, line-level finding manifests, explanations, regression/formal
+      evidence, and human security disposition before any action.
+    risk:
+      - Synthetic Trojan labels may not represent accidental generated-RTL bugs
+        or E1-specific threat surfaces.
+      - Line-level explanations can look precise while being unsupported by
+        deterministic simulation or formal evidence.
+  - id: harmchip
+    name: HarmChip
+    kind: hardware_security_llm_safety_benchmark
+    stage:
+      - hardware_security
+      - adversarial_benchmarking
+      - llm_safety
+      - generated_rtl_review
+      - evaluation_hygiene
+    priority: P1
+    source_url: https://arxiv.org/abs/2604.17093
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Important safety boundary for using LLMs in EDA because domain-specific
+      hardware-security prompts can disguise Trojan insertion, side-channel, or
+      IP-theft intent as ordinary engineering work.
+    integration_action: >
+      Track as an adversarial benchmark and policy input only. Do not run
+      jailbreak prompts or store harmful hardware prompts in release evidence
+      until a red-team isolation policy and reviewer approval exist.
+    evidence_gate: >
+      Any HarmChip-like evaluation requires prompt quarantine, dual-use review,
+      model identity, refusal/response logs, no generated RTL promotion,
+      security reviewer disposition, and no-hardware-action compliance.
+    risk:
+      - Hardware-security jailbreak prompts are dual-use and must not become
+        training or design inputs.
+      - General-purpose model safety can refuse legitimate review while
+        allowing disguised malicious design requests.
+  - id: trojan-xai-comparison
+    name: Explainability Methods for Hardware Trojan Detection
+    kind: hardware_trojan_explainability_comparison
+    stage:
+      - hardware_security
+      - explainable_review
+      - trojan_detection
+      - netlist_analysis
+      - evaluation_hygiene
+    priority: P2
+    source_url: https://arxiv.org/abs/2601.18696
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful for defining what a reviewable security finding should include:
+      circuit-specific features, precedent examples, and feature attribution
+      instead of opaque classifier scores.
+    integration_action: >
+      Use as explanation-quality criteria for any future advisory Trojan
+      scanner; block actions that lack circuit-aware evidence and reviewer
+      disposition.
+    evidence_gate: >
+      Trojan explainability reports need netlist/RTL hashes, feature extractor
+      revision, explanation artifacts, false-positive/false-negative review,
+      deterministic regression evidence, and human security signoff.
+    risk:
+      - Trust-Hub-based explainability may not transfer to E1 RTL, macros, or
+        generated code patterns.
+      - Generic attribution methods can produce plausible but non-actionable
+        hardware explanations.
   - id: accellera-cdc-rdc-standard
     name: Accellera CDC/RDC Integration Standard
     kind: cdc_rdc_intent_standard
@@ -6507,6 +6676,78 @@ entries:
     risk:
       - Paper benchmarks may not transfer to E1 process, layers, or design rules.
       - False negatives can become yield escapes if treated as signoff.
+  - id: agentictcad
+    name: AgenticTCAD
+    kind: llm_agent_tcad_code_generation_and_device_optimization
+    stage:
+      - dtco
+      - tcad
+      - device_optimization
+      - process_modeling
+      - agentic_orchestration
+    priority: P1
+    source_url: https://arxiv.org/abs/2512.23742
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: paper_assets_to_review
+    model_status: domain_model_reported_to_review
+    e1_fit: >
+      Important DTCO reference because it targets natural-language TCAD code
+      generation and device optimization with expert-curated TCAD data and a
+      multi-agent loop. For E1 this is process/device context only, not a
+      substitute for foundry PDK, SPICE, or signoff evidence.
+    integration_action: >
+      Track as a blocked TCAD/DTCO automation candidate. Do not generate TCAD
+      decks, run commercial tools, optimize device parameters, or alter process
+      assumptions until code/data/model assets, licenses, simulator versions,
+      and foundry/process authority are reviewed.
+    evidence_gate: >
+      Any AgenticTCAD-style use requires exact dataset/model/code revisions,
+      TCAD deck hashes, simulator/tool version and license, device target
+      specs, process collateral, calibration data, raw logs, reviewer
+      disposition, and explicit proof that outputs are not E1 signoff evidence.
+    risk:
+      - Commercial TCAD-tool results and 2 nm NS-FET targets do not transfer to
+        the E1 package without foundry-authorized process and device data.
+      - Agent-generated TCAD decks can be syntactically valid while encoding
+        invalid boundary conditions, materials, meshing, or calibration.
+  - id: tcadgpt
+    name: TcadGPT
+    kind: executable_domain_specific_tcad_llm
+    stage:
+      - dtco
+      - tcad
+      - code_generation
+      - process_modeling
+      - dataset_governance
+    priority: P1
+    source_url: https://arxiv.org/abs/2601.10128
+    code_url: null
+    model_url: null
+    dataset_url: null
+    license_status: paper_assets_review_required
+    code_status: code_dataset_and_benchmarks_reported_to_review
+    model_status: model_assets_reported_to_review
+    e1_fit: >
+      Relevant because it reports executable TCAD code generation under data
+      scarcity using schema-first alignment, synthetic QA, IR-to-DPO data, and
+      SDE executability checks.
+    integration_action: >
+      Use as a governance reference for specialized executable EDA models.
+      Keep all TCAD assets blocked until exact release locations, licenses,
+      benchmark splits, simulator decks, and process authority are known.
+    evidence_gate: >
+      Any TcadGPT-style evaluation requires pinned code/model/dataset assets,
+      TCAD/SDE simulator identity, executable-deck hashes, synthetic-data
+      provenance, held-out process/device tasks, license review, and human
+      process/device review before any design assumption changes.
+    risk:
+      - High syntax pass rate does not prove physical validity, calibrated
+        device behavior, or transfer to E1 process assumptions.
+      - Synthetic QA and IR-DPO data can encode simulator-specific shortcuts or
+        undocumented process assumptions.
   - id: dlhsd-hotspot-detection
     name: Layout Hotspot Detection With Feature Tensor Generation And Deep Biased Learning
     kind: deep_learning_hotspot_detector

@@ -28,6 +28,7 @@ from e1_litert_delegate import (
     e1_litert_delegate_invoke,
     e1_litert_delegate_partition,
     e1_litert_delegate_prepared_descriptor_batch,
+    e1_litert_delegate_prepared_descriptor_execution_batch,
 )
 from e1_npu_stablehlo import StableHloParseError, StableHloValidationError
 
@@ -78,6 +79,23 @@ def _dot_only_payload() -> dict:
     payload = _supported_payload()
     payload["name"] = "litert_dot_only"
     payload["ops"] = [payload["ops"][0]]
+    return payload
+
+
+def _mismatched_dot_payload() -> dict:
+    payload = _dot_only_payload()
+    payload["name"] = "litert_mismatched_dot"
+    payload["ops"] = [
+        payload["ops"][0],
+        {
+            "op": "stablehlo.dot_general",
+            "name": "dot1",
+            "lhs_type": {"shape": [2, 2], "dtype": "int8"},
+            "rhs_type": {"shape": [2, 3], "dtype": "int8"},
+            "result_type": {"shape": [2, 3], "dtype": "int8"},
+            "precision": "int8",
+        },
+    ]
     return payload
 
 
@@ -295,6 +313,24 @@ def test_delegate_prepared_descriptor_batch_fails_closed_for_mixed_batch() -> No
         )
 
 
+def test_delegate_prepares_descriptor_execution_batch_for_split_batch() -> None:
+    delegate = e1_litert_delegate_create()
+    prepared = e1_litert_delegate_prepared_descriptor_execution_batch(
+        delegate,
+        json.dumps(_mismatched_dot_payload()),
+        arena_base=0x8000_0000,
+        descriptor_base=0x2100,
+        execution_batch_index=1,
+    )
+
+    assert prepared["schema"] == "eliza.e1_npu_prepared_descriptor_batch.v1"
+    assert prepared["backend_id"] == BACKEND_ID
+    assert prepared["module"] == "litert_mismatched_dot"
+    assert prepared["descriptor_command_buffer_image"]["execution_batch_index"] == 1
+    assert prepared["descriptor_command_buffer_image"]["op_names"] == ["dot1"]
+    assert prepared["host_runtime_sequence"]["mmio_preamble_writes"][0]["op_name"] == "dot1"
+
+
 def test_delegate_descriptor_command_buffer_image_rejects_non_delegate_handle() -> None:
     with pytest.raises(TypeError, match="E1LiteRtDelegate"):
         e1_litert_delegate_descriptor_command_buffer_image(
@@ -315,6 +351,17 @@ def test_delegate_prepared_descriptor_batch_rejects_non_delegate_handle() -> Non
         )
 
 
+def test_delegate_prepared_descriptor_execution_batch_rejects_non_delegate_handle() -> None:
+    with pytest.raises(TypeError, match="E1LiteRtDelegate"):
+        e1_litert_delegate_prepared_descriptor_execution_batch(
+            object(),
+            json.dumps(_mismatched_dot_payload()),
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            execution_batch_index=1,
+        )
+
+
 def test_header_file_exists_and_declares_expected_entry_points() -> None:
     header_path = Path(__file__).resolve().parent / "e1_litert_delegate.h"
     text = header_path.read_text(encoding="utf-8")
@@ -324,6 +371,7 @@ def test_header_file_exists_and_declares_expected_entry_points() -> None:
         "e1_litert_delegate_invoke",
         "e1_litert_delegate_descriptor_command_buffer_image",
         "e1_litert_delegate_prepared_descriptor_batch",
+        "e1_litert_delegate_prepared_descriptor_execution_batch",
         "e1_litert_delegate_destroy",
         "E1_LITERT_DELEGATE_BACKEND_ID",
     ):

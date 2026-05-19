@@ -20,7 +20,6 @@ STABLEHLO = ROOT / "compiler/runtime/e1_npu_stablehlo.py"
 RUNTIME_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime.py"
 RUNTIME_SIM_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_sim.py"
 COMMAND_BUFFER_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_commandbuffer.py"
-RUNTIME_SIM_TEST = ROOT / "compiler/runtime/test_e1_npu_runtime_sim.py"
 STABLEHLO_TEST = ROOT / "compiler/runtime/test_e1_npu_stablehlo.py"
 PARTITIONER = ROOT / "compiler/runtime/e1_npu_partitioner.py"
 PARTITIONER_TEST = ROOT / "compiler/runtime/test_e1_partitioner.py"
@@ -461,7 +460,6 @@ def main() -> int:
     runtime_test_text = RUNTIME_TEST.read_text()
     runtime_sim_text = RUNTIME_SIM_TEST.read_text()
     command_buffer_test_text = COMMAND_BUFFER_TEST.read_text()
-    runtime_sim_text = RUNTIME_SIM_TEST.read_text()
     stablehlo_text = STABLEHLO.read_text()
     stablehlo_test_text = STABLEHLO_TEST.read_text()
     partitioner_text = PARTITIONER.read_text()
@@ -568,6 +566,11 @@ def main() -> int:
             COMMAND_BUFFER_TEST,
         ),
         (
+            "test_prepared_execution_batch_host_runtime_sequence_stages_and_submits_in_sim",
+            command_buffer_test_text,
+            COMMAND_BUFFER_TEST,
+        ),
+        (
             "test_memory_backed_sim_descriptor_rejects_missing_owner_bit",
             command_buffer_test_text,
             COMMAND_BUFFER_TEST,
@@ -578,8 +581,11 @@ def main() -> int:
         ("0x8000_0004: 64", command_buffer_test_text, COMMAND_BUFFER_TEST),
         ("0x8000_0008: 139", command_buffer_test_text, COMMAND_BUFFER_TEST),
         ("0x8000_000C: 154", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("0x8000_0020: 21", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("0x8000_0034: 61", command_buffer_test_text, COMMAND_BUFFER_TEST),
         ("partition_module", command_buffer_test_text, COMMAND_BUFFER_TEST),
         ("prepared_descriptor_batch", command_buffer_test_text, COMMAND_BUFFER_TEST),
+        ("prepared_descriptor_execution_batch", command_buffer_test_text, COMMAND_BUFFER_TEST),
         ("E1NpuMmioSim", command_buffer_test_text, COMMAND_BUFFER_TEST),
         ("_execute_memory_backed_descriptors", runtime_sim_text, RUNTIME_SIM_TEST),
         ("_memory_read_u8", runtime_sim_text, RUNTIME_SIM_TEST),
@@ -632,6 +638,7 @@ def main() -> int:
         ("incompatible GEMM MMIO preambles", partitioner_text, PARTITIONER),
         ("prepared_descriptor_batch", partitioner_text, PARTITIONER),
         ("eliza.e1_npu_prepared_descriptor_batch.v1", partitioner_text, PARTITIONER),
+        ("prepared_descriptor_execution_batch", partitioner_text, PARTITIONER),
         (
             "prepared_descriptor_batch_metadata_only_not_mmio_execution_or_dma_submission",
             partitioner_text,
@@ -734,6 +741,11 @@ def main() -> int:
             partitioner_test_text,
             PARTITIONER_TEST,
         ),
+        (
+            "test_partition_report_prepares_descriptor_execution_batch",
+            partitioner_test_text,
+            PARTITIONER_TEST,
+        ),
         ("host_runtime_sequence", partitioner_test_text, PARTITIONER_TEST),
         (
             "test_descriptor_staging_plan_reports_batch_level_blockers",
@@ -751,6 +763,7 @@ def main() -> int:
         ("descriptor_staging_plan", executorch_text, EXECUTORCH_DELEGATE),
         ("descriptor_command_buffer_image", executorch_text, EXECUTORCH_DELEGATE),
         ("prepared_descriptor_batch", executorch_text, EXECUTORCH_DELEGATE),
+        ("prepared_descriptor_execution_batch", executorch_text, EXECUTORCH_DELEGATE),
         ("descriptor_batches", executorch_test_text, EXECUTORCH_DELEGATE_TEST),
         (
             "test_backend_materializes_descriptor_command_buffer_image_for_ready_batch",
@@ -773,6 +786,11 @@ def main() -> int:
             executorch_test_text,
             EXECUTORCH_DELEGATE_TEST,
         ),
+        (
+            "test_backend_prepares_descriptor_execution_batch_for_split_batch",
+            executorch_test_text,
+            EXECUTORCH_DELEGATE_TEST,
+        ),
         ("descriptor_word_template", executorch_test_text, EXECUTORCH_DELEGATE_TEST),
         ("descriptor_codegen_ready", executorch_test_text, EXECUTORCH_DELEGATE_TEST),
         ("input_stream_ready", executorch_test_text, EXECUTORCH_DELEGATE_TEST),
@@ -786,8 +804,14 @@ def main() -> int:
         ("descriptor_staging_plan", litert_text, LITERT_DELEGATE),
         ("descriptor_command_buffer_image", litert_text, LITERT_DELEGATE),
         ("prepared_descriptor_batch", litert_text, LITERT_DELEGATE),
+        ("prepared_descriptor_execution_batch", litert_text, LITERT_DELEGATE),
         ("e1_litert_delegate_descriptor_command_buffer_image", litert_text, LITERT_DELEGATE),
         ("e1_litert_delegate_prepared_descriptor_batch", litert_text, LITERT_DELEGATE),
+        (
+            "e1_litert_delegate_prepared_descriptor_execution_batch",
+            litert_text,
+            LITERT_DELEGATE,
+        ),
         ("descriptor_batches", litert_test_text, LITERT_DELEGATE_TEST),
         (
             "test_delegate_materializes_descriptor_command_buffer_image_for_ready_batch",
@@ -807,6 +831,11 @@ def main() -> int:
         ("host_runtime_sequence", litert_test_text, LITERT_DELEGATE_TEST),
         (
             "test_delegate_prepared_descriptor_batch_fails_closed_for_mixed_batch",
+            litert_test_text,
+            LITERT_DELEGATE_TEST,
+        ),
+        (
+            "test_delegate_prepares_descriptor_execution_batch_for_split_batch",
             litert_test_text,
             LITERT_DELEGATE_TEST,
         ),
@@ -1219,6 +1248,11 @@ def main() -> int:
         ("shared_mmio_preamble", doc_text, DOC),
         ("execution_command_buffer_image", arch_text, ARCH),
         ("execution_command_buffer_image", doc_text, DOC),
+        ("prepared_descriptor_execution_batch", arch_text, ARCH),
+        ("prepared_descriptor_execution_batch", doc_text, DOC),
+        ("e1_litert_delegate_prepared_descriptor_execution_batch", arch_text, ARCH),
+        ("e1_litert_delegate_prepared_descriptor_execution_batch", doc_text, DOC),
+        ("computed tile writeback", doc_text, DOC),
         ("descriptor_command_buffer_image", arch_text, ARCH),
         ("descriptor_command_buffer_image", doc_text, DOC),
         ("command_buffer_image", arch_text, ARCH),

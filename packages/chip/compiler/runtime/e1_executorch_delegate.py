@@ -197,6 +197,35 @@ class Backend:
         prepared["module"] = edge_program.name
         return prepared
 
+    def prepared_descriptor_execution_batch(
+        self,
+        edge_program: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        execution_batch_index: int,
+    ) -> dict[str, Any]:
+        if not isinstance(edge_program, StableHloModule):
+            raise TypeError("edge_program must be a StableHloModule")
+        issues = validate_module(edge_program)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot prepare descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        prepared = (
+            partition_module(edge_program)
+            .prepared_descriptor_execution_batch(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                execution_batch_index=execution_batch_index,
+            )
+            .as_dict()
+        )
+        prepared["backend_id"] = self.backend_id
+        prepared["module"] = edge_program.name
+        return prepared
+
 
 def partition(edge_program: StableHloModule) -> list[tuple[StableHloOp, bool]]:
     """Module-level wrapper matching the documented brief signature."""
@@ -237,6 +266,22 @@ def prepared_descriptor_batch(
         arena_base=arena_base,
         descriptor_base=descriptor_base,
         batch_index=batch_index,
+    )
+
+
+def prepared_descriptor_execution_batch(
+    edge_program: StableHloModule,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    execution_batch_index: int,
+) -> dict[str, Any]:
+    """Return the metadata package needed to stage one execution sub-batch."""
+    return Backend().prepared_descriptor_execution_batch(
+        edge_program,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        execution_batch_index=execution_batch_index,
     )
 
 

@@ -88,6 +88,19 @@ int e1_litert_delegate_prepared_descriptor_batch(
     uint8_t* prepared_json,
     size_t* prepared_json_size);
 
+/* Prepare the metadata package needed to stage one descriptor execution
+ * sub-batch into `prepared_json`. This is used when an original command-buffer
+ * batch is split by GEMM MMIO preamble compatibility. */
+int e1_litert_delegate_prepared_descriptor_execution_batch(
+    E1LiteRtDelegate* delegate,
+    const char* module_json,
+    size_t module_json_length,
+    uint32_t arena_base,
+    uint32_t descriptor_base,
+    uint32_t execution_batch_index,
+    uint8_t* prepared_json,
+    size_t* prepared_json_size);
+
 /* Free the delegate handle and any internal partitioner state. */
 void e1_litert_delegate_destroy(E1LiteRtDelegate* delegate);
 

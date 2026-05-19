@@ -65,6 +65,23 @@ candidate inputs to reproducible gates, not as standalone evidence.
 - Open-LLM-ECO: <https://github.com/YiKangOY/Open-LLM-ECO>. QoR/ECO agent
   placeholder repo for retrieve/schedule/reflect optimization; blocked until
   real code/data, license, and OpenLane replay evidence exist.
+- AI-assisted hardware security verification:
+  <https://arxiv.org/abs/2604.01572>. Useful taxonomy for asset identification,
+  threat modeling, security test planning, simulation, formal verification, and
+  countermeasure reasoning; paper-only for E1 until local security evidence
+  gates exist.
+- SafeTune: <https://arxiv.org/abs/2604.27238>. RTL fine-tuning poisoning
+  defense reference; use as a corpus-governance risk, not as an enabled
+  training or filter pipeline.
+- TrojanLoC: <https://arxiv.org/abs/2512.00591>. LLM-based line-level RTL
+  Trojan localization reference with TrojanInS dataset claims; blocked until
+  assets, labels, and local evidence are reviewed.
+- HarmChip: <https://arxiv.org/abs/2604.17093>. Hardware-security LLM jailbreak
+  benchmark; dual-use prompts must stay quarantined and out of release
+  evidence.
+- Trojan explainability comparison: <https://arxiv.org/abs/2601.18696>.
+  Useful criteria for reviewable security findings, especially circuit-aware
+  features versus opaque attribution scores.
 - PostEDA-Bench: <https://arxiv.org/abs/2605.06936>. Cautionary benchmark for
   post-route EDA agents.
 

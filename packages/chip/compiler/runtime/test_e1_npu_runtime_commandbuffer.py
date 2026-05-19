@@ -98,6 +98,23 @@ def _dot_payload() -> dict:
     }
 
 
+def _mismatched_dot_payload() -> dict:
+    payload = _dot_payload()
+    payload["name"] = "runtime_sequence_mismatched_dot"
+    payload["ops"] = [
+        payload["ops"][0],
+        {
+            "op": "stablehlo.dot_general",
+            "name": "dot1",
+            "lhs_type": {"shape": [2, 2], "dtype": "int8"},
+            "rhs_type": {"shape": [2, 3], "dtype": "int8"},
+            "result_type": {"shape": [2, 3], "dtype": "int8"},
+            "precision": "int8",
+        },
+    ]
+    return payload
+
+
 def _pack_u8(values: list[int]) -> int:
     word = 0
     for index, value in enumerate(values):
@@ -324,6 +341,64 @@ def test_prepared_batch_host_runtime_sequence_stages_and_submits_in_sim() -> Non
         0x8000_0004: 64,
         0x8000_0008: 139,
         0x8000_000C: 154,
+    }
+
+
+def test_prepared_execution_batch_host_runtime_sequence_stages_and_submits_in_sim() -> None:
+    prepared = (
+        partition_module(parse_module(_mismatched_dot_payload()))
+        .prepared_descriptor_execution_batch(
+            arena_base=0x8000_0000,
+            descriptor_base=0x2100,
+            execution_batch_index=1,
+        )
+        .as_dict()
+    )
+    sim = E1NpuMmioSim()
+    descriptor_memory: dict[int, int] = {}
+    for offset, values in {
+        0: [1, 2, 3, 4],
+        4: [5, 6, 7, 8],
+        8: [9, 10, 0, 0],
+    }.items():
+        sim.write_mem32(0x8000_0038 + offset, _pack_u8(values))
+
+    def write_descriptor_word(address: int, value: int) -> None:
+        descriptor_memory[address] = value
+        sim.write_mem32(address, value)
+
+    result = stage_host_runtime_sequence(
+        prepared["host_runtime_sequence"],
+        write_mmio32=sim.write32,
+        write_mem32=write_descriptor_word,
+    )
+
+    assert prepared["descriptor_command_buffer_image"]["execution_batch_index"] == 1
+    assert result == {
+        "schema": "eliza.e1_npu_host_runtime_sequence_stage_result.v1",
+        "mmio_writes": 9,
+        "memory_writes": 4,
+    }
+    assert descriptor_memory == {
+        int(address, 16): value
+        for address, value in prepared["descriptor_command_buffer_image"][
+            "descriptor_image"
+        ].items()
+    }
+    assert sim.regs[sim.runtime.GEMM_CFG] == 0x0002_0302
+    assert sim.regs[sim.runtime.GEMM_BASE] == 0x000C_0400
+    assert sim.regs[sim.runtime.GEMM_STRIDE] == 0x000C_0302
+    assert sim.runtime.descriptor_counters()["bytes_read"] == 28
+    assert sim.runtime.descriptor_counters()["bytes_written"] == 24
+    assert sim.runtime.descriptor_counters()["read_beats"] == 4
+    assert sim.runtime.descriptor_counters()["write_beats"] == 6
+    assert {address: sim.memory[address] for address in range(0x8000_0020, 0x8000_0038, 4)} == {
+        0x8000_0020: 21,
+        0x8000_0024: 24,
+        0x8000_0028: 27,
+        0x8000_002C: 47,
+        0x8000_0030: 54,
+        0x8000_0034: 61,
     }
 
 

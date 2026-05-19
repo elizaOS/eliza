@@ -214,6 +214,35 @@ class E1LiteRtDelegate:
         prepared["module"] = module.name
         return prepared
 
+    def prepared_descriptor_execution_batch(
+        self,
+        module: StableHloModule,
+        *,
+        arena_base: int,
+        descriptor_base: int,
+        execution_batch_index: int,
+    ) -> dict[str, Any]:
+        if not isinstance(module, StableHloModule):
+            raise TypeError("module must be a StableHloModule")
+        issues = validate_module(module)
+        if issues:
+            rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+            raise StableHloValidationError(
+                f"cannot prepare descriptors for invalid StableHLO subset module: {rendered}"
+            )
+        prepared = (
+            partition_module(module)
+            .prepared_descriptor_execution_batch(
+                arena_base=arena_base,
+                descriptor_base=descriptor_base,
+                execution_batch_index=execution_batch_index,
+            )
+            .as_dict()
+        )
+        prepared["backend_id"] = self.backend_id
+        prepared["module"] = module.name
+        return prepared
+
 
 def e1_litert_delegate_create() -> E1LiteRtDelegate:
     """C entry-point mirror: allocate a delegate handle."""
@@ -280,6 +309,26 @@ def e1_litert_delegate_prepared_descriptor_batch(
         arena_base=arena_base,
         descriptor_base=descriptor_base,
         batch_index=batch_index,
+    )
+
+
+def e1_litert_delegate_prepared_descriptor_execution_batch(
+    delegate: E1LiteRtDelegate,
+    module_json: str | bytes,
+    *,
+    arena_base: int,
+    descriptor_base: int,
+    execution_batch_index: int,
+) -> dict[str, Any]:
+    """C entry-point mirror: prepare metadata for one execution sub-batch."""
+    if not isinstance(delegate, E1LiteRtDelegate):
+        raise TypeError("delegate must be an E1LiteRtDelegate")
+    module = parse_module(module_json)
+    return delegate.prepared_descriptor_execution_batch(
+        module,
+        arena_base=arena_base,
+        descriptor_base=descriptor_base,
+        execution_batch_index=execution_batch_index,
     )
 
 

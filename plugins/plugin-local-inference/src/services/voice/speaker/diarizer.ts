@@ -48,7 +48,11 @@ export const PYANNOTE_CLASS_TO_SPEAKERS: ReadonlyArray<ReadonlyArray<number>> =
 
 /** Thrown when the diarizer cannot be constructed. */
 export class DiarizerUnavailableError extends Error {
-	readonly code: "ort-missing" | "model-load-failed" | "invalid-input";
+	readonly code:
+		| "ort-missing"
+		| "model-unavailable"
+		| "model-load-failed"
+		| "invalid-input";
 	constructor(code: DiarizerUnavailableError["code"], message: string) {
 		super(message);
 		this.name = "DiarizerUnavailableError";

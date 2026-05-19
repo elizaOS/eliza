@@ -635,6 +635,36 @@ entries:
     license_status: review_required
     release_use: blocked_pending_dataset_license_and_isolation_review
     allowed_current_use: citation_reference_only
+  - source_id: ai-hardware-security-verification-survey
+    asset_type: hardware_security_verification_survey
+    asset_url: https://arxiv.org/abs/2604.01572
+    license_status: paper_only
+    release_use: blocked_pending_e1_threat_model_formal_simulation_and_review_mapping
+    allowed_current_use: methodology_reference_only
+  - source_id: safetune-rtl-poisoning
+    asset_type: rtl_llm_finetuning_poisoning_defense
+    asset_url: https://arxiv.org/abs/2604.27238
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_assets_poisoning_detector_license_and_corpus_review
+    allowed_current_use: security_risk_reference_only
+  - source_id: trojanloc
+    asset_type: llm_rtl_trojan_localization_method
+    asset_url: https://arxiv.org/abs/2512.00591
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_model_dataset_license_line_label_and_local_review
+    allowed_current_use: method_reference_only
+  - source_id: harmchip
+    asset_type: hardware_security_llm_safety_benchmark
+    asset_url: https://arxiv.org/abs/2604.17093
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_dual_use_prompt_isolation_and_security_review
+    allowed_current_use: policy_reference_only
+  - source_id: trojan-xai-comparison
+    asset_type: hardware_trojan_explainability_comparison
+    asset_url: https://arxiv.org/abs/2601.18696
+    license_status: paper_assets_review_required
+    release_use: blocked_pending_feature_extractor_dataset_and_explanation_review
+    allowed_current_use: explanation_quality_reference_only
   - source_id: accellera-cdc-rdc-standard
     asset_type: cdc_rdc_intent_standard
     asset_url: https://www.accellera.org/downloads/standards/clock-domain-crossing

@@ -1166,6 +1166,11 @@ work_items:
       - trojanwhisper
       - trojangym
       - ghost-benchmarks
+      - ai-hardware-security-verification-survey
+      - safetune-rtl-poisoning
+      - trojanloc
+      - harmchip
+      - trojan-xai-comparison
     target_area:
       - hardware_security
       - trojan_detection
@@ -1174,9 +1179,10 @@ work_items:
       - adversarial_benchmarking
     owner_scope: dry-run target capture only; no scanner execution, Trojan insertion, RTL edits, or vulnerability claims
     objective: >
-      Track AI-assisted hardware-security and Trojan-detection sources while
-      tying any future E1 use to RTL hashes, formal/simulation gates, no-
-      hardware-action policy, provenance, and human security review.
+      Track AI-assisted hardware-security, data-poisoning defense, LLM safety,
+      explainability, and Trojan-detection sources while tying any future E1
+      use to RTL hashes, formal/simulation gates, no-hardware-action policy,
+      provenance, prompt isolation, and human security review.
     deliverables:
       - scripts/ai_eda/capture_hardware_security_targets.py
       - build/ai_eda/hardware_security_targets/<run-id>/targets_report.json
@@ -1193,6 +1199,8 @@ work_items:
       - No local known-good/known-bad E1 RTL security label set
       - No pinned Trojan/vulnerability taxonomy mapped to the E1 threat model
       - No reviewed model, prompt, retrieval corpus, benchmark, or scanner license path
+      - No approved prompt quarantine or red-team isolation policy for HarmChip-style hardware-security jailbreak evaluation
+      - No poisoning-screening or line-level Trojan-localization workflow for external RTL fine-tuning corpora
       - No acceptance contract for AI security findings, suppressions, or reviewer signoff
       - No before/after deterministic regression gate for acting on AI security output
     acceptance_criteria:
@@ -1308,6 +1316,11 @@ work_items:
       - trojanwhisper
       - trojangym
       - ghost-benchmarks
+      - ai-hardware-security-verification-survey
+      - safetune-rtl-poisoning
+      - trojanloc
+      - harmchip
+      - trojan-xai-comparison
     target_area:
       - hardware_security
       - trojan_detection
@@ -1928,6 +1941,8 @@ work_items:
       - qimeng-codev-r1
       - evolve-verilog
       - veriagent
+      - safetune-rtl-poisoning
+      - trojanloc
       - codev-sva
       - radai-wm811k-wafer-defect-model
     target_area:
@@ -1995,6 +2010,9 @@ work_items:
       - llm4verilog-dataset
       - qimeng-codev-r1
       - evolve-verilog
+      - safetune-rtl-poisoning
+      - trojanloc
+      - harmchip
       - llmsanitize
       - min-k-prob-contamination
     target_area:

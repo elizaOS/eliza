@@ -178,6 +178,23 @@ power, and manufacturing preparation.
   equivalence, cocotb/formal, synthesis/OpenLane, CDC/RDC, PPA, and review
   evidence exist.
 
+### Hardware Security, Poisoning, and LLM Safety
+
+- AI-assisted hardware security verification:
+  https://arxiv.org/abs/2604.01572
+- SecureRAG-RTL: https://arxiv.org/abs/2603.05689
+- SafeTune: https://arxiv.org/abs/2604.27238
+- TrojanLoC: https://arxiv.org/abs/2512.00591
+- HarmChip: https://arxiv.org/abs/2604.17093
+- Trojan explainability comparison: https://arxiv.org/abs/2601.18696
+- Use: security target capture for threat modeling, RTL vulnerability triage,
+  poisoned-corpus screening, line-level Trojan localization, explanation
+  quality, and domain-specific LLM safety evaluation.
+- E1 fit: never run adversarial prompts, import Trojan datasets, fine-tune RTL
+  models, trust generated countermeasures, or claim vulnerability findings
+  without prompt quarantine, dual-use review, RTL hashes, formal/simulation
+  evidence, no-hardware-action compliance, and human security disposition.
+
 ### ChatEDA and EDA Corpus
 
 - ChatEDA repo: https://github.com/wuhy68/ChatEDA
