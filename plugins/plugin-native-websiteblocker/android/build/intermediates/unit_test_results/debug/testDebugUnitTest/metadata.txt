@@ -1,0 +1,4 @@
+modulePath=:elizaos-capacitor-websiteblocker
+testedVariantName=debug
+testSuiteName=UnitTest
+testTarget=host

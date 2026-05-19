@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<incidents format="6" by="lint 9.2.0" type="incidents">
+
+    <incident
+        id="ObsoleteSdkInt"
+        severity="warning"
+        message="Unnecessary; `SDK_INT` is always >= 26">
+        <fix-data conditional="true"/>
+        <location
+            file="${:elizaos-capacitor-location*debug*MAIN*sourceProvider*0*javaDir*0}/ai/eliza/plugins/location/LocationPlugin.kt"
+            line="312"
+            column="17"
+            startOffset="11701"
+            endLine="312"
+            endColumn="63"
+            endOffset="11747"/>
+    </incident>
+
+</incidents>

@@ -1,0 +1,25 @@
+1<?xml version="1.0" encoding="utf-8"?>
+2<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+3    package="ai.eliza.plugins.messages" >
+4
+5    <uses-sdk android:minSdkVersion="26" />
+5-->INJECTED
+5-->INJECTED
+6
+7    <uses-permission android:name="android.permission.READ_SMS" />
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:3:5-67
+7-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:3:22-64
+8    <uses-permission android:name="android.permission.SEND_SMS" />
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:4:5-67
+8-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:4:22-64
+9    <uses-permission android:name="android.permission.RECEIVE_SMS" />
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:5:5-70
+9-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:5:22-67
+10    <uses-permission android:name="android.permission.RECEIVE_MMS" />
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:6:5-70
+10-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:6:22-67
+11    <uses-permission android:name="android.permission.RECEIVE_WAP_PUSH" />
+11-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:7:5-75
+11-->/Users/shawwalters/eliza-workspace/milady/eliza/packages/native-plugins/messages/android/src/main/AndroidManifest.xml:7:22-72
+12
+13</manifest>

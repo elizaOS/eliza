@@ -522,16 +522,9 @@ async function resolvePlugins(profile: string): Promise<Plugin[]> {
     throw new Error("Failed to load Groq TypeScript plugin");
   }
 
-  let embeddingModule: LocalEmbeddingPluginModule;
-  try {
-    embeddingModule = (await import(
-      "@elizaos/plugin-local-inference"
-    )) as LocalEmbeddingPluginModule;
-  } catch {
-    embeddingModule = (await import(
-      "../../../../../plugins/plugin-local-embedding/src/index.ts"
-    )) as LocalEmbeddingPluginModule;
-  }
+  const embeddingModule = (await import(
+    "@elizaos/plugin-local-inference"
+  )) as LocalEmbeddingPluginModule;
   const localEmbedding =
     embeddingModule?.localEmbeddingPlugin ?? embeddingModule?.default;
   if (!localEmbedding) {

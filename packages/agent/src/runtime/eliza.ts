@@ -414,18 +414,7 @@ export async function ensureCoreStaticPluginsRegistered(): Promise<void> {
     const bootTimeoutMs = Number(
       process.env.ELIZA_PLUGIN_BOOT_TIMEOUT_MS ?? 30_000,
     );
-    const transformersResolve = (() => {
-      try {
-        return createRequire(import.meta.url).resolve(
-          "@huggingface/transformers",
-        );
-      } catch {
-        return "<unresolved>";
-      }
-    })();
-    logger.info(
-      `[boot] resolving plugins (timeout=${bootTimeoutMs}ms) transformers=${transformersResolve}`,
-    );
+    logger.info(`[boot] resolving plugins (timeout=${bootTimeoutMs}ms)`);
 
     const trackImport = async <T>(
       name: string,
@@ -771,7 +760,6 @@ export function configureLocalEmbeddingPlugin(
       return String(value);
     }
     if (value === "auto" || value === "max") {
-      // plugin-local-embedding understands "auto" and treats it as runtime max
       return "auto";
     }
     return undefined;
@@ -786,9 +774,9 @@ export function configureLocalEmbeddingPlugin(
     process.env[key] = value;
   };
 
-  // Keep plugin-local-embedding aligned with Eliza's hardware-adaptive preset
-  // selection. Hard-coding the standard preset here forces slower first-run
-  // downloads on Windows and low-spec machines.
+  // Apply Eliza's hardware-adaptive preset selection. Hard-coding the standard
+  // preset here forces slower first-run downloads on Windows and low-spec
+  // machines.
   setEnvIfMissing(
     "LOCAL_EMBEDDING_MODEL",
     configuredModel || detectedPreset.model,

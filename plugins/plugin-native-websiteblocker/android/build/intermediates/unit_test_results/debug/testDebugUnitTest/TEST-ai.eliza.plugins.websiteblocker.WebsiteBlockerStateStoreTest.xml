@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreTest" tests="4" skipped="0" failures="0" errors="0" timestamp="2026-05-16T00:52:02.221Z" hostname="Mac.attlocal.net" time="0.021">
+  <properties/>
+  <testcase name="isBlockedHostname honors allowlist precedence for X API hosts" classname="ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreTest" time="0.018"/>
+  <testcase name="isBlockedHostname keeps Google News scoped" classname="ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreTest" time="0.001"/>
+  <testcase name="normalizeHostname rejects invalid inputs" classname="ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreTest" time="0.0"/>
+  <testcase name="normalizeHostname trims casing and trailing dots" classname="ai.eliza.plugins.websiteblocker.WebsiteBlockerStateStoreTest" time="0.0"/>
+  <system-out><![CDATA[]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>
