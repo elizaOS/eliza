@@ -21,6 +21,7 @@ export const LANGUAGES: { id: UiLanguage; flag: string; label: string }[] = [
   { id: "pt", flag: "\u{1F1E7}\u{1F1F7}", label: "Portugu\u00EAs" },
   { id: "vi", flag: "\u{1F1FB}\u{1F1F3}", label: "Ti\u1EBFng Vi\u1EC7t" },
   { id: "tl", flag: "\u{1F1F5}\u{1F1ED}", label: "Tagalog" },
+  { id: "ja", flag: "\u{1F1EF}\u{1F1F5}", label: "日本語" },
 ];
 
 export const LANGUAGE_DROPDOWN_TRIGGER_CLASSNAME =

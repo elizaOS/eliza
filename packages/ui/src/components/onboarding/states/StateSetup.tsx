@@ -1,3 +1,5 @@
+import { appNameInterpolationVars, useBranding } from "../../../config/branding";
+import { t } from "../../../i18n";
 import type { RuntimeChoice } from "../../../onboarding/state-machine";
 import { type DeviceProfile, deviceProfileCopy } from "./device-profiles";
 
@@ -31,6 +33,8 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
     onContinue,
     onChooseRemote,
   } = props;
+  const branding = useBranding();
+  const brandVars = appNameInterpolationVars(branding);
   const copy = deviceProfileCopy(deviceProfile);
   const selected = runtime ?? (copy.preferLocal ? "device" : "cloud");
 
@@ -38,7 +42,9 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
     <section className="eliza-ob-screen centered" data-eliza-ob-state="setup">
       <div className="eliza-ob-language">
         <select
-          aria-label="Language"
+          aria-label={t(language, "onboarding.setup.languageLabel", {
+            defaultValue: "Language",
+          })}
           value={language}
           onChange={(event) => onLanguageChange(event.target.value)}
         >
@@ -49,17 +55,30 @@ export function StateSetup(props: StateSetupProps): React.JSX.Element {
           ))}
         </select>
       </div>
-      <h1>Setup Your Eliza</h1>
+      <h1>
+        {t(language, "onboarding.setup.setupYourApp", {
+          ...brandVars,
+          defaultValue: "Setup Your {{appName}}",
+        })}
+      </h1>
       <div className="eliza-ob-runtime-intro">
         <span className="eliza-ob-recommendation-copy">
           {copy.recommendation}
         </span>
       </div>
-      <h2 className="eliza-ob-runtime-prompt">Where should Eliza run?</h2>
+      <h2 className="eliza-ob-runtime-prompt">
+        {t(language, "onboarding.setup.whereShouldRun", {
+          ...brandVars,
+          defaultValue: "Where should {{appName}} run?",
+        })}
+      </h2>
       <div
         className="eliza-ob-choice-list"
         role="radiogroup"
-        aria-label="Where Eliza should run"
+        aria-label={t(language, "onboarding.setup.whereShouldRun", {
+          ...brandVars,
+          defaultValue: "Where {{appName}} should run",
+        })}
       >
         <button
           type="button"

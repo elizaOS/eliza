@@ -3307,5 +3307,8 @@
   "documentsview.UploadScope": "Scope",
   "documentsview.FailedToLoadData": "Failed to load knowledge data",
   "documentsview.ServiceIsLoading": "Knowledge service is loading...",
-  "documentsview.PasteText": "Paste knowledge text..."
+  "documentsview.PasteText": "Paste knowledge text...",
+  "onboarding.setup.languageLabel": "Language",
+  "onboarding.setup.setupYourApp": "Setup Your {{appName}}",
+  "onboarding.setup.whereShouldRun": "Where should {{appName}} run?"
 }

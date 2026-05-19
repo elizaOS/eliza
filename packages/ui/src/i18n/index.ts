@@ -38,6 +38,7 @@ export function normalizeLanguage(input: unknown): UiLanguage {
   if (lower.startsWith("pt")) return "pt";
   if (lower.startsWith("vi")) return "vi";
   if (lower.startsWith("tl") || lower.startsWith("fil")) return "tl";
+  if (lower.startsWith("ja")) return "ja";
   return DEFAULT_UI_LANGUAGE;
 }
 
