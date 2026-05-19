@@ -298,7 +298,7 @@ cpu-ap-evidence-test:
 cpu-ap-completion-gate:
 	@$(PYTHON) scripts/check_cpu_ap_completion_gate.py
 
-.PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
+.PHONY: core-selection-check core-selection-check-strict xiangshan-generator-check cva6-generator-check boom-generator-check ascalon-license-check linux-smoke linux-smoke-long linux-boot-check linux-boot-check-strict coremark embench jetstream spec-skeleton cocotb-cpu-extended pmu-event-alignment-check cpu-lint-check
 
 core-selection-check:
 	@$(PYTHON) scripts/check_core_selection.py
@@ -321,6 +321,9 @@ ascalon-license-check:
 
 linux-smoke:
 	@scripts/run_linux_smoke.sh
+
+linux-smoke-long:
+	@E1_LINUX_TIMEOUT_S=3600 E1_LINUX_MAX_CYCLES=400000000 scripts/run_linux_smoke.sh
 
 linux-boot-check:
 	@$(PYTHON) scripts/check_linux_boot.py

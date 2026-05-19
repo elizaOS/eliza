@@ -1,5 +1,5 @@
 schema: eliza.cpu_ap_linux_boot_evidence_gate.v1
-status: blocked_until_real_chipyard_rocket_linux_transcript
+status: blocked_on_verilator_wall_clock_to_userspace
 claim_boundary: >
   Linux boot evidence gate for the e1 CPU AP. The current local DUT cannot
   satisfy this gate; the gate ingests a transcript captured by
@@ -30,3 +30,79 @@ fail_closed_until:
   - build/chipyard/eliza_rocket/simulator exists
   - scripts/run_linux_smoke.sh produced a transcript
   - All required_markers above appear in the transcript
+
+# ---------------------------------------------------------------------
+# Round-3 state of the build chain (2026-05-19).
+#
+# Each prerequisite below records whether the dependency is satisfied
+# locally. The whole gate stays BLOCKED until the Verilator simulator
+# runs long enough on a real host (multi-hour Linux boot) to emit every
+# required marker into the canonical transcript. The local dev host has
+# the simulator + payload + verilator in place; the missing piece is
+# only the simulator wall-clock budget needed to reach userspace.
+# ---------------------------------------------------------------------
+round3_dependency_status:
+  chipyard_checkout:
+    status: present
+    path: external/chipyard/generators/rocket-chip
+    chipyard_commit: 69eba860a352343e4ac6b6df0f3638a79a86ec78
+  chipyard_generator_manifest:
+    status: pass
+    command: make chipyard-generator-check
+  verilator_binary:
+    status: present
+    path: external/oss-cad-suite/bin/verilator
+    version: "5.049-devel"
+    next_command_to_make_discoverable: 'export PATH=$PWD/external/oss-cad-suite/bin:$PATH'
+  generated_verilator_simulator:
+    status: present
+    path: build/chipyard/eliza_rocket/simulator/simulator-chipyard.harness-ElizaRocketConfig
+    fallback_path: external/chipyard/sims/verilator/simulator-chipyard.harness-ElizaRocketConfig
+  opensbi_payload:
+    status: present
+    payload_path: external/chipyard/software/firemarshal/images/firechip/br-base/br-base-bin
+    payload_sha256: 1b3457fa364c407e2443bd8e8fbe85944d91acbcce31c9f6f8b5a2a70f61cf13
+    payload_kind: opensbi_v1_2_linux_6_6_0_initramfs
+    linux_version: "6.6.0-00004-g67bc4513761f"
+    opensbi_version: "v1.2"
+  opensbi_external_clone:
+    status: present
+    path: external/opensbi/opensbi
+    tag: v1.5
+    commit: 455de672dd7c2aa1992df54dfb08dc11abbc1b1a
+    note: |
+      Standalone v1.5 clone is present per pin manifest. The br-base
+      firemarshal payload still bundles OpenSBI v1.2 because that is
+      what the chipyard firemarshal workflow generates today. Upgrading
+      the firemarshal payload to OpenSBI v1.5 is an independent step
+      tracked on docs/spec-db/opensbi-version-uplift.yaml (TBD).
+  dramsim2_ini:
+    status: present
+    path: external/chipyard/generators/testchipip/src/main/resources/dramsim2_ini
+  cva6_rtl_for_cocotb_positive_path:
+    status: blocked
+    reason: chipyard cva6 wrapper present but recursive submodule (CVA6 RTL) not fetched
+    next_command: git -C external/chipyard submodule update --init --recursive generators/cva6
+    cocotb_env_switches:
+      - E1_REQUIRE_REAL_CSR_DUT
+      - E1_REQUIRE_REAL_MMU_DUT
+  verilator_full_boot_transcript:
+    status: blocked
+    blocking_dependency: verilator simulator wall-clock budget
+    reason: |
+      Empirical throughput on this host is ~50K cycles/s in -O3 single
+      thread. A Rocket Verilator full boot of OpenSBI v1.2 + Linux 6.6
+      to "Run /init" historically needs 100-300M cycles, i.e. 30-100
+      minutes of wall time on this host. A bounded test run captured
+      the OpenSBI banner (`OpenSBI v1.2 / ____...`) in
+      build/evidence/cpu_ap/eliza_e1_linux_boot.log but not the full
+      Linux marker set within the round-3 wall-clock budget.
+    next_command: |
+      E1_LINUX_TIMEOUT_S=3600 E1_LINUX_MAX_CYCLES=400000000 \
+        scripts/run_linux_smoke.sh
+    suggested_offload: |
+      Run scripts/run_linux_smoke.sh on a dedicated host (Nebius H200
+      runbook or any Linux x86_64 build host) for >= 1 hour wall time
+      and stage the resulting transcript into
+      build/evidence/cpu_ap/eliza_e1_linux_boot.log, then run
+      `make linux-boot-check-strict`.
