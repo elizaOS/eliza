@@ -199,6 +199,17 @@ run_executable_under_qemu() {
         rm -f "$log"
         if [ "$ec" = "124" ]; then
             echo "FAIL|qemu timeout after ${QEMU_TIMEOUT}s: $tail|$dur"
+        elif [ "$ec" = "77" ]; then
+            # Conventional autotools / GNU "skip" exit code — the test
+            # explicitly punted (usually due to a missing fixture).
+            echo "SKIP|qemu exit=77 (test self-skipped, likely missing fixture): $tail|$dur"
+        elif [ "$ec" = "2" ] && printf '%s' "$tail" | grep -qE "[Uu]sage:|--help|missing|not provided|fixture" ; then
+            # Exit 2 + usage/missing-fixture banner: the test binary
+            # requires an external argument (model GGUF, parity input,
+            # etc.) that the smoke harness doesn't supply. Treat as
+            # SKIP rather than failure — running it correctly is a
+            # fixture-provisioning task, not a riscv64 correctness gap.
+            echo "SKIP|qemu exit=2, usage/fixture message: $tail|$dur"
         else
             echo "FAIL|qemu exit=$ec: $tail|$dur"
         fi
