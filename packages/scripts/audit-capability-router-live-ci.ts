@@ -3,13 +3,26 @@ import { readFileSync } from "node:fs";
 const workflowPath = ".github/workflows/test.yml";
 const rootPackagePath = "package.json";
 const agentPackagePath = "packages/agent/package.json";
+const endpointConformancePath =
+  "packages/agent/src/services/remote-capability-endpoint-conformance.ts";
+const liveReportWriterPath =
+  "packages/agent/src/services/remote-capability-live-report.ts";
 const providerSmokePath =
   "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts";
+const liveReportValidatorPath =
+  "packages/scripts/validate-capability-router-live-reports.ts";
 
 type Check = {
   name: string;
   pattern: RegExp;
-  source?: "agent-package" | "provider-smoke" | "root-package" | "workflow";
+  source?:
+    | "agent-package"
+    | "endpoint-conformance"
+    | "live-report-validator"
+    | "live-report-writer"
+    | "provider-smoke"
+    | "root-package"
+    | "workflow";
   message: string;
 };
 
@@ -74,6 +87,38 @@ export const checks: Check[] = [
     source: "agent-package",
     message:
       "test:remote-capabilities must include the live report writer safety test.",
+  },
+  {
+    name: "live report writer records runtime module surface counts",
+    pattern:
+      /remotePlugins:[\s\S]*\.map\(\(plugin\) => \(\{[\s\S]*pluginName:\s*plugin\.name,[\s\S]*moduleId:\s*plugin\.config\?\.remoteCapabilityModuleId,[\s\S]*endpointId:\s*plugin\.config\?\.remoteCapabilityEndpointId,[\s\S]*\.\.\.summarizeRemoteCapabilityPluginSurfaces\(plugin\),/,
+    source: "live-report-writer",
+    message:
+      "runtime.remotePlugins live summaries must record per-module surface counts.",
+  },
+  {
+    name: "live report validator compares runtime module surface counts",
+    pattern:
+      /registeredModuleCountsByKey[\s\S]*validateRuntimeRemotePlugins\([\s\S]*registeredModuleCountsByKey[\s\S]*runtime\.remotePlugins\[\$\{index\}\]\.\$\{field\} must match sync\.registeredModules/,
+    source: "live-report-validator",
+    message:
+      "live report validation must compare runtime.remotePlugins counts with sync.registeredModules.",
+  },
+  {
+    name: "endpoint conformance requires non-empty route bodies",
+    pattern:
+      /function assertRouteResult[\s\S]*hasMeaningfulRouteBody\(result\.body\)[\s\S]*function hasMeaningfulRouteBody[\s\S]*value === undefined \|\| value === null[\s\S]*Array\.isArray\(value\)[\s\S]*Object\.keys\(value\)\.length > 0/,
+    source: "endpoint-conformance",
+    message:
+      "endpoint conformance must reject route calls without non-empty JSON body evidence.",
+  },
+  {
+    name: "live report validator requires non-empty route bodies",
+    pattern:
+      /routeResult\.body[\s\S]*isMeaningfulJsonEvidence\(routeResult\.body\)[\s\S]*conformance\.routeResult\.body must be a non-empty JSON value[\s\S]*function isMeaningfulJsonEvidence[\s\S]*value === undefined \|\| value === null[\s\S]*Array\.isArray\(value\)[\s\S]*Object\.keys\(value\)\.length > 0/,
+    source: "live-report-validator",
+    message:
+      "live report validation must reject route results without non-empty JSON body evidence.",
   },
   {
     name: "provider live job is required by test-status",
@@ -157,8 +202,11 @@ export function validateCapabilityRouterLiveCi(
   workflow: string,
   options: {
     agentPackageJson?: string;
+    endpointConformanceSource?: string;
     providerSmokeSource?: string;
     rootPackageJson?: string;
+    liveReportValidatorSource?: string;
+    liveReportWriterSource?: string;
     workflowPath?: string;
   } = {},
 ): LiveCiAuditFailure[] {
@@ -181,11 +229,23 @@ function getCheckContent(
   workflow: string,
   options: {
     agentPackageJson?: string;
+    endpointConformanceSource?: string;
     providerSmokeSource?: string;
     rootPackageJson?: string;
+    liveReportValidatorSource?: string;
+    liveReportWriterSource?: string;
   },
 ): string {
   if (check.source === "agent-package") return options.agentPackageJson ?? "";
+  if (check.source === "endpoint-conformance") {
+    return options.endpointConformanceSource ?? "";
+  }
+  if (check.source === "live-report-validator") {
+    return options.liveReportValidatorSource ?? "";
+  }
+  if (check.source === "live-report-writer") {
+    return options.liveReportWriterSource ?? "";
+  }
   if (check.source === "provider-smoke") {
     return options.providerSmokeSource ?? "";
   }
@@ -195,6 +255,9 @@ function getCheckContent(
 
 function getCheckSourcePath(check: Check, workflowPath: string): string {
   if (check.source === "agent-package") return agentPackagePath;
+  if (check.source === "endpoint-conformance") return endpointConformancePath;
+  if (check.source === "live-report-validator") return liveReportValidatorPath;
+  if (check.source === "live-report-writer") return liveReportWriterPath;
   if (check.source === "provider-smoke") return providerSmokePath;
   if (check.source === "root-package") return rootPackagePath;
   return workflowPath;
@@ -204,9 +267,18 @@ if (import.meta.main) {
   const workflow = readFileSync(workflowPath, "utf8");
   const rootPackageJson = readFileSync(rootPackagePath, "utf8");
   const agentPackageJson = readFileSync(agentPackagePath, "utf8");
+  const endpointConformanceSource = readFileSync(
+    endpointConformancePath,
+    "utf8",
+  );
+  const liveReportValidatorSource = readFileSync(liveReportValidatorPath, "utf8");
+  const liveReportWriterSource = readFileSync(liveReportWriterPath, "utf8");
   const providerSmokeSource = readFileSync(providerSmokePath, "utf8");
   const failures = validateCapabilityRouterLiveCi(workflow, {
     agentPackageJson,
+    endpointConformanceSource,
+    liveReportValidatorSource,
+    liveReportWriterSource,
     providerSmokeSource,
     rootPackageJson,
     workflowPath,
