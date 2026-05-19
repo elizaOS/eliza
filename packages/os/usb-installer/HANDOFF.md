@@ -5,9 +5,11 @@ Last updated: 2026-05-19
 ## Current Branch
 
 - Repository: `elizaOS/eliza`
-- Worktree: `/home/nubs/Git/iqlabs/elizaos-final-ship-build`
+- Worktree used for the latest proof: `/home/nubs/Git/iqlabs/elizaos-usb-prod-e2e`
 - Branch: `nubs/elizaos-live-prod-hardening-20260519`
 - PR: https://github.com/elizaOS/eliza/pull/7803
+- Verified PR head: `d3eb80c11ebeb72739a9ad59cada31b8a682ed9f`
+- Latest merged `origin/develop`: `d32b6a4461`
 
 ## What This Package Is
 
@@ -23,14 +25,10 @@ behind the backend contract and future signed/elevated helpers.
 - CI has wiring for lint/typecheck/test/build/package in:
   - `.github/workflows/elizaos-os-release.yml`
   - `.github/workflows/release-usb-installer.yml`
-- PR #7803 is pushed and mergeable as of the last check.
-- The broader PR has many passing checks, including OS release surface
-  validation, LifeOps bench lanes, client/server tests, e2e/playwright, mobile
-  builds, Electrobun desktop contract, package validation, and CodeQL.
-- Remaining PR checks at the last check were slow GitHub runners only:
-  `Plugin Tests`, `Build production Docker image (+ smoke boot)`,
-  `Windows smoke`, `desktop preload preflight (windows)`, and one Python
-  `unit-tests` lane.
+- PR #7803 is pushed and current with `origin/develop` as of the verified head.
+- GitHub checks must still be treated as source of truth for mergeability; the
+  last local pass below validates the USB installer and the root build path that
+  previously failed in CI.
 - USB installer work in this pass added:
   - `src/backend/write-safety.ts` shared live-write guard;
   - `WritePlan.planId` and `WriteRequest.expectedDrive`;
@@ -59,8 +57,13 @@ behind the backend contract and future signed/elevated helpers.
     `sudo -n dd`, `sync`, SSE completion events, and readback SHA-256
     verification from the virtual block device;
   - unloads `scsi_debug` in cleanup.
-- Final local validation after the fake-media, browser, and virtual block-device
-  proofs:
+- Final local validation on PR head `d3eb80c11e` after the fake-media,
+  browser, virtual block-device, and latest-`develop` merge proofs:
+  - `bun install --frozen-lockfile` passed with no package/lockfile changes;
+  - `bun run --cwd plugins/plugin-local-inference build` passed through the
+    current `bun run build.ts` path;
+  - `bun run build:core` passed: 38 tasks successful, including
+    `@elizaos/plugin-local-inference`;
   - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 76 tests,
     with the opt-in virtual block-device test skipped by default;
   - `bun run --cwd packages/os/usb-installer typecheck` passed;
@@ -128,8 +131,8 @@ so the package needs hardening before we call it production-ready.
   coverage for macOS/Windows mocked subprocesses.
 - UI copy is still too macOS-specific in places and should adapt to the
   selected drive platform.
-- Visual branding should be white/blue, clean, and use official shared elizaOS
-  logo assets. Avoid orange/black-heavy shell styling.
+- Keep visual branding white/blue and use official shared elizaOS logo assets.
+  Avoid orange/black-heavy shell styling.
 
 ## Useful Commands
 
