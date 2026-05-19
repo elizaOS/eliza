@@ -250,8 +250,16 @@ function readPointer(view: DataView, offset: number): bigint {
   return view.getBigUint64(offset, true);
 }
 
-function writePointer(view: DataView, offset: number, value: bigint): void {
-  view.setBigUint64(offset, value, true);
+function normalizePointer(value: bigint | number): bigint {
+  return typeof value === "bigint" ? value : BigInt(value);
+}
+
+function writePointer(
+  view: DataView,
+  offset: number,
+  value: bigint | number,
+): void {
+  view.setBigUint64(offset, normalizePointer(value), true);
 }
 
 // ───────────────────────── public class ─────────────────────────
@@ -432,7 +440,7 @@ export class OmnivoiceContext {
       writePointer(
         view,
         OV_TTS_PARAMS_LAYOUT.fields.on_chunk.offset,
-        BigInt(jsCallback.ptr),
+        jsCallback.ptr,
       );
       // on_chunk_user_data left at 0 — we have no per-call state.
     }

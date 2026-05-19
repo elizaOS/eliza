@@ -2082,6 +2082,7 @@
       "version": "2.0.0-beta.5",
       "dependencies": {
         "@elizaos/core": "workspace:*",
+        "@elizaos/plugin-omnivoice": "workspace:*",
         "@elizaos/shared": "workspace:*",
         "onnxruntime-web": "1.26.0-dev.20260416-b7804b056c",
       },
