@@ -6,6 +6,7 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./types";
+import { assertDriveMatchesExpected } from "./write-safety";
 
 const gib = 1024 ** 3;
 const sha256Pattern = /^[a-f0-9]{64}$/;
@@ -263,6 +264,7 @@ export class DryRunUsbInstallerBackend implements UsbInstallerBackend {
     if (!drive) {
       throw new Error(`Unknown drive id: ${request.driveId}`);
     }
+    assertDriveMatchesExpected(request, drive);
 
     const image = this.images.find(
       (candidate) => candidate.id === request.imageId,

@@ -26,6 +26,10 @@ import type {
   WritePlan,
   WriteRequest,
 } from "./types";
+import {
+  assertDriveMatchesExpected,
+  assertWritePlanAllowed,
+} from "./write-safety";
 
 const execFileAsync = promisify(execFile);
 
@@ -552,6 +556,7 @@ $result | ConvertTo-Json -Depth 4 -Compress
 
     const drive = drives.find((d) => d.id === request.driveId);
     if (!drive) throw new Error(`Unknown drive id: ${request.driveId}`);
+    assertDriveMatchesExpected(request, drive);
 
     const image = images.find((img) => img.id === request.imageId);
     if (!image) throw new Error(`Unknown image id: ${request.imageId}`);
@@ -598,9 +603,8 @@ $result | ConvertTo-Json -Depth 4 -Compress
     plan: WritePlan,
     onProgress: (step: InstallerStepId, progress: number) => void,
   ): Promise<void> {
-    if (!plan.request.acknowledgeDataLoss) {
-      throw new Error("Data-loss acknowledgement is required.");
-    }
+    assertWritePlanAllowed(plan);
+
     if (plan.drive.safety !== "safe-removable") {
       throw new SystemDiskProtectedError(
         `Drive ${plan.drive.id} is marked ${plan.drive.safety}; write aborted.`,
