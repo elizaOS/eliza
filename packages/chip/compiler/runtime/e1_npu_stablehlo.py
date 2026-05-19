@@ -9,9 +9,12 @@ serialisation of it, and the validator enforces the tile-bound contract from
 The subset covers the ops we already claim end-to-end smoke coverage for:
 
 * ``stablehlo.dot_general``  -> matmul / batch_matmul (tile-bound)
+* ``stablehlo.dot``          -> matmul alias (tile-bound)
 * ``stablehlo.convolution``  -> im2col + matmul
 * ``stablehlo.add``           -> residual / bias-add
 * ``stablehlo.mlp``           -> fused MLP smoke (eliza extension)
+* ``stablehlo.attention_qk``  -> Q*K^T score matmul smoke (eliza extension)
+* ``stablehlo.attention_av``  -> attention*V context matmul smoke (eliza extension)
 * ``stablehlo.transformer_block`` -> fused single-head transformer block smoke
 
 Production codegen lives elsewhere (see ``compiler/iree-eliza-npu/``); this
@@ -33,6 +36,7 @@ except ImportError:  # pragma: no cover - yaml is required by the chip env.
 SCHEMA = "eliza.e1_npu_stablehlo_subset.v1"
 
 OP_DOT_GENERAL = "stablehlo.dot_general"
+OP_DOT = "stablehlo.dot"
 OP_CONVOLUTION = "stablehlo.convolution"
 OP_ADD = "stablehlo.add"
 OP_BATCH_MATMUL = "stablehlo.batch_matmul"
@@ -46,6 +50,7 @@ OP_RESIDUAL_ADD = "stablehlo.residual_add"
 SUPPORTED_OPS: frozenset[str] = frozenset(
     {
         OP_DOT_GENERAL,
+        OP_DOT,
         OP_CONVOLUTION,
         OP_ADD,
         OP_BATCH_MATMUL,
@@ -59,7 +64,21 @@ SUPPORTED_OPS: frozenset[str] = frozenset(
 )
 
 SUPPORTED_PRECISIONS: frozenset[str] = frozenset(
-    {"int8", "int4", "int2", "fp8_e4m3", "sparse_int4_2_4"}
+    {
+        "int8",
+        "int4",
+        "int2",
+        "bitnet_int2",
+        "fp8_e4m3",
+        "fp16",
+        "float16",
+        "bf16",
+        "bfloat16",
+        "sparse_int4_2_4",
+        "int4_group_scaled",
+        "group_scaled_int4",
+        "w4a8_gs",
+    }
 )
 
 MAX_TILE_M = 3
@@ -90,7 +109,7 @@ class TensorType:
 class StableHloOp:
     """Base class for the StableHLO subset operations."""
 
-    op: str
+    op: str = field(init=False)
     name: str
     result_type: TensorType
 
@@ -104,12 +123,12 @@ class StableHloOp:
 
 @dataclass(frozen=True)
 class DotGeneral(StableHloOp):
-    """``stablehlo.dot_general`` restricted to rank-2 ``[M,K] x [K,N]``."""
+    """``stablehlo.dot_general`` / ``stablehlo.dot`` rank-2 ``[M,K] x [K,N]``."""
 
     lhs_type: TensorType
     rhs_type: TensorType
     precision: str
-    op: str = OP_DOT_GENERAL
+    op: str = field(default=OP_DOT_GENERAL, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -124,13 +143,20 @@ class DotGeneral(StableHloOp):
 
 
 @dataclass(frozen=True)
+class Dot(DotGeneral):
+    """``stablehlo.dot`` alias restricted to rank-2 ``[M,K] x [K,N]``."""
+
+    op: str = field(default=OP_DOT, init=False)
+
+
+@dataclass(frozen=True)
 class BatchMatmul(StableHloOp):
     """Batched matmul restricted to ``[B,H,M,K] x [B,H,K,N]``."""
 
     lhs_type: TensorType
     rhs_type: TensorType
     precision: str
-    op: str = OP_BATCH_MATMUL
+    op: str = field(default=OP_BATCH_MATMUL, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -154,7 +180,7 @@ class Convolution(StableHloOp):
     padding: str = "VALID"
     stride: int = 1
     dilation: int = 1
-    op: str = OP_CONVOLUTION
+    op: str = field(default=OP_CONVOLUTION, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -178,7 +204,7 @@ class Add(StableHloOp):
     lhs_type: TensorType
     rhs_type: TensorType
     precision: str = "int8"
-    op: str = OP_ADD
+    op: str = field(default=OP_ADD, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -199,7 +225,7 @@ class ResidualAdd(StableHloOp):
     lhs_type: TensorType
     rhs_type: TensorType
     precision: str = "int8"
-    op: str = OP_RESIDUAL_ADD
+    op: str = field(default=OP_RESIDUAL_ADD, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -220,7 +246,7 @@ class BiasAdd(StableHloOp):
     input_type: TensorType
     bias_type: TensorType
     precision: str = "int8"
-    op: str = OP_BIAS_ADD
+    op: str = field(default=OP_BIAS_ADD, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -243,7 +269,7 @@ class Mlp(StableHloOp):
     down_weight_type: TensorType
     activation: str
     precision: str = "int8"
-    op: str = OP_MLP
+    op: str = field(default=OP_MLP, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -266,7 +292,7 @@ class AttentionQk(StableHloOp):
     query_type: TensorType
     key_type: TensorType
     precision: str = "int8"
-    op: str = OP_ATTENTION_QK
+    op: str = field(default=OP_ATTENTION_QK, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -287,7 +313,7 @@ class AttentionAv(StableHloOp):
     weights_type: TensorType
     value_type: TensorType
     precision: str = "int8"
-    op: str = OP_ATTENTION_AV
+    op: str = field(default=OP_ATTENTION_AV, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -314,7 +340,7 @@ class TransformerBlock(StableHloOp):
     mlp_down_type: TensorType
     activation: str
     precision: str = "int8"
-    op: str = OP_TRANSFORMER_BLOCK
+    op: str = field(default=OP_TRANSFORMER_BLOCK, init=False)
 
     def as_dict(self) -> dict[str, Any]:
         base = super().as_dict()
@@ -374,6 +400,38 @@ class ValidationIssue:
         }
 
 
+@dataclass(frozen=True)
+class LoweringPlan:
+    """Checked runtime smoke target for a parsed StableHLO subset op."""
+
+    op_name: str
+    source_op: str
+    source_precision: str
+    runtime_api: str
+    schema: str
+    lowering_precision: str
+    input_shape: tuple[int, ...]
+    output_shape: tuple[int, ...]
+    required_graph_fields: tuple[str, ...]
+    claim_boundary: str
+    static_graph_fields: dict[str, Any] = field(default_factory=dict)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "op_name": self.op_name,
+            "source_op": self.source_op,
+            "source_precision": self.source_precision,
+            "runtime_api": self.runtime_api,
+            "schema": self.schema,
+            "lowering_precision": self.lowering_precision,
+            "input_shape": list(self.input_shape),
+            "output_shape": list(self.output_shape),
+            "required_graph_fields": list(self.required_graph_fields),
+            "claim_boundary": self.claim_boundary,
+            "static_graph_fields": self.static_graph_fields,
+        }
+
+
 def parse_module(payload: str | bytes | dict[str, Any]) -> StableHloModule:
     """Parse the YAML / JSON / mapping form of a subset module."""
 
@@ -399,7 +457,26 @@ def validate_module(module: StableHloModule) -> list[ValidationIssue]:
     """Return the structured tile/precision violations for the module."""
 
     issues: list[ValidationIssue] = []
+    if not module.ops:
+        issues.append(
+            ValidationIssue(
+                op_name=module.name,
+                op_kind="stablehlo.module",
+                code="MODULE_EMPTY",
+                message="module must contain at least one op",
+            )
+        )
+    seen_names: set[str] = set()
     for op in module.ops:
+        if op.name in seen_names:
+            issues.append(
+                _issue(
+                    op,
+                    "DUPLICATE_OP_NAME",
+                    f"module contains duplicate op name {op.name!r}",
+                )
+            )
+        seen_names.add(op.name)
         issues.extend(validate_op(op))
     return issues
 
@@ -411,10 +488,102 @@ def validate_op(op: StableHloOp) -> list[ValidationIssue]:
         return [_issue(op, "UNSUPPORTED_OP", f"op {op.op!r} not in subset")]
     handler = _VALIDATORS.get(type(op))
     if handler is None:
-        return [
-            _issue(op, "UNSUPPORTED_OP", f"no validator for dataclass {type(op).__name__}")
-        ]
+        return [_issue(op, "UNSUPPORTED_OP", f"no validator for dataclass {type(op).__name__}")]
     return handler(op)
+
+
+def plan_module_lowerings(module: StableHloModule) -> tuple[LoweringPlan, ...]:
+    """Return runtime smoke lowering targets for a validated subset module."""
+
+    issues = validate_module(module)
+    if issues:
+        rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+        raise StableHloValidationError(f"cannot plan invalid StableHLO subset module: {rendered}")
+    return tuple(plan_op_lowering(op) for op in module.ops)
+
+
+def plan_op_lowering(op: StableHloOp) -> LoweringPlan:
+    """Return the runtime smoke lowering target for a single validated op."""
+
+    if isinstance(op, DotGeneral):
+        return _plan_dot_lowering(op)
+    if isinstance(op, BatchMatmul):
+        return _plan_batch_matmul_lowering(op)
+    if isinstance(op, Convolution):
+        return _plan_convolution_lowering(op)
+    if isinstance(op, (Add, ResidualAdd)):
+        return _plan_residual_add_lowering(op)
+    if isinstance(op, BiasAdd):
+        return _plan_bias_add_lowering(op)
+    if isinstance(op, Mlp):
+        return _plan_mlp_lowering(op)
+    if isinstance(op, AttentionQk):
+        return _plan_attention_qk_lowering(op)
+    if isinstance(op, AttentionAv):
+        return _plan_attention_av_lowering(op)
+    raise StableHloValidationError(f"no lowering plan for op {op.op!r}")
+
+
+def materialize_lowering_graph(plan: LoweringPlan, graph_fields: dict[str, Any]) -> dict[str, Any]:
+    """Build the checked runtime smoke graph for a planned StableHLO op."""
+
+    if not isinstance(graph_fields, dict):
+        raise StableHloValidationError("graph_fields must be a mapping")
+    required = set(plan.required_graph_fields)
+    provided = set(graph_fields)
+    missing = sorted(required - provided)
+    if missing:
+        raise StableHloValidationError(
+            f"missing graph fields for {plan.op_name!r}: {', '.join(missing)}"
+        )
+    unknown = sorted(provided - required)
+    if unknown:
+        raise StableHloValidationError(
+            f"unknown graph fields for {plan.op_name!r}: {', '.join(unknown)}"
+        )
+    graph: dict[str, Any] = {
+        "schema": plan.schema,
+        "dialect": "stablehlo",
+        "op": plan.source_op,
+        "precision": plan.lowering_precision,
+    }
+    graph.update(plan.static_graph_fields)
+    for field_name in plan.required_graph_fields:
+        graph[field_name] = graph_fields[field_name]
+    return graph
+
+
+def materialize_op_lowering_graph(op: StableHloOp, graph_fields: dict[str, Any]) -> dict[str, Any]:
+    """Validate, plan, and materialize one StableHLO op into a smoke graph."""
+
+    issues = validate_op(op)
+    if issues:
+        rendered = "; ".join(f"{issue.op_name}:{issue.code}" for issue in issues)
+        raise StableHloValidationError(
+            f"cannot materialize invalid StableHLO subset op: {rendered}"
+        )
+    return materialize_lowering_graph(plan_op_lowering(op), graph_fields)
+
+
+def materialize_module_lowering_graphs(
+    module: StableHloModule, graph_fields_by_op: dict[str, dict[str, Any]]
+) -> tuple[dict[str, Any], ...]:
+    """Materialize all planned ops from a validated module by op name."""
+
+    if not isinstance(graph_fields_by_op, dict):
+        raise StableHloValidationError("graph_fields_by_op must be a mapping")
+    plans = plan_module_lowerings(module)
+    graphs: list[dict[str, Any]] = []
+    consumed: set[str] = set()
+    for plan in plans:
+        if plan.op_name not in graph_fields_by_op:
+            raise StableHloValidationError(f"missing graph field mapping for op {plan.op_name!r}")
+        graphs.append(materialize_lowering_graph(plan, graph_fields_by_op[plan.op_name]))
+        consumed.add(plan.op_name)
+    unknown_ops = sorted(set(graph_fields_by_op) - consumed)
+    if unknown_ops:
+        raise StableHloValidationError(f"unknown graph field mappings: {', '.join(unknown_ops)}")
+    return tuple(graphs)
 
 
 def _coerce_mapping(payload: str | bytes | dict[str, Any]) -> dict[str, Any]:
@@ -452,6 +621,14 @@ def _parse_op(entry: Any) -> StableHloOp:
 
     if kind == OP_DOT_GENERAL:
         return DotGeneral(
+            name=name,
+            result_type=result_type,
+            lhs_type=_parse_tensor_type(entry.get("lhs_type"), context=f"{kind} lhs_type"),
+            rhs_type=_parse_tensor_type(entry.get("rhs_type"), context=f"{kind} rhs_type"),
+            precision=_parse_str(entry.get("precision"), context=f"{kind} precision"),
+        )
+    if kind == OP_DOT:
+        return Dot(
             name=name,
             result_type=result_type,
             lhs_type=_parse_tensor_type(entry.get("lhs_type"), context=f"{kind} lhs_type"),
@@ -546,9 +723,7 @@ def _parse_op(entry: Any) -> StableHloOp:
                 entry.get("output_proj_type"), context=f"{kind} output_proj_type"
             ),
             bias_type=_parse_tensor_type(entry.get("bias_type"), context=f"{kind} bias_type"),
-            mlp_up_type=_parse_tensor_type(
-                entry.get("mlp_up_type"), context=f"{kind} mlp_up_type"
-            ),
+            mlp_up_type=_parse_tensor_type(entry.get("mlp_up_type"), context=f"{kind} mlp_up_type"),
             mlp_down_type=_parse_tensor_type(
                 entry.get("mlp_down_type"), context=f"{kind} mlp_down_type"
             ),
@@ -606,22 +781,386 @@ def _check_precision(
 def _check_tile_bounds(op: StableHloOp, m: int, n: int, k: int) -> list[ValidationIssue]:
     issues: list[ValidationIssue] = []
     if not 1 <= m <= MAX_TILE_M:
-        issues.append(
-            _issue(op, "TILE_M_OUT_OF_RANGE", f"M={m} outside 1..{MAX_TILE_M}")
-        )
+        issues.append(_issue(op, "TILE_M_OUT_OF_RANGE", f"M={m} outside 1..{MAX_TILE_M}"))
     if not 1 <= n <= MAX_TILE_N:
-        issues.append(
-            _issue(op, "TILE_N_OUT_OF_RANGE", f"N={n} outside 1..{MAX_TILE_N}")
-        )
+        issues.append(_issue(op, "TILE_N_OUT_OF_RANGE", f"N={n} outside 1..{MAX_TILE_N}"))
     if not 1 <= k <= MAX_TILE_K:
-        issues.append(
-            _issue(op, "TILE_K_OUT_OF_RANGE", f"K={k} outside 1..{MAX_TILE_K}")
-        )
+        issues.append(_issue(op, "TILE_K_OUT_OF_RANGE", f"K={k} outside 1..{MAX_TILE_K}"))
     return issues
 
 
+_DOT_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_matmul_smoke",
+        "schema": "eliza.e1_npu_matmul_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "single_matmul_tiled_smoke_only_not_production_compiler_backend",
+    },
+    "int4": {
+        "runtime_api": "lower_matmul_smoke",
+        "schema": "eliza.e1_npu_matmul_smoke.v1",
+        "lowering_precision": "int4",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "single_matmul_tiled_smoke_only_not_production_compiler_backend",
+    },
+    "int2": {
+        "runtime_api": "lower_int2_matmul_smoke",
+        "schema": "eliza.e1_npu_int2_matmul_smoke.v1",
+        "lowering_precision": "int2",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend",
+    },
+    "bitnet_int2": {
+        "runtime_api": "lower_int2_matmul_smoke",
+        "schema": "eliza.e1_npu_int2_matmul_smoke.v1",
+        "lowering_precision": "bitnet_int2",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "int2_matmul_dot16_smoke_only_not_tensor_int2_gemm_or_production_compiler_backend",
+    },
+    "fp8_e4m3": {
+        "runtime_api": "lower_fp8_matmul_smoke",
+        "schema": "eliza.e1_npu_fp8_matmul_smoke.v1",
+        "lowering_precision": "fp8_e4m3",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
+    },
+    "fp16": {
+        "runtime_api": "lower_fp16_matmul_smoke",
+        "schema": "eliza.e1_npu_fp16_matmul_smoke.v1",
+        "lowering_precision": "fp16",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend",
+    },
+    "float16": {
+        "runtime_api": "lower_fp16_matmul_smoke",
+        "schema": "eliza.e1_npu_fp16_matmul_smoke.v1",
+        "lowering_precision": "float16",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend",
+    },
+    "bf16": {
+        "runtime_api": "lower_bf16_matmul_smoke",
+        "schema": "eliza.e1_npu_bf16_matmul_smoke.v1",
+        "lowering_precision": "bf16",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend",
+    },
+    "bfloat16": {
+        "runtime_api": "lower_bf16_matmul_smoke",
+        "schema": "eliza.e1_npu_bf16_matmul_smoke.v1",
+        "lowering_precision": "bfloat16",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend",
+    },
+    "sparse_int4_2_4": {
+        "runtime_api": "lower_sparse_int4_matmul_smoke",
+        "schema": "eliza.e1_npu_sparse_int4_matmul_smoke.v1",
+        "lowering_precision": "s4_2_4",
+        "required_graph_fields": ("lhs", "rhs_nonzero", "rhs_positions"),
+        "claim_boundary": "sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
+    },
+    "int4_group_scaled": {
+        "runtime_api": "lower_group_scaled_int4_matmul_smoke",
+        "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+        "lowering_precision": "int4_group_scaled",
+        "required_graph_fields": ("lhs", "rhs", "scales_q8_8", "group_size"),
+        "claim_boundary": "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
+    },
+    "group_scaled_int4": {
+        "runtime_api": "lower_group_scaled_int4_matmul_smoke",
+        "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+        "lowering_precision": "group_scaled_int4",
+        "required_graph_fields": ("lhs", "rhs", "scales_q8_8", "group_size"),
+        "claim_boundary": "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
+    },
+    "w4a8_gs": {
+        "runtime_api": "lower_group_scaled_int4_matmul_smoke",
+        "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+        "lowering_precision": "w4a8_gs",
+        "required_graph_fields": ("lhs", "rhs", "scales_q8_8", "group_size"),
+        "claim_boundary": "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend",
+    },
+}
+
+
+_BATCH_MATMUL_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_batch_matmul_smoke",
+        "schema": "eliza.e1_npu_batch_matmul_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": (
+            "batch_matmul_reuses_tiled_matmul_smoke_only_not_tensor_batch_gemm_or_"
+            "production_compiler_backend"
+        ),
+    },
+    "int4": {
+        "runtime_api": "lower_batch_matmul_smoke",
+        "schema": "eliza.e1_npu_batch_matmul_smoke.v1",
+        "lowering_precision": "int4",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": (
+            "batch_matmul_reuses_tiled_matmul_smoke_only_not_tensor_batch_gemm_or_"
+            "production_compiler_backend"
+        ),
+    },
+}
+
+
+_CONVOLUTION_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_conv2d_smoke",
+        "schema": "eliza.e1_npu_conv2d_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("input", "filter"),
+        "claim_boundary": "single_conv2d_im2col_smoke_only_not_production_compiler_backend",
+    },
+    "int4": {
+        "runtime_api": "lower_conv2d_smoke",
+        "schema": "eliza.e1_npu_conv2d_smoke.v1",
+        "lowering_precision": "int4",
+        "required_graph_fields": ("input", "filter"),
+        "claim_boundary": "single_conv2d_im2col_smoke_only_not_production_compiler_backend",
+    },
+}
+
+
+_RESIDUAL_ADD_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_residual_add_smoke",
+        "schema": "eliza.e1_npu_residual_add_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("lhs", "rhs"),
+        "claim_boundary": "residual_add_s8_scalar_smoke_only_not_vector_or_production_compiler_backend",
+    },
+}
+
+
+_BIAS_ADD_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_bias_add_smoke",
+        "schema": "eliza.e1_npu_bias_add_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("input", "bias"),
+        "claim_boundary": "bias_add_s8_scalar_broadcast_smoke_only_not_vector_or_production_compiler_backend",
+    },
+}
+
+
+_MLP_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_mlp_smoke",
+        "schema": "eliza.e1_npu_mlp_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("input", "up_weight", "down_weight"),
+        "claim_boundary": "transformer_mlp_relu_smoke_only_not_gelu_or_production_compiler_backend",
+    },
+}
+
+
+_ATTENTION_QK_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_attention_qk_smoke",
+        "schema": "eliza.e1_npu_attention_qk_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("query", "key"),
+        "claim_boundary": "attention_qk_scores_smoke_only_not_softmax_or_production_compiler_backend",
+    },
+    "int4": {
+        "runtime_api": "lower_attention_qk_smoke",
+        "schema": "eliza.e1_npu_attention_qk_smoke.v1",
+        "lowering_precision": "int4",
+        "required_graph_fields": ("query", "key"),
+        "claim_boundary": "attention_qk_scores_smoke_only_not_softmax_or_production_compiler_backend",
+    },
+}
+
+
+_ATTENTION_AV_LOWERING_TARGETS: dict[str, dict[str, Any]] = {
+    "int8": {
+        "runtime_api": "lower_attention_av_smoke",
+        "schema": "eliza.e1_npu_attention_av_smoke.v1",
+        "lowering_precision": "int8",
+        "required_graph_fields": ("attention", "value"),
+        "claim_boundary": "attention_av_context_smoke_only_not_softmax_or_production_compiler_backend",
+    },
+    "int4": {
+        "runtime_api": "lower_attention_av_smoke",
+        "schema": "eliza.e1_npu_attention_av_smoke.v1",
+        "lowering_precision": "int4",
+        "required_graph_fields": ("attention", "value"),
+        "claim_boundary": "attention_av_context_smoke_only_not_softmax_or_production_compiler_backend",
+    },
+}
+
+
+def _plan_dot_lowering(op: DotGeneral) -> LoweringPlan:
+    target = _DOT_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(f"no dot lowering target for precision {op.precision!r}")
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.lhs_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+    )
+
+
+def _plan_batch_matmul_lowering(op: BatchMatmul) -> LoweringPlan:
+    target = _BATCH_MATMUL_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no batch_matmul lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.lhs_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+    )
+
+
+def _plan_convolution_lowering(op: Convolution) -> LoweringPlan:
+    target = _CONVOLUTION_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no convolution lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.input_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+        static_graph_fields={
+            "data_format": "NHWC",
+            "filter_format": "HWIO",
+            "padding": op.padding,
+            "strides": [op.stride, op.stride],
+            "dilations": [op.dilation, op.dilation],
+        },
+    )
+
+
+def _plan_residual_add_lowering(op: Add | ResidualAdd) -> LoweringPlan:
+    target = _RESIDUAL_ADD_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no residual_add lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.lhs_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+    )
+
+
+def _plan_bias_add_lowering(op: BiasAdd) -> LoweringPlan:
+    target = _BIAS_ADD_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no bias_add lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.input_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+    )
+
+
+def _plan_mlp_lowering(op: Mlp) -> LoweringPlan:
+    target = _MLP_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(f"no mlp lowering target for precision {op.precision!r}")
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.input_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+        static_graph_fields={"activation": op.activation, "requant_shift": 0},
+    )
+
+
+def _plan_attention_qk_lowering(op: AttentionQk) -> LoweringPlan:
+    target = _ATTENTION_QK_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no attention_qk lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.query_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+    )
+
+
+def _plan_attention_av_lowering(op: AttentionAv) -> LoweringPlan:
+    target = _ATTENTION_AV_LOWERING_TARGETS.get(op.precision)
+    if target is None:
+        raise StableHloValidationError(
+            f"no attention_av lowering target for precision {op.precision!r}"
+        )
+    return LoweringPlan(
+        op_name=op.name,
+        source_op=op.op,
+        source_precision=op.precision,
+        runtime_api=str(target["runtime_api"]),
+        schema=str(target["schema"]),
+        lowering_precision=str(target["lowering_precision"]),
+        input_shape=op.weights_type.shape,
+        output_shape=op.result_type.shape,
+        required_graph_fields=tuple(target["required_graph_fields"]),
+        claim_boundary=str(target["claim_boundary"]),
+    )
+
+
 def _validate_dot_general(op: DotGeneral) -> list[ValidationIssue]:
-    issues = _check_precision(op, op.precision, {"int8", "int4"})
+    issues = _check_precision(op, op.precision, SUPPORTED_PRECISIONS)
     lhs = op.lhs_type.shape
     rhs = op.rhs_type.shape
     if len(lhs) != 2 or len(rhs) != 2:
@@ -630,9 +1169,7 @@ def _validate_dot_general(op: DotGeneral) -> list[ValidationIssue]:
     m, k = lhs
     rhs_k, n = rhs
     if k != rhs_k:
-        issues.append(
-            _issue(op, "SHAPE_MISMATCH", f"K mismatch: lhs={k}, rhs={rhs_k}")
-        )
+        issues.append(_issue(op, "SHAPE_MISMATCH", f"K mismatch: lhs={k}, rhs={rhs_k}"))
     issues.extend(_check_tile_bounds(op, m, n, k))
     expected_result = (m, n)
     if op.result_type.shape != expected_result:
@@ -651,7 +1188,9 @@ def _validate_batch_matmul(op: BatchMatmul) -> list[ValidationIssue]:
     lhs = op.lhs_type.shape
     rhs = op.rhs_type.shape
     if len(lhs) != 4 or len(rhs) != 4:
-        issues.append(_issue(op, "RANK_UNSUPPORTED", "batch_matmul subset requires rank-4 operands"))
+        issues.append(
+            _issue(op, "RANK_UNSUPPORTED", "batch_matmul subset requires rank-4 operands")
+        )
         return issues
     if lhs[:2] != rhs[:2]:
         issues.append(
@@ -664,10 +1203,17 @@ def _validate_batch_matmul(op: BatchMatmul) -> list[ValidationIssue]:
     m, k = lhs[2], lhs[3]
     rhs_k, n = rhs[2], rhs[3]
     if k != rhs_k:
-        issues.append(
-            _issue(op, "SHAPE_MISMATCH", f"K mismatch: lhs={k}, rhs={rhs_k}")
-        )
+        issues.append(_issue(op, "SHAPE_MISMATCH", f"K mismatch: lhs={k}, rhs={rhs_k}"))
     issues.extend(_check_tile_bounds(op, m, n, k))
+    expected_result = (lhs[0], lhs[1], m, n)
+    if op.result_type.shape != expected_result:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"expected result shape {list(expected_result)}, got {list(op.result_type.shape)}",
+            )
+        )
     return issues
 
 
@@ -705,6 +1251,16 @@ def _validate_convolution(op: Convolution) -> list[ValidationIssue]:
     k = in_channels_input * fh * fw
     out_channels = flt[3]
     issues.extend(_check_tile_bounds(op, m=1, n=out_channels, k=k))
+    if fh <= ih and fw <= iw:
+        expected_result = (inp[0], ih - fh + 1, iw - fw + 1, out_channels)
+        if op.result_type.shape != expected_result:
+            issues.append(
+                _issue(
+                    op,
+                    "RESULT_SHAPE_MISMATCH",
+                    f"expected result shape {list(expected_result)}, got {list(op.result_type.shape)}",
+                )
+            )
     return issues
 
 
@@ -758,6 +1314,14 @@ def _validate_bias_add(op: BiasAdd) -> list[ValidationIssue]:
                 f"bias width {bias[0]} != input columns {inp[1]}",
             )
         )
+    if len(inp) == 2 and op.result_type.shape != inp:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"result shape {list(op.result_type.shape)} != {list(inp)}",
+            )
+        )
     return issues
 
 
@@ -777,9 +1341,7 @@ def _validate_mlp(op: Mlp) -> list[ValidationIssue]:
     up_k, hidden = up
     down_k, n = down
     if k != up_k:
-        issues.append(
-            _issue(op, "SHAPE_MISMATCH", f"up K mismatch: input={k}, weight={up_k}")
-        )
+        issues.append(_issue(op, "SHAPE_MISMATCH", f"up K mismatch: input={k}, weight={up_k}"))
     if hidden != down_k:
         issues.append(
             _issue(
@@ -790,6 +1352,15 @@ def _validate_mlp(op: Mlp) -> list[ValidationIssue]:
         )
     issues.extend(_check_tile_bounds(op, m, hidden, k))
     issues.extend(_check_tile_bounds(op, m, n, hidden))
+    expected_result = (m, n)
+    if op.result_type.shape != expected_result:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"expected result shape {list(expected_result)}, got {list(op.result_type.shape)}",
+            )
+        )
     return issues
 
 
@@ -805,10 +1376,17 @@ def _validate_attention_qk(op: AttentionQk) -> list[ValidationIssue]:
     if q[:2] != k[:2]:
         issues.append(_issue(op, "BATCH_MISMATCH", "batch/head dims must match"))
     if q[3] != k[3]:
-        issues.append(
-            _issue(op, "SHAPE_MISMATCH", f"head_dim mismatch: q={q[3]}, k={k[3]}")
-        )
+        issues.append(_issue(op, "SHAPE_MISMATCH", f"head_dim mismatch: q={q[3]}, k={k[3]}"))
     issues.extend(_check_tile_bounds(op, m=q[2], n=k[2], k=q[3]))
+    expected_result = (q[0], q[1], q[2], k[2])
+    if op.result_type.shape != expected_result:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"expected result shape {list(expected_result)}, got {list(op.result_type.shape)}",
+            )
+        )
     return issues
 
 
@@ -832,6 +1410,15 @@ def _validate_attention_av(op: AttentionAv) -> list[ValidationIssue]:
             )
         )
     issues.extend(_check_tile_bounds(op, m=weights[2], n=value[3], k=weights[3]))
+    expected_result = (weights[0], weights[1], weights[2], value[3])
+    if op.result_type.shape != expected_result:
+        issues.append(
+            _issue(
+                op,
+                "RESULT_SHAPE_MISMATCH",
+                f"expected result shape {list(expected_result)}, got {list(op.result_type.shape)}",
+            )
+        )
     return issues
 
 
@@ -856,6 +1443,7 @@ def _validate_transformer_block(op: TransformerBlock) -> list[ValidationIssue]:
 
 _VALIDATORS: dict[type[StableHloOp], Any] = {
     DotGeneral: _validate_dot_general,
+    Dot: _validate_dot_general,
     BatchMatmul: _validate_batch_matmul,
     Convolution: _validate_convolution,
     Add: _validate_add,

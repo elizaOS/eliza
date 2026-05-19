@@ -22,7 +22,10 @@ from e1_npu_partitioner import (
     PartitionCommandBufferBatch,
     PartitionEntry,
     PartitionReport,
+    RuntimeBindingPlan,
+    RuntimeDescriptorStagingPlan,
     SupportEntry,
+    TensorArenaPlan,
     load_support_table,
     partition_module,
 )
@@ -169,6 +172,10 @@ def test_partition_module_emits_report_dict_with_cpu_fallback_metric() -> None:
     assert payload["cpu_fallback_percent"] == 50.0
     assert payload["command_buffer_max_entries"] == 7
     assert payload["command_buffer_batches"][0]["op_names"] == ["dot_supported"]
+    assert payload["tensor_arena_plan"]["schema"] == "eliza.e1_npu_tensor_arena_plan.v1"
+    assert payload["tensor_arena_plan"]["total_bytes"] > 0
+    assert payload["runtime_binding_plan"]["schema"] == "eliza.e1_npu_runtime_binding_plan.v1"
+    assert payload["runtime_binding_plan"]["ops"][0]["op_name"] == "dot_supported"
     assert payload["entries"][0]["op_name"] == "dot_supported"
 
 
@@ -184,6 +191,211 @@ def test_partition_report_groups_contiguous_supported_ops_into_command_buffer_ba
     assert batches[1].op_names == ("dot_7",)
     assert batches[0].runtime_apis == ("lower_matmul_smoke",) * 7
     assert batches[0].command_buffer_max_entries == 7
+
+
+def test_partition_report_emits_deterministic_tensor_arena_plan() -> None:
+    module = parse_module(_dot_payload("int8"))
+    report = partition_module(module)
+
+    arena = report.tensor_arena_plan
+
+    assert isinstance(arena, TensorArenaPlan)
+    assert arena.alignment_bytes == 4
+    assert arena.total_bytes == 32
+    assert [allocation.as_dict() for allocation in arena.allocations] == [
+        {
+            "tensor_name": "dot0.result",
+            "op_name": "dot0",
+            "role": "result",
+            "shape": [2, 2],
+            "dtype": "int8",
+            "storage_dtype": "int32_accumulator",
+            "byte_size": 16,
+            "offset": 0,
+        },
+        {
+            "tensor_name": "dot0.lhs",
+            "op_name": "dot0",
+            "role": "lhs",
+            "shape": [2, 3],
+            "dtype": "int8",
+            "storage_dtype": "logical",
+            "byte_size": 6,
+            "offset": 16,
+        },
+        {
+            "tensor_name": "dot0.rhs",
+            "op_name": "dot0",
+            "role": "rhs",
+            "shape": [3, 2],
+            "dtype": "int8",
+            "storage_dtype": "logical",
+            "byte_size": 6,
+            "offset": 24,
+        },
+    ]
+
+
+def test_partition_report_tensor_arena_uses_packed_low_precision_sizes() -> None:
+    module = parse_module(_dot_payload("int4"))
+    arena = partition_module(module).tensor_arena_plan
+
+    assert arena.total_bytes == 24
+    assert [allocation.byte_size for allocation in arena.allocations] == [16, 3, 3]
+    assert arena.allocations[0].storage_dtype == "int32_accumulator"
+
+
+def test_partition_report_emits_runtime_binding_plan_from_arena_offsets() -> None:
+    module = parse_module(_dot_payload("int8"))
+    report = partition_module(module)
+
+    binding_plan = report.runtime_binding_plan
+
+    assert isinstance(binding_plan, RuntimeBindingPlan)
+    assert binding_plan.as_dict() == {
+        "schema": "eliza.e1_npu_runtime_binding_plan.v1",
+        "claim_boundary": "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen",
+        "ready_ops": 1,
+        "blocked_ops": 0,
+        "ops": [
+            {
+                "op_name": "dot0",
+                "op_kind": "stablehlo.dot_general",
+                "runtime_api": "lower_matmul_smoke",
+                "schema": "eliza.e1_npu_matmul_smoke.v1",
+                "command_buffer_batch_index": 0,
+                "descriptor_codegen_ready": True,
+                "inputs": [
+                    {
+                        "graph_field": "lhs",
+                        "tensor_name": "dot0.lhs",
+                        "op_name": "dot0",
+                        "role": "lhs",
+                            "shape": [2, 3],
+                            "dtype": "int8",
+                            "storage_dtype": "logical",
+                            "byte_size": 6,
+                            "offset": 16,
+                        },
+                        {
+                            "graph_field": "rhs",
+                        "tensor_name": "dot0.rhs",
+                        "op_name": "dot0",
+                        "role": "rhs",
+                            "shape": [3, 2],
+                            "dtype": "int8",
+                            "storage_dtype": "logical",
+                            "byte_size": 6,
+                            "offset": 24,
+                        },
+                    ],
+                    "output": {
+                    "graph_field": "result",
+                    "tensor_name": "dot0.result",
+                    "op_name": "dot0",
+                        "role": "result",
+                        "shape": [2, 2],
+                        "dtype": "int8",
+                        "storage_dtype": "int32_accumulator",
+                        "byte_size": 16,
+                        "offset": 0,
+                    },
+                "unresolved_inputs": [],
+            }
+        ],
+    }
+
+
+def test_partition_report_runtime_binding_plan_records_unresolved_metadata_fields() -> None:
+    module = parse_module(_dot_payload("sparse_int4_2_4"))
+    report = partition_module(module)
+
+    payload = report.runtime_binding_plan.as_dict()
+    op = payload["ops"][0]
+
+    assert payload["ready_ops"] == 0
+    assert payload["blocked_ops"] == 1
+    assert op["runtime_api"] == "lower_sparse_int4_matmul_smoke"
+    assert op["descriptor_codegen_ready"] is False
+    assert [binding["graph_field"] for binding in op["inputs"]] == ["lhs"]
+    assert op["unresolved_inputs"] == [
+        {
+            "graph_field": "rhs_nonzero",
+            "op_name": "dot0",
+            "op_kind": "stablehlo.dot_general",
+            "reason": "no_tensor_arena_allocation_for_required_graph_field",
+        },
+        {
+            "graph_field": "rhs_positions",
+            "op_name": "dot0",
+            "op_kind": "stablehlo.dot_general",
+            "reason": "no_tensor_arena_allocation_for_required_graph_field",
+        },
+    ]
+
+
+def test_partition_report_emits_descriptor_staging_plan_for_ready_input_streams() -> None:
+    module = parse_module(_dot_payload("int8"))
+    report = partition_module(module)
+
+    staging_plan = report.descriptor_staging_plan
+    op = staging_plan.as_dict()["ops"][0]
+
+    assert isinstance(staging_plan, RuntimeDescriptorStagingPlan)
+    assert staging_plan.as_dict()["schema"] == "eliza.e1_npu_descriptor_staging_plan.v1"
+    assert staging_plan.as_dict()["ready_ops"] == 1
+    assert staging_plan.as_dict()["blocked_ops"] == 0
+    assert op["descriptor_opcode_name"] == "OP_GEMM_S8"
+    assert op["descriptor_opcode"] == 8
+    assert op["input_stream_ready"] is True
+    assert op["writeback_ready"] is True
+    assert op["descriptor_codegen_ready"] is True
+    assert op["source_arena_offset"] == 16
+    assert op["stream_byte_count"] == 16
+    assert op["scratch_output_offset"] == 16
+    assert op["required_output_bytes"] == 16
+    assert op["output_arena_offset"] == 0
+    assert op["output_allocation_bytes"] == 16
+    assert op["inputs"] == [
+        {
+            "graph_field": "lhs",
+            "tensor_name": "dot0.lhs",
+            "arena_offset": 16,
+            "byte_size": 6,
+            "scratch_offset": 0,
+        },
+        {
+            "graph_field": "rhs",
+            "tensor_name": "dot0.rhs",
+            "arena_offset": 24,
+            "byte_size": 6,
+            "scratch_offset": 8,
+        },
+    ]
+    assert op["mmio_preamble"] == {
+        "GEMM_CFG": 2 | (2 << 8) | (3 << 16),
+        "GEMM_BASE": 0 | (8 << 8) | (16 << 16),
+        "GEMM_STRIDE": 3 | (2 << 8) | (8 << 16),
+    }
+    assert op["blocking_reasons"] == []
+
+
+def test_partition_report_descriptor_staging_plan_blocks_unresolved_inputs() -> None:
+    module = parse_module(_dot_payload("sparse_int4_2_4"))
+    report = partition_module(module)
+
+    op = report.descriptor_staging_plan.as_dict()["ops"][0]
+
+    assert op["input_stream_ready"] is False
+    assert op["writeback_ready"] is False
+    assert op["descriptor_codegen_ready"] is False
+    assert op["descriptor_opcode"] is None
+    assert op["blocking_reasons"] == [
+        "unresolved_required_graph_fields",
+        "runtime_api_not_supported_by_descriptor_staging_plan",
+        "precision_not_supported_by_descriptor_staging_plan",
+        "descriptor_staging_requires_two_input_bindings",
+    ]
 
 
 def test_partition_report_does_not_batch_across_cpu_fallback_ops() -> None:

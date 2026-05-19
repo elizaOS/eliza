@@ -85,6 +85,9 @@ class LiteRtInvokeResult:
     blob: bytes
     descriptor_specs: tuple[dict[str, Any], ...] = field(default_factory=tuple)
     command_buffer_batches: tuple[dict[str, Any], ...] = field(default_factory=tuple)
+    tensor_arena_plan: dict[str, Any] = field(default_factory=dict)
+    runtime_binding_plan: dict[str, Any] = field(default_factory=dict)
+    descriptor_staging_plan: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -94,6 +97,9 @@ class LiteRtInvokeResult:
             "blob_bytes": len(self.blob),
             "descriptor_specs": list(self.descriptor_specs),
             "command_buffer_batches": list(self.command_buffer_batches),
+            "tensor_arena_plan": self.tensor_arena_plan,
+            "runtime_binding_plan": self.runtime_binding_plan,
+            "descriptor_staging_plan": self.descriptor_staging_plan,
         }
 
 
@@ -125,6 +131,9 @@ class E1LiteRtDelegate:
         command_buffer_batches = tuple(
             batch.as_dict() for batch in partition_report.command_buffer_batches
         )
+        tensor_arena_plan = partition_report.tensor_arena_plan.as_dict()
+        runtime_binding_plan = partition_report.runtime_binding_plan.as_dict()
+        descriptor_staging_plan = partition_report.descriptor_staging_plan.as_dict()
         payload = {
             "schema": SCHEMA,
             "backend_id": self.backend_id,
@@ -132,6 +141,9 @@ class E1LiteRtDelegate:
             "module": module.name,
             "descriptor_specs": list(specs),
             "command_buffer_batches": list(command_buffer_batches),
+            "tensor_arena_plan": tensor_arena_plan,
+            "runtime_binding_plan": runtime_binding_plan,
+            "descriptor_staging_plan": descriptor_staging_plan,
         }
         blob = json.dumps(payload, sort_keys=True).encode("utf-8")
         return LiteRtInvokeResult(
@@ -139,6 +151,9 @@ class E1LiteRtDelegate:
             blob=blob,
             descriptor_specs=specs,
             command_buffer_batches=command_buffer_batches,
+            tensor_arena_plan=tensor_arena_plan,
+            runtime_binding_plan=runtime_binding_plan,
+            descriptor_staging_plan=descriptor_staging_plan,
         )
 
 

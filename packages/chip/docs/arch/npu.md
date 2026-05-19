@@ -856,6 +856,20 @@ offsets without silently dropping required fields. This is not binary descriptor
 codegen, DMA address assignment, tensor lifetime reuse, dependency scheduling,
 Android delegate integration, or a production compiler backend.
 
+For ops whose required fields are resolved, the partitioner now derives a
+metadata-only `descriptor_staging_plan`. The plan records the current RTL
+descriptor opcode, whether the input arena span can be streamed into the
+64-byte scratchpad, the source arena offset, stream byte count, per-input
+scratch offsets, output scratch offset, required writeback bytes, and the GEMM
+MMIO preamble (`GEMM_CFG`, `GEMM_BASE`, `GEMM_STRIDE`). It also keeps
+`blocking_reasons` when full descriptor codegen is not valid; today bounded
+INT8/INT4 matmul inputs can form a descriptor input stream, but full writeback
+is blocked because the StableHLO result allocation is not yet sized for the
+RTL GEMM int32 accumulator tile. This is a staging template only, not binary
+descriptor emission, arena base address assignment, DMA runtime ownership,
+output dtype conversion, Android delegate integration, or a production compiler
+backend.
+
 ## Evidence gates
 
 Before any `e1-npu` benchmark is treated as accelerator evidence, the report

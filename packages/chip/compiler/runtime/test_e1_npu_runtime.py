@@ -5,19 +5,29 @@ from e1_npu_lowering import (
     lower_attention_qk_smoke,
     lower_attention_smoke,
     lower_attention_softmax_smoke,
+    lower_batch_matmul_smoke,
+    lower_bf16_matmul_smoke,
     lower_bias_add_smoke,
     lower_conv2d_smoke,
     lower_decode_attention_smoke,
+    lower_depthwise_conv2d_smoke,
     lower_fp8_matmul_smoke,
+    lower_fp16_matmul_smoke,
+    lower_gelu_smoke,
+    lower_group_scaled_int4_matmul_smoke,
+    lower_grouped_conv2d_smoke,
     lower_int2_matmul_smoke,
     lower_kv_cache_update_smoke,
     lower_matmul_smoke,
     lower_mlp_smoke,
     lower_modern_decoder_block_smoke,
+    lower_qkv_projection_smoke,
     lower_residual_add_smoke,
     lower_rmsnorm_smoke,
     lower_rope_smoke,
+    lower_silu_smoke,
     lower_sparse_int4_matmul_smoke,
+    lower_stablehlo_module_smoke,
     lower_swiglu_smoke,
     lower_transformer_block_smoke,
 )
@@ -36,6 +46,7 @@ from e1_npu_runtime import (
     golden_sdot4_s4_2_4,
     golden_vrelu_s8,
 )
+from e1_npu_stablehlo import materialize_module_lowering_graphs, parse_module
 
 
 class FakeMmio:
@@ -540,12 +551,15 @@ def test_precision_matrix_reports_supported_and_blocked_states_without_overclaim
     assert matrix["INT2"]["state"] == "supported"
     assert "GEMM_S4" in matrix["INT4"]["path"]
     assert "SDOT4_S4_2_4" in matrix["INT4"]["path"]
+    assert matrix["INT4_GROUP_SCALED"]["state"] == "supported"
+    assert "Q8.8" in matrix["INT4_GROUP_SCALED"]["path"]
     assert "DOT16_S2" in matrix["INT2"]["path"]
     assert matrix["FP8"]["state"] == "supported"
     assert "DOT4_FP8_E4M3" in matrix["FP8"]["path"]
     for precision in ("FP16", "BF16"):
-        assert matrix[precision]["state"] == "blocked"
-        assert "no opcode" in matrix[precision]["path"]
+        assert matrix[precision]["state"] == "supported"
+        assert "Q8.8" in matrix[precision]["path"]
+        assert "no tensor" in matrix[precision]["path"]
 
 
 def test_gemm_s8_programs_scratchpad_and_matches_golden_model():
@@ -593,6 +607,259 @@ def test_stablehlo_matmul_smoke_lowers_to_gemm_s8_without_cpu_fallback():
     assert lowered.host_accumulates_partials is False
     assert "single_matmul_tiled_smoke_only" in lowered.claim_boundary
     assert mmio.commands[-1] == runtime.OP_GEMM_S8
+
+
+def test_stablehlo_materialized_int8_dot_graph_lowers_to_gemm_s8():
+    runtime, mmio = make_completing_runtime()
+    module = parse_module(
+        {
+            "schema": "eliza.e1_npu_stablehlo_subset.v1",
+            "name": "int8_dot_import_smoke",
+            "ops": [
+                {
+                    "op": "stablehlo.dot",
+                    "name": "dot0",
+                    "lhs_type": {"shape": [2, 3], "dtype": "int8"},
+                    "rhs_type": {"shape": [3, 2], "dtype": "int8"},
+                    "result_type": {"shape": [2, 2], "dtype": "int8"},
+                    "precision": "int8",
+                }
+            ],
+        }
+    )
+    graph = materialize_module_lowering_graphs(
+        module,
+        {
+            "dot0": {
+                "lhs": [[1, -2, 3], [4, 5, -6]],
+                "rhs": [[7, -8], [9, 10], [-11, 12]],
+            }
+        },
+    )[0]
+
+    lowered = lower_matmul_smoke(runtime, graph)
+
+    assert lowered.result == lowered.golden == golden_gemm_s8(graph["lhs"], graph["rhs"])
+    assert lowered.source_dialect == "stablehlo"
+    assert lowered.source_op == "stablehlo.dot"
+    assert lowered.cpu_fallback is False
+    assert mmio.commands[-1] == runtime.OP_GEMM_S8
+
+
+def test_stablehlo_module_smoke_dispatches_materialized_dot_graphs_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "mixed_dot_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.dot",
+                "name": "int8_dot",
+                "lhs_type": {"shape": [2, 3], "dtype": "int8"},
+                "rhs_type": {"shape": [3, 2], "dtype": "int8"},
+                "result_type": {"shape": [2, 2], "dtype": "int8"},
+                "precision": "int8",
+            },
+            {
+                "op": "stablehlo.dot_general",
+                "name": "fp8_dot",
+                "lhs_type": {"shape": [2, 5], "dtype": "fp8_e4m3"},
+                "rhs_type": {"shape": [5, 2], "dtype": "fp8_e4m3"},
+                "result_type": {"shape": [2, 2], "dtype": "fp8_e4m3"},
+                "precision": "fp8_e4m3",
+            },
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "int8_dot": {
+                "lhs": [[1, -2, 3], [4, 5, -6]],
+                "rhs": [[7, -8], [9, 10], [-11, 12]],
+            },
+            "fp8_dot": {
+                "lhs": [
+                    [0x38, 0x40, 0xB8, 0x30, 0x00],
+                    [0xBC, 0x28, 0x38, 0x00, 0x40],
+                ],
+                "rhs": [
+                    [0x40, 0x38],
+                    [0xB8, 0x40],
+                    [0x30, 0xB8],
+                    [0x38, 0x00],
+                    [0x40, 0x28],
+                ],
+            },
+        },
+    )
+
+    int8_lowered, fp8_lowered = lowered.lowered_ops
+    assert lowered.schema == "eliza.e1_npu_lowered_stablehlo_module_result.v1"
+    assert lowered.module_name == "mixed_dot_import_smoke"
+    assert lowered.op_count == 2
+    assert lowered.dispatch_order == ("int8_dot", "fp8_dot")
+    assert lowered.runtime_apis == ("lower_matmul_smoke", "lower_fp8_matmul_smoke")
+    assert lowered.cpu_fallback is False
+    assert lowered.all_npu_dispatch is True
+    assert lowered.lowering_plans[0]["op_name"] == "int8_dot"
+    assert lowered.lowering_plans[1]["schema"] == "eliza.e1_npu_fp8_matmul_smoke.v1"
+    assert lowered.lowering_graphs[0]["schema"] == "eliza.e1_npu_matmul_smoke.v1"
+    assert lowered.lowering_graphs[1]["schema"] == "eliza.e1_npu_fp8_matmul_smoke.v1"
+    assert int8_lowered.result == golden_gemm_s8(
+        lowered.lowering_graphs[0]["lhs"], lowered.lowering_graphs[0]["rhs"]
+    )
+    assert fp8_lowered.result_q8_8 == [[0, 1536], [320, -384]]
+    assert "stablehlo_smoke_module_dispatch_only" in lowered.claim_boundary
+    assert lowered.as_dict()["dispatch_order"] == ["int8_dot", "fp8_dot"]
+    assert lowered.as_dict()["all_npu_dispatch"] is True
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 1
+    assert mmio.commands.count(runtime.OP_DOT4_FP8_E4M3) == 8
+
+
+def test_stablehlo_module_smoke_rejects_invalid_import_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "invalid_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.dot_general",
+                "name": "dot0",
+                "lhs_type": {"shape": [2, 3], "dtype": "mxint8"},
+                "rhs_type": {"shape": [3, 2], "dtype": "mxint8"},
+                "result_type": {"shape": [2, 2], "dtype": "mxint8"},
+                "precision": "mxint8",
+            }
+        ],
+    }
+
+    with pytest.raises(NpuLoweringError, match="invalid StableHLO smoke module"):
+        lower_stablehlo_module_smoke(runtime, module, {"dot0": {"lhs": [[1]], "rhs": [[1]]}})
+    with pytest.raises(NpuLoweringError, match="invalid StableHLO smoke module"):
+        lower_stablehlo_module_smoke(runtime, {**module, "schema": "other"}, {})
+    duplicate = {
+        **module,
+        "ops": [module["ops"][0], {**module["ops"][0], "precision": "int8"}],
+    }
+    with pytest.raises(NpuLoweringError, match="DUPLICATE_OP_NAME"):
+        lower_stablehlo_module_smoke(runtime, duplicate, {"dot0": {"lhs": [[1]], "rhs": [[1]]}})
+
+    assert mmio.writes == []
+
+
+def test_batch_matmul_smoke_reuses_tiled_matmul_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_batch_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.batch_matmul",
+        "precision": "int8",
+        "lhs": [
+            [
+                [[1, -2, 3], [4, 5, -6]],
+                [[-1, 2, 0], [3, -4, 5]],
+            ]
+        ],
+        "rhs": [
+            [
+                [[7, -8], [9, 10], [-11, 12]],
+                [[1, 2], [-3, 4], [5, -6]],
+            ]
+        ],
+    }
+
+    lowered = lower_batch_matmul_smoke(runtime, graph)
+
+    assert (
+        lowered.result
+        == lowered.golden
+        == [
+            [
+                [[-44, 8], [139, -54]],
+                [[-7, 6], [40, -40]],
+            ]
+        ]
+    )
+    assert lowered.input_shape == [1, 2, 2, 3, 2]
+    assert lowered.output_shape == [1, 2, 2, 2]
+    assert lowered.total_tile_count == 2
+    assert lowered.cpu_fallback is False
+    assert lowered.host_iterates_batch_heads is True
+    assert "batch_matmul_reuses_tiled_matmul_smoke_only" in lowered.claim_boundary
+    assert mmio.commands == [runtime.OP_GEMM_S8, runtime.OP_GEMM_S8]
+
+
+def test_stablehlo_module_smoke_dispatches_batch_matmul_graph_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "batch_matmul_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.batch_matmul",
+                "name": "batch0",
+                "lhs_type": {"shape": [1, 2, 2, 3], "dtype": "int8"},
+                "rhs_type": {"shape": [1, 2, 3, 2], "dtype": "int8"},
+                "result_type": {"shape": [1, 2, 2, 2], "dtype": "int8"},
+                "precision": "int8",
+            }
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "batch0": {
+                "lhs": [
+                    [
+                        [[1, -2, 3], [4, 5, -6]],
+                        [[-1, 2, 0], [3, -4, 5]],
+                    ]
+                ],
+                "rhs": [
+                    [
+                        [[7, -8], [9, 10], [-11, 12]],
+                        [[1, 2], [-3, 4], [5, -6]],
+                    ]
+                ],
+            }
+        },
+    )
+
+    batch_lowered = lowered.lowered_ops[0]
+    assert lowered.runtime_apis == ("lower_batch_matmul_smoke",)
+    assert lowered.dispatch_order == ("batch0",)
+    assert lowered.all_npu_dispatch is True
+    assert lowered.lowering_plans[0]["schema"] == "eliza.e1_npu_batch_matmul_smoke.v1"
+    assert batch_lowered.total_tile_count == 2
+    assert batch_lowered.result == batch_lowered.golden
+    assert mmio.commands == [runtime.OP_GEMM_S8, runtime.OP_GEMM_S8]
+
+
+def test_batch_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_batch_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.batch_matmul",
+        "precision": "int8",
+        "lhs": [[[[1]]]],
+        "rhs": [[[[1]]]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_batch_matmul_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported batch_matmul source op"):
+        lower_batch_matmul_smoke(runtime, {**base, "op": "stablehlo.dot"})
+    with pytest.raises(NpuLoweringError, match="unsupported batch_matmul precision"):
+        lower_batch_matmul_smoke(runtime, {**base, "precision": "fp8_e4m3"})
+    with pytest.raises(NpuLoweringError, match="batch_matmul slice"):
+        lower_batch_matmul_smoke(runtime, {**base, "lhs": [[[[1, 2]]]]})
+
+    assert mmio.writes == []
 
 
 def test_tflite_matmul_smoke_lowers_to_gemm_s4_without_cpu_fallback():
@@ -673,6 +940,33 @@ def test_matmul_smoke_split_k_uses_npu_tiles_and_host_partial_accumulation():
     assert mmio.commands[-2:] == [runtime.OP_GEMM_S8] * 2
 
 
+def test_qkv_projection_smoke_lowers_packed_weight_to_sliced_qkv_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_qkv_projection_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.qkv_projection",
+        "precision": "int8",
+        "projection_shift": 0,
+        "input": [[1, 2], [3, 4]],
+        "packed_weight": [[1, 0, 0, 1, 1, 1], [0, 1, 1, 0, -1, 2]],
+    }
+
+    lowered = lower_qkv_projection_smoke(runtime, graph)
+
+    assert lowered.packed_accumulator == [[1, 2, 2, 1, -1, 5], [3, 4, 4, 3, -1, 11]]
+    assert lowered.q_accumulator == lowered.q_requantized == [[1, 2], [3, 4]]
+    assert lowered.k_accumulator == lowered.k_requantized == [[2, 1], [4, 3]]
+    assert lowered.v_accumulator == lowered.v_requantized == [[-1, 5], [-1, 11]]
+    assert lowered.packed_matmul.result == lowered.packed_accumulator
+    assert lowered.total_tile_count == 2
+    assert lowered.host_slices_packed_qkv is True
+    assert lowered.host_requantizes_qkv is True
+    assert lowered.cpu_fallback is False
+    assert "qkv_projection_packed_gemm_smoke_only" in lowered.claim_boundary
+    assert mmio.commands == [runtime.OP_GEMM_S8, runtime.OP_GEMM_S8]
+
+
 def test_stablehlo_conv2d_smoke_lowers_im2col_to_gemm_s8_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -703,6 +997,48 @@ def test_stablehlo_conv2d_smoke_lowers_im2col_to_gemm_s8_without_cpu_fallback():
     assert mmio.commands[-2:] == [runtime.OP_GEMM_S8] * 2
 
 
+def test_stablehlo_module_smoke_dispatches_convolution_graph_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "conv2d_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.convolution",
+                "name": "conv0",
+                "input_type": {"shape": [1, 3, 3, 1], "dtype": "int8"},
+                "filter_type": {"shape": [2, 2, 1, 2], "dtype": "int8"},
+                "result_type": {"shape": [1, 2, 2, 2], "dtype": "int8"},
+                "precision": "int8",
+                "padding": "VALID",
+                "stride": 1,
+                "dilation": 1,
+            }
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "conv0": {
+                "input": [[[[1], [2], [3]], [[4], [5], [6]], [[7], [8], [9]]]],
+                "filter": [[[[1, -1]], [[2, 0]]], [[[0, 3]], [[-1, 1]]]],
+            }
+        },
+    )
+
+    conv_lowered = lowered.lowered_ops[0]
+    assert lowered.runtime_apis == ("lower_conv2d_smoke",)
+    assert lowered.dispatch_order == ("conv0",)
+    assert lowered.all_npu_dispatch is True
+    assert lowered.lowering_plans[0]["static_graph_fields"]["data_format"] == "NHWC"
+    assert lowered.lowering_graphs[0]["schema"] == "eliza.e1_npu_conv2d_smoke.v1"
+    assert conv_lowered.output == conv_lowered.golden == [[[[0, 16], [2, 19]], [[6, 25], [8, 28]]]]
+    assert conv_lowered.matmul.cpu_fallback is False
+    assert mmio.commands[-2:] == [runtime.OP_GEMM_S8] * 2
+
+
 def test_tflite_conv2d_smoke_lowers_im2col_to_gemm_s4_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -723,6 +1059,150 @@ def test_tflite_conv2d_smoke_lowers_im2col_to_gemm_s4_without_cpu_fallback():
     assert lowered.matmul.host_accumulates_partials is True
     assert lowered.cpu_fallback is False
     assert mmio.commands[-2:] == [runtime.OP_GEMM_S4] * 2
+
+
+def test_tflite_depthwise_conv2d_smoke_lowers_direct_scalar_macs_without_im2col():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_depthwise_conv2d_smoke.v1",
+        "dialect": "tflite",
+        "op": "tflite.depthwise_conv_2d",
+        "precision": "int8",
+        "data_format": "NHWC",
+        "filter_format": "HWCM",
+        "padding": "VALID",
+        "strides": [1, 1],
+        "dilations": [1, 1],
+        "input": [
+            [
+                [[1, 2], [3, 4], [5, 6]],
+                [[7, 8], [9, 10], [11, 12]],
+                [[13, 14], [15, 16], [17, 18]],
+            ]
+        ],
+        "filter": [
+            [[[1, -1], [2, 0]], [[0, 1], [-1, 2]]],
+            [[[2, 0], [1, -2]], [[1, -1], [0, 1]]],
+        ],
+    }
+
+    lowered = lower_depthwise_conv2d_smoke(runtime, graph)
+
+    expected = [[[[24, -7, 8, 2], [32, -9, 12, 4]], [[48, -13, 20, 8], [56, -15, 24, 10]]]]
+    assert lowered.output == lowered.golden == expected
+    assert lowered.output_shape == [1, 2, 2, 4]
+    assert lowered.input_channels == 2
+    assert lowered.channel_multiplier == 2
+    assert lowered.scalar_mul_count == 64
+    assert lowered.scalar_add_count == 64
+    assert lowered.cpu_fallback is False
+    assert lowered.host_uses_direct_depthwise_loops is True
+    assert lowered.host_materializes_im2col is False
+    assert "depthwise_conv2d_direct_scalar_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 64
+    assert mmio.commands.count(runtime.OP_ADD) == 64
+
+
+def test_stablehlo_grouped_conv2d_smoke_lowers_direct_scalar_macs_without_im2col():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_grouped_conv2d_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.convolution",
+        "precision": "int8",
+        "data_format": "NHWC",
+        "filter_format": "HWIO",
+        "padding": "VALID",
+        "strides": [1, 1],
+        "dilations": [1, 1],
+        "groups": 2,
+        "input": [
+            [
+                [[1, 2, 10, 20], [3, 4, 30, 40]],
+                [[5, 6, 50, 60], [7, 8, 70, 80]],
+            ]
+        ],
+        "filter": [
+            [[[1, 0, 1, 0], [0, 1, 0, 1]], [[2, -1, -1, 2], [1, 0, 1, 0]]],
+            [[[0, 2, 0, -2], [-1, 1, 2, 1]], [[1, 1, 1, 1], [2, -2, -2, 2]]],
+        ],
+    }
+
+    lowered = lower_grouped_conv2d_smoke(runtime, graph)
+
+    assert lowered.output == lowered.golden == [[[[28, 6, 50, 270]]]]
+    assert lowered.output_shape == [1, 1, 1, 4]
+    assert lowered.groups == 2
+    assert lowered.input_channels_per_group == 2
+    assert lowered.output_channels_per_group == 2
+    assert lowered.scalar_mul_count == 32
+    assert lowered.scalar_add_count == 32
+    assert lowered.cpu_fallback is False
+    assert lowered.host_uses_direct_grouped_loops is True
+    assert lowered.host_materializes_im2col is False
+    assert "grouped_conv2d_direct_scalar_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 32
+    assert mmio.commands.count(runtime.OP_ADD) == 32
+
+
+def test_stablehlo_silu_smoke_dispatches_exp2_piecewise_scalar_activation():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_silu_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.silu",
+        "precision": "int8",
+        "approximation": "exp2_q0_8_piecewise",
+        "input": [[-8, -2, 0], [4, 8, 16]],
+    }
+
+    lowered = lower_silu_smoke(runtime, graph)
+
+    assert lowered.sigmoid_q0_8 == [[0, 32, 128], [248, 256, 256]]
+    assert lowered.output == lowered.golden == [[0, -1, 0], [3, 8, 16]]
+    assert lowered.shape == [2, 3]
+    assert lowered.element_count == 6
+    assert lowered.scalar_exp2_count == 6
+    assert lowered.scalar_sub_count == 4
+    assert lowered.scalar_mul_count == 6
+    assert lowered.cpu_fallback is False
+    assert lowered.host_applies_shift_and_saturation is True
+    assert lowered.approximation == "exp2_q0_8_piecewise"
+    assert "silu_s8_exp2_piecewise_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 6
+    assert mmio.commands.count(runtime.OP_SUB) == 4
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 6
+
+
+def test_stablehlo_gelu_smoke_dispatches_quick_exp2_piecewise_scalar_activation():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_gelu_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.gelu",
+        "precision": "int8",
+        "approximation": "quick_gelu_exp2_q0_8",
+        "input": [[-16, -4, 0], [4, 16, 32]],
+    }
+
+    lowered = lower_gelu_smoke(runtime, graph)
+
+    assert lowered.scaled_input == [[-28, -7, 0], [6, 27, 54]]
+    assert lowered.sigmoid_q0_8 == [[0, 1, 128], [254, 256, 256]]
+    assert lowered.output == lowered.golden == [[0, -1, 0], [3, 16, 32]]
+    assert lowered.shape == [2, 3]
+    assert lowered.element_count == 6
+    assert lowered.scalar_scale_mul_count == 6
+    assert lowered.scalar_exp2_count == 6
+    assert lowered.scalar_sub_count == 4
+    assert lowered.scalar_gate_mul_count == 6
+    assert lowered.cpu_fallback is False
+    assert lowered.host_applies_shift_and_saturation is True
+    assert lowered.approximation == "quick_gelu_exp2_q0_8"
+    assert "gelu_s8_quick_exp2_piecewise_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 6
+    assert mmio.commands.count(runtime.OP_SUB) == 4
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 12
 
 
 def test_attention_qk_smoke_lowers_per_head_scores_to_gemm_s8_without_cpu_fallback():
@@ -919,6 +1399,68 @@ def test_attention_smoke_composes_multihead_qk_softmax_av_without_cpu_fallback()
     assert runtime.OP_EXP2_NEG_Q0_8 in mmio.commands
 
 
+def test_attention_smoke_can_generate_causal_mask_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.attention",
+        "precision": "int8",
+        "query": [[[[1, 2], [3, 4]]]],
+        "key": [[[[1, 0], [0, 1]]]],
+        "value": [[[[5, 6], [7, 8]]]],
+        "mask_mode": "causal",
+        "qk_score_shift": 0,
+        "attention_weight_shift": 1,
+        "context_shift": 4,
+    }
+
+    lowered = lower_attention_smoke(runtime, graph)
+
+    assert lowered.attention_mask == [[[[True, False], [True, True]]]]
+    assert lowered.attention_softmax.mask == lowered.attention_mask
+    assert lowered.attention_softmax.weights_q0_8 == [[[[256, 0], [85, 171]]]]
+    assert lowered.attention_weights_s8 == [[[[127, 0], [43, 86]]]]
+    assert lowered.context_requantized == [[[[39, 47], [51, 59]]]]
+    assert lowered.host_generates_causal_mask is True
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 2
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 3
+
+
+def test_attention_smoke_can_generate_sliding_window_mask_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.attention",
+        "precision": "int8",
+        "query": [[[[1, 0], [0, 1], [1, 1]]]],
+        "key": [[[[1, 0], [0, 1], [1, 1]]]],
+        "value": [[[[2, 0], [0, 2], [1, 1]]]],
+        "mask_mode": "sliding_window",
+        "mask_window": 2,
+        "qk_score_shift": 0,
+        "attention_weight_shift": 1,
+        "context_shift": 4,
+    }
+
+    lowered = lower_attention_smoke(runtime, graph)
+
+    assert lowered.attention_mask == [
+        [[[True, False, False], [True, True, False], [False, True, True]]]
+    ]
+    assert lowered.attention_softmax.mask == lowered.attention_mask
+    assert lowered.attention_softmax.weights_q0_8 == [[[[256, 0, 0], [85, 171, 0], [0, 85, 171]]]]
+    assert lowered.attention_weights_s8 == [[[[127, 0, 0], [43, 86, 0], [0, 43, 86]]]]
+    assert lowered.context_requantized == [[[[15, 0], [5, 10], [5, 10]]]]
+    assert lowered.host_generates_sliding_window_mask is True
+    assert lowered.host_generates_causal_mask is False
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 2
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 5
+
+
 def test_kv_cache_update_smoke_appends_key_value_tokens_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -986,6 +1528,44 @@ def test_decode_attention_smoke_appends_kv_and_attends_over_cache_without_cpu_fa
     assert runtime.OP_EXP2_NEG_Q0_8 in mmio.commands
 
 
+def test_decode_attention_smoke_can_limit_attention_to_recent_cache_window():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_decode_attention_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decode_attention",
+        "precision": "int8",
+        "query": [[[[1, 1]], [[2, -1]]]],
+        "key_cache": [[[[1, 0], [0, 1], [0, 0], [0, 0]], [[1, 1], [0, 0], [0, 0], [0, 0]]]],
+        "value_cache": [[[[5, 6], [7, 8], [0, 0], [0, 0]], [[-3, 4], [0, 0], [0, 0], [0, 0]]]],
+        "new_key": [[[[2, 1]], [[-1, 1]]]],
+        "new_value": [[[[9, 10]], [[6, -5]]]],
+        "cache_lengths": [[2, 1]],
+        "qk_score_shift": 0,
+        "attention_weight_shift": 1,
+        "context_shift": 4,
+        "cache_window": 2,
+    }
+
+    lowered = lower_decode_attention_smoke(runtime, graph)
+
+    assert lowered.updated_cache_lengths == [[3, 2]]
+    assert lowered.max_attention_cache_length == 2
+    assert lowered.decode_cache_window == 2
+    assert lowered.attention_key_cache_view == [[[[0, 1], [2, 1]], [[1, 1], [-1, 1]]]]
+    assert lowered.attention_value_cache_view == [[[[7, 8], [9, 10]], [[-3, 4], [6, -5]]]]
+    assert lowered.attention_mask == [[[[True, True]], [[True, True]]]]
+    assert lowered.attention.qk_scores.scores == [[[[1, 3]], [[1, -3]]]]
+    assert lowered.attention.attention_softmax.weights_q0_8 == [[[[51, 205]], [[241, 15]]]]
+    assert lowered.attention.attention_weights_s8 == [[[[26, 103]], [[121, 8]]]]
+    assert lowered.attention.context_requantized == [[[[69, 77]], [[-20, 27]]]]
+    assert lowered.host_materializes_cache_view is True
+    assert lowered.host_applies_decode_cache_window is True
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 4
+    assert runtime.OP_EXP2_NEG_Q0_8 in mmio.commands
+
+
 def test_transformer_mlp_smoke_uses_gemm_vrelu_gemm_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -1019,6 +1599,105 @@ def test_transformer_mlp_smoke_uses_gemm_vrelu_gemm_without_cpu_fallback():
         runtime.OP_VRELU_S8,
         runtime.OP_GEMM_S8,
     ]
+
+
+def test_stablehlo_module_smoke_dispatches_mlp_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "mlp_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.mlp",
+                "name": "mlp0",
+                "input_type": {"shape": [2, 2], "dtype": "int8"},
+                "up_weight_type": {"shape": [2, 3], "dtype": "int8"},
+                "down_weight_type": {"shape": [3, 2], "dtype": "int8"},
+                "result_type": {"shape": [2, 2], "dtype": "int8"},
+                "activation": "relu",
+                "precision": "int8",
+            }
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "mlp0": {
+                "input": [[1, -2], [3, 4]],
+                "up_weight": [[2, -1, 3], [-2, 1, 0]],
+                "down_weight": [[1, -2], [-3, 4], [2, 1]],
+            }
+        },
+    )
+
+    mlp_lowered = lowered.lowered_ops[0]
+    assert lowered.runtime_apis == ("lower_mlp_smoke",)
+    assert lowered.dispatch_order == ("mlp0",)
+    assert lowered.all_npu_dispatch is True
+    assert lowered.lowering_plans[0]["static_graph_fields"] == {
+        "activation": "relu",
+        "requant_shift": 0,
+    }
+    assert mlp_lowered.hidden_activated == [[6, 0, 3], [0, 1, 9]]
+    assert mlp_lowered.output == mlp_lowered.golden == [[12, -9], [15, 13]]
+    assert mlp_lowered.total_tile_count == 2
+    assert mmio.commands[-3:] == [runtime.OP_GEMM_S8, runtime.OP_VRELU_S8, runtime.OP_GEMM_S8]
+
+
+def test_stablehlo_module_smoke_dispatches_attention_qk_and_av_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "attention_qk_av_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.attention_qk",
+                "name": "qk0",
+                "query_type": {"shape": [1, 1, 2, 3], "dtype": "int8"},
+                "key_type": {"shape": [1, 1, 2, 3], "dtype": "int8"},
+                "result_type": {"shape": [1, 1, 2, 2], "dtype": "int8"},
+                "precision": "int8",
+            },
+            {
+                "op": "stablehlo.attention_av",
+                "name": "av0",
+                "weights_type": {"shape": [1, 1, 2, 2], "dtype": "int8"},
+                "value_type": {"shape": [1, 1, 2, 3], "dtype": "int8"},
+                "result_type": {"shape": [1, 1, 2, 3], "dtype": "int8"},
+                "precision": "int8",
+            },
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "qk0": {
+                "query": [[[[1, -2, 3], [4, 5, -6]]]],
+                "key": [[[[7, -8, 9], [10, 11, -12]]]],
+            },
+            "av0": {
+                "attention": [[[[1, 2], [3, 4]]]],
+                "value": [[[[5, -6, 7], [8, 9, -10]]]],
+            },
+        },
+    )
+
+    qk_lowered, av_lowered = lowered.lowered_ops
+    assert lowered.runtime_apis == ("lower_attention_qk_smoke", "lower_attention_av_smoke")
+    assert lowered.dispatch_order == ("qk0", "av0")
+    assert lowered.all_npu_dispatch is True
+    assert lowered.cpu_fallback is False
+    assert lowered.lowering_graphs[0]["op"] == "stablehlo.attention_qk"
+    assert lowered.lowering_graphs[1]["op"] == "stablehlo.attention_av"
+    assert qk_lowered.scores == qk_lowered.golden == [[[[50, -48], [-66, 167]]]]
+    assert av_lowered.context == av_lowered.golden == [[[[21, 12, -13], [47, 18, -19]]]]
+    assert qk_lowered.cpu_fallback is False
+    assert av_lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 2
 
 
 def test_transformer_mlp_smoke_tiled_projections_and_vrelu_without_cpu_fallback():
@@ -1107,6 +1786,54 @@ def test_swiglu_smoke_uses_gemm_scalar_gate_and_down_gemm_without_cpu_fallback()
     ]
 
 
+def test_swiglu_smoke_with_silu_gate_dispatches_exp2_gate_and_gemm():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_swiglu_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.swiglu",
+        "precision": "int8",
+        "activation": "silu",
+        "requant_shift": 0,
+        "gate_shift": 4,
+        "input": [[8, 4]],
+        "up_weight": [[2, 0], [0, 2]],
+        "gate_weight": [[2, 0], [0, -2]],
+        "down_weight": [[1, 0], [0, 1]],
+    }
+
+    lowered = lower_swiglu_smoke(runtime, graph)
+
+    assert lowered.up_accumulator == [[16, 8]]
+    assert lowered.gate_accumulator == [[16, -8]]
+    assert lowered.gate_requantized == [[16, -8]]
+    assert lowered.gate_activated == [[16, 0]]
+    assert lowered.gate_activation_result is not None
+    assert lowered.gate_activation_result.output == [[16, 0]]
+    assert lowered.gated_hidden == [[16, 0]]
+    assert lowered.output == lowered.golden == [[16, 0]]
+    assert lowered.total_tile_count == 3
+    assert lowered.scalar_mul_count == 2
+    assert lowered.cpu_fallback is False
+    assert "swiglu_s8_silu_gate_smoke_only" in lowered.claim_boundary
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 3
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 2
+    assert mmio.commands.count(runtime.OP_SUB) == 1
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 4
+    assert mmio.commands == [
+        runtime.OP_GEMM_S8,
+        runtime.OP_GEMM_S8,
+        runtime.OP_EXP2_NEG_Q0_8,
+        runtime.OP_SUB,
+        runtime.OP_MUL_LO,
+        runtime.OP_EXP2_NEG_Q0_8,
+        runtime.OP_MUL_LO,
+        runtime.OP_MUL_LO,
+        runtime.OP_MUL_LO,
+        runtime.OP_GEMM_S8,
+    ]
+
+
 def test_residual_add_smoke_uses_scalar_add_and_saturates_int8_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -1153,6 +1880,55 @@ def test_bias_add_smoke_uses_scalar_add_broadcast_and_saturates_int8_without_cpu
     assert lowered.cpu_fallback is False
     assert "bias_add_s8_scalar_broadcast_smoke_only" in lowered.claim_boundary
     assert mmio.commands[-6:] == [runtime.OP_ADD] * 6
+
+
+def test_stablehlo_module_smoke_dispatches_add_and_bias_add_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    module = {
+        "schema": "eliza.e1_npu_stablehlo_subset.v1",
+        "name": "add_bias_import_smoke",
+        "ops": [
+            {
+                "op": "stablehlo.add",
+                "name": "add0",
+                "lhs_type": {"shape": [2, 3], "dtype": "int8"},
+                "rhs_type": {"shape": [2, 3], "dtype": "int8"},
+                "result_type": {"shape": [2, 3], "dtype": "int8"},
+                "precision": "int8",
+            },
+            {
+                "op": "stablehlo.bias_add",
+                "name": "bias0",
+                "input_type": {"shape": [2, 3], "dtype": "int8"},
+                "bias_type": {"shape": [3], "dtype": "int8"},
+                "result_type": {"shape": [2, 3], "dtype": "int8"},
+                "precision": "int8",
+            },
+        ],
+    }
+
+    lowered = lower_stablehlo_module_smoke(
+        runtime,
+        module,
+        {
+            "add0": {
+                "lhs": [[1, -2, 120], [4, 5, -6]],
+                "rhs": [[7, -8, 20], [9, 10, -127]],
+            },
+            "bias0": {
+                "input": [[1, -2, 120], [4, 5, -6]],
+                "bias": [7, -8, 20],
+            },
+        },
+    )
+
+    add_lowered, bias_lowered = lowered.lowered_ops
+    assert lowered.runtime_apis == ("lower_residual_add_smoke", "lower_bias_add_smoke")
+    assert lowered.dispatch_order == ("add0", "bias0")
+    assert lowered.all_npu_dispatch is True
+    assert add_lowered.result == add_lowered.golden == [[8, -10, 127], [13, 15, -128]]
+    assert bias_lowered.result == bias_lowered.golden == [[8, -10, 127], [11, -3, 14]]
+    assert mmio.commands[-12:] == [runtime.OP_ADD] * 12
 
 
 def test_transformer_block_smoke_composes_attention_mlp_and_residuals_without_cpu_fallback():
@@ -1268,6 +2044,201 @@ def test_modern_decoder_block_smoke_composes_norm_qkv_rope_attention_swiglu_with
     assert mmio.commands.count(runtime.OP_ADD) == 28
     assert mmio.commands.count(runtime.OP_SUB) == 8
     assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 4
+
+
+def test_modern_decoder_block_smoke_can_use_packed_qkv_projection_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decoder_block",
+        "precision": "int8",
+        "projection_shift": 0,
+        "rms_epsilon": 0,
+        "rms_inv_shift": 8,
+        "rms_output_shift": 8,
+        "rope_scale_shift": 7,
+        "swiglu_requant_shift": 0,
+        "swiglu_gate_shift": 6,
+        "input": [[3, 4], [5, 12]],
+        "norm1_weight": [64, 64],
+        "norm2_weight": [64, 64],
+        "q_weight": [[1, 0], [0, 1]],
+        "k_weight": [[1, 0], [0, 1]],
+        "v_weight": [[1, 0], [0, 1]],
+        "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+        "attention": [[[[1, 0], [0, 1]]]],
+        "attention_bias": [0, 0],
+        "cos": [127],
+        "sin": [0],
+        "swiglu_up_weight": [[1, 0], [0, 1]],
+        "swiglu_gate_weight": [[1, 0], [0, 1]],
+        "swiglu_down_weight": [[1, 0], [0, 1]],
+    }
+
+    lowered = lower_modern_decoder_block_smoke(runtime, graph)
+
+    assert lowered.q_projection is None
+    assert lowered.k_projection is None
+    assert lowered.v_projection is None
+    assert lowered.qkv_projection is not None
+    assert lowered.qkv_projection.packed_accumulator == [
+        [63, 85, 63, 85, 63, 85],
+        [35, 84, 35, 84, 35, 84],
+    ]
+    assert lowered.q_requantized == [[63, 85], [35, 84]]
+    assert lowered.k_requantized == [[63, 85], [35, 84]]
+    assert lowered.v_requantized == [[63, 85], [35, 84]]
+    assert lowered.output == [[101, 127], [106, 127]]
+    assert lowered.total_tile_count == 7
+    assert lowered.host_slices_packed_qkv is True
+    assert lowered.host_requantizes_qkv is True
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 7
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 44
+    assert mmio.commands.count(runtime.OP_ADD) == 28
+
+
+def test_modern_decoder_block_smoke_can_use_packed_qkv_and_silu_swiglu_gate():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decoder_block",
+        "precision": "int8",
+        "projection_shift": 0,
+        "rms_epsilon": 0,
+        "rms_inv_shift": 8,
+        "rms_output_shift": 8,
+        "rope_scale_shift": 7,
+        "swiglu_requant_shift": 0,
+        "swiglu_gate_shift": 6,
+        "swiglu_activation": "silu",
+        "input": [[3, 4], [5, 12]],
+        "norm1_weight": [64, 64],
+        "norm2_weight": [64, 64],
+        "q_weight": [[1, 0], [0, 1]],
+        "k_weight": [[1, 0], [0, 1]],
+        "v_weight": [[1, 0], [0, 1]],
+        "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+        "attention": [[[[1, 0], [0, 1]]]],
+        "attention_bias": [0, 0],
+        "cos": [127],
+        "sin": [0],
+        "swiglu_up_weight": [[1, 0], [0, 1]],
+        "swiglu_gate_weight": [[1, 0], [0, 1]],
+        "swiglu_down_weight": [[1, 0], [0, 1]],
+    }
+
+    lowered = lower_modern_decoder_block_smoke(runtime, graph)
+
+    assert lowered.qkv_projection is not None
+    assert lowered.host_slices_packed_qkv is True
+    assert lowered.swiglu.activation == "silu"
+    assert lowered.swiglu.gate_activation_result is not None
+    assert lowered.swiglu.gate_activation_result.output == [[48, 66], [50, 72]]
+    assert lowered.swiglu.gate_activated == [[48, 66], [50, 72]]
+    assert lowered.swiglu.gated_hidden == [[36, 68], [39, 81]]
+    assert lowered.output == [[101, 127], [106, 127]]
+    assert lowered.total_tile_count == 7
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 7
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 8
+    assert mmio.commands.count(runtime.OP_SUB) == 12
+    assert mmio.commands.count(runtime.OP_MUL_LO) == 48
+
+
+def test_modern_decoder_block_smoke_can_generate_causal_attention_mask():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decoder_block",
+        "precision": "int8",
+        "projection_shift": 0,
+        "rms_epsilon": 0,
+        "rms_inv_shift": 8,
+        "rms_output_shift": 8,
+        "rope_scale_shift": 7,
+        "swiglu_requant_shift": 0,
+        "swiglu_gate_shift": 6,
+        "swiglu_activation": "silu",
+        "attention_mask_mode": "causal",
+        "input": [[3, 4], [5, 12]],
+        "norm1_weight": [64, 64],
+        "norm2_weight": [64, 64],
+        "q_weight": [[1, 0], [0, 1]],
+        "k_weight": [[1, 0], [0, 1]],
+        "v_weight": [[1, 0], [0, 1]],
+        "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+        "attention": [[[[1, 0], [0, 1]]]],
+        "attention_bias": [0, 0],
+        "cos": [127],
+        "sin": [0],
+        "swiglu_up_weight": [[1, 0], [0, 1]],
+        "swiglu_gate_weight": [[1, 0], [0, 1]],
+        "swiglu_down_weight": [[1, 0], [0, 1]],
+    }
+
+    lowered = lower_modern_decoder_block_smoke(runtime, graph)
+
+    assert lowered.attention_softmax.mask == [[[[True, False], [True, True]]]]
+    assert lowered.host_generates_causal_mask is True
+    assert lowered.host_slices_packed_qkv is True
+    assert lowered.swiglu.activation == "silu"
+    assert lowered.output == [[101, 127], [106, 127]]
+    assert lowered.total_tile_count == 7
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 7
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 7
+
+
+def test_modern_decoder_block_smoke_can_generate_sliding_window_attention_mask():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.decoder_block",
+        "precision": "int8",
+        "projection_shift": 0,
+        "rms_epsilon": 0,
+        "rms_inv_shift": 8,
+        "rms_output_shift": 8,
+        "rope_scale_shift": 7,
+        "swiglu_requant_shift": 0,
+        "swiglu_gate_shift": 6,
+        "swiglu_activation": "silu",
+        "attention_mask_mode": "sliding_window",
+        "attention_mask_window": 1,
+        "input": [[3, 4], [5, 12]],
+        "norm1_weight": [64, 64],
+        "norm2_weight": [64, 64],
+        "q_weight": [[1, 0], [0, 1]],
+        "k_weight": [[1, 0], [0, 1]],
+        "v_weight": [[1, 0], [0, 1]],
+        "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+        "attention": [[[[1, 0], [0, 1]]]],
+        "attention_bias": [0, 0],
+        "cos": [127],
+        "sin": [0],
+        "swiglu_up_weight": [[1, 0], [0, 1]],
+        "swiglu_gate_weight": [[1, 0], [0, 1]],
+        "swiglu_down_weight": [[1, 0], [0, 1]],
+    }
+
+    lowered = lower_modern_decoder_block_smoke(runtime, graph)
+
+    assert lowered.attention_softmax.mask == [[[[True, False], [False, True]]]]
+    assert lowered.host_generates_sliding_window_mask is True
+    assert lowered.host_generates_causal_mask is False
+    assert lowered.host_slices_packed_qkv is True
+    assert lowered.swiglu.activation == "silu"
+    assert lowered.attention_context_requantized == [[62, 84], [34, 83]]
+    assert lowered.output == [[101, 127], [52, 127]]
+    assert lowered.total_tile_count == 7
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_GEMM_S8) == 7
+    assert mmio.commands.count(runtime.OP_EXP2_NEG_Q0_8) == 6
 
 
 def test_rope_smoke_uses_scalar_mul_add_sub_without_cpu_fallback():
@@ -1397,6 +2368,36 @@ def test_matmul_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio()
     assert mmio.writes == []
 
 
+def test_qkv_projection_smoke_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_qkv_projection_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.qkv_projection",
+        "precision": "int8",
+        "input": [[1, 2]],
+        "packed_weight": [[1, 0, 0, 1, 1, 1], [0, 1, 1, 0, -1, 2]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_qkv_projection_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported qkv_projection source op"):
+        lower_qkv_projection_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
+    with pytest.raises(NpuLoweringError, match="unsupported qkv_projection precision"):
+        lower_qkv_projection_smoke(runtime, {**base, "precision": "int4"})
+    with pytest.raises(NpuLoweringError, match="packed output width must be divisible by 3"):
+        lower_qkv_projection_smoke(runtime, {**base, "packed_weight": [[1, 2], [3, 4]]})
+    with pytest.raises(NpuLoweringError, match="hidden width mismatch"):
+        lower_qkv_projection_smoke(
+            runtime,
+            {**base, "packed_weight": [[1, 0, 0], [0, 1, 1]]},
+        )
+    with pytest.raises(NpuLoweringError, match="qkv_projection shift must be in 0..31"):
+        lower_qkv_projection_smoke(runtime, {**base, "projection_shift": 32})
+
+    assert mmio.writes == []
+
+
 def test_fp8_matmul_smoke_lowers_to_dot4_without_cpu_fallback():
     runtime, mmio = make_completing_runtime()
     graph = {
@@ -1451,6 +2452,104 @@ def test_fp8_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio():
         lower_fp8_matmul_smoke(runtime, {**base, "lhs": [[0x38, 0x40]], "rhs": [[0x40]]})
     with pytest.raises(NpuLoweringError, match="outside range"):
         lower_fp8_matmul_smoke(runtime, {**base, "lhs": [[0x100]]})
+
+    assert mmio.writes == []
+
+
+def test_fp16_matmul_smoke_lowers_to_scalar_q8_8_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_fp16_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.dot_general",
+        "precision": "fp16",
+        "lhs": [[0x3C00, 0x4000], [0x3800, 0xBC00]],
+        "rhs": [[0x4000, 0xBC00], [0x3800, 0x3E00]],
+    }
+
+    lowered = lower_fp16_matmul_smoke(runtime, graph)
+
+    assert lowered.lhs_q8_8 == [[256, 512], [128, -256]]
+    assert lowered.rhs_q8_8 == [[512, -256], [128, 384]]
+    assert lowered.result_q8_8 == lowered.golden_q8_8 == [[768, 512], [128, -512]]
+    assert lowered.input_shape == [2, 2, 2]
+    assert lowered.output_shape == [2, 2]
+    assert lowered.scalar_mul_count == 8
+    assert lowered.scalar_add_count == 8
+    assert lowered.host_converts_float16_to_q8_8 is True
+    assert lowered.host_requantizes_products is True
+    assert lowered.cpu_fallback is False
+    assert "fp16_matmul_q8_8_scalar_smoke_only" in lowered.claim_boundary
+    assert mmio.commands == [runtime.OP_MUL_LO, runtime.OP_ADD] * 8
+
+
+def test_bf16_matmul_smoke_lowers_to_scalar_q8_8_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_bf16_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.dot_general",
+        "precision": "bf16",
+        "lhs": [[0x3F80, 0x4000], [0x3F00, 0xBF80]],
+        "rhs": [[0x4000, 0xBF80], [0x3F00, 0x3FC0]],
+    }
+
+    lowered = lower_bf16_matmul_smoke(runtime, graph)
+
+    assert lowered.lhs_q8_8 == [[256, 512], [128, -256]]
+    assert lowered.rhs_q8_8 == [[512, -256], [128, 384]]
+    assert lowered.result_q8_8 == lowered.golden_q8_8 == [[768, 512], [128, -512]]
+    assert lowered.input_shape == [2, 2, 2]
+    assert lowered.output_shape == [2, 2]
+    assert lowered.scalar_mul_count == 8
+    assert lowered.scalar_add_count == 8
+    assert lowered.host_converts_float16_to_q8_8 is True
+    assert lowered.host_requantizes_products is True
+    assert lowered.cpu_fallback is False
+    assert "bf16_matmul_q8_8_scalar_smoke_only" in lowered.claim_boundary
+    assert mmio.commands == [runtime.OP_MUL_LO, runtime.OP_ADD] * 8
+
+
+def test_fp16_and_bf16_matmul_smoke_reject_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    fp16_base = {
+        "schema": "eliza.e1_npu_fp16_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.dot_general",
+        "precision": "fp16",
+        "lhs": [[0x3C00]],
+        "rhs": [[0x4000]],
+    }
+    bf16_base = {
+        "schema": "eliza.e1_npu_bf16_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.dot_general",
+        "precision": "bf16",
+        "lhs": [[0x3F80]],
+        "rhs": [[0x4000]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_fp16_matmul_smoke(runtime, {**fp16_base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported fp16_matmul source op"):
+        lower_fp16_matmul_smoke(runtime, {**fp16_base, "op": "stablehlo.convolution"})
+    with pytest.raises(NpuLoweringError, match="unsupported fp16_matmul precision"):
+        lower_fp16_matmul_smoke(runtime, {**fp16_base, "precision": "int8"})
+    with pytest.raises(NpuLoweringError, match="K mismatch"):
+        lower_fp16_matmul_smoke(
+            runtime, {**fp16_base, "lhs": [[0x3C00, 0x4000]], "rhs": [[0x4000]]}
+        )
+    with pytest.raises(NpuLoweringError, match="outside range"):
+        lower_fp16_matmul_smoke(runtime, {**fp16_base, "lhs": [[0x1_0000]]})
+    with pytest.raises(NpuLoweringError, match="NaN/Inf"):
+        lower_fp16_matmul_smoke(runtime, {**fp16_base, "lhs": [[0x7C00]]})
+
+    with pytest.raises(NpuLoweringError, match="unsupported bf16_matmul source op"):
+        lower_bf16_matmul_smoke(runtime, {**bf16_base, "op": "stablehlo.convolution"})
+    with pytest.raises(NpuLoweringError, match="unsupported bf16_matmul precision"):
+        lower_bf16_matmul_smoke(runtime, {**bf16_base, "precision": "int8"})
+    with pytest.raises(NpuLoweringError, match="NaN/Inf"):
+        lower_bf16_matmul_smoke(runtime, {**bf16_base, "lhs": [[0x7F80]]})
 
     assert mmio.writes == []
 
@@ -1562,6 +2661,47 @@ def test_sparse_int4_matmul_smoke_lowers_to_sdot4_without_cpu_fallback():
     assert mmio.commands.count(runtime.OP_ADD) == 8
 
 
+def test_stablehlo_materialized_sparse_int4_dot_graph_lowers_to_sdot4():
+    runtime, mmio = make_completing_runtime()
+    module = parse_module(
+        {
+            "schema": "eliza.e1_npu_stablehlo_subset.v1",
+            "name": "sparse_int4_dot_import_smoke",
+            "ops": [
+                {
+                    "op": "stablehlo.dot_general",
+                    "name": "dot0",
+                    "lhs_type": {"shape": [2, 3], "dtype": "sparse_int4_2_4"},
+                    "rhs_type": {"shape": [3, 2], "dtype": "sparse_int4_2_4"},
+                    "result_type": {"shape": [2, 2], "dtype": "sparse_int4_2_4"},
+                    "precision": "sparse_int4_2_4",
+                }
+            ],
+        }
+    )
+    graph = materialize_module_lowering_graphs(
+        module,
+        {
+            "dot0": {
+                "lhs": [[1, -2, 3, -4, 5, -6, 7, -8], [7, 6, 5, 4, 3, 2, 1, 0]],
+                "rhs_nonzero": [
+                    [[2, -3, 4, -5], [-1, 3, -2, 6]],
+                ],
+                "rhs_positions": [
+                    [[0, 2, 1, 3], [1, 3, 0, 2]],
+                ],
+            }
+        },
+    )[0]
+
+    lowered = lower_sparse_int4_matmul_smoke(runtime, graph)
+
+    assert lowered.result == lowered.golden == [[9, 22], [7, 6]]
+    assert lowered.source_dialect == "stablehlo"
+    assert lowered.cpu_fallback is False
+    assert mmio.commands.count(runtime.OP_SDOT4_S4_2_4) == 4
+
+
 def test_sparse_int4_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio():
     runtime, mmio = make_runtime()
     base = {
@@ -1598,6 +2738,105 @@ def test_sparse_int4_matmul_smoke_rejects_unsupported_graphs_before_touching_mmi
     assert mmio.writes == []
 
 
+def test_group_scaled_int4_matmul_smoke_applies_q8_8_scales_without_cpu_fallback():
+    runtime, mmio = make_completing_runtime()
+    graph = {
+        "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.group_scaled_int4_matmul",
+        "precision": "int4_group_scaled",
+        "group_size": 2,
+        "lhs": [[2, -3, 4, 1], [-1, 5, -2, 3]],
+        "rhs": [[3, -2], [-4, 1], [2, 7], [-1, -3]],
+        "scales_q8_8": [[128, 256], [64, -128]],
+    }
+
+    lowered = lower_group_scaled_int4_matmul_smoke(runtime, graph)
+
+    assert lowered.group_dot_products == [[[18, 7], [-7, 25]], [[-23, -7], [7, -23]]]
+    assert lowered.result_q8_8 == lowered.golden_q8_8 == [[2752, -4992], [-3392, 4736]]
+    assert lowered.input_shape == [2, 4, 2]
+    assert lowered.output_shape == [2, 2]
+    assert lowered.group_size == 2
+    assert lowered.group_count == 2
+    assert lowered.scalar_mul_count == 24
+    assert lowered.scalar_add_count == 24
+    assert lowered.host_applies_group_scales is True
+    assert lowered.host_uses_q8_8_scales is True
+    assert lowered.cpu_fallback is False
+    assert "group_scaled_int4_matmul_q8_8_scalar_smoke_only" in lowered.claim_boundary
+    assert mmio.commands == [runtime.OP_MUL_LO, runtime.OP_ADD] * 24
+
+
+def test_stablehlo_materialized_group_scaled_int4_dot_graph_lowers_to_scalar_q8_8():
+    runtime, mmio = make_completing_runtime()
+    module = parse_module(
+        {
+            "schema": "eliza.e1_npu_stablehlo_subset.v1",
+            "name": "group_scaled_int4_dot_import_smoke",
+            "ops": [
+                {
+                    "op": "stablehlo.dot_general",
+                    "name": "dot0",
+                    "lhs_type": {"shape": [2, 3], "dtype": "int4_group_scaled"},
+                    "rhs_type": {"shape": [3, 2], "dtype": "int4_group_scaled"},
+                    "result_type": {"shape": [2, 2], "dtype": "int4_group_scaled"},
+                    "precision": "int4_group_scaled",
+                }
+            ],
+        }
+    )
+    graph = materialize_module_lowering_graphs(
+        module,
+        {
+            "dot0": {
+                "group_size": 2,
+                "lhs": [[2, -3, 4], [-1, 5, -2]],
+                "rhs": [[3, -2], [-4, 1], [2, 7]],
+                "scales_q8_8": [[128, 256], [64, -128]],
+            }
+        },
+    )[0]
+
+    lowered = lower_group_scaled_int4_matmul_smoke(runtime, graph)
+
+    assert lowered.result_q8_8 == lowered.golden_q8_8 == [[2816, -5376], [-3200, 3584]]
+    assert lowered.source_dialect == "stablehlo"
+    assert lowered.cpu_fallback is False
+    assert mmio.commands == [runtime.OP_MUL_LO, runtime.OP_ADD] * 20
+
+
+def test_group_scaled_int4_matmul_smoke_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "eliza.group_scaled_int4_matmul",
+        "precision": "int4_group_scaled",
+        "group_size": 2,
+        "lhs": [[1, -2]],
+        "rhs": [[3], [-4]],
+        "scales_q8_8": [[128]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported group_scaled_int4_matmul source op"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "op": "stablehlo.convolution"})
+    with pytest.raises(NpuLoweringError, match="unsupported group_scaled_int4_matmul precision"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "precision": "int8"})
+    with pytest.raises(NpuLoweringError, match="group_size must be positive"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "group_size": 0})
+    with pytest.raises(NpuLoweringError, match="outside range"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "rhs": [[8], [-4]]})
+    with pytest.raises(NpuLoweringError, match="scale group mismatch"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "scales_q8_8": [[128], [64]]})
+    with pytest.raises(NpuLoweringError, match="scale output-column mismatch"):
+        lower_group_scaled_int4_matmul_smoke(runtime, {**base, "scales_q8_8": [[128, 64]]})
+
+    assert mmio.writes == []
+
+
 def test_conv2d_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
     runtime, mmio = make_runtime()
     base = {
@@ -1619,6 +2858,113 @@ def test_conv2d_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio()
         lower_conv2d_smoke(runtime, {**base, "padding": "SAME"})
     with pytest.raises(NpuLoweringError, match="channel mismatch"):
         lower_conv2d_smoke(runtime, {**base, "input": [[[[1, 2]]]]})
+
+    assert mmio.writes == []
+
+
+def test_depthwise_conv2d_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_depthwise_conv2d_smoke.v1",
+        "dialect": "tflite",
+        "op": "tflite.depthwise_conv_2d",
+        "precision": "int8",
+        "input": [[[[1]]]],
+        "filter": [[[[1]]]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_depthwise_conv2d_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported depthwise_conv2d source op"):
+        lower_depthwise_conv2d_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
+    with pytest.raises(NpuLoweringError, match="unsupported depthwise_conv2d precision"):
+        lower_depthwise_conv2d_smoke(runtime, {**base, "precision": "fp8"})
+    with pytest.raises(NpuLoweringError, match="VALID padding only"):
+        lower_depthwise_conv2d_smoke(runtime, {**base, "padding": "SAME"})
+    with pytest.raises(NpuLoweringError, match="channel mismatch"):
+        lower_depthwise_conv2d_smoke(runtime, {**base, "input": [[[[1, 2]]]]})
+    with pytest.raises(NpuLoweringError, match="input value 128 outside"):
+        lower_depthwise_conv2d_smoke(runtime, {**base, "input": [[[[128]]]]})
+
+    assert mmio.writes == []
+
+
+def test_grouped_conv2d_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_grouped_conv2d_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.convolution",
+        "precision": "int8",
+        "groups": 2,
+        "input": [[[[1, 2, 3, 4]]]],
+        "filter": [[[[1, 1], [1, 1]]]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported grouped_conv2d source op"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
+    with pytest.raises(NpuLoweringError, match="unsupported grouped_conv2d precision"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "precision": "fp8"})
+    with pytest.raises(NpuLoweringError, match="groups greater than 1"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "groups": 1})
+    with pytest.raises(NpuLoweringError, match="excludes depthwise groups"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "groups": 4})
+    with pytest.raises(NpuLoweringError, match="VALID padding only"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "padding": "SAME"})
+    with pytest.raises(NpuLoweringError, match="output channels must divide evenly"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "filter": [[[[1, 1, 1], [1, 1, 1]]]]})
+    with pytest.raises(NpuLoweringError, match="input value 128 outside"):
+        lower_grouped_conv2d_smoke(runtime, {**base, "input": [[[[128, 2, 3, 4]]]]})
+
+    assert mmio.writes == []
+
+
+def test_silu_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_silu_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.silu",
+        "precision": "int8",
+        "input": [[0]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_silu_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported silu source op"):
+        lower_silu_smoke(runtime, {**base, "op": "stablehlo.tanh"})
+    with pytest.raises(NpuLoweringError, match="unsupported silu precision"):
+        lower_silu_smoke(runtime, {**base, "precision": "fp16"})
+    with pytest.raises(NpuLoweringError, match="unsupported silu approximation"):
+        lower_silu_smoke(runtime, {**base, "approximation": "exact_sigmoid"})
+    with pytest.raises(NpuLoweringError, match="input value 128 outside"):
+        lower_silu_smoke(runtime, {**base, "input": [[128]]})
+
+    assert mmio.writes == []
+
+
+def test_gelu_smoke_lowering_rejects_unsupported_graphs_before_touching_mmio():
+    runtime, mmio = make_runtime()
+    base = {
+        "schema": "eliza.e1_npu_gelu_smoke.v1",
+        "dialect": "stablehlo",
+        "op": "stablehlo.gelu",
+        "precision": "int8",
+        "input": [[0]],
+    }
+
+    with pytest.raises(NpuLoweringError, match="unsupported graph schema"):
+        lower_gelu_smoke(runtime, {**base, "schema": "other"})
+    with pytest.raises(NpuLoweringError, match="unsupported gelu source op"):
+        lower_gelu_smoke(runtime, {**base, "op": "stablehlo.tanh"})
+    with pytest.raises(NpuLoweringError, match="unsupported gelu precision"):
+        lower_gelu_smoke(runtime, {**base, "precision": "fp16"})
+    with pytest.raises(NpuLoweringError, match="unsupported gelu approximation"):
+        lower_gelu_smoke(runtime, {**base, "approximation": "exact_erf"})
+    with pytest.raises(NpuLoweringError, match="input value 128 outside"):
+        lower_gelu_smoke(runtime, {**base, "input": [[128]]})
 
     assert mmio.writes == []
 
@@ -1719,6 +3065,10 @@ def test_attention_smoke_lowering_rejects_unsupported_graphs_before_touching_mmi
         lower_attention_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
     with pytest.raises(NpuLoweringError, match="unsupported attention precision"):
         lower_attention_smoke(runtime, {**base, "precision": "int4"})
+    with pytest.raises(NpuLoweringError, match="unsupported attention mask_mode"):
+        lower_attention_smoke(runtime, {**base, "mask_mode": "block_sparse"})
+    with pytest.raises(NpuLoweringError, match="mask_window must be positive"):
+        lower_attention_smoke(runtime, {**base, "mask_mode": "sliding_window", "mask_window": 0})
     with pytest.raises(NpuLoweringError, match="head_dim mismatch"):
         lower_attention_smoke(runtime, {**base, "key": [[[[1]]]]})
     with pytest.raises(NpuLoweringError, match="attention_softmax mask key-token mismatch"):
@@ -1897,6 +3247,8 @@ def test_decode_attention_smoke_lowering_rejects_unsupported_graphs_before_touch
         lower_decode_attention_smoke(runtime, {**base, "cache_lengths": [[2]]})
     with pytest.raises(NpuLoweringError, match="decode_attention shifts must be in 0..31"):
         lower_decode_attention_smoke(runtime, {**base, "context_shift": 32})
+    with pytest.raises(NpuLoweringError, match="cache_window must be positive"):
+        lower_decode_attention_smoke(runtime, {**base, "cache_window": 0})
 
     assert mmio.writes == []
 
@@ -1962,12 +3314,24 @@ def test_modern_decoder_block_smoke_lowering_rejects_unsupported_graphs_before_t
         lower_modern_decoder_block_smoke(runtime, {**base, "op": "stablehlo.dot_general"})
     with pytest.raises(NpuLoweringError, match="unsupported modern_decoder_block precision"):
         lower_modern_decoder_block_smoke(runtime, {**base, "precision": "int4"})
+    with pytest.raises(
+        NpuLoweringError, match="unsupported modern_decoder_block attention_mask_mode"
+    ):
+        lower_modern_decoder_block_smoke(runtime, {**base, "attention_mask_mode": "block_sparse"})
+    with pytest.raises(NpuLoweringError, match="attention_mask_window must be positive"):
+        lower_modern_decoder_block_smoke(
+            runtime, {**base, "attention_mask_mode": "sliding_window", "attention_mask_window": 0}
+        )
     with pytest.raises(NpuLoweringError, match="even model dimension"):
         lower_modern_decoder_block_smoke(runtime, {**base, "input": [[1], [2]]})
     with pytest.raises(NpuLoweringError, match="attention_mask must be"):
         lower_modern_decoder_block_smoke(runtime, {**base, "attention_mask": [[[[True]]]]})
     with pytest.raises(NpuLoweringError, match="q_weight output mismatch"):
         lower_modern_decoder_block_smoke(runtime, {**base, "q_weight": [[1], [1]]})
+    with pytest.raises(
+        NpuLoweringError, match="unsupported modern_decoder_block swiglu_activation"
+    ):
+        lower_modern_decoder_block_smoke(runtime, {**base, "swiglu_activation": "gelu"})
     with pytest.raises(NpuLoweringError, match="modern_decoder_block shifts must be in 0..31"):
         lower_modern_decoder_block_smoke(runtime, {**base, "projection_shift": 32})
 

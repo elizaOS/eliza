@@ -25,18 +25,27 @@ from e1_npu_runtime import (
 )
 
 SUPPORTED_SCHEMA = "eliza.e1_npu_matmul_smoke.v1"
+SUPPORTED_BATCH_MATMUL_SCHEMA = "eliza.e1_npu_batch_matmul_smoke.v1"
 SUPPORTED_SPARSE_INT4_MATMUL_SCHEMA = "eliza.e1_npu_sparse_int4_matmul_smoke.v1"
+SUPPORTED_GROUP_SCALED_INT4_MATMUL_SCHEMA = "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1"
 SUPPORTED_INT2_MATMUL_SCHEMA = "eliza.e1_npu_int2_matmul_smoke.v1"
 SUPPORTED_FP8_MATMUL_SCHEMA = "eliza.e1_npu_fp8_matmul_smoke.v1"
+SUPPORTED_FP16_MATMUL_SCHEMA = "eliza.e1_npu_fp16_matmul_smoke.v1"
+SUPPORTED_BF16_MATMUL_SCHEMA = "eliza.e1_npu_bf16_matmul_smoke.v1"
 SUPPORTED_CONV2D_SCHEMA = "eliza.e1_npu_conv2d_smoke.v1"
+SUPPORTED_DEPTHWISE_CONV2D_SCHEMA = "eliza.e1_npu_depthwise_conv2d_smoke.v1"
+SUPPORTED_GROUPED_CONV2D_SCHEMA = "eliza.e1_npu_grouped_conv2d_smoke.v1"
 SUPPORTED_ATTENTION_SCHEMA = "eliza.e1_npu_attention_smoke.v1"
 SUPPORTED_DECODE_ATTENTION_SCHEMA = "eliza.e1_npu_decode_attention_smoke.v1"
 SUPPORTED_ATTENTION_QK_SCHEMA = "eliza.e1_npu_attention_qk_smoke.v1"
 SUPPORTED_ATTENTION_SOFTMAX_SCHEMA = "eliza.e1_npu_attention_softmax_smoke.v1"
 SUPPORTED_ATTENTION_AV_SCHEMA = "eliza.e1_npu_attention_av_smoke.v1"
 SUPPORTED_KV_CACHE_UPDATE_SCHEMA = "eliza.e1_npu_kv_cache_update_smoke.v1"
+SUPPORTED_QKV_PROJECTION_SCHEMA = "eliza.e1_npu_qkv_projection_smoke.v1"
 SUPPORTED_MLP_SCHEMA = "eliza.e1_npu_mlp_smoke.v1"
 SUPPORTED_SWIGLU_SCHEMA = "eliza.e1_npu_swiglu_smoke.v1"
+SUPPORTED_SILU_SCHEMA = "eliza.e1_npu_silu_smoke.v1"
+SUPPORTED_GELU_SCHEMA = "eliza.e1_npu_gelu_smoke.v1"
 SUPPORTED_RESIDUAL_ADD_SCHEMA = "eliza.e1_npu_residual_add_smoke.v1"
 SUPPORTED_BIAS_ADD_SCHEMA = "eliza.e1_npu_bias_add_smoke.v1"
 SUPPORTED_TRANSFORMER_BLOCK_SCHEMA = "eliza.e1_npu_transformer_block_smoke.v1"
@@ -46,19 +55,41 @@ SUPPORTED_RMSNORM_SCHEMA = "eliza.e1_npu_rmsnorm_smoke.v1"
 SUPPORTED_MATMUL_OPS = {
     "stablehlo.dot_general",
     "stablehlo.dot",
+    "stablehlo.batch_matmul",
     "tflite.fully_connected",
     "tflite.batch_matmul",
     "tflite.matmul",
+}
+SUPPORTED_BATCH_MATMUL_OPS = {
+    "stablehlo.batch_matmul",
+    "tflite.batch_matmul",
+    "eliza.batch_matmul",
 }
 SUPPORTED_SPARSE_INT4_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {
     "eliza.sparse_2_4_matmul",
     "eliza.sparse_int4_matmul",
 }
+SUPPORTED_GROUP_SCALED_INT4_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {
+    "eliza.group_scaled_int4_matmul",
+    "eliza.awq_int4_matmul",
+}
 SUPPORTED_INT2_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.int2_matmul", "eliza.bitnet_matmul"}
 SUPPORTED_FP8_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.fp8_matmul"}
+SUPPORTED_FP16_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.fp16_matmul"}
+SUPPORTED_BF16_MATMUL_OPS = SUPPORTED_MATMUL_OPS | {"eliza.bf16_matmul"}
 SUPPORTED_CONV2D_OPS = {
     "stablehlo.convolution",
     "tflite.conv_2d",
+}
+SUPPORTED_DEPTHWISE_CONV2D_OPS = {
+    "stablehlo.depthwise_convolution",
+    "tflite.depthwise_conv_2d",
+    "eliza.depthwise_conv2d",
+}
+SUPPORTED_GROUPED_CONV2D_OPS = {
+    "stablehlo.convolution",
+    "tflite.conv_2d",
+    "eliza.grouped_conv2d",
 }
 SUPPORTED_ATTENTION_OPS = {
     "eliza.attention",
@@ -71,6 +102,7 @@ SUPPORTED_DECODE_ATTENTION_OPS = {
     "tflite.decode_attention",
 }
 SUPPORTED_ATTENTION_QK_OPS = {
+    "stablehlo.attention_qk",
     "stablehlo.dot_general",
     "tflite.batch_matmul",
     "eliza.attention_qk",
@@ -81,6 +113,7 @@ SUPPORTED_ATTENTION_SOFTMAX_OPS = {
     "eliza.attention_softmax",
 }
 SUPPORTED_ATTENTION_AV_OPS = {
+    "stablehlo.attention_av",
     "stablehlo.dot_general",
     "tflite.batch_matmul",
     "eliza.attention_av",
@@ -89,6 +122,11 @@ SUPPORTED_KV_CACHE_UPDATE_OPS = {
     "eliza.kv_cache_update",
     "stablehlo.kv_cache_update",
     "tflite.kv_cache_update",
+}
+SUPPORTED_QKV_PROJECTION_OPS = {
+    "eliza.qkv_projection",
+    "stablehlo.qkv_projection",
+    "tflite.qkv_projection",
 }
 SUPPORTED_MLP_OPS = {
     "stablehlo.mlp",
@@ -101,13 +139,27 @@ SUPPORTED_SWIGLU_OPS = {
     "eliza.swiglu",
     "eliza.gated_mlp",
 }
+SUPPORTED_SILU_OPS = {
+    "stablehlo.silu",
+    "tflite.silu",
+    "eliza.silu",
+    "eliza.approx_silu",
+}
+SUPPORTED_GELU_OPS = {
+    "stablehlo.gelu",
+    "tflite.gelu",
+    "eliza.gelu",
+    "eliza.quick_gelu",
+}
 SUPPORTED_RESIDUAL_ADD_OPS = {
     "stablehlo.add",
+    "stablehlo.residual_add",
     "tflite.add",
     "eliza.residual_add",
 }
 SUPPORTED_BIAS_ADD_OPS = {
     "stablehlo.add",
+    "stablehlo.bias_add",
     "tflite.add",
     "eliza.bias_add",
 }
@@ -179,6 +231,84 @@ class LoweredMatmulResult:
 
 
 @dataclass(frozen=True)
+class LoweredBatchMatmulResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    result: list[list[list[list[int]]]]
+    golden: list[list[list[list[int]]]]
+    matmuls: list[list[LoweredMatmulResult]]
+    input_shape: list[int]
+    output_shape: list[int]
+    total_tile_count: int
+    cpu_fallback: bool
+    host_iterates_batch_heads: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "result": self.result,
+            "golden": self.golden,
+            "matmuls": [[matmul.as_dict() for matmul in batch] for batch in self.matmuls],
+            "input_shape": self.input_shape,
+            "output_shape": self.output_shape,
+            "total_tile_count": self.total_tile_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_iterates_batch_heads": self.host_iterates_batch_heads,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredQkvProjectionResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    packed_accumulator: list[list[int]]
+    q_accumulator: list[list[int]]
+    k_accumulator: list[list[int]]
+    v_accumulator: list[list[int]]
+    q_requantized: list[list[int]]
+    k_requantized: list[list[int]]
+    v_requantized: list[list[int]]
+    projection_shift: int
+    packed_matmul: LoweredMatmulResult
+    total_tile_count: int
+    cpu_fallback: bool
+    host_slices_packed_qkv: bool
+    host_requantizes_qkv: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "packed_accumulator": self.packed_accumulator,
+            "q_accumulator": self.q_accumulator,
+            "k_accumulator": self.k_accumulator,
+            "v_accumulator": self.v_accumulator,
+            "q_requantized": self.q_requantized,
+            "k_requantized": self.k_requantized,
+            "v_requantized": self.v_requantized,
+            "projection_shift": self.projection_shift,
+            "packed_matmul": self.packed_matmul.as_dict(),
+            "total_tile_count": self.total_tile_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_slices_packed_qkv": self.host_slices_packed_qkv,
+            "host_requantizes_qkv": self.host_requantizes_qkv,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
 class LoweredSparseInt4MatmulResult:
     schema: str
     source_dialect: str
@@ -214,6 +344,48 @@ class LoweredSparseInt4MatmulResult:
             "cpu_fallback": self.cpu_fallback,
             "host_pads_k_to_sparse_blocks": self.host_pads_k_to_sparse_blocks,
             "host_uses_2_4_metadata": self.host_uses_2_4_metadata,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredGroupScaledInt4MatmulResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    result_q8_8: list[list[int]]
+    golden_q8_8: list[list[int]]
+    group_dot_products: list[list[list[int]]]
+    input_shape: list[int]
+    output_shape: list[int]
+    group_size: int
+    group_count: int
+    scalar_mul_count: int
+    scalar_add_count: int
+    cpu_fallback: bool
+    host_applies_group_scales: bool
+    host_uses_q8_8_scales: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "result_q8_8": self.result_q8_8,
+            "golden_q8_8": self.golden_q8_8,
+            "group_dot_products": self.group_dot_products,
+            "input_shape": self.input_shape,
+            "output_shape": self.output_shape,
+            "group_size": self.group_size,
+            "group_count": self.group_count,
+            "scalar_mul_count": self.scalar_mul_count,
+            "scalar_add_count": self.scalar_add_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_applies_group_scales": self.host_applies_group_scales,
+            "host_uses_q8_8_scales": self.host_uses_q8_8_scales,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -291,6 +463,46 @@ class LoweredFp8MatmulResult:
 
 
 @dataclass(frozen=True)
+class LoweredFloat16MatmulResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    result_q8_8: list[list[int]]
+    golden_q8_8: list[list[int]]
+    lhs_q8_8: list[list[int]]
+    rhs_q8_8: list[list[int]]
+    input_shape: list[int]
+    output_shape: list[int]
+    scalar_mul_count: int
+    scalar_add_count: int
+    cpu_fallback: bool
+    host_converts_float16_to_q8_8: bool
+    host_requantizes_products: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "result_q8_8": self.result_q8_8,
+            "golden_q8_8": self.golden_q8_8,
+            "lhs_q8_8": self.lhs_q8_8,
+            "rhs_q8_8": self.rhs_q8_8,
+            "input_shape": self.input_shape,
+            "output_shape": self.output_shape,
+            "scalar_mul_count": self.scalar_mul_count,
+            "scalar_add_count": self.scalar_add_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_converts_float16_to_q8_8": self.host_converts_float16_to_q8_8,
+            "host_requantizes_products": self.host_requantizes_products,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
 class LoweredConv2dResult:
     schema: str
     source_dialect: str
@@ -319,6 +531,84 @@ class LoweredConv2dResult:
             "filter_matrix_shape": self.filter_matrix_shape,
             "matmul": self.matmul.as_dict(),
             "cpu_fallback": self.cpu_fallback,
+            "host_materializes_im2col": self.host_materializes_im2col,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredDepthwiseConv2dResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    output: list[list[list[list[int]]]]
+    golden: list[list[list[list[int]]]]
+    output_shape: list[int]
+    input_channels: int
+    channel_multiplier: int
+    scalar_mul_count: int
+    scalar_add_count: int
+    cpu_fallback: bool
+    host_uses_direct_depthwise_loops: bool
+    host_materializes_im2col: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "output": self.output,
+            "golden": self.golden,
+            "output_shape": self.output_shape,
+            "input_channels": self.input_channels,
+            "channel_multiplier": self.channel_multiplier,
+            "scalar_mul_count": self.scalar_mul_count,
+            "scalar_add_count": self.scalar_add_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_uses_direct_depthwise_loops": self.host_uses_direct_depthwise_loops,
+            "host_materializes_im2col": self.host_materializes_im2col,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredGroupedConv2dResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    output: list[list[list[list[int]]]]
+    golden: list[list[list[list[int]]]]
+    output_shape: list[int]
+    groups: int
+    input_channels_per_group: int
+    output_channels_per_group: int
+    scalar_mul_count: int
+    scalar_add_count: int
+    cpu_fallback: bool
+    host_uses_direct_grouped_loops: bool
+    host_materializes_im2col: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "output": self.output,
+            "golden": self.golden,
+            "output_shape": self.output_shape,
+            "groups": self.groups,
+            "input_channels_per_group": self.input_channels_per_group,
+            "output_channels_per_group": self.output_channels_per_group,
+            "scalar_mul_count": self.scalar_mul_count,
+            "scalar_add_count": self.scalar_add_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_uses_direct_grouped_loops": self.host_uses_direct_grouped_loops,
             "host_materializes_im2col": self.host_materializes_im2col,
             "claim_boundary": self.claim_boundary,
         }
@@ -452,6 +742,7 @@ class LoweredAttentionResult:
     precision: str
     qk_scores: LoweredAttentionQkResult
     qk_logits_s8: list[list[list[list[int]]]]
+    attention_mask: list[list[list[list[bool]]]]
     attention_softmax: LoweredAttentionSoftmaxResult
     attention_weights_s8: list[list[list[list[int]]]]
     attention_av: LoweredAttentionAvResult
@@ -463,6 +754,8 @@ class LoweredAttentionResult:
     computes_qk_scores: bool
     computes_attention_softmax: bool
     requires_prequantized_attention: bool
+    host_generates_causal_mask: bool
+    host_generates_sliding_window_mask: bool
     host_requantizes_qk_scores: bool
     host_requantizes_attention_weights: bool
     host_requantizes_context: bool
@@ -476,6 +769,7 @@ class LoweredAttentionResult:
             "precision": self.precision,
             "qk_scores": self.qk_scores.as_dict(),
             "qk_logits_s8": self.qk_logits_s8,
+            "attention_mask": self.attention_mask,
             "attention_softmax": self.attention_softmax.as_dict(),
             "attention_weights_s8": self.attention_weights_s8,
             "attention_av": self.attention_av.as_dict(),
@@ -487,6 +781,8 @@ class LoweredAttentionResult:
             "computes_qk_scores": self.computes_qk_scores,
             "computes_attention_softmax": self.computes_attention_softmax,
             "requires_prequantized_attention": self.requires_prequantized_attention,
+            "host_generates_causal_mask": self.host_generates_causal_mask,
+            "host_generates_sliding_window_mask": self.host_generates_sliding_window_mask,
             "host_requantizes_qk_scores": self.host_requantizes_qk_scores,
             "host_requantizes_attention_weights": self.host_requantizes_attention_weights,
             "host_requantizes_context": self.host_requantizes_context,
@@ -553,6 +849,8 @@ class LoweredDecodeAttentionResult:
     updates_kv_cache: bool
     computes_attention_over_cache: bool
     host_materializes_cache_view: bool
+    host_applies_decode_cache_window: bool
+    decode_cache_window: int | None
     claim_boundary: str
 
     def as_dict(self) -> dict[str, Any]:
@@ -574,6 +872,8 @@ class LoweredDecodeAttentionResult:
             "updates_kv_cache": self.updates_kv_cache,
             "computes_attention_over_cache": self.computes_attention_over_cache,
             "host_materializes_cache_view": self.host_materializes_cache_view,
+            "host_applies_decode_cache_window": self.host_applies_decode_cache_window,
+            "decode_cache_window": self.decode_cache_window,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -635,11 +935,13 @@ class LoweredSwiGLUResult:
     gate_accumulator: list[list[int]]
     up_requantized: list[list[int]]
     gate_requantized: list[list[int]]
+    gate_activated: list[list[int]]
     gated_hidden: list[list[int]]
     requant_shift: int
     gate_shift: int
     up_matmul: LoweredMatmulResult
     gate_matmul: LoweredMatmulResult
+    gate_activation_result: LoweredSiluResult | None
     down_matmul: LoweredMatmulResult
     total_tile_count: int
     scalar_mul_count: int
@@ -661,17 +963,111 @@ class LoweredSwiGLUResult:
             "gate_accumulator": self.gate_accumulator,
             "up_requantized": self.up_requantized,
             "gate_requantized": self.gate_requantized,
+            "gate_activated": self.gate_activated,
             "gated_hidden": self.gated_hidden,
             "requant_shift": self.requant_shift,
             "gate_shift": self.gate_shift,
             "up_matmul": self.up_matmul.as_dict(),
             "gate_matmul": self.gate_matmul.as_dict(),
+            "gate_activation_result": (
+                None
+                if self.gate_activation_result is None
+                else self.gate_activation_result.as_dict()
+            ),
             "down_matmul": self.down_matmul.as_dict(),
             "total_tile_count": self.total_tile_count,
             "scalar_mul_count": self.scalar_mul_count,
             "cpu_fallback": self.cpu_fallback,
             "host_requantizes_hidden": self.host_requantizes_hidden,
             "host_applies_gate_shift_and_saturation": self.host_applies_gate_shift_and_saturation,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredSiluResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    input: list[list[int]]
+    sigmoid_q0_8: list[list[int]]
+    output: list[list[int]]
+    golden: list[list[int]]
+    shape: list[int]
+    element_count: int
+    scalar_exp2_count: int
+    scalar_sub_count: int
+    scalar_mul_count: int
+    cpu_fallback: bool
+    host_applies_shift_and_saturation: bool
+    approximation: str
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "input": self.input,
+            "sigmoid_q0_8": self.sigmoid_q0_8,
+            "output": self.output,
+            "golden": self.golden,
+            "shape": self.shape,
+            "element_count": self.element_count,
+            "scalar_exp2_count": self.scalar_exp2_count,
+            "scalar_sub_count": self.scalar_sub_count,
+            "scalar_mul_count": self.scalar_mul_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_applies_shift_and_saturation": self.host_applies_shift_and_saturation,
+            "approximation": self.approximation,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredGeluResult:
+    schema: str
+    source_dialect: str
+    source_op: str
+    precision: str
+    input: list[list[int]]
+    scaled_input: list[list[int]]
+    sigmoid_q0_8: list[list[int]]
+    output: list[list[int]]
+    golden: list[list[int]]
+    shape: list[int]
+    element_count: int
+    scalar_scale_mul_count: int
+    scalar_exp2_count: int
+    scalar_sub_count: int
+    scalar_gate_mul_count: int
+    cpu_fallback: bool
+    host_applies_shift_and_saturation: bool
+    approximation: str
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "source_op": self.source_op,
+            "precision": self.precision,
+            "input": self.input,
+            "scaled_input": self.scaled_input,
+            "sigmoid_q0_8": self.sigmoid_q0_8,
+            "output": self.output,
+            "golden": self.golden,
+            "shape": self.shape,
+            "element_count": self.element_count,
+            "scalar_scale_mul_count": self.scalar_scale_mul_count,
+            "scalar_exp2_count": self.scalar_exp2_count,
+            "scalar_sub_count": self.scalar_sub_count,
+            "scalar_gate_mul_count": self.scalar_gate_mul_count,
+            "cpu_fallback": self.cpu_fallback,
+            "host_applies_shift_and_saturation": self.host_applies_shift_and_saturation,
+            "approximation": self.approximation,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -880,9 +1276,10 @@ class LoweredModernDecoderBlockResult:
     precision: str
     output: list[list[int]]
     norm1: LoweredRmsNormResult
-    q_projection: LoweredMatmulResult
-    k_projection: LoweredMatmulResult
-    v_projection: LoweredMatmulResult
+    q_projection: LoweredMatmulResult | None
+    k_projection: LoweredMatmulResult | None
+    v_projection: LoweredMatmulResult | None
+    qkv_projection: LoweredQkvProjectionResult | None
     q_requantized: list[list[int]]
     k_requantized: list[list[int]]
     v_requantized: list[list[int]]
@@ -906,6 +1303,9 @@ class LoweredModernDecoderBlockResult:
     computes_qk_scores: bool
     computes_attention_softmax: bool
     requires_prequantized_attention: bool
+    host_generates_causal_mask: bool
+    host_generates_sliding_window_mask: bool
+    host_slices_packed_qkv: bool
     host_requantizes_qkv: bool
     host_requantizes_qk_scores: bool
     host_requantizes_attention_weights: bool
@@ -919,9 +1319,12 @@ class LoweredModernDecoderBlockResult:
             "precision": self.precision,
             "output": self.output,
             "norm1": self.norm1.as_dict(),
-            "q_projection": self.q_projection.as_dict(),
-            "k_projection": self.k_projection.as_dict(),
-            "v_projection": self.v_projection.as_dict(),
+            "q_projection": None if self.q_projection is None else self.q_projection.as_dict(),
+            "k_projection": None if self.k_projection is None else self.k_projection.as_dict(),
+            "v_projection": None if self.v_projection is None else self.v_projection.as_dict(),
+            "qkv_projection": None
+            if self.qkv_projection is None
+            else self.qkv_projection.as_dict(),
             "q_requantized": self.q_requantized,
             "k_requantized": self.k_requantized,
             "v_requantized": self.v_requantized,
@@ -945,9 +1348,44 @@ class LoweredModernDecoderBlockResult:
             "computes_qk_scores": self.computes_qk_scores,
             "computes_attention_softmax": self.computes_attention_softmax,
             "requires_prequantized_attention": self.requires_prequantized_attention,
+            "host_generates_causal_mask": self.host_generates_causal_mask,
+            "host_generates_sliding_window_mask": self.host_generates_sliding_window_mask,
+            "host_slices_packed_qkv": self.host_slices_packed_qkv,
             "host_requantizes_qkv": self.host_requantizes_qkv,
             "host_requantizes_qk_scores": self.host_requantizes_qk_scores,
             "host_requantizes_attention_weights": self.host_requantizes_attention_weights,
+            "claim_boundary": self.claim_boundary,
+        }
+
+
+@dataclass(frozen=True)
+class LoweredStableHloModuleResult:
+    schema: str
+    source_dialect: str
+    module_name: str
+    op_count: int
+    dispatch_order: tuple[str, ...]
+    lowering_graphs: tuple[dict[str, Any], ...]
+    lowering_plans: tuple[dict[str, Any], ...]
+    lowered_ops: tuple[Any, ...]
+    runtime_apis: tuple[str, ...]
+    cpu_fallback: bool
+    all_npu_dispatch: bool
+    claim_boundary: str
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "schema": self.schema,
+            "source_dialect": self.source_dialect,
+            "module_name": self.module_name,
+            "op_count": self.op_count,
+            "dispatch_order": list(self.dispatch_order),
+            "lowering_graphs": list(self.lowering_graphs),
+            "lowering_plans": list(self.lowering_plans),
+            "lowered_ops": [_lowered_result_as_dict(op) for op in self.lowered_ops],
+            "runtime_apis": list(self.runtime_apis),
+            "cpu_fallback": self.cpu_fallback,
+            "all_npu_dispatch": self.all_npu_dispatch,
             "claim_boundary": self.claim_boundary,
         }
 
@@ -1004,6 +1442,145 @@ def lower_matmul_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredM
         split_k=len(lhs[0]) > MAX_TILE_K,
         host_accumulates_partials=len(lhs[0]) > MAX_TILE_K,
         claim_boundary="single_matmul_tiled_smoke_only_not_production_compiler_backend",
+    )
+
+
+def lower_batch_matmul_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredBatchMatmulResult:
+    """Lower a bounded rank-4 batch/head matmul by reusing GEMM tiles."""
+
+    if graph.get("schema") != SUPPORTED_BATCH_MATMUL_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_BATCH_MATMUL_OPS:
+        raise NpuLoweringError(f"unsupported batch_matmul source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision not in {"int8", "int4"}:
+        raise NpuLoweringError(f"unsupported batch_matmul precision {precision!r}")
+
+    lhs = _tensor4(graph.get("lhs"), "lhs")
+    rhs = _tensor4(graph.get("rhs"), "rhs")
+    _validate_batch_matmul_shape(lhs, rhs)
+
+    result: list[list[list[list[int]]]] = []
+    golden: list[list[list[list[int]]]] = []
+    matmuls: list[list[LoweredMatmulResult]] = []
+    total_tile_count = 0
+    for batch_index, (lhs_batch, rhs_batch) in enumerate(zip(lhs, rhs, strict=True)):
+        result_batch: list[list[list[int]]] = []
+        golden_batch: list[list[list[int]]] = []
+        matmul_batch: list[LoweredMatmulResult] = []
+        for head_index, (lhs_head, rhs_head) in enumerate(zip(lhs_batch, rhs_batch, strict=True)):
+            matmul = lower_matmul_smoke(
+                runtime,
+                {
+                    "schema": SUPPORTED_SCHEMA,
+                    "dialect": str(graph.get("dialect", "unknown")),
+                    "op": "stablehlo.dot_general",
+                    "precision": precision,
+                    "lhs": lhs_head,
+                    "rhs": rhs_head,
+                },
+            )
+            result_batch.append(matmul.result)
+            golden_batch.append(matmul.golden)
+            matmul_batch.append(matmul)
+            total_tile_count += matmul.tile_count
+            if matmul.cpu_fallback:
+                raise NpuLoweringError(
+                    f"batch_matmul slice [{batch_index}][{head_index}] used CPU fallback"
+                )
+        result.append(result_batch)
+        golden.append(golden_batch)
+        matmuls.append(matmul_batch)
+
+    batch = len(lhs)
+    heads = len(lhs[0])
+    m = len(lhs[0][0])
+    k = len(lhs[0][0][0])
+    n = len(rhs[0][0][0])
+    return LoweredBatchMatmulResult(
+        schema="eliza.e1_npu_lowered_batch_matmul_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        result=result,
+        golden=golden,
+        matmuls=matmuls,
+        input_shape=[batch, heads, m, k, n],
+        output_shape=[batch, heads, m, n],
+        total_tile_count=total_tile_count,
+        cpu_fallback=False,
+        host_iterates_batch_heads=True,
+        claim_boundary=(
+            "batch_matmul_reuses_tiled_matmul_smoke_only_not_tensor_batch_gemm_or_"
+            "production_compiler_backend"
+        ),
+    )
+
+
+def lower_qkv_projection_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredQkvProjectionResult:
+    """Lower a tiny packed QKV projection through one packed GEMM."""
+
+    if graph.get("schema") != SUPPORTED_QKV_PROJECTION_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_QKV_PROJECTION_OPS:
+        raise NpuLoweringError(f"unsupported qkv_projection source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported qkv_projection precision {precision!r}")
+
+    inputs = _matrix(graph.get("input"), "input")
+    packed_weight = _matrix(graph.get("packed_weight"), "packed_weight")
+    _validate_qkv_projection_shape(inputs, packed_weight)
+    projection_shift = _nonnegative_int(graph.get("projection_shift", 0), "projection_shift")
+    if projection_shift > 31:
+        raise NpuLoweringError("qkv_projection shift must be in 0..31")
+    _validate_range(inputs, -128, 127, "input")
+    _validate_range(packed_weight, -128, 127, "packed_weight")
+
+    dialect = graph.get("dialect", "unknown")
+    packed_matmul = lower_matmul_smoke(
+        runtime,
+        {
+            "schema": SUPPORTED_SCHEMA,
+            "dialect": dialect,
+            "op": "stablehlo.dot_general",
+            "precision": "int8",
+            "lhs": inputs,
+            "rhs": packed_weight,
+        },
+    )
+    hidden_width = len(packed_weight[0]) // 3
+    q_accumulator = _slice_columns(packed_matmul.result, 0, hidden_width)
+    k_accumulator = _slice_columns(packed_matmul.result, hidden_width, hidden_width * 2)
+    v_accumulator = _slice_columns(packed_matmul.result, hidden_width * 2, hidden_width * 3)
+
+    return LoweredQkvProjectionResult(
+        schema="eliza.e1_npu_lowered_qkv_projection_result.v1",
+        source_dialect=str(dialect),
+        source_op=source_op,
+        precision=precision,
+        packed_accumulator=packed_matmul.result,
+        q_accumulator=q_accumulator,
+        k_accumulator=k_accumulator,
+        v_accumulator=v_accumulator,
+        q_requantized=_requantize_s8_matrix(q_accumulator, projection_shift),
+        k_requantized=_requantize_s8_matrix(k_accumulator, projection_shift),
+        v_requantized=_requantize_s8_matrix(v_accumulator, projection_shift),
+        projection_shift=projection_shift,
+        packed_matmul=packed_matmul,
+        total_tile_count=packed_matmul.tile_count,
+        cpu_fallback=False,
+        host_slices_packed_qkv=True,
+        host_requantizes_qkv=True,
+        claim_boundary=(
+            "qkv_projection_packed_gemm_smoke_only_not_fused_attention_or_production_compiler_backend"
+        ),
     )
 
 
@@ -1075,6 +1652,94 @@ def lower_sparse_int4_matmul_smoke(
         host_pads_k_to_sparse_blocks=padded_k != len(lhs[0]),
         host_uses_2_4_metadata=True,
         claim_boundary="sparse_int4_2_4_matmul_sdot4_smoke_only_not_sparse_tensor_gemm_or_production_compiler_backend",
+    )
+
+
+def lower_group_scaled_int4_matmul_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredGroupScaledInt4MatmulResult:
+    """Lower tiny group-scaled INT4 weights through scalar MUL/ADD commands."""
+
+    if graph.get("schema") != SUPPORTED_GROUP_SCALED_INT4_MATMUL_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_GROUP_SCALED_INT4_MATMUL_OPS:
+        raise NpuLoweringError(f"unsupported group_scaled_int4_matmul source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision not in {"int4_group_scaled", "group_scaled_int4", "w4a8_gs"}:
+        raise NpuLoweringError(f"unsupported group_scaled_int4_matmul precision {precision!r}")
+
+    lhs = _matrix(graph.get("lhs"), "lhs")
+    rhs = _matrix(graph.get("rhs"), "rhs")
+    scales_q8_8 = _matrix(graph.get("scales_q8_8"), "scales_q8_8")
+    group_size = _positive_int(graph.get("group_size", 32), "group_size")
+    _validate_matmul_shape(lhs, rhs)
+    _validate_group_scaled_int4_matmul_shape(lhs, rhs, scales_q8_8, group_size)
+    _validate_range(lhs, -128, 127, "lhs")
+    _validate_range(rhs, -8, 7, "rhs")
+    _validate_range(scales_q8_8, -32768, 32767, "scales_q8_8")
+
+    output_cols = len(rhs[0])
+    group_count = (len(rhs) + group_size - 1) // group_size
+    result: list[list[int]] = []
+    golden: list[list[int]] = []
+    group_dot_products: list[list[list[int]]] = []
+    scalar_mul_count = 0
+    scalar_add_count = 0
+    for lhs_row in lhs:
+        result_row: list[int] = []
+        golden_row: list[int] = []
+        row_group_dots: list[list[int]] = []
+        for col_index in range(output_cols):
+            acc = 0
+            golden_acc = 0
+            col_group_dots: list[int] = []
+            for group_index in range(group_count):
+                start = group_index * group_size
+                stop = min(start + group_size, len(rhs))
+                group_dot = 0
+                for k_index in range(start, stop):
+                    group_dot = _s32(
+                        runtime.add(
+                            group_dot,
+                            runtime.mul_lo(lhs_row[k_index], rhs[k_index][col_index]),
+                        )
+                    )
+                    scalar_mul_count += 1
+                    scalar_add_count += 1
+                scaled_group = _s32(runtime.mul_lo(group_dot, scales_q8_8[group_index][col_index]))
+                acc = _s32(runtime.add(acc, scaled_group))
+                golden_acc = _s32(golden_acc + group_dot * scales_q8_8[group_index][col_index])
+                col_group_dots.append(group_dot)
+                scalar_mul_count += 1
+                scalar_add_count += 1
+            result_row.append(acc)
+            golden_row.append(golden_acc)
+            row_group_dots.append(col_group_dots)
+        result.append(result_row)
+        golden.append(golden_row)
+        group_dot_products.append(row_group_dots)
+
+    return LoweredGroupScaledInt4MatmulResult(
+        schema="eliza.e1_npu_lowered_group_scaled_int4_matmul_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision="int4_group_scaled",
+        result_q8_8=result,
+        golden_q8_8=golden,
+        group_dot_products=group_dot_products,
+        input_shape=[len(lhs), len(lhs[0]), output_cols],
+        output_shape=[len(lhs), output_cols],
+        group_size=group_size,
+        group_count=group_count,
+        scalar_mul_count=scalar_mul_count,
+        scalar_add_count=scalar_add_count,
+        cpu_fallback=False,
+        host_applies_group_scales=True,
+        host_uses_q8_8_scales=True,
+        claim_boundary=(
+            "group_scaled_int4_matmul_q8_8_scalar_smoke_only_not_gemm_s4_gs_or_production_compiler_backend"
+        ),
     )
 
 
@@ -1201,6 +1866,167 @@ def lower_fp8_matmul_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> Lowe
         cpu_fallback=False,
         host_pads_k_to_dot4=padded_k != len(rhs),
         claim_boundary="fp8_e4m3_matmul_dot4_smoke_only_not_tensor_fp8_gemm_or_production_compiler_backend",
+    )
+
+
+def _round_shift_signed(value: int, shift: int) -> int:
+    if shift < 0:
+        return _s32(value << -shift)
+    if shift == 0:
+        return _s32(value)
+    rounding = 1 << (shift - 1)
+    if value < 0:
+        return -((-value + rounding) >> shift)
+    return (value + rounding) >> shift
+
+
+def _scale_int_by_power2(value: int, exponent: int) -> int:
+    if exponent >= 0:
+        return value << exponent
+    return _round_shift_signed(value, -exponent)
+
+
+def _fp16_bits_to_q8_8(value: int, name: str) -> int:
+    sign = -1 if value & 0x8000 else 1
+    exponent = (value >> 10) & 0x1F
+    fraction = value & 0x3FF
+    if exponent == 0:
+        if fraction == 0:
+            return 0
+        raise NpuLoweringError(f"{name} FP16 subnormal values are not supported")
+    if exponent == 0x1F:
+        raise NpuLoweringError(f"{name} FP16 NaN/Inf values are not supported")
+    q8_8 = sign * _scale_int_by_power2(1024 + fraction, exponent - 17)
+    if not -32768 <= q8_8 <= 32767:
+        raise NpuLoweringError(f"{name} FP16 value outside signed Q8.8 range")
+    return q8_8
+
+
+def _bf16_bits_to_q8_8(value: int, name: str) -> int:
+    sign = -1 if value & 0x8000 else 1
+    exponent = (value >> 7) & 0xFF
+    fraction = value & 0x7F
+    if exponent == 0:
+        if fraction == 0:
+            return 0
+        raise NpuLoweringError(f"{name} BF16 subnormal values are not supported")
+    if exponent == 0xFF:
+        raise NpuLoweringError(f"{name} BF16 NaN/Inf values are not supported")
+    q8_8 = sign * _scale_int_by_power2(128 + fraction, exponent - 126)
+    if not -32768 <= q8_8 <= 32767:
+        raise NpuLoweringError(f"{name} BF16 value outside signed Q8.8 range")
+    return q8_8
+
+
+def lower_fp16_matmul_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredFloat16MatmulResult:
+    """Lower a tiny raw FP16 matmul through scalar Q8.8 MUL/ADD commands."""
+
+    return _lower_float16_matmul_smoke(
+        runtime=runtime,
+        graph=graph,
+        schema=SUPPORTED_FP16_MATMUL_SCHEMA,
+        supported_ops=SUPPORTED_FP16_MATMUL_OPS,
+        precision_names={"fp16", "float16"},
+        precision="fp16",
+        converter=_fp16_bits_to_q8_8,
+        result_schema="eliza.e1_npu_lowered_fp16_matmul_result.v1",
+        claim_boundary=(
+            "fp16_matmul_q8_8_scalar_smoke_only_not_tensor_fp16_gemm_or_production_compiler_backend"
+        ),
+    )
+
+
+def lower_bf16_matmul_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredFloat16MatmulResult:
+    """Lower a tiny raw BF16 matmul through scalar Q8.8 MUL/ADD commands."""
+
+    return _lower_float16_matmul_smoke(
+        runtime=runtime,
+        graph=graph,
+        schema=SUPPORTED_BF16_MATMUL_SCHEMA,
+        supported_ops=SUPPORTED_BF16_MATMUL_OPS,
+        precision_names={"bf16", "bfloat16"},
+        precision="bf16",
+        converter=_bf16_bits_to_q8_8,
+        result_schema="eliza.e1_npu_lowered_bf16_matmul_result.v1",
+        claim_boundary=(
+            "bf16_matmul_q8_8_scalar_smoke_only_not_tensor_bf16_gemm_or_production_compiler_backend"
+        ),
+    )
+
+
+def _lower_float16_matmul_smoke(
+    *,
+    runtime: E1NpuRuntime,
+    graph: dict[str, Any],
+    schema: str,
+    supported_ops: set[str],
+    precision_names: set[str],
+    precision: str,
+    converter: Any,
+    result_schema: str,
+    claim_boundary: str,
+) -> LoweredFloat16MatmulResult:
+    if graph.get("schema") != schema:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in supported_ops:
+        raise NpuLoweringError(f"unsupported {precision}_matmul source op {source_op!r}")
+    graph_precision = str(graph.get("precision", "")).lower()
+    if graph_precision not in precision_names:
+        raise NpuLoweringError(f"unsupported {precision}_matmul precision {graph_precision!r}")
+
+    lhs_raw = _matrix(graph.get("lhs"), "lhs")
+    rhs_raw = _matrix(graph.get("rhs"), "rhs")
+    _validate_matmul_shape(lhs_raw, rhs_raw)
+    _validate_range(lhs_raw, 0, 0xFFFF, "lhs")
+    _validate_range(rhs_raw, 0, 0xFFFF, "rhs")
+    lhs_q8_8 = [[converter(value, "lhs") for value in row] for row in lhs_raw]
+    rhs_q8_8 = [[converter(value, "rhs") for value in row] for row in rhs_raw]
+
+    result: list[list[int]] = []
+    golden: list[list[int]] = []
+    scalar_mul_count = 0
+    scalar_add_count = 0
+    for lhs_row in lhs_q8_8:
+        result_row: list[int] = []
+        golden_row: list[int] = []
+        for col_index in range(len(rhs_q8_8[0])):
+            acc = 0
+            golden_acc = 0
+            for k_index, lhs_value in enumerate(lhs_row):
+                rhs_value = rhs_q8_8[k_index][col_index]
+                product_q16_16 = _s32(runtime.mul_lo(lhs_value, rhs_value))
+                product_q8_8 = _round_shift_signed(product_q16_16, 8)
+                acc = _s32(runtime.add(acc, product_q8_8))
+                golden_acc = _s32(golden_acc + _round_shift_signed(lhs_value * rhs_value, 8))
+                scalar_mul_count += 1
+                scalar_add_count += 1
+            result_row.append(acc)
+            golden_row.append(golden_acc)
+        result.append(result_row)
+        golden.append(golden_row)
+
+    return LoweredFloat16MatmulResult(
+        schema=result_schema,
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        result_q8_8=result,
+        golden_q8_8=golden,
+        lhs_q8_8=lhs_q8_8,
+        rhs_q8_8=rhs_q8_8,
+        input_shape=[len(lhs_raw), len(lhs_raw[0]), len(rhs_raw[0])],
+        output_shape=[len(lhs_raw), len(rhs_raw[0])],
+        scalar_mul_count=scalar_mul_count,
+        scalar_add_count=scalar_add_count,
+        cpu_fallback=False,
+        host_converts_float16_to_q8_8=True,
+        host_requantizes_products=True,
+        claim_boundary=claim_boundary,
     )
 
 
@@ -1351,10 +2177,23 @@ def lower_modern_decoder_block_smoke(
     q_weight = _matrix(graph.get("q_weight"), "q_weight")
     k_weight = _matrix(graph.get("k_weight"), "k_weight")
     v_weight = _matrix(graph.get("v_weight"), "v_weight")
+    packed_qkv_weight = (
+        _matrix(graph.get("packed_qkv_weight"), "packed_qkv_weight")
+        if graph.get("packed_qkv_weight") is not None
+        else None
+    )
     attention_mask = (
         _bool_tensor4(graph.get("attention_mask"), "attention_mask")
         if graph.get("attention_mask") is not None
         else None
+    )
+    attention_mask_mode = str(graph.get("attention_mask_mode", "full")).lower()
+    if attention_mask_mode not in {"full", "causal", "sliding_window"}:
+        raise NpuLoweringError(
+            f"unsupported modern_decoder_block attention_mask_mode {attention_mask_mode!r}"
+        )
+    attention_mask_window = _positive_int(
+        graph.get("attention_mask_window", 1), "attention_mask_window"
     )
     attention_bias = _vector(graph.get("attention_bias"), "attention_bias")
     cos = _vector(graph.get("cos"), "cos")
@@ -1362,6 +2201,11 @@ def lower_modern_decoder_block_smoke(
     swiglu_up_weight = _matrix(graph.get("swiglu_up_weight"), "swiglu_up_weight")
     swiglu_gate_weight = _matrix(graph.get("swiglu_gate_weight"), "swiglu_gate_weight")
     swiglu_down_weight = _matrix(graph.get("swiglu_down_weight"), "swiglu_down_weight")
+    swiglu_activation = str(graph.get("swiglu_activation", "linear_gate")).lower()
+    if swiglu_activation not in {"linear_gate", "swiglu", "silu", "swiglu_silu"}:
+        raise NpuLoweringError(
+            f"unsupported modern_decoder_block swiglu_activation {swiglu_activation!r}"
+        )
     projection_shift = _nonnegative_int(graph.get("projection_shift", 0), "projection_shift")
     qk_score_shift = _nonnegative_int(graph.get("qk_score_shift", 7), "qk_score_shift")
     attention_weight_shift = _nonnegative_int(
@@ -1412,6 +2256,9 @@ def lower_modern_decoder_block_smoke(
     _validate_range(q_weight, -128, 127, "q_weight")
     _validate_range(k_weight, -128, 127, "k_weight")
     _validate_range(v_weight, -128, 127, "v_weight")
+    if packed_qkv_weight is not None:
+        _validate_qkv_projection_shape(inputs, packed_qkv_weight)
+        _validate_range(packed_qkv_weight, -128, 127, "packed_qkv_weight")
     _validate_vector_range(attention_bias, -128, 127, "attention_bias")
     _validate_vector_range(cos, -128, 127, "cos")
     _validate_vector_range(sin, -128, 127, "sin")
@@ -1434,42 +2281,67 @@ def lower_modern_decoder_block_smoke(
             "weight": norm1_weight,
         },
     )
-    q_projection = lower_matmul_smoke(
-        runtime,
-        {
-            "schema": SUPPORTED_SCHEMA,
-            "dialect": dialect,
-            "op": "stablehlo.dot_general",
-            "precision": "int8",
-            "lhs": norm1.output,
-            "rhs": q_weight,
-        },
-    )
-    k_projection = lower_matmul_smoke(
-        runtime,
-        {
-            "schema": SUPPORTED_SCHEMA,
-            "dialect": dialect,
-            "op": "stablehlo.dot_general",
-            "precision": "int8",
-            "lhs": norm1.output,
-            "rhs": k_weight,
-        },
-    )
-    v_projection = lower_matmul_smoke(
-        runtime,
-        {
-            "schema": SUPPORTED_SCHEMA,
-            "dialect": dialect,
-            "op": "stablehlo.dot_general",
-            "precision": "int8",
-            "lhs": norm1.output,
-            "rhs": v_weight,
-        },
-    )
-    q_requantized = _requantize_s8_matrix(q_projection.result, projection_shift)
-    k_requantized = _requantize_s8_matrix(k_projection.result, projection_shift)
-    v_requantized = _requantize_s8_matrix(v_projection.result, projection_shift)
+    q_projection: LoweredMatmulResult | None = None
+    k_projection: LoweredMatmulResult | None = None
+    v_projection: LoweredMatmulResult | None = None
+    qkv_projection: LoweredQkvProjectionResult | None = None
+    if packed_qkv_weight is None:
+        q_projection = lower_matmul_smoke(
+            runtime,
+            {
+                "schema": SUPPORTED_SCHEMA,
+                "dialect": dialect,
+                "op": "stablehlo.dot_general",
+                "precision": "int8",
+                "lhs": norm1.output,
+                "rhs": q_weight,
+            },
+        )
+        k_projection = lower_matmul_smoke(
+            runtime,
+            {
+                "schema": SUPPORTED_SCHEMA,
+                "dialect": dialect,
+                "op": "stablehlo.dot_general",
+                "precision": "int8",
+                "lhs": norm1.output,
+                "rhs": k_weight,
+            },
+        )
+        v_projection = lower_matmul_smoke(
+            runtime,
+            {
+                "schema": SUPPORTED_SCHEMA,
+                "dialect": dialect,
+                "op": "stablehlo.dot_general",
+                "precision": "int8",
+                "lhs": norm1.output,
+                "rhs": v_weight,
+            },
+        )
+        q_requantized = _requantize_s8_matrix(q_projection.result, projection_shift)
+        k_requantized = _requantize_s8_matrix(k_projection.result, projection_shift)
+        v_requantized = _requantize_s8_matrix(v_projection.result, projection_shift)
+        qkv_tile_count = q_projection.tile_count + k_projection.tile_count + v_projection.tile_count
+        host_slices_packed_qkv = False
+    else:
+        qkv_projection = lower_qkv_projection_smoke(
+            runtime,
+            {
+                "schema": SUPPORTED_QKV_PROJECTION_SCHEMA,
+                "dialect": dialect,
+                "op": "eliza.qkv_projection",
+                "precision": "int8",
+                "projection_shift": projection_shift,
+                "input": norm1.output,
+                "packed_weight": packed_qkv_weight,
+            },
+        )
+        q_requantized = qkv_projection.q_requantized
+        k_requantized = qkv_projection.k_requantized
+        v_requantized = qkv_projection.v_requantized
+        qkv_tile_count = qkv_projection.total_tile_count
+        host_slices_packed_qkv = True
     q_rope = lower_rope_smoke(
         runtime,
         {
@@ -1509,9 +2381,25 @@ def lower_modern_decoder_block_smoke(
     )
     qk_logits_s8 = _requantize_s8_tensor4(qk_scores.scores, qk_score_shift)
     if attention_mask is None:
-        attention_mask = [
-            [[[True for _ in row] for row in head] for head in batch] for batch in qk_logits_s8
-        ]
+        if attention_mask_mode == "causal":
+            attention_mask = _causal_attention_mask([[q_rope.output]], [[k_rope.output]])
+            host_generates_causal_mask = True
+            host_generates_sliding_window_mask = False
+        elif attention_mask_mode == "sliding_window":
+            attention_mask = _sliding_window_attention_mask(
+                [[q_rope.output]], [[k_rope.output]], attention_mask_window
+            )
+            host_generates_causal_mask = False
+            host_generates_sliding_window_mask = True
+        else:
+            attention_mask = [
+                [[[True for _ in row] for row in head] for head in batch] for batch in qk_logits_s8
+            ]
+            host_generates_causal_mask = False
+            host_generates_sliding_window_mask = False
+    else:
+        host_generates_causal_mask = False
+        host_generates_sliding_window_mask = False
     _validate_attention_softmax_shape(qk_logits_s8, attention_mask)
     attention_softmax = lower_attention_softmax_smoke(
         runtime,
@@ -1584,7 +2472,7 @@ def lower_modern_decoder_block_smoke(
             "dialect": dialect,
             "op": "eliza.swiglu",
             "precision": "int8",
-            "activation": "linear_gate",
+            "activation": swiglu_activation,
             "requant_shift": swiglu_requant_shift,
             "gate_shift": swiglu_gate_shift,
             "input": norm2.output,
@@ -1630,6 +2518,7 @@ def lower_modern_decoder_block_smoke(
         q_projection=q_projection,
         k_projection=k_projection,
         v_projection=v_projection,
+        qkv_projection=qkv_projection,
         q_requantized=q_requantized,
         k_requantized=k_requantized,
         v_requantized=v_requantized,
@@ -1647,9 +2536,7 @@ def lower_modern_decoder_block_smoke(
         swiglu=swiglu,
         output_residual=output_residual,
         total_tile_count=(
-            q_projection.tile_count
-            + k_projection.tile_count
-            + v_projection.tile_count
+            qkv_tile_count
             + qk_scores.total_tile_count
             + attention_av.total_tile_count
             + swiglu.total_tile_count
@@ -1660,6 +2547,9 @@ def lower_modern_decoder_block_smoke(
         computes_qk_scores=True,
         computes_attention_softmax=True,
         requires_prequantized_attention=False,
+        host_generates_causal_mask=host_generates_causal_mask,
+        host_generates_sliding_window_mask=host_generates_sliding_window_mask,
+        host_slices_packed_qkv=host_slices_packed_qkv,
         host_requantizes_qkv=True,
         host_requantizes_qk_scores=True,
         host_requantizes_attention_weights=True,
@@ -1980,7 +2870,7 @@ def lower_mlp_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredMlpR
 
 
 def lower_swiglu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredSwiGLUResult:
-    """Lower a tiny gated transformer MLP through GEMM, GEMM, scalar MUL, GEMM."""
+    """Lower a tiny gated transformer MLP through GEMM, optional SiLU, scalar MUL, GEMM."""
 
     if graph.get("schema") != SUPPORTED_SWIGLU_SCHEMA:
         raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
@@ -1991,7 +2881,7 @@ def lower_swiglu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredS
     if precision != "int8":
         raise NpuLoweringError(f"unsupported swiglu precision {precision!r}")
     activation = str(graph.get("activation", "linear_gate")).lower()
-    if activation not in {"linear_gate", "swiglu"}:
+    if activation not in {"linear_gate", "swiglu", "silu", "swiglu_silu"}:
         raise NpuLoweringError(f"unsupported swiglu activation {activation!r}")
 
     inputs = _matrix(graph.get("input"), "input")
@@ -2033,8 +2923,27 @@ def lower_swiglu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredS
     )
     up_requantized = _requantize_s8_matrix(up_matmul.result, requant_shift)
     gate_requantized = _requantize_s8_matrix(gate_matmul.result, requant_shift)
+    gate_activation_result: LoweredSiluResult | None = None
+    if activation in {"silu", "swiglu_silu"}:
+        gate_activation_result = lower_silu_smoke(
+            runtime,
+            {
+                "schema": SUPPORTED_SILU_SCHEMA,
+                "dialect": dialect,
+                "op": "eliza.silu",
+                "precision": "int8",
+                "input": gate_requantized,
+            },
+        )
+        gate_activated = gate_activation_result.output
+        claim_boundary = (
+            "swiglu_s8_silu_gate_smoke_only_not_fused_vector_swiglu_or_production_compiler_backend"
+        )
+    else:
+        gate_activated = gate_requantized
+        claim_boundary = "swiglu_s8_scalar_gate_smoke_only_not_silu_or_production_compiler_backend"
     gated_hidden: list[list[int]] = []
-    for up_row, gate_row in zip(up_requantized, gate_requantized, strict=True):
+    for up_row, gate_row in zip(up_requantized, gate_activated, strict=True):
         gated_row: list[int] = []
         for up_value, gate_value in zip(up_row, gate_row, strict=True):
             gated_row.append(_clamp_s8(_s32(runtime.mul_lo(up_value, gate_value)) >> gate_shift))
@@ -2051,7 +2960,7 @@ def lower_swiglu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredS
             "rhs": down_weight,
         },
     )
-    golden_hidden = _golden_swiglu_hidden(up_requantized, gate_requantized, gate_shift)
+    golden_hidden = _golden_swiglu_hidden(up_requantized, gate_activated, gate_shift)
     if gated_hidden != golden_hidden:
         raise AssertionError("SwiGLU smoke internal golden mismatch")
     return LoweredSwiGLUResult(
@@ -2066,18 +2975,137 @@ def lower_swiglu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredS
         gate_accumulator=gate_matmul.result,
         up_requantized=up_requantized,
         gate_requantized=gate_requantized,
+        gate_activated=gate_activated,
         gated_hidden=gated_hidden,
         requant_shift=requant_shift,
         gate_shift=gate_shift,
         up_matmul=up_matmul,
         gate_matmul=gate_matmul,
+        gate_activation_result=gate_activation_result,
         down_matmul=down_matmul,
         total_tile_count=up_matmul.tile_count + gate_matmul.tile_count + down_matmul.tile_count,
         scalar_mul_count=len(inputs) * len(up_weight[0]),
         cpu_fallback=False,
         host_requantizes_hidden=True,
         host_applies_gate_shift_and_saturation=True,
-        claim_boundary="swiglu_s8_scalar_gate_smoke_only_not_silu_or_production_compiler_backend",
+        claim_boundary=claim_boundary,
+    )
+
+
+def lower_silu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredSiluResult:
+    """Lower a tiny int8 SiLU approximation through scalar EXP2, SUB, and MUL."""
+
+    if graph.get("schema") != SUPPORTED_SILU_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_SILU_OPS:
+        raise NpuLoweringError(f"unsupported silu source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported silu precision {precision!r}")
+    approximation = str(graph.get("approximation", "exp2_q0_8_piecewise")).lower()
+    if approximation != "exp2_q0_8_piecewise":
+        raise NpuLoweringError(f"unsupported silu approximation {approximation!r}")
+
+    inputs = _matrix(graph.get("input"), "input")
+    _validate_range(inputs, -128, 127, "input")
+    output: list[list[int]] = []
+    sigmoid_rows: list[list[int]] = []
+    exp2_count = 0
+    sub_count = 0
+    mul_count = 0
+    for row in inputs:
+        output_row: list[int] = []
+        sigmoid_row: list[int] = []
+        for value in row:
+            activated, sigmoid, used_sub = _silu_s8_scalar_approx(runtime, value)
+            output_row.append(activated)
+            sigmoid_row.append(sigmoid)
+            exp2_count += 1
+            sub_count += 1 if used_sub else 0
+            mul_count += 1
+        output.append(output_row)
+        sigmoid_rows.append(sigmoid_row)
+    golden = _golden_silu_s8_approx(inputs)
+
+    return LoweredSiluResult(
+        schema="eliza.e1_npu_lowered_silu_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        input=inputs,
+        sigmoid_q0_8=sigmoid_rows,
+        output=output,
+        golden=golden,
+        shape=[len(inputs), len(inputs[0])],
+        element_count=len(inputs) * len(inputs[0]),
+        scalar_exp2_count=exp2_count,
+        scalar_sub_count=sub_count,
+        scalar_mul_count=mul_count,
+        cpu_fallback=False,
+        host_applies_shift_and_saturation=True,
+        approximation=approximation,
+        claim_boundary="silu_s8_exp2_piecewise_smoke_only_not_exact_sigmoid_or_vector_activation",
+    )
+
+
+def lower_gelu_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredGeluResult:
+    """Lower a tiny int8 QuickGELU approximation through scalar NPU arithmetic."""
+
+    if graph.get("schema") != SUPPORTED_GELU_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_GELU_OPS:
+        raise NpuLoweringError(f"unsupported gelu source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported gelu precision {precision!r}")
+    approximation = str(graph.get("approximation", "quick_gelu_exp2_q0_8")).lower()
+    if approximation != "quick_gelu_exp2_q0_8":
+        raise NpuLoweringError(f"unsupported gelu approximation {approximation!r}")
+
+    inputs = _matrix(graph.get("input"), "input")
+    _validate_range(inputs, -128, 127, "input")
+    output: list[list[int]] = []
+    scaled_rows: list[list[int]] = []
+    sigmoid_rows: list[list[int]] = []
+    sub_count = 0
+    for row in inputs:
+        output_row: list[int] = []
+        scaled_row: list[int] = []
+        sigmoid_row: list[int] = []
+        for value in row:
+            activated, scaled, sigmoid, used_sub = _quick_gelu_s8_scalar_approx(runtime, value)
+            output_row.append(activated)
+            scaled_row.append(scaled)
+            sigmoid_row.append(sigmoid)
+            sub_count += 1 if used_sub else 0
+        output.append(output_row)
+        scaled_rows.append(scaled_row)
+        sigmoid_rows.append(sigmoid_row)
+    golden = _golden_quick_gelu_s8_approx(inputs)
+    element_count = len(inputs) * len(inputs[0])
+
+    return LoweredGeluResult(
+        schema="eliza.e1_npu_lowered_gelu_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        input=inputs,
+        scaled_input=scaled_rows,
+        sigmoid_q0_8=sigmoid_rows,
+        output=output,
+        golden=golden,
+        shape=[len(inputs), len(inputs[0])],
+        element_count=element_count,
+        scalar_scale_mul_count=element_count,
+        scalar_exp2_count=element_count,
+        scalar_sub_count=sub_count,
+        scalar_gate_mul_count=element_count,
+        cpu_fallback=False,
+        host_applies_shift_and_saturation=True,
+        approximation=approximation,
+        claim_boundary="gelu_s8_quick_exp2_piecewise_smoke_only_not_exact_gelu_or_vector_activation",
     )
 
 
@@ -2275,6 +3303,59 @@ def _default_attention_mask(
     ]
 
 
+def _causal_attention_mask(
+    query: list[list[list[list[int]]]], key: list[list[list[list[int]]]]
+) -> list[list[list[list[bool]]]]:
+    _validate_attention_qk_shape(query, key)
+    mask: list[list[list[list[bool]]]] = []
+    for batch_query, batch_key in zip(query, key, strict=True):
+        batch_mask: list[list[list[bool]]] = []
+        for query_head, key_head in zip(batch_query, batch_key, strict=True):
+            query_tokens = len(query_head)
+            key_tokens = len(key_head)
+            if query_tokens > key_tokens:
+                raise NpuLoweringError("causal attention mask requires query_tokens <= key_tokens")
+            key_offset = key_tokens - query_tokens
+            batch_mask.append(
+                [
+                    [key_index <= key_offset + query_index for key_index in range(key_tokens)]
+                    for query_index in range(query_tokens)
+                ]
+            )
+        mask.append(batch_mask)
+    return mask
+
+
+def _sliding_window_attention_mask(
+    query: list[list[list[list[int]]]], key: list[list[list[list[int]]]], window: int
+) -> list[list[list[list[bool]]]]:
+    if window <= 0:
+        raise NpuLoweringError("sliding_window attention mask requires a positive window")
+    _validate_attention_qk_shape(query, key)
+    mask: list[list[list[list[bool]]]] = []
+    for batch_query, batch_key in zip(query, key, strict=True):
+        batch_mask: list[list[list[bool]]] = []
+        for query_head, key_head in zip(batch_query, batch_key, strict=True):
+            query_tokens = len(query_head)
+            key_tokens = len(key_head)
+            if query_tokens > key_tokens:
+                raise NpuLoweringError(
+                    "sliding_window attention mask requires query_tokens <= key_tokens"
+                )
+            key_offset = key_tokens - query_tokens
+            batch_mask.append(
+                [
+                    [
+                        key_offset + query_index - window < key_index <= key_offset + query_index
+                        for key_index in range(key_tokens)
+                    ]
+                    for query_index in range(query_tokens)
+                ]
+            )
+        mask.append(batch_mask)
+    return mask
+
+
 def _zero_attention_logits(
     query: list[list[list[list[int]]]], key: list[list[list[list[int]]]]
 ) -> list[list[list[list[int]]]]:
@@ -2303,11 +3384,26 @@ def lower_attention_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> Lower
     query = _tensor4(graph.get("query"), "query")
     key = _tensor4(graph.get("key"), "key")
     value = _tensor4(graph.get("value"), "value")
-    mask = (
-        _bool_tensor4(graph.get("mask"), "mask")
-        if graph.get("mask") is not None
-        else _default_attention_mask(query, key)
-    )
+    mask_mode = str(graph.get("mask_mode", "full")).lower()
+    if mask_mode not in {"full", "causal", "sliding_window"}:
+        raise NpuLoweringError(f"unsupported attention mask_mode {mask_mode!r}")
+    mask_window = _positive_int(graph.get("mask_window", 1), "mask_window")
+    if graph.get("mask") is not None:
+        mask = _bool_tensor4(graph.get("mask"), "mask")
+        host_generates_causal_mask = False
+        host_generates_sliding_window_mask = False
+    elif mask_mode == "causal":
+        mask = _causal_attention_mask(query, key)
+        host_generates_causal_mask = True
+        host_generates_sliding_window_mask = False
+    elif mask_mode == "sliding_window":
+        mask = _sliding_window_attention_mask(query, key, mask_window)
+        host_generates_causal_mask = False
+        host_generates_sliding_window_mask = True
+    else:
+        mask = _default_attention_mask(query, key)
+        host_generates_causal_mask = False
+        host_generates_sliding_window_mask = False
     qk_score_shift = _nonnegative_int(graph.get("qk_score_shift", 0), "qk_score_shift")
     attention_weight_shift = _nonnegative_int(
         graph.get("attention_weight_shift", 1), "attention_weight_shift"
@@ -2365,6 +3461,7 @@ def lower_attention_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> Lower
         precision=precision,
         qk_scores=qk_scores,
         qk_logits_s8=qk_logits_s8,
+        attention_mask=mask,
         attention_softmax=attention_softmax,
         attention_weights_s8=attention_weights_s8,
         attention_av=attention_av,
@@ -2376,6 +3473,8 @@ def lower_attention_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> Lower
         computes_qk_scores=True,
         computes_attention_softmax=True,
         requires_prequantized_attention=False,
+        host_generates_causal_mask=host_generates_causal_mask,
+        host_generates_sliding_window_mask=host_generates_sliding_window_mask,
         host_requantizes_qk_scores=True,
         host_requantizes_attention_weights=True,
         host_requantizes_context=True,
@@ -2388,12 +3487,16 @@ def _materialize_attention_cache_view(
     value_cache: list[list[list[list[int]]]],
     cache_lengths: list[list[int]],
     query_tokens: int,
+    cache_window: int | None = None,
 ) -> tuple[
     list[list[list[list[int]]]],
     list[list[list[list[int]]]],
     list[list[list[list[bool]]]],
 ]:
-    max_length = max(length for batch in cache_lengths for length in batch)
+    max_observed_length = max(length for batch in cache_lengths for length in batch)
+    max_length = (
+        max_observed_length if cache_window is None else min(max_observed_length, cache_window)
+    )
     if max_length < 1:
         raise NpuLoweringError("decode_attention requires non-empty updated cache")
     key_view: list[list[list[list[int]]]] = []
@@ -2404,13 +3507,27 @@ def _materialize_attention_cache_view(
         batch_value: list[list[list[int]]] = []
         batch_mask: list[list[list[bool]]] = []
         for head_index, length in enumerate(batch_lengths):
-            batch_key.append([list(row) for row in key_cache[batch_index][head_index][:max_length]])
-            batch_value.append(
-                [list(row) for row in value_cache[batch_index][head_index][:max_length]]
+            view_length = min(length, max_length)
+            start = max(0, length - view_length)
+            head_key = [list(row) for row in key_cache[batch_index][head_index][start:length]]
+            head_value = [list(row) for row in value_cache[batch_index][head_index][start:length]]
+            head_key.extend(
+                [
+                    [0 for _ in key_cache[batch_index][head_index][0]]
+                    for _ in range(max_length - view_length)
+                ]
             )
+            head_value.extend(
+                [
+                    [0 for _ in value_cache[batch_index][head_index][0]]
+                    for _ in range(max_length - view_length)
+                ]
+            )
+            batch_key.append(head_key)
+            batch_value.append(head_value)
             batch_mask.append(
                 [
-                    [token_index < length for token_index in range(max_length)]
+                    [token_index < view_length for token_index in range(max_length)]
                     for _ in range(query_tokens)
                 ]
             )
@@ -2511,6 +3628,11 @@ def lower_decode_attention_smoke(
         graph.get("attention_weight_shift", 1), "attention_weight_shift"
     )
     context_shift = _nonnegative_int(graph.get("context_shift", 0), "context_shift")
+    cache_window = (
+        None
+        if graph.get("cache_window") is None
+        else _positive_int(graph.get("cache_window"), "cache_window")
+    )
     if qk_score_shift > 31 or attention_weight_shift > 31 or context_shift > 31:
         raise NpuLoweringError("decode_attention shifts must be in 0..31")
     _validate_attention_qk_shape(query, key_cache)
@@ -2535,6 +3657,7 @@ def lower_decode_attention_smoke(
         kv_cache_update.updated_value_cache,
         kv_cache_update.cache_lengths,
         len(query[0][0]),
+        cache_window,
     )
     attention = lower_attention_smoke(
         runtime,
@@ -2571,6 +3694,8 @@ def lower_decode_attention_smoke(
         updates_kv_cache=True,
         computes_attention_over_cache=True,
         host_materializes_cache_view=True,
+        host_applies_decode_cache_window=cache_window is not None,
+        decode_cache_window=cache_window,
         claim_boundary="decode_attention_kv_append_qk_softmax_av_smoke_only_not_paged_cache_flash_attention_or_production_compiler_backend",
     )
 
@@ -2702,6 +3827,249 @@ def lower_conv2d_smoke(runtime: E1NpuRuntime, graph: dict[str, Any]) -> LoweredC
     )
 
 
+def _depthwise_conv2d_direct(
+    runtime: E1NpuRuntime,
+    input_nhwc: list[list[list[list[int]]]],
+    filters_hwcm: list[list[list[list[int]]]],
+) -> tuple[list[list[list[list[int]]]], int, int]:
+    filter_h = len(filters_hwcm)
+    filter_w = len(filters_hwcm[0])
+    input_h = len(input_nhwc[0])
+    input_w = len(input_nhwc[0][0])
+    input_c = len(input_nhwc[0][0][0])
+    multiplier = len(filters_hwcm[0][0][0])
+    output_h = input_h - filter_h + 1
+    output_w = input_w - filter_w + 1
+    output: list[list[list[int]]] = [[[] for _ in range(output_w)] for _ in range(output_h)]
+    mul_count = 0
+    add_count = 0
+    for out_y in range(output_h):
+        for out_x in range(output_w):
+            values: list[int] = []
+            for channel in range(input_c):
+                for mult in range(multiplier):
+                    acc = 0
+                    for filt_y in range(filter_h):
+                        for filt_x in range(filter_w):
+                            product = _s32(
+                                runtime.mul_lo(
+                                    input_nhwc[0][out_y + filt_y][out_x + filt_x][channel],
+                                    filters_hwcm[filt_y][filt_x][channel][mult],
+                                )
+                            )
+                            mul_count += 1
+                            acc = _s32(runtime.add(acc, product))
+                            add_count += 1
+                    values.append(acc)
+            output[out_y][out_x] = values
+    return [output], mul_count, add_count
+
+
+def _golden_depthwise_conv2d(
+    input_nhwc: list[list[list[list[int]]]], filters_hwcm: list[list[list[list[int]]]]
+) -> list[list[list[list[int]]]]:
+    filter_h = len(filters_hwcm)
+    filter_w = len(filters_hwcm[0])
+    input_h = len(input_nhwc[0])
+    input_w = len(input_nhwc[0][0])
+    input_c = len(input_nhwc[0][0][0])
+    multiplier = len(filters_hwcm[0][0][0])
+    output_h = input_h - filter_h + 1
+    output_w = input_w - filter_w + 1
+    output: list[list[list[int]]] = [[[] for _ in range(output_w)] for _ in range(output_h)]
+    for out_y in range(output_h):
+        for out_x in range(output_w):
+            values: list[int] = []
+            for channel in range(input_c):
+                for mult in range(multiplier):
+                    acc = 0
+                    for filt_y in range(filter_h):
+                        for filt_x in range(filter_w):
+                            acc = _s32(
+                                acc
+                                + input_nhwc[0][out_y + filt_y][out_x + filt_x][channel]
+                                * filters_hwcm[filt_y][filt_x][channel][mult]
+                            )
+                    values.append(acc)
+            output[out_y][out_x] = values
+    return [output]
+
+
+def _grouped_conv2d_direct(
+    runtime: E1NpuRuntime,
+    input_nhwc: list[list[list[list[int]]]],
+    filters_hwio: list[list[list[list[int]]]],
+    groups: int,
+) -> tuple[list[list[list[list[int]]]], int, int]:
+    filter_h = len(filters_hwio)
+    filter_w = len(filters_hwio[0])
+    input_h = len(input_nhwc[0])
+    input_w = len(input_nhwc[0][0])
+    input_c = len(input_nhwc[0][0][0])
+    output_c = len(filters_hwio[0][0][0])
+    input_per_group = input_c // groups
+    output_per_group = output_c // groups
+    output_h = input_h - filter_h + 1
+    output_w = input_w - filter_w + 1
+    output: list[list[list[int]]] = [[[] for _ in range(output_w)] for _ in range(output_h)]
+    mul_count = 0
+    add_count = 0
+    for out_y in range(output_h):
+        for out_x in range(output_w):
+            values: list[int] = []
+            for group in range(groups):
+                for out_group_channel in range(output_per_group):
+                    output_channel = group * output_per_group + out_group_channel
+                    acc = 0
+                    for filt_y in range(filter_h):
+                        for filt_x in range(filter_w):
+                            for input_group_channel in range(input_per_group):
+                                input_channel = group * input_per_group + input_group_channel
+                                product = _s32(
+                                    runtime.mul_lo(
+                                        input_nhwc[0][out_y + filt_y][out_x + filt_x][
+                                            input_channel
+                                        ],
+                                        filters_hwio[filt_y][filt_x][input_group_channel][
+                                            output_channel
+                                        ],
+                                    )
+                                )
+                                mul_count += 1
+                                acc = _s32(runtime.add(acc, product))
+                                add_count += 1
+                    values.append(acc)
+            output[out_y][out_x] = values
+    return [output], mul_count, add_count
+
+
+def _golden_grouped_conv2d(
+    input_nhwc: list[list[list[list[int]]]],
+    filters_hwio: list[list[list[list[int]]]],
+    groups: int,
+) -> list[list[list[list[int]]]]:
+    filter_h = len(filters_hwio)
+    filter_w = len(filters_hwio[0])
+    input_h = len(input_nhwc[0])
+    input_w = len(input_nhwc[0][0])
+    input_c = len(input_nhwc[0][0][0])
+    output_c = len(filters_hwio[0][0][0])
+    input_per_group = input_c // groups
+    output_per_group = output_c // groups
+    output_h = input_h - filter_h + 1
+    output_w = input_w - filter_w + 1
+    output: list[list[list[int]]] = [[[] for _ in range(output_w)] for _ in range(output_h)]
+    for out_y in range(output_h):
+        for out_x in range(output_w):
+            values: list[int] = []
+            for group in range(groups):
+                for out_group_channel in range(output_per_group):
+                    output_channel = group * output_per_group + out_group_channel
+                    acc = 0
+                    for filt_y in range(filter_h):
+                        for filt_x in range(filter_w):
+                            for input_group_channel in range(input_per_group):
+                                input_channel = group * input_per_group + input_group_channel
+                                acc = _s32(
+                                    acc
+                                    + input_nhwc[0][out_y + filt_y][out_x + filt_x][input_channel]
+                                    * filters_hwio[filt_y][filt_x][input_group_channel][
+                                        output_channel
+                                    ]
+                                )
+                    values.append(acc)
+            output[out_y][out_x] = values
+    return [output]
+
+
+def lower_depthwise_conv2d_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredDepthwiseConv2dResult:
+    """Lower tiny depthwise Conv2D records through direct scalar NPU MAC loops."""
+
+    if graph.get("schema") != SUPPORTED_DEPTHWISE_CONV2D_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_DEPTHWISE_CONV2D_OPS:
+        raise NpuLoweringError(f"unsupported depthwise_conv2d source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported depthwise_conv2d precision {precision!r}")
+
+    input_nhwc = _tensor4(graph.get("input"), "input")
+    filters_hwcm = _tensor4(graph.get("filter"), "filter")
+    _validate_depthwise_conv2d_shape(input_nhwc, filters_hwcm, graph)
+    _validate_tensor_range(input_nhwc, -128, 127, "input")
+    _validate_tensor_range(filters_hwcm, -128, 127, "filter")
+
+    output, mul_count, add_count = _depthwise_conv2d_direct(runtime, input_nhwc, filters_hwcm)
+    golden = _golden_depthwise_conv2d(input_nhwc, filters_hwcm)
+    output_shape = [1, len(output[0]), len(output[0][0]), len(output[0][0][0])]
+    return LoweredDepthwiseConv2dResult(
+        schema="eliza.e1_npu_lowered_depthwise_conv2d_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        output=output,
+        golden=golden,
+        output_shape=output_shape,
+        input_channels=len(input_nhwc[0][0][0]),
+        channel_multiplier=len(filters_hwcm[0][0][0]),
+        scalar_mul_count=mul_count,
+        scalar_add_count=add_count,
+        cpu_fallback=False,
+        host_uses_direct_depthwise_loops=True,
+        host_materializes_im2col=False,
+        claim_boundary="depthwise_conv2d_direct_scalar_smoke_only_not_vector_depthwise_or_production_compiler_backend",
+    )
+
+
+def lower_grouped_conv2d_smoke(
+    runtime: E1NpuRuntime, graph: dict[str, Any]
+) -> LoweredGroupedConv2dResult:
+    """Lower tiny grouped Conv2D records through direct scalar NPU MAC loops."""
+
+    if graph.get("schema") != SUPPORTED_GROUPED_CONV2D_SCHEMA:
+        raise NpuLoweringError(f"unsupported graph schema {graph.get('schema')!r}")
+    source_op = str(graph.get("op", ""))
+    if source_op not in SUPPORTED_GROUPED_CONV2D_OPS:
+        raise NpuLoweringError(f"unsupported grouped_conv2d source op {source_op!r}")
+    precision = str(graph.get("precision", "")).lower()
+    if precision != "int8":
+        raise NpuLoweringError(f"unsupported grouped_conv2d precision {precision!r}")
+
+    input_nhwc = _tensor4(graph.get("input"), "input")
+    filters_hwio = _tensor4(graph.get("filter"), "filter")
+    groups = _positive_int(graph.get("groups"), "groups")
+    _validate_grouped_conv2d_shape(input_nhwc, filters_hwio, groups, graph)
+    _validate_tensor_range(input_nhwc, -128, 127, "input")
+    _validate_tensor_range(filters_hwio, -128, 127, "filter")
+
+    output, mul_count, add_count = _grouped_conv2d_direct(runtime, input_nhwc, filters_hwio, groups)
+    golden = _golden_grouped_conv2d(input_nhwc, filters_hwio, groups)
+    output_shape = [1, len(output[0]), len(output[0][0]), len(output[0][0][0])]
+    input_channels_per_group = len(input_nhwc[0][0][0]) // groups
+    output_channels_per_group = len(filters_hwio[0][0][0]) // groups
+    return LoweredGroupedConv2dResult(
+        schema="eliza.e1_npu_lowered_grouped_conv2d_result.v1",
+        source_dialect=str(graph.get("dialect", "unknown")),
+        source_op=source_op,
+        precision=precision,
+        output=output,
+        golden=golden,
+        output_shape=output_shape,
+        groups=groups,
+        input_channels_per_group=input_channels_per_group,
+        output_channels_per_group=output_channels_per_group,
+        scalar_mul_count=mul_count,
+        scalar_add_count=add_count,
+        cpu_fallback=False,
+        host_uses_direct_grouped_loops=True,
+        host_materializes_im2col=False,
+        claim_boundary="grouped_conv2d_direct_scalar_smoke_only_not_vector_grouped_conv_or_production_compiler_backend",
+    )
+
+
 def _matrix(value: Any, name: str) -> list[list[int]]:
     if not isinstance(value, list) or not value:
         raise NpuLoweringError(f"{name} must be a non-empty matrix")
@@ -2740,6 +4108,16 @@ def _tensor3(value: Any, name: str) -> list[list[list[int]]]:
             tensor_item0.append([_int(element, name) for element in item1])
         tensor.append(tensor_item0)
     return tensor
+
+
+def _lowered_result_as_dict(value: Any) -> dict[str, Any]:
+    as_dict = getattr(value, "as_dict", None)
+    if not callable(as_dict):
+        raise NpuLoweringError(f"lowered result {type(value).__name__} lacks as_dict")
+    result = as_dict()
+    if not isinstance(result, dict):
+        raise NpuLoweringError(f"lowered result {type(value).__name__} as_dict returned non-dict")
+    return result
 
 
 def _vector(value: Any, name: str) -> list[int]:
@@ -2835,6 +4213,13 @@ def _nonnegative_int(value: Any, name: str) -> int:
     return result
 
 
+def _positive_int(value: Any, name: str) -> int:
+    result = _int(value, name)
+    if result <= 0:
+        raise NpuLoweringError(f"{name} must be positive")
+    return result
+
+
 def _s32(value: int) -> int:
     value &= 0xFFFF_FFFF
     return value - 0x1_0000_0000 if value & 0x8000_0000 else value
@@ -2851,6 +4236,41 @@ def _validate_matmul_shape(lhs: list[list[int]], rhs: list[list[int]]) -> None:
         raise NpuLoweringError("matmul smoke path requires non-empty K dimension")
     if m < 1 or n < 1:
         raise NpuLoweringError("matmul smoke path requires non-empty M/N dimensions")
+
+
+def _validate_batch_matmul_shape(
+    lhs: list[list[list[list[int]]]], rhs: list[list[list[list[int]]]]
+) -> None:
+    batch = len(lhs)
+    if len(rhs) != batch:
+        raise NpuLoweringError(f"batch_matmul batch mismatch: lhs B={batch}, rhs B={len(rhs)}")
+    heads = len(lhs[0])
+    if len(rhs[0]) != heads:
+        raise NpuLoweringError(f"batch_matmul head mismatch: lhs H={heads}, rhs H={len(rhs[0])}")
+    for batch_index, (lhs_batch, rhs_batch) in enumerate(zip(lhs, rhs, strict=True)):
+        if len(lhs_batch) != heads or len(rhs_batch) != heads:
+            raise NpuLoweringError("batch_matmul head count must be rectangular")
+        for head_index, (lhs_head, rhs_head) in enumerate(zip(lhs_batch, rhs_batch, strict=True)):
+            try:
+                _validate_matmul_shape(lhs_head, rhs_head)
+            except NpuLoweringError as exc:
+                raise NpuLoweringError(
+                    f"batch_matmul slice [{batch_index}][{head_index}] invalid: {exc}"
+                ) from exc
+
+
+def _validate_qkv_projection_shape(inputs: list[list[int]], packed_weight: list[list[int]]) -> None:
+    _validate_matmul_shape(inputs, packed_weight)
+    output_width = len(packed_weight[0])
+    if output_width % 3 != 0:
+        raise NpuLoweringError(
+            f"qkv_projection packed output width must be divisible by 3: {output_width}"
+        )
+    hidden_width = output_width // 3
+    if hidden_width != len(inputs[0]):
+        raise NpuLoweringError(
+            f"qkv_projection hidden width mismatch: input D={len(inputs[0])}, q/k/v D={hidden_width}"
+        )
 
 
 def _validate_sparse_int4_matmul_shape(
@@ -2880,6 +4300,29 @@ def _validate_sparse_int4_matmul_shape(
         raise NpuLoweringError("sparse_int4_matmul K exceeds sparse metadata blocks")
     if len(lhs[0]) <= (len(rhs_nonzero) - 1) * 8:
         raise NpuLoweringError("sparse_int4_matmul has unused sparse metadata blocks")
+
+
+def _validate_group_scaled_int4_matmul_shape(
+    lhs: list[list[int]],
+    rhs: list[list[int]],
+    scales_q8_8: list[list[int]],
+    group_size: int,
+) -> None:
+    output_cols = len(rhs[0])
+    group_count = (len(rhs) + group_size - 1) // group_size
+    if len(scales_q8_8) != group_count:
+        raise NpuLoweringError(
+            f"group_scaled_int4_matmul scale group mismatch: expected {group_count}, "
+            f"got {len(scales_q8_8)}"
+        )
+    for group_index, scale_row in enumerate(scales_q8_8):
+        if len(scale_row) != output_cols:
+            raise NpuLoweringError(
+                "group_scaled_int4_matmul scale output-column mismatch: "
+                f"group {group_index} has {len(scale_row)}, expected {output_cols}"
+            )
+    if group_size > len(lhs[0]):
+        raise NpuLoweringError("group_scaled_int4_matmul group_size exceeds K")
 
 
 def _validate_same_shape(lhs: list[list[int]], rhs: list[list[int]], op_name: str) -> None:
@@ -2975,6 +4418,86 @@ def _validate_conv2d_shape(
         raise NpuLoweringError("conv2d smoke path currently supports dilation 1 only")
     if input_h < filter_h or input_w < filter_w:
         raise NpuLoweringError("conv2d filter must fit inside VALID input extent")
+
+
+def _validate_depthwise_conv2d_shape(
+    input_nhwc: list[list[list[list[int]]]],
+    filters_hwcm: list[list[list[list[int]]]],
+    graph: dict[str, Any],
+) -> None:
+    batch = len(input_nhwc)
+    input_h = len(input_nhwc[0])
+    input_w = len(input_nhwc[0][0])
+    input_c = len(input_nhwc[0][0][0])
+    filter_h = len(filters_hwcm)
+    filter_w = len(filters_hwcm[0])
+    filter_c = len(filters_hwcm[0][0])
+    multiplier = len(filters_hwcm[0][0][0])
+    if batch != 1:
+        raise NpuLoweringError("depthwise_conv2d smoke path currently supports batch=1 only")
+    if filter_c != input_c:
+        raise NpuLoweringError(
+            f"depthwise_conv2d channel mismatch: input C={input_c}, filter C={filter_c}"
+        )
+    if multiplier < 1:
+        raise NpuLoweringError("depthwise_conv2d requires non-empty channel multiplier")
+    if str(graph.get("data_format", "NHWC")).upper() != "NHWC":
+        raise NpuLoweringError("depthwise_conv2d smoke path requires NHWC input format")
+    if str(graph.get("filter_format", "HWCM")).upper() != "HWCM":
+        raise NpuLoweringError("depthwise_conv2d smoke path requires HWCM filter format")
+    if str(graph.get("padding", "VALID")).upper() != "VALID":
+        raise NpuLoweringError("depthwise_conv2d smoke path currently supports VALID padding only")
+    if _pair(graph.get("strides", [1, 1]), "strides") != [1, 1]:
+        raise NpuLoweringError("depthwise_conv2d smoke path currently supports stride 1 only")
+    if _pair(graph.get("dilations", [1, 1]), "dilations") != [1, 1]:
+        raise NpuLoweringError("depthwise_conv2d smoke path currently supports dilation 1 only")
+    if input_h < filter_h or input_w < filter_w:
+        raise NpuLoweringError("depthwise_conv2d filter must fit inside VALID input extent")
+
+
+def _validate_grouped_conv2d_shape(
+    input_nhwc: list[list[list[list[int]]]],
+    filters_hwio: list[list[list[list[int]]]],
+    groups: int,
+    graph: dict[str, Any],
+) -> None:
+    batch = len(input_nhwc)
+    input_h = len(input_nhwc[0])
+    input_w = len(input_nhwc[0][0])
+    input_c = len(input_nhwc[0][0][0])
+    filter_h = len(filters_hwio)
+    filter_w = len(filters_hwio[0])
+    filter_c = len(filters_hwio[0][0])
+    output_c = len(filters_hwio[0][0][0])
+    if batch != 1:
+        raise NpuLoweringError("grouped_conv2d smoke path currently supports batch=1 only")
+    if groups <= 1:
+        raise NpuLoweringError("grouped_conv2d requires groups greater than 1")
+    if groups >= input_c:
+        raise NpuLoweringError("grouped_conv2d excludes depthwise groups; use depthwise_conv2d")
+    if input_c % groups != 0:
+        raise NpuLoweringError("grouped_conv2d input channels must divide evenly by groups")
+    if output_c % groups != 0:
+        raise NpuLoweringError("grouped_conv2d output channels must divide evenly by groups")
+    input_per_group = input_c // groups
+    if filter_c != input_per_group:
+        raise NpuLoweringError(
+            f"grouped_conv2d channel mismatch: filter I={filter_c}, expected {input_per_group}"
+        )
+    if output_c < groups:
+        raise NpuLoweringError("grouped_conv2d requires at least one output channel per group")
+    if str(graph.get("data_format", "NHWC")).upper() != "NHWC":
+        raise NpuLoweringError("grouped_conv2d smoke path requires NHWC input format")
+    if str(graph.get("filter_format", "HWIO")).upper() != "HWIO":
+        raise NpuLoweringError("grouped_conv2d smoke path requires HWIO filter format")
+    if str(graph.get("padding", "VALID")).upper() != "VALID":
+        raise NpuLoweringError("grouped_conv2d smoke path currently supports VALID padding only")
+    if _pair(graph.get("strides", [1, 1]), "strides") != [1, 1]:
+        raise NpuLoweringError("grouped_conv2d smoke path currently supports stride 1 only")
+    if _pair(graph.get("dilations", [1, 1]), "dilations") != [1, 1]:
+        raise NpuLoweringError("grouped_conv2d smoke path currently supports dilation 1 only")
+    if input_h < filter_h or input_w < filter_w:
+        raise NpuLoweringError("grouped_conv2d filter must fit inside VALID input extent")
 
 
 def _pair(value: Any, name: str) -> list[int]:
@@ -3197,6 +4720,10 @@ def _transpose_matrix(matrix: list[list[int]]) -> list[list[int]]:
     return [list(col) for col in zip(*matrix, strict=True)]
 
 
+def _slice_columns(matrix: list[list[int]], start: int, stop: int) -> list[list[int]]:
+    return [row[start:stop] for row in matrix]
+
+
 def _requantize_s8_matrix(matrix: list[list[int]], shift: int) -> list[list[int]]:
     return [[_clamp_s8(value >> shift) for value in row] for row in matrix]
 
@@ -3235,6 +4762,56 @@ def _requantize_attention_weights_s8(
 
 def _clamp_s8(value: int) -> int:
     return max(-128, min(127, value))
+
+
+def _silu_s8_scalar_approx(runtime: E1NpuRuntime, value: int) -> tuple[int, int, bool]:
+    decay = runtime.exp2_neg_q0_8(-abs(value))
+    if value >= 0:
+        sigmoid_q0_8 = _s32(runtime.sub(256, decay >> 1))
+        used_sub = True
+    else:
+        sigmoid_q0_8 = decay >> 1
+        used_sub = False
+    product = _s32(runtime.mul_lo(value, sigmoid_q0_8))
+    return _clamp_s8(product >> 8), sigmoid_q0_8, used_sub
+
+
+def _golden_silu_s8_approx(matrix: list[list[int]]) -> list[list[int]]:
+    output: list[list[int]] = []
+    for row in matrix:
+        output_row: list[int] = []
+        for value in row:
+            decay = 256 >> min(8, abs(value))
+            sigmoid_q0_8 = 256 - (decay >> 1) if value >= 0 else decay >> 1
+            output_row.append(_clamp_s8((value * sigmoid_q0_8) >> 8))
+        output.append(output_row)
+    return output
+
+
+def _quick_gelu_s8_scalar_approx(runtime: E1NpuRuntime, value: int) -> tuple[int, int, int, bool]:
+    scaled = _s32(runtime.mul_lo(value, 218)) >> 7
+    decay = runtime.exp2_neg_q0_8(-abs(scaled))
+    if scaled >= 0:
+        sigmoid_q0_8 = _s32(runtime.sub(256, decay >> 1))
+        used_sub = True
+    else:
+        sigmoid_q0_8 = decay >> 1
+        used_sub = False
+    product = _s32(runtime.mul_lo(value, sigmoid_q0_8))
+    return _clamp_s8(product >> 8), scaled, sigmoid_q0_8, used_sub
+
+
+def _golden_quick_gelu_s8_approx(matrix: list[list[int]]) -> list[list[int]]:
+    output: list[list[int]] = []
+    for row in matrix:
+        output_row: list[int] = []
+        for value in row:
+            scaled = (value * 218) >> 7
+            decay = 256 >> min(8, abs(scaled))
+            sigmoid_q0_8 = 256 - (decay >> 1) if scaled >= 0 else decay >> 1
+            output_row.append(_clamp_s8((value * sigmoid_q0_8) >> 8))
+        output.append(output_row)
+    return output
 
 
 def _flatten_matrix(matrix: list[list[int]]) -> list[int]:
@@ -3458,3 +5035,73 @@ def _validate_tensor3_range(tensor: list[list[list[int]]], low: int, high: int, 
             for value in item1:
                 if not low <= value <= high:
                     raise NpuLoweringError(f"{name} value {value} outside range {low}..{high}")
+
+
+def lower_stablehlo_module_smoke(
+    runtime: E1NpuRuntime,
+    module_payload: Any,
+    graph_fields_by_op: dict[str, dict[str, Any]],
+) -> LoweredStableHloModuleResult:
+    """Parse, materialize, and dispatch a bounded StableHLO smoke module."""
+
+    from e1_npu_stablehlo import (  # Local import keeps StableHLO IR independent of runtime.
+        StableHloModule,
+        StableHloParseError,
+        StableHloValidationError,
+        materialize_module_lowering_graphs,
+        parse_module,
+        plan_module_lowerings,
+    )
+
+    try:
+        module = (
+            module_payload
+            if isinstance(module_payload, StableHloModule)
+            else parse_module(module_payload)
+        )
+        plans = plan_module_lowerings(module)
+        lowering_graphs = materialize_module_lowering_graphs(module, graph_fields_by_op)
+    except (StableHloParseError, StableHloValidationError) as exc:
+        raise NpuLoweringError(f"invalid StableHLO smoke module: {exc}") from exc
+
+    dispatch = {
+        "lower_matmul_smoke": lower_matmul_smoke,
+        "lower_batch_matmul_smoke": lower_batch_matmul_smoke,
+        "lower_int2_matmul_smoke": lower_int2_matmul_smoke,
+        "lower_fp8_matmul_smoke": lower_fp8_matmul_smoke,
+        "lower_fp16_matmul_smoke": lower_fp16_matmul_smoke,
+        "lower_bf16_matmul_smoke": lower_bf16_matmul_smoke,
+        "lower_sparse_int4_matmul_smoke": lower_sparse_int4_matmul_smoke,
+        "lower_group_scaled_int4_matmul_smoke": lower_group_scaled_int4_matmul_smoke,
+        "lower_conv2d_smoke": lower_conv2d_smoke,
+        "lower_residual_add_smoke": lower_residual_add_smoke,
+        "lower_bias_add_smoke": lower_bias_add_smoke,
+        "lower_mlp_smoke": lower_mlp_smoke,
+        "lower_attention_qk_smoke": lower_attention_qk_smoke,
+        "lower_attention_av_smoke": lower_attention_av_smoke,
+    }
+    lowered_ops: list[Any] = []
+    for plan, graph in zip(plans, lowering_graphs, strict=True):
+        lower = dispatch.get(plan.runtime_api)
+        if lower is None:
+            raise NpuLoweringError(f"unsupported StableHLO runtime API {plan.runtime_api!r}")
+        lowered_ops.append(lower(runtime, graph))
+
+    cpu_fallback = any(bool(getattr(op, "cpu_fallback", True)) for op in lowered_ops)
+    return LoweredStableHloModuleResult(
+        schema="eliza.e1_npu_lowered_stablehlo_module_result.v1",
+        source_dialect="stablehlo",
+        module_name=module.name,
+        op_count=len(lowered_ops),
+        dispatch_order=tuple(plan.op_name for plan in plans),
+        lowering_graphs=lowering_graphs,
+        lowering_plans=tuple(plan.as_dict() for plan in plans),
+        lowered_ops=tuple(lowered_ops),
+        runtime_apis=tuple(plan.runtime_api for plan in plans),
+        cpu_fallback=cpu_fallback,
+        all_npu_dispatch=not cpu_fallback,
+        claim_boundary=(
+            "stablehlo_smoke_module_dispatch_only_not_mlir_pipeline_graph_partitioner_"
+            "scheduler_or_production_compiler_backend"
+        ),
+    )

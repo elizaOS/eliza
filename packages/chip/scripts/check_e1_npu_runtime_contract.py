@@ -1609,7 +1609,16 @@ def main() -> int:
         "runtime_binding_plan",
         "eliza.e1_npu_runtime_binding_plan.v1",
         "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen",
+        "RuntimeDescriptorStagingPlan",
+        "RuntimeDescriptorStagingOp",
+        "RuntimeDescriptorInput",
+        "descriptor_staging_plan",
+        "eliza.e1_npu_descriptor_staging_plan.v1",
+        "descriptor_staging_metadata_only_not_binary_codegen_or_dma_runtime",
         "descriptor_codegen_ready",
+        "input_stream_ready",
+        "writeback_ready",
+        "blocking_reasons",
         "unresolved_inputs",
         "descriptor_slots",
         "partitioner_command_buffer_batching_smoke_only_not_dependency_scheduler",
@@ -1621,6 +1630,8 @@ def main() -> int:
         "test_partition_report_does_not_batch_across_cpu_fallback_ops",
         "test_partition_report_emits_runtime_binding_plan_from_arena_offsets",
         "test_partition_report_runtime_binding_plan_records_unresolved_metadata_fields",
+        "test_partition_report_emits_descriptor_staging_plan_for_ready_input_streams",
+        "test_partition_report_descriptor_staging_plan_blocks_unresolved_inputs",
         "PartitionCommandBufferBatch",
     ):
         if token not in partitioner_test_text:
@@ -1647,15 +1658,21 @@ def main() -> int:
         ("command_buffer_batches", executorch_text, "ExecuTorch delegate"),
         ("tensor_arena_plan", executorch_text, "ExecuTorch delegate"),
         ("runtime_binding_plan", executorch_text, "ExecuTorch delegate"),
+        ("descriptor_staging_plan", executorch_text, "ExecuTorch delegate"),
+        ("partition_report.descriptor_staging_plan", executorch_text, "ExecuTorch delegate"),
         ("descriptor_codegen_ready", executorch_test_text, "ExecuTorch delegate test"),
         ("unresolved_inputs", executorch_test_text, "ExecuTorch delegate test"),
+        ("input_stream_ready", executorch_test_text, "ExecuTorch delegate test"),
         ("partition_report.command_buffer_batches", executorch_text, "ExecuTorch delegate"),
         ("partition_report.tensor_arena_plan", executorch_text, "ExecuTorch delegate"),
         ("partition_report.runtime_binding_plan", executorch_text, "ExecuTorch delegate"),
         ("command_buffer_batches", litert_text, "LiteRT delegate"),
         ("tensor_arena_plan", litert_text, "LiteRT delegate"),
         ("runtime_binding_plan", litert_text, "LiteRT delegate"),
+        ("descriptor_staging_plan", litert_text, "LiteRT delegate"),
+        ("partition_report.descriptor_staging_plan", litert_text, "LiteRT delegate"),
         ("descriptor_codegen_ready", litert_test_text, "LiteRT delegate test"),
+        ("blocking_reasons", litert_test_text, "LiteRT delegate test"),
         ("partition_report.command_buffer_batches", litert_text, "LiteRT delegate"),
         ("partition_report.tensor_arena_plan", litert_text, "LiteRT delegate"),
         ("partition_report.runtime_binding_plan", litert_text, "LiteRT delegate"),
@@ -1703,6 +1720,30 @@ def main() -> int:
         != "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen"
     ):
         errors.append("delegate runtime binding claim boundary must remain descriptor-blocked")
+
+    descriptor_staging = contract.get("delegate_descriptor_staging_preprocess", {})
+    if descriptor_staging.get("schema") != "eliza.e1_npu_descriptor_staging_plan.v1":
+        errors.append(
+            "delegate descriptor staging preprocess must identify descriptor staging schema"
+        )
+    if descriptor_staging.get("state") != "metadata_only_descriptor_stream_templates":
+        errors.append("delegate descriptor staging preprocess must remain metadata-only")
+    for token in (
+        "descriptor_staging_plan",
+        "input_stream_ready",
+        "writeback_ready",
+        "descriptor_codegen_ready",
+        "stream_byte_count",
+        "GEMM",
+        "blocking_reasons",
+    ):
+        if token not in descriptor_staging.get("emits", ""):
+            errors.append(f"delegate descriptor staging contract missing {token}")
+    if (
+        descriptor_staging.get("claim_boundary")
+        != "descriptor_staging_metadata_only_not_binary_codegen_or_dma_runtime"
+    ):
+        errors.append("delegate descriptor staging claim boundary must remain runtime-blocked")
 
     runtime_sim_text = RUNTIME_SIM_TEST.read_text()
     for token in (

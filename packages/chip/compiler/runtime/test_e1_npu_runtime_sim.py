@@ -10,18 +10,26 @@ from e1_npu_lowering import (
     lower_attention_qk_smoke,
     lower_attention_smoke,
     lower_attention_softmax_smoke,
+    lower_bf16_matmul_smoke,
     lower_bias_add_smoke,
     lower_conv2d_smoke,
     lower_decode_attention_smoke,
+    lower_depthwise_conv2d_smoke,
     lower_fp8_matmul_smoke,
+    lower_fp16_matmul_smoke,
+    lower_gelu_smoke,
+    lower_group_scaled_int4_matmul_smoke,
+    lower_grouped_conv2d_smoke,
     lower_int2_matmul_smoke,
     lower_kv_cache_update_smoke,
     lower_matmul_smoke,
     lower_mlp_smoke,
     lower_modern_decoder_block_smoke,
+    lower_qkv_projection_smoke,
     lower_residual_add_smoke,
     lower_rmsnorm_smoke,
     lower_rope_smoke,
+    lower_silu_smoke,
     lower_sparse_int4_matmul_smoke,
     lower_swiglu_smoke,
     lower_transformer_block_smoke,
@@ -393,6 +401,30 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertTrue(lowered.split_k)
         self.assertTrue(lowered.host_accumulates_partials)
 
+    def test_runtime_qkv_projection_smoke_dispatches_packed_gemm_and_slices_qkv(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_qkv_projection_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.qkv_projection",
+            "precision": "int8",
+            "projection_shift": 0,
+            "input": [[1, 2], [3, 4]],
+            "packed_weight": [[1, 0, 0, 1, 1, 1], [0, 1, 1, 0, -1, 2]],
+        }
+
+        lowered = lower_qkv_projection_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.packed_accumulator, [[1, 2, 2, 1, -1, 5], [3, 4, 4, 3, -1, 11]])
+        self.assertEqual(lowered.q_requantized, [[1, 2], [3, 4]])
+        self.assertEqual(lowered.k_requantized, [[2, 1], [4, 3]])
+        self.assertEqual(lowered.v_requantized, [[-1, 5], [-1, 11]])
+        self.assertEqual(lowered.total_tile_count, 2)
+        self.assertTrue(lowered.host_slices_packed_qkv)
+        self.assertTrue(lowered.host_requantizes_qkv)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_conv2d_smoke_lowering_dispatches_im2col_tiles(self):
         sim = E1NpuMmioSim()
         graph = {
@@ -411,6 +443,130 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertTrue(lowered.host_materializes_im2col)
         self.assertEqual(lowered.matmul.tile_count, 2)
         self.assertEqual(lowered.matmul.abi_opcode, sim.runtime.OP_GEMM_S8)
+
+    def test_runtime_depthwise_conv2d_smoke_dispatches_direct_scalar_macs(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_depthwise_conv2d_smoke.v1",
+            "dialect": "tflite",
+            "op": "tflite.depthwise_conv_2d",
+            "precision": "int8",
+            "data_format": "NHWC",
+            "filter_format": "HWCM",
+            "padding": "VALID",
+            "strides": [1, 1],
+            "dilations": [1, 1],
+            "input": [
+                [
+                    [[1, 2], [3, 4], [5, 6]],
+                    [[7, 8], [9, 10], [11, 12]],
+                    [[13, 14], [15, 16], [17, 18]],
+                ]
+            ],
+            "filter": [
+                [[[1, -1], [2, 0]], [[0, 1], [-1, 2]]],
+                [[[2, 0], [1, -2]], [[1, -1], [0, 1]]],
+            ],
+        }
+
+        lowered = lower_depthwise_conv2d_smoke(sim.runtime, graph)
+
+        expected = [[[[24, -7, 8, 2], [32, -9, 12, 4]], [[48, -13, 20, 8], [56, -15, 24, 10]]]]
+        self.assertEqual(lowered.output, expected)
+        self.assertEqual(lowered.output, lowered.golden)
+        self.assertEqual(lowered.output_shape, [1, 2, 2, 4])
+        self.assertEqual(lowered.scalar_mul_count, 64)
+        self.assertEqual(lowered.scalar_add_count, 64)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertTrue(lowered.host_uses_direct_depthwise_loops)
+        self.assertFalse(lowered.host_materializes_im2col)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_grouped_conv2d_smoke_dispatches_direct_scalar_macs(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_grouped_conv2d_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "stablehlo.convolution",
+            "precision": "int8",
+            "data_format": "NHWC",
+            "filter_format": "HWIO",
+            "padding": "VALID",
+            "strides": [1, 1],
+            "dilations": [1, 1],
+            "groups": 2,
+            "input": [
+                [
+                    [[1, 2, 10, 20], [3, 4, 30, 40]],
+                    [[5, 6, 50, 60], [7, 8, 70, 80]],
+                ]
+            ],
+            "filter": [
+                [[[1, 0, 1, 0], [0, 1, 0, 1]], [[2, -1, -1, 2], [1, 0, 1, 0]]],
+                [[[0, 2, 0, -2], [-1, 1, 2, 1]], [[1, 1, 1, 1], [2, -2, -2, 2]]],
+            ],
+        }
+
+        lowered = lower_grouped_conv2d_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.output, [[[[28, 6, 50, 270]]]])
+        self.assertEqual(lowered.output, lowered.golden)
+        self.assertEqual(lowered.output_shape, [1, 1, 1, 4])
+        self.assertEqual(lowered.groups, 2)
+        self.assertEqual(lowered.scalar_mul_count, 32)
+        self.assertEqual(lowered.scalar_add_count, 32)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertTrue(lowered.host_uses_direct_grouped_loops)
+        self.assertFalse(lowered.host_materializes_im2col)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_silu_smoke_dispatches_exp2_piecewise_scalar_activation(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_silu_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "stablehlo.silu",
+            "precision": "int8",
+            "approximation": "exp2_q0_8_piecewise",
+            "input": [[-8, -2, 0], [4, 8, 16]],
+        }
+
+        lowered = lower_silu_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.sigmoid_q0_8, [[0, 32, 128], [248, 256, 256]])
+        self.assertEqual(lowered.output, [[0, -1, 0], [3, 8, 16]])
+        self.assertEqual(lowered.output, lowered.golden)
+        self.assertEqual(lowered.scalar_exp2_count, 6)
+        self.assertEqual(lowered.scalar_sub_count, 4)
+        self.assertEqual(lowered.scalar_mul_count, 6)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertTrue(lowered.host_applies_shift_and_saturation)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_gelu_smoke_dispatches_quick_exp2_piecewise_scalar_activation(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_gelu_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "stablehlo.gelu",
+            "precision": "int8",
+            "approximation": "quick_gelu_exp2_q0_8",
+            "input": [[-16, -4, 0], [4, 16, 32]],
+        }
+
+        lowered = lower_gelu_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.scaled_input, [[-28, -7, 0], [6, 27, 54]])
+        self.assertEqual(lowered.sigmoid_q0_8, [[0, 1, 128], [254, 256, 256]])
+        self.assertEqual(lowered.output, [[0, -1, 0], [3, 16, 32]])
+        self.assertEqual(lowered.output, lowered.golden)
+        self.assertEqual(lowered.scalar_scale_mul_count, 6)
+        self.assertEqual(lowered.scalar_exp2_count, 6)
+        self.assertEqual(lowered.scalar_sub_count, 4)
+        self.assertEqual(lowered.scalar_gate_mul_count, 6)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertTrue(lowered.host_applies_shift_and_saturation)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
     def test_runtime_attention_qk_smoke_lowering_dispatches_per_head_gemm(self):
         sim = E1NpuMmioSim()
@@ -521,6 +677,61 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_attention_smoke_dispatches_generated_causal_mask(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_attention_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.attention",
+            "precision": "int8",
+            "query": [[[[1, 2], [3, 4]]]],
+            "key": [[[[1, 0], [0, 1]]]],
+            "value": [[[[5, 6], [7, 8]]]],
+            "mask_mode": "causal",
+            "qk_score_shift": 0,
+            "attention_weight_shift": 1,
+            "context_shift": 4,
+        }
+
+        lowered = lower_attention_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.attention_mask, [[[[True, False], [True, True]]]])
+        self.assertEqual(lowered.attention_weights_s8, [[[[127, 0], [43, 86]]]])
+        self.assertEqual(lowered.context_requantized, [[[[39, 47], [51, 59]]]])
+        self.assertTrue(lowered.host_generates_causal_mask)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_attention_smoke_dispatches_generated_sliding_window_mask(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_attention_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.attention",
+            "precision": "int8",
+            "query": [[[[1, 0], [0, 1], [1, 1]]]],
+            "key": [[[[1, 0], [0, 1], [1, 1]]]],
+            "value": [[[[2, 0], [0, 2], [1, 1]]]],
+            "mask_mode": "sliding_window",
+            "mask_window": 2,
+            "qk_score_shift": 0,
+            "attention_weight_shift": 1,
+            "context_shift": 4,
+        }
+
+        lowered = lower_attention_smoke(sim.runtime, graph)
+
+        self.assertEqual(
+            lowered.attention_mask,
+            [[[[True, False, False], [True, True, False], [False, True, True]]]],
+        )
+        self.assertEqual(lowered.attention_weights_s8, [[[[127, 0, 0], [43, 86, 0], [0, 43, 86]]]])
+        self.assertEqual(lowered.context_requantized, [[[[15, 0], [5, 10], [5, 10]]]])
+        self.assertTrue(lowered.host_generates_sliding_window_mask)
+        self.assertFalse(lowered.host_generates_causal_mask)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_kv_cache_update_smoke_dispatches_scalar_copies(self):
         sim = E1NpuMmioSim()
         graph = {
@@ -575,6 +786,41 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_decode_attention_smoke_dispatches_recent_cache_window(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_decode_attention_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.decode_attention",
+            "precision": "int8",
+            "query": [[[[1, 1]], [[2, -1]]]],
+            "key_cache": [[[[1, 0], [0, 1], [0, 0], [0, 0]], [[1, 1], [0, 0], [0, 0], [0, 0]]]],
+            "value_cache": [[[[5, 6], [7, 8], [0, 0], [0, 0]], [[-3, 4], [0, 0], [0, 0], [0, 0]]]],
+            "new_key": [[[[2, 1]], [[-1, 1]]]],
+            "new_value": [[[[9, 10]], [[6, -5]]]],
+            "cache_lengths": [[2, 1]],
+            "qk_score_shift": 0,
+            "attention_weight_shift": 1,
+            "context_shift": 4,
+            "cache_window": 2,
+        }
+
+        lowered = lower_decode_attention_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.updated_cache_lengths, [[3, 2]])
+        self.assertEqual(lowered.max_attention_cache_length, 2)
+        self.assertEqual(
+            lowered.attention_key_cache_view,
+            [[[[0, 1], [2, 1]], [[1, 1], [-1, 1]]]],
+        )
+        self.assertEqual(lowered.attention_mask, [[[[True, True]], [[True, True]]]])
+        self.assertEqual(lowered.attention.context_requantized, [[[[69, 77]], [[-20, 27]]]])
+        self.assertTrue(lowered.host_materializes_cache_view)
+        self.assertTrue(lowered.host_applies_decode_cache_window)
+        self.assertEqual(lowered.decode_cache_window, 2)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_transformer_mlp_smoke_dispatches_gemm_vrelu_gemm(self):
         sim = E1NpuMmioSim()
         graph = {
@@ -625,6 +871,35 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertTrue(lowered.host_applies_gate_shift_and_saturation)
         self.assertEqual(lowered.total_tile_count, 3)
         self.assertEqual(lowered.scalar_mul_count, 6)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_swiglu_smoke_with_silu_gate_dispatches_exp2_gate_gemm(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_swiglu_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.swiglu",
+            "precision": "int8",
+            "activation": "silu",
+            "requant_shift": 0,
+            "gate_shift": 4,
+            "input": [[8, 4]],
+            "up_weight": [[2, 0], [0, 2]],
+            "gate_weight": [[2, 0], [0, -2]],
+            "down_weight": [[1, 0], [0, 1]],
+        }
+
+        lowered = lower_swiglu_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.gate_requantized, [[16, -8]])
+        self.assertEqual(lowered.gate_activated, [[16, 0]])
+        self.assertIsNotNone(lowered.gate_activation_result)
+        self.assertEqual(lowered.gated_hidden, [[16, 0]])
+        self.assertEqual(lowered.output, [[16, 0]])
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(lowered.total_tile_count, 3)
+        self.assertEqual(lowered.scalar_mul_count, 2)
+        self.assertIn("swiglu_s8_silu_gate_smoke_only", lowered.claim_boundary)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
     def test_runtime_residual_add_smoke_dispatches_scalar_adds(self):
@@ -736,6 +1011,184 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertEqual(lowered.scalar_mul_count, 44)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_modern_decoder_block_smoke_dispatches_packed_qkv_projection(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.decoder_block",
+            "precision": "int8",
+            "projection_shift": 0,
+            "rms_epsilon": 0,
+            "rms_inv_shift": 8,
+            "rms_output_shift": 8,
+            "rope_scale_shift": 7,
+            "swiglu_requant_shift": 0,
+            "swiglu_gate_shift": 6,
+            "input": [[3, 4], [5, 12]],
+            "norm1_weight": [64, 64],
+            "norm2_weight": [64, 64],
+            "q_weight": [[1, 0], [0, 1]],
+            "k_weight": [[1, 0], [0, 1]],
+            "v_weight": [[1, 0], [0, 1]],
+            "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+            "attention": [[[[1, 0], [0, 1]]]],
+            "attention_bias": [0, 0],
+            "cos": [127],
+            "sin": [0],
+            "swiglu_up_weight": [[1, 0], [0, 1]],
+            "swiglu_gate_weight": [[1, 0], [0, 1]],
+            "swiglu_down_weight": [[1, 0], [0, 1]],
+        }
+
+        lowered = lower_modern_decoder_block_smoke(sim.runtime, graph)
+
+        self.assertIsNone(lowered.q_projection)
+        self.assertIsNone(lowered.k_projection)
+        self.assertIsNone(lowered.v_projection)
+        self.assertIsNotNone(lowered.qkv_projection)
+        self.assertEqual(lowered.q_requantized, [[63, 85], [35, 84]])
+        self.assertEqual(lowered.k_requantized, [[63, 85], [35, 84]])
+        self.assertEqual(lowered.v_requantized, [[63, 85], [35, 84]])
+        self.assertEqual(lowered.output, [[101, 127], [106, 127]])
+        self.assertEqual(lowered.total_tile_count, 7)
+        self.assertTrue(lowered.host_slices_packed_qkv)
+        self.assertTrue(lowered.host_requantizes_qkv)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_modern_decoder_block_smoke_dispatches_packed_qkv_silu_swiglu_gate(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.decoder_block",
+            "precision": "int8",
+            "projection_shift": 0,
+            "rms_epsilon": 0,
+            "rms_inv_shift": 8,
+            "rms_output_shift": 8,
+            "rope_scale_shift": 7,
+            "swiglu_requant_shift": 0,
+            "swiglu_gate_shift": 6,
+            "swiglu_activation": "silu",
+            "input": [[3, 4], [5, 12]],
+            "norm1_weight": [64, 64],
+            "norm2_weight": [64, 64],
+            "q_weight": [[1, 0], [0, 1]],
+            "k_weight": [[1, 0], [0, 1]],
+            "v_weight": [[1, 0], [0, 1]],
+            "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+            "attention": [[[[1, 0], [0, 1]]]],
+            "attention_bias": [0, 0],
+            "cos": [127],
+            "sin": [0],
+            "swiglu_up_weight": [[1, 0], [0, 1]],
+            "swiglu_gate_weight": [[1, 0], [0, 1]],
+            "swiglu_down_weight": [[1, 0], [0, 1]],
+        }
+
+        lowered = lower_modern_decoder_block_smoke(sim.runtime, graph)
+
+        self.assertIsNotNone(lowered.qkv_projection)
+        self.assertTrue(lowered.host_slices_packed_qkv)
+        self.assertEqual(lowered.swiglu.activation, "silu")
+        self.assertIsNotNone(lowered.swiglu.gate_activation_result)
+        self.assertEqual(lowered.swiglu.gate_activated, [[48, 66], [50, 72]])
+        self.assertEqual(lowered.swiglu.gated_hidden, [[36, 68], [39, 81]])
+        self.assertEqual(lowered.output, [[101, 127], [106, 127]])
+        self.assertEqual(lowered.total_tile_count, 7)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_modern_decoder_block_smoke_dispatches_generated_causal_mask(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.decoder_block",
+            "precision": "int8",
+            "projection_shift": 0,
+            "rms_epsilon": 0,
+            "rms_inv_shift": 8,
+            "rms_output_shift": 8,
+            "rope_scale_shift": 7,
+            "swiglu_requant_shift": 0,
+            "swiglu_gate_shift": 6,
+            "swiglu_activation": "silu",
+            "attention_mask_mode": "causal",
+            "input": [[3, 4], [5, 12]],
+            "norm1_weight": [64, 64],
+            "norm2_weight": [64, 64],
+            "q_weight": [[1, 0], [0, 1]],
+            "k_weight": [[1, 0], [0, 1]],
+            "v_weight": [[1, 0], [0, 1]],
+            "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+            "attention": [[[[1, 0], [0, 1]]]],
+            "attention_bias": [0, 0],
+            "cos": [127],
+            "sin": [0],
+            "swiglu_up_weight": [[1, 0], [0, 1]],
+            "swiglu_gate_weight": [[1, 0], [0, 1]],
+            "swiglu_down_weight": [[1, 0], [0, 1]],
+        }
+
+        lowered = lower_modern_decoder_block_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.attention_softmax.mask, [[[[True, False], [True, True]]]])
+        self.assertTrue(lowered.host_generates_causal_mask)
+        self.assertTrue(lowered.host_slices_packed_qkv)
+        self.assertEqual(lowered.swiglu.activation, "silu")
+        self.assertEqual(lowered.output, [[101, 127], [106, 127]])
+        self.assertEqual(lowered.total_tile_count, 7)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_modern_decoder_block_smoke_dispatches_generated_sliding_window_mask(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_modern_decoder_block_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.decoder_block",
+            "precision": "int8",
+            "projection_shift": 0,
+            "rms_epsilon": 0,
+            "rms_inv_shift": 8,
+            "rms_output_shift": 8,
+            "rope_scale_shift": 7,
+            "swiglu_requant_shift": 0,
+            "swiglu_gate_shift": 6,
+            "swiglu_activation": "silu",
+            "attention_mask_mode": "sliding_window",
+            "attention_mask_window": 1,
+            "input": [[3, 4], [5, 12]],
+            "norm1_weight": [64, 64],
+            "norm2_weight": [64, 64],
+            "q_weight": [[1, 0], [0, 1]],
+            "k_weight": [[1, 0], [0, 1]],
+            "v_weight": [[1, 0], [0, 1]],
+            "packed_qkv_weight": [[1, 0, 1, 0, 1, 0], [0, 1, 0, 1, 0, 1]],
+            "attention": [[[[1, 0], [0, 1]]]],
+            "attention_bias": [0, 0],
+            "cos": [127],
+            "sin": [0],
+            "swiglu_up_weight": [[1, 0], [0, 1]],
+            "swiglu_gate_weight": [[1, 0], [0, 1]],
+            "swiglu_down_weight": [[1, 0], [0, 1]],
+        }
+
+        lowered = lower_modern_decoder_block_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.attention_softmax.mask, [[[[True, False], [False, True]]]])
+        self.assertTrue(lowered.host_generates_sliding_window_mask)
+        self.assertFalse(lowered.host_generates_causal_mask)
+        self.assertTrue(lowered.host_slices_packed_qkv)
+        self.assertEqual(lowered.swiglu.activation, "silu")
+        self.assertEqual(lowered.output, [[101, 127], [52, 127]])
+        self.assertEqual(lowered.total_tile_count, 7)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_rope_smoke_dispatches_scalar_arithmetic(self):
         sim = E1NpuMmioSim()
         graph = {
@@ -827,6 +1280,34 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 
+    def test_runtime_group_scaled_int4_matmul_smoke_dispatches_scalar_scale_path(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_group_scaled_int4_matmul_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "eliza.group_scaled_int4_matmul",
+            "precision": "int4_group_scaled",
+            "group_size": 2,
+            "lhs": [[2, -3, 4, 1], [-1, 5, -2, 3]],
+            "rhs": [[3, -2], [-4, 1], [2, 7], [-1, -3]],
+            "scales_q8_8": [[128, 256], [64, -128]],
+        }
+
+        lowered = lower_group_scaled_int4_matmul_smoke(sim.runtime, graph)
+
+        self.assertEqual(
+            lowered.group_dot_products,
+            [[[18, 7], [-7, 25]], [[-23, -7], [7, -23]]],
+        )
+        self.assertEqual(lowered.result_q8_8, [[2752, -4992], [-3392, 4736]])
+        self.assertEqual(lowered.golden_q8_8, lowered.result_q8_8)
+        self.assertEqual(lowered.scalar_mul_count, 24)
+        self.assertEqual(lowered.scalar_add_count, 24)
+        self.assertTrue(lowered.host_applies_group_scales)
+        self.assertTrue(lowered.host_uses_q8_8_scales)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
     def test_runtime_dot16_s2_matches_golden(self):
         sim = E1NpuMmioSim()
         a = [1, -1, -2, 0, 1, 1, -2, -1, 0, 1, -1, -2, 1, 0, -2, 1]
@@ -913,6 +1394,54 @@ class E1NpuRuntimeSimTest(unittest.TestCase):
         self.assertEqual(lowered.golden_q8_8, lowered.result_q8_8)
         self.assertEqual(lowered.dot4_count, 8)
         self.assertTrue(lowered.host_pads_k_to_dot4)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_fp16_matmul_smoke_dispatches_scalar_q8_8_path(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_fp16_matmul_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "stablehlo.dot_general",
+            "precision": "fp16",
+            "lhs": [[0x3C00, 0x4000], [0x3800, 0xBC00]],
+            "rhs": [[0x4000, 0xBC00], [0x3800, 0x3E00]],
+        }
+
+        lowered = lower_fp16_matmul_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.lhs_q8_8, [[256, 512], [128, -256]])
+        self.assertEqual(lowered.rhs_q8_8, [[512, -256], [128, 384]])
+        self.assertEqual(lowered.result_q8_8, [[768, 512], [128, -512]])
+        self.assertEqual(lowered.golden_q8_8, lowered.result_q8_8)
+        self.assertEqual(lowered.scalar_mul_count, 8)
+        self.assertEqual(lowered.scalar_add_count, 8)
+        self.assertTrue(lowered.host_converts_float16_to_q8_8)
+        self.assertTrue(lowered.host_requantizes_products)
+        self.assertFalse(lowered.cpu_fallback)
+        self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
+
+    def test_runtime_bf16_matmul_smoke_dispatches_scalar_q8_8_path(self):
+        sim = E1NpuMmioSim()
+        graph = {
+            "schema": "eliza.e1_npu_bf16_matmul_smoke.v1",
+            "dialect": "stablehlo",
+            "op": "stablehlo.dot_general",
+            "precision": "bf16",
+            "lhs": [[0x3F80, 0x4000], [0x3F00, 0xBF80]],
+            "rhs": [[0x4000, 0xBF80], [0x3F00, 0x3FC0]],
+        }
+
+        lowered = lower_bf16_matmul_smoke(sim.runtime, graph)
+
+        self.assertEqual(lowered.lhs_q8_8, [[256, 512], [128, -256]])
+        self.assertEqual(lowered.rhs_q8_8, [[512, -256], [128, 384]])
+        self.assertEqual(lowered.result_q8_8, [[768, 512], [128, -512]])
+        self.assertEqual(lowered.golden_q8_8, lowered.result_q8_8)
+        self.assertEqual(lowered.scalar_mul_count, 8)
+        self.assertEqual(lowered.scalar_add_count, 8)
+        self.assertTrue(lowered.host_converts_float16_to_q8_8)
+        self.assertTrue(lowered.host_requantizes_products)
         self.assertFalse(lowered.cpu_fallback)
         self.assertEqual(sim.runtime.perf()["unsupported_ops"], 0)
 

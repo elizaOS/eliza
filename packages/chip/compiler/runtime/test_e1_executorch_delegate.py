@@ -131,6 +131,23 @@ def test_backend_preprocess_returns_placeholder_descriptor_spec_blob() -> None:
             ),
         }
     ]
+    assert payload["tensor_arena_plan"]["schema"] == "eliza.e1_npu_tensor_arena_plan.v1"
+    assert payload["tensor_arena_plan"]["total_bytes"] > 0
+    assert payload["tensor_arena_plan"]["allocations"][0]["tensor_name"] == "dot0.result"
+    assert payload["runtime_binding_plan"]["schema"] == "eliza.e1_npu_runtime_binding_plan.v1"
+    assert payload["runtime_binding_plan"]["ready_ops"] == 2
+    assert payload["runtime_binding_plan"]["blocked_ops"] == 0
+    assert payload["runtime_binding_plan"]["ops"][0]["op_name"] == "dot0"
+    assert payload["runtime_binding_plan"]["ops"][0]["descriptor_codegen_ready"] is True
+    assert payload["runtime_binding_plan"]["ops"][0]["inputs"][0]["offset"] == 16
+    assert payload["runtime_binding_plan"]["ops"][0]["unresolved_inputs"] == []
+    assert payload["runtime_binding_plan"]["ops"][1]["command_buffer_batch_index"] == 0
+    assert payload["descriptor_staging_plan"]["schema"] == (
+        "eliza.e1_npu_descriptor_staging_plan.v1"
+    )
+    assert payload["descriptor_staging_plan"]["ops"][0]["input_stream_ready"] is True
+    assert payload["descriptor_staging_plan"]["ops"][0]["stream_byte_count"] == 16
+    assert payload["descriptor_staging_plan"]["ops"][0]["writeback_ready"] is True
     dot_entry = next(entry for entry in payload["descriptor_specs"] if entry["op_name"] == "dot0")
     assert dot_entry["runtime_api"] == "lower_matmul_smoke"
     assert dot_entry["lowering_precision"] == "int8"
@@ -159,3 +176,6 @@ def test_preprocess_result_summary_records_blob_size_and_status() -> None:
     assert summary["blob_bytes"] == len(result.blob)
     assert summary["schema"] == SCHEMA
     assert summary["command_buffer_batches"][0]["op_names"] == ["dot0", "add0"]
+    assert summary["tensor_arena_plan"]["alignment_bytes"] == 4
+    assert summary["runtime_binding_plan"]["ops"][0]["runtime_api"] == "lower_matmul_smoke"
+    assert summary["descriptor_staging_plan"]["ops"][0]["descriptor_opcode_name"] == "OP_GEMM_S8"

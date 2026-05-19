@@ -12,7 +12,6 @@ These tests confirm the fail-closed behaviour the wrapper guarantees:
 
 from __future__ import annotations
 
-import importlib.util
 import json
 import shutil
 import tempfile

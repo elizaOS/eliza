@@ -131,6 +131,22 @@ def test_invoke_returns_placeholder_blob_with_descriptor_specs() -> None:
             ),
         }
     ]
+    assert payload["tensor_arena_plan"]["schema"] == "eliza.e1_npu_tensor_arena_plan.v1"
+    assert payload["tensor_arena_plan"]["total_bytes"] > 0
+    assert payload["tensor_arena_plan"]["allocations"][0]["tensor_name"] == "dot0.result"
+    assert payload["runtime_binding_plan"]["schema"] == "eliza.e1_npu_runtime_binding_plan.v1"
+    assert payload["runtime_binding_plan"]["ready_ops"] == 2
+    assert payload["runtime_binding_plan"]["blocked_ops"] == 0
+    assert payload["runtime_binding_plan"]["ops"][0]["inputs"][0]["graph_field"] == "lhs"
+    assert payload["runtime_binding_plan"]["ops"][0]["descriptor_codegen_ready"] is True
+    assert payload["runtime_binding_plan"]["ops"][1]["inputs"][1]["tensor_name"] == "bias0.bias"
+    assert payload["descriptor_staging_plan"]["schema"] == (
+        "eliza.e1_npu_descriptor_staging_plan.v1"
+    )
+    assert payload["descriptor_staging_plan"]["ops"][0]["descriptor_opcode_name"] == "OP_GEMM_S8"
+    assert payload["descriptor_staging_plan"]["ops"][1]["blocking_reasons"] == [
+        "runtime_api_not_supported_by_descriptor_staging_plan"
+    ]
 
 
 def test_invoke_rejects_invalid_module_through_validator() -> None:
@@ -149,6 +165,9 @@ def test_delegate_create_partition_invoke_destroy_match_header_lifecycle() -> No
     assert invoke_result.descriptor_specs[0]["op_name"] == "dot0"
     assert invoke_result.descriptor_specs[0]["runtime_api"] == "lower_matmul_smoke"
     assert invoke_result.command_buffer_batches[0]["op_names"] == ["dot0", "bias0"]
+    assert invoke_result.tensor_arena_plan["alignment_bytes"] == 4
+    assert invoke_result.runtime_binding_plan["ops"][1]["runtime_api"] == "lower_bias_add_smoke"
+    assert invoke_result.descriptor_staging_plan["ops"][0]["input_stream_ready"] is True
 
 
 def test_partition_and_invoke_reject_non_delegate_handle() -> None:
@@ -170,6 +189,9 @@ def test_partition_and_invoke_accept_byte_payload() -> None:
     assert len(partition_result.entries) == 2
     assert len(invoke_result.descriptor_specs) == 2
     assert len(invoke_result.command_buffer_batches) == 1
+    assert invoke_result.tensor_arena_plan["total_bytes"] > 0
+    assert len(invoke_result.runtime_binding_plan["ops"]) == 2
+    assert len(invoke_result.descriptor_staging_plan["ops"]) == 2
 
 
 def test_header_file_exists_and_declares_expected_entry_points() -> None:

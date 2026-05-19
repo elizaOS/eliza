@@ -833,7 +833,7 @@
     ],
     "schema": "eliza.e1_npu_tensor_arena_plan.v1",
     "state": "metadata_only_linear_tensor_arena",
-    "emits": "tensor_arena_plan with 4-byte aligned offsets, tensor names, roles, shapes, dtypes, byte sizes, and total_bytes",
+    "emits": "tensor_arena_plan with 4-byte aligned offsets, tensor names, roles, shapes, logical dtypes, storage_dtype, byte sizes, and total_bytes; descriptor-backed INT8/INT4 matmul result storage is sized as int32_accumulator for RTL GEMM writeback",
     "claim_boundary": "tensor_arena_metadata_only_not_lifetime_allocator_or_dma_planner",
     "not_claimed": "No tensor lifetime reuse, alias analysis, DMA placement, cache-coherent allocator, Android AHardwareBuffer integration, or production memory planner is implemented"
   },
@@ -845,9 +845,21 @@
     ],
     "schema": "eliza.e1_npu_runtime_binding_plan.v1",
     "state": "metadata_only_runtime_field_to_arena_bindings",
-    "emits": "runtime_binding_plan mapping lowering required_graph_fields and result tensors to tensor_arena_plan offsets, byte sizes, dtypes, shapes, command_buffer_batch_index, descriptor_codegen_ready, ready_ops, blocked_ops, and unresolved_inputs for required fields without arena allocations",
+    "emits": "runtime_binding_plan mapping lowering required_graph_fields and result tensors to tensor_arena_plan offsets, byte sizes, logical dtypes, storage_dtype, shapes, command_buffer_batch_index, descriptor_codegen_ready, ready_ops, blocked_ops, and unresolved_inputs for required fields without arena allocations",
     "claim_boundary": "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen",
     "not_claimed": "No binary descriptor codegen, DMA address assignment, tensor lifetime reuse, dependency scheduling, Android delegate integration, or production compiler backend is implemented"
+  },
+  "delegate_descriptor_staging_preprocess": {
+    "modules": [
+      "compiler/runtime/e1_npu_partitioner.py",
+      "compiler/runtime/e1_executorch_delegate.py",
+      "compiler/runtime/e1_litert_delegate.py"
+    ],
+    "schema": "eliza.e1_npu_descriptor_staging_plan.v1",
+    "state": "metadata_only_descriptor_stream_templates",
+    "emits": "descriptor_staging_plan with descriptor opcode, input_stream_ready, writeback_ready, descriptor_codegen_ready, source_arena_offset, stream_byte_count, scratch_output_offset, required_output_bytes, output arena offsets, GEMM MMIO preamble values, ready_ops, blocked_ops, and blocking_reasons",
+    "claim_boundary": "descriptor_staging_metadata_only_not_binary_codegen_or_dma_runtime",
+    "not_claimed": "No binary descriptor emission, arena base address assignment, DMA runtime ownership, output dtype conversion, dependency scheduling, Android delegate integration, or production compiler backend is implemented"
   },
   "precision_matrix": [
     {

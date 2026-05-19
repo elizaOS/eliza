@@ -182,10 +182,13 @@ current_repo_classification:
     - DOT8_S4
     - SDOT4_S4_2_4
     - sparse_INT4_2_4_scalar_dot_matmul_lowering_smoke
+    - group_scaled_INT4_q8_8_scalar_matmul_lowering_smoke
     - DOT16_S2
     - INT2_scalar_dot_matmul_lowering_smoke
     - DOT4_FP8_E4M3
     - FP8_E4M3_scalar_dot_matmul_lowering_smoke
+    - FP16_scalar_q8_8_matmul_lowering_smoke
+    - BF16_scalar_q8_8_matmul_lowering_smoke
     - RELU4_S8
     - bounded_MMIO_scratchpad_VRELU_S8
     - bounded_MMIO_scratchpad_GEMM_S8
@@ -194,14 +197,21 @@ current_repo_classification:
     - multi_tile_MN_matmul_lowering_smoke
     - split_K_matmul_lowering_smoke
     - single_conv2d_im2col_lowering_smoke
+    - depthwise_conv2d_direct_scalar_lowering_smoke
+    - grouped_conv2d_direct_scalar_lowering_smoke
     - attention_QK_score_lowering_smoke
     - attention_softmax_exp2_q0_8_lowering_smoke
     - attention_AV_context_lowering_smoke
     - multihead_attention_qk_softmax_av_lowering_smoke
     - KV_cache_s8_scalar_append_lowering_smoke
+    - QKV_projection_packed_gemm_lowering_smoke
     - decode_attention_kv_append_lowering_smoke
+    - decode_attention_recent_cache_window_lowering_smoke
     - transformer_MLP_relu_lowering_smoke
     - SwiGLU_s8_scalar_gate_lowering_smoke
+    - SwiGLU_s8_silu_gate_lowering_smoke
+    - SiLU_s8_exp2_piecewise_lowering_smoke
+    - GELU_s8_quick_exp2_piecewise_lowering_smoke
     - bias_add_s8_scalar_broadcast_lowering_smoke
     - residual_add_s8_scalar_lowering_smoke
     - single_head_transformer_block_lowering_smoke
@@ -221,6 +231,8 @@ current_repo_classification:
     - no_sparse_INT4_GEMM
     - no_INT2_tensor_path
     - no_FP8_tensor_path
+    - no_FP16_tensor_path
+    - no_BF16_tensor_path
     - no_production_compiler_backend
     - no_NNAPI_delegate
     - no_measured_power_or_area_model
