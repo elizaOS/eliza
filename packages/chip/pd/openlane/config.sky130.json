@@ -31,12 +31,33 @@
     "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
   ],
   "EXTRA_VERILOG_MODELS": [
-    "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/verilog/sky130_sram_2kbyte_1rw1r_32x512_8.v"
+    "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
   ],
   "MACROS": {
-    "u_soc.u_weight_buffer.u_sram": {
-      "instance_name": "u_soc/u_weight_buffer/u_sram",
-      "module": "sky130_sram_2kbyte_1rw1r_32x512_8"
+    "sky130_sram_2kbyte_1rw1r_32x512_8": {
+      "gds": [
+        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/gds/sky130_sram_2kbyte_1rw1r_32x512_8.gds"
+      ],
+      "lef": [
+        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lef/sky130_sram_2kbyte_1rw1r_32x512_8.lef"
+      ],
+      "lib": {
+        "*": [
+          "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/lib/sky130_sram_2kbyte_1rw1r_32x512_8_TT_1p8V_25C.lib"
+        ]
+      },
+      "nl": [
+        "dir::sky130_sram_2kbyte_1rw1r_32x512_8.blackbox.v"
+      ],
+      "spice": [
+        "dir::../../external/pdks/volare/sky130/versions/0fe599b2afb6708d281543108caf8310912f54af/sky130A/libs.ref/sky130_sram_macros/spice/sky130_sram_2kbyte_1rw1r_32x512_8.spice"
+      ],
+      "instances": {
+        "u_soc/u_weight_buffer/u_sram": {
+          "location": null,
+          "orientation": null
+        }
+      }
     }
   },
   "CLOCK_PORT": "CLK_IN",
@@ -56,16 +77,34 @@
   "STA_THREADS": 1,
   "RT_MAX_LAYER": "met5",
   "GRT_OVERFLOW_ITERS": 50,
-  "SYNTH_STRATEGY": "DELAY 0",
+  "SYNTH_STRATEGY": "AREA 0",
   "SYNTH_BUFFERING": 1,
-  "SYNTH_SIZING": 1,
+  "SYNTH_SIZING": 0,
   "MAX_FANOUT_CONSTRAINT": 12,
   "MAX_TRANSITION_CONSTRAINT": 0.75,
   "RUN_POST_GRT_DESIGN_REPAIR": true,
   "RUN_POST_GRT_RESIZER_TIMING": true,
-  "DESIGN_REPAIR_MAX_WIRE_LENGTH": 0,
-  "DESIGN_REPAIR_MAX_SLEW_PCT": 20,
-  "DESIGN_REPAIR_MAX_CAP_PCT": 20,
+  "DESIGN_REPAIR_MAX_WIRE_LENGTH": 600,
+  "DESIGN_REPAIR_MAX_SLEW_PCT": 5,
+  "DESIGN_REPAIR_MAX_CAP_PCT": 5,
+  "FP_PDN_VPITCH": 153.6,
+  "FP_PDN_HPITCH": 153.6,
+  "FP_PDN_VWIDTH": 3.1,
+  "FP_PDN_HWIDTH": 3.1,
+  "FP_PDN_VSPACING": 17.84,
+  "FP_PDN_HSPACING": 17.84,
+  "FP_PDN_CORE_RING": true,
+  "FP_PDN_CORE_RING_VWIDTH": 3.1,
+  "FP_PDN_CORE_RING_HWIDTH": 3.1,
+  "FP_PDN_CORE_RING_VOFFSET": 14,
+  "FP_PDN_CORE_RING_HOFFSET": 14,
+  "FP_PDN_CORE_RING_VSPACING": 1.7,
+  "FP_PDN_CORE_RING_HSPACING": 1.7,
+  "FP_PDN_VERTICAL_LAYER": "met4",
+  "FP_PDN_HORIZONTAL_LAYER": "met5",
+  "RUN_IRDROP_REPORT": true,
+  "PSM_ENABLED": true,
+  "PSM_CORNER": "nom_tt_025C_1v80",
   "GRT_ANTENNA_ITERS": 40,
   "GRT_ANT_ITERS": 40,
   "GRT_ANTENNA_MARGIN": 80,

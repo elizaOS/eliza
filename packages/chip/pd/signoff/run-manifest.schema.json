@@ -12,13 +12,23 @@
     "std_cell_library",
     "openlane_image",
     "openlane_image_digest",
+    "volare_pdk_digest",
+    "klayout_digest",
+    "magic_digest",
+    "netgen_digest",
+    "openroad_digest",
+    "yosys_digest",
+    "abc_digest",
+    "antenna_deck_digest",
     "started_at",
     "completed_at",
     "status",
     "corners",
     "inputs",
     "outputs",
-    "checks"
+    "checks",
+    "psm_ir_drop_report",
+    "pdn_topology"
   ],
   "properties": {
     "run_id": { "type": "string", "minLength": 1 },
@@ -27,10 +37,23 @@
     "pdk": { "type": "string", "minLength": 1 },
     "std_cell_library": { "type": "string", "minLength": 1 },
     "openlane_image": { "type": "string", "minLength": 1 },
-    "openlane_image_digest": {
-      "type": "string",
-      "pattern": "^sha256:[0-9a-f]{64}$"
-    },
+    "openlane_image_digest": { "$ref": "#/$defs/sha256_digest" },
+    "volare_pdk_digest": { "$ref": "#/$defs/tool_digest" },
+    "volare_pdk_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "klayout_digest": { "$ref": "#/$defs/tool_digest" },
+    "klayout_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "magic_digest": { "$ref": "#/$defs/tool_digest" },
+    "magic_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "netgen_digest": { "$ref": "#/$defs/tool_digest" },
+    "netgen_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "openroad_digest": { "$ref": "#/$defs/tool_digest" },
+    "openroad_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "yosys_digest": { "$ref": "#/$defs/tool_digest" },
+    "yosys_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "abc_digest": { "$ref": "#/$defs/tool_digest" },
+    "abc_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
+    "antenna_deck_digest": { "$ref": "#/$defs/tool_digest" },
+    "antenna_deck_unavailable_reason": { "$ref": "#/$defs/unavailable_reason" },
     "started_at": { "type": "string", "format": "date-time" },
     "completed_at": { "type": "string", "format": "date-time" },
     "status": { "enum": ["complete"] },
@@ -106,9 +129,78 @@
         "congestion": { "$ref": "#/$defs/check" },
         "density_fill": { "$ref": "#/$defs/check" }
       }
+    },
+    "psm_ir_drop_report": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Relative path inside the run directory to the OpenROAD PSM static IR-drop report (per-instance worst-drop and rail current). Required so the static IR-drop step is part of release-grade signoff evidence (see physical-power-thermal.md)."
+    },
+    "pdn_topology": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "vertical_layer",
+        "horizontal_layer",
+        "vpitch_um",
+        "hpitch_um",
+        "vwidth_um",
+        "hwidth_um",
+        "vspacing_um",
+        "hspacing_um",
+        "core_ring",
+        "report"
+      ],
+      "properties": {
+        "vertical_layer": { "type": "string", "minLength": 1 },
+        "horizontal_layer": { "type": "string", "minLength": 1 },
+        "vpitch_um": { "type": "number", "exclusiveMinimum": 0 },
+        "hpitch_um": { "type": "number", "exclusiveMinimum": 0 },
+        "vwidth_um": { "type": "number", "exclusiveMinimum": 0 },
+        "hwidth_um": { "type": "number", "exclusiveMinimum": 0 },
+        "vspacing_um": { "type": "number", "exclusiveMinimum": 0 },
+        "hspacing_um": { "type": "number", "exclusiveMinimum": 0 },
+        "core_ring": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "enabled",
+            "vwidth_um",
+            "hwidth_um",
+            "voffset_um",
+            "hoffset_um",
+            "vspacing_um",
+            "hspacing_um"
+          ],
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "vwidth_um": { "type": "number", "minimum": 0 },
+            "hwidth_um": { "type": "number", "minimum": 0 },
+            "voffset_um": { "type": "number", "minimum": 0 },
+            "hoffset_um": { "type": "number", "minimum": 0 },
+            "vspacing_um": { "type": "number", "minimum": 0 },
+            "hspacing_um": { "type": "number", "minimum": 0 }
+          }
+        },
+        "report": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Relative path inside the run directory to the pdngen topology dump (text or JSON)."
+        }
+      }
     }
   },
   "$defs": {
+    "sha256_digest": {
+      "type": "string",
+      "pattern": "^sha256:[0-9a-f]{64}$"
+    },
+    "tool_digest": {
+      "oneOf": [
+        { "$ref": "#/$defs/sha256_digest" },
+        { "const": "unavailable" }
+      ]
+    },
+    "unavailable_reason": { "type": "string", "minLength": 1 },
     "check": {
       "type": "object",
       "additionalProperties": false,
