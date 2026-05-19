@@ -779,21 +779,21 @@ export const CAPABILITY_ROUTER_PROTOCOL_FIXTURE = {
 				methods: ["ping"],
 				config: { fixture: true },
 			},
-			],
-			componentTypes: [
-				{
-					name: "fixture.component",
-					schema: {
-						type: "object",
-						properties: {
-							label: { type: "string", description: "Fixture label." },
-							count: { type: "number" },
-						},
-						required: ["label"],
+		],
+		componentTypes: [
+			{
+				name: "fixture.component",
+				schema: {
+					type: "object",
+					properties: {
+						label: { type: "string", description: "Fixture label." },
+						count: { type: "number" },
 					},
+					required: ["label"],
 				},
-			],
-			widgets: [
+			},
+		],
+		widgets: [
 			{
 				id: "fixture-widget",
 				slot: "chat-sidebar",
@@ -2798,7 +2798,10 @@ function requireRemotePluginJsonSchemaDefinition(
 	const items =
 		object.items === undefined
 			? undefined
-			: requireRemotePluginJsonSchemaDefinition(object.items, `${method}.items`);
+			: requireRemotePluginJsonSchemaDefinition(
+					object.items,
+					`${method}.items`,
+				);
 	const required = optionalStringArray(object, "required", method);
 	const enumValues = optionalStringArray(object, "enumValues", method);
 	const description = optionalString(object, "description", method);

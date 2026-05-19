@@ -298,7 +298,8 @@ describe("capability router", () => {
 		await expect(
 			router.plugin.getAsset({
 				moduleId: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.id,
-				path: CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0].bundlePath ?? "",
+				path:
+					CAPABILITY_ROUTER_PROTOCOL_FIXTURE.module.views[0].bundlePath ?? "",
 			}),
 		).resolves.toEqual(CAPABILITY_ROUTER_PROTOCOL_FIXTURE.results.asset);
 		expect(calls).toEqual([
