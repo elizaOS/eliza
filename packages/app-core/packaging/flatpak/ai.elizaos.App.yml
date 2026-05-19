@@ -103,6 +103,12 @@ modules:
     build-options:
       env:
         npm_config_nodedir: /app
+        # flatpak-node-generator vendors npm tarballs into
+        # `flatpak-node/npm-cache/` relative to this module's build
+        # working directory (`/run/build/<module-name>/`). Without this,
+        # npm defaults to `~/.npm` inside the sandbox — empty — and
+        # `npm install -g --offline` fails with a cache-miss.
+        npm_config_cache: /run/build/elizaos-app/flatpak-node/npm-cache
     build-commands:
       # Install elizaos-app globally from the vendored offline cache.
       # `--offline` forces npm to fail rather than reach the registry,
