@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { $ } from "bun";
 import { rmSync } from "node:fs";
+import { $ } from "bun";
 import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const external = await externalsFromPackageJson("./package.json", {
@@ -32,4 +32,6 @@ if (!result.success) {
 console.log("📝 Generating TypeScript declarations...");
 await $`tsc --emitDeclarationOnly --declaration --declarationDir dist --noCheck -p tsconfig.json`.quiet();
 
-console.log(`✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+console.log(
+  `✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,
+);

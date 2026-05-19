@@ -17,5 +17,11 @@
     }
   },
   "include": ["**/*.ts"],
-  "exclude": ["node_modules", "__tests__", "**/*.test.ts", "**/*.spec.ts"]
+  "exclude": [
+    "build.ts",
+    "node_modules",
+    "__tests__",
+    "**/*.test.ts",
+    "**/*.spec.ts"
+  ]
 }

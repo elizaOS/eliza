@@ -657,23 +657,23 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		args: GenerateArgs & { slotId?: number },
 	): Promise<DflashGenerateResult> {
 		this.ensureLoaded();
-		if (!this.active!.generateWithUsage) {
+		if (!this.active?.generateWithUsage) {
 			throw this.notSupported("generateWithUsage");
 		}
-		return this.active!.generateWithUsage(args);
+		return this.active?.generateWithUsage(args);
 	}
 
 	async describeImage(
 		args: Parameters<NonNullable<LocalInferenceBackend["describeImage"]>>[0],
 	): ReturnType<NonNullable<LocalInferenceBackend["describeImage"]>> {
 		this.ensureLoaded();
-		if (!this.active!.describeImage) {
+		if (!this.active?.describeImage) {
 			throw this.notSupported(
 				"describeImage",
 				"vision describe requires an mmproj-loaded llama-server. Load an Eliza-1 bundle, or wait for FFI mmproj parity.",
 			);
 		}
-		return this.active!.describeImage(args);
+		return this.active?.describeImage(args);
 	}
 
 	async persistConversationKv(
@@ -681,8 +681,8 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		slotId: number,
 	): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.persistConversationKv) return false;
-		return this.active!.persistConversationKv(conversationId, slotId);
+		if (!this.active?.persistConversationKv) return false;
+		return this.active?.persistConversationKv(conversationId, slotId);
 	}
 
 	async restoreConversationKv(
@@ -690,8 +690,8 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		slotId: number,
 	): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.restoreConversationKv) return false;
-		return this.active!.restoreConversationKv(conversationId, slotId);
+		if (!this.active?.restoreConversationKv) return false;
+		return this.active?.restoreConversationKv(conversationId, slotId);
 	}
 
 	async prewarmConversation(
@@ -699,20 +699,20 @@ export class BackendDispatcher implements LocalInferenceBackend {
 		opts: { slotId: number; cacheKey: string },
 	): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.prewarmConversation) return false;
-		return this.active!.prewarmConversation(promptPrefix, opts);
+		if (!this.active?.prewarmConversation) return false;
+		return this.active?.prewarmConversation(promptPrefix, opts);
 	}
 
 	async resizeParallel(target: number): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.resizeParallel) return false;
-		return this.active!.resizeParallel(target);
+		if (!this.active?.resizeParallel) return false;
+		return this.active?.resizeParallel(target);
 	}
 
 	async restartWithoutDrafter(): Promise<boolean> {
 		this.ensureLoaded();
-		if (!this.active!.restartWithoutDrafter) return false;
-		return this.active!.restartWithoutDrafter();
+		if (!this.active?.restartWithoutDrafter) return false;
+		return this.active?.restartWithoutDrafter();
 	}
 
 	parallelSlots(): number {

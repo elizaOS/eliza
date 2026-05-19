@@ -237,7 +237,10 @@ export class FfiStreamingBackend implements LocalInferenceBackend {
 	 * `dflashDrafterPath` passed in `LlmStreamConfig`.
 	 */
 	drafterEnabled(): boolean {
-		return this.session?.drafterPath !== null && this.session?.drafterPath !== undefined;
+		return (
+			this.session?.drafterPath !== null &&
+			this.session?.drafterPath !== undefined
+		);
 	}
 
 	loadedDrafterModelPath(): string | null {

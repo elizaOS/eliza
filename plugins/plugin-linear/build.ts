@@ -8,16 +8,7 @@ const externalDeps = await externalsFromPackageJson("./package.json", {
   // Preserve transitive externals the hand-maintained list relied on.
   // These show up via @linear/sdk + agentkeepalive's transitive graph;
   // keep them externalized to avoid inlining Node-builtin API users.
-  extra: [
-    "dotenv",
-    "fs",
-    "path",
-    "@reflink/reflink",
-    "https",
-    "http",
-    "agentkeepalive",
-    "zod",
-  ],
+  extra: ["dotenv", "fs", "path", "@reflink/reflink", "https", "http", "agentkeepalive", "zod"],
 });
 
 async function buildPlugin() {

@@ -13,12 +13,7 @@ import { externalsFromPackageJson } from "../plugin-build-externals.ts";
 
 const externalDeps = await externalsFromPackageJson("./package.json", {
   // Transitive workspace + native deps the hand-list relied on.
-  extra: [
-    "@elizaos/shared",
-    "@elizaos/agent",
-    "@node-llama-cpp",
-    "node-llama-cpp",
-  ],
+  extra: ["@elizaos/shared", "@elizaos/agent", "@node-llama-cpp", "node-llama-cpp"],
 });
 
 async function build(): Promise<void> {

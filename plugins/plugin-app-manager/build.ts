@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
-import { $ } from "bun";
 import { rmSync } from "node:fs";
+import { $ } from "bun";
 
 const external = [
   "@elizaos/core",
@@ -39,4 +39,6 @@ console.log("📝 Generating TypeScript declarations...");
 // allowImportingTsExtensions in tsconfig forces noEmit:true, so we override with --noEmit false
 await $`tsc --emitDeclarationOnly --declaration --noEmit false --declarationDir dist --rootDir src --noCheck --skipLibCheck -p tsconfig.json`.quiet();
 
-console.log(`✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`);
+console.log(
+  `✅ Build complete in ${((Date.now() - start) / 1000).toFixed(2)}s`,
+);
