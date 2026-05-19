@@ -149,7 +149,7 @@ describe("cache restart corruption: graceful fallback on bad KV files", () => {
 		// tolerance path indirectly.
 		await expect(
 			dflashLlamaServer.persistConversationKv("save-error-room", handle.slotId),
-		).resolves.toBe(true);
+		).resolves.toBeUndefined();
 		await engine.closeConversation(handle);
 	});
 
