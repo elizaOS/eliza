@@ -8,7 +8,7 @@
  * run, potentially double-settling. The once-guard here prevents that.
  */
 
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { CreditReconciliationResult, CreditReservation } from "../services/credits";
 import { createCreditReservationSettler } from "./credit-reservation";
 
