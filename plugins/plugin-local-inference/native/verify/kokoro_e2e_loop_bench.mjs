@@ -636,7 +636,7 @@ function asrTranscribe(ffiState, ctx, samples, sampleRate) {
   };
 }
 
-async function createKokoro(files, voiceId) {
+async function createKokoro(files, voiceId, serverUrl) {
   const kokoro = await import("../../src/services/voice/kokoro/index.ts");
   const layout = {
     root: files.kokoro.root,
@@ -644,9 +644,10 @@ async function createKokoro(files, voiceId) {
     voicesDir: files.kokoro.voicesDir,
     sampleRate: 24000,
   };
-  const runtime = new kokoro.KokoroOnnxRuntime({
-    layout,
-    expectedSha256: files.kokoro.modelSha256,
+  const runtime = new kokoro.KokoroGgufRuntime({
+    serverUrl,
+    modelId: process.env.ELIZA_KOKORO_FORK_MODEL_ID?.trim() || "kokoro-v1.0",
+    sampleRate: layout.sampleRate,
   });
   const backend = new kokoro.KokoroTtsBackend({
     layout,
@@ -1534,12 +1535,12 @@ async function run() {
     const voiceId = files.kokoro.voices.includes(`${args.voice}.bin`)
       ? args.voice
       : path.basename(files.kokoro.voices[0], ".bin");
-    const kokoro = await createKokoro(files, voiceId);
-    kokoroRuntime = kokoro.runtime;
-    const micInputs = await prepareMicInputs(args, kokoro.backend, audioDir, voiceId);
     ffiState = await loadFfi(engine.dylib, engine.dir);
     ffiCtx = createFfiContext(ffiState, bundleDir);
     textServer = await startTextServer(engine, files, args, log);
+    const kokoro = await createKokoro(files, voiceId, `http://127.0.0.1:${textServer.port}`);
+    kokoroRuntime = kokoro.runtime;
+    const micInputs = await prepareMicInputs(args, kokoro.backend, audioDir, voiceId);
 
     const turns = [];
     const serverRssSamples = [];
