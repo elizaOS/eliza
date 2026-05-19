@@ -1,4 +1,4 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -eu
 
 REPO_DIR="$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)"
@@ -89,10 +89,12 @@ fi
 
 mkdir -p "$OUT_DIR"
 
-TMP_MOUNT=()
+TMP_MOUNT_FLAG=""
+TMP_MOUNT_VOLUME=""
 case "$OUT_DIR" in
     /tmp/e1-alphachip/*|/tmp/e1-alphachip)
-        TMP_MOUNT=(-v /tmp/e1-alphachip:/tmp/e1-alphachip)
+        TMP_MOUNT_FLAG="-v"
+        TMP_MOUNT_VOLUME="/tmp/e1-alphachip:/tmp/e1-alphachip"
         ;;
     "$REPO_DIR"/*)
         ;;
@@ -135,12 +137,20 @@ gen_pb_netlist \$out_pb
 exit
 EOF
 
-docker run --rm \
-    -v "$REPO_DIR:/work" \
-    "${TMP_MOUNT[@]}" \
-    -w /work \
-    "$IMAGE" \
-    openroad "$(to_container_path "$OUT_DIR/convert_lefdef_to_pb.tcl")"
+if [ -n "$TMP_MOUNT_FLAG" ]; then
+    docker run --rm \
+        -v "$REPO_DIR:/work" \
+        "$TMP_MOUNT_FLAG" "$TMP_MOUNT_VOLUME" \
+        -w /work \
+        "$IMAGE" \
+        openroad "$(to_container_path "$OUT_DIR/convert_lefdef_to_pb.tcl")"
+else
+    docker run --rm \
+        -v "$REPO_DIR:/work" \
+        -w /work \
+        "$IMAGE" \
+        openroad "$(to_container_path "$OUT_DIR/convert_lefdef_to_pb.tcl")"
+fi
 
 if [ ! -s "$OUT_DIR/$DESIGN.pb.txt" ]; then
     echo "Failed to generate protobuf: $OUT_DIR/$DESIGN.pb.txt" >&2
