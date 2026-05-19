@@ -87,6 +87,10 @@ async function main(): Promise<void> {
       workspace,
       "mismatched-module-exercise",
     );
+    const missingModuleExercisesDir = join(
+      workspace,
+      "missing-module-exercises",
+    );
     const manifestOnlyUnregisteredDir = join(
       workspace,
       "manifest-only-unregistered",
@@ -150,6 +154,7 @@ async function main(): Promise<void> {
     await mkdir(exercisedUnregisteredDir, { recursive: true });
     await mkdir(registeredUnexercisedDir, { recursive: true });
     await mkdir(mismatchedModuleExerciseDir, { recursive: true });
+    await mkdir(missingModuleExercisesDir, { recursive: true });
     await mkdir(manifestOnlyUnregisteredDir, { recursive: true });
     await mkdir(runtimeUndercountDir, { recursive: true });
     await mkdir(runtimePluginUndercountDir, { recursive: true });
@@ -420,6 +425,11 @@ async function main(): Promise<void> {
     await writeFile(
       join(mismatchedModuleExerciseDir, "provider.json"),
       `${JSON.stringify(makeMismatchedModuleExerciseReport(), null, 2)}\n`,
+      "utf8",
+    );
+    await writeFile(
+      join(missingModuleExercisesDir, "provider.json"),
+      `${JSON.stringify(makeMissingModuleExercisesReport(), null, 2)}\n`,
       "utf8",
     );
     await writeFile(
@@ -1134,6 +1144,23 @@ async function main(): Promise<void> {
         `mismatched module exercise failed for the wrong reason: ${mismatchedModuleExercise.output}`,
       );
     }
+    const missingModuleExercises = await runValidator(
+      missingModuleExercisesDir,
+    );
+    if (missingModuleExercises.exitCode === 0) {
+      throw new Error(
+        "missing moduleExercises report unexpectedly passed validation.",
+      );
+    }
+    if (
+      !missingModuleExercises.output.includes(
+        "conformance.moduleExercises must be an array",
+      )
+    ) {
+      throw new Error(
+        `missing moduleExercises failed for the wrong reason: ${missingModuleExercises.output}`,
+      );
+    }
     const manifestOnlyUnregistered = await runValidator(
       manifestOnlyUnregisteredDir,
     );
@@ -1765,6 +1792,15 @@ function makeExercisedUnregisteredReport() {
         ...report.conformance.exercised,
         service: "manifest-only-module:service",
       },
+      moduleExercises: report.conformance.moduleExercises.map((exercise) =>
+        exercise.surface === "service"
+          ? {
+              surface: "service",
+              moduleId: "manifest-only-module",
+              target: "manifest-only-module:service",
+            }
+          : exercise,
+      ),
     },
     sync: {
       ...report.sync,
@@ -1893,6 +1929,16 @@ function makeMismatchedModuleExerciseReport() {
   };
 }
 
+function makeMissingModuleExercisesReport() {
+  const report = makeCompleteReport("provider");
+  const { moduleExercises: _moduleExercises, ...conformance } =
+    report.conformance;
+  return {
+    ...report,
+    conformance,
+  };
+}
+
 function makeManifestOnlyUnregisteredReport() {
   const report = makeCompleteReport("provider");
   return {
@@ -1939,14 +1985,15 @@ function makeRuntimePluginUndercountReport() {
         ...report.conformance.exercised,
         service: "second-module:service",
       },
-      moduleExercises: [
-        ...report.conformance.moduleExercises,
-        {
-          surface: "service",
-          moduleId: "second-module",
-          target: "second-module:service",
-        },
-      ],
+      moduleExercises: report.conformance.moduleExercises.map((exercise) =>
+        exercise.surface === "service"
+          ? {
+              surface: "service",
+              moduleId: "second-module",
+              target: "second-module:service",
+            }
+          : exercise,
+      ),
     },
     sync: {
       ...report.sync,

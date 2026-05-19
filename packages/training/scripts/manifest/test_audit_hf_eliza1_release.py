@@ -12,6 +12,8 @@ if str(_TRAINING_ROOT) not in sys.path:
 
 from scripts.manifest.audit_hf_eliza1_release import (  # noqa: E402
     DATASET_API,
+    ACTIVE_TEXT_SFT_REQUIRED_FILES,
+    ACTIVE_TEXT_SFT_ROOT,
     DATASET_SPLITS_API,
     FINETUNE_COMPARISON_EVIDENCE_PATH,
     IMAGEGEN_RUNTIME_EVIDENCE_PATH,
@@ -79,6 +81,7 @@ def _complete_dataset_paths() -> list[str]:
         "data/validation-00000-of-00001.parquet",
         "data/test-00000-of-00001.parquet",
         "pipeline/docs/training/eliza1-smallest-finetunes.md",
+        *ACTIVE_TEXT_SFT_REQUIRED_FILES,
         "validation/eliza1-trajectories-20260513-root-validation.json",
         "validation/eliza1-training-live-audit-2026-05-19.json",
     ]
@@ -124,6 +127,8 @@ def _text_fetcher(
     manifest: str | None = None,
     validation_report: str | None = None,
     dataset_live_audit: str | None = None,
+    active_sft_manifest: str | None = None,
+    active_sft_validation: str | None = None,
     model_manifests: Mapping[str, str] | None = None,
     dflash_target_meta: Mapping[str, str] | None = None,
     release_evidence: Mapping[str, str] | None = None,
@@ -157,6 +162,12 @@ def _text_fetcher(
         "https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/validation/eliza1-training-live-audit-2026-05-19.json": dataset_live_audit
         if dataset_live_audit is not None
         else _passing_dataset_live_audit(),
+        f"https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/{ACTIVE_TEXT_SFT_ROOT}/manifest.json": active_sft_manifest
+        if active_sft_manifest is not None
+        else _passing_active_sft_manifest(),
+        f"https://huggingface.co/datasets/elizaos/eliza-1-training/raw/main/{ACTIVE_TEXT_SFT_ROOT}/validation.json": active_sft_validation
+        if active_sft_validation is not None
+        else _passing_active_sft_validation(),
     }
     for tier in ELIZA_1_TIERS:
         payloads[
@@ -703,6 +714,46 @@ def test_hf_release_audit_blocks_incomplete_native_upstream_review() -> None:
         check["name"] == "native upstream review content passed"
         and "omnivoice.cpp: missing" in check["detail"]
         and "stable-diffusion.cpp: missing" in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_requires_text_context_variant_evidence_file() -> None:
+    paths = _complete_model_paths()
+    paths.remove(TEXT_CONTEXT_VARIANT_EVIDENCE_PATH)
+
+    report = audit_hf_release(fetch_json=_fetcher(model_paths=paths), fetch_text=_text_fetcher())
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "text context variant audit evidence present"
+        and TEXT_CONTEXT_VARIANT_EVIDENCE_PATH in check["detail"]
+        for check in failed
+    )
+
+
+def test_hf_release_audit_blocks_dirty_text_context_variant_evidence() -> None:
+    bad = __import__("json").loads(_passing_text_context_variants())
+    bad["passed"] = False
+    bad["blockers"] = ["missing required text context"]
+    bad["results"][0]["passed"] = False
+    bad["results"][0]["requiredContexts"][0]["existsOnHub"] = False
+    bad["results"][0]["requiredContexts"][0]["blockers"] = ["missing from Hub"]
+
+    report = audit_hf_release(
+        fetch_json=_fetcher(),
+        fetch_text=_text_fetcher(text_context_variants=__import__("json").dumps(bad)),
+    )
+
+    assert not report.ok
+    failed = [check for check in report.checks if not check["ok"]]
+    assert any(
+        check["name"] == "text context variant audit evidence passed"
+        and "passed: False" in check["detail"]
+        and "blockers: non-empty" in check["detail"]
+        and "0_8b.passed: False" in check["detail"]
+        and "0_8b.128k.existsOnHub: False" in check["detail"]
         for check in failed
     )
 

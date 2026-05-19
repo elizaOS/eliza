@@ -244,6 +244,7 @@ def test_calibration_report_treats_no_real_harnesses_as_incomplete(
     assert row["real_required_harnesses"] == []
     assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
     assert row["real_pattern"] == "no_required_real_harnesses"
+    assert row["real_scores"] == {"eliza": None, "hermes": None, "openclaw": None}
     assert report["matrix_summary"]["required_real_cells"] == 0
     assert report["matrix_summary"]["unsupported_real_cells"] == 3
     assert report["matrix_summary"].get("complete_benchmarks", 0) == 0

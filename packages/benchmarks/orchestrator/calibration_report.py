@@ -339,7 +339,11 @@ def build_calibration_report(
             for agent, run in real_runs.items()
         }
         real_score_map = {
-            agent: (float(run["score"]) if run and isinstance(run.get("score"), (int, float)) else None)
+            agent: (
+                float(run["score"])
+                if agent in supported_real_harnesses and run and isinstance(run.get("score"), (int, float))
+                else None
+            )
             for agent, run in real_runs.items()
         }
         real_cells: dict[str, dict[str, Any]] = {}

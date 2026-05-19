@@ -56,6 +56,17 @@ DATASET_REQUIRED_PIPELINE_DOCS = (
 DATASET_LIVE_AUDIT_PATH = "validation/eliza1-training-live-audit-2026-05-19.json"
 DATASET_VALIDATION_SCHEMA = "eliza.eliza1_trajectory_validation_report.v1"
 DATASET_LIVE_AUDIT_SCHEMA = "eliza.eliza1_training_dataset_live_audit.v1"
+ACTIVE_TEXT_SFT_TIER = "0_8b"
+ACTIVE_TEXT_SFT_ROOT = f"sft/{ACTIVE_TEXT_SFT_TIER}"
+ACTIVE_TEXT_SFT_REQUIRED_FILES = (
+    f"{ACTIVE_TEXT_SFT_ROOT}/train.jsonl",
+    f"{ACTIVE_TEXT_SFT_ROOT}/val.jsonl",
+    f"{ACTIVE_TEXT_SFT_ROOT}/test.jsonl",
+    f"{ACTIVE_TEXT_SFT_ROOT}/manifest.json",
+    f"{ACTIVE_TEXT_SFT_ROOT}/validation.json",
+)
+ACTIVE_TEXT_SFT_MANIFEST_SCHEMA = "eliza.eliza1_sft_0_8b_manifest.v1"
+ACTIVE_TEXT_SFT_VALIDATION_SCHEMA = "eliza.eliza1_sft_0_8b_validation.v1"
 DATASET_PRIVACY_ATTESTATION_SOURCES = frozenset(
     {
         "cli_flag",
@@ -1142,6 +1153,56 @@ def _dataset_live_audit_blockers(
     return blockers
 
 
+def _active_text_sft_blockers(
+    manifest: Mapping[str, Any],
+    validation: Mapping[str, Any],
+) -> list[str]:
+    blockers: list[str] = []
+    if manifest.get("schema") != ACTIVE_TEXT_SFT_MANIFEST_SCHEMA:
+        blockers.append(f"manifest.schema: {manifest.get('schema')!r}")
+    if validation.get("schema") != ACTIVE_TEXT_SFT_VALIDATION_SCHEMA:
+        blockers.append(f"validation.schema: {validation.get('schema')!r}")
+    if validation.get("passed") is not True:
+        blockers.append(f"validation.passed: {validation.get('passed')!r}")
+    if validation.get("blockers") not in ([], None):
+        blockers.append("validation.blockers: non-empty")
+    if manifest.get("published_name") != f"eliza-1-{ACTIVE_TEXT_SFT_TIER}":
+        blockers.append(f"manifest.published_name: {manifest.get('published_name')!r}")
+    if manifest.get("base_model") != "Qwen/Qwen3.5-0.8B":
+        blockers.append(f"manifest.base_model: {manifest.get('base_model')!r}")
+
+    counts = manifest.get("counts")
+    splits = validation.get("splits")
+    if not isinstance(counts, Mapping):
+        blockers.append("manifest.counts: missing")
+    if not isinstance(splits, Mapping):
+        blockers.append("validation.splits: missing")
+    if isinstance(counts, Mapping) and isinstance(splits, Mapping):
+        total = 0
+        for split in ("train", "val", "test"):
+            expected = counts.get(split)
+            item = splits.get(split)
+            actual = item.get("rows") if isinstance(item, Mapping) else None
+            if not isinstance(expected, int) or expected <= 0:
+                blockers.append(f"manifest.counts.{split}: {expected!r}")
+            if actual != expected:
+                blockers.append(f"validation.splits.{split}.rows: {actual!r} != {expected!r}")
+            if isinstance(actual, int):
+                total += actual
+        if counts.get("total") != total:
+            blockers.append(f"manifest.counts.total: {counts.get('total')!r} != {total!r}")
+
+    privacy = manifest.get("privacy_filter")
+    if not isinstance(privacy, Mapping):
+        blockers.append("manifest.privacy_filter: missing")
+    elif privacy.get("real_user_trajectories_consumed") != 0:
+        blockers.append(
+            "manifest.privacy_filter.real_user_trajectories_consumed: "
+            f"{privacy.get('real_user_trajectories_consumed')!r}"
+        )
+    return blockers
+
+
 def _dataset_privacy_blockers(manifest: Mapping[str, Any]) -> list[str]:
     blockers: list[str] = []
     privacy = manifest.get("privacy")
@@ -1520,6 +1581,14 @@ def audit_hf_release(
         DATASET_LIVE_AUDIT_PATH in dataset_paths,
         DATASET_LIVE_AUDIT_PATH,
     )
+    missing_active_sft_files = [
+        path for path in ACTIVE_TEXT_SFT_REQUIRED_FILES if path not in dataset_paths
+    ]
+    report.check(
+        "dataset active 0_8b SFT package present",
+        not missing_active_sft_files,
+        ", ".join(missing_active_sft_files),
+    )
 
     try:
         dataset_readme = fetch_text(_raw_dataset_url(dataset_repo, "README.md"))
@@ -1608,6 +1677,35 @@ def audit_hf_release(
                 False,
                 DATASET_LIVE_AUDIT_PATH,
             )
+        if missing_active_sft_files:
+            report.check(
+                "dataset active 0_8b SFT validation passed",
+                False,
+                ", ".join(missing_active_sft_files),
+            )
+        else:
+            try:
+                active_sft_manifest = json.loads(
+                    fetch_text(_raw_dataset_url(dataset_repo, f"{ACTIVE_TEXT_SFT_ROOT}/manifest.json"))
+                )
+                active_sft_validation = json.loads(
+                    fetch_text(_raw_dataset_url(dataset_repo, f"{ACTIVE_TEXT_SFT_ROOT}/validation.json"))
+                )
+            except (RuntimeError, json.JSONDecodeError) as exc:
+                report.check("dataset active 0_8b SFT validation passed", False, str(exc))
+            else:
+                active_sft_blockers = (
+                    _active_text_sft_blockers(active_sft_manifest, active_sft_validation)
+                    if isinstance(active_sft_manifest, Mapping)
+                    and isinstance(active_sft_validation, Mapping)
+                    else ["manifest or validation not an object"]
+                )
+                report.check(
+                    "dataset active 0_8b SFT validation passed",
+                    not active_sft_blockers,
+                    ", ".join(active_sft_blockers[:8])
+                    + (f" (+{len(active_sft_blockers) - 8} more)" if len(active_sft_blockers) > 8 else ""),
+                )
 
     try:
         splits_payload = fetch_json(_repo_api_url(DATASET_SPLITS_API, dataset_repo))

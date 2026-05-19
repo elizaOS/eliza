@@ -2439,6 +2439,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 1,
             "num_trials": 1,
             "pass_k_values": [1],
+            "user_strategy": "grounded",
         },
         "terminal_bench": {
             "max_tasks": 1,

@@ -448,52 +448,58 @@ function validateReportFile(
     "conformance.exercised",
   );
   const exercisedModuleIds = new Set<string>();
+  const exercisedTargetsBySurface = new Map<RequiredSurface, string>();
   for (const surface of REQUIRED_SURFACES) {
     const target = requireString(
       exercised[surface],
       `conformance.exercised.${surface}`,
     );
+    exercisedTargetsBySurface.set(surface, target);
     exercisedModuleIds.add(
       validateExercisedTargetModule(surface, target, observedModuleIds),
     );
   }
-  if (conformance.moduleExercises !== undefined) {
-    for (const [index, value] of requireArray(
-      conformance.moduleExercises,
-      "conformance.moduleExercises",
-    ).entries()) {
-      const exercise = requireObject(
-        value,
-        `conformance.moduleExercises[${index}]`,
+  const summarizedModuleExerciseTargets = new Set<string>();
+  for (const [index, value] of requireArray(
+    conformance.moduleExercises,
+    "conformance.moduleExercises",
+  ).entries()) {
+    const exercise = requireObject(
+      value,
+      `conformance.moduleExercises[${index}]`,
+    );
+    const surface = requireRequiredSurface(
+      exercise.surface,
+      `conformance.moduleExercises[${index}].surface`,
+    );
+    const moduleId = requireString(
+      exercise.moduleId,
+      `conformance.moduleExercises[${index}].moduleId`,
+    );
+    const target = requireString(
+      exercise.target,
+      `conformance.moduleExercises[${index}].target`,
+    );
+    const targetModuleId = validateExercisedTargetModule(
+      surface,
+      target,
+      observedModuleIds,
+    );
+    if (targetModuleId !== moduleId) {
+      throw new Error(
+        `conformance.moduleExercises[${index}].target must start with moduleId.`,
       );
-      const surface = requireRequiredSurface(
-        exercise.surface,
-        `conformance.moduleExercises[${index}].surface`,
+    }
+    exercisedModuleIds.add(moduleId);
+    if (target === exercisedTargetsBySurface.get(surface)) {
+      summarizedModuleExerciseTargets.add(`${surface}\0${target}`);
+    }
+  }
+  for (const [surface, target] of exercisedTargetsBySurface.entries()) {
+    if (!summarizedModuleExerciseTargets.has(`${surface}\0${target}`)) {
+      throw new Error(
+        `conformance.moduleExercises must include conformance.exercised.${surface}.`,
       );
-      const moduleId = requireString(
-        exercise.moduleId,
-        `conformance.moduleExercises[${index}].moduleId`,
-      );
-      const target = requireString(
-        exercise.target,
-        `conformance.moduleExercises[${index}].target`,
-      );
-      if (target !== exercised[surface]) {
-        throw new Error(
-          `conformance.moduleExercises[${index}].target must match conformance.exercised.${surface}.`,
-        );
-      }
-      const targetModuleId = validateExercisedTargetModule(
-        surface,
-        target,
-        observedModuleIds,
-      );
-      if (targetModuleId !== moduleId) {
-        throw new Error(
-          `conformance.moduleExercises[${index}].target must start with moduleId.`,
-        );
-      }
-      exercisedModuleIds.add(moduleId);
     }
   }
 
