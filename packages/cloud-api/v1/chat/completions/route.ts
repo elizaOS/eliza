@@ -983,11 +983,15 @@ export async function handleChatCompletionsPOST(
     const rawMessage = error instanceof Error ? error.message : String(error);
     logger.error("[Chat Completions] Error", {
       error: rawMessage,
-      cause: error instanceof Error && error.cause
-        ? String((error.cause as Error).message ?? error.cause)
-        : undefined,
+      cause:
+        error instanceof Error && error.cause
+          ? String((error.cause as Error).message ?? error.cause)
+          : undefined,
     });
-    const isDbError = rawMessage.startsWith("Failed query:") || rawMessage.includes("insert into") || rawMessage.includes("select from");
+    const isDbError =
+      rawMessage.startsWith("Failed query:") ||
+      rawMessage.includes("insert into") ||
+      rawMessage.includes("select from");
     const errorMessage = isDbError ? "Internal server error" : rawMessage;
 
     const isInsufficientCredits =
@@ -1141,10 +1145,16 @@ async function handleStreamingRequest(
             });
           } catch (auditError) {
             logger.error("[Chat Completions] audit record failed (non-fatal)", {
-              error: auditError instanceof Error ? auditError.message : String(auditError),
-              cause: auditError instanceof Error && auditError.cause
-                ? String((auditError.cause as Error).message ?? auditError.cause)
-                : undefined,
+              error:
+                auditError instanceof Error
+                  ? auditError.message
+                  : String(auditError),
+              cause:
+                auditError instanceof Error && auditError.cause
+                  ? String(
+                      (auditError.cause as Error).message ?? auditError.cause,
+                    )
+                  : undefined,
             });
           }
         }
@@ -1466,10 +1476,14 @@ async function handleNonStreamingRequest(
         });
       } catch (auditError) {
         logger.error("[Chat Completions] audit record failed (non-fatal)", {
-          error: auditError instanceof Error ? auditError.message : String(auditError),
-          cause: auditError instanceof Error && auditError.cause
-            ? String((auditError.cause as Error).message ?? auditError.cause)
-            : undefined,
+          error:
+            auditError instanceof Error
+              ? auditError.message
+              : String(auditError),
+          cause:
+            auditError instanceof Error && auditError.cause
+              ? String((auditError.cause as Error).message ?? auditError.cause)
+              : undefined,
         });
       }
     }

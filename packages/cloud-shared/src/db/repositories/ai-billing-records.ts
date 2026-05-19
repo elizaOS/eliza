@@ -1,11 +1,11 @@
 import { and, desc, eq, gte, lte } from "drizzle-orm";
+import { logger } from "../../lib/utils/logger";
 import { dbRead, dbWrite } from "../helpers";
 import {
   type AiBillingRecord,
   aiBillingRecords,
   type NewAiBillingRecord,
 } from "../schemas/ai-billing-records";
-import { logger } from "../../lib/utils/logger";
 
 export type { AiBillingRecord, NewAiBillingRecord };
 

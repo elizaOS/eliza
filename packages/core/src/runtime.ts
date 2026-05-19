@@ -4711,7 +4711,9 @@ export class AgentRuntime implements IAgentRuntime {
 			if (hasResolvedToolCalls) {
 				const resolvedFinishReason =
 					"finishReason" in streamRaw
-						? await Promise.resolve(streamRaw.finishReason).catch(() => undefined)
+						? await Promise.resolve(streamRaw.finishReason).catch(
+								() => undefined,
+							)
 						: undefined;
 				const resolvedUsage =
 					"usage" in streamRaw

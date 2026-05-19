@@ -350,6 +350,7 @@ packages/shared/src/**/*.d.ts.map
 !packages/shared/src/elizaos-core-roles.d.ts
 packages/ui/src/**/*.d.ts
 packages/ui/src/**/*.d.ts.map
+!packages/ui/src/cloud-ui/types/react-syntax-highlighter.d.ts
 packages/app-core/src/**/*.d.ts
 packages/app-core/src/**/*.d.ts.map
 !packages/app-core/src/ambient-modules.d.ts

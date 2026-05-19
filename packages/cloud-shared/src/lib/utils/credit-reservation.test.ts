@@ -9,8 +9,8 @@
  */
 
 import { describe, expect, mock, test } from "bun:test";
-import { createCreditReservationSettler } from "./credit-reservation";
 import type { CreditReconciliationResult, CreditReservation } from "../services/credits";
+import { createCreditReservationSettler } from "./credit-reservation";
 
 function makeReservation(
   reconcileFn: (cost: number) => Promise<CreditReconciliationResult>,
