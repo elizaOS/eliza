@@ -1,0 +1,93 @@
+schema: eliza.dram_ctrl_evidence_gate.v1
+status: blocked_until_evidence
+scope:
+  - rtl/memory/dram_ctrl/e1_dram_ctrl.sv
+  - rtl/memory/dram_ctrl/e1_axi4_dram_model.sv
+  - verify/cocotb/axi4/e1_dram_ctrl_tb.sv
+  - verify/cocotb/axi4/test_dfi_traffic.py
+
+context: >
+  The production DRAM controller stub e1_dram_ctrl exposes the JEDEC DFI
+  5.0 north interface that a vendor LPDDR5X/6 PHY attaches to.  Until
+  the closed-IP PHY procurement gate
+  docs/evidence/memory/lpddr-phy-procurement.yaml is unblocked, the
+  controller drives DFI commands directly from the AXI4 handshakes and
+  the refresh scheduler so the in-repo verification can observe every
+  DFI line transitioning under representative traffic.
+
+required_capabilities:
+  dfi_init_handshake:
+    description: >
+      dfi_init_start asserts at boot and stays high through a minimum
+      window; dfi_cke comes high once dfi_init_complete is sampled.
+  dfi_command_shaping:
+    description: >
+      ACTIVATE, WRITE, READ, and REFRESH command shapes (cs_n, act_n,
+      ras_n, cas_n, we_n) follow the JEDEC LPDDR5/6 controller-side
+      mapping, with bank + address driven from AXI4 address bits.
+  dfi_data_path:
+    description: >
+      dfi_wrdata + dfi_wrdata_mask + dfi_wrdata_en drive on every W
+      beat; dfi_rddata_en pulses on every R beat.  dfi_wrdata_mask is
+      the bitwise inverse of AXI s_wstrb (DFI mask is active-high
+      "do not write").
+  refresh_scheduler:
+    description: >
+      refresh_active rises at every TREFI interval, raises
+      dfi_ctrlupd_req, and emits a REFRESH-shaped DFI command for the
+      duration of tRFCpb.
+  zq_calibration:
+    description: >
+      zqcs_active fires every ZQCS_INTERVAL cycles; zqcl_active fires
+      every ZQCL_INTERVAL cycles.  Counters are exposed as outputs so a
+      real PHY can correlate calibration windows with timing closure.
+
+required_tests:
+  - id: dfi_init_brings_cke_high
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: dfi_init_start observed; dfi_cke high after init complete.
+  - id: dfi_write_emits_activate_then_write_col
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      AXI4 burst write emits an ACTIVATE-shaped DFI command followed by
+      a WRITE-shaped command with dfi_wrdata_en per beat; dfi_wrdata
+      reflects AXI s_wdata.
+  - id: dfi_read_emits_activate_then_read_col
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      AXI4 burst read emits an ACTIVATE-shaped DFI command followed by
+      a READ-shaped command with dfi_rddata_en per beat.
+  - id: dfi_refresh_fires_within_window
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      refresh_active asserted within a few TREFI windows and a
+      REFRESH-shaped DFI command observed for the duration.
+
+required_artifacts:
+  - docs/evidence/memory/dram_ctrl_dfi_trace_record.json
+  - docs/evidence/memory/dram_ctrl_post_silicon_training_record.json
+
+required_artifact_schemas:
+  docs/evidence/memory/dram_ctrl_dfi_trace_record.json: eliza.memory.dram_ctrl_dfi_trace.v1
+  docs/evidence/memory/dram_ctrl_post_silicon_training_record.json: eliza.memory.dram_ctrl_post_silicon_training.v1
+
+unblock_requires:
+  - All four cocotb DFI tests pass under verilator (current status:
+    cocotb_PASS).
+  - A real LPDDR5X/6 PHY is licensed (see lpddr-phy-procurement.yaml)
+    and attached to the DFI 5.0 south interface.
+  - First-silicon read leveling, gate training, vref, and ZQ
+    calibration transcripts are recorded as evidence.
+
+claim_rules:
+  - The current DFI-shaper drives representative commands from AXI
+    handshakes and the refresh scheduler; this is a verification surface
+    only and does not satisfy real-silicon DRAM timing claims.
+  - Bandwidth claims based on the behavioural model + DFI shaper are
+    simulator-only and never satisfy the phone-class memory gate in
+    docs/evidence/memory/uma-dram-evidence-gate.yaml.
+
+next_commands:
+  rtl_elaboration: make rtl-check
+  dfi_traffic_tests: make cocotb-dram-ctrl
+  gate_check: make memory-axi4-check

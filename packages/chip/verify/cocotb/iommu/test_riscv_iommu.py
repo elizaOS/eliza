@@ -311,18 +311,14 @@ async def pasid_context_switch_across_two_streams(dut):
         await RisingEdge(dut.clk)
         if int(dut.fault_count_dbg.value) > pre:
             break
-    assert int(dut.fault_count_dbg.value) == pre + 1, (
-        "PASID B after revoke must fault"
-    )
+    assert int(dut.fault_count_dbg.value) == pre + 1, "PASID B after revoke must fault"
 
     # Re-authorise; PASID B path opens
     await mmio_write64(dut, OFFS_ALLOW_BASE, (1 << 63) | devid)
     pre2 = int(dut.fault_count_dbg.value)
     await upstream_write(dut, 0, devid=devid, pasid=pasid_b, addr=0xB200)
     await Timer(80, units="ns")
-    assert int(dut.fault_count_dbg.value) == pre2, (
-        "PASID B after re-auth should not fault"
-    )
+    assert int(dut.fault_count_dbg.value) == pre2, "PASID B after re-auth should not fault"
 
 
 @cocotb.test()
@@ -385,7 +381,7 @@ async def translation_request_interface_round_trip(dut):
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
     OFFS_TR_REQ_IOVA = 0x258
-    OFFS_TR_REQ_CTL  = 0x260
+    OFFS_TR_REQ_CTL = 0x260
     iova = 0x0000_0000_8000_1000
     await mmio_write64(dut, OFFS_TR_REQ_IOVA, iova)
     rb = await mmio_read64(dut, OFFS_TR_REQ_IOVA)

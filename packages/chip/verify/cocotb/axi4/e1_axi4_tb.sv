@@ -162,7 +162,13 @@ module e1_axi4_tb #(
         .s_rid(s_rid), .s_rdata(s_rdata), .s_rresp(s_rresp), .s_rlast(s_rlast),
         .decode_err_irq(decode_err_irq),
         .exclusive_fail_irq(exclusive_fail_irq),
-        .outstanding_count_dbg(outstanding_count_dbg)
+        .outstanding_count_dbg(outstanding_count_dbg),
+        // The legacy harness does not drive the W1C status path; an
+        // explicit W1C test bench (e1_axi4_irq_w1c_tb) exercises that
+        // surface separately.
+        .irq_status_clear_we(1'b0),
+        .irq_status_decode_err_clear_mask('0),
+        .irq_status_excl_fail_clear_mask('0)
     );
 
     e1_axi4_dram_model #(

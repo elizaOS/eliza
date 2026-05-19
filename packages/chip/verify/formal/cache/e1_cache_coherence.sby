@@ -1,19 +1,14 @@
 [options]
 mode bmc
-depth 8
+depth 24
+multiclock off
 
 [engines]
 smtbmc
 
 [script]
-read -formal -sv2012 ../../../rtl/cache/cache_pkg.sv
-read -formal -sv2012 ../../../rtl/cache/ftq_to_l1i_pkg.sv
-read -formal -sv2012 ../../../rtl/cache/lsu_to_l1d_pkg.sv
-read -formal -sv2012 e1_cache_coherence_formal.sv
-prep -top e1_cache_coherence_formal
+read -sv e1_cache_coherence_formal.sv
+prep -top e1_cache_coherence_formal -flatten
 
 [files]
-../../../rtl/cache/cache_pkg.sv
-../../../rtl/cache/ftq_to_l1i_pkg.sv
-../../../rtl/cache/lsu_to_l1d_pkg.sv
 e1_cache_coherence_formal.sv

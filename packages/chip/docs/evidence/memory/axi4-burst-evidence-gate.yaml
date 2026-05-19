@@ -70,6 +70,54 @@ required_tests:
   - id: exclusive_read_then_write_returns_exokay_or_okay
     location: verify/cocotb/axi4/test_axi4_burst.py
     pass_criteria: Exclusive monitor invalidates on foreign AW.
+  - id: decode_err_irq_w1c_clears_status
+    location: verify/cocotb/axi4/test_irq_w1c.py
+    pass_criteria: >
+      Sticky decode_err_irq clears via the write-1-to-clear MMR path and
+      re-asserts on a subsequent fault.
+  - id: excl_fail_irq_w1c_clears_status
+    location: verify/cocotb/axi4/test_irq_w1c.py
+    pass_criteria: >
+      Sticky exclusive_fail_irq clears via the W1C MMR and re-asserts on
+      a subsequent foreign-AW invalidation.
+  - id: w1c_clears_only_masked_bits
+    location: verify/cocotb/axi4/test_irq_w1c.py
+    pass_criteria: >
+      irq_status_clear_we with a zero mask must not clear any sticky
+      bits; only bits explicitly set in the mask are cleared.
+  - id: equal_qos_round_robin_no_starvation
+    location: verify/cocotb/axi4/test_multi_master_fairness.py
+    pass_criteria: >
+      Eight masters at equal QoS each receive at least 64 R-beats with
+      no master exceeding the configured starvation window (64 beats).
+  - id: qos_weighted_high_master_wins_no_starvation
+    location: verify/cocotb/axi4/test_multi_master_fairness.py
+    pass_criteria: >
+      A high-QoS master receives at least the average service of the
+      equal-QoS baseline while no master goes unserved within the
+      starvation window.
+  - id: dfi_init_brings_cke_high
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      e1_dram_ctrl asserts dfi_init_start at boot and brings dfi_cke
+      high after the init handshake completes.
+  - id: dfi_write_emits_activate_then_write_col
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      Each AXI4 write burst emits an ACTIVATE-shaped DFI command on AW
+      handshake followed by a WRITE-shaped command with dfi_wrdata_en
+      asserted per W beat.
+  - id: dfi_read_emits_activate_then_read_col
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      Each AXI4 read burst emits an ACTIVATE-shaped DFI command on AR
+      handshake followed by a READ-shaped command with dfi_rddata_en
+      asserted per R beat.
+  - id: dfi_refresh_fires_within_window
+    location: verify/cocotb/axi4/test_dfi_traffic.py
+    pass_criteria: >
+      The refresh scheduler raises refresh_active and emits at least
+      one REFRESH-shaped DFI command within a few TREFI windows.
 
 required_artifacts:
   - docs/evidence/memory/axi4_burst_correctness_report.json
@@ -91,7 +139,7 @@ unblock_requires:
 
 cocotb_status_at_check_in:
   elaboration: pass
-  test_pass_count: 5
+  test_pass_count: 14
   test_fail_count: 0
   passing_tests:
     - incr_burst_length_sweep
@@ -99,12 +147,29 @@ cocotb_status_at_check_in:
     - write_strobe_partial_beat_preserves_unwritten_bytes
     - id_ordering_per_axid
     - exclusive_read_then_write_returns_exokay_or_okay
+    - decode_err_irq_w1c_clears_status
+    - excl_fail_irq_w1c_clears_status
+    - w1c_clears_only_masked_bits
+    - equal_qos_round_robin_no_starvation
+    - qos_weighted_high_master_wins_no_starvation
+    - dfi_init_brings_cke_high
+    - dfi_write_emits_activate_then_write_col
+    - dfi_read_emits_activate_then_read_col
+    - dfi_refresh_fires_within_window
+  multi_master_fairness: cocotb_PASS
+  irq_w1c_mmr: cocotb_PASS
+  dfi_traffic: cocotb_PASS
   root_cause_history:
     summary: >
-      Initial 4-of-5 failure trace was driven by two RTL race conditions, two
-      structural bugs (decoder constant + multi-beat read), and one helper
-      test bug, all addressed in the same pass.
-    bugs_fixed:
+      Round-2 fixed five RTL/test bugs to get the original five tests
+      green.  Round-3 promoted the sticky IRQs to a documented
+      write-1-to-clear MMR, exercised the e1_dram_ctrl wrapper between
+      the fabric and the behavioural DRAM model so the DFI 5.0 north
+      command shaper drives CKE / CS_n / RAS_n / CAS_n / WE_n / ADDR /
+      BA / wrdata_en / rddata_en on every transaction, and added an
+      8-master fairness regression with QoS bias.  Nine new cocotb
+      tests were checked in alongside the corresponding RTL changes.
+    bugs_fixed_round2:
       - The AW/AR grant always_comb block was decoupled from the AW/AR
         fanout block, allowing Verilator to read stale grant values in the
         same delta cycle (s_awvalid was driven high while grant=NUM_MASTERS).
@@ -119,12 +184,30 @@ cocotb_status_at_check_in:
         Rewrote as an explicit prefill / handshake-advance / last-clear state.
       - exclusive_fail_irq was a one-cycle pulse; the test inspected the
         flag after write_burst returned which polled the B response, so
-        the pulse was lost. Latched to a sticky IRQ that holds until the
-        next reset (subsequent revisions can add a write-1-to-clear MMR).
+        the pulse was lost.  Latched to a sticky IRQ that holds until the
+        next reset.
       - write_strobe_partial_beat_preserves_unwritten_bytes set its
         replacement byte via OR instead of clear+OR, so the expected and
         actual values disagreed; corrected the bench expression.
-  command_to_reproduce: make cocotb-axi4
+    deltas_round3:
+      - decode_err_irq and exclusive_fail_irq are now write-1-to-clear
+        MMR bits.  e1_axi4_interconnect grows three ports
+        (irq_status_clear_we, irq_status_decode_err_clear_mask,
+        irq_status_excl_fail_clear_mask).  Hardware-set wins ties with
+        software clears so a new fault coincident with a W1C write is
+        not silently dropped.  MMIO bindings are documented in
+        docs/spec-db/axi4-interconnect-mmio.yaml.
+      - e1_dram_ctrl now drives the DFI 5.0 north command shaper from
+        the AXI4 handshake + refresh scheduler (ACTIVATE / WRITE / READ
+        / REFRESH command shapes mapped per JEDEC LPDDR5/6 controller
+        semantics).  dfi_init_start holds for a minimum window before
+        dfi_init_complete latches dfi_cke high so cocotb can observe
+        the init handshake on the wire.
+      - e1_axi4_multimaster_tb wires NUM_MASTERS=8 to the same DRAM-
+        backed slave; test_multi_master_fairness asserts every master
+        is served and no master exceeds the configured starvation
+        window even under QoS bias.
+  command_to_reproduce: make memory-axi4-check
 
 claim_rules:
   - The production data path is the AXI4 fabric. The AXI-Lite scaffold remains for boot-bringup testing only.

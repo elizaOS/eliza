@@ -33,7 +33,9 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/interconnect/axi4/e1_axi4_interconnect.sv \
 	$(REPO)/rtl/interconnect/chi_bridge/e1_chi_to_axi4_bridge.sv \
 	$(REPO)/rtl/iommu/e1_riscv_iommu.sv \
+	$(REPO)/rtl/cache/slc/e1_slc.sv \
 	$(REPO)/rtl/memory/dram_ctrl/e1_axi4_dram_model.sv \
+	$(REPO)/rtl/memory/dram_ctrl/e1_dram_ctrl.sv \
 	$(REPO)/rtl/power/pmc_top.sv \
 	$(REPO)/rtl/memory/e1_weight_buffer_sram.sv \
 	$(REPO)/rtl/bootrom/e1_bootrom.sv \
@@ -41,6 +43,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/dma/e1_dma.sv \
 	$(REPO)/rtl/npu/e1_npu.sv \
 	$(REPO)/rtl/display/e1_display.sv \
+	$(REPO)/rtl/top/adapters/e1_slc_to_chi_line_shim.sv \
 	$(REPO)/rtl/top/e1_soc_integrated.sv \
 	$(PWD)/e1_soc_integrated_tb.sv
 

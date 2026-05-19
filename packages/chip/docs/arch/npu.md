@@ -838,11 +838,14 @@ binary kernels, tensor memory allocation, Android NNAPI registration, or
 production runtime integration.
 
 The same preprocess blobs now include a metadata-only `tensor_arena_plan` with
-deterministic 4-byte aligned tensor offsets, roles, shapes, dtypes, byte sizes,
-and total arena bytes. The arena is linear and conservative so delegate tests can
-bind tensors to a stable staging contract before a real allocator exists. It is
-not tensor lifetime reuse, alias analysis, DMA placement, cache-coherent
-allocation, Android buffer integration, or a production memory planner.
+deterministic 4-byte aligned tensor offsets, roles, shapes, logical dtypes,
+`storage_dtype`, byte sizes, and total arena bytes. The arena is linear and
+conservative so delegate tests can bind tensors to a stable staging contract
+before a real allocator exists. Descriptor-backed INT8/INT4 matmul result
+allocations keep the StableHLO logical dtype but use `int32_accumulator` storage
+so the current RTL GEMM writeback tile has enough arena space. This is not tensor
+lifetime reuse, alias analysis, DMA placement, cache-coherent allocation,
+Android buffer integration, or a production memory planner.
 
 The partitioner also derives a metadata-only `runtime_binding_plan` from the
 same arena and lowering plans. Each supported op records its runtime API,
@@ -862,13 +865,13 @@ descriptor opcode, whether the input arena span can be streamed into the
 64-byte scratchpad, the source arena offset, stream byte count, per-input
 scratch offsets, output scratch offset, required writeback bytes, and the GEMM
 MMIO preamble (`GEMM_CFG`, `GEMM_BASE`, `GEMM_STRIDE`). It also keeps
-`blocking_reasons` when full descriptor codegen is not valid; today bounded
-INT8/INT4 matmul inputs can form a descriptor input stream, but full writeback
-is blocked because the StableHLO result allocation is not yet sized for the
-RTL GEMM int32 accumulator tile. This is a staging template only, not binary
-descriptor emission, arena base address assignment, DMA runtime ownership,
-output dtype conversion, Android delegate integration, or a production compiler
-backend.
+`blocking_reasons` when full descriptor codegen is not valid. With
+`int32_accumulator` result storage, bounded INT8/INT4 matmul inputs can form a
+descriptor input stream and the output can be represented as a current-RTL GEMM
+writeback target in metadata; non-matmul ops and unresolved sparse/group-scale
+metadata remain blocked. This is a staging template only, not binary descriptor
+emission, arena base address assignment, DMA runtime ownership, output dtype
+conversion, Android delegate integration, or a production compiler backend.
 
 ## Evidence gates
 

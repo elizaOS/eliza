@@ -1602,6 +1602,8 @@ def main() -> int:
         "TensorArenaAllocation",
         "tensor_arena_plan",
         "eliza.e1_npu_tensor_arena_plan.v1",
+        "storage_dtype",
+        "int32_accumulator",
         "tensor_arena_metadata_only_not_lifetime_allocator_or_dma_planner",
         "RuntimeBindingPlan",
         "RuntimeTensorBinding",
@@ -1701,6 +1703,9 @@ def main() -> int:
         errors.append("delegate tensor arena preprocess must identify tensor arena schema")
     if delegate_arena.get("state") != "metadata_only_linear_tensor_arena":
         errors.append("delegate tensor arena preprocess must remain metadata-only")
+    for token in ("storage_dtype", "int32_accumulator"):
+        if token not in delegate_arena.get("emits", ""):
+            errors.append(f"delegate tensor arena contract missing {token}")
     if (
         delegate_arena.get("claim_boundary")
         != "tensor_arena_metadata_only_not_lifetime_allocator_or_dma_planner"
@@ -1715,6 +1720,8 @@ def main() -> int:
     for token in ("descriptor_codegen_ready", "ready_ops", "blocked_ops", "unresolved_inputs"):
         if token not in runtime_bindings.get("emits", ""):
             errors.append(f"delegate runtime binding contract missing {token}")
+    if "storage_dtype" not in runtime_bindings.get("emits", ""):
+        errors.append("delegate runtime binding contract missing storage_dtype")
     if (
         runtime_bindings.get("claim_boundary")
         != "runtime_binding_metadata_only_not_dma_or_binary_descriptor_codegen"
@@ -1735,6 +1742,8 @@ def main() -> int:
         "descriptor_codegen_ready",
         "stream_byte_count",
         "GEMM",
+        "ready_ops",
+        "blocked_ops",
         "blocking_reasons",
     ):
         if token not in descriptor_staging.get("emits", ""):

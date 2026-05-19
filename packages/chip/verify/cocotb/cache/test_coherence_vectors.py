@@ -129,9 +129,7 @@ async def test_dirty_line_probe_invalidate_writeback(dut):
 
     # 2) Store hit -> upgrades to M (and the L1D writes the new word)
     dut.lsu_p0_valid.value = 1
-    dut.lsu_p0_req.value = pack_req(
-        paddr, is_load=0, wdata=0xCAFE_F00D, wstrb=0xFF
-    )
+    dut.lsu_p0_req.value = pack_req(paddr, is_load=0, wdata=0xCAFE_F00D, wstrb=0xFF)
     await RisingEdge(dut.clk)
     dut.lsu_p0_valid.value = 0
     # Drain the response
@@ -167,9 +165,7 @@ async def test_dirty_line_probe_downgrade_to_shared(dut):
         await RisingEdge(dut.clk)
 
     dut.lsu_p0_valid.value = 1
-    dut.lsu_p0_req.value = pack_req(
-        paddr, is_load=0, wdata=0xBADD_F00D, wstrb=0xFF
-    )
+    dut.lsu_p0_req.value = pack_req(paddr, is_load=0, wdata=0xBADD_F00D, wstrb=0xFF)
     await RisingEdge(dut.clk)
     dut.lsu_p0_valid.value = 0
     for _ in range(2):

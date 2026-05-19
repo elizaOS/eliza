@@ -168,6 +168,17 @@ def test_progress_classifies_sifive_uart_tx_full_poll() -> None:
         raise AssertionError(f"expected TXDATA guidance, got {progress}")
 
 
+def test_local_smoke_defaults_to_uart_diagnostics() -> None:
+    wrapper = ROOT / "scripts" / "run_chipyard_eliza_linux_smoke.sh"
+    text = wrapper.read_text(encoding="utf-8")
+    expected = (
+        'extra_sim_flags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS:-'
+        '+custom_boot_pin=1 +uart_tx_printf=1}"'
+    )
+    if expected not in text:
+        raise AssertionError("expected local smoke wrapper to default to UART diagnostic plusargs")
+
+
 def main() -> int:
     tests = (
         test_partial_generated_driver_dir_is_repairable_blocker,
@@ -175,6 +186,7 @@ def main() -> int:
         test_log_metadata_records_attempt_and_closed_transcript,
         test_simulator_artifact_validation_requires_executable_candidate,
         test_progress_classifies_sifive_uart_tx_full_poll,
+        test_local_smoke_defaults_to_uart_diagnostics,
     )
     for test in tests:
         test()

@@ -90,8 +90,10 @@ memory planning. The prototype ExecuTorch and LiteRT delegate blobs now carry
 those batches alongside descriptor specs, but they are still metadata-only
 skeletons rather than binary kernels or Android delegate integration. The same
 blobs include a linear `tensor_arena_plan` with deterministic 4-byte aligned
-offsets and byte sizes, but this is not lifetime reuse, DMA placement, or a
-production memory planner. They also include a metadata-only
+offsets, byte sizes, and explicit `storage_dtype`; descriptor-backed INT8/INT4
+matmul result storage is sized as `int32_accumulator` for RTL GEMM writeback,
+but this is not lifetime reuse, DMA placement, or a production memory planner.
+They also include a metadata-only
 `runtime_binding_plan` that maps lowering `required_graph_fields` and result
 tensors to arena offsets and command-buffer batch indexes. The plan now marks
 `descriptor_codegen_ready` ops and records `unresolved_inputs` for required
@@ -99,9 +101,8 @@ sparse/group-scale metadata that is not yet represented in the arena, but this
 is not DMA address assignment, binary descriptor codegen, dependency scheduling,
 or Android delegate integration. A new `descriptor_staging_plan` derives the
 current RTL opcode, input stream span, scratch offsets, output scratch offset,
-and GEMM MMIO preamble for ready matmul bindings; it still blocks full
-descriptor codegen when writeback storage is not sized for the RTL int32 GEMM
-accumulator tile. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
+and GEMM MMIO preamble for ready matmul bindings, including writeback-ready
+INT8/INT4 matmul templates where the arena has int32 accumulator storage. The runtime lowering evidence now includes bounded INT8/INT4 matmul,
 scalar-dot sparse INT4 2:4, scalar Q8.8 group-scaled INT4, INT2, FP8 E4M3,
 and scalar Q8.8 FP16/BF16 matmul, im2col Conv2D, direct depthwise/grouped Conv2D, attention
 QK/softmax/AV plus composed multi-head attention with host-generated causal and

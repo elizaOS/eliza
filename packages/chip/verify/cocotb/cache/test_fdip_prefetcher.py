@@ -17,7 +17,6 @@ import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 
-
 PADDR_W = 40
 CONF_W = 3
 
@@ -28,8 +27,10 @@ def pack_req(paddr_line: int, confidence: int, branch_target: int) -> int:
     Packed structs lay out MSB-first; bit 0 is the last declared bit.
     """
     return (
-        (paddr_line & ((1 << PADDR_W) - 1)) << (CONF_W + 1)
-    ) | ((confidence & ((1 << CONF_W) - 1)) << 1) | (branch_target & 0x1)
+        ((paddr_line & ((1 << PADDR_W) - 1)) << (CONF_W + 1))
+        | ((confidence & ((1 << CONF_W) - 1)) << 1)
+        | (branch_target & 0x1)
+    )
 
 
 async def reset_dut(dut) -> None:
