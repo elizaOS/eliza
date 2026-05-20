@@ -85,7 +85,7 @@ required_android_marker_evidence:
     operator_recipe: docs/android/aosp-hal-vintf-sepolicy-operator-guide.md
     required_markers:
       - VINTF_COMPAT=ok
-      - Compatible
+      - COMPATIBLE
   - id: aosp_sepolicy_build
     evidence: docs/evidence/android/eliza_ai_soc_sepolicy_build.log
     producer: sw/aosp-device/capture-aosp-evidence.sh /path/to/aosp sepolicy-build

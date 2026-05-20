@@ -19,6 +19,7 @@ COCOTB_TARGETS = {
     "e1_chip_top_test_e1_chip",
     "e1_linux_soc_contract_test_cpu_mem_intc_contract",
     "e1_npu_test_e1_npu",
+    "e1_soc_integrated_tb_test_cross_domain_interfaces",
     "e1_tiny_cpu_contract_tb_test_tiny_cpu_execution",
 }
 

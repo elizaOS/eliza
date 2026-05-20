@@ -187,13 +187,21 @@ if [ -z "$launcher" ]; then
 fi
 
 # Auto-detect host_path and product_path for the system cvd.
+# cvd create --host_path expects the parent of the bin/ directory, i.e. it
+# appends /bin/ internally. For the system package /usr/lib/cuttlefish-common,
+# the binaries live in /usr/lib/cuttlefish-common/bin/ so we pass the parent.
+# For an AOSP-built host out (ANDROID_HOST_OUT), the binaries are directly in
+# ANDROID_HOST_OUT/bin/ so we pass ANDROID_HOST_OUT (no extra /bin stripping).
 if [ "$launcher" = cvd ]; then
 	if [ -z "$host_path" ]; then
 		if [ -d /usr/lib/cuttlefish-common/bin ]; then
-			host_path=/usr/lib/cuttlefish-common/bin
+			host_path=/usr/lib/cuttlefish-common
 		elif [ -n "${ANDROID_HOST_OUT:-}" ] && [ -d "$ANDROID_HOST_OUT/bin" ]; then
-			host_path=$ANDROID_HOST_OUT/bin
+			host_path=$ANDROID_HOST_OUT
 		fi
+	elif [ "$host_path" = /usr/lib/cuttlefish-common/bin ]; then
+		# Caller passed the old canonical path with trailing /bin; strip it.
+		host_path=/usr/lib/cuttlefish-common
 	fi
 	if [ -z "$product_path" ]; then
 		if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
