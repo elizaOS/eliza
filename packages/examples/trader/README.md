@@ -13,9 +13,9 @@ A simple trading bot interface that demonstrates the `@elizaos/plugin-auto-trade
 ## Quick Start
 
 ```bash
-cd typescript
+cd packages/examples/trader
 bun install
-bun dev
+bun run dev
 ```
 
 Then open http://localhost:5173 in your browser.
@@ -78,22 +78,15 @@ Configurable technical indicator rules:
 ## Architecture
 
 ```
-trader/
-├── typescript/
-│   ├── src/
-│   │   ├── main.tsx           # React entry point
-│   │   ├── App.tsx            # Main application
-│   │   ├── components/
-│   │   │   ├── WalletSetup.tsx
-│   │   │   ├── TradingPanel.tsx
-│   │   │   ├── PositionList.tsx
-│   │   │   ├── TradeHistory.tsx
-│   │   │   └── StrategySelect.tsx
-│   │   ├── runtime/
-│   │   │   ├── index.ts       # Runtime singleton
-│   │   │   └── character.ts   # Trader character config
-│   │   └── hooks/
-│   │       └── useTrading.ts  # Trading state hook
+packages/examples/trader/
+├── src/
+│   ├── main.tsx           # React entry point
+│   ├── App.tsx            # Main application
+│   └── styles.css         # UI styles
+├── index.html
+├── package.json
+├── tsconfig.json
+└── vite.config.ts
 ```
 
 ## License

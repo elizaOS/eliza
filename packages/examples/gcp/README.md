@@ -235,8 +235,6 @@ Recommended settings:
 | Runtime    | Memory | CPU | Timeout |
 | ---------- | ------ | --- | ------- |
 | TypeScript | 512 Mi | 1   | 60s     |
-| Python     | 512 Mi | 1   | 60s     |
-| Rust       | 256 Mi | 1   | 60s     |
 
 ```bash
 gcloud run deploy eliza-worker \
