@@ -76,6 +76,11 @@ if [[ "$cmd" == "all" && "${MILADY_LLAMA_FORCE_REBUILD:-0}" != "1" ]] && xcframe
   exit 0
 fi
 
+if [[ "$cmd" == "all" && "${MILADY_LLAMA_BUILD_IOS:-0}" != "1" ]]; then
+  printf '\033[33m[build-ios]\033[0m skipping iOS xcframework build: set MILADY_LLAMA_BUILD_IOS=1 to compile llama.cpp locally.\n'
+  exit 0
+fi
+
 acquire_build_lock
 
 if [[ "$cmd" == "all" && "${MILADY_LLAMA_FORCE_REBUILD:-0}" != "1" ]] && xcframework_is_present; then
