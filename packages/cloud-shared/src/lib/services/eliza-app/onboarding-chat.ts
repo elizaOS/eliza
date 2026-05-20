@@ -238,10 +238,7 @@ function fallbackReply(args: {
 }
 
 function sanitizeReplyText(reply: string): string {
-  return reply
-    .replaceAll("httpshttps://", "https://")
-    .replaceAll("httphttp://", "http://")
-    .trim();
+  return reply.replaceAll("httpshttps://", "https://").replaceAll("httphttp://", "http://").trim();
 }
 
 function ensureExactLoginUrl(reply: string, loginUrl: string): string {
@@ -300,9 +297,7 @@ State:
     });
     const sanitized = sanitizeReplyText(text);
     if (!sanitized) return fallbackReply(args);
-    return args.requiresLogin
-      ? ensureExactLoginUrl(sanitized, args.loginUrl)
-      : sanitized;
+    return args.requiresLogin ? ensureExactLoginUrl(sanitized, args.loginUrl) : sanitized;
   } catch (error) {
     logger.warn("[eliza-app onboarding] generation failed; using fallback", {
       error: error instanceof Error ? error.message : String(error),

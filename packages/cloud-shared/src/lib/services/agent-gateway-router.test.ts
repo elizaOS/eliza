@@ -407,6 +407,46 @@ describe("AgentGatewayRouterService phone routing", () => {
     );
   });
 
+  test("routes known senders without an active own agent to their friend contact route", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue({
+      id: "known-user",
+      organization_id: "known-org",
+    });
+    listOwnerSessions.mockResolvedValue([]);
+    listByOrganization.mockResolvedValue([]);
+    queueSelectResult([
+      {
+        organizationId: "friend-owner-org",
+        agentId: "friend-agent",
+        userId: "friend-owner-user",
+      },
+    ]);
+    findRunningSandbox.mockResolvedValue({
+      id: "friend-agent",
+      organization_id: "friend-owner-org",
+      user_id: "friend-owner-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockResolvedValue({
+      result: {
+        text: "friend route reply",
+      },
+    });
+
+    const result = await newRouter().routePhoneMessage(routeArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "friend route reply",
+      agentId: "friend-agent",
+      organizationId: "friend-owner-org",
+      userId: "friend-owner-user",
+    });
+    expect(runOnboardingChat).not.toHaveBeenCalled();
+    expect(findRunningSandbox).toHaveBeenCalledWith("friend-agent", "friend-owner-org");
+  });
+
   test("falls back to authenticated onboarding when the sender's own agent route throws", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue({
       id: "known-user",

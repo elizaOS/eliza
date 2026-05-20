@@ -11,8 +11,8 @@ import {
   type RemoteCapabilityEndpointProvider,
 } from "./remote-capability-endpoint-provider.ts";
 import {
-  summarizeRemoteCapabilityLiveCi,
   summarizeRemoteCapabilityEndpointUrlFingerprint,
+  summarizeRemoteCapabilityLiveCi,
   summarizeRemoteCapabilityLiveRuntime,
   summarizeRemoteCapabilityLiveSync,
   writeRemoteCapabilityLiveReport,

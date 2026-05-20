@@ -225,7 +225,7 @@ export async function gradeTraitRespected(
       if (
         firstFailed &&
         result.verdict === "FAIL" &&
-        t === (first?.t) &&
+        t === first?.t &&
         restPassRate >= 0.5
       ) {
         // Downgrade the first-turn fail to NEEDS_REVIEW — the agent held the

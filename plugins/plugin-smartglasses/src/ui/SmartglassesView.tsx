@@ -11,7 +11,7 @@ import {
   Wifi,
   XCircle,
 } from "lucide-react";
-import { useMemo, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import {
   encodeBrightness,
   encodeClearScreen,
@@ -83,16 +83,14 @@ type SmartglassesBridge = {
   displayText?: (
     params: Record<string, unknown>,
   ) => Promise<BridgeResult> | BridgeResult;
-  onEvent?: (
-    callback: (event: unknown) => void,
-  ) => BridgeSubscription;
-  onEvenHubEvent?: (
-    callback: (event: unknown) => void,
-  ) => BridgeSubscription;
+  onEvent?: (callback: (event: unknown) => void) => BridgeSubscription;
+  onEvenHubEvent?: (callback: (event: unknown) => void) => BridgeSubscription;
   rebuildPageContainer?: (
     container: Record<string, unknown>,
   ) => Promise<BridgeResult> | BridgeResult;
-  sendStartUpPage?: (container: unknown) => Promise<BridgeResult> | BridgeResult;
+  sendStartUpPage?: (
+    container: unknown,
+  ) => Promise<BridgeResult> | BridgeResult;
   setMicState?: (
     sendPcmData: boolean,
     sendTranscript: boolean,
@@ -237,7 +235,9 @@ async function callWifiBridge(
 }
 
 export function SmartglassesView() {
-  const [transport, setTransport] = useState<SmartglassesTransport | null>(null);
+  const [transport, setTransport] = useState<SmartglassesTransport | null>(
+    null,
+  );
   const [lenses, setLenses] = useState<Record<GlassSide, LensState>>({
     left: "idle",
     right: "idle",

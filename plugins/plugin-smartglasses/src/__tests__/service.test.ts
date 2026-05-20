@@ -453,6 +453,16 @@ describe("SmartglassesService", () => {
     });
   });
 
+  it("does not report Wi-Fi as available for transports without Wi-Fi support", async () => {
+    const transport = new MockSmartglassesTransport();
+    const service = new SmartglassesService();
+    transport.supportsWifi = () => false;
+    service.setTransport(transport);
+
+    expect(service.getStatus().wifiAvailable).toBe(false);
+    await expect(service.scanWifi()).rejects.toThrow(/Wi-Fi/);
+  });
+
   it("emits raw LC3 metadata for direct G1 microphone chunks", async () => {
     const transport = new MockSmartglassesTransport();
     const service = new SmartglassesService();

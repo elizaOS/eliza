@@ -113,8 +113,7 @@ describe("runOnboardingChat", () => {
       ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
     };
     generateText.mockResolvedValue({
-      text:
-        "Nice to meet you. Connect here: https://elizaos‑homepage.pages.dev/get‑started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
+      text: "Nice to meet you. Connect here: https://elizaos‑homepage.pages.dev/get‑started/?onboardingSession=platform%3Ablooio%3A%2B14155550123",
     });
 
     const result = await runOnboardingChat({
@@ -137,8 +136,7 @@ describe("runOnboardingChat", () => {
       ELIZA_ONBOARDING_APP_URL: "https://elizaos-homepage.pages.dev",
     };
     generateText.mockResolvedValue({
-      text:
-        "Nice to meet you. Connect here: **https://elizaos-homepage.pages.dev/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123**",
+      text: "Nice to meet you. Connect here: **https://elizaos-homepage.pages.dev/get-started/?onboardingSession=platform%3Ablooio%3A%2B14155550123**",
     });
 
     const result = await runOnboardingChat({
@@ -181,9 +179,7 @@ describe("runOnboardingChat", () => {
       },
     });
 
-    expect(result.reply).toBe(
-      "Open <https://elizacloud.ai/dashboard/containers>.",
-    );
+    expect(result.reply).toBe("Open <https://elizacloud.ai/dashboard/containers>.");
   });
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {

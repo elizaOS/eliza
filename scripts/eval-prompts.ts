@@ -1,9 +1,9 @@
 /**
- * End-to-end prompt optimization eval harness.
+ * End-to-end prompt optimization eval harness v2.
  *
- * Runs GEPA (and bootstrap-fewshot) optimization over the 5 core training
- * tasks, counts prompt tokens (template + total input), exports a trajectory
- * log, and reports score improvement over baseline.
+ * Runs GEPA over 5 core tasks with 5 experiments (generations) per prompt.
+ * Uses LLM-as-judge for open-ended response quality tasks, exact-match for
+ * structured tasks. Exports trajectories + per-task optimized prompts.
  *
  * Usage:
  *   CEREBRAS_API_KEY=csk-... bun run scripts/eval-prompts.ts
@@ -11,10 +11,11 @@
  * Env:
  *   CEREBRAS_API_KEY   — required
  *   CEREBRAS_MODEL     — default gpt-oss-120b
- *   EVAL_OPTIMIZER     — gepa | bootstrap-fewshot | dspy-mipro (default gepa)
- *   GEPA_GENERATIONS   — default 4 (reduced for faster eval)
- *   GEPA_POPULATION    — default 6
+ *   EVAL_OPTIMIZER     — gepa | bootstrap-fewshot (default gepa)
+ *   GEPA_GENERATIONS   — default 5
+ *   GEPA_POPULATION    — default 8
  *   EXPORT_DIR         — default /tmp/eliza-eval-<timestamp>
+ *   EVAL_TASKS         — comma-separated task names to run (default: all)
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -36,6 +37,7 @@ interface OptimizationExample {
   input: { system?: string; user: string };
   expectedOutput: string;
   reward?: number;
+  rubric?: string; // for LLM-as-judge
 }
 
 interface OptimizerResult {
@@ -71,9 +73,10 @@ const CEREBRAS_API_KEY = process.env.CEREBRAS_API_KEY ?? "";
 const CEREBRAS_MODEL = process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
 const CEREBRAS_BASE_URL = process.env.CEREBRAS_BASE_URL ?? "https://api.cerebras.ai/v1";
 const OPTIMIZER = (process.env.EVAL_OPTIMIZER ?? "gepa") as "gepa" | "bootstrap-fewshot";
-const GEPA_GENERATIONS = parseInt(process.env.GEPA_GENERATIONS ?? "4", 10);
-const GEPA_POPULATION = parseInt(process.env.GEPA_POPULATION ?? "6", 10);
+const GEPA_GENERATIONS = parseInt(process.env.GEPA_GENERATIONS ?? "5", 10);
+const GEPA_POPULATION = parseInt(process.env.GEPA_POPULATION ?? "8", 10);
 const EXPORT_DIR = process.env.EXPORT_DIR ?? `/tmp/eliza-eval-${Date.now()}`;
+const EVAL_TASKS = process.env.EVAL_TASKS?.split(",").map(t => t.trim()) ?? null;
 
 if (!CEREBRAS_API_KEY) {
   console.error("CEREBRAS_API_KEY is required");
@@ -82,33 +85,26 @@ if (!CEREBRAS_API_KEY) {
 
 // ── Token counting ────────────────────────────────────────────────────────────
 
-/** Approximate token count using GPT-2/4 word-piece heuristic (~4 chars/token). */
 function countTokensApprox(text: string): number {
   if (!text) return 0;
-  // Split on whitespace and punctuation boundaries, ~4 chars per token average
   const words = text.split(/\s+/).filter(Boolean);
   let count = 0;
   for (const word of words) {
-    // Long words split into multiple tokens; short words are 1 token
     count += Math.ceil(word.length / 4);
   }
   return count;
 }
 
 interface TemplateTokenReport {
-  templateTokens: number;   // tokens in the system prompt template itself
-  userTokens: number;       // tokens in the user input
-  totalInputTokens: number; // template + user (what the model sees as input)
+  templateTokens: number;
+  userTokens: number;
+  totalInputTokens: number;
 }
 
 function countPromptTokens(system: string | undefined, user: string): TemplateTokenReport {
   const templateTokens = countTokensApprox(system ?? "");
   const userTokens = countTokensApprox(user);
-  return {
-    templateTokens,
-    userTokens,
-    totalInputTokens: templateTokens + userTokens,
-  };
+  return { templateTokens, userTokens, totalInputTokens: templateTokens + userTokens };
 }
 
 // ── Cerebras API client ───────────────────────────────────────────────────────
@@ -122,11 +118,14 @@ let totalApiCalls = 0;
 let totalPromptTokens = 0;
 let totalCompletionTokens = 0;
 
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
 async function callCerebras(
   system: string | undefined,
   user: string,
   temperature = 0,
   maxTokens = 1024,
+  _retryCount = 0,
 ): Promise<CerebrasResponse> {
   const messages: Array<{ role: string; content: string }> = [];
   if (system) messages.push({ role: "system", content: system });
@@ -153,6 +152,13 @@ async function callCerebras(
 
   if (!resp.ok) {
     const err = await resp.text();
+    // Retry on rate limit with exponential backoff
+    if (resp.status === 429 && _retryCount < 6) {
+      const backoffMs = Math.min(5000 * Math.pow(2, _retryCount), 60000);
+      console.log(`    [rate-limit] 429 — waiting ${(backoffMs/1000).toFixed(0)}s (retry ${_retryCount + 1}/6)...`);
+      await sleep(backoffMs);
+      return callCerebras(system, user, temperature, maxTokens, _retryCount + 1);
+    }
     throw new Error(`Cerebras error ${resp.status}: ${err.slice(0, 300)}`);
   }
 
@@ -175,29 +181,11 @@ async function callCerebras(
   return { text, usage };
 }
 
-function buildAdapter(): LlmAdapter {
-  return {
-    async complete(input) {
-      const { text } = await callCerebras(
-        input.system,
-        input.user,
-        input.temperature ?? 0,
-        input.maxTokens ?? 1024,
-      );
-      return text;
-    },
-  };
-}
-
-// ── Scorer ────────────────────────────────────────────────────────────────────
+// ── Scorers ────────────────────────────────────────────────────────────────────
 
 function tokenize(text: string): Set<string> {
   return new Set(
-    text
-      .toLowerCase()
-      .replace(/[^a-z0-9\s_-]+/g, " ")
-      .split(/\s+/)
-      .filter((t) => t.length > 0),
+    text.toLowerCase().replace(/[^a-z0-9\s_-]+/g, " ").split(/\s+/).filter(t => t.length > 0),
   );
 }
 
@@ -226,24 +214,51 @@ function extractPlannerAction(text: string): string | null {
   return m?.[1] ?? null;
 }
 
-function buildScorer(task: string, adapter: LlmAdapter) {
-  // gpt-oss-120b uses reasoning_effort=low which consumes internal tokens;
-  // 1024 gives enough budget for both reasoning and a short classification output.
-  const scorerMaxTokens = 1024;
+// LLM-as-judge: scores 0.0-1.0
+const JUDGE_SYSTEM = `Score the following AI assistant response on a scale from 0.0 to 1.0.
+
+Rubric:
+- 1.0: Perfect — answers the question accurately, concisely, and helpfully
+- 0.8: Good — mostly correct, minor gaps or excess verbiage
+- 0.6: Adequate — partially addresses the question but missing key points
+- 0.4: Poor — tangential or superficially related but mostly unhelpful
+- 0.2: Very poor — significantly off-topic or wrong
+- 0.0: Fails completely
+
+Output ONLY a decimal number (e.g. 0.8). No explanation.`;
+
+async function llmJudgeScore(userQuery: string, response: string, rubric?: string): Promise<number> {
+  const judgeUser = `Question: ${userQuery}\n\nResponse: ${response}${rubric ? `\n\nAdditional rubric: ${rubric}` : ""}`;
+  const { text } = await callCerebras(JUDGE_SYSTEM, judgeUser, 0, 512);
+  const num = parseFloat(text.trim());
+  if (isNaN(num) || num < 0 || num > 1) return 0.5;
+  return num;
+}
+
+function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
   return async (prompt: string, examples: OptimizationExample[]): Promise<number> => {
     if (examples.length === 0) return 0;
     let total = 0;
     for (const ex of examples) {
-      const resp = await callCerebras(prompt, ex.input.user, 0, scorerMaxTokens);
+      const resp = await callCerebras(prompt, ex.input.user, 0, 1024);
       const actual = resp.text;
-      if (task === "action_planner") {
+      if (task === "action_planner" || task === "message_handler") {
         const a = extractPlannerAction(actual);
         const e = extractPlannerAction(ex.expectedOutput);
         total += a && e && a === e ? 1 : 0;
       } else if (task === "should_respond") {
-        const a = actual.toLowerCase().includes("yes") ? "yes" : "no";
-        const e = ex.expectedOutput.toLowerCase().includes("yes") ? "yes" : "no";
-        total += a === e ? 1 : 0;
+        const aYes = actual.toLowerCase().includes("yes") || actual.toLowerCase().includes("respond") || actual.toLowerCase().includes('"action":"respond"') || actual.toLowerCase().includes("respond");
+        const eYes = ex.expectedOutput.toLowerCase().includes("yes") || ex.expectedOutput.toLowerCase().includes("respond");
+        const aNo = !aYes || actual.toLowerCase().includes("no") || actual.toLowerCase().includes("ignore");
+        const eNo = !eYes;
+        // Both "YES/NO" and "RESPOND/IGNORE" formats
+        const aVerdict = aYes && !actual.toLowerCase().includes("ignore") ? "yes" : "no";
+        const eVerdict = eYes ? "yes" : "no";
+        total += aVerdict === eVerdict ? 1 : 0;
+      } else if (useJudge) {
+        // LLM-as-judge for open-ended tasks
+        const score = await llmJudgeScore(ex.input.user, actual, ex.rubric);
+        total += score;
       } else {
         total += jaccardScore(actual, ex.expectedOutput);
       }
@@ -263,37 +278,30 @@ function logTrajectory(entry: TrajectoryEntry) {
 function exportTrajectories(dir: string) {
   mkdirSync(dir, { recursive: true });
   const jsonlPath = join(dir, "trajectories.jsonl");
-  const lines = trajectories.map((t) => JSON.stringify(t)).join("\n");
-  writeFileSync(jsonlPath, lines + "\n", "utf-8");
+  writeFileSync(jsonlPath, trajectories.map(t => JSON.stringify(t)).join("\n") + "\n", "utf-8");
 
   const readablePath = join(dir, "trajectories-readable.txt");
-  const readable = trajectories
-    .map((t) => {
-      const lines: string[] = [
-        `─── ${t.timestamp} [${t.task}] ${t.optimizer} / ${t.step} ───`,
-      ];
-      if (t.score !== undefined) lines.push(`  score: ${t.score.toFixed(4)}`);
-      if (t.tokenUsage) {
-        lines.push(
-          `  tokens: prompt=${t.tokenUsage.promptTokens} completion=${t.tokenUsage.completionTokens} total=${t.tokenUsage.totalTokens}`,
-        );
-      }
-      if (t.systemPrompt) lines.push(`  system: ${t.systemPrompt.slice(0, 200)}…`);
-      if (t.userInput) lines.push(`  user: ${t.userInput.slice(0, 200)}`);
-      if (t.output) lines.push(`  output: ${t.output.slice(0, 300)}`);
-      if (t.notes) lines.push(`  notes: ${t.notes}`);
-      return lines.join("\n");
-    })
-    .join("\n\n");
+  const readable = trajectories.map(t => {
+    const lines: string[] = [`─── ${t.timestamp} [${t.task}] ${t.optimizer} / ${t.step} ───`];
+    if (t.score !== undefined) lines.push(`  score: ${t.score.toFixed(4)}`);
+    if (t.tokenUsage) {
+      lines.push(`  tokens: prompt=${t.tokenUsage.promptTokens} completion=${t.tokenUsage.completionTokens}`);
+    }
+    if (t.systemPrompt) lines.push(`  system: ${t.systemPrompt.slice(0, 250)}…`);
+    if (t.userInput) lines.push(`  user: ${t.userInput.slice(0, 200)}`);
+    if (t.output) lines.push(`  output: ${t.output.slice(0, 350)}`);
+    if (t.notes) lines.push(`  notes: ${t.notes}`);
+    return lines.join("\n");
+  }).join("\n\n");
   writeFileSync(readablePath, readable + "\n", "utf-8");
 
   console.log(`\nTrajectories exported:`);
-  console.log(`  JSONL: ${jsonlPath}`);
+  console.log(`  JSONL:    ${jsonlPath}`);
   console.log(`  Readable: ${readablePath}`);
   return { jsonlPath, readablePath };
 }
 
-// ── GEPA Optimizer (inline, instrumented) ────────────────────────────────────
+// ── GEPA Optimizer ────────────────────────────────────────────────────────────
 
 const SYS_FEEDBACK = `Revise the SYSTEM PROMPT below based on observed failure analysis.
 
@@ -307,9 +315,9 @@ const SYS_CROSSOVER = `Merge two candidate SYSTEM PROMPTS into one.
 
 You will receive PROMPT A and PROMPT B. Produce a single prompt that takes the strongest guidance from each. Preserve the task contract and every literal placeholder. Do not exceed 1.2x the longer parent's character count. Output only the merged prompt body. No commentary, no fenced code blocks.`;
 
-const SYS_REFLECT = `You are diagnosing why a SYSTEM PROMPT is failing.
+const SYS_REFLECT = `Diagnose why a SYSTEM PROMPT is failing on these examples.
 
-You will receive the current prompt and a small batch of examples: each shows the user input, the model's actual output, and the expected output. Write a SHORT diagnostic (max 4 sentences) naming the concrete failure mode and a specific change to the prompt that would fix it. No filler. No restatement of the prompt. Output plain text only.`;
+You will receive the prompt and examples showing: user input, actual output, expected output. Write a SHORT diagnostic (max 4 sentences) naming the concrete failure mode and one specific change to fix it. No filler. Output plain text only.`;
 
 interface Candidate {
   prompt: string;
@@ -343,14 +351,12 @@ function paretoFrontier(pool: Candidate[]): Candidate[] {
         break;
       }
     }
-    if (!dominated && !frontier.some((c) => c.prompt === cur.prompt)) {
-      frontier.push(cur);
-    }
+    if (!dominated && !frontier.some(c => c.prompt === cur.prompt)) frontier.push(cur);
   }
   return frontier;
 }
 
-async function runGepaInstrumented(
+async function runGepa(
   task: string,
   baselinePrompt: string,
   dataset: OptimizationExample[],
@@ -359,53 +365,38 @@ async function runGepaInstrumented(
   population: number,
 ): Promise<OptimizerResult> {
   const lineage: Array<{ round: number; variant: number; score: number; notes?: string }> = [];
-  const timestamp = () => new Date().toISOString();
+  const ts = () => new Date().toISOString();
 
-  async function scoreAndReflect(
-    prompt: string,
-    origin: string,
-    round: number,
-    variant: number,
-  ): Promise<Candidate> {
+  async function scoreAndReflect(prompt: string, origin: string, round: number, variant: number): Promise<Candidate> {
     const score = await scorer(prompt, dataset);
-    logTrajectory({
-      timestamp: timestamp(),
-      task,
-      optimizer: "gepa",
-      step: `gen${round}-${origin}`,
-      score,
-      notes: `variant=${variant} prompt_tokens_approx=${approxTokens(prompt)}`,
-    });
+    logTrajectory({ timestamp: ts(), task, optimizer: "gepa", step: `gen${round}-score`, score, notes: `origin=${origin} variant=${variant} tokens=${approxTokens(prompt)}` });
 
-    // Reflection: show the LLM what went wrong
-    const batch = dataset.slice(0, 3);
+    // Reflect: sample a few failures
+    const batch = dataset.slice(0, Math.min(4, dataset.length));
     const transcripts: string[] = [];
     for (let i = 0; i < batch.length; i++) {
       const ex = batch[i]!;
       const { text: actual, usage } = await callCerebras(prompt, ex.input.user, 0, 1024);
       const tokenReport = countPromptTokens(prompt, ex.input.user);
       logTrajectory({
-        timestamp: timestamp(),
-        task,
-        optimizer: "gepa",
-        step: `gen${round}-reflect-${i}`,
-        systemPrompt: prompt.slice(0, 400),
-        userInput: ex.input.user.slice(0, 200),
-        output: actual.slice(0, 300),
+        timestamp: ts(), task, optimizer: "gepa", step: `gen${round}-example-${i}`,
+        systemPrompt: prompt.slice(0, 400), userInput: ex.input.user.slice(0, 200), output: actual.slice(0, 350),
         tokenUsage: usage,
         notes: `template_tokens=${tokenReport.templateTokens} user_tokens=${tokenReport.userTokens} total_input=${tokenReport.totalInputTokens}`,
       });
       transcripts.push(
-        `Example ${i + 1}:\nUser: ${truncate(ex.input.user, 300)}\nActual: ${truncate(actual, 300)}\nExpected: ${truncate(ex.expectedOutput, 300)}`,
+        `Example ${i + 1}:\nUser: ${truncate(ex.input.user, 300)}\nActual: ${truncate(actual, 300)}\nExpected: ${truncate(ex.expectedOutput, 300)}`
       );
     }
-    const reflectUser = `Prompt:\n${prompt}\n\n${transcripts.join("\n\n")}`;
-    const { text: feedback } = await callCerebras(SYS_REFLECT, reflectUser, 0.4, 512);
+    const { text: feedback } = await callCerebras(
+      SYS_REFLECT,
+      `Prompt:\n${prompt}\n\n${transcripts.join("\n\n")}`,
+      0.4, 512,
+    );
 
-    const note =
-      origin === "baseline" ? "baseline" :
-      origin.includes("compress") ? `${origin} | tokens=${approxTokens(prompt)}` :
-      `${origin} | ${truncate(feedback, 80)}`;
+    const note = origin === "baseline" ? "baseline"
+      : origin.includes("compress") ? `${origin} | tokens=${approxTokens(prompt)}`
+      : `${origin} | ${truncate(feedback, 80)}`;
     lineage.push({ round, variant, score, notes: note });
     return { prompt, score, tokens: approxTokens(prompt), feedback, origin };
   }
@@ -415,8 +406,11 @@ async function runGepaInstrumented(
       const { text } = await callCerebras(SYS_COMPRESS, prompt, 0.8, 1024);
       return text.trim() || prompt;
     }
-    const user = `Current prompt:\n${prompt}\n\nFailure analysis:\n${feedback || "(none — explore a phrasing change)"}`;
-    const { text } = await callCerebras(SYS_FEEDBACK, user, 0.8, 1024);
+    const { text } = await callCerebras(
+      SYS_FEEDBACK,
+      `Current prompt:\n${prompt}\n\nFailure analysis:\n${feedback || "(none — explore a rephrasing)"}`,
+      0.8, 1024,
+    );
     return text.trim() || prompt;
   }
 
@@ -424,30 +418,39 @@ async function runGepaInstrumented(
   const baseline = await scoreAndReflect(baselinePrompt, "baseline", 0, 0);
   let pool: Candidate[] = [baseline];
 
-  // Seed population
+  // Seed population with diverse mutations
   for (let i = 1; i < population; i++) {
-    const mode: "feedback" | "compress" = i % 2 === 0 ? "compress" : "feedback";
+    const modes: Array<"feedback" | "compress"> = ["feedback", "compress", "feedback", "compress"];
+    const mode = modes[(i - 1) % modes.length] ?? "feedback";
     const seed = await mutate(baselinePrompt, baseline.feedback, mode);
-    pool.push(await scoreAndReflect(seed, `seed-${mode}`, 0, i));
+    pool.push(await scoreAndReflect(seed, `seed-${mode}-${i}`, 0, i));
   }
 
   for (let gen = 1; gen <= generations; gen++) {
-    console.log(`  [GEPA] generation ${gen}/${generations}, pool=${pool.length}, best=${Math.max(...pool.map(c => c.score)).toFixed(4)}`);
+    const best = Math.max(...pool.map(c => c.score));
+    console.log(`  [GEPA] gen ${gen}/${generations} pool=${pool.length} best=${best.toFixed(4)}`);
     const frontier = paretoFrontier(pool);
     const next: Candidate[] = [...frontier];
     let vi = next.length;
 
+    // Feedback mutations from frontier
     for (const parent of frontier) {
       if (next.length >= population) break;
       const child = await mutate(parent.prompt, parent.feedback, "feedback");
       next.push(await scoreAndReflect(child, "feedback-mut", gen, vi++));
+    }
+
+    // Compression mutations
+    for (const parent of frontier) {
       if (next.length >= population) break;
       const comp = await mutate(parent.prompt, "", "compress");
       next.push(await scoreAndReflect(comp, "compress-mut", gen, vi++));
     }
 
+    // Crossover from top 2
     if (next.length < population && frontier.length >= 2) {
-      const [a, b] = [...frontier].sort((x, y) => y.score - x.score);
+      const sorted = [...frontier].sort((a, b) => b.score - a.score);
+      const [a, b] = sorted;
       if (a && b && a.prompt !== b.prompt) {
         const { text: merged } = await callCerebras(
           SYS_CROSSOVER,
@@ -457,6 +460,7 @@ async function runGepaInstrumented(
         next.push(await scoreAndReflect(merged.trim() || a.prompt, "crossover", gen, vi++));
       }
     }
+
     pool = next;
   }
 
@@ -468,44 +472,6 @@ async function runGepaInstrumented(
   }, finalFrontier[0] ?? pool[0]!);
 
   return { optimizedPrompt: best.prompt, score: best.score, baseline: baseline.score, lineage };
-}
-
-// ── Bootstrap-fewshot optimizer ───────────────────────────────────────────────
-
-async function runBootstrapInstrumented(
-  task: string,
-  baselinePrompt: string,
-  dataset: OptimizationExample[],
-  scorer: (p: string, ex: OptimizationExample[]) => Promise<number>,
-): Promise<OptimizerResult> {
-  const timestamp = () => new Date().toISOString();
-  const lineage: Array<{ round: number; variant: number; score: number; notes?: string }> = [];
-
-  console.log(`  [bootstrap-fewshot] scoring baseline...`);
-  const baselineScore = await scorer(baselinePrompt, dataset);
-  lineage.push({ round: 0, variant: 0, score: baselineScore, notes: "baseline" });
-  logTrajectory({ timestamp: timestamp(), task, optimizer: "bootstrap-fewshot", step: "baseline", score: baselineScore });
-
-  // Pick top-5 examples with highest reward
-  const ranked = [...dataset].sort((a, b) => (b.reward ?? 0) - (a.reward ?? 0));
-  const fewShot = ranked.slice(0, 5);
-
-  // Build demonstrations block
-  const demoLines = ["Demonstrations:", ""];
-  fewShot.forEach((ex, i) => {
-    demoLines.push(`Example ${i + 1}:`);
-    demoLines.push(`Input:\n${ex.input.user.slice(0, 600)}`);
-    demoLines.push(`Expected:\n${ex.expectedOutput}`);
-    demoLines.push("");
-  });
-  const demos = demoLines.join("\n").trimEnd();
-  const optimizedPrompt = `${baselinePrompt.trimEnd()}\n\n${demos}\n`;
-
-  const optimizedScore = await scorer(optimizedPrompt, dataset);
-  lineage.push({ round: 1, variant: 1, score: optimizedScore, notes: `injected ${fewShot.length} demonstrations` });
-  logTrajectory({ timestamp: timestamp(), task, optimizer: "bootstrap-fewshot", step: "optimized", score: optimizedScore });
-
-  return { optimizedPrompt, score: optimizedScore, baseline: baselineScore, lineage, fewShotExamples: fewShot };
 }
 
 // ── Baseline prompts ──────────────────────────────────────────────────────────
@@ -526,20 +492,24 @@ Output format: Just "YES" or "NO" on a single line.`,
 
 Available actions:
 - REPLY: Send a text response to the user
-- SEARCH: Look up information
+- SEARCH: Look up information on the internet
 - SCHEDULE: Create a calendar event
-- REMIND: Set a reminder
-- NOTES: Save a note
+- REMIND: Set a reminder for the user
+- NOTES: Save a note or piece of information
 - NONE: No action needed
 
-Return a JSON object: {"toolCalls": [{"name": "ACTION_NAME", "args": {}}]}`,
+Return ONLY a JSON object in this exact format:
+{"toolCalls": [{"name": "ACTION_NAME", "args": {}}]}
+
+No explanation. JSON only.`,
 
   response: `Respond to the user's message. Be concise and direct.
 
 Guidelines:
 - Use a friendly, conversational tone
-- Answer the question or fulfill the request
-- If you don't know something, say so honestly`,
+- Answer the question or fulfill the request directly
+- If you don't know something, say so honestly
+- Keep responses focused and not overly long`,
 
   media_description: `Describe the media file (image, audio, or video).
 
@@ -550,40 +520,50 @@ Include:
 - The overall context or setting
 
 Be objective and factual. Do not make assumptions beyond what is clearly present.`,
+
+  // Real runtime prompt from elizaOS — shouldRespondTemplate (simplified for eval)
+  should_respond_runtime: `task: Decide whether the agent should respond, ignore, or stop.
+
+rules:
+- direct mention of agent name -> RESPOND
+- talking to someone else -> IGNORE unless agent is also directly addressed
+- prior participation alone is not enough; newest message must clearly expect agent
+- request to stop or be quiet directed at agent -> STOP
+- in groups, if latest message is addressed to someone else, IGNORE
+- when unsure, default IGNORE
+
+Output ONLY one of: YES (respond) or NO (ignore/stop)`,
 };
 
 // ── Synthetic training examples ───────────────────────────────────────────────
 
 const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
-  // Harder should_respond: ambiguous third-party mentions, @-mentions in middle of text,
-  // implicit references, system noise. Baseline prompt misses several of these.
   should_respond: [
     { id: "sr-1", input: { user: "@assistant can you help me schedule a meeting for tomorrow at 3pm?" }, expectedOutput: "YES", reward: 1 },
     { id: "sr-2", input: { user: "Hey John, can you grab lunch today?" }, expectedOutput: "NO", reward: 0 },
     { id: "sr-3", input: { user: "What time is it in Tokyo right now?" }, expectedOutput: "YES", reward: 1 },
     { id: "sr-4", input: { user: "lol that's hilarious" }, expectedOutput: "NO", reward: 0 },
-    // Harder: the agent's name appears but mid-sentence with no question
     { id: "sr-5", input: { user: "I was talking to the assistant yesterday and it helped me" }, expectedOutput: "NO", reward: 0 },
     { id: "sr-6", input: { user: "Anyone else going to the party tonight?" }, expectedOutput: "NO", reward: 0 },
     { id: "sr-7", input: { user: "Hey assistant, can you summarize this article for me?" }, expectedOutput: "YES", reward: 1 },
-    // Harder: statement of fact that seems like it might need a reply
     { id: "sr-8", input: { user: "The meeting got moved to 4pm" }, expectedOutput: "NO", reward: 0 },
     { id: "sr-9", input: { user: "Can someone look up the flight status for AA 1234?" }, expectedOutput: "YES", reward: 1 },
-    // Harder: multi-party conversation fragment
     { id: "sr-10", input: { user: "alice: did you get my email? bob: yeah got it" }, expectedOutput: "NO", reward: 0 },
     { id: "sr-11", input: { user: "Can you help me write an email to my boss?" }, expectedOutput: "YES", reward: 1 },
-    // Harder: question but not directed at assistant
     { id: "sr-12", input: { user: "Does anyone know where the conference room is?" }, expectedOutput: "YES", reward: 1 },
     { id: "sr-13", input: { user: "ok ttyl everyone" }, expectedOutput: "NO", reward: 0 },
-    // Harder: passive construction that looks like a task for the agent
     { id: "sr-14", input: { user: "The report needs to be sent by Friday" }, expectedOutput: "NO", reward: 0 },
     { id: "sr-15", input: { user: "assistant what day of the week is it?" }, expectedOutput: "YES", reward: 1 },
-    // Harder: gibberish / emoji
     { id: "sr-16", input: { user: "🎉🎊🥳" }, expectedOutput: "NO", reward: 0 },
+    // Additional harder examples
+    { id: "sr-17", input: { user: "Can the AI look into this?" }, expectedOutput: "YES", reward: 1 },
+    { id: "sr-18", input: { user: "Someone should check the server logs" }, expectedOutput: "NO", reward: 0 },
+    { id: "sr-19", input: { user: "bot, what's 2+2?" }, expectedOutput: "YES", reward: 1 },
+    { id: "sr-20", input: { user: "Thanks for your help earlier, chat!" }, expectedOutput: "NO", reward: 0 },
   ],
 
   action_planner: [
-    { id: "ap-1", input: { user: "User wants to schedule a dentist appointment for next Tuesday at 2pm. Current time: Monday 10am." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{"title":"Dentist appointment","time":"next Tuesday 2pm"}}]}', reward: 1 },
+    { id: "ap-1", input: { user: "User wants to schedule a dentist appointment for next Tuesday at 2pm." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{"title":"Dentist appointment","time":"next Tuesday 2pm"}}]}', reward: 1 },
     { id: "ap-2", input: { user: "User asked what the weather is like today in San Francisco." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{"query":"weather San Francisco today"}}]}', reward: 1 },
     { id: "ap-3", input: { user: "User said hello and asked how you're doing." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{"message":"I\'m doing well, thanks for asking!"}}]}', reward: 1 },
     { id: "ap-4", input: { user: "User wants to be reminded to call their doctor in 2 hours." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{"message":"Call doctor","delay":"2 hours"}}]}', reward: 1 },
@@ -591,28 +571,57 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
     { id: "ap-6", input: { user: "User said goodbye and that they'll talk later." }, expectedOutput: '{"toolCalls":[{"name":"REPLY","args":{"message":"Goodbye! Talk later!"}}]}', reward: 1 },
     { id: "ap-7", input: { user: "User wants to find restaurants near downtown Seattle." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{"query":"restaurants near downtown Seattle"}}]}', reward: 1 },
     { id: "ap-8", input: { user: "User wants a reminder to submit the quarterly report on Friday at 5pm." }, expectedOutput: '{"toolCalls":[{"name":"REMIND","args":{"message":"Submit quarterly report","time":"Friday 5pm"}}]}', reward: 1 },
+    // Harder examples
+    { id: "ap-9", input: { user: "User is asking who won the Super Bowl last year." }, expectedOutput: '{"toolCalls":[{"name":"SEARCH","args":{"query":"Super Bowl winner last year"}}]}', reward: 1 },
+    { id: "ap-10", input: { user: "User says 'block off 2-3pm Thursday for a team sync'." }, expectedOutput: '{"toolCalls":[{"name":"SCHEDULE","args":{"title":"Team sync","time":"Thursday 2-3pm"}}]}', reward: 1 },
+    { id: "ap-11", input: { user: "User wants to jot down that they need to pick up milk and eggs." }, expectedOutput: '{"toolCalls":[{"name":"NOTES","args":{"content":"Pick up milk and eggs"}}]}', reward: 1 },
+    { id: "ap-12", input: { user: "User just sent a thumbs up emoji." }, expectedOutput: '{"toolCalls":[{"name":"NONE","args":{}}]}', reward: 0 },
   ],
 
   response: [
-    { id: "resp-1", input: { user: "What's the best way to learn programming?" }, expectedOutput: "Start with Python - it has clear syntax and lots of learning resources. Focus on building small projects, practice daily, and use platforms like Codecademy or freeCodeCamp.", reward: 1 },
-    { id: "resp-2", input: { user: "Can you explain what machine learning is in simple terms?" }, expectedOutput: "Machine learning is teaching computers to learn from examples rather than explicit rules. Like how a child learns to recognize cats by seeing many cat photos, ML models learn patterns from data to make predictions.", reward: 1 },
-    { id: "resp-3", input: { user: "What are some healthy breakfast options?" }, expectedOutput: "Great breakfast options include oatmeal with berries, Greek yogurt with nuts, eggs with vegetables, or whole grain toast with avocado. These provide protein, fiber, and nutrients to start your day.", reward: 1 },
-    { id: "resp-4", input: { user: "How do I improve my time management skills?" }, expectedOutput: "Start with time blocking - schedule specific tasks in your calendar. Use the Pomodoro technique (25-min focused work, 5-min break), prioritize tasks by urgency and importance, and eliminate distractions during focus time.", reward: 1 },
-    { id: "resp-5", input: { user: "What should I do if I can't sleep at night?" }, expectedOutput: "Try keeping a consistent sleep schedule, avoid screens an hour before bed, keep your room cool and dark, and consider relaxation techniques like deep breathing or meditation. Avoid caffeine after 2pm.", reward: 1 },
-    { id: "resp-6", input: { user: "Can you recommend some good books for personal development?" }, expectedOutput: "Great personal development books include 'Atomic Habits' by James Clear, 'Mindset' by Carol Dweck, 'Deep Work' by Cal Newport, and 'The Power of Now' by Eckhart Tolle.", reward: 1 },
-    { id: "resp-7", input: { user: "How do I stay motivated when working on long projects?" }, expectedOutput: "Break the project into small milestones and celebrate each completion. Set daily goals, track your progress visually, find an accountability partner, and remind yourself of the project's purpose and impact.", reward: 1 },
-    { id: "resp-8", input: { user: "What's the difference between a CPU and a GPU?" }, expectedOutput: "A CPU (Central Processing Unit) handles general tasks with a few powerful cores, great for sequential operations. A GPU (Graphics Processing Unit) has thousands of smaller cores for parallel tasks, ideal for graphics and AI computations.", reward: 1 },
+    { id: "resp-1", input: { user: "What's the best way to learn programming?" }, expectedOutput: "Start with Python - it has clear syntax and lots of learning resources. Focus on building small projects, practice daily, and use platforms like Codecademy or freeCodeCamp.", reward: 1, rubric: "Should give concrete, actionable advice with specific resources" },
+    { id: "resp-2", input: { user: "Can you explain what machine learning is in simple terms?" }, expectedOutput: "Machine learning is teaching computers to learn from examples rather than explicit rules. Like how a child learns to recognize cats by seeing many cat photos, ML models learn patterns from data to make predictions.", reward: 1, rubric: "Should use an analogy to explain clearly, without jargon" },
+    { id: "resp-3", input: { user: "What are some healthy breakfast options?" }, expectedOutput: "Great options include oatmeal with berries, Greek yogurt with nuts, eggs with vegetables, or whole grain toast with avocado. These provide protein, fiber, and nutrients to start your day.", reward: 1, rubric: "Should list concrete specific options with brief reasons" },
+    { id: "resp-4", input: { user: "How do I improve my time management skills?" }, expectedOutput: "Try time blocking - schedule specific tasks in your calendar. Use Pomodoro technique (25-min focus, 5-min break), prioritize by urgency and importance, and eliminate distractions during focus time.", reward: 1, rubric: "Should give practical, actionable techniques, not vague advice" },
+    { id: "resp-5", input: { user: "What should I do if I can't sleep at night?" }, expectedOutput: "Keep a consistent sleep schedule, avoid screens an hour before bed, keep your room cool and dark, and try deep breathing or meditation. Avoid caffeine after 2pm.", reward: 1, rubric: "Should give specific, evidence-based sleep hygiene tips" },
+    { id: "resp-6", input: { user: "What's the difference between a CPU and a GPU?" }, expectedOutput: "A CPU handles general tasks with a few powerful cores, great for sequential operations. A GPU has thousands of smaller cores for parallel tasks, ideal for graphics and AI computations.", reward: 1, rubric: "Should explain the core architectural difference and use cases clearly" },
+    { id: "resp-7", input: { user: "How do I stay motivated when working on long projects?" }, expectedOutput: "Break the project into small milestones and celebrate each one. Set daily goals, track progress visually, find an accountability partner, and remind yourself of the project's purpose.", reward: 1, rubric: "Should give practical strategies, not just say 'stay positive'" },
+    { id: "resp-8", input: { user: "What's 15% of 240?" }, expectedOutput: "15% of 240 is 36.", reward: 1, rubric: "Should give the exact correct numerical answer immediately" },
+    { id: "resp-9", input: { user: "How do you make a basic vinaigrette?" }, expectedOutput: "Whisk together 1 part vinegar (or lemon juice) with 3 parts olive oil, plus salt and pepper. Add Dijon mustard to help emulsify. Adjust to taste.", reward: 1, rubric: "Should give a specific recipe with ratios" },
+    { id: "resp-10", input: { user: "What is the capital of Australia?" }, expectedOutput: "Canberra is the capital of Australia.", reward: 1, rubric: "Should give the correct factual answer directly (NOT Sydney)" },
   ],
 
   media_description: [
-    { id: "md-1", input: { user: "[Image: A golden retriever puppy playing in autumn leaves in a park]" }, expectedOutput: "A golden retriever puppy playing energetically in a pile of colorful autumn leaves in a park setting. The puppy appears joyful with leaves scattered around it. Fall foliage visible in the background.", reward: 1 },
-    { id: "md-2", input: { user: "[Image: A downtown city skyline at sunset with buildings reflected in water]" }, expectedOutput: "A city skyline photographed at sunset showing tall buildings and skyscrapers. The golden and orange sky reflects in the water below, creating a mirror image of the urban landscape. Multiple high-rise buildings visible.", reward: 1 },
-    { id: "md-3", input: { user: "[Image: A kitchen with modern appliances, marble countertops, and pendant lighting]" }, expectedOutput: "A modern kitchen featuring marble or marble-like countertops, stainless steel or high-end appliances, and pendant lights hanging from the ceiling. Clean, contemporary design with organized layout.", reward: 1 },
-    { id: "md-4", input: { user: "[Image: A woman in athletic gear running on a trail through a forest]" }, expectedOutput: "A woman wearing athletic/running gear running on a trail through a forested area. She appears to be mid-stride. Trees line the trail on both sides, suggesting a natural outdoor environment.", reward: 1 },
-    { id: "md-5", input: { user: "[Audio: Rain sounds with occasional thunder in the background]" }, expectedOutput: "Audio recording featuring steady rainfall sounds with intermittent thunder in the background. The rain creates a consistent white noise backdrop while occasional thunder provides deeper, rumbling sounds at irregular intervals.", reward: 1 },
-    { id: "md-6", input: { user: "[Image: A charcuterie board with cheeses, meats, fruits, and crackers]" }, expectedOutput: "A charcuterie/cheese board arranged with various cheeses, cured meats, fresh and dried fruits, crackers, and possibly nuts or olives. Items are artfully arranged on a wooden board for sharing.", reward: 1 },
+    { id: "md-1", input: { user: "[Image: A golden retriever puppy playing in autumn leaves in a park]" }, expectedOutput: "A golden retriever puppy playing energetically in a pile of colorful autumn leaves in a park. The puppy appears joyful with leaves scattered around. Fall foliage visible in the background.", reward: 1, rubric: "Should describe subject, setting, mood, and visual details" },
+    { id: "md-2", input: { user: "[Image: A downtown city skyline at sunset with buildings reflected in water]" }, expectedOutput: "A city skyline at sunset showing tall buildings. The golden and orange sky reflects in the water below, creating a mirror image. Multiple high-rise buildings visible.", reward: 1, rubric: "Should capture the key visual elements: skyline, sunset colors, reflection" },
+    { id: "md-3", input: { user: "[Image: A kitchen with modern appliances, marble countertops, and pendant lighting]" }, expectedOutput: "A modern kitchen featuring marble countertops, high-end appliances, and pendant lights. Clean, contemporary design with organized layout.", reward: 1, rubric: "Should identify the style and key design elements" },
+    { id: "md-4", input: { user: "[Image: A woman in athletic gear running on a trail through a forest]" }, expectedOutput: "A woman in athletic/running gear running on a trail through a forested area. She appears mid-stride. Trees line the trail on both sides.", reward: 1, rubric: "Should describe subject, action, setting clearly" },
+    { id: "md-5", input: { user: "[Audio: Rain sounds with occasional thunder in the background]" }, expectedOutput: "Audio featuring steady rainfall sounds with intermittent thunder. The rain creates a consistent backdrop while thunder provides deeper rumbling sounds at irregular intervals.", reward: 1, rubric: "Should describe the sounds, their pattern, and the overall ambiance" },
+    { id: "md-6", input: { user: "[Image: A charcuterie board with cheeses, meats, fruits, and crackers]" }, expectedOutput: "A charcuterie board with various cheeses, cured meats, fresh and dried fruits, and crackers. Items are artfully arranged on a wooden board for sharing.", reward: 1, rubric: "Should list the types of items and describe the presentation" },
+    { id: "md-7", input: { user: "[Image: A white cat sleeping on a red couch near a sunny window]" }, expectedOutput: "A white cat sleeping peacefully on a red couch positioned near a window with natural sunlight streaming in. The scene has a warm, cozy atmosphere.", reward: 1, rubric: "Should describe the animal, position, furniture, and lighting" },
+    { id: "md-8", input: { user: "[Video: A timelapse of clouds moving across a blue sky over a mountain range]" }, expectedOutput: "A timelapse video showing clouds rapidly moving across a blue sky above a mountain range. The accelerated footage shows cloud formations forming, shifting, and dissipating over the peaks.", reward: 1, rubric: "Should identify the timelapse format and describe the motion and scene" },
+  ],
+
+  should_respond_runtime: [
+    { id: "srr-1", input: { user: "assistant: what time is it in London?" }, expectedOutput: "YES", reward: 1 },
+    { id: "srr-2", input: { user: "alice: bob can you check the PR?" }, expectedOutput: "NO", reward: 0 },
+    { id: "srr-3", input: { user: "Can anyone help me with this code error?" }, expectedOutput: "YES", reward: 1 },
+    { id: "srr-4", input: { user: "meeting starts in 10 mins heads up everyone" }, expectedOutput: "NO", reward: 0 },
+    { id: "srr-5", input: { user: "bot please translate this to French: hello world" }, expectedOutput: "YES", reward: 1 },
+    { id: "srr-6", input: { user: "I just pushed the hotfix" }, expectedOutput: "NO", reward: 0 },
+    { id: "srr-7", input: { user: "can the assistant look up the latest stock price for AAPL?" }, expectedOutput: "YES", reward: 1 },
+    { id: "srr-8", input: { user: "lgtm from me @sarah" }, expectedOutput: "NO", reward: 0 },
+    { id: "srr-9", input: { user: "What's the weather like tomorrow in NYC?" }, expectedOutput: "YES", reward: 1 },
+    { id: "srr-10", input: { user: "Great work everyone on this sprint!" }, expectedOutput: "NO", reward: 0 },
+    { id: "srr-11", input: { user: "Hey AI, summarize what we've discussed so far" }, expectedOutput: "YES", reward: 1 },
+    { id: "srr-12", input: { user: "john: sure thing, I'll handle it" }, expectedOutput: "NO", reward: 0 },
   ],
 };
+
+// ── Task configuration ─────────────────────────────────────────────────────────
+
+// Tasks that benefit from LLM-as-judge (open-ended responses)
+const JUDGE_TASKS = new Set(["response", "media_description"]);
 
 // ── Main eval loop ────────────────────────────────────────────────────────────
 
@@ -624,197 +633,162 @@ interface TaskResult {
   improvementPct: number;
   optimizedPromptLength: number;
   baselinePromptLength: number;
-  tokenStats: {
-    avgTemplateTokens: number;
-    avgTotalInputTokens: number;
-  };
+  tokenStats: { avgTemplateTokens: number; avgTotalInputTokens: number };
+  optimizedPrompt: string;
 }
 
 async function evalTask(task: string): Promise<TaskResult> {
-  console.log(`\n${"═".repeat(60)}`);
+  console.log(`\n${"═".repeat(64)}`);
   console.log(`Task: ${task}`);
-  console.log("═".repeat(60));
+  console.log("═".repeat(64));
 
   const baselinePrompt = BASELINE_PROMPTS[task]!;
   const dataset = SYNTHETIC_DATASETS[task]!;
-  const adapter = buildAdapter();
-  const scorer = buildScorer(task, adapter);
+  const useJudge = JUDGE_TASKS.has(task);
+  const adapter = { complete: async (i: { system?: string; user: string; temperature?: number; maxTokens?: number }) => (await callCerebras(i.system, i.user, i.temperature ?? 0, i.maxTokens ?? 1024)).text };
+  const scorer = buildScorer(task, adapter, useJudge);
 
   // Count template tokens across dataset
   let totalTemplateTokens = 0;
   let totalInputTokens = 0;
   for (const ex of dataset) {
-    const report = countPromptTokens(baselinePrompt, ex.input.user);
-    totalTemplateTokens += report.templateTokens;
-    totalInputTokens += report.totalInputTokens;
+    const r = countPromptTokens(baselinePrompt, ex.input.user);
+    totalTemplateTokens += r.templateTokens;
+    totalInputTokens += r.totalInputTokens;
   }
   const avgTemplateTokens = Math.round(totalTemplateTokens / dataset.length);
   const avgTotalInputTokens = Math.round(totalInputTokens / dataset.length);
-  console.log(`  Baseline prompt: ${baselinePrompt.length} chars, ~${countTokensApprox(baselinePrompt)} tokens`);
-  console.log(`  Dataset: ${dataset.length} examples`);
-  console.log(`  Avg template tokens: ${avgTemplateTokens}, avg total input tokens: ${avgTotalInputTokens}`);
 
-  let result: OptimizerResult;
+  console.log(`  Baseline: ${baselinePrompt.length} chars (~${countTokensApprox(baselinePrompt)} tokens)`);
+  console.log(`  Dataset: ${dataset.length} examples | scorer: ${useJudge ? "llm-judge" : "exact"}`);
+  console.log(`  Avg template tokens: ${avgTemplateTokens} | avg total input: ${avgTotalInputTokens}`);
+  console.log(`  GEPA: ${GEPA_GENERATIONS} generations × population ${GEPA_POPULATION}`);
 
-  if (OPTIMIZER === "bootstrap-fewshot") {
-    result = await runBootstrapInstrumented(task, baselinePrompt, dataset, scorer);
-  } else {
-    // GEPA (default)
-    result = await runGepaInstrumented(
-      task,
-      baselinePrompt,
-      dataset,
-      scorer,
-      GEPA_GENERATIONS,
-      GEPA_POPULATION,
-    );
-  }
+  const result = await runGepa(task, baselinePrompt, dataset, scorer, GEPA_GENERATIONS, GEPA_POPULATION);
 
   const improvement = result.score - result.baseline;
   const improvementPct = result.baseline === 0 ? 0 : (improvement / result.baseline) * 100;
 
   console.log(`\n  ── Results ──`);
-  console.log(`  Baseline score:   ${result.baseline.toFixed(4)}`);
-  console.log(`  Optimized score:  ${result.score.toFixed(4)}`);
-  console.log(`  Improvement:      ${improvement >= 0 ? "+" : ""}${improvement.toFixed(4)} (${improvementPct >= 0 ? "+" : ""}${improvementPct.toFixed(1)}%)`);
-  console.log(`  Lineage steps:    ${result.lineage.length}`);
+  console.log(`  Baseline:   ${result.baseline.toFixed(4)}`);
+  console.log(`  Optimized:  ${result.score.toFixed(4)}`);
+  console.log(`  Delta:      ${improvement >= 0 ? "+" : ""}${improvement.toFixed(4)} (${improvementPct >= 0 ? "+" : ""}${improvementPct.toFixed(1)}%)`);
+  console.log(`  Lineage:    ${result.lineage.length} steps`);
 
-  // Save optimized prompt to export dir
+  // Save prompts
   mkdirSync(EXPORT_DIR, { recursive: true });
-  const promptPath = join(EXPORT_DIR, `${task}-optimized.txt`);
-  writeFileSync(promptPath, result.optimizedPrompt, "utf-8");
-  const baselinePath = join(EXPORT_DIR, `${task}-baseline.txt`);
-  writeFileSync(baselinePath, baselinePrompt, "utf-8");
+  writeFileSync(join(EXPORT_DIR, `${task}-optimized.txt`), result.optimizedPrompt, "utf-8");
+  writeFileSync(join(EXPORT_DIR, `${task}-baseline.txt`), baselinePrompt, "utf-8");
 
-  // Log final trajectory
   logTrajectory({
-    timestamp: new Date().toISOString(),
-    task,
-    optimizer: OPTIMIZER,
-    step: "final-result",
+    timestamp: new Date().toISOString(), task, optimizer: OPTIMIZER, step: "final-result",
     score: result.score,
     notes: `baseline=${result.baseline.toFixed(4)} optimized=${result.score.toFixed(4)} delta=${improvement.toFixed(4)} pct=${improvementPct.toFixed(1)}%`,
   });
 
   return {
-    task,
-    baselineScore: result.baseline,
-    optimizedScore: result.score,
-    improvement,
-    improvementPct,
+    task, baselineScore: result.baseline, optimizedScore: result.score,
+    improvement, improvementPct,
     optimizedPromptLength: result.optimizedPrompt.length,
     baselinePromptLength: baselinePrompt.length,
     tokenStats: { avgTemplateTokens, avgTotalInputTokens },
+    optimizedPrompt: result.optimizedPrompt,
   };
 }
 
 async function main() {
-  console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log("║       Eliza Prompt Optimization Eval — GEPA + DSPy      ║");
-  console.log("╚══════════════════════════════════════════════════════════╝");
+  console.log("╔══════════════════════════════════════════════════════════════╗");
+  console.log("║     Eliza Prompt Optimization Eval v2 — GEPA 5-experiment    ║");
+  console.log("╚══════════════════════════════════════════════════════════════╝");
   console.log(`\nOptimizer:   ${OPTIMIZER}`);
   console.log(`Model:       ${CEREBRAS_MODEL}`);
-  if (OPTIMIZER === "gepa") {
-    console.log(`Generations: ${GEPA_GENERATIONS}`);
-    console.log(`Population:  ${GEPA_POPULATION}`);
-  }
+  console.log(`Generations: ${GEPA_GENERATIONS}  Population: ${GEPA_POPULATION}`);
   console.log(`Export dir:  ${EXPORT_DIR}`);
-  console.log(`\nRunning eval on tasks: ${Object.keys(BASELINE_PROMPTS).join(", ")}`);
+
+  const allTasks = Object.keys(BASELINE_PROMPTS);
+  const tasks = EVAL_TASKS ? allTasks.filter(t => EVAL_TASKS.includes(t)) : allTasks;
+  console.log(`\nRunning tasks: ${tasks.join(", ")}`);
 
   const results: TaskResult[] = [];
-  const tasks = Object.keys(BASELINE_PROMPTS);
 
   for (const task of tasks) {
     try {
-      const result = await evalTask(task);
-      results.push(result);
+      results.push(await evalTask(task));
     } catch (err) {
-      console.error(`\nTask ${task} failed:`, err);
-      logTrajectory({
-        timestamp: new Date().toISOString(),
-        task,
-        optimizer: OPTIMIZER,
-        step: "error",
-        notes: String(err),
-      });
+      console.error(`\n  Task ${task} failed:`, err);
+      logTrajectory({ timestamp: new Date().toISOString(), task, optimizer: OPTIMIZER, step: "error", notes: String(err) });
     }
   }
 
-  // ── Summary table ──────────────────────────────────────────────────────────
-  console.log(`\n${"═".repeat(70)}`);
+  // ── Summary ────────────────────────────────────────────────────────────────
+  console.log(`\n${"═".repeat(74)}`);
   console.log("SUMMARY");
-  console.log("═".repeat(70));
-  console.log(`${"Task".padEnd(20)} ${"Baseline".padStart(9)} ${"Optimized".padStart(10)} ${"Delta".padStart(8)} ${"AvgTmplTok".padStart(11)} ${"AvgTotalTok".padStart(12)}`);
-  console.log("─".repeat(70));
+  console.log("═".repeat(74));
+  console.log(`${"Task".padEnd(22)} ${"Baseline".padStart(9)} ${"Optimized".padStart(10)} ${"Delta".padStart(14)} ${"TmplTok".padStart(8)} ${"TotalTok".padStart(9)}`);
+  console.log("─".repeat(74));
 
   let totalImprovement = 0;
   let improvedCount = 0;
 
   for (const r of results) {
-    const delta = r.improvement >= 0 ? `+${r.improvement.toFixed(4)}` : r.improvement.toFixed(4);
-    const pct = r.improvementPct >= 0 ? `+${r.improvementPct.toFixed(1)}%` : `${r.improvementPct.toFixed(1)}%`;
+    const delta = (r.improvement >= 0 ? "+" : "") + r.improvement.toFixed(4);
+    const pct = (r.improvementPct >= 0 ? "+" : "") + r.improvementPct.toFixed(1) + "%";
     console.log(
-      `${r.task.padEnd(20)} ${r.baselineScore.toFixed(4).padStart(9)} ${r.optimizedScore.toFixed(4).padStart(10)} ${(delta + " " + pct).padStart(16)} ${r.tokenStats.avgTemplateTokens.toString().padStart(11)} ${r.tokenStats.avgTotalInputTokens.toString().padStart(12)}`,
+      `${r.task.padEnd(22)} ${r.baselineScore.toFixed(4).padStart(9)} ${r.optimizedScore.toFixed(4).padStart(10)} ${(delta + " " + pct).padStart(14)} ${r.tokenStats.avgTemplateTokens.toString().padStart(8)} ${r.tokenStats.avgTotalInputTokens.toString().padStart(9)}`
     );
     if (r.improvement > 0) improvedCount++;
     totalImprovement += r.improvement;
   }
 
-  console.log("─".repeat(70));
   const avgImprovement = results.length > 0 ? totalImprovement / results.length : 0;
+  console.log("─".repeat(74));
   console.log(`Tasks improved: ${improvedCount}/${results.length}`);
   console.log(`Avg score delta: ${avgImprovement >= 0 ? "+" : ""}${avgImprovement.toFixed(4)}`);
-  console.log(`\nTotal API calls: ${totalApiCalls}`);
-  console.log(`Total prompt tokens consumed: ${totalPromptTokens.toLocaleString()}`);
-  console.log(`Total completion tokens consumed: ${totalCompletionTokens.toLocaleString()}`);
-  console.log(`Total tokens: ${(totalPromptTokens + totalCompletionTokens).toLocaleString()}`);
+  console.log(`\nTotal API calls:        ${totalApiCalls}`);
+  console.log(`Total prompt tokens:    ${totalPromptTokens.toLocaleString()}`);
+  console.log(`Total completion tokens:${totalCompletionTokens.toLocaleString()}`);
+  console.log(`Total tokens:           ${(totalPromptTokens + totalCompletionTokens).toLocaleString()}`);
 
-  // Export all trajectories
+  // Show best optimized prompts
+  console.log(`\n${"═".repeat(64)}`);
+  console.log("OPTIMIZED PROMPTS (best per task)");
+  console.log("═".repeat(64));
+  for (const r of results) {
+    console.log(`\n── ${r.task} (score: ${r.baselineScore.toFixed(4)} → ${r.optimizedScore.toFixed(4)}) ──`);
+    console.log(r.optimizedPrompt.slice(0, 600));
+    if (r.optimizedPrompt.length > 600) console.log("  … (truncated, see file)");
+  }
+
+  // Export
   mkdirSync(EXPORT_DIR, { recursive: true });
   const { jsonlPath, readablePath } = exportTrajectories(EXPORT_DIR);
 
-  // Write summary JSON
   const summaryPath = join(EXPORT_DIR, "eval-summary.json");
-  writeFileSync(
-    summaryPath,
-    JSON.stringify(
-      {
-        timestamp: new Date().toISOString(),
-        optimizer: OPTIMIZER,
-        model: CEREBRAS_MODEL,
-        gepaGenerations: GEPA_GENERATIONS,
-        gepaPopulation: GEPA_POPULATION,
-        results,
-        totals: {
-          improvedCount,
-          totalTasks: results.length,
-          avgImprovement,
-          totalApiCalls,
-          totalPromptTokens,
-          totalCompletionTokens,
-        },
-      },
-      null,
-      2,
-    ),
-    "utf-8",
-  );
+  writeFileSync(summaryPath, JSON.stringify({
+    timestamp: new Date().toISOString(),
+    optimizer: OPTIMIZER,
+    model: CEREBRAS_MODEL,
+    gepaGenerations: GEPA_GENERATIONS,
+    gepaPopulation: GEPA_POPULATION,
+    results,
+    totals: { improvedCount, totalTasks: results.length, avgImprovement, totalApiCalls, totalPromptTokens, totalCompletionTokens },
+  }, null, 2), "utf-8");
 
-  console.log(`\nExported files:`);
+  console.log(`\nExported:`);
   console.log(`  Summary:  ${summaryPath}`);
   console.log(`  JSONL:    ${jsonlPath}`);
   console.log(`  Readable: ${readablePath}`);
   console.log(`  Prompts:  ${EXPORT_DIR}/<task>-{baseline,optimized}.txt`);
 
   if (improvedCount === 0 && results.length > 0) {
-    console.log(`\n⚠️  No tasks improved. Check trajectory log for details.`);
+    console.log(`\n⚠  No tasks improved. Check trajectory log for details.`);
     process.exit(1);
   }
 
   console.log(`\n✓ Eval complete. ${improvedCount}/${results.length} tasks improved.`);
 }
 
-main().catch((err) => {
+main().catch(err => {
   console.error("Fatal:", err);
   process.exit(1);
 });

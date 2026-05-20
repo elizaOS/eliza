@@ -94,10 +94,7 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
       skipped: mergeSkippedRemoteCapabilityPlugins(sync.skipped, skipped, {
         unloaded: sync.unloaded,
       }),
-      trustDecisions: [
-        ...sync.trustDecisions,
-        ...skippedTrustDecisions,
-      ],
+      trustDecisions: [...sync.trustDecisions, ...skippedTrustDecisions],
     },
   };
 }

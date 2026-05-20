@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 from .analyze_trajectory import summarize as summarize_trajectory
-from .code_agent_coverage import included_benchmark_ids
+from .code_agent_coverage import CODE_AGENT_COVERAGE, included_benchmark_ids
 
 DEFAULT_ADAPTERS = ("elizaos", "opencode")
 DEFAULT_BENCHMARKS = included_benchmark_ids()
@@ -1197,6 +1197,76 @@ def build_token_evidence(results: list[CellResult]) -> dict[str, Any]:
     }
 
 
+def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
+    selected = set(selected_benchmarks)
+    included = [
+        {
+            "benchmark": item.benchmark_id,
+            "domains": list(item.domains),
+            "selected": item.benchmark_id in selected,
+            "reason": item.reason,
+        }
+        for item in CODE_AGENT_COVERAGE
+        if item.status == "included"
+    ]
+    deferred = [
+        {
+            "benchmark": item.benchmark_id,
+            "domains": list(item.domains),
+            "reason": item.reason,
+        }
+        for item in CODE_AGENT_COVERAGE
+        if item.status == "deferred"
+    ]
+    unselected_included = [
+        item["benchmark"] for item in included if not item["selected"]
+    ]
+    return {
+        "selected_benchmarks": selected_benchmarks,
+        "included_benchmarks": included,
+        "deferred_benchmarks": deferred,
+        "selection_complete": not unselected_included,
+        "unselected_included_benchmarks": unselected_included,
+        "status_counts": {
+            "included": len(included),
+            "included_selected": len(included) - len(unselected_included),
+            "included_unselected": len(unselected_included),
+            "deferred": len(deferred),
+        },
+        "message": (
+            "all included code-agent benchmarks are selected"
+            if not unselected_included
+            else "some included code-agent benchmarks were not selected for this run"
+        ),
+    }
+
+
+def build_coverage_gate(summary: dict[str, Any]) -> dict[str, Any]:
+    coverage = summary.get("coverage")
+    if not isinstance(coverage, dict):
+        return {
+            "ok": False,
+            "blocking_benchmarks": [],
+            "message": "benchmark coverage summary is missing",
+        }
+    blocking = list(coverage.get("unselected_included_benchmarks") or [])
+    return {
+        "ok": bool(coverage.get("selection_complete")),
+        "required": "all included code-agent benchmarks selected",
+        "blocking_benchmarks": sorted(str(item) for item in blocking),
+        "deferred_benchmarks": [
+            item.get("benchmark")
+            for item in coverage.get("deferred_benchmarks", [])
+            if isinstance(item, dict)
+        ],
+        "message": (
+            "all included code-agent benchmarks are selected"
+            if coverage.get("selection_complete")
+            else "not all included code-agent benchmarks are selected"
+        ),
+    }
+
+
 def _has_positive_total(outcome: dict[str, int | float | None]) -> bool:
     total = outcome.get("total")
     return isinstance(total, (int, float)) and not isinstance(total, bool) and total > 0
@@ -1395,6 +1465,59 @@ def _trajectory_review(trajectory_dir: str | None) -> dict[str, Any]:
     }
 
 
+def _queue_diagnosis(
+    *,
+    status: str,
+    row: dict[str, Any],
+    target: CellResult | None,
+    baseline: CellResult | None,
+    target_review: dict[str, Any],
+    baseline_review: dict[str, Any],
+) -> list[str]:
+    diagnosis: list[str] = []
+    if status == "inferior":
+        diagnosis.append("target accuracy is below baseline")
+    elif status == "weak":
+        diagnosis.append("both adapters have measured zero accuracy")
+    elif status == "missing":
+        diagnosis.append("missing comparable outcome evidence")
+
+    if target is None:
+        diagnosis.append("target cell result is missing")
+    elif target.failure_class != "pass":
+        diagnosis.append(f"target failure class: {target.failure_class}")
+    if baseline is None:
+        diagnosis.append("baseline cell result is missing")
+    elif baseline.failure_class != "pass":
+        diagnosis.append(f"baseline failure class: {baseline.failure_class}")
+
+    target_total = row.get("target_total")
+    baseline_total = row.get("baseline_total")
+    if not isinstance(target_total, (int, float)) or target_total <= 0:
+        diagnosis.append("target right/wrong/total evidence is incomplete")
+    if not isinstance(baseline_total, (int, float)) or baseline_total <= 0:
+        diagnosis.append("baseline right/wrong/total evidence is incomplete")
+
+    if target_review.get("trajectory_files") == 0 or target_review.get("turns") == 0:
+        diagnosis.append("target trajectory telemetry is missing")
+    if baseline_review.get("trajectory_files") == 0 or baseline_review.get("turns") == 0:
+        diagnosis.append("baseline trajectory telemetry is missing")
+    if target_review.get("repeated_prefix_count", 0):
+        diagnosis.append("target repeated prompt prefixes need review")
+
+    total_token_delta = row.get("total_token_delta")
+    if isinstance(total_token_delta, (int, float)) and total_token_delta > 0:
+        diagnosis.append("target used more total tokens than baseline")
+    llm_call_delta = row.get("llm_call_delta")
+    if isinstance(llm_call_delta, (int, float)) and llm_call_delta > 0:
+        diagnosis.append("target made more LLM calls than baseline")
+    cached_delta = row.get("cached_token_percent_delta")
+    if isinstance(cached_delta, (int, float)) and cached_delta < 0:
+        diagnosis.append("target cached-token percentage is below baseline")
+
+    return diagnosis
+
+
 def build_improvement_queue(
     results: list[CellResult],
     head_to_head: dict[str, Any],
@@ -1420,12 +1543,24 @@ def build_improvement_queue(
         baseline = adapter_results.get(baseline_adapter)
         target_artifacts = _artifact_links(target)
         baseline_artifacts = _artifact_links(baseline)
+        target_review = _trajectory_review(target_artifacts.get("trajectory_dir"))
+        baseline_review = _trajectory_review(baseline_artifacts.get("trajectory_dir"))
+        diagnosis = _queue_diagnosis(
+            status=str(status),
+            row=row,
+            target=target,
+            baseline=baseline,
+            target_review=target_review,
+            baseline_review=baseline_review,
+        )
         priority = "p0" if status in {"inferior", "weak"} else "p1"
         queue.append(
             {
                 "benchmark": benchmark,
                 "status": status,
                 "priority": priority,
+                "diagnosis": diagnosis,
+                "primary_diagnosis": diagnosis[0] if diagnosis else "",
                 "rerun_command_template": _queue_rerun_command_template(
                     priority=priority,
                     status=str(status),
@@ -1449,12 +1584,8 @@ def build_improvement_queue(
                 "baseline_notes": baseline.notes if baseline else [],
                 "target_artifacts": target_artifacts,
                 "baseline_artifacts": baseline_artifacts,
-                "target_trajectory_review": _trajectory_review(
-                    target_artifacts.get("trajectory_dir")
-                ),
-                "baseline_trajectory_review": _trajectory_review(
-                    baseline_artifacts.get("trajectory_dir")
-                ),
+                "target_trajectory_review": target_review,
+                "baseline_trajectory_review": baseline_review,
             }
         )
     queue.sort(key=lambda item: (item["priority"], item["benchmark"]))
@@ -1533,6 +1664,8 @@ def _queue_rerun_command_template(
         "{summary_json}",
     ]
     _append_config_args(parts, run_config)
+    if isinstance(run_config, dict) and run_config.get("enforce_required_stats") is True:
+        parts.append("--enforce-required-stats")
     parts.append("--force")
     return _command_template(parts)
 
@@ -1733,6 +1866,32 @@ def build_required_stats_gate(
     }
 
 
+def build_report_gate(summary: dict[str, Any]) -> dict[str, Any]:
+    gate_specs = (
+        ("coverage_gate", "benchmark coverage"),
+        ("benchmark_gate", "comparable-or-better outcomes"),
+        ("required_stats_gate", "required stats"),
+    )
+    blocking: list[str] = []
+    gate_status: dict[str, bool] = {}
+    for key, label in gate_specs:
+        gate = summary.get(key)
+        ok = bool(isinstance(gate, dict) and gate.get("ok"))
+        gate_status[key] = ok
+        if not ok:
+            blocking.append(label)
+    return {
+        "ok": not blocking,
+        "blocking_gates": blocking,
+        "gate_status": gate_status,
+        "message": (
+            "benchmark report satisfies coverage, comparability, and required stats"
+            if not blocking
+            else "benchmark report is not yet release-ready"
+        ),
+    }
+
+
 def summarize_results(results: list[CellResult]) -> dict[str, Any]:
     by_adapter: dict[str, dict[str, int]] = {}
     by_benchmark: dict[str, dict[str, int]] = {}
@@ -1743,6 +1902,7 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         by_benchmark[result.benchmark][result.failure_class] = by_benchmark[result.benchmark].get(result.failure_class, 0) + 1
 
     head_to_head = build_head_to_head(results)
+    selected_benchmarks = sorted({result.benchmark for result in results})
     summary = {
         "generated_at": datetime.now(UTC).isoformat(),
         "total": len(results),
@@ -1759,10 +1919,12 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         "outcome_by_adapter": _aggregate_by_adapter(results, "outcome"),
         "token_by_adapter": _aggregate_by_adapter(results, "token"),
         "token_evidence": build_token_evidence(results),
+        "coverage": build_coverage_summary(selected_benchmarks),
         "head_to_head": head_to_head,
         "improvement_queue": build_improvement_queue(results, head_to_head),
         "cells": [asdict(result) for result in results],
     }
+    summary["coverage_gate"] = build_coverage_gate(summary)
     summary["benchmark_gate"] = build_benchmark_gate(summary)
     return summary
 
@@ -1796,8 +1958,10 @@ def build_run_config(
         "queue_statuses": str(args.queue_statuses or ""),
         "compare_summary": str(args.compare_summary or ""),
         "enforce_comparable": bool(args.enforce_comparable),
+        "enforce_coverage": bool(args.enforce_coverage),
         "enforce_token_evidence": bool(args.enforce_token_evidence),
         "enforce_required_stats": bool(args.enforce_required_stats),
+        "enforce_report": bool(args.enforce_report),
     }
 
 
@@ -1840,8 +2004,10 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Max tasks: {run_config.get('max_tasks', '')}",
                 f"Timeout seconds: {run_config.get('timeout_seconds', '')}",
                 f"Enforce comparable: {run_config.get('enforce_comparable')}",
+                f"Enforce coverage: {run_config.get('enforce_coverage')}",
                 f"Enforce token evidence: {run_config.get('enforce_token_evidence')}",
                 f"Enforce required stats: {run_config.get('enforce_required_stats')}",
+                f"Enforce report: {run_config.get('enforce_report')}",
             ]
         )
     preflight = summary.get("preflight")
@@ -1870,6 +2036,89 @@ def render_markdown(summary: dict[str, Any]) -> str:
                         message=issue.get("message", ""),
                     )
                 )
+    report_gate = summary.get("report_gate")
+    if isinstance(report_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Report Gate",
+                "",
+                f"Status: {'ok' if report_gate.get('ok') else 'blocked'}",
+                f"Message: {report_gate.get('message', '')}",
+                f"Blocking gates: {', '.join(report_gate.get('blocking_gates') or []) or '(none)'}",
+            ]
+        )
+    coverage = summary.get("coverage")
+    if isinstance(coverage, dict):
+        raw_counts = coverage.get("status_counts")
+        counts = raw_counts if isinstance(raw_counts, dict) else {}
+        lines.extend(
+            [
+                "",
+                "## Benchmark Coverage",
+                "",
+                f"Status: {'complete' if coverage.get('selection_complete') else 'partial'}",
+                f"Message: {coverage.get('message', '')}",
+                f"Included selected: {counts.get('included_selected', 0)}/{counts.get('included', 0)}",
+                f"Deferred: {counts.get('deferred', 0)}",
+            ]
+        )
+        unselected = coverage.get("unselected_included_benchmarks")
+        if isinstance(unselected, list) and unselected:
+            lines.append(f"Unselected included benchmarks: {', '.join(str(item) for item in unselected)}")
+        included = coverage.get("included_benchmarks")
+        if isinstance(included, list) and included:
+            lines.extend(
+                [
+                    "",
+                    "| benchmark | domains | selected | reason |",
+                    "| --- | --- | --- | --- |",
+                ]
+            )
+            for item in included:
+                if not isinstance(item, dict):
+                    continue
+                lines.append(
+                    "| {benchmark} | {domains} | {selected} | {reason} |".format(
+                        benchmark=item.get("benchmark", ""),
+                        domains=", ".join(str(domain) for domain in item.get("domains") or []),
+                        selected=item.get("selected"),
+                        reason=item.get("reason", ""),
+                    )
+                )
+        deferred = coverage.get("deferred_benchmarks")
+        if isinstance(deferred, list) and deferred:
+            lines.extend(
+                [
+                    "",
+                    "### Deferred Related Benchmarks",
+                    "",
+                    "| benchmark | domains | reason |",
+                    "| --- | --- | --- |",
+                ]
+            )
+            for item in deferred:
+                if not isinstance(item, dict):
+                    continue
+                lines.append(
+                    "| {benchmark} | {domains} | {reason} |".format(
+                        benchmark=item.get("benchmark", ""),
+                        domains=", ".join(str(domain) for domain in item.get("domains") or []),
+                        reason=item.get("reason", ""),
+                    )
+                )
+    coverage_gate = summary.get("coverage_gate")
+    if isinstance(coverage_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Coverage Gate",
+                "",
+                f"Status: {'ok' if coverage_gate.get('ok') else 'blocked'}",
+                f"Message: {coverage_gate.get('message', '')}",
+                f"Blocking benchmarks: {', '.join(coverage_gate.get('blocking_benchmarks') or []) or '(none)'}",
+            ]
+        )
     lines.extend(
         [
             "",
@@ -1983,15 +2232,15 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 "",
                 "## ElizaOS vs OpenCode",
                 "",
-                "| benchmark | status | target accuracy | baseline accuracy | accuracy delta | target right/wrong | baseline right/wrong | total token delta | cached % delta | LLM call delta |",
-                "| --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: |",
+                "| benchmark | status | target accuracy | baseline accuracy | accuracy delta | target right/wrong | baseline right/wrong | target input | baseline input | target output | baseline output | target total tokens | baseline total tokens | total token delta | target cached % | baseline cached % | cached % delta | target LLM calls | baseline LLM calls | LLM call delta |",
+                "| --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
             ]
         )
         for row in head_to_head.get("comparisons", []):
             if not isinstance(row, dict):
                 continue
             lines.append(
-                "| {benchmark} | {status} | {target_accuracy} | {baseline_accuracy} | {accuracy_delta} | {target_rw} | {baseline_rw} | {token_delta} | {cached_delta} | {llm_delta} |".format(
+                "| {benchmark} | {status} | {target_accuracy} | {baseline_accuracy} | {accuracy_delta} | {target_rw} | {baseline_rw} | {target_input} | {baseline_input} | {target_output} | {baseline_output} | {target_total_tokens} | {baseline_total_tokens} | {token_delta} | {target_cached} | {baseline_cached} | {cached_delta} | {target_llm_calls} | {baseline_llm_calls} | {llm_delta} |".format(
                     benchmark=row.get("benchmark", ""),
                     status=row.get("status", ""),
                     target_accuracy=fmt(row.get("target_accuracy")),
@@ -1999,8 +2248,18 @@ def render_markdown(summary: dict[str, Any]) -> str:
                     accuracy_delta=fmt(row.get("accuracy_delta")),
                     target_rw=f"{fmt(row.get('target_right'), 0)}/{fmt(row.get('target_wrong'), 0)}",
                     baseline_rw=f"{fmt(row.get('baseline_right'), 0)}/{fmt(row.get('baseline_wrong'), 0)}",
+                    target_input=fmt(row.get("target_input_tokens"), 0),
+                    baseline_input=fmt(row.get("baseline_input_tokens"), 0),
+                    target_output=fmt(row.get("target_output_tokens"), 0),
+                    baseline_output=fmt(row.get("baseline_output_tokens"), 0),
+                    target_total_tokens=fmt(row.get("target_total_tokens"), 0),
+                    baseline_total_tokens=fmt(row.get("baseline_total_tokens"), 0),
                     token_delta=fmt(row.get("total_token_delta"), 0),
+                    target_cached=fmt(row.get("target_cached_token_percent"), 2),
+                    baseline_cached=fmt(row.get("baseline_cached_token_percent"), 2),
                     cached_delta=fmt(row.get("cached_token_percent_delta"), 2),
+                    target_llm_calls=fmt(row.get("target_llm_call_count"), 0),
+                    baseline_llm_calls=fmt(row.get("baseline_llm_call_count"), 0),
                     llm_delta=fmt(row.get("llm_call_delta"), 0),
                 )
             )
@@ -2087,8 +2346,8 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 "",
                 "## Improvement Queue",
                 "",
-                "| priority | benchmark | status | next action | accuracy delta | target failure | baseline failure | target trajectories | baseline trajectories |",
-                "| --- | --- | --- | --- | ---: | --- | --- | --- | --- |",
+                "| priority | benchmark | status | diagnosis | next action | accuracy delta | target failure | baseline failure | target trajectories | baseline trajectories |",
+                "| --- | --- | --- | --- | --- | ---: | --- | --- | --- | --- |",
             ]
         )
         for item in improvement_queue:
@@ -2107,10 +2366,11 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 else ""
             )
             lines.append(
-                "| {priority} | {benchmark} | {status} | {next_action} | {accuracy_delta} | {target_failure} | {baseline_failure} | {target_trajectory} | {baseline_trajectory} |".format(
+                "| {priority} | {benchmark} | {status} | {diagnosis} | {next_action} | {accuracy_delta} | {target_failure} | {baseline_failure} | {target_trajectory} | {baseline_trajectory} |".format(
                     priority=item.get("priority", ""),
                     benchmark=item.get("benchmark", ""),
                     status=item.get("status", ""),
+                    diagnosis=item.get("primary_diagnosis") or "",
                     next_action=item.get("next_action", ""),
                     accuracy_delta=fmt(item.get("accuracy_delta")),
                     target_failure=item.get("target_failure_class") or "",
@@ -2290,6 +2550,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Exit nonzero unless elizaos is comparable-or-better on every selected benchmark.",
     )
     parser.add_argument(
+        "--enforce-coverage",
+        action="store_true",
+        help="Exit nonzero unless every included code-agent benchmark is selected.",
+    )
+    parser.add_argument(
         "--enforce-token-evidence",
         action="store_true",
         help="Exit nonzero unless every selected cell produced usable LLM token telemetry.",
@@ -2298,6 +2563,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--enforce-required-stats",
         action="store_true",
         help="Exit nonzero unless required right/wrong and token stats are complete for the run mode.",
+    )
+    parser.add_argument(
+        "--enforce-report",
+        action="store_true",
+        help="Exit nonzero unless coverage, comparability, and required stats gates all pass.",
     )
     parser.add_argument("--force", action="store_true", help="Re-run cells even when cell-result.json exists.")
     parser.add_argument("--no-resume", action="store_true", help="Ignore existing cell-result.json files.")
@@ -2417,6 +2687,7 @@ def main(argv: list[str] | None = None) -> int:
             else None
         ),
     )
+    summary["report_gate"] = build_report_gate(summary)
     if preflight is not None:
         summary["preflight"] = preflight
     if args.compare_summary:
@@ -2430,8 +2701,22 @@ def main(argv: list[str] | None = None) -> int:
     write_json(run_root / "summary.json", summary)
     (run_root / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
     print(json.dumps({"run_root": str(run_root), "summary": str(run_root / "summary.json")}, indent=2))
+    report_gate = summary.get("report_gate")
+    if (
+        args.enforce_report
+        and isinstance(report_gate, dict)
+        and not report_gate.get("ok")
+    ):
+        return 7
     if args.enforce_comparable and not summary["benchmark_gate"]["ok"]:
         return 3
+    coverage_gate = summary.get("coverage_gate")
+    if (
+        args.enforce_coverage
+        and isinstance(coverage_gate, dict)
+        and not coverage_gate.get("ok")
+    ):
+        return 6
     token_evidence = summary.get("token_evidence")
     if (
         args.enforce_token_evidence

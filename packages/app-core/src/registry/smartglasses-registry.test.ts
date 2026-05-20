@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { describe, expect, it } from "vitest";
 import { loadRegistryFromRawEntries } from "./loader";
 import { registryEntrySchema } from "./schema";
 
@@ -42,6 +42,8 @@ describe("smartglasses registry entry", () => {
         "even-realities",
         "bluetooth",
         "wifi",
+        "display",
+        "microphone",
       ]),
     );
     expect(parsed.render.actions).toContain("launch");

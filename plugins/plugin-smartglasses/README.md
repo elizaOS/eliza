@@ -72,7 +72,13 @@ native/bridge APIs such as Mentra/ASG bridge surfaces.
 ```
 
 Use `mode: "ai"` for the default Even AI streaming/completion display path or
-`mode: "text"` for the direct Text Show path documented by EvenDemoApp.
+`mode: "text"` for the direct Text Show path documented by EvenDemoApp. JSON
+input can also include `pageHoldMs` between pages and `completionDelayMs`
+before sending the final completion frame:
+
+```json
+{ "text": "Paced multi-page display", "mode": "ai", "pageHoldMs": 1200, "completionDelayMs": 250 }
+```
 
 `SMARTGLASSES_CONTROL` accepts JSON such as:
 
@@ -80,7 +86,18 @@ Use `mode: "ai"` for the default Even AI streaming/completion display path or
 { "op": "brightness", "level": 10, "auto": true }
 ```
 
-Supported `op` values: `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
+Supported `op` values: `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
+
+Bridge-backed Wi-Fi actions are available only when the active transport
+exposes native phone/headset setup APIs:
+
+```json
+{ "op": "wifi_scan" }
+```
+
+```json
+{ "op": "wifi_configure", "ssid": "Home Wi-Fi", "password": "secret" }
+```
 
 `heartbeat_start` accepts optional `intervalMs` and `immediate` fields. By
 default it sends a heartbeat immediately and then every 8 seconds until
@@ -122,6 +139,15 @@ Fahrplan in addition to plain text display:
 
 ```json
 { "op": "navigation_directions", "totalDuration": "4 min", "totalDistance": "1 km", "direction": "Main St", "distance": "200 m", "speed": "30", "directionTurn": 3 }
+```
+
+Navigation image operations accept `image` as an array, hex, or base64 bit
+plane. `overlay` uses the same formats and defaults to an all-zero overlay when
+omitted, which keeps secondary navigation image action payloads compact enough
+for Eliza JSON extraction:
+
+```json
+{ "op": "navigation_secondary_image", "image": "<base64 bit plane>" }
 ```
 
 ```json

@@ -1,8 +1,5 @@
 export type GlassSide = "left" | "right";
-export type G1ConnectionReadyMode =
-  | "lens-specific"
-  | "official"
-  | "android-f4";
+export type G1ConnectionReadyMode = "lens-specific" | "official" | "android-f4";
 export type SmartglassesAudioEncoding = "pcm16" | "lc3" | "unknown";
 
 export const EVEN_G1_UART = {

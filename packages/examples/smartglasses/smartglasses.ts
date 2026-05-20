@@ -68,6 +68,9 @@ await service.sendTranslateText("translated", "bonjour", 3);
 await service.setHeadUpAngle(20);
 await service.setSilentMode(false);
 await service.setGlassesWearDetection(true);
+await service.scanWifi();
+await service.configureWifi("ExampleNet", "secret");
+await service.getWifiStatus();
 await service.sendConnectionReady();
 await service.sendConnectionReady("both", "official");
 await service.sendConnectionReady("both", "android-f4");
@@ -260,4 +263,17 @@ if (
   )
 ) {
   throw new Error("Example did not send generated BMP packets");
+}
+if (
+  JSON.stringify(transport.wifiRequests) !==
+  JSON.stringify([
+    { op: "scan" },
+    { op: "configure", ssid: "ExampleNet", password: "secret" },
+    { op: "status" },
+  ])
+) {
+  throw new Error("Example did not exercise Wi-Fi service methods");
+}
+if (service.getStatus().lastWifiStatus?.status !== "mock-wifi-ready") {
+  throw new Error("Example did not preserve Wi-Fi status");
 }

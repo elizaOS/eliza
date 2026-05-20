@@ -71,6 +71,9 @@ test("smartglasses example packet path", async () => {
   await service.startTranslate();
   await service.setTranslateLanguages(0x02, 0x05);
   await service.sendTranslateText("translated", "bonjour", 3);
+  await service.scanWifi();
+  await service.configureWifi("TestNet", "secret");
+  await service.getWifiStatus();
   await service.sendConnectionReady();
   await service.sendConnectionReady("both", "official");
   await service.sendConnectionReady("both", "android-f4");
@@ -229,7 +232,17 @@ test("smartglasses example packet path", async () => {
     audioSequenceGaps: 0,
     microphoneEnabled: false,
     lastSerialNumber: "G1RIGHTSERIAL001",
+    wifiAvailable: true,
+    lastWifiStatus: {
+      status: "mock-wifi-ready",
+      networks: ["MockNet"],
+    },
   });
+  expect(transport.wifiRequests).toEqual([
+    { op: "scan" },
+    { op: "configure", ssid: "TestNet", password: "secret" },
+    { op: "status" },
+  ]);
 });
 
 test("hardware evidence helper requires display, serial, tap mic toggles, and audio", () => {
