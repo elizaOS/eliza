@@ -5,24 +5,24 @@ export type {
 export {
   buildCarrotPermissionConsentRequest,
   diffCarrotPermissions,
-  getCarrotManifestPermissionTags,
+  getRemotePluginManifestPermissionTags,
 } from "./manifest.js";
 export type { RemotePluginBunWorkerPermissions } from "./permissions.js";
 export {
-  flattenCarrotPermissions,
+  flattenRemotePluginPermissions,
   hasBunPermission,
   hasHostPermission,
   isCarrotPermissionTag,
   mergeCarrotPermissions,
-  normalizeCarrotPermissions,
+  normalizeRemotePluginPermissions,
   parseCarrotPermissionTag,
   toBunWorkerPermissions,
 } from "./permissions.js";
 export type {
   RemotePluginStorePaths,
   RemotePluginStoreSnapshot,
-  InstalledCarrot,
-  InstalledCarrotSnapshot,
+  InstalledRemotePlugin,
+  InstalledRemotePluginSnapshot,
   InstallPrebuiltCarrotOptions,
 } from "./store.js";
 export {
@@ -30,23 +30,23 @@ export {
   buildCarrotRuntimeContext,
   RemotePluginStoreError,
   ensureCarrotSourceDirectory,
-  getCarrotStorePaths,
-  installPrebuiltCarrot,
+  getRemotePluginStorePaths,
+  installPrebuiltRemotePlugin,
   isCarrotSourceDirectory,
-  listInstalledCarrotDirectories,
+  listInstalledRemotePluginDirectories,
   loadCarrotListEntries,
   loadCarrotStoreSnapshot,
-  loadInstalledCarrot,
-  loadInstalledCarrots,
+  loadInstalledRemotePlugin,
+  loadInstalledRemotePlugins,
   readCarrotInstallRecord,
   readCarrotManifestAt,
-  readCarrotRegistry,
+  readRemotePluginRegistry,
   resolveCarrotPathInside,
   syncCarrotRegistry,
-  toCarrotListEntry,
+  toRemotePluginListEntry,
   toCarrotViewUrl,
-  toInstalledCarrotSnapshot,
-  uninstallInstalledCarrot,
+  toInstalledRemotePluginSnapshot,
+  uninstallInstalledRemotePlugin,
   writeCarrotInstallRecord,
   writeCarrotRegistry,
   writeCarrotWorkerBootstrap,
@@ -97,4 +97,4 @@ export type {
   RemotePluginManifestValidationIssue,
   RemotePluginManifestValidationResult,
 } from "./validation.js";
-export { validateCarrotManifest } from "./validation.js";
+export { validateRemotePluginManifest } from "./validation.js";

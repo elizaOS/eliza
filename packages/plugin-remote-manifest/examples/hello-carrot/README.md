@@ -11,10 +11,10 @@ Reference carrot for validating the Electrobun carrot host end-to-end. The worke
 ## Install from source
 
 ```ts
-import { getCarrotManager } from "@elizaos/app-core/platforms/electrobun/native/carrots";
+import { getRemotePluginHost } from "@elizaos/app-core/platforms/electrobun/native/remote-plugin-host";
 import { resolve } from "node:path";
 
-const manager = getCarrotManager();
+const manager = getRemotePluginHost();
 manager.installFromDirectory({
   sourceDir: resolve("packages/electrobun-carrots/examples/hello-carrot"),
   devMode: true,

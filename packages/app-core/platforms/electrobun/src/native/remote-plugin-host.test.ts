@@ -9,10 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
-import { CarrotManager, type RemotePluginWorkerHandle } from "./carrots";
+import { RemotePluginHost, type RemotePluginWorkerHandle } from "./remote-plugin-host";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
-  const dir = mkdtempSync(join(tmpdir(), "electrobun-carrot-host-"));
+  const dir = mkdtempSync(join(tmpdir(), "electrobun-remote-plugin-host-"));
   try {
     return fn(dir);
   } finally {
@@ -29,7 +29,7 @@ function writePayload(
   const grant: Record<string, boolean> = { notifications: true };
   if (options.manageCarrots !== false) grant["manage-remote-plugins"] = true;
   writeFileSync(
-    join(payloadDir, "carrot.json"),
+    join(payloadDir, "plugin.json"),
     JSON.stringify({
       id: "bunny.search",
       name: "Search",
@@ -87,16 +87,16 @@ class FakeWorkerHandle implements RemotePluginWorkerHandle {
   }
 }
 
-describe("CarrotManager", () => {
-  it("installs, lists, snapshots, and uninstalls carrots", () =>
+describe("RemotePluginHost", () => {
+  it("installs, lists, snapshots, and uninstalls remote plugins", () =>
     withTempDir((dir) => {
       const events: string[] = [];
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         now: () => 1700000000000,
         events: {
           storeChanged: (snapshot) => {
-            events.push(`store:${snapshot.carrots.length}`);
+            events.push(`store:${snapshot.remotePlugins.length}`);
           },
         },
       });
@@ -108,7 +108,7 @@ describe("CarrotManager", () => {
 
       expect(installed.id).toBe("bunny.search");
       expect(installed.sourceKind).toBe("local");
-      expect(manager.listCarrots()).toEqual([
+      expect(manager.listRemotePlugins()).toEqual([
         {
           id: "bunny.search",
           name: "Search",
@@ -117,7 +117,7 @@ describe("CarrotManager", () => {
           mode: "window",
           permissions: [
             "host:notifications",
-            "host:manage-carrots",
+            "host:manage-remote-plugins",
             "bun:read",
             "isolation:shared-worker",
           ],
@@ -125,12 +125,12 @@ describe("CarrotManager", () => {
           devMode: true,
         },
       ]);
-      expect(manager.getStoreSnapshot().carrots).toHaveLength(1);
+      expect(manager.getStoreSnapshot().remotePlugins).toHaveLength(1);
 
       const result = manager.uninstall("bunny.search");
       expect(result.removed).toBe(true);
-      expect(result.carrot?.id).toBe("bunny.search");
-      expect(manager.listCarrots()).toEqual([]);
+      expect(result.remotePlugin?.id).toBe("bunny.search");
+      expect(manager.listRemotePlugins()).toEqual([]);
       expect(events).toEqual(["store:1", "store:0"]);
     }));
 
@@ -138,7 +138,7 @@ describe("CarrotManager", () => {
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
       const workerEvents: string[] = [];
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000 + workerEvents.length,
@@ -160,7 +160,7 @@ describe("CarrotManager", () => {
         context: {
           permissions: [
             "host:notifications",
-            "host:manage-carrots",
+            "host:manage-remote-plugins",
             "bun:read",
             "isolation:shared-worker",
           ],
@@ -172,8 +172,8 @@ describe("CarrotManager", () => {
         action: "log",
         payload: { level: "info", message: "hello" },
       });
-      const carrot = manager.getCarrot("bunny.search");
-      if (!carrot) throw new Error("Expected carrot snapshot.");
+      const remotePlugin = manager.getRemotePlugin("bunny.search");
+      if (!remotePlugin) throw new Error("Expected remote plugin snapshot.");
       const status = manager.stopWorker("bunny.search");
       expect(status.state).toBe("stopped");
       expect(worker.terminated).toBe(true);
@@ -203,7 +203,7 @@ describe("CarrotManager", () => {
   it("records worker errors", () =>
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000,
@@ -220,10 +220,10 @@ describe("CarrotManager", () => {
       });
     }));
 
-  it("dispatches host-request list-carrots back to the worker", () =>
+  it("dispatches host-request list-remote-plugins back to the worker", () =>
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000,
@@ -262,12 +262,12 @@ describe("CarrotManager", () => {
       });
     }));
 
-  it("seeds and replaces the carrot auth token on demand", () =>
+  it("seeds and replaces the remote plugin auth token on demand", () =>
     withTempDir((dir) => {
       const previousToken = process.env.ELIZA_API_TOKEN;
-      process.env.ELIZA_API_TOKEN = "carrot-test-token";
+      process.env.ELIZA_API_TOKEN = "remote-plugin-test-token";
       const worker = new FakeWorkerHandle();
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000,
@@ -300,7 +300,7 @@ describe("CarrotManager", () => {
             );
             expect(initial).toMatchObject({
               success: true,
-              payload: { token: "carrot-test-token" },
+              payload: { token: "remote-plugin-test-token" },
             });
             const setResp = worker.messages.find(
               (m) => m.type === "host-response" && m.requestId === 12,
@@ -333,7 +333,7 @@ describe("CarrotManager", () => {
   it("returns an error response for unknown host-request methods", () =>
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000,
@@ -372,10 +372,10 @@ describe("CarrotManager", () => {
       });
     }));
 
-  it("denies start-carrot when caller lacks host:manage-carrots", () =>
+  it("denies start-remote-plugin when caller lacks host:manage-remote-plugins", () =>
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000,
@@ -414,12 +414,12 @@ describe("CarrotManager", () => {
       });
     }));
 
-  it("routes invoke-carrot request from A to B and returns the payload", () =>
+  it("routes invoke-remote-plugin request from A to B and returns the payload", () =>
     withTempDir((dir) => {
       const workerA = new FakeWorkerHandle();
       const workerB = new FakeWorkerHandle();
       let nextWorker: FakeWorkerHandle = workerA;
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => nextWorker },
         now: () => 1700000000000,
@@ -431,7 +431,7 @@ describe("CarrotManager", () => {
       const secondDir = join(dir, "second");
       mkdirSync(join(secondDir, "views"), { recursive: true });
       writeFileSync(
-        join(secondDir, "carrot.json"),
+        join(secondDir, "plugin.json"),
         JSON.stringify({
           id: "bunny.calc",
           name: "Calc",
@@ -495,10 +495,10 @@ describe("CarrotManager", () => {
       });
     }));
 
-  it("invoke-carrot returns error when target isn't running", () =>
+  it("invoke-remote-plugin returns error when target is not running", () =>
     withTempDir((dir) => {
       const workerA = new FakeWorkerHandle();
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => workerA },
         now: () => 1700000000000,
@@ -526,12 +526,12 @@ describe("CarrotManager", () => {
       );
     }));
 
-  it("invoke-carrot fails caller when target stops mid-flight", () =>
+  it("invoke-remote-plugin fails caller when target stops mid-flight", () =>
     withTempDir((dir) => {
       const workerA = new FakeWorkerHandle();
       const workerB = new FakeWorkerHandle();
       let nextWorker: FakeWorkerHandle = workerA;
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => nextWorker },
         now: () => 1700000000000,
@@ -542,7 +542,7 @@ describe("CarrotManager", () => {
       const secondDir = join(dir, "second");
       mkdirSync(join(secondDir, "views"), { recursive: true });
       writeFileSync(
-        join(secondDir, "carrot.json"),
+        join(secondDir, "plugin.json"),
         JSON.stringify({
           id: "bunny.calc",
           name: "Calc",
@@ -589,12 +589,12 @@ describe("CarrotManager", () => {
       expect((aResponse as { error?: string }).error).toContain("stopped");
     }));
 
-  it("routes emit-carrot-event between two running carrots", () =>
+  it("routes emit-remote-plugin-event between two running remote plugins", () =>
     withTempDir((dir) => {
       const workerA = new FakeWorkerHandle();
       const workerB = new FakeWorkerHandle();
       let nextWorker: FakeWorkerHandle = workerA;
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => nextWorker },
         now: () => 1700000000000,
@@ -604,11 +604,11 @@ describe("CarrotManager", () => {
       manager.installFromDirectory({ sourceDir: writePayload(dir) });
       manager.startWorker("bunny.search");
 
-      // Install a second carrot (worker B) with a different id
+      // Install a second remote plugin (worker B) with a different id
       const secondDir = join(dir, "second");
       mkdirSync(join(secondDir, "views"), { recursive: true });
       writeFileSync(
-        join(secondDir, "carrot.json"),
+        join(secondDir, "plugin.json"),
         JSON.stringify({
           id: "bunny.timer",
           name: "Timer",
@@ -653,7 +653,7 @@ describe("CarrotManager", () => {
         payload: { count: 1 },
       });
 
-      // Emit to a non-running carrot — should be dropped silently (warning only)
+      // Emit to a non-running remote plugin — should be dropped silently (warning only)
       workerA.emit({
         type: "action",
         action: "emit-remote-plugin-event",
@@ -671,7 +671,7 @@ describe("CarrotManager", () => {
     withTempDir((dir) => {
       const worker = new FakeWorkerHandle();
       const workerEvents: string[] = [];
-      const manager = new CarrotManager({
+      const manager = new RemotePluginHost({
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000 + workerEvents.length,

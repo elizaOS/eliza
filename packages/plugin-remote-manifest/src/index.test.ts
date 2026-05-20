@@ -4,17 +4,17 @@ import {
   RemotePluginStoreError,
   loadCarrotListEntries,
   loadCarrotStoreSnapshot,
-  toCarrotListEntry,
-  toInstalledCarrotSnapshot,
+  toRemotePluginListEntry,
+  toInstalledRemotePluginSnapshot,
 } from "./index.js";
 
-describe("carrot package barrel", () => {
+describe("remote plugin package barrel", () => {
   it("exports public store snapshot helpers", () => {
     expect(typeof RemotePluginStoreError).toBe("function");
     expect(typeof buildCarrotRuntimeContext).toBe("function");
     expect(typeof loadCarrotListEntries).toBe("function");
     expect(typeof loadCarrotStoreSnapshot).toBe("function");
-    expect(typeof toCarrotListEntry).toBe("function");
-    expect(typeof toInstalledCarrotSnapshot).toBe("function");
+    expect(typeof toRemotePluginListEntry).toBe("function");
+    expect(typeof toInstalledRemotePluginSnapshot).toBe("function");
   });
 });

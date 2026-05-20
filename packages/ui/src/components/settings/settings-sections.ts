@@ -1,7 +1,7 @@
 import {
   Archive,
   Brain,
-  Carrot,
+  Puzzle,
   KeyRound,
   LayoutGrid,
   Lock,
@@ -24,7 +24,7 @@ import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
-import { CarrotManagerSection } from "./CarrotManagerSection";
+import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
@@ -134,14 +134,14 @@ export const SETTINGS_SECTIONS: SettingsSectionDef[] = [
     Component: AppsManagementSection,
   },
   {
-    id: "carrots",
-    label: "settings.sections.carrots.label",
-    defaultLabel: "Carrots",
-    icon: Carrot,
+    id: "remote-plugins",
+    label: "settings.sections.remote-plugins.label",
+    defaultLabel: "Remote Plugins",
+    icon: Puzzle,
     tone: "accent",
-    titleKey: "settings.sections.carrots.label",
+    titleKey: "settings.sections.remote-plugins.label",
     defaultTitle: "Carrots",
-    Component: CarrotManagerSection,
+    Component: RemotePluginHostSection,
   },
   {
     id: "connectors",

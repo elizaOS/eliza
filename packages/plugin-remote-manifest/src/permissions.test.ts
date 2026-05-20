@@ -1,19 +1,19 @@
 import { describe, expect, it } from "bun:test";
 import {
-  flattenCarrotPermissions,
+  flattenRemotePluginPermissions,
   hasBunPermission,
   hasHostPermission,
   isCarrotPermissionTag,
   mergeCarrotPermissions,
-  normalizeCarrotPermissions,
+  normalizeRemotePluginPermissions,
   parseCarrotPermissionTag,
   toBunWorkerPermissions,
 } from "./permissions.js";
 import type { RemotePluginPermissionGrant, RemotePluginPermissionTag } from "./types.js";
 
-describe("carrot permissions", () => {
+describe("remote plugin permissions", () => {
   it("normalizes legacy permissions into host and bun grants", () => {
-    const grant = normalizeCarrotPermissions([
+    const grant = normalizeRemotePluginPermissions([
       "bun",
       "bun:fs",
       "bun:env",
@@ -29,7 +29,7 @@ describe("carrot permissions", () => {
   });
 
   it("flattens structured grants into stable permission tags", () => {
-    const tags = flattenCarrotPermissions({
+    const tags = flattenRemotePluginPermissions({
       host: { windows: true, tray: false, storage: true },
       bun: { read: true, worker: true },
       isolation: "isolated-process",

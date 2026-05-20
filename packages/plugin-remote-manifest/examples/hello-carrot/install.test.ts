@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { installPrebuiltCarrot, loadInstalledCarrot } from "../../src/store.js";
+import { installPrebuiltRemotePlugin, loadInstalledRemotePlugin } from "../../src/store.js";
 
 const HELLO_CARROT_DIR = resolve(import.meta.dir);
 
@@ -23,7 +23,7 @@ describe("hello-carrot example", () => {
   it("manifest validates, installs, and wires bootstrap end-to-end", () => {
     const storeRoot = mkdtempSync(join(tmpdir(), "hello-carrot-"));
     try {
-      const installed = installPrebuiltCarrot(storeRoot, HELLO_CARROT_DIR, {
+      const installed = installPrebuiltRemotePlugin(storeRoot, HELLO_CARROT_DIR, {
         devMode: true,
       });
 
@@ -40,7 +40,7 @@ describe("hello-carrot example", () => {
       expect(bootstrap).toContain('"channel":"carrot:hello-carrot"');
       expect(bootstrap).toContain("await import");
 
-      const reloaded = loadInstalledCarrot(storeRoot, "hello-carrot");
+      const reloaded = loadInstalledRemotePlugin(storeRoot, "hello-carrot");
       expect(reloaded).not.toBeNull();
       expect(reloaded?.viewUrl).toBe("views://view/index.html");
       if (!reloaded) throw new Error("Expected hello-carrot to reload.");
@@ -53,7 +53,7 @@ describe("hello-carrot example", () => {
   it("boots in a real Bun Worker and writes the expected side effects", async () => {
     const storeRoot = mkdtempSync(join(tmpdir(), "hello-carrot-boot-"));
     try {
-      const installed = installPrebuiltCarrot(storeRoot, HELLO_CARROT_DIR, {
+      const installed = installPrebuiltRemotePlugin(storeRoot, HELLO_CARROT_DIR, {
         devMode: true,
       });
 

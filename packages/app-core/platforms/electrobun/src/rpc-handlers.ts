@@ -71,9 +71,9 @@ import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
 import {
-  configureCarrotManagerEvents,
-  getCarrotManager,
-} from "./native/carrots";
+  configureRemotePluginHostEvents,
+  getRemotePluginHost,
+} from "./native/remote-plugin-host";
 import {
   scanAndValidateProviderCredentials,
   scanProviderCredentials,
@@ -287,8 +287,8 @@ export function buildBunRpcHandlers({
   const talkmode = getTalkModeManager();
   const musicPlayer = getMusicPlayerManager();
   const browserWorkspace = getBrowserWorkspaceManager();
-  const carrots = getCarrotManager();
-  configureCarrotManagerEvents(sendToWebview);
+  const remotePluginHost = getRemotePluginHost();
+  configureRemotePluginHostEvents(sendToWebview);
 
   return {
     // ---- Agent ----
@@ -779,26 +779,26 @@ export function buildBunRpcHandlers({
       success: desktop.setManagedWindowAlwaysOnTop(params.id, params.flag),
     }),
 
-    // ---- Carrots ----
-    carrotGetStoreRoot: async () => ({ storeRoot: carrots.getStoreRoot() }),
-    carrotList: async () => ({ carrots: carrots.listCarrots() }),
-    carrotGetStoreSnapshot: async () => carrots.getStoreSnapshot(),
-    carrotGet: async (params: { id: string }) => carrots.getCarrot(params.id),
-    carrotInstallFromDirectory: async (params) =>
-      carrots.installFromDirectory(params),
-    carrotUninstall: async (params: { id: string }) =>
-      carrots.uninstall(params.id),
-    carrotStartWorker: async (params: { id: string }) =>
-      carrots.startWorker(params.id),
-    carrotStopWorker: async (params: { id: string }) =>
-      carrots.stopWorker(params.id),
-    carrotGetWorkerStatus: async (params: { id: string }) =>
-      carrots.getWorkerStatus(params.id),
-    carrotListWorkerStatuses: async () => ({
-      workers: carrots.listWorkerStatuses(),
+    // ---- Remote Plugins ----
+    remotePluginGetStoreRoot: async () => ({ storeRoot: remotePlugins.getStoreRoot() }),
+    remotePluginList: async () => ({ remotePlugins: remotePluginHost.listRemotePlugins() }),
+    remotePluginGetStoreSnapshot: async () => remotePlugins.getStoreSnapshot(),
+    remotePluginGet: async (params: { id: string }) => remotePluginHost.getRemotePlugin(params.id),
+    remotePluginInstallFromDirectory: async (params) =>
+      remotePluginHost.installFromDirectory(params),
+    remotePluginUninstall: async (params: { id: string }) =>
+      remotePlugins.uninstall(params.id),
+    remotePluginStartWorker: async (params: { id: string }) =>
+      remotePlugins.startWorker(params.id),
+    remotePluginStopWorker: async (params: { id: string }) =>
+      remotePlugins.stopWorker(params.id),
+    remotePluginGetWorkerStatus: async (params: { id: string }) =>
+      remotePlugins.getWorkerStatus(params.id),
+    remotePluginListWorkerStatuses: async () => ({
+      workers: remotePlugins.listWorkerStatuses(),
     }),
-    carrotGetLogs: async (params) =>
-      carrots.getLogs(params.id, params.maxBytes),
+    remotePluginGetLogs: async (params) =>
+      remotePlugins.getLogs(params.id, params.maxBytes),
 
     // ---- Browser Workspace ----
     browserWorkspaceGetSnapshot: async () => ({

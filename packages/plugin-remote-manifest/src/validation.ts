@@ -1,5 +1,5 @@
 import { isJsonObject } from "./json.js";
-import { isCarrotIsolation } from "./permissions.js";
+import { isRemotePluginIsolation } from "./permissions.js";
 import {
   BUN_PERMISSIONS,
   type BunPermission,
@@ -23,7 +23,7 @@ export type RemotePluginManifestValidationResult =
 
 const REMOTE_PLUGIN_ID_PATTERN = /^[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+)*$/;
 
-export function isValidCarrotId(value: string): boolean {
+export function isValidRemotePluginId(value: string): boolean {
   return REMOTE_PLUGIN_ID_PATTERN.test(value);
 }
 
@@ -152,7 +152,7 @@ function validatePermissions(
   const isolation = object.isolation;
   if (isolation === undefined) {
     grant.isolation = "shared-worker";
-  } else if (typeof isolation === "string" && isCarrotIsolation(isolation)) {
+  } else if (typeof isolation === "string" && isRemotePluginIsolation(isolation)) {
     grant.isolation = isolation;
   } else {
     issues.push({
@@ -262,7 +262,7 @@ function validateWorker(
   return relativePath ? { relativePath } : null;
 }
 
-export function validateCarrotManifest(
+export function validateRemotePluginManifest(
   value: JsonValue,
 ): RemotePluginManifestValidationResult {
   const issues: RemotePluginManifestValidationIssue[] = [];
@@ -270,11 +270,11 @@ export function validateCarrotManifest(
   if (!object) return { ok: false, issues };
 
   const id = stringAt(object, "id", "$", issues);
-  if (id && !isValidCarrotId(id)) {
+  if (id && !isValidRemotePluginId(id)) {
     issues.push({
       path: "$.id",
       message:
-        "Expected carrot id segments containing only letters, numbers, underscores, hyphens, or dots.",
+        "Expected remote plugin id segments containing only letters, numbers, underscores, hyphens, or dots.",
     });
   }
   const name = stringAt(object, "name", "$", issues);

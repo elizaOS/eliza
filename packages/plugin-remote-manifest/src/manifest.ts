@@ -1,6 +1,6 @@
 import {
-  flattenCarrotPermissions,
-  normalizeCarrotPermissions,
+  flattenRemotePluginPermissions,
+  normalizeRemotePluginPermissions,
 } from "./permissions.js";
 import {
   BUN_PERMISSIONS,
@@ -52,9 +52,9 @@ export function diffCarrotPermissions(
   requested: RemotePluginPermissionGrant,
   previous?: RemotePluginPermissionGrant | null,
 ): RemotePluginPermissionDiff {
-  const normalized = normalizeCarrotPermissions(requested);
-  const requestedPermissions = flattenCarrotPermissions(normalized);
-  const previousPermissions = new Set(flattenCarrotPermissions(previous));
+  const normalized = normalizeRemotePluginPermissions(requested);
+  const requestedPermissions = flattenRemotePluginPermissions(normalized);
+  const previousPermissions = new Set(flattenRemotePluginPermissions(previous));
   const changedPermissions = requestedPermissions.filter(
     (permission) => !previousPermissions.has(permission),
   );
@@ -68,10 +68,10 @@ export function diffCarrotPermissions(
   };
 }
 
-export function getCarrotManifestPermissionTags(
+export function getRemotePluginManifestPermissionTags(
   manifest: RemotePluginManifest,
 ): RemotePluginPermissionTag[] {
-  return flattenCarrotPermissions(manifest.permissions);
+  return flattenRemotePluginPermissions(manifest.permissions);
 }
 
 export function buildCarrotPermissionConsentRequest(

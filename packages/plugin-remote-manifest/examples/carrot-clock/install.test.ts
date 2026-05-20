@@ -2,7 +2,7 @@ import { describe, expect, it } from "bun:test";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import { installPrebuiltCarrot, loadInstalledCarrot } from "../../src/store.js";
+import { installPrebuiltRemotePlugin, loadInstalledRemotePlugin } from "../../src/store.js";
 
 const CARROT_CLOCK_DIR = resolve(import.meta.dir);
 
@@ -10,7 +10,7 @@ describe("carrot-clock example", () => {
   it("installs as a window-mode carrot with the expected view metadata", () => {
     const storeRoot = mkdtempSync(join(tmpdir(), "carrot-clock-"));
     try {
-      const installed = installPrebuiltCarrot(storeRoot, CARROT_CLOCK_DIR, {
+      const installed = installPrebuiltRemotePlugin(storeRoot, CARROT_CLOCK_DIR, {
         devMode: false,
       });
 
@@ -25,7 +25,7 @@ describe("carrot-clock example", () => {
       expect(bootstrap).toContain('"id":"carrot-clock"');
       expect(bootstrap).toContain('"mode":"window"');
 
-      const reloaded = loadInstalledCarrot(storeRoot, "carrot-clock");
+      const reloaded = loadInstalledRemotePlugin(storeRoot, "carrot-clock");
       expect(reloaded).not.toBeNull();
       expect(reloaded?.viewUrl).toBe("views://view/index.html");
       if (!reloaded) throw new Error("Expected carrot-clock to reload.");

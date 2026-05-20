@@ -4,7 +4,7 @@ Window-mode reference carrot. Opens its own webview with a tiny live clock to va
 
 ## What it proves
 
-- `manifest.mode === "window"` triggers `CarrotManager.openCarrotWindow`.
+- `manifest.mode === "window"` triggers `RemotePluginHost.openRemotePluginWindow`.
 - BrowserView is created with `viewsRoot: <carrot.currentDir>` so `views://view/index.html` resolves correctly.
 - The window's manifest dimensions (320×200) and title ("Carrot Clock") flow through.
 - Closing the window calls `stopWorker(id)`.

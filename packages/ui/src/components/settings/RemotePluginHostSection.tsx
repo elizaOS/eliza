@@ -1,10 +1,10 @@
 /**
- * Carrot Manager — installs, starts, stops, and uninstalls Electrobun
- * carrots through the typed desktop bridge. Lives in Settings rather
+ * Remote Plugin Manager — installs, starts, stops, and uninstalls Electrobun
+ * remote plugins through the typed desktop bridge. Lives in Settings rather
  * than AppsView until the catalog→carrot product mapping is decided
  * (see PR #7624 follow-up notes). Scope is deliberately MVP: no
  * remote install, no permission diff/re-consent dialog, no
- * window-mode webview opening, no inter-carrot invoke surface. Just:
+ * window-mode webview opening, no inter-plugin invoke surface. Just:
  * list, install from a local directory, start/stop, tail logs,
  * uninstall.
  */
@@ -19,40 +19,40 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  type DesktopCarrotPermissionTag,
-  type DesktopCarrotStoreSnapshot,
-  type DesktopCarrotWorkerStatus,
-  type DesktopInstalledCarrotSnapshot,
+  type DesktopRemotePluginPermissionTag,
+  type DesktopRemotePluginStoreSnapshot,
+  type DesktopRemotePluginWorkerStatus,
+  type DesktopInstalledRemotePluginSnapshot,
   desktopOpenPath,
-  getDesktopCarrotLogs,
-  getDesktopCarrotStoreRoot,
-  getDesktopCarrotStoreSnapshot,
-  installDesktopCarrotFromDirectory,
-  listDesktopCarrotWorkerStatuses,
+  getDesktopRemotePluginLogs,
+  getDesktopRemotePluginStoreRoot,
+  getDesktopRemotePluginStoreSnapshot,
+  installDesktopRemotePluginFromDirectory,
+  listDesktopRemotePluginWorkerStatuses,
   pickDesktopWorkspaceFolder,
-  startDesktopCarrotWorker,
-  stopDesktopCarrotWorker,
-  subscribeDesktopCarrotStoreChanged,
-  subscribeDesktopCarrotWorkerChanged,
-  uninstallDesktopCarrot,
+  startDesktopRemotePluginWorker,
+  stopDesktopRemotePluginWorker,
+  subscribeDesktopRemotePluginStoreChanged,
+  subscribeDesktopRemotePluginWorkerChanged,
+  uninstallDesktopRemotePlugin,
 } from "../../bridge/electrobun-rpc";
 import { Button } from "../ui/button";
 import { Input } from "../ui/input";
 
-type CarrotState = DesktopCarrotWorkerStatus["state"];
+type RemotePluginViewState = DesktopRemotePluginWorkerStatus["state"];
 
 interface WorkerStatusMap {
-  [carrotId: string]: DesktopCarrotWorkerStatus | undefined;
+  [remotePluginId: string]: DesktopRemotePluginWorkerStatus | undefined;
 }
 
-const STATE_TONE: Record<CarrotState, string> = {
+const STATE_TONE: Record<RemotePluginViewState, string> = {
   stopped: "bg-bg/40 text-muted",
   starting: "bg-warn/20 text-warn",
   running: "bg-ok/20 text-ok",
   error: "bg-err/20 text-err",
 };
 
-function StateBadge({ state }: { state: CarrotState }) {
+function StateBadge({ state }: { state: RemotePluginViewState }) {
   return (
     <span
       className={`inline-flex items-center rounded px-2 py-0.5 text-[10px] font-medium uppercase tracking-wide ${STATE_TONE[state]}`}
@@ -76,7 +76,7 @@ function formatRelative(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString();
 }
 
-function permissionGroups(permissions: readonly DesktopCarrotPermissionTag[]): {
+function permissionGroups(permissions: readonly DesktopRemotePluginPermissionTag[]): {
   host: string[];
   bun: string[];
   isolation: string | null;
@@ -93,21 +93,21 @@ function permissionGroups(permissions: readonly DesktopCarrotPermissionTag[]): {
   return { host, bun, isolation };
 }
 
-interface CarrotRowProps {
-  carrot: DesktopInstalledCarrotSnapshot;
-  status: DesktopCarrotWorkerStatus | undefined;
+interface RemotePluginRowProps {
+  remotePlugin: DesktopInstalledRemotePluginSnapshot;
+  status: DesktopRemotePluginWorkerStatus | undefined;
   onStart: (id: string) => Promise<void>;
   onStop: (id: string) => Promise<void>;
   onUninstall: (id: string, name: string) => Promise<void>;
 }
 
-function CarrotRow({
-  carrot,
+function RemotePluginRow({
+  remotePlugin,
   status,
   onStart,
   onStop,
   onUninstall,
-}: CarrotRowProps) {
+}: RemotePluginRowProps) {
   const [logs, setLogs] = useState<string>("");
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsLoading, setLogsLoading] = useState(false);
@@ -115,18 +115,18 @@ function CarrotRow({
   const isBusy = state === "starting";
 
   const { host, bun, isolation } = permissionGroups([
-    ...Object.entries(carrot.grantedPermissions.host ?? {})
+    ...Object.entries(remotePlugin.grantedPermissions.host ?? {})
       .filter(([, v]) => v === true)
-      .map(([k]) => `host:${k}` as DesktopCarrotPermissionTag),
-    ...Object.entries(carrot.grantedPermissions.bun ?? {})
+      .map(([k]) => `host:${k}` as DesktopRemotePluginPermissionTag),
+    ...Object.entries(remotePlugin.grantedPermissions.bun ?? {})
       .filter(([, v]) => v === true)
-      .map(([k]) => `bun:${k}` as DesktopCarrotPermissionTag),
-    ...(carrot.grantedPermissions.isolation
+      .map(([k]) => `bun:${k}` as DesktopRemotePluginPermissionTag),
+    ...(remotePlugin.grantedPermissions.isolation
       ? [
-          `isolation:${carrot.grantedPermissions.isolation}` as DesktopCarrotPermissionTag,
+          `isolation:${remotePlugin.grantedPermissions.isolation}` as DesktopRemotePluginPermissionTag,
         ]
       : []),
-  ] as DesktopCarrotPermissionTag[]);
+  ] as DesktopRemotePluginPermissionTag[]);
 
   const handleLogsToggle = useCallback(async () => {
     if (logsOpen) {
@@ -135,13 +135,13 @@ function CarrotRow({
     }
     setLogsLoading(true);
     try {
-      const snapshot = await getDesktopCarrotLogs(carrot.id);
+      const snapshot = await getDesktopRemotePluginLogs(remotePlugin.id);
       setLogs(snapshot?.text ?? "");
       setLogsOpen(true);
     } finally {
       setLogsLoading(false);
     }
-  }, [carrot.id, logsOpen]);
+  }, [remotePlugin.id, logsOpen]);
 
   return (
     <div className="rounded border border-bg-3 bg-bg-2 p-3">
@@ -149,19 +149,19 @@ function CarrotRow({
         <div className="min-w-0 flex-1">
           <div className="flex items-baseline gap-2">
             <span className="truncate text-sm font-medium text-txt">
-              {carrot.name}
+              {remotePlugin.name}
             </span>
             <span className="text-[10px] font-mono text-muted">
-              {carrot.id}
+              {remotePlugin.id}
             </span>
-            <span className="text-[10px] text-muted">v{carrot.version}</span>
+            <span className="text-[10px] text-muted">v{remotePlugin.version}</span>
             <span className="rounded bg-bg/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
-              {carrot.mode}
+              {remotePlugin.mode}
             </span>
             <StateBadge state={state} />
           </div>
           <p className="mt-0.5 truncate text-xs text-muted">
-            {carrot.description}
+            {remotePlugin.description}
           </p>
           {status?.error ? (
             <p className="mt-1 text-xs text-err">{status.error}</p>
@@ -173,7 +173,7 @@ function CarrotRow({
               size="sm"
               variant="outline"
               disabled={isBusy}
-              onClick={() => onStop(carrot.id)}
+              onClick={() => onStop(remotePlugin.id)}
             >
               <Square className="mr-1 h-3 w-3" /> Stop
             </Button>
@@ -181,7 +181,7 @@ function CarrotRow({
             <Button
               size="sm"
               variant="outline"
-              onClick={() => onStart(carrot.id)}
+              onClick={() => onStart(remotePlugin.id)}
             >
               <Play className="mr-1 h-3 w-3" /> Start
             </Button>
@@ -197,7 +197,7 @@ function CarrotRow({
           <Button
             size="sm"
             variant="outline"
-            onClick={() => onUninstall(carrot.id, carrot.name)}
+            onClick={() => onUninstall(remotePlugin.id, remotePlugin.name)}
           >
             <Trash2 className="h-3 w-3" />
           </Button>
@@ -220,15 +220,15 @@ function CarrotRow({
       </div>
 
       <div className="mt-1 flex gap-3 text-[10px] text-muted/70">
-        <span title={new Date(carrot.installedAt).toISOString()}>
-          installed {formatRelative(carrot.installedAt)}
+        <span title={new Date(remotePlugin.installedAt).toISOString()}>
+          installed {formatRelative(remotePlugin.installedAt)}
         </span>
-        {carrot.updatedAt !== carrot.installedAt ? (
-          <span title={new Date(carrot.updatedAt).toISOString()}>
-            updated {formatRelative(carrot.updatedAt)}
+        {remotePlugin.updatedAt !== remotePlugin.installedAt ? (
+          <span title={new Date(remotePlugin.updatedAt).toISOString()}>
+            updated {formatRelative(remotePlugin.updatedAt)}
           </span>
         ) : null}
-        {carrot.devMode ? <span className="text-warn/80">dev-mode</span> : null}
+        {remotePlugin.devMode ? <span className="text-warn/80">dev-mode</span> : null}
       </div>
 
       {logsOpen ? (
@@ -240,8 +240,8 @@ function CarrotRow({
   );
 }
 
-export function CarrotManagerSection() {
-  const [snapshot, setSnapshot] = useState<DesktopCarrotStoreSnapshot | null>(
+export function RemotePluginHostSection() {
+  const [snapshot, setSnapshot] = useState<DesktopRemotePluginStoreSnapshot | null>(
     null,
   );
   const [statuses, setStatuses] = useState<WorkerStatusMap>({});
@@ -260,9 +260,9 @@ export function CarrotManagerSection() {
 
   const refresh = useCallback(async () => {
     const [snap, workerList, root] = await Promise.all([
-      getDesktopCarrotStoreSnapshot(),
-      listDesktopCarrotWorkerStatuses(),
-      getDesktopCarrotStoreRoot(),
+      getDesktopRemotePluginStoreSnapshot(),
+      listDesktopRemotePluginWorkerStatuses(),
+      getDesktopRemotePluginStoreRoot(),
     ]);
     if (!mountedRef.current) return;
     setSnapshot(snap);
@@ -276,10 +276,10 @@ export function CarrotManagerSection() {
 
   useEffect(() => {
     void refresh();
-    const offStore = subscribeDesktopCarrotStoreChanged((next) => {
+    const offStore = subscribeDesktopRemotePluginStoreChanged((next) => {
       if (mountedRef.current) setSnapshot(next);
     });
-    const offWorker = subscribeDesktopCarrotWorkerChanged((status) => {
+    const offWorker = subscribeDesktopRemotePluginWorkerChanged((status) => {
       if (mountedRef.current) {
         setStatuses((prev) => ({ ...prev, [status.id]: status }));
       }
@@ -295,7 +295,7 @@ export function CarrotManagerSection() {
     setBusy(true);
     setError(null);
     try {
-      const installed = await installDesktopCarrotFromDirectory({
+      const installed = await installDesktopRemotePluginFromDirectory({
         sourceDir: sourceDir.trim(),
         devMode: true,
       });
@@ -316,7 +316,7 @@ export function CarrotManagerSection() {
     setError(null);
     try {
       const result = await pickDesktopWorkspaceFolder({
-        promptTitle: "Select a carrot source directory",
+        promptTitle: "Select a remote plugin source directory",
       });
       if (!result) {
         setError("Folder picker unavailable — desktop bridge not connected.");
@@ -330,11 +330,11 @@ export function CarrotManagerSection() {
   }, []);
 
   const handleStart = useCallback(async (id: string) => {
-    await startDesktopCarrotWorker(id);
+    await startDesktopRemotePluginWorker(id);
   }, []);
 
   const handleStop = useCallback(async (id: string) => {
-    await stopDesktopCarrotWorker(id);
+    await stopDesktopRemotePluginWorker(id);
   }, []);
 
   const handleUninstall = useCallback(
@@ -342,19 +342,19 @@ export function CarrotManagerSection() {
       if (!window.confirm(`Uninstall "${name}"? Files will be removed.`)) {
         return;
       }
-      await uninstallDesktopCarrot(id);
+      await uninstallDesktopRemotePlugin(id);
       await refresh();
     },
     [refresh],
   );
 
-  const carrots = snapshot?.carrots ?? [];
+  const remotePlugins = snapshot?.remotePlugins ?? [];
 
   return (
     <div className="space-y-4">
       <section className="space-y-1">
         <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-          About carrots
+          About remote plugins
         </h3>
         <p className="text-xs text-muted">
           Carrots are Electrobun's sandboxed mini-app primitive. Each runs in
@@ -368,10 +368,10 @@ export function CarrotManagerSection() {
           Process isolation lands when a Bun.spawn-based runner is wired.
         </p>
         <p className="text-xs text-muted">
-          <span className="text-warn">Auth token:</span> a carrot can request
+          <span className="text-warn">Auth token:</span> a remote plugin can request
           your API token via the host bridge and call Milady's HTTP API as you.
-          Future versions will issue per-carrot scoped tokens; the current
-          bridge forwards the host token verbatim. Only install carrots from
+          Future versions will issue per-plugin scoped tokens; the current
+          bridge forwards the host token verbatim. Only install remote plugins from
           sources you trust.
         </p>
         {storeRoot ? (
@@ -399,7 +399,7 @@ export function CarrotManagerSection() {
           <Input
             value={sourceDir}
             onChange={(e) => setSourceDir(e.target.value)}
-            placeholder="/absolute/path/to/carrot/source"
+            placeholder="/absolute/path/to/remote-plugin/source"
             disabled={busy}
           />
           <Button
@@ -425,7 +425,7 @@ export function CarrotManagerSection() {
       <section className="space-y-2">
         <div className="flex items-center justify-between">
           <h3 className="text-xs font-medium uppercase tracking-wider text-muted">
-            Installed ({carrots.length})
+            Installed ({remotePlugins.length})
           </h3>
           <Button
             size="sm"
@@ -436,18 +436,18 @@ export function CarrotManagerSection() {
             <RefreshCw className="mr-1 h-3 w-3" /> Refresh
           </Button>
         </div>
-        {carrots.length === 0 ? (
+        {remotePlugins.length === 0 ? (
           <p className="text-xs text-muted">
-            No carrots installed. Try installing the bundled example at{" "}
-            <code>packages/electrobun-carrots/examples/hello-carrot</code>.
+            No remote plugins installed. Try installing the bundled example at{" "}
+            <code>packages/plugin-remote-manifest/examples/hello-remote-plugin</code>.
           </p>
         ) : (
           <div className="space-y-2">
-            {carrots.map((carrot) => (
-              <CarrotRow
-                key={carrot.id}
-                carrot={carrot}
-                status={statuses[carrot.id]}
+            {remotePlugins.map((remotePlugin) => (
+              <RemotePluginRow
+                key={remotePlugin.id}
+                remotePlugin={remotePlugin}
+                status={statuses[remotePlugin.id]}
                 onStart={handleStart}
                 onStop={handleStop}
                 onUninstall={handleUninstall}
