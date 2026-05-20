@@ -3,8 +3,8 @@ import {
   MockSmartglassesTransport,
   SMARTGLASSES_AUDIO_EVENT,
   SMARTGLASSES_EVENT,
-  SMARTGLASSES_TRANSCRIPT_EVENT,
   SMARTGLASSES_SERVICE_NAME,
+  SMARTGLASSES_TRANSCRIPT_EVENT,
   setSmartglassesAudioDecoderForRuntime,
   setSmartglassesTransportForRuntime,
   smartglassesPlugin,
@@ -126,6 +126,14 @@ try {
   await controlAction.handler(
     runtime as never,
     {
+      content: {
+        text: '{"op":"wifi_setup","reason":"Package smoke needs headset Wi-Fi"}',
+      },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
       content: { text: '{"op":"navigation_start"}' },
     } as never,
   );
@@ -164,13 +172,17 @@ try {
   await controlAction.handler(
     runtime as never,
     {
-      content: { text: '{"op":"translate_languages","fromLanguage":2,"toLanguage":5}' },
+      content: {
+        text: '{"op":"translate_languages","fromLanguage":2,"toLanguage":5}',
+      },
     } as never,
   );
   await controlAction.handler(
     runtime as never,
     {
-      content: { text: '{"op":"translate_translated","text":"bonjour","syncId":3}' },
+      content: {
+        text: '{"op":"translate_translated","text":"bonjour","syncId":3}',
+      },
     } as never,
   );
   await controlAction.handler(
@@ -205,6 +217,51 @@ try {
       },
     } as never,
   );
+  const disconnectResult = await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"disconnect_headset"}' } } as never,
+  );
+  if (transport.isConnected()) {
+    throw new Error("Package smoke did not disconnect the headset");
+  }
+  if (
+    (disconnectResult as { values?: { operationResult?: { setup?: unknown } } })
+      .values?.operationResult?.setup === undefined
+  ) {
+    throw new Error("Package smoke disconnect did not return setup summary");
+  }
+  const pairResult = await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"pair_headset"}' } } as never,
+  );
+  if (!transport.isConnected()) {
+    throw new Error("Package smoke did not reconnect the whole headset");
+  }
+  if (
+    !(
+      pairResult as {
+        values?: {
+          operationResult?: {
+            setup?: {
+              wholeHeadsetConnected?: boolean;
+            };
+          };
+        };
+      }
+    ).values?.operationResult?.setup?.wholeHeadsetConnected
+  ) {
+    throw new Error(
+      "Package smoke pair did not return whole-headset setup summary",
+    );
+  }
+  const writesAfterPair = transport.writes.length;
+  await controlAction.handler(
+    runtime as never,
+    { content: { text: '{"op":"connect","init":false}' } } as never,
+  );
+  if (transport.writes.length !== writesAfterPair) {
+    throw new Error("Package smoke sent init packets for init:false connect");
+  }
   await controlAction.handler(
     runtime as never,
     {
@@ -318,11 +375,11 @@ try {
   if (!commands.includes(G1Command.DashboardContent)) {
     throw new Error("Package smoke did not send dashboard content packets");
   }
-  if (transport.wifiRequests.at(-2)?.op !== "scan") {
+  if (transport.wifiRequests.at(-3)?.op !== "scan") {
     throw new Error("Package smoke did not scan Wi-Fi through control action");
   }
   if (
-    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify(transport.wifiRequests.at(-2)) !==
     JSON.stringify({
       op: "configure",
       ssid: "PackageNet",
@@ -331,6 +388,17 @@ try {
   ) {
     throw new Error(
       "Package smoke did not configure Wi-Fi through control action",
+    );
+  }
+  if (
+    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify({
+      op: "setup",
+      reason: "Package smoke needs headset Wi-Fi",
+    })
+  ) {
+    throw new Error(
+      "Package smoke did not request native Wi-Fi setup through control action",
     );
   }
   if (
@@ -382,7 +450,9 @@ try {
         entry.params.text === "package transcript",
     )
   ) {
-    throw new Error("Package smoke did not emit smartglasses transcript events");
+    throw new Error(
+      "Package smoke did not emit smartglasses transcript events",
+    );
   }
   if (!String(status.text).includes("audioChunks=1")) {
     throw new Error("Package smoke provider did not report microphone audio");
@@ -393,14 +463,33 @@ try {
   if (!String(status.text).includes("serial=G1RIGHTSERIAL001")) {
     throw new Error("Package smoke provider did not report serial number");
   }
-  if (!String(status.text).includes("wifi=available")) {
-    throw new Error("Package smoke provider did not report Wi-Fi capability");
+  if (!String(status.text).includes("lenses=left:connected right:connected")) {
+    throw new Error(
+      "Package smoke provider did not report both headset lenses",
+    );
   }
   if (
     !String(status.text).includes(
-      "wifiStatus=mock credentials sent for PackageNet",
+      "setup=Tap and microphone validation requires the glasses to report wearing",
     )
   ) {
+    throw new Error("Package smoke provider did not report setup guidance");
+  }
+  if (!String(status.text).includes("wholeHeadset=true")) {
+    throw new Error(
+      "Package smoke provider did not report whole-headset readiness",
+    );
+  }
+  if (!String(status.text).includes("wearingReady=false")) {
+    throw new Error("Package smoke provider did not report wearing readiness");
+  }
+  if (!String(status.text).includes("physicalBlocker=wearing_state_missing")) {
+    throw new Error("Package smoke provider did not report physical blocker");
+  }
+  if (!String(status.text).includes("wifi=available")) {
+    throw new Error("Package smoke provider did not report Wi-Fi capability");
+  }
+  if (!String(status.text).includes("wifiStatus=mock Wi-Fi setup requested")) {
     throw new Error("Package smoke provider did not report Wi-Fi status");
   }
 

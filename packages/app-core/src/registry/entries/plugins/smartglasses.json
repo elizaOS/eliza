@@ -118,6 +118,8 @@
       "smartglasses",
       "wearable-display",
       "wearable-microphone",
+      "whole-headset-pairing",
+      "side-tap-microphone-control",
       "wifi-provisioning"
     ],
     "curatedSlug": "smartglasses"

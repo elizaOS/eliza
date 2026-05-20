@@ -1,4 +1,7 @@
 import { expect, type Page, test } from "@playwright/test";
+import { readdirSync, statSync } from "node:fs";
+import pathModule from "node:path";
+import { fileURLToPath } from "node:url";
 
 // In live-prod mode the mocked-API specs do not apply (cookies are scoped to
 // 127.0.0.1, fixtures don't exist on real backends). Skip the whole file.
@@ -10,6 +13,8 @@ test.skip(
 test.describe.configure({ mode: "serial" });
 
 const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
+const HERE = pathModule.dirname(fileURLToPath(import.meta.url));
+const CONTENT_DIR = pathModule.resolve(HERE, "../../content");
 
 // Console messages we explicitly tolerate. Keep this list short and
 // document each entry — anything that lands here is a regression candidate.
@@ -38,6 +43,36 @@ const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/blog": HOMEPAGE_TITLE_FALLBACK,
   "/sandbox-proxy": HOMEPAGE_TITLE_FALLBACK,
 };
+
+function discoverDocsRoutes(): string[] {
+  const routes: string[] = [];
+  const walk = (dir: string) => {
+    for (const entry of readdirSync(dir)) {
+      const fullPath = pathModule.join(dir, entry);
+      const stats = statSync(fullPath);
+      if (stats.isDirectory()) {
+        walk(fullPath);
+        continue;
+      }
+      if (!entry.endsWith(".mdx")) continue;
+      const rel = pathModule
+        .relative(CONTENT_DIR, fullPath)
+        .replace(/\\/g, "/")
+        .replace(/\.mdx$/, "");
+      if (rel === "index") {
+        routes.push("/docs");
+      } else if (rel.endsWith("/index")) {
+        routes.push(`/docs/${rel.slice(0, -"/index".length)}`);
+      } else {
+        routes.push(`/docs/${rel}`);
+      }
+    }
+  };
+  walk(CONTENT_DIR);
+  return [...new Set(routes)].sort();
+}
+
+const docsRoutes = discoverDocsRoutes();
 
 interface CapturedFailures {
   pageErrors: string[];
@@ -106,7 +141,7 @@ const publicRoutes = [
   "/login",
   "/terms-of-service",
   "/privacy-policy",
-  "/docs",
+  ...docsRoutes,
   "/sandbox-proxy",
   "/bsc",
   "/chat/agent_1",
@@ -132,6 +167,7 @@ const dashboardRoutes = [
   "/dashboard/billing/success",
   "/dashboard/agents",
   "/dashboard/agents/agent_1",
+  "/dashboard/agents/agent_1/chat",
   "/dashboard/apps",
   "/dashboard/apps/app_1",
   "/dashboard/my-agents",
@@ -142,6 +178,7 @@ const dashboardRoutes = [
   "/dashboard/earnings",
   "/dashboard/affiliates",
   "/dashboard/invoices/inv_1",
+  "/dashboard/chat",
   "/dashboard/containers",
   "/dashboard/containers/container_1",
   "/dashboard/containers/agents/agent_1",
@@ -222,6 +259,50 @@ async function installApiMocks(page: Page) {
               avatarUrl: null,
               bio: "A shared test agent.",
               creatorUsername: "tester",
+            },
+          },
+        });
+      }
+
+      if (path === "/api/v1/eliza/agents") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: [
+              {
+                id: "agent_1",
+                agentName: "Test Agent",
+                name: "Test Agent",
+                status: "running",
+                createdAt: now,
+                updatedAt: now,
+                lastHeartbeatAt: now,
+                adminDetails: {
+                  webUiUrl: "https://agent.example.test",
+                },
+              },
+            ],
+          },
+        });
+      }
+
+      if (path === "/api/v1/eliza/agents/agent_1") {
+        const now = new Date().toISOString();
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "agent_1",
+              agentName: "Test Agent",
+              name: "Test Agent",
+              status: "running",
+              createdAt: now,
+              updatedAt: now,
+              lastHeartbeatAt: now,
+              adminDetails: {
+                webUiUrl: "https://agent.example.test",
+              },
             },
           },
         });

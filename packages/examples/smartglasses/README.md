@@ -6,8 +6,8 @@ This example exercises `@elizaos/plugin-smartglasses` without physical glasses b
 - RSVP word-group display is exercised through the same G1 display packet path
 - microphone enable and disable commands are sent to the right lens as `0x0E`
 - side tap events toggle microphone state
-- bridge-backed Wi-Fi scan/status/configure actions are exercised through the
-  mock transport path used by Eliza actions
+- bridge-backed Wi-Fi scan/status/configure/setup-prompt actions are exercised
+  through the mock transport path used by Eliza actions
 - direct G1 microphone chunks are exposed as raw LC3 audio metadata with sequence tracking, and the mock example injects a decoder hook to exercise PCM callback delivery
 - EvenHub/G2 bridge microphone chunks are exposed as 16 kHz PCM when the bridge supplies PCM audio events
 - host STT/local transcription events are emitted as Eliza `SMARTGLASSES_TRANSCRIPT` events and included in status output
@@ -77,7 +77,12 @@ For a physical Even G1 smoke test from Node/Bun through Noble:
 bun run --cwd packages/examples/smartglasses hardware:noble
 ```
 
-This scans for both lenses, writes init/serial/display/settings packets, disables the right microphone, waits for a single tap to enable the microphone, waits for speech audio, then requires a double tap to disable the microphone. It exits non-zero if the required tap or audio evidence is not observed. It requires the optional `@abandonware/noble` dependency and host BLE permissions.
+This scans for both lenses, writes init/serial/display/settings packets,
+disables the right microphone, waits for the glasses to report `wearing`, then
+waits for a single tap to enable the microphone, waits for speech audio, and
+requires a double tap to disable the microphone. It exits non-zero if the
+required wearing, tap, or audio evidence is not observed. It requires the
+optional `@abandonware/noble` dependency and host BLE permissions.
 
 If Noble's native binding is unavailable on macOS, use the Bleak/CoreBluetooth smoke:
 
@@ -87,6 +92,18 @@ SMARTGLASSES_REPORT_PATH=./smartglasses-hardware-report.json bun run --cwd packa
 ```
 
 The Bleak smoke connects the same whole headset directly through macOS CoreBluetooth, writes init/serial/display/settings packets, waits for the glasses to report `wearing`, then waits for single tap, microphone audio, and double tap evidence using the same JSON report schema as the browser and Noble smokes. The glasses must be out of the charging cradle and worn for the tap and microphone checks; cradle/charging state packets alone do not satisfy hardware evidence. Use `SMARTGLASSES_INIT_MODE=official`, `lens-specific`, or `android-f4` to compare upstream init variants, `SMARTGLASSES_WEARING_TIMEOUT_MS=30000` to tune the pre-validation wearing wait, and `SMARTGLASSES_DIRECT_MIC_MS=15000` to open the right microphone directly before the tap-gated check.
+
+For the final auditable hardware proof run, prefer the latest-report helpers.
+They write `/tmp/smartglasses-hardware-report-latest.json`, print a setup/status
+summary even when the smoke fails, and then run the strict validator:
+
+```bash
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
+```
+
+```bash
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
+```
 
 To leave an auditable JSON artifact from the Noble smoke, set
 `SMARTGLASSES_REPORT_PATH`:

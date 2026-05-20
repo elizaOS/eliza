@@ -1,14 +1,13 @@
-import {
-  type G1ConnectionReadyMode,
-  NobleG1Transport,
-  SmartglassesService,
-} from "@elizaos/plugin-smartglasses";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import {
+  NobleG1Transport,
+  SmartglassesService,
+} from "@elizaos/plugin-smartglasses";
+import {
   createHardwareEvidenceReport,
   markHardwareMicrophoneCommand,
-  missingHardwareEvidence,
+  missingCompleteHardwareEvidence,
   recordHardwareAudio,
   recordHardwareEvent,
   recordHardwareWrite,
@@ -30,7 +29,11 @@ const initMode =
     ? requestedInitMode
     : "lens-specific";
 
-const report = createHardwareEvidenceReport({ scanTimeoutMs, holdMs, initMode });
+const report = createHardwareEvidenceReport({
+  scanTimeoutMs,
+  holdMs,
+  initMode,
+});
 
 const dynamicImport = new Function("specifier", "return import(specifier)") as (
   specifier: string,
@@ -113,12 +116,17 @@ async function waitForWearing(): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error("Glasses did not report wearing state before tap/audio validation");
+  throw new Error(
+    "Glasses did not report wearing state before tap/audio validation",
+  );
 }
 
 async function runDirectMicDiagnostic(): Promise<void> {
   if (directMicMs <= 0) return;
-  log("direct mic diagnostic", "speak clearly until the diagnostic window ends");
+  log(
+    "direct mic diagnostic",
+    "speak clearly until the diagnostic window ends",
+  );
   await service.setMicrophoneEnabled(true);
   const deadline = Date.now() + directMicMs;
   while (Date.now() < deadline) {
@@ -137,7 +145,7 @@ async function runTapAudioValidation(): Promise<void> {
   const deadline = Date.now() + holdMs;
   while (Date.now() < deadline) {
     updateHardwareEvidenceStatus(report, service.getStatus());
-    if (missingHardwareEvidence(report).length === 0) return;
+    if (missingCompleteHardwareEvidence(report).length === 0) return;
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
   await service.setMicrophoneEnabled(false);
@@ -172,7 +180,7 @@ try {
   await runTapAudioValidation();
 
   updateHardwareEvidenceStatus(report, service.getStatus());
-  const missingChecks = missingHardwareEvidence(report);
+  const missingChecks = missingCompleteHardwareEvidence(report);
   if (missingChecks.length > 0)
     throw new Error(
       `Missing hardware smoke evidence: ${missingChecks.join(", ")}`,

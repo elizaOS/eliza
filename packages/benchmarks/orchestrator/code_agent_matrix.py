@@ -10,6 +10,7 @@ logs, and summary classification.
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -36,6 +37,50 @@ DEFAULT_PROVIDER = "cerebras"
 DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
 CODE_CAPABILITIES = "code.read,code.write,code.edit,code.search,code.shell"
 DEFAULT_LOG_LIMIT_BYTES = 16 * 1024 * 1024
+REPORT_ROW_FIELDS = (
+    "generated_at",
+    "run_root",
+    "mode",
+    "provider",
+    "model",
+    "benchmark",
+    "status",
+    "target_adapter",
+    "baseline_adapter",
+    "target_right",
+    "target_wrong",
+    "target_total",
+    "target_accuracy",
+    "baseline_right",
+    "baseline_wrong",
+    "baseline_total",
+    "baseline_accuracy",
+    "accuracy_delta",
+    "target_input_tokens",
+    "target_output_tokens",
+    "target_total_tokens",
+    "target_cached_token_percent",
+    "target_llm_call_count",
+    "baseline_input_tokens",
+    "baseline_output_tokens",
+    "baseline_total_tokens",
+    "baseline_cached_token_percent",
+    "baseline_llm_call_count",
+    "input_token_delta",
+    "output_token_delta",
+    "total_token_delta",
+    "cached_token_percent_delta",
+    "llm_call_delta",
+    "coverage_gate_ok",
+    "benchmark_gate_ok",
+    "required_stats_gate_ok",
+    "efficiency_gate_ok",
+    "no_regression_gate_ok",
+    "quality_guardrail_gate_ok",
+    "trajectory_review_gate_ok",
+    "live_report_gate_ok",
+    "report_gate_ok",
+)
 EXIT_OK = 0
 EXIT_PREFLIGHT_FAILED = 2
 EXIT_COMPARABLE_GATE_FAILED = 3
@@ -43,6 +88,11 @@ EXIT_TOKEN_EVIDENCE_FAILED = 4
 EXIT_REQUIRED_STATS_FAILED = 5
 EXIT_COVERAGE_GATE_FAILED = 6
 EXIT_REPORT_GATE_FAILED = 7
+EXIT_EFFICIENCY_GATE_FAILED = 8
+EXIT_NO_REGRESSION_FAILED = 9
+EXIT_QUALITY_GUARDRAIL_FAILED = 10
+EXIT_TRAJECTORY_REVIEW_FAILED = 11
+EXIT_LIVE_REPORT_FAILED = 12
 EXIT_CODE_SPECS = (
     (EXIT_OK, "ok", "run completed without an enforced gate failure"),
     (EXIT_PREFLIGHT_FAILED, "preflight_failed", "preflight checks failed"),
@@ -70,6 +120,31 @@ EXIT_CODE_SPECS = (
         EXIT_REPORT_GATE_FAILED,
         "report_gate_failed",
         "the combined release-readiness report gate failed",
+    ),
+    (
+        EXIT_EFFICIENCY_GATE_FAILED,
+        "efficiency_gate_failed",
+        "ElizaOS used more tokens, made more LLM calls, or had lower cached-token percentage than OpenCode",
+    ),
+    (
+        EXIT_NO_REGRESSION_FAILED,
+        "no_regression_failed",
+        "ElizaOS regressed against the previous comparison summary",
+    ),
+    (
+        EXIT_QUALITY_GUARDRAIL_FAILED,
+        "quality_guardrail_failed",
+        "the broader non-code benchmark readiness guardrail failed",
+    ),
+    (
+        EXIT_TRAJECTORY_REVIEW_FAILED,
+        "trajectory_review_failed",
+        "one or more selected cells lacked reviewable trajectory telemetry",
+    ),
+    (
+        EXIT_LIVE_REPORT_FAILED,
+        "live_report_failed",
+        "the report was not generated from live benchmark execution",
     ),
 )
 
@@ -232,6 +307,55 @@ def _opencode_bin(root: Path, env: dict[str, str]) -> str | None:
     return shutil.which("opencode")
 
 
+def _nl2repo_command_env_name(adapter: str) -> str:
+    adapter_key = sanitize(adapter).replace("-", "_").upper()
+    return f"NL2REPO_AGENT_COMMAND_TEMPLATE_{adapter_key}"
+
+
+def _nl2repo_agent_command_template(adapter: str, env: dict[str, str] | None = None) -> str:
+    env = os.environ if env is None else env
+    configured = (
+        env.get(_nl2repo_command_env_name(adapter), "")
+        or env.get("NL2REPO_AGENT_COMMAND_TEMPLATE", "")
+    ).strip()
+    if configured:
+        return configured
+    disable_builtin = env.get("NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND", "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if disable_builtin:
+        return ""
+    agent_command = workspace_root() / "packages" / "benchmarks" / "nl2repo" / "agent_command.py"
+    if not agent_command.exists():
+        return ""
+    return " ".join(
+        shlex.quote(part)
+        for part in (
+            sys.executable,
+            str(agent_command),
+            "--adapter",
+            adapter,
+            "--workspace",
+            "{workspace}",
+            "--instruction",
+            "{instruction}",
+            "--prompt",
+            "{prompt}",
+            "--task",
+            "{task}",
+            "--result-json",
+            "{result_json}",
+            "--provider",
+            "{model_provider}",
+            "--model",
+            "{model}",
+        )
+    )
+
+
 def preflight_matrix(
     *,
     root: Path,
@@ -263,6 +387,7 @@ def preflight_matrix(
         )
 
     cell_checks: list[dict[str, Any]] = []
+    nl2repo_docker_checked = False
     for cell in cells:
         executable = cell.command[0] if cell.command else ""
         executable_ok = bool(executable and (Path(executable).exists() or shutil.which(executable)))
@@ -283,6 +408,50 @@ def preflight_matrix(
                     "message": f"{cell.benchmark}/{cell.adapter} cwd not found: {cell.cwd}",
                 }
             )
+        if cell.benchmark == "nl2repo" and "--mock" not in cell.command:
+            if "--agent-command-template" not in cell.command:
+                issues.append(
+                    {
+                        "severity": "error",
+                        "kind": "missing_nl2repo_agent_command_template",
+                        "message": (
+                            f"{cell.benchmark}/{cell.adapter} requires "
+                            f"NL2REPO_AGENT_COMMAND_TEMPLATE or {_nl2repo_command_env_name(cell.adapter)}"
+                        ),
+                    }
+                )
+            if "--no-docker" not in cell.command and not nl2repo_docker_checked:
+                nl2repo_docker_checked = True
+                docker = shutil.which("docker")
+                if not docker:
+                    issues.append(
+                        {
+                            "severity": "error",
+                            "kind": "missing_docker_cli",
+                            "message": "nl2repo live scoring requires the Docker CLI",
+                        }
+                    )
+                else:
+                    completed = subprocess.run(
+                        [docker, "version"],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True,
+                        timeout=10,
+                        check=False,
+                    )
+                    if completed.returncode != 0:
+                        detail = (completed.stderr or completed.stdout or "").strip()
+                        issues.append(
+                            {
+                                "severity": "error",
+                                "kind": "docker_daemon_unavailable",
+                                "message": (
+                                    "nl2repo live scoring requires a running Docker daemon"
+                                    + (f": {detail}" if detail else "")
+                                ),
+                            }
+                        )
         cell_checks.append(
             {
                 "benchmark": cell.benchmark,
@@ -323,11 +492,14 @@ def default_command(
 ) -> tuple[list[str], Path]:
     python = sys.executable
     b_root = benchmarks_root(root)
-    if benchmark == "swe_bench":
+    if benchmark in {"swe_bench", "swe_bench_multilingual"}:
+        swe_variant = "multilingual" if benchmark == "swe_bench_multilingual" else "lite"
         cmd = [
             python,
             "-m",
             "benchmarks.swe_bench.cli",
+            "--variant",
+            swe_variant,
             "--orchestrated",
             "--harness",
             "eliza",
@@ -454,6 +626,36 @@ def default_command(
             cmd.append("--dry_run")
         return cmd, b_root / "OSWorld"
 
+    if benchmark == "nl2repo":
+        cmd = [
+            python,
+            "-m",
+            "benchmarks.nl2repo.adapter_matrix",
+            "--agent-harness",
+            "eliza",
+            "--task-agent",
+            adapter,
+            "--model-provider",
+            provider,
+            "--model",
+            model,
+            "--output",
+            str(output_dir),
+            "--trajectory-dir",
+            str(trajectory_dir),
+            "--json",
+        ]
+        if max_tasks is not None:
+            cmd.extend(["--max-tasks", str(max_tasks)])
+        command_template = _nl2repo_agent_command_template(adapter)
+        if command_template:
+            cmd.extend(["--agent-command-template", command_template])
+        if smoke:
+            cmd.append("--mock")
+        if no_docker:
+            cmd.append("--no-docker")
+        return cmd, root
+
     raise ValueError(f"unsupported benchmark for code-agent matrix: {benchmark}")
 
 
@@ -484,7 +686,7 @@ def build_cell(
     )
     env_overrides["BENCHMARK_RUN_DIR"] = str(trajectory_dir)
     env_overrides["BENCHMARK_TELEMETRY_JSONL"] = str(trajectory_dir / "telemetry.jsonl")
-    if benchmark == "swe_bench":
+    if benchmark in {"swe_bench", "swe_bench_multilingual"}:
         env_overrides["SWE_BENCH_REPO_CACHE_DIR"] = os.environ.get(
             "SWE_BENCH_REPO_CACHE_DIR",
             str(default_swe_bench_repo_cache_dir()),
@@ -1250,6 +1452,8 @@ def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
             "benchmark": item.benchmark_id,
             "domains": list(item.domains),
             "reason": item.reason,
+            "promotion_requirements": list(item.promotion_requirements),
+            "promotion_priority": item.promotion_priority,
         }
         for item in CODE_AGENT_COVERAGE
         if item.status == "deferred"
@@ -1275,6 +1479,38 @@ def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
             else "some included code-agent benchmarks were not selected for this run"
         ),
     }
+
+
+def build_deferred_promotion_queue(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    coverage = summary.get("coverage")
+    coverage = coverage if isinstance(coverage, dict) else {}
+    deferred = coverage.get("deferred_benchmarks")
+    queue: list[dict[str, Any]] = []
+    for item in deferred if isinstance(deferred, list) else []:
+        if not isinstance(item, dict):
+            continue
+        requirements = [
+            str(requirement)
+            for requirement in item.get("promotion_requirements") or []
+            if str(requirement)
+        ]
+        queue.append(
+            {
+                "priority": str(item.get("promotion_priority") or "p2"),
+                "benchmark": item.get("benchmark"),
+                "domains": item.get("domains") or [],
+                "next_action": requirements[0] if requirements else item.get("reason", ""),
+                "remaining_requirements": requirements,
+                "remaining_count": len(requirements),
+            }
+        )
+    queue.sort(
+        key=lambda item: (
+            str(item.get("priority") or "p2"),
+            str(item.get("benchmark") or ""),
+        )
+    )
+    return queue
 
 
 def build_coverage_gate(summary: dict[str, Any]) -> dict[str, Any]:
@@ -1475,6 +1711,40 @@ def build_efficiency_queue(head_to_head: dict[str, Any]) -> list[dict[str, Any]]
         )
     )
     return queue
+
+
+def build_efficiency_gate(summary: dict[str, Any]) -> dict[str, Any]:
+    queue = summary.get("efficiency_queue")
+    queue = queue if isinstance(queue, list) else []
+    run_config = summary.get("run_config")
+    enforced = bool(isinstance(run_config, dict) and run_config.get("enforce_efficiency"))
+    regressions = [
+        {
+            "benchmark": item.get("benchmark"),
+            "status": item.get("status"),
+            "reasons": item.get("reasons") or [],
+            "total_token_delta": item.get("total_token_delta"),
+            "cached_token_percent_delta": item.get("cached_token_percent_delta"),
+            "llm_call_delta": item.get("llm_call_delta"),
+        }
+        for item in queue
+        if isinstance(item, dict)
+    ]
+    return {
+        "ok": not regressions,
+        "enforced": enforced,
+        "blocking_benchmarks": [
+            str(item.get("benchmark"))
+            for item in regressions
+            if item.get("benchmark")
+        ],
+        "regressions": regressions,
+        "message": (
+            "ElizaOS has no token, LLM-call, or cached-token regressions versus OpenCode"
+            if not regressions
+            else "ElizaOS has efficiency regressions versus OpenCode"
+        ),
+    }
 
 
 def _artifact_links(result: CellResult | None) -> dict[str, str | None]:
@@ -1703,6 +1973,57 @@ def _command_template(parts: list[str]) -> str:
     return " ".join(part if part == "{summary_json}" else shlex.quote(part) for part in parts)
 
 
+def _selected_scope_args(cell_pairs: tuple[tuple[str, str], ...]) -> list[str]:
+    benchmarks = ",".join(sorted({benchmark for benchmark, _adapter in cell_pairs}))
+    adapters = ",".join(sorted({adapter for _benchmark, adapter in cell_pairs}))
+    return ["--benchmarks", benchmarks, "--adapters", adapters]
+
+
+def _preflight_next_commands(
+    *,
+    args: argparse.Namespace,
+    run_root: Path,
+    cell_pairs: tuple[tuple[str, str], ...],
+) -> dict[str, str]:
+    base = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        *_selected_scope_args(cell_pairs),
+        "--provider",
+        str(args.provider),
+        "--model",
+        str(args.model),
+        "--max-tasks",
+        str(args.max_tasks),
+        "--timeout-seconds",
+        str(args.timeout_seconds),
+        "--run-root",
+        str(run_root),
+    ]
+    preflight = [*base, "--preflight"]
+    live = [
+        *base,
+        "--force",
+        "--enforce-live-report",
+        "--enforce-trajectory-reviews",
+        "--enforce-report",
+        "--enforce-coverage",
+        "--enforce-comparable",
+        "--enforce-required-stats",
+        "--enforce-efficiency",
+    ]
+    if args.no_docker:
+        preflight.append("--no-docker")
+        live.append("--no-docker")
+    release = [part for part in live if part != "--no-docker"]
+    return {
+        "retry_preflight": _command_template(preflight),
+        "live_evidence": _command_template(live),
+        "release_comparable": _command_template(release),
+    }
+
+
 def _matrix_rerun_command_template(
     summary: dict[str, Any],
     *,
@@ -1822,6 +2143,196 @@ def build_previous_summary_comparison(
             for trend in ("improved", "unchanged", "regressed", "missing")
         },
         "comparisons": comparisons,
+    }
+
+
+def build_no_regression_gate(summary: dict[str, Any]) -> dict[str, Any]:
+    run_config = summary.get("run_config")
+    enforced = bool(isinstance(run_config, dict) and run_config.get("enforce_no_regression"))
+    comparison = summary.get("previous_summary_comparison")
+    rows = (
+        comparison.get("comparisons")
+        if isinstance(comparison, dict)
+        else None
+    )
+    if not isinstance(rows, list):
+        return {
+            "ok": not enforced,
+            "enforced": enforced,
+            "blocking_benchmarks": [] if not enforced else ["previous_summary_comparison"],
+            "regressions": [],
+            "message": (
+                "previous-summary comparison is not attached"
+                if enforced
+                else "no-regression gate is advisory without a previous summary"
+            ),
+        }
+    regressions: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        previous_accuracy = row.get("previous_target_accuracy")
+        current_accuracy = row.get("current_target_accuracy")
+        if row.get("trend") == "regressed" or (
+            isinstance(previous_accuracy, (int, float))
+            and not isinstance(previous_accuracy, bool)
+            and not (
+                isinstance(current_accuracy, (int, float))
+                and not isinstance(current_accuracy, bool)
+            )
+        ):
+            regressions.append(
+                {
+                    "benchmark": row.get("benchmark"),
+                    "previous_target_accuracy": previous_accuracy,
+                    "current_target_accuracy": current_accuracy,
+                    "target_accuracy_delta": row.get("target_accuracy_delta"),
+                    "previous_status": row.get("previous_status"),
+                    "current_status": row.get("current_status"),
+                }
+            )
+    return {
+        "ok": not regressions,
+        "enforced": enforced,
+        "blocking_benchmarks": [
+            str(item.get("benchmark"))
+            for item in regressions
+            if item.get("benchmark")
+        ],
+        "regressions": regressions,
+        "message": (
+            "ElizaOS did not regress against the previous summary"
+            if not regressions
+            else "ElizaOS regressed against the previous summary"
+        ),
+    }
+
+
+def build_quality_guardrail_gate(
+    guardrail_summary: dict[str, Any] | None,
+    *,
+    summary_path: str = "",
+    enforced: bool = False,
+) -> dict[str, Any]:
+    if guardrail_summary is None:
+        return {
+            "ok": not enforced,
+            "enforced": enforced,
+            "summary_path": summary_path,
+            "latest_dir": None,
+            "tolerance": None,
+            "findings": [],
+            "message": (
+                "quality guardrail summary is missing"
+                if enforced
+                else "quality guardrail is advisory without a summary"
+            ),
+        }
+    findings = guardrail_summary.get("findings")
+    findings = findings if isinstance(findings, list) else []
+    ok_value = guardrail_summary.get("ok")
+    ok = bool(ok_value) and not findings
+    return {
+        "ok": ok,
+        "enforced": enforced,
+        "summary_path": summary_path,
+        "latest_dir": guardrail_summary.get("latest_dir"),
+        "tolerance": guardrail_summary.get("tolerance"),
+        "findings": [
+            finding
+            for finding in findings
+            if isinstance(finding, dict)
+        ],
+        "message": (
+            "broader benchmark readiness guardrail passed"
+            if ok
+            else "broader benchmark readiness guardrail failed"
+        ),
+    }
+
+
+def build_trajectory_review_gate(
+    summary: dict[str, Any],
+    *,
+    require_trajectory_reviews: bool = False,
+) -> dict[str, Any]:
+    cells = summary.get("cells")
+    cells = cells if isinstance(cells, list) else []
+    blocking: list[dict[str, Any]] = []
+    reviewed = 0
+    for cell in cells:
+        if not isinstance(cell, dict):
+            continue
+        tokens = cell.get("token_metrics")
+        tokens = tokens if isinstance(tokens, dict) else {}
+        files = tokens.get("trajectory_file_count")
+        turns = tokens.get("trajectory_turn_count")
+        cached_percent = tokens.get("cached_token_percent")
+        has_files = isinstance(files, (int, float)) and not isinstance(files, bool) and files > 0
+        has_turns = isinstance(turns, (int, float)) and not isinstance(turns, bool) and turns > 0
+        has_cached = isinstance(cached_percent, (int, float)) and not isinstance(cached_percent, bool)
+        if has_files and has_turns and has_cached:
+            reviewed += 1
+            continue
+        notes: list[str] = []
+        if not has_files:
+            notes.append("no trajectory files found")
+        if not has_turns:
+            notes.append("no trajectory turns found")
+        if not has_cached:
+            notes.append("no cached-token telemetry found")
+        output_dir = cell.get("output_dir")
+        trajectory_dir = (
+            str(Path(str(output_dir)).parent / "trajectories")
+            if isinstance(output_dir, str) and output_dir
+            else ""
+        )
+        blocking.append(
+            {
+                "benchmark": cell.get("benchmark"),
+                "adapter": cell.get("adapter"),
+                "trajectory_dir": trajectory_dir,
+                "trajectory_file_count": files,
+                "trajectory_turn_count": turns,
+                "cached_token_percent": cached_percent,
+                "review_notes": notes,
+            }
+        )
+    return {
+        "ok": not blocking,
+        "enforced": bool(require_trajectory_reviews),
+        "reviewed_cells": reviewed,
+        "blocking_cells": blocking,
+        "blocking_count": len(blocking),
+        "message": (
+            "all selected cells have reviewable trajectory telemetry"
+            if not blocking
+            else "some selected cells lack reviewable trajectory telemetry"
+        ),
+    }
+
+
+def build_live_report_gate(
+    summary: dict[str, Any],
+    *,
+    enforced: bool = False,
+) -> dict[str, Any]:
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    mode = str(run_config.get("mode") or "")
+    ok = mode == "live"
+    return {
+        "ok": ok,
+        "enforced": bool(enforced),
+        "mode": mode,
+        "smoke": bool(run_config.get("smoke")),
+        "dry_run": bool(run_config.get("dry_run")),
+        "summarize": str(run_config.get("summarize") or ""),
+        "message": (
+            "report was generated from live benchmark execution"
+            if ok
+            else "report was not generated from live benchmark execution"
+        ),
     }
 
 
@@ -1946,11 +2457,41 @@ def build_required_stats_gate(
 
 
 def build_report_gate(summary: dict[str, Any]) -> dict[str, Any]:
-    gate_specs = (
+    gate_specs: list[tuple[str, str]] = [
         ("coverage_gate", "benchmark coverage"),
         ("benchmark_gate", "comparable-or-better outcomes"),
         ("required_stats_gate", "required stats"),
-    )
+    ]
+    efficiency_gate = summary.get("efficiency_gate")
+    if (
+        isinstance(efficiency_gate, dict)
+        and efficiency_gate.get("enforced") is True
+    ):
+        gate_specs.append(("efficiency_gate", "efficiency"))
+    no_regression_gate = summary.get("no_regression_gate")
+    if (
+        isinstance(no_regression_gate, dict)
+        and no_regression_gate.get("enforced") is True
+    ):
+        gate_specs.append(("no_regression_gate", "no regression"))
+    quality_guardrail_gate = summary.get("quality_guardrail_gate")
+    if (
+        isinstance(quality_guardrail_gate, dict)
+        and quality_guardrail_gate.get("enforced") is True
+    ):
+        gate_specs.append(("quality_guardrail_gate", "quality guardrail"))
+    trajectory_review_gate = summary.get("trajectory_review_gate")
+    if (
+        isinstance(trajectory_review_gate, dict)
+        and trajectory_review_gate.get("enforced") is True
+    ):
+        gate_specs.append(("trajectory_review_gate", "trajectory review"))
+    live_report_gate = summary.get("live_report_gate")
+    if (
+        isinstance(live_report_gate, dict)
+        and live_report_gate.get("enforced") is True
+    ):
+        gate_specs.append(("live_report_gate", "live report"))
     blocking: list[str] = []
     gate_status: dict[str, bool] = {}
     for key, label in gate_specs:
@@ -1969,6 +2510,121 @@ def build_report_gate(summary: dict[str, Any]) -> dict[str, Any]:
             else "benchmark report is not yet release-ready"
         ),
     }
+
+
+def build_report_rows(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build stable flat rows for longitudinal benchmark reporting."""
+    run_config = summary.get("run_config")
+    run_config = run_config if isinstance(run_config, dict) else {}
+    generated_at = summary.get("generated_at")
+    rows: list[dict[str, Any]] = []
+    comparisons = summary.get("head_to_head", {}).get("comparisons")
+    for comparison in comparisons if isinstance(comparisons, list) else []:
+        if not isinstance(comparison, dict):
+            continue
+        row = {
+            "generated_at": generated_at,
+            "run_root": run_config.get("run_root"),
+            "mode": run_config.get("mode"),
+            "provider": run_config.get("provider"),
+            "model": run_config.get("model"),
+            "benchmark": comparison.get("benchmark"),
+            "status": comparison.get("status"),
+            "target_adapter": comparison.get("target_adapter"),
+            "baseline_adapter": comparison.get("baseline_adapter"),
+            "target_right": comparison.get("target_right"),
+            "target_wrong": comparison.get("target_wrong"),
+            "target_total": comparison.get("target_total"),
+            "target_accuracy": comparison.get("target_accuracy"),
+            "baseline_right": comparison.get("baseline_right"),
+            "baseline_wrong": comparison.get("baseline_wrong"),
+            "baseline_total": comparison.get("baseline_total"),
+            "baseline_accuracy": comparison.get("baseline_accuracy"),
+            "accuracy_delta": comparison.get("accuracy_delta"),
+            "target_input_tokens": comparison.get("target_input_tokens"),
+            "target_output_tokens": comparison.get("target_output_tokens"),
+            "target_total_tokens": comparison.get("target_total_tokens"),
+            "target_cached_token_percent": comparison.get("target_cached_token_percent"),
+            "target_llm_call_count": comparison.get("target_llm_call_count"),
+            "baseline_input_tokens": comparison.get("baseline_input_tokens"),
+            "baseline_output_tokens": comparison.get("baseline_output_tokens"),
+            "baseline_total_tokens": comparison.get("baseline_total_tokens"),
+            "baseline_cached_token_percent": comparison.get("baseline_cached_token_percent"),
+            "baseline_llm_call_count": comparison.get("baseline_llm_call_count"),
+            "input_token_delta": comparison.get("input_token_delta"),
+            "output_token_delta": comparison.get("output_token_delta"),
+            "total_token_delta": comparison.get("total_token_delta"),
+            "cached_token_percent_delta": comparison.get("cached_token_percent_delta"),
+            "llm_call_delta": comparison.get("llm_call_delta"),
+            "coverage_gate_ok": _gate_ok(summary, "coverage_gate"),
+            "benchmark_gate_ok": _gate_ok(summary, "benchmark_gate"),
+            "required_stats_gate_ok": _gate_ok(summary, "required_stats_gate"),
+            "efficiency_gate_ok": _gate_ok(summary, "efficiency_gate"),
+            "no_regression_gate_ok": _gate_ok(summary, "no_regression_gate"),
+            "quality_guardrail_gate_ok": _gate_ok(summary, "quality_guardrail_gate"),
+            "trajectory_review_gate_ok": _gate_ok(summary, "trajectory_review_gate"),
+            "live_report_gate_ok": _gate_ok(summary, "live_report_gate"),
+            "report_gate_ok": _gate_ok(summary, "report_gate"),
+        }
+        rows.append({field: row.get(field) for field in REPORT_ROW_FIELDS})
+    return rows
+
+
+def _gate_ok(summary: dict[str, Any], key: str) -> bool | None:
+    gate = summary.get(key)
+    if isinstance(gate, dict):
+        value = gate.get("ok")
+        return bool(value) if isinstance(value, bool) else None
+    return None
+
+
+def write_report_rows(run_root: Path, rows: list[dict[str, Any]]) -> dict[str, str]:
+    run_root.mkdir(parents=True, exist_ok=True)
+    jsonl_path = run_root / "report-rows.jsonl"
+    csv_path = run_root / "report-rows.csv"
+    jsonl_path.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows),
+        encoding="utf-8",
+    )
+    with csv_path.open("w", encoding="utf-8", newline="") as handle:
+        writer = csv.DictWriter(handle, fieldnames=list(REPORT_ROW_FIELDS))
+        writer.writeheader()
+        writer.writerows(rows)
+    return {
+        "report_rows_jsonl": str(jsonl_path),
+        "report_rows_csv": str(csv_path),
+    }
+
+
+def write_preflight_artifacts(
+    *,
+    run_root: Path,
+    args: argparse.Namespace,
+    cell_pairs: tuple[tuple[str, str], ...],
+    preflight: dict[str, Any],
+) -> dict[str, Any]:
+    preflight_json = run_root / "preflight.json"
+    preflight_md = run_root / "preflight.md"
+    summary = {
+        "generated_at": datetime.now(UTC).isoformat(),
+        "total": len(cell_pairs),
+        "run_config": build_run_config(args, run_root=run_root, cell_pairs=cell_pairs),
+        "preflight": preflight,
+        "next_commands": _preflight_next_commands(
+            args=args,
+            run_root=run_root,
+            cell_pairs=cell_pairs,
+        ),
+        "exit_codes": build_exit_code_summary(),
+        "artifact_paths": {
+            "run_root": str(run_root),
+            "preflight_json": str(preflight_json),
+            "preflight_md": str(preflight_md),
+        },
+    }
+    write_json(preflight_json, summary)
+    preflight_md.write_text(render_markdown(summary), encoding="utf-8")
+    return summary
 
 
 def build_exit_code_summary() -> dict[str, dict[str, int | str]]:
@@ -2013,6 +2669,7 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         "cells": [asdict(result) for result in results],
     }
     summary["coverage_gate"] = build_coverage_gate(summary)
+    summary["deferred_promotion_queue"] = build_deferred_promotion_queue(summary)
     summary["benchmark_gate"] = build_benchmark_gate(summary)
     return summary
 
@@ -2049,6 +2706,12 @@ def build_run_config(
         "enforce_coverage": bool(args.enforce_coverage),
         "enforce_token_evidence": bool(args.enforce_token_evidence),
         "enforce_required_stats": bool(args.enforce_required_stats),
+        "enforce_efficiency": bool(args.enforce_efficiency),
+        "enforce_no_regression": bool(args.enforce_no_regression),
+        "quality_guardrail_summary": str(args.quality_guardrail_summary or ""),
+        "enforce_quality_guardrail": bool(args.enforce_quality_guardrail),
+        "enforce_trajectory_reviews": bool(args.enforce_trajectory_reviews),
+        "enforce_live_report": bool(args.enforce_live_report),
         "enforce_report": bool(args.enforce_report),
     }
 
@@ -2095,6 +2758,11 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Enforce coverage: {run_config.get('enforce_coverage')}",
                 f"Enforce token evidence: {run_config.get('enforce_token_evidence')}",
                 f"Enforce required stats: {run_config.get('enforce_required_stats')}",
+                f"Enforce efficiency: {run_config.get('enforce_efficiency')}",
+                f"Enforce no regression: {run_config.get('enforce_no_regression')}",
+                f"Enforce quality guardrail: {run_config.get('enforce_quality_guardrail')}",
+                f"Enforce trajectory reviews: {run_config.get('enforce_trajectory_reviews')}",
+                f"Enforce live report: {run_config.get('enforce_live_report')}",
                 f"Enforce report: {run_config.get('enforce_report')}",
             ]
         )
@@ -2168,6 +2836,154 @@ def render_markdown(summary: dict[str, Any]) -> str:
                 f"Blocking gates: {', '.join(report_gate.get('blocking_gates') or []) or '(none)'}",
             ]
         )
+    next_commands = summary.get("next_commands")
+    if isinstance(next_commands, dict) and next_commands:
+        lines.extend(["", "## Next Commands", ""])
+        for label in ("retry_preflight", "live_evidence", "release_comparable"):
+            command = next_commands.get(label)
+            if not isinstance(command, str) or not command:
+                continue
+            lines.extend(
+                [
+                    f"### {label.replace('_', ' ').title()}",
+                    "",
+                    "```bash",
+                    command,
+                    "```",
+                    "",
+                ]
+            )
+    efficiency_gate = summary.get("efficiency_gate")
+    if isinstance(efficiency_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Efficiency Gate",
+                "",
+                f"Status: {'ok' if efficiency_gate.get('ok') else 'blocked'}",
+                f"Enforced: {efficiency_gate.get('enforced')}",
+                f"Message: {efficiency_gate.get('message', '')}",
+                f"Blocking benchmarks: {', '.join(efficiency_gate.get('blocking_benchmarks') or []) or '(none)'}",
+            ]
+        )
+    no_regression_gate = summary.get("no_regression_gate")
+    if isinstance(no_regression_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## No Regression Gate",
+                "",
+                f"Status: {'ok' if no_regression_gate.get('ok') else 'blocked'}",
+                f"Enforced: {no_regression_gate.get('enforced')}",
+                f"Message: {no_regression_gate.get('message', '')}",
+                f"Blocking benchmarks: {', '.join(no_regression_gate.get('blocking_benchmarks') or []) or '(none)'}",
+            ]
+        )
+        regressions = no_regression_gate.get("regressions")
+        if isinstance(regressions, list) and regressions:
+            lines.extend(
+                [
+                    "",
+                    "| benchmark | previous accuracy | current accuracy | delta | previous status | current status |",
+                    "| --- | ---: | ---: | ---: | --- | --- |",
+                ]
+            )
+            for row in regressions:
+                if not isinstance(row, dict):
+                    continue
+                lines.append(
+                    "| {benchmark} | {previous} | {current} | {delta} | {previous_status} | {current_status} |".format(
+                        benchmark=row.get("benchmark", ""),
+                        previous=fmt(row.get("previous_target_accuracy")),
+                        current=fmt(row.get("current_target_accuracy")),
+                        delta=fmt(row.get("target_accuracy_delta")),
+                        previous_status=row.get("previous_status", ""),
+                        current_status=row.get("current_status", ""),
+                    )
+                )
+    quality_guardrail_gate = summary.get("quality_guardrail_gate")
+    if isinstance(quality_guardrail_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Quality Guardrail Gate",
+                "",
+                f"Status: {'ok' if quality_guardrail_gate.get('ok') else 'blocked'}",
+                f"Enforced: {quality_guardrail_gate.get('enforced')}",
+                f"Summary: {quality_guardrail_gate.get('summary_path') or ''}",
+                f"Latest dir: {quality_guardrail_gate.get('latest_dir') or ''}",
+                f"Message: {quality_guardrail_gate.get('message', '')}",
+            ]
+        )
+        findings = quality_guardrail_gate.get("findings")
+        if isinstance(findings, list) and findings:
+            lines.extend(
+                [
+                    "",
+                    "| scope | reason | value |",
+                    "| --- | --- | --- |",
+                ]
+            )
+            for finding in findings:
+                if not isinstance(finding, dict):
+                    continue
+                lines.append(
+                    "| {scope} | {reason} | {value} |".format(
+                        scope=finding.get("scope", ""),
+                        reason=finding.get("reason", ""),
+                        value=finding.get("value", ""),
+                    )
+                )
+    trajectory_review_gate = summary.get("trajectory_review_gate")
+    if isinstance(trajectory_review_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Trajectory Review Gate",
+                "",
+                f"Status: {'ok' if trajectory_review_gate.get('ok') else 'blocked'}",
+                f"Enforced: {trajectory_review_gate.get('enforced')}",
+                f"Reviewed cells: {trajectory_review_gate.get('reviewed_cells', 0)}",
+                f"Blocking cells: {trajectory_review_gate.get('blocking_count', 0)}",
+                f"Message: {trajectory_review_gate.get('message', '')}",
+            ]
+        )
+        blocking_cells = trajectory_review_gate.get("blocking_cells")
+        if isinstance(blocking_cells, list) and blocking_cells:
+            lines.extend(
+                [
+                    "",
+                    "| benchmark | adapter | trajectory dir | files | turns | cached % | notes |",
+                    "| --- | --- | --- | ---: | ---: | ---: | --- |",
+                ]
+            )
+            for cell in blocking_cells:
+                if not isinstance(cell, dict):
+                    continue
+                lines.append(
+                    "| {benchmark} | {adapter} | {trajectory_dir} | {files} | {turns} | {cached_percent} | {notes} |".format(
+                        benchmark=cell.get("benchmark", ""),
+                        adapter=cell.get("adapter", ""),
+                        trajectory_dir=cell.get("trajectory_dir", ""),
+                        files=fmt(cell.get("trajectory_file_count"), 0),
+                        turns=fmt(cell.get("trajectory_turn_count"), 0),
+                        cached_percent=fmt(cell.get("cached_token_percent"), 2),
+                        notes=", ".join(str(note) for note in cell.get("review_notes") or []),
+                    )
+                )
+    live_report_gate = summary.get("live_report_gate")
+    if isinstance(live_report_gate, dict):
+        lines.extend(
+            [
+                "",
+                "## Live Report Gate",
+                "",
+                f"Status: {'ok' if live_report_gate.get('ok') else 'blocked'}",
+                f"Enforced: {live_report_gate.get('enforced')}",
+                f"Mode: {live_report_gate.get('mode') or ''}",
+                f"Message: {live_report_gate.get('message', '')}",
+            ]
+        )
     coverage = summary.get("coverage")
     if isinstance(coverage, dict):
         raw_counts = coverage.get("status_counts")
@@ -2213,20 +3029,48 @@ def render_markdown(summary: dict[str, Any]) -> str:
                     "",
                     "### Deferred Related Benchmarks",
                     "",
-                    "| benchmark | domains | reason |",
-                    "| --- | --- | --- |",
+                    "| priority | benchmark | domains | reason | promotion requirements |",
+                    "| --- | --- | --- | --- | --- |",
                 ]
             )
             for item in deferred:
                 if not isinstance(item, dict):
                     continue
                 lines.append(
-                    "| {benchmark} | {domains} | {reason} |".format(
+                    "| {priority} | {benchmark} | {domains} | {reason} | {requirements} |".format(
+                        priority=item.get("promotion_priority", ""),
                         benchmark=item.get("benchmark", ""),
                         domains=", ".join(str(domain) for domain in item.get("domains") or []),
                         reason=item.get("reason", ""),
+                        requirements="; ".join(
+                            str(requirement)
+                            for requirement in item.get("promotion_requirements") or []
+                        ),
                     )
                 )
+    promotion_queue = summary.get("deferred_promotion_queue")
+    if isinstance(promotion_queue, list) and promotion_queue:
+        lines.extend(
+            [
+                "",
+                "## Deferred Promotion Queue",
+                "",
+                "| priority | benchmark | domains | next action | remaining |",
+                "| --- | --- | --- | --- | ---: |",
+            ]
+        )
+        for item in promotion_queue:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| {priority} | {benchmark} | {domains} | {next_action} | {remaining} |".format(
+                    priority=item.get("priority", ""),
+                    benchmark=item.get("benchmark", ""),
+                    domains=", ".join(str(domain) for domain in item.get("domains") or []),
+                    next_action=item.get("next_action", ""),
+                    remaining=item.get("remaining_count", ""),
+                )
+            )
     coverage_gate = summary.get("coverage_gate")
     if isinstance(coverage_gate, dict):
         lines.extend(
@@ -2710,6 +3554,36 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Exit nonzero unless required right/wrong and token stats are complete for the run mode.",
     )
     parser.add_argument(
+        "--enforce-efficiency",
+        action="store_true",
+        help="Exit nonzero if ElizaOS uses more tokens/calls or has lower cached-token percentage than OpenCode.",
+    )
+    parser.add_argument(
+        "--enforce-no-regression",
+        action="store_true",
+        help="Exit nonzero if ElizaOS target accuracy regressed against --compare-summary.",
+    )
+    parser.add_argument(
+        "--quality-guardrail-summary",
+        default="",
+        help="Path to validate-latest-readiness --json output for broader benchmark quality guardrail.",
+    )
+    parser.add_argument(
+        "--enforce-quality-guardrail",
+        action="store_true",
+        help="Exit nonzero unless --quality-guardrail-summary is present and clean.",
+    )
+    parser.add_argument(
+        "--enforce-trajectory-reviews",
+        action="store_true",
+        help="Exit nonzero unless every selected cell has reviewable trajectory telemetry.",
+    )
+    parser.add_argument(
+        "--enforce-live-report",
+        action="store_true",
+        help="Exit nonzero unless the report was generated from live benchmark execution.",
+    )
+    parser.add_argument(
         "--enforce-report",
         action="store_true",
         help="Exit nonzero unless coverage, comparability, and required stats gates all pass.",
@@ -2793,6 +3667,12 @@ def main(argv: list[str] | None = None) -> int:
             require_provider_key=not (args.smoke or args.dry_run),
         )
         if args.preflight:
+            write_preflight_artifacts(
+                run_root=run_root,
+                args=args,
+                cell_pairs=cell_pairs,
+                preflight=preflight,
+            )
             print(json.dumps(preflight, indent=2, sort_keys=True))
             return EXIT_OK if preflight["ok"] else EXIT_PREFLIGHT_FAILED
         if not preflight["ok"]:
@@ -2823,6 +3703,7 @@ def main(argv: list[str] | None = None) -> int:
         summary["head_to_head"],
         run_config=summary["run_config"],
     )
+    summary["deferred_promotion_queue"] = build_deferred_promotion_queue(summary)
     summary["required_stats_gate"] = build_required_stats_gate(
         summary,
         mode=summary["run_config"].get("mode"),
@@ -2832,7 +3713,7 @@ def main(argv: list[str] | None = None) -> int:
             else None
         ),
     )
-    summary["report_gate"] = build_report_gate(summary)
+    summary["efficiency_gate"] = build_efficiency_gate(summary)
     if preflight is not None:
         summary["preflight"] = preflight
     if args.compare_summary:
@@ -2843,6 +3724,34 @@ def main(argv: list[str] | None = None) -> int:
             summary,
             previous_summary,
         )
+    summary["no_regression_gate"] = build_no_regression_gate(summary)
+    guardrail_summary: dict[str, Any] | None = None
+    if args.quality_guardrail_summary:
+        raw_guardrail_summary = read_json(Path(args.quality_guardrail_summary).expanduser().resolve())
+        if not isinstance(raw_guardrail_summary, dict):
+            raise SystemExit(f"Could not read quality guardrail summary: {args.quality_guardrail_summary}")
+        guardrail_summary = raw_guardrail_summary
+    summary["quality_guardrail_gate"] = build_quality_guardrail_gate(
+        guardrail_summary,
+        summary_path=str(args.quality_guardrail_summary or ""),
+        enforced=bool(args.enforce_quality_guardrail),
+    )
+    summary["trajectory_review_gate"] = build_trajectory_review_gate(
+        summary,
+        require_trajectory_reviews=bool(args.enforce_trajectory_reviews),
+    )
+    summary["live_report_gate"] = build_live_report_gate(
+        summary,
+        enforced=bool(args.enforce_live_report),
+    )
+    summary["report_gate"] = build_report_gate(summary)
+    summary["report_rows"] = build_report_rows(summary)
+    summary["artifact_paths"] = {
+        "run_root": str(run_root),
+        "summary_json": str(run_root / "summary.json"),
+        "summary_md": str(run_root / "summary.md"),
+        **write_report_rows(run_root, summary["report_rows"]),
+    }
     write_json(run_root / "summary.json", summary)
     (run_root / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
     print(json.dumps({"run_root": str(run_root), "summary": str(run_root / "summary.json")}, indent=2))
@@ -2876,6 +3785,41 @@ def main(argv: list[str] | None = None) -> int:
         and not required_stats_gate.get("ok")
     ):
         return EXIT_REQUIRED_STATS_FAILED
+    efficiency_gate = summary.get("efficiency_gate")
+    if (
+        args.enforce_efficiency
+        and isinstance(efficiency_gate, dict)
+        and not efficiency_gate.get("ok")
+    ):
+        return EXIT_EFFICIENCY_GATE_FAILED
+    no_regression_gate = summary.get("no_regression_gate")
+    if (
+        args.enforce_no_regression
+        and isinstance(no_regression_gate, dict)
+        and not no_regression_gate.get("ok")
+    ):
+        return EXIT_NO_REGRESSION_FAILED
+    quality_guardrail_gate = summary.get("quality_guardrail_gate")
+    if (
+        args.enforce_quality_guardrail
+        and isinstance(quality_guardrail_gate, dict)
+        and not quality_guardrail_gate.get("ok")
+    ):
+        return EXIT_QUALITY_GUARDRAIL_FAILED
+    trajectory_review_gate = summary.get("trajectory_review_gate")
+    if (
+        args.enforce_trajectory_reviews
+        and isinstance(trajectory_review_gate, dict)
+        and not trajectory_review_gate.get("ok")
+    ):
+        return EXIT_TRAJECTORY_REVIEW_FAILED
+    live_report_gate = summary.get("live_report_gate")
+    if (
+        args.enforce_live_report
+        and isinstance(live_report_gate, dict)
+        and not live_report_gate.get("ok")
+    ):
+        return EXIT_LIVE_REPORT_FAILED
     return EXIT_OK
 
 

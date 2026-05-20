@@ -1805,6 +1805,59 @@ def test_rebuild_latest_restores_voice_scores_from_saved_result_metrics(
     assert voicebench["score"] == 0.8
 
 
+def test_rebuild_latest_restores_orchestrated_swe_score_from_saved_result(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["swe_bench_orchestrated"],
+        repo_meta={},
+    )
+    result_path = tmp_path / "swe-bench-orchestrated-result.json"
+    result_path.write_text(
+        json.dumps({"overall_score": 0.25}, sort_keys=True),
+        encoding="utf-8",
+    )
+    _seed_run(
+        conn,
+        benchmark_id="swe_bench_orchestrated",
+        agent="openclaw",
+        run_id="run_restorable_swe_orchestrated",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={
+            "reason": "latest_row_violates_current_compatibility",
+            "supported_harnesses": [],
+        },
+        result_json_path=str(result_path),
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {
+            "swe_bench_orchestrated": _adapter(
+                "swe_bench_orchestrated",
+                agent_compatibility=("openclaw",),
+            )
+        },
+    )
+
+    latest = json.loads(
+        (tmp_path / "latest" / "swe_bench_orchestrated__openclaw.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest["status"] == "succeeded"
+    assert latest["score"] == 0.25
+
+
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(
     tmp_path: Path,
 ) -> None:

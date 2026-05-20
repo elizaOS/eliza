@@ -26,6 +26,7 @@ import {
   type IAgentRuntime,
   logger,
   type RouteRequestMeta,
+  type ViewType,
 } from "@elizaos/core";
 import { type RouteHelpers, readJsonBody } from "@elizaos/shared";
 import {
@@ -45,12 +46,16 @@ import {
 } from "./views-registry.ts";
 import { viewSearchIndex } from "./views-search-index.ts";
 
-function parseViewTypeParam(value: string | null): "gui" | "tui" | undefined {
-  return value === "gui" || value === "tui" ? value : undefined;
+function parseViewTypeParam(value: string | null): ViewType | undefined {
+  return value === "gui" || value === "tui" || value === "xr"
+    ? (value as ViewType)
+    : undefined;
 }
 
-function parseViewTypeValue(value: unknown): "gui" | "tui" | undefined {
-  return value === "gui" || value === "tui" ? value : undefined;
+function parseViewTypeValue(value: unknown): ViewType | undefined {
+  return value === "gui" || value === "tui" || value === "xr"
+    ? (value as ViewType)
+    : undefined;
 }
 
 function contentTypeForViewAsset(assetPath: string): string {
@@ -185,7 +190,7 @@ export interface CurrentViewState {
   viewId: string;
   viewPath: string | null;
   viewLabel: string;
-  viewType: "gui" | "tui" | "xr";
+  viewType: ViewType;
   action?: string;
   updatedAt: string;
 }

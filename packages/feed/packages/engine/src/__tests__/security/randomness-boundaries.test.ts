@@ -65,7 +65,7 @@ describe("Randomness Boundaries", () => {
       const entropy = readSourceFile("utils/entropy.ts");
 
       // Must import from crypto
-      expect(entropy).toContain("from 'crypto'");
+      expect(entropy).toMatch(/from\s+["'](?:node:)?crypto["']/);
 
       // Must use randomBytes for secure random
       expect(entropy).toContain("randomBytes");

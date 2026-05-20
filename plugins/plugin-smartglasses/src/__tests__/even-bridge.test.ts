@@ -70,6 +70,16 @@ describe("EvenBridgeTransport", () => {
     eventHandler({ audioEvent: { audioPcm: [1, 2, 3] } });
 
     expect(transport.isConnected()).toBe(true);
+    expect(transport.getConnectedLenses()).toEqual({
+      left: {
+        connected: true,
+        name: "Native bridge left lens",
+      },
+      right: {
+        connected: true,
+        name: "Native bridge right lens",
+      },
+    });
     expect(writes).toEqual([
       { side: "left", data: [G1Command.SendResult, 1] },
       { side: "right", data: [G1Command.SendResult, 1] },
@@ -80,6 +90,7 @@ describe("EvenBridgeTransport", () => {
     expect(encodings).toEqual(["pcm16"]);
 
     await transport.disconnect();
+    expect(transport.getConnectedLenses()).toEqual({});
     expect(audioControls).toEqual([true, false]);
     expect(unsubscribed).toBe(true);
   });
@@ -352,12 +363,17 @@ describe("EvenBridgeTransport", () => {
 
   it("routes Wi-Fi scan, status, and credential setup through bridge APIs", async () => {
     const credentials: Array<{ ssid: string; password: string }> = [];
+    const setupReasons: string[] = [];
     const transport = new EvenBridgeTransport({
       requestWifiScan: () => ({
         status: "scan-complete",
         networks: [{ ssid: "Home" }, { SSID: "Office" }, "Guest"],
       }),
       requestWifiStatus: () => ({ connectedSsid: "Home" }),
+      requestWifiSetup: (reason) => {
+        setupReasons.push(reason ?? "");
+        return { message: "setup-opened" };
+      },
       setWifiCredentials: (ssid, password) => {
         credentials.push({ ssid, password });
         return { message: "queued" };
@@ -377,8 +393,40 @@ describe("EvenBridgeTransport", () => {
     ).resolves.toMatchObject({
       status: "queued",
     });
+    await expect(
+      transport.requestWifiSetup("Eliza needs headset Wi-Fi"),
+    ).resolves.toMatchObject({
+      status: "setup-opened",
+    });
 
     expect(credentials).toEqual([{ ssid: "Home", password: "secret" }]);
+    expect(setupReasons).toEqual(["Eliza needs headset Wi-Fi"]);
+  });
+
+  it("routes Mentra-style Wi-Fi setup through callEvenApp when only the raw bridge is present", async () => {
+    const calls: Array<{ name: string; payload?: Record<string, unknown> }> =
+      [];
+    const transport = new EvenBridgeTransport({
+      rawBridge: {
+        callEvenApp: async (name, payload) => {
+          calls.push({ name, payload });
+          return { status: "requested" };
+        },
+      },
+    });
+
+    await expect(transport.requestWifiSetup("Need upload")).resolves.toMatchObject(
+      {
+        status: "requested",
+      },
+    );
+
+    expect(calls).toEqual([
+      {
+        name: "request_wifi_setup",
+        payload: { reason: "Need upload" },
+      },
+    ]);
   });
 
   it("does not advertise Wi-Fi when a display-only bridge lacks Wi-Fi hooks", async () => {

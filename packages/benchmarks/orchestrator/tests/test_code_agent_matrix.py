@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[3]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+import benchmarks.orchestrator.code_agent_matrix as code_agent_matrix
 from benchmarks.orchestrator.code_agent_matrix import (
     CellResult,
     DEFAULT_ADAPTERS,
@@ -17,10 +18,17 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_benchmark_gate,
     build_coverage_gate,
     build_coverage_summary,
+    build_deferred_promotion_queue,
+    build_efficiency_gate,
     build_efficiency_queue,
     build_improvement_queue,
+    build_live_report_gate,
+    build_no_regression_gate,
+    build_quality_guardrail_gate,
     build_required_stats_gate,
+    build_report_rows,
     build_report_gate,
+    build_trajectory_review_gate,
     build_token_evidence,
     build_run_config,
     build_cell,
@@ -99,6 +107,28 @@ def test_swe_bench_repo_cache_dir_can_be_overridden(
     )
 
     assert cell.env_overrides["SWE_BENCH_REPO_CACHE_DIR"] == str(cache_dir)
+
+
+def test_builds_swe_bench_multilingual_cell_with_variant(tmp_path: Path) -> None:
+    cell = build_cell(
+        root=_root().parent,
+        run_root=tmp_path,
+        benchmark="swe_bench_multilingual",
+        adapter="opencode",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=1,
+        smoke=True,
+        no_docker=True,
+    )
+
+    assert cell.env_overrides["SWE_BENCH_REPO_CACHE_DIR"] == str(
+        default_swe_bench_repo_cache_dir()
+    )
+    assert "--variant" in cell.command
+    assert cell.command[cell.command.index("--variant") + 1] == "multilingual"
+    assert "--mock" in cell.command
+    assert "--no-docker" in cell.command
 
 
 def test_builds_terminal_bench_cell_via_env_task_agent(tmp_path: Path) -> None:
@@ -183,6 +213,67 @@ def test_builds_browser_and_computer_use_cells(tmp_path: Path) -> None:
     assert "--result_dir" in osworld.command
 
 
+def test_builds_nl2repo_cell_with_optional_agent_command_template(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv(
+        "NL2REPO_AGENT_COMMAND_TEMPLATE_OPENCODE",
+        "python /tmp/run-nl2repo-agent.py --workspace {workspace}",
+    )
+
+    cell = build_cell(
+        root=_root().parent,
+        run_root=tmp_path,
+        benchmark="nl2repo",
+        adapter="opencode",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=1,
+        smoke=False,
+        no_docker=True,
+    )
+
+    assert cell.command[:3] == [
+        sys.executable,
+        "-m",
+        "benchmarks.nl2repo.adapter_matrix",
+    ]
+    assert "--task-agent" in cell.command
+    assert "opencode" in cell.command
+    assert "--trajectory-dir" in cell.command
+    assert "--agent-command-template" in cell.command
+    assert "python /tmp/run-nl2repo-agent.py --workspace {workspace}" in cell.command
+    assert "--no-docker" in cell.command
+
+
+def test_nl2repo_cell_uses_builtin_agent_command_by_default(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("NL2REPO_AGENT_COMMAND_TEMPLATE", raising=False)
+    monkeypatch.delenv("NL2REPO_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
+    monkeypatch.delenv("NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
+
+    cell = build_cell(
+        root=_root().parent,
+        run_root=tmp_path,
+        benchmark="nl2repo",
+        adapter="elizaos",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=1,
+        smoke=False,
+        no_docker=True,
+    )
+
+    template = cell.command[cell.command.index("--agent-command-template") + 1]
+    assert "packages/benchmarks/nl2repo/agent_command.py" in template
+    assert "--adapter elizaos" in template
+    assert "--result-json" in template
+    assert "{result_json}" in template
+
+
 def test_builds_real_webshop_cell_with_bridge(tmp_path: Path) -> None:
     cell = build_cell(
         root=_root().parent,
@@ -227,6 +318,7 @@ def test_default_matrix_covers_code_terminal_browser_and_computer_use() -> None:
         "visualwebbench",
         "webshop",
         "osworld",
+        "swe_bench_multilingual",
     )
 
     entries = coverage_status_by_id()
@@ -234,8 +326,7 @@ def test_default_matrix_covers_code_terminal_browser_and_computer_use() -> None:
         assert entries[benchmark].status == INCLUDED_STATUS
         assert entries[benchmark].domains
         assert entries[benchmark].reason
-    assert "swe_bench_multilingual" in deferred_benchmark_ids()
-    assert entries["swe_bench_multilingual"].status == DEFERRED_STATUS
+    assert entries["swe_bench_multilingual"].status == INCLUDED_STATUS
 
 
 def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
@@ -243,21 +334,48 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
 
     assert coverage["selection_complete"] is True
     assert coverage["status_counts"] == {
-        "included": 6,
-        "included_selected": 6,
+        "included": 7,
+        "included_selected": 7,
         "included_unselected": 0,
-        "deferred": 2,
+        "deferred": 6,
     }
     assert coverage["unselected_included_benchmarks"] == []
     assert {item["benchmark"] for item in coverage["deferred_benchmarks"]} == {
-        "swe_bench_multilingual",
+        "agentbench",
+        "app_eval_coding",
+        "mint",
         "nl2repo",
+        "standard_humaneval",
+        "swe_bench_pro",
     }
+    deferred_by_id = {
+        item["benchmark"]: item for item in coverage["deferred_benchmarks"]
+    }
+    assert deferred_by_id["nl2repo"]["promotion_requirements"]
+    assert "OpenCode" in " ".join(
+        deferred_by_id["agentbench"]["promotion_requirements"]
+    )
 
     partial = build_coverage_summary(["swe_bench"])
 
     assert partial["selection_complete"] is False
     assert "terminal_bench" in partial["unselected_included_benchmarks"]
+
+
+def test_deferred_promotion_queue_prioritizes_known_followup_work() -> None:
+    summary = {"coverage": build_coverage_summary(list(DEFAULT_BENCHMARKS))}
+
+    queue = build_deferred_promotion_queue(summary)
+
+    assert [item["benchmark"] for item in queue[:4]] == [
+        "nl2repo",
+        "agentbench",
+        "mint",
+        "swe_bench_pro",
+    ]
+    assert queue[0]["priority"] == "p0"
+    assert queue[0]["next_action"] == "run Docker-backed evaluator in CI or a local daemon"
+    assert queue[0]["remaining_count"] == 3
 
 
 def test_coverage_gate_blocks_partial_benchmark_selection() -> None:
@@ -313,6 +431,38 @@ def test_exit_code_summary_documents_gate_contract() -> None:
     assert exit_codes["required_stats_failed"]["code"] == 5
     assert exit_codes["coverage_gate_failed"]["code"] == 6
     assert exit_codes["report_gate_failed"]["code"] == 7
+    assert exit_codes["efficiency_gate_failed"]["code"] == 8
+    assert exit_codes["no_regression_failed"]["code"] == 9
+    assert exit_codes["quality_guardrail_failed"]["code"] == 10
+    assert exit_codes["trajectory_review_failed"]["code"] == 11
+    assert exit_codes["live_report_failed"]["code"] == 12
+
+
+def test_live_report_gate_requires_live_mode() -> None:
+    smoke_summary = {
+        "run_config": {
+            "mode": "smoke",
+            "smoke": True,
+            "dry_run": False,
+            "summarize": "",
+        }
+    }
+    live_summary = {
+        "run_config": {
+            "mode": "live",
+            "smoke": False,
+            "dry_run": False,
+            "summarize": "",
+        }
+    }
+
+    blocked = build_live_report_gate(smoke_summary, enforced=True)
+    ok = build_live_report_gate(live_summary, enforced=True)
+
+    assert blocked["ok"] is False
+    assert blocked["enforced"] is True
+    assert blocked["mode"] == "smoke"
+    assert ok["ok"] is True
 
 
 def test_efficiency_queue_flags_token_call_and_cache_regressions() -> None:
@@ -340,11 +490,25 @@ def test_efficiency_queue_flags_token_call_and_cache_regressions() -> None:
     ]
     summary = summarize_results(results)
     head_to_head = summary["head_to_head"]
+    summary["run_config"] = {"enforce_efficiency": True}
+    summary["efficiency_gate"] = build_efficiency_gate(summary)
+    summary["report_gate"] = build_report_gate(summary)
     markdown = render_markdown(summary)
 
     queue = build_efficiency_queue(head_to_head)
 
     assert summary["efficiency_queue"] == queue
+    assert summary["efficiency_gate"]["ok"] is False
+    assert summary["efficiency_gate"]["enforced"] is True
+    assert summary["efficiency_gate"]["blocking_benchmarks"] == ["swe_bench"]
+    assert summary["report_gate"]["gate_status"]["efficiency_gate"] is False
+    assert summary["report_gate"]["blocking_gates"] == [
+        "benchmark coverage",
+        "required stats",
+        "efficiency",
+    ]
+    assert "## Efficiency Gate" in markdown
+    assert "Enforced: True" in markdown
     assert "## Efficiency Queue" in markdown
     assert (
         "| swe_bench | comparable | target used more total tokens than baseline; "
@@ -704,6 +868,13 @@ def test_run_config_records_mode_scope_and_enforcement_flags(tmp_path: Path) -> 
             "--enforce-coverage",
             "--enforce-token-evidence",
             "--enforce-required-stats",
+            "--enforce-efficiency",
+            "--enforce-no-regression",
+            "--quality-guardrail-summary",
+            "/tmp/readiness.json",
+            "--enforce-quality-guardrail",
+            "--enforce-trajectory-reviews",
+            "--enforce-live-report",
             "--enforce-report",
         ]
     )
@@ -725,11 +896,22 @@ def test_run_config_records_mode_scope_and_enforcement_flags(tmp_path: Path) -> 
     assert config["enforce_coverage"] is True
     assert config["enforce_token_evidence"] is True
     assert config["enforce_required_stats"] is True
+    assert config["enforce_efficiency"] is True
+    assert config["enforce_no_regression"] is True
+    assert config["quality_guardrail_summary"] == "/tmp/readiness.json"
+    assert config["enforce_quality_guardrail"] is True
+    assert config["enforce_trajectory_reviews"] is True
+    assert config["enforce_live_report"] is True
     assert config["enforce_report"] is True
     assert "## Run Config" in markdown
     assert "Mode: smoke" in markdown
     assert "Provider/model: cerebras/gpt-oss-120b" in markdown
     assert "Enforce coverage: True" in markdown
+    assert "Enforce efficiency: True" in markdown
+    assert "Enforce no regression: True" in markdown
+    assert "Enforce quality guardrail: True" in markdown
+    assert "Enforce trajectory reviews: True" in markdown
+    assert "Enforce live report: True" in markdown
     assert "Enforce report: True" in markdown
 
 
@@ -857,6 +1039,18 @@ def test_enforce_report_exits_nonzero_for_combined_gate_failure(tmp_path: Path) 
     assert summary["report_gate"]["ok"] is False
     assert summary["report_gate"]["blocking_gates"] == ["benchmark coverage"]
     assert summary["exit_codes"]["report_gate_failed"]["code"] == 7
+    assert summary["report_rows"][0]["benchmark"] == "webshop"
+    assert summary["artifact_paths"]["report_rows_jsonl"] == str(
+        tmp_path / "run" / "report-rows.jsonl"
+    )
+    assert summary["artifact_paths"]["report_rows_csv"] == str(
+        tmp_path / "run" / "report-rows.csv"
+    )
+    assert (tmp_path / "run" / "report-rows.jsonl").exists()
+    assert (tmp_path / "run" / "report-rows.csv").exists()
+    assert "target_total_tokens" in (tmp_path / "run" / "report-rows.csv").read_text(
+        encoding="utf-8"
+    )
 
 
 def test_enforce_report_takes_precedence_over_individual_gate_codes(tmp_path: Path) -> None:
@@ -884,6 +1078,302 @@ def test_enforce_report_takes_precedence_over_individual_gate_codes(tmp_path: Pa
     assert summary["run_config"]["enforce_coverage"] is True
     assert summary["coverage_gate"]["ok"] is False
     assert summary["report_gate"]["blocking_gates"] == ["benchmark coverage"]
+
+
+def test_enforce_efficiency_exits_nonzero_for_token_regressions(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run_cell(cell, **_kwargs):
+        if cell.adapter == "elizaos":
+            return _cell_result(
+                benchmark=cell.benchmark,
+                adapter=cell.adapter,
+                right=1,
+                wrong=0,
+                input_tokens=120,
+                output_tokens=40,
+                cached_percent=5.0,
+                llm_calls=3,
+                output_dir=cell.output_dir,
+            )
+        return _cell_result(
+            benchmark=cell.benchmark,
+            adapter=cell.adapter,
+            right=1,
+            wrong=0,
+            input_tokens=50,
+            output_tokens=20,
+            cached_percent=50.0,
+            llm_calls=1,
+            output_dir=cell.output_dir,
+        )
+
+    monkeypatch.setattr(code_agent_matrix, "run_cell", fake_run_cell)
+    monkeypatch.setattr(code_agent_matrix, "_opencode_bin", lambda _root, _env: "/tmp/opencode")
+
+    code = code_agent_matrix.main(
+        [
+            "--benchmarks",
+            "swe_bench",
+            "--adapters",
+            "elizaos,opencode",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--enforce-efficiency",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 8
+    assert summary["run_config"]["enforce_efficiency"] is True
+    assert summary["efficiency_gate"]["ok"] is False
+    assert summary["efficiency_gate"]["blocking_benchmarks"] == ["swe_bench"]
+    assert summary["report_rows"][0]["efficiency_gate_ok"] is False
+
+
+def test_enforce_no_regression_exits_nonzero_against_previous_summary(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    previous = summarize_results(
+        [
+            _cell_result(
+                benchmark="swe_bench",
+                adapter="elizaos",
+                right=2,
+                wrong=0,
+                input_tokens=100,
+                output_tokens=40,
+                cached_percent=10.0,
+                llm_calls=2,
+            ),
+            _cell_result(
+                benchmark="swe_bench",
+                adapter="opencode",
+                right=2,
+                wrong=0,
+                input_tokens=100,
+                output_tokens=40,
+                cached_percent=10.0,
+                llm_calls=2,
+            ),
+        ]
+    )
+    previous["run_config"] = {"mode": "smoke"}
+    previous["report_gate"] = build_report_gate(previous)
+    previous_path = tmp_path / "previous.json"
+    previous_path.write_text(json.dumps(previous), encoding="utf-8")
+
+    def fake_run_cell(cell, **_kwargs):
+        right = 1 if cell.adapter == "elizaos" else 2
+        wrong = 1 if cell.adapter == "elizaos" else 0
+        return _cell_result(
+            benchmark=cell.benchmark,
+            adapter=cell.adapter,
+            right=right,
+            wrong=wrong,
+            input_tokens=100,
+            output_tokens=40,
+            cached_percent=10.0,
+            llm_calls=2,
+            output_dir=cell.output_dir,
+        )
+
+    monkeypatch.setattr(code_agent_matrix, "run_cell", fake_run_cell)
+    monkeypatch.setattr(code_agent_matrix, "_opencode_bin", lambda _root, _env: "/tmp/opencode")
+
+    code = code_agent_matrix.main(
+        [
+            "--benchmarks",
+            "swe_bench",
+            "--adapters",
+            "elizaos,opencode",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--compare-summary",
+            str(previous_path),
+            "--enforce-no-regression",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 9
+    assert summary["run_config"]["enforce_no_regression"] is True
+    assert summary["no_regression_gate"]["ok"] is False
+    assert summary["no_regression_gate"]["blocking_benchmarks"] == ["swe_bench"]
+    assert summary["report_rows"][0]["no_regression_gate_ok"] is False
+
+
+def test_enforce_quality_guardrail_exits_nonzero_for_broader_readiness_findings(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    guardrail_path = tmp_path / "readiness.json"
+    guardrail_path.write_text(
+        json.dumps(
+            {
+                "ok": False,
+                "latest_dir": "/tmp/latest",
+                "tolerance": 0.08,
+                "findings": [
+                    {
+                        "scope": "publishability:index.json/matrix_contract",
+                        "reason": "missing_required_field",
+                        "value": "complete",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    def fake_run_cell(cell, **_kwargs):
+        return _cell_result(
+            benchmark=cell.benchmark,
+            adapter=cell.adapter,
+            right=1,
+            wrong=0,
+            input_tokens=100,
+            output_tokens=40,
+            cached_percent=10.0,
+            llm_calls=2,
+            output_dir=cell.output_dir,
+        )
+
+    monkeypatch.setattr(code_agent_matrix, "run_cell", fake_run_cell)
+    monkeypatch.setattr(code_agent_matrix, "_opencode_bin", lambda _root, _env: "/tmp/opencode")
+
+    code = code_agent_matrix.main(
+        [
+            "--benchmarks",
+            "swe_bench",
+            "--adapters",
+            "elizaos,opencode",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--quality-guardrail-summary",
+            str(guardrail_path),
+            "--enforce-quality-guardrail",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 10
+    assert summary["run_config"]["enforce_quality_guardrail"] is True
+    assert summary["quality_guardrail_gate"]["ok"] is False
+    assert summary["quality_guardrail_gate"]["findings"][0]["reason"] == "missing_required_field"
+    assert summary["report_rows"][0]["quality_guardrail_gate_ok"] is False
+
+
+def test_enforce_trajectory_reviews_exits_nonzero_for_missing_trajectories(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run_cell(cell, **_kwargs):
+        result = _cell_result(
+            benchmark=cell.benchmark,
+            adapter=cell.adapter,
+            right=1,
+            wrong=0,
+            input_tokens=100,
+            output_tokens=40,
+            cached_percent=10.0,
+            llm_calls=2,
+            output_dir=cell.output_dir,
+        )
+        result.token_metrics.clear()
+        return result
+
+    monkeypatch.setattr(code_agent_matrix, "run_cell", fake_run_cell)
+    monkeypatch.setattr(code_agent_matrix, "_opencode_bin", lambda _root, _env: "/tmp/opencode")
+
+    code = code_agent_matrix.main(
+        [
+            "--benchmarks",
+            "swe_bench",
+            "--adapters",
+            "elizaos,opencode",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--enforce-trajectory-reviews",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    assert code == 11
+    assert summary["run_config"]["enforce_trajectory_reviews"] is True
+    assert summary["trajectory_review_gate"]["ok"] is False
+    assert summary["trajectory_review_gate"]["blocking_count"] == 2
+    assert summary["report_rows"][0]["trajectory_review_gate_ok"] is False
+
+
+def test_enforce_live_report_exits_nonzero_for_smoke_report(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fake_run_cell(cell, **_kwargs):
+        return _cell_result(
+            benchmark=cell.benchmark,
+            adapter=cell.adapter,
+            right=1,
+            wrong=0,
+            input_tokens=100,
+            output_tokens=40,
+            cached_percent=10.0,
+            llm_calls=2,
+            output_dir=cell.output_dir,
+        )
+
+    monkeypatch.setattr(code_agent_matrix, "run_cell", fake_run_cell)
+    monkeypatch.setattr(code_agent_matrix, "_opencode_bin", lambda _root, _env: "/tmp/opencode")
+
+    code = code_agent_matrix.main(
+        [
+            "--benchmarks",
+            "swe_bench",
+            "--adapters",
+            "elizaos,opencode",
+            "--smoke",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--force",
+            "--enforce-live-report",
+        ]
+    )
+
+    summary = json.loads((tmp_path / "run" / "summary.json").read_text(encoding="utf-8"))
+    markdown = (tmp_path / "run" / "summary.md").read_text(encoding="utf-8")
+    assert code == 12
+    assert summary["run_config"]["enforce_live_report"] is True
+    assert summary["live_report_gate"]["ok"] is False
+    assert summary["live_report_gate"]["mode"] == "smoke"
+    assert summary["report_rows"][0]["live_report_gate_ok"] is False
+    assert "## Live Report Gate" in markdown
+    assert "Status: blocked" in markdown
 
 
 def test_queue_rerun_template_keeps_required_stats_but_omits_coverage(tmp_path: Path) -> None:
@@ -1055,6 +1545,71 @@ def test_preflight_can_skip_provider_key_for_smoke_or_dry_runs(tmp_path: Path) -
     assert report["issues"] == []
 
 
+def test_nl2repo_preflight_blocks_live_without_agent_command_template(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("NL2REPO_AGENT_COMMAND_TEMPLATE", raising=False)
+    monkeypatch.delenv("NL2REPO_AGENT_COMMAND_TEMPLATE_ELIZAOS", raising=False)
+    monkeypatch.setenv("NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND", "1")
+    cell = build_cell(
+        root=_root().parent,
+        run_root=tmp_path,
+        benchmark="nl2repo",
+        adapter="elizaos",
+        provider="cerebras",
+        model="gpt-oss-120b",
+        max_tasks=1,
+        smoke=False,
+        no_docker=True,
+    )
+
+    report = preflight_matrix(
+        root=tmp_path,
+        cells=[cell],
+        provider="cerebras",
+        env={"CEREBRAS_API_KEY": "present"},
+    )
+
+    assert report["ok"] is False
+    assert {issue["kind"] for issue in report["issues"]} == {
+        "missing_nl2repo_agent_command_template"
+    }
+
+
+def test_nl2repo_preflight_reports_shared_docker_issue_once(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND", raising=False)
+    cells = [
+        build_cell(
+            root=_root().parent,
+            run_root=tmp_path,
+            benchmark="nl2repo",
+            adapter=adapter,
+            provider="cerebras",
+            model="gpt-oss-120b",
+            max_tasks=1,
+            smoke=False,
+            no_docker=False,
+        )
+        for adapter in ("elizaos", "opencode")
+    ]
+
+    report = preflight_matrix(
+        root=tmp_path,
+        cells=cells,
+        provider="cerebras",
+        env={"CEREBRAS_API_KEY": "present"},
+    )
+    docker_issues = [
+        issue for issue in report["issues"] if issue["kind"] in {"missing_docker_cli", "docker_daemon_unavailable"}
+    ]
+
+    assert len(docker_issues) <= 1
+
+
 def test_smoke_preflight_cli_does_not_require_provider_key(tmp_path: Path) -> None:
     code = main(
         [
@@ -1071,6 +1626,54 @@ def test_smoke_preflight_cli_does_not_require_provider_key(tmp_path: Path) -> No
     )
 
     assert code == 0
+    preflight_json = tmp_path / "run" / "preflight.json"
+    preflight_md = tmp_path / "run" / "preflight.md"
+    assert preflight_json.exists()
+    assert preflight_md.exists()
+    report = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert report["preflight"]["ok"] is True
+    assert report["run_config"]["mode"] == "smoke"
+    assert report["artifact_paths"]["preflight_json"] == str(preflight_json)
+    assert "--preflight" in report["next_commands"]["retry_preflight"]
+    assert "--enforce-live-report" in report["next_commands"]["live_evidence"]
+    assert "--enforce-trajectory-reviews" in report["next_commands"]["live_evidence"]
+    assert "--enforce-report" in report["next_commands"]["release_comparable"]
+    markdown = preflight_md.read_text(encoding="utf-8")
+    assert "## Preflight" in markdown
+    assert "## Next Commands" in markdown
+    assert "### Live Evidence" in markdown
+
+
+def test_live_preflight_cli_persists_blocker_report(tmp_path: Path) -> None:
+    code = main(
+        [
+            "--benchmarks",
+            "webshop",
+            "--adapters",
+            "elizaos",
+            "--no-docker",
+            "--max-tasks",
+            "1",
+            "--run-root",
+            str(tmp_path / "run"),
+            "--preflight",
+        ]
+    )
+
+    assert code == 2
+    preflight_json = tmp_path / "run" / "preflight.json"
+    preflight_md = tmp_path / "run" / "preflight.md"
+    assert preflight_json.exists()
+    assert preflight_md.exists()
+    report = json.loads(preflight_json.read_text(encoding="utf-8"))
+    assert report["preflight"]["ok"] is False
+    assert report["preflight"]["issues"][0]["kind"] == "missing_provider_key"
+    assert report["run_config"]["mode"] == "live"
+    assert "--run-root" in report["next_commands"]["live_evidence"]
+    assert str(tmp_path / "run") in report["next_commands"]["live_evidence"]
+    assert "--no-docker" in report["next_commands"]["live_evidence"]
+    assert "--no-docker" not in report["next_commands"]["release_comparable"]
+    assert not (tmp_path / "run" / "summary.json").exists()
 
 
 def test_live_cli_blocks_before_running_without_provider_key(tmp_path: Path) -> None:
@@ -1633,8 +2236,15 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     ]
 
     summary = summarize_results(results)
+    summary["run_config"] = {
+        "mode": "live",
+        "provider": "cerebras",
+        "model": "gpt-oss-120b",
+        "run_root": "/tmp/run",
+    }
     summary["required_stats_gate"] = build_required_stats_gate(summary, mode="live")
     summary["report_gate"] = build_report_gate(summary)
+    summary["report_rows"] = build_report_rows(summary)
     markdown = render_markdown(summary)
 
     assert summary["outcome_by_adapter"]["elizaos"]["right"] == 2
@@ -1646,13 +2256,32 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     assert summary["benchmark_gate"]["ok"] is True
     assert summary["benchmark_gate"]["blocking_benchmarks"] == []
     assert summary["improvement_queue"] == []
+    assert summary["deferred_promotion_queue"][0]["benchmark"] == "nl2repo"
+    assert summary["deferred_promotion_queue"][0]["priority"] == "p0"
+    assert summary["report_rows"][0]["benchmark"] == "swe_bench"
+    assert summary["report_rows"][0]["target_right"] == 2
+    assert summary["report_rows"][0]["target_wrong"] == 0
+    assert summary["report_rows"][0]["target_input_tokens"] == 100
+    assert summary["report_rows"][0]["target_output_tokens"] == 50
+    assert summary["report_rows"][0]["target_total_tokens"] == 150
+    assert summary["report_rows"][0]["target_cached_token_percent"] == 20.0
+    assert summary["report_rows"][0]["target_llm_call_count"] == 3
+    assert summary["report_rows"][0]["baseline_right"] == 1
+    assert summary["report_rows"][0]["baseline_wrong"] == 1
+    assert summary["report_rows"][0]["baseline_total_tokens"] == 225
+    assert summary["report_rows"][0]["baseline_cached_token_percent"] == 5.0
+    assert summary["report_rows"][0]["baseline_llm_call_count"] == 4
+    assert summary["report_rows"][0]["report_gate_ok"] is False
     assert "## Benchmark Coverage" in markdown
     assert "Status: partial" in markdown
     assert "### Deferred Related Benchmarks" in markdown
+    assert "promotion requirements" in markdown
+    assert "## Deferred Promotion Queue" in markdown
+    assert "| p0 | nl2repo | coding | run Docker-backed evaluator in CI or a local daemon | 3 |" in markdown
     assert "## Report Gate" in markdown
     assert "Blocking gates: benchmark coverage" in markdown
     assert "## Coverage Gate" in markdown
-    assert "Blocking benchmarks: mind2web, osworld, terminal_bench, visualwebbench, webshop" in markdown
+    assert "Blocking benchmarks: mind2web, osworld, swe_bench_multilingual, terminal_bench, visualwebbench, webshop" in markdown
     assert "## Benchmark Gate" in markdown
     assert "Status: ok" in markdown
     assert "## Required Stats Gate" in markdown
@@ -1920,6 +2549,152 @@ def test_previous_summary_comparison_tracks_elizaos_trends() -> None:
     assert comparison["trend_counts"]["improved"] == 1
     assert "## Previous Summary Comparison" in markdown
     assert "| swe_bench | improved | inferior | comparable | 0.5000 | 0.5000 | -25 | 20.00 | -1 |" in markdown
+
+
+def test_no_regression_gate_blocks_previous_accuracy_regressions() -> None:
+    previous = summarize_results(
+        [
+            _cell_result(
+                benchmark="swe_bench",
+                adapter="elizaos",
+                right=2,
+                wrong=0,
+                input_tokens=100,
+                output_tokens=50,
+                cached_percent=5.0,
+                llm_calls=3,
+            ),
+            _cell_result(
+                benchmark="swe_bench",
+                adapter="opencode",
+                right=2,
+                wrong=0,
+                input_tokens=90,
+                output_tokens=40,
+                cached_percent=5.0,
+                llm_calls=3,
+            ),
+        ]
+    )
+    current = summarize_results(
+        [
+            _cell_result(
+                benchmark="swe_bench",
+                adapter="elizaos",
+                right=1,
+                wrong=1,
+                input_tokens=90,
+                output_tokens=40,
+                cached_percent=5.0,
+                llm_calls=3,
+            ),
+            _cell_result(
+                benchmark="swe_bench",
+                adapter="opencode",
+                right=2,
+                wrong=0,
+                input_tokens=90,
+                output_tokens=40,
+                cached_percent=5.0,
+                llm_calls=3,
+            ),
+        ]
+    )
+    current["run_config"] = {"enforce_no_regression": True}
+    current["previous_summary_comparison"] = build_previous_summary_comparison(
+        current,
+        previous,
+    )
+
+    gate = build_no_regression_gate(current)
+    current["no_regression_gate"] = gate
+    current["report_gate"] = build_report_gate(current)
+    markdown = render_markdown(current)
+
+    assert gate["ok"] is False
+    assert gate["blocking_benchmarks"] == ["swe_bench"]
+    assert gate["regressions"][0]["previous_target_accuracy"] == 1.0
+    assert gate["regressions"][0]["current_target_accuracy"] == 0.5
+    assert current["report_gate"]["gate_status"]["no_regression_gate"] is False
+    assert "## No Regression Gate" in markdown
+    assert "| swe_bench | 1.0000 | 0.5000 | -0.5000 | comparable | inferior |" in markdown
+
+
+def test_quality_guardrail_gate_records_broader_readiness() -> None:
+    gate = build_quality_guardrail_gate(
+        {
+            "ok": False,
+            "latest_dir": "/tmp/latest",
+            "tolerance": 0.08,
+            "findings": [
+                {
+                    "scope": "comparability:lifeops_bench",
+                    "reason": "score_spread_exceeds_tolerance",
+                    "value": "0.12",
+                }
+            ],
+        },
+        summary_path="/tmp/readiness.json",
+        enforced=True,
+    )
+    summary = {
+        "generated_at": "now",
+        "total": 0,
+        "quality_guardrail_gate": gate,
+    }
+    markdown = render_markdown(summary)
+
+    assert gate["ok"] is False
+    assert gate["enforced"] is True
+    assert gate["latest_dir"] == "/tmp/latest"
+    assert gate["findings"][0]["scope"] == "comparability:lifeops_bench"
+    assert "## Quality Guardrail Gate" in markdown
+    assert "Status: blocked" in markdown
+    assert "| comparability:lifeops_bench | score_spread_exceeds_tolerance | 0.12 |" in markdown
+
+
+def test_trajectory_review_gate_requires_files_turns_and_cached_telemetry() -> None:
+    reviewed = _cell_result(
+        benchmark="swe_bench",
+        adapter="elizaos",
+        right=1,
+        wrong=0,
+        input_tokens=100,
+        output_tokens=40,
+        cached_percent=10.0,
+        llm_calls=2,
+    )
+    missing = _cell_result(
+        benchmark="swe_bench",
+        adapter="opencode",
+        right=1,
+        wrong=0,
+        input_tokens=90,
+        output_tokens=30,
+        cached_percent=10.0,
+        llm_calls=2,
+    )
+    missing.token_metrics["trajectory_file_count"] = 0
+    missing.token_metrics["trajectory_turn_count"] = 0
+    missing.token_metrics["cached_token_percent"] = None
+    summary = summarize_results([reviewed, missing])
+
+    gate = build_trajectory_review_gate(summary, require_trajectory_reviews=True)
+    summary["trajectory_review_gate"] = gate
+    markdown = render_markdown(summary)
+
+    assert gate["ok"] is False
+    assert gate["enforced"] is True
+    assert gate["reviewed_cells"] == 1
+    assert gate["blocking_count"] == 1
+    assert gate["blocking_cells"][0]["adapter"] == "opencode"
+    assert gate["blocking_cells"][0]["review_notes"] == [
+        "no trajectory files found",
+        "no trajectory turns found",
+        "no cached-token telemetry found",
+    ]
+    assert "## Trajectory Review Gate" in markdown
+    assert "| swe_bench | opencode | /tmp/trajectories | 0 | 0 |  | no trajectory files found, no trajectory turns found, no cached-token telemetry found |" in markdown
 
 
 def test_markdown_includes_missing_live_run_queue_items() -> None:

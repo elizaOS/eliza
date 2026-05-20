@@ -15,9 +15,15 @@ import {
   G1TemperatureUnit,
   G1TimeFormat,
 } from "../protocol.js";
-import { getSmartglassesService } from "../services/smartglasses-service.js";
+import {
+  getSmartglassesService,
+  type SmartglassesStatus,
+} from "../services/smartglasses-service.js";
+import { setupSummaryForStatus } from "../status-format.js";
 
 type SmartglassesControlOp =
+  | "connect"
+  | "disconnect"
   | "clear"
   | "exit_dashboard"
   | "exit_function"
@@ -44,6 +50,7 @@ type SmartglassesControlOp =
   | "wifi_scan"
   | "wifi_status"
   | "wifi_configure"
+  | "wifi_setup"
   | "navigation_start"
   | "navigation_directions"
   | "navigation_primary_image"
@@ -63,6 +70,8 @@ type SmartglassesControlOp =
   | "bmp_image";
 
 const SUPPORTED_OPS: SmartglassesControlOp[] = [
+  "connect",
+  "disconnect",
   "clear",
   "exit_dashboard",
   "exit_function",
@@ -89,6 +98,7 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
   "wifi_scan",
   "wifi_status",
   "wifi_configure",
+  "wifi_setup",
   "navigation_start",
   "navigation_directions",
   "navigation_primary_image",
@@ -109,6 +119,12 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
 ];
 
 const OP_ALIASES = new Map<string, SmartglassesControlOp>([
+  ["pair", "connect"],
+  ["pair_headset", "connect"],
+  ["connect_headset", "connect"],
+  ["reconnect", "connect"],
+  ["unpair", "disconnect"],
+  ["disconnect_headset", "disconnect"],
   ["exit", "exit_dashboard"],
   ["dashboard_exit", "exit_dashboard"],
   ["function_exit", "exit_function"],
@@ -151,6 +167,9 @@ const OP_ALIASES = new Map<string, SmartglassesControlOp>([
   ["wifi_connect", "wifi_configure"],
   ["configure_wifi", "wifi_configure"],
   ["set_wifi", "wifi_configure"],
+  ["wifi_prompt", "wifi_setup"],
+  ["wifi_setup_request", "wifi_setup"],
+  ["request_wifi_setup", "wifi_setup"],
 ]);
 
 function parseParams(message: Memory): Record<string, unknown> {
@@ -372,6 +391,15 @@ function wifiActionValue(result: {
   };
 }
 
+function statusActionValue(
+  status: SmartglassesStatus,
+): Record<string, unknown> {
+  return {
+    ...status,
+    setup: setupSummaryForStatus(status),
+  };
+}
+
 export const smartglassesControlAction: Action = {
   name: "SMARTGLASSES_CONTROL",
   similes: [
@@ -381,9 +409,9 @@ export const smartglassesControlAction: Action = {
     "SMARTGLASSES_NOTE",
   ],
   description:
-    "Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+    "Run Even Realities G1 control operations: whole-headset connect/disconnect, clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
   descriptionCompressed:
-    "smartglasses-control: display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
+    "smartglasses-control: connect, display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
   contexts: ["smartglasses", "wearable", "operations"],
   validate: async (runtime: IAgentRuntime) =>
     Boolean(getSmartglassesService(runtime)),
@@ -412,6 +440,20 @@ export const smartglassesControlAction: Action = {
 
     let operationResult: Record<string, unknown> | undefined;
     switch (op) {
+      case "connect":
+        await service.connect();
+        if (boolParam(params, "init", true)) {
+          await service.sendConnectionReady(
+            sideParam(params),
+            connectionReadyModeParam(params),
+          );
+        }
+        operationResult = statusActionValue(service.getStatus());
+        break;
+      case "disconnect":
+        await service.disconnect();
+        operationResult = statusActionValue(service.getStatus());
+        break;
       case "clear":
         await service.clearDisplay();
         break;
@@ -562,6 +604,13 @@ export const smartglassesControlAction: Action = {
           await service.configureWifi(
             stringParam(params, "ssid"),
             typeof params.password === "string" ? params.password : "",
+          ),
+        );
+        break;
+      case "wifi_setup":
+        operationResult = wifiActionValue(
+          await service.requestWifiSetup(
+            typeof params.reason === "string" ? params.reason : undefined,
           ),
         );
         break;

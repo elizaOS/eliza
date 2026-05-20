@@ -173,13 +173,13 @@ Replay scoring example (from normalized Eliza capture artifacts):
 Worker lane for comparing real coding agents across coding, terminal, browser,
 and computer-use benchmarks. The default included matrix is sourced from
 `benchmarks/orchestrator/code_agent_coverage.py` and currently covers
-`swe_bench`, `terminal_bench`, `mind2web`, `visualwebbench`, `webshop`, and
-`osworld` for both `elizaos` and `opencode`.
+`swe_bench`, `terminal_bench`, `mind2web`, `visualwebbench`, `webshop`,
+`osworld`, and `swe_bench_multilingual` for both `elizaos` and `opencode`.
 
 ```bash
-cd /Users/shawwalters/milaidy/eliza/packages
-python -m benchmarks.orchestrator.code_agent_matrix \
-  --benchmarks swe_bench,terminal_bench,mind2web,visualwebbench,webshop,osworld \
+cd /Users/shawwalters/milaidy/eliza
+PYTHONPATH=packages python -m benchmarks.orchestrator.code_agent_matrix \
+  --benchmarks swe_bench,terminal_bench,mind2web,visualwebbench,webshop,osworld,swe_bench_multilingual \
   --adapters elizaos,opencode \
   --provider cerebras \
   --model gpt-oss-120b \
@@ -216,7 +216,22 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
   comparable/token/stat enforcement flags while intentionally omitting secret
   env values, the original run root, and coverage enforcement. Coverage
   enforcement is reserved for full release-style matrix reports, not targeted
-  reruns.
+  reruns. `summary.json` also includes `report_rows`, a stable flat row set
+  for longitudinal tracking with right/wrong, accuracy, token, cached-token,
+  LLM-call, and gate fields per benchmark. The same rows are written as
+  `report-rows.jsonl` and `report-rows.csv` beside the summary.
+
+Related benchmarks that are not yet release-comparable in this matrix are
+tracked as deferred coverage rather than ignored. Current deferred entries
+include `nl2repo`, `swe_bench_pro`, `agentbench`, `mint`,
+`app_eval_coding`, and `standard_humaneval`. `nl2repo` is selectable for
+harness validation. Smoke mode uses canonical task metadata without Docker
+scoring. Live generation uses the repo-native helper by default; set
+`NL2REPO_AGENT_COMMAND_TEMPLATE` or
+`NL2REPO_AGENT_COMMAND_TEMPLATE_<ADAPTER>` to override it. Set
+`NL2REPO_DISABLE_BUILTIN_AGENT_COMMAND=1` only when intentionally validating
+external command-template wiring. Live release-comparable scoring also requires
+Docker so the upstream per-task evaluator image can run.
 
 Smoke mode uses each benchmark's cheap offline fixtures where available:
 Mind2Web `--sample --mock`, VisualWebBench `--use-sample-tasks --mock`,
@@ -278,9 +293,40 @@ right/wrong/total outcome evidence for every selected benchmark and requires
 token evidence for live runs. Smoke, dry-run, and summarize reports do not
 require token evidence unless `--enforce-token-evidence` is also set.
 
+Use `--enforce-efficiency` when a run should fail if ElizaOS is less efficient
+than OpenCode on total tokens, LLM-call count, or cached-token percentage.
+When combined with `--enforce-report`, the combined report gate includes the
+efficiency gate.
+
+Use `--enforce-no-regression` with `--compare-summary` when a follow-up report
+must not reduce ElizaOS target accuracy versus the previous report. When
+combined with `--enforce-report`, the combined report gate includes the
+no-regression gate.
+
+Use `--quality-guardrail-summary` to attach the JSON output from
+`PYTHONPATH=packages python -m benchmarks.orchestrator validate-latest-readiness --json`
+for the broader benchmark matrix. Add `--enforce-quality-guardrail` when a
+code-agent report must fail unless that broader readiness report is present and
+clean. When combined with `--enforce-report`, the combined report gate includes
+the quality guardrail.
+
+Use `--enforce-trajectory-reviews` when a run should fail unless every selected
+cell has reviewable trajectory files, turns, and cached-token telemetry. When
+combined with `--enforce-report`, the combined report gate includes the
+trajectory review gate.
+
+Use `--enforce-live-report` when smoke, dry-run, or summarize artifacts must
+not be accepted as benchmark evidence. This fails unless the matrix ran in
+live mode. When combined with `--enforce-report`, the combined report gate
+includes the live-report gate.
+
 Use `--enforce-report` for a single release-readiness exit code over the
 combined report gate. It fails unless coverage, comparability, and required
-stats all pass for the generated report.
+stats all pass for the generated report, plus efficiency when
+`--enforce-efficiency` is set and no-regression when `--enforce-no-regression`
+is set, quality readiness when `--enforce-quality-guardrail` is set,
+trajectory review coverage when `--enforce-trajectory-reviews` is set, and
+live execution when `--enforce-live-report` is set.
 
 The generated `summary.json` includes an `exit_codes` map for automation. The
 current contract is:
@@ -294,11 +340,20 @@ current contract is:
 | 5 | `required_stats_failed` | one or more selected benchmarks lacked required outcome or token stats |
 | 6 | `coverage_gate_failed` | the run did not cover every included code-agent benchmark |
 | 7 | `report_gate_failed` | the combined release-readiness report gate failed |
+| 8 | `efficiency_gate_failed` | ElizaOS used more tokens, made more LLM calls, or had lower cached-token percentage than OpenCode |
+| 9 | `no_regression_failed` | ElizaOS regressed against the previous comparison summary |
+| 10 | `quality_guardrail_failed` | the broader non-code benchmark readiness guardrail failed |
+| 11 | `trajectory_review_failed` | one or more selected cells lacked reviewable trajectory telemetry |
+| 12 | `live_report_failed` | the report was not generated from live benchmark execution |
 
 Before a run, use `--preflight` to check the OpenCode adapter executable,
 benchmark working directories, command executables, and provider keys for live
 runs. Smoke and dry-run preflights do not require provider keys because they do
-not make LLM calls:
+not make LLM calls. Preflight writes `preflight.json` and `preflight.md` under
+the selected run root so blocked live-run readiness is tracked without creating
+a benchmark `summary.json`. These artifacts include retry, live-evidence, and
+release-comparable command templates with the selected benchmark scope and
+release gates:
 
 ```bash
 cd /Users/shawwalters/milaidy/eliza/packages

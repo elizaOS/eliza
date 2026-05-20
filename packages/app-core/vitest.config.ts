@@ -141,6 +141,8 @@ export default defineConfig({
       "scripts/run-mobile-build-android-app-actions.test.mjs",
       "scripts/aosp/compile-libllama-fused.test.mjs",
       "scripts/mas-smoke.test.mjs",
+      // Uses Node.js built-in test runner (node:test), not vitest.
+      "scripts/android-sms-gateway-template.test.mjs",
       // node:sqlite (stable in Node ≥24) is unavailable in Bun. CI runs this
       // separately under Node via vitest.node-sqlite.config.ts with
       // NODE_OPTIONS=--experimental-sqlite (see .github/workflows/test.yml).
@@ -487,6 +489,10 @@ export default defineConfig({
       {
         find: "react-dom/client",
         replacement: path.join(reactDomPkg, "client.js"),
+      },
+      {
+        find: "node-llama-cpp",
+        replacement: path.join(fileDir, "test-stubs/node-llama-cpp.ts"),
       },
     ],
   },

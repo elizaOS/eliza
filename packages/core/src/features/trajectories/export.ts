@@ -1,7 +1,7 @@
 /**
  * Trajectory Export Utilities
  *
- * The original implementation targeted a Babylon-specific database + HuggingFace upload pipeline.
+ * The original implementation targeted a Feed-specific database + HuggingFace upload pipeline.
  * In elizaOS core, this module is storage-agnostic and focuses on preparing files for downstream
  * training (JSONL / grouped JSON).
  */

@@ -45,6 +45,14 @@ function printSection(title, result) {
   }
 }
 
+function printGateSection(title, result, blockedPattern) {
+  printSection(title, result);
+  if (result.status === 0 && blockedPattern.test(result.stdout)) {
+    console.error(`[sms-gateway-readiness] ${title} has blocked checks`);
+    blocked = true;
+  }
+}
+
 function usbInventoryFromIoreg() {
   const result = run("ioreg", ["-p", "IOUSB", "-l", "-w", "0"]);
   if (result.status !== 0) return result;
@@ -62,30 +70,32 @@ function usbInventoryFromIoreg() {
     if (!devices.includes(trimmed)) devices.push(trimmed);
   }
 
+  const phoneLike = devices.filter((name) =>
+    /\b(Android|ADB|MTP|Pixel|Samsung|Galaxy|Motorola|Moto|OnePlus|Xiaomi|Redmi|OPPO|Vivo|Nothing|Nokia|Sony|LG|HTC|Huawei|iPhone)\b/i.test(
+      name,
+    ),
+  );
+
   return {
-    status: devices.length > 0 ? 0 : 1,
+    status: phoneLike.length > 0 ? 0 : 1,
     stdout:
-      devices.length > 0
-        ? devices.slice(0, 10).join("\n")
-        : "no USB devices enumerated by ioreg",
+      phoneLike.length > 0
+        ? phoneLike.slice(0, 10).join("\n")
+        : devices.length > 0
+          ? `USB devices visible but none look like an Android phone:\n${devices.slice(0, 10).join("\n")}`
+          : "no USB devices enumerated by ioreg",
     stderr: "",
   };
 }
 
 function printHostUsbState() {
-  const profiler = run("system_profiler", ["SPUSBDataType", "-detailLevel", "mini"]);
-  if (profiler.status === 0 && profiler.stdout.trim()) {
-    printSection("host usb", profiler);
-    return;
-  }
-
   const fallback = usbInventoryFromIoreg();
   printSection("host usb", {
     status: fallback.status,
     stdout: fallback.stdout.trim()
-      ? `system_profiler produced no USB inventory; ioreg fallback:\n${fallback.stdout.trim()}`
+      ? fallback.stdout.trim()
       : fallback.stdout,
-    stderr: [profiler.stderr.trim(), fallback.stderr.trim()].filter(Boolean).join("\n"),
+    stderr: fallback.stderr.trim(),
   });
 }
 
@@ -171,13 +181,17 @@ function printOnboardingContinuationState() {
 }
 
 function printAndroidState() {
-  printSection("android doctor", run("node", [installScript, "--doctor"]));
+  printGateSection("android doctor", run("node", [installScript, "--doctor"]), /\bBLOCKED\b/);
   printSection("adb devices", run(adbPath, ["devices", "-l"]));
   printHostUsbState();
 }
 
 function printBridgeState() {
-  printSection("bluebubbles doctor", run("curl", ["-sS", `${bridgeUrl}/doctor`]));
+  printGateSection(
+    "bluebubbles doctor",
+    run("curl", ["-sS", `${bridgeUrl}/doctor`]),
+    /"status"\s*:\s*"blocked"/,
+  );
   printSection(
     "bluebubbles pending replies",
     run("curl", ["-sS", `${bridgeUrl}/pending-replies`]),

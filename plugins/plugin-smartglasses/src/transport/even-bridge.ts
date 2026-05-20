@@ -8,11 +8,16 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport, SmartglassesWifiResult } from "./types.js";
+import type {
+  SmartglassesConnectedLenses,
+  SmartglassesTransport,
+  SmartglassesWifiResult,
+} from "./types.js";
 
 type EvenBridge = {
   requestWifiScan?: () => Promise<unknown> | unknown;
   requestWifiStatus?: () => Promise<unknown> | unknown;
+  requestWifiSetup?: (reason?: string) => Promise<unknown> | unknown;
   setWifiCredentials?: (
     ssid: string,
     password: string,
@@ -90,6 +95,7 @@ export class EvenBridgeTransport implements SmartglassesTransport {
   private transcriptCallbacks = new Set<
     (text: string, isFinal: boolean, metadata?: Record<string, unknown>) => void
   >();
+  private wifiCallbacks = new Set<(status: SmartglassesWifiResult) => void>();
   private bridgeDisposer: (() => void) | null = null;
   private readonly displayChunks = new Map<string, Uint8Array[]>();
   private evenHubStartupCreated = false;
@@ -116,6 +122,20 @@ export class EvenBridgeTransport implements SmartglassesTransport {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  getConnectedLenses(): SmartglassesConnectedLenses {
+    if (!this.connected) return {};
+    return {
+      left: {
+        connected: true,
+        name: "Native bridge left lens",
+      },
+      right: {
+        connected: true,
+        name: "Native bridge right lens",
+      },
+    };
   }
 
   async write(side: GlassSide, data: Uint8Array): Promise<void> {
@@ -208,10 +228,21 @@ export class EvenBridgeTransport implements SmartglassesTransport {
     return normalizeWifiResult(raw, `Wi-Fi credentials sent for ${ssid}`);
   }
 
+  async requestWifiSetup(reason?: string): Promise<SmartglassesWifiResult> {
+    this.assertWifiSupported();
+    const raw = this.bridge.requestWifiSetup
+      ? await this.bridge.requestWifiSetup(reason)
+      : await this.bridge.rawBridge?.callEvenApp?.("request_wifi_setup", {
+          reason,
+        });
+    return normalizeWifiResult(raw, "Wi-Fi setup requested");
+  }
+
   supportsWifi(): boolean {
     return Boolean(
       this.bridge.requestWifiScan ||
         this.bridge.requestWifiStatus ||
+        this.bridge.requestWifiSetup ||
         this.bridge.setWifiCredentials ||
         this.bridge.sendWifiCredentials ||
         this.bridge.rawBridge?.callEvenApp,
@@ -265,8 +296,18 @@ export class EvenBridgeTransport implements SmartglassesTransport {
     return () => this.transcriptCallbacks.delete(callback);
   }
 
+  onWifiStatus(callback: (status: SmartglassesWifiResult) => void): () => void {
+    this.wifiCallbacks.add(callback);
+    return () => this.wifiCallbacks.delete(callback);
+  }
+
   private handleBridgeEvent(event: unknown): void {
     const maybe = event as Record<string, unknown>;
+    const wifi = normalizeBridgeWifiEvent(maybe);
+    if (wifi) {
+      for (const callback of this.wifiCallbacks) callback(wifi);
+      return;
+    }
     const transcript = normalizeBridgeTranscriptEvent(maybe);
     if (transcript) {
       for (const callback of this.transcriptCallbacks)
@@ -465,6 +506,55 @@ function normalizeBridgeTranscriptEvent(event: Record<string, unknown>): {
   return { text, isFinal, metadata: { ...event } };
 }
 
+function normalizeBridgeWifiEvent(
+  event: Record<string, unknown>,
+): SmartglassesWifiResult | null {
+  const type = String(event.type ?? event.eventType ?? event.event_type ?? "");
+  const values =
+    event.values && typeof event.values === "object"
+      ? (event.values as Record<string, unknown>)
+      : event;
+  const hasWifiFields =
+    "wifiConnected" in values ||
+    "wifiSsid" in values ||
+    "wifiLocalIp" in values ||
+    "connected" in values ||
+    "ssid" in values ||
+    "networks" in values ||
+    "results" in values;
+  if (
+    type !== "wifi_status_change" &&
+    type !== "wifi_status" &&
+    type !== "wifi_scan_result" &&
+    !hasWifiFields
+  ) {
+    return null;
+  }
+  const connected =
+    booleanValue(values.wifiConnected) ?? booleanValue(values.connected);
+  const ssid = stringValue(values.wifiSsid) ?? stringValue(values.ssid);
+  const localIp =
+    stringValue(values.wifiLocalIp) ?? stringValue(values.localIp);
+  const networks = parseWifiNetworks(values);
+  const status =
+    parseWifiStatus(values) ??
+    (type === "wifi_scan_result"
+      ? networks.length > 0
+        ? `found ${networks.length} Wi-Fi network(s)`
+        : "Wi-Fi scan result"
+      : connected
+        ? `connected to ${ssid ?? "Wi-Fi"}`
+        : connected === false
+          ? "disconnected"
+          : "Wi-Fi status updated");
+  return {
+    available: true,
+    status,
+    networks,
+    raw: { ...event, normalized: { connected, ssid, localIp } },
+  };
+}
+
 function getEvenHubRawEventType(event: Record<string, unknown>): unknown {
   const jsonData = normalizeJsonData(event.jsonData);
   return (
@@ -598,6 +688,20 @@ function parseWifiStatus(raw: unknown): string | null {
     record.result ??
     record.connectedSsid ??
     record.ssid;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function booleanValue(value: unknown): boolean | null {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    if (/^(true|1|yes|connected)$/i.test(value)) return true;
+    if (/^(false|0|no|disconnected)$/i.test(value)) return false;
+  }
+  return null;
+}
+
+function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 

@@ -27,7 +27,6 @@ import {
   users,
 } from "@feed/db";
 import { logger } from "@feed/shared";
-import { BenchmarkRunner } from "../benchmark/BenchmarkRunner";
 import { getAgentRuntimeManager } from "../dependencies";
 
 export interface BenchmarkResults {
@@ -178,6 +177,7 @@ export class BenchmarkService {
       "BenchmarkService",
     );
 
+    const { BenchmarkRunner } = await import("../benchmark/BenchmarkRunner");
     const result = await BenchmarkRunner.runSingle({
       benchmarkPath: bmPath,
       agentRuntime: runtime,
