@@ -480,6 +480,8 @@ def _has_vision_language_harness_runtime() -> bool:
     model = (os.environ.get("VISION_LANGUAGE_MODEL") or "").strip()
     if not model:
         return False
+    if provider in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return _has_vision_language_real_inputs()
     if not _is_vision_language_multimodal_model(provider=provider, model=model):
         return False
     key_envs = {
@@ -497,15 +499,16 @@ def _is_vision_language_multimodal_model(*, provider: str, model: str) -> bool:
         return True
     provider_key = provider.strip().lower()
     model_key = model.strip().lower()
+    if provider_key in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return model_key.startswith("eliza-1-")
     if not model_key:
+        return False
+    if provider_key == "cerebras":
         return False
     multimodal_markers = (
         "gpt-4o",
         "gpt-4.1",
         "o4-mini",
-        "kimi",
-        "gemma-4",
-        "gemma4",
         "qwen-vl",
         "qwen2-vl",
         "qwen2.5-vl",

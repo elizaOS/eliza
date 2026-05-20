@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import logging
 import json
+import re
 import uuid
 from collections.abc import Mapping, Sequence
 from typing import Any, Awaitable, Callable
@@ -191,6 +192,44 @@ def _with_visible_payment_text(response: MessageResponse) -> MessageResponse:
     )
 
 
+def _amount_from_text(text: str | None) -> float | None:
+    if not text:
+        return None
+    match = re.search(r"\$(\d[\d,]*(?:\.\d{1,2})?)", text)
+    if not match:
+        return None
+    try:
+        return round(float(match.group(1).replace(",", "")), 2)
+    except ValueError:
+        return None
+
+
+def _with_inferred_payment_action(response: MessageResponse) -> MessageResponse:
+    if _tool_payload(response) is not None:
+        return response
+    amount = _amount_from_text(response.text)
+    text = (response.text or "").lower()
+    if amount is None or not any(term in text for term in ("payment", "charge", "cost", "paid")):
+        return response
+    params = dict(response.params)
+    params["BENCHMARK_ACTION"] = {
+        "command": "CREATE_APP_CHARGE",
+        "amount_usd": amount,
+        "provider": "oxapay",
+        "description": "WooBench reading charge",
+    }
+    actions = list(response.actions)
+    if "BENCHMARK_ACTION" not in actions:
+        actions.append("BENCHMARK_ACTION")
+    return MessageResponse(
+        text=response.text,
+        thought=response.thought,
+        actions=actions,
+        params=params,
+        metadata=dict(response.metadata),
+    )
+
+
 def _tools_for_payment_state(state: Mapping[str, bool]) -> list[dict[str, object]]:
     if state.get("payment_verified"):
         return []
@@ -288,8 +327,7 @@ def build_eliza_bridge_agent_fn(
         )
         system_hint = _system_hint_for_payment_state(payment_state)
         tools = _tools_for_payment_state(payment_state)
-        messages = [{"role": "system", "content": system_hint}]
-        messages.extend(
+        messages = [
             {
                 "role": "assistant" if turn["role"] == "agent" else turn["role"],
                 "content": turn["content"],
@@ -297,7 +335,7 @@ def build_eliza_bridge_agent_fn(
             for turn in recent_history
             if turn["role"] in {"user", "assistant", "agent"}
             and str(turn["content"]).strip() != system_hint
-        )
+        ]
 
         try:
             response = bridge.send_message(
@@ -319,6 +357,7 @@ def build_eliza_bridge_agent_fn(
             logger.exception("[eliza-woo] bridge call failed")
             raise RuntimeError("Eliza WooBench bridge call failed") from exc
 
+        response = _with_inferred_payment_action(response)
         _record_payment_payload(payment_state, _tool_payload(response))
         return _with_visible_payment_text(response)
 

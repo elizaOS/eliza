@@ -981,13 +981,15 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
         )
 
 
-def test_vision_language_multimodal_model_detection_allows_cerebras_vision_models() -> None:
+def test_vision_language_multimodal_model_detection_blocks_cerebras_public_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     assert (
         orchestrator_adapters._is_vision_language_multimodal_model(
             provider="cerebras",
             model="kimi-k2.6",
         )
-        is True
+        is False
     )
     assert (
         orchestrator_adapters._is_vision_language_multimodal_model(
@@ -995,6 +997,14 @@ def test_vision_language_multimodal_model_detection_allows_cerebras_vision_model
             model="gpt-oss-120b",
         )
         is False
+    )
+    monkeypatch.setenv("VISION_LANGUAGE_MULTIMODAL", "1")
+    assert (
+        orchestrator_adapters._is_vision_language_multimodal_model(
+            provider="cerebras",
+            model="user-confirmed-dedicated-vlm",
+        )
+        is True
     )
 
 
