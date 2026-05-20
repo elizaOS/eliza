@@ -6,10 +6,7 @@ import type ReactTypes from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const pluginRequire = createRequire(
-  new URL(
-    "../../../../plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx",
-    import.meta.url,
-  ),
+  `${process.cwd()}/plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx`,
 );
 const React = pluginRequire("react") as typeof ReactTypes;
 const { createRoot } = pluginRequire("react-dom/client") as typeof import("react-dom/client");
