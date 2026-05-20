@@ -49,7 +49,8 @@ const QJL_CPU_SRC_DIR = path.resolve(
   "..",
   "..",
   "..",
-  "native-plugins",
+  "native",
+  "plugins",
   "qjl-cpu",
 );
 
