@@ -1689,7 +1689,7 @@ describe("remote plugin adapter", () => {
           {
             ...verifiedModule,
             provenance: {
-              ...verifiedModule.provenance!,
+              ...verifiedProvenance,
               signature: "not-a-valid-signature",
             },
           },
