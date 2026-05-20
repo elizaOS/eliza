@@ -1,6 +1,6 @@
+import { randomUUID } from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { DynamicViewError } from "./errors";
@@ -28,7 +28,9 @@ interface DynamicViewCanvasWindowOptions {
 }
 
 interface DynamicViewCanvas {
-  createWindow(options: DynamicViewCanvasWindowOptions): Promise<{ id: string }>;
+  createWindow(
+    options: DynamicViewCanvasWindowOptions,
+  ): Promise<{ id: string }>;
   destroyWindow(options: { id: string }): Promise<void>;
   a2uiPush(options: { id: string; payload: JsonValue }): Promise<void>;
 }
@@ -170,7 +172,10 @@ export class DynamicViewSessionManager {
   private readonly sessionIdFactory: () => string;
   private readonly maxSessionHistory: number;
   private readonly entrypointBaseDir: string;
-  private readonly sessions = new Map<DynamicViewSessionId, DynamicViewSession>();
+  private readonly sessions = new Map<
+    DynamicViewSessionId,
+    DynamicViewSession
+  >();
 
   constructor(options: DynamicViewSessionManagerOptions) {
     this.registry = options.registry;
@@ -230,10 +235,7 @@ export class DynamicViewSessionManager {
       session.status = "error";
       session.error = error instanceof Error ? error.message : String(error);
       session.updatedAt = nowIso(this.now);
-      throw new DynamicViewError(
-        "DYNAMIC_VIEW_OPEN_FAILED",
-        session.error,
-      );
+      throw new DynamicViewError("DYNAMIC_VIEW_OPEN_FAILED", session.error);
     }
   }
 
@@ -330,7 +332,8 @@ export class DynamicViewSessionManager {
     const closedSession = [...this.sessions.values()].find(
       (session) => session.status === "closed",
     );
-    const sessionToRemove = closedSession ?? this.sessions.values().next().value;
+    const sessionToRemove =
+      closedSession ?? this.sessions.values().next().value;
     if (sessionToRemove) {
       this.sessions.delete(sessionToRemove.sessionId);
     }

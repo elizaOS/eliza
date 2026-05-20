@@ -1,0 +1,199 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T17:01:02.240Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "speculator": "dflash",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+  "drafterModel": "evidence/speculative/nebius-drafters/drafter-0_8b-bf16.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 64,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 122,
+  "accepted": 31,
+  "acceptanceRate": 0.2540983606557377,
+  "speedup": 0.507514450867052,
+  "withDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": true,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "-md",
+      "evidence/speculative/nebius-drafters/drafter-0_8b-bf16.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "64",
+      "-c",
+      "1024",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "1",
+      "--spec-draft-n-max",
+      "4",
+      "--spec-draft-p-min",
+      "0.1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "1024"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 2083,
+    "contextTokens": 1024,
+    "draftMin": 1,
+    "draftMax": 4,
+    "tokensRequested": 64,
+    "drafted": 122,
+    "accepted": 31,
+    "acceptanceRate": 0.2540983606557377,
+    "tokensPerSecond": 87.8,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain or describe the concept in a concise manner.\n\n2.  **Define \"Speculative Decoding\":**\n    *\n\n[ Prompt: 689.8 t/s | Generation: 87.8 t/s ]\n[ Draft: 31 accepted / 122 generated | Acceptance: 0.2541 ]\n\nExiting..."
+  },
+  "withoutDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": false,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "-md",
+      "evidence/speculative/nebius-drafters/drafter-0_8b-bf16.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "64",
+      "-c",
+      "1024",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "0",
+      "--spec-draft-n-max",
+      "0",
+      "--spec-draft-p-min",
+      "1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "1024"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 1568,
+    "contextTokens": 1024,
+    "draftMin": 0,
+    "draftMax": 0,
+    "tokensRequested": 64,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": 173,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding (the process of interpreting complex data or patterns based on assumptions, often involving AI or advanced methods).\n    *   Length: Short paragraph.\n\n2.  **Define \"Speculative Decoding\":**\n\n[ Prompt: 748.6 t/s | Generation: 173.0 t/s ]\n\nExiting..."
+  },
+  "summary": {
+    "tokensPerSecondWithDrafter": 87.8,
+    "tokensPerSecondBaseline": 173,
+    "generationTokensPerSecondWithDrafter": null,
+    "generationTokensPerSecondBaseline": null,
+    "targetEvalTokensPerSecondWithDrafter": null,
+    "draftEvalTokensPerSecondWithDrafter": null,
+    "dflashDraftedTokens": 122,
+    "dflashAcceptedTokens": 31,
+    "dflashAcceptanceRate": 0.2540983606557377,
+    "dflashSpeedup": 0.507514450867052,
+    "dflashDraftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "speculator": "dflash",
+    "tier": "0_8b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 122,
+    "accepted": 31,
+    "acceptanceRate": 0.2540983606557377,
+    "speedup": 0.507514450867052,
+    "status": "pass",
+    "failure": null
+  },
+  "draftingActive": true,
+  "dflashFailure": null
+}

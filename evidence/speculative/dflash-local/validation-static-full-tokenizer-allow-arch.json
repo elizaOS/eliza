@@ -1,0 +1,128 @@
+{
+  "checks": {
+    "acceptanceRollout": {
+      "acceptanceRate": null,
+      "detail": "skipped (--skip-acceptance-rollout or no prompts file)",
+      "gate": 0.52,
+      "pass": true
+    },
+    "architectureLoadable": {
+      "detail": "architecture ok (target=qwen35, drafter=dflash-draft)",
+      "pass": true
+    },
+    "drafterSmaller": {
+      "detail": "drafter is smaller (327543776 bytes vs target 2871743520 bytes)",
+      "pass": true
+    },
+    "hashMatch": {
+      "detail": "target hash ok (68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d)",
+      "pass": true
+    },
+    "tokenizerMetadataMatch": {
+      "detail": "tokenizer metadata ok",
+      "mismatches": [],
+      "pass": true
+    },
+    "vocabMatch": {
+      "detail": "vocab size ok (248320)",
+      "pass": true
+    }
+  },
+  "drafter": {
+    "arch": "dflash-draft",
+    "path": "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+    "sizeBytes": 327543776,
+    "targetCheckpointSha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d",
+    "tensorCount": 58,
+    "tokenizer": {
+      "hashes": {
+        "tokenizer.ggml.add_bos_token": "23395dc933793a4859b76da2c395b55bf620f68c14eb422fecf537def2d56ba5",
+        "tokenizer.ggml.add_eos_token": null,
+        "tokenizer.ggml.bos_token_id": null,
+        "tokenizer.ggml.eos_token_id": "2fb47f516dee334a56b31878de4a5a27ebc4609c548f43c9efeed305770d16d6",
+        "tokenizer.ggml.merges": "fc4626461d490efa697f13cdc50a2eab4f7ddd1a09d1d2da2477129d8b1099eb",
+        "tokenizer.ggml.model": "720d7d18b648529c3e43fbbe8a86bed5c920fbbbd29515a0bb0176769cd3a251",
+        "tokenizer.ggml.padding_token_id": "d4d7a9e6965adc1cf364cb2ede0cf72056d8b28bf7a94d45e834db3e654c7c25",
+        "tokenizer.ggml.pre": "fa17dcc6f8a5e3a7e31e54f4e145b72b5a604651125b1c81dcc7c036de9acf9e",
+        "tokenizer.ggml.token_type": "f98cfe3d2f00bcf5298aba3d3ed4cb417315e07138930e1e798e54bb2785d76f",
+        "tokenizer.ggml.tokens": "84d938819c387e75903d01a197c6abf73c1baef9450f0007b98889f3795a22e0"
+      },
+      "lengths": {
+        "tokenizer.ggml.add_bos_token": 1,
+        "tokenizer.ggml.add_eos_token": null,
+        "tokenizer.ggml.bos_token_id": null,
+        "tokenizer.ggml.eos_token_id": 1,
+        "tokenizer.ggml.merges": 247587,
+        "tokenizer.ggml.model": 1,
+        "tokenizer.ggml.padding_token_id": 1,
+        "tokenizer.ggml.pre": 1,
+        "tokenizer.ggml.token_type": 248320,
+        "tokenizer.ggml.tokens": 248320
+      },
+      "model": "gpt2",
+      "pre": "qwen35",
+      "values": {
+        "tokenizer.ggml.add_bos_token": false,
+        "tokenizer.ggml.add_eos_token": null,
+        "tokenizer.ggml.bos_token_id": null,
+        "tokenizer.ggml.eos_token_id": 248046,
+        "tokenizer.ggml.model": "gpt2",
+        "tokenizer.ggml.padding_token_id": 248044,
+        "tokenizer.ggml.pre": "qwen35"
+      }
+    },
+    "vocabSize": 248320
+  },
+  "generatedAt": "2026-05-20T16:50:09.423302+00:00",
+  "kind": "dflash-drafter-validation",
+  "metadataOnly": false,
+  "pass": true,
+  "schemaVersion": 1,
+  "synthetic": false,
+  "target": {
+    "arch": "qwen35",
+    "path": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+    "sizeBytes": 2871743520,
+    "targetCheckpointSha256": null,
+    "tensorCount": 426,
+    "tokenizer": {
+      "hashes": {
+        "tokenizer.ggml.add_bos_token": "23395dc933793a4859b76da2c395b55bf620f68c14eb422fecf537def2d56ba5",
+        "tokenizer.ggml.add_eos_token": null,
+        "tokenizer.ggml.bos_token_id": null,
+        "tokenizer.ggml.eos_token_id": "2fb47f516dee334a56b31878de4a5a27ebc4609c548f43c9efeed305770d16d6",
+        "tokenizer.ggml.merges": "fc4626461d490efa697f13cdc50a2eab4f7ddd1a09d1d2da2477129d8b1099eb",
+        "tokenizer.ggml.model": "720d7d18b648529c3e43fbbe8a86bed5c920fbbbd29515a0bb0176769cd3a251",
+        "tokenizer.ggml.padding_token_id": "d4d7a9e6965adc1cf364cb2ede0cf72056d8b28bf7a94d45e834db3e654c7c25",
+        "tokenizer.ggml.pre": "fa17dcc6f8a5e3a7e31e54f4e145b72b5a604651125b1c81dcc7c036de9acf9e",
+        "tokenizer.ggml.token_type": "f98cfe3d2f00bcf5298aba3d3ed4cb417315e07138930e1e798e54bb2785d76f",
+        "tokenizer.ggml.tokens": "84d938819c387e75903d01a197c6abf73c1baef9450f0007b98889f3795a22e0"
+      },
+      "lengths": {
+        "tokenizer.ggml.add_bos_token": 1,
+        "tokenizer.ggml.add_eos_token": null,
+        "tokenizer.ggml.bos_token_id": null,
+        "tokenizer.ggml.eos_token_id": 1,
+        "tokenizer.ggml.merges": 247587,
+        "tokenizer.ggml.model": 1,
+        "tokenizer.ggml.padding_token_id": 1,
+        "tokenizer.ggml.pre": 1,
+        "tokenizer.ggml.token_type": 248320,
+        "tokenizer.ggml.tokens": 248320
+      },
+      "model": "gpt2",
+      "pre": "qwen35",
+      "values": {
+        "tokenizer.ggml.add_bos_token": false,
+        "tokenizer.ggml.add_eos_token": null,
+        "tokenizer.ggml.bos_token_id": null,
+        "tokenizer.ggml.eos_token_id": 248046,
+        "tokenizer.ggml.model": "gpt2",
+        "tokenizer.ggml.padding_token_id": 248044,
+        "tokenizer.ggml.pre": "qwen35"
+      }
+    },
+    "vocabSize": 248320
+  },
+  "tier": "4b"
+}

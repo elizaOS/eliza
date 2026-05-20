@@ -26,7 +26,12 @@ export interface DynamicViewHost {
 }
 
 function isJsonRecord(value: JsonValue | undefined): value is JsonRecord {
-  return value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value);
+  return (
+    value !== undefined &&
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value)
+  );
 }
 
 function requireRecord(
@@ -171,7 +176,10 @@ function readManifest(params: JsonValue | undefined): {
   update: boolean;
 } {
   const record = requireRecord(params, "dynamic-view-register");
-  const manifestRecord = requireRecord(record.manifest, "dynamic-view-register");
+  const manifestRecord = requireRecord(
+    record.manifest,
+    "dynamic-view-register",
+  );
   return {
     manifest: {
       id: readString(manifestRecord, "id", "dynamic-view-register"),

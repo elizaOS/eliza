@@ -376,8 +376,12 @@ test("settings tabs: account analytics CTA and mobile tab dropdown switch tabs",
   await page.goto("/dashboard/settings", { waitUntil: "domcontentloaded" });
   await expect(page.getByText("Full name")).toBeVisible({ timeout: 20_000 });
 
-  await page.getByRole("combobox").filter({ hasText: "General" }).click();
+  const mobileTabSelect = page.locator("#main").getByRole("combobox").first();
+  await expect(mobileTabSelect).toContainText("General");
+  await mobileTabSelect.click();
+  await expect(page.getByRole("option", { name: "Connections" })).toBeVisible();
   await page.getByRole("option", { name: "Connections" }).click();
+  await expect(mobileTabSelect).toContainText("Connections");
 
   await expect(page.getByText("Messaging & Communication")).toBeVisible();
   await expect(page.getByText("Social Media Connections")).toBeVisible();

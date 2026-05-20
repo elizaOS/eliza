@@ -491,6 +491,23 @@ def _required_env_for_request(adapter: BenchmarkAdapter, request: RunRequest) ->
             required.append("ELIZA_BENCH_URL" if os.environ.get("ELIZA_BENCH_URL") else "ELIZA_API_BASE")
         return tuple(required)
 
+    if adapter.id == "hyperliquid_bench":
+        required = list(adapter.required_env)
+        if "HL_PRIVATE_KEY" not in required:
+            required.append("HL_PRIVATE_KEY")
+        provider_key = PROVIDER_KEY_ENV.get(request.provider.strip().lower())
+        if provider_key:
+            required = [key for key in required if key not in PROVIDER_KEY_ENV.values()]
+            required.append(provider_key)
+        seen: set[str] = set()
+        deduped: list[str] = []
+        for key in required:
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(key)
+        return tuple(deduped)
+
     provider = request.provider.strip().lower()
     required = list(adapter.required_env)
     provider_key = PROVIDER_KEY_ENV.get(provider)
@@ -682,7 +699,7 @@ def _complete_token_metrics(
     tokens["cached_tokens"] = int(cached)
     tokens["avg_prompt_tokens"] = (int(prompt) / calls) if calls else 0
     tokens["avg_completion_tokens"] = (int(completion) / calls) if calls else 0
-    tokens["telemetry_missing"] = source is not None
+    tokens["telemetry_missing"] = source is not None or int(total) <= 0 or calls <= 0
     if source is not None:
         tokens["token_estimate_source"] = source
     return tokens
@@ -1110,13 +1127,40 @@ def _build_latest_matrix_contract(
     for benchmark_id, adapter in sorted(adapters.items()):
         allowed_harnesses = tuple(adapter.agent_compatibility)
         supported = set(allowed_harnesses)
+        effective_supported = set(supported)
         required_count = 0
         complete = True
         cells: dict[str, dict[str, Any]] = {}
         for harness in CANONICAL_REAL_HARNESSES:
+            row = latest_by_key.get((benchmark_id, harness))
+            quarantine_row = quarantine_by_key.get((benchmark_id, harness))
+            transient_success = (
+                harness not in supported
+                and _is_transient_runtime_gate_incompatibility(
+                    benchmark_id,
+                    allowed_harnesses,
+                )
+                and row is not None
+                and row.get("status") == "succeeded"
+                and isinstance(row.get("score"), (int, float))
+            )
             if harness not in supported:
+                if transient_success:
+                    effective_supported.add(harness)
+                    required_count += 1
+                    summary["required_real_cells"] += 1
+                    summary["succeeded_required_real_cells"] += 1
+                    cells[harness] = {
+                        "required": True,
+                        "state": "succeeded",
+                        "status": row.get("status"),
+                        "score": row.get("score"),
+                        "run_id": row.get("run_id"),
+                        "transient_runtime_gate_preserved": True,
+                    }
+                    continue
                 summary["unsupported_real_cells"] += 1
-                cells[harness] = {
+                cell = {
                     "required": False,
                     "state": "unsupported",
                     "status": "unsupported",
@@ -1128,12 +1172,17 @@ def _build_latest_matrix_contract(
                         allowed_harnesses,
                     ),
                 }
+                required_env = _latest_matrix_unsupported_required_env(
+                    benchmark_id,
+                    allowed_harnesses,
+                )
+                if required_env:
+                    cell["required_env"] = required_env
+                cells[harness] = cell
                 continue
 
             required_count += 1
             summary["required_real_cells"] += 1
-            row = latest_by_key.get((benchmark_id, harness))
-            quarantine_row = quarantine_by_key.get((benchmark_id, harness))
             source = row or quarantine_row
             if row and row.get("status") == "succeeded" and isinstance(row.get("score"), (int, float)):
                 state = "succeeded"
@@ -1162,7 +1211,11 @@ def _build_latest_matrix_contract(
         else:
             summary["incomplete_benchmarks"] += 1
         benchmarks[benchmark_id] = {
-            "compatible_harnesses": list(adapter.agent_compatibility),
+            "compatible_harnesses": [
+                harness
+                for harness in CANONICAL_REAL_HARNESSES
+                if harness in effective_supported
+            ],
             "complete": complete,
             "cells": cells,
         }
@@ -1208,6 +1261,15 @@ def _latest_matrix_unsupported_reason(
         return VISION_LANGUAGE_FIXED_RUNTIME_REASON
     allowed = ", ".join(allowed_harnesses) or "none"
     return f"harness '{harness}' not in adapter compatibility ({allowed})"
+
+
+def _latest_matrix_unsupported_required_env(
+    benchmark_id: str,
+    allowed_harnesses: tuple[str, ...],
+) -> list[str]:
+    if benchmark_id == "hyperliquid_bench" and not allowed_harnesses:
+        return ["HL_PRIVATE_KEY", "CEREBRAS_API_KEY"]
+    return []
 
 
 def _rebuild_latest_result_snapshots(
@@ -1347,6 +1409,10 @@ def _rebuild_latest_result_snapshots(
                 adapter is not None
                 and agent in CANONICAL_REAL_HARNESSES
                 and agent not in adapter.agent_compatibility
+                and not _is_transient_runtime_gate_incompatibility(
+                    benchmark_id,
+                    tuple(adapter.agent_compatibility),
+                )
             ):
                 continue
         if str(payload.get("status") or "") != "succeeded" or not _is_numeric_score(
@@ -1826,6 +1892,11 @@ def _repair_current_compatibility_statuses(
             continue
         if adapter is None:
             continue
+        if _is_transient_runtime_gate_incompatibility(
+            benchmark_id,
+            tuple(adapter.agent_compatibility),
+        ):
+            continue
         metrics = dict(row.get("metrics") or {})
         metrics["reason"] = "latest_row_violates_current_compatibility"
         metrics["harness"] = agent
@@ -1854,6 +1925,26 @@ def _repair_current_compatibility_statuses(
     if repaired:
         conn.commit()
     return repaired
+
+
+def _is_transient_runtime_gate_incompatibility(
+    benchmark_id: str,
+    allowed_harnesses: tuple[str, ...],
+) -> bool:
+    if allowed_harnesses:
+        return False
+    return benchmark_id in {
+        "hyperliquid_bench",
+        "terminal_bench",
+        "swe_bench",
+        "swe_bench_orchestrated",
+        "osworld",
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+        "vision_language",
+    }
 
 
 def _restore_stale_compatibility_row(conn, row: dict[str, Any]) -> bool:

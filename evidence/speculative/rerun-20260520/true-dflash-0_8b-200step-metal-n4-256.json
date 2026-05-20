@@ -1,0 +1,199 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T17:54:57.796Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "speculator": "dflash",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+  "drafterModel": "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step.local-stamped.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 256,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 506,
+  "accepted": 127,
+  "acceptanceRate": 0.2509881422924901,
+  "speedup": 0.5461538461538461,
+  "withDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": true,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "-md",
+      "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step.local-stamped.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "256",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "2",
+      "--spec-draft-n-max",
+      "4",
+      "--spec-draft-p-min",
+      "0.1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 42324,
+    "contextTokens": 2048,
+    "draftMin": 2,
+    "draftMax": 4,
+    "tokensRequested": 256,
+    "drafted": 506,
+    "accepted": 127,
+    "acceptanceRate": 0.2509881422924901,
+    "tokensPerSecond": 7.1,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding (likely meaning \"speculative decoding,\" but I need to clarify or interpret this contextually).\n    *   Wait, let's check the term \"speculative decoding.\"\n    *   *Correction:* \"Speculative decoding\" isn't a standard term in technical or academic fields like cryptography, signal processing, or linguistics. It might refer to a fictional concept, a misunderstanding, or a specific niche term.\n    *   *Possibility 1:* It's a typo for \"Speculative Decoding\" (maybe related to \"Speculative\" or \"Decoding\"). Actually, \"Speculative\" usually refers to the act of making hypotheses. \"Decoding\" refers to language processing or information extraction.\n    *   *Possibility 2:* It's a metaphor or a specific term from a specific domain (e.g., a specific game, a fictional concept, or perhaps a misunderstanding of \"speculative\" + \"decoding\").\n    *   *Possibility 3:* The user might mean \"Speculation\" (the act of thinking about things). But \"Speculative\" + \"Decoding\" is odd.\n   \n\n[ Prompt: 280.2 t/s | Generation: 7.1 t/s ]\n[ Draft: 127 accepted / 506 generated | Acceptance: 0.2510 ]\n\nExiting..."
+  },
+  "withoutDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": false,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "-md",
+      "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step.local-stamped.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "256",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "0",
+      "--spec-draft-n-max",
+      "0",
+      "--spec-draft-p-min",
+      "1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 24665,
+    "contextTokens": 2048,
+    "draftMin": 0,
+    "draftMax": 0,
+    "tokensRequested": 256,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": 13,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nHere's a thinking process that could lead to the suggested response:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Task:** Write a short paragraph.\n    *   **Constraint:** \"Speculative decoding\" usually refers to the idea of predicting future events or truths based on patterns or analogies without empirical evidence. However, the term is ambiguous. It could mean:\n        *   A fictional interpretation of the \"decoding\" process in a metaphorical or philosophical sense (like the AI in the prompt or the concept of \"speculation\").\n        *   A specific technical term related to \"speculative computing\" or \"machine learning\" (which uses patterns to make predictions).\n        *   A metaphor for \"guessing based on probabilities without certainty.\"\n    *   **Interpretation:** The most common interpretation in a general context is \"speculative decoding\" as in \"machine learning\" or \"AI\" or \"the act of decoding code to understand meaning,\" but given the context of \"short paragraph,\" it likely refers to a metaphorical or philosophical concept related to interpreting a pattern without certainty, or perhaps a specific technical term like \"speculative decoding\" in the context\n\n[ Prompt: 247.3 t/s | Generation: 13.0 t/s ]\n\nExiting..."
+  },
+  "summary": {
+    "tokensPerSecondWithDrafter": 7.1,
+    "tokensPerSecondBaseline": 13,
+    "generationTokensPerSecondWithDrafter": null,
+    "generationTokensPerSecondBaseline": null,
+    "targetEvalTokensPerSecondWithDrafter": null,
+    "draftEvalTokensPerSecondWithDrafter": null,
+    "dflashDraftedTokens": 506,
+    "dflashAcceptedTokens": 127,
+    "dflashAcceptanceRate": 0.2509881422924901,
+    "dflashSpeedup": 0.5461538461538461,
+    "dflashDraftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "speculator": "dflash",
+    "tier": "0_8b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 506,
+    "accepted": 127,
+    "acceptanceRate": 0.2509881422924901,
+    "speedup": 0.5461538461538461,
+    "status": "pass",
+    "failure": null
+  },
+  "draftingActive": true,
+  "dflashFailure": null
+}

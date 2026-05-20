@@ -459,6 +459,37 @@ def test_extract_patch_for_repo_preserves_blank_context_lines(tmp_path: Path) ->
     assert "\n \n" in patch
 
 
+def test_extract_patch_for_repo_adds_trailing_context_for_terminal_change(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "hello.py").write_text(
+        "def greet():\n"
+        "    before()\n"
+        "    bug()\n"
+        "\n"
+        "def later():\n"
+        "    pass\n",
+        encoding="utf-8",
+    )
+    response = (
+        "diff --git a/hello.py b/hello.py\n"
+        "--- a/hello.py\n"
+        "+++ b/hello.py\n"
+        "@@\n"
+        " def greet():\n"
+        "     before()\n"
+        "-    bug()\n"
+        "+    fixed()\n"
+    )
+
+    patch = swe_cli._extract_patch_for_repo(response, repo)
+
+    assert "\n \n" in patch
+    assert "+    fixed()" in patch
+
+
 def test_build_repair_prompt_includes_evaluator_feedback() -> None:
     result = SWEBenchResult(
         instance_id="mock__swe-bench-1",

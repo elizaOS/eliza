@@ -259,6 +259,7 @@
     "@tsparticles/engine": "^3.9.1",
     "@tsparticles/react": "^3.0.0",
     "@xyflow/react": "^12.10.2",
+    "@xyflow/system": "0.0.76",
     "ai": "^6.0.48",
     "chalk": "^5.3.0",
     "class-variance-authority": "^0.7.1",

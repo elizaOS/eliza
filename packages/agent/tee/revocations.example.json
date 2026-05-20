@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "authority": "eliza-tee-security",
+  "generatedAt": "2026-05-20T00:00:00.000Z",
+  "revokedMeasurements": {
+    "agent": [
+      {
+        "value": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "reason": "example revoked agent image measurement",
+        "revokedAt": "2026-05-20T00:00:00.000Z",
+        "source": "security-advisory-placeholder"
+      }
+    ],
+    "os": [
+      {
+        "value": "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "reason": "example revoked OS release measurement",
+        "revokedAt": "2026-05-20T00:00:00.000Z",
+        "source": "security-advisory-placeholder"
+      }
+    ],
+    "policy": [
+      "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    ]
+  },
+  "revokedSecurityVersions": [
+    {
+      "value": 1,
+      "reason": "example minimum TEE firmware rollback floor",
+      "revokedAt": "2026-05-20T00:00:00.000Z",
+      "source": "security-advisory-placeholder"
+    }
+  ]
+}

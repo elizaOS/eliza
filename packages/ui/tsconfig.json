@@ -49,6 +49,8 @@
       ],
       "@elizaos/plugin-signal": ["../../plugins/plugin-signal/src/index.ts"],
       "@elizaos/agent": ["../agent/src/index.ts"],
+      "@elizaos/app-core": ["../app-core/src/index.ts"],
+      "@elizaos/app-core/*": ["../app-core/src/*"],
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
@@ -74,16 +76,16 @@
         "../app/node_modules/@capacitor/app/dist/esm/index.d.ts"
       ],
       "@elizaos/capacitor-appblocker": [
-        "../native-plugins/appblocker/src/index.ts"
+        "../../plugins/plugin-native-appblocker/src/index.ts"
       ],
       "@elizaos/capacitor-bun-runtime": [
-        "../native-plugins/bun-runtime/src/index.ts"
+        "../../plugins/plugin-native-bun-runtime/src/index.ts"
       ],
       "@elizaos/capacitor-calendar": [
-        "../native-plugins/calendar/src/index.ts"
+        "../../plugins/plugin-native-calendar/src/index.ts"
       ],
       "@elizaos/capacitor-mobile-signals": [
-        "../native-plugins/mobile-signals/src/index.ts"
+        "../../plugins/plugin-native-mobile-signals/src/index.ts"
       ],
       "@elizaos/shared": ["../shared/src/index.ts"],
       "@elizaos/shared/*": ["../shared/src/*"],

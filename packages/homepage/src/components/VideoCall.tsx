@@ -102,7 +102,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
             autoPlay
             playsInline
             muted
-            className="w-full aspect-4/3 object-cover rounded-[26px]"
+            className="w-full aspect-4/3 object-cover rounded-xs"
           />
 
           <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5">
@@ -112,7 +112,7 @@ export default function VideoCall({ visible, onClose }: VideoCallProps) {
               aria-label={t("homepage_eliza.video.endCallAria", {
                 defaultValue: "End call",
               })}
-              className="size-14 flex items-center justify-center rounded-full bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
+              className="size-14 flex items-center justify-center rounded-xs bg-red-500 hover:bg-red-600 text-white transition-colors cursor-pointer"
             >
               <X className="size-8" strokeWidth={1.5} />
             </button>

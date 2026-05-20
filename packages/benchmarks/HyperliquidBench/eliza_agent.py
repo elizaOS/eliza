@@ -189,7 +189,7 @@ def _binary_or_cargo(bench_root: Path, package: str) -> list[str]:
         raise FileNotFoundError(f"could not find {package} binary and cargo is unavailable")
 
     timeout_s = _cargo_build_timeout_seconds()
-    build_cmd = [cargo, "build", "-q", "-p", package]
+    build_cmd = [cargo, "build", "--release", "-q", "-p", package]
     try:
         build_proc = subprocess.run(
             build_cmd,
@@ -216,7 +216,7 @@ def _binary_or_cargo(bench_root: Path, package: str) -> list[str]:
             exit_code=build_proc.returncode,
         )
 
-    binary = bench_root / "target" / "debug" / binary_name
+    binary = bench_root / "target" / "release" / binary_name
     if binary.exists() and os.access(binary, os.X_OK):
         return [str(binary)]
     raise HyperliquidCommandError(

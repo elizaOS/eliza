@@ -1,0 +1,350 @@
+{
+  "generatedAt": "2026-05-20T16:03:39.961Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+  "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
+  "cliFeatures": {
+    "installed": {
+      "available": true,
+      "binary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "supportedOptionalFlags": [
+        "--device",
+        "--device-draft",
+        "--ctx-size-draft",
+        "-cd",
+        "--draft",
+        "--draft-min",
+        "--draft-max",
+        "--draft-p-min",
+        "--temp"
+      ],
+      "helpStatus": 0,
+      "helpSignal": null,
+      "skippedReason": null
+    },
+    "reference": null
+  },
+  "checks": {
+    "drafterShape": "plain-ar",
+    "upstreamDflashShapeOk": false,
+    "plainArShapeOk": true,
+    "drafterSmallerThanTarget": true,
+    "hasTargetCheckpointSha256": false,
+    "targetCheckpointMatchesTarget": false,
+    "targetCheckpointFailure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+    "targetDrafterTokenizerCompatible": true,
+    "targetDrafterTokenizerFailure": null,
+    "gpt2TokenizerHasMerges": true
+  },
+  "metadata": {
+    "target": {
+      "version": 3,
+      "tensorCount": 426,
+      "kvCount": 45,
+      "architecture": "qwen35",
+      "name": "Qwen3.5 4B",
+      "sha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d"
+    },
+    "version": 3,
+    "tensorCount": 320,
+    "kvCount": 45,
+    "architecture": "qwen35",
+    "drafterShape": "plain-ar",
+    "tokenizerModel": "gpt2",
+    "tokenizerPre": "qwen35",
+    "hasTokenizerMerges": true,
+    "targetCheckpointSha256": null,
+    "targetCheckpointCompatibility": {
+      "compatible": false,
+      "recordedSha256": null,
+      "actualSha256": "68c9c6bfeecee13dd3b3c1de7f73b2d86e5feadc100f0f50e5e11fd2388ca66d",
+      "blockingReason": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
+    },
+    "dflash": {},
+    "upstreamRequiredTensors": {
+      "dflash_fc.weight": false,
+      "dflash_hidden_norm.weight": false,
+      "output_norm.weight": true
+    },
+    "plainArMarkers": {
+      "token_embd.weight": true,
+      "blk.0.attn_q.weight": false,
+      "blk.0.attn_k.weight": false
+    },
+    "tokenizerCompatibility": {
+      "compatible": true,
+      "reason": "target and drafter tokenizer metadata are byte-compatible",
+      "mismatches": [],
+      "requiredMissing": [],
+      "blockingReasons": []
+    },
+    "tokenizers": {
+      "target": {
+        "architecture": "qwen35",
+        "name": "Qwen3.5 4B",
+        "tokenizerModel": "gpt2",
+        "tokenizerPre": "qwen35",
+        "tokensLength": 248320,
+        "tokenTypeLength": 248320,
+        "mergesLength": 247587,
+        "eosTokenId": 248046,
+        "bosTokenId": null,
+        "paddingTokenId": 248044,
+        "addBosToken": false,
+        "addEosToken": null,
+        "hashes": {
+          "model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenType": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "eosTokenId": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "bosTokenId": null,
+          "paddingTokenId": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "addBosToken": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "addEosToken": null
+        },
+        "hashByKey": {
+          "tokenizer.ggml.model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "tokenizer.ggml.pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokenizer.ggml.tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenizer.ggml.token_type": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "tokenizer.ggml.merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "tokenizer.ggml.eos_token_id": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "tokenizer.ggml.add_bos_token": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "valueByKey": {
+          "tokenizer.ggml.model": "gpt2",
+          "tokenizer.ggml.pre": "qwen35",
+          "tokenizer.ggml.eos_token_id": 248046,
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": 248044,
+          "tokenizer.ggml.add_bos_token": false,
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "lengthByKey": {
+          "tokenizer.ggml.tokens": 248320,
+          "tokenizer.ggml.token_type": 248320,
+          "tokenizer.ggml.merges": 247587
+        }
+      },
+      "drafter": {
+        "architecture": "qwen35",
+        "name": "Qwen3.5 0.8B",
+        "tokenizerModel": "gpt2",
+        "tokenizerPre": "qwen35",
+        "tokensLength": 248320,
+        "tokenTypeLength": 248320,
+        "mergesLength": 247587,
+        "eosTokenId": 248046,
+        "bosTokenId": null,
+        "paddingTokenId": 248044,
+        "addBosToken": false,
+        "addEosToken": null,
+        "hashes": {
+          "model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenType": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "eosTokenId": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "bosTokenId": null,
+          "paddingTokenId": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "addBosToken": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "addEosToken": null
+        },
+        "hashByKey": {
+          "tokenizer.ggml.model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "tokenizer.ggml.pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokenizer.ggml.tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenizer.ggml.token_type": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "tokenizer.ggml.merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "tokenizer.ggml.eos_token_id": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "tokenizer.ggml.add_bos_token": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "valueByKey": {
+          "tokenizer.ggml.model": "gpt2",
+          "tokenizer.ggml.pre": "qwen35",
+          "tokenizer.ggml.eos_token_id": 248046,
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": 248044,
+          "tokenizer.ggml.add_bos_token": false,
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "lengthByKey": {
+          "tokenizer.ggml.tokens": 248320,
+          "tokenizer.ggml.token_type": 248320,
+          "tokenizer.ggml.merges": 247587
+        }
+      }
+    },
+    "targetMeta": {
+      "file": null,
+      "status": "missing",
+      "data": null
+    }
+  },
+  "runtime": [
+    {
+      "label": "installed",
+      "binary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "args": [
+        "-m",
+        "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+        "-md",
+        "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
+        "-p",
+        "Hello",
+        "-n",
+        "1",
+        "-c",
+        "128",
+        "-ngl",
+        "99",
+        "-ngld",
+        "99",
+        "--ctx-size-draft",
+        "128",
+        "--draft-min",
+        "1",
+        "--draft-max",
+        "1",
+        "--draft-p-min",
+        "0.1"
+      ],
+      "skippedCliFlags": [
+        {
+          "flag": "--spec-type",
+          "values": [
+            "dflash"
+          ],
+          "reason": "not advertised by binary --help"
+        }
+      ],
+      "status": null,
+      "signal": null,
+      "classification": "blocked_by_tokenizer_metadata_mismatch",
+      "dflash": {
+        "drafted": null,
+        "accepted": null,
+        "acceptanceRate": null,
+        "requiresTrueDrafting": true,
+        "tokenizerCompatible": false,
+        "draftingActive": false
+      },
+      "dflashFailure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+      "outputTail": ""
+    }
+  ],
+  "runtimePolicy": {
+    "requiresTrueDflashDrafting": true,
+    "reason": "plain autoregressive drafter smoke"
+  },
+  "metadataStatus": "metadata_invalid",
+  "metadataFailures": [
+    "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T16:03:41.569Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+    "speculator": "dflash",
+    "tier": "4b",
+    "targetModel": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash/Qwen_Qwen3.5-4B-Q4_K_M.gguf",
+    "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/qwen3.5-4b-dflash-drafter-q4.repaired.gguf",
+    "specBinary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+    "benchTokens": 128,
+    "available": true,
+    "status": "fail",
+    "failure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+    "backend": "metal",
+    "binary": {
+      "path": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "exists": true,
+      "sha256": "54ed89d970c76df1c7c1bc2c2845a00c1810710b7ca241277363745f0c1b092d"
+    },
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "speedup": null,
+    "withDrafter": {
+      "available": true,
+      "binary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "withDrafter": true,
+      "skippedReason": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+      "status": null,
+      "wallMs": 0,
+      "tokensRequested": 128,
+      "drafted": null,
+      "accepted": null,
+      "acceptanceRate": null,
+      "tokensPerSecond": null,
+      "generation": {
+        "encoded": null,
+        "decoded": null,
+        "tokensPerSecond": null
+      },
+      "timings": {
+        "targetPromptEval": null,
+        "targetEval": null,
+        "draftPromptEval": null,
+        "draftEval": null
+      },
+      "vocabIncompatibleWarning": false,
+      "draftingActive": false,
+      "dflashFailure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+      "tokenizerCompatible": false,
+      "outputTail": ""
+    },
+    "withoutDrafter": {
+      "available": true,
+      "binary": "/Users/shawwalters/.eliza/local-inference/bin/dflash/darwin-arm64-metal/llama-speculative-simple",
+      "withDrafter": false,
+      "skippedReason": "baseline not run because DFlash drafter metadata failed release compatibility",
+      "status": null,
+      "wallMs": 0,
+      "tokensRequested": 128,
+      "drafted": null,
+      "accepted": null,
+      "acceptanceRate": null,
+      "tokensPerSecond": null,
+      "generation": {
+        "encoded": null,
+        "decoded": null,
+        "tokensPerSecond": null
+      },
+      "timings": {
+        "targetPromptEval": null,
+        "targetEval": null,
+        "draftPromptEval": null,
+        "draftEval": null
+      },
+      "vocabIncompatibleWarning": false,
+      "draftingActive": false,
+      "dflashFailure": null,
+      "tokenizerCompatible": false,
+      "outputTail": ""
+    },
+    "summary": {
+      "speculator": "dflash",
+      "tier": "4b",
+      "backend": "metal",
+      "binarySha256": "54ed89d970c76df1c7c1bc2c2845a00c1810710b7ca241277363745f0c1b092d",
+      "drafted": null,
+      "accepted": null,
+      "acceptanceRate": null,
+      "speedup": null,
+      "status": "fail",
+      "failure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint",
+      "tokenizerCompatible": false
+    },
+    "draftingActive": false,
+    "dflashFailure": "drafter GGUF is missing dflash-draft.target_checkpoint_sha256; release validation cannot prove it was distilled against this text checkpoint"
+  }
+}

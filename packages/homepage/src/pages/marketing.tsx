@@ -70,8 +70,12 @@ const PLATFORM_DESCRIPTION_DEFAULTS: Record<DownloadId, string> = {
 
 export default function MarketingPage() {
   const t = useT();
+  const stableDownloads = releaseData.release.downloads;
+  const canaryDownloads = releaseData.canaryRelease?.downloads ?? [];
+  const effectiveDownloads =
+    stableDownloads.length > 0 ? stableDownloads : canaryDownloads;
   const downloads = primaryDownloadIds.map((id) => {
-    const releaseDownload = releaseData.release.downloads.find(
+    const releaseDownload = effectiveDownloads.find(
       (download) => download.id === id,
     );
     const Icon = platformIcon[id];
@@ -291,6 +295,73 @@ export default function MarketingPage() {
                 </li>
               ))}
             </ul>
+
+            <div
+              className="app-os-downloads"
+              aria-label={t("homepage_eliza.marketing.osDownloadsAria", {
+                defaultValue: "elizaOS distributions",
+              })}
+            >
+              <h3 className="app-h3">
+                {t("homepage_eliza.marketing.osDownloadsH3", {
+                  defaultValue: "elizaOS — full operating system",
+                })}
+              </h3>
+              <p className="app-section-copy">
+                {t("homepage_eliza.marketing.osDownloadsCopy", {
+                  defaultValue:
+                    "Every elizaOS distribution is listed here. Cards with a working link download the published artifact; the rest are still in build and will activate as soon as a release is published.",
+                })}
+              </p>
+              <ul className="app-os-grid" data-testid="os-artifact-grid">
+                {releaseData.osArtifacts.map((artifact) => {
+                  const available = Boolean(artifact.downloadUrl);
+                  const statusLabel = available
+                    ? artifact.channel === "stable"
+                      ? "Available"
+                      : artifact.channel === "beta"
+                        ? "Beta"
+                        : "Nightly"
+                    : "Coming soon";
+                  const sizeLabel =
+                    artifact.sizeBytes != null
+                      ? ` · ${(artifact.sizeBytes / 1_048_576).toFixed(1)} MB`
+                      : "";
+                  const Tag = available ? "a" : "div";
+                  return (
+                    <li key={artifact.id}>
+                      <Tag
+                        className="app-os-card"
+                        data-status={available ? "available" : "pending"}
+                        data-artifact-id={artifact.id}
+                        {...(available
+                          ? {
+                              href: artifact.downloadUrl as string,
+                              rel: "noopener",
+                            }
+                          : { "aria-disabled": "true" })}
+                      >
+                        <div className="app-os-card-head">
+                          <strong>{artifact.label}</strong>
+                          <span className="app-os-status">
+                            {statusLabel}
+                            {sizeLabel}
+                          </span>
+                        </div>
+                        <p>{artifact.description}</p>
+                        <small>
+                          {artifact.platform} · {artifact.kind} ·{" "}
+                          {artifact.version}
+                          {artifact.requiresHardware
+                            ? ` · ${artifact.requiresHardware}`
+                            : ""}
+                        </small>
+                      </Tag>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
 
             <div className="app-checksum-row">
               {releaseData.release.checksum ? (

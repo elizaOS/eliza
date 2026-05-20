@@ -38,6 +38,16 @@ const artifactStatuses = new Set([
   "published",
   "withdrawn",
 ]);
+const teeProviders = new Set([
+  "dstack",
+  "tdx",
+  "sev-snp",
+  "nitro",
+  "cove",
+  "keystone",
+  "optee",
+  "eliza-vault",
+]);
 
 function isValidIsoDate(value) {
   if (typeof value !== "string" || !isoDatePattern.test(value)) {
@@ -296,12 +306,95 @@ export function validateManifest(manifest, options = {}) {
   if (!Array.isArray(manifest?.validation?.promotionGates)) {
     errors.push("validation.promotionGates must be an array");
   }
+  validateTeePolicy(errors, manifest?.tee);
 
   return {
     ok: errors.length === 0,
     errors,
     warnings,
   };
+}
+
+export function validateTeeMeasurements(document) {
+  const errors = [];
+  if (document?.schemaVersion !== 1) {
+    errors.push("schemaVersion must be 1");
+  }
+  if (typeof document?.generatedBy !== "string" || !document.generatedBy) {
+    errors.push("generatedBy must be a non-empty string");
+  }
+  const measurements = document?.measurements;
+  if (!measurements || typeof measurements !== "object") {
+    errors.push("measurements must be an object");
+    return { ok: false, errors };
+  }
+  for (const field of ["boot", "os", "agent", "policy"]) {
+    if (!sha256DigestString(measurements[field])) {
+      errors.push(`measurements.${field} must be sha256:<64 lowercase hex>`);
+    }
+  }
+  for (const [field, digest] of Object.entries(measurements)) {
+    if (!sha256DigestString(digest)) {
+      errors.push(`measurements.${field} must be sha256:<64 lowercase hex>`);
+    }
+  }
+  return { ok: errors.length === 0, errors };
+}
+
+function validateTeePolicy(errors, tee) {
+  if (tee === undefined) return;
+  if (!tee || typeof tee !== "object" || Array.isArray(tee)) {
+    errors.push("tee must be an object when present");
+    return;
+  }
+  if (typeof tee.enabled !== "boolean") {
+    errors.push("tee.enabled must be a boolean");
+  }
+  if (tee.enabled !== true) return;
+  if (!sha256DigestString(tee.policyDigest)) {
+    errors.push("tee.policyDigest must be sha256:<64 lowercase hex>");
+  }
+  if (!Array.isArray(tee.providers) || tee.providers.length === 0) {
+    errors.push("tee.providers must be a non-empty array when enabled");
+  } else {
+    for (const provider of tee.providers) {
+      if (!teeProviders.has(provider)) {
+        errors.push(`tee.providers contains unsupported provider ${provider}`);
+      }
+    }
+  }
+  const measurements = tee.measurements;
+  if (!measurements || typeof measurements !== "object") {
+    errors.push("tee.measurements must be an object when enabled");
+    return;
+  }
+  for (const field of ["boot", "os", "agent", "policy"]) {
+    if (!sha256DigestString(measurements[field])) {
+      errors.push(`tee.measurements.${field} must be sha256:<64 lowercase hex>`);
+    }
+  }
+  const requiredClaims = tee.requiredClaims;
+  if (
+    requiredClaims === undefined ||
+    !requiredClaims ||
+    typeof requiredClaims !== "object" ||
+    Array.isArray(requiredClaims)
+  ) {
+    errors.push("tee.requiredClaims must be an object when enabled");
+    return;
+  }
+  for (const claim of ["debugDisabled", "secureBoot"]) {
+    if (requiredClaims[claim] !== true) {
+      errors.push(`tee.requiredClaims.${claim} must be true when enabled`);
+    }
+  }
+}
+
+function sha256DigestString(value) {
+  return (
+    typeof value === "string" &&
+    /^sha256:[a-f0-9]{64}$/.test(value)
+  );
 }
 
 export function formatCheckEntry(record) {

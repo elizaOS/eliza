@@ -3,8 +3,8 @@ import type { DynamicViewRegistry } from "../dynamic-views/registry";
 import type { DynamicViewSessionManager } from "../dynamic-views/session-manager";
 import { TraceError } from "./errors";
 import {
-  TRACE_DYNAMIC_VIEW_ID,
   createTraceDynamicViewManifest,
+  TRACE_DYNAMIC_VIEW_ID,
 } from "./trace-dynamic-view";
 import { TraceStore } from "./trace-store";
 import type {

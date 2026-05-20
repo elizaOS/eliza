@@ -1,0 +1,29 @@
+{
+  "backend": "cuda-h200",
+  "rows": [
+    {
+      "tier": "0_8b",
+      "baselineTps": 166.2,
+      "mtpTps": 115.1,
+      "speedup": 0.6925391095066186,
+      "baselineLog": "evidence/speculative/qwen35-0_8b-cuda-baseline.log",
+      "mtpLog": "evidence/speculative/qwen35-0_8b-cuda-mtp1.log"
+    },
+    {
+      "tier": "2b",
+      "baselineTps": 156.4,
+      "mtpTps": 114.9,
+      "speedup": 0.7346547314578005,
+      "baselineLog": "evidence/speculative/qwen35-2b-cuda-baseline.log",
+      "mtpLog": "evidence/speculative/qwen35-2b-cuda-mtp1.log"
+    },
+    {
+      "tier": "4b",
+      "baselineTps": 112.1,
+      "mtpTps": 100.2,
+      "speedup": 0.8938447814451383,
+      "baselineLog": "evidence/speculative/qwen35-4b-cuda-baseline.log",
+      "mtpLog": "evidence/speculative/qwen35-4b-cuda-mtp1.log"
+    }
+  ]
+}

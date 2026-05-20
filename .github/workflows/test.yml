@@ -42,7 +42,7 @@ env:
   BUN_VERSION: "1.3.13"
   NODE_VERSION: "24.15.0"
   NODE_NO_WARNINGS: "1"
-  NODE_OPTIONS: "--max-old-space-size=8192 --experimental-sqlite"
+  NODE_OPTIONS: "--max-old-space-size=8192"
   # Live-test keys. Suites gated via describeLive() / requiredEnv skip cleanly
   # with a yellow warning when a key is missing — the workflow stays green.
   # Cerebras is the universal default LLM (gpt-oss-120b); the OPENAI_* aliases
@@ -68,12 +68,12 @@ jobs:
       TURBO_REMOTE_ONLY: true
       PGLITE_WASM_MODE: node
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -149,12 +149,12 @@ jobs:
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       TURBO_REMOTE_ONLY: true
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -192,13 +192,13 @@ jobs:
       CARGO_TARGET_DIR: ${{ github.workspace }}/.cargo-shared-target
       CARGO_INCREMENTAL: "0"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: false
           fetch-depth: 1
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -212,7 +212,7 @@ jobs:
           no-vision-deps: "true"
 
       - name: Cache cargo registry and shared target dir
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cargo/registry
@@ -234,12 +234,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -285,13 +285,13 @@ jobs:
 
       - name: Checkout
         if: steps.cloud.outputs.skip != 'true'
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: false
 
       - name: Setup Node.js
         if: steps.cloud.outputs.skip != 'true'
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -351,7 +351,7 @@ jobs:
 
       - name: Upload remote capability cloud live report
         if: steps.cloud.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: remote-capability-cloud-live-report
           path: reports/remote-capabilities/cloud/*.json
@@ -421,13 +421,13 @@ jobs:
 
       - name: Checkout
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: false
 
       - name: Setup Node.js
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
 
@@ -476,7 +476,7 @@ jobs:
 
       - name: Upload remote capability provider live report
         if: steps.providers.outputs.skip != 'true' && (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v4
         with:
           name: remote-capability-provider-live-report
           path: reports/remote-capabilities/providers/*.json
@@ -508,7 +508,7 @@ jobs:
       TURBO_REMOTE_ONLY: true
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
         with:
           submodules: false
 

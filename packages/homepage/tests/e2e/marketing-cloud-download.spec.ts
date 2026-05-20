@@ -100,13 +100,19 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
   await expect(page.getByRole("link", { name: /^Linux/i })).toBeVisible();
   await expect(page.getByRole("link", { name: /^Android APK/i })).toBeVisible();
 
+  const effectiveRelease =
+    releaseData.release.downloads.length > 0
+      ? releaseData.release
+      : (releaseData.canaryRelease ?? releaseData.release);
+  const effectiveDownloads = effectiveRelease.downloads;
+
   await expect(
     page.getByText(
-      new RegExp(`From ${escapeRegExp(releaseData.release.tagName)}`),
+      new RegExp(`From ${escapeRegExp(effectiveRelease.tagName)}`),
     ),
-  ).toHaveCount(releaseData.release.downloads.length);
+  ).toHaveCount(effectiveDownloads.length);
 
-  if (releaseData.release.downloads.length === 0) {
+  if (effectiveDownloads.length === 0) {
     await expect(page.getByText("Opens release page")).toHaveCount(5);
     await expect(
       page.getByRole("link", {
@@ -179,9 +185,13 @@ test("homepage live marketing links resolve for cloud, os, release, and download
   expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
   expect(new URL(cloudLinks[0]).searchParams.get("intent")).toBe("launch");
 
-  const downloadTargets =
+  const effectiveRelease =
     releaseData.release.downloads.length > 0
-      ? releaseData.release.downloads.map((download) => download.url)
+      ? releaseData.release
+      : (releaseData.canaryRelease ?? releaseData.release);
+  const downloadTargets =
+    effectiveRelease.downloads.length > 0
+      ? effectiveRelease.downloads.map((download) => download.url)
       : ["https://github.com/elizaOS/eliza/releases"];
   const expectedNonCloudTargets = [
     "https://elizaos.ai/",

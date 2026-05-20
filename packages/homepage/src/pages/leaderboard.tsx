@@ -837,7 +837,7 @@ export default function Leaderboard() {
               style={{ gap: tryAppearSpring.tryGap }}
             >
               <AnimatedDiv
-                className="absolute z-1 h-12 bg-white border border-black rounded-sm"
+                className="absolute z-1 h-12 bg-white border border-black rounded-xs"
                 style={{
                   ...indicatorSpring,
                   top: 7,
@@ -852,11 +852,11 @@ export default function Leaderboard() {
                 }}
               />
               <AnimatedDiv
-                className="relative flex items-center gap-1 rounded-sm py-1.5 border border-transparent"
+                className="relative flex items-center gap-1 rounded-xs py-1.5 border border-transparent"
                 style={barSpring}
               >
                 <AnimatedDiv
-                  className="absolute inset-0 rounded-sm bg-black"
+                  className="absolute inset-0 rounded-xs bg-black"
                   style={{
                     WebkitMaskImage: tabBarBgSpring.reveal.to(
                       (v) =>
@@ -873,7 +873,7 @@ export default function Leaderboard() {
                     <AnimatedButton
                       key={p}
                       onClick={() => changePlatform(p)}
-                      className="relative z-20 flex items-center justify-center size-12 rounded-full cursor-pointer"
+                      className="relative z-20 flex items-center justify-center size-12 rounded-xs cursor-pointer"
                       style={{
                         opacity: iconSprings[i].opacity,
                         scale: iconSprings[i].scale,
@@ -903,7 +903,7 @@ export default function Leaderboard() {
                 }}
               >
                 <AnimatedDiv
-                  className="absolute right-0 top-0 rounded-sm border border-black bg-white"
+                  className="absolute right-0 top-0 rounded-xs border border-black bg-white"
                   style={{
                     width: trySpring.width,
                     height: trySpring.height,
@@ -919,7 +919,7 @@ export default function Leaderboard() {
                 />
                 <AnimatedButton
                   onClick={() => navigate("/get-started")}
-                  className="relative z-2 flex items-center justify-center h-full w-full rounded-sm text-black font-semibold text-base whitespace-nowrap cursor-pointer"
+                  className="relative z-2 flex items-center justify-center h-full w-full rounded-xs text-black font-semibold text-base whitespace-nowrap cursor-pointer"
                   style={{ opacity: tryAppearSpring.tryOpacity }}
                 >
                   {t("homepage_eliza.leaderboard.tryNow", {
@@ -949,7 +949,7 @@ export default function Leaderboard() {
         {tryPlatform === "telegram" || tryPlatform === "discord" ? (
           <div className="flex items-end gap-2">
             <div
-              className={`flex-1 flex items-end rounded-[26px] border pl-5 pr-1.5 py-1.5 ${tryPlatform === "discord" ? "bg-[#40444b] border-[#40444b]" : tryPlatform === "telegram" ? "bg-white border-neutral-300" : "bg-white border-neutral-200"}`}
+              className={`flex-1 flex items-end rounded-xs border pl-5 pr-1.5 py-1.5 ${tryPlatform === "discord" ? "bg-[#40444b] border-[#40444b]" : tryPlatform === "telegram" ? "bg-white border-neutral-300" : "bg-white border-neutral-200"}`}
             >
               <textarea
                 ref={textareaRef}
@@ -1008,7 +1008,7 @@ export default function Leaderboard() {
                       defaultValue: "Start voice input",
                     })
               }
-              className={`shrink-0 flex items-center justify-center rounded-full cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
+              className={`shrink-0 flex items-center justify-center rounded-xs cursor-pointer ${tryInput.trim() ? (waiting ? "size-12 bg-neutral-300 text-white" : tryPlatform === "discord" ? "size-12 text-[#5865F2]" : "size-12 text-[#2AABEE]") : listening ? (tryPlatform === "discord" ? "size-12 bg-[#5865F2] text-white" : "size-12 bg-[#2AABEE] text-white") : "size-12 text-neutral-400"}`}
             >
               {tryInput.trim() ? (
                 tryPlatform === "telegram" ? (
@@ -1062,7 +1062,7 @@ export default function Leaderboard() {
           </div>
         ) : (
           <AnimatedDiv
-            className="flex items-end gap-3 bg-white border border-black rounded-sm pl-5 pr-1.5 py-1.5"
+            className="flex items-end gap-3 bg-white border border-black rounded-xs pl-5 pr-1.5 py-1.5"
             style={{
               transform: inputBarSpring.y.to((y) => `translateY(${y}px)`),
             }}
@@ -1113,7 +1113,7 @@ export default function Leaderboard() {
                       defaultValue: "Start voice input",
                     })
               }
-              className={`shrink-0 flex items-center justify-center rounded-sm mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-[var(--brand-blue)] text-white") : listening ? "w-12 h-9 bg-[var(--brand-blue)] text-white" : "w-9 h-9 text-black/40"}`}
+              className={`shrink-0 flex items-center justify-center rounded-xs mb-0.5 cursor-pointer ${tryInput.trim() ? (waiting ? "w-12 h-9 bg-neutral-300 text-white" : "w-12 h-9 bg-[var(--brand-blue)] text-white") : listening ? "w-12 h-9 bg-[var(--brand-blue)] text-white" : "w-9 h-9 text-black/40"}`}
             >
               {tryInput.trim() ? (
                 <svg
@@ -1190,7 +1190,7 @@ export default function Leaderboard() {
           transformOrigin: "bottom center",
         }}
       >
-        <div className="flex items-center gap-4 bg-white border border-black rounded-sm px-4 py-4">
+        <div className="flex items-center gap-4 bg-white border border-black rounded-xs px-4 py-4">
           <div className="relative flex items-center gap-1.5 text-neutral-600 cursor-pointer">
             <svg
               viewBox="0 0 24 24"
@@ -1257,9 +1257,9 @@ export default function Leaderboard() {
               setTimeout(() => verifyInputsRef.current[0]?.focus(), 100);
             }
           }}
-          className={`w-full rounded-sm py-4 text-[17px] font-semibold transition-colors ${
+          className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
             phoneDigits.length === country.placeholder.replace(/\D/g, "").length
-              ? "bg-black text-white hover:bg-[var(--brand-orange)] hover:text-black cursor-pointer"
+              ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
               : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >
@@ -1327,7 +1327,7 @@ export default function Leaderboard() {
                   const focusIdx = Math.min(i + pasted.length, 5);
                   verifyInputsRef.current[focusIdx]?.focus();
                 }}
-                className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-sm text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[var(--brand-orange)]"
+                className="flex-1 min-w-0 aspect-square bg-white border border-black rounded-xs text-center text-3xl font-semibold text-black outline-none focus:ring-2 focus:ring-[var(--brand-orange)]"
               />
             );
           })}
@@ -1335,9 +1335,9 @@ export default function Leaderboard() {
         <button
           type="button"
           disabled={verifyCode.some((d) => !d)}
-          className={`w-full rounded-sm py-4 text-[17px] font-semibold transition-colors ${
+          className={`w-full rounded-xs py-4 text-[17px] font-semibold transition-colors ${
             verifyCode.every((d) => d)
-              ? "bg-black text-white hover:bg-[var(--brand-orange)] hover:text-black cursor-pointer"
+              ? "bg-black text-white hover:bg-white hover:text-black cursor-pointer"
               : "bg-white/60 text-black/40 cursor-not-allowed"
           }`}
         >

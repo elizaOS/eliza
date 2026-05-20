@@ -1,6 +1,6 @@
 {
   "schema": "eliza.cpu_ap_core_selection_evidence.v1",
-  "generated_at": "2026-05-20T11:14:51Z",
+  "generated_at": "2026-05-20T17:36:05Z",
   "manifest_dir": "generators/chipyard",
   "target_topology": "1_ultra_3_premium_4_pro",
   "roles": {

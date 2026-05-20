@@ -349,9 +349,8 @@ export function CapabilitiesSection() {
             </div>
           </div>
         </div>
-        <div
+        <fieldset
           className="inline-flex rounded-md border border-border p-0.5"
-          role="group"
           aria-label="Capability router connection mode"
         >
           <button
@@ -380,7 +379,7 @@ export function CapabilitiesSection() {
             <Cloud className="h-3.5 w-3.5" aria-hidden />
             Cloud
           </button>
-        </div>
+        </fieldset>
         {capabilityConnectMode === "cloud" ? (
           <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Input

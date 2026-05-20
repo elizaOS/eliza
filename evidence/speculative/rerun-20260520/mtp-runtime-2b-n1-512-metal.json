@@ -1,0 +1,95 @@
+{
+  "reportSchema": "eliza.mtp-runtime-smoke.v1",
+  "generatedAt": "2026-05-20T17:21:53.331Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "tier": "2b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-2B-MTP-GGUF/snapshots/e05864f8066d874d5f85aaff007ae57a2a7d1efe/Qwen3.5-2B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "metadataStatus": "pass",
+  "mtp": {
+    "pass": true,
+    "nextnPredictLayers": 1,
+    "keys": [
+      "qwen35.nextn_predict_layers"
+    ]
+  },
+  "cli": {
+    "available": true,
+    "status": 0,
+    "supportsDraftMtp": true,
+    "outputTail": "                                        llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4,\n                                        megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken,\n                                        mistral-v7, mistral-v7-tekken, monarch, openchat, orion,\n                                        pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open,\n                                        vicuna, vicuna-orca, yandex, zephyr\n                                        (env: LLAMA_ARG_CHAT_TEMPLATE_FILE)\n--skip-chat-parsing, --no-skip-chat-parsing\n                                        force a pure content parser, even if a Jinja template is specified;\n                                        model will output everything in the content section, including any\n                                        reasoning and/or tool calls (default: disabled)\n                                        (env: LLAMA_ARG_SKIP_CHAT_PARSING)\n--simple-io                             use basic IO for better compatibility in subprocesses and limited\n                                        consoles\n--spec-replace TARGET DRAFT             translate the string in TARGET into DRAFT if the draft model and main\n                                        model are not compatible\n--gpt-oss-20b-default                   use gpt-oss-20b (note: can download weights from the internet)\n--gpt-oss-120b-default                  use gpt-oss-120b (note: can download weights from the internet)\n--vision-gemma-4b-default               use Gemma 3 4B QAT (note: can download weights from the internet)\n--vision-gemma-12b-default              use Gemma 3 12B QAT (note: can download weights from the internet)\n--spec-default                          enable default speculative decoding config"
+  },
+  "runtime": [
+    {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 7100,
+      "failure": null,
+      "outputTail": "    *   What is it? It's a technique used in CPUs and AI hardware to predict instructions or operations.\n    *   How does it work? The CPU predicts which instruction will be executed based on control flow or execution context, executes it, and then corrects the results.\n    *   Why use it? To improve performance (latency reduction) and throughput.\n    *   Key components: Speculative Execution, Branch Prediction, Pipeline.\n    *   Recent context: Neural Network training (speculative execution in AI models) and CPU optimization.\n\n3.  **Drafting the content:**\n    *   *Initial thought:* Speculative decoding is when a CPU guesses the next step in a process. It speeds up things.\n    *   *Refining:* Need to make it more precise. It's about predicting instructions or data.\n    *   *Wait, is there a specific definition I should aim for?* Usually, speculative decoding is about decoding instructions without executing them fully in a way that can be optimized. Or in the context of AI, it's about predicting token sequences.\n    *   *Correction:* Speculative decoding is often associated with AI/LLMs (predicting token generation) or CPU instruction decoding.\n    *   *Let's focus on the CPU/Architecture angle as it's the most common meaning.*\n    *   *Alternative:* It's about decoding instructions in a way that allows the CPU to skip decoding cycles.\n    *   *Wait, let's check standard definitions.* Speculative Decoding is a technique where the CPU predicts which instruction will be executed based on control flow, and then executes the prediction before verifying. This allows the CPU to bypass the decoders for predicted instructions.\n    *   *Wait, there's also \"Speculative Execution\" (prediction) and \"Speculative Decoding\" (which is often used interchangeably but has nuances).*\n    *   *Let's stick to the core idea:* Predicting an instruction, decoding it, and executing it.\n    *   *Key benefit:* Reduces latency.\n    *   *Key mechanism:* Branch prediction, pipeline.\n\n4\n\n[ Prompt: 328.0 t/s | Generation: 87.1 t/s ]\n[ Draft: 187 accepted / 324 generated | Acceptance: 0.5772 ]\n\nExiting...",
+      "tokensPerSecond": 87.1,
+      "accepted": 187,
+      "drafted": 324,
+      "acceptanceRate": 0.5771604938271605
+    }
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T17:22:06.548Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+    "speculator": "mtp",
+    "tier": "2b",
+    "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-2B-MTP-GGUF/snapshots/e05864f8066d874d5f85aaff007ae57a2a7d1efe/Qwen3.5-2B-UD-Q4_K_XL.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 512,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+    },
+    "drafted": 324,
+    "accepted": 187,
+    "acceptanceRate": 0.5771604938271605,
+    "speedup": 0.7687555163283318,
+    "withDrafter": {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 7100,
+      "failure": null,
+      "outputTail": "    *   What is it? It's a technique used in CPUs and AI hardware to predict instructions or operations.\n    *   How does it work? The CPU predicts which instruction will be executed based on control flow or execution context, executes it, and then corrects the results.\n    *   Why use it? To improve performance (latency reduction) and throughput.\n    *   Key components: Speculative Execution, Branch Prediction, Pipeline.\n    *   Recent context: Neural Network training (speculative execution in AI models) and CPU optimization.\n\n3.  **Drafting the content:**\n    *   *Initial thought:* Speculative decoding is when a CPU guesses the next step in a process. It speeds up things.\n    *   *Refining:* Need to make it more precise. It's about predicting instructions or data.\n    *   *Wait, is there a specific definition I should aim for?* Usually, speculative decoding is about decoding instructions without executing them fully in a way that can be optimized. Or in the context of AI, it's about predicting token sequences.\n    *   *Correction:* Speculative decoding is often associated with AI/LLMs (predicting token generation) or CPU instruction decoding.\n    *   *Let's focus on the CPU/Architecture angle as it's the most common meaning.*\n    *   *Alternative:* It's about decoding instructions in a way that allows the CPU to skip decoding cycles.\n    *   *Wait, let's check standard definitions.* Speculative Decoding is a technique where the CPU predicts which instruction will be executed based on control flow, and then executes the prediction before verifying. This allows the CPU to bypass the decoders for predicted instructions.\n    *   *Wait, there's also \"Speculative Execution\" (prediction) and \"Speculative Decoding\" (which is often used interchangeably but has nuances).*\n    *   *Let's stick to the core idea:* Predicting an instruction, decoding it, and executing it.\n    *   *Key benefit:* Reduces latency.\n    *   *Key mechanism:* Branch prediction, pipeline.\n\n4\n\n[ Prompt: 328.0 t/s | Generation: 87.1 t/s ]\n[ Draft: 187 accepted / 324 generated | Acceptance: 0.5772 ]\n\nExiting...",
+      "tokensPerSecond": 87.1,
+      "accepted": 187,
+      "drafted": 324,
+      "acceptanceRate": 0.5771604938271605
+    },
+    "withoutDrafter": {
+      "available": true,
+      "withMtp": false,
+      "status": 0,
+      "wallMs": 6117,
+      "failure": null,
+      "outputTail": "    *   **Goal:** Explain the concept clearly and concisely.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? It's a technique in processor architecture (specifically in CPUs).\n    *   Problem: Modern CPUs have complex instruction pipelines (fetch, decode, execute, write back) and high instruction throughput (e.g., millions of instructions per second).\n    *   Bottleneck: The Instruction Decode (ID) stage is often the bottleneck, and the fetch stage can't keep up.\n    *   Solution: Predict the next instruction and fetch it (and subsequent instructions) before they arrive.\n    *   Benefit: Reduces latency and increases throughput by hiding latency and utilizing pipeline efficiency.\n    *   Mechanism: Use the prediction of the next instruction (often based on control flow or previous states) to schedule execution or fetch.\n    *   Example: If the CPU thinks the next instruction is a load, and the data is already ready, it can fetch it immediately.\n\n3.  **Drafting the Content:**\n    *   *Opening:* Define it (optimization technique).\n    *   *Middle:* Explain the mechanism (predicting instructions to avoid waiting).\n    *   *Closing:* Impact (speed/efficiency).\n\n4.  **Refining the Draft:**\n    *   *Draft 1:* Speculative decoding is a way to speed up processors. It works by predicting instructions. The CPU guesses the next instruction and fetches it. This helps the processor work faster because it doesn't wait for the memory or CPU to process every single instruction. It's used in modern CPUs.\n    *   *Critique 1:* Too simple. \"CPU guesses\" is vague. Need to mention the pipeline and latency reduction.\n    *   *Draft 2:* Speculative decoding is an advanced technique used in high-performance CPUs to improve processing speed. Instead of waiting for every instruction to be fetched and decoded, the processor predicts which instructions will happen next and executes them immediately. By anticipating the flow of code, it reduces the latency caused by memory access and pipeline stalls. This method significantly increases throughput and minimizes the delay between when an instruction is issued and when it completes.\n    *   *Critique 2\n\n[ Prompt: 599.7 t/s | Generation: 113.3 t/s ]\n\nExiting...",
+      "tokensPerSecond": 113.3,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "summary": {
+      "speculator": "mtp",
+      "tier": "2b",
+      "backend": "unknown",
+      "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+      "drafted": 324,
+      "accepted": 187,
+      "acceptanceRate": 0.5771604938271605,
+      "speedup": 0.7687555163283318,
+      "status": "pass",
+      "failure": null
+    }
+  }
+}

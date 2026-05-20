@@ -122,7 +122,8 @@ def _parse_args() -> argparse.Namespace:
         type=str,
         default=None,
         help=(
-            "Model name for plan generation. Defaults to openai/gpt-oss-120b."
+            "Model name for plan generation. Defaults to gpt-oss-120b for "
+            "Cerebras and openai/gpt-oss-120b otherwise."
         ),
     )
     parser.add_argument(
@@ -238,29 +239,14 @@ async def _main() -> int:
 
     demo_mode = args.demo and not args.no_demo
 
-    provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
-    if not provider:
-        if os.environ.get("GROQ_API_KEY"):
-            provider = "groq"
-        elif os.environ.get("OPENROUTER_API_KEY"):
-            provider = "openrouter"
-        elif os.environ.get("OPENAI_API_KEY"):
-            provider = "openai"
+    provider = _detect_model_provider()
 
     model_name = (args.model or os.environ.get("BENCHMARK_MODEL_NAME", "")).strip()
     if not model_name:
-        model_name = "openai/gpt-oss-120b"
+        model_name = _default_model_for_provider(provider)
 
     if args.mode == "eliza":
-        if provider:
-            os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
-        os.environ["BENCHMARK_MODEL_NAME"] = model_name
-        os.environ["OPENAI_LARGE_MODEL"] = model_name
-        os.environ["OPENAI_SMALL_MODEL"] = model_name
-        os.environ["GROQ_LARGE_MODEL"] = model_name
-        os.environ["GROQ_SMALL_MODEL"] = model_name
-        os.environ["OPENROUTER_LARGE_MODEL"] = model_name
-        os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+        _apply_model_environment(provider, model_name)
 
     config = HLBenchConfig(
         bench_root=bench_root,
@@ -376,6 +362,41 @@ async def _main() -> int:
             return 1
 
     return 0
+
+
+def _detect_model_provider() -> str:
+    provider = os.environ.get("BENCHMARK_MODEL_PROVIDER", "").strip().lower()
+    if provider:
+        return provider
+    if os.environ.get("CEREBRAS_API_KEY"):
+        return "cerebras"
+    if os.environ.get("GROQ_API_KEY"):
+        return "groq"
+    if os.environ.get("OPENROUTER_API_KEY"):
+        return "openrouter"
+    if os.environ.get("OPENAI_API_KEY"):
+        return "openai"
+    return ""
+
+
+def _default_model_for_provider(provider: str) -> str:
+    if provider.strip().lower() == "cerebras":
+        return "gpt-oss-120b"
+    return "openai/gpt-oss-120b"
+
+
+def _apply_model_environment(provider: str, model_name: str) -> None:
+    if provider:
+        os.environ["BENCHMARK_MODEL_PROVIDER"] = provider
+    os.environ["BENCHMARK_MODEL_NAME"] = model_name
+    os.environ["OPENAI_LARGE_MODEL"] = model_name
+    os.environ["OPENAI_SMALL_MODEL"] = model_name
+    os.environ["GROQ_LARGE_MODEL"] = model_name
+    os.environ["GROQ_SMALL_MODEL"] = model_name
+    os.environ["OPENROUTER_LARGE_MODEL"] = model_name
+    os.environ["OPENROUTER_SMALL_MODEL"] = model_name
+    os.environ["CEREBRAS_LARGE_MODEL"] = model_name
+    os.environ["CEREBRAS_SMALL_MODEL"] = model_name
 
 
 def main() -> None:

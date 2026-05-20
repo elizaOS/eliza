@@ -164,6 +164,15 @@ function readJson<T>(filePath: string): T {
   return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
 }
 
+function rmRecursive(pathToRemove: string): void {
+  fs.rmSync(pathToRemove, {
+    force: true,
+    maxRetries: 5,
+    recursive: true,
+    retryDelay: 100,
+  });
+}
+
 function packagePath(name: string, baseDir: string): string {
   if (name.startsWith("@")) {
     const [scope, pkg] = name.split("/");
@@ -1680,7 +1689,7 @@ function main(): void {
 
   buildBunPackageIndex();
 
-  fs.rmSync(targetNodeModules, { recursive: true, force: true });
+  rmRecursive(targetNodeModules);
   fs.mkdirSync(targetNodeModules, { recursive: true });
 
   const alwaysBundled = new Set(

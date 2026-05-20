@@ -1,0 +1,24 @@
+schema: eda.graph_sample.v1
+id: e1-softmacro-smoke-graph-sample
+design_bundle_id: e1-softmacro-smoke-design-bundle
+claim_boundary: example_fixture_only_no_training_inference_or_release_claim
+graph:
+  node_features:
+    - instance_type
+    - area_um2
+    - fanout
+    - is_macro
+  edge_features:
+    - net_type
+    - estimated_capacitance
+    - timing_criticality
+  coordinate_system: placement_case_core_um
+labels:
+  label_status: unlabeled_fixture
+  label_sources:
+    - deterministic_replay_required_before_training
+provenance:
+  generated_by: hand_written_schema_fixture
+  source_records:
+    - e1-softmacro-smoke-design-bundle
+    - e1-softmacro-smoke-placement-case

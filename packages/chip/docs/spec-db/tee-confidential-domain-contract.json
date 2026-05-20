@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "profile": "eliza-riscv-confidential-domain-v0",
+  "status": "contract",
+  "rootOfTrust": {
+    "requiredBlocks": [
+      "rom_ctrl",
+      "lc_ctrl",
+      "otp_ctrl",
+      "keymgr",
+      "entropy_src",
+      "csrng",
+      "edn",
+      "alert_handler"
+    ],
+    "diceRequired": true,
+    "debugUnlockDestroysProductionSecrets": true
+  },
+  "hartIsolation": {
+    "requiredExtensions": ["Smepmp"],
+    "smtAllowedForConfidentialDomains": false
+  },
+  "memory": {
+    "pageStates": [
+      "free",
+      "private",
+      "shared",
+      "measured",
+      "device-assigned",
+      "scrub-pending"
+    ],
+    "externalMemoryEncryptionRequiredForWholeOsTeeClaim": true,
+    "integrityRequiredForWholeOsTeeClaim": true,
+    "scrubRequiredOnPrivateToFree": true
+  },
+  "io": {
+    "denyByDefault": true,
+    "requiredDmaSourceIds": [
+      "usb",
+      "emmc-ufs",
+      "display",
+      "isp",
+      "npu-dma",
+      "network",
+      "debug-transport"
+    ],
+    "npuPrivateInferenceRequiresMeasuredFirmware": true
+  },
+  "attestation": {
+    "requiredMeasurements": [
+      "rom",
+      "lifecycle",
+      "bl1",
+      "bl2",
+      "monitor",
+      "os",
+      "deviceTree",
+      "agent",
+      "policy"
+    ],
+    "optionalMeasurements": ["npuFirmware", "gpuFirmware"],
+    "normalizedEvidenceType": "TeeEvidence"
+  },
+  "sideChannels": {
+    "domainSwitchStateHandling": ["cache", "tlb", "bpu", "prefetcher"],
+    "pmuDisabledOrVirtualizedInConfidentialMode": true,
+    "constantTimeCryptoRequired": true,
+    "highResolutionTimersRestricted": true
+  },
+  "deferredBareMetalGates": [
+    "confidential-linux-boot",
+    "dma-isolation-test",
+    "memory-encryption-integrity-test",
+    "npu-queue-isolation-test",
+    "physical-tamper-validation"
+  ]
+}

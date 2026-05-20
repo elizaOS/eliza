@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "policy": "eliza-tee-page-state-v0",
+  "states": [
+    "free",
+    "measured",
+    "private",
+    "shared",
+    "device-assigned",
+    "scrub-pending"
+  ],
+  "transitions": [
+    {
+      "from": "free",
+      "to": "measured",
+      "operation": "measure-launch-page",
+      "requires": ["monitor-ownership"]
+    },
+    {
+      "from": "measured",
+      "to": "private",
+      "operation": "finalize-domain-launch",
+      "requires": ["measurement-finalized", "domain-owner"]
+    },
+    {
+      "from": "free",
+      "to": "private",
+      "operation": "assign-private-page",
+      "requires": ["domain-owner"]
+    },
+    {
+      "from": "private",
+      "to": "shared",
+      "operation": "share-page",
+      "requires": ["domain-owner", "explicit-share"]
+    },
+    {
+      "from": "shared",
+      "to": "private",
+      "operation": "reclaim-shared-page",
+      "requires": ["domain-owner", "revoke-device-access", "scrub"]
+    },
+    {
+      "from": "private",
+      "to": "device-assigned",
+      "operation": "assign-device-page",
+      "requires": ["domain-owner", "iopmp-policy", "measured-device"]
+    },
+    {
+      "from": "device-assigned",
+      "to": "private",
+      "operation": "revoke-device-page",
+      "requires": ["revoke-device-access", "scrub"]
+    },
+    {
+      "from": "private",
+      "to": "scrub-pending",
+      "operation": "teardown-domain-page",
+      "requires": ["domain-teardown"]
+    },
+    {
+      "from": "shared",
+      "to": "scrub-pending",
+      "operation": "teardown-shared-page",
+      "requires": ["domain-teardown", "revoke-device-access"]
+    },
+    {
+      "from": "device-assigned",
+      "to": "scrub-pending",
+      "operation": "teardown-device-page",
+      "requires": ["domain-teardown", "revoke-device-access"]
+    },
+    {
+      "from": "scrub-pending",
+      "to": "free",
+      "operation": "complete-scrub",
+      "requires": ["scrub"]
+    }
+  ],
+  "forbiddenTransitions": [
+    {
+      "from": "private",
+      "to": "free",
+      "reason": "private pages must pass through scrub-pending"
+    },
+    {
+      "from": "measured",
+      "to": "shared",
+      "reason": "measured launch pages cannot be shared before finalization"
+    },
+    {
+      "from": "measured",
+      "to": "free",
+      "reason": "measured launch abort must scrub"
+    },
+    {
+      "from": "private",
+      "to": "device-assigned",
+      "unlessRequires": ["iopmp-policy", "measured-device"],
+      "reason": "device assignment requires IOPMP policy and measured device"
+    }
+  ]
+}

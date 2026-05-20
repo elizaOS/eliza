@@ -40,6 +40,7 @@ def _contract(
                 "status": "unsupported",
                 "score": None,
                 "reason": "test unavailable",
+                "required_env": ["TEST_KEY"],
             }
         else:
             cells[agent] = {
@@ -94,6 +95,19 @@ def test_latest_readiness_fails_unsupported_cells_with_reason(tmp_path: Path) ->
     assert "matrix_contract_incomplete" in reasons
     assert "unsupported_real_cells" in reasons
     assert "unsupported" in reasons
+    unsupported = next(
+        finding
+        for finding in report.findings
+        if finding.scope == "terminal_bench::hermes"
+    )
+    assert unsupported.metadata == {"required_env": ["TEST_KEY"]}
+    payload = json.loads(report.to_json())
+    json_finding = next(
+        finding
+        for finding in payload["findings"]
+        if finding["scope"] == "terminal_bench::hermes"
+    )
+    assert json_finding["metadata"] == {"required_env": ["TEST_KEY"]}
 
 
 def test_latest_readiness_includes_publishability_and_comparability_findings(
@@ -143,6 +157,7 @@ def test_latest_readiness_includes_current_runtime_gate_findings(
     assert any(
         finding.scope == "runtime_gate:hyperliquid_live"
         and finding.reason == "runtime_gate_blocked"
+        and finding.metadata == {"required_env": ["HL_PRIVATE_KEY"]}
         for finding in report.findings
     )
 

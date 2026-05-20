@@ -1,10 +1,10 @@
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { TraceError } from "./errors";
 import {
+  type TraceService,
   traceEventToJson,
   traceSessionToJson,
   traceSummaryToJson,
-  type TraceService,
 } from "./trace-service";
 import {
   TRACE_EVENT_KINDS,

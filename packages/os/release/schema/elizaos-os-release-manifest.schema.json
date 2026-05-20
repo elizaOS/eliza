@@ -187,6 +187,84 @@
         }
       }
     },
+    "tee": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "policyDigest",
+        "measurements",
+        "requiredClaims",
+        "providers"
+      ],
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "policyDigest": {
+          "type": ["string", "null"],
+          "pattern": "^sha256:[a-f0-9]{64}$"
+        },
+        "measurements": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^sha256:[a-f0-9]{64}$"
+          },
+          "required": ["boot", "os", "agent", "policy"],
+          "properties": {
+            "boot": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "os": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+            "agent": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "policy": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "device": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "container": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            },
+            "npuFirmware": {
+              "type": "string",
+              "pattern": "^sha256:[a-f0-9]{64}$"
+            }
+          }
+        },
+        "requiredClaims": {
+          "type": "object",
+          "additionalProperties": { "type": "boolean" },
+          "properties": {
+            "debugDisabled": { "type": "boolean" },
+            "productionLifecycle": { "type": "boolean" },
+            "secureBoot": { "type": "boolean" },
+            "memoryEncrypted": { "type": "boolean" },
+            "ioProtected": { "type": "boolean" },
+            "gpuProtected": { "type": "boolean" },
+            "npuProtected": { "type": "boolean" }
+          }
+        },
+        "providers": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "dstack",
+              "tdx",
+              "sev-snp",
+              "nitro",
+              "cove",
+              "keystone",
+              "optee",
+              "eliza-vault"
+            ]
+          }
+        }
+      }
+    },
     "checksumPolicy": {
       "type": "object",
       "additionalProperties": false,

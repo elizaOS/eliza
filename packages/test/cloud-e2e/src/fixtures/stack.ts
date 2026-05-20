@@ -29,7 +29,7 @@ import {
 
 import { buildSharedEnv } from "./env";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../../../../..");
 const LOG_DIR = resolve(import.meta.dirname, "../../.logs");
 
 export interface StackHandle {
@@ -166,6 +166,13 @@ async function killProc(proc: SpawnedProc): Promise<void> {
     await delay(100);
   }
   await new Promise<void>((r) => proc.log.end(() => r()));
+}
+
+async function closeCloudSharedDatabaseConnections(): Promise<void> {
+  const { closeDatabaseConnectionsForTests } = await import(
+    "@elizaos/cloud-shared/db/client"
+  );
+  await closeDatabaseConnectionsForTests();
 }
 
 export interface StartCloudStackOptions {
@@ -314,6 +321,12 @@ export async function startCloudStack(
   const stop = async () => {
     if (stopped) return;
     stopped = true;
+    let dbCloseError: Error | undefined;
+    try {
+      await closeCloudSharedDatabaseConnections();
+    } catch (error) {
+      dbCloseError = error instanceof Error ? error : new Error(String(error));
+    }
     // Reverse order: frontend, api, then mocks
     for (const proc of [...procs].reverse()) {
       await killProc(proc).catch(() => undefined);
@@ -331,6 +344,9 @@ export async function startCloudStack(
     await controlPlane.stop().catch(() => undefined);
     await hetzner.stop().catch(() => undefined);
     await rm(dataDir, { recursive: true, force: true }).catch(() => undefined);
+    if (dbCloseError) {
+      throw dbCloseError;
+    }
   };
 
   // Best-effort cleanup if a test runner SIGINTs us

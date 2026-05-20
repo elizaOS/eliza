@@ -1,0 +1,59 @@
+{
+  "backend": "metal-m4",
+  "rows": [
+    {
+      "tier": "0_8b",
+      "draftNMax": 1,
+      "status": "pass",
+      "baselineTps": 177.2,
+      "mtpTps": 173.1,
+      "speedup": 0.97686230248307,
+      "report": "evidence/speculative/qwen35-0_8b-mtp1-bench.json"
+    },
+    {
+      "tier": "0_8b",
+      "draftNMax": 2,
+      "status": "pass",
+      "baselineTps": 43.2,
+      "mtpTps": 34.2,
+      "speedup": 0.7916666666666666,
+      "report": "evidence/speculative/qwen35-0_8b-mtp2-bench.json"
+    },
+    {
+      "tier": "2b",
+      "draftNMax": 1,
+      "status": "pass",
+      "baselineTps": 163.5,
+      "mtpTps": 40.8,
+      "speedup": 0.2495412844036697,
+      "report": "evidence/speculative/qwen35-2b-mtp1-bench.json"
+    },
+    {
+      "tier": "2b",
+      "draftNMax": 2,
+      "status": "pass",
+      "baselineTps": 40.1,
+      "mtpTps": 25,
+      "speedup": 0.6234413965087282,
+      "report": "evidence/speculative/qwen35-2b-mtp2-bench.json"
+    },
+    {
+      "tier": "4b",
+      "draftNMax": 1,
+      "status": "pass",
+      "baselineTps": 29.6,
+      "mtpTps": 22,
+      "speedup": 0.7432432432432432,
+      "report": "evidence/speculative/qwen35-4b-mtp1-bench.json"
+    },
+    {
+      "tier": "4b",
+      "draftNMax": 2,
+      "status": "pass",
+      "baselineTps": 29.5,
+      "mtpTps": 17.6,
+      "speedup": 0.5966101694915255,
+      "report": "evidence/speculative/qwen35-4b-mtp2-bench.json"
+    }
+  ]
+}

@@ -12,7 +12,6 @@ on:
       channel:
         required: true
         type: string
-        default: stable
       tag:
         required: true
         type: string
@@ -45,7 +44,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2

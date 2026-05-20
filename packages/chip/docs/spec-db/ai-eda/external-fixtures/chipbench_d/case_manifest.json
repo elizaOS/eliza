@@ -1,0 +1,14 @@
+{
+  "schema": "chipbench_d.fixture.v1",
+  "case_id": "e1_chipbench_toy",
+  "top_module": "e1_toy_top",
+  "node": "sky130_fixture",
+  "files": {
+    "verilog": "toy.v",
+    "lef": "toy.lef",
+    "lib": "toy.lib",
+    "constraint_sdc": "constraint.sdc",
+    "pre_place_def": "pre_place.def",
+    "macro_placed_def": "macro_placed.def"
+  }
+}

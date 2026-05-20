@@ -1,0 +1,141 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-05-20T17:38:47.681Z",
+  "startedAt": "2026-05-20T17:38:18.032Z",
+  "platform": "darwin",
+  "arch": "arm64",
+  "ok": true,
+  "checks": [
+    {
+      "id": "agent-tee-vitest",
+      "command": "bunx vitest run --config packages/agent/vitest.config.ts packages/agent/src/services/tee-policy.test.ts packages/agent/src/services/dstack-tee-provider.test.ts packages/agent/src/services/remote-capability-tee-policy.test.ts packages/agent/src/services/tee-signer-backend.test.ts packages/agent/src/services/tee-key-release.test.ts packages/agent/src/services/tee-release-policy.test.ts packages/agent/src/services/tee-revocation.test.ts packages/agent/src/services/tee-runtime-config.test.ts --coverage.enabled=false",
+      "exitCode": 0,
+      "durationMs": 3409,
+      "stdoutTail": "RUN  v4.1.5 /Users/shawwalters/eliza-workspace/milady/eliza/packages/agent\n\n\n Test Files  8 passed (8)\n      Tests  28 passed (28)\n   Start at  10:38:18\n   Duration  3.14s (transform 2.33s, setup 88ms, import 3.07s, tests 35ms, environment 48ms)",
+      "stderrTail": ""
+    },
+    {
+      "id": "agent-typecheck",
+      "command": "bun run --cwd packages/agent typecheck",
+      "exitCode": 0,
+      "durationMs": 25741,
+      "stdoutTail": "",
+      "stderrTail": "$ tsc --noEmit -p tsconfig.json"
+    },
+    {
+      "id": "agent-tee-biome",
+      "command": "bunx @biomejs/biome check packages/agent/scripts/tee-local-smoke.ts packages/agent/scripts/tee-full-stack-local.ts packages/agent/src/services/tee-evidence.ts packages/agent/src/services/tee-policy.ts packages/agent/src/services/dstack-tee-provider.ts packages/agent/src/services/tee-signer-backend.ts packages/agent/src/services/tee-key-release.ts packages/agent/src/services/tee-release-policy.ts packages/agent/src/services/tee-revocation.ts packages/agent/src/services/tee-runtime-config.ts packages/agent/src/services/tee-policy.test.ts packages/agent/src/services/dstack-tee-provider.test.ts packages/agent/src/services/remote-capability-tee-policy.test.ts packages/agent/src/services/tee-signer-backend.test.ts packages/agent/src/services/tee-key-release.test.ts packages/agent/src/services/tee-release-policy.test.ts packages/agent/src/services/tee-revocation.test.ts packages/agent/src/services/tee-runtime-config.test.ts packages/agent/src/services/remote-capability-endpoint-provider.ts packages/agent/src/index.ts",
+      "exitCode": 0,
+      "durationMs": 60,
+      "stdoutTail": "Checked 20 files in 15ms. No fixes applied.",
+      "stderrTail": ""
+    },
+    {
+      "id": "agent-tee-deployment-manifest",
+      "command": "node packages/agent/scripts/validate-tee-deployment.mjs packages/agent/tee/dstack-agent-deployment.example.json packages/agent/tee/revocations.example.json",
+      "exitCode": 0,
+      "durationMs": 26,
+      "stdoutTail": "TEE deployment valid: packages/agent/tee/dstack-agent-deployment.example.json against packages/agent/tee/revocations.example.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "agent-tee-revocations",
+      "command": "node packages/agent/scripts/validate-tee-revocations.mjs",
+      "exitCode": 0,
+      "durationMs": 26,
+      "stdoutTail": "TEE revocations valid: packages/agent/tee/revocations.example.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "os-release-tests",
+      "command": "node --test packages/os/scripts/__tests__/os-release-scripts.test.mjs",
+      "exitCode": 0,
+      "durationMs": 165,
+      "stdoutTail": "✔ beta manifest carries required beta dates, presale terms, and artifact classes (2.475417ms)\n✔ all-zero sha256 placeholders are rejected even outside strict mode (0.491ms)\n✔ publishable validation requires concrete checksums and sizes (0.395833ms)\n✔ TEE release policy validation accepts complete measured boot policy (0.379584ms)\n✔ TEE release policy validation rejects missing required production claims (0.360625ms)\n✔ checksum generation and verification round-trip local artifacts (65.411542ms)\n✔ TEE measurement generation hashes required release inputs (30.860542ms)\n✔ TEE measurement validator rejects missing required digests (0.111125ms)\nℹ tests 8\nℹ suites 0\nℹ pass 8\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 138.520041",
+      "stderrTail": ""
+    },
+    {
+      "id": "os-tee-measurements-validator",
+      "command": "node packages/os/scripts/validate-tee-measurements.mjs",
+      "exitCode": 0,
+      "durationMs": 28,
+      "stdoutTail": "TEE measurements valid: packages/os/release/schema/tee-measurements.example.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "os-release-schema-json",
+      "command": "node -e JSON.parse(require('fs').readFileSync('packages/os/release/schema/elizaos-os-release-manifest.schema.json','utf8')); console.log('schema json valid')",
+      "exitCode": 0,
+      "durationMs": 23,
+      "stdoutTail": "schema json valid",
+      "stderrTail": ""
+    },
+    {
+      "id": "chip-confidential-domain-contract",
+      "command": "python3 packages/chip/scripts/check_tee_confidential_domain_contract.py",
+      "exitCode": 0,
+      "durationMs": 24,
+      "stdoutTail": "TEE confidential-domain contract valid: /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/docs/spec-db/tee-confidential-domain-contract.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "chip-iopmp-policy",
+      "command": "python3 packages/chip/scripts/check_tee_iopmp_policy.py",
+      "exitCode": 0,
+      "durationMs": 24,
+      "stdoutTail": "TEE IOPMP policy valid: /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/docs/spec-db/tee-iopmp-source-id-map.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "chip-page-state-policy",
+      "command": "python3 packages/chip/scripts/check_tee_page_state_policy.py",
+      "exitCode": 0,
+      "durationMs": 22,
+      "stdoutTail": "TEE page-state policy valid: /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/docs/spec-db/tee-page-state-transitions.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "chip-attestation-evidence",
+      "command": "python3 packages/chip/scripts/check_tee_attestation_evidence.py",
+      "exitCode": 0,
+      "durationMs": 24,
+      "stdoutTail": "TEE attestation evidence valid: /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/docs/spec-db/tee-attestation-evidence.example.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "chip-side-channel-claims",
+      "command": "python3 packages/chip/scripts/check_tee_side_channel_claims.py",
+      "exitCode": 0,
+      "durationMs": 25,
+      "stdoutTail": "TEE side-channel claim matrix valid: /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/docs/spec-db/tee-side-channel-claim-matrix.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "agent-local-tee-smoke",
+      "command": "bun run packages/agent/scripts/tee-local-smoke.ts",
+      "exitCode": 0,
+      "durationMs": 32,
+      "stdoutTail": "TEE local smoke passed: /Users/shawwalters/eliza-workspace/milady/eliza/evidence/tee/local-tee-smoke-2026-05-20.json",
+      "stderrTail": ""
+    },
+    {
+      "id": "agent-full-stack-local-smoke",
+      "command": "bun run packages/agent/scripts/tee-full-stack-local.ts",
+      "exitCode": 0,
+      "durationMs": 19,
+      "stdoutTail": "TEE full-stack local passed: evidence/tee/full-stack-local-2026-05-20.json",
+      "stderrTail": ""
+    }
+  ],
+  "deferredBareMetalGates": [
+    "dstack-cvm-launch",
+    "tdx-or-sev-snp-hardware-quote",
+    "nvidia-confidential-gpu-attestation",
+    "android-avf-pkvm-protected-vm-quote",
+    "riscv-cove-or-salus-confidential-linux-boot",
+    "rtl-or-fpga-iopmp-dma-isolation",
+    "external-memory-encryption-integrity",
+    "npu-private-queue-isolation",
+    "physical-side-channel-and-tamper-validation"
+  ]
+}

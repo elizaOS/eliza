@@ -91,7 +91,9 @@ if (
     value.includes("playwright.ui-smoke.config.ts"),
   )
 ) {
-  env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
+  if (env.ELIZA_UI_SMOKE_LIVE_STACK !== "1") {
+    env.ELIZA_UI_SMOKE_FORCE_STUB = env.ELIZA_UI_SMOKE_FORCE_STUB || "1";
+  }
   const reservedPorts = new Set();
 
   if (!env.ELIZA_UI_SMOKE_API_PORT) {

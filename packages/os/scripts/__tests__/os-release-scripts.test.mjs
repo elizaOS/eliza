@@ -10,6 +10,7 @@ import {
   parseChecksumFile,
   readJson,
   validateManifest,
+  validateTeeMeasurements,
 } from "../os-release-lib.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -83,6 +84,62 @@ test("publishable validation requires concrete checksums and sizes", async () =>
   );
   assert.ok(
     result.errors.some((error) => error.includes("sizeBytes is required")),
+  );
+});
+
+test("TEE release policy validation accepts complete measured boot policy", async () => {
+  const manifest = await readJson(defaultManifestPath);
+  const digest = `sha256:${"a".repeat(64)}`;
+  const result = validateManifest({
+    ...manifest,
+    tee: {
+      enabled: true,
+      policyDigest: digest,
+      measurements: {
+        boot: digest,
+        os: digest,
+        agent: digest,
+        policy: digest,
+      },
+      requiredClaims: {
+        debugDisabled: true,
+        secureBoot: true,
+        memoryEncrypted: true,
+      },
+      providers: ["dstack", "tdx", "cove", "eliza-vault"],
+    },
+  });
+
+  assert.equal(result.ok, true, result.errors.join("\n"));
+});
+
+test("TEE release policy validation rejects missing required production claims", async () => {
+  const manifest = await readJson(defaultManifestPath);
+  const digest = `sha256:${"a".repeat(64)}`;
+  const result = validateManifest({
+    ...manifest,
+    tee: {
+      enabled: true,
+      policyDigest: digest,
+      measurements: {
+        boot: digest,
+        os: digest,
+        agent: digest,
+        policy: digest,
+      },
+      requiredClaims: {
+        debugDisabled: true,
+        secureBoot: false,
+      },
+      providers: ["dstack"],
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) =>
+      error.includes("tee.requiredClaims.secureBoot"),
+    ),
   );
 });
 
@@ -170,5 +227,65 @@ test("checksum generation and verification round-trip local artifacts", async ()
       checksumsPath,
     ],
     { cwd: repoRoot },
+  );
+});
+
+test("TEE measurement generation hashes required release inputs", async () => {
+  const tmp = await mkdtemp(path.join(os.tmpdir(), "elizaos-tee-"));
+  const inputs = {
+    boot: path.join(tmp, "boot.bin"),
+    os: path.join(tmp, "os.img"),
+    agent: path.join(tmp, "agent.tar"),
+    policy: path.join(tmp, "policy.json"),
+    container: path.join(tmp, "compose.json"),
+  };
+  for (const [name, filePath] of Object.entries(inputs)) {
+    await writeFile(filePath, `fixture for ${name}\n`);
+  }
+  const output = path.join(tmp, "tee-measurements.json");
+
+  await execFileAsync(
+    process.execPath,
+    [
+      "packages/os/scripts/generate-tee-measurements.mjs",
+      "--output",
+      output,
+      "--boot",
+      inputs.boot,
+      "--os",
+      inputs.os,
+      "--agent",
+      inputs.agent,
+      "--policy",
+      inputs.policy,
+      "--container",
+      inputs.container,
+    ],
+    { cwd: repoRoot },
+  );
+
+  const generated = await readJson(output);
+  assert.equal(generated.schemaVersion, 1);
+  for (const name of Object.keys(inputs)) {
+    assert.match(generated.measurements[name], /^sha256:[a-f0-9]{64}$/);
+  }
+  assert.equal(validateTeeMeasurements(generated).ok, true);
+});
+
+test("TEE measurement validator rejects missing required digests", () => {
+  const result = validateTeeMeasurements({
+    schemaVersion: 1,
+    generatedBy: "test",
+    measurements: {
+      boot: `sha256:${"a".repeat(64)}`,
+      os: `sha256:${"b".repeat(64)}`,
+      agent: "bad",
+      policy: `sha256:${"d".repeat(64)}`,
+    },
+  });
+
+  assert.equal(result.ok, false);
+  assert.ok(
+    result.errors.some((error) => error.includes("measurements.agent")),
   );
 });

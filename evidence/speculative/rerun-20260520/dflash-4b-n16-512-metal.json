@@ -1,0 +1,199 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T17:31:11.541Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "speculator": "dflash",
+  "tier": "4b",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+  "drafterModel": "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 512,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 4024,
+  "accepted": 255,
+  "acceptanceRate": 0.06336978131212724,
+  "speedup": 0.2638888888888889,
+  "withDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": true,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+      "-md",
+      "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "512",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "2",
+      "--spec-draft-n-max",
+      "16",
+      "--spec-draft-p-min",
+      "0.1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 278434,
+    "contextTokens": 2048,
+    "draftMin": 2,
+    "draftMax": 16,
+    "tokensRequested": 512,
+    "drafted": 4024,
+    "accepted": 255,
+    "acceptanceRate": 0.06336978131212724,
+    "tokensPerSecond": 1.9,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding (a concept in AI/LLM acceleration).\n    *   Format: Short paragraph.\n    *   Goal: Explain the concept clearly and concisely.\n\n2.  **Identify Key Concepts of Speculative Decoding:**\n    *   What is it? An optimization technique for generating text in Large Language Models (LLMs).\n    *   Core mechanism: Uses a smaller \"draft\" model to predict sequences quickly.\n    *   Verification: A larger \"target\" model verifies the predictions.\n    *   Benefit: Increases throughput/speed without sacrificing much quality.\n    *   Trade-off: Potential errors in the draft need correction, but generally faster than generating token-by-token.\n\n3.  **Drafting - Attempt 1 (Mental Outline):**\n    Speculative decoding is a method to make LLMs faster. It uses a small model to guess tokens before the big model writes them. The big model then checks if they are right. If they are, it skips steps. If not, it corrects them. This makes text generation much quicker because you don't have to run the big model for every single token.\n\n4.  **Refining - Attempt 2 (Adding Technical Nuance & Flow):**\n    Speculative decoding is an optimization technique designed to accelerate token generation in large language models. Instead of generating each token sequentially using the full, high-computation target model, a smaller, faster \"draft\" model predicts a sequence of tokens in advance. The larger target model then verifies this sequence in a single batch, accepting correct predictions to skip computational steps and correcting only the necessary errors. This method significantly improves throughput and latency while maintaining the quality of the final output, making it a key strategy for real-time applications.\n\n5.  **Polishing - Attempt 3 (Ensuring it's a \"short paragraph\"):**\n    Make it tight and impactful.\n\n    *Draft:*\n    Speculative decoding is an optimization technique used to accelerate the text generation process in large language models by leveraging a small, fast \"draft\" model. Instead of the primary model computing each token sequentially, the draft model proposes a sequence of tokens, which the larger target model then verifies in parallel or via a batched check. If the draft tokens are correct, the target model skips the computation for them, effectively batching multiple steps. This strategy significantly reduces latency and computational\n\n[ Prompt: 81.9 t/s | Generation: 1.9 t/s ]\n[ Draft: 255 accepted / 4024 generated | Acceptance: 0.0634 ]\n\nExiting..."
+  },
+  "withoutDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": false,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+      "-md",
+      "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "512",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "0",
+      "--spec-draft-n-max",
+      "0",
+      "--spec-draft-p-min",
+      "1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 72229,
+    "contextTokens": 2048,
+    "draftMin": 0,
+    "draftMax": 0,
+    "tokensRequested": 512,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": 7.2,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "modalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Format:** Short paragraph.\n    *   **Goal:** Provide a clear, concise explanation of what it is and its purpose.\n\n2.  **Identify Key Concepts of Speculative Decoding:**\n    *   Context: Large Language Models (LLMs) / Generative AI.\n    *   Problem: Autoregressive generation is slow (token-by-token).\n    *   Solution: Generate multiple tokens in parallel before verifying.\n    *   Mechanism: A small model (or same model with fewer checks) generates a sequence, then a larger/slower model verifies it.\n    *   Outcome: If valid tokens are correct, skip verification for those tokens (speedup); if incorrect, backtrack.\n    *   Benefit: Latency reduction, speed improvement.\n\n3.  **Drafting - Attempt 1 (Mental Outline):**\n    Speculative decoding is a technique for making LLMs faster. Instead of generating one token at a time, it lets a fast model generate a bunch of tokens first. Then a slow model checks them. If they are right, it moves on. If not, it fixes them. This makes inference much faster.\n\n4.  **Refining - Attempt 2 (Adding Technical Detail & Flow):**\n    Speculative decoding is a technique used to accelerate large language model inference. Instead of generating tokens sequentially, which is slow due to the need for verification at each step, a fast model generates a tentative batch of tokens. A larger, slower model then verifies these tokens in parallel. If the batch is correct, it skips further checks, allowing for faster generation. If incorrect, the process backtracks. This optimizes throughput.\n\n5.  **Polishing - Attempt 3 (Final Version for \"Short Paragraph\"):**\n    Speculative decoding is a technique designed to accelerate the inference of large language models by reducing the latency of token generation. Instead of verifying each token individually through sequential steps, a smaller or faster model generates a tentative batch of tokens in parallel. A larger, slower model then verifies this batch; if the tokens are correct, they are committed immediately, allowing the process to skip further checks for that sequence. If any token is incorrect, the generation backtracks to the last valid point. This hybrid approach significantly improves throughput by amortizing the cost of verification across multiple tokens, making generative AI faster\n\n[ Prompt: 224.4 t/s | Generation: 7.2 t/s ]\n\nExiting..."
+  },
+  "summary": {
+    "tokensPerSecondWithDrafter": 1.9,
+    "tokensPerSecondBaseline": 7.2,
+    "generationTokensPerSecondWithDrafter": null,
+    "generationTokensPerSecondBaseline": null,
+    "targetEvalTokensPerSecondWithDrafter": null,
+    "draftEvalTokensPerSecondWithDrafter": null,
+    "dflashDraftedTokens": 4024,
+    "dflashAcceptedTokens": 255,
+    "dflashAcceptanceRate": 0.06336978131212724,
+    "dflashSpeedup": 0.2638888888888889,
+    "dflashDraftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "speculator": "dflash",
+    "tier": "4b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 4024,
+    "accepted": 255,
+    "acceptanceRate": 0.06336978131212724,
+    "speedup": 0.2638888888888889,
+    "status": "pass",
+    "failure": null
+  },
+  "draftingActive": true,
+  "dflashFailure": null
+}

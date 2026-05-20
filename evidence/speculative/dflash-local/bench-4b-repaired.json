@@ -1,0 +1,203 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T16:52:29.691Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "speculator": "dflash",
+  "tier": "4b",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+  "drafterModel": "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 128,
+  "available": true,
+  "status": "fail",
+  "failure": "bench process error: spawnSync .tmp/llama-mtp-build/bin/llama-cli ENOBUFS",
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd"
+  },
+  "drafted": null,
+  "accepted": null,
+  "acceptanceRate": null,
+  "speedup": null,
+  "withDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": true,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+      "-md",
+      "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "128",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--spec-draft-n-min",
+      "1",
+      "--spec-draft-n-max",
+      "2",
+      "--spec-draft-p-min",
+      "0.1",
+      "--device",
+      "none",
+      "--device-draft",
+      "none",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": null,
+    "signal": "SIGKILL",
+    "error": {
+      "name": "Error",
+      "message": "spawnSync .tmp/llama-mtp-build/bin/llama-cli ENOBUFS",
+      "code": "ENOBUFS"
+    },
+    "wallMs": 75786,
+    "contextTokens": 2048,
+    "draftMin": 1,
+    "draftMax": 2,
+    "tokensRequested": 128,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": null,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": "bench process error: spawnSync .tmp/llama-mtp-build/bin/llama-cli ENOBUFS",
+    "tokenizerCompatible": true,
+    "outputTail": "\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n>"
+  },
+  "withoutDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": false,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf",
+      "-md",
+      "evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "128",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--spec-draft-n-min",
+      "0",
+      "--spec-draft-n-max",
+      "0",
+      "--spec-draft-p-min",
+      "1",
+      "--device",
+      "none",
+      "--device-draft",
+      "none",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": null,
+    "signal": "SIGKILL",
+    "error": null,
+    "wallMs": 19634,
+    "contextTokens": 2048,
+    "draftMin": 0,
+    "draftMax": 0,
+    "tokensRequested": 128,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": null,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": "bench process terminated by SIGKILL",
+    "tokenizerCompatible": true,
+    "outputTail": "\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n>"
+  },
+  "summary": {
+    "tokensPerSecondWithDrafter": null,
+    "tokensPerSecondBaseline": null,
+    "generationTokensPerSecondWithDrafter": null,
+    "generationTokensPerSecondBaseline": null,
+    "targetEvalTokensPerSecondWithDrafter": null,
+    "draftEvalTokensPerSecondWithDrafter": null,
+    "dflashDraftedTokens": null,
+    "dflashAcceptedTokens": null,
+    "dflashAcceptanceRate": null,
+    "dflashSpeedup": null,
+    "dflashDraftingActive": false,
+    "dflashFailure": "bench process error: spawnSync .tmp/llama-mtp-build/bin/llama-cli ENOBUFS",
+    "tokenizerCompatible": true,
+    "speculator": "dflash",
+    "tier": "4b",
+    "backend": "unknown",
+    "binarySha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd",
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "speedup": null,
+    "status": "fail",
+    "failure": "bench process error: spawnSync .tmp/llama-mtp-build/bin/llama-cli ENOBUFS"
+  },
+  "draftingActive": false,
+  "dflashFailure": "bench process error: spawnSync .tmp/llama-mtp-build/bin/llama-cli ENOBUFS"
+}

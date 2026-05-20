@@ -1,6 +1,5 @@
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { VoiceError } from "./errors";
-import type { VoiceService } from "./voice-service";
 import {
   VOICE_TEST_MODES,
   type VoiceInjectTranscriptParams,
@@ -12,6 +11,7 @@ import {
   type VoiceTestMode,
   type VoiceTranscribeAudioParams,
 } from "./types";
+import type { VoiceService } from "./voice-service";
 
 type JsonRecord = { readonly [key: string]: JsonValue };
 
@@ -226,8 +226,10 @@ export function createVoiceHost(service: VoiceService): VoiceHost {
     status: async () => service.status() as Promise<JsonValue>,
     components: async () =>
       ({ components: await service.components() }) as JsonValue,
-    start: async (params) => service.start(readStartParams(params)) as Promise<JsonValue>,
-    stop: async (params) => service.stop(readStopParams(params)) as Promise<JsonValue>,
+    start: async (params) =>
+      service.start(readStartParams(params)) as Promise<JsonValue>,
+    stop: async (params) =>
+      service.stop(readStopParams(params)) as Promise<JsonValue>,
     interrupt: async (params) =>
       service.interrupt(readInterruptParams(params)) as Promise<JsonValue>,
     injectTranscript: async (params) =>
@@ -235,9 +237,13 @@ export function createVoiceHost(service: VoiceService): VoiceHost {
     speak: async (params) =>
       service.speak(readSpeakParams(params)) as Promise<JsonValue>,
     transcribeAudio: async (params) =>
-      service.transcribeAudio(readTranscribeAudioParams(params)) as Promise<JsonValue>,
+      service.transcribeAudio(
+        readTranscribeAudioParams(params),
+      ) as Promise<JsonValue>,
     synthesizeSpeech: async (params) =>
-      service.synthesizeSpeech(readSynthesizeSpeechParams(params)) as Promise<JsonValue>,
+      service.synthesizeSpeech(
+        readSynthesizeSpeechParams(params),
+      ) as Promise<JsonValue>,
     latency: async () => service.latency() as Promise<JsonValue>,
     recentTurns: async (params) => {
       const record = optionalRecord(params, "voice-recent-turns");

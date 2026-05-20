@@ -1,0 +1,95 @@
+{
+  "reportSchema": "eliza.mtp-runtime-smoke.v1",
+  "generatedAt": "2026-05-20T17:21:34.623Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "metadataStatus": "pass",
+  "mtp": {
+    "pass": true,
+    "nextnPredictLayers": 1,
+    "keys": [
+      "qwen35.nextn_predict_layers"
+    ]
+  },
+  "cli": {
+    "available": true,
+    "status": 0,
+    "supportsDraftMtp": true,
+    "outputTail": "                                        llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4,\n                                        megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken,\n                                        mistral-v7, mistral-v7-tekken, monarch, openchat, orion,\n                                        pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open,\n                                        vicuna, vicuna-orca, yandex, zephyr\n                                        (env: LLAMA_ARG_CHAT_TEMPLATE_FILE)\n--skip-chat-parsing, --no-skip-chat-parsing\n                                        force a pure content parser, even if a Jinja template is specified;\n                                        model will output everything in the content section, including any\n                                        reasoning and/or tool calls (default: disabled)\n                                        (env: LLAMA_ARG_SKIP_CHAT_PARSING)\n--simple-io                             use basic IO for better compatibility in subprocesses and limited\n                                        consoles\n--spec-replace TARGET DRAFT             translate the string in TARGET into DRAFT if the draft model and main\n                                        model are not compatible\n--gpt-oss-20b-default                   use gpt-oss-20b (note: can download weights from the internet)\n--gpt-oss-120b-default                  use gpt-oss-120b (note: can download weights from the internet)\n--vision-gemma-4b-default               use Gemma 3 4B QAT (note: can download weights from the internet)\n--vision-gemma-12b-default              use Gemma 3 12B QAT (note: can download weights from the internet)\n--spec-default                          enable default speculative decoding config"
+  },
+  "runtime": [
+    {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 4093,
+      "failure": null,
+      "outputTail": "> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Create a concise definition or explanation of the concept.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? In the context of modern technology and artificial intelligence, it refers to the process of using advanced machine learning models (like neural networks) to simulate human-like thinking or language generation, often to predict future events or understand complex data.\n    *   Wait, there's another specific term in cryptography or specific computing contexts (like \"speculative decoding\" in the context of decoding specific data or a specific code). But more commonly, in the context of AI, it refers to the process where a model tries to guess the meaning of text or symbols without knowing the true code.\n    *   *Correction/Refinement:* Let's look closer at \"speculative decoding\" in the context of AI/Text generation. It often refers to the process where an AI model attempts to reverse-engineer a specific string or pattern to find meaning. Or, it's a metaphor for \"guessing\" or \"inference\" in a high-stakes context (like in cryptography or specific security contexts).\n    *   *Actually*, in the context of *computing*, \"speculative decoding\" is a specific term often associated with the process of decoding data using advanced algorithms that allow for the simulation of human-like thinking or language generation without knowing the true code.\n    *   *Wait, let's consider the possibility of a specific technical term.* There is a concept called \"Speculative Decoding\" in the context of *machine learning* or *AI*, often used to describe a technique where a model attempts to understand the meaning of text by simulating human-like thinking or language generation. It's about the model trying to simulate a human's thinking process.\n    *   *Alternative interpretation:* Is it related to \"decoding\" in the sense of *breaking* code? No.\n    *   *Wait, is it related to the phrase \"speculative decoding\" in the context of *software security* or *AI safety*?*\n    *   *Let's consider the most likely intended meaning.* It sounds like a metaphor for \"guessing\" or \"inference\" in a high-stakes environment.\n    *   *Actually, looking at search results for \"speculative decoding\n\n[ Prompt: 707.7 t/s | Generation: 172.6 t/s ]\n[ Draft: 170 accepted / 340 generated | Acceptance: 0.5000 ]\n\nExiting...",
+      "tokensPerSecond": 172.6,
+      "accepted": 170,
+      "drafted": 340,
+      "acceptanceRate": 0.5
+    }
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T17:21:41.802Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+    "speculator": "mtp",
+    "tier": "0_8b",
+    "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 512,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+    },
+    "drafted": 340,
+    "accepted": 170,
+    "acceptanceRate": 0.5,
+    "speedup": 0.6931726907630522,
+    "withDrafter": {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 4093,
+      "failure": null,
+      "outputTail": "> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Create a concise definition or explanation of the concept.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? In the context of modern technology and artificial intelligence, it refers to the process of using advanced machine learning models (like neural networks) to simulate human-like thinking or language generation, often to predict future events or understand complex data.\n    *   Wait, there's another specific term in cryptography or specific computing contexts (like \"speculative decoding\" in the context of decoding specific data or a specific code). But more commonly, in the context of AI, it refers to the process where a model tries to guess the meaning of text or symbols without knowing the true code.\n    *   *Correction/Refinement:* Let's look closer at \"speculative decoding\" in the context of AI/Text generation. It often refers to the process where an AI model attempts to reverse-engineer a specific string or pattern to find meaning. Or, it's a metaphor for \"guessing\" or \"inference\" in a high-stakes context (like in cryptography or specific security contexts).\n    *   *Actually*, in the context of *computing*, \"speculative decoding\" is a specific term often associated with the process of decoding data using advanced algorithms that allow for the simulation of human-like thinking or language generation without knowing the true code.\n    *   *Wait, let's consider the possibility of a specific technical term.* There is a concept called \"Speculative Decoding\" in the context of *machine learning* or *AI*, often used to describe a technique where a model attempts to understand the meaning of text by simulating human-like thinking or language generation. It's about the model trying to simulate a human's thinking process.\n    *   *Alternative interpretation:* Is it related to \"decoding\" in the sense of *breaking* code? No.\n    *   *Wait, is it related to the phrase \"speculative decoding\" in the context of *software security* or *AI safety*?*\n    *   *Let's consider the most likely intended meaning.* It sounds like a metaphor for \"guessing\" or \"inference\" in a high-stakes environment.\n    *   *Actually, looking at search results for \"speculative decoding\n\n[ Prompt: 707.7 t/s | Generation: 172.6 t/s ]\n[ Draft: 170 accepted / 340 generated | Acceptance: 0.5000 ]\n\nExiting...",
+      "tokensPerSecond": 172.6,
+      "accepted": 170,
+      "drafted": 340,
+      "acceptanceRate": 0.5
+    },
+    "withoutDrafter": {
+      "available": true,
+      "withMtp": false,
+      "status": 0,
+      "wallMs": 3086,
+      "failure": null,
+      "outputTail": "[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Create a concise description or explanation of this concept.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? It's a method or interpretation process where the human mind attempts to reconstruct the original or intended message by breaking it into smaller units, often using techniques like decoding, or perhaps in a metaphorical sense (like in the context of AI, decoding secrets, or reconstructing hidden meaning).\n    *   Wait, looking at standard interpretations:\n        *   *Literary/Philosophical:* Decoding text to find meaning.\n        *   *Technical/AI:* Using AI to reverse-engineer data.\n        *   *Cryptographic/Security:* Decoding codes or breaking down messages.\n        *   *The prompt specifically asks about \"Speculative decoding.\" This sounds like a metaphorical term in the context of AI/Science fiction or specific philosophical interpretations.*\n\n    *   *Correction/Refinement:* In the context of recent tech news or AI discussions, \"speculative decoding\" often refers to an AI model attempting to \"decode\" or interpret the message behind a user's input, often in a way that suggests \"unconscious decoding\" or a specific type of neural decoding. However, there's a specific concept in AI/Computer Science where \"speculative decoding\" is a specific term, often associated with \"inference\" or \"understanding\" in a way that allows for *prediction* or *heuristic* inference.\n    *   *Actually*, looking at common search trends or specific definitions in a specific niche (e.g., \"Speculative Decoding\" as a technique in language modeling or a specific philosophy):\n        *   It's often associated with the idea of \"inference\" where the model tries to guess the original intent from the encoded output, or sometimes it's a term related to \"unconscious decoding\" in a metaphorical sense (like a code breaking).\n        *   *Wait, let's check the actual definition.* There isn't a widely known technical definition for \"speculative decoding\" in standard tech jargon that is universally recognized. It might be a specific term used in a specific context (like a specific game, a novel, or a specific AI research paper).\n        *   *Hypothesis:* It might\n\n[ Prompt: 705.5 t/s | Generation: 249.0 t/s ]\n\nExiting...",
+      "tokensPerSecond": 249,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "summary": {
+      "speculator": "mtp",
+      "tier": "0_8b",
+      "backend": "unknown",
+      "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+      "drafted": 340,
+      "accepted": 170,
+      "acceptanceRate": 0.5,
+      "speedup": 0.6931726907630522,
+      "status": "pass",
+      "failure": null
+    }
+  }
+}

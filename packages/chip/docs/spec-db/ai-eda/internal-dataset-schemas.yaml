@@ -1,0 +1,154 @@
+schema: eliza.ai_eda.internal_dataset_schemas.v1
+updated: 2026-05-20
+claim_boundary: schema_contract_only_no_training_inference_or_release_claim
+policy:
+  ai_outputs_are_advisory_until_replayed: true
+  deterministic_replay_required_for_evidence: true
+  generated_artifacts_must_stay_under_build_ai_eda: true
+  source_rtl_modification_forbidden_by_schema: true
+records:
+  eda.design_bundle.v1:
+    description: Normalized source-of-truth pointer for a design snapshot.
+    required_fields:
+      - schema
+      - id
+      - design
+      - sources
+      - constraints
+      - technology
+      - claim_boundary
+    required_nested:
+      design:
+        - name
+        - revision
+        - top_module
+      sources:
+        - rtl
+        - manifests
+      constraints:
+        - clocks
+        - resets
+      technology:
+        - node
+        - pdk
+        - flow
+  eda.placement_case.v1:
+    description: Macro/floorplan optimization case derived from a design bundle.
+    required_fields:
+      - schema
+      - id
+      - design_bundle_id
+      - floorplan
+      - movable_objects
+      - fixed_objects
+      - objective
+      - replay
+      - claim_boundary
+    required_nested:
+      floorplan:
+        - die_area_um
+        - core_area_um
+        - rows
+      objective:
+        - primary
+        - secondary
+      replay:
+        - deterministic_command
+        - expected_report
+  eda.graph_sample.v1:
+    description: Graph representation for circuit foundation, placement, timing, or congestion models.
+    required_fields:
+      - schema
+      - id
+      - design_bundle_id
+      - graph
+      - labels
+      - provenance
+      - claim_boundary
+    required_nested:
+      graph:
+        - node_features
+        - edge_features
+        - coordinate_system
+      labels:
+        - label_status
+        - label_sources
+      provenance:
+        - generated_by
+        - source_records
+  eda.flow_run.v1:
+    description: Deterministic run record for synthesis, PD, verification, or model-assisted replay.
+    required_fields:
+      - schema
+      - id
+      - design_bundle_id
+      - toolchain
+      - command
+      - inputs
+      - outputs
+      - metrics
+      - status
+      - claim_boundary
+    required_nested:
+      toolchain:
+        - tools
+        - version_capture
+      status:
+        - result
+        - blockers
+      outputs:
+        - reports
+        - artifacts
+  eda.e1_candidate.v1:
+    description: AI-generated or hand-authored optimization candidate before deterministic acceptance.
+    required_fields:
+      - schema
+      - id
+      - candidate_type
+      - design_bundle_id
+      - generated_by
+      - proposed_changes
+      - validation_ladder
+      - decision
+      - claim_boundary
+    required_nested:
+      generated_by:
+        - source
+        - model_or_tool
+      validation_ladder:
+        - required_gates
+        - completed_gates
+      decision:
+        - status
+        - reason
+  eda.tool_action.v1:
+    description: Typed, allowlisted EDA tool action proposed before any write-capable agent execution.
+    required_fields:
+      - schema
+      - id
+      - action_type
+      - tool
+      - mode
+      - command
+      - read_scope
+      - write_scope
+      - input_artifacts
+      - generated_artifacts
+      - approval
+      - execution
+      - status
+      - claim_boundary
+    required_nested:
+      command:
+        - argv
+        - cwd
+      approval:
+        - required
+        - status
+      execution:
+        - dry_run_only
+        - archived_stdout
+        - archived_stderr
+      status:
+        - result
+        - blockers

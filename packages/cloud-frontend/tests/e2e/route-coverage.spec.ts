@@ -8,6 +8,11 @@ const PACKAGE_ROOT = path.resolve(HERE, "../..");
 const SRC_ROOT = path.join(PACKAGE_ROOT, "src");
 const APP_SOURCE = path.join(SRC_ROOT, "App.tsx");
 const CLOUD_ROUTES_SPEC = path.join(HERE, "cloud-routes.spec.ts");
+const LIVE_AUTH_DASHBOARD_SPEC = path.join(HERE, "live-auth-dashboard.spec.ts");
+const LIVE_STEWARD_WALLET_LOGIN_SPEC = path.join(
+  HERE,
+  "live-steward-wallet-login.spec.ts",
+);
 
 const ROUTE_PARAM_EXAMPLES: Record<string, string> = {
   ":approvalId": "approval_1",
@@ -115,6 +120,34 @@ function smokeRouteSamplesFromSpec(specSource: string): Set<string> {
   );
 }
 
+function sessionOnlyLiveDashboardRoutesFromSpec(
+  specSource: string,
+): Set<string> {
+  const match = specSource.match(
+    /LIVE_SESSION_ONLY_DASHBOARD_ROUTES\s*=\s*\[([\s\S]*?)\]\s*as const/,
+  );
+  if (!match) return new Set();
+  return new Set(
+    [...(match[1] ?? "").matchAll(/["'](\/dashboard\/[^"']*)["']/g)].map(
+      (entry) => normalizePath(entry[1] ?? ""),
+    ),
+  );
+}
+
+function stewardSessionLiveDashboardRoutesFromSpec(
+  specSource: string,
+): Set<string> {
+  const match = specSource.match(
+    /LIVE_STEWARD_SESSION_DASHBOARD_ROUTES\s*=\s*\[([\s\S]*?)\]\s*as const/,
+  );
+  if (!match) return new Set();
+  return new Set(
+    [...(match[1] ?? "").matchAll(/["'](\/dashboard\/[^"']*)["']/g)].map(
+      (entry) => normalizePath(entry[1] ?? ""),
+    ),
+  );
+}
+
 test("every cloud page component is reachable from the router", async () => {
   const appSource = readFileSync(APP_SOURCE, "utf8");
   const routeImports = lazyRouteImports(appSource);
@@ -150,5 +183,47 @@ test("cloud route smoke covers every concrete router path", () => {
   expect(
     missing,
     `Missing cloud route smoke coverage for: ${missing.join(", ")}`,
+  ).toEqual([]);
+});
+
+test("live authenticated dashboard smoke covers every top-level dashboard page", () => {
+  const appSource = readFileSync(APP_SOURCE, "utf8");
+  const liveAuthSource = readFileSync(LIVE_AUTH_DASHBOARD_SPEC, "utf8");
+  const liveStewardSource = readFileSync(
+    LIVE_STEWARD_WALLET_LOGIN_SPEC,
+    "utf8",
+  );
+  const liveAuthRoutes = smokeRouteSamplesFromSpec(liveAuthSource);
+  const sessionOnlyRoutes =
+    sessionOnlyLiveDashboardRoutesFromSpec(liveAuthSource);
+  const stewardSessionRoutes =
+    stewardSessionLiveDashboardRoutesFromSpec(liveStewardSource);
+
+  const uncoveredSessionOnlyRoutes = [...sessionOnlyRoutes].filter(
+    (route) => !stewardSessionRoutes.has(route),
+  );
+  expect(
+    uncoveredSessionOnlyRoutes,
+    `Session-only live dashboard routes must be covered by ${path.basename(
+      LIVE_STEWARD_WALLET_LOGIN_SPEC,
+    )}: ${uncoveredSessionOnlyRoutes.join(", ")}`,
+  ).toEqual([]);
+
+  const missing = routerRouteSamples(appSource).filter((route) => {
+    if (!route.startsWith("/dashboard")) return false;
+    if (route === "/dashboard/chat") return false;
+    if (route.includes("/admin")) return false;
+    const rest = route.replace(/^\/dashboard\/?/, "");
+    if (sessionOnlyRoutes.has(route)) return false;
+    if (!rest) return !liveAuthRoutes.has(route);
+    if (rest.split("/").length > 1) return false;
+    return !liveAuthRoutes.has(route);
+  });
+
+  expect(
+    missing,
+    `Missing live authenticated dashboard smoke coverage for: ${missing.join(
+      ", ",
+    )}`,
   ).toEqual([]);
 });

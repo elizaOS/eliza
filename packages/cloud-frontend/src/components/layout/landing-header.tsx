@@ -43,13 +43,13 @@ export default function LandingHeader() {
             <>
               <Link
                 to="/dashboard/agents"
-                className="inline-flex min-h-10 items-center justify-center rounded-sm bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] sm:min-h-11 sm:px-5"
+                className="inline-flex min-h-10 items-center justify-center rounded-sm bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] sm:min-h-11 sm:px-5"
               >
                 {launchLabel}
               </Link>
               <Link
                 to="/dashboard"
-                className="hidden min-h-11 items-center justify-center rounded-sm bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white sm:inline-flex"
+                className="hidden min-h-11 items-center justify-center rounded-sm border border-[var(--accent)] bg-transparent px-5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-subtle)] sm:inline-flex"
               >
                 {devDashboardLabel}
               </Link>
@@ -59,7 +59,7 @@ export default function LandingHeader() {
             <>
               <button
                 aria-disabled={!ready}
-                className="inline-flex min-h-10 items-center justify-center rounded-sm bg-black px-4 text-sm font-medium text-white transition-colors hover:bg-[#0B35F1] disabled:opacity-50 sm:min-h-11 sm:px-5"
+                className="inline-flex min-h-10 items-center justify-center rounded-sm bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] transition-colors hover:bg-[var(--accent-hover)] disabled:opacity-50 sm:min-h-11 sm:px-5"
                 onClick={launchEliza}
                 disabled={!ready}
                 type="button"
@@ -67,7 +67,7 @@ export default function LandingHeader() {
                 {launchLabel}
               </button>
               <button
-                className="hidden min-h-11 items-center justify-center rounded-sm bg-[#FF5800] px-5 text-sm font-medium text-black transition-colors hover:bg-black hover:text-white disabled:opacity-50 sm:inline-flex"
+                className="hidden min-h-11 items-center justify-center rounded-sm border border-[var(--accent)] bg-transparent px-5 text-sm font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-subtle)] disabled:opacity-50 sm:inline-flex"
                 onClick={openDashboard}
                 disabled={!ready}
                 type="button"

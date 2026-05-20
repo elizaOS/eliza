@@ -7,6 +7,7 @@ import {
   useState,
 } from "react";
 import { elizacloudFetch, getAuthToken } from "@/lib/api/client";
+import { signInWithSolana as siwsSignIn } from "@/lib/api/siws";
 
 export interface TelegramAuthData {
   id: number;
@@ -51,6 +52,7 @@ interface AuthResult {
 export type TelegramLoginResult = AuthResult;
 export type DiscordLoginResult = AuthResult;
 export type WhatsAppLoginResult = AuthResult;
+export type SolanaLoginResult = AuthResult & { address?: string };
 export type LinkPhoneResult = AuthResult;
 
 interface AuthContextValue {
@@ -75,6 +77,7 @@ interface AuthContextValue {
     whatsappId: string,
     existingToken?: string,
   ) => Promise<WhatsAppLoginResult>;
+  loginWithSolana: () => Promise<SolanaLoginResult>;
   linkPhone: (phoneNumber: string) => Promise<LinkPhoneResult>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -432,6 +435,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [fetchUserInfo],
   );
 
+  const loginWithSolana = useCallback(async (): Promise<SolanaLoginResult> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const result = await siwsSignIn();
+      setSessionToken(result.apiKey);
+      try {
+        await fetchUserInfo(result.apiKey);
+      } catch (err) {
+        // The /api/eliza-app/user/me endpoint may not yet recognize a
+        // wallet-only session. Fall back to a synthetic ElizaAppUser so the
+        // homepage UI can show a wallet-linked dashboard.
+        console.warn(
+          "[Auth] user/me failed after SIWS — using synthetic wallet user",
+          err,
+        );
+        const now = new Date().toISOString();
+        setUser({
+          id: result.user.id,
+          telegram_id: null,
+          telegram_username: null,
+          telegram_first_name: null,
+          discord_id: null,
+          discord_username: null,
+          discord_global_name: null,
+          discord_avatar_url: null,
+          whatsapp_id: null,
+          whatsapp_name: null,
+          phone_number: null,
+          name: `${result.address.slice(0, 4)}…${result.address.slice(-4)}`,
+          avatar: null,
+          organization_id: result.user.organization_id,
+          created_at: now,
+        });
+        setOrganization(
+          result.organization
+            ? {
+                id: result.organization.id,
+                name: result.organization.name,
+                credit_balance: "0.00",
+              }
+            : null,
+        );
+      }
+      return { success: true, address: result.address };
+    } catch (err) {
+      const result = parseAuthError(err);
+      setError(result.error ?? "Solana sign-in failed");
+      return result;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [setSessionToken, fetchUserInfo]);
+
   const logout = useCallback(() => {
     setSessionToken(null);
     setUser(null);
@@ -456,6 +513,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     loginWithTelegram,
     loginWithDiscord,
     loginWithWhatsApp,
+    loginWithSolana,
     linkPhone,
     logout,
     refreshUser,

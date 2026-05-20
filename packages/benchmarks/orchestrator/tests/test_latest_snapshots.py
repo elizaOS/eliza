@@ -15,7 +15,10 @@ from benchmarks.orchestrator.db import (
 from benchmarks.orchestrator.adapters import (
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
 )
-from benchmarks.orchestrator.runner import _rebuild_latest_result_snapshots
+from benchmarks.orchestrator.runner import (
+    _complete_token_metrics,
+    _rebuild_latest_result_snapshots,
+)
 from benchmarks.orchestrator.types import BenchmarkAdapter, ExecutionContext, ScoreSummary
 
 
@@ -103,6 +106,34 @@ def _seed_run(
         delta_to_high_score=None,
         token_metrics=token_metrics or {"total_tokens": 12, "llm_call_count": 2},
     )
+
+
+def test_complete_token_metrics_marks_all_zero_telemetry_missing() -> None:
+    metrics = _complete_token_metrics(
+        {},
+        trajectory_summary={"turns": 0, "prompt_chars": 0},
+        result_json_path=None,
+    )
+
+    assert metrics["llm_call_count"] == 0
+    assert metrics["call_count"] == 0
+    assert metrics["total_tokens"] == 0
+    assert metrics["cached_tokens"] == 0
+    assert metrics["telemetry_missing"] is True
+
+
+def test_complete_token_metrics_marks_estimated_telemetry_missing() -> None:
+    metrics = _complete_token_metrics(
+        {},
+        trajectory_summary={"turns": 2, "prompt_chars": 400},
+        result_json_path=None,
+    )
+
+    assert metrics["llm_call_count"] == 2
+    assert metrics["input_tokens"] == 100
+    assert metrics["total_tokens"] == 100
+    assert metrics["token_estimate_source"] == "prompt_chars_div_4"
+    assert metrics["telemetry_missing"] is True
 
 
 def test_rebuild_latest_preserves_existing_snapshots_when_db_has_no_rows(
@@ -680,6 +711,91 @@ def test_rebuild_latest_quarantines_demo_mode_results(tmp_path: Path) -> None:
     )
     assert payload["quarantine_reason"] == "demo_mode"
     assert "demo_mode" in payload["publication_warnings"]
+
+
+def test_rebuild_latest_publishes_live_hyperliquid_results(tmp_path: Path) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["hyperliquid_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hyperliquid_bench",
+        agent="eliza",
+        run_id="run_hl_live",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=3.5,
+        metrics={
+            "final_score": 3.5,
+            "total_scenarios": 1,
+            "passed_scenarios": 1,
+            "demo_mode": False,
+            "canonical_entries": 1,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 3},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"hyperliquid_bench": _adapter("hyperliquid_bench")},
+    )
+
+    latest = tmp_path / "latest" / "hyperliquid_bench__eliza.json"
+    assert latest.exists()
+    payload = json.loads(latest.read_text(encoding="utf-8"))
+    assert payload["status"] == "succeeded"
+    assert payload["score"] == 3.5
+    assert payload["metrics"]["demo_mode"] is False
+    assert payload.get("quarantine_reason") is None
+    assert not (tmp_path / "quarantine" / "hyperliquid_bench__eliza.json").exists()
+
+
+def test_rebuild_latest_hyperliquid_unsupported_cells_expose_required_env(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["hyperliquid_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hyperliquid_bench",
+        agent="eliza",
+        run_id="run_hl_blocked",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="failed",
+        score=None,
+        metrics={"missing_env": ["HL_PRIVATE_KEY"]},
+        token_metrics={},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"hyperliquid_bench": _adapter("hyperliquid_bench", agent_compatibility=())},
+    )
+
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    cells = index["matrix_contract"]["benchmarks"]["hyperliquid_bench"]["cells"]
+    for harness in ("eliza", "hermes", "openclaw"):
+        assert cells[harness]["state"] == "unsupported"
+        assert cells[harness]["required_env"] == [
+            "HL_PRIVATE_KEY",
+            "CEREBRAS_API_KEY",
+        ]
 
 
 def test_rebuild_latest_allows_tokenless_deterministic_benchmark_rows(
@@ -1293,6 +1409,71 @@ def test_rebuild_latest_keeps_success_when_newer_failed_row_exists(tmp_path: Pat
     assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
 
 
+def test_rebuild_latest_keeps_live_hyperliquid_when_newer_missing_key_row_exists(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["hyperliquid_bench"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hyperliquid_bench",
+        agent="eliza",
+        run_id="run_hl_live",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="succeeded",
+        score=3.5,
+        metrics={
+            "final_score": 3.5,
+            "total_scenarios": 1,
+            "passed_scenarios": 1,
+            "demo_mode": False,
+            "canonical_entries": 1,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 3},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="hyperliquid_bench",
+        agent="eliza",
+        run_id="run_hl_missing_key",
+        started_at="2026-05-12T00:10:00+00:00",
+        status="failed",
+        score=None,
+        metrics={"missing_env": ["HL_PRIVATE_KEY"]},
+        token_metrics={},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"hyperliquid_bench": _adapter("hyperliquid_bench")},
+    )
+
+    latest_payload = json.loads(
+        (tmp_path / "latest" / "hyperliquid_bench__eliza.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    quarantine_payload = json.loads(
+        (tmp_path / "quarantine" / "hyperliquid_bench__eliza.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest_payload["run_id"] == "run_hl_live"
+    assert latest_payload["metrics"]["demo_mode"] is False
+    assert quarantine_payload["run_id"] == "run_hl_missing_key"
+    assert quarantine_payload["metrics"]["missing_env"] == ["HL_PRIVATE_KEY"]
+    assert quarantine_payload["quarantine_reason"] == "unsucceeded_run"
+
+
 def test_rebuild_latest_preserves_snapshot_when_only_failed_db_row_exists(
     tmp_path: Path,
 ) -> None:
@@ -1667,6 +1848,60 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
         "run_id": None,
         "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
+
+
+def test_rebuild_latest_preserves_transient_runtime_gate_successes(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["vision_language"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="vision_language",
+        agent="eliza",
+        run_id="run_vision_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.05,
+        metrics={
+            "benchmark": "textvqa",
+            "total_samples": 20,
+            "accuracy": 0.05,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 20},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"vision_language": _adapter("vision_language", agent_compatibility=())},
+    )
+
+    latest = tmp_path / "latest" / "vision_language__eliza.json"
+    assert latest.exists()
+    payload = json.loads(latest.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run_vision_success"
+    assert payload["status"] == "succeeded"
+    assert not (tmp_path / "quarantine" / "vision_language__eliza.json").exists()
+    row = conn.execute(
+        "SELECT status FROM benchmark_runs WHERE run_id = ?",
+        ("run_vision_success",),
+    ).fetchone()
+    assert row["status"] == "succeeded"
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    benchmark_contract = index["matrix_contract"]["benchmarks"]["vision_language"]
+    assert benchmark_contract["compatible_harnesses"] == ["eliza"]
+    cells = benchmark_contract["cells"]
+    assert cells["eliza"]["state"] == "succeeded"
+    assert cells["eliza"]["required"] is True
+    assert cells["eliza"]["transient_runtime_gate_preserved"] is True
 
 
 def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(

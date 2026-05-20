@@ -213,7 +213,7 @@ async function proxyUiRequest(args: {
   const primaryPath = filePath ?? indexHtmlPath;
   let body: Buffer | null = null;
   let resolvedPath = primaryPath;
-  const maxReadAttempts = 40;
+  const maxReadAttempts = 300;
   for (let attempt = 0; attempt < maxReadAttempts; attempt++) {
     try {
       body = await readFile(primaryPath);
@@ -579,6 +579,11 @@ async function startStubStack(): Promise<StartedStack> {
     (status) => status.state === "running",
     READY_TIMEOUT_MS,
   );
+  await waitForJsonPredicate<{ session?: { kind?: string } }>(
+    `${apiBase}/api/auth/me`,
+    (me) => me.session?.kind === "local",
+    READY_TIMEOUT_MS,
+  );
 
   const uiServer = await startUiProxyServer({
     apiBase,
@@ -650,6 +655,11 @@ async function startRealStack(): Promise<StartedStack> {
   await waitForJsonPredicate<{ state?: string }>(
     `${apiBase}/api/status`,
     (status) => status.state === "running",
+    READY_TIMEOUT_MS,
+  );
+  await waitForJsonPredicate<{ session?: { kind?: string } }>(
+    `${apiBase}/api/auth/me`,
+    (me) => me.session?.kind === "local",
     READY_TIMEOUT_MS,
   );
 

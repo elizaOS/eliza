@@ -85,9 +85,9 @@ function validateUnsafeFields(
     return;
   }
   if (Array.isArray(value)) {
-    value.forEach((item, index) =>
-      validateUnsafeFields(item, issues, `${path}/${index}`, componentId),
-    );
+    value.forEach((item, index) => {
+      validateUnsafeFields(item, issues, `${path}/${index}`, componentId);
+    });
     return;
   }
   for (const [key, entry] of Object.entries(value)) {

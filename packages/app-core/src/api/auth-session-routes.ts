@@ -151,6 +151,26 @@ export async function handleAuthSessionRoutes(
   if (!db) {
     // Routes here all need the DB — return service unavailable rather than
     // routing further. The bootstrap-token endpoint behaves the same way.
+    if (url.pathname === "/api/auth/me" && isTrustedLocalRequest(req)) {
+      sendJsonResponse(res, 200, {
+        identity: {
+          id: "local-loopback",
+          displayName: "Local",
+          kind: "owner" as const,
+        },
+        session: {
+          id: "local-loopback",
+          kind: "local" as const,
+          expiresAt: null,
+        },
+        access: {
+          mode: "local" as const,
+          passwordConfigured: false,
+          ownerConfigured: false,
+        },
+      });
+      return true;
+    }
     if (
       url.pathname === "/api/auth/setup" ||
       url.pathname === "/api/auth/login/password" ||

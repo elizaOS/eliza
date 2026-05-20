@@ -594,8 +594,41 @@ Expected real-runtime gates:
   disabled.
 - Terminal-Bench and Hermes sandbox-family rows require either a reachable
   Docker daemon or, where supported, Modal credentials.
-- Vision-language Hermes/OpenClaw rows require `VISION_LANGUAGE_MODEL` plus
-  provider credentials for a multimodal OpenAI-compatible model.
+- Vision-language rows require real multimodal inputs/runtime. For the local
+  eliza-1 VLM, set `VISION_LANGUAGE_PROVIDER=local-eliza` and
+  `VISION_LANGUAGE_MODEL=eliza-1-9b`; hosted Hermes/OpenClaw-compatible runs
+  require `VISION_LANGUAGE_MODEL` plus provider credentials for a multimodal
+  OpenAI-compatible model.
+
+When Hyperliquid is the only remaining readiness blocker, finish the matrix
+with a live signed testnet run and then regenerate the viewer artifacts:
+
+```bash
+HL_PRIVATE_KEY=0x... \
+VISION_LANGUAGE_PROVIDER=local-eliza \
+VISION_LANGUAGE_MODEL=eliza-1-9b \
+VISION_LANGUAGE_TIER=eliza-1-9b \
+PYTHONPATH=. \
+/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
+  --benchmarks hyperliquid_bench \
+  --all-harnesses \
+  --provider cerebras \
+  --model gpt-oss-120b \
+  --force \
+  --show-incompatible
+
+VISION_LANGUAGE_PROVIDER=local-eliza \
+VISION_LANGUAGE_MODEL=eliza-1-9b \
+VISION_LANGUAGE_TIER=eliza-1-9b \
+PYTHONPATH=. \
+/opt/miniconda3/bin/python -m benchmarks.orchestrator export-viewer-data
+
+VISION_LANGUAGE_PROVIDER=local-eliza \
+VISION_LANGUAGE_MODEL=eliza-1-9b \
+VISION_LANGUAGE_TIER=eliza-1-9b \
+PYTHONPATH=. \
+/opt/miniconda3/bin/python -m benchmarks.orchestrator validate-latest-readiness --tolerance 0.08
+```
 
 ## Recover stale/interrupted runs
 

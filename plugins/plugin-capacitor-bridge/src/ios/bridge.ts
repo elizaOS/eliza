@@ -558,7 +558,7 @@ function payloadBodyAsRaw(payload: HttpRequestPayload): unknown {
 	return payload.body;
 }
 
-function bodyTextForLegacyRoute(payload: HttpRequestPayload): string {
+function _bodyTextForLegacyRoute(payload: HttpRequestPayload): string {
 	const raw = payloadBodyAsRaw(payload);
 	if (raw == null) return "";
 	if (typeof raw === "string") return raw;
@@ -861,7 +861,7 @@ function bytesResponse(
 	};
 }
 
-function buildBufferedRoutePair(args: {
+function _buildBufferedRoutePair(args: {
 	method: string;
 	path: string;
 	headers: Record<string, string>;
@@ -954,7 +954,7 @@ function buildBufferedRoutePair(args: {
 	};
 }
 
-function bufferedRouteResponse(captured: {
+function _bufferedRouteResponse(captured: {
 	statusCode: number;
 	headers: Record<string, string>;
 	chunks: Buffer[];
@@ -1356,9 +1356,7 @@ function normalizeInstalledModelPath(rawPath: string): string | null {
 	for (const candidate of candidates) {
 		try {
 			if (existsSync(candidate)) return candidate;
-		} catch {
-			continue;
-		}
+		} catch {}
 	}
 	return null;
 }

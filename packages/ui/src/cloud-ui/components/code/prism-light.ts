@@ -18,28 +18,35 @@ import sql from "react-syntax-highlighter/dist/esm/languages/prism/sql";
 import tsx from "react-syntax-highlighter/dist/esm/languages/prism/tsx";
 import typescript from "react-syntax-highlighter/dist/esm/languages/prism/typescript";
 import yaml from "react-syntax-highlighter/dist/esm/languages/prism/yaml";
-import SyntaxHighlighter from "react-syntax-highlighter/dist/esm/prism-light";
+import * as PrismLightModule from "react-syntax-highlighter/dist/esm/prism-light";
 
-SyntaxHighlighter.registerLanguage("bash", bash);
-SyntaxHighlighter.registerLanguage("shell", bash);
-SyntaxHighlighter.registerLanguage("sh", bash);
-SyntaxHighlighter.registerLanguage("css", css);
-SyntaxHighlighter.registerLanguage("javascript", javascript);
-SyntaxHighlighter.registerLanguage("js", javascript);
-SyntaxHighlighter.registerLanguage("json", json);
-SyntaxHighlighter.registerLanguage("jsx", jsx);
-SyntaxHighlighter.registerLanguage("markdown", markdown);
-SyntaxHighlighter.registerLanguage("md", markdown);
-SyntaxHighlighter.registerLanguage("markup", markup);
-SyntaxHighlighter.registerLanguage("html", markup);
-SyntaxHighlighter.registerLanguage("xml", markup);
-SyntaxHighlighter.registerLanguage("python", python);
-SyntaxHighlighter.registerLanguage("py", python);
-SyntaxHighlighter.registerLanguage("sql", sql);
-SyntaxHighlighter.registerLanguage("tsx", tsx);
-SyntaxHighlighter.registerLanguage("typescript", typescript);
-SyntaxHighlighter.registerLanguage("ts", typescript);
-SyntaxHighlighter.registerLanguage("yaml", yaml);
-SyntaxHighlighter.registerLanguage("yml", yaml);
+const SyntaxHighlighter =
+  "default" in PrismLightModule ? PrismLightModule.default : PrismLightModule;
+
+const registerLanguage = SyntaxHighlighter.registerLanguage;
+
+if (typeof registerLanguage === "function") {
+  registerLanguage("bash", bash);
+  registerLanguage("shell", bash);
+  registerLanguage("sh", bash);
+  registerLanguage("css", css);
+  registerLanguage("javascript", javascript);
+  registerLanguage("js", javascript);
+  registerLanguage("json", json);
+  registerLanguage("jsx", jsx);
+  registerLanguage("markdown", markdown);
+  registerLanguage("md", markdown);
+  registerLanguage("markup", markup);
+  registerLanguage("html", markup);
+  registerLanguage("xml", markup);
+  registerLanguage("python", python);
+  registerLanguage("py", python);
+  registerLanguage("sql", sql);
+  registerLanguage("tsx", tsx);
+  registerLanguage("typescript", typescript);
+  registerLanguage("ts", typescript);
+  registerLanguage("yaml", yaml);
+  registerLanguage("yml", yaml);
+}
 
 export { SyntaxHighlighter };

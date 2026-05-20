@@ -138,6 +138,8 @@ def _repo_root() -> Path:
         if (parent / "packages" / "benchmarks" / "eliza-adapter").exists():
             return parent
     raise FileNotFoundError("Could not locate repository root from vision harness runtime")
+
+
 def _extract_text_and_image(messages: object) -> tuple[str, str]:
     if not isinstance(messages, list):
         return "", ""
@@ -291,6 +293,8 @@ def _local_eliza_openai_server(tier: str):
         server.shutdown()
         server.server_close()
         tmp.cleanup()
+
+
 def main() -> int:
     payload = json.loads(sys.stdin.read() or "{}")
     harness = str(payload.get("harness") or "").strip().lower()

@@ -67,10 +67,10 @@ interface PhoneNumberInputProps {
 const variantStyles = {
   light: {
     wrapper:
-      "w-full flex items-center rounded-xl border border-neutral-300 bg-white/50 backdrop-blur-sm overflow-hidden focus-within:ring-1 focus-within:ring-neutral-400 focus-within:border-neutral-400 transition-colors",
+      "w-full flex items-center rounded-xs border border-neutral-300 bg-white/50 backdrop-blur-sm overflow-hidden focus-within:ring-1 focus-within:ring-neutral-400 focus-within:border-neutral-400 transition-colors",
     label:
       "relative flex h-14 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-neutral-600 hover:text-neutral-900",
-    flag: "size-6 rounded-sm overflow-hidden shrink-0 pointer-events-none",
+    flag: "size-6 rounded-xs overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-4 shrink-0 pointer-events-none text-neutral-400",
     select:
       "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",
@@ -79,10 +79,10 @@ const variantStyles = {
   },
   dark: {
     wrapper:
-      "w-full flex items-center rounded-xl border border-white/10 bg-white/5 overflow-hidden focus-within:ring-1 focus-within:ring-white/20 focus-within:border-white/20 transition-colors",
+      "w-full flex items-center rounded-xs border border-white/10 bg-white/5 overflow-hidden focus-within:ring-1 focus-within:ring-white/20 focus-within:border-white/20 transition-colors",
     label:
       "relative flex h-12 shrink-0 cursor-pointer items-center gap-2 pl-3 pr-2 text-white/60 hover:text-white/80",
-    flag: "size-5 rounded-sm overflow-hidden shrink-0 pointer-events-none",
+    flag: "size-5 rounded-xs overflow-hidden shrink-0 pointer-events-none",
     chevron: "size-3.5 shrink-0 pointer-events-none text-white/30",
     select:
       "absolute inset-0 cursor-pointer appearance-none bg-transparent opacity-0",

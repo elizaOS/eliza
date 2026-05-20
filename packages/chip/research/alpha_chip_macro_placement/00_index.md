@@ -6,12 +6,22 @@ flow, and judged by physical-design evidence rather than proxy reward alone.
 
 ## Current setup
 
+- `external/SOURCES.lock.yaml`: tracked metadata lockfile for public AI-EDA
+  repos, datasets, and model lanes. Large payloads remain ignored and must be
+  fetched/verified by manifest.
 - `external/circuit_training`: Google Circuit Training checkout, pinned to
-  `r0.0.4` for the stable Docker path.
+  `r0.0.4` for the stable Docker path when present locally.
 - `external/MacroPlacement`: TILOS MacroPlacement checkout for public datasets,
-  format translators, and evaluator context.
+  format translators, and evaluator context when present locally.
 - `scripts/alphachip/`: local wrappers for Docker build, smoke tests, toy
   training, setup checks, and Nebius H200 notes.
+- `scripts/ai_eda/fetch_external_asset.py`: dry-run, verify-only, and explicit
+  execute wrapper for the tracked external asset lockfile.
+- `docs/spec-db/ai-eda/internal-dataset-schemas.yaml`: normalized internal
+  schemas for design bundles, placement cases, graph samples, flow runs, and
+  E1 optimization candidates.
+- `scripts/ai_eda/preflight_cuda_training_stack.py`: Mac/CUDA readiness report
+  for local dry-runs and remote GPU training hosts.
 - `/tmp/e1-alphachip/`: generated local logs and checkpoints when repo-local
   `build/` is not writable. The current checkout has a root-owned `build/`
   directory, so wrappers fall back to this path.
@@ -39,6 +49,9 @@ flow, and judged by physical-design evidence rather than proxy reward alone.
   from CT proxy cost through OpenROAD/OpenLane routed evidence.
 - `06_e1_notes/softmacro_benchmark_2026-05-19.md`: live E1 soft-macro
   benchmark results and run commands.
+- `08_full_stack_ai_chip_optimization_plan_2026-05-20.md`: full-stack
+  reproducible AI chip optimization plan covering public corpus intake,
+  training, inference, E1 candidate replay, and deterministic evidence gates.
 
 ## Practical pipeline
 
@@ -55,6 +68,10 @@ flow, and judged by physical-design evidence rather than proxy reward alone.
 ## First commands
 
 ```sh
+make ai-eda-external-assets-check
+make ai-eda-internal-schemas-check
+make ai-eda-cuda-preflight
+scripts/ai_eda/fetch_external_asset.py --asset google-circuit-training --dry-run
 scripts/alphachip/check_setup.sh
 scripts/alphachip/build_container.sh
 scripts/alphachip/run_toy_training.sh

@@ -82,6 +82,8 @@ def test_discovery_covers_all_real_benchmark_directories() -> None:
     assert ".pytest_cache" not in discovery.all_directories
     assert "swe-bench-pro" not in discovery.all_directories
     assert "swe-bench-workspace" not in discovery.all_directories
+    assert not any("gaia" in name.lower() for name in discovery.all_directories)
+    assert not any("gaia" in adapter_id.lower() for adapter_id in discovery.adapters)
 
 
 def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> None:
@@ -282,6 +284,41 @@ def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
     ]
     with pytest.raises(ValueError, match="failed scenarios"):
         _score_from_hyperliquid_bench_json(payload)
+
+
+def test_hyperliquid_cli_detects_cerebras_provider(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from benchmarks.HyperliquidBench.__main__ import (
+        _apply_model_environment,
+        _default_model_for_provider,
+        _detect_model_provider,
+    )
+
+    for key in (
+        "BENCHMARK_MODEL_PROVIDER",
+        "CEREBRAS_API_KEY",
+        "GROQ_API_KEY",
+        "OPENROUTER_API_KEY",
+        "OPENAI_API_KEY",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    assert _detect_model_provider() == ""
+
+    monkeypatch.setenv("CEREBRAS_API_KEY", "present")
+    assert _detect_model_provider() == "cerebras"
+
+    monkeypatch.setenv("BENCHMARK_MODEL_PROVIDER", "openrouter")
+    assert _detect_model_provider() == "openrouter"
+    assert _default_model_for_provider("cerebras") == "gpt-oss-120b"
+    assert _default_model_for_provider("openrouter") == "openai/gpt-oss-120b"
+
+    _apply_model_environment("cerebras", "gpt-oss-120b")
+    assert os.environ["BENCHMARK_MODEL_PROVIDER"] == "cerebras"
+    assert os.environ["BENCHMARK_MODEL_NAME"] == "gpt-oss-120b"
+    assert os.environ["CEREBRAS_LARGE_MODEL"] == "gpt-oss-120b"
+    assert os.environ["CEREBRAS_SMALL_MODEL"] == "gpt-oss-120b"
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -679,6 +716,29 @@ def test_hyperliquid_matrix_rows_require_live_credentials(
         cell.reason == orchestrator_adapters.HYPERLIQUID_LIVE_UNAVAILABLE_REASON
         for cell in cells
     )
+
+
+def test_hyperliquid_live_matrix_rows_require_trading_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cells = [
+        cell
+        for cell in report.cells
+        if cell.benchmark_id == "hyperliquid_bench"
+    ]
+
+    assert len(cells) == 3
+    assert all(cell.compatible is True for cell in cells)
+    assert all("HL_PRIVATE_KEY" in cell.required_env for cell in cells)
+    assert all("CEREBRAS_API_KEY" in cell.required_env for cell in cells)
+    assert all("--no-demo" in (cell.command or []) for cell in cells)
 
 
 def test_cross_matrix_validation_redacts_secret_config_values() -> None:

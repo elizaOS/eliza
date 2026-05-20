@@ -50,6 +50,7 @@ type HostExternalImporter = () => Promise<Record<string, unknown>>;
 const HOST_EXTERNAL_IMPORTERS: Record<string, HostExternalImporter> = {
   "@elizaos/app-core": () => import("@elizaos/app-core"),
   "@elizaos/app-core/browser": () => import("@elizaos/app-core"),
+  "@elizaos/app-core/ui-compat": () => import("@elizaos/app-core/ui-compat"),
   "@elizaos/capacitor-contacts": () => import("@elizaos/capacitor-contacts"),
   "@elizaos/capacitor-messages": () => import("@elizaos/capacitor-messages"),
   "@elizaos/capacitor-mobile-signals": () =>

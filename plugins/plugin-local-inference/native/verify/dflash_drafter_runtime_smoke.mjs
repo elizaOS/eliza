@@ -1129,8 +1129,10 @@ function parseBenchOutput(text) {
   };
   const drafted = num(/n_drafted\s*[:=]\s*(\d+)/i);
   const accepted =
+    num(/\[\s*Draft:\s*(\d+)\s+accepted\s*\/\s*\d+\s+generated\s*\|/i) ??
     num(/n_drafted_accepted\s*[:=]\s*(\d+)/i) ??
     num(/n_accept(?:ed)?\s*[:=]\s*(\d+)/i);
+  const bracketDrafted = num(/\[\s*Draft:\s*\d+\s+accepted\s*\/\s*(\d+)\s+generated\s*\|/i);
   const encoded = tokenLine(
     /encoded\s+(\d+)\s+tokens\s+in\s+([\d.]+)\s+seconds,\s+speed:\s+([\d.]+)\s+t\/s/i,
   );
@@ -1145,15 +1147,18 @@ function parseBenchOutput(text) {
   // per-context eval timing excludes speculative overhead and can otherwise
   // overstate end-to-end tok/s when DFlash is not actually drafting.
   const tokPerSec =
+    num(/\[\s*Prompt:\s*[\d.]+\s*t\/s\s*\|\s*Generation:\s*([\d.]+)\s*t\/s\s*\]/i) ??
     decoded?.tokensPerSecond ??
     num(/eval time\s*=.*?,\s*([\d.]+)\s*tokens per second/i) ??
     num(/decode:.*?,\s*([\d.]+)\s*t\/s/i) ??
     num(/([\d.]+)\s*tokens? per second/i);
   return {
-    drafted,
+    drafted: drafted ?? bracketDrafted,
     accepted,
     acceptanceRate:
-      drafted && drafted > 0 && accepted != null ? accepted / drafted : null,
+      (drafted ?? bracketDrafted) && (drafted ?? bracketDrafted) > 0 && accepted != null
+        ? accepted / (drafted ?? bracketDrafted)
+        : null,
     tokensPerSecond: tokPerSec,
     generation: {
       encoded,
@@ -1169,6 +1174,15 @@ function parseBenchOutput(text) {
     vocabIncompatibleWarning:
       /target and draft vocabs are not compatible/i.test(text),
   };
+}
+
+function outputTail(text, lines = 40) {
+  return String(text ?? "")
+    .slice(-256 * 1024)
+    .trim()
+    .split(/\r?\n/)
+    .slice(-lines)
+    .join("\n");
 }
 
 /**
@@ -1213,6 +1227,10 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     options.ngl,
     "-ngld",
     options.ngld,
+    "--single-turn",
+    "--simple-io",
+    "--no-display-prompt",
+    "--log-disable",
   ];
   pushDraftContextFlag(args, skippedCliFlags, options.cliFeatures, context);
   pushDraftMinFlag(
@@ -1276,7 +1294,7 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
       ? Math.max(1, Number(options.benchTimeoutMs))
       : 600000,
     killSignal: "SIGKILL",
-    maxBuffer: 32 * 1024 * 1024,
+    maxBuffer: 64 * 1024 * 1024,
   });
   const wallMs = Date.now() - started;
   const output = `${result.stdout || ""}${result.stderr || ""}`;
@@ -1327,7 +1345,7 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     draftingActive,
     dflashFailure,
     tokenizerCompatible: options.tokenizerCompatibility?.compatible ?? null,
-    outputTail: output.trim().split(/\r?\n/).slice(-40).join("\n"),
+    outputTail: outputTail(output),
   };
 }
 
@@ -1365,9 +1383,8 @@ function blockedBenchPass(binary, options, withDrafter, reason) {
 
 function requiresTrueDflashDraftingForShape({
   upstreamShapeOk,
-  plainArShapeOk,
 }) {
-  return Boolean(upstreamShapeOk || plainArShapeOk);
+  return Boolean(upstreamShapeOk);
 }
 
 /**
@@ -1576,7 +1593,7 @@ function runSelfTest() {
       upstreamShapeOk: false,
       plainArShapeOk: true,
     }),
-    true,
+    false,
   );
   assert.equal(
     requiresTrueDflashDraftingForShape({
@@ -1765,19 +1782,11 @@ function main() {
     tokenizerCompatibility,
   );
 
-  // Two valid drafter shapes:
-  //  (a) Eliza-1 production drafter — a plain autoregressive GGUF
-  //      (qwen3/qwen35/…) that shares the target's vocabulary. This is
-  //      what `distill_dflash_drafter.py` produces and what the fork's
-  //      `--spec-type dflash` path actually consumes (it treats `dflash`
-  //      as `draft`; see common/speculative.cpp). It must record
-  //      `dflash-draft.target_checkpoint_sha256` so the publish gate /
-  //      runtime doctor can verify it was distilled against the shipped
-  //      text checkpoint.
-  //  (b) Upstream DFlash drafter — `general.architecture == dflash-draft`
-  //      with the `dflash_fc.weight` MLP-head tensors and the
-  //      `dflash-draft.dflash.*` block-config metadata. Not what Eliza-1
-  //      ships, but the smoke still accepts it for fork-compat tests.
+  // Only true DFlash-head GGUFs are valid for the DFlash release gate:
+  // `general.architecture == dflash-draft`, DFlash head tensors, and
+  // `dflash-draft.dflash.*` block metadata. Plain autoregressive GGUFs are
+  // useful as draft-model experiments, but they must not pass as DFlash
+  // artifacts because their scaling/acceptance profile is different.
   const isUpstreamDflashArch = architecture === "dflash-draft";
   const upstreamRequiredTensors = [
     "dflash_fc.weight",
@@ -1808,10 +1817,6 @@ function main() {
   const targetCheckpointFailure = targetCheckpointCompatibility.compatible
     ? null
     : targetCheckpointCompatibility.blockingReason;
-  const metadataCompatibilityFailure = releaseCompatibilityFailure(
-    tokenizerFailure,
-    targetCheckpointFailure,
-  );
 
   report.metadata = {
     target: {
@@ -1867,6 +1872,16 @@ function main() {
     upstreamShapeOk,
     plainArShapeOk,
   });
+  const shapeFailure = upstreamShapeOk
+    ? null
+    : isUpstreamDflashArch
+      ? "DFlash drafter is incomplete: expected dflash-draft architecture with DFlash head tensors and dflash-draft.dflash.* metadata"
+      : `not a true DFlash drafter: architecture=${architecture ?? "<unset>"}; plain autoregressive draft models must be benchmarked separately from DFlash`;
+  const metadataCompatibilityFailure = releaseCompatibilityFailure(
+    shapeFailure,
+    tokenizerFailure,
+    targetCheckpointFailure,
+  );
   report.runtimePolicy = {
     requiresTrueDflashDrafting,
     reason: requiresTrueDflashDrafting
@@ -1896,6 +1911,9 @@ function main() {
         ? "architecture is dflash-draft but the MLP-head tensors / dflash-draft.dflash.* metadata are incomplete"
         : `not a recognised drafter: architecture=${architecture ?? "<unset>"} and no token_embd.weight tensor`,
     );
+  }
+  if (shapeFailure) {
+    failedMetadata.push(shapeFailure);
   }
   // The target-checkpoint hash is only *advisory* in the smoke (a freshly
   // converted base won't have it yet); the publish gate is where it is

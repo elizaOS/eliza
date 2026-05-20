@@ -576,7 +576,7 @@ action-based benchmarks: call BENCHMARK_ACTION with one of:
 - Mind2Web: { "operation": "CLICK|TYPE|SELECT", "element_id": "...", "value": "..." }
 
 reply-based benchmarks: use REPLY with text payload:
-- Q&A (context-bench, rlm-bench, gaia): the answer
+- Q&A (context-bench, rlm-bench): the answer
 - hyperliquid_bench: {"steps":[...]}
 - vending-bench: {"action":"PLACE_ORDER","supplier_id":"beverage_dist","items":{"water":12}}
 - swe_bench: a single unified diff
@@ -726,7 +726,6 @@ function formatContextAsText(ctx: BenchmarkContext): string {
     "context_bench",
     "rlm-bench",
     "rlm_bench",
-    "gaia",
   ]).has(benchmark);
   const isJsonPlanBenchmark = new Set([
     "hyperliquid_bench",

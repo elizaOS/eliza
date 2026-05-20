@@ -298,6 +298,38 @@ describe("P1 session routes (real pglite)", () => {
     expect(body.access.ownerConfigured).toBe(false);
   });
 
+  it("local /api/auth/me succeeds before the auth DB is exposed", async () => {
+    const res = fakeRes();
+    await handleAuthSessionRoutes(
+      fakeReq({
+        method: "GET",
+        pathname: "/api/auth/me",
+        headers: { host: "localhost:31337" },
+      }),
+      res.res,
+      {
+        current: null,
+        pendingAgentName: null,
+        pendingRestartReasons: [],
+      },
+    );
+
+    expect(res.status()).toBe(200);
+    const body = res.body() as {
+      session: { kind: string; expiresAt: number | null };
+      access: {
+        mode: string;
+        passwordConfigured: boolean;
+        ownerConfigured: boolean;
+      };
+    };
+    expect(body.session.kind).toBe("local");
+    expect(body.session.expiresAt).toBeNull();
+    expect(body.access.mode).toBe("local");
+    expect(body.access.passwordConfigured).toBe(false);
+    expect(body.access.ownerConfigured).toBe(false);
+  });
+
   it("setup is one-shot — second call returns 409", async () => {
     const first = fakeReq({
       method: "POST",
