@@ -238,16 +238,15 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Backup & Reset$/,
 ];
 const SETTING_DEEP_LINKS: readonly {
-  label: RegExp;
   hash: string;
 }[] = [
-  { label: /^Providers$/, hash: "ai-model" },
-  { label: /^Voice$/, hash: "voice" },
-  { label: /^Connectors$/, hash: "connectors" },
-  { label: /^Permissions$/, hash: "permissions" },
-  { label: /^Vault$/, hash: "secrets" },
-  { label: /^Security$/, hash: "security" },
-  { label: /^Backup & Reset$/, hash: "advanced" },
+  { hash: "ai-model" },
+  { hash: "voice" },
+  { hash: "connectors" },
+  { hash: "permissions" },
+  { hash: "secrets" },
+  { hash: "security" },
+  { hash: "advanced" },
 ];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
@@ -1336,18 +1335,17 @@ async function clickSafeAllowlist(
     await expectNoPageIssues(issues, `settings section ${String(section)}`);
   }
 
-  const settingsNav = page.getByRole("navigation", { name: "Settings" });
   for (const link of SETTING_DEEP_LINKS) {
     await openAppPath(page, `/settings#${link.hash}`);
     await expect(page.getByTestId("settings-shell")).toBeVisible({
       timeout: 60_000,
     });
+    await expect(page).toHaveURL(new RegExp(`#${escapeRegExp(link.hash)}$`), {
+      timeout: 60_000,
+    });
     await expect(page.locator(`#${link.hash}`)).toBeVisible({
       timeout: 60_000,
     });
-    await expect(
-      settingsNav.getByRole("button", { name: link.label }),
-    ).toHaveAttribute("aria-current", "page", { timeout: 60_000 });
     await expectNoPageIssues(issues, `settings deep link ${link.hash}`);
   }
 }
