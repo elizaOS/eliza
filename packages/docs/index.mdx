@@ -1,43 +1,36 @@
 ---
 title: elizaOS
-description: "The open agentic operating system. Pick a track and start building."
+description: "The open agentic operating system — OS, Runtime, App, Cloud, Chip, Robot."
 ---
 
 <img src="/brand/banners/elizaos_banner.svg" alt="elizaOS" />
 
 <Tip>
-  **elizaOS** — the open agentic operating system. Build an agent, ship an app,
-  publish a plugin, train a model, or run the full OS on your hardware.
+  **elizaOS** is six things in one repository: an operating system, a runtime,
+  an app distribution layer, a hosted cloud, custom silicon, and an embodied
+  robot stack. Every project on elizaOS lives in one (or more) of these.
 </Tip>
 
-## Pick a track
-
-Every project on elizaOS fits one of eight tracks. Each track has its own landing page with concepts, code, and step-by-step setup.
+## Pick your dimension
 
 <CardGroup cols={2}>
-  <Card title="Agent" icon="robot" href="/tracks/agent/overview">
-    Configure a character, plug in connectors, run an autonomous Eliza agent.
+  <Card title="OS" icon="computer" href="/tracks/elizaos/overview">
+    elizaOS as an operating system. Linux live USB + AOSP variants.
   </Card>
-  <Card title="Agent App" icon="window" href="/tracks/agent-app/overview">
-    Wrap an agent in a desktop, mobile, or dashboard product for end users.
+  <Card title="Runtime" icon="cubes" href="/tracks/agent/overview">
+    The core that makes an agent. Plugins, character files, Eliza-1 models.
   </Card>
-  <Card title="Plugin" icon="puzzle-piece" href="/tracks/plugin/overview">
-    Ship a reusable package of actions, providers, evaluators, and services.
-  </Card>
-  <Card title="Framework" icon="cubes" href="/tracks/framework/overview">
-    Use `@elizaos/core` as a library inside your own TypeScript codebase.
-  </Card>
-  <Card title="Framework App" icon="rocket" href="/tracks/framework-app/overview">
-    Build a custom application directly on the core runtime — no shell.
-  </Card>
-  <Card title="elizaOS" icon="computer" href="/tracks/elizaos/overview">
-    The Linux distribution and AOSP variant. Boot Eliza on real hardware.
+  <Card title="App" icon="window" href="/tracks/agent-app/overview">
+    Product shells. Desktop, mobile, dashboard, custom UIs on `@elizaos/core`.
   </Card>
   <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
-    Eliza Cloud APIs: auth, app registration, inference, billing, containers, domains.
+    Managed APIs. Auth, app registration, inference, containers, billing, domains.
   </Card>
-  <Card title="Training & Simulation" icon="brain" href="/tracks/training/overview">
-    Eliza-1 model training, the Feed simulation, robot embodiment, benchmarks.
+  <Card title="Chip" icon="microchip" href="/tracks/chip/overview">
+    The Eliza E1 RISC-V SoC.
+  </Card>
+  <Card title="Robot" icon="robot" href="/tracks/training/robot">
+    MuJoCo sim, RL training, real-hardware bridge, Feed.
   </Card>
 </CardGroup>
 
@@ -51,7 +44,7 @@ cd my-agent
 bun install && bun run dev
 ```
 
-That gets you the **Agent** track. See [Quickstart](/quickstart) for full setup, or [Installation](/installation) for desktop / CLI install options.
+That gets you the **Runtime** dimension. See [Quickstart](/quickstart) for full setup, or [Installation](/installation) for desktop / CLI install options.
 
 ---
 
@@ -62,13 +55,13 @@ That gets you the **Agent** track. See [Quickstart](/quickstart) for full setup,
     Connectors, model providers, and capabilities all ship as composable plugins under `@elizaos/*`.
   </Card>
   <Card title="Persistent memory" icon="brain">
-    Agents remember conversations, learn from interactions, and act on long-running goals.
+    Agents remember conversations, learn from interactions, act on long-running goals.
   </Card>
   <Card title="Runs anywhere" icon="server">
     Local-only, desktop, mobile, Cloud, your own VPS, or directly on elizaOS hardware.
   </Card>
   <Card title="Open" icon="code-branch">
-    Every package is open source. Extend, fork, and contribute upstream.
+    Every package is open source. Extend, fork, contribute upstream.
   </Card>
   <Card title="Cloud optional" icon="cloud-arrow-up">
     Eliza Cloud handles auth, hosting, billing, and domains when you want it — never required.

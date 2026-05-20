@@ -1,0 +1,49 @@
+---
+title: Chip
+description: "The Eliza E1 — an open RISC-V AI phone SoC."
+---
+
+**Eliza E1** is an open, pre-tapeout RISC-V AI phone SoC. It's the smallest end-to-end system used to prove project conventions, evidence gates, and tool setup before scaling to a production design. The repository ties together architecture contracts, RTL, cocotb/formal verification, QEMU/Renode software-facing smoke targets, FPGA evidence, packaging, and physical-design entry points.
+
+E1 is **not** the final phone SoC. It's the lower-bound scaffold.
+
+## When to pick this track
+
+- You're contributing RTL, verification, or physical design.
+- You're writing firmware or BSP code (OpenSBI, U-Boot, Linux, AOSP) that targets the chip.
+- You're integrating a compiler or NPU runtime against the chip's contracts.
+- You want to read the architecture before booting Eliza on real silicon.
+
+## Track contents
+
+<CardGroup cols={2}>
+  <Card title="Architecture" icon="microchip" href="/tracks/chip/architecture">
+    RISC-V core, NPU contracts, interconnect, memory hierarchy.
+  </Card>
+  <Card title="RTL & Verification" icon="circuit-board" href="/tracks/chip/rtl-verify">
+    SystemVerilog source, cocotb tests, formal properties.
+  </Card>
+  <Card title="Software" icon="terminal" href="/tracks/chip/software">
+    OpenSBI, U-Boot, Linux, AOSP BSP scaffolds. Boot bringup.
+  </Card>
+  <Card title="Physical design" icon="diagram-project" href="/tracks/chip/physical-design">
+    OpenLane / OpenROAD flow, constraints, signoff.
+  </Card>
+  <Card title="Simulation & FPGA" icon="flask" href="/tracks/chip/simulation">
+    QEMU, Renode, Verilator, VCU118 mapping, evidence gates.
+  </Card>
+  <Card title="Manufacturing" icon="industry" href="/tracks/chip/manufacturing">
+    Board, packaging, bonding, pinout, thermal.
+  </Card>
+</CardGroup>
+
+## Where this comes from
+
+- Package root: [`packages/chip/`](https://github.com/elizaOS/eliza/tree/develop/packages/chip)
+- Architecture: `packages/chip/docs/arch/`
+- Evidence gates: `packages/chip/docs/evidence/`
+- Scripts and gates: `packages/chip/scripts/`
+
+## Status
+
+Pre-tapeout. Expected blockers (missing EDA tools, simulators, Android BSP, hardware) are recorded as explicit evidence artifacts. The repo treats them as gates, not hidden failures.

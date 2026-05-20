@@ -85,10 +85,24 @@
         ]
       },
       {
-        "tab": "Agent",
+        "tab": "OS",
         "groups": [
           {
-            "group": "Agent Track",
+            "group": "elizaOS",
+            "pages": [
+              "tracks/elizaos/overview",
+              "tracks/elizaos/linux",
+              "tracks/elizaos/aosp",
+              "tracks/elizaos/install"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Runtime",
+        "groups": [
+          {
+            "group": "Agent",
             "pages": [
               "tracks/agent/overview",
               "tracks/agent/create",
@@ -99,12 +113,74 @@
             ]
           },
           {
-            "group": "Agent Internals",
+            "group": "Framework (use @elizaos/core)",
+            "pages": [
+              "tracks/framework/overview",
+              "tracks/framework/runtime",
+              "tracks/framework/actions-providers-evaluators",
+              "tracks/framework/services"
+            ]
+          },
+          {
+            "group": "Plugins",
+            "pages": [
+              "tracks/plugin/overview",
+              "tracks/plugin/create",
+              "tracks/plugin/anatomy",
+              "tracks/plugin/publish"
+            ]
+          },
+          {
+            "group": "Runtime internals",
+            "pages": [
+              "runtime/core",
+              "runtime/models",
+              "runtime/memory",
+              "runtime/events",
+              "runtime/services",
+              "runtime/providers",
+              "runtime/types",
+              "runtime/action-callback-streaming"
+            ]
+          },
+          {
+            "group": "Agent internals",
             "pages": [
               "agents/runtime-and-lifecycle",
               "agents/character-interface",
               "agents/personality-and-behavior",
               "agents/memory-and-state"
+            ]
+          },
+          {
+            "group": "Plugin internals",
+            "pages": [
+              "plugins/overview",
+              "plugins/architecture",
+              "plugins/create-a-plugin",
+              "plugins/development",
+              "plugins/patterns",
+              "plugins/schemas",
+              "plugins/testing",
+              "plugins/local-plugins",
+              "plugins/plugin-eject",
+              "plugins/publish",
+              "plugins/skills",
+              "plugins/decision-guide",
+              "plugin-resolution-and-node-path"
+            ]
+          },
+          {
+            "group": "Architecture & config",
+            "pages": [
+              "architecture",
+              "configuration",
+              "config-schema",
+              "model-providers",
+              "chat-commands",
+              "plugin-setup-guide",
+              "action-catalog",
+              "skills/streaming"
             ]
           },
           {
@@ -141,20 +217,37 @@
               "connectors/zalo",
               "connectors/zalouser"
             ]
+          },
+          {
+            "group": "Eliza-1 model",
+            "pages": [
+              "tracks/training/overview",
+              "tracks/training/eliza-1",
+              "tracks/training/benchmarks"
+            ]
           }
         ]
       },
       {
-        "tab": "Agent App",
+        "tab": "App",
         "groups": [
           {
-            "group": "Agent-Based App",
+            "group": "Agent App (bundled shell)",
             "pages": [
               "tracks/agent-app/overview",
               "tracks/agent-app/desktop",
               "tracks/agent-app/mobile",
               "tracks/agent-app/dashboard",
               "tracks/agent-app/deploy"
+            ]
+          },
+          {
+            "group": "Framework App (your own shell)",
+            "pages": [
+              "tracks/framework-app/overview",
+              "tracks/framework-app/skeleton",
+              "tracks/framework-app/extend",
+              "tracks/framework-app/package"
             ]
           },
           {
@@ -185,95 +278,9 @@
               "apps/dashboard/settings",
               "apps/dashboard/talk-mode"
             ]
-          }
-        ]
-      },
-      {
-        "tab": "Plugin",
-        "groups": [
-          {
-            "group": "Plugin Track",
-            "pages": [
-              "tracks/plugin/overview",
-              "tracks/plugin/create",
-              "tracks/plugin/anatomy",
-              "tracks/plugin/publish"
-            ]
           },
           {
-            "group": "Build Plugins",
-            "pages": [
-              "plugins/overview",
-              "plugins/architecture",
-              "plugins/create-a-plugin",
-              "plugins/development",
-              "plugins/patterns",
-              "plugins/schemas",
-              "plugins/testing",
-              "plugins/local-plugins",
-              "plugins/plugin-eject",
-              "plugins/publish",
-              "plugins/skills",
-              "plugins/decision-guide",
-              "plugin-resolution-and-node-path"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Framework",
-        "groups": [
-          {
-            "group": "Framework Track",
-            "pages": [
-              "tracks/framework/overview",
-              "tracks/framework/runtime",
-              "tracks/framework/actions-providers-evaluators",
-              "tracks/framework/services"
-            ]
-          },
-          {
-            "group": "Runtime",
-            "pages": [
-              "runtime/core",
-              "runtime/models",
-              "runtime/memory",
-              "runtime/events",
-              "runtime/services",
-              "runtime/providers",
-              "runtime/types",
-              "runtime/action-callback-streaming"
-            ]
-          },
-          {
-            "group": "Architecture",
-            "pages": [
-              "architecture",
-              "configuration",
-              "config-schema",
-              "model-providers",
-              "chat-commands",
-              "plugin-setup-guide",
-              "action-catalog",
-              "skills/streaming"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Framework App",
-        "groups": [
-          {
-            "group": "Framework-Based App",
-            "pages": [
-              "tracks/framework-app/overview",
-              "tracks/framework-app/skeleton",
-              "tracks/framework-app/extend",
-              "tracks/framework-app/package"
-            ]
-          },
-          {
-            "group": "Developer Guides",
+            "group": "App developer guides",
             "pages": [
               "guides/beginners-user-guide",
               "guides/beginners-development-guide",
@@ -311,24 +318,10 @@
         ]
       },
       {
-        "tab": "elizaOS",
-        "groups": [
-          {
-            "group": "elizaOS Track",
-            "pages": [
-              "tracks/elizaos/overview",
-              "tracks/elizaos/linux",
-              "tracks/elizaos/aosp",
-              "tracks/elizaos/install"
-            ]
-          }
-        ]
-      },
-      {
         "tab": "Cloud",
         "groups": [
           {
-            "group": "Cloud Track",
+            "group": "Cloud APIs",
             "pages": [
               "tracks/cloud/overview",
               "tracks/cloud/auth",
@@ -340,7 +333,7 @@
             ]
           },
           {
-            "group": "Cloud Guides",
+            "group": "Cloud guides",
             "pages": [
               "guides/cloud",
               "guides/cloud-provider-routing",
@@ -351,16 +344,30 @@
         ]
       },
       {
-        "tab": "Training & Sim",
+        "tab": "Chip",
         "groups": [
           {
-            "group": "Training Track",
+            "group": "Eliza E1 SoC",
             "pages": [
-              "tracks/training/overview",
-              "tracks/training/eliza-1",
-              "tracks/training/feed",
+              "tracks/chip/overview",
+              "tracks/chip/architecture",
+              "tracks/chip/rtl-verify",
+              "tracks/chip/software",
+              "tracks/chip/physical-design",
+              "tracks/chip/simulation",
+              "tracks/chip/manufacturing"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "Robot",
+        "groups": [
+          {
+            "group": "Embodiment",
+            "pages": [
               "tracks/training/robot",
-              "tracks/training/benchmarks"
+              "tracks/training/feed"
             ]
           }
         ]

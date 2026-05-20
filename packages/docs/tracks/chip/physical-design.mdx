@@ -1,0 +1,29 @@
+---
+title: Physical Design
+description: "OpenLane / OpenROAD flow, constraints, signoff."
+---
+
+`packages/chip/pd/` holds the physical-design entry points:
+
+- **Flow** — OpenLane / OpenROAD-based, configured for the target process node.
+- **Constraints** — timing, placement, IO, padframe.
+- **Padframe** — pin assignments tied to the package definition in `packages/chip/package/`.
+- **Signoff manifests** — what passes before tapeout.
+
+## Running
+
+```bash
+make synth          # synthesis sanity check
+make pd-smoke       # physical-design gate (where tools are present)
+```
+
+PD requires real EDA tools. The repo gates these as `BLOCKED` when the tools aren't installed and emits the block as evidence — the smoke pipeline does not silently skip them.
+
+## Signoff
+
+Every signoff step (timing, DRC, LVS, ERC, antenna) has a manifest under `pd/` listing the exact tool, version, and acceptance criteria. Promotion to tapeout requires every manifest in the green.
+
+## See also
+
+- [Architecture](/tracks/chip/architecture)
+- [Manufacturing](/tracks/chip/manufacturing)

@@ -1,0 +1,32 @@
+---
+title: Manufacturing
+description: "Board, packaging, bonding, pinout, thermal."
+---
+
+The hardware bring-up artifacts live alongside the SoC source:
+
+## Board
+
+`packages/chip/board/` — KiCad projects for:
+
+- The phone reference design.
+- A PMIC daughtercard for power management.
+- A demo board for first-silicon validation.
+- The FPGA mapping (VCU118) used pre-silicon.
+
+## Package
+
+`packages/chip/package/` —
+
+- Pinout — mapping from die pads to package balls.
+- Bonding — wire / flip-chip bonding plan.
+- Wi-Fi interface manifests for production builds.
+
+## Thermal & signoff
+
+Thermal analysis and final package signoff live under `pd/` and `package/`. The signoff manifests pin tool + version + acceptance criteria the same way the digital signoff does.
+
+## See also
+
+- [Physical design](/tracks/chip/physical-design)
+- [Architecture](/tracks/chip/architecture)
