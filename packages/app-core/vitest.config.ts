@@ -96,6 +96,10 @@ const pluginWorkflowSrc = path.join(
   "plugins/plugin-workflow/src",
 );
 const pluginX402Src = path.join(monorepoRoot, "plugins/plugin-x402/src");
+const pluginWorkerRuntimeSrc = path.join(
+  monorepoRoot,
+  "packages/plugin-worker-runtime/src",
+);
 // Resolve react/react-dom from the location of this config file so the alias
 // works whether react is hoisted to the monorepo root or installed locally.
 // createRequire resolves through the normal Node resolution algorithm (walks up
@@ -447,6 +451,14 @@ export default defineConfig({
       {
         find: /^@elizaos\/plugin-x402$/,
         replacement: path.join(pluginX402Src, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime$/,
+        replacement: path.join(pluginWorkerRuntimeSrc, "index.ts"),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime\/(.+)$/,
+        replacement: path.join(pluginWorkerRuntimeSrc, "$1"),
       },
       {
         find: /^@elizaos\/plugin-browser$/,

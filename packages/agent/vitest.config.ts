@@ -42,6 +42,20 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/plugin-worker-runtime$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/plugin-worker-runtime/src/index.ts",
+        ),
+      },
+      {
+        find: /^@elizaos\/plugin-worker-runtime\/(.+)$/,
+        replacement: path.join(
+          monorepoRoot,
+          "packages/plugin-worker-runtime/src/$1",
+        ),
+      },
+      {
         find: "@elizaos/app-core",
         replacement: path.join(monorepoRoot, "packages/app-core/src/index.ts"),
       },

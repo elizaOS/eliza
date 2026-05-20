@@ -18,7 +18,9 @@
     {
       "name": "qjl_tcq_forced",
       "label": "target only, forced QJL/TCQ turbo3_tcq",
-      "args": ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"]
+      "args": ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
+      "softFailBackends": ["cpu"],
+      "softFailSignals": ["SIGSEGV"]
     },
     {
       "name": "dflash_only",

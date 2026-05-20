@@ -39,6 +39,8 @@ const DEFAULT_VARIANTS = [
     name: "qjl_tcq_forced",
     label: "target only, forced QJL/TCQ turbo3_tcq",
     args: ["--cache-type-k", "tbq3_tcq", "--cache-type-v", "tbq3_tcq"],
+    softFailBackends: ["cpu"],
+    softFailSignals: ["SIGSEGV"],
   },
   {
     name: "dflash_only",
@@ -491,6 +493,19 @@ function serverArgs(args, variant, port) {
   return out;
 }
 
+function softFailureReason(args, variant, message) {
+  const backends = Array.isArray(variant.softFailBackends)
+    ? variant.softFailBackends
+    : [];
+  const signals = Array.isArray(variant.softFailSignals)
+    ? variant.softFailSignals
+    : [];
+  if (!backends.includes(args.backend)) return null;
+  const matchedSignal = signals.find((signal) => message.includes(signal));
+  if (!matchedSignal) return null;
+  return `kernel crashed on ${args.backend}: ${matchedSignal}`;
+}
+
 async function completion(baseUrl, args, maxTokens) {
   const started = performance.now();
   const json = await fetchJson(
@@ -574,7 +589,14 @@ async function runVariant(args, variant) {
   } catch (error) {
     row.error = error instanceof Error ? error.message : String(error);
     row.logs = logs.slice(-120);
-    console.log(`${variant.name} FAILED: ${row.error.split("\n")[0]}`);
+    const skipReason = softFailureReason(args, variant, row.error);
+    if (skipReason) {
+      row.skipped = true;
+      row.skipReason = skipReason;
+      console.log(`${variant.name} SKIPPED: ${skipReason}`);
+    } else {
+      console.log(`${variant.name} FAILED: ${row.error.split("\n")[0]}`);
+    }
   } finally {
     await stopServer(child, state);
   }

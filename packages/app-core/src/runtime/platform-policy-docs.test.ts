@@ -20,7 +20,7 @@ describe("platform policy docs", () => {
     expect(sandboxDoc).toContain("@elizaos/plugin-coding-tools");
     expect(sandboxDoc).toContain("agent-orchestrator");
 
-    expect(mobileDoc).toMatch(/do\s+not run a local Bun backend/);
+    expect(mobileDoc).toContain("must not run local shells");
     expect(mobileDoc).toContain("bun run build:android:cloud");
     expect(mobileDoc).toContain("bun run build:android:system");
 
