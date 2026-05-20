@@ -126,7 +126,10 @@ const directWalletStatus = {
   },
 };
 
-async function installBscMocks(page: Page, opts?: { htmlStatus?: boolean }) {
+async function installBscMocks(
+  page: Page,
+  opts?: { htmlStatus?: boolean; accountWalletAddress?: string | null },
+) {
   let createPaymentCalls = 0;
 
   await page.route("**/api/**", async (route) => {
@@ -145,7 +148,12 @@ async function installBscMocks(page: Page, opts?: { htmlStatus?: boolean }) {
     }
 
     if (path === "/api/v1/user") {
-      return route.fulfill({ json: userPayload() });
+      const payload = userPayload();
+      if (opts && "accountWalletAddress" in opts) {
+        payload.data.wallet_address = opts.accountWalletAddress ?? null;
+        payload.data.wallet_verified = Boolean(opts.accountWalletAddress);
+      }
+      return route.fulfill({ json: payload });
     }
 
     if (path === "/api/credits/balance") {
@@ -239,6 +247,35 @@ test("/bsc renders the promo purchase state from direct wallet config", async ({
 
   await page.getByRole("button", { name: /Pay and add credits/i }).click();
   await expect(page.getByText("Connect your BSC wallet first.")).toBeVisible();
+  expect(mocks.createPaymentCalls()).toBe(0);
+  expectNoJsonFallbackCrash(failures);
+});
+
+test("/bsc asks OAuth users to verify a wallet before payment", async ({
+  page,
+}) => {
+  const failures = collectFailures(page);
+  const mocks = await installBscMocks(page, { accountWalletAddress: null });
+
+  await page.goto("/bsc");
+
+  await expect(
+    page.getByRole("heading", { name: "Buy cloud credit on BSC" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Verify your BSC wallet" }),
+  ).toBeVisible();
+  await expect(page.getByText("Sign a one-time message")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Connect Wallet/i }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: /Verify wallet/i }),
+  ).toBeDisabled();
+  await expect(
+    page.getByRole("button", { name: /Pay and add credits/i }),
+  ).toHaveCount(0);
+
   expect(mocks.createPaymentCalls()).toBe(0);
   expectNoJsonFallbackCrash(failures);
 });

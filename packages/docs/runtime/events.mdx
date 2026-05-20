@@ -58,51 +58,76 @@ enum EventType {
   WORLD_LEFT = "world:left",
 
   // Entity events
-  ENTITY_JOINED = "entity:joined",
-  ENTITY_LEFT = "entity:left",
-  ENTITY_UPDATED = "entity:updated",
+  ENTITY_JOINED = "ENTITY_JOINED",
+  ENTITY_LEFT = "ENTITY_LEFT",
+  ENTITY_UPDATED = "ENTITY_UPDATED",
 
   // Room events
-  ROOM_JOINED = "room:joined",
-  ROOM_LEFT = "room:left",
-  ROOM_UPDATED = "room:updated",
+  ROOM_JOINED = "ROOM_JOINED",
+  ROOM_LEFT = "ROOM_LEFT",
 
   // Message events
-  MESSAGE_RECEIVED = "message:received",
-  MESSAGE_SENT = "message:sent",
-  MESSAGE_DELETED = "message:deleted",
-  MESSAGE_UPDATED = "message:updated",
+  MESSAGE_RECEIVED = "MESSAGE_RECEIVED",
+  MESSAGE_SENT = "MESSAGE_SENT",
+  MESSAGE_DELETED = "MESSAGE_DELETED",
+  CHANNEL_CLEARED = "CHANNEL_CLEARED",
 
   // Voice events
-  VOICE_MESSAGE_RECEIVED = "voice:message:received",
-  VOICE_MESSAGE_SENT = "voice:message:sent",
-  VOICE_STARTED = "voice:started",
-  VOICE_ENDED = "voice:ended",
+  VOICE_MESSAGE_RECEIVED = "VOICE_MESSAGE_RECEIVED",
+  VOICE_MESSAGE_SENT = "VOICE_MESSAGE_SENT",
+
+  // Reaction / post / interaction
+  REACTION_RECEIVED = "REACTION_RECEIVED",
+  POST_GENERATED = "POST_GENERATED",
+  INTERACTION_RECEIVED = "INTERACTION_RECEIVED",
 
   // Run events
-  RUN_STARTED = "run:started",
-  RUN_COMPLETED = "run:completed",
-  RUN_FAILED = "run:failed",
-  RUN_TIMEOUT = "run:timeout",
+  RUN_STARTED = "RUN_STARTED",
+  RUN_ENDED = "RUN_ENDED",
+  RUN_TIMEOUT = "RUN_TIMEOUT",
 
   // Action events
-  ACTION_STARTED = "action:started",
-  ACTION_COMPLETED = "action:completed",
-  ACTION_FAILED = "action:failed",
+  ACTION_STARTED = "ACTION_STARTED",
+  ACTION_COMPLETED = "ACTION_COMPLETED",
 
   // Evaluator events
-  EVALUATOR_STARTED = "evaluator:started",
-  EVALUATOR_COMPLETED = "evaluator:completed",
-  EVALUATOR_FAILED = "evaluator:failed",
+  EVALUATOR_STARTED = "EVALUATOR_STARTED",
+  EVALUATOR_COMPLETED = "EVALUATOR_COMPLETED",
 
-  // Model events
-  MODEL_USED = "model:used",
-  MODEL_FAILED = "model:failed",
+  // Model + embedding events
+  MODEL_USED = "MODEL_USED",
+  EMBEDDING_GENERATION_REQUESTED = "EMBEDDING_GENERATION_REQUESTED",
+  EMBEDDING_GENERATION_COMPLETED = "EMBEDDING_GENERATION_COMPLETED",
+  EMBEDDING_GENERATION_FAILED = "EMBEDDING_GENERATION_FAILED",
 
-  // Service events
-  SERVICE_STARTED = "service:started",
-  SERVICE_STOPPED = "service:stopped",
-  SERVICE_ERROR = "service:error",
+  // Control + form
+  CONTROL_MESSAGE = "CONTROL_MESSAGE",
+  FORM_FIELD_CONFIRMED = "FORM_FIELD_CONFIRMED",
+  FORM_FIELD_CANCELLED = "FORM_FIELD_CANCELLED",
+
+  // Pipeline hooks (HOOK_*) — see packages/core/src/types/events.ts
+  HOOK_COMMAND_NEW = "HOOK_COMMAND_NEW",
+  HOOK_COMMAND_RESET = "HOOK_COMMAND_RESET",
+  HOOK_COMMAND_STOP = "HOOK_COMMAND_STOP",
+  HOOK_SESSION_START = "HOOK_SESSION_START",
+  HOOK_SESSION_END = "HOOK_SESSION_END",
+  HOOK_AGENT_BASIC_CAPABILITIES = "HOOK_AGENT_BASIC_CAPABILITIES",
+  HOOK_AGENT_START = "HOOK_AGENT_START",
+  HOOK_AGENT_END = "HOOK_AGENT_END",
+  HOOK_GATEWAY_START = "HOOK_GATEWAY_START",
+  HOOK_GATEWAY_STOP = "HOOK_GATEWAY_STOP",
+  HOOK_COMPACTION_BEFORE = "HOOK_COMPACTION_BEFORE",
+  HOOK_COMPACTION_AFTER = "HOOK_COMPACTION_AFTER",
+  HOOK_TOOL_BEFORE = "HOOK_TOOL_BEFORE",
+  HOOK_TOOL_AFTER = "HOOK_TOOL_AFTER",
+  HOOK_TOOL_PERSIST = "HOOK_TOOL_PERSIST",
+  HOOK_MESSAGE_SENDING = "HOOK_MESSAGE_SENDING",
+  PIPELINE_HOOK_METRIC = "PIPELINE_HOOK_METRIC",
+
+  // Platform-specific event channels
+  DISCORD = "DISCORD",
+  TELEGRAM = "TELEGRAM",
+  X = "X",
 }
 ```
 
@@ -171,7 +196,7 @@ const myPlugin: Plugin = {
   events: {
     [EventType.MESSAGE_RECEIVED]: [handleMessageReceived, logMessage],
     [EventType.ACTION_COMPLETED]: [processActionResult],
-    [EventType.RUN_COMPLETED]: [cleanupRun],
+    [EventType.RUN_ENDED]: [cleanupRun],
   },
 };
 ```
