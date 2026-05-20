@@ -51,15 +51,19 @@ async function forwardControlPlaneRequest(
   configureHeaders(headers);
 
   try {
-    const upstream = await fetch(target, {
-      body:
-        c.req.method === "GET" || c.req.method === "HEAD"
-          ? undefined
-          : c.req.raw.body,
+    const body =
+      c.req.method === "GET" || c.req.method === "HEAD"
+        ? undefined
+        : c.req.raw.body;
+    const init: RequestInit & { duplex?: "half" } = {
+      body,
       headers,
       method: c.req.method,
       redirect: "manual",
-    });
+    };
+    if (body) init.duplex = "half";
+
+    const upstream = await fetch(target, init);
 
     return new Response(upstream.body, {
       headers: upstream.headers,

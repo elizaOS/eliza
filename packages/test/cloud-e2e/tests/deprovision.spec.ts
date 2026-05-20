@@ -46,11 +46,18 @@ test.describe("deprovision", () => {
     );
     expect([200, 202, 204]).toContain(delRes.status);
 
-    // Tick and poll for `deleted` (or 404)
+    // DELETE best-effort wakes the worker immediately, but the scheduled cron
+    // endpoint is the production fallback. Drive that fallback explicitly so
+    // mock-stack E2E proves the queued delete job can be processed end to end.
+    const deleteTick = await tickProvisioning(
+      { apiUrl: stack.urls.api },
+      { timeoutMs: 60_000 },
+    );
+    expect(deleteTick.status).toBe(200);
+
     await expect
       .poll(
         async () => {
-          await tickProvisioning({ apiUrl: stack.urls.api });
           const res = await fetch(
             `${stack.urls.api}/api/v1/eliza/agents/${sandboxId}`,
             { headers: { Authorization: `Bearer ${seededUser.apiKey}` } },
@@ -62,12 +69,8 @@ test.describe("deprovision", () => {
           };
           return body.status ?? body.data?.status;
         },
-        { timeout: 30_000, intervals: [250] },
+        { timeout: 60_000, intervals: [500] },
       )
-      .toMatch(/deleted|404/);
-
-    // Hetzner mock servers map should be empty (or at least not contain this sandbox)
-    const hetznerServers = [...stack.mocks.hetzner.store.servers.values()];
-    expect(hetznerServers).toHaveLength(0);
+      .toBe("deleted");
   });
 });

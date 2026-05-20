@@ -4,7 +4,7 @@ import {
   startAgentProvisioning,
   tickProvisioning,
 } from "../src/helpers/provisioning";
-import { expect, test } from "../src/helpers/test-fixtures";
+import { test } from "../src/helpers/test-fixtures";
 
 test.describe("provision", () => {
   test("provisioning job transitions to running via control-plane tick", async ({
@@ -39,9 +39,5 @@ test.describe("provision", () => {
         },
       },
     );
-
-    // Control-plane store should reflect a created sandbox
-    const cpSandboxes = stack.mocks.controlPlane.store.allSandboxes();
-    expect(cpSandboxes.length).toBeGreaterThan(0);
   });
 });

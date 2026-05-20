@@ -1,16 +1,17 @@
 # elizaOS USB Installer Handoff
 
-Last updated: 2026-05-19
+Last updated: 2026-05-20
 
 ## Current Branch
 
 - Repository: `elizaOS/eliza`
 - Worktree used for the latest proof: `/home/nubs/Git/iqlabs/elizaos-usb-prod-e2e`
-- Branch: `nubs/elizaos-live-prod-hardening-20260519`
-- PR: https://github.com/elizaOS/eliza/pull/7803
-- Verified local head: current merge head
-- Latest merged `origin/develop`: `c73f1768b68ea72b5df83efeeaadea49f812555f`
-- Latest local CI-fix validation: 2026-05-19 23:55 UTC
+- Branch: `nubs/messylinux-cloud-e2e-hardening`
+- Previous PR #7803: https://github.com/elizaOS/eliza/pull/7803 (merged)
+- Follow-up PR #7825: https://github.com/elizaOS/eliza/pull/7825
+- Verified local base: `origin/develop@27d4aee89417a4fc921c2c39ae7bd6fa3bdb9c82`
+- Latest PR head locally validated: `7497cf6c6b5e787df1ddc71ef49844cf7283c4a0`
+- Latest local CI-fix validation: 2026-05-20 05:13 UTC
 
 ## What This Package Is
 
@@ -105,6 +106,21 @@ behind the backend contract and future signed/elevated helpers.
   - OS release CI and the Linux release-packaging path now run Playwright E2E
     and run the opt-in `scsi_debug` virtual block-device proof when the runner
     kernel provides that module.
+- Additional cloud mock-stack E2E hardening added on 2026-05-20:
+  - fixed the cloud E2E repo-root resolution so the PGlite TCP bridge script
+    resolves from the repository root, not `packages/`;
+  - replaced the stale in-process control-plane mock with the real
+    `container-control-plane` sidecar and a guarded in-memory sandbox provider
+    that only activates under `NODE_ENV=test` or `CLOUD_E2E=1`;
+  - added a Node-hosted cloud-api Worker fetch adapter for the E2E harness so
+    CI exercises the generated router, real API routes, DB queue, and sidecar
+    forwarder without depending on Wrangler local runtime;
+  - fixed Node fetch forwarding for request bodies by setting `duplex: "half"`;
+  - added process-level DB pool cleanup before the fixture stops PGlite;
+  - moved best-effort per-agent API-key revocation out of the sandbox delete
+    transaction and made revocation a single delete-returning operation;
+  - updated provision/deprovision/stuck-cleanup specs to create real agents,
+    drive the real provisioning queue, and assert externally visible states.
 - Post-merge validation on 2026-05-20 after merging
   `origin/develop@c73f1768b6`:
   - `bun run verify:cloud` passed;
@@ -118,6 +134,52 @@ behind the backend contract and future signed/elevated helpers.
     tests;
   - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
     with `scsi_debug` cleanup verified;
+  - `git diff --check` passed.
+- Final local validation on 2026-05-20 after the mock-stack E2E harness fix:
+  - `bun run --cwd packages/cloud-shared typecheck` passed;
+  - `bun run --cwd packages/cloud-api typecheck` passed;
+  - `bun run --cwd packages/cloud-api lint` passed;
+  - `bun test packages/cloud-api/webhooks/bluebubbles/route.test.ts` passed:
+    10 tests;
+  - `bun run --cwd packages/cloud-services/container-control-plane typecheck`
+    passed;
+  - `bun run --cwd packages/test/cloud-e2e typecheck` passed;
+  - `bun run --cwd packages/cloud-shared lint` passed;
+  - `bun run cloud:e2e` passed: 4 Playwright tests covering onboarding,
+    provision, deprovision, and stuck cleanup against PGlite, cloud-api,
+    cloud-frontend, the real control-plane sidecar, and the guarded memory
+    sandbox provider;
+  - `bun run --cwd packages/cloud-api test -- --runInBand` passed: 44 tests;
+  - `bun run --cwd packages/os/usb-installer typecheck` passed;
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 80 tests,
+    with the opt-in virtual block-device test skipped by default;
+  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `bun run --cwd packages/os/usb-installer build` passed;
+  - `bun run --cwd packages/os/usb-installer test:e2e` passed: 6 Playwright
+    tests;
+  - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+    against `scsi_debug`;
+  - `git diff --check` passed.
+- Follow-up local validation on 2026-05-20 after rebasing PR #7825 onto
+  `origin/develop@27d4aee894`:
+  - `bun run --cwd packages/cloud-shared typecheck` passed;
+  - `bun run --cwd packages/cloud-shared lint` passed;
+  - `bun run --cwd packages/cloud-api typecheck` passed;
+  - `bun run --cwd packages/test/cloud-e2e typecheck` passed;
+  - `bun run cloud:e2e` passed: 4 Playwright tests covering onboarding,
+    provision, deprovision, and stuck cleanup against PGlite, cloud-api,
+    cloud-frontend, the real control-plane sidecar, and the guarded memory
+    sandbox provider;
+  - `bun run test:cloud` passed: 279 tests across 30 files;
+  - `bun run --cwd packages/os/usb-installer typecheck` passed;
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files, 80 tests,
+    with the opt-in virtual block-device test skipped by default;
+  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `bun run --cwd packages/os/usb-installer build` passed;
+  - `bun run --cwd packages/os/usb-installer test:e2e` passed: 6 Playwright
+    tests;
+  - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+    against `scsi_debug`;
   - `git diff --check` passed.
 - Disk cleanup on 2026-05-19:
   - removed ignored/generated stale ISO artifacts and root `dist/`;
