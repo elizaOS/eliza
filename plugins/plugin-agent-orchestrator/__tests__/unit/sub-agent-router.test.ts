@@ -694,6 +694,34 @@ describe("SubAgentRouter", () => {
       expect(posted?.content?.text).not.toContain("[verification:");
     });
 
+    it("does not verify repository URLs found while inspecting package metadata", async () => {
+      const fetchMock = vi.fn(async () => {
+        return new Response("not found", { status: 404 });
+      });
+      stubFetch(fetchMock);
+      session = sessionWithTask(
+        "Read packages/core/package.json and reply with the package name.",
+      );
+      acp = makeAcpService(session);
+      const { runtime, handleMessage, spawnSession } = makeRuntime({
+        acp: acp.service,
+      });
+      await SubAgentRouter.start(runtime);
+
+      acp.emit(SESSION_ID, "task_complete", {
+        response:
+          '[tool output: Read packages/core/package.json]\n{"name":"@elizaos/core","homepage":"https://github.com/elizaOS/eliza","repository":{"type":"git","url":"git+https://github.com/elizaOS/eliza.git","directory":"packages/core"}}\n[/tool output]\n@elizaos/core',
+      });
+      await new Promise((r) => setTimeout(r, 200));
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(spawnSession).not.toHaveBeenCalled();
+      expect(handleMessage).toHaveBeenCalledTimes(1);
+      const posted = handleMessage.mock.calls[0]?.[1];
+      expect(posted?.content?.text).toContain("@elizaos/core");
+      expect(posted?.content?.text).not.toContain("[verification:");
+    });
+
     it("ignores route-template URL stems when a concrete app URL verifies", async () => {
       const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
         const url = String(input);
