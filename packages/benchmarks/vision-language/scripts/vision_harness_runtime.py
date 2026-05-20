@@ -136,8 +136,20 @@ def _run_local_eliza_vlm(*, tier: str, image_path: str, question: str, max_token
     )
     if result.returncode != 0:
         raise RuntimeError(result.stderr or result.stdout or "local Eliza VLM failed")
-    line = (result.stdout or "").strip().splitlines()[-1]
-    parsed = json.loads(line)
+    parsed: dict[str, Any] | None = None
+    for line in (result.stdout or "").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("{"):
+            continue
+        try:
+            candidate = json.loads(stripped)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(candidate, dict) and "text" in candidate:
+            parsed = candidate
+            break
+    if parsed is None:
+        raise RuntimeError(f"local Eliza VLM produced no JSON text line: {result.stdout[-1000:]}")
     text = parsed.get("text")
     return text if isinstance(text, str) else ""
 
