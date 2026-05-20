@@ -1093,11 +1093,22 @@ module e1_soc_integrated
     endfunction
 
     // Read FSM
+    //
+    // AXI4 IHI 0022 A8.4.1 (upsizing): the slave receives the master's
+    // AxLEN/AxSIZE unchanged.  Each downstream beat must serve the
+    // 128-bit word that contains the *current* beat address.  For a CVA6
+    // 64-bit master (AxSIZE=3) the address advances 8 bytes per beat, so
+    // two consecutive upstream beats land in the same 128-bit slot (the
+    // width converter's `r_lane_q` picks the right 64-bit half).  Using a
+    // simple `slot0_rom[beat_idx]` lookup walks the ROM at 128-bit
+    // strides regardless of AxSIZE, which mis-serves upsize bursts.  The
+    // fix is to track the per-beat byte address and index by `(addr >> 4)`.
     typedef enum logic [1:0] {SLOT0_R_IDLE, SLOT0_R_RESPOND} slot0_read_state_t;
     slot0_read_state_t       slot0_r_state;
     logic [CVA6_AXI_ID_W-1:0]   slot0_r_pending_id;
-    logic [CVA6_AXI_ADDR_W-1:0] slot0_r_pending_addr;
+    logic [CVA6_AXI_ADDR_W-1:0] slot0_r_cur_addr;
     logic [7:0]                 slot0_r_pending_beats;
+    logic [2:0]                 slot0_r_size;
     logic [7:0]                 slot0_r_beat_idx;
 
     assign slot0_ar_ready = (slot0_r_state == SLOT0_R_IDLE);
@@ -1106,8 +1117,9 @@ module e1_soc_integrated
         if (!rst_n) begin
             slot0_r_state         <= SLOT0_R_IDLE;
             slot0_r_pending_id    <= '0;
-            slot0_r_pending_addr  <= '0;
+            slot0_r_cur_addr      <= '0;
             slot0_r_pending_beats <= '0;
+            slot0_r_size          <= 3'd0;
             slot0_r_beat_idx      <= '0;
             slot0_r_valid         <= 1'b0;
             slot0_r_id            <= '0;
@@ -1123,25 +1135,22 @@ module e1_soc_integrated
                     if (slot0_ar_valid && slot0_ar_ready) begin
                         slot0_r_state         <= SLOT0_R_RESPOND;
                         slot0_r_pending_id    <= slot0_ar_id;
-                        slot0_r_pending_addr  <= slot0_ar_addr;
+                        slot0_r_cur_addr      <= slot0_ar_addr;
                         slot0_r_pending_beats <= slot0_ar_len;
+                        slot0_r_size          <= slot0_ar_size;
                         slot0_r_beat_idx      <= 8'd0;
                     end
                 end
                 SLOT0_R_RESPOND: begin
                     slot0_r_valid <= 1'b1;
                     slot0_r_id    <= slot0_r_pending_id;
-                    if (slot0_is_rom_addr(slot0_r_pending_addr +
-                            ({56'h0, slot0_r_beat_idx} * 16))) begin
+                    if (slot0_is_rom_addr(slot0_r_cur_addr)) begin
                         slot0_r_data <= slot0_rom[
-                            ((slot0_r_pending_addr - SLOT0_ROM_BASE) >> 4) +
-                            slot0_r_beat_idx];
+                            (slot0_r_cur_addr - SLOT0_ROM_BASE) >> 4];
                         slot0_r_resp <= 2'b00;
-                    end else if (slot0_is_dram_addr(slot0_r_pending_addr +
-                            ({56'h0, slot0_r_beat_idx} * 16))) begin
+                    end else if (slot0_is_dram_addr(slot0_r_cur_addr)) begin
                         slot0_r_data <= slot0_dram[
-                            ((slot0_r_pending_addr - SLOT0_DRAM_BASE) >> 4) +
-                            slot0_r_beat_idx];
+                            (slot0_r_cur_addr - SLOT0_DRAM_BASE) >> 4];
                         slot0_r_resp <= 2'b00;
                     end else begin
                         slot0_r_data <= 128'h0;
@@ -1155,6 +1164,8 @@ module e1_soc_integrated
                             slot0_r_last  <= 1'b0;
                         end else begin
                             slot0_r_beat_idx <= slot0_r_beat_idx + 8'd1;
+                            slot0_r_cur_addr <= slot0_r_cur_addr +
+                                ({{(CVA6_AXI_ADDR_W-1){1'b0}}, 1'b1} << slot0_r_size);
                         end
                     end
                 end
@@ -1164,12 +1175,22 @@ module e1_soc_integrated
     end
 
     // Write FSM
+    //
+    // Same upsize convention as the read side: the slave receives the
+    // master's AxLEN/AxSIZE and the width converter places the per-beat
+    // upstream WSTRB+W_DATA on the byte lane selected by the per-beat
+    // address.  We track the current beat byte-address and merge each
+    // 128-bit beat into the destination 128-bit slot using WSTRB
+    // byte-wise (covers both DRAM and any stray ROM write — though ROM
+    // writes are silently dropped because the SoC contract leaves the
+    // boot-vector region read-only).
     typedef enum logic [1:0] {SLOT0_W_IDLE, SLOT0_W_DATA, SLOT0_W_RESP}
         slot0_write_state_t;
     slot0_write_state_t      slot0_w_state;
     logic [CVA6_AXI_ID_W-1:0]   slot0_w_pending_id;
-    logic [CVA6_AXI_ADDR_W-1:0] slot0_w_pending_addr;
+    logic [CVA6_AXI_ADDR_W-1:0] slot0_w_cur_addr;
     logic [7:0]                 slot0_w_pending_beats;
+    logic [2:0]                 slot0_w_size;
     logic [7:0]                 slot0_w_beat_idx;
 
     assign slot0_aw_ready = (slot0_w_state == SLOT0_W_IDLE);
@@ -1179,8 +1200,9 @@ module e1_soc_integrated
         if (!rst_n) begin
             slot0_w_state         <= SLOT0_W_IDLE;
             slot0_w_pending_id    <= '0;
-            slot0_w_pending_addr  <= '0;
+            slot0_w_cur_addr      <= '0;
             slot0_w_pending_beats <= '0;
+            slot0_w_size          <= 3'd0;
             slot0_w_beat_idx      <= '0;
             slot0_b_valid         <= 1'b0;
             slot0_b_id            <= '0;
@@ -1193,18 +1215,22 @@ module e1_soc_integrated
                     if (slot0_aw_valid && slot0_aw_ready) begin
                         slot0_w_state         <= SLOT0_W_DATA;
                         slot0_w_pending_id    <= slot0_aw_id;
-                        slot0_w_pending_addr  <= slot0_aw_addr;
+                        slot0_w_cur_addr      <= slot0_aw_addr;
                         slot0_w_pending_beats <= slot0_aw_len;
+                        slot0_w_size          <= slot0_aw_size;
                         slot0_w_beat_idx      <= 8'd0;
                     end
                 end
                 SLOT0_W_DATA: begin
                     if (slot0_w_valid && slot0_w_ready) begin
-                        if (slot0_is_dram_addr(slot0_w_pending_addr +
-                                ({56'h0, slot0_w_beat_idx} * 16))) begin
-                            slot0_dram[
-                                ((slot0_w_pending_addr - SLOT0_DRAM_BASE) >> 4) +
-                                slot0_w_beat_idx] <= slot0_w_data;
+                        if (slot0_is_dram_addr(slot0_w_cur_addr)) begin
+                            for (int b = 0; b < 16; b++) begin
+                                if (slot0_w_strb[b]) begin
+                                    slot0_dram[
+                                        (slot0_w_cur_addr - SLOT0_DRAM_BASE) >> 4
+                                    ][b*8 +: 8] <= slot0_w_data[b*8 +: 8];
+                                end
+                            end
                         end
                         // ROM writes are silently dropped (tests should not
                         // target the ROM with writes; the SoC contract is
@@ -1216,6 +1242,8 @@ module e1_soc_integrated
                             slot0_b_valid <= 1'b1;
                         end else begin
                             slot0_w_beat_idx <= slot0_w_beat_idx + 8'd1;
+                            slot0_w_cur_addr <= slot0_w_cur_addr +
+                                ({{(CVA6_AXI_ADDR_W-1){1'b0}}, 1'b1} << slot0_w_size);
                         end
                     end
                 end
