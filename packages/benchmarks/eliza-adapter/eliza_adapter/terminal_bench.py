@@ -315,7 +315,10 @@ class ElizaBridgeTerminalAgent:
                     f"stdout={cmd_result.stdout[:2000]}\n"
                     f"stderr={cmd_result.stderr[:1000]}"
                 )
-                if _signals_complete(response_text, response.params):
+                should_verify = _signals_complete(response_text, response.params) or (
+                    "answer.txt" in command.lower()
+                )
+                if should_verify:
                     test_success, test_output, test_exit_code = await self._environment.run_test(
                         task.test_script
                     )

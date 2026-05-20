@@ -187,7 +187,7 @@ export const checks: Check[] = [
   {
     name: "core capability protocol includes signed module provenance",
     pattern:
-      /(?=[\s\S]*export type RemotePluginModuleProvenance)(?=[\s\S]*issuer:\s*string)(?=[\s\S]*digestSha256:\s*string)(?=[\s\S]*signatureAlgorithm:\s*string)(?=[\s\S]*signature:\s*string)(?=[\s\S]*provenance\?:\s*RemotePluginModuleProvenance)(?=[\s\S]*requireRemotePluginModuleProvenance)(?=[\s\S]*digestSha256 must be a SHA-256 hex digest)/,
+      /export type RemotePluginModuleProvenance[\s\S]{0,400}issuer:\s*string[\s\S]{0,400}digestSha256:\s*string[\s\S]{0,400}signatureAlgorithm:\s*string[\s\S]{0,400}signature:\s*string[\s\S]*provenance\?:\s*RemotePluginModuleProvenance[\s\S]*requireRemotePluginModuleProvenance[\s\S]*digestSha256 must be a SHA-256 hex digest/,
     source: "core-capabilities",
     message:
       "core capability protocol must include typed signed module provenance with SHA-256 digest validation.",
