@@ -49,6 +49,10 @@ async function commandSucceeds(
   }
 }
 
+async function scsiDebugModuleAvailable(): Promise<boolean> {
+  return commandSucceeds("modinfo", ["scsi_debug"]);
+}
+
 async function loadVirtualUsbDisk(): Promise<void> {
   const alreadyLoaded = await commandSucceeds("sh", [
     "-c",
@@ -197,6 +201,13 @@ describe("Linux USB installer virtual block-device E2E", () => {
   scsiDebugIt(
     "writes a trusted image to a disposable scsi_debug removable block device",
     async () => {
+      if (!(await scsiDebugModuleAvailable())) {
+        console.warn(
+          "scsi_debug kernel module is unavailable; skipping virtual block-device proof on this host.",
+        );
+        return;
+      }
+
       process.env.ELIZAOS_USB_ENABLE_RAW_WRITE = "1";
 
       const tempDir = await fs.mkdtemp(

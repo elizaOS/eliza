@@ -64,6 +64,7 @@ That test requires Linux, passwordless `sudo -n`, and the kernel
 model `ELIZAUSBTEST`, writes a trusted 4 MiB image through the same local
 server/Linux backend flow, reads the first 4 MiB back, verifies SHA-256, and
 unloads the module. It refuses to run if `scsi_debug` is already loaded.
+CI runs this proof only on Linux runners that provide the `scsi_debug` module.
 
 Run the local app:
 

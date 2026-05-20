@@ -103,7 +103,8 @@ behind the backend contract and future signed/elevated helpers.
   - UI copy no longer claims Linux/Windows eject or readback behavior that the
     current backends do not perform;
   - OS release CI and the Linux release-packaging path now run Playwright E2E
-    and the opt-in `scsi_debug` virtual block-device proof.
+    and run the opt-in `scsi_debug` virtual block-device proof when the runner
+    kernel provides that module.
 - Post-merge validation on 2026-05-20 after merging
   `origin/develop@c73f1768b6`:
   - `bun run verify:cloud` passed;
