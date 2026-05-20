@@ -54,4 +54,32 @@ PYTHON   ?= python3
 
 EXTRA_ARGS += -Wall -Wno-UNUSEDSIGNAL -Wno-UNUSEDPARAM -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-IMPLICITSTATIC -Wno-CASEINCOMPLETE -Wno-UNOPTFLAT -Wno-DECLFILENAME -Wno-PINCONNECTEMPTY -Wno-SYNCASYNCNET
 
+# Optional: wire the real Ibex into pmc_top when PMC_INSTANTIATE_IBEX=1 is set
+# in the environment. Default-off keeps the existing 26+25 baseline cocotb
+# tests on the same (smaller) compile unit; flipping the gate adds the
+# resolved Ibex sources from the FuseSoC-staged tree under
+# external/ibex/ibex/build/. See external/ibex/ibex_pmc_min.f.
+ifneq ($(PMC_INSTANTIATE_IBEX),)
+ifneq ($(PMC_INSTANTIATE_IBEX),0)
+IBEX_FLIST := $(PWD)/ibex_pmc_min.f
+ifeq ($(wildcard $(IBEX_FLIST)),)
+$(error PMC_INSTANTIATE_IBEX=$(PMC_INSTANTIATE_IBEX) but $(IBEX_FLIST) is missing — run scripts/bootstrap_ibex.sh first)
+endif
+# Split the flist into +incdir+ (passed via EXTRA_ARGS) and source paths
+# (prepended to VERILOG_SOURCES so package declarations elaborate first).
+IBEX_INCDIRS  := $(shell awk '/^\+incdir\+/ {print $$0}' $(IBEX_FLIST) | sed 's|^+incdir+|+incdir+$(REPO)/|')
+IBEX_SOURCES  := $(shell awk '/^[^#+[:space:]]/ {print $$0}' $(IBEX_FLIST) | sed 's|^|$(REPO)/|')
+VERILOG_SOURCES := $(IBEX_SOURCES) $(VERILOG_SOURCES)
+# Upstream Ibex has a UNOPTFLAT loop reported by Verilator on the
+# load_store_unit / fetch_fifo cross-couplings; suppress at the build
+# level instead of patching upstream RTL (per
+# external/ibex/pin-manifest.json "no_fork_use_upstream_via_submodule").
+# DECLFILENAME, PINMISSING, UNUSEDSIGNAL similarly come from upstream
+# lint waivers in the FuseSoC build.
+EXTRA_ARGS += +define+PMC_INSTANTIATE_IBEX +define+SYNTHESIS
+EXTRA_ARGS += $(IBEX_INCDIRS)
+EXTRA_ARGS += -Wno-DECLFILENAME -Wno-PINMISSING -Wno-WIDTHTRUNC -Wno-WIDTHEXPAND -Wno-CASEINCOMPLETE -Wno-UNUSEDPARAM -Wno-LATCH -Wno-ASCRANGE -Wno-MULTIDRIVEN -Wno-CMPCONST -Wno-UNUSEDGENVAR -Wno-CONSTRAINTIGN
+endif
+endif
+
 include $(shell $(PYTHON) -m cocotb.config --makefiles)/Makefile.sim
