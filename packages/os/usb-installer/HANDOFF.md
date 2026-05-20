@@ -8,7 +8,7 @@ Last updated: 2026-05-19
 - Worktree used for the latest proof: `/home/nubs/Git/iqlabs/elizaos-usb-prod-e2e`
 - Branch: `nubs/elizaos-live-prod-hardening-20260519`
 - PR: https://github.com/elizaOS/eliza/pull/7803
-- Verified PR head: `d3eb80c11ebeb72739a9ad59cada31b8a682ed9f`
+- Verified local head: this hardening commit
 - Latest merged `origin/develop`: `d32b6a4461`
 - Latest local CI-fix validation: 2026-05-19 23:55 UTC
 
@@ -91,6 +91,19 @@ behind the backend contract and future signed/elevated helpers.
   - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
     against `scsi_debug`, and cleanup left `scsi_debug` unloaded;
   - `git diff --check` passed.
+- Additional USB hardening added after the read-only audit:
+  - Linux drive enumeration now asks `lsblk` for `MOUNTPOINTS` and blocks
+    removable media mounted as `/`, `/boot`, `/boot/efi`,
+    `/run/live/medium`, `/run/live/persistence`, or `/live/medium`, preventing
+    a live-boot USB from overwriting itself;
+  - stored live-write `planId`s expire after five minutes by default
+    (`ELIZAOS_USB_PLAN_TTL_MS`);
+  - browser origins are now exact-match app/dev origins instead of any
+    localhost port, with `ELIZAOS_USB_ALLOWED_ORIGINS` for explicit additions;
+  - UI copy no longer claims Linux/Windows eject or readback behavior that the
+    current backends do not perform;
+  - OS release CI and the Linux release-packaging path now run Playwright E2E
+    and the opt-in `scsi_debug` virtual block-device proof.
 - Disk cleanup on 2026-05-19:
   - removed ignored/generated stale ISO artifacts and root `dist/`;
   - removed inactive `/tmp/eliza-pr7803` temp checkout after confirming no

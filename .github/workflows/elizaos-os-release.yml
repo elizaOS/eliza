@@ -42,6 +42,9 @@ jobs:
           bun run --cwd packages/os/usb-installer typecheck
           bun run --cwd packages/os/usb-installer test
           bun run --cwd packages/os/usb-installer build
+          bunx playwright install --with-deps chromium
+          bun run --cwd packages/os/usb-installer test:e2e
+          bun run --cwd packages/os/usb-installer test:linux-virtual-usb
 
       - name: Validate Android installer
         run: |

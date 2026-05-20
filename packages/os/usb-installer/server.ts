@@ -10,8 +10,23 @@ import { assertWritePlanAllowed } from "./src/backend/write-safety";
 
 const PORT = Number(process.env.ELIZAOS_USB_INSTALLER_PORT ?? 3742);
 const HOSTNAME = "127.0.0.1";
+const DEFAULT_WRITE_PLAN_TTL_MS = 5 * 60 * 1_000;
 
-const allowedOriginPattern = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/;
+const DEFAULT_ALLOWED_ORIGINS = [
+  "http://127.0.0.1:3742",
+  "http://localhost:3742",
+  "http://127.0.0.1:5173",
+  "http://localhost:5173",
+  "http://127.0.0.1:5174",
+  "http://localhost:5174",
+  "http://127.0.0.1:4456",
+  "http://localhost:4456",
+];
+
+interface UsbInstallerHandlerOptions {
+  allowedOrigins?: readonly string[];
+  planTtlMs?: number;
+}
 
 interface StoredWritePlan {
   plan: WritePlan;
@@ -44,9 +59,32 @@ function getRequestOrigin(req: Request): string | null {
   return origin;
 }
 
-function isAllowedOrigin(req: Request): boolean {
+function configuredAllowedOrigins(
+  options: UsbInstallerHandlerOptions,
+): Set<string> {
+  const envOrigins = (process.env.ELIZAOS_USB_ALLOWED_ORIGINS ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  return new Set([
+    ...DEFAULT_ALLOWED_ORIGINS,
+    ...envOrigins,
+    ...(options.allowedOrigins ?? []),
+  ]);
+}
+
+function configuredPlanTtlMs(options: UsbInstallerHandlerOptions): number {
+  if (options.planTtlMs !== undefined) {
+    return options.planTtlMs;
+  }
+
+  const value = Number(process.env.ELIZAOS_USB_PLAN_TTL_MS);
+  return Number.isFinite(value) ? value : DEFAULT_WRITE_PLAN_TTL_MS;
+}
+
+function isAllowedOrigin(req: Request, allowedOrigins: Set<string>): boolean {
   const origin = getRequestOrigin(req);
-  return origin === null || allowedOriginPattern.test(origin);
+  return origin === null || allowedOrigins.has(origin);
 }
 
 function corsHeaders(req: Request): HeadersInit {
@@ -99,8 +137,20 @@ function addExpectedDriveSnapshot(request: WriteRequest, plan: WritePlan) {
 
 export function createUsbInstallerHandler(
   backend: UsbInstallerBackend = createPlatformBackend(),
+  options: UsbInstallerHandlerOptions = {},
 ) {
   const plans = new Map<string, StoredWritePlan>();
+  const allowedOrigins = configuredAllowedOrigins(options);
+  const planTtlMs = configuredPlanTtlMs(options);
+
+  function deleteExpiredPlans(): void {
+    const now = Date.now();
+    for (const [planId, stored] of plans) {
+      if (now - stored.createdAt > planTtlMs) {
+        plans.delete(planId);
+      }
+    }
+  }
 
   async function createStoredPlan(request: WriteRequest): Promise<WritePlan> {
     if (!request.dryRun) {
@@ -131,6 +181,8 @@ export function createUsbInstallerHandler(
       throw new Error("executeWritePlan is not implemented on this platform.");
     }
 
+    deleteExpiredPlans();
+
     const stored = plans.get(planId);
     if (!stored) {
       throw new Error("Unknown or expired write plan. Preview the plan again.");
@@ -149,7 +201,7 @@ export function createUsbInstallerHandler(
   }
 
   return async function handleUsbInstallerRequest(req: Request) {
-    if (!isAllowedOrigin(req)) {
+    if (!isAllowedOrigin(req, allowedOrigins)) {
       return errorResponse(req, new Error("Origin is not allowed."), 403);
     }
 

@@ -27,7 +27,7 @@ enumeration, privileged writes, and platform subprocesses stay server-side.
 - Blocks live writes unless the selected image has a non-placeholder SHA-256
   checksum.
 - Binds the local backend to `127.0.0.1` and only allows localhost browser
-  origins.
+  origins from the known app/dev ports or `ELIZAOS_USB_ALLOWED_ORIGINS`.
 
 ## Current Live-Write Guardrails
 
@@ -37,6 +37,8 @@ enumeration, privileged writes, and platform subprocesses stay server-side.
   paths, image URLs, or full write plans are ignored.
 - The backend re-enumerates the selected drive before execution and rejects the
   write if the device path or size changed since planning.
+- Stored live-write plans expire after five minutes by default
+  (`ELIZAOS_USB_PLAN_TTL_MS`) and must be regenerated before execution.
 - Shared write safety blocks dry-run execution, missing acknowledgement,
   non-`safe-removable` drives, undersized drives, and placeholder checksums.
 
@@ -103,6 +105,8 @@ macOS:
 Linux:
 
 - Enumerates block devices with `lsblk --json --bytes`.
+- Blocks removable disks that are mounted as the current root/live-boot media,
+  so an elizaOS/Tails live USB cannot overwrite itself.
 - Unmounts mounted child partitions before writing.
 - Writes through `pkexec`, cached/allowed `sudo`, `kdesu`, or `doas` plus `dd`.
 

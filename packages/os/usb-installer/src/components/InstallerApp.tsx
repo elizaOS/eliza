@@ -35,13 +35,13 @@ function platformNotes(platform: RemovableDrive["platform"] | undefined) {
     return [
       "External USB drives are selectable; internal APFS/HFS disks are blocked.",
       "macOS will ask for administrator approval before writing.",
-      "The drive is ejected after the write completes.",
+      "macOS ejects the drive after the write completes.",
       "Boot by holding Option at startup and selecting the USB drive.",
     ];
   }
   if (platform === "linux") {
     return [
-      "Removable drives are detected with lsblk and system disks are blocked.",
+      "Removable drives are detected with lsblk; system and live-boot disks are blocked.",
       "Mounted USB partitions are unmounted before writing.",
       "A polkit, sudo, kdesu, or doas prompt may appear for raw disk access.",
       "Boot by selecting the USB drive from your firmware boot menu.",
@@ -845,7 +845,10 @@ export function InstallerApp({ backend }: InstallerAppProps) {
                   The backend writes the image to{" "}
                   <code>{selectedDrive.devicePath}</code> via raw disk access.
                 </li>
-                <li>The backend verifies completion and reports when done.</li>
+                <li>
+                  The backend flushes pending writes and reports when the write
+                  path is complete.
+                </li>
               </ol>
               <p className="muted">
                 Do not unplug the drive during writing. This may take several
@@ -956,8 +959,8 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             <h2>Write Complete ✅</h2>
             <p>
               <strong>elizaOS</strong> has been written to your{" "}
-              <strong>{writePlan.drive.name}</strong>. The drive has been
-              ejected and is ready to boot from.
+              <strong>{writePlan.drive.name}</strong>. Wait for the operating
+              system to finish any eject prompt, then boot from the drive.
             </p>
             <p className="muted">
               To boot: connect the drive to a PC and select it as the boot

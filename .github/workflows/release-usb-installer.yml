@@ -33,6 +33,12 @@ jobs:
       - run: bun run --cwd packages/os/usb-installer build
       - run: bun run --cwd packages/os/usb-installer typecheck
       - run: bun run --cwd packages/os/usb-installer test
+      - name: Validate USB installer browser and virtual block-device proof
+        if: matrix.platform == 'linux'
+        run: |
+          bunx playwright install --with-deps chromium
+          bun run --cwd packages/os/usb-installer test:e2e
+          bun run --cwd packages/os/usb-installer test:linux-virtual-usb
       - name: Package desktop app
         run: bun run --cwd packages/os/usb-installer package:${{ matrix.platform }}
       - uses: actions/upload-artifact@v4

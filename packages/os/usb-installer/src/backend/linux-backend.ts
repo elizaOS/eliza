@@ -47,6 +47,8 @@ interface LsblkDevice {
   model: string | null;
   tran: string | null;
   hotplug: boolean | string;
+  mountpoint?: string | null;
+  mountpoints?: string[] | string | null;
   children?: LsblkDevice[];
 }
 
@@ -62,6 +64,44 @@ function isRemovable(device: LsblkDevice): boolean {
     device.hotplug === "1" ||
     device.tran === "usb"
   );
+}
+
+function mountpointsForDevice(device: LsblkDevice): string[] {
+  const values: string[] = [];
+  const add = (value: string | null | undefined) => {
+    const normalized = value?.trim();
+    if (normalized) values.push(normalized);
+  };
+
+  add(device.mountpoint);
+  if (Array.isArray(device.mountpoints)) {
+    for (const mountpoint of device.mountpoints) add(mountpoint);
+  } else if (typeof device.mountpoints === "string") {
+    add(device.mountpoints);
+  }
+
+  for (const child of device.children ?? []) {
+    values.push(...mountpointsForDevice(child));
+  }
+
+  return values;
+}
+
+function currentSystemMountpoint(device: LsblkDevice): string | null {
+  for (const mountpoint of mountpointsForDevice(device)) {
+    if (
+      mountpoint === "/" ||
+      mountpoint === "/boot" ||
+      mountpoint === "/boot/efi" ||
+      mountpoint === "/run/live/medium" ||
+      mountpoint === "/run/live/persistence" ||
+      mountpoint === "/live/medium"
+    ) {
+      return mountpoint;
+    }
+  }
+
+  return null;
 }
 
 async function fetchGitHubIsoImages(): Promise<ElizaOsImage[]> {
@@ -334,10 +374,17 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
   }
 
   async listRemovableDrives(): Promise<RemovableDrive[]> {
-    const { stdout } = await execFileAsync("lsblk", [
+    const execFileFn =
+      this.deps.execFile ??
+      (async (cmd: string, args: readonly string[]) => {
+        const r = await execFileAsync(cmd, [...args]);
+        return { stdout: r.stdout.toString(), stderr: r.stderr.toString() };
+      });
+
+    const { stdout } = await execFileFn("lsblk", [
       "--json",
       "--output",
-      "NAME,SIZE,TYPE,RM,MODEL,TRAN,HOTPLUG",
+      "NAME,SIZE,TYPE,RM,MODEL,TRAN,HOTPLUG,MOUNTPOINTS",
       "--bytes",
     ]);
 
@@ -362,6 +409,11 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         : device.tran === "mmc" || device.tran === "sd"
           ? "sd"
           : "unknown";
+      const systemMountpoint = currentSystemMountpoint(device);
+      const description = [
+        device.tran ? `transport: ${device.tran}` : null,
+        systemMountpoint ? `current system mount: ${systemMountpoint}` : null,
+      ].filter((part): part is string => part !== null);
 
       const entry: RemovableDrive = {
         id: device.name,
@@ -370,10 +422,11 @@ export class LinuxUsbInstallerBackend implements UsbInstallerBackend {
         sizeBytes: Number(device.size),
         bus,
         platform: "linux",
-        safety: removable ? "safe-removable" : "blocked-system",
+        safety:
+          removable && !systemMountpoint ? "safe-removable" : "blocked-system",
       };
-      if (device.tran) {
-        entry.description = `transport: ${device.tran}`;
+      if (description.length > 0) {
+        entry.description = description.join("; ");
       }
       drives.push(entry);
     }

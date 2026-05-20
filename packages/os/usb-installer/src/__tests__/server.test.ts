@@ -106,6 +106,21 @@ describe("USB installer server", () => {
     });
   });
 
+  it("rejects unlisted localhost browser origins", async () => {
+    const handler = createUsbInstallerHandler(new FakeBackend());
+    const res = await handler(
+      new Request("http://127.0.0.1:3742/drives", {
+        headers: { origin: "http://127.0.0.1:9999" },
+      }),
+    );
+
+    expect(res.status).toBe(403);
+    await expect(json(res)).resolves.toMatchObject({
+      name: "Error",
+      error: "Origin is not allowed.",
+    });
+  });
+
   it("keeps raw writes disabled unless explicitly enabled", async () => {
     const handler = createUsbInstallerHandler(new FakeBackend());
     const res = await handler(
@@ -183,6 +198,39 @@ describe("USB installer server", () => {
       devicePath: drive.devicePath,
       sizeBytes: drive.sizeBytes,
     });
+  });
+
+  it("expires stored write plans before execution", async () => {
+    process.env.ELIZAOS_USB_ENABLE_RAW_WRITE = "1";
+    const backend = new FakeBackend();
+    const handler = createUsbInstallerHandler(backend, { planTtlMs: -1 });
+
+    const planRes = await handler(
+      request("/plan", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          driveId: drive.id,
+          imageId: image.id,
+          dryRun: false,
+          acknowledgeDataLoss: true,
+        }),
+      }),
+    );
+    const plan = (await planRes.json()) as WritePlan;
+    expect(plan.planId).toEqual(expect.any(String));
+
+    const executeRes = await handler(
+      request("/execute", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ planId: plan.planId }),
+      }),
+    );
+    const text = await executeRes.text();
+
+    expect(text).toContain("Unknown or expired write plan");
+    expect(backend.executedPlan).toBeNull();
   });
 
   it("blocks execution if the target drive changes after planning", async () => {
