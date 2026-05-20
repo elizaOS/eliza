@@ -326,7 +326,7 @@ export const connectorEntrySchema = z.object({
       (val) => val.owner !== undefined || val.agent !== undefined,
       {
         message:
-          "accounts must define at least one of owner or agent — an empty {} prevents the legacy auth field from being mapped to accounts.agent at load time",
+          "accounts must define at least one of owner or agent — an empty {} is meaningless and likely indicates an incomplete manifest",
       },
     )
     .optional(),
