@@ -4,6 +4,7 @@
   "scripts": {
     "start": "bun run claimer.ts",
     "claim": "bun run claimer.ts --once",
+    "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "echo 'No TypeScript config; skipping typecheck'",
     "build": "echo 'No build step configured; skipping build'"

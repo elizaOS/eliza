@@ -87,6 +87,16 @@ Constants in `claimer.ts`:
 - `CLAIM_INTERVAL_MS` - Claim interval (default: 1 hour)
 - `MIN_CLAIMABLE_LAMPORTS` - Minimum amount to trigger claim (default: 0.001 SOL)
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local test covers SOL formatting without loading credentials or submitting transactions. A live claim flow still requires Bags credentials, a funded Solana wallet, and an RPC endpoint.
+
 ## How It Works
 
 1. Reads credentials from `~/.config/bags/credentials.json`

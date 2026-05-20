@@ -55,6 +55,16 @@ bun run dev
 
 See `env.example.txt` for all available settings.
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local tests cover deterministic environment parsing, LLM key validation, read-only token warnings, and Bags fee formatting. Live Moltbook posting still requires `LLM_API_KEY` and `MOLTBOOK_TOKEN`.
+
 ### LLM Setup
 
 The agent requires an LLM API key. Recommended:

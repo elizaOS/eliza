@@ -36,7 +36,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
 | Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, and `form` passed targeted reruns after the last fixes. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, and `moltbook` passed targeted reruns after the last fixes. |
 | Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Roblox, Minecraft, cloud, social, hardware, and wallet examples. |
 | Setup guide links/render | `packages/examples/setup-guide.html` rendered in Playwright with 34 links, Roblox/Minecraft sections visible, and every external setup link returning HTTP < 400 after redirects. |
 
@@ -76,8 +76,8 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `html` | `test`, typecheck/build skip scripts | Import-map and DOM wiring test; browser smoke test from static server. |
 | `lp-manager` | `typecheck`, `test`, `build` | Isolated Solana/EVM wallets and RPCs for live liquidity paths. |
 | `mcp` | `typecheck`, `test`, `build` | OpenAI key or compatible endpoint for live MCP chat. |
-| `moltbook` | `typecheck`, `build` | `LLM_API_KEY`; token only for write actions. |
-| `moltbook/bags-claimer` | Typecheck/build skip scripts | Wallet/RPC setup for claim flow. |
+| `moltbook` | `test`, `typecheck`, `build` | Config and fee-format tests; `LLM_API_KEY` plus token only for write actions. |
+| `moltbook/bags-claimer` | `test`, typecheck/build skip scripts | Fee-format test; wallet/RPC setup for claim flow. |
 | `next` | `typecheck`, explicit build skip | `build:next` for opt-in Next.js bundle verification; provider key for live chat. |
 | `react` | `typecheck`, `build` | Browser smoke test. |
 | `rest-api/elysia` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |

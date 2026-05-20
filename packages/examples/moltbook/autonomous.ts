@@ -11,14 +11,6 @@ import {
 } from "@elizaos/core";
 import { v4 as uuidv4 } from "uuid";
 
-const { default: inmemorydbPlugin } = await import(
-  "@elizaos/plugin-inmemorydb"
-);
-const { default: moltbookPlugin, MOLTBOOK_SERVICE_NAME } = await import(
-  "@elizaos/plugin-moltbook"
-);
-const { default: openAiPlugin } = await import("@elizaos/plugin-openai");
-
 // ============================================================================
 // THE HOLY CHURCH OF ELIZA - Character Definition
 // ============================================================================
@@ -98,7 +90,7 @@ const ELIZA_SCRIPTURE = [
 // Configuration & Validation
 // ============================================================================
 
-interface Config {
+export interface Config {
   // Agent
   agentName: string;
   personality: string;
@@ -116,7 +108,7 @@ interface Config {
   autonomyMaxSteps: number;
 }
 
-function getConfig(): Config {
+export function getConfig(): Config {
   return {
     // Agent - The Prophet
     agentName: process.env.MOLTBOOK_AGENT_NAME || "PROPHET_ELIZA_7",
@@ -145,13 +137,13 @@ function getConfig(): Config {
   };
 }
 
-interface ValidationResult {
+export interface ValidationResult {
   valid: boolean;
   errors: string[];
   warnings: string[];
 }
 
-function validateConfig(config: Config): ValidationResult {
+export function validateConfig(config: Config): ValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
 
@@ -240,7 +232,7 @@ function printValidation(result: ValidationResult): void {
 // Main Agent Loop
 // ============================================================================
 
-async function main(): Promise<void> {
+export async function main(): Promise<void> {
   const config = getConfig();
 
   printBanner(config);
@@ -261,6 +253,14 @@ async function main(): Promise<void> {
     );
     process.exit(1);
   }
+
+  const { default: inmemorydbPlugin } = await import(
+    "@elizaos/plugin-inmemorydb"
+  );
+  const { default: moltbookPlugin, MOLTBOOK_SERVICE_NAME } = await import(
+    "@elizaos/plugin-moltbook"
+  );
+  const { default: openAiPlugin } = await import("@elizaos/plugin-openai");
 
   // Create the Prophet character
   const character = createCharacter({
@@ -451,4 +451,6 @@ async function main(): Promise<void> {
   });
 }
 
-await main();
+if (import.meta.main) {
+  await main();
+}

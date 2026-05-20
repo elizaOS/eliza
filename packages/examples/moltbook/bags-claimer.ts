@@ -68,7 +68,7 @@ function loadCredentials(): BagsCredentials {
   return JSON.parse(content) as BagsCredentials;
 }
 
-function formatSol(lamports: number): string {
+export function formatSol(lamports: number): string {
   return (lamports / 1_000_000_000).toFixed(4);
 }
 
@@ -367,4 +367,6 @@ async function main(): Promise<void> {
   await new Promise(() => {});
 }
 
-main().catch(console.error);
+if (import.meta.main) {
+  main().catch(console.error);
+}
