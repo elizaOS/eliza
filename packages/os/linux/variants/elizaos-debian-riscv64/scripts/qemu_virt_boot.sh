@@ -180,7 +180,7 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
 boot_markers_present() {
     grep -F -q -- "Linux version" "${TRANSCRIPT_PATH}" \
-        && { grep -F -q -- "elizaos-ready" "${TRANSCRIPT_PATH}" \
+        && { grep -F -q -- "elizaos-firstboot-ready" "${TRANSCRIPT_PATH}" \
             || grep -F -q -- "login:" "${TRANSCRIPT_PATH}"; }
 }
 
@@ -232,7 +232,7 @@ DURATION_S=$(( END_EPOCH - START_EPOCH ))
 
 REQUIRED_MARKERS=(
     "Linux version"
-    "elizaos-ready"
+    "elizaos-firstboot-ready"
 )
 LOGIN_MARKER="login:"
 FORBIDDEN_MARKERS=(
@@ -265,7 +265,7 @@ done
 
 # `boot_completed` requires:
 #   * Linux version banner
-#   * first-boot script wrote `elizaos-ready` OR a `login:` prompt
+#   * first-boot script wrote `elizaos-firstboot-ready` OR a `login:` prompt
 #   * zero forbidden markers
 HAS_LINUX=0
 HAS_READY=0
@@ -273,7 +273,7 @@ HAS_LOGIN=0
 for m in "${MARKERS_FOUND[@]}"; do
     case "${m}" in
         "Linux version") HAS_LINUX=1;;
-        "elizaos-ready") HAS_READY=1;;
+        "elizaos-firstboot-ready") HAS_READY=1;;
         "login:") HAS_LOGIN=1;;
     esac
 done

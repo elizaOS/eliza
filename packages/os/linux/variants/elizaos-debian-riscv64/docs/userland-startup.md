@@ -29,7 +29,7 @@ elizaos-first-boot.service     (Type=oneshot, RemainAfterExit=yes)
         ├─ create /var/lib/elizaos (0750, elizaos:elizaos)
         ├─ create /etc/elizaos    (0750, root:elizaos)
         ├─ generate /etc/elizaos/instance-id (UUIDv4)
-        ├─ write "elizaos-ready instance=<uuid>" to /dev/ttyS0
+        ├─ write "elizaos-firstboot-ready instance=<uuid>" to /dev/ttyS0
         ├─ systemctl enable + start elizaos-agent.service
         ├─ touch /var/lib/elizaos/.first-boot-complete
         └─ systemctl disable elizaos-first-boot.service
@@ -67,14 +67,14 @@ The ordering guarantees that:
 The first-boot script writes a single line to `/dev/ttyS0`:
 
 ```
-elizaos-ready instance=<uuid>
+elizaos-firstboot-ready instance=<uuid>
 ```
 
 The `<uuid>` matches the contents of `/etc/elizaos/instance-id` and is
 generated once on the first successful boot. This is the **only**
 ready signal the qemu-virt harness depends on; do not relocate it,
-reformat it, or emit additional `elizaos-ready` lines from any other
-unit. The harness greps for `^elizaos-ready instance=` on the captured
+reformat it, or emit additional `elizaos-firstboot-ready` lines from any other
+unit. The harness greps for `^elizaos-firstboot-ready instance=` on the captured
 serial transcript.
 
 If `/dev/ttyS0` is not writable (e.g. on a real RISC-V dev board with
@@ -96,13 +96,13 @@ binary. Instead, the chroot hook
 drops a marker file at
 `/opt/elizaos/STATUS_LATER_AGENT_BINARY`.
 
-This separates two qualitatively different boot outcomes:
+This separates first-boot completion from agent liveness:
 
-| Outcome | `/opt/elizaos/STATUS_LATER_AGENT_BINARY` | `elizaos-ready` on `ttyS0` | `elizaos-agent.service` state |
-|---|---|---|---|
-| Boot fine, agent missing | present | **yes** | `failed` (ExecStart not found) |
-| Boot fine, agent live    | **absent** | **yes** | `active (running)` |
-| Boot broken              | irrelevant | **no**  | irrelevant |
+| Outcome | `/opt/elizaos/STATUS_LATER_AGENT_BINARY` | `elizaos-firstboot-ready` on `ttyS0` | `elizaos-agent-ready` on `ttyS0` | `elizaos-agent.service` state |
+|---|---|---|---|---|
+| Boot fine, agent missing | present | **yes** | **no** | not started |
+| Boot fine, agent live    | **absent** | **yes** | **yes** | `active (running)` |
+| Boot broken              | irrelevant | **no**  | **no** | irrelevant |
 
 When the build pipeline gains the ability to install a real elizaOS
 release artifact, the hook that lays the binary down at

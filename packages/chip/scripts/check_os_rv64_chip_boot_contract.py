@@ -267,7 +267,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     agent_start_pos = marker_position(first_boot, "systemctl start")
     add_if(
         findings,
-        ready_pos is not None and agent_start_pos is not None and ready_pos < agent_start_pos,
+        "elizaos-ready" in first_boot
+        and ready_pos is not None
+        and agent_start_pos is not None
+        and ready_pos < agent_start_pos,
         "elizaos_ready_marker_before_agent_start",
         "`elizaos-ready` is emitted before the first-boot script attempts to start elizaos-agent.service",
         f"{rel(FIRST_BOOT)} READY_LINE offset={ready_pos} systemctl_start offset={agent_start_pos}",

@@ -18,7 +18,7 @@ Classification policy (matches ``packages/chip/scripts/aggregate_tapeout_readine
                  in the default mode and exit 1 under ``--strict``.
 * ``FAIL``     — release blocker: schema mismatch, ``iso_sha256``
                  mismatch, ``boot_completed=false``, or a missing
-                 ``elizaos-ready`` marker in the transcript. Always
+                 ``elizaos-firstboot-ready`` marker in the transcript. Always
                  exit 1 regardless of ``--strict``.
 
 The validator deliberately uses the same vocabulary as the chip readiness
@@ -57,9 +57,10 @@ REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
 # ``missing`` rows stay informational BLOCKED.
 PROMOTED_STATUSES: frozenset[str] = frozenset({"candidate", "published"})
 
-# Marker the elizaOS first-boot unit prints once the agent is up. The qemu-virt
-# boot transcript must contain this literal string for the gate to PASS.
-REQUIRED_TRANSCRIPT_MARKER = "elizaos-ready"
+# Marker the elizaOS first-boot unit prints once OS userland initialization
+# completes. Agent liveness is intentionally tracked by a separate
+# ``elizaos-agent-ready`` marker and is outside this qemu-virt release gate.
+REQUIRED_TRANSCRIPT_MARKER = "elizaos-firstboot-ready"
 GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (
     "GNU GRUB",
     "Booting `elizaOS Live (RISC-V 64)'",

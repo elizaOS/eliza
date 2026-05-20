@@ -47,7 +47,7 @@ def _good_transcript() -> str:
         "EFI stub: Booting Linux Kernel\n"
         "Linux version 6.7 (riscv64)\n"
         "systemd[1]: Reached target Multi-User System.\n"
-        "elizaos-firstboot[123]: agent up; emitting marker\n"
+        "elizaos-firstboot[123]: first boot complete; emitting marker\n"
         f"elizaos-firstboot[123]: {gate.REQUIRED_TRANSCRIPT_MARKER}\n"
         "login: \n"
     )

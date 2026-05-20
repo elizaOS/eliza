@@ -140,9 +140,11 @@ The boot harness writes a JSON evidence file conforming to the
 ```
 
 The transcript log must additionally contain the literal marker
-`elizaos-ready` — the elizaOS first-boot unit prints that line once the
-agent is up. If the marker is missing the release-manifest gate (Step 4)
-reports FAIL, not PASS.
+`elizaos-firstboot-ready` — the elizaOS first-boot unit prints that line once
+OS userland initialization has completed. Agent liveness is a separate
+`elizaos-agent-ready` marker and is not proven by the qemu-virt release gate.
+If the first-boot marker is missing the release-manifest gate (Step 4) reports
+FAIL, not PASS.
 
 Expected duration: **2 – 6 min** for an end-to-end boot once the
 guest kernel is cached. Allocate at least 2 GB of guest RAM and one
@@ -173,7 +175,7 @@ What the validator does:
 5. Asserts `boot_completed === true` and that `iso_sha256` matches
    the `sha256` on the parent manifest entry.
 6. Asserts the transcript referenced by `transcript_path` contains
-   the literal `elizaos-ready` marker.
+   the literal `elizaos-firstboot-ready` marker.
 7. Aggregates the result. `STATUS: BLOCKED` is informational;
    `STATUS: FAIL` is a release blocker.
 
@@ -223,9 +225,9 @@ Other external dependencies that this runbook does **not** unblock:
   riscv64 set is incomplete, `lb build` exits non-zero. The validator
   has no way to distinguish a mirror outage from a real config break;
   the failing `lb build` log is the source of truth.
-- **elizaOS agent binary publication.** The first-boot unit needs a
-  published agent. Until that ships, the `elizaos-ready` marker will
-  never appear and Step 3 stays BLOCKED.
+- **elizaOS agent binary publication.** The first-boot marker can appear before
+  the agent exists. Until the RV64 image packages `/opt/elizaos/bin/elizaos`,
+  no `elizaos-agent-ready` marker or agent health evidence should be claimed.
 - **Real board boot.** The qemu-virt boot is necessary but not
   sufficient. The `hardware-board-boot` row stays BLOCKED until the
   chip team produces a transcripted boot on real silicon.
@@ -239,7 +241,7 @@ Other external dependencies that this runbook does **not** unblock:
 | Evidence row missing the JSON file       | `BLOCKED: evidence file not present: <path>`                             |
 | `boot_completed=false` in evidence       | `FAIL: qemu-virt boot did not complete`                                  |
 | `iso_sha256` mismatch                    | `FAIL: iso_sha256 mismatch between manifest and evidence`                |
-| Transcript missing `elizaos-ready`       | `FAIL: transcript missing required marker: elizaos-ready`                |
+| Transcript missing `elizaos-firstboot-ready`       | `FAIL: transcript missing required marker: elizaos-firstboot-ready`                |
 | Schema OK, every row collected, marker present | `PASS: release manifest gate ok`                                   |
 
 `PASS` from this runbook means the qemu-virt half of the promotion

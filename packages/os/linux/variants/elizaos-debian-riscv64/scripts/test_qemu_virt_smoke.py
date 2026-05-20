@@ -57,7 +57,7 @@ def _well_formed_doc(**overrides: object) -> dict[str, object]:
         "boot_completed": True,
         "markers_found": [
             "Linux version",
-            "elizaos-ready",
+            "elizaos-firstboot-ready",
             "login:",
         ],
         "markers_missing": [],
@@ -97,7 +97,7 @@ class ValidateEvidenceTests(unittest.TestCase):
     def test_boot_completed_requires_required_markers(self) -> None:
         doc = _well_formed_doc(
             boot_completed=True,
-            markers_found=["elizaos-ready"],
+            markers_found=["elizaos-firstboot-ready"],
             markers_missing=["Linux version"],
         )
         with self.assertRaises(smoke.EvidenceValidationError):
@@ -114,7 +114,7 @@ class ValidateEvidenceTests(unittest.TestCase):
         doc = _well_formed_doc(
             boot_completed=False,
             markers_found=["Linux version"],
-            markers_missing=["elizaos-ready"],
+            markers_missing=["elizaos-firstboot-ready"],
         )
         smoke.validate_evidence(doc)
 
@@ -185,7 +185,7 @@ fi
 case "$mode" in
     success)
         printf 'Linux version 6.6.0-elizaos-riscv64\n'
-        printf 'elizaos-ready\n'
+        printf 'elizaos-firstboot-ready\n'
         printf 'debian login: \n'
         ;;
     missing_ready)
@@ -271,7 +271,7 @@ esac
         smoke.validate_evidence(doc)
         self.assertTrue(doc["boot_completed"])
         self.assertIn("Linux version", doc["markers_found"])
-        self.assertIn("elizaos-ready", doc["markers_found"])
+        self.assertIn("elizaos-firstboot-ready", doc["markers_found"])
         self.assertEqual(doc["forbidden_markers_present"], [])
 
     def test_missing_required_marker(self) -> None:
@@ -281,7 +281,7 @@ esac
         doc = json.loads(self.evidence.read_text(encoding="utf-8"))
         smoke.validate_evidence(doc)
         self.assertFalse(doc["boot_completed"])
-        self.assertIn("elizaos-ready", doc["markers_missing"])
+        self.assertIn("elizaos-firstboot-ready", doc["markers_missing"])
 
     def test_forbidden_marker_kernel_panic(self) -> None:
         result = self._run_harness(env_overrides={"QVB_STUB_MODE": "panic"})
