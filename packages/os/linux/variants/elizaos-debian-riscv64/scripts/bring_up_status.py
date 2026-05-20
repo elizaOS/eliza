@@ -23,9 +23,7 @@ from pathlib import Path
 # Repo layout: packages/os/linux/variants/elizaos-debian-riscv64/scripts/...
 # -> ../../../../../chip/scripts/aggregate_tapeout_readiness.py
 HERE = Path(__file__).resolve().parent
-AGGREGATOR_PATH = (
-    HERE.parents[4] / "chip/scripts/aggregate_tapeout_readiness.py"
-).resolve()
+AGGREGATOR_PATH = (HERE.parents[4] / "chip/scripts/aggregate_tapeout_readiness.py").resolve()
 
 
 def _load_aggregator():

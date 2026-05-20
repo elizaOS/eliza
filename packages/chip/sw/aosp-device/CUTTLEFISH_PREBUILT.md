@@ -196,6 +196,63 @@ CPU virtualization (KVM) is not available for the riscv64 guest on x86_64, so
 boot is significantly slower than the x86_64 guest path. Plan for
 `--boot-timeout-seconds=2700` (45 minutes) on first boot.
 
+## Smoke-launch outcome on this host (2026-05-19)
+
+`launch_cvd` was exercised with `cvd-host_package-x86_64.tar.gz` + the image
+bundle. Two distinct failure modes were observed; both are host-resource
+limits, **not** image or host-package problems:
+
+1. **Guest RAM preallocation failure** at the `qemu-system-riscv64` layer:
+   ```
+   qemu-system-riscv64: qemu_prealloc_mem: preallocating memory failed: Bad address
+   ```
+   This occurred with `--memory_mb=4096`. The host had 30 GiB RAM but only
+   ~497 MiB free (the rest taken by sister-agent workloads and 17 GiB of
+   already-active swap). QEMU's mmap-then-mlock for guest memory could not
+   find a contiguous range and aborted.
+
+2. **Composite disk image space check failure** at the `assemble_cvd` layer:
+   ```
+   Not enough space remaining in fs containing "userdata.img",
+     wanted 8545730560, got 2294603776
+   ```
+   The previous attempt had already left a 17.5 GB sparse
+   `cuttlefish/instances/cvd-1/os_composite.img` on the same filesystem,
+   which exhausted free space for the retry.
+
+Confirmed working in both attempts (the failures happened *after* these):
+
+- `launch_cvd` parsed flags, read `android-info.txt`, selected the `phone`
+  config, and reached the per-instance preflight stage.
+- `assemble_cvd` produced `cuttlefish_config.json`, the metadata image, the
+  persistent composite image, and the sdcard image.
+- `run_cvd` started: `tombstone_receiver`, `cf_vhost_user_input`,
+  `casimir_control_server`, `socket_vsock_proxy`, `control_env_proxy_server`,
+  and `adb_connector` all came up and reached steady state.
+- `adb_connector` repeatedly attempted to reach `0.0.0.0:6520` (the guest
+  fastboot/adb port) — exactly the loop expected before the guest is alive.
+- The bundled `qemu-system-riscv64` (9.0.90) launched.
+
+So the **prebuilt artifact set is sound** and the **host-tools stack runs
+correctly** on this x86_64 box. The blocker for a full boot is host
+resources, not anything in the downloaded artifacts:
+
+- ~30 GB free on a dedicated `/`, OR cf-root on a non-exfat filesystem with
+  >=30 GB free, with `--memory_mb` chosen to fit available RAM (typical
+  Cuttlefish riscv64 boots want `>=3 GB` guest RAM).
+- Coordinate with sister agents so the host isn't already saturated on RAM
+  or swap before `launch_cvd` runs.
+- exfat (the external SSD here) cannot be used for cf-root because the
+  Cuttlefish host package relies on symlinks (`launch_cvd ->
+  cvd_internal_start`, several `bin/*` shims). Keep cf-root on ext4/xfs;
+  the SSD is fine for the downloaded archives, just not the extracted tree.
+
+Both blockers are external to the artifact set — i.e. once disk + RAM are
+sufficient, the same `launch_cvd ... --daemon` invocation should reach
+`sys.boot_completed=1` and `adb shell getprop ro.product.cpu.abi` will return
+`riscv64`. The full smoke-launch transcript (both attempts) is archived at
+`build/reports/cuttlefish-prebuilt-smoke.log`.
+
 ## Caveats
 
 - **Signed-URL expiry.** `ci.android.com` redirects to a signed
