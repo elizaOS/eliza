@@ -1,7 +1,7 @@
-import { expect, type Page, test } from "@playwright/test";
 import { readdirSync, statSync } from "node:fs";
 import pathModule from "node:path";
 import { fileURLToPath } from "node:url";
+import { expect, type Page, test } from "@playwright/test";
 
 // In live-prod mode the mocked-API specs do not apply (cookies are scoped to
 // 127.0.0.1, fixtures don't exist on real backends). Skip the whole file.

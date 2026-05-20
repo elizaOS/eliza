@@ -251,6 +251,11 @@ function toBackendLoadOverrides(
 	if (args.mlock !== undefined) overrides.mlock = args.mlock;
 	if (args.useGpu !== undefined) overrides.useGpu = args.useGpu;
 	if (args.mmprojPath !== undefined) overrides.mmprojPath = args.mmprojPath;
+	if (args.modelId?.startsWith("eliza-1-")) {
+		const bundleRoot = path.dirname(path.dirname(args.modelPath));
+		overrides.bundleRoot = bundleRoot;
+		overrides.manifestPath = path.join(bundleRoot, "eliza-1.manifest.json");
+	}
 	return overrides;
 }
 
@@ -1105,7 +1110,8 @@ export class LocalInferenceEngine {
 	): Promise<void> {
 		const installed = await listInstalledModels();
 		const target = installed.find((m) => m.path === modelPath);
-		const catalog = target ? findCatalogModel(target.id) : undefined;
+		const modelId = target?.id ?? resolved?.modelId;
+		const catalog = modelId ? findCatalogModel(modelId) : undefined;
 
 		// Resolve the active Eliza-1 bundle (root + tier) so `embed()` can build
 		// the local-embedding route. An Eliza-1 InstalledModel carries a
@@ -1128,7 +1134,7 @@ export class LocalInferenceEngine {
 
 		const plan: BackendPlan = {
 			modelPath,
-			modelId: target?.id,
+			modelId,
 			catalog,
 			overrides,
 		};
