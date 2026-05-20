@@ -38,10 +38,7 @@ import type { ICompatRuntime } from "./compat";
 import { createDraftStreamController } from "./draft-stream";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordWorldMetadata } from "./identity";
-import {
-	formatInboundEnvelope,
-	getDiscordReplyContext,
-} from "./inbound-envelope";
+import { formatInboundEnvelope } from "./inbound-envelope";
 import {
 	appendCoalescedDiscordMetadata,
 	type DiscordMessageWithCoalescedMetadata,
@@ -574,7 +571,6 @@ export class MessageManager {
 			let { processedContent, attachments } =
 				await this.processMessage(message);
 			const currentMessageText = processedContent;
-			const replyContext = await getDiscordReplyContext(message);
 			// Audio attachments already processed in processMessage via attachmentManager
 
 			if (this.envelopeEnabled && processedContent) {
@@ -582,7 +578,6 @@ export class MessageManager {
 					const envelope = await formatInboundEnvelope(
 						message,
 						processedContent,
-						replyContext,
 					);
 					processedContent = envelope.formattedContent;
 				} catch {
@@ -609,14 +604,6 @@ export class MessageManager {
 					processedAttachments: attachments,
 					extraContent: {
 						currentMessageText,
-						...(replyContext
-							? {
-									replyToExternalMessageId: replyContext.messageId,
-									replyToSenderId: replyContext.authorId,
-									replyToSenderName: replyContext.authorName,
-									replyToMessageText: replyContext.content,
-								}
-							: {}),
 						mentionContext: {
 							isMention: isBotPlatformMentioned && isBotAddressed,
 							isReply: isReplyToBot,

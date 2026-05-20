@@ -20,6 +20,10 @@ import {
 	buildDiscordEntityMetadata,
 	buildDiscordWorldMetadata,
 } from "./identity";
+import {
+	type DiscordReplyContext,
+	getDiscordReplyContext,
+} from "./inbound-envelope";
 import type { MessageManager } from "./messages";
 import type { DiscordService } from "./service";
 import type {
@@ -52,6 +56,20 @@ function formatSpiderStateJson(state: ChannelSpiderState): string {
 			([key, value]) => `  ${key}: ${formatJsonScalar(value)}`,
 		),
 	].join("\n");
+}
+
+function replyContextContent(
+	replyContext: DiscordReplyContext | null,
+): Record<string, string> {
+	if (!replyContext) return {};
+	return {
+		replyToExternalMessageId: replyContext.messageId,
+		...(replyContext.authorId
+			? { replyToSenderId: replyContext.authorId }
+			: {}),
+		replyToSenderName: replyContext.authorName,
+		replyToMessageText: replyContext.content,
+	};
 }
 
 /**
@@ -402,6 +420,7 @@ export async function buildMemoryFromMessage(
 				: message.content || " ";
 		attachments = processed?.attachments ?? [];
 	}
+	const replyContext = await getDiscordReplyContext(message);
 
 	const entityName =
 		(message.member &&
@@ -473,6 +492,7 @@ export async function buildMemoryFromMessage(
 			inReplyTo: message.reference?.messageId
 				? createUniqueUuid(service.runtime, message.reference.messageId)
 				: undefined,
+			...replyContextContent(replyContext),
 			...(options?.extraContent ? options.extraContent : {}),
 		},
 		metadata: metadata as Memory["metadata"],
