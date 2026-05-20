@@ -275,7 +275,7 @@ export const checks: Check[] = [
   {
     name: "live report validator self-test covers provider runtime evidence",
     pattern:
-      /(?=[\s\S]*missingProviderEvidenceDir)(?=[\s\S]*mismatchedProviderEvidenceDir)(?=[\s\S]*makeMissingProviderEvidenceReport\(\))(?=[\s\S]*makeMismatchedProviderEvidenceReport\(\))(?=[\s\S]*providerEvidence must be an object)(?=[\s\S]*providerEvidence\.endpointRuntime must be)/,
+      /missingProviderEvidenceDir[\s\S]*mismatchedProviderEvidenceDir[\s\S]*makeMissingProviderEvidenceReport\(\)[\s\S]*makeMismatchedProviderEvidenceReport\(\)[\s\S]*providerEvidence must be an object[\s\S]*providerEvidence\.endpointRuntime must be/,
     source: "live-report-validator-self-test",
     message:
       "live report validator self-test must cover missing and mismatched provider runtime evidence.",

@@ -46,8 +46,18 @@ class _RLAliasFinder(importlib.abc.MetaPathFinder):
 
     def find_spec(self, fullname: str, path=None, target=None):
         if fullname in self._PARENTS:
+            # Mirror the real `rl` package so `from src.training import X` works
+            # for symbols exported by scripts/rl/__init__.py.
+            try:
+                real_rl = importlib.import_module("rl")
+            except ImportError:
+                real_rl = None
             mod = types.ModuleType(fullname)
             mod.__path__ = []  # mark as package
+            if real_rl is not None:
+                for _attr_name, _attr_val in real_rl.__dict__.items():
+                    if not _attr_name.startswith("__"):
+                        setattr(mod, _attr_name, _attr_val)
             sys.modules[fullname] = mod
             return importlib.machinery.ModuleSpec(fullname, _NullLoader(), is_package=True)
         for prefix in self._PREFIXES:
