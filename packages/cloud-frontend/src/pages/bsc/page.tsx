@@ -47,8 +47,8 @@ export default function BscPromoPage() {
   }, []);
 
   useEffect(() => {
-    if (user) fetchCryptoStatus();
-  }, [fetchCryptoStatus, user]);
+    if (isAuthenticated && user) fetchCryptoStatus();
+  }, [fetchCryptoStatus, isAuthenticated, user]);
 
   const parsed = Number.parseFloat(amount);
   const amountValue = Number.isFinite(parsed) ? parsed : null;

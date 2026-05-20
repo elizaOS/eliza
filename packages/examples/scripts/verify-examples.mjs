@@ -94,7 +94,6 @@ function getPackages() {
       return {
         dir,
         name: packageJson.name ?? relativeToRepo(dir),
-        packageFile,
         relativeDir: relativeToRepo(dir),
         scripts: packageJson.scripts ?? {},
       };
@@ -105,12 +104,8 @@ function checkDocs(packages) {
   const failures = [];
 
   for (const pkg of packages) {
-    const readme = path.join(pkg.dir, "README.md");
-    if (!existsSync(readme)) {
-      failures.push({
-        package: pkg.relativeDir,
-        reason: "missing README.md",
-      });
+    if (!existsSync(path.join(pkg.dir, "README.md"))) {
+      failures.push({ package: pkg.relativeDir, reason: "missing README.md" });
     }
   }
 
@@ -229,7 +224,9 @@ async function main() {
     console.log(`wrote ${relativeToRepo(outputPath)}`);
   }
 
-  const failed = report.results.some((result) => result.status === "failed" || result.status === "timeout");
+  const failed = report.results.some(
+    (result) => result.status === "failed" || result.status === "timeout",
+  );
   process.exit(failed ? 1 : 0);
 }
 

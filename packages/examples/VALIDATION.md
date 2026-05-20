@@ -36,7 +36,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
 | Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, and `cloud/clone-ur-crush` passed targeted reruns after the last fixes. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, and `form` passed targeted reruns after the last fixes. |
 | Static docs | `packages/examples/setup-guide.html` is linked from `packages/examples/README.md` and covers Roblox, Minecraft, cloud, social, hardware, and wallet setup links. |
 
 ## Example Matrix

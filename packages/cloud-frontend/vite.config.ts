@@ -434,74 +434,76 @@ export default defineConfig(({ mode }) => {
         output: {
           codeSplitting: {
             minSize: 20 * 1024,
-            groups: [
-              {
-                name: "vendor-react",
-                test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|use-sync-external-store)[\\/]/,
-                priority: 50,
-              },
-              {
-                name: "vendor-query",
-                test: /node_modules[\\/]@tanstack[\\/]/,
-                priority: 48,
-                maxSize: 450 * 1024,
-              },
-              {
-                name: "vendor-polyfills",
-                test: /node_modules[\\/](base64-js|base-x|bs58|buffer|ieee754|eventemitter3)[\\/]/,
-                priority: 47,
-                maxSize: 450 * 1024,
-              },
-              {
-                // Wallet stack — modal UI + connector code. Loaded on demand
-                // when the user opens a wallet flow. Generic crypto/encoding
-                // primitives (@noble, @scure, bs58, base-x) and the Node
-                // Buffer polyfill are intentionally *not* grouped here so they
-                // fall into vendor-core — keeping them in vendor-wallet would
-                // force rolldown to label many shared modules as "wallet" and
-                // confuse the modulepreload hints emitted from index.html for
-                // non-wallet routes.
-                name: "vendor-wallet",
-                test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi)[\\/]/,
-                priority: 40,
-                // Keep this graph intact. Rolldown can split CommonJS init
-                // wrappers across wallet chunks in a way that makes wagmi call
-                // an imported wrapper before it has the right shape in the
-                // production browser bundle.
-                maxSize: 1800 * 1024,
-              },
-              {
-                // Chain hex/ABI codecs. These are imported by many non-wallet
-                // routes (anything that reads on-chain data or decodes ABI
-                // payloads), so they must NOT be tagged "vendor-wallet" — that
-                // would let the modulePreload filter strip them from the entry
-                // preload set even though hot paths depend on them. One stable
-                // shared chunk maximises HTTP-cache reuse across navigations,
-                // so we lift the maxSize ceiling here.
-                name: "vendor-chain-codec",
-                test: /node_modules[\\/](viem|ethers|ox|abitype)[\\/]/,
-                priority: 46,
-                maxSize: 2400 * 1024,
-              },
-              {
-                name: "vendor-charts",
-                test: /node_modules[\\/](recharts|victory|d3-|d3|@visx)[\\/]/,
-                priority: 35,
-                maxSize: 450 * 1024,
-              },
-              {
-                name: "vendor-docs",
-                test: /node_modules[\\/](mermaid|highlight.js|react-syntax-highlighter|hast-|mdast-|micromark|unified|remark-|rehype-)[\\/]/,
-                priority: 30,
-                maxSize: 450 * 1024,
-              },
-              {
-                name: "vendor-core",
-                test: /node_modules[\\/]/,
-                priority: 10,
-                maxSize: 450 * 1024,
-              },
-            ],
+            groups: false
+              ? [
+                  {
+                    name: "vendor-react",
+                    test: /node_modules[\\/](react|react-dom|react-router|react-router-dom|scheduler|use-sync-external-store)[\\/]/,
+                    priority: 50,
+                  },
+                  {
+                    name: "vendor-query",
+                    test: /node_modules[\\/]@tanstack[\\/]/,
+                    priority: 48,
+                    maxSize: 450 * 1024,
+                  },
+                  {
+                    name: "vendor-polyfills",
+                    test: /node_modules[\\/](base64-js|base-x|bs58|buffer|ieee754|eventemitter3)[\\/]/,
+                    priority: 47,
+                    maxSize: 450 * 1024,
+                  },
+                  {
+                    // Wallet stack — modal UI + connector code. Loaded on demand
+                    // when the user opens a wallet flow. Generic crypto/encoding
+                    // primitives (@noble, @scure, bs58, base-x) and the Node
+                    // Buffer polyfill are intentionally *not* grouped here so they
+                    // fall into vendor-core — keeping them in vendor-wallet would
+                    // force rolldown to label many shared modules as "wallet" and
+                    // confuse the modulepreload hints emitted from index.html for
+                    // non-wallet routes.
+                    name: "vendor-wallet",
+                    test: /node_modules[\\/](@rainbow-me|@solana|@walletconnect|@wagmi|wagmi)[\\/]/,
+                    priority: 40,
+                    // Keep this graph intact. Rolldown can split CommonJS init
+                    // wrappers across wallet chunks in a way that makes wagmi call
+                    // an imported wrapper before it has the right shape in the
+                    // production browser bundle.
+                    maxSize: 1800 * 1024,
+                  },
+                  {
+                    // Chain hex/ABI codecs. These are imported by many non-wallet
+                    // routes (anything that reads on-chain data or decodes ABI
+                    // payloads), so they must NOT be tagged "vendor-wallet" — that
+                    // would let the modulePreload filter strip them from the entry
+                    // preload set even though hot paths depend on them. One stable
+                    // shared chunk maximises HTTP-cache reuse across navigations,
+                    // so we lift the maxSize ceiling here.
+                    name: "vendor-chain-codec",
+                    test: /node_modules[\\/](viem|ethers|ox|abitype)[\\/]/,
+                    priority: 46,
+                    maxSize: 2400 * 1024,
+                  },
+                  {
+                    name: "vendor-charts",
+                    test: /node_modules[\\/](recharts|victory|d3-|d3|@visx)[\\/]/,
+                    priority: 35,
+                    maxSize: 450 * 1024,
+                  },
+                  {
+                    name: "vendor-docs",
+                    test: /node_modules[\\/](mermaid|highlight.js|react-syntax-highlighter|hast-|mdast-|micromark|unified|remark-|rehype-)[\\/]/,
+                    priority: 30,
+                    maxSize: 450 * 1024,
+                  },
+                  {
+                    name: "vendor-core",
+                    test: /node_modules[\\/]/,
+                    priority: 10,
+                    maxSize: 450 * 1024,
+                  },
+                ]
+              : [],
           },
         },
       },
