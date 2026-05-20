@@ -1,0 +1,84 @@
+{
+  "schema": "eliza.cache.champsim_external_prefetchers.v1",
+  "status": "ported_and_measured",
+  "evidence_class": "champsim_dpc3_traces_only",
+  "champsim_commit": "24cc41bb",
+  "champsim_module_api": "2024-12 (champsim::modules::prefetcher / champsim::address)",
+  "source_repos_examined": {
+    "berti": "https://github.com/agusnt/Berti-Artifact (MICRO'22 artifact)",
+    "ipcp": "https://github.com/CMU-SAFARI/Pythia (prefetcher/ipcp_L2.{cc,h}); originally Pakalapati & Panda, ISCA'20 CRC2 submission",
+    "bingo": "https://github.com/CMU-SAFARI/Pythia (prefetcher/bingo.{cc,h}); originally Bakhshalipour et al., HPCA'19",
+    "bop": "https://github.com/CMU-SAFARI/Pythia (prefetcher/bop.{cc,h}); originally Michaud, HPCA'16",
+    "pythia": "https://github.com/CMU-SAFARI/Pythia (prefetcher/scooby.{cc,h} + helpers); Bera et al., MICRO'21"
+  },
+  "source_api_gap": {
+    "summary": "All five CRC-style drop-ins target the legacy ChampSim 2.x interface (free-functions like CACHE::l2c_prefetcher_operate(uint64_t addr, uint64_t ip, ...)). The CRC sources cannot link against ChampSim 2024-12 without a full port: 2024-12 uses C++ class members (prefetcher_cache_operate), champsim::address opaque types, msl::lru_table for set-associative storage, and an intern_-> pointer for cache-internal queries.",
+    "evidence": [
+      "external/champsim-prefetchers/pythia/inc/cache.h declares l1d/l2c/llc_prefetcher_operate as free functions",
+      "external/champsim-prefetchers/berti/ChampSim/Berti/prefetcher/l1d_prefetcher.cc uses CACHE::l1d_prefetcher_operate(uint64_t,...)",
+      "external/ChampSim/inc/modules.h declares champsim::modules::prefetcher with prefetcher_cache_operate(champsim::address, champsim::address, ...) only"
+    ]
+  },
+  "ported_modules": [
+    {
+      "name": "berti",
+      "path": "external/ChampSim/prefetcher/berti/",
+      "loc_total": 142,
+      "attached_to": "L2C",
+      "algorithm_summary": "Per-IP delta history (16 deltas/IP, 4096-entry IP table). Vote for most-recurring delta; issue when vote count >= confidence threshold (8/16). Degree scales with confidence; burst mode (7 extra strides) when saturated. Same-page only.",
+      "algorithmic_adaptation": "The MICRO'22 Berti reference tracks per-request demand-to-fill cycle latencies via a 'latencies table' to label deltas as 'on-time'/'late'/'wrong' before selecting the prefetch delta. ChampSim 2024-12 does not expose per-request fill latency inside prefetcher_cache_operate(), so this port treats every recurring delta as 'on-time' rather than gating on a measured latency window. IPC delta vs reference is therefore expected to be smaller than the published Berti+SPP gap; this is a faithful structural port, not a latency-aware port.",
+      "deviation_class": "structural_port_without_timing_table"
+    },
+    {
+      "name": "ipcp",
+      "path": "external/ChampSim/prefetcher/ipcp/",
+      "loc_total": 124,
+      "attached_to": "L2C",
+      "algorithm_summary": "Per-IP 64-entry tracker indexed by 6 low PC bits with a 9-bit tag. Classifies each IP into GS (±1 stride) / CS (arbitrary stride) / NL (next-line) / NP (no prefetch). A 2-bit saturating confidence counter switches class on mispredict and gates degree (degree 4 at conf=3, degree 2 at conf=1, degree 1 at conf=0). Same-page only.",
+      "algorithmic_adaptation": "Stride is reconstructed from the last cache line stored in the tracker entry (we store the lower 32 bits of the last block to fit in the entry, matching the CRC IPCP's stride field width). Complex-stride (CPLX) classification with its signature pipeline is collapsed into CS for this port — the per-IP tracker for L2C in the CRC drop-in itself only consumes CPLX via metadata forwarded from L1D, which we do not wire here.",
+      "deviation_class": "structural_port_without_l1d_metadata_handoff"
+    },
+    {
+      "name": "bingo",
+      "path": "external/ChampSim/prefetcher/bingo/",
+      "loc_total": 230,
+      "attached_to": "L2C",
+      "algorithm_summary": "Region-based spatial-pattern prefetcher with 2 KiB regions (32 blocks). 64-entry filter table (first-touch), 128-entry accumulation table (pattern bitmap accumulation per region), 8 K-entry PHT keyed by (PC<<6 | offset). On first touch into a new region, probe PHT and stream matching blocks within the same page.",
+      "algorithmic_adaptation": "The HPCA'19 Bingo uses dual-tag PHT lookups (PC+address full tag and PC+offset short tag) with voting across multiple PC+offset matches. This port uses the PC+offset key only (the high-recall path) with no voting fan-in; eviction-time AT->PHT training is also not wired (our intrusive lru_map evicts internally without exposing the victim). Both simplifications reduce Bingo's recall ceiling but preserve its core spatial-pattern recognition behavior.",
+      "deviation_class": "structural_port_without_pc_address_lookup"
+    },
+    {
+      "name": "bop",
+      "path": "external/ChampSim/prefetcher/bop/",
+      "loc_total": 119,
+      "attached_to": "L2C",
+      "algorithm_summary": "Best-Offset Prefetcher (Michaud HPCA'16). 52-entry candidate offset list (small primes ≤ 256), 256-entry RR table of recent block addresses (xor-fold hash). Each access evaluates one candidate: if line - offset is in RR, increment that offset's score. End of phase at MAX_ROUNDS=100 or MAX_SCORE=31 saturation; best-score offset wins. Prefetch disabled if winning score < 2 (BAD_SCORE_THRESHOLD).",
+      "algorithmic_adaptation": "Reference BOP inserts into RR on completed prefetch (fill); this port also inserts on fill but uses a 256-entry single-way RR rather than a set-associative one. Functionally equivalent for the published evaluation window; no behavioral deviation from the algorithm itself.",
+      "deviation_class": "faithful_port"
+    },
+    {
+      "name": "pythia",
+      "path": "external/ChampSim/prefetcher/pythia/",
+      "loc_total": 168,
+      "attached_to": "L2C",
+      "language_note": "Pythia is a CPU C++ tabular-SARSA prefetcher — NOT a GPU/Python ML stack. Earlier notes in this repo describing it as RL-via-GPU were incorrect.",
+      "algorithm_summary": "Tabular SARSA over a 2-feature state (PC[7:0], page-offset[5:0]) and 16-action offset space (signed offsets including 0 = no-prefetch placed last to avoid argmax-tie collapse). Reward +20 on useful prefetch (line later demanded), -14 on useless (filled then evicted-unused without demand). alpha = 1/8 (shift), gamma = 1/2 (shift). epsilon = 1/16. 256-entry evaluation queue tracks in-flight prefetches.",
+      "algorithmic_adaptation": "Bera et al.'s Pythia uses an extended N-feature configuration with feature-knowledge tile coding and weighted-sum action selection. This port implements the canonical 2-feature SARSA loop (the paper's baseline before extended features) with int16 Q-saturation. Eligibility-trace lambda is not implemented (single-step SARSA only). The full N-feature config (>= 5 features) and weighted-sum action selection are out of scope for this port; see the Pythia artifact docs/ folder for the deeper feature space.",
+      "deviation_class": "structural_port_canonical_2_feature_sarsa"
+    }
+  ],
+  "build_pipeline": {
+    "config_files": {
+      "berti": "external/ChampSim/build-configs/pref_berti.json",
+      "ipcp": "external/ChampSim/build-configs/pref_ipcp.json",
+      "bingo": "external/ChampSim/build-configs/pref_bingo.json",
+      "bop": "external/ChampSim/build-configs/pref_bop.json",
+      "pythia": "external/ChampSim/build-configs/pref_pythia.json"
+    },
+    "binary_dir": "external/ChampSim/bin/",
+    "build_command": "cd external/ChampSim && cp build-configs/pref_<name>.json champsim_config.json && ./config.sh champsim_config.json && make -j8",
+    "host_compiler": "g++ (Ubuntu 13.3.0-6ubuntu2~24.04.1) — native, not Docker (per CLAUDE.md)"
+  },
+  "results_artifact": "docs/evidence/cache/champsim_prefetch_sweep_report.json",
+  "evidence_class_rule": "All numbers tagged `champsim_dpc3_traces_only` — do NOT promote to phone-class without silicon or full-system-simulator evidence."
+}

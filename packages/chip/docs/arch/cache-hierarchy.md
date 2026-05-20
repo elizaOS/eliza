@@ -200,7 +200,7 @@ Zihpm-class boundary.
 | --- | --- |
 | `make rtl-check`               | Verilator lint of every cache module |
 | `make cocotb-cache-coherence`  | MESI transitions, single-writer-multi-reader |
-| `make champsim-prefetch-sweep` | DPC-3 sweep of upstream ChampSim prefetchers (no/next_line/ip_stride/spp_dev/va_ampm_lite). Berti/IPCP/Bingo/BOP/Pythia remain BLOCKED until ported. evidence_class=champsim_dpc3_traces_only |
+| `make champsim-prefetch-sweep` | DPC-3 sweep of upstream ChampSim prefetchers (no/next_line/ip_stride/spp_dev/va_ampm_lite) plus in-tree 2024-12 module-API ports of the CRC-style drop-ins (berti/ipcp/bingo/bop/pythia) under `scripts/champsim_prefetcher_ports/`. evidence_class=champsim_dpc3_traces_only; do NOT promote to phone-class without silicon or full-system-simulator evidence. |
 | `make mockingjay-vs-lru-sweep` | DPC-3 LRU baseline + bundled replacement deltas (drrip/ship/srrip). Hawkeye/Mockingjay-prod remain BLOCKED until ported. evidence_class=champsim_dpc3_traces_only |
 | `make cocotb-cache-mockingjay-accuracy` | Mockingjay-prod RTL hit-rate vs LRU on synthetic scan+reuse stream (currently below +10% threshold; see mockingjay_cocotb_synthetic_report.json) |
 | `make lmbench-cache-curve`     | lat_mem_rd canonical L1/L2/L3/SLC/DRAM curve (functional in sim; real-target evidence BLOCKED) |
