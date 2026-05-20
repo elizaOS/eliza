@@ -149,7 +149,7 @@ def convert_dataset(max_records: int | None, hf_token: str | None) -> tuple[list
     from datasets import load_dataset
 
     log.info("Loading %s ...", XLAM_DATASET)
-    ds = load_dataset(XLAM_DATASET, token=hf_token, trust_remote_code=True)
+    ds = load_dataset(XLAM_DATASET, token=hf_token)
     split = ds.get("train") or ds[list(ds.keys())[0]]
 
     records: list[dict] = []
