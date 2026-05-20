@@ -1013,6 +1013,8 @@ function assertFails(
   candidateRemoteCapabilityRoutesSource = remoteCapabilityRoutesSource,
   candidateCoreCapabilitiesSource = coreCapabilitiesSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
+  const check = checks.find((candidate) => candidate.name === expectedCheckName);
+  if (!check) throw new Error(`unknown check "${expectedCheckName}"`);
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
     coreCapabilitiesSource: candidateCoreCapabilitiesSource,
@@ -1032,14 +1034,10 @@ function assertFails(
     workflowPath: "mutated-workflow.yml",
     onlyCheckNames: [expectedCheckName],
   });
-  const expectedFailure = failures.find(
-    (failure) => failure.name === expectedCheckName,
-  );
+  const expectedFailure = failures[0];
   if (!expectedFailure) {
     throw new Error(
-      `mutated workflow did not fail "${expectedCheckName}"; failures: ${failures
-        .map((failure) => failure.name)
-        .join(", ")}`,
+      `mutated workflow did not fail "${expectedCheckName}".`,
     );
   }
   return expectedFailure;
