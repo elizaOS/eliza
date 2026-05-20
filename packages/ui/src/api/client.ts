@@ -132,6 +132,7 @@ export type {
   ModelHubSnapshot,
 } from "./client-local-inference";
 export * from "./client-types";
+export type { XRDeviceConnection, XRPairState } from "./client-xr";
 export type { AgentRequestTransport } from "./transport";
 export type {
   AllPermissionsState,
@@ -239,6 +240,7 @@ import "./client-workflow";
 import "./client-skills";
 import "./client-vault";
 import "./client-wallet";
+import "./client-xr";
 
 // ---------------------------------------------------------------------------
 // Singleton
