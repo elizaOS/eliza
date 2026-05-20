@@ -1,5 +1,5 @@
 {
-  "name": "crypto-browserify",
+  "name": "@feed/crypto-browserify",
   "version": "3.12.1",
   "private": true,
   "type": "module",

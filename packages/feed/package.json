@@ -1,12 +1,7 @@
 {
-  "name": "feed",
+  "name": "@feed/root",
   "version": "0.1.0",
   "private": true,
-  "workspaces": [
-    "apps/*",
-    "packages/*",
-    "packages/examples/*"
-  ],
   "scripts": {
     "postinstall": "bun run scripts/postinstall-install-python-deps.ts && bun run scripts/postinstall-agent-frameworks.ts",
     "agent-frameworks:bootstrap": "bun run scripts/postinstall-agent-frameworks.ts",
@@ -193,7 +188,7 @@
     "handlebars": "4.7.9",
     "immutable": "5.1.5",
     "bn.js": "5.2.3",
-    "crypto-browserify": "workspace:*",
+    "@feed/crypto-browserify": "workspace:*",
     "tsup": "8.5.1",
     "hono": "4.12.9",
     "fast-xml-parser": "5.5.9",

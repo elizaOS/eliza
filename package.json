@@ -211,7 +211,11 @@
     "packages/os/*",
     "packages/os/android/*",
     "packages/test/cloud-mocks",
-    "packages/test/cloud-e2e"
+    "packages/test/cloud-e2e",
+    "packages/feed/packages/*",
+    "packages/feed/packages/examples/*",
+    "packages/feed/apps/*",
+    "packages/feed/tools/*"
   ],
   "devDependencies": {
     "@biomejs/biome": "2.4.15",

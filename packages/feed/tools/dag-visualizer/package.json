@@ -1,5 +1,5 @@
 {
-  "name": "dag-visualizer",
+  "name": "@feed/dag-visualizer-tool",
   "version": "1.0.0",
   "description": "Standalone, zero-dependency visualization of ALL data flowing through the Feed game engine tick execution.",
   "main": "index.js",

@@ -1,5 +1,5 @@
 {
-  "name": "feed-typescript-agent-example",
+  "name": "@feed/typescript-agent-example",
   "version": "1.0.0",
   "description": "Complete autonomous agent example for Feed with Agent0 and A2A integration",
   "type": "module",

@@ -1,5 +1,5 @@
 {
-  "name": "dag-visualizer",
+  "name": "@feed/dag-visualizer-app",
   "private": true,
   "type": "module",
   "scripts": {
