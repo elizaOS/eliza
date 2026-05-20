@@ -5503,7 +5503,7 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 5_000;
+const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
 
 function clearLatestResponseId(
 	agentId: UUID,
