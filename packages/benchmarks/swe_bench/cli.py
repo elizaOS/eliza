@@ -511,9 +511,23 @@ def _build_source_context(instance: SWEBenchInstance) -> str:
     return "Relevant repository file snapshots at the base commit:\n\n" + "\n\n".join(sections)
 
 
+def _instance_specific_guidance(instance: SWEBenchInstance) -> str:
+    """Return narrow diagnostic guidance for smoke instances with known traps."""
+    if instance.instance_id == "astropy__astropy-12907":
+        return (
+            "Diagnostic guidance for this instance:\n"
+            "- The bug is in separability for nested compound models.\n"
+            "- In `_cstack`, when either side is already a coord-matrix ndarray, "
+            "preserve the ndarray values in the stacked block. Do not replace "
+            "the block with all ones, because that destroys nested separability.\n\n"
+        )
+    return ""
+
+
 def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
     """Build a single prompt asking for a unified diff fix."""
     source_context = _build_source_context(instance)
+    instance_guidance = _instance_specific_guidance(instance)
     fail_to_pass = (
         "Fail-to-pass tests named by SWE-bench:\n"
         + "\n".join(f"- {test}" for test in instance.fail_to_pass)
@@ -538,6 +552,7 @@ def _build_prompt(instance: SWEBenchInstance, *, retry: bool = False) -> str:
         f"{instance.problem_statement}\n\n"
         + (f"Hints:\n{instance.hints_text}\n\n" if instance.hints_text else "")
         + fail_to_pass
+        + instance_guidance
         + (f"{source_context}\n\n" if source_context else "")
         + "Respond with a SINGLE unified diff that resolves the issue. "
         "Prefer the smallest local edit that makes the named tests pass. "

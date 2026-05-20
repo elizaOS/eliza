@@ -13,7 +13,6 @@ from benchmarks.orchestrator.db import (
     update_run_result,
 )
 from benchmarks.orchestrator.adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
 )
 from benchmarks.orchestrator.runner import _rebuild_latest_result_snapshots
@@ -640,42 +639,6 @@ def test_rebuild_latest_quarantines_sample_task_sets(tmp_path: Path) -> None:
     assert "insufficient_total_questions:2" in payload["publication_warnings"]
     assert "insufficient_scenario_count:1" in payload["publication_warnings"]
     assert "insufficient_n:2" in payload["publication_warnings"]
-
-
-def test_rebuild_latest_quarantines_sample_dataset_sources(tmp_path: Path) -> None:
-    conn = connect_database(tmp_path / "orchestrator.sqlite")
-    initialize_database(conn)
-    create_run_group(
-        conn,
-        run_group_id="rg_test",
-        created_at="2026-05-12T00:00:00+00:00",
-        request={},
-        benchmarks=["gaia"],
-        repo_meta={},
-    )
-    _seed_run(
-        conn,
-        benchmark_id="gaia",
-        agent="eliza",
-        run_id="run_gaia_sample",
-        started_at="2026-05-12T00:00:00+00:00",
-        metrics={
-            "overall_accuracy": 1.0,
-            "total_questions": 2,
-            "correct_answers": 2,
-            "dataset_source": "sample",
-        },
-        token_metrics={"total_tokens": 200, "llm_call_count": 3},
-    )
-
-    _rebuild_latest_result_snapshots(conn, tmp_path, {"gaia": _adapter("gaia")})
-
-    assert not (tmp_path / "latest" / "gaia__eliza.json").exists()
-    payload = json.loads(
-        (tmp_path / "quarantine" / "gaia__eliza.json").read_text(encoding="utf-8")
-    )
-    assert payload["quarantine_reason"] == "sample_task_set"
-    assert "sample_task_set" in payload["publication_warnings"]
 
 
 def test_rebuild_latest_quarantines_demo_mode_results(tmp_path: Path) -> None:
@@ -1521,18 +1484,18 @@ def test_rebuild_latest_prunes_sample_preserved_snapshot_from_partial_db(
         run_id="run_bfcl",
         started_at="2026-05-12T00:00:00+00:00",
     )
-    fake_latest = tmp_path / "latest" / "gaia__eliza.json"
+    fake_latest = tmp_path / "latest" / "retired__eliza.json"
     fake_latest.parent.mkdir(parents=True, exist_ok=True)
     fake_latest.write_text(
         json.dumps(
             {
-                "benchmark_id": "gaia",
-                "benchmark_directory": "gaia",
+                "benchmark_id": "retired",
+                "benchmark_directory": "retired",
                 "agent": "eliza",
                 "status": "succeeded",
                 "score": 1.0,
                 "metrics": {"dataset_source": "sample"},
-                "run_id": "fake_gaia_sample",
+                "run_id": "fake_retired_sample",
                 "run_group_id": "rg_old",
                 "signature": "sig-fake",
                 "comparison_signature": "cmp-fake",
@@ -1546,7 +1509,7 @@ def test_rebuild_latest_prunes_sample_preserved_snapshot_from_partial_db(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"bfcl": _adapter("bfcl"), "gaia": _adapter("gaia")},
+        {"bfcl": _adapter("bfcl")},
     )
 
     assert (tmp_path / "latest" / "bfcl__eliza.json").exists()
@@ -1704,46 +1667,6 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
         "run_id": None,
         "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
-
-
-def test_rebuild_latest_matrix_contract_marks_no_required_real_harness_incomplete(
-    tmp_path: Path,
-) -> None:
-    conn = connect_database(tmp_path / "orchestrator.sqlite")
-    initialize_database(conn)
-    create_run_group(
-        conn,
-        run_group_id="rg_test",
-        created_at="2026-05-12T00:00:00+00:00",
-        request={},
-        benchmarks=["gaia"],
-        repo_meta={},
-    )
-    _seed_run(
-        conn,
-        benchmark_id="gaia",
-        agent="eliza",
-        run_id="run_unsupported",
-        started_at="2026-05-12T00:00:00+00:00",
-    )
-
-    _rebuild_latest_result_snapshots(
-        conn,
-        tmp_path,
-        {"gaia": _adapter("gaia", agent_compatibility=())},
-    )
-
-    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
-    contract = index["matrix_contract"]
-    assert contract["status"] == "incomplete"
-    assert contract["summary"]["complete_benchmarks"] == 0
-    assert contract["summary"]["incomplete_benchmarks"] == 1
-    assert contract["summary"]["no_required_real_harness_benchmarks"] == 1
-    assert contract["benchmarks"]["gaia"]["complete"] is False
-    assert (
-        contract["benchmarks"]["gaia"]["cells"]["eliza"]["reason"]
-        == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
-    )
 
 
 def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(

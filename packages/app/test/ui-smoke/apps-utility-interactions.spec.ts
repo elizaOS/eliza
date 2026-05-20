@@ -3,6 +3,7 @@ import { DIRECT_ROUTE_CASES } from "./apps-session-route-cases";
 import {
   assertReadyChecks,
   installDefaultAppRoutes,
+  openAppPath,
   seedAppStorage,
 } from "./helpers";
 
@@ -23,6 +24,7 @@ const RED_ERROR_TEXT =
 const BENIGN_CONSOLE_PATTERNS = [
   /THREE\.Clock: This module has been deprecated/i,
   /THREE\.WebGLShadowMap: PCFSoftShadowMap has been deprecated/i,
+  /\[VrmEngine\] TSL dissolve unavailable, showing instantly/i,
   /GL Driver Message .*GPU stall due to ReadPixels/i,
   /\[eliza\]\[startup:init\] stream settings avatar TypeError: Failed to fetch/i,
 ];
@@ -81,12 +83,16 @@ async function expectNoIssues(
 }
 
 async function openAppWindow(page: Page, routeCase: RouteCase): Promise<void> {
-  await page.goto(
-    `/?appWindow=1&qaApp=${encodeURIComponent(routeCase.name)}#${routeCase.path}`,
-    {
-      waitUntil: "domcontentloaded",
-    },
-  );
+  if (routeCase.name === "companion") {
+    await page.goto(
+      `/?appWindow=1&qaApp=${encodeURIComponent(routeCase.name)}#${routeCase.path}`,
+      {
+        waitUntil: "domcontentloaded",
+      },
+    );
+  } else {
+    await openAppPath(page, routeCase.path);
+  }
   await expect(page.locator("#root")).toBeVisible({
     timeout: routeTimeout(routeCase),
   });
@@ -194,7 +200,8 @@ test("companion app controls are interactive and error-free", async ({
   );
   const initialBackgroundChecked =
     await backgroundToggle.getAttribute("aria-checked");
-  await backgroundToggle.click();
+  await backgroundToggle.focus();
+  await backgroundToggle.press("Space");
   await expect(backgroundToggle).not.toHaveAttribute(
     "aria-checked",
     initialBackgroundChecked ?? "",
@@ -216,10 +223,12 @@ test("companion app controls are interactive and error-free", async ({
 
   const canvas = page.getByTestId("companion-vrm-canvas");
   const canvasBox = await canvas.boundingBox();
-  expect(canvasBox).not.toBeNull();
+  if (!canvasBox) {
+    throw new Error("Companion VRM canvas did not produce a bounding box");
+  }
   const dragStart = {
-    x: canvasBox!.x + canvasBox!.width * 0.5,
-    y: canvasBox!.y + canvasBox!.height * 0.35,
+    x: canvasBox.x + canvasBox.width * 0.5,
+    y: canvasBox.y + canvasBox.height * 0.35,
   };
   await page.mouse.move(dragStart.x, dragStart.y);
   await page.mouse.down();

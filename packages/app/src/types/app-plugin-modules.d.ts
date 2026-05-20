@@ -113,6 +113,7 @@ declare module "@elizaos/app-lifeops" {
   export const AppBlockerSettingsCard: ComponentType<AppBlockerSettingsCardProps>;
   export const WebsiteBlockerSettingsCard: ComponentType<WebsiteBlockerSettingsCardProps>;
   export function dispatchQueuedLifeOpsGithubCallbackFromUrl(url: string): void;
+  export function registerLifeOpsApp(): void;
 }
 
 declare module "@elizaos/plugin-lifeops" {

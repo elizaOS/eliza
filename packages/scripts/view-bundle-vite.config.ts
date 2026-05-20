@@ -19,6 +19,7 @@ export function createViewBundleConfig(options: ViewBundleOptions): UserConfig {
     "@elizaos/ui",
     "lucide-react",
     "react",
+    "react-plaid-link",
     "react/jsx-dev-runtime",
     "react/jsx-runtime",
     ...(options.additionalExternals ?? []),

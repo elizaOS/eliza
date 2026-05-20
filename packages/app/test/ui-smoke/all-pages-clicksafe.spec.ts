@@ -117,9 +117,33 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     timeoutMs: 60_000,
   },
   {
+    name: "character select",
+    path: "/character/select",
+    readyChecks: [{ selector: '[data-testid="character-editor-view"]' }],
+    timeoutMs: 60_000,
+  },
+  {
     name: "wallet",
     path: "/wallet",
     readyChecks: [{ selector: '[data-testid="wallet-shell"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "stream",
+    path: "/stream",
+    readyChecks: [{ selector: "#root" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "companion deep link",
+    path: "/companion",
+    readyChecks: [{ selector: "#root" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "rolodex",
+    path: "/rolodex",
+    readyChecks: [{ selector: "#root" }],
     timeoutMs: 60_000,
   },
   {

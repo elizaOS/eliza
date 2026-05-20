@@ -227,6 +227,14 @@ function isOsworldBenchmarkName(benchmark: string): boolean {
   return normalized === "osworld" || normalized === "os-world";
 }
 
+function isHermesNativeEnvProxyName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return (
+    normalized === "hermes_native_env" ||
+    normalized === "hermes-native-env"
+  );
+}
+
 function isWooBenchName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return normalized === "woobench" || normalized === "woo-bench";
@@ -759,6 +767,86 @@ function normalizeLocaNativeMessages(
     });
   }
 
+  return normalized;
+}
+
+function normalizeGenericToolMessages(
+  rawMessages: unknown,
+  fallbackText: string,
+): Array<Record<string, unknown>> {
+  const input = Array.isArray(rawMessages) ? rawMessages : [];
+  const toolNamesById = new Map<string, string>();
+  const normalized: Array<Record<string, unknown>> = [];
+
+  for (const item of input) {
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const message = item as Record<string, unknown>;
+    const role = typeof message.role === "string" ? message.role : "user";
+    if (role === "assistant") {
+      const rawToolCalls = Array.isArray(message.tool_calls)
+        ? message.tool_calls
+        : Array.isArray(message.toolCalls)
+          ? message.toolCalls
+          : [];
+      const toolCalls = rawToolCalls
+        .map((call) => normalizeLocaIncomingToolCall(call))
+        .filter((call): call is Record<string, unknown> => Boolean(call));
+      for (const call of toolCalls) {
+        const id = typeof call.id === "string" ? call.id : "";
+        const fn =
+          call.function && typeof call.function === "object"
+            ? (call.function as Record<string, unknown>)
+            : {};
+        const name = typeof fn.name === "string" ? fn.name : "";
+        if (id && name) toolNamesById.set(id, name);
+      }
+      normalized.push({
+        role: "assistant",
+        content: typeof message.content === "string" ? message.content : "",
+        ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+      });
+      continue;
+    }
+
+    if (role === "tool") {
+      const toolCallId =
+        typeof message.tool_call_id === "string"
+          ? message.tool_call_id
+          : typeof message.toolCallId === "string"
+            ? message.toolCallId
+            : typeof message.id === "string"
+              ? message.id
+              : "tool-call";
+      const toolName =
+        typeof message.name === "string"
+          ? message.name
+          : typeof message.toolName === "string"
+            ? message.toolName
+            : toolNamesById.get(toolCallId) || "tool";
+      normalized.push({
+        role: "tool",
+        tool_call_id: toolCallId,
+        name: toolName,
+        content:
+          typeof message.content === "string"
+            ? message.content
+            : JSON.stringify(message.content ?? ""),
+      });
+      continue;
+    }
+
+    normalized.push({
+      role: role === "system" ? "system" : "user",
+      content:
+        typeof message.content === "string"
+          ? message.content
+          : JSON.stringify(message.content ?? ""),
+    });
+  }
+
+  if (normalized.length === 0) {
+    normalized.push({ role: "user", content: fallbackText });
+  }
   return normalized;
 }
 
@@ -3056,6 +3144,114 @@ export async function startBenchmarkServer() {
                 thought: null,
                 actions,
                 params,
+                captured_actions: [],
+                tool_calls: toolCalls,
+                usage: turnUsage,
+                metadata,
+                benchmark: session.benchmark,
+                task_id: session.taskId,
+                room_id: session.roomId,
+                trajectory_step: trajectory.length,
+              }),
+            );
+            return;
+          }
+
+          if (
+            isHermesNativeEnvProxyName(session.benchmark) &&
+            Array.isArray(benchmarkContext.tools) &&
+            benchmarkContext.tools.length > 0
+          ) {
+            const messages = normalizeGenericToolMessages(
+              benchmarkContext.messages,
+              text,
+            );
+            const maxTokens =
+              typeof benchmarkContext.max_tokens === "number"
+                ? benchmarkContext.max_tokens
+                : 4096;
+            const temperature =
+              typeof benchmarkContext.temperature === "number"
+                ? benchmarkContext.temperature
+                : 0;
+            const toolChoice =
+              typeof benchmarkContext.tool_choice === "string"
+                ? benchmarkContext.tool_choice
+                : "auto";
+            const turnUsageBuffer: BenchmarkLlmCallUsage[] = [];
+            activeUsageBuffer = turnUsageBuffer;
+            let nativeResult: unknown;
+            try {
+              const directResult = await callOpenAiCompatibleActionCalling({
+                messages,
+                tools: benchmarkContext.tools,
+                toolChoice,
+                maxTokens,
+                temperature,
+              });
+              if (directResult) {
+                if (directResult.usage) {
+                  turnUsageBuffer.push(directResult.usage);
+                }
+                nativeResult = {
+                  text: directResult.text,
+                  toolCalls: directResult.toolCalls,
+                };
+              } else {
+                nativeResult = await runtime.useModel(ModelType.TEXT_LARGE, {
+                  messages,
+                  tools: benchmarkContext.tools,
+                  toolChoice,
+                  maxTokens,
+                  temperature,
+                });
+              }
+            } finally {
+              activeUsageBuffer = null;
+            }
+            const turnUsage = summarizeBenchmarkTurnUsage(turnUsageBuffer);
+            const nativeRecord =
+              nativeResult && typeof nativeResult === "object"
+                ? (nativeResult as Record<string, unknown>)
+                : {};
+            const toolCalls = normalizeLocaNativeToolCalls(
+              nativeRecord.toolCalls,
+            );
+            const responseText =
+              typeof nativeRecord.text === "string"
+                ? nativeRecord.text
+                : typeof nativeResult === "string"
+                  ? nativeResult
+                  : "";
+            const finishedAt = Date.now();
+
+            trajectory.push({
+              step: trajectory.length + 1,
+              startedAt,
+              finishedAt,
+              inputText: text,
+              promptText: composedPrompt,
+              context,
+              thought: null,
+              responseText,
+              actions: toolCalls.length > 0 ? ["BENCHMARK_ACTION"] : [],
+              params: toolCalls.length > 0 ? { tool_calls: toolCalls } : {},
+              usage: turnUsage,
+            });
+            trajectoriesBySession.set(key, trajectory);
+            const metadata = benchmarkTurnMetadata({
+              session,
+              step: trajectory.length,
+              context: benchmarkContext,
+            });
+
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                text: responseText,
+                thought: null,
+                actions: toolCalls.length > 0 ? ["BENCHMARK_ACTION"] : [],
+                params: toolCalls.length > 0 ? { tool_calls: toolCalls } : {},
                 captured_actions: [],
                 tool_calls: toolCalls,
                 usage: turnUsage,

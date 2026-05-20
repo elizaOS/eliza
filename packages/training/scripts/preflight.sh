@@ -15,10 +15,11 @@
 #                                   GPU capacity (the empirical buffer for the
 #                                   ~+30 GB FSDP-2 all-gather peak we measured
 #                                   on Blackwell).
-#   5. stale local smoke         → benchmarks/<key>-smoke-fullstack/sft/
-#                                   summary.json older than 24h or
-#                                   content_pct < 80 — operator must re-run
-#                                   smoke before paying for cloud hardware.
+#   5. stale local smoke         → checkpoints/<key>-smoke-fullstack/
+#                                   smoke_summary.json older than 24h or
+#                                   applicable_passed_pct < 80 — operator
+#                                   must re-run smoke before paying for cloud
+#                                   hardware.
 #   6. CUDA capability mismatch  → torch wheels need cu126/cu130 floor and
 #                                   the picked GPU target's driver / sm level
 #                                   must support it.
@@ -47,7 +48,7 @@
 #   ELIZA_PREFLIGHT_SAMPLE_LINES — schema sample size per file; default 1000
 #   ELIZA_PREFLIGHT_MAX_UTIL_PCT — memory headroom cutoff; default 85
 #   ELIZA_PREFLIGHT_SMOKE_MAX_AGE_HOURS — stale-smoke cutoff; default 24
-#   ELIZA_PREFLIGHT_MIN_CONTENT_PCT — minimum content_pct in summary; default 80
+#   ELIZA_PREFLIGHT_MIN_CONTENT_PCT — minimum applicable_passed_pct in summary; default 80
 
 set -euo pipefail
 
@@ -68,9 +69,8 @@ MIN_CONTENT_PCT="${ELIZA_PREFLIGHT_MIN_CONTENT_PCT:-80}"
 # Mirror train_vast.sh's GPU-target auto-pick so a user who only sets
 # REGISTRY_KEY gets the same default the launcher would.
 case "$REGISTRY_KEY" in
-  qwen3.5-2b|qwen3.5-4b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
-  qwen3.5-4b)           DEFAULT_GPU_TARGET="b200-2x" ;;
-  qwen3.5-0.8b)            DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
+  qwen3.5-2b|qwen3.5-9b) DEFAULT_GPU_TARGET="blackwell6000-1x" ;;
+  qwen3.6-27b)           DEFAULT_GPU_TARGET="b200-2x" ;;
   *)                     DEFAULT_GPU_TARGET="blackwell6000-2x" ;;
 esac
 VAST_GPU_TARGET="${VAST_GPU_TARGET:-$DEFAULT_GPU_TARGET}"

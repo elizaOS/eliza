@@ -5,6 +5,7 @@ const MIN_NON_BLANK_SCREENSHOT_BYTES = 1_000;
 const ROUTES = [
   { path: "/", heading: /The agentic operating system/i },
   { path: "/hardware/usb", heading: /^ElizaOS USB$/i },
+  { path: "/hardware/usb-plastic", heading: /^Branded USB key$/i },
   { path: "/hardware/case", heading: /^Raspberry Pi case$/i },
   { path: "/hardware/raspberry-pi", heading: /^Custom Raspberry Pi \+ case$/i },
   { path: "/hardware/mini-pc", heading: /^ElizaOS mini PC$/i },

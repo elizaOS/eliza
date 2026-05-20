@@ -38,8 +38,11 @@ _TERMINAL_ENV_SYSTEM_PROMPT = (
     "You are running inside a live terminal repair benchmark. Do not answer "
     "with prose instructions. Use the available terminal and file tools to "
     "inspect the workspace, edit files when needed, and run the task tests "
-    "before finishing. If the first attempt fails, inspect the failure and "
-    "continue fixing it."
+    "before finishing. Repositories may be in subdirectories, so if `git "
+    "status` fails at the workspace root, use shell commands such as "
+    "`find . -maxdepth 3 -type d -name .git` and then run git commands with "
+    "`git -C <repo> ...`. If the first attempt fails, inspect the failure "
+    "and continue fixing it."
 )
 
 

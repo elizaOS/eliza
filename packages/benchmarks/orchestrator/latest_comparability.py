@@ -9,6 +9,14 @@ from typing import Any
 from .calibration_report import _comparison_signature_for_run
 
 REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
+SCORE_SPREAD_EXEMPT_BENCHMARKS: frozenset[str] = frozenset(
+    {
+        # This benchmark intentionally runs the native Hermes terminal-agent
+        # environment through each harness path. The rows must exist and be
+        # publishable, but equal scores are not a valid cross-harness invariant.
+        "hermes_terminalbench_2",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -128,7 +136,11 @@ def validate_latest_comparability(
                     value=json.dumps(signatures, sort_keys=True),
                 )
             )
-        if len(scores) == len(required) and scores:
+        if (
+            benchmark_id not in SCORE_SPREAD_EXEMPT_BENCHMARKS
+            and len(scores) == len(required)
+            and scores
+        ):
             spread = max(scores.values()) - min(scores.values())
             baseline = min(scores.values())
             if not math.isclose(

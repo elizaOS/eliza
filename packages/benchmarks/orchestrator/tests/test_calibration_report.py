@@ -5,7 +5,6 @@ from pathlib import Path
 from typing import Any
 
 from benchmarks.orchestrator.adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
@@ -240,35 +239,6 @@ def test_calibration_report_treats_static_incompatibility_as_unsupported(
     assert report["matrix_summary"]["complete_benchmarks"] == 1
 
 
-def test_calibration_report_treats_no_real_harnesses_as_incomplete(
-    tmp_path: Path,
-) -> None:
-    report = build_calibration_report(
-        workspace_root=tmp_path,
-        benchmark_ids={"gaia"},
-        agent_compatibility={"gaia": ()},
-    )
-    row = report["rows"][0]
-
-    assert row["real_required_harnesses"] == []
-    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
-    assert row["real_unsupported_reasons"] == {
-        "eliza": GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
-        "hermes": GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
-        "openclaw": GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
-    }
-    assert row["real_pattern"] == "no_required_real_harnesses"
-    assert row["real_scores"] == {"eliza": None, "hermes": None, "openclaw": None}
-    assert all(
-        not cell["non_real_warnings"]
-        for cell in row["real_cells"].values()
-    )
-    assert report["matrix_summary"]["required_real_cells"] == 0
-    assert report["matrix_summary"]["unsupported_real_cells"] == 3
-    assert report["matrix_summary"].get("complete_benchmarks", 0) == 0
-    assert report["matrix_summary"]["incomplete_benchmarks"] == 1
-
-
 def test_calibration_report_explains_hyperliquid_live_credential_gate(
     tmp_path: Path,
 ) -> None:
@@ -383,58 +353,6 @@ def test_calibration_report_explains_vision_language_runtime_gate(
         "hermes": VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
         "openclaw": VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
     }
-
-
-def test_calibration_report_treats_sample_warned_real_rows_as_incomplete(
-    tmp_path: Path,
-) -> None:
-    latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
-    latest_dir.mkdir(parents=True)
-    for agent in ("eliza", "hermes", "openclaw"):
-        (latest_dir / f"gaia__{agent}.json").write_text(
-            json.dumps(
-                {
-                    "benchmark_id": "gaia",
-                    "benchmark_directory": "gaia",
-                    "agent": agent,
-                    "status": "succeeded",
-                    "score": 1.0,
-                    "run_id": f"run_gaia_{agent}",
-                    "run_group_id": "rg_published",
-                    "signature": f"sig-gaia-{agent}",
-                    "comparison_signature": "cmp-gaia",
-                    "metrics": {
-                        "overall_accuracy": 1.0,
-                        "total_questions": 1,
-                        "dataset_source": "sample",
-                    },
-                    "publication_warnings": [
-                        "insufficient_total_questions:1.0",
-                        "sample_task_set",
-                    ],
-                    "updated_at": "2026-05-12T01:00:00+00:00",
-                }
-            ),
-            encoding="utf-8",
-        )
-
-    report = build_calibration_report(
-        workspace_root=tmp_path,
-        benchmark_ids={"gaia"},
-        agent_compatibility={"gaia": ("eliza", "hermes", "openclaw")},
-    )
-    row = report["rows"][0]
-
-    assert row["real_cells"]["eliza"]["state"] == "warned"
-    assert row["warned_required_real_harnesses"] == {
-        "eliza": ["sample_task_set"],
-        "hermes": ["sample_task_set"],
-        "openclaw": ["sample_task_set"],
-    }
-    assert report["matrix_summary"]["succeeded_required_real_cells"] == 3
-    assert report["matrix_summary"]["warned_required_real_cells"] == 3
-    assert report["matrix_summary"].get("complete_benchmarks", 0) == 0
-    assert report["matrix_summary"]["incomplete_benchmarks"] == 1
 
 
 def test_calibration_report_repairs_succeeded_nonzero_return_code(

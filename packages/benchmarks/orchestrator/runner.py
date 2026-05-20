@@ -1317,12 +1317,6 @@ def _rebuild_latest_result_snapshots(
                 comparison_signature, {}
             ).setdefault(agent, []).append(row)
 
-    _promote_latest_comparable_real_cohorts(
-        latest_by_key=latest_by_key,
-        rows_by_comparison_signature=rows_by_comparison_signature,
-        adapters=adapters,
-    )
-
     preserved_latest: dict[tuple[str, str], tuple[dict[str, Any], Path]] = {}
     for path in sorted(latest_dir.glob("*.json")):
         if path.name == "index.json":
@@ -1749,9 +1743,9 @@ def _promote_latest_comparable_real_cohorts(
                 }
                 if _scores_within_latest_tolerance(scores, required_agents):
                     comparable_candidates.append(candidate)
-        if not candidates:
+        if not candidates or not comparable_candidates:
             continue
-        best = max(comparable_candidates or candidates, key=_cohort_recency_key)
+        best = max(comparable_candidates, key=_cohort_recency_key)
         for agent in required_agents:
             latest_by_key[(benchmark_id, agent)] = best[agent]
 

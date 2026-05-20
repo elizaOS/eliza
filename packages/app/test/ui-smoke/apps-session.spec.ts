@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { test } from "@playwright/test";
 import {
   assertReadyChecks,
   installDefaultAppRoutes,
@@ -18,8 +18,8 @@ test("apps view can route into internal tool pages and survive a reload", async 
   await assertReadyChecks(
     page,
     "apps-view",
-    [{ text: "No views available" }],
-    "any",
+    [{ text: "Companion" }, { text: "LifeOps" }],
+    "all",
     90_000,
   );
 
@@ -29,8 +29,8 @@ test("apps view can route into internal tool pages and survive a reload", async 
   await assertReadyChecks(
     page,
     "apps-view-reload",
-    [{ text: "No views available" }],
-    "any",
+    [{ text: "Companion" }, { text: "LifeOps" }],
+    "all",
     90_000,
   );
 });

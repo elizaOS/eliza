@@ -202,17 +202,25 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   await page.getByTestId("phone-dial-key-3").click();
   await page.getByTestId("phone-dial-backspace").click();
   await expect(
-    page.getByRole("status", { name: "Number being dialed" }),
+    page.getByRole("status", {
+      name: /^(Number being dialed|phone\.dialer\.display)$/,
+    }),
   ).toContainText("12");
-  await page.getByRole("tab", { name: "Recent" }).click();
+  await page
+    .getByRole("tab", { name: /^(Recent|phone\.tabs\.recent)$/ })
+    .click();
   await expect(
-    page.getByText("No recent calls.", { exact: true }),
+    page.getByText(/^(No recent calls\.|phone\.recent\.empty)$/),
   ).toBeVisible();
-  const phoneContactsTab = page.getByRole("tab", { name: "Contacts" });
+  const phoneContactsTab = page.getByRole("tab", {
+    name: /^(Contacts|phone\.tabs\.contacts)$/,
+  });
   if (await phoneContactsTab.isEnabled()) {
     await phoneContactsTab.click();
     await expect(
-      page.getByText("No contacts with phone numbers.", { exact: true }),
+      page.getByText(
+        /^(No contacts with phone numbers\.|phone\.contacts\.empty)$/,
+      ),
     ).toBeVisible();
   } else {
     await expect(phoneContactsTab).toBeDisabled();
@@ -226,9 +234,11 @@ test("Phone, Contacts, WiFi, Messages, and Device Settings handle core interacti
   ));
   await page.getByTestId("contacts-search").fill("ada");
   await page.getByTestId("contacts-new").click();
-  await page.getByPlaceholder("Full name").fill("Ada Lovelace");
+  await page.getByLabel(/^(Name|contacts\.form\.name)$/).fill("Ada Lovelace");
   await page.getByPlaceholder("+1 555 123 4567").fill("+1 555 0100");
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await page
+    .getByRole("button", { name: /^(Cancel|actions\.cancel)$/ })
+    .click();
   await expect(page.getByTestId("contacts-shell")).toBeVisible();
   await expectNoIssues(page, issues.splice(0), "contacts interactions");
   await page.close();

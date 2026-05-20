@@ -89,8 +89,7 @@ Profile included in repo:
 - `benchmarks/orchestrator/profiles/sample10.json` - roughly 10% sampled run
   settings (where the benchmark supports sampling).
 - `benchmarks/orchestrator/profiles/orchestrator_subagents.json` - orchestrator
-  matrix profile for `swe_bench_orchestrated`, `gaia_orchestrated`, and
-  `orchestrator_lifecycle`.
+  matrix profile for `swe_bench_orchestrated` and `orchestrator_lifecycle`.
 
 Model profiles included in repo:
 
@@ -122,7 +121,6 @@ not commit it to a profile or `.env` file.
 New orchestrator-centric benchmark IDs:
 
 - `swe_bench_orchestrated`
-- `gaia_orchestrated`
 - `orchestrator_lifecycle`
 - `eliza_replay`
 
@@ -134,16 +132,6 @@ Code matrix example:
   --provider anthropic \
   --model claude-sonnet-4-6 \
   --extra '{"per_benchmark":{"swe_bench_orchestrated":{"matrix":true,"max_instances":3,"no_docker":true,"strict_capabilities":true}}}'
-```
-
-Research matrix example:
-
-```bash
-/opt/miniconda3/bin/python -m benchmarks.orchestrator run \
-  --benchmarks gaia_orchestrated \
-  --provider groq \
-  --model openai/gpt-oss-120b \
-  --extra '{"per_benchmark":{"gaia_orchestrated":{"matrix":true,"dataset":"sample","max_questions":10,"strict_capabilities":true}}}'
 ```
 
 Lifecycle suite example:
@@ -439,9 +427,6 @@ credentials that unlock benchmarks where sample/demo fallbacks are forbidden.
 
 Expected real-runtime gates:
 
-- GAIA rows require official dataset access via `HF_TOKEN`,
-  `HUGGINGFACE_HUB_TOKEN`, `GAIA_DATASET_PATH`, or a pre-cached official
-  `gaia-benchmark/GAIA` dataset. Sample GAIA rows are not publishable.
 - Hyperliquid rows require `HL_PRIVATE_KEY` and live execution with demo mode
   disabled.
 - Terminal-Bench and Hermes sandbox-family rows require either a reachable

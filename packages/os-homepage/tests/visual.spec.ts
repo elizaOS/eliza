@@ -6,6 +6,7 @@ import { expect, type Page, test } from "playwright/test";
 const ROUTES = [
   { path: "/", name: "landing" },
   { path: "/hardware/usb", name: "hardware-usb" },
+  { path: "/hardware/usb-plastic", name: "hardware-usb-plastic" },
   { path: "/hardware/case", name: "hardware-case" },
   { path: "/hardware/raspberry-pi", name: "hardware-raspberry-pi" },
   { path: "/hardware/mini-pc", name: "hardware-mini-pc" },

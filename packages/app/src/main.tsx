@@ -105,6 +105,7 @@ import {
 import { AppProvider } from "@elizaos/ui/state";
 import { applyUiTheme, loadUiTheme } from "@elizaos/ui/state/persistence";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
+// biome-ignore lint/correctness/noUnusedImports: classic JSX output in this app bundle expects React in module scope.
 import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
@@ -501,6 +502,7 @@ function initializeAppModules(): Promise<void> {
     );
 
     companionModule.registerCompanionApp();
+    lifeOpsModule.registerLifeOpsApp();
     loadedCompanionSceneStatusHook = companionModule.useCompanionSceneStatus;
     loadedVincentStateHook = vincentModule.useVincentState;
     dispatchQueuedLifeOpsGithubCallback =

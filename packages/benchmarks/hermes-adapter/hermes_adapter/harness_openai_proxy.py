@@ -3,7 +3,7 @@
 The Hermes-native terminal/simulation envs drive their rollout loop through an
 OpenAI chat-completions endpoint. For cross-harness runs we keep that real env
 and scorer, but point the model endpoint at this local bridge so model turns
-are answered by the selected Eliza/OpenClaw adapter instead of bypassing the
+    are answered by the selected harness adapter instead of bypassing the
 harness label.
 """
 
@@ -30,7 +30,7 @@ class HarnessOpenAIProxy:
         upstream_base_url: str | None = None,
     ) -> None:
         harness = harness.strip().lower()
-        if harness not in {"eliza", "openclaw"}:
+        if harness not in {"eliza", "hermes", "openclaw"}:
             raise ValueError(f"unsupported proxy harness: {harness!r}")
         self.harness = harness
         self.provider = provider or "cerebras"
@@ -176,6 +176,18 @@ def _build_client(
         client = ElizaClient()
         client.wait_until_ready(timeout=180)
         return client, None
+    if harness == "hermes":
+        from hermes_adapter.client import HermesClient  # noqa: WPS433
+
+        return (
+            HermesClient(
+                provider=provider or "cerebras",
+                model=model,
+                base_url=upstream_base_url,
+                mode="in_process",
+            ),
+            None,
+        )
     if harness == "openclaw":
         from openclaw_adapter.client import OpenClawClient  # noqa: WPS433
 

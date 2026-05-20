@@ -266,6 +266,61 @@ def test_filter_queue_can_select_imagegen_hardware_category() -> None:
     assert [item.id for item in selected] == ["imagegen:cuda"]
 
 
+def test_build_queue_expands_platform_evidence_blockers() -> None:
+    summary = {
+        "ok": False,
+        "failuresByCategory": {
+            "platformEvidence": [
+                {
+                    "name": "0_8b required platform evidence passed",
+                    "detail": (
+                        "ios-arm64-metal: status='pending', ios-arm64-metal: report='not-run', "
+                        "linux-x64-vulkan: status='pending', linux-x64-vulkan: report='not-run', "
+                        "android-adreno-vulkan: status='pending', android-adreno-vulkan: report='not-run'"
+                    ),
+                }
+            ],
+        },
+    }
+
+    items = build_queue(summary, bundle_root="/bundles", eval_python="python3")
+
+    assert [item.id for item in items] == [
+        "0_8b:platform:ios-arm64-metal",
+        "0_8b:platform:linux-x64-vulkan",
+        "0_8b:platform:android-adreno-vulkan",
+    ]
+    assert all(item.requires_hardware for item in items)
+    assert all(item.category == "platformEvidence" for item in items)
+    assert "bundles/0_8b/evidence/platform/ios-arm64-metal.json" in items[0].evidence
+    assert "real device/host identifier" in items[0].command
+
+
+def test_filter_queue_can_select_platform_hardware_category() -> None:
+    summary = {
+        "ok": False,
+        "failuresByCategory": {
+            "platformEvidence": [
+                {
+                    "name": "4b required platform evidence passed",
+                    "detail": (
+                        "linux-x64-cuda: status='pending', linux-x64-cuda: report='not-run', "
+                        "windows-x64-vulkan: status='pending', windows-x64-vulkan: report='not-run'"
+                    ),
+                }
+            ],
+        },
+    }
+    items = build_queue(summary, bundle_root="/bundles", eval_python="python3")
+
+    selected = filter_queue(items, tier="4b", category="platformEvidence", hardware_only=True)
+
+    assert [item.id for item in selected] == [
+        "4b:platform:linux-x64-cuda",
+        "4b:platform:windows-x64-vulkan",
+    ]
+
+
 def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     summary = {
         "ok": False,

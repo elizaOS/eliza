@@ -86,6 +86,29 @@ def test_latest_comparability_flags_mixed_signatures_and_score_spread(
     assert "score_spread_exceeds_tolerance" in reasons
 
 
+def test_latest_comparability_allows_known_harness_specific_score_spread(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _index("hermes_terminalbench_2"))
+    _write_json(
+        latest / "hermes_terminalbench_2__eliza.json",
+        _row("hermes_terminalbench_2", "eliza", 1.0),
+    )
+    _write_json(
+        latest / "hermes_terminalbench_2__hermes.json",
+        _row("hermes_terminalbench_2", "hermes", 0.0),
+    )
+    _write_json(
+        latest / "hermes_terminalbench_2__openclaw.json",
+        _row("hermes_terminalbench_2", "openclaw", 1.0),
+    )
+
+    report = validate_latest_comparability(tmp_path, tolerance=0.08)
+
+    assert report.ok
+
+
 def test_latest_comparability_ignores_unsupported_harnesses(tmp_path: Path) -> None:
     latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_json(latest / "index.json", _index("vision_language", required=("eliza",)))

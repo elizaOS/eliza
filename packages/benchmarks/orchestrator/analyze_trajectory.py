@@ -823,7 +823,6 @@ def discover_trajectories(run_dir: Path) -> list[Path]:
         "**/metrics/evm_*_metrics.json",
         "**/evm_*_metrics.json",
         "**/eliza_*_metrics.json",
-        "**/gaia-results*.json",
         "**/lifeops_*.json",
         "**/mind2web-results*.json",
         "**/orchestrator-lifecycle-*.json",

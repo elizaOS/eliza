@@ -15,7 +15,6 @@ import pytest
 from benchmarks.orchestrator import adapters as orchestrator_adapters
 from benchmarks.bench_cli_types import ModelSpec
 from benchmarks.orchestrator.adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     _score_from_app_eval,
     _score_from_compactbench,
     _score_from_eliza_1,
@@ -92,7 +91,6 @@ def test_discovery_includes_directory_name_mismatches_and_special_tracks() -> No
     assert adapters["openclaw_bench"].directory == "openclaw-benchmark"
     assert adapters["hyperliquid_bench"].directory == "HyperliquidBench"
     assert adapters["eliza_replay"].directory == "eliza-adapter"
-    assert adapters["gaia_orchestrated"].directory == "gaia"
     assert adapters["rlm_bench"].directory == "rlm-bench"
     assert adapters["osworld"].directory == "OSWorld"
     assert adapters["mmau"].directory == "mmau-audio"
@@ -615,7 +613,6 @@ def test_default_env_maps_profile_reasoning_effort_to_provider_env() -> None:
 def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
@@ -660,52 +657,9 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     assert all(cell.reason for cell in incompatible)
 
 
-def test_gaia_matrix_rows_require_official_dataset_access(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: False)
-
-    report = build_cross_matrix_report(
-        _workspace_root().parent,
-        provider="cerebras",
-        model="gpt-oss-120b",
-    )
-    gaia_cells = [
-        cell
-        for cell in report.cells
-        if cell.benchmark_id in {"gaia", "gaia_orchestrated"}
-    ]
-
-    assert len(gaia_cells) == 6
-    assert all(cell.compatible is False for cell in gaia_cells)
-    assert all(
-        cell.reason == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
-        for cell in gaia_cells
-    )
-
-
-@pytest.mark.parametrize(
-    "env_name",
-    ["HF_TOKEN", "HUGGINGFACE_HUB_TOKEN", "HUGGINGFACE_TOKEN"],
-)
-def test_gaia_official_dataset_gate_accepts_hf_token_aliases(
-    monkeypatch: pytest.MonkeyPatch,
-    env_name: str,
-) -> None:
-    for name in orchestrator_adapters.HUGGINGFACE_TOKEN_ENV_VARS:
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv(env_name, "token-value")
-    orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
-    try:
-        assert orchestrator_adapters._has_gaia_official_dataset() is True
-    finally:
-        orchestrator_adapters._GAIA_OFFICIAL_DATASET_AVAILABLE = None
-
-
 def test_hyperliquid_matrix_rows_require_live_credentials(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: False)
 
     report = build_cross_matrix_report(
@@ -750,7 +704,6 @@ def test_cross_matrix_validation_redacts_secret_config_values() -> None:
 def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(
         orchestrator_adapters,
         "_has_hermes_sandbox_backend",
@@ -799,8 +752,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == harness
 
     for benchmark_id in (
-        "gaia",
-        "gaia_orchestrated",
         "swe_bench_orchestrated",
         "configbench",
         "hyperliquid_bench",
@@ -818,12 +769,6 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
             assert cell.command
             assert cell.propagated_env["BENCHMARK_HARNESS"] == harness
             assert cell.propagated_env["ELIZA_BENCH_HARNESS"] == harness
-            if benchmark_id == "gaia":
-                assert "--harness" in cell.command
-                assert cell.command[cell.command.index("--harness") + 1] == harness
-            if benchmark_id == "gaia_orchestrated":
-                assert "--providers" in cell.command
-                assert cell.command[cell.command.index("--providers") + 1] == harness
             if benchmark_id == "swe_bench_orchestrated":
                 assert "--providers" in cell.command
                 assert cell.command[cell.command.index("--providers") + 1] == harness
@@ -1519,113 +1464,8 @@ def test_realm_routes_cross_harness_delegate_client(tmp_path: Path) -> None:
     assert command[command.index("--provider") + 1] == "openclaw"
 
 
-def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path) -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "gaia_orchestrated"
-    ]
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {
-            "dataset": "sample",
-            "max_questions": 2,
-            "providers": ["claude-code", "codex"],
-            "required_capabilities": ["research.web_search", "research.docs_lookup"],
-            "strict_capabilities": True,
-        },
-    )
-
-    assert command[command.index("-m") + 1] == "elizaos_gaia.orchestrated"
-    assert command[command.index("--max-questions") + 1] == "2"
-    assert command[command.index("--providers") + 1 : command.index("--providers") + 3] == [
-        "claude-code",
-        "codex",
-    ]
-    assert "--strict-capabilities" in command
-    assert entry.locate_result(tmp_path) == tmp_path / "gaia-orchestrated-latest.json"
-
-    hermes_command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "hermes"},
-    )
-    assert hermes_command[hermes_command.index("--providers") + 1] == "hermes"
-
-
-def test_gaia_registry_uses_env_dataset_path_as_local_jsonl(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "gaia"
-    ]
-    dataset = tmp_path / "official-gaia.jsonl"
-    dataset.write_text("", encoding="utf-8")
-    monkeypatch.setenv("GAIA_DATASET_PATH", str(dataset))
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "eliza"},
-    )
-
-    assert command[command.index("--dataset") + 1] == "jsonl"
-    assert command[command.index("--dataset-path") + 1] == str(dataset)
-
-
-def test_gaia_registry_env_dataset_path_overrides_default_gaia_source(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "gaia_orchestrated"
-    ]
-    dataset = tmp_path / "official-gaia.jsonl"
-    dataset.write_text("", encoding="utf-8")
-    monkeypatch.setenv("GAIA_DATASET_PATH", str(dataset))
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"dataset": "gaia", "providers": ["eliza"]},
-    )
-
-    assert command[command.index("--dataset") + 1] == "jsonl"
-    assert command[command.index("--dataset-path") + 1] == str(dataset)
-
-
-def test_gaia_orchestrated_registry_forwards_dataset_path(tmp_path: Path) -> None:
-    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
-        "gaia_orchestrated"
-    ]
-    dataset = tmp_path / "official-gaia.jsonl"
-    dataset.write_text("", encoding="utf-8")
-
-    command = entry.build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {
-            "dataset": "jsonl",
-            "dataset_path": str(dataset),
-            "max_questions": 2,
-            "providers": ["eliza"],
-        },
-    )
-
-    assert command[command.index("--dataset") + 1] == "jsonl"
-    assert command[command.index("--dataset-path") + 1] == str(dataset)
-
-
-def test_gaia_and_webshop_registry_route_cross_harnesses(tmp_path: Path) -> None:
+def test_webshop_registry_routes_cross_harnesses(tmp_path: Path) -> None:
     entries = {item.id: item for item in get_benchmark_registry(_workspace_root())}
-
-    gaia_command = entries["gaia"].build_command(
-        tmp_path,
-        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
-        {"agent": "openclaw"},
-    )
-    assert gaia_command[gaia_command.index("--harness") + 1] == "openclaw"
 
     webshop_command = entries["webshop"].build_command(
         tmp_path,
@@ -2950,13 +2790,6 @@ def test_public_score_extractors_reject_zero_sample_artifacts() -> None:
         "abliteration-robustness": {
             "metrics": {"score": 0.0, "refusal_rate": 0.0, "n": 0, "n_refused": 0}
         },
-        "gaia_orchestrated": {
-            "metrics": {
-                "overall_accuracy": 0.0,
-                "total_questions": 0,
-                "correct_answers": 0,
-            }
-        },
         "humaneval": {"metrics": {"score": 0.0, "pass@1": 0.0, "passed": 0, "n": 0}},
         "lifeops_bench": {
             "pass_at_1": 0.0,
@@ -2978,13 +2811,6 @@ def test_public_score_extractors_allow_true_zero_scores_with_samples() -> None:
     scored_payloads = {
         "abliteration-robustness": {
             "metrics": {"score": 0.0, "refusal_rate": 1.0, "n": 2, "n_refused": 2}
-        },
-        "gaia_orchestrated": {
-            "metrics": {
-                "overall_accuracy": 0.0,
-                "total_questions": 2,
-                "correct_answers": 0,
-            }
         },
         "humaneval": {"metrics": {"score": 0.0, "pass@1": 0.0, "passed": 0, "n": 2}},
         "lifeops_bench": {
@@ -3159,11 +2985,10 @@ def test_terminalbench_default_allows_real_corpus_test_bootstrap(tmp_path: Path)
     )
 
     assert request.extra_config["network_mode"] == "bridge"
-    assert request.extra_config["max_tasks"] == 2
-    assert request.extra_config["task_ids"] == ["hello-world", "classifier-debug"]
+    assert request.extra_config["max_tasks"] == 1
+    assert request.extra_config["task_ids"] == ["hello-world"]
     assert command[command.index("--network-mode") + 1] == "bridge"
     assert command[command.index("--task-ids") + 1] == "hello-world"
-    assert command[command.index("--task-ids") + 2] == "classifier-debug"
 
 
 def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:

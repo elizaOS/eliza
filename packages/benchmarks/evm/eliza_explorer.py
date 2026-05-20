@@ -533,7 +533,7 @@ async def main() -> None:
     from eliza_adapter.evm import ElizaBridgeEVMExplorer
 
     # Auto-spawn the eliza benchmark server when no external URL is configured.
-    # Matches the pattern used by clawbench / swe_bench / gaia / rlm-bench so
+    # Matches the pattern used by clawbench / swe_bench / rlm-bench so
     # the orchestrator can run evm without a manually started server.
     bench_server = None
     harness = (

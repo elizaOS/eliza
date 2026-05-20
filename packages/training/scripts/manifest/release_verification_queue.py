@@ -20,16 +20,17 @@ from typing import Any, Mapping
 try:
     from scripts.manifest.audit_hf_eliza1_release import audit_hf_release
     from scripts.manifest.eliza1_manifest import ELIZA_1_TIERS
-    from scripts.manifest.eliza1_platform_plan import text_artifact_name
+    from scripts.manifest.eliza1_platform_plan import build_plan, text_artifact_name
 except ImportError:  # pragma: no cover - script execution path
     from audit_hf_eliza1_release import audit_hf_release  # type: ignore
     from eliza1_manifest import ELIZA_1_TIERS  # type: ignore
-    from eliza1_platform_plan import text_artifact_name  # type: ignore
+    from eliza1_platform_plan import build_plan, text_artifact_name  # type: ignore
 
 TIER_ORDER: tuple[str, ...] = ELIZA_1_TIERS
 BACKEND_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda", "rocm")
 IMAGEGEN_ACCELERATOR_ORDER: tuple[str, ...] = ("cpu", "metal", "vulkan", "cuda")
 _TIER_CHECK_RE = re.compile(r"^(?P<tier>\S+) (?P<kind>.+)$")
+_PLATFORM_TARGET_RE = re.compile(r"\b([a-z0-9]+(?:-[a-z0-9]+)+):\s*status='(?:pending|fail|skipped)'")
 
 
 @dataclass(frozen=True, slots=True)
@@ -97,6 +98,15 @@ def _imagegen_accelerators(detail: str) -> list[str]:
         if re.search(rf"\b{accelerator}\b", detail):
             out.append(accelerator)
     return out
+
+
+def _platform_targets(tier: str, detail: str) -> list[str]:
+    expected = {target.id for target in build_plan()[tier].required_platform_evidence}
+    found: list[str] = []
+    for target in _PLATFORM_TARGET_RE.findall(detail):
+        if target in expected and target not in found:
+            found.append(target)
+    return found
 
 
 def _bundle_dir(bundle_root: str, tier: str) -> str:
@@ -189,6 +199,17 @@ def _imagegen_command(accelerator: str, eval_python: str) -> str:
         "plugins/plugin-local-inference/__tests__/imagegen-sd-cpp-probe.test.ts && "
         f"publish evidence/imagegen/{accelerator}.json and refresh "
         "evidence/imagegen/sd-cpp-runtime.json only after real image smoke reports pass",
+    )
+
+
+def _platform_command(bundle_root: str, tier: str, target: str, eval_python: str) -> str:
+    bundle = _bundle_dir(bundle_root, tier)
+    return _guarded(
+        eval_python,
+        f"run the {target} platform checklist against {bundle}, then publish "
+        f"bundles/{tier}/evidence/platform/{target}.json only after the report "
+        "contains a real device/host identifier, command transcript, bundle "
+        "hashes, and passing runtime smoke results for the target platform",
     )
 
 
@@ -439,6 +460,30 @@ def build_queue(
                 )
             )
 
+    for check in _failed_checks(summary, "platformEvidence"):
+        name = str(check.get("name", ""))
+        detail = str(check.get("detail", ""))
+        tier = _parse_tier(name)
+        if not tier:
+            continue
+        platform_plan = build_plan()[tier]
+        targets_by_id = {target.id: target for target in platform_plan.required_platform_evidence}
+        for target_id in _platform_targets(tier, detail):
+            target = targets_by_id[target_id]
+            items.append(
+                QueueItem(
+                    id=f"{tier}:platform:{target_id}",
+                    tier=tier,
+                    category="platformEvidence",
+                    priority=350 + _tier_sort_key(tier) * 20 + tuple(targets_by_id).index(target_id),
+                    requires_hardware=True,
+                    command=_platform_command(bundle_root, tier, target_id, eval_python),
+                    evidence=(f"bundles/{tier}/{target.evidence_path}",),
+                    source=name,
+                    detail=detail,
+                )
+            )
+
     for check in _failed_checks(summary, "mtpDrafter"):
         name = str(check.get("name", ""))
         detail = str(check.get("detail", ""))
@@ -597,6 +642,7 @@ def main(argv: list[str] | None = None) -> int:
             "backendVerification",
             "manifestEvalGates",
             "imagegenEvidence",
+            "platformEvidence",
             "mtpDrafter",
             "fineTuneComparison",
             "releaseEvidence",

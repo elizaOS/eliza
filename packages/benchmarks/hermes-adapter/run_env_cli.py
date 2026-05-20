@@ -96,7 +96,7 @@ def main(argv: list[str] | None = None) -> int:
         proxy = None
         try:
             base_url = args.base_url
-            if args.harness in {"eliza", "openclaw"}:
+            if args.harness in {"eliza", "hermes", "openclaw"}:
                 proxy = HarnessOpenAIProxy(
                     harness=args.harness,
                     provider=args.provider,

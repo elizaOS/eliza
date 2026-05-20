@@ -256,7 +256,7 @@ def create_social_alpha_provider():  # noqa: ANN201
 
 
 # ---------------------------------------------------------------------------
-# Model handler (multi-provider, same approach as GAIA benchmark)
+# Model handler (multi-provider benchmark bridge)
 # ---------------------------------------------------------------------------
 
 

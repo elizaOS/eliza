@@ -46,9 +46,9 @@ def test_latest_publishability_flags_structured_non_real_markers(tmp_path: Path)
     latest_dir = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_latest(
         latest_dir,
-        "gaia__hermes.json",
+        "bfcl__hermes.json",
         {
-            "benchmark_id": "gaia",
+            "benchmark_id": "bfcl",
             "agent": "hermes",
             "status": "succeeded",
             "score": 1.0,

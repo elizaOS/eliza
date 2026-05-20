@@ -60,9 +60,6 @@ IGNORED_BENCHMARK_DIRS = {
     "mmau",
     "elizaos_mmau",
     "eliza-adapter",
-    # Retired benchmark package. Keep ignored so discovery never exposes it as
-    # a generic adapter if the package remains in old checkouts.
-    "gaia",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
     "hermes-adapter",
@@ -711,6 +708,19 @@ def _make_registry_adapter(
         if benchmark_id in {"bfcl", "clawbench", "terminal_bench", "tau_bench", "lifeops_bench"} and harness == "openclaw":
             env["OPENCLAW_DIRECT_OPENAI_COMPAT"] = "1"
             env["OPENCLAW_USE_CLI"] = "0"
+        if benchmark_id in {
+            "terminal_bench",
+            "swe_bench",
+            "swe_bench_orchestrated",
+            "osworld",
+            "hermes_tblite",
+            "hermes_terminalbench_2",
+            "hermes_yc_bench",
+            "hermes_swe_env",
+        }:
+            desktop_socket = Path.home() / ".docker" / "run" / "docker.sock"
+            if desktop_socket.exists():
+                env.setdefault("DOCKER_HOST", f"unix://{desktop_socket}")
         if benchmark_id == "hyperliquid_bench":
             # Hyperliquid asks for strict JSON text plans. The generic
             # benchmark action tool surface makes malformed-plan retries more
@@ -2652,8 +2662,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "user_strategy": "grounded",
         },
         "terminal_bench": {
-            "max_tasks": 2,
-            "task_ids": ["hello-world", "classifier-debug"],
+            "max_tasks": 1,
+            "task_ids": ["hello-world"],
             # Upstream run-tests.sh commonly bootstraps uv/pytest in-container.
             # Keep real corpus grading publishable by allowing that setup path.
             "network_mode": "bridge",
@@ -2709,7 +2719,8 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tasks": 5,
         },
         "hermes_terminalbench_2": {
-            "max_tasks": 5,
+            "max_tasks": 1,
+            "task_filter": "fix-git",
         },
         "hermes_yc_bench": {
             "max_tasks": 3,

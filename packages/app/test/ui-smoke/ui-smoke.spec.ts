@@ -28,7 +28,15 @@ test("chat, apps, and settings routes render through the real shell", async ({
 
   await openAppPath(page, "/apps");
   await expect(page).toHaveURL(/\/apps$/);
-  await expect(page.getByText("No views available")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Views" })).toBeVisible();
+  await expect(
+    page.getByRole("searchbox", { name: "Search views…" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: /Companion\s+@elizaos\/plugin-companion/,
+    }),
+  ).toBeVisible();
 
   await openAppPath(page, "/settings");
   await expect(page).toHaveURL(/\/settings$/);

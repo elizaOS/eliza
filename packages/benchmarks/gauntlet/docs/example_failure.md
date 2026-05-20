@@ -60,7 +60,6 @@ Component Scores:
 |-----------|-------------|---------|
 | Solana Gym | ❌ | No adversarial scenarios |
 | AgentBench | ❌ | Not blockchain-specific |
-| GAIA | ❌ | Tests reasoning, not safety |
 
 ## What Gauntlet Enforces
 

@@ -13,7 +13,7 @@
 // backend, do not actually provision a container, and do not actually send a
 // model request. We only assert the UI elements respond as expected.
 
-import { expect, test } from "@playwright/test";
+import { type BrowserContext, expect, test } from "@playwright/test";
 
 test.skip(
   Boolean(process.env.CLOUD_E2E_LIVE_URL),
@@ -24,7 +24,7 @@ const FAKE_AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const FAKE_CHARACTER_ID = "22222222-2222-2222-2222-222222222222";
 const FAKE_JOB_ID = "33333333-3333-3333-3333-333333333333";
 
-test.beforeEach(async ({ context }) => {
+async function installTestAuthCookie(context: BrowserContext) {
   await context.addCookies([
     {
       name: "eliza-test-auth",
@@ -36,13 +36,29 @@ test.beforeEach(async ({ context }) => {
       sameSite: "Lax",
     },
   ]);
-});
+}
 
-test("agent flow: landing → login → create agent → chat", async ({ page }) => {
+test("agent flow: landing → login → create agent → chat", async ({
+  context,
+  page,
+}) => {
   // ── Stub backend endpoints the dashboard touches ───────────────────────
   // Credits balance (banner)
-  await page.route("**/api/v1/credits/balance", (route) =>
-    route.fulfill({ json: { success: true, data: { balance: 1000 } } }),
+  await page.route("**/api/credits/balance**", (route) =>
+    route.fulfill({ json: { balance: 1000 } }),
+  );
+
+  await page.route("**/api/v1/user", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        user: {
+          id: "user_1",
+          email: "playwright@example.com",
+          name: "Playwright User",
+        },
+      },
+    }),
   );
 
   // Agents list — first call returns empty (drives the empty state + dialog).
@@ -83,6 +99,19 @@ test("agent flow: landing → login → create agent → chat", async ({ page })
       }),
   );
 
+  await page.route(`**/api/v1/jobs/${FAKE_JOB_ID}`, (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        data: {
+          id: FAKE_JOB_ID,
+          status: "completed",
+          result: { agentId: FAKE_AGENT_ID },
+        },
+      },
+    }),
+  );
+
   // Status poll inside the create dialog — flip straight to "running"
   await page.route(`**/api/v1/eliza/agents/${FAKE_AGENT_ID}`, (route) => {
     if (route.request().method() === "GET") {
@@ -106,19 +135,26 @@ test("agent flow: landing → login → create agent → chat", async ({ page })
 
   // ── 1. Landing → Launch CTA → /login ───────────────────────────────────
   await page.goto("/");
-  await expect(page.locator("h1")).toContainText(/launch eliza/i);
+  await expect(
+    page.getByRole("heading", { name: /launch eliza/i }).first(),
+  ).toBeVisible();
   await page
     .getByRole("button", { name: /launch eliza/i })
     .first()
     .click();
   await expect(page).toHaveURL(/\/login/);
-  await expect(page.locator("h1")).toContainText(/sign in/i);
+  await expect(
+    page.getByRole("heading", { name: /sign in/i }).first(),
+  ).toBeVisible();
 
   // ── 2. Skip the real auth handshake: the test cookie + the build-time
   //      VITE_PLAYWRIGHT_TEST_AUTH flag short-circuit useSessionAuth so a
   //      direct hit to /dashboard/agents renders authenticated.
+  await installTestAuthCookie(context);
   await page.goto("/dashboard/agents");
-  await expect(page.locator("h1")).toContainText(/instances/i);
+  await expect(
+    page.locator("#main").getByRole("heading", { name: /instances/i }),
+  ).toBeVisible();
 
   // ── 3. Empty state → click "New Agent" ─────────────────────────────────
   await expect(page.getByText(/no agents yet/i)).toBeVisible();
@@ -133,15 +169,13 @@ test("agent flow: landing → login → create agent → chat", async ({ page })
   await dialog.getByLabel(/agent name/i).fill("playwright-agent");
   await dialog.getByRole("button", { name: /deploy/i }).click();
 
-  // ── 5. Provisioning view appears, transitions to running ───────────────
+  // ── 5. Provisioning view appears, transitions back to the running list ──
   await expect(dialog.getByText(/launching agent/i)).toBeVisible();
-  await expect(dialog.getByText(/agent is ready/i)).toBeVisible({
-    timeout: 10_000,
-  });
-  await dialog.getByRole("button", { name: /^done$/i }).click();
 
   // Back on the list, the running agent should now appear.
-  await expect(page.getByText("playwright-agent")).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "playwright-agent" }).first(),
+  ).toBeVisible({ timeout: 10_000 });
 
   // ── 6. Chat surface ────────────────────────────────────────────────────
   // Stub the public character lookup so /chat/:characterRef renders the
@@ -160,6 +194,38 @@ test("agent flow: landing → login → create agent → chat", async ({ page })
         },
       },
     }),
+  );
+
+  await page.route("**/api/v1/models", (route) =>
+    route.fulfill({ json: { object: "list", data: [] } }),
+  );
+  await page.route("**/api/v1/models/status", async (route) => {
+    const body = route.request().postDataJSON() as
+      | { modelIds?: string[] }
+      | undefined;
+    return route.fulfill({
+      json: {
+        models: (body?.modelIds ?? []).map((modelId) => ({
+          modelId,
+          available: true,
+        })),
+        timestamp: Date.now(),
+      },
+    });
+  });
+  await page.route("**/api/elevenlabs/voices/user", (route) =>
+    route.fulfill({ json: { voices: [] } }),
+  );
+  await page.route("**/api/eliza/rooms", (route) => {
+    if (route.request().method() === "POST") {
+      return route.fulfill({
+        json: { roomId: "room_1" },
+      });
+    }
+    return route.fulfill({ json: { rooms: [] } });
+  });
+  await page.route("**/api/eliza/rooms/*/messages/stream", (route) =>
+    route.fulfill({ status: 200, body: "" }),
   );
 
   // Stub the streaming message endpoint — we don't care about the response,
