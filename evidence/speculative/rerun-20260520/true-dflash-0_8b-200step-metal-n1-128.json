@@ -1,0 +1,199 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T17:53:10.198Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "speculator": "dflash",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+  "drafterModel": "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step.local-stamped.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 128,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 63,
+  "accepted": 63,
+  "acceptanceRate": 1,
+  "speedup": 1.481012658227848,
+  "withDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": true,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "-md",
+      "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step.local-stamped.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "128",
+      "-c",
+      "1024",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "1",
+      "--spec-draft-n-max",
+      "1",
+      "--spec-draft-p-min",
+      "0.1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "1024"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 8716,
+    "contextTokens": 1024,
+    "draftMin": 1,
+    "draftMax": 1,
+    "tokensRequested": 128,
+    "drafted": 63,
+    "accepted": 63,
+    "acceptanceRate": 1,
+    "tokensPerSecond": 23.4,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nHere's a thinking process that leads to the suggested paragraph:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding (or \"speculative decoding\"). This is a specific, somewhat niche term. I need to clarify what this means in the context of the prompt.\n    *   **Context:** The term usually relates to AI safety, code analysis, or specific interpretations in the context of the prompt's source or a specific field (like \"Speculative Decoding\" in the context of code analysis or AI hallucinations). *Correction/Refinement:* In the context of the user's likely\n\n[ Prompt: 252.7 t/s | Generation: 23.4 t/s ]\n[ Draft: 63 accepted / 63 generated | Acceptance: 1.0000 ]\n\nExiting..."
+  },
+  "withoutDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": false,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/text/eliza-1-0_8b-128k.gguf",
+      "-md",
+      "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step.local-stamped.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "128",
+      "-c",
+      "1024",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "0",
+      "--spec-draft-n-max",
+      "0",
+      "--spec-draft-p-min",
+      "1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "1024"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 11240,
+    "contextTokens": 1024,
+    "draftMin": 0,
+    "draftMax": 0,
+    "tokensRequested": 128,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": 15.8,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-0_8b-128k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Format:** Short paragraph.\n    *   **Goal:** Write about the concept.\n\n2.  **Define \"Speculative Decoding\":**\n    *   *What is it?* It's often associated with \"Speculative Decoding\" or \"Speculational decoding.\" Wait, let me check the exact definition.\n    *   *Correction/Refinement:* Actually, \"Speculative decoding\" isn't a standard technical term in the general sense like \"cryptanalysis.\" It\n\n[ Prompt: 258.6 t/s | Generation: 15.8 t/s ]\n\nExiting..."
+  },
+  "summary": {
+    "tokensPerSecondWithDrafter": 23.4,
+    "tokensPerSecondBaseline": 15.8,
+    "generationTokensPerSecondWithDrafter": null,
+    "generationTokensPerSecondBaseline": null,
+    "targetEvalTokensPerSecondWithDrafter": null,
+    "draftEvalTokensPerSecondWithDrafter": null,
+    "dflashDraftedTokens": 63,
+    "dflashAcceptedTokens": 63,
+    "dflashAcceptanceRate": 1,
+    "dflashSpeedup": 1.481012658227848,
+    "dflashDraftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "speculator": "dflash",
+    "tier": "0_8b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 63,
+    "accepted": 63,
+    "acceptanceRate": 1,
+    "speedup": 1.481012658227848,
+    "status": "pass",
+    "failure": null
+  },
+  "draftingActive": true,
+  "dflashFailure": null
+}

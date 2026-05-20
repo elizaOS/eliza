@@ -1,4 +1,4 @@
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it, vi } from "vitest";
 import { createDatabaseSnapshot } from "../database";
 import { DynamicViewRegistry } from "../dynamic-views/registry";

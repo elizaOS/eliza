@@ -41,6 +41,30 @@ import {
   type TelegramAuthData,
   useAuth,
 } from "@/lib/context/auth-context";
+
+const SOLANA_GRADIENT = "linear-gradient(135deg, #9945FF 0%, #14F195 100%)";
+
+function SolanaIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 128 128"
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+    >
+      <defs>
+        <linearGradient id="sol-grad" x1="0%" x2="100%" y1="50%" y2="50%">
+          <stop offset="0%" stopColor="#9945FF" />
+          <stop offset="100%" stopColor="#14F195" />
+        </linearGradient>
+      </defs>
+      <path
+        fill="url(#sol-grad)"
+        d="M23.9 87.3c.8-.8 1.9-1.3 3.1-1.3h97.8c1.9 0 2.9 2.3 1.5 3.7l-19.3 19.3c-.8.8-1.9 1.3-3.1 1.3H5.1c-1.9 0-2.9-2.3-1.5-3.7zm0-72.1c.8-.8 1.9-1.3 3.1-1.3h97.8c1.9 0 2.9 2.3 1.5 3.7L107.1 36.9c-.8.8-1.9 1.3-3.1 1.3H5.1c-1.9 0-2.9-2.3-1.5-3.7zm80.3 36c-.8-.8-1.9-1.3-3.1-1.3H3.3c-1.9 0-2.9 2.3-1.5 3.7l19.3 19.3c.8.8 1.9 1.3 3.1 1.3h97.8c1.9 0 2.9-2.3 1.5-3.7z"
+      />
+    </svg>
+  );
+}
 import { useElizaAppProvisioningChat } from "@/lib/hooks/use-eliza-app-provisioning-chat";
 
 type TelegramLoginApi = {
@@ -67,7 +91,12 @@ function generateOAuthState(): string {
   return Array.from(array, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-type OnboardingMethod = "telegram" | "imessage" | "discord" | "whatsapp";
+type OnboardingMethod =
+  | "telegram"
+  | "imessage"
+  | "discord"
+  | "whatsapp"
+  | "solana";
 
 type OnboardingStep =
   | "SELECT_METHOD"
@@ -299,7 +328,7 @@ function ProvisioningChatStep({
       {isReady && (
         <Button
           onClick={onContinue}
-          className="w-full h-[52px] rounded-sm bg-black text-white font-medium hover:bg-[var(--brand-orange)] hover:text-black transition-colors mt-4"
+          className="w-full h-[52px] rounded-xs bg-black text-white font-medium hover:bg-white hover:text-black transition-colors mt-4"
         >
           <Check className="size-4 mr-2" />
           {t("homepage_eliza.getStarted.continueToDashboard", {
@@ -321,6 +350,7 @@ export default function GetStartedPage() {
     user,
     loginWithTelegram,
     loginWithDiscord,
+    loginWithSolana,
   } = useAuth();
 
   const methodParam = searchParams.get("method") as OnboardingMethod | null;
@@ -555,11 +585,32 @@ export default function GetStartedPage() {
     return buildFullPhoneNumber(phoneValue, selectedCountry, countryOptions);
   }, [phoneValue, selectedCountry, countryOptions]);
 
+  const [solanaError, setSolanaError] = useState<string | null>(null);
+  const [isSolanaLoading, setIsSolanaLoading] = useState(false);
+
+  const handleSolanaConnect = useCallback(async () => {
+    setSolanaError(null);
+    setIsSolanaLoading(true);
+    try {
+      const result = await loginWithSolana();
+      if (result.success) {
+        navigate("/connected", { replace: true });
+      } else {
+        setSolanaError(result.error ?? "Solana sign-in failed");
+      }
+    } catch (err) {
+      setSolanaError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsSolanaLoading(false);
+    }
+  }, [loginWithSolana, navigate]);
+
   const handleMethodSelect = (method: OnboardingMethod) => {
     setSelectedMethod(method);
     setPhoneError(null);
     setTelegramError(null);
     setDiscordError(null);
+    setSolanaError(null);
 
     if (method === "telegram") {
       setStep("TELEGRAM_OAUTH");
@@ -570,6 +621,8 @@ export default function GetStartedPage() {
       }
     } else if (method === "whatsapp") {
       setStep("WHATSAPP_DIRECT");
+    } else if (method === "solana") {
+      void handleSolanaConnect();
     } else {
       setStep("IMESSAGE_DIRECT");
     }
@@ -961,7 +1014,7 @@ export default function GetStartedPage() {
               </div>
 
               {(discordError || telegramError) && (
-                <div className="w-full mb-4 p-3 rounded-sm bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError || telegramError}
                   </p>
@@ -972,10 +1025,10 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("telegram")}
-                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(0)}
                 >
-                  <div className="w-12 h-12 rounded-sm bg-[#229ED9]/20 flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center shrink-0">
                     <TelegramIcon className="size-6 text-[#229ED9]" />
                   </div>
                   <div className="flex-1 text-left">
@@ -990,7 +1043,7 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("imessage")}
-                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(1)}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
@@ -1008,10 +1061,10 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("whatsapp")}
-                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(2)}
                 >
-                  <div className="w-12 h-12 rounded-sm bg-[#25D366]/20 flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-xs bg-[#25D366]/20 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
                   </div>
                   <div className="flex-1 text-left">
@@ -1026,10 +1079,10 @@ export default function GetStartedPage() {
                 <button
                   type="button"
                   onClick={() => handleMethodSelect("discord")}
-                  className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
                   style={cardStyle(3)}
                 >
-                  <div className="w-12 h-12 rounded-sm bg-[#5865F2]/20 flex items-center justify-center shrink-0">
+                  <div className="w-12 h-12 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
                   </div>
                   <div className="flex-1 text-left">
@@ -1040,13 +1093,50 @@ export default function GetStartedPage() {
                     </p>
                   </div>
                 </button>
+
+                <button
+                  type="button"
+                  aria-label="Sign in with Solana"
+                  data-testid="solana-signin"
+                  disabled={isSolanaLoading}
+                  onClick={() => handleMethodSelect("solana")}
+                  className="w-full h-[72px] bg-white hover:bg-black text-black hover:text-white rounded-xs border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer disabled:opacity-60"
+                  style={cardStyle(4)}
+                >
+                  <div
+                    className="w-12 h-12 rounded-xs flex items-center justify-center shrink-0"
+                    style={{ background: SOLANA_GRADIENT }}
+                  >
+                    <SolanaIcon className="size-6 text-white" />
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p className="font-medium">
+                      {isSolanaLoading
+                        ? t("homepage_eliza.getStarted.btnSolanaLoading", {
+                            defaultValue: "Connecting…",
+                          })
+                        : t("homepage_eliza.getStarted.btnSolana", {
+                            defaultValue: "Solana Wallet",
+                          })}
+                    </p>
+                  </div>
+                </button>
+                {solanaError && (
+                  <p
+                    role="alert"
+                    data-testid="solana-error"
+                    className="text-sm text-red-600 text-center mt-1"
+                  >
+                    {solanaError}
+                  </p>
+                )}
               </div>
             </>
           )}
 
           {step === "TELEGRAM_OAUTH" && (
             <>
-              <div className="w-16 h-16 rounded-full bg-[#229ED9]/20 flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
                 <TelegramIcon className="size-8 text-[#229ED9]" />
               </div>
 
@@ -1071,7 +1161,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handleTelegramClick}
                 disabled={isTelegramLoading}
-                className="w-full h-[52px] rounded-sm bg-[#229ED9] hover:bg-[#229ED9]/90 text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-xs bg-[#229ED9] hover:bg-black text-white font-medium gap-2"
               >
                 {isTelegramLoading ? (
                   t("homepage_eliza.getStarted.telegramConnecting", {
@@ -1091,7 +1181,7 @@ export default function GetStartedPage() {
 
           {step === "PHONE_INPUT" && (
             <>
-              <div className="w-12 h-12 rounded-sm bg-[#229ED9]/20 flex items-center justify-center mb-6">
+              <div className="w-12 h-12 rounded-xs bg-[#229ED9]/20 flex items-center justify-center mb-6">
                 <TelegramIcon className="size-6 text-[#229ED9]" />
               </div>
 
@@ -1129,7 +1219,7 @@ export default function GetStartedPage() {
               <Button
                 onClick={handlePhoneSubmit}
                 disabled={!hasPhoneNumber || isSubmittingPhone}
-                className={`w-full h-[52px] rounded-sm font-medium transition-colors ${
+                className={`w-full h-[52px] rounded-xs font-medium transition-colors ${
                   hasPhoneNumber
                     ? "bg-neutral-900 text-white hover:bg-neutral-800"
                     : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
@@ -1164,7 +1254,7 @@ export default function GetStartedPage() {
                 })}
               </p>
 
-              <div className="w-full p-4 bg-white border border-black rounded-sm mb-6">
+              <div className="w-full p-4 bg-white border border-black rounded-xs mb-6">
                 <div className="flex items-center justify-between gap-3">
                   <span className="text-lg font-mono text-neutral-900">
                     {ELIZA_PHONE_FORMATTED}
@@ -1186,7 +1276,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleOpenMessages}
-                className="w-full h-[52px] rounded-sm bg-[#34C759] hover:bg-[#2DB84D] text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-xs bg-[#34C759] hover:bg-black text-white font-medium gap-2"
               >
                 <AppleMessagesIcon className="size-5" />
                 {t("homepage_eliza.getStarted.openImessage", {
@@ -1211,7 +1301,7 @@ export default function GetStartedPage() {
 
           {step === "WHATSAPP_DIRECT" && (
             <>
-              <div className="w-16 h-16 rounded-full bg-[#25D366]/20 flex items-center justify-center mb-6">
+              <div className="w-16 h-16 rounded-xs bg-[#25D366]/20 flex items-center justify-center mb-6">
                 <WhatsAppIcon className="size-8 text-[#25D366]" />
               </div>
 
@@ -1232,7 +1322,7 @@ export default function GetStartedPage() {
                   const waNumber = getWhatsAppNumber().replace(/\D/g, "");
                   window.open(`https://wa.me/${waNumber}`, "_blank");
                 }}
-                className="w-full h-[52px] rounded-sm bg-[#25D366] hover:bg-[#25D366]/90 text-white font-medium gap-2"
+                className="w-full h-[52px] rounded-xs bg-[#25D366] hover:bg-black text-white font-medium gap-2"
               >
                 <WhatsAppIcon className="size-5" />
                 {t("homepage_eliza.getStarted.openWhatsapp", {
@@ -1266,7 +1356,7 @@ export default function GetStartedPage() {
           {step === "DISCORD_CALLBACK" && (
             <>
               <div
-                className={`w-16 h-16 rounded-full ${discordError ? "bg-red-100" : "bg-[#5865F2]/20"} flex items-center justify-center mb-6`}
+                className={`w-16 h-16 rounded-xs ${discordError ? "bg-red-100" : "bg-[#5865F2]/20"} flex items-center justify-center mb-6`}
               >
                 <DiscordIcon
                   className={`size-8 ${discordError ? "text-red-500" : "text-[#5865F2]"}`}
@@ -1303,7 +1393,7 @@ export default function GetStartedPage() {
               </p>
 
               {discordError && (
-                <div className="w-full mb-4 p-3 rounded-sm bg-red-50 border border-red-200">
+                <div className="w-full mb-4 p-3 rounded-xs bg-red-50 border border-red-200">
                   <p className="text-sm text-red-600 text-center">
                     {discordError}
                   </p>
@@ -1314,7 +1404,7 @@ export default function GetStartedPage() {
                 <>
                   <Button
                     onClick={() => handleMethodSelect("discord")}
-                    className="w-full h-[52px] rounded-sm bg-[#5865F2] text-white font-medium hover:bg-[#5865F2]/90"
+                    className="w-full h-[52px] rounded-xs bg-[#5865F2] text-white font-medium hover:bg-black"
                   >
                     {t("homepage_eliza.getStarted.tryAgain", {
                       defaultValue: "Try Again",
@@ -1364,9 +1454,9 @@ export default function GetStartedPage() {
                     disabled={
                       !hasPhoneNumber || isSubmittingPhone || isDiscordLoading
                     }
-                    className={`w-full h-[52px] rounded-sm font-medium transition-colors ${
+                    className={`w-full h-[52px] rounded-xs font-medium transition-colors ${
                       hasPhoneNumber
-                        ? "bg-[#5865F2] text-white hover:bg-[#5865F2]/90"
+                        ? "bg-[#5865F2] text-white hover:bg-black"
                         : "bg-neutral-300 text-neutral-500 cursor-not-allowed"
                     }`}
                   >
@@ -1409,7 +1499,7 @@ export default function GetStartedPage() {
             <>
               {guideParam ? (
                 <>
-                  <div className="w-16 h-16 rounded-full bg-[#5865F2]/20 flex items-center justify-center mb-6">
+                  <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
                     <Info className="size-8 text-[#5865F2]" />
                   </div>
                   <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
@@ -1420,7 +1510,7 @@ export default function GetStartedPage() {
                 </>
               ) : (
                 <>
-                  <div className="w-16 h-16 rounded-full bg-[#5865F2]/20 flex items-center justify-center mb-6">
+                  <div className="w-16 h-16 rounded-xs bg-[#5865F2]/20 flex items-center justify-center mb-6">
                     <Check className="size-8 text-[#5865F2]" />
                   </div>
                   <h1 className="text-xl font-medium text-neutral-900 text-center mb-2">
@@ -1431,9 +1521,9 @@ export default function GetStartedPage() {
                 </>
               )}
               <div className="w-full flex flex-col gap-4">
-                <div className="w-full p-4 bg-white border border-black rounded-sm">
+                <div className="w-full p-4 bg-white border border-black rounded-xs">
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-[#5865F2]">
                         1
                       </span>
@@ -1454,7 +1544,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-[#5865F2]/10 gap-1.5"
+                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-black hover:text-white gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideInviteToServer", {
@@ -1465,9 +1555,9 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white border border-black rounded-sm">
+                <div className="w-full p-4 bg-white border border-black rounded-xs">
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-[#5865F2]">
                         2
                       </span>
@@ -1488,7 +1578,7 @@ export default function GetStartedPage() {
                             "_blank",
                           );
                         }}
-                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-[#5865F2]/10 gap-1.5"
+                        className="mt-3 text-[#5865F2] border-[#5865F2]/30 hover:bg-black hover:text-white gap-1.5"
                       >
                         <ExternalLink className="size-3.5" />
                         {t("homepage_eliza.getStarted.guideOpenDm", {
@@ -1499,9 +1589,9 @@ export default function GetStartedPage() {
                   </div>
                 </div>
 
-                <div className="w-full p-4 bg-white border border-black rounded-sm">
+                <div className="w-full p-4 bg-white border border-black rounded-xs">
                   <div className="flex items-start gap-3">
-                    <div className="w-7 h-7 rounded-full bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
+                    <div className="w-7 h-7 rounded-xs bg-[#5865F2]/20 flex items-center justify-center shrink-0 mt-0.5">
                       <span className="text-xs font-bold text-[#5865F2]">
                         3
                       </span>
@@ -1512,7 +1602,7 @@ export default function GetStartedPage() {
                           defaultValue: "Start chatting",
                         })}
                       </p>
-                      <div className="mt-2 px-3 py-2 bg-[#5865F2]/10 border border-[#5865F2]/20 rounded-lg">
+                      <div className="mt-2 px-3 py-2 bg-[#5865F2]/10 border border-[#5865F2]/20 rounded-xs">
                         <p className="text-sm text-[#5865F2] font-medium">
                           {t("homepage_eliza.getStarted.guideSampleQuote", {
                             defaultValue: '"Hey Eliza, what can you do?"',
@@ -1526,7 +1616,7 @@ export default function GetStartedPage() {
 
               <Button
                 onClick={handleContinueToConnected}
-                className="w-full h-[52px] rounded-sm bg-[#5865F2] hover:bg-[#5865F2]/90 text-white font-medium mt-6"
+                className="w-full h-[52px] rounded-xs bg-[#5865F2] hover:bg-black text-white font-medium mt-6"
               >
                 {t("homepage_eliza.getStarted.guideContinue", {
                   defaultValue: "Continue",

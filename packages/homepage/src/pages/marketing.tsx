@@ -70,8 +70,12 @@ const PLATFORM_DESCRIPTION_DEFAULTS: Record<DownloadId, string> = {
 
 export default function MarketingPage() {
   const t = useT();
+  const stableDownloads = releaseData.release.downloads;
+  const canaryDownloads = releaseData.canaryRelease?.downloads ?? [];
+  const effectiveDownloads =
+    stableDownloads.length > 0 ? stableDownloads : canaryDownloads;
   const downloads = primaryDownloadIds.map((id) => {
-    const releaseDownload = releaseData.release.downloads.find(
+    const releaseDownload = effectiveDownloads.find(
       (download) => download.id === id,
     );
     const Icon = platformIcon[id];

@@ -1850,6 +1850,53 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
     }
 
 
+def test_rebuild_latest_preserves_transient_runtime_gate_successes(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["vision_language"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="vision_language",
+        agent="eliza",
+        run_id="run_vision_success",
+        started_at="2026-05-12T00:00:00+00:00",
+        score=0.05,
+        metrics={
+            "benchmark": "textvqa",
+            "total_samples": 20,
+            "accuracy": 0.05,
+        },
+        token_metrics={"total_tokens": 200, "llm_call_count": 20},
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"vision_language": _adapter("vision_language", agent_compatibility=())},
+    )
+
+    latest = tmp_path / "latest" / "vision_language__eliza.json"
+    assert latest.exists()
+    payload = json.loads(latest.read_text(encoding="utf-8"))
+    assert payload["run_id"] == "run_vision_success"
+    assert payload["status"] == "succeeded"
+    assert not (tmp_path / "quarantine" / "vision_language__eliza.json").exists()
+    row = conn.execute(
+        "SELECT status FROM benchmark_runs WHERE run_id = ?",
+        ("run_vision_success",),
+    ).fetchone()
+    assert row["status"] == "succeeded"
+
+
 def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
     tmp_path: Path,
 ) -> None:

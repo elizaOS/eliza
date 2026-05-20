@@ -1,4 +1,4 @@
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 
 export type DynamicViewErrorCode =
   | "DYNAMIC_VIEW_DUPLICATE"

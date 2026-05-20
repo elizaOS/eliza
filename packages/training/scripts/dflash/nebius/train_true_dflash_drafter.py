@@ -385,8 +385,6 @@ def export_gguf(args: argparse.Namespace, checkpoint: Path) -> Path:
         if mapped is None:
             continue
         arr = tensor.detach().float().cpu().numpy()
-        if arr.ndim == 2:
-            arr = arr.T
         writer.add_tensor(mapped, np.ascontiguousarray(arr))
         written += 1
     if written == 0:

@@ -96,7 +96,7 @@ export default function BlobButton({
         ref={btnRef}
         href={href}
         onClick={onClick}
-        className="relative z-10 inline-flex items-center justify-center text-[15px] font-medium text-black rounded-full px-5 py-2"
+        className="relative z-10 inline-flex items-center justify-center text-[15px] font-medium text-black rounded-xs px-5 py-2"
       >
         {children}
       </a>

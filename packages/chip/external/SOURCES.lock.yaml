@@ -1,0 +1,683 @@
+schema: eliza.ai_eda.external_sources_lock.v1
+updated: 2026-05-20
+claim_boundary: external_asset_registry_only_no_download_training_inference_or_release_claim
+policy:
+  large_payloads_committed: forbidden
+  release_claims_from_predictions: forbidden
+  deterministic_gate_required: true
+  license_review_required_before_download: true
+  human_review_required_before_source_change: true
+asset_root:
+  cache: external/cache
+  repos: external/repos
+  datasets: external/datasets
+  models: external/models
+entries:
+  - id: google-circuit-training
+    name: Google Circuit Training / AlphaChip
+    kind: repo
+    priority: P0
+    source_url: https://github.com/google-research/circuit_training
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - macro_placement_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset google-circuit-training --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset google-circuit-training --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset google-circuit-training --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+    notes:
+      - Treat public code as a format/reference lane.
+      - Public checkpoint and binary availability remains blocked by reported HTTP 403 issues.
+  - id: tilos-macroplacement
+    name: TILOS MacroPlacement
+    kind: repo
+    priority: P0
+    source_url: https://github.com/TILOS-AI-Institute/MacroPlacement
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - macro_placement_policy
+      - placement_evaluation
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset tilos-macroplacement --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: chipbench-d
+    name: ChiPBench-D
+    kind: dataset
+    priority: P0
+    source_url: https://huggingface.co/datasets/MIRA-Lab/ChiPBench-D
+    license_status: review_required
+    revision:
+      type: hf_revision
+      value: PIN_AFTER_FETCH
+    expected_size: approximately_2_68_gb_public_card
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - macro_placement_policy
+      - pd_surrogate_models
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: circuitnet3
+    name: CircuitNet 3.0
+    kind: dataset
+    priority: P0
+    source_url: https://huggingface.co/datasets/SKLP-EDA-LAB/CircuitNet3.0
+    license_status: apache-2.0_public_card
+    revision:
+      type: hf_revision
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - pd_surrogate_models
+      - circuit_foundation_models
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset circuitnet3 --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset circuitnet3 --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset circuitnet3 --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openroad-eda-corpus
+    name: OpenROAD Assistant EDA Corpus
+    kind: dataset
+    priority: P0
+    source_url: https://github.com/OpenROAD-Assistant/EDA-Corpus
+    license_status: cc-by-4.0_public_readme
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: small_public_csv_xlsx_repo
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - eda_log_triage
+      - openroad_command_assistant
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-eda-corpus --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: aieda-idata
+    name: AiEDA iDATA
+    kind: dataset
+    priority: P0
+    source_url: https://huggingface.co/datasets/AiEDA/iDATA
+    license_status: review_required
+    revision:
+      type: hf_revision
+      value: PIN_AFTER_FETCH
+    expected_size: approximately_600_gb_reported_by_public_paper
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - pd_surrogate_models
+      - timing_power_prediction
+    fetch:
+      mode: huggingface
+      command: scripts/ai_eda/fetch_external_asset.py --asset aieda-idata --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset aieda-idata --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset aieda-idata --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: chipdiffusion
+    name: ChipDiffusion
+    kind: repo
+    priority: P0
+    source_url: https://github.com/vint-1/chipdiffusion
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - macro_placement_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset chipdiffusion --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset chipdiffusion --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset chipdiffusion --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openabc-d
+    name: OpenABC-D
+    kind: dataset
+    priority: P0
+    source_url: https://github.com/NYU-MLDA/OpenABC
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - logic_synthesis_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openabc-d --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openabc-d --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openabc-d --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openroad-flow-scripts
+    name: OpenROAD Flow Scripts
+    kind: repo
+    priority: P0
+    source_url: https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - pd_replay
+      - flow_run_dataset
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openroad-flow-scripts --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-flow-scripts --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openroad-flow-scripts --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: timeloop-accelergy
+    name: Timeloop and Accelergy
+    kind: repo
+    priority: P0
+    source_url: https://github.com/NVlabs/timeloop
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - npu_dse
+      - energy_modeling
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset timeloop-accelergy --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset timeloop-accelergy --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset timeloop-accelergy --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: edalearn
+    name: EDALearn
+    kind: repo
+    priority: P0
+    source_url: https://github.com/panjingyu/EDALearn
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - pd_surrogate_models
+      - timing_power_prediction
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset edalearn --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset edalearn --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset edalearn --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: circuitnet
+    name: CircuitNet Code And Dataset Tools
+    kind: repo
+    priority: P0
+    source_url: https://github.com/circuitnet/CircuitNet
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: metadata-only
+    e1_lane:
+      - pd_surrogate_models
+      - conversion_schema
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset circuitnet --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset circuitnet --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset circuitnet --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: chipformer
+    name: ChiPFormer
+    kind: repo
+    priority: P0
+    source_url: https://github.com/laiyao1/ChiPFormer
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - macro_placement_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset chipformer --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset chipformer --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset chipformer --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: core-placement
+    name: CORE Placement Search
+    kind: repo
+    priority: P0
+    source_url: https://github.com/yeshenpy/CORE
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - macro_placement_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset core-placement --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset core-placement --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset core-placement --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: maptune
+    name: MapTune
+    kind: repo
+    priority: P0
+    source_url: https://github.com/Yu-Maryland/MapTune
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - logic_synthesis_policy
+      - technology_mapping
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset maptune --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset maptune --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset maptune --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: abc-rl
+    name: ABC-RL
+    kind: repo
+    priority: P0
+    source_url: https://github.com/NYU-MLDA/ABC-RL
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - logic_synthesis_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset abc-rl --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset abc-rl --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset abc-rl --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: abcrl
+    name: abcRL
+    kind: repo
+    priority: P0
+    source_url: https://github.com/krzhu/abcRL
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - logic_synthesis_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset abcrl --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset abcrl --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset abcrl --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: rl4ls
+    name: RL4LS
+    kind: repo
+    priority: P0
+    source_url: https://github.com/Gabriel-in-Toronto/RL4LS
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - logic_synthesis_policy
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset rl4ls --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset rl4ls --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset rl4ls --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: zigzag
+    name: ZigZag DNN Accelerator Mapping
+    kind: repo
+    priority: P0
+    source_url: https://github.com/KULeuven-MICAS/zigzag
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - npu_dse
+      - accelerator_mapping
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset zigzag --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset zigzag --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset zigzag --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openroad
+    name: OpenROAD
+    kind: repo
+    priority: P0
+    source_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - physical_design_tooling
+      - flow_run_dataset
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openroad --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openroad --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openroad --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openlane
+    name: OpenLane
+    kind: repo
+    priority: P0
+    source_url: https://github.com/The-OpenROAD-Project/OpenLane
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - physical_design_tooling
+      - flow_run_dataset
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openlane --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openlane --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openlane --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: openram
+    name: OpenRAM
+    kind: repo
+    priority: P0
+    source_url: https://github.com/VLSIDA/OpenRAM
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: deterministic-replay-candidate
+    e1_lane:
+      - memory_macro_library
+      - physical_design_tooling
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset openram --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset openram --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset openram --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: intel-floorset
+    name: Intel FloorSet
+    kind: dataset
+    priority: P1
+    source_url: https://github.com/IntelLabs/FloorSet
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: approximately_35_gb_public_notes
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - floorplan_policy_pretraining
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset intel-floorset --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset intel-floorset --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset intel-floorset --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: mlcad-2023-fpga-macro
+    name: MLCAD 2023 FPGA Macro Placement Contest
+    kind: dataset
+    priority: P1
+    source_url: https://github.com/TILOS-AI-Institute/MLCAD-2023-FPGA-Macro-Placement-Contest
+    license_status: review_required
+    revision:
+      type: commit
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: training-only
+    e1_lane:
+      - macro_placement_policy
+      - fpga_floorplan_transfer
+    fetch:
+      mode: git
+      command: scripts/ai_eda/fetch_external_asset.py --asset mlcad-2023-fpga-macro --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset mlcad-2023-fpga-macro --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset mlcad-2023-fpga-macro --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: alphachip-tpu-checkpoint-20240815
+    name: AlphaChip TPU Checkpoint 20240815
+    kind: model
+    priority: P1
+    source_url: https://storage.googleapis.com/rl-infra-public/circuit-training/checkpoints/tpu_checkpoint_20240815.tar.gz
+    license_status: unavailable_for_review
+    revision:
+      type: artifact
+      value: BLOCKED_HTTP_403_REAUDIT_REQUIRED
+    expected_size: unknown_blocked
+    checksum_status: blocked_until_lawful_mirror
+    allowed_use: blocked
+    e1_lane:
+      - macro_placement_policy
+    fetch:
+      mode: model
+      command: scripts/alphachip/download_pretrained_checkpoint.sh
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset alphachip-tpu-checkpoint-20240815 --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset alphachip-tpu-checkpoint-20240815 --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false
+  - id: chipdiffusion-large-v2
+    name: ChipDiffusion Large v2 Checkpoint
+    kind: model
+    priority: P1
+    source_url: https://github.com/vint-1/chipdiffusion
+    license_status: review_required
+    revision:
+      type: artifact
+      value: PIN_AFTER_FETCH
+    expected_size: unknown_until_fetch
+    checksum_status: blocked_until_fetch
+    allowed_use: advisory-inference-only
+    e1_lane:
+      - macro_placement_policy
+    fetch:
+      mode: model
+      command: scripts/ai_eda/fetch_external_asset.py --asset chipdiffusion-large-v2 --execute
+      dry_run_command: scripts/ai_eda/fetch_external_asset.py --asset chipdiffusion-large-v2 --dry-run
+      verify_command: scripts/ai_eda/fetch_external_asset.py --asset chipdiffusion-large-v2 --verify-only
+    validation:
+      license_review: pending
+      provenance_review: pending
+      hash_verification: pending
+      deterministic_replay_required: true
+      release_use_allowed: false

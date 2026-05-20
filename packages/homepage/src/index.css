@@ -267,7 +267,7 @@ article {
 }
 
 .brand-section--blue {
-  background: var(--brand-blue);
+  background: var(--brand-black);
   color: var(--brand-white);
 }
 
@@ -326,7 +326,7 @@ article {
 }
 
 .app-nav-download:hover {
-  background: var(--brand-blue);
+  background: var(--brand-black);
   color: var(--brand-white);
 }
 
@@ -448,8 +448,8 @@ article {
 }
 
 .app-cta--black:hover {
-  background: var(--brand-blue);
-  color: var(--brand-white);
+  background: var(--brand-white);
+  color: var(--brand-black);
 }
 
 .app-cta--orange-secondary {
@@ -708,7 +708,7 @@ article {
 }
 
 .app-nav .app-nav-download:hover {
-  background: var(--brand-blue);
+  background: var(--brand-black);
   color: var(--brand-white);
 }
 
@@ -775,7 +775,7 @@ article {
 }
 
 .app-cta--glass:hover {
-  background: var(--brand-blue);
+  background: var(--brand-black);
   color: var(--brand-white);
 }
 
@@ -888,7 +888,8 @@ article {
 }
 
 .app-download-card:hover {
-  background: #eef3ff;
+  background: var(--brand-black);
+  color: var(--brand-white);
   transform: translateY(-1px);
 }
 

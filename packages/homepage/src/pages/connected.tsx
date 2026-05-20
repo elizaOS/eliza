@@ -263,7 +263,7 @@ export default function ConnectedPage() {
               aria-label={t("homepage_eliza.connected.userMenuAria", {
                 defaultValue: "Open user menu",
               })}
-              className="focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 focus:ring-offset-[color:var(--brand-orange)] rounded-full"
+              className="focus:outline-none focus:ring-2 focus:ring-black focus:ring-offset-2 focus:ring-offset-[color:var(--brand-orange)] rounded-xs"
             >
               {user.avatar ? (
                 <img
@@ -271,10 +271,10 @@ export default function ConnectedPage() {
                   alt={displayName}
                   width={36}
                   height={36}
-                  className="rounded-full cursor-pointer hover:ring-2 hover:ring-white/20 transition-all"
+                  className="rounded-xs cursor-pointer hover:ring-2 hover:ring-white/20 transition-all"
                 />
               ) : (
-                <div className="w-9 h-9 rounded-full bg-black flex items-center justify-center text-white text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-white/20 transition-all">
+                <div className="w-9 h-9 rounded-xs bg-black flex items-center justify-center text-white text-sm font-semibold cursor-pointer hover:ring-2 hover:ring-white/20 transition-all">
                   {displayName.charAt(0).toUpperCase()}
                 </div>
               )}
@@ -282,7 +282,7 @@ export default function ConnectedPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent
             align="end"
-            className="w-48 bg-black border-white/10 text-white rounded-sm"
+            className="w-48 bg-black border-white/10 text-white rounded-xs"
           >
             <div className="px-2 py-2 border-b border-white/10">
               <p className="text-sm font-medium">{displayName}</p>
@@ -319,7 +319,7 @@ export default function ConnectedPage() {
             })}
             width={145}
             height={145}
-            className="rounded-full select-none pointer-events-none"
+            className="rounded-xs select-none pointer-events-none"
             draggable={false}
           />
         </div>
@@ -488,7 +488,7 @@ export default function ConnectedPage() {
                       type="button"
                       onClick={handleLinkPhone}
                       disabled={!phoneValue.trim() || isLinkingPhone}
-                      className="flex-1 h-10 bg-[var(--brand-orange)] hover:bg-[var(--brand-orange)]/90 text-black text-sm font-semibold disabled:opacity-50"
+                      className="flex-1 h-10 bg-[var(--brand-orange)] hover:bg-black hover:text-white text-black text-sm font-semibold disabled:opacity-50"
                     >
                       {isLinkingPhone
                         ? t("homepage_eliza.connected.linking", {

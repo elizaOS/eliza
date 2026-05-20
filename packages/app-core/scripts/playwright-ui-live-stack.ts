@@ -213,7 +213,7 @@ async function proxyUiRequest(args: {
   const primaryPath = filePath ?? indexHtmlPath;
   let body: Buffer | null = null;
   let resolvedPath = primaryPath;
-  const maxReadAttempts = 40;
+  const maxReadAttempts = 300;
   for (let attempt = 0; attempt < maxReadAttempts; attempt++) {
     try {
       body = await readFile(primaryPath);

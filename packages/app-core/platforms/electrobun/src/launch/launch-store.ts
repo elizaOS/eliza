@@ -1,4 +1,4 @@
-import type { JsonValue } from "@elizaos/electrobun-carrots";
+import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 import { createUnknownDatabaseSnapshot } from "../database";
 import type {
   LaunchEvent,

@@ -1380,6 +1380,10 @@ def _rebuild_latest_result_snapshots(
                 adapter is not None
                 and agent in CANONICAL_REAL_HARNESSES
                 and agent not in adapter.agent_compatibility
+                and not _is_transient_runtime_gate_incompatibility(
+                    benchmark_id,
+                    tuple(adapter.agent_compatibility),
+                )
             ):
                 continue
         if str(payload.get("status") or "") != "succeeded" or not _is_numeric_score(
@@ -1859,6 +1863,11 @@ def _repair_current_compatibility_statuses(
             continue
         if adapter is None:
             continue
+        if _is_transient_runtime_gate_incompatibility(
+            benchmark_id,
+            tuple(adapter.agent_compatibility),
+        ):
+            continue
         metrics = dict(row.get("metrics") or {})
         metrics["reason"] = "latest_row_violates_current_compatibility"
         metrics["harness"] = agent
@@ -1887,6 +1896,26 @@ def _repair_current_compatibility_statuses(
     if repaired:
         conn.commit()
     return repaired
+
+
+def _is_transient_runtime_gate_incompatibility(
+    benchmark_id: str,
+    allowed_harnesses: tuple[str, ...],
+) -> bool:
+    if allowed_harnesses:
+        return False
+    return benchmark_id in {
+        "hyperliquid_bench",
+        "terminal_bench",
+        "swe_bench",
+        "swe_bench_orchestrated",
+        "osworld",
+        "hermes_tblite",
+        "hermes_terminalbench_2",
+        "hermes_yc_bench",
+        "hermes_swe_env",
+        "vision_language",
+    }
 
 
 def _restore_stale_compatibility_row(conn, row: dict[str, Any]) -> bool:

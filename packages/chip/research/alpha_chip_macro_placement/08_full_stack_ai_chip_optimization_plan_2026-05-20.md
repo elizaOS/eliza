@@ -232,6 +232,50 @@ manufacturability agents. Do not block the ASIC AI-EDA path on it.
 
 ## Source and dataset intake TODOs
 
+### Implemented metadata spine
+
+The first reproducibility spine is now checked in:
+
+- `external/README.md` defines the tracked/ignored external asset policy.
+- `external/SOURCES.lock.yaml` pins the first P0 AI-EDA sources as metadata
+  records without downloading or vendoring payloads.
+- `external/schemas/ai_eda_external_asset_manifest.v1.yaml` defines the
+  required fields and fail-closed policy for asset records.
+- `scripts/ai_eda/check_external_asset_manifests.py` validates the lockfile.
+- `scripts/ai_eda/fetch_external_asset.py` emits dry-run, verify-only, or
+  execute reports into `build/ai_eda/external_assets/<run-id>/`.
+- `scripts/ai_eda/preflight_cuda_training_stack.py` records Mac/CUDA readiness
+  into `build/ai_eda/cuda_training_preflight/<run-id>/`.
+- `scripts/ai_eda/package_cuda_training_payload.py` emits a metadata-only
+  payload and run plan for a remote CUDA host.
+- `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` defines the first
+  internal normalized records: `eda.design_bundle.v1`,
+  `eda.placement_case.v1`, `eda.graph_sample.v1`, `eda.flow_run.v1`, and
+  `eda.e1_candidate.v1`.
+- `docs/spec-db/ai-eda/examples/*.yaml` provides tiny schema fixtures for the
+  E1 softmacro smoke lane.
+- `scripts/ai_eda/check_internal_dataset_schemas.py` validates the schemas and
+  fixtures.
+- `make docs-check` now depends on `ai-eda-external-assets-check`, so source
+  intake metadata and internal dataset schemas are validated with the existing
+  docs gate.
+
+Current local validation on the 128 GiB M4 host:
+
+- `make docs-check`: PASS.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset chipbench-d --dry-run
+  --run-id validation`: PASS and emits a dry-run report.
+- `python3 scripts/ai_eda/fetch_external_asset.py --asset
+  google-circuit-training --verify-only --run-id validation`: BLOCKED because
+  the local external checkout is not present yet.
+- `python3 scripts/ai_eda/preflight_cuda_training_stack.py --run-id validation`:
+  PASS_WITH_BLOCKERS_RECORDED. The host has 128 GiB RAM and no CUDA; missing
+  training/CUDA tools are recorded in the JSON report.
+- `python3 scripts/ai_eda/package_cuda_training_payload.py --run-id validation`:
+  PASS and emits a tarball containing manifests, scripts, and a run plan only.
+- `make ai-eda-internal-schemas-check`: PASS for five record schemas and five
+  example fixtures.
+
 ### P0: Create a reproducible external asset registry
 
 Add a repo-owned external manifest convention:
@@ -286,8 +330,9 @@ Acceptance:
 
 - `python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation`
   records source availability.
-- A new `scripts/ai_eda/check_external_asset_manifests.py` rejects missing
-  checksums, missing license status, missing split policy, and unpinned URLs.
+- `scripts/ai_eda/check_external_asset_manifests.py` rejects missing source
+  URLs, license status, revision records, allowed-use policy, replay policy, and
+  fetch/verify commands.
 - `make docs-check` includes the manifest checker.
 
 ### P0: Implement download-only, no-import asset fetchers
@@ -332,6 +377,33 @@ Define common schemas:
 - `eda.e1_candidate.v1`: proposed change, source model, input hashes, output
   hashes, replay command, expected gates, reviewer decision.
 
+Implemented schema foundation:
+
+- `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` defines the five internal
+  record contracts above.
+- `docs/spec-db/ai-eda/examples/*.yaml` contains one tiny example for each
+  schema.
+- `scripts/ai_eda/check_internal_dataset_schemas.py` validates the schema
+  catalog and example records.
+- `scripts/ai_eda/materialize_internal_dataset_fixtures.py` converts the tiny
+  YAML examples into JSON fixtures under
+  `build/ai_eda/internal_dataset_fixtures/<run-id>/records/`.
+- `scripts/ai_eda/train_fixture_placement_smoke.py` runs a dependency-free CPU
+  training/inference smoke over the placement fixture and emits
+  `training_run.json`, `metrics.json`, `fixture_placement_model.json`, and
+  `candidate_manifest.json`.
+- `docs/spec-db/ai-eda/external-fixtures/` contains tiny external-shape fixtures
+  for MacroPlacement/Bookshelf, ChiPBench-D, and CircuitNet.
+- `scripts/ai_eda/convert_external_fixture_corpora.py` converts those fixtures
+  into internal `eda.*.v1` records and revalidates them through
+  `check_internal_dataset_schemas.py --records-dir`.
+- `make ai-eda-internal-schemas-check` and `make ai-eda-internal-fixtures`
+  provide local schema/materialization gates. `make ai-eda-fixture-placement-train`
+  proves the train -> infer -> candidate-manifest plumbing locally.
+  `make ai-eda-external-fixture-convert` proves the external-format fixture ->
+  internal-schema conversion plumbing locally.
+  `make docs-check` depends on the schema checker.
+
 Converters to add or complete:
 
 - MacroPlacement LEF/DEF/Bookshelf to `eda.placement_case.v1`.
@@ -346,8 +418,9 @@ Acceptance:
 
 - Every converted sample has a source manifest, file hashes, schema version,
   and split ID.
-- Converters can run on a tiny fixture committed under
-  `packages/chip/verify/fixtures/ai_eda/`.
+- Converters can run on tiny fixtures committed under
+  `packages/chip/docs/spec-db/ai-eda/examples/` and materialized into
+  `build/ai_eda/internal_dataset_fixtures/<run-id>/`.
 - No full external dataset is committed.
 
 ## Training stack TODOs
@@ -688,7 +761,7 @@ Metrics:
 
 ## Reproducibility layout
 
-Recommended local layout:
+Implemented and recommended local layout:
 
 ```text
 packages/chip/
@@ -790,9 +863,12 @@ fail closed until the checker can classify PASS/BLOCKED/FAIL.
 
 ### Week 1: Asset and schema foundation
 
-- Add external asset manifests and checker.
+- Add external asset manifests and checker. **Initial metadata/checker is
+  implemented; per-asset checksum pinning remains blocked until downloads are
+  executed and license/provenance review is accepted.**
 - Add dry-run fetchers for MacroPlacement, ChiPBench-D, CircuitNet, OpenABC-D,
-  EDALearn, EDA Corpus, iDATA, and placement model repos.
+  EDALearn, EDA Corpus, iDATA, and placement model repos. **Generic dry-run /
+  verify-only / execute wrapper is implemented for the lockfile entries.**
 - Add tiny fixture datasets for converter tests.
 - Define `eda.design_bundle.v1`, `eda.placement_case.v1`,
   `eda.graph_sample.v1`, `eda.flow_run.v1`, and `eda.e1_candidate.v1`.
@@ -828,6 +904,13 @@ fail closed until the checker can classify PASS/BLOCKED/FAIL.
 ### Week 5+: Scale-out and remote compute
 
 - Package H200/GPU training payloads with exact manifests.
+- Run `scripts/ai_eda/preflight_cuda_training_stack.py --run-id <host>` on the
+  CUDA machine before any training run; do not start large training until
+  `nvidia-smi`, CUDA-compatible `torch`, `huggingface-cli`, dataset manifests,
+  and asset verification reports are present.
+- Generate the handoff with `make ai-eda-cuda-payload`; transfer the resulting
+  `build/ai_eda/cuda_training_payloads/<run-id>/cuda_training_payload.tar.gz`
+  to the CUDA host, then execute the embedded `cuda_training_run_plan.json`.
 - Add resumable training and artifact sync.
 - Add dataset cards and model cards for every external and local run.
 - Build an experiment dashboard from manifests, not hand-edited status text.
@@ -881,13 +964,19 @@ not as:
 
 ## Immediate TODO checklist
 
-- [ ] Add external asset manifest schema and checker.
-- [ ] Add dry-run/verify-only fetchers for P0 datasets and repos.
-- [ ] Add tiny conversion fixtures.
-- [ ] Add common internal AI-EDA schemas.
-- [ ] Convert MacroPlacement Ariane and one E1 softmacro case.
-- [ ] Convert ChiPBench-D metadata and one sample case.
-- [ ] Convert one CircuitNet/iDATA graph sample after license/storage review.
+- [x] Add external asset manifest schema and checker.
+- [x] Add dry-run/verify-only fetchers for P0 datasets and repos.
+- [x] Add Mac/CUDA training-stack preflight report.
+- [x] Add metadata-only CUDA training payload packager.
+- [x] Add tiny conversion fixtures.
+- [x] Add common internal AI-EDA schemas.
+- [x] Add dependency-free local fixture training/inference smoke.
+- [x] Convert tiny MacroPlacement/Bookshelf fixture and one E1-style softmacro case.
+- [x] Convert tiny ChiPBench-D-style metadata and one sample case.
+- [x] Convert tiny CircuitNet-style graph sample.
+- [ ] Convert real MacroPlacement Ariane and one generated E1 softmacro case after external fetch/pin.
+- [ ] Convert real ChiPBench-D metadata and one sample case after license/storage review.
+- [ ] Convert one real CircuitNet/iDATA graph sample after license/storage review.
 - [ ] Export latest E1 OpenLane/OpenROAD run into `eda.flow_run.v1`.
 - [ ] Train/run first macro-placement baselines on E1 4x4.
 - [ ] Replay baseline candidates through OpenLane/OpenROAD.

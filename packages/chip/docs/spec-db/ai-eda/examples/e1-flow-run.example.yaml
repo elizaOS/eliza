@@ -1,0 +1,30 @@
+schema: eda.flow_run.v1
+id: e1-softmacro-smoke-flow-run
+design_bundle_id: e1-softmacro-smoke-design-bundle
+claim_boundary: example_fixture_only_no_training_inference_or_release_claim
+toolchain:
+  tools:
+    - yosys
+    - openroad
+    - openlane
+  version_capture: scripts/tool_versions.sh
+command: make openlane-smoke
+inputs:
+  design_bundle: e1-softmacro-smoke-design-bundle
+  placement_case: e1-softmacro-smoke-placement-case
+outputs:
+  reports:
+    - build/openlane/e1_soc/reports
+  artifacts:
+    - build/openlane/e1_soc/results
+metrics:
+  label_status: fixture_no_metrics_claim
+  required_metrics:
+    - timing_wns_ns
+    - die_area_um2
+    - congestion_overflow
+    - drc_count
+status:
+  result: BLOCKED_FIXTURE_ONLY
+  blockers:
+    - run_deterministic_openlane_replay_before_using_as_label
