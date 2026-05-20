@@ -82,21 +82,19 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
       });
 
       const data = await res.json().catch(() => ({}));
+      const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
 
-      if (
-        (action === "provision" || action === "resume") &&
-        res.status === 409
-      ) {
-        const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
-        if (jobId) {
-          poller.track(agentId, jobId);
-          toast.info(
-            t("cloud.containers.agentActions.alreadyProvisioning", {
-              defaultValue: "Provisioning already in progress",
-            }),
-          );
-          return;
-        }
+      // 409 + jobId — operation already in flight, attach to the existing
+      // job so the toast resolves when it actually completes.
+      if (res.status === 409 && jobId) {
+        poller.track(agentId, jobId);
+        toast.info(
+          t("cloud.containers.agentActions.actionAlreadyInProgress", {
+            defaultValue: "{action} already in progress",
+            action,
+          }),
+        );
+        return;
       }
 
       if (!res.ok) {
@@ -115,30 +113,40 @@ export function ElizaAgentActions({ agentId, status }: ElizaAgentActionsProps) {
         return;
       }
 
-      if (
-        (action === "provision" || action === "resume") &&
-        res.status === 202
-      ) {
-        const jobId = (data as { data?: { jobId?: string } }).data?.jobId;
-        if (jobId) {
-          poller.track(agentId, jobId);
-          toast.success(
-            t("cloud.containers.agentActions.provisioningQueued", {
-              defaultValue: "Agent provisioning queued",
-            }),
-          );
-          return;
-        }
-
-        toast.success(
-          t("cloud.containers.agentActions.provisioningStarted", {
-            defaultValue: "Agent provisioning started",
+      // 202 + jobId — the backend enqueued a job; track it and tell the
+      // user it's running. Avoids the toast lying ("Snapshot saved")
+      // before the daemon actually finished.
+      if (res.status === 202 && jobId) {
+        poller.track(agentId, jobId);
+        const queuedMessages: Record<string, string> = {
+          provision: t("cloud.containers.agentActions.provisioningQueued", {
+            defaultValue: "Agent provisioning queued",
           }),
+          resume: t("cloud.containers.agentActions.resumeQueued", {
+            defaultValue: "Agent resume queued",
+          }),
+          snapshot: t("cloud.containers.agentActions.snapshotQueued", {
+            defaultValue: "Snapshot queued",
+          }),
+          suspend: t("cloud.containers.agentActions.suspendQueued", {
+            defaultValue: "Suspend queued",
+          }),
+          shutdown: t("cloud.containers.agentActions.suspendQueued", {
+            defaultValue: "Suspend queued",
+          }),
+        };
+        toast.success(
+          queuedMessages[action] ??
+            t("cloud.containers.agentActions.actionQueued", {
+              defaultValue: "{action} queued",
+              action,
+            }),
         );
-        window.location.reload();
         return;
       }
 
+      // Fallback: synchronous success (no jobId returned). Legacy
+      // endpoints that still complete inline land here.
       const messages: Record<string, string> = {
         provision: t("cloud.containers.agentActions.provisioningStarted", {
           defaultValue: "Agent provisioning started",
