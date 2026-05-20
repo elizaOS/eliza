@@ -38,9 +38,15 @@ export async function startFetchServer(
       hostname,
       fetch,
     });
+    const boundHostname = server.hostname;
+    const boundPort = server.port;
+    if (typeof boundHostname !== "string" || typeof boundPort !== "number") {
+      await server.stop(true);
+      throw new Error("Mock server did not bind to a host and numeric port");
+    }
     return {
-      hostname: server.hostname,
-      port: server.port,
+      hostname: boundHostname,
+      port: boundPort,
       stop: async () => {
         await server.stop(true);
       },

@@ -65,7 +65,7 @@ export async function startControlPlaneMock(
   return {
     stop: async () => {
       if (interval) clearInterval(interval);
-      await server.stop(true);
+      await server.stop();
     },
     url: `http://${server.hostname}:${port}`,
     port,

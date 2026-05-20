@@ -50,7 +50,7 @@ export async function startHetznerMock(
 
   return {
     stop: async () => {
-      await server.stop(true);
+      await server.stop();
     },
     url: `http://${server.hostname}:${port}/v1`,
     port,
