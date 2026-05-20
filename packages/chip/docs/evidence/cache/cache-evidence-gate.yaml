@@ -242,7 +242,7 @@ measured_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_vs_lru_report.json
   - id: mockingjay_cocotb_synthetic
-    status: measured_below_threshold
+    status: measured_above_threshold
     evidence_class: cocotb_synthetic_stream
     reason: |
       The cocotb harness
@@ -255,18 +255,18 @@ measured_real_claims:
       `find_victim`) is applied; an additional unit-correction
       scales reuse-distance deltas from global-access units to
       ETR-time-units (delta >> ETR_W) before they enter the RTP.
-      Captured numbers in the measurement window
-      (mj=22.15 % vs lru=50.03 %) are a 3.5x improvement over the
-      pre-unblock baseline but remain below the +10 % threshold.
-      Next-layer root cause documented in the artifact: the STT
-      (sampled cache) is keyed by `(pc, set_id)` rather than by
-      tag/address, so a fresh scan tag at the same (pc, set_id)
-      registers as an STT hit and feeds the PC-keyed RTP a tiny
-      reuse distance, causing scan PCs to look "hot". The HPCA'22
-      paper keys the sampled table by line address; the next
-      unblock step is to thread `acc_tag` (or full address) through
-      `e1_mockingjay_prod` + the TB and key STT on (set_id, tag).
-      The threshold remains the productization bar.
+      The R5 next-layer root cause (Sampled Cache Tracker keyed by
+      `(pc, set_id)` instead of by line address) is fixed in R6:
+      `e1_mockingjay_prod` now takes an `acc_tag` input (parameter
+      `TAG_W`) and keys the STT by `(set_id, tag)` per HPCA'22
+      section 4; the PC-indexed RTP still updates on STT hits but
+      no longer eats false same-PC reuse signals from streaming
+      scans. Measurement-window numbers
+      (mj=58.78 % vs lru=50.03 %) give +8.76 percentage points
+      absolute and +17.50 % relative, above the +10 % relative
+      pass threshold. The threshold remains the productization
+      bar; phone-class IPC remains BLOCKED until silicon or
+      full-system-simulator evidence.
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_cocotb_synthetic_report.json
 

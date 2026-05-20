@@ -42,6 +42,8 @@ from cocotb.triggers import RisingEdge
 WAYS = 8
 SETS = 64
 SET_IDX_W = 6
+TAG_W = 24
+TAG_MASK = (1 << TAG_W) - 1
 
 
 class LRUModel:
@@ -154,6 +156,7 @@ async def reset_dut(dut) -> None:
     dut.acc_way.value = 0
     dut.acc_is_miss_install.value = 0
     dut.acc_pc.value = 0
+    dut.acc_tag.value = 0
     dut.query_set.value = 0
     for _ in range(5):
         await RisingEdge(dut.clk)
@@ -212,13 +215,17 @@ async def test_mockingjay_beats_lru_on_scan_reuse(dut):
             target_way = int(dut.victim_way.value)
             tracker.install(s, tag, target_way)
 
-        # Drive the access update into the DUT.
+        # Drive the access update into the DUT. acc_tag carries the
+        # line-address tag the STT keys on; the scan PC walks distinct
+        # tags so the line-address-keyed STT correctly treats each scan
+        # access as a miss instead of the PC-keyed false hit.
         dut.acc_valid.value = 1
         dut.acc_set.value = s
         dut.acc_hit.value = hit
         dut.acc_way.value = target_way
         dut.acc_is_miss_install.value = install
         dut.acc_pc.value = pc
+        dut.acc_tag.value = tag & TAG_MASK
         await RisingEdge(dut.clk)
         dut.acc_valid.value = 0
 

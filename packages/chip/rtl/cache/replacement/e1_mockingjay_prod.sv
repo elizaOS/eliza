@@ -6,14 +6,24 @@
 //
 // Match the HPCA'22 paper structure more closely than `e1_mockingjay.sv`:
 //
-//   - Sampled Cache: 8-way x 256 entries x {tag, RTP timestamp, last-PC},
-//     keyed by a sampled subset of sets. The sampled set selector hashes
-//     the set index against `SAMPLE_HASH` so a deterministic ~1/N fraction
-//     of sets are sampled at runtime.
+//   - Sampled Cache (STT): 8-way x 256 entries x
+//     {valid, tag, last-access timestamp}, keyed by a sampled subset of
+//     sets. The sampled set selector hashes the set index against
+//     `SAMPLE_HASH` so a deterministic ~1/N fraction of sets are
+//     sampled at runtime. The STT is keyed by line address
+//     `(set_id, tag)` exactly as in the HPCA'22 paper section 4: a
+//     repeated access to the same line is an STT hit and yields a
+//     reuse distance; a fresh tag at the same set is an STT miss and
+//     allocates a new entry — even if the demand PC is the same as a
+//     prior access (e.g. a streaming scan whose PC is reused across
+//     all scan tags).
 //
-//   - Reuse Time Predictor (RTP) per PC: when a sampled entry is hit, the
-//     observed reuse distance (in global access counter units) is fed
-//     into the PC-keyed RTP, exponentially smoothed.
+//   - Reuse Time Predictor (RTP) per PC: when a sampled STT entry is
+//     hit (i.e. the same line address is touched twice in the sampled
+//     window) the observed reuse distance is fed into the PC-keyed
+//     RTP, exponentially smoothed. The PC used as the RTP index is the
+//     demand-miss PC `acc_pc`; the reuse-distance lookup itself comes
+//     from the line-address-keyed STT.
 //
 //   - ETR (Estimated Time of Reference) per cache line: 3-bit saturating
 //     counter. On insertion, ETR is set from the RTP entry for the
@@ -41,7 +51,8 @@
 // hit-rate vs an LRU oracle in the same harness.
 //
 // State storage:
-//   - STT_ENTRIES x {valid, tag, pc, rtp_value, timestamp} as flat regs.
+//   - STT_ENTRIES x {valid, tag, timestamp} as flat regs (line-address
+//     keyed: the demand PC is no longer stored in the STT entry).
 //   - RTP_ENTRIES x {valid, pc_tag, predicted_reuse} per-PC predictor.
 //   - ETR per cache line: WAYS x SETS, 3-bit. This is the main on-die
 //     storage cost (~6 KiB at 16 WAY x 2048 SETS).
@@ -52,6 +63,12 @@ module e1_mockingjay_prod #(
     parameter int unsigned WAYS         = 16,
     parameter int unsigned SETS         = 2048,
     parameter int unsigned PC_W         = 64,
+    // Line-address tag bit width. Sized large enough for the host
+    // cache's tag field; the cocotb harness uses 24 bits, real silicon
+    // typically uses ~36 for a 4-MiB L3 with 64-byte lines on a 48-bit
+    // PA. STT lookup keys on (set_id, tag) so a fresh tag at the same
+    // set is an STT miss even when the demand PC is reused.
+    parameter int unsigned TAG_W        = 36,
     // Sampled Cache: 8 ways x 256 entries
     parameter int unsigned STT_WAYS     = 8,
     parameter int unsigned STT_SETS     = 32,    // 8x32 = 256 entries
@@ -78,6 +95,7 @@ module e1_mockingjay_prod #(
     input  logic [$clog2(WAYS)-1:0]    acc_way,
     input  logic                       acc_is_miss_install,
     input  logic [PC_W-1:0]            acc_pc,
+    input  logic [TAG_W-1:0]           acc_tag,
 
     input  logic [$clog2(SETS)-1:0]    query_set,
     output logic [$clog2(WAYS)-1:0]    victim_way,
@@ -99,10 +117,14 @@ module e1_mockingjay_prod #(
     logic [ETR_W-1:0] etr [WAYS][SETS];
 
     // ---------- Sampled Cache (STT) ----------
+    // Keyed by line address (set_id, tag) per the HPCA'22 paper section 4.
+    // The STT does not store the demand PC because PCs that scan many
+    // distinct line addresses (e.g. a streaming loop) must not register
+    // as STT hits when reused at the same set with a fresh tag.
     typedef struct packed {
         logic                  valid;
-        logic [PC_W-1:0]       pc;
         logic [SET_IDX_W-1:0]  set_id;
+        logic [TAG_W-1:0]      tag;
         logic [TS_W-1:0]       ts;     // timestamp of last access
     } stt_entry_t;
     stt_entry_t stt [STT_WAYS][STT_SETS];
@@ -190,9 +212,11 @@ module e1_mockingjay_prod #(
     assign victim_way = find_victim(query_set, tie_lfsr_q);
 
     // Sampled STT lookup: return STT way index and "found" flag.
+    // Keyed by line address (set_id, tag); the PC is intentionally not
+    // part of the lookup key. See module header.
     function automatic void stt_lookup
-        (input  logic [PC_W-1:0]       pc,
-         input  logic [SET_IDX_W-1:0]  s,
+        (input  logic [SET_IDX_W-1:0]  s,
+         input  logic [TAG_W-1:0]      t,
          output logic                  found,
          output logic [STT_WAY_IDX_W-1:0] sway,
          output logic [TS_W-1:0]       last_ts);
@@ -203,8 +227,8 @@ module e1_mockingjay_prod #(
         last_ts = '0;
         for (int w = 0; w < STT_WAYS; w++) begin
             if (stt[w][sset].valid &&
-                stt[w][sset].pc == pc &&
-                stt[w][sset].set_id == s) begin
+                stt[w][sset].set_id == s &&
+                stt[w][sset].tag == t) begin
                 found   = 1'b1;
                 sway    = w[STT_WAY_IDX_W-1:0];
                 last_ts = stt[w][sset].ts;
@@ -302,11 +326,18 @@ module e1_mockingjay_prod #(
             end
 
             // -------- Sampled Cache (STT) update --------
+            // STT is keyed by line address (set_id, tag). A reused line
+            // address at the same sampled set is an STT hit and yields
+            // a reuse distance for the PC-indexed RTP. A fresh tag at
+            // the same set — including the streaming-scan case where a
+            // single PC walks many distinct lines — is an STT miss and
+            // allocates a new entry; the scan PC's RTP entry is NOT
+            // updated with a spurious "tiny reuse distance".
             if (is_sampled_set(acc_set)) begin
                 logic                  found;
                 logic [STT_WAY_IDX_W-1:0] sway;
                 logic [TS_W-1:0]       last_ts;
-                stt_lookup(acc_pc, acc_set, found, sway, last_ts);
+                stt_lookup(acc_set, acc_tag, found, sway, last_ts);
                 if (found) begin
                     // Compute observed reuse distance in ETR-time-units.
                     // ETR ages once per `1 << ETR_W` global accesses, so
@@ -323,7 +354,8 @@ module e1_mockingjay_prod #(
                                          {ETR_W{1'b1}}}) ?
                                        MAX_ETR[ETR_W-1:0] :
                                        delta_etr_units[ETR_W-1:0];
-                    // Update RTP entry: EWMA-ish blend of old + new.
+                    // Update RTP entry keyed by the demand PC (acc_pc):
+                    // EWMA-ish blend of old + new.
                     if (rtp[ridx].valid && rtp[ridx].pc == acc_pc) begin
                         automatic logic [ETR_W:0] avg;
                         avg = {1'b0, rtp[ridx].predicted_etr}
@@ -334,14 +366,15 @@ module e1_mockingjay_prod #(
                         rtp[ridx].pc             <= acc_pc;
                         rtp[ridx].predicted_etr  <= new_pred;
                     end
-                    // Refresh STT timestamp.
+                    // Refresh STT timestamp on the matched line-address
+                    // entry.
                     stt[sway][sset].ts <= global_ts_q;
                 end else begin
-                    // Allocate a new STT entry.
+                    // Allocate a new STT entry keyed by line address.
                     automatic logic [STT_WAY_IDX_W-1:0] vway = stt_pick_victim(sset);
                     stt[vway][sset].valid  <= 1'b1;
-                    stt[vway][sset].pc     <= acc_pc;
                     stt[vway][sset].set_id <= acc_set;
+                    stt[vway][sset].tag    <= acc_tag;
                     stt[vway][sset].ts     <= global_ts_q;
                 end
             end
