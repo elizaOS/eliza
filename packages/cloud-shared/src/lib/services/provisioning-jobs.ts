@@ -977,7 +977,7 @@ export class ProvisioningJobService {
             await agentSandboxesRepository.update(data.agentId, {
               status: "error",
               error_message: `Provisioning permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
-            } as Parameters<typeof agentSandboxesRepository.update>[1]);
+            });
             logger.warn("[provisioning-jobs] Marked sandbox as error after permanent failure", {
               jobId: job.id,
               agentId: data.agentId,
@@ -1001,7 +1001,7 @@ export class ProvisioningJobService {
             await agentSandboxesRepository.update(data.agentId, {
               status: "deletion_failed",
               error_message: `Deletion permanently failed after ${job.max_attempts} attempts: ${errorMsg}`,
-            } as Parameters<typeof agentSandboxesRepository.update>[1]);
+            });
             logger.warn(
               "[provisioning-jobs] Marked sandbox as deletion_failed after permanent failure",
               { jobId: job.id, agentId: data.agentId },
@@ -1387,18 +1387,16 @@ export class ProvisioningJobService {
     const provResult = await elizaSandboxService.provision(data.agentId, data.organizationId);
 
     if (!provResult.success) {
-      // Store partial result for debugging
       await jobsRepository.update(job.id, {
-        result: {
+        result: agentProvisionJobResultToRecord({
           cloudAgentId: data.agentId,
           status: provResult.sandboxRecord?.status ?? "error",
           error: provResult.error,
-        },
+        }),
       });
       throw new Error(provResult.error);
     }
 
-    // Mark completed with result
     const jobResult: AgentProvisionJobResult = {
       cloudAgentId: data.agentId,
       status: provResult.sandboxRecord.status,
@@ -1411,7 +1409,6 @@ export class ProvisioningJobService {
       completed_at: new Date(),
     });
 
-    // Fire webhook if configured
     if (job.webhook_url) {
       await this.fireWebhook(job, jobResult);
     }
@@ -1508,7 +1505,7 @@ export class ProvisioningJobService {
 
       await jobsRepository.update(job.id, {
         webhook_status: response.ok ? "delivered" : `failed_${response.status}`,
-      } as Partial<Job>);
+      });
 
       if (!response.ok) {
         logger.warn("[provisioning-jobs] Webhook delivery failed", {
@@ -1525,7 +1522,7 @@ export class ProvisioningJobService {
 
       await jobsRepository.update(job.id, {
         webhook_status: "error",
-      } as Partial<Job>);
+      });
     }
   }
 }

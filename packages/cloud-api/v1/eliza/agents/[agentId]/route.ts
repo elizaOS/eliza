@@ -355,9 +355,6 @@ app.delete("/", async (c) => {
       202,
     );
   } catch (error) {
-    if (error instanceof Error && error.message === "Agent not found") {
-      return c.json({ success: false, error: "Agent not found" }, 404);
-    }
     logger.error("[agent-api] DELETE /agents/:agentId error", { error });
     return failureResponse(c, error);
   }

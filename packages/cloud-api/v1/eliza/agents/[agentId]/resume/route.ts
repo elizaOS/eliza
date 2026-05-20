@@ -174,11 +174,9 @@ async function __hono_POST(
     }
 
     try {
-      // Distinct from `agent_provision` so the daemon can tell a user-
-      // initiated resume from a fresh provision in audit logs, and so a
-      // future `docker start` fast path can hook in without touching
-      // the route. Today executeResume always re-provisions to restore
-      // bridge/health URLs via the sandbox handle.
+      // Distinct job type from `agent_provision` so the daemon can
+      // tell a user-initiated resume from a fresh provision in audit
+      // logs.
       const { job, created } =
         await provisioningJobService.enqueueAgentResumeOnce({
           agentId,
