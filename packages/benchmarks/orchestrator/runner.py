@@ -528,6 +528,7 @@ def _collect_run_trajectory_metrics(run_root: Path, *, duration_seconds: float) 
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "total_tokens": total_tokens,
+        "cached_tokens": summary.cached_tokens,
         "avg_prompt_tokens": (prompt_tokens / summary.turns) if (prompt_tokens and summary.turns) else None,
         "avg_completion_tokens": (completion_tokens / summary.turns) if (completion_tokens and summary.turns) else None,
         "telemetry_missing": telemetry_missing,
@@ -612,6 +613,7 @@ def _complete_token_metrics(
     completion = tokens.get("completion_tokens")
     total = tokens.get("total_tokens")
     calls = tokens.get("llm_call_count")
+    cached = tokens.get("cached_tokens", tokens.get("cache_read_input_tokens"))
     turns = summary.get("turns")
     prompt_chars = summary.get("prompt_chars")
 
@@ -644,10 +646,17 @@ def _complete_token_metrics(
         if source is not None:
             tokens["estimated_total_tokens"] = total
 
+    if not isinstance(cached, (int, float)) or isinstance(cached, bool):
+        cached = 0
+
     tokens["llm_call_count"] = calls
+    tokens["call_count"] = calls
     tokens["prompt_tokens"] = int(prompt)
+    tokens["input_tokens"] = int(prompt)
     tokens["completion_tokens"] = int(completion)
+    tokens["output_tokens"] = int(completion)
     tokens["total_tokens"] = int(total)
+    tokens["cached_tokens"] = int(cached)
     tokens["avg_prompt_tokens"] = (int(prompt) / calls) if calls else 0
     tokens["avg_completion_tokens"] = (int(completion) / calls) if calls else 0
     tokens["telemetry_missing"] = source is not None
@@ -1329,6 +1338,7 @@ def _rebuild_latest_result_snapshots(
             trajectory_summary=row.get("trajectory_summary") or {},
             result_json_path=row.get("result_json_path"),
         )
+        metrics["token_metrics"] = token_metrics
         is_synthetic = _is_synthetic_agent(agent)
         if is_synthetic:
             target_dir = baselines_dir
@@ -1415,6 +1425,7 @@ def _rebuild_latest_result_snapshots(
             trajectory_summary=payload.get("trajectory_summary") or {},
             result_json_path=payload.get("result_json_path"),
         )
+        metrics["token_metrics"] = token_metrics
         publication_warnings = _publication_warnings(
             benchmark_id=benchmark_id,
             status=str(payload.get("status") or ""),
@@ -1422,6 +1433,7 @@ def _rebuild_latest_result_snapshots(
             metrics=metrics,
         )
         payload["token_metrics"] = token_metrics
+        payload["metrics"] = metrics
         payload.pop("publication_warnings", None)
         if publication_warnings:
             payload["publication_warnings"] = publication_warnings
@@ -1489,6 +1501,7 @@ def _rebuild_latest_result_snapshots(
             trajectory_summary=row.get("trajectory_summary") or {},
             result_json_path=row.get("result_json_path"),
         )
+        metrics["token_metrics"] = token_metrics
         quarantine_reason = _publication_quarantine_reason(
             status=str(row.get("status") or ""),
             agent=agent,

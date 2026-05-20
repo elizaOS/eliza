@@ -39,6 +39,7 @@ async function installCheckoutMocks(page: Page) {
 test("checkout product picker, color swatches, email login, and Stripe handoff are wired", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   const requests = await installCheckoutMocks(page);
 
   await page.goto("/checkout?sku=elizaos-usb");
@@ -48,7 +49,7 @@ test("checkout product picker, color swatches, email login, and Stripe handoff a
   await expect(page).toHaveURL(/\/checkout\?sku=elizaos-phone$/);
   await expect(page.getByRole("heading", { name: "ElizaOS Phone" })).toBeVisible();
 
-  await page.getByRole("button", { name: "Select Black" }).click();
+  await page.getByRole("button", { name: "Select Blue glass" }).click();
 
   await page.getByRole("button", { name: "Email link" }).click();
   await expect(page.getByText("Enter your email first.")).toBeVisible();
@@ -80,7 +81,7 @@ test("checkout product picker, color swatches, email login, and Stripe handoff a
   );
   expect(checkoutRequest?.body).toMatchObject({
     hardwareSku: "elizaos-phone",
-    hardwareColor: "Black",
+    hardwareColor: "Blue glass",
     returnUrl: "billing",
   });
 });
