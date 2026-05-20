@@ -44,9 +44,8 @@ def test_vending_provider_sends_to_the_per_turn_reset_session() -> None:
     assert client.reset_task_ids
     assert client.contexts[0]["task_id"] == client.reset_task_ids[-1]
     assert client.contexts[0]["benchmark"] == "vending-bench"
-    assert "system_prompt" not in client.contexts[0]
-    assert "messages" not in client.contexts[0]
-    assert "## Eliza short-run benchmark strategy" in client.messages[0]
+    assert "## Eliza short-run benchmark strategy" in client.contexts[0]["system_prompt"]
+    assert client.contexts[0]["messages"][1]["content"] == "What next?"
     assert "What next?" in client.messages[0]
 
 
@@ -131,7 +130,7 @@ def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     assert response == "I am not sure."
 
 
-def test_vending_provider_preserves_empty_structured_response() -> None:
+def test_vending_provider_uses_short_run_fallback_for_empty_structured_response() -> None:
     client = _FakeClient(
         MessageResponse(
             text="",
@@ -143,6 +142,15 @@ def test_vending_provider_preserves_empty_structured_response() -> None:
     )
     provider = ElizaVendingProvider(client=client)
 
-    response, _tokens = asyncio.run(provider.generate("", "What next?"))
+    response, _tokens = asyncio.run(
+        provider.generate(
+            "",
+            "## Day 1 of your vending business\n\n[TODAY]\nplaced_order=False\n",
+        )
+    )
 
-    assert response == ""
+    assert response == (
+        '{"action": "PLACE_ORDER", "supplier_id": "beverage_dist", '
+        '"items": {"water": 20, "soda_cola": 20, "juice_orange": 10, '
+        '"energy_drink": 10}}'
+    )
