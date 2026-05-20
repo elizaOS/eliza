@@ -3,19 +3,19 @@ import {
   clearStoredAppAuthorizeReturnTo,
   readStoredAppAuthorizeReturnTo,
 } from "@elizaos/ui";
-import { useAuth } from "@stwd/react";
 import { AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useContext, useEffect, useMemo, useRef, useState } from "react";
 import { Helmet } from "react-helmet-async";
 import { useSearchParams } from "react-router-dom";
 import { syncStewardSessionCookie } from "../../../../lib/steward-session";
+import { LocalStewardAuthContext } from "../../../../providers/StewardProvider";
 
 type CallbackStatus = "verifying" | "success" | "error";
 
 export default function StewardEmailCallbackPage() {
   const [searchParams] = useSearchParams();
-  const { verifyEmailCallback, isAuthenticated } = useAuth();
+  const auth = useContext(LocalStewardAuthContext);
   const attemptedRef = useRef(false);
   const [status, setStatus] = useState<CallbackStatus>("verifying");
   const [error, setError] = useState<string | null>(null);
@@ -25,6 +25,12 @@ export default function StewardEmailCallbackPage() {
   useEffect(() => {
     if (attemptedRef.current) return;
     attemptedRef.current = true;
+
+    if (!auth) {
+      setStatus("error");
+      setError("Sign-in is unavailable. Start sign-in again from the app.");
+      return;
+    }
 
     if (!returnTo) {
       setStatus("error");
@@ -43,7 +49,7 @@ export default function StewardEmailCallbackPage() {
       }, 1500);
     };
 
-    if (isAuthenticated) {
+    if (auth.isAuthenticated) {
       finishSuccess();
       return () => {
         if (redirectTimer) clearTimeout(redirectTimer);
@@ -60,7 +66,7 @@ export default function StewardEmailCallbackPage() {
 
     void (async () => {
       try {
-        const result = await verifyEmailCallback(token, email);
+        const result = await auth.verifyEmailCallback(token, email);
         await syncStewardSessionCookie(result.token, result.refreshToken);
         finishSuccess();
       } catch (err) {
@@ -76,7 +82,7 @@ export default function StewardEmailCallbackPage() {
     return () => {
       if (redirectTimer) clearTimeout(redirectTimer);
     };
-  }, [isAuthenticated, returnTo, searchParams, verifyEmailCallback]);
+  }, [auth, returnTo, searchParams]);
 
   const helmet = (
     <Helmet>

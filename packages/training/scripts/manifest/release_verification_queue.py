@@ -209,7 +209,7 @@ def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
         f"--target-model {target_gguf} "
         f"--drafter-model {bundle}/dflash/drafter-{tier}.gguf "
         "--spec-type dflash "
-        "--bench --bench-tokens 128 "
+        "--bench --bench-tokens 128 --bench-context 128 "
         f"--report {bundle}/dflash/runtime-smoke-native.json "
         f"--bench-report {bundle}/evals/dflash-native-bench.json && "
         f"{_eval_suite_command(eval_python, bundle, tier, '--threads', '8', '--timeout', '600')} && "
@@ -390,14 +390,17 @@ def build_queue(
                 priority=200 + _tier_sort_key(tier),
                 requires_hardware=False,
                 command=(
-                    _eval_suite_command(
+                    _guarded(
                         eval_python,
-                        bundle,
-                        tier,
-                        "--threads",
-                        "8",
-                        "--timeout",
-                        "600",
+                        _eval_suite_command(
+                            eval_python,
+                            bundle,
+                            tier,
+                            "--threads",
+                            "8",
+                            "--timeout",
+                            "600",
+                        ),
                     )
                 ),
                 evidence=(

@@ -75,6 +75,7 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
     assert "bundles/4b/checksums/SHA256SUMS" in checksum.evidence
     cpu = items[3]
     assert cpu.requires_hardware is False
+    assert cpu.command.startswith("python3 packages/training/scripts/manifest/release_process_guard.py && ")
     assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0" in cpu.command
     assert "--bundle-dir /bundles/eliza-1-0_8b.bundle" in cpu.command
     assert "make -C plugins/plugin-local-inference/native/verify reference-test" in cpu.command
@@ -104,6 +105,7 @@ def test_render_markdown_names_commands_and_evidence() -> None:
     assert "# Eliza-1 Verification Queue" in text
     assert "## 2b:eval-suite" in text
     assert "bundles/2b/evals/aggregate.json" in text
+    assert "python3 packages/training/scripts/manifest/release_process_guard.py &&" in text
     assert "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 python3 -m scripts.eval.eliza1_eval_suite" in text
 
 
@@ -181,7 +183,10 @@ def test_build_queue_accepts_custom_verify_dir() -> None:
 
     items = build_queue(summary, bundle_root="/bundles", verify_dir="/verify", eval_python="python3")
 
-    assert items[0].command.startswith("make -C /verify reference-test")
+    assert items[0].command.startswith(
+        "python3 packages/training/scripts/manifest/release_process_guard.py && "
+        "make -C /verify reference-test"
+    )
 
 
 def test_build_queue_can_use_explicit_eval_python() -> None:
@@ -200,6 +205,7 @@ def test_build_queue_can_use_explicit_eval_python() -> None:
     items = build_queue(summary, bundle_root="/bundles", eval_python="/opt/miniconda3/bin/python3")
 
     assert items[0].command.startswith(
+        "/opt/miniconda3/bin/python3 packages/training/scripts/manifest/release_process_guard.py && "
         "ELIZA_EVAL_ALLOW_CONCURRENT_LLM=0 /opt/miniconda3/bin/python3 -m scripts.eval.eliza1_eval_suite"
     )
 
@@ -284,6 +290,7 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     mtp = items[0]
     assert mtp.requires_hardware is True
     assert mtp.category == "mtpDrafter"
+    assert mtp.command.startswith("python3 packages/training/scripts/manifest/release_process_guard.py && ")
     assert "scripts/dflash/validate_drafter.py" in mtp.command
     assert "--tier 4b" in mtp.command
     assert "--target-gguf /bundles/eliza-1-4b.bundle/text/eliza-1-4b-256k.gguf" in mtp.command
@@ -293,7 +300,7 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert "dflash_drafter_runtime_smoke.mjs" in mtp.command
     assert "--target-model /bundles/eliza-1-4b.bundle/text/eliza-1-4b-256k.gguf" in mtp.command
     assert "--spec-type dflash" in mtp.command
-    assert "--bench --bench-tokens 128" in mtp.command
+    assert "--bench --bench-tokens 128 --bench-context 128" in mtp.command
     assert "--report /bundles/eliza-1-4b.bundle/dflash/runtime-smoke-native.json" in mtp.command
     assert "--bench-report /bundles/eliza-1-4b.bundle/evals/dflash-native-bench.json" in mtp.command
     assert "dflash_tuning_report.py" in mtp.command
