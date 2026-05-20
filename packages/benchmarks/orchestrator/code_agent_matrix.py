@@ -1452,6 +1452,8 @@ def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
             "benchmark": item.benchmark_id,
             "domains": list(item.domains),
             "reason": item.reason,
+            "promotion_requirements": list(item.promotion_requirements),
+            "promotion_priority": item.promotion_priority,
         }
         for item in CODE_AGENT_COVERAGE
         if item.status == "deferred"
@@ -1477,6 +1479,38 @@ def build_coverage_summary(selected_benchmarks: list[str]) -> dict[str, Any]:
             else "some included code-agent benchmarks were not selected for this run"
         ),
     }
+
+
+def build_deferred_promotion_queue(summary: dict[str, Any]) -> list[dict[str, Any]]:
+    coverage = summary.get("coverage")
+    coverage = coverage if isinstance(coverage, dict) else {}
+    deferred = coverage.get("deferred_benchmarks")
+    queue: list[dict[str, Any]] = []
+    for item in deferred if isinstance(deferred, list) else []:
+        if not isinstance(item, dict):
+            continue
+        requirements = [
+            str(requirement)
+            for requirement in item.get("promotion_requirements") or []
+            if str(requirement)
+        ]
+        queue.append(
+            {
+                "priority": str(item.get("promotion_priority") or "p2"),
+                "benchmark": item.get("benchmark"),
+                "domains": item.get("domains") or [],
+                "next_action": requirements[0] if requirements else item.get("reason", ""),
+                "remaining_requirements": requirements,
+                "remaining_count": len(requirements),
+            }
+        )
+    queue.sort(
+        key=lambda item: (
+            str(item.get("priority") or "p2"),
+            str(item.get("benchmark") or ""),
+        )
+    )
+    return queue
 
 
 def build_coverage_gate(summary: dict[str, Any]) -> dict[str, Any]:
@@ -2635,6 +2669,7 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         "cells": [asdict(result) for result in results],
     }
     summary["coverage_gate"] = build_coverage_gate(summary)
+    summary["deferred_promotion_queue"] = build_deferred_promotion_queue(summary)
     summary["benchmark_gate"] = build_benchmark_gate(summary)
     return summary
 
@@ -2994,20 +3029,48 @@ def render_markdown(summary: dict[str, Any]) -> str:
                     "",
                     "### Deferred Related Benchmarks",
                     "",
-                    "| benchmark | domains | reason |",
-                    "| --- | --- | --- |",
+                    "| priority | benchmark | domains | reason | promotion requirements |",
+                    "| --- | --- | --- | --- | --- |",
                 ]
             )
             for item in deferred:
                 if not isinstance(item, dict):
                     continue
                 lines.append(
-                    "| {benchmark} | {domains} | {reason} |".format(
+                    "| {priority} | {benchmark} | {domains} | {reason} | {requirements} |".format(
+                        priority=item.get("promotion_priority", ""),
                         benchmark=item.get("benchmark", ""),
                         domains=", ".join(str(domain) for domain in item.get("domains") or []),
                         reason=item.get("reason", ""),
+                        requirements="; ".join(
+                            str(requirement)
+                            for requirement in item.get("promotion_requirements") or []
+                        ),
                     )
                 )
+    promotion_queue = summary.get("deferred_promotion_queue")
+    if isinstance(promotion_queue, list) and promotion_queue:
+        lines.extend(
+            [
+                "",
+                "## Deferred Promotion Queue",
+                "",
+                "| priority | benchmark | domains | next action | remaining |",
+                "| --- | --- | --- | --- | ---: |",
+            ]
+        )
+        for item in promotion_queue:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| {priority} | {benchmark} | {domains} | {next_action} | {remaining} |".format(
+                    priority=item.get("priority", ""),
+                    benchmark=item.get("benchmark", ""),
+                    domains=", ".join(str(domain) for domain in item.get("domains") or []),
+                    next_action=item.get("next_action", ""),
+                    remaining=item.get("remaining_count", ""),
+                )
+            )
     coverage_gate = summary.get("coverage_gate")
     if isinstance(coverage_gate, dict):
         lines.extend(
@@ -3640,6 +3703,7 @@ def main(argv: list[str] | None = None) -> int:
         summary["head_to_head"],
         run_config=summary["run_config"],
     )
+    summary["deferred_promotion_queue"] = build_deferred_promotion_queue(summary)
     summary["required_stats_gate"] = build_required_stats_gate(
         summary,
         mode=summary["run_config"].get("mode"),

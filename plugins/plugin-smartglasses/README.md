@@ -6,7 +6,7 @@ Even Realities G1/G2 smartglasses integration for ElizaOS.
 
 - View Manager page at `/apps/smartglasses` for whole-headset pairing,
   diagnostics, platform setup guidance, report export, and bridge-backed Wi-Fi
-  scan/configuration when a native bridge exposes those APIs.
+  scan/configuration/setup prompts when a native bridge exposes those APIs.
   The page uses a native Even/Mentra bridge when present for iOS/Android-style
   hosts and falls back to direct Web Bluetooth for desktop browsers.
 - G1 UART protocol constants for Nordic UART service:
@@ -86,7 +86,7 @@ before sending the final completion frame:
 { "op": "brightness", "level": 10, "auto": true }
 ```
 
-Supported `op` values: `connect`, `disconnect`, `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
+Supported `op` values: `connect`, `disconnect`, `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `wifi_setup`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
 
 `connect` pairs or reconnects the whole headset through the configured
 transport and sends connection-ready init packets by default. Aliases include
@@ -109,6 +109,13 @@ exposes native phone/headset setup APIs:
 
 ```json
 { "op": "wifi_configure", "ssid": "Home Wi-Fi", "password": "secret" }
+```
+
+Mentra-style SDK hosts can expose a native setup prompt instead of direct
+credential APIs:
+
+```json
+{ "op": "wifi_setup", "reason": "Eliza needs headset Wi-Fi" }
 ```
 
 `heartbeat_start` accepts optional `intervalMs` and `immediate` fields. By

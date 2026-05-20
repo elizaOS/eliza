@@ -14,6 +14,8 @@ class CodeAgentBenchmark:
     status: str
     domains: tuple[str, ...]
     reason: str
+    promotion_requirements: tuple[str, ...] = ()
+    promotion_priority: str = "p2"
 
 
 CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
@@ -70,6 +72,12 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "Selectable for harness validation, but release-comparable scoring "
             "still depends on Docker evaluator readiness."
         ),
+        promotion_requirements=(
+            "run Docker-backed evaluator in CI or a local daemon",
+            "capture non-mock ElizaOS and OpenCode trajectories with token usage",
+            "enable coverage gate after live scored rows are stable",
+        ),
+        promotion_priority="p0",
     ),
     CodeAgentBenchmark(
         benchmark_id="swe_bench_pro",
@@ -79,6 +87,12 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "Long-horizon SWE-bench Pro tasks require a dedicated prediction "
             "generation bridge and Docker/Modal evaluation plumbing."
         ),
+        promotion_requirements=(
+            "build ElizaOS/OpenCode prediction-generation commands",
+            "normalize patch outcomes into right/wrong/total metrics",
+            "extract per-agent trajectory token and call telemetry",
+        ),
+        promotion_priority="p1",
     ),
     CodeAgentBenchmark(
         benchmark_id="agentbench",
@@ -89,6 +103,12 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "but its current harness targets Eliza/Hermes/OpenClaw rather than "
             "the ElizaOS/OpenCode matrix adapters."
         ),
+        promotion_requirements=(
+            "map AgentBench OS/WebShop/Mind2Web environments to matrix cells",
+            "add an OpenCode-compatible harness alongside ElizaOS",
+            "normalize environment success rates into comparable outcome rows",
+        ),
+        promotion_priority="p1",
     ),
     CodeAgentBenchmark(
         benchmark_id="mint",
@@ -99,6 +119,12 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "needs an ElizaOS/OpenCode code-agent adapter bridge before "
             "head-to-head matrix scoring."
         ),
+        promotion_requirements=(
+            "select coding subtasks for the code-agent matrix",
+            "run both adapters through the same multi-turn tool protocol",
+            "surface turn-k success and token telemetry in matrix results",
+        ),
+        promotion_priority="p1",
     ),
     CodeAgentBenchmark(
         benchmark_id="app_eval_coding",
@@ -108,6 +134,11 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
             "App Eval has coding tasks, but they are heuristic app-agent "
             "regression checks without an OpenCode-comparable adapter path."
         ),
+        promotion_requirements=(
+            "decide whether heuristic app-agent scoring is acceptable for code-agent release gates",
+            "add OpenCode execution path or keep as non-release advisory only",
+            "normalize coding-task scores into right/wrong/total if promoted",
+        ),
     ),
     CodeAgentBenchmark(
         benchmark_id="standard_humaneval",
@@ -116,6 +147,11 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
         reason=(
             "HumanEval is a model-level code-generation benchmark; it needs a "
             "workspace/code-agent wrapper before it is comparable to OpenCode."
+        ),
+        promotion_requirements=(
+            "wrap HumanEval prompts as workspace tasks for code agents",
+            "execute generated code in the same sandbox for both adapters",
+            "record pass/fail and per-call telemetry per task",
         ),
     ),
 )

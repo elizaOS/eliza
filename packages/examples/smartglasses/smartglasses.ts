@@ -72,6 +72,7 @@ await service.setSilentMode(false);
 await service.setGlassesWearDetection(true);
 await service.scanWifi();
 await service.configureWifi("ExampleNet", "secret");
+await service.requestWifiSetup("Example needs headset Wi-Fi");
 await service.getWifiStatus();
 await service.sendConnectionReady();
 await service.sendConnectionReady("both", "official");

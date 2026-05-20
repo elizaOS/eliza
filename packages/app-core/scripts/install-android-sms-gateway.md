@@ -53,7 +53,6 @@ open Android Developer Options > Wireless debugging > Pair device with pairing
 code. Leave that pairing screen open, then run:
 
 ```sh
-ADB_PAIR_CODE='<six-digit-code-from-phone>' \
 node packages/app-core/scripts/install-android-sms-gateway.mjs \
   --pair auto \
   --connect auto \
@@ -62,6 +61,11 @@ node packages/app-core/scripts/install-android-sms-gateway.mjs \
   --clear-logcat \
   --watch-logs 60
 ```
+
+The command waits up to 60 seconds for the phone to advertise the
+`_adb-tls-pairing._tcp` endpoint and prompts for the six-digit code. For
+non-interactive shells, pass `--pair-code '<six-digit-code-from-phone>'` or set
+`ADB_PAIR_CODE`.
 
 `--pair auto` uses the `_adb-tls-pairing._tcp` service advertised while the
 pairing dialog is open. `--connect auto` uses the `_adb-tls-connect._tcp`

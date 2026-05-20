@@ -18,6 +18,7 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_benchmark_gate,
     build_coverage_gate,
     build_coverage_summary,
+    build_deferred_promotion_queue,
     build_efficiency_gate,
     build_efficiency_queue,
     build_improvement_queue,
@@ -347,11 +348,34 @@ def test_coverage_summary_reports_selected_and_deferred_benchmarks() -> None:
         "standard_humaneval",
         "swe_bench_pro",
     }
+    deferred_by_id = {
+        item["benchmark"]: item for item in coverage["deferred_benchmarks"]
+    }
+    assert deferred_by_id["nl2repo"]["promotion_requirements"]
+    assert "OpenCode" in " ".join(
+        deferred_by_id["agentbench"]["promotion_requirements"]
+    )
 
     partial = build_coverage_summary(["swe_bench"])
 
     assert partial["selection_complete"] is False
     assert "terminal_bench" in partial["unselected_included_benchmarks"]
+
+
+def test_deferred_promotion_queue_prioritizes_known_followup_work() -> None:
+    summary = {"coverage": build_coverage_summary(list(DEFAULT_BENCHMARKS))}
+
+    queue = build_deferred_promotion_queue(summary)
+
+    assert [item["benchmark"] for item in queue[:4]] == [
+        "nl2repo",
+        "agentbench",
+        "mint",
+        "swe_bench_pro",
+    ]
+    assert queue[0]["priority"] == "p0"
+    assert queue[0]["next_action"] == "run Docker-backed evaluator in CI or a local daemon"
+    assert queue[0]["remaining_count"] == 3
 
 
 def test_coverage_gate_blocks_partial_benchmark_selection() -> None:
@@ -2232,6 +2256,8 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     assert summary["benchmark_gate"]["ok"] is True
     assert summary["benchmark_gate"]["blocking_benchmarks"] == []
     assert summary["improvement_queue"] == []
+    assert summary["deferred_promotion_queue"][0]["benchmark"] == "nl2repo"
+    assert summary["deferred_promotion_queue"][0]["priority"] == "p0"
     assert summary["report_rows"][0]["benchmark"] == "swe_bench"
     assert summary["report_rows"][0]["target_right"] == 2
     assert summary["report_rows"][0]["target_wrong"] == 0
@@ -2249,6 +2275,9 @@ def test_summary_and_markdown_include_outcome_token_and_head_to_head_metrics() -
     assert "## Benchmark Coverage" in markdown
     assert "Status: partial" in markdown
     assert "### Deferred Related Benchmarks" in markdown
+    assert "promotion requirements" in markdown
+    assert "## Deferred Promotion Queue" in markdown
+    assert "| p0 | nl2repo | coding | run Docker-backed evaluator in CI or a local daemon | 3 |" in markdown
     assert "## Report Gate" in markdown
     assert "Blocking gates: benchmark coverage" in markdown
     assert "## Coverage Gate" in markdown

@@ -424,6 +424,23 @@ describe("smartglasses actions", () => {
       "mock credentials sent for Home",
     );
 
+    const wifiSetupResult = await smartglassesControlAction.handler(
+      runtime,
+      memory('{"op":"wifi_setup","reason":"Eliza needs headset Wi-Fi"}'),
+      undefined,
+      undefined,
+      callback as never,
+    );
+    expectResult(wifiSetupResult);
+    expect(wifiSetupResult.success).toBe(true);
+    expect(wifiSetupResult.values?.operationResult).toMatchObject({
+      status: "mock Wi-Fi setup requested",
+    });
+    expect(transport.wifiRequests.at(-1)).toEqual({
+      op: "setup",
+      reason: "Eliza needs headset Wi-Fi",
+    });
+
     const wifiStatusResult = await smartglassesControlAction.handler(
       runtime,
       memory('{"op":"wifi_status"}'),

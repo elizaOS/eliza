@@ -126,6 +126,14 @@ try {
   await controlAction.handler(
     runtime as never,
     {
+      content: {
+        text: '{"op":"wifi_setup","reason":"Package smoke needs headset Wi-Fi"}',
+      },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
       content: { text: '{"op":"navigation_start"}' },
     } as never,
   );
@@ -367,11 +375,11 @@ try {
   if (!commands.includes(G1Command.DashboardContent)) {
     throw new Error("Package smoke did not send dashboard content packets");
   }
-  if (transport.wifiRequests.at(-2)?.op !== "scan") {
+  if (transport.wifiRequests.at(-3)?.op !== "scan") {
     throw new Error("Package smoke did not scan Wi-Fi through control action");
   }
   if (
-    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify(transport.wifiRequests.at(-2)) !==
     JSON.stringify({
       op: "configure",
       ssid: "PackageNet",
@@ -380,6 +388,17 @@ try {
   ) {
     throw new Error(
       "Package smoke did not configure Wi-Fi through control action",
+    );
+  }
+  if (
+    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify({
+      op: "setup",
+      reason: "Package smoke needs headset Wi-Fi",
+    })
+  ) {
+    throw new Error(
+      "Package smoke did not request native Wi-Fi setup through control action",
     );
   }
   if (
@@ -470,11 +489,7 @@ try {
   if (!String(status.text).includes("wifi=available")) {
     throw new Error("Package smoke provider did not report Wi-Fi capability");
   }
-  if (
-    !String(status.text).includes(
-      "wifiStatus=mock credentials sent for PackageNet",
-    )
-  ) {
+  if (!String(status.text).includes("wifiStatus=mock Wi-Fi setup requested")) {
     throw new Error("Package smoke provider did not report Wi-Fi status");
   }
 

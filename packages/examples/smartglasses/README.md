@@ -6,8 +6,8 @@ This example exercises `@elizaos/plugin-smartglasses` without physical glasses b
 - RSVP word-group display is exercised through the same G1 display packet path
 - microphone enable and disable commands are sent to the right lens as `0x0E`
 - side tap events toggle microphone state
-- bridge-backed Wi-Fi scan/status/configure actions are exercised through the
-  mock transport path used by Eliza actions
+- bridge-backed Wi-Fi scan/status/configure/setup-prompt actions are exercised
+  through the mock transport path used by Eliza actions
 - direct G1 microphone chunks are exposed as raw LC3 audio metadata with sequence tracking, and the mock example injects a decoder hook to exercise PCM callback delivery
 - EvenHub/G2 bridge microphone chunks are exposed as 16 kHz PCM when the bridge supplies PCM audio events
 - host STT/local transcription events are emitted as Eliza `SMARTGLASSES_TRANSCRIPT` events and included in status output

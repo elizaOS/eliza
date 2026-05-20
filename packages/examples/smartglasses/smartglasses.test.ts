@@ -75,6 +75,7 @@ test("smartglasses example packet path", async () => {
   await service.sendTranslateText("translated", "bonjour", 3);
   await service.scanWifi();
   await service.configureWifi("TestNet", "secret");
+  await service.requestWifiSetup("Test needs headset Wi-Fi");
   await service.getWifiStatus();
   await service.sendConnectionReady();
   await service.sendConnectionReady("both", "official");
@@ -245,6 +246,7 @@ test("smartglasses example packet path", async () => {
   expect(transport.wifiRequests).toEqual([
     { op: "scan" },
     { op: "configure", ssid: "TestNet", password: "secret" },
+    { op: "setup", reason: "Test needs headset Wi-Fi" },
     { op: "status" },
   ]);
 });

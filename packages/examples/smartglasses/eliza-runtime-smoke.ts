@@ -73,6 +73,11 @@ try {
   } as never);
   await controlAction.handler(runtime, {
     content: {
+      text: '{"op":"wifi_setup","reason":"Runtime smoke needs headset Wi-Fi"}',
+    },
+  } as never);
+  await controlAction.handler(runtime, {
+    content: {
       text: '{"op":"dashboard_time_weather","temperatureInCelsius":21}',
     },
   } as never);
@@ -105,10 +110,10 @@ try {
     throw new Error("Runtime smoke did not disable the microphone from tap");
   if (dashboardPackets.length === 0)
     throw new Error("Runtime smoke did not route control packets");
-  if (transport.wifiRequests.at(-2)?.op !== "scan")
+  if (transport.wifiRequests.at(-3)?.op !== "scan")
     throw new Error("Runtime smoke did not scan Wi-Fi through control action");
   if (
-    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify(transport.wifiRequests.at(-2)) !==
     JSON.stringify({
       op: "configure",
       ssid: "RuntimeNet",
@@ -117,6 +122,17 @@ try {
   ) {
     throw new Error(
       "Runtime smoke did not configure Wi-Fi through control action",
+    );
+  }
+  if (
+    JSON.stringify(transport.wifiRequests.at(-1)) !==
+    JSON.stringify({
+      op: "setup",
+      reason: "Runtime smoke needs headset Wi-Fi",
+    })
+  ) {
+    throw new Error(
+      "Runtime smoke did not request native Wi-Fi setup through control action",
     );
   }
   if (
@@ -130,9 +146,7 @@ try {
     throw new Error("Runtime smoke provider did not report connection state");
   if (!provider.text.includes("wifi=available"))
     throw new Error("Runtime smoke provider did not report Wi-Fi capability");
-  if (
-    !provider.text.includes("wifiStatus=mock credentials sent for RuntimeNet")
-  )
+  if (!provider.text.includes("wifiStatus=mock Wi-Fi setup requested"))
     throw new Error("Runtime smoke provider did not report Wi-Fi status");
 
   console.log(
