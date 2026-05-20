@@ -59,9 +59,10 @@ ALL_TIERS: list[str] = [
 ]
 
 # Quantization pipeline order matches AGENTS.md §3.
+# fused_turboquant is excluded: incompatible with Qwen3.5 hybrid linear+full
+# attention architecture (18 linear + 6 full attention layers).
 QUANT_PIPELINE: list[str] = [
     "turboquant",
-    "fused_turboquant",
     "polarquant",
     "qjl",
 ]
@@ -224,7 +225,7 @@ def finetune_tier(
                 pass
         log.info("[%s] eval score: %s", tier, result["eval_score"])
 
-    # Stage 3: quantization pipeline (turboquant → fused_turboquant → polarquant → qjl)
+    # Stage 3: quantization pipeline (turboquant → polarquant → qjl)
     if not skip_quant:
         quant_pipeline = [q for q in entry.quantization_after if q in QUANT_PIPELINE]
         for quant in quant_pipeline:

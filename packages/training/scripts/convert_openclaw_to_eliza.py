@@ -85,6 +85,16 @@ def _has_trope(text: str) -> bool:
     return False
 
 
+def _strip_trope_prefix(text: str) -> str:
+    """Remove trope opener from the start of a context assistant message."""
+    stripped = text.strip()
+    for prefix in TROPE_STARTS:
+        if stripped.startswith(prefix):
+            rest = stripped[len(prefix):].lstrip("! ,").lstrip()
+            return rest if rest else stripped
+    return stripped
+
+
 def _normalize_system(system: str) -> str:
     if HERMES_SYSTEM_MARKER in system:
         return ELIZA_SYSTEM_PROMPT
