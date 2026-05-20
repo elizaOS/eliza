@@ -62,6 +62,7 @@ def _seed_run(
     metrics: dict[str, Any] | None = None,
     token_metrics: dict[str, Any] | None = None,
     extra_config: dict[str, Any] | None = None,
+    result_json_path: str | None = None,
 ) -> None:
     insert_run_start(
         conn,
@@ -95,7 +96,7 @@ def _seed_run(
         unit="ratio" if score is not None else None,
         higher_is_better=True if score is not None else None,
         metrics=metrics or {"n": 2},
-        result_json_path=None,
+        result_json_path=result_json_path,
         artifacts=[],
         error=None,
         high_score_label=None,
@@ -1676,6 +1677,56 @@ def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
         "run_id": None,
         "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
+
+
+def test_rebuild_latest_restores_compatibility_repair_when_harness_is_supported_again(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["terminal_bench"],
+        repo_meta={},
+    )
+    result_path = tmp_path / "terminal-result.json"
+    result_path.write_text(
+        json.dumps({"summary": {"accuracy": 0.75}}, sort_keys=True),
+        encoding="utf-8",
+    )
+    _seed_run(
+        conn,
+        benchmark_id="terminal_bench",
+        agent="hermes",
+        run_id="run_restorable",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={
+            "reason": "latest_row_violates_current_compatibility",
+            "supported_harnesses": [],
+        },
+        result_json_path=str(result_path),
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"terminal_bench": _adapter("terminal_bench")},
+    )
+
+    latest = json.loads(
+        (tmp_path / "latest" / "terminal_bench__hermes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest["status"] == "succeeded"
+    assert latest["score"] == 0.75
+    assert latest["metrics"]["harness"] == "hermes"
+    assert "reason" not in latest["metrics"]
 
 
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(

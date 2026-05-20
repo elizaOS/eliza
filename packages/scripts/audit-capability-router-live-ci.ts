@@ -235,7 +235,7 @@ export const checks: Check[] = [
   {
     name: "product connect persists provenance trust policy",
     pattern:
-      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_POLICY)(?=[\s\S]*parseOptionalEndpointTrustPolicy)(?=[\s\S]*normalizeEndpointTrustPolicyOptions)(?=[\s\S]*persistConfigEnv\(\s*"ELIZA_CAPABILITY_ROUTER_TRUST_POLICY")(?=[\s\S]*mergePersistedTrustPolicies)/,
+      /parseOptionalEndpointTrustPolicy[\s\S]*trustPolicy[\s\S]*persistEndpoint[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_POLICY[\s\S]*mergePersistedTrustPolicies[\s\S]*normalizeEndpointTrustPolicyOptions/,
     source: "remote-capability-routes",
     message:
       "product connect persistence must carry provenance trust policy so restart bootstrap can keep verified remote-module trust requirements.",

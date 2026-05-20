@@ -1891,6 +1891,7 @@ export class AgentRuntime implements IAgentRuntime {
 		}
 
 		// Clear caches and handlers to avoid use-after-stop and release references
+		this.promptBatcher.dispose();
 		this.eventHandlers.clear();
 		this.events = {};
 		this.stateCache.clear();

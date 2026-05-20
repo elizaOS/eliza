@@ -72,5 +72,7 @@ describe("AgentRuntime prompt batcher", () => {
 			totalDrains: 0,
 			totalCalls: 0,
 		});
+
+		runtime.promptBatcher.dispose();
 	});
 });

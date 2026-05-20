@@ -900,6 +900,7 @@ export class AutonomyService extends Service {
 			},
 			preamble: [
 				"You are in autonomous mode. Output your thought, chosen actions, and text response.",
+				"You must fill every requested output field exactly once. For actions, use REPLY when you have an internal note to persist, or IGNORE only when no note is needed.",
 				"Use the context below for your reasoning. Respond with the structured fields only.",
 			].join("\n"),
 			schema: [
@@ -916,13 +917,15 @@ export class AutonomyService extends Service {
 				},
 				{
 					field: "actions",
-					description: "List of actions to take (comma-separated)",
+					description:
+						"Required comma-separated action names. Use REPLY to persist the text note, or IGNORE as the safe no-op.",
 					required: true,
 				},
 				{
 					field: "text",
-					description: "The text response or note to persist",
-					required: false,
+					description:
+						"A concise autonomous note to persist about the next concrete step.",
+					required: true,
 				},
 				{
 					field: "simple",
@@ -1036,6 +1039,11 @@ export class AutonomyService extends Service {
 				actions: ["IGNORE"],
 				text: "",
 				providers: [],
+			},
+			model: "large",
+			execOptions: {
+				temperature: 0.2,
+				maxTokens: 512,
 			},
 		});
 		this.runtime.logger.debug(

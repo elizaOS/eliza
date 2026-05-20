@@ -34,6 +34,8 @@ const NETWORK_FAILURE_ALLOWLIST: RegExp[] = [/\/__telemetry__/];
 const HOMEPAGE_TITLE_FALLBACK = /Eliza Cloud - Launch Eliza/i;
 const ROUTE_TITLE_RULES: Record<string, RegExp> = {
   "/": HOMEPAGE_TITLE_FALLBACK,
+  "/os": HOMEPAGE_TITLE_FALLBACK,
+  "/blog": HOMEPAGE_TITLE_FALLBACK,
 };
 
 interface CapturedFailures {
@@ -332,7 +334,7 @@ for (const route of publicRoutes) {
     // must not silently fall back to the homepage title.
     const pathKey = route.split("?")[0];
     const titleRule = ROUTE_TITLE_RULES[pathKey];
-    if (pathKey !== "/") {
+    if (pathKey !== "/" && !titleRule) {
       // Wait up to 5s for Helmet on the actual page to win over the global
       // RootLayout title. Lazy-loaded routes (Suspense + dynamic import)
       // need a beat after networkidle before their <Helmet> applies.

@@ -25,7 +25,7 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
             "other": [
                 {
                     "name": "4b manifest files cover required runtime artifacts",
-                    "detail": "dflash/validation-real.json",
+                    "detail": "dflash/validation-real.json, evals/dflash-tuning-report.json",
                 }
             ],
             "checksumIntegrity": [
@@ -68,6 +68,7 @@ def test_build_queue_expands_grouped_audit_failures() -> None:
     assert manifest.category == "manifestIntegrity"
     assert "bundles/4b/eliza-1.manifest.json" in manifest.evidence
     assert "bundles/4b/dflash/validation-real.json" in manifest.evidence
+    assert "bundles/4b/evals/dflash-tuning-report.json" in manifest.evidence
     checksum = items[2]
     assert checksum.requires_hardware is False
     assert checksum.category == "checksumIntegrity"
@@ -295,8 +296,10 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert "--bench --bench-tokens 128" in mtp.command
     assert "--report /bundles/eliza-1-4b.bundle/dflash/runtime-smoke-native.json" in mtp.command
     assert "--bench-report /bundles/eliza-1-4b.bundle/evals/dflash-native-bench.json" in mtp.command
+    assert "dflash_tuning_report.py" in mtp.command
     assert "bundles/4b/dflash/runtime-smoke-native.json" in mtp.evidence
     assert "bundles/4b/evals/dflash-accept.json" in mtp.evidence
+    assert "bundles/4b/evals/dflash-tuning-report.json" in mtp.evidence
     finetune = items[1]
     assert finetune.requires_hardware is True
     assert finetune.category == "fineTuneComparison"

@@ -1617,7 +1617,13 @@ def _repair_current_compatibility_statuses(
     conn,
     adapters: dict[str, BenchmarkAdapter],
 ) -> int:
-    """Mark stale succeeded rows incompatible when rules now exclude a harness."""
+    """Keep stored compatibility status aligned with current adapter rules.
+
+    Compatibility can depend on local runtime probes such as Docker. If a probe
+    was unavailable, older successful rows may have been marked incompatible.
+    Restore only those rows when the current rules allow the harness again and
+    the saved result artifact still contains a numeric score.
+    """
 
     repaired = 0
     for row in list_runs(conn, limit=None):
@@ -1628,7 +1634,11 @@ def _repair_current_compatibility_statuses(
         if agent not in CANONICAL_REAL_HARNESSES:
             continue
         adapter = adapters.get(benchmark_id)
-        if adapter is None or agent in adapter.agent_compatibility:
+        if adapter is not None and agent in adapter.agent_compatibility:
+            restored = _restore_stale_compatibility_row(conn, row)
+            repaired += int(restored)
+            continue
+        if adapter is None:
             continue
         metrics = dict(row.get("metrics") or {})
         metrics["reason"] = "latest_row_violates_current_compatibility"
@@ -1658,6 +1668,83 @@ def _repair_current_compatibility_statuses(
     if repaired:
         conn.commit()
     return repaired
+
+
+def _restore_stale_compatibility_row(conn, row: dict[str, Any]) -> bool:
+    if row.get("status") != "incompatible":
+        return False
+    metrics = dict(row.get("metrics") or {})
+    if metrics.get("reason") != "latest_row_violates_current_compatibility":
+        return False
+    result_path = row.get("result_json_path")
+    if not result_path:
+        return False
+    score = _score_from_saved_result(Path(str(result_path)), metrics)
+    if score is None:
+        return False
+    metrics.pop("reason", None)
+    metrics.pop("supported_harnesses", None)
+    metrics["harness"] = str(row.get("agent") or "").strip().lower()
+    conn.execute(
+        """
+        UPDATE benchmark_runs
+        SET status = 'succeeded',
+            score = ?,
+            unit = 'score',
+            higher_is_better = 1,
+            metrics_json = ?,
+            error = NULL
+        WHERE run_id = ?
+        """,
+        (
+            score,
+            json.dumps(metrics, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+            row["run_id"],
+        ),
+    )
+    return True
+
+
+def _score_from_saved_result(result_path: Path, metrics: dict[str, Any]) -> float | None:
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        payload = {}
+    candidates: list[Any] = []
+    if isinstance(payload, dict):
+        candidates.extend(
+            [
+                payload.get("score"),
+                payload.get("accuracy"),
+                (payload.get("summary") or {}).get("accuracy")
+                if isinstance(payload.get("summary"), dict)
+                else None,
+            ]
+        )
+        payload_metrics = payload.get("metrics")
+        if isinstance(payload_metrics, dict):
+            candidates.extend(
+                [
+                    payload_metrics.get("score"),
+                    payload_metrics.get("accuracy"),
+                    payload_metrics.get("pass_rate"),
+                    payload_metrics.get("eval/pass_rate"),
+                ]
+            )
+    candidates.extend(
+        [
+            metrics.get("score"),
+            metrics.get("accuracy"),
+            metrics.get("pass_rate"),
+            metrics.get("eval/pass_rate"),
+        ]
+    )
+    for candidate in candidates:
+        if isinstance(candidate, bool):
+            continue
+        if isinstance(candidate, (int, float)) and math.isfinite(float(candidate)):
+            return float(candidate)
+    return None
 
 
 def _run_synthetic_harness_outcome(

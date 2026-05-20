@@ -293,6 +293,35 @@ def _build_fixture_bundle(
         ),
     )
     _write(
+        bundle / "evals" / "dflash-tuning-report.json",
+        json.dumps(
+            {
+                "schemaVersion": 1,
+                "kind": "dflash-tuning-report",
+                "tier": tier,
+                "status": "publishable",
+                "publishEligible": True,
+                "acceptanceGate": 0.48,
+                "runtimeSmoke": {
+                    "metadataStatus": "metadata_loadable",
+                    "drafted": 2,
+                    "accepted": 1,
+                    "acceptanceRate": 0.5,
+                    "draftingActive": True,
+                },
+                "releaseBench": {
+                    "status": "pass",
+                    "acceptanceRate": 0.71,
+                    "speedup": 1.2,
+                    "drafted": 2,
+                    "accepted": 1,
+                },
+                "blockers": [],
+            },
+            indent=2,
+        ),
+    )
+    _write(
         bundle / "evals" / "metal_verify.json",
         json.dumps(
             {
