@@ -7,10 +7,16 @@ const routePhoneMessage = mock(async () => ({
   userId: "user-1",
   organizationId: "org-1",
 }));
-const registerPhoneGatewayDevice = mock(async () => ({
-  id: "gateway-device-1",
-  registered: true,
-}));
+const registerPhoneGatewayDevice = mock(
+  async (): Promise<{
+    id: string | null;
+    registered: boolean;
+    skippedReason?: string;
+  }> => ({
+    id: "gateway-device-1",
+    registered: true,
+  }),
+);
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {
