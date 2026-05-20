@@ -108,17 +108,41 @@ interface ConnectorPluginCardProps
 
 type CloudOAuthConnectorCopy = {
   platform: "slack" | "twitter";
-  connectionRole: CloudOAuthConnectionRole;
+  /**
+   * Roles the user can connect for this platform. A single-entry array
+   * renders one button (legacy behavior); a two-entry array (e.g.
+   * `["agent", "owner"]`) renders one button per role so the user can
+   * connect the agent's own account AND their own platform account
+   * independently. The cloud OAuth callback honors `connectionRole` and
+   * stores each grant under the right role in `platform_credentials`.
+   */
+  connectionRoles: CloudOAuthConnectionRole[];
   buttonLabel: string;
   connectedHint: string;
   disconnectedHint: string;
   successNotice: string;
 };
 
+const ROLE_BUTTON_SUFFIX: Record<CloudOAuthConnectionRole, string> = {
+  agent: "(agent)",
+  owner: "(your account)",
+};
+
+function buildRoleButtonLabel(
+  baseLabel: string,
+  role: CloudOAuthConnectionRole,
+  showRoleSuffix: boolean,
+): string {
+  if (!showRoleSuffix) {
+    return baseLabel;
+  }
+  return `${baseLabel} ${ROLE_BUTTON_SUFFIX[role]}`;
+}
+
 const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
   slack: {
     platform: "slack",
-    connectionRole: "agent",
+    connectionRoles: ["agent"],
     buttonLabel: "Use Slack OAuth",
     connectedHint:
       "Connect Slack with Eliza Cloud OAuth. Cloud stores the workspace token and the Slack plugin remains the runtime surface for messages and actions.",
@@ -128,10 +152,10 @@ const CLOUD_OAUTH_CONNECTORS: Record<string, CloudOAuthConnectorCopy> = {
   },
   twitter: {
     platform: "twitter",
-    connectionRole: "agent",
+    connectionRoles: ["agent", "owner"],
     buttonLabel: "Use X/Twitter OAuth",
     connectedHint:
-      "Connect X/Twitter with Eliza Cloud OAuth so agent posts, mentions, replies, and DMs use the plugin through cloud-held tokens.",
+      "Connect X/Twitter with Eliza Cloud OAuth. Use 'agent' to link the agent's own X account for autonomous posts and DMs; use 'your account' to grant the agent permission to act on your own X account.",
     disconnectedHint:
       "Connect Eliza Cloud first to use X/Twitter OAuth instead of local developer tokens.",
     successNotice: "Finish X/Twitter OAuth in your browser, then return here.",
@@ -498,7 +522,9 @@ function ConnectorPluginCard({
       setManagedDiscordBusy(false);
     }
   };
-  const handleOpenCloudOAuthConnector = async () => {
+  const handleOpenCloudOAuthConnector = async (
+    connectionRole: CloudOAuthConnectionRole,
+  ) => {
     if (!cloudOAuthConnector || cloudOAuthBusy) {
       return;
     }
@@ -525,11 +551,11 @@ function ConnectorPluginCard({
         cloudOAuthConnector.platform === "twitter"
           ? await client.initiateCloudTwitterOauth({
               redirectUrl,
-              connectionRole: cloudOAuthConnector.connectionRole,
+              connectionRole,
             })
           : await client.initiateCloudOauth(cloudOAuthConnector.platform, {
               redirectUrl,
-              connectionRole: cloudOAuthConnector.connectionRole,
+              connectionRole,
             });
 
       await handleOpenPluginExternalUrl(oauthResponse.authUrl);
@@ -794,23 +820,32 @@ function ConnectorPluginCard({
             tone="default"
             className="mb-4"
             actions={
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
-                onClick={() => {
-                  void handleOpenCloudOAuthConnector();
-                }}
-                disabled={cloudOAuthBusy}
-              >
-                {cloudOAuthBusy
-                  ? "..."
-                  : elizaCloudConnected
-                    ? cloudOAuthConnector.buttonLabel
-                    : t("pluginsview.OpenElizaCloud", {
-                        defaultValue: "Open Eliza Cloud",
-                      })}
-              </Button>
+              <div className="flex flex-wrap items-center gap-2">
+                {cloudOAuthConnector.connectionRoles.map((role) => (
+                  <Button
+                    key={role}
+                    variant="outline"
+                    size="sm"
+                    className="h-8 rounded-[var(--radius-lg)] px-4 text-xs-tight font-semibold"
+                    onClick={() => {
+                      void handleOpenCloudOAuthConnector(role);
+                    }}
+                    disabled={cloudOAuthBusy}
+                  >
+                    {cloudOAuthBusy
+                      ? "..."
+                      : elizaCloudConnected
+                        ? buildRoleButtonLabel(
+                            cloudOAuthConnector.buttonLabel,
+                            role,
+                            cloudOAuthConnector.connectionRoles.length > 1,
+                          )
+                        : t("pluginsview.OpenElizaCloud", {
+                            defaultValue: "Open Eliza Cloud",
+                          })}
+                  </Button>
+                ))}
+              </div>
             }
           >
             {elizaCloudConnected
