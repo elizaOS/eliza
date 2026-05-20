@@ -374,7 +374,7 @@ export type RemotePluginLifecycleManifest = {
 };
 
 export type RemotePluginConfigValue = string | number | boolean | null;
-export type RemotePluginConfig = Record<string, RemotePluginConfigValue>;
+export type RemotePluginConfigMap = Record<string, RemotePluginConfigValue>;
 
 export type RemotePluginModuleProvenance = {
 	issuer: string;
@@ -393,7 +393,7 @@ export type RemotePluginModuleManifest = {
 	description?: string;
 	priority?: number;
 	contexts?: string[];
-	config?: RemotePluginConfig;
+	config?: RemotePluginConfigMap;
 	schema?: JsonObject;
 	actions?: RemotePluginActionManifest[];
 	providers?: RemotePluginProviderManifest[];
@@ -2284,13 +2284,13 @@ function optionalRemotePluginConfig(
 	object: JsonObject,
 	key: string,
 	method: string,
-): RemotePluginConfig | undefined {
+): RemotePluginConfigMap | undefined {
 	const value = object[key];
 	if (value === undefined) return undefined;
 	if (!isJsonObject(value)) {
 		throw decodeError(method, `${key} must be an object when present.`);
 	}
-	const config: RemotePluginConfig = {};
+	const config: RemotePluginConfigMap = {};
 	for (const [configKey, configValue] of Object.entries(value)) {
 		if (
 			typeof configValue === "string" ||

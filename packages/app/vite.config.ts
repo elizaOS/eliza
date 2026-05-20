@@ -1120,6 +1120,10 @@ export default defineConfig({
           "@elizaos/plugin-wifi/register",
           "plugins/plugin-wifi/src/register.ts",
         ],
+        [
+          "@elizaos/plugin-hearwear/register",
+          "plugins/plugin-hearwear/src/register.ts",
+        ],
       ].map(([pkgName, relativeEntry]) => ({
         find: new RegExp(`^${escapeRegExp(pkgName)}$`),
         replacement: path.resolve(elizaRoot, relativeEntry),
