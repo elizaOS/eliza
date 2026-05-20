@@ -12,7 +12,10 @@ const API_ROUTES: DiscoveredApiRouteDto[] = Object.values(
   methods: [endpoint.method as HttpMethod],
   filePath: endpoint.file,
   meta: {
+    id: `${endpoint.method} ${endpoint.path}`,
     name: endpoint.methodName,
+    description: `${endpoint.method} ${endpoint.path}`,
+    category: endpoint.path.split("/").filter(Boolean)[2] ?? "root",
     requiresAuth: true,
   },
 }));
