@@ -16,6 +16,8 @@ import {
   type ViewsRouteContext,
 } from "../api/views-routes.js";
 
+type CoveredViewType = "gui" | "tui";
+
 const repoRoot = resolve(
   dirname(fileURLToPath(import.meta.url)),
   "../../../..",
@@ -342,7 +344,7 @@ describe("plugin TUI view coverage", () => {
     const views: Array<{
       manifestPath: string;
       id: string;
-      viewType: "gui" | "tui";
+      viewType: CoveredViewType;
       path?: string;
     }> = [];
 
@@ -361,10 +363,12 @@ describe("plugin TUI view coverage", () => {
           undefined,
         );
         for (const declaration of declarations) {
+          const viewType = declaration.viewType ?? "gui";
+          if (viewType === "xr") continue;
           views.push({
             manifestPath,
             id: declaration.id,
-            viewType: declaration.viewType ?? "gui",
+            viewType,
             path: declaration.path,
           });
         }
@@ -410,7 +414,7 @@ describe("plugin TUI view coverage", () => {
     const views: Array<{
       manifestPath: string;
       id: string;
-      viewType: "gui" | "tui";
+      viewType: CoveredViewType;
     }> = [];
 
     try {
@@ -428,10 +432,12 @@ describe("plugin TUI view coverage", () => {
           undefined,
         );
         for (const declaration of declarations) {
+          const viewType = declaration.viewType ?? "gui";
+          if (viewType === "xr") continue;
           views.push({
             manifestPath,
             id: declaration.id,
-            viewType: declaration.viewType ?? "gui",
+            viewType,
           });
         }
       }
