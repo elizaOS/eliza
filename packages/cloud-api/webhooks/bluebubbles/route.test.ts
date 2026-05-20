@@ -7,16 +7,16 @@ const routePhoneMessage = mock(async () => ({
   userId: "user-1",
   organizationId: "org-1",
 }));
-const registerPhoneGatewayDevice = mock(
-  async (): Promise<{
-    id: string | null;
-    registered: boolean;
-    skippedReason?: string;
-  }> => ({
-    id: "gateway-device-1",
-    registered: true,
-  }),
-);
+type RegisterPhoneGatewayDeviceResult = {
+  id: string | null;
+  registered: boolean;
+  skippedReason?: string;
+};
+
+const registerPhoneGatewayDevice = mock(async (): Promise<RegisterPhoneGatewayDeviceResult> => ({
+  id: "gateway-device-1",
+  registered: true,
+}));
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {
@@ -204,7 +204,7 @@ describe("BlueBubbles webhook", () => {
       id: null,
       registered: false,
       skippedReason: "write_failed",
-    });
+    } satisfies RegisterPhoneGatewayDeviceResult);
 
     const response = await app.fetch(
       request(inboundPayload, { "x-eliza-gateway-secret": "test-secret" }),

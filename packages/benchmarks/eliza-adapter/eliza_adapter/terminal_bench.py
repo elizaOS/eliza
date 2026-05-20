@@ -43,7 +43,7 @@ _COMMAND_RE = re.compile(r"<command>(.*?)</command>", re.DOTALL | re.IGNORECASE)
 _BASH_FENCE_RE = re.compile(r"```(?:bash|sh)?\s*\n(.*?)```", re.DOTALL | re.IGNORECASE)
 _MAX_COMMAND_BLOCKS_PER_TURN = 3
 _INSPECT_APP_AND_TESTS_COMMAND = (
-    "find /app /tests -maxdepth 2 -type f -print "
+    "find /tests /app -maxdepth 2 -type f -print "
     "-exec sh -c 'echo \"--- $1\"; sed -n \"1,220p\" \"$1\"' sh {} \\;"
 )
 

@@ -79,7 +79,12 @@ function createCerebrasTextPlugin(opts: {
   baseUrl: string;
   model: string;
 }): Plugin {
-  const complete = async (params: GenerateTextParams): Promise<string> => {
+  const complete = async (
+    _runtime: unknown,
+    params: GenerateTextParams,
+  ): Promise<string> => {
+    const promptText =
+      typeof params.prompt === "string" ? params.prompt : JSON.stringify(params);
     const response = await fetch(
       `${opts.baseUrl.replace(/\/$/, "")}/chat/completions`,
       {
@@ -94,7 +99,7 @@ function createCerebrasTextPlugin(opts: {
             ...(params.system
               ? [{ role: "system", content: params.system }]
               : []),
-            { role: "user", content: params.prompt },
+            { role: "user", content: promptText },
           ],
           temperature: params.temperature ?? 0.2,
           max_tokens: params.maxTokens ?? 512,

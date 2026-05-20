@@ -185,6 +185,11 @@ def _extract_python(text: str, *, prompt: str = "") -> str:
     if match:
         code = textwrap.dedent(match.group("body")).strip()
         return _with_prompt_imports(code, prompt) + "\n"
+    stripped = text.lstrip()
+    for opener in ("```python", "```py", "```"):
+        if stripped.lower().startswith(opener):
+            text = stripped[len(opener) :]
+            break
     marker = "from typing"
     if marker in text:
         code = textwrap.dedent(text[text.index(marker) :]).strip()
