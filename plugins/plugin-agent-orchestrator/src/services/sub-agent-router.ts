@@ -629,9 +629,10 @@ export class SubAgentRouter extends Service {
       const threadedResponse = originReplyTarget
         ? {
             ...response,
+            source: "sub_agent_complete",
             inReplyTo: originReplyTarget,
           }
-        : response;
+        : { ...response, source: "sub_agent_complete" };
       const delivered = await sendToTarget(
         {
           source,

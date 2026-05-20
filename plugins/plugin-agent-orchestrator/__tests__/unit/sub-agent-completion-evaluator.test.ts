@@ -177,6 +177,62 @@ describe("subAgentCompletionResponseEvaluator", () => {
     });
   });
 
+  it("prefers the public verified URL when completion only contains URL aliases", async () => {
+    const context = makeContext({
+      text: "[sub-agent: tweet app (opencode) — task_complete]\nhttp://127.0.0.1:6900/apps/random-tweet/\nhttps://example.test/apps/random-tweet/",
+      metadata: {
+        subAgentVerifiedUrls: [
+          "http://127.0.0.1:6900/apps/random-tweet/",
+          "https://example.test/apps/random-tweet/",
+        ],
+      },
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      requiresTool: false,
+      setContexts: [SIMPLE_CONTEXT_ID],
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      reply: "https://example.test/apps/random-tweet/",
+      debug: [
+        "verified sub-agent completion has no concrete follow-up action; using direct reply",
+      ],
+    });
+  });
+
+  it("suppresses empty task_complete placeholders", async () => {
+    const context = makeContext({
+      text: "[sub-agent: tweet app (opencode) — task_complete]\nsub-agent reports task complete (no captured output).",
+      messageHandler: {
+        plan: {
+          contexts: ["general"],
+          reply: "sub-agent reports task complete (no captured output).",
+          requiresTool: false,
+        },
+      },
+    });
+
+    expect(subAgentCompletionResponseEvaluator.shouldRun(context)).toBe(true);
+    expect(subAgentCompletionResponseEvaluator.evaluate(context)).toEqual({
+      processMessage: "IGNORE",
+      requiresTool: false,
+      clearReply: true,
+      clearCandidateActions: true,
+      clearParentActionHints: true,
+      debug: [
+        "verified sub-agent completion had no captured output; suppressing placeholder reply",
+      ],
+    });
+  });
+
   it("uses non-URL sub-agent completion text instead of a generic model reply", async () => {
     const context = makeContext({
       text: "[sub-agent: disk check (opencode) — task_complete]\nRoot / is 84% used. /home is 57% used.",
