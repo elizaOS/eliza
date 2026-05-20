@@ -283,6 +283,21 @@ type BunRpcHandlers = {
   >;
 };
 
+let rpcVoiceService: VoiceService | null = null;
+let rpcLaunchOrchestrator: LaunchOrchestrator | null = null;
+
+function getRpcVoiceService(traceService: ReturnType<typeof getTraceService>) {
+  rpcVoiceService ??= new VoiceService({ traceService });
+  return rpcVoiceService;
+}
+
+function getRpcLaunchOrchestrator(
+  params: ConstructorParameters<typeof LaunchOrchestrator>[0],
+) {
+  rpcLaunchOrchestrator ??= new LaunchOrchestrator(params);
+  return rpcLaunchOrchestrator;
+}
+
 export function buildBunRpcHandlers({
   sendToWebview,
 }: {
@@ -322,9 +337,9 @@ export function buildBunRpcHandlers({
     dynamicViewSessions,
   });
   remotePluginHost.setTraceHost(createTraceHostForRuntime(traceService));
-  const voiceService = new VoiceService({ traceService });
+  const voiceService = getRpcVoiceService(traceService);
   remotePluginHost.setVoiceHost(createVoiceHostForRuntime(voiceService));
-  const launchOrchestrator = new LaunchOrchestrator({
+  const launchOrchestrator = getRpcLaunchOrchestrator({
     agent,
     readBootProgress: async () => {
       const status = agent.getStatus();

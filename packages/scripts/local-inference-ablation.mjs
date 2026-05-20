@@ -123,6 +123,8 @@ function defaultModelPath(name) {
 
 function parseArgs(argv) {
   const backend = detectBackend();
+  let gpuLayersExplicit = false;
+  let draftGpuLayersExplicit = false;
   const args = {
     backend,
     binary: defaultBinary(backend),
@@ -176,11 +178,13 @@ function parseArgs(argv) {
       args.batchSize = Number.parseInt(next(), 10);
     else if (arg === "--ubatch-size" || arg === "-ub")
       args.ubatchSize = Number.parseInt(next(), 10);
-    else if (arg === "--gpu-layers")
+    else if (arg === "--gpu-layers") {
       args.gpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--draft-gpu-layers")
+      gpuLayersExplicit = true;
+    } else if (arg === "--draft-gpu-layers") {
       args.draftGpuLayers = Number.parseInt(next(), 10);
-    else if (arg === "--timeout-ms")
+      draftGpuLayersExplicit = true;
+    } else if (arg === "--timeout-ms")
       args.timeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--start-timeout-ms")
       args.startTimeoutMs = Number.parseInt(next(), 10);
@@ -211,6 +215,9 @@ function parseArgs(argv) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
+  if (args.backend === "cpu" && !gpuLayersExplicit) args.gpuLayers = 0;
+  if (args.backend === "cpu" && !draftGpuLayersExplicit)
+    args.draftGpuLayers = 0;
   args.binary = args.binary || defaultBinary(args.backend);
   return args;
 }
@@ -238,6 +245,7 @@ Exit codes:
 
 function loadVariants(args) {
   let variants = DEFAULT_VARIANTS;
+  const capabilities = loadCapabilities(args.binary);
   if (args.config) {
     const parsed = JSON.parse(fs.readFileSync(args.config, "utf8"));
     if (Array.isArray(parsed.variants)) variants = parsed.variants;
@@ -255,8 +263,45 @@ function loadVariants(args) {
     if (variant.needsDrafter && !drafterExists) {
       return { ...variant, skipReason: `drafter missing: ${args.drafter}` };
     }
+    const missingKernels = missingVariantKernels(variant, capabilities);
+    if (missingKernels.length > 0) {
+      return {
+        ...variant,
+        skipReason: `kernel unavailable for ${args.backend}: ${missingKernels.join(", ")}`,
+      };
+    }
     return variant;
   });
+}
+
+function loadCapabilities(binaryPath) {
+  const filePath = path.join(path.dirname(binaryPath), "CAPABILITIES.json");
+  if (!fs.existsSync(filePath)) return null;
+  const parsed = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  return parsed && typeof parsed === "object" ? parsed : null;
+}
+
+function missingVariantKernels(variant, capabilities) {
+  const kernels = capabilities?.kernels;
+  if (!kernels || typeof kernels !== "object") return [];
+  const required = new Set();
+  const args = variant.args || [];
+  for (let i = 0; i < args.length; i += 1) {
+    const flag = args[i];
+    const value = args[i + 1];
+    if (flag === "--spec-type" && value === "dflash") required.add("dflash");
+    if (
+      flag === "--cache-type-k" ||
+      flag === "--cache-type-v" ||
+      flag === "--cache-type-k-draft" ||
+      flag === "--cache-type-v-draft"
+    ) {
+      if (value === "turbo3") required.add("turbo3");
+      if (value === "turbo4") required.add("turbo4");
+      if (value === "turbo3_tcq") required.add("turbo3_tcq");
+    }
+  }
+  return Array.from(required).filter((name) => kernels[name] !== true);
 }
 
 function loadThresholds(filePath) {

@@ -132,7 +132,7 @@ export function buildCodingContainerCreatePayload(
   );
   const image =
     trimOptional(request.container?.image) ??
-    containersEnv.codingSatelliteImage() ??
+    containersEnv.codingRemoteRunnerImage() ??
     containersEnv.defaultAgentImage();
   const prompt = trimOptional(request.prompt);
   const promotionId = trimOptional(request.promotionId);

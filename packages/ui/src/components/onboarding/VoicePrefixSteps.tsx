@@ -154,7 +154,7 @@ export function VoicePrefixSteps(
 
   return (
     <div
-      className="flex max-h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden"
+      className="flex max-h-full min-h-0 w-full flex-1 flex-col gap-4 overflow-hidden text-[var(--onboarding-text-primary)]"
       data-testid="voice-prefix-steps"
       data-step={activeStep}
     >
@@ -243,6 +243,16 @@ export function VoicePrefixSteps(
             >
               Skip
             </Button>
+          ) : activeStep === "welcome" && props.onSkipPrefix ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="min-h-11 px-4"
+              onClick={props.onSkipPrefix}
+              data-testid="voice-prefix-skip-prefix"
+            >
+              Skip
+            </Button>
           ) : null}
           <Button
             size="sm"
@@ -289,7 +299,7 @@ function WelcomeStep(
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-welcome">
       <div className="flex items-center gap-3">
-        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm bg-[#0B35F1]/10 text-[#0B35F1]">
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-sm bg-accent/10 text-accent">
           <Sparkles className="h-5 w-5" />
         </span>
         <p className="text-sm">
@@ -314,7 +324,7 @@ function WelcomeStep(
       ) : null}
       {permissionGranted === true ? (
         <p
-          className="text-xs text-[#0B35F1]"
+          className="text-xs text-accent"
           data-testid="voice-prefix-welcome-mic-granted"
         >
           Microphone access granted.
@@ -382,7 +392,7 @@ function VoiceReadinessStep(
               data-testid="voice-prefix-bundle-progress"
             >
               <div
-                className="h-full bg-[#0B35F1]"
+                className="h-full bg-accent"
                 style={{ width: `${percent}%` }}
               />
             </div>
@@ -642,7 +652,7 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
         </p>
       ) : done ? (
         <p
-          className="text-sm text-[#0B35F1]"
+          className="text-sm text-accent"
           data-testid="voice-prefix-user-speaks-done"
         >
           Captured {state.capturedPromptIds.length} of{" "}
@@ -723,7 +733,7 @@ function OwnerConfirmStep(props: VoicePrefixStepsProps): React.ReactElement {
     >
       <div className="flex items-center gap-3">
         <Crown
-          className="h-5 w-5 text-[#0B35F1]"
+          className="h-5 w-5 text-accent"
           data-testid="voice-prefix-owner-confirm-crown"
         />
         <p className="text-sm">
@@ -899,7 +909,7 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
               <span className="text-muted">· {m.relationship}</span>
               {m.entityId ? (
                 <span
-                  className="ml-auto text-[#0B35F1] text-[10px]"
+                  className="ml-auto text-accent text-[10px]"
                   data-testid="voice-prefix-family-captured"
                 >
                   captured
@@ -971,10 +981,10 @@ function FamilyStep(props: VoicePrefixStepsProps): React.ReactElement {
         </div>
       ) : phase === "recording" ? (
         <div
-          className="flex items-center gap-2 rounded-sm bg-[#0B35F1]/10 p-3 text-sm"
+          className="flex items-center gap-2 rounded-sm bg-accent/10 p-3 text-sm"
           data-testid="voice-prefix-family-recording"
         >
-          <Mic className="h-4 w-4 animate-pulse text-[#0B35F1]" />
+          <Mic className="h-4 w-4 animate-pulse text-accent" />
           Recording… {countdown}s — ask {draftName} to read the prompt aloud.
         </div>
       ) : (

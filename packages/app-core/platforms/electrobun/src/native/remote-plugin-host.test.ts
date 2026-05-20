@@ -751,6 +751,7 @@ describe("RemotePluginHost", () => {
         storeRoot: join(dir, "store"),
         workerRunner: { start: () => worker },
         now: () => 1700000000000 + tick++,
+        maxWorkerEvents: 500,
       });
       manager.installFromDirectory({ sourceDir: writePayload(dir) });
       manager.startWorker("bunny.search");
@@ -770,6 +771,8 @@ describe("RemotePluginHost", () => {
       expect(initial).toMatchObject({
         id: "bunny.search",
         nextSequence: 2,
+        minimumSequence: 1,
+        gapBeforeSequence: null,
         events: [
           {
             remotePluginId: "bunny.search",
@@ -817,7 +820,9 @@ describe("RemotePluginHost", () => {
         limit: 1_000,
       });
       expect(capped.events).toHaveLength(500);
-      expect(capped.nextSequence).toBe(500);
+      expect(capped.minimumSequence).toBe(14);
+      expect(capped.gapBeforeSequence).toBe(14);
+      expect(capped.nextSequence).toBe(513);
     }));
 
   it("rejects event tailing when the worker is not running", () =>

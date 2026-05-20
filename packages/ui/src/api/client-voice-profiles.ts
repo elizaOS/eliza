@@ -363,7 +363,9 @@ function fallbackCaptureSession(sessionId?: string): VoiceCaptureSession {
   };
 }
 
-function fallbackOwnerSubmitResult(sessionId: string): VoiceCaptureSubmitResult {
+function fallbackOwnerSubmitResult(
+  sessionId: string,
+): VoiceCaptureSubmitResult {
   return {
     profileId: `owner-${sessionId}`,
     entityId: `owner-entity-${sessionId}`,
@@ -380,16 +382,20 @@ function normaliseCaptureSession(raw: unknown): VoiceCaptureSession {
       : undefined;
 
   let prompts: VoiceCapturePrompt[] = [];
-  if (Array.isArray(r.prompts)) {
-    prompts = r.prompts.map(normaliseCapturePrompt).filter(isCapturePrompt);
+  const promptList = r.prompts;
+  const scriptList = r.script;
+  const hasPromptList = Array.isArray(promptList);
+  const hasScriptList = Array.isArray(scriptList);
+  if (hasPromptList) {
+    prompts = promptList.map(normaliseCapturePrompt).filter(isCapturePrompt);
   }
 
-  if (prompts.length === 0 && Array.isArray(r.script)) {
-    prompts = r.script.map(normaliseScriptPrompt).filter(isCapturePrompt);
+  if (prompts.length === 0 && hasScriptList) {
+    prompts = scriptList.map(normaliseScriptPrompt).filter(isCapturePrompt);
   }
 
   if (prompts.length === 0) {
-    return fallbackCaptureSession(sessionId);
+    return fallbackCaptureSession();
   }
 
   const expectedSeconds =

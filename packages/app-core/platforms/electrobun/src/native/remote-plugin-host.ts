@@ -93,6 +93,8 @@ export interface RemotePluginWorkerEventsTailSnapshot {
   id: string;
   events: RemotePluginWorkerEventRecord[];
   nextSequence: number;
+  minimumSequence: number | null;
+  gapBeforeSequence: number | null;
 }
 
 export interface RemotePluginWorkerHandle {
@@ -122,6 +124,7 @@ export interface RemotePluginHostOptions {
   storeRoot?: string;
   workerRunner?: RemotePluginWorkerRunner;
   now?: () => number;
+  maxWorkerEvents?: number;
   events?: RemotePluginHostEvents;
   dynamicViewHost?: DynamicViewHost;
   traceHost?: TraceHost;
@@ -478,7 +481,8 @@ export class RemotePluginHost {
     this.storeRoot = options.storeRoot ?? resolveRemotePluginStoreRoot();
     this.workerRunner = options.workerRunner ?? new AdaptiveWorkerRunner();
     this.now = options.now ?? Date.now;
-    this.maxWorkerEvents = resolveWorkerEventBufferLimit();
+    this.maxWorkerEvents =
+      options.maxWorkerEvents ?? resolveWorkerEventBufferLimit();
     this.events = options.events ?? {};
     this.dynamicViewHost = options.dynamicViewHost ?? null;
     this.traceHost = options.traceHost ?? null;
@@ -857,6 +861,13 @@ export class RemotePluginHost {
         : events.slice(-limit);
     const selected = filtered.slice(0, limit);
     const currentSequence = this.workerEventSequences.get(options.id) ?? 0;
+    const minimumSequence = events[0]?.sequence ?? null;
+    const gapBeforeSequence =
+      typeof afterSequence === "number" &&
+      minimumSequence !== null &&
+      afterSequence < minimumSequence - 1
+        ? minimumSequence
+        : null;
     return {
       id: options.id,
       events: selected,
@@ -864,6 +875,8 @@ export class RemotePluginHost {
         selected.length > 0
           ? selected[selected.length - 1].sequence
           : (afterSequence ?? currentSequence),
+      minimumSequence,
+      gapBeforeSequence,
     };
   }
 

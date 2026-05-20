@@ -1,7 +1,7 @@
-# Coding Satellite
+# Coding remote runner
 
 Bun-based HTTP runner image for Eliza Cloud coding containers and home-machine
-Satellite hosting.
+Remote runner hosting.
 
 It exposes the contract consumed by `packages/agent/src/services/e2b-capability-router.ts`:
 
@@ -17,7 +17,7 @@ POST /v1/processes/run
 Required runtime env:
 
 ```text
-ELIZA_SATELLITE_HTTP_TOKEN=<generated per container>
+ELIZA_REMOTE_RUNNER_HTTP_TOKEN=<generated per container>
 ELIZA_CODING_WORKSPACE=/workspace
 ```
 
@@ -29,12 +29,12 @@ docker build \
   --build-arg INSTALL_CODEX=false \
   --build-arg INSTALL_CLAUDE_CODE=false \
   --build-arg INSTALL_OPENCODE=false \
-  -t ghcr.io/elizaos/coding-satellite:local \
-  packages/cloud-services/coding-satellite
+  -t ghcr.io/elizaos/coding-remote-runner:local \
+  packages/cloud-services/coding-remote-runner
 ```
 
 Configure Eliza Cloud to use the published image with:
 
 ```text
-ELIZA_CLOUD_CODING_SATELLITE_IMAGE=ghcr.io/elizaos/coding-satellite:<tag>
+ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE=ghcr.io/elizaos/coding-remote-runner:<tag>
 ```

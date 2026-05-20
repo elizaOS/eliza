@@ -7,11 +7,11 @@ import {
   createHandler,
   ensureWorkspace,
   loadConfig,
-} from "../../../cloud-services/coding-satellite/src/index.ts";
-import { E2BSatelliteCapabilityRouterService } from "./e2b-capability-router.ts";
+} from "../../../cloud-services/coding-remote-runner/src/index.ts";
+import { E2BRemoteCapabilityRouterService } from "./e2b-capability-router.ts";
 
-const SATELLITE_URL = "https://coding-satellite.test";
-const SATELLITE_TOKEN = "sat-token";
+const REMOTE_RUNNER_URL = "https://coding-remote-runner.test";
+const REMOTE_RUNNER_TOKEN = "sat-token";
 
 let workspaceRoot = "";
 let originalFetch: typeof fetch;
@@ -25,7 +25,7 @@ function replaceGlobalFetch(fetchImpl: typeof fetch): void {
 }
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "agent-satellite-"));
+  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "agent-remote-runner-"));
   originalFetch = globalThis.fetch;
 });
 
@@ -37,17 +37,17 @@ afterEach(async () => {
 function makeRuntime(): IAgentRuntime {
   const runtime: Partial<IAgentRuntime> = {
     agentId: "11111111-1111-1111-1111-111111111111" as UUID,
-    character: { name: "Satellite Proof" },
+    character: { name: "Remote runner Proof" },
     getSetting: () => null,
     getService: () => null,
   };
   return runtime as IAgentRuntime;
 }
 
-async function installCodingSatelliteFetch(): Promise<void> {
+async function installCodingRemoteRunnerFetch(): Promise<void> {
   const config = loadConfig({
     ELIZA_CODING_WORKSPACE: workspaceRoot,
-    ELIZA_SATELLITE_HTTP_TOKEN: SATELLITE_TOKEN,
+    ELIZA_REMOTE_RUNNER_HTTP_TOKEN: REMOTE_RUNNER_TOKEN,
   });
   await ensureWorkspace(config);
   const handler = createHandler(config);
@@ -58,7 +58,7 @@ async function installCodingSatelliteFetch(): Promise<void> {
     ): Promise<Response> => {
       const request = new Request(input, init);
       const url = new URL(request.url);
-      if (url.origin !== SATELLITE_URL) {
+      if (url.origin !== REMOTE_RUNNER_URL) {
         return originalFetch(input, init);
       }
       return handler(request);
@@ -68,14 +68,14 @@ async function installCodingSatelliteFetch(): Promise<void> {
   replaceGlobalFetch(fetchMock);
 }
 
-describe("E2B Satellite router with the Coding Satellite HTTP runner", () => {
-  it("runs coding commands through the Satellite workspace instead of the caller host", async () => {
-    await installCodingSatelliteFetch();
-    const service = new E2BSatelliteCapabilityRouterService(makeRuntime(), {
+describe("E2B remote runner router with the Coding remote runner HTTP runner", () => {
+  it("runs coding commands through the remote runner workspace instead of the caller host", async () => {
+    await installCodingRemoteRunnerFetch();
+    const service = new E2BRemoteCapabilityRouterService(makeRuntime(), {
       enabled: true,
       provider: "home",
-      satelliteHttpBaseUrl: SATELLITE_URL,
-      satelliteHttpToken: SATELLITE_TOKEN,
+      remoteHttpBaseUrl: REMOTE_RUNNER_URL,
+      remoteHttpToken: REMOTE_RUNNER_TOKEN,
       agentRunners: ["codex", "claude-code", "opencode"],
       workdir: "/workspace",
       hostWorkspaceRoot: workspaceRoot,
@@ -89,7 +89,7 @@ describe("E2B Satellite router with the Coding Satellite HTTP runner", () => {
 
     const result = await service.pty.runCommand({
       command: "sh",
-      args: ["-lc", "printf satellite-coded > mobile-proof.txt"],
+      args: ["-lc", "printf remote-coded > mobile-proof.txt"],
       cwd: "/workspace",
       timeoutMs: 10_000,
     });
@@ -99,11 +99,11 @@ describe("E2B Satellite router with the Coding Satellite HTTP runner", () => {
     expect(result.timedOut).toBe(false);
     expect(read).toMatchObject({
       path: "/workspace/mobile-proof.txt",
-      text: "satellite-coded",
+      text: "remote-coded",
       truncated: false,
     });
     await expect(
       readFile(nodePath.join(workspaceRoot, "mobile-proof.txt"), "utf8"),
-    ).resolves.toBe("satellite-coded");
+    ).resolves.toBe("remote-coded");
   });
 });

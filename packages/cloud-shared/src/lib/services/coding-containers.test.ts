@@ -3,10 +3,10 @@ import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { buildCodingContainerCreatePayload } from "./coding-containers";
 
 describe("coding container payloads", () => {
-  it("uses the coding Satellite image when configured", () => {
+  it("uses the coding remote runner image when configured", () => {
     const payload = runWithCloudBindings(
       {
-        ELIZA_CLOUD_CODING_SATELLITE_IMAGE: "ghcr.io/elizaos/coding-satellite:test",
+        ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE: "ghcr.io/elizaos/coding-remote-runner:test",
       },
       () =>
         buildCodingContainerCreatePayload({
@@ -15,7 +15,7 @@ describe("coding container payloads", () => {
         }),
     );
 
-    expect(payload.image).toBe("ghcr.io/elizaos/coding-satellite:test");
+    expect(payload.image).toBe("ghcr.io/elizaos/coding-remote-runner:test");
     expect(payload.port).toBe(3000);
     expect(payload.health_check_path).toBe("/health");
     expect(payload.volume_mount_path).toBe("/workspace/project");
@@ -24,7 +24,7 @@ describe("coding container payloads", () => {
   it("lets explicit coding container image override the default", () => {
     const payload = runWithCloudBindings(
       {
-        ELIZA_CLOUD_CODING_SATELLITE_IMAGE: "ghcr.io/elizaos/coding-satellite:test",
+        ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE: "ghcr.io/elizaos/coding-remote-runner:test",
       },
       () =>
         buildCodingContainerCreatePayload({

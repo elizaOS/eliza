@@ -853,6 +853,8 @@ export interface RemotePluginWorkerEventsTailSnapshot {
   id: string;
   events: RemotePluginWorkerEventRecord[];
   nextSequence: number;
+  minimumSequence: number | null;
+  gapBeforeSequence: number | null;
 }
 
 export interface DesktopStartupDiagnostics {

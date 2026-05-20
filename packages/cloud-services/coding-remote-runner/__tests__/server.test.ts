@@ -13,23 +13,23 @@ import {
   createHandler,
   ensureWorkspace,
   loadConfig,
-  type CodingSatelliteCommandRunner,
+  type CodingRemoteRunnerCommandRunner,
 } from "../src/index";
 
 let workspaceRoot = "";
 
 beforeEach(async () => {
-  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "coding-satellite-"));
+  workspaceRoot = await mkdtemp(nodePath.join(tmpdir(), "coding-remote-runner-"));
 });
 
 afterEach(() => {
   workspaceRoot = "";
 });
 
-function handler(commandRunner?: CodingSatelliteCommandRunner) {
+function handler(commandRunner?: CodingRemoteRunnerCommandRunner) {
   const config = loadConfig({
     ELIZA_CODING_WORKSPACE: workspaceRoot,
-    ELIZA_SATELLITE_HTTP_TOKEN: "token",
+    ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
   });
   return createHandler(config, commandRunner ? { commandRunner } : {});
 }
@@ -44,8 +44,8 @@ function request(
   return new Request(`http://127.0.0.1${path}`, { ...init, headers });
 }
 
-describe("coding Satellite HTTP runner", () => {
-  it("requires bearer auth on the Satellite API", async () => {
+describe("coding remote runner HTTP runner", () => {
+  it("requires bearer auth on the remote runner API", async () => {
     const response = await handler()(request("/v1/health", {}, false));
 
     expect(response.status).toBe(401);
@@ -86,7 +86,7 @@ describe("coding Satellite HTTP runner", () => {
 
   it("rejects writes through symlinks", async () => {
     const outside = nodePath.join(
-      await mkdtemp(nodePath.join(tmpdir(), "coding-satellite-outside-")),
+      await mkdtemp(nodePath.join(tmpdir(), "coding-remote-runner-outside-")),
       "secret.txt",
     );
     await writeFile(outside, "secret", "utf8");
@@ -107,7 +107,7 @@ describe("coding Satellite HTTP runner", () => {
     await ensureWorkspace(
       loadConfig({
         ELIZA_CODING_WORKSPACE: workspaceRoot,
-        ELIZA_SATELLITE_HTTP_TOKEN: "token",
+        ELIZA_REMOTE_RUNNER_HTTP_TOKEN: "token",
       }),
     );
     const commandCalls: Array<{ command: string; args: string[]; cwd: string }> =

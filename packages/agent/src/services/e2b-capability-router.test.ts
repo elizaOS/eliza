@@ -3,9 +3,9 @@ import { describe, expect, it, vi } from "vitest";
 import {
   type E2BSandboxClient,
   type E2BSandboxFactory,
-  E2BSatelliteCapabilityRouterService,
-  type E2BSatelliteRunnerConfig,
-  resolveE2BSatelliteRunnerConfig,
+  E2BRemoteCapabilityRouterService,
+  type E2BRemoteRunnerConfig,
+  resolveE2BRemoteRunnerConfig,
   type SandboxCommandResult,
   type SandboxEntryInfo,
 } from "./e2b-capability-router.ts";
@@ -76,30 +76,30 @@ class FakeSandbox implements E2BSandboxClient {
 }
 
 class FakeFactory implements E2BSandboxFactory {
-  readonly configs: E2BSatelliteRunnerConfig[] = [];
+  readonly configs: E2BRemoteRunnerConfig[] = [];
 
   constructor(readonly sandbox = new FakeSandbox()) {}
 
-  async create(config: E2BSatelliteRunnerConfig): Promise<E2BSandboxClient> {
+  async create(config: E2BRemoteRunnerConfig): Promise<E2BSandboxClient> {
     this.configs.push(config);
     return this.sandbox;
   }
 }
 
-type SatelliteHttpCall = {
+type RemoteRunnerHttpCall = {
   method: string;
   pathname: string;
   authorization: string | null;
   body: unknown;
 };
 
-type SatelliteHttpServer = {
+type RemoteRunnerHttpServer = {
   baseUrl: string;
-  calls: SatelliteHttpCall[];
+  calls: RemoteRunnerHttpCall[];
   close: () => Promise<void>;
 };
 
-type SatelliteRouteContext = {
+type RemoteRunnerRouteContext = {
   request: Request;
   url: URL;
   body: unknown;
@@ -124,8 +124,8 @@ function makeRuntime(settings: Record<string, string> = {}): IAgentRuntime {
   return runtime as IAgentRuntime;
 }
 
-function startSatelliteHttpServer(): SatelliteHttpServer {
-  const calls: SatelliteHttpCall[] = [];
+function startRemoteRunnerHttpServer(): RemoteRunnerHttpServer {
+  const calls: RemoteRunnerHttpCall[] = [];
   const originalFetch = globalThis.fetch;
   const fetchMock: typeof fetch = Object.assign(
     async (
@@ -133,13 +133,13 @@ function startSatelliteHttpServer(): SatelliteHttpServer {
       init?: Parameters<typeof fetch>[1],
     ): Promise<Response> => {
       const request = new Request(input, init);
-      return handleSatelliteHttpRequest(request, calls);
+      return handleRemoteRunnerHttpRequest(request, calls);
     },
     { preconnect: originalFetch.preconnect },
   );
   replaceGlobalFetch(fetchMock);
   return {
-    baseUrl: "https://satellite.test",
+    baseUrl: "https://remote-runner.test",
     calls,
     close: async () => {
       replaceGlobalFetch(originalFetch);
@@ -147,8 +147,8 @@ function startSatelliteHttpServer(): SatelliteHttpServer {
   };
 }
 
-function startElizaCloudProvisioningServer(): SatelliteHttpServer {
-  const calls: SatelliteHttpCall[] = [];
+function startElizaCloudProvisioningServer(): RemoteRunnerHttpServer {
+  const calls: RemoteRunnerHttpCall[] = [];
   const originalFetch = globalThis.fetch;
   const fetchMock: typeof fetch = Object.assign(
     async (
@@ -175,12 +175,12 @@ function startElizaCloudProvisioningServer(): SatelliteHttpServer {
             status: "running",
             agent: "codex",
             workspacePath: "/workspace",
-            url: "https://satellite.test",
+            url: "https://remote-runner.test",
             createdAt: "2026-01-01T00:00:00.000Z",
           },
         });
       }
-      return handleSatelliteHttpRequest(request, calls);
+      return handleRemoteRunnerHttpRequest(request, calls);
     },
     { preconnect: originalFetch.preconnect },
   );
@@ -194,21 +194,21 @@ function startElizaCloudProvisioningServer(): SatelliteHttpServer {
   };
 }
 
-async function handleSatelliteHttpRequest(
+async function handleRemoteRunnerHttpRequest(
   request: Request,
-  calls: SatelliteHttpCall[],
+  calls: RemoteRunnerHttpCall[],
 ): Promise<Response> {
-  const context = await readSatelliteRouteContext(request);
-  recordSatelliteHttpCall(context, calls);
-  if (!isAuthorizedSatelliteRequest(request)) {
+  const context = await readRemoteRunnerRouteContext(request);
+  recordRemoteRunnerHttpCall(context, calls);
+  if (!isAuthorizedRemoteRunnerRequest(request)) {
     return jsonResponse(401, { error: "unauthorized" });
   }
-  return satelliteRouteResponse(context);
+  return remoteRouteResponse(context);
 }
 
-async function readSatelliteRouteContext(
+async function readRemoteRunnerRouteContext(
   request: Request,
-): Promise<SatelliteRouteContext> {
+): Promise<RemoteRunnerRouteContext> {
   const url = new URL(request.url);
   const bodyText = methodMayHaveBody(request.method)
     ? await request.text()
@@ -221,9 +221,9 @@ async function readSatelliteRouteContext(
   };
 }
 
-function recordSatelliteHttpCall(
-  context: SatelliteRouteContext,
-  calls: SatelliteHttpCall[],
+function recordRemoteRunnerHttpCall(
+  context: RemoteRunnerRouteContext,
+  calls: RemoteRunnerHttpCall[],
 ): void {
   calls.push({
     method: context.request.method,
@@ -233,13 +233,13 @@ function recordSatelliteHttpCall(
   });
 }
 
-function satelliteRouteResponse(context: SatelliteRouteContext): Response {
+function remoteRouteResponse(context: RemoteRunnerRouteContext): Response {
   const route = `${context.request.method} ${context.url.pathname}`;
   if (route === "GET /v1/health") {
     return jsonResponse(200, { ok: true });
   }
   if (route === "GET /v1/fs/entries") {
-    return satelliteEntriesResponse(context.url);
+    return remoteEntriesResponse(context.url);
   }
   if (route === "GET /v1/fs/file") {
     return new Response(`text:${context.url.searchParams.get("path") ?? ""}`, {
@@ -256,12 +256,12 @@ function satelliteRouteResponse(context: SatelliteRouteContext): Response {
     });
   }
   if (route === "POST /v1/processes/run") {
-    return satelliteProcessRunResponse(context.body);
+    return remoteProcessRunResponse(context.body);
   }
   return jsonResponse(404, { error: "not found" });
 }
 
-function isAuthorizedSatelliteRequest(request: Request): boolean {
+function isAuthorizedRemoteRunnerRequest(request: Request): boolean {
   const authorization = request.headers.get("authorization");
   return (
     authorization === "Bearer token" ||
@@ -270,7 +270,7 @@ function isAuthorizedSatelliteRequest(request: Request): boolean {
   );
 }
 
-function satelliteEntriesResponse(url: URL): Response {
+function remoteEntriesResponse(url: URL): Response {
   const path = url.searchParams.get("path") ?? "/workspace";
   return jsonResponse(200, {
     entries: [
@@ -292,7 +292,7 @@ function satelliteEntriesResponse(url: URL): Response {
   });
 }
 
-function satelliteProcessRunResponse(body: unknown): Response {
+function remoteProcessRunResponse(body: unknown): Response {
   const payload = isRecord(body) ? body : {};
   const args = Array.isArray(payload.args)
     ? payload.args.map((item) => String(item)).join(" ")
@@ -329,8 +329,8 @@ function jsonResponse(statusCode: number, payload: unknown): Response {
 }
 
 function makeConfig(
-  overrides: Partial<E2BSatelliteRunnerConfig> = {},
-): E2BSatelliteRunnerConfig {
+  overrides: Partial<E2BRemoteRunnerConfig> = {},
+): E2BRemoteRunnerConfig {
   return {
     enabled: true,
     provider: "e2b",
@@ -369,11 +369,11 @@ function entry(
   };
 }
 
-describe("E2BSatelliteCapabilityRouterService", () => {
-  it("resolves explicit E2B Satellite runner settings", () => {
-    const config = resolveE2BSatelliteRunnerConfig(
+describe("E2BRemoteCapabilityRouterService", () => {
+  it("resolves explicit E2B remote runner settings", () => {
+    const config = resolveE2BRemoteRunnerConfig(
       makeRuntime({
-        ELIZA_CODING_SATELLITE_RUNNER: "e2b",
+        ELIZA_CODING_REMOTE_RUNNER: "e2b",
         E2B_API_KEY: "key",
         ELIZA_E2B_WORKDIR: "/work",
         ELIZA_E2B_HOST_WORKSPACE_ROOT: "/repo",
@@ -388,103 +388,103 @@ describe("E2BSatelliteCapabilityRouterService", () => {
   });
 
   it("resolves Eliza Cloud runner settings", () => {
-    const config = resolveE2BSatelliteRunnerConfig(
+    const config = resolveE2BRemoteRunnerConfig(
       makeRuntime({
-        ELIZA_CODING_SATELLITE_RUNNER: "eliza-cloud",
-        ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/satellite",
+        ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
+        ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
         ELIZA_CLOUD_SANDBOX_TOKEN: "token",
       }),
     );
 
     expect(config.enabled).toBe(true);
     expect(config.provider).toBe("eliza-cloud");
-    expect(config.satelliteHttpBaseUrl).toBe("https://cloud.example/satellite");
-    expect(config.satelliteHttpToken).toBe("token");
+    expect(config.remoteHttpBaseUrl).toBe("https://cloud.example/remote-runner");
+    expect(config.remoteHttpToken).toBe("token");
     expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
   });
 
   it("resolves Eliza Cloud API-backed provisioning settings", () => {
-    const config = resolveE2BSatelliteRunnerConfig(
+    const config = resolveE2BRemoteRunnerConfig(
       makeRuntime({
-        ELIZA_CODING_SATELLITE_RUNNER: "eliza-cloud",
+        ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
         ELIZACLOUD_API_KEY: "cloud-key",
-        ELIZA_CLOUD_CODING_SATELLITE_IMAGE:
-          "ghcr.io/elizaos/coding-satellite:test",
+        ELIZA_CLOUD_CODING_REMOTE_RUNNER_IMAGE:
+          "ghcr.io/elizaos/coding-remote-runner:test",
       }),
     );
 
     expect(config.enabled).toBe(true);
     expect(config.provider).toBe("eliza-cloud");
-    expect(config.satelliteHttpBaseUrl).toBeUndefined();
+    expect(config.remoteHttpBaseUrl).toBeUndefined();
     expect(config.cloudApiBaseUrl).toBe("https://api.elizacloud.ai/api/v1");
     expect(config.cloudApiToken).toBe("cloud-key");
     expect(config.cloudContainerImage).toBe(
-      "ghcr.io/elizaos/coding-satellite:test",
+      "ghcr.io/elizaos/coding-remote-runner:test",
     );
   });
 
   it("uses provider-specific default workspaces", () => {
     expect(
-      resolveE2BSatelliteRunnerConfig(
+      resolveE2BRemoteRunnerConfig(
         makeRuntime({
-          ELIZA_CODING_SATELLITE_RUNNER: "e2b",
+          ELIZA_CODING_REMOTE_RUNNER: "e2b",
           E2B_API_KEY: "key",
         }),
       ).workdir,
     ).toBe("/home/user");
     expect(
-      resolveE2BSatelliteRunnerConfig(
+      resolveE2BRemoteRunnerConfig(
         makeRuntime({
-          ELIZA_CODING_SATELLITE_RUNNER: "eliza-cloud",
+          ELIZA_CODING_REMOTE_RUNNER: "eliza-cloud",
           ELIZACLOUD_API_KEY: "cloud-key",
         }),
       ).workdir,
     ).toBe("/workspace");
     expect(
-      resolveE2BSatelliteRunnerConfig(
+      resolveE2BRemoteRunnerConfig(
         makeRuntime({
-          ELIZA_CODING_SATELLITE_RUNNER: "home",
-          ELIZA_HOME_SATELLITE_URL: "http://home.local:2468",
+          ELIZA_CODING_REMOTE_RUNNER: "home",
+          ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
         }),
       ).workdir,
     ).toBe("/workspace");
   });
 
   it("resolves home runner settings", () => {
-    const config = resolveE2BSatelliteRunnerConfig(
+    const config = resolveE2BRemoteRunnerConfig(
       makeRuntime({
-        ELIZA_CODING_SATELLITE_RUNNER: "home",
-        ELIZA_HOME_SATELLITE_URL: "http://home.local:2468",
-        ELIZA_HOME_SATELLITE_ACCESS_URL:
-          "https://www.elizacloud.ai/dashboard/app?homeSatelliteSession=session-123",
-        ELIZA_HOME_SATELLITE_TOKEN: "token",
+        ELIZA_CODING_REMOTE_RUNNER: "home",
+        ELIZA_HOME_REMOTE_RUNNER_URL: "http://home.local:2468",
+        ELIZA_HOME_REMOTE_RUNNER_ACCESS_URL:
+          "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
+        ELIZA_HOME_REMOTE_RUNNER_TOKEN: "token",
       }),
     );
 
     expect(config.enabled).toBe(true);
     expect(config.provider).toBe("home");
-    expect(config.satelliteHttpBaseUrl).toBe("http://home.local:2468");
-    expect(config.satelliteAccessUrl).toBe(
-      "https://www.elizacloud.ai/dashboard/app?homeSatelliteSession=session-123",
+    expect(config.remoteHttpBaseUrl).toBe("http://home.local:2468");
+    expect(config.remoteAccessUrl).toBe(
+      "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
     );
-    expect(config.satelliteHttpToken).toBe("token");
+    expect(config.remoteHttpToken).toBe("token");
     expect(config.agentRunners).toEqual(["codex", "claude-code", "opencode"]);
   });
 
   it("keeps Vercel, Cloudflare, and Rivet as disabled direct providers", () => {
     for (const provider of ["vercel", "cloudflare", "rivet"]) {
       expect(() =>
-        resolveE2BSatelliteRunnerConfig(
-          makeRuntime({ ELIZA_CODING_SATELLITE_RUNNER: provider }),
+        resolveE2BRemoteRunnerConfig(
+          makeRuntime({ ELIZA_CODING_REMOTE_RUNNER: provider }),
         ),
       ).toThrow(`${provider} runner is disabled`);
     }
   });
 
   it("accepts an explicit cloud runner list", () => {
-    const config = resolveE2BSatelliteRunnerConfig(
+    const config = resolveE2BRemoteRunnerConfig(
       makeRuntime({
-        ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/satellite",
+        ELIZA_CLOUD_SANDBOX_BASE_URL: "https://cloud.example/remote-runner",
         ELIZA_SANDBOX_AGENT_RUNNERS: "claude,codex",
       }),
     );
@@ -493,7 +493,7 @@ describe("E2BSatelliteCapabilityRouterService", () => {
   });
 
   it("reports structured unavailable when credentials are missing", async () => {
-    const service = new E2BSatelliteCapabilityRouterService(
+    const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig({ apiKey: undefined, accessToken: undefined }),
       new FakeFactory(),
@@ -507,9 +507,9 @@ describe("E2BSatelliteCapabilityRouterService", () => {
     });
   });
 
-  it("runs commands in the E2B Satellite runner and maps host workspace paths", async () => {
+  it("runs commands in the E2B remote runner and maps host workspace paths", async () => {
     const sandbox = new FakeSandbox();
-    const service = new E2BSatelliteCapabilityRouterService(
+    const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(sandbox),
@@ -532,13 +532,13 @@ describe("E2BSatelliteCapabilityRouterService", () => {
     });
   });
 
-  it("lists E2B Satellite runner files with hidden and ignore filtering", async () => {
+  it("lists E2B remote runner files with hidden and ignore filtering", async () => {
     const sandbox = new FakeSandbox([
       entry("/workspace/src", "src", DIR_ENTRY),
       entry("/workspace/.env", ".env", FILE_ENTRY),
       entry("/workspace/build.log", "build.log", FILE_ENTRY),
     ]);
-    const service = new E2BSatelliteCapabilityRouterService(
+    const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(sandbox),
@@ -557,7 +557,7 @@ describe("E2BSatelliteCapabilityRouterService", () => {
 
   it("routes git helpers through sandbox command execution", async () => {
     const sandbox = new FakeSandbox();
-    const service = new E2BSatelliteCapabilityRouterService(
+    const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(sandbox),
@@ -576,14 +576,14 @@ describe("E2BSatelliteCapabilityRouterService", () => {
   });
 
   it("advertises cloud runner provider and agent runner metadata", async () => {
-    const service = new E2BSatelliteCapabilityRouterService(
+    const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig({
         provider: "home",
         apiKey: undefined,
-        satelliteHttpBaseUrl: "http://home.local:2468",
-        satelliteAccessUrl:
-          "https://www.elizacloud.ai/dashboard/app?homeSatelliteSession=session-123",
+        remoteHttpBaseUrl: "http://home.local:2468",
+        remoteAccessUrl:
+          "https://www.elizacloud.ai/dashboard/app?homeRemoteRunnerSession=session-123",
         agentRunners: ["codex", "opencode"],
       }),
       new FakeFactory(),
@@ -598,16 +598,16 @@ describe("E2BSatelliteCapabilityRouterService", () => {
   it.each([
     "eliza-cloud",
     "home",
-  ] as const)("routes %s through the Satellite HTTP sandbox contract", async (provider) => {
-    const server = await startSatelliteHttpServer();
+  ] as const)("routes %s through the remote runner HTTP sandbox contract", async (provider) => {
+    const server = await startRemoteRunnerHttpServer();
     try {
-      const service = new E2BSatelliteCapabilityRouterService(
+      const service = new E2BRemoteCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider,
           apiKey: undefined,
-          satelliteHttpBaseUrl: server.baseUrl,
-          satelliteHttpToken: "token",
+          remoteHttpBaseUrl: server.baseUrl,
+          remoteHttpToken: "token",
           agentRunners: ["codex", "claude-code", "opencode"],
         }),
       );
@@ -657,10 +657,10 @@ describe("E2BSatelliteCapabilityRouterService", () => {
     }
   });
 
-  it("provisions an Eliza Cloud coding container before using the Satellite HTTP contract", async () => {
+  it("provisions an Eliza Cloud coding container before using the remote runner HTTP contract", async () => {
     const server = startElizaCloudProvisioningServer();
     try {
-      const service = new E2BSatelliteCapabilityRouterService(
+      const service = new E2BRemoteCapabilityRouterService(
         makeRuntime(),
         makeConfig({
           provider: "eliza-cloud",
@@ -701,16 +701,16 @@ describe("E2BSatelliteCapabilityRouterService", () => {
           },
         },
       });
-      const satelliteToken = (
+      const remoteToken = (
         provisionBody as {
           container?: { environmentVars?: Record<string, string> };
         }
-      ).container?.environmentVars?.ELIZA_SATELLITE_HTTP_TOKEN;
-      expect(satelliteToken).toEqual(expect.any(String));
+      ).container?.environmentVars?.ELIZA_REMOTE_RUNNER_HTTP_TOKEN;
+      expect(remoteToken).toEqual(expect.any(String));
       expect(
         server.calls
           .slice(1)
-          .every((call) => call.authorization === `Bearer ${satelliteToken}`),
+          .every((call) => call.authorization === `Bearer ${remoteToken}`),
       ).toBe(true);
     } finally {
       await server.close();
@@ -718,7 +718,7 @@ describe("E2BSatelliteCapabilityRouterService", () => {
   });
 
   it("rejects host paths outside the mapped workspace", async () => {
-    const service = new E2BSatelliteCapabilityRouterService(
+    const service = new E2BRemoteCapabilityRouterService(
       makeRuntime(),
       makeConfig(),
       new FakeFactory(),

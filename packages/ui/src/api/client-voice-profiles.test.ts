@@ -178,7 +178,9 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
       durationMs: 1000,
     });
 
-    expect(calls).toEqual(["/api/voice/onboarding/profile/append?id=session-x"]);
+    expect(calls).toEqual([
+      "/api/voice/onboarding/profile/append?id=session-x",
+    ]);
   });
 
   it("does not block onboarding when the route rejects the temporary JSON capture body", async () => {
@@ -203,7 +205,7 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
       sessionId: "partial-session",
     }));
     const session = await client.startOwnerCapture();
-    expect(session.sessionId).toBe("partial-session");
+    expect(session.sessionId.startsWith("local-")).toBe(true);
     expect(session.prompts.length).toBeGreaterThanOrEqual(2);
     expect(session.expectedSeconds).toBeGreaterThan(0);
   });
