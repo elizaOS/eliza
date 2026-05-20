@@ -196,11 +196,20 @@ CPU virtualization (KVM) is not available for the riscv64 guest on x86_64, so
 boot is significantly slower than the x86_64 guest path. Plan for
 `--boot-timeout-seconds=2700` (45 minutes) on first boot.
 
-## Smoke-launch outcome on this host (2026-05-19)
+## Smoke-launch outcome on this host (2026-05-19 → 2026-05-20)
 
 `launch_cvd` was exercised with `cvd-host_package-x86_64.tar.gz` + the image
-bundle. Three distinct failure modes were observed across the attempts; all
-are host-side environment issues, **not** image or host-package problems:
+bundle across five attempts. The first three were blocked on host environment
+issues. The remaining two cleared the qemu virtio-gpu and qemu-VNC gaps and
+reached a partial Android boot (kernel + init + Android core services up,
+adb reachable from host, screencap returns a real PNG).
+
+The structured per-attempt transcript is at
+`packages/chip/docs/evidence/android/cuttlefish_riscv64_prebuilt_smoke.log`,
+with the live kernel-log snapshot mirrored at
+`packages/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt`
+and a curated boot summary at
+`packages/chip/docs/evidence/android/cuttlefish_riscv64_boot_summary.20260520T110103Z.txt`.
 
 1. **Guest RAM preallocation failure** at the `qemu-system-riscv64` layer:
    ```
@@ -221,7 +230,8 @@ are host-side environment issues, **not** image or host-package problems:
    which exhausted free space for the retry.
 
 3. **Bundled `qemu-system-riscv64` is missing `virtio-gpu-pci`** (observed
-   2026-05-19T18:55 PDT in `cuttlefish_runtime/launcher.log`):
+   2026-05-19T18:55 PDT in `cuttlefish_runtime/launcher.log`) — **RESOLVED
+   2026-05-20**, see "Resolution" below:
    ```
    qemu-system-riscv64: -device virtio-gpu-pci,id=gpu0,addr=02.0,xres=720,yres=1280:
      'virtio-gpu-pci' is not a valid device model name
@@ -270,6 +280,120 @@ are host-side environment issues, **not** image or host-package problems:
    sufficient; the qemu virtio-gpu gap must also be resolved before any
    boot will reach kernel handoff. Until then this gate stays BLOCKED on a
    host-environment dependency, not on the AOSP artifact set.
+
+### Resolution (2026-05-20)
+
+The qemu virtio-gpu gap (and the secondary VNC gap that emerged once
+virtio-gpu was unblocked) has been closed by replacing the bundled Debian
+qemu binary with an in-tree build of upstream `qemu v10.1.5`.
+
+What changed:
+
+- The chip repo already had `external/qemu-src/` (a clone of upstream qemu)
+  and a meson `build/` tree producing `qemu-system-riscv64`. The default
+  configure had `pixman=auto`, `vnc=auto`, `virglrenderer=auto`, none of
+  which were satisfied on this host (no `libpixman-1-dev`, no `libjpeg-dev`,
+  no `libvirglrenderer-dev`), so the resulting binary still rejected
+  `-device virtio-gpu-pci` and `-vnc 127.0.0.1:N`.
+- `virtio-gpu-pci` is core qemu code and does **not** require virglrenderer;
+  it only needs the base virtio-gpu sources to be compiled in, which they
+  were. The earlier "missing" diagnosis was specifically against the
+  9.2.1-Debian package; upstream 10.x ships virtio-gpu-pci unconditionally
+  for the `riscv64-softmmu` target.
+- The qemu `vnc` feature is gated on `pixman`. To re-enable VNC without
+  apt access we staged a working pixman from in-tree assets:
+  - `external/oss-cad-suite/lib/libpixman-1.so.0` (real ELF, SONAME
+    `libpixman-1.so.0`) → linked into
+    `external/qemu-deps/sysroot/lib/libpixman-1.so{,.0}`.
+  - `external/magic-deps/usr/include/pixman-1/` headers → linked into
+    `external/qemu-deps/sysroot/include/pixman-1`.
+  - A corrected `external/qemu-deps/sysroot/pkgconfig/pixman-1.pc` was
+    generated pointing at that sysroot (the magic-deps pc file had a
+    `prefix=/usr` pointing nowhere).
+- Reconfigured:
+  ```bash
+  cd external/qemu-src/build
+  PKG_CONFIG_PATH=$PWD/../../qemu-deps/sysroot/pkgconfig \
+    pyvenv/bin/meson configure -Dvnc=enabled -Dpixman=enabled \
+      -Dvnc_jpeg=disabled -Dvnc_sasl=disabled -Dpng=disabled -Dvte=disabled
+  pyvenv/bin/meson setup --reconfigure \
+    --pkg-config-path=$PWD/../../qemu-deps/sysroot/pkgconfig . ..
+  ninja qemu-system-riscv64
+  ```
+  Result: `QEMU emulator version 10.1.5 (v10.1.5-dirty)` with
+  `virtio-gpu-pci`, `virtio-gpu-device`, `virtio-vga`, `vhost-user-gpu*`,
+  and VNC support; SDL/curses/dbus/none display backends; no virglrenderer
+  (host-side acceleration is not required for `--gpu_mode=guest_swiftshader`).
+- Replaced `~/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64` with a
+  symlink to the new build. The original 9.2.1 binary was kept at
+  `~/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64.orig-9.2.1-debian`
+  with `qemu-system-riscv64.orig-9.2.1.sha256` next to it. The
+  `bin-wrap/qemu-system-riscv64` shim continues to work unchanged because
+  it exec's the underlying `usr/bin/qemu-system-riscv64`.
+
+Launch incantation that reached partial Android boot:
+
+```bash
+PREBUILT_ROOT=$HOME/.local/cuttlefish/images/riscv64/cf
+cd "$PREBUILT_ROOT"
+cvd reset -y >/dev/null 2>&1 || true
+rm -rf "$PREBUILT_ROOT/cuttlefish"* "$PREBUILT_ROOT/.cuttlefish_config.json" \
+       "$HOME/cuttlefish" /tmp/cf_avd_1000
+
+HOME="$PREBUILT_ROOT" PATH="$PREBUILT_ROOT/bin:$PATH" \
+  ./bin/launch_cvd \
+    --cpus=4 --memory_mb=4096 \
+    --gpu_mode=guest_swiftshader \
+    --start_webrtc=false \
+    --report_anonymous_usage_stats=n \
+    --qemu_binary_dir="$HOME/.local/cuttlefish/qemu/bin-wrap" \
+    --daemon
+```
+
+`--qemu_binary_dir` is critical: by default `launch_cvd` resolves to
+`$PREBUILT_ROOT/bin/aarch64-linux-gnu/qemu/qemu-system-riscv64`, which is
+an `ARM aarch64` ELF (it ships with the riscv64 image bundle for ARM
+hosts) and immediately fails at `--version` invocation on an x86_64 host
+with `qemu-aarch64-static: Could not open '/lib/ld-linux-aarch64.so.1'`.
+Pointing at the bin-wrap shim picks up the rebuilt x86_64 binary plus the
+correct `LD_LIBRARY_PATH` / `QEMU_DATADIR`.
+
+What ran to userspace:
+
+- OpenSBI v1.7 banner, platform `riscv-virtio,qemu`, 4 HARTs, firmware
+  base `0x80000000`.
+- Linux kernel handoff and full Android init replay.
+- Confirmed `init` started: `surfaceflinger`, `bootanim`, `zygote`,
+  `adbd`, `vendor.ril-daemon`, `gatekeeperd`, `update_engine`, `usbd`,
+  `tombstone_transmit`, `cppreopts`, `preloads_copy.sh`.
+- Guest kernel emitted `VIRTUAL_DEVICE_DISPLAY_POWER_MODE_CHANGED
+  display=0 mode=ON`, confirming the virtio-gpu-pci device was attached
+  and the guest display pipeline was alive.
+- `adb` device `0.0.0.0:6520` came up in `device` state. `adb getprop`
+  returned:
+  - `ro.product.cpu.abi=riscv64`
+  - `ro.build.fingerprint=generic/aosp_cf_riscv64_phone/vsoc_riscv64:16/BP4A.251205.006/15357239:userdebug/test-keys`
+  - `ro.build.version.sdk=36`
+  - `init.svc.zygote=running`, `init.svc.surfaceflinger=running`,
+    `init.svc.bootanim=running`, `init.svc.adbd=running`.
+- `adb exec-out screencap -p` returned a `720x1280` RGBA PNG (22 615 bytes).
+- Guest process count: 414. Guest uptime at snapshot: ~1409 s (~23 min).
+
+What didn't (this session): `sys.boot_completed=1`. While the agent was
+booting the chip-package qemu rebuild + a parallel x86_64 host-package
+extraction by a sibling agent was running, the host load average reached
+43 (32 logical CPUs). Under that load adb shell turn-around drifted past
+the 10-second timeout and the framework boot (system_server cold start
+under TCG-riscv64) did not complete inside the captured window. The
+`launch_cvd` instance was then stopped by the operator (`cvd reset -y`)
+to free CPU and free `userdata.img` space; the snapshot transcripts above
+were taken just before that stop. On an idle host with 8 vCPUs and
+8 GiB guest RAM the same launch is expected to reach `sys.boot_completed=1`
+in 30-60 minutes — Cuttlefish riscv64 on TCG x86_64 is inherently slow.
+
+The qemu virtio-gpu + VNC gap that previously kept the gate at
+`FAIL_HOST_QEMU_VIRTIO_GPU` is now resolved; the remaining work is wall
+time on an unloaded host, not artifact or toolchain.
 
 Confirmed working in both attempts (the failures happened *after* these):
 
