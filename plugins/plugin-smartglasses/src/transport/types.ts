@@ -29,6 +29,7 @@ export interface SmartglassesTransport {
       metadata?: Record<string, unknown>,
     ) => void,
   ): () => void;
+  onWifiStatus?(callback: (status: SmartglassesWifiResult) => void): () => void;
   scanWifi?(): Promise<SmartglassesWifiResult>;
   getWifiStatus?(): Promise<SmartglassesWifiResult>;
   configureWifi?(

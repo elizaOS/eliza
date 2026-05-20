@@ -237,6 +237,13 @@ export class SmartglassesService extends Service {
         }),
       );
     }
+    if (this.transport.onWifiStatus) {
+      this.disposers.push(
+        this.transport.onWifiStatus((status) => {
+          this.lastWifiStatus = status;
+        }),
+      );
+    }
   }
 
   async disconnect(): Promise<void> {

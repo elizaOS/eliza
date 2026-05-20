@@ -10,6 +10,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { createInterface } from "node:readline/promises";
 import { fileURLToPath } from "node:url";
 
 function resolveElizaWorkspaceRoot(startFile) {
@@ -75,6 +76,7 @@ function usage() {
     "  --wait-device <seconds> Wait for an adb device before install/diagnostics.",
     "  --pair <endpoint>      Run adb pair before resolving the device. Use host:port or 'auto'.",
     "  --pair-code <code>     Wireless debugging pairing code for --pair.",
+    "  --wait-pair <seconds>  Wait for an auto pairing endpoint. Defaults to 60 with --pair auto.",
     "  --connect <endpoint>   Run adb connect before resolving the device. Use host:port or 'auto'.",
   ].join("\n");
 }
@@ -96,6 +98,7 @@ function parseArgs(argv) {
     waitDeviceSeconds: 0,
     pairEndpoint: null,
     pairCode: process.env.ADB_PAIR_CODE || null,
+    waitPairSeconds: null,
     connectEndpoint: null,
   };
   for (let i = 0; i < argv.length; i += 1) {
@@ -120,6 +123,7 @@ function parseArgs(argv) {
     else if (arg === "--wait-device") args.waitDeviceSeconds = Number.parseInt(next(), 10);
     else if (arg === "--pair") args.pairEndpoint = next();
     else if (arg === "--pair-code") args.pairCode = next();
+    else if (arg === "--wait-pair") args.waitPairSeconds = Number.parseInt(next(), 10);
     else if (arg === "--connect") args.connectEndpoint = next();
     else if (arg === "--help" || arg === "-h") {
       console.log(usage());
@@ -256,6 +260,21 @@ function findWirelessAdbEndpoint(adbPath, serviceType) {
   return match.endpoint;
 }
 
+async function waitForWirelessAdbEndpoint(adbPath, serviceType, timeoutSeconds) {
+  const deadline = Date.now() + timeoutSeconds * 1000;
+  while (Date.now() <= deadline) {
+    const wirelessAdb = listWirelessAdbServices(adbPath);
+    const match = wirelessAdb.services.find((service) =>
+      service.type.includes(serviceType),
+    );
+    if (match?.endpoint) return match.endpoint;
+    await sleep(1000);
+  }
+  throw new Error(
+    `Timed out waiting ${timeoutSeconds}s for ${serviceType}. Open Android Developer Options > Wireless debugging and keep "Pair device with pairing code" open.`,
+  );
+}
+
 function resolveWirelessEndpoint(adbPath, endpoint, serviceType) {
   if (endpoint === "auto") return findWirelessAdbEndpoint(adbPath, serviceType);
   if (!/^[^:]+:\d+$/.test(endpoint)) {
@@ -264,12 +283,43 @@ function resolveWirelessEndpoint(adbPath, endpoint, serviceType) {
   return endpoint;
 }
 
-function pairWirelessAdb({ adbPath, endpoint, code }) {
-  if (!code) {
-    throw new Error("--pair-code is required for --pair. The code is shown on the phone's Wireless debugging pairing screen.");
+async function readPairingCode(code) {
+  if (code) return code;
+  if (!process.stdin.isTTY) {
+    throw new Error("--pair-code or ADB_PAIR_CODE is required for --pair when stdin is not interactive.");
   }
-  const resolved = resolveWirelessEndpoint(adbPath, endpoint, "_adb-tls-pairing");
-  const result = run(adbPath, ["pair", resolved, code], { allowFailure: true });
+  const rl = createInterface({
+    input: process.stdin,
+    output: process.stderr,
+  });
+  try {
+    const answer = await rl.question(
+      "[android-sms-gateway] Enter Wireless debugging pairing code from the phone: ",
+    );
+    const trimmed = answer.trim();
+    if (!trimmed) throw new Error("pairing code is required");
+    return trimmed;
+  } finally {
+    rl.close();
+  }
+}
+
+async function resolveWirelessEndpointAsync(adbPath, endpoint, serviceType, waitSeconds) {
+  if (endpoint === "auto" && waitSeconds > 0) {
+    return waitForWirelessAdbEndpoint(adbPath, serviceType, waitSeconds);
+  }
+  return resolveWirelessEndpoint(adbPath, endpoint, serviceType);
+}
+
+async function pairWirelessAdb({ adbPath, endpoint, code, waitSeconds }) {
+  const resolved = await resolveWirelessEndpointAsync(
+    adbPath,
+    endpoint,
+    "_adb-tls-pairing",
+    waitSeconds,
+  );
+  const pairingCode = await readPairingCode(code);
+  const result = run(adbPath, ["pair", resolved, pairingCode], { allowFailure: true });
   const output = `${result.stdout || ""}${result.stderr || ""}`.trim();
   if (result.status !== 0 || !/Successfully paired/i.test(output)) {
     throw new Error(`adb pair ${resolved} failed:\n${output || "no output"}`);
