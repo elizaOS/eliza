@@ -36,7 +36,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | Package typechecks | `node packages/examples/scripts/verify-examples.mjs --mode typecheck` completed with 0 failures. |
 | Package tests | `node packages/examples/scripts/verify-examples.mjs --mode test` completed after dependency/build repair. Live endpoint clients either passed locally or skipped cleanly when no live service URL/credential was configured. |
 | Package builds | `node packages/examples/scripts/verify-examples.mjs --mode build` completed after targeted repairs. Human-gated or known bundler-limited examples use explicit skip scripts that explain the required opt-in command. |
-| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, `moltbook`, `react`, `elizagotchi`, `farcaster-miniapp`, and `next` passed targeted reruns after the last fixes. |
+| Final targeted recheck | `a2a`, `bluesky`, `mcp`, `roblox`, `smartglasses`, `trader`, `twitter-xai`, `cloud/clone-ur-crush`, `cloud/edad`, `form`, `moltbook`, `react`, `elizagotchi`, `farcaster-miniapp`, `next`, `app/capacitor`, `app/electron`, `browser-extension`, and `farcaster` passed targeted reruns after the last fixes. |
 | Static docs | `node packages/examples/scripts/verify-examples.mjs --mode docs` now checks each package README, every package row in this matrix, top-level links to `setup-guide.html`/`VALIDATION.md`, and setup guide sections for Roblox, Minecraft, cloud, social, hardware, and wallet examples. |
 | Setup guide links/render | `packages/examples/setup-guide.html` rendered in Playwright with 34 links, Roblox/Minecraft sections visible, and every external setup link returning HTTP < 400 after redirects. |
 
@@ -47,19 +47,19 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `_plugin` | `typecheck`, `test`, `build` | Optional manual Cypress flow via `test:e2e:manual`. |
 | `a2a` | `typecheck`, `test`, `build` | `OPENAI_API_KEY` for model-backed mode. |
 | `agent-console` | `test`, `typecheck` | Action scanner fixture test; browser session plus one provider key to inspect live SSE telemetry. |
-| `app/capacitor` | Parent skip scripts plus backend/frontend package checks | Native Capacitor device/simulator testing and provider keys. |
+| `app/capacitor` | `test`, parent typecheck/build skip scripts plus backend/frontend package checks | Parent script/config smoke test; native Capacitor device/simulator testing and provider keys. |
 | `app/capacitor/backend` | `typecheck`, `test`, `build` | Provider key and device/simulator flow through the Capacitor shell. |
-| `app/capacitor/frontend` | `typecheck`, `build` | Browser and native WebView smoke test against a configured backend. |
-| `app/electron` | Parent skip scripts plus backend/frontend package checks | Desktop Electron launch and provider-key chat flow. |
+| `app/capacitor/frontend` | `test`, `typecheck`, `build` | Static backend/API wiring test; browser and native WebView smoke test against a configured backend. |
+| `app/electron` | `test`, parent typecheck/build skip scripts plus backend/frontend package checks | Parent script/IPC smoke test; desktop Electron launch and provider-key chat flow. |
 | `app/electron/backend` | `typecheck`, `test`, `build` | Provider-key chat flow from the packaged Electron shell. |
-| `app/electron/frontend` | `typecheck`, `build` | Renderer smoke test in Electron and browser dev-server mode. |
+| `app/electron/frontend` | `test`, `typecheck`, `build` | Static preload bridge wiring test; renderer smoke test in Electron and browser dev-server mode. |
 | `autonomous` | `test`, `typecheck`, `build` | Decision parser, shell allowlist, and prompt tests; optional local model and shell sandbox configuration. |
 | `avatar` | `test`, `typecheck`, `build` | Provider-mode fallback tests; browser microphone/audio flow, selected model key, optional ElevenLabs key. |
 | `aws` | `typecheck`, `test`, `build` | AWS account, SAM deployment, and Lambda invocation with `OPENAI_API_KEY`. |
 | `bluesky` | `typecheck`, `test`, `build` | `LIVE_TEST=true` with Bluesky credentials and dry-run/posting flags. |
-| `browser-extension` | Parent typecheck skip and documented Chrome/Safari package checks | Load unpacked Chrome extension; Safari requires Xcode signing/install. |
-| `browser-extension/chrome` | `typecheck`, explicit build skip | `build:tsup` only after resolving browser bundling of Node-only workspace deps; load unpacked for runtime validation. |
-| `browser-extension/safari` | Typecheck skip, scripted Safari build path | Xcode and Safari extension signing. |
+| `browser-extension` | `test`, parent typecheck/build skip scripts and documented Chrome/Safari package checks | Workspace/shared runtime smoke test; load unpacked Chrome extension; Safari requires Xcode signing/install. |
+| `browser-extension/chrome` | `test`, `typecheck`, explicit build skip | Manifest and script wiring smoke test; `build:tsup` only after resolving browser bundling of Node-only workspace deps; load unpacked for runtime validation. |
+| `browser-extension/safari` | `test`, typecheck skip, scripted Safari build path | Safari source/conversion guard smoke test; Xcode and Safari extension signing. |
 | `chat` | `test`, `typecheck`, `build` | Provider-selection tests; one configured provider key for live chat. |
 | `cloud/clone-ur-crush` | `typecheck`, `test`, `build` | Live Next.js flow with required model/image provider keys. |
 | `cloud/edad` | `typecheck`, `test`, `build` | Manual server launch with Eliza Cloud app ID, affiliate code, and signed-in user token. |
@@ -68,7 +68,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `convex` | `typecheck`, `test`, `build` | `convex dev` or deployed Convex URL plus provider key in Convex env. |
 | `discord` | `typecheck`, `test`, `build` | Discord app credentials, bot install, provider key. |
 | `elizagotchi` | `test`, `typecheck`, `build` | Static mount and agent-command wiring test; browser gameplay smoke test. |
-| `farcaster` | `typecheck`, `build` | Neynar/Farcaster credentials; start with dry-run. |
+| `farcaster` | `test`, `typecheck`, `build` | Env validation tests; Neynar/Farcaster credentials; start with dry-run. |
 | `farcaster-miniapp` | `test`, `typecheck`, `build` | Static SDK/API wiring test; Farcaster mini app host plus wallet/provider integrations. |
 | `form` | `typecheck`, `test`, `build` through shared `chat` entrypoint | Manual run through shared chat entrypoint with one provider key. |
 | `game-of-life` | `typecheck`, `test`, `build` | Test runs a short non-interactive simulation. |

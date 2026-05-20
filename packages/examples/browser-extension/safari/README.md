@@ -14,6 +14,16 @@ Safari extensions are built using the same Web Extension APIs as Chrome, but the
 
 ## Building the Safari Extension
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local smoke test checks Safari source preparation and conversion skip behavior. Xcode signing and install remain manual.
+
 ### Step 1: Build the Chrome Extension First
 
 ```bash

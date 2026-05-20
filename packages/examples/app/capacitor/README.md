@@ -66,8 +66,17 @@ bunx cap open ios
 bunx cap open android
 ```
 
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local smoke tests check Capacitor app metadata, parent package delegation, frontend mount wiring, backend URL fallback, and HTTP chat routes. Native simulator/device behavior still needs Xcode or Android Studio validation.
+
 ## Deploy
 
 - **Web build**: `bun run build:frontend` (from `packages/examples/app/capacitor/`)
 - **iOS/Android**: `bunx cap sync` then `bunx cap open ios|android`, and build/archive from Xcode / Android Studio
-

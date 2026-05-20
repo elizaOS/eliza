@@ -13,8 +13,9 @@ bun run dev
 ## Validate
 
 ```bash
+bun run test
 bun run typecheck
 bun run build
 ```
 
-See [`../README.md`](../README.md) for the Electron main-process workflow.
+The local smoke test checks the Vite mount point and preload bridge calls. See [`../README.md`](../README.md) for the Electron main-process workflow.

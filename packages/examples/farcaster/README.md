@@ -31,6 +31,16 @@ bun install
 bun run start
 ```
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local tests cover required OpenAI and Neynar/Farcaster environment validation without starting the live polling service. Live runs should start with `FARCASTER_DRY_RUN=true`.
+
 ## Configuration
 
 Copy `env.example` to `.env` and fill in the required values:
