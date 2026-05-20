@@ -140,6 +140,9 @@ function parseArgs(argv) {
       process.env.ELIZA_DFLASH_BENCH_CONTEXT || "2048",
       10,
     ),
+    benchPrompt:
+      process.env.ELIZA_DFLASH_BENCH_PROMPT ||
+      "Write a short paragraph about speculative decoding.",
     benchDraftMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_MIN || "2",
     benchDraftMax: process.env.ELIZA_DFLASH_BENCH_DRAFT_MAX || "6",
     benchTimeoutMs: Number.parseInt(
@@ -180,6 +183,7 @@ function parseArgs(argv) {
       args.benchTokens = Number.parseInt(next(), 10);
     else if (arg === "--bench-context")
       args.benchContext = Number.parseInt(next(), 10);
+    else if (arg === "--bench-prompt") args.benchPrompt = next();
     else if (arg === "--bench-draft-n-min") args.benchDraftMin = next();
     else if (arg === "--bench-draft-n-max") args.benchDraftMax = next();
     else if (arg === "--bench-timeout-ms")
@@ -211,6 +215,7 @@ function parseArgs(argv) {
           "                                 record tok/s + DFlash acceptance rate to a speedup report",
           "  --bench-tokens <N>             Tokens to generate per bench run (default: 128)",
           "  --bench-context <N>            Context for bench runs (default: 2048)",
+          "  --bench-prompt <text>          Prompt for bench runs (default: speculative decoding paragraph)",
           "  --bench-draft-n-min <N>        Draft min for with-drafter bench pass (default: 2)",
           "  --bench-draft-n-max <N>        Draft max for with-drafter bench pass (default: 6)",
           "  --bench-timeout-ms <N>         Timeout per bench pass (default: 600000)",
@@ -1195,7 +1200,7 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     "-md",
     drafterModel,
     "-p",
-    "Write a short paragraph about speculative decoding.",
+    options.benchPrompt,
     "-n",
     n,
     "-c",
