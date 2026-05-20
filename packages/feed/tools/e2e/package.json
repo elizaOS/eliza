@@ -7,10 +7,10 @@
     "download-extensions": "npx chroma download-extensions --wallets metamask"
   },
   "devDependencies": {
-    "@avalix/chroma": "^0.0.16",
-    "@playwright/test": "1.58.2",
+    "@avalix/chroma": "^1.0.1",
+    "@playwright/test": "1.60.0",
     "@types/node": "24.12.0",
-    "playwright": "1.58.2",
+    "playwright": "1.60.0",
     "typescript": "^5.9.3"
   }
 }
