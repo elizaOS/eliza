@@ -1618,7 +1618,6 @@
         "@feed/db": "workspace:*",
         "@feed/engine": "workspace:*",
         "@feed/testing": "workspace:*",
-        "@feed/training": "workspace:*",
         "@sentry/bun": "^10.29.0",
         "@vercel/blob": "2.3.2",
         "dotenv": "^16.4.5",
@@ -1754,7 +1753,6 @@
         "@feed/engine": "workspace:*",
         "@feed/shared": "workspace:*",
         "@feed/testing": "workspace:*",
-        "@feed/training": "workspace:*",
         "@hookform/resolvers": "^5.2.2",
         "@huggingface/hub": "^2.6.12",
         "@langchain/anthropic": "1.3.25",
@@ -1901,7 +1899,6 @@
         "@feed/db": "workspace:*",
         "@feed/engine": "workspace:*",
         "@feed/shared": "workspace:*",
-        "@feed/training": "workspace:*",
         "@huggingface/hub": "^2.6.12",
         "@privy-io/server-auth": "^1.32.5",
         "ai": "^5.0.106",
@@ -2015,7 +2012,6 @@
         "typescript": "^5.9.3",
       },
       "peerDependencies": {
-        "@feed/training": "workspace:*",
         "dotenv": "^16.4.5",
         "drizzle-orm": "^0.44.7",
         "openai": "^6.8.1",
@@ -2174,7 +2170,6 @@
         "@feed/db": "workspace:*",
         "@feed/engine": "workspace:*",
         "@feed/shared": "workspace:*",
-        "@feed/training": "workspace:*",
       },
       "devDependencies": {
         "@elizaos/core": "2.0.0-alpha.109",
@@ -2189,29 +2184,6 @@
         "react-dom": "^19.2.4",
         "siwe": "^3.0.0",
         "stripe": "^20.2.0",
-      },
-    },
-    "packages/feed/packages/training": {
-      "name": "@feed/training",
-      "version": "0.1.0",
-      "dependencies": {
-        "@huggingface/hub": "^2.6.12",
-        "@vercel/blob": "2.3.2",
-        "ethers": "^6.16.0",
-        "uuid": "^11.1.0",
-      },
-      "devDependencies": {
-        "@types/node": "^24.10.0",
-        "@types/uuid": "^10.0.0",
-        "bun-types": "^1.3.2",
-        "typescript": "^5.9.3",
-      },
-      "peerDependencies": {
-        "@elizaos/core": "2.0.0-alpha.109",
-        "@feed/core": "workspace:*",
-        "@feed/db": "workspace:*",
-        "@feed/shared": "workspace:*",
-        "drizzle-orm": "^0.44.7",
       },
     },
     "packages/feed/tools/chroma": {
@@ -6404,8 +6376,6 @@
     "@feed/sim": ["@feed/sim@workspace:packages/feed/packages/sim"],
 
     "@feed/testing": ["@feed/testing@workspace:packages/feed/packages/testing"],
-
-    "@feed/training": ["@feed/training@workspace:packages/feed/packages/training"],
 
     "@feed/typescript-agent-example": ["@feed/typescript-agent-example@workspace:packages/feed/packages/examples/feed-typescript-agent"],
 
@@ -13902,10 +13872,6 @@
     "@feed/testing/playwright": ["playwright@1.58.2", "", { "dependencies": { "playwright-core": "1.58.2" }, "optionalDependencies": { "fsevents": "2.3.2" }, "bin": { "playwright": "cli.js" } }, "sha512-vA30H8Nvkq/cPBnNw4Q8TWz1EJyqgpuinBcHET0YVJVFldr8JDNiU9LaWAE1KqSkRYazuaBhTpB5ZzShOezQ6A=="],
 
     "@feed/testing/stripe": ["stripe@20.4.1", "", { "peerDependencies": { "@types/node": ">=16" }, "optionalPeers": ["@types/node"] }, "sha512-axCguHItc8Sxt0HC6aSkdVRPffjYPV7EQqZRb2GkIa8FzWDycE7nHJM19C6xAIynH1Qp1/BHiopSi96jGBxT0w=="],
-
-    "@feed/training/typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
-
-    "@feed/training/uuid": ["uuid@11.1.1", "", { "bin": { "uuid": "dist/esm/bin/uuid" } }, "sha512-vIYxrBCC/N/K+Js3qSN88go7kIfNPssr/hHCesKCQNAjmgvYS2oqr69kIufEG+O4+PfezOH4EbIeHCfFov8ZgQ=="],
 
     "@feed/typescript-agent-example/@ai-sdk/anthropic": ["@ai-sdk/anthropic@1.2.12", "", { "dependencies": { "@ai-sdk/provider": "1.1.3", "@ai-sdk/provider-utils": "2.2.8" }, "peerDependencies": { "zod": "^3.0.0" } }, "sha512-YSzjlko7JvuiyQFmI9RN1tNZdEiZxc+6xld/0tq/VkJaHpEzGAb1yiNxxvmYVcjvfu/PcvCxAAYXmTYQQ63IHQ=="],
 

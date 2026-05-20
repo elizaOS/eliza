@@ -27,7 +27,6 @@
     "@feed/engine": "workspace:*",
     "@feed/shared": "workspace:*",
     "@feed/testing": "workspace:*",
-    "@feed/training": "workspace:*",
     "@dagrejs/dagre": "^3.0.0",
     "@discord/embedded-app-sdk": "^2.4.0",
     "@elizaos/core": "2.0.0-alpha.109",

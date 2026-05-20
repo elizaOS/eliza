@@ -33,7 +33,6 @@
     "@feed/db": "workspace:*",
     "@feed/engine": "workspace:*",
     "@feed/testing": "workspace:*",
-    "@feed/training": "workspace:*",
     "@fal-ai/client": "^1.7.2",
     "openai": "^6.8.1",
     "@sentry/bun": "^10.29.0",

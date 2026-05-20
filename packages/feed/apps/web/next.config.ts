@@ -47,7 +47,6 @@ const nextConfig: NextConfig = {
     '@feed/agents',
     '@feed/api',
     '@feed/db',
-    '@feed/training',
     '@feed/a2a',
   ],
   experimental: {
