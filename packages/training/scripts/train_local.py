@@ -537,7 +537,12 @@ def main() -> int:
         except ImportError:
             log.warning("apollo_torch not importable — skipping safe-globals registration; resume may fail with PyTorch 2.6+ weights_only")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        device = "cuda"
+    elif torch.backends.mps.is_available():
+        device = "mps"
+    else:
+        device = "cpu"
     log.info("device=%s torch=%s model=%s", device, torch.__version__, args.model)
     if device == "cpu":
         log.warning("no GPU detected — training will be very slow")
@@ -580,8 +585,10 @@ def main() -> int:
     # to its own GPU before FSDP shards, causing avoidable OOM risk.
     in_distributed = "RANK" in os.environ
     use_device_map = device == "cuda" and not in_distributed
+    # MPS supports bfloat16 on PyTorch 2.x; cpu falls back to float32
+    train_dtype = torch.bfloat16 if device in ("cuda", "mps") else torch.float32
     model_kwargs = dict(
-        torch_dtype=torch.bfloat16 if device == "cuda" else torch.float32,
+        torch_dtype=train_dtype,
         trust_remote_code=True,
         low_cpu_mem_usage=True,
         attn_implementation=attn_impl,
@@ -600,6 +607,10 @@ def main() -> int:
         and (args.registry_key is None
              or getattr(_registry_get(args.registry_key), "use_liger", True))
     )
+    if use_liger and device not in ("cuda",):
+        # Liger requires Triton/CUDA — disable on MPS/CPU
+        log.info("Liger kernel disabled (device=%s, requires CUDA)", device)
+        use_liger = False
     if use_liger and device == "cuda" and not _triton_runtime_ok():
         # Liger is Triton kernels; if Triton can't JIT-compile its CUDA driver
         # helper (e.g. missing python3.x-dev headers, mismatched CUDA toolkit)
@@ -706,6 +717,8 @@ def main() -> int:
         warmup_ratio=0.03,
         weight_decay=0.0,
         bf16=device == "cuda",
+        # MPS uses bfloat16 but TRL's bf16 flag is CUDA-only; set use_mps_device
+        use_mps_device=device == "mps",
         logging_steps=10,
         save_steps=500,
         save_total_limit=3,

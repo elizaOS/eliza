@@ -233,6 +233,14 @@ export const checks: Check[] = [
       "remote adapter tests must prove trust policy can require signed provenance, allowlist provenance issuers, verify provenance signatures, and bind provenance digests to module contents.",
   },
   {
+    name: "product connect persists provenance trust policy",
+    pattern:
+      /(?=[\s\S]*ELIZA_CAPABILITY_ROUTER_TRUST_POLICY)(?=[\s\S]*parseOptionalEndpointTrustPolicy)(?=[\s\S]*normalizeEndpointTrustPolicyOptions)(?=[\s\S]*persistConfigEnv\(\s*"ELIZA_CAPABILITY_ROUTER_TRUST_POLICY")(?=[\s\S]*mergePersistedTrustPolicies)/,
+    source: "remote-capability-routes",
+    message:
+      "product connect persistence must carry provenance trust policy so restart bootstrap can keep verified remote-module trust requirements.",
+  },
+  {
     name: "live report writer records runtime module surface counts",
     pattern:
       /remotePlugins:[\s\S]*\.map\(\(plugin\) => \(\{[\s\S]*pluginName:\s*plugin\.name,[\s\S]*moduleId:\s*plugin\.config\?\.remoteCapabilityModuleId,[\s\S]*endpointId:\s*plugin\.config\?\.remoteCapabilityEndpointId,[\s\S]*\.\.\.summarizeRemoteCapabilityPluginSurfaces\(plugin\),/,

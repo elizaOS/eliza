@@ -389,6 +389,33 @@ if (
   );
 }
 
+const productTrustPolicyFailure = assertFails(
+  "product connect persists provenance trust policy",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource,
+  remoteCapabilityRoutesSource.replaceAll(
+    "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+    "ELIZA_CAPABILITY_ROUTER_TRUST_CONFIG",
+  ),
+);
+if (
+  productTrustPolicyFailure.sourcePath !==
+  "packages/agent/src/api/remote-capability-routes.ts"
+) {
+  throw new Error(
+    `product trust policy failure reported wrong source path: ${productTrustPolicyFailure.sourcePath}`,
+  );
+}
+
 const writerFailure = assertFails(
   "live report writer records runtime module surface counts",
   workflow,

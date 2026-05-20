@@ -98,10 +98,21 @@ function assertNoFailures(route: string, captured: CapturedFailures) {
 
 const publicRoutes = [
   "/",
+  "/os",
+  "/blog",
   "/login",
   "/terms-of-service",
   "/privacy-policy",
   "/docs",
+  "/sandbox-proxy",
+  "/bsc",
+  "/chat/agent_1",
+  "/auth/success?platform=github",
+  "/auth/cli-login?session=cli_session_1",
+  "/auth/error?reason=auth_failed",
+  "/auth/callback/email",
+  "/app-auth/authorize",
+  "/invite/accept",
   "/payment/pay_req_1",
   "/payment/app-charge/app_1/charge_1",
   "/payment/success?payment_request_id=pay_req_1",
@@ -193,6 +204,31 @@ async function installApiMocks(page: Page) {
               expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
               createdAt: new Date().toISOString(),
             },
+          },
+        });
+      }
+
+      if (path.includes("/characters/agent_1/public")) {
+        return route.fulfill({
+          json: {
+            success: true,
+            data: {
+              id: "agent_1",
+              name: "Test Agent",
+              username: "test-agent",
+              avatarUrl: null,
+              bio: "A shared test agent.",
+              creatorUsername: "tester",
+            },
+          },
+        });
+      }
+
+      if (path.includes("/api/v1/cli-login/")) {
+        return route.fulfill({
+          json: {
+            success: true,
+            apiKeyPrefix: "eliza_test",
           },
         });
       }

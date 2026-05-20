@@ -44,8 +44,22 @@ import type {
 } from "./eliza1-eot-scorer";
 import { Eliza1EotScorer } from "./eliza1-eot-scorer";
 
-type OrtModule = typeof import("onnxruntime-node");
-type OrtSession = import("onnxruntime-node").InferenceSession;
+type OrtTensor = {
+	data: unknown;
+	dims: number[];
+	type: string;
+};
+type OrtModule = {
+	Tensor: new (
+		type: string,
+		data: BigInt64Array | Float32Array | Float64Array,
+		dims: number[],
+	) => OrtTensor;
+};
+type OrtSession = {
+	outputNames: string[];
+	run(feeds: Record<string, OrtTensor>): Promise<Record<string, OrtTensor>>;
+};
 type TokenValue = number | bigint;
 type TokenTensorLike = {
 	data: BigInt64Array | BigUint64Array | Int32Array | TokenValue[];
@@ -582,10 +596,7 @@ function toBigInt64Array(
 	return out;
 }
 
-function probabilityFromOnnxOutput(
-	tensor: import("onnxruntime-node").Tensor,
-	imEndTokenId: number,
-): number {
+function probabilityFromOnnxOutput(tensor: OrtTensor, imEndTokenId: number): number {
 	const data = tensor.data;
 	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
 		throw new Error(
@@ -786,9 +797,7 @@ export async function createBundledTurnsenseEotClassifier(
 	return null;
 }
 
-function probabilityFromTurnsenseOutput(
-	tensor: import("onnxruntime-node").Tensor,
-): number {
+function probabilityFromTurnsenseOutput(tensor: OrtTensor): number {
 	const data = tensor.data;
 	if (!(data instanceof Float32Array || data instanceof Float64Array)) {
 		throw new Error(

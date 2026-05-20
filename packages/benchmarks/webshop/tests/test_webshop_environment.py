@@ -194,3 +194,35 @@ def test_mock_agent_runs_episode_to_completion(sample_env) -> None:
     assert env.done, "agent failed to reach a terminal state"
     assert env.final_reward == 1.0
     assert env.purchased_product_id == task.target_product_ids[0]
+
+
+def test_reset_uses_task_goal_for_reward() -> None:
+    from elizaos_webshop.dataset import WebShopDataset
+    from elizaos_webshop.environment import WebShopEnvironment
+
+    ds = WebShopDataset(split="test", profile="small", human_goals=True)
+    ds.load_sync()
+    assert ds.paths is not None
+    task = ds.get_tasks()[0]
+    env = WebShopEnvironment(
+        file_path=ds.paths.items,
+        attr_path=ds.paths.attributes,
+        human_attr_path=ds.paths.human_instructions,
+        human_goals=True,
+        observation_mode="text",
+    )
+    try:
+        env.reset(task)
+        for action in (
+            "search[official Cleveland University drawstring shorts charcoal size small machine washable under $50]",
+            "click[b09hx5cd2d]",
+            "click[heather charcoal]",
+            "click[small]",
+            "click[buy now]",
+        ):
+            outcome = env.step(action)
+        assert outcome.done is True
+        assert env.purchased_product_id == task.target_product_ids[0]
+        assert env.final_reward == 1.0
+    finally:
+        env.close()

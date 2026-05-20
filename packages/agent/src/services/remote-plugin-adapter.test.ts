@@ -1,5 +1,10 @@
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
-import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  type KeyObject,
+  sign,
+} from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -236,6 +241,37 @@ function canonicalizeForTest(value: unknown): unknown {
     );
   }
   return value;
+}
+
+function signedRemotePluginModule(
+  module: RemotePluginModuleManifest,
+  privateKey: KeyObject,
+): RemotePluginModuleManifest {
+  const provenance = {
+    issuer: "eliza-cloud-build",
+    subject: `cloud://agents/test/modules/${module.id}`,
+    digestSha256: hashRemotePluginModuleForTest(module),
+    signatureAlgorithm: "ed25519",
+    signature: "",
+  };
+  return {
+    ...module,
+    provenance: {
+      ...provenance,
+      signature: sign(
+        null,
+        Buffer.from(
+          [
+            `issuer:${provenance.issuer}`,
+            `subject:${provenance.subject}`,
+            `digestSha256:${provenance.digestSha256}`,
+          ].join("\n"),
+          "utf8",
+        ),
+        privateKey,
+      ).toString("base64"),
+    },
+  };
 }
 
 async function buildRemoteViewFixtures({
@@ -2497,10 +2533,21 @@ describe("remote plugin adapter", () => {
     const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
     const previousAllowedModules =
       process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+    const previousTrustPolicy =
+      process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
     const stateDir = await mkdtemp(
       join(tmpdir(), "remote-capability-restart-"),
     );
     const httpCalls: Array<{ url: string; authorization: string | null }> = [];
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    const signedRemoteModule = signedRemotePluginModule(
+      remoteModule,
+      privateKey,
+    );
 
     try {
       process.env.ELIZA_STATE_DIR = stateDir;
@@ -2522,10 +2569,24 @@ describe("remote plugin adapter", () => {
         "ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES",
         JSON.stringify({ "persisted-device": ["remote-demo"] }),
       );
+      await persistConfigEnv(
+        "ELIZA_CAPABILITY_ROUTER_TRUST_POLICY",
+        JSON.stringify({
+          "persisted-device": {
+            allowedProvenanceIssuers: ["eliza-cloud-build"],
+            trustedProvenancePublicKeys: {
+              "eliza-cloud-build": publicKeyPem,
+            },
+            requireVerifiedProvenance: true,
+            requireProvenanceDigestMatch: true,
+          },
+        }),
+      );
 
       delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
       delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
       delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
       loadElizaConfig();
 
       expect(process.env.ELIZA_CAPABILITY_ROUTER_ENABLED).toBe("true");
@@ -2534,6 +2595,9 @@ describe("remote plugin adapter", () => {
       );
       expect(process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES).toContain(
         "remote-demo",
+      );
+      expect(process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY).toContain(
+        "eliza-cloud-build",
       );
 
       globalThis.fetch = vi.fn(
@@ -2548,7 +2612,7 @@ describe("remote plugin adapter", () => {
           if (isInvokeBody(body, "plugin.modules.list")) {
             return jsonResponse({
               ok: true,
-              result: { modules: [remoteModule] },
+              result: { modules: [signedRemoteModule] },
             });
           }
           return jsonResponse({
@@ -2632,6 +2696,11 @@ describe("remote plugin adapter", () => {
       } else {
         process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
           previousAllowedModules;
+      }
+      if (previousTrustPolicy === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_TRUST_POLICY = previousTrustPolicy;
       }
       await rm(stateDir, { force: true, recursive: true });
     }

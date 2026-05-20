@@ -4,8 +4,8 @@ import {
   connectRemoteCapabilityEndpointProvider,
   installRemoteCapabilityEndpoint,
   type ProvisionedRemoteCapabilityEndpoint,
-  type RemoteCapabilityEndpointTrustPolicyOptions,
   type RemoteCapabilityEndpointProvider,
+  type RemoteCapabilityEndpointTrustPolicyOptions,
 } from "./remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "./remote-capability-router.ts";
 import type { RemotePluginSyncResult } from "./remote-plugin-adapter.ts";

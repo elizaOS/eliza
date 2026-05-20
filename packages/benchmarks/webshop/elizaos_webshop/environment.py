@@ -19,6 +19,7 @@ import logging
 import os
 import subprocess
 import sys
+import json
 import importlib.util
 from importlib.machinery import ModuleSpec
 from html.parser import HTMLParser
@@ -698,6 +699,7 @@ class WebShopEnvironment:
             self._gym_env.server.assigned_instruction_text = None
 
         obs_text, _info = self._gym_env.reset()
+        self._install_task_goal(task)
         observation = self._wrap_observation(obs_text)
         self._last_observation = observation
         return observation
@@ -729,6 +731,25 @@ class WebShopEnvironment:
         self._gym_env.close()
 
     # ----- helpers ------------------------------------------------------------
+
+    def _install_task_goal(self, task: WebShopTask | None) -> None:
+        if task is None:
+            return
+        raw_goal = task.metadata.get("upstream_goal_json")
+        if not isinstance(raw_goal, str) or not raw_goal.strip():
+            return
+        try:
+            goal = json.loads(raw_goal)
+        except json.JSONDecodeError:
+            return
+        session_id = getattr(self._gym_env, "session", None)
+        sessions = getattr(self._gym_env.server, "user_sessions", {})
+        session = sessions.get(session_id) if session_id else None
+        if not isinstance(session, dict):
+            return
+        session["goal"] = goal
+        if task.instruction:
+            session["goal"]["instruction_text"] = task.instruction
 
     def _wrap_observation(self, raw: str) -> PageObservation:
         url = getattr(self._gym_env.browser, "current_url", "") or ""
