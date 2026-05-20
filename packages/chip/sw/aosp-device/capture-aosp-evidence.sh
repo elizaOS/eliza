@@ -17,6 +17,7 @@ repo_root=$(CDPATH=; cd -- "$(dirname -- "$0")/../.." && pwd)
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_shell=${AOSP_SHELL:-bash}
 aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}
+aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}
 aosp_target_product=${AOSP_TARGET_PRODUCT:-eliza_ai_soc}
 aosp_make_args=${AOSP_MAKE_ARGS:-}
 aosp_cuttlefish_args=${AOSP_CUTTLEFISH_ARGS:---cpus=4 --memory_mb=8192 --gpu_mode=none}
@@ -29,8 +30,8 @@ aosp_cts_vts_plan_command=${AOSP_CTS_VTS_PLAN_COMMAND:-}
 aosp_qemu_smoke_command=${AOSP_QEMU_SMOKE_COMMAND:-}
 aosp_renode_smoke_command=${AOSP_RENODE_SMOKE_COMMAND:-}
 aosp_agent_apk=${AOSP_AGENT_APK:-}
-aosp_agent_package=${AOSP_AGENT_PACKAGE:-com.elizaos.agent}
-aosp_agent_service=${AOSP_AGENT_SERVICE:-com.elizaos.agent/.AgentService}
+aosp_agent_package=${AOSP_AGENT_PACKAGE:-ai.elizaos.app}
+aosp_agent_service=${AOSP_AGENT_SERVICE:-ai.elizaos.app/.ElizaAgentService}
 aosp_agent_host_port=${AOSP_AGENT_HOST_PORT:-31337}
 aosp_agent_device_port=${AOSP_AGENT_DEVICE_PORT:-31337}
 aosp_agent_service_wait_seconds=${AOSP_AGENT_SERVICE_WAIT_SECONDS:-90}
@@ -166,7 +167,7 @@ case "$mode" in
 			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_MAKE_ARGS="$aosp_make_args" "$aosp_shell" -lc '
 				source build/envsetup.sh &&
 				lunch "$AOSP_PRODUCT" >/dev/null &&
-				m ${AOSP_MAKE_ARGS:-} checkvintf >/dev/null &&
+				m ${AOSP_MAKE_ARGS:-} checkvintf framework_compatibility_matrix.device.xml >/dev/null &&
 				product_out="out/target/product/$AOSP_TARGET_PRODUCT" &&
 				manifest=$(find "$product_out/vendor/etc/vintf" \( -name eliza_e1.xml -o -name manifest.xml \) -print -quit 2>/dev/null) &&
 				echo "TARGET_PRODUCT=$AOSP_TARGET_PRODUCT" &&
@@ -179,7 +180,11 @@ case "$mode" in
 				echo "--- checkvintf --check-compat ---" &&
 				"$checkvintf_bin" --check-compat \
 					--dirmap /system:"$product_out/system" \
-					--dirmap /vendor:"$product_out/vendor" &&
+					--dirmap /vendor:"$product_out/vendor" \
+					--dirmap /odm:"$product_out/odm" \
+					--dirmap /product:"$product_out/product" \
+					--dirmap /system_ext:"$product_out/system_ext" \
+					--dirmap /apex:"$product_out/apex" &&
 				echo "VINTF_COMPAT=ok"
 			'
 		;;
@@ -277,11 +282,11 @@ case "$mode" in
 		run_capture \
 			cuttlefish_riscv64_smoke \
 			"$evidence_dir/cuttlefish_riscv64_smoke.log" \
-			"source build/envsetup.sh && lunch $aosp_product && launch_cvd $aosp_cuttlefish_args -daemon" \
-			smoke \
-			env AOSP_PRODUCT="$aosp_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" AOSP_ADB_SERIAL="$aosp_adb_serial" "$aosp_shell" -lc '
-				source build/envsetup.sh &&
-				lunch "$AOSP_PRODUCT" >/dev/null &&
+				"source build/envsetup.sh && lunch $aosp_cuttlefish_product && launch_cvd $aosp_cuttlefish_args -daemon" \
+				smoke \
+				env AOSP_PRODUCT="$aosp_cuttlefish_product" AOSP_TARGET_PRODUCT="$aosp_target_product" AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" AOSP_ADB_SERIAL="$aosp_adb_serial" "$aosp_shell" -lc '
+					source build/envsetup.sh &&
+					lunch "$AOSP_PRODUCT" >/dev/null &&
 				cleanup() { stop_cvd >/dev/null 2>&1 || cvd stop >/dev/null 2>&1 || true; } &&
 				adb_cvd() {
 					if [ -n "$AOSP_ADB_SERIAL" ]; then
@@ -300,7 +305,15 @@ case "$mode" in
 				fi &&
 				echo "CUTTLEFISH_LAUNCHER=$cuttlefish_launcher" &&
 				if [ "$cuttlefish_launcher" = cvd ]; then
-					cvd start $AOSP_CUTTLEFISH_ARGS --daemon
+					cvd_host_arg=
+					cvd_product_arg=
+					if [ -d /usr/lib/cuttlefish-common/bin ]; then
+						cvd_host_arg="--host_path=/usr/lib/cuttlefish-common/bin"
+					fi
+					if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
+						cvd_product_arg="--product_path=$ANDROID_PRODUCT_OUT"
+					fi
+					cvd create ${cvd_host_arg:-} ${cvd_product_arg:-} $AOSP_CUTTLEFISH_ARGS --daemon
 				else
 					"$cuttlefish_launcher" $AOSP_CUTTLEFISH_ARGS -daemon
 				fi &&
@@ -495,7 +508,13 @@ case "$mode" in
 		# asserts vendor.eliza.e1_npu@1.0::IE1Npu/default is registered
 		# and INTERFACE_AVAILABLE. The driver script owns the evidence
 		# transcript layout and provenance markers.
-		exec "$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp"
+		exec env AOSP_PRODUCT="$aosp_cuttlefish_product" \
+			AOSP_SHELL="$aosp_shell" \
+			AOSP_CUTTLEFISH_ARGS="$aosp_cuttlefish_args" \
+			AOSP_CUTTLEFISH_LAUNCHER="$aosp_cuttlefish_launcher" \
+			AOSP_ADB_TIMEOUT_SECONDS="$aosp_adb_timeout_seconds" \
+			AOSP_ADB_SERIAL="$aosp_adb_serial" \
+			"$repo_root/sw/aosp-device/check-cvd-hal-smoke.sh" "$aosp"
 		;;
 	cts-subset)
 		run_capture \

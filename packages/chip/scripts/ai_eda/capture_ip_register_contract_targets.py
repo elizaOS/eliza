@@ -64,9 +64,14 @@ OPTIONAL_PYTHON_MODULES = (
     "yaml",
     "systemrdl",
     "peakrdl",
+    "peakrdl_regblock",
+    "peakrdl_html",
+    "peakrdl_cheader",
+    "peakrdl_uvm",
     "peakrdl_ipxact",
     "edalize",
     "siliconcompiler",
+    "hdl_registers",
 )
 
 
@@ -125,6 +130,10 @@ def main() -> int:
         "source_ids": [
             "systemrdl-standard",
             "peakrdl",
+            "peakrdl-regblock",
+            "peakrdl-html",
+            "peakrdl-cheader",
+            "peakrdl-uvm",
             "peakrdl-ipxact",
             "opentitan-reggen",
             "ip-xact-standard",
@@ -133,6 +142,7 @@ def main() -> int:
             "bender",
             "siliconcompiler",
             "rggen",
+            "hdl-registers",
         ],
         "policy": {
             "imports_external_ip": False,
@@ -166,7 +176,7 @@ def main() -> int:
             {
                 "id": "single-source-register-contract-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future SystemRDL, IP-XACT, OpenTitan reggen, or RgGen adoption must keep E1 platform contracts, RTL offsets, generated headers, docs, and drivers synchronized",
+                "target": "future SystemRDL, PeakRDL exporter, IP-XACT, OpenTitan reggen, hdl-registers, or RgGen adoption must keep E1 platform contracts, RTL offsets, generated headers, docs, verification collateral, and drivers synchronized",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "make platform-contract-check",
@@ -210,7 +220,7 @@ def main() -> int:
             },
         ],
         "blocked_by": [
-            "no approved SystemRDL, IP-XACT, Hjson, or RgGen source-of-truth selected for E1 register maps",
+            "no approved SystemRDL, IP-XACT, Hjson, hdl-registers, or RgGen source-of-truth selected for E1 register maps",
             "no migration policy from sw/platform/e1_platform_contract.json to an external register/IP generator",
             "no license-reviewed external IP dependency manifest with revisions, file hashes, bus interfaces, reset domains, and clock domains",
             "no AI-to-contract review workflow for generated register fields, memory-map regions, interrupts, DT bindings, headers, or driver ABI changes",

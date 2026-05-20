@@ -21,7 +21,7 @@
   "CLOCK_PERIOD": 13,
   "VERILOG_DEFINES": ["E1_PD_SMALL_DRAM"],
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_soc_gf180.sdc",
-  "FP_PIN_ORDER_CFG": "dir::../pin_order.cfg",
+  "IO_PIN_ORDER_CFG": "dir::../pin_order.cfg",
   "FP_SIZING": "absolute",
   "DIE_AREA": "0 0 3500 3500",
   "CORE_AREA": "120 120 3380 3380",

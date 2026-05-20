@@ -1,0 +1,37 @@
+---
+title: E1 Architecture
+description: "The RISC-V core, NPU contracts, interconnect, and memory hierarchy."
+---
+
+The E1 SoC is documented under `packages/chip/docs/arch/`. This page is the entry point.
+
+## Top-level
+
+- **Application processor (AP)** — RISC-V stub at this stage; final design slots in a production-grade core. The pipeline, ISA extensions, and supervisor support are pinned in `docs/arch/`.
+- **NPU** — purpose-built neural accelerator with contracts pinned in `compiler/runtime/` and verified by `verify/`.
+- **DMA, interconnect, interrupts, memory** — independent RTL blocks in `rtl/` with cocotb tests in `verify/`.
+- **Display** — block in `rtl/display/`; phone-class display path.
+- **Boot ROM** — `fw/boot_rom/` plus an OpenSBI payload path under `fw/opensbi/`.
+
+## NPU contract
+
+The NPU is the part that matters for AI workloads. Its contract — what the compiler emits, what the runtime expects, what the verification harness checks — lives in `compiler/runtime/` (Python) and is shared between simulator, FPGA, and silicon paths. Any change to the NPU instruction stream must update the contract and re-verify.
+
+## Memory hierarchy
+
+The hierarchy and access patterns are pinned in `docs/arch/memory.md` (and adjacent files). DRAM modeling uses DRAMsim3 (`dramsim3.json`, `dramsim3.txt`).
+
+## Reading order
+
+If you're new to the repo:
+
+1. `packages/chip/README.md` — quickstart.
+2. `packages/chip/docs/arch/` — top-level architecture.
+3. `packages/chip/CLAUDE.md` — contribution rules.
+4. `packages/chip/docs/evidence/` — current gate status.
+
+## See also
+
+- [RTL & verification](/tracks/chip/rtl-verify)
+- [Simulation](/tracks/chip/simulation)
+- [Physical design](/tracks/chip/physical-design)

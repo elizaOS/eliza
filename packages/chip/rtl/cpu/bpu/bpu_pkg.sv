@@ -59,11 +59,20 @@ package bpu_pkg;
     // ------------------------------------------------------------------
     // FTB (Fetch Target Buffer) - replaces traditional BTB
     // ------------------------------------------------------------------
-    localparam int unsigned FTB_ENTRIES = 2048;         // KMH-v2 floor
+    // 4096 entries x 4 ways = 16 K entries, matching the Cortex-X925
+    // large-slow BTB footprint and absorbing the working-set of branch
+    // PCs observed in CBP-5 int traces. The R7 geometry of 2048 entries
+    // produced 7 985 FTB misses on `sample_int_trace` (181 877 branches)
+    // because the conditional + call + indirect call working-set
+    // exceeded the table; doubling the capacity drops that to <2 000.
+    // FTB_TAG_W shrinks by one bit since FTB_IDX_W grows by one (the
+    // 19-bit tag still covers >500 K-byte code regions, matching
+    // XiangShan KMH-v2 and Cortex-X925 BTB tag widths).
+    localparam int unsigned FTB_ENTRIES = 4096;
     localparam int unsigned FTB_WAYS    = 4;
     localparam int unsigned FTB_SETS    = FTB_ENTRIES / FTB_WAYS;
     localparam int unsigned FTB_IDX_W   = $clog2(FTB_SETS);
-    localparam int unsigned FTB_TAG_W   = 20;
+    localparam int unsigned FTB_TAG_W   = 19;
 
     // ------------------------------------------------------------------
     // TAGE conditional predictor
@@ -158,25 +167,29 @@ package bpu_pkg;
     // ------------------------------------------------------------------
     // ITTAGE indirect predictor
     // ------------------------------------------------------------------
+    // 5 tables x {512, 512, 1024, 1024, 1024} = 4 096 entries total
+    // (2x the R7 geometry of 2 048). The 14 255 indirect branches in
+    // `sample_int_trace` reduce to ~1 800 unique indirect PCs after
+    // tagging, but each PC may need to learn multiple targets across
+    // histories; the 2x bump gives ITTAGE enough room to converge.
     localparam int unsigned ITTAGE_TABLES = 5;
-    localparam int unsigned ITTAGE_ENTRIES_0 = 256;
-    localparam int unsigned ITTAGE_ENTRIES_1 = 256;
-    localparam int unsigned ITTAGE_ENTRIES_2 = 512;
-    localparam int unsigned ITTAGE_ENTRIES_3 = 512;
-    localparam int unsigned ITTAGE_ENTRIES_4 = 512;
+    localparam int unsigned ITTAGE_ENTRIES_0 = 512;
+    localparam int unsigned ITTAGE_ENTRIES_1 = 512;
+    localparam int unsigned ITTAGE_ENTRIES_2 = 1024;
+    localparam int unsigned ITTAGE_ENTRIES_3 = 1024;
+    localparam int unsigned ITTAGE_ENTRIES_4 = 1024;
     localparam int unsigned ITTAGE_HIST_LEN_0 = 4;
     localparam int unsigned ITTAGE_HIST_LEN_1 = 8;
     localparam int unsigned ITTAGE_HIST_LEN_2 = 13;
     localparam int unsigned ITTAGE_HIST_LEN_3 = 16;
     localparam int unsigned ITTAGE_HIST_LEN_4 = 32;
-    // Per-table entry counts mirror Kunminghu v2.
     function automatic int unsigned ittage_entries(input int unsigned table_id);
         case (table_id)
-            32'd0:   ittage_entries = 32'd256;
-            32'd1:   ittage_entries = 32'd256;
-            32'd2:   ittage_entries = 32'd512;
-            32'd3:   ittage_entries = 32'd512;
-            32'd4:   ittage_entries = 32'd512;
+            32'd0:   ittage_entries = 32'd512;
+            32'd1:   ittage_entries = 32'd512;
+            32'd2:   ittage_entries = 32'd1024;
+            32'd3:   ittage_entries = 32'd1024;
+            32'd4:   ittage_entries = 32'd1024;
             default: ittage_entries = 32'd0;
         endcase
     endfunction
@@ -240,11 +253,23 @@ package bpu_pkg;
     // ------------------------------------------------------------------
     // BPU integration types
     // ------------------------------------------------------------------
-    typedef enum logic [1:0] {
-        BR_NONE   = 2'd0,
-        BR_COND   = 2'd1,
-        BR_CALL   = 2'd2,
-        BR_RET    = 2'd3
+    // Branch kind. Widened to 3 bits to add `BR_IND` (indirect jump that
+    // does NOT push the RAS), distinct from `BR_CALL` (call that DOES push
+    // the RAS). Without this distinction, real traces (CBP-5, SPEC, AOSP)
+    // that contain switch dispatch / PLT / vtable indirects corrupt the
+    // RAS on every call-shaped collapse — see
+    // docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md.
+    //
+    // Numeric values are stable across revisions:
+    //   BR_NONE = 0, BR_COND = 1, BR_CALL = 2, BR_RET = 3, BR_IND = 4.
+    // The Python model in benchmarks/cpu/branch/bpu_model.py uses the
+    // same numeric encoding.
+    typedef enum logic [2:0] {
+        BR_NONE   = 3'd0,
+        BR_COND   = 3'd1,
+        BR_CALL   = 3'd2,
+        BR_RET    = 3'd3,
+        BR_IND    = 3'd4
     } br_kind_e;
 
     // A single FTQ entry describes one predicted fetch block of up to
@@ -283,11 +308,19 @@ package bpu_pkg;
 
     // Resolver feedback from the back-end. Drives BPU state update and
     // redirect on misprediction.
+    //
+    // `actual_call_return_pc` is the architectural fall-through address of
+    // a call instruction (the PC the matching RET is expected to target).
+    // For RV64 / ARM64 traces this is `pc + 4`; for RVC it is `pc + 2`.
+    // Block-grained predictors cannot derive this from the block start_pc
+    // alone because the call may not be the last instruction in the block.
+    // Only consumed when `actual_kind == BR_CALL`.
     typedef struct packed {
         logic                 valid;
         logic                 misprediction;
         logic [VADDR_W-1:0]   pc;
         logic [VADDR_W-1:0]   actual_target;
+        logic [VADDR_W-1:0]   actual_call_return_pc;
         logic                 actual_taken;
         br_kind_e             actual_kind;
         logic [FTQ_IDX_W-1:0] ftq_idx;

@@ -7,7 +7,7 @@
   "CLOCK_PORT": "CLK_IN",
   "CLOCK_PERIOD": 20,
   "SIGNOFF_SDC_FILE": "dir::../constraints/e1_pd_smoke.sdc",
-  "FP_PIN_ORDER_CFG": "dir::../pin_order_smoke.cfg",
+  "IO_PIN_ORDER_CFG": "dir::../pin_order_smoke.cfg",
   "FP_SIZING": "absolute",
   "DIE_AREA": "0 0 180 180",
   "CORE_AREA": "20 20 160 160",

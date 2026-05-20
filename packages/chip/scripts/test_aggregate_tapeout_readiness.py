@@ -155,6 +155,7 @@ class GateInventoryTests(unittest.TestCase):
             "bsp",
             "verify",
             "benchmarks",
+            "os_rv64",
         }
         allowed_tiers = {"spec", "rtl", "pd", "silicon"}
         for spec in agg.GATES:
@@ -174,10 +175,107 @@ class GateInventoryTests(unittest.TestCase):
             "bsp",
             "verify",
             "benchmarks",
+            "os_rv64",
         }
         present = {spec.subsystem for spec in agg.GATES}
         missing = required - present
         self.assertFalse(missing, f"missing subsystem coverage: {missing}")
+
+    def test_chipyard_generated_linux_contract_gate_requires_boot_evidence(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("chipyard-generated-linux-contract-check", specs)
+        self.assertEqual(
+            specs["chipyard-generated-linux-contract-check"].args,
+            ("--require-boot-evidence",),
+        )
+
+    def test_os_rv64_subsystem_present(self) -> None:
+        """The unified bring-up dashboard requires at least one os_rv64 gate.
+
+        The chip aggregator spans the chip and OS RV64 variant so that a
+        single ``make chip-os-bring-up-status`` view covers both halves of
+        the promotion contract. If this assertion fails the unified
+        dashboard has silently lost its OS side.
+        """
+        os_gates = [spec for spec in agg.GATES if spec.subsystem == "os_rv64"]
+        self.assertTrue(os_gates, "no os_rv64 gates registered in GATES")
+        names = {spec.name for spec in os_gates}
+        self.assertIn("os-rv64-release-check", names)
+        self.assertIn("os-rv64-qemu-virt-boot-test", names)
+
+    def test_android_release_readiness_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("android-release-readiness-contract-check", names)
+
+    def test_phone_runtime_readiness_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("phone-runtime-readiness-contract-check", names)
+
+    def test_chipyard_ap_abi_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("chipyard-ap-abi-contract-check", names)
+
+    def test_chipyard_generated_linux_contract_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("chipyard-generated-linux-contract-check", specs)
+        self.assertEqual(
+            specs["chipyard-generated-linux-contract-check"].args,
+            ("--require-boot-evidence",),
+        )
+
+    def test_boot_security_chain_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("boot-security-chain-contract-check", names)
+
+    def test_linux_bsp_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("linux-bsp-contract-check", names)
+
+    def test_linux_boot_artifacts_gate_registered(self) -> None:
+        specs = {spec.name: spec for spec in agg.GATES}
+        self.assertIn("linux-boot-artifacts-check", specs)
+        self.assertEqual(specs["linux-boot-artifacts-check"].args, ("--require-pass",))
+
+    def test_linux_firmware_boot_chain_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("linux-firmware-boot-chain-contract-check", names)
+
+    def test_linux_memory_platform_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("linux-memory-platform-contract-check", names)
+
+    def test_chipyard_verilator_linux_smoke_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("chipyard-verilator-linux-smoke-check", names)
+
+    def test_aosp_hal_service_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("aosp-hal-service-contract-check", names)
+
+    def test_aosp_linux_handoff_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("aosp-linux-handoff-contract-check", names)
+
+    def test_android_evidence_capture_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("android-evidence-capture-contract-check", names)
+
+    def test_android_simulated_peripheral_evidence_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("android-simulated-peripheral-evidence-check", names)
+
+    def test_cross_fork_agent_payload_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("cross-fork-agent-payload-contract-check", names)
+
+    def test_chip_os_bringup_workflow_contract_gate_registered(self) -> None:
+        names = {spec.name for spec in agg.GATES}
+        self.assertIn("chip-os-bringup-workflow-contract-check", names)
+
+    def test_host_local_paths_are_not_hardcoded(self) -> None:
+        for spec in agg.GATES:
+            with self.subTest(gate=spec.name):
+                self.assertNotIn("/home/shaw/", spec.script)
 
 
 class MainExitCodeTests(unittest.TestCase):
@@ -282,6 +380,27 @@ class MainExitCodeTests(unittest.TestCase):
         self.assertEqual(rc, 0)
 
 
+class PrintSummaryTests(unittest.TestCase):
+    def test_strict_summary_marks_blocked_as_effective_release_blocker(self) -> None:
+        report = agg.build_report(
+            [
+                agg.GateResult(
+                    name="ext-dep",
+                    status="BLOCKED",
+                    evidence="STATUS: BLOCKED ext",
+                    subsystem="pd",
+                    tier="pd",
+                )
+            ]
+        )
+        with mock.patch("sys.stdout") as stdout:
+            agg.print_summary(report, strict=True)
+        printed = "".join(call.args[0] + "\n" for call in stdout.write.call_args_list)
+        self.assertIn("release_blocker=False", printed)
+        self.assertIn("effective_release_blocker=True", printed)
+        self.assertIn("strict=True", printed)
+
+
 class ReportFileTests(unittest.TestCase):
     def test_write_report_emits_valid_json_with_trailing_newline(self) -> None:
         import tempfile
@@ -306,6 +425,65 @@ class ReportFileTests(unittest.TestCase):
         parsed = json.loads(text)
         self.assertEqual(parsed["schema"], "eliza.tapeout_readiness.v1")
         self.assertEqual(parsed["gates"][0]["name"], "x")
+
+
+class AbsolutePathGateTests(unittest.TestCase):
+    """The aggregator must accept absolute-path GateSpec entries so it can
+    reach across packages (e.g. the OS RV64 variant's release-check).
+    """
+
+    def test_absolute_path_gate_runs_and_reports_pass(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "fake_gate.py"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('STATUS: PASS synthetic absolute-path gate')\n"
+                "sys.exit(0)\n"
+            )
+            spec = agg.GateSpec(
+                name="synthetic-abs-pass",
+                script=str(script),
+                subsystem="os_rv64",
+                tier="spec",
+            )
+            result = agg.run_gate(spec)
+        self.assertEqual(result.status, "PASS")
+        self.assertEqual(result.name, "synthetic-abs-pass")
+        self.assertIn("STATUS: PASS", result.evidence)
+
+    def test_absolute_path_gate_classifies_blocked_marker(self) -> None:
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            script = Path(tmp) / "fake_blocked.py"
+            script.write_text(
+                "#!/usr/bin/env python3\n"
+                "import sys\n"
+                "print('STATUS: BLOCKED waiting on external dep')\n"
+                "sys.exit(0)\n"
+            )
+            spec = agg.GateSpec(
+                name="synthetic-abs-blocked",
+                script=str(script),
+                subsystem="os_rv64",
+                tier="spec",
+            )
+            result = agg.run_gate(spec)
+        self.assertEqual(result.status, "BLOCKED")
+
+    def test_absolute_path_gate_missing_script_is_fail(self) -> None:
+        spec = agg.GateSpec(
+            name="synthetic-abs-missing",
+            script="/definitely/not/here/missing_gate.py",
+            subsystem="os_rv64",
+            tier="spec",
+        )
+        result = agg.run_gate(spec)
+        self.assertEqual(result.status, "FAIL")
+        self.assertIn("script missing", result.evidence)
 
 
 if __name__ == "__main__":

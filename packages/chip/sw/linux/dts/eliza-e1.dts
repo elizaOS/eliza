@@ -13,8 +13,8 @@
 	compatible = "eliza,e1-board", "eliza,e1";
 	model = "Eliza E1 Demo SoC";
 
-	#address-cells = <1>;
-	#size-cells = <1>;
+	#address-cells = <2>;
+	#size-cells = <2>;
 
 	chosen {
 		bootargs = "console=ttyS0,115200 root=/dev/ram rw earlycon";
@@ -44,7 +44,7 @@
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x80000000 0x10000000>;
+		reg = <0x0 0x80000000 0x0 0x10000000>;
 	};
 
 	wifi_pwrseq: wifi-pwrseq {
@@ -55,19 +55,19 @@
 
 	soc {
 		compatible = "simple-bus";
-		#address-cells = <1>;
-		#size-cells = <1>;
+		#address-cells = <2>;
+		#size-cells = <2>;
 		ranges;
 
 		clint0: clint@2000000 {
-			compatible = "riscv,clint0", "e1,clint-1.0";
-			reg = <0x02000000 0x00010000>;
+			compatible = "riscv,clint0";
+			reg = <0x0 0x02000000 0x0 0x00010000>;
 			interrupts-extended = <&cpu0_intc 3>, <&cpu0_intc 7>;
 		};
 
 		plic0: interrupt-controller@c000000 {
-			compatible = "riscv,plic0", "e1,plic-1.0";
-			reg = <0x0c000000 0x04000000>;
+			compatible = "riscv,plic0";
+			reg = <0x0 0x0c000000 0x0 0x04000000>;
 			interrupt-controller;
 			#address-cells = <0>;
 			#interrupt-cells = <1>;
@@ -76,8 +76,8 @@
 		};
 
 		uart0: serial@10001000 {
-			compatible = "ns16550a", "e1,uart-1.0";
-			reg = <0x10001000 0x00001000>;
+			compatible = "ns16550a";
+			reg = <0x0 0x10001000 0x0 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <1>;
 			clock-frequency = <50000000>;
@@ -86,24 +86,24 @@
 		};
 
 		dma@10010000 {
-			compatible = "eliza,e1-dma", "e1,dma-1.0";
-			reg = <0x10010000 0x00001000>;
+			compatible = "eliza,e1-dma";
+			reg = <0x0 0x10010000 0x0 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <2>;
 			status = "okay";
 		};
 
 		npu@10020000 {
-			compatible = "eliza,e1-npu", "e1,npu-1.0";
-			reg = <0x10020000 0x00001000>;
+			compatible = "eliza,e1-npu";
+			reg = <0x0 0x10020000 0x0 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <3>;
 			status = "okay";
 		};
 
 		display@10030000 {
-			compatible = "eliza,e1-display", "e1,display-1.0";
-			reg = <0x10030000 0x00001000>;
+			compatible = "eliza,e1-display";
+			reg = <0x0 0x10030000 0x0 0x00001000>;
 			interrupt-parent = <&plic0>;
 			interrupts = <4>;
 			status = "okay";
@@ -111,7 +111,7 @@
 
 		mmc@10050000 {
 			compatible = "e1,sdio-host-1.0";
-			reg = <0x10050000 0x00001000>;
+			reg = <0x0 0x10050000 0x0 0x00001000>;
 			#address-cells = <1>;
 			#size-cells = <0>;
 			bus-width = <4>;
@@ -127,8 +127,8 @@
 		};
 
 		serial@10051000 {
-			compatible = "ns16550a", "e1,uart-1.0";
-			reg = <0x10051000 0x00001000>;
+			compatible = "ns16550a";
+			reg = <0x0 0x10051000 0x0 0x00001000>;
 			status = "disabled";
 
 			bluetooth {

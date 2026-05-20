@@ -1,0 +1,8 @@
+sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes
+,display_bond_peel_n_per_mm,N/mm,0.45,,,,,Peel strength around die-cut adhesive perimeter after dwell.
+,screen_adhesive_compression_mm,mm,0.03,0.08,,,,Compressed adhesive thickness after screen placement.
+,display_fpc_bend_radius_mm,mm,1.0,,,,,Measured bend radius after connector mating and closure.
+,display_luminance_cd_m2,cd/m2,450.0,,,,,White-screen luminance after DSI bring-up and backlight enable.
+,touch_grid_dead_zones,count,0.0,0.0,,,,Capacitive touch grid dead zones after bonding and enclosure close.
+,display_dsi_bringup_logs,pass_flag,1.0,1.0,,,,"Panel probes, init sequence runs, and display pipeline produces image."
+,screen_drop_lift_or_glass_crack,count,0.0,0.0,,,,"Glass crack, adhesive lift, or LCM shift after EVT drop screen check."

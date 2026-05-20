@@ -11,54 +11,56 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-type LLMProvider = {
+export type LLMProvider = {
   name: string;
   envKey: string;
-  loadPlugin: () => Promise<Plugin>;
+  specifier: string;
 };
 
-const LLM_PROVIDERS: LLMProvider[] = [
+export const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-openai")).default,
+    specifier: "@elizaos/plugin-openai",
   },
   {
     name: "Anthropic (Claude)",
     envKey: "ANTHROPIC_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-anthropic")).default,
+    specifier: "@elizaos/plugin-anthropic",
   },
   {
     name: "xAI (Grok)",
     envKey: "XAI_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-xai")).default,
+    specifier: "@elizaos/plugin-xai",
   },
   {
     name: "Google GenAI (Gemini)",
     envKey: "GOOGLE_GENERATIVE_AI_API_KEY",
-    loadPlugin: async () =>
-      (await import("@elizaos/plugin-google-genai")).default,
+    specifier: "@elizaos/plugin-google-genai",
   },
   {
     name: "Groq",
     envKey: "GROQ_API_KEY",
-    loadPlugin: async () => (await import("@elizaos/plugin-groq")).default,
+    specifier: "@elizaos/plugin-groq",
   },
 ];
 
-function hasValidApiKey(envKey: string): boolean {
+export function hasValidApiKey(envKey: string): boolean {
   const value = process.env[envKey];
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function detectLLMPlugin(): Promise<{
+export async function detectLLMPlugin(): Promise<{
   plugin: Plugin;
   providerName: string;
 } | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
+      const module = (await import(/* @vite-ignore */ provider.specifier)) as {
+        default: Plugin;
+      };
       return {
-        plugin: await provider.loadPlugin(),
+        plugin: module.default,
         providerName: provider.name,
       };
     }
@@ -66,7 +68,7 @@ async function detectLLMPlugin(): Promise<{
   return null;
 }
 
-function printAvailableProviders(): void {
+export function printAvailableProviders(): void {
   console.log("\nSupported LLM providers and their API keys:\n");
   for (const provider of LLM_PROVIDERS) {
     const hasKey = hasValidApiKey(provider.envKey);
@@ -173,7 +175,9 @@ async function main() {
   prompt();
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}

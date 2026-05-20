@@ -34,6 +34,35 @@ logger = logging.getLogger(__name__)
 # Hermes consumers that share the same eliza_adapter wheel).
 
 
+def _normalize_lifeops_tool_arguments(
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize Eliza planner aliases to the Python LifeOps executor ABI."""
+    normalized = dict(arguments)
+    if name == "MESSAGE":
+        if "operation" not in normalized and isinstance(normalized.get("action"), str):
+            normalized["operation"] = normalized["action"]
+        target = normalized.get("target")
+        target_kind = normalized.get("targetKind")
+        if isinstance(target, str):
+            if (
+                "threadId" not in normalized
+                and (target_kind == "thread" or target.startswith("thread_"))
+            ):
+                normalized["threadId"] = target
+                normalized.pop("target", None)
+            if (
+                "messageId" not in normalized
+                and (
+                    target_kind in {"message", "email"}
+                    or target.startswith("email_")
+                )
+            ):
+                normalized["messageId"] = target
+    return normalized
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: ElizaClient | None = None,
@@ -100,6 +129,20 @@ def build_lifeops_bench_agent_fn(
         if not last_user_text:
             return MessageTurn(role="assistant", content="", tool_calls=None)
 
+        user_turn_count = 0
+        assistant_turn_count = 0
+        for turn in conversation_history:
+            role = getattr(turn, "role", None) or (
+                turn.get("role") if isinstance(turn, dict) else None
+            )
+            if role == "user":
+                user_turn_count += 1
+            elif role == "assistant":
+                assistant_turn_count += 1
+        if reset_done and user_turn_count == 1 and assistant_turn_count == 0:
+            task_id = None
+            reset_done = False
+
         if task_id is None:
             task_id = f"lifeops-{uuid.uuid4().hex[:12]}"
         if not reset_done:
@@ -141,6 +184,7 @@ def build_lifeops_bench_agent_fn(
                 args = entry.get("arguments")
                 if not isinstance(args, dict):
                     args = {}
+                args = _normalize_lifeops_tool_arguments(name, args)
                 tool_calls.append(
                     {
                         "id": str(entry.get("id") or f"call_{len(tool_calls)}"),

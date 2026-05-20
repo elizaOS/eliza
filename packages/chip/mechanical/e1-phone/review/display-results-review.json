@@ -1,0 +1,77 @@
+{
+  "claim_boundary": "Fail-closed review of display/touch bond and bring-up results; blank rows are not display evidence.",
+  "status": "blocked_no_display_results",
+  "expected_measurement_count": 7,
+  "observed_row_count": 7,
+  "complete_result_count": 0,
+  "missing_measurements": [],
+  "blank_or_incomplete_measurements": [
+    "display_bond_peel_n_per_mm",
+    "screen_adhesive_compression_mm",
+    "display_fpc_bend_radius_mm",
+    "display_luminance_cd_m2",
+    "touch_grid_dead_zones",
+    "display_dsi_bringup_logs",
+    "screen_drop_lift_or_glass_crack"
+  ],
+  "failed_measurements": [],
+  "cases": [
+    {
+      "measurement_id": "display_bond_peel_n_per_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "screen_adhesive_compression_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "display_fpc_bend_radius_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "display_luminance_cd_m2",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "touch_grid_dead_zones",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "display_dsi_bringup_logs",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "screen_drop_lift_or_glass_crack",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    }
+  ],
+  "release_rule": "Every display bond, FPC, touch, luminance, drop, and bring-up row must include sample, operator, numeric passing result, and explicit pass disposition."
+}

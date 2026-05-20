@@ -175,6 +175,9 @@ phases:
       - metric: queue_fairness_and_qos_trace
         required: pass
         evidence: benchmarks/capabilities/e1_npu_nnapi.proof.json
+      - metric: modeled_context_queue_fairness_preflight
+        required: pass
+        evidence: benchmarks/results/npu-context-queue-sim.json
     blocked_claims:
       - Android production accelerator
       - public benchmark leadership

@@ -60,6 +60,9 @@ IGNORED_BENCHMARK_DIRS = {
     "mmau",
     "elizaos_mmau",
     "eliza-adapter",
+    # Retired benchmark package. Keep ignored so discovery never exposes it as
+    # a generic adapter if the package remains in old checkouts.
+    "gaia",
     # Legacy/partial shim with no source files in this checkout.
     "eliza-format",
     "hermes-adapter",
@@ -93,17 +96,6 @@ IGNORED_BENCHMARK_DIRS = {
 # OpenClaw comparison unless a future adapter adds a hard exclusion here.
 ALL_HARNESSES: tuple[str, ...] = ("eliza", "openclaw", "hermes")
 AGENT_COMPATIBILITY_OVERRIDES: dict[str, tuple[str, ...]] = {}
-GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON = (
-    "official GAIA dataset access unavailable "
-    "(set HF_TOKEN/HUGGINGFACE_HUB_TOKEN or GAIA_DATASET_PATH, "
-    "or pre-cache gaia-benchmark/GAIA); "
-    "harness not run"
-)
-HUGGINGFACE_TOKEN_ENV_VARS: tuple[str, ...] = (
-    "HF_TOKEN",
-    "HUGGINGFACE_HUB_TOKEN",
-    "HUGGINGFACE_TOKEN",
-)
 HYPERLIQUID_LIVE_UNAVAILABLE_REASON = (
     "Hyperliquid live execution unavailable "
     "(set HL_PRIVATE_KEY and run with --no-demo); harness not run"
@@ -118,14 +110,20 @@ SWE_BENCH_DOCKER_UNAVAILABLE_REASON = (
     "(start Docker Desktop/daemon so official SWE-Bench tests can run); "
     "harness not run"
 )
+OSWORLD_DOCKER_UNAVAILABLE_REASON = (
+    "OSWorld Docker desktop backend unavailable "
+    "(start Docker Desktop/daemon so the VM-backed tasks can run); "
+    "harness not run"
+)
 HERMES_SANDBOX_UNAVAILABLE_REASON = (
     "Hermes sandbox execution unavailable "
     "(set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon); "
     "harness not run"
 )
 VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON = (
-    "vision-language real eliza-1 VLM runtime/input bundle unavailable; "
-    "harness not run"
+    "vision-language real multimodal runtime/input bundle unavailable or not "
+    "explicitly selected (set VISION_LANGUAGE_PROVIDER=local-eliza for the "
+    "local eliza-1 VLM); harness not run"
 )
 VISION_LANGUAGE_FIXED_RUNTIME_REASON = (
     "vision-language currently runs the fixed eliza-1 VLM runtime only; "
@@ -139,14 +137,14 @@ VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON = (
 
 
 def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
-    if benchmark_id in {"gaia", "gaia_orchestrated"}:
-        return ALL_HARNESSES if _has_gaia_official_dataset() else ()
     if benchmark_id == "hyperliquid_bench":
         return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
     if benchmark_id == "terminal_bench":
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
         return ALL_HARNESSES if _has_swe_bench_docker_backend() else ()
+    if benchmark_id == "osworld":
+        return ALL_HARNESSES if _has_osworld_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -170,35 +168,7 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
 _GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
 
 
-_GAIA_OFFICIAL_DATASET_AVAILABLE: bool | None = None
-
 _HYPERLIQUID_LIVE_AVAILABLE: bool | None = None
-
-
-def _has_gaia_official_dataset() -> bool:
-    """Return true when official GAIA can run without sample fallback."""
-    global _GAIA_OFFICIAL_DATASET_AVAILABLE
-    if _GAIA_OFFICIAL_DATASET_AVAILABLE is not None:
-        return _GAIA_OFFICIAL_DATASET_AVAILABLE
-    if any(os.environ.get(name) for name in HUGGINGFACE_TOKEN_ENV_VARS):
-        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
-        return True
-    dataset_path = os.environ.get("GAIA_DATASET_PATH")
-    if dataset_path and Path(dataset_path).expanduser().exists():
-        _GAIA_OFFICIAL_DATASET_AVAILABLE = True
-        return True
-    metadata_roots = (
-        Path.home() / ".cache" / "huggingface" / "hub" / "datasets--gaia-benchmark--GAIA" / "snapshots",
-        Path("packages/benchmarks/gaia/.cache/gaia")
-        / "datasets--gaia-benchmark--GAIA"
-        / "snapshots",
-    )
-    _GAIA_OFFICIAL_DATASET_AVAILABLE = any(
-        any(path.is_file() for path in root.glob("*/2023/validation/metadata.*"))
-        for root in metadata_roots
-        if root.exists()
-    )
-    return _GAIA_OFFICIAL_DATASET_AVAILABLE
 
 
 def _has_hyperliquid_live_backend() -> bool:
@@ -286,6 +256,18 @@ def _has_swe_bench_docker_backend() -> bool:
         return _SWE_BENCH_DOCKER_AVAILABLE
     _SWE_BENCH_DOCKER_AVAILABLE = _has_terminal_bench_docker_backend()
     return _SWE_BENCH_DOCKER_AVAILABLE
+
+
+_OSWORLD_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_osworld_docker_backend() -> bool:
+    """Return true when Docker can run OSWorld's VM orchestration backend."""
+    global _OSWORLD_DOCKER_AVAILABLE
+    if _OSWORLD_DOCKER_AVAILABLE is not None:
+        return _OSWORLD_DOCKER_AVAILABLE
+    _OSWORLD_DOCKER_AVAILABLE = _docker_info_available(attempts=1, timeout_s=5.0)
+    return _OSWORLD_DOCKER_AVAILABLE
 
 
 def _has_hermes_sandbox_backend() -> bool:
@@ -472,7 +454,14 @@ def _has_textvqa_real_inputs() -> bool:
 
 def _has_vision_language_real_inputs() -> bool:
     tier = os.environ.get("VISION_LANGUAGE_TIER") or "eliza-1-9b"
-    return _has_vision_language_bundle(tier) and _has_textvqa_real_inputs()
+    provider = (os.environ.get("VISION_LANGUAGE_PROVIDER") or "").strip().lower()
+    local_enabled = os.environ.get("VISION_LANGUAGE_USE_LOCAL_ELIZA") == "1" or provider in {
+        "local-eliza",
+        "local_eliza",
+        "eliza-local",
+        "eliza_local",
+    }
+    return local_enabled and _has_vision_language_bundle(tier) and _has_textvqa_real_inputs()
 
 
 def _has_vision_language_harness_runtime() -> bool:
@@ -480,6 +469,8 @@ def _has_vision_language_harness_runtime() -> bool:
     model = (os.environ.get("VISION_LANGUAGE_MODEL") or "").strip()
     if not model:
         return False
+    if provider in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return _has_vision_language_real_inputs()
     if not _is_vision_language_multimodal_model(provider=provider, model=model):
         return False
     key_envs = {
@@ -497,6 +488,8 @@ def _is_vision_language_multimodal_model(*, provider: str, model: str) -> bool:
         return True
     provider_key = provider.strip().lower()
     model_key = model.strip().lower()
+    if provider_key in {"local-eliza", "local_eliza", "eliza-local", "eliza_local"}:
+        return model_key.startswith("eliza-1-")
     if not model_key:
         return False
     if provider_key == "cerebras":
@@ -1219,27 +1212,29 @@ def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[
     if isinstance(payment_mock_url, str) and payment_mock_url.strip():
         args.extend(["--payment-mock-url", payment_mock_url.strip()])
 
-    scenarios = ctx.request.extra_config.get("scenarios")
-    if isinstance(scenarios, list):
-        scenario_ids = [
-            str(item).strip()
-            for item in scenarios
-            if isinstance(item, str) and item.strip()
-        ]
-        if scenario_ids:
-            args.extend(["--scenarios", ",".join(scenario_ids)])
-    elif isinstance(scenarios, str) and scenarios.strip():
-        args.extend(["--scenarios", scenarios.strip()])
+    explicit_scope = False
+    for extra_key, cli_key in (
+        ("scenario", "--scenario"),
+        ("system", "--system"),
+        ("persona", "--persona"),
+    ):
+        value = ctx.request.extra_config.get(extra_key)
+        if isinstance(value, str) and value.strip():
+            args.extend([cli_key, value.strip()])
+            explicit_scope = True
 
-    if "--scenarios" not in args:
-        for extra_key, cli_key in (
-            ("scenario", "--scenario"),
-            ("system", "--system"),
-            ("persona", "--persona"),
-        ):
-            value = ctx.request.extra_config.get(extra_key)
-            if isinstance(value, str) and value.strip():
-                args.extend([cli_key, value.strip()])
+    if not explicit_scope:
+        scenarios = ctx.request.extra_config.get("scenarios")
+        if isinstance(scenarios, list):
+            scenario_ids = [
+                str(item).strip()
+                for item in scenarios
+                if isinstance(item, str) and item.strip()
+            ]
+            if scenario_ids:
+                args.extend(["--scenarios", ",".join(scenario_ids)])
+        elif isinstance(scenarios, str) and scenarios.strip():
+            args.extend(["--scenarios", scenarios.strip()])
 
     max_tasks = ctx.request.extra_config.get("max_tasks")
     has_scope_filter = False
@@ -2078,8 +2073,7 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         default_method = "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     method = str(ctx.request.extra_config.get("method", default_method))
     compactbench_root = Path(adapter.cwd)
-    venv_python = compactbench_root / ".venv" / "bin" / "python"
-    python_executable = str(venv_python) if venv_python.exists() else sys.executable
+    python_executable = _compactbench_python_executable(compactbench_root)
     args = [
         python_executable,
         "run_cerebras.py",
@@ -2116,6 +2110,45 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             ]
         )
     return args
+
+
+def _compactbench_python_executable(compactbench_root: Path) -> str:
+    candidates: list[str] = []
+    venv_python = compactbench_root / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        candidates.append(str(venv_python))
+    candidates.append(sys.executable)
+    for binary in ("python3", "python"):
+        resolved = shutil.which(binary)
+        if resolved:
+            candidates.append(resolved)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _python_can_import(candidate, "ruamel.yaml"):
+            return candidate
+    return candidates[0] if candidates else sys.executable
+
+
+def _python_can_import(python_executable: str, module: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [
+                python_executable,
+                "-c",
+                f"import importlib; importlib.import_module({module!r})",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
@@ -2593,9 +2626,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "max_tokens": 256,
             "timeout_s": 5,
         },
-        "gaia": {
-            "max_questions": 2,
-        },
         "gauntlet": {
             "max_scenarios": 3,
             "clone_mainnet": True,
@@ -2671,13 +2701,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             "providers": ["claude-code", "swe-agent", "codex"],
             "strict_capabilities": True,
         },
-        "gaia_orchestrated": {
-            "dataset": "gaia",
-            "max_questions": 5,
-            "execution_mode": "orchestrated",
-            "providers": ["claude-code", "swe-agent", "codex"],
-            "strict_capabilities": True,
-        },
         "orchestrator_lifecycle": {
             "max_scenarios": 12,
             "strict": True,
@@ -2721,7 +2744,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         "vending_bench": "vending-bench",
         "rlm_bench": "rlm-bench",
         "swe_bench_orchestrated": "swe_bench",
-        "gaia_orchestrated": "gaia",
         "hyperliquid_bench": "HyperliquidBench",
         "openclaw_bench": "openclaw-benchmark",
         "lifeops_bench": "lifeops-bench",
@@ -2786,10 +2808,6 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
                 directory = "bfcl"
             elif entry.id == "realm" and "realm" in benchmark_dirs:
                 directory = "realm"
-            elif entry.id == "gaia" and "gaia" in benchmark_dirs:
-                directory = "gaia"
-            elif entry.id == "gaia_orchestrated" and "gaia" in benchmark_dirs:
-                directory = "gaia"
             elif entry.id == "orchestrator_lifecycle" and "orchestrator_lifecycle" in benchmark_dirs:
                 directory = "orchestrator_lifecycle"
             else:

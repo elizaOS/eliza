@@ -6,6 +6,7 @@
   "scripts": {
     "start": "bun run game.ts",
     "dev": "bun --watch run game.ts",
+    "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "tsc --noEmit",
     "build": "bun run typecheck"

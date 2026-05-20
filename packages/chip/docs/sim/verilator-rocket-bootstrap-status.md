@@ -11,14 +11,15 @@ The Chipyard SHA is sourced from
 `docs/generators/chipyard/eliza-rocket-manifest.json`:
 
 - repo: `https://github.com/ucb-bar/chipyard.git`
-- tag: `1.13.0`
-- commit: `69eba860a352343e4ac6b6df0f3638a79a86ec78`
+- tag: `main-2026-05-20`
+- commit: `48f904aefbb3903dce6efa7901982642853ae6a7`
+- previous pin (audited 2026-05-20): `1.13.0` / `69eba860a352343e4ac6b6df0f3638a79a86ec78`
 
-Note: the task brief referenced SHA `404c8d361de98a98967f5d7a9bf51cbe8434d4c9`,
-but `scripts/bootstrap_chipyard.sh` reads the manifest and pins
-`69eba860...`. The script enforces this with a tag/SHA equality check that
-would have aborted on any mismatch. The manifest SHA is the truthful pin
-for the ElizaRocketConfig overlay in this repo; no override was attempted.
+Historical note: the task brief originally referenced SHA
+`404c8d361de98a98967f5d7a9bf51cbe8434d4c9`, but `scripts/bootstrap_chipyard.sh`
+reads the manifest and pins the manifest-supplied SHA, enforcing a tag/SHA
+equality check that aborts on any mismatch. The manifest SHA is the truthful
+pin for the ElizaRocketConfig overlay in this repo; no override was attempted.
 
 ## What succeeded
 
@@ -58,8 +59,8 @@ for the ElizaRocketConfig overlay in this repo; no override was attempted.
    - `conda`: present (`/opt/miniconda3/bin/conda`)
    - `sbt`: **missing** — Chipyard installs it inside its conda env via
      `build-setup.sh`, which is gated off here.
-3. Even with the host tools installed manually, Chipyard 1.13.0 has not
-   been validated upstream on macOS arm64. Known friction points:
+3. Even with the host tools installed manually, Chipyard `main-2026-05-20`
+   has not been validated upstream on macOS arm64. Known friction points:
    - `tools/install-circt` ships Linux x86_64 binaries; needs a darwin
      arm64 CIRCT (build from source or use a Homebrew tap) before any
      FIRRTL -> Verilog step will work.

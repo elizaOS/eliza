@@ -6,6 +6,7 @@
  * Usage:
  *   bun run test-client.ts              # Chat with local dev server
  *   bun run test-client.ts --url <url>  # Custom URL
+ *   bun run test-client.ts --check      # Non-interactive availability check
  *
  * Examples:
  *   bun run test-client.ts
@@ -35,14 +36,17 @@ interface HealthResponse {
 }
 
 // Parse command line arguments
-function parseArgs(): { url: string } {
+function parseArgs(): { checkOnly: boolean; url: string } {
   const args = process.argv.slice(2);
   let url = "http://localhost:8080";
+  let checkOnly = false;
 
   for (let i = 0; i < args.length; i++) {
     if ((args[i] === "--url" || args[i] === "-u") && args[i + 1]) {
       url = args[i + 1];
       i++;
+    } else if (args[i] === "--check") {
+      checkOnly = true;
     } else if (args[i] === "--help" || args[i] === "-h") {
       console.log(`
 elizaOS GCP Cloud Run Test Client
@@ -52,6 +56,7 @@ Usage:
 
 Options:
   --url, -u <url>   Worker URL (default: http://localhost:8080)
+  --check           Check worker availability, then exit without chat
   --help, -h        Show this help message
 
 Examples:
@@ -75,15 +80,19 @@ Environment:
     url = process.env.ELIZA_WORKER_URL;
   }
 
-  return { url };
+  return { checkOnly, url };
 }
 
 async function getWorkerInfo(baseUrl: string): Promise<InfoResponse | null> {
-  const response = await fetch(baseUrl, {
-    signal: AbortSignal.timeout(5000),
-  });
-  if (response.ok) {
-    return (await response.json()) as InfoResponse;
+  try {
+    const response = await fetch(baseUrl, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.ok) {
+      return (await response.json()) as InfoResponse;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -91,11 +100,15 @@ async function getWorkerInfo(baseUrl: string): Promise<InfoResponse | null> {
 async function getHealthStatus(
   baseUrl: string,
 ): Promise<HealthResponse | null> {
-  const response = await fetch(`${baseUrl}/health`, {
-    signal: AbortSignal.timeout(5000),
-  });
-  if (response.ok) {
-    return (await response.json()) as HealthResponse;
+  try {
+    const response = await fetch(`${baseUrl}/health`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (response.ok) {
+      return (await response.json()) as HealthResponse;
+    }
+  } catch {
+    return null;
   }
   return null;
 }
@@ -125,7 +138,7 @@ async function sendMessage(
 }
 
 async function main(): Promise<void> {
-  const { url } = parseArgs();
+  const { checkOnly, url } = parseArgs();
 
   console.log("\n🚀 elizaOS GCP Cloud Run Test Client\n");
   console.log(`📡 Connecting to: ${url}\n`);
@@ -141,18 +154,16 @@ async function main(): Promise<void> {
   // Check if worker is available
   const info = await getWorkerInfo(url);
   if (!info) {
+    if (checkOnly) {
+      console.log(`⚠️  Worker not available at ${url}`);
+      console.log("   Skipping integration tests (worker must be running)");
+      return;
+    }
     console.error("❌ Could not connect to worker at", url);
     console.error("\nMake sure the worker is running:");
-    console.error("\n  TypeScript (local):");
-    console.error("    cd examples/gcp/typescript");
-    console.error("    npm install && npm run dev");
-    console.error("\n  Python (local):");
-    console.error("    cd examples/gcp/python");
-    console.error("    pip install -r requirements.txt");
-    console.error("    python handler.py");
-    console.error("\n  Rust (local):");
-    console.error("    cd examples/gcp/rust");
-    console.error("    cargo run");
+    console.error("\n  Local:");
+    console.error("    cd packages/examples/gcp");
+    console.error("    bun run dev");
     console.error("\n  Or deploy to Cloud Run:");
     console.error(
       "    gcloud run deploy eliza-worker --source . --region us-central1",
@@ -164,6 +175,12 @@ async function main(): Promise<void> {
   console.log(`\n🤖 Character: ${info.name}`);
   console.log(`📖 Bio: ${info.bio}`);
   console.log(`⚡ Powered by: ${info.powered_by}`);
+
+  if (checkOnly) {
+    console.log("\n✅ Worker availability check passed\n");
+    return;
+  }
+
   console.log('\n💬 Chat with the agent (type "exit" or "quit" to leave)\n');
 
   const rl = readline.createInterface({

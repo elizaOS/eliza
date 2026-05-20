@@ -1,0 +1,101 @@
+{
+  "schema": "eliza.cbp5_trace_manifest.v1",
+  "evidence_class": "cbp5_train_traces_only",
+  "stage_dir": "external/cbp5-traces",
+  "source": {
+    "simulator_framework_repo": "https://github.com/ramisheikh/cbp2025",
+    "simulator_framework_commit": "607496629452740887dc1b90a46834cc90dda1e0",
+    "trace_format_header": "lib/trace_reader.h",
+    "training_set_drive_folder": "https://drive.google.com/drive/folders/10CL13RGDW3zn-Dx7L0ineRvl7EpRsZDW",
+    "training_set_zenodo": "https://zenodo.org/records/15883615",
+    "reference_results_csv": "reference_results_training_set.csv (in the simulator repo)"
+  },
+  "format_notes": {
+    "container": "gzip-compressed binary stream",
+    "record": "variable-length per instruction (PC + InstClass + optional mem/branch fields + register operands + register values)",
+    "instructions_per_record": 1,
+    "branches_per_record": "0 or 1 (branches only when InstClass is condBranch/uncondDirBr/uncondIndBr/callDir/callInd/ret)",
+    "endianness": "little-endian",
+    "isa": "RV64 / ARM64; 4-byte fixed-width instructions"
+  },
+  "staged_traces": [
+    {
+      "filename": "sample_int_trace.gz",
+      "compressed_bytes": 1398973,
+      "uncompressed_instructions": 997301,
+      "branches": 181877,
+      "workload_class": "int",
+      "source_path_in_repo": "sample_traces/int/sample_int_trace.gz",
+      "license": "public domain (per trace_reader.h header)"
+    },
+    {
+      "filename": "sample_fp_trace.gz",
+      "compressed_bytes": 1235871,
+      "uncompressed_instructions": 997741,
+      "branches": 148723,
+      "workload_class": "fp",
+      "source_path_in_repo": "sample_traces/fp/sample_fp_trace.gz",
+      "license": "public domain (per trace_reader.h header)"
+    }
+  ],
+  "blocked_archives": [
+    {
+      "archive": "media.tar.xz",
+      "compressed_size": "1.3 GB",
+      "uncompressed_size": "~12 GB",
+      "expected_traces": 4,
+      "drive_id": "1c0914RMqTpKwtKG2vU3fCgiaNXQ5xx6n",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/media.tar.xz?download=1"
+    },
+    {
+      "archive": "fp.tar.xz",
+      "compressed_size": "9.4 GB",
+      "uncompressed_size": "~80 GB",
+      "expected_traces": 14,
+      "drive_id": "1TA1n-6U2aoBUoPpCEGyberAKYIYhi3I3",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/fp.tar.xz?download=1"
+    },
+    {
+      "archive": "infra.tar.xz",
+      "compressed_size": "9.4 GB",
+      "uncompressed_size": "~80 GB",
+      "expected_traces": 16,
+      "drive_id": "15lDyv-PH_bfnPXweIHwS97ZATX_T94hj",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/infra.tar.xz?download=1"
+    },
+    {
+      "archive": "compress.tar.xz",
+      "compressed_size": "13.4 GB",
+      "uncompressed_size": "~120 GB",
+      "expected_traces": 8,
+      "drive_id": "1YDfitnG4bRX2nOFh5X4o0QePAF8vZCg_",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/compress.tar.xz?download=1"
+    },
+    {
+      "archive": "web.tar.xz",
+      "compressed_size": "16.3 GB",
+      "uncompressed_size": "~140 GB",
+      "expected_traces": 26,
+      "drive_id": "18P3ndXZKSwpxNVjoUB7TWUIq0PJfSljf",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/web.tar.xz?download=1"
+    },
+    {
+      "archive": "int.tar.xz",
+      "compressed_size": "28.2 GB",
+      "uncompressed_size": "~250 GB",
+      "expected_traces": 37,
+      "drive_id": "1R9eJg5pUaE4FNq1k1Xv3DfnE93CzYROi",
+      "zenodo_url": "https://zenodo.org/records/15883615/files/int.tar.xz?download=1"
+    }
+  ],
+  "retry_command": "for a in media fp infra compress web int; do curl -L -o external/cbp5-traces/${a}.tar.xz \"https://zenodo.org/records/15883615/files/${a}.tar.xz?download=1\"; tar -xJf external/cbp5-traces/${a}.tar.xz -C external/cbp5-traces/; done",
+  "consumed_by": [
+    "benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+    "make mpki-eval-rtl  (cocotb harness auto-discovers external/cbp5-traces/*.gz)"
+  ],
+  "produces": [
+    "docs/evidence/cpu_ap/mpki_results_cbp5.json (model backend)",
+    "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json (RTL backend)",
+    "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md (comparison table)"
+  ]
+}

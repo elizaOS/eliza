@@ -27,8 +27,9 @@ It also separates two targets that must not be conflated:
 `generators/chipyard/eliza-rocket-manifest.json` pins the selected generated
 AP path:
 
-- Chipyard `1.13.0` at commit
-  `69eba860a352343e4ac6b6df0f3638a79a86ec78`.
+- Chipyard `main-2026-05-20` at commit
+  `48f904aefbb3903dce6efa7901982642853ae6a7`
+  (previous pin: `1.13.0` / `69eba860a352343e4ac6b6df0f3638a79a86ec78`).
 - Single Rocket RV64GC hart for the first AP integration.
 - Project config name `ElizaRocketConfig`.
 - Production wrapper name `eliza_rocket_ap`.

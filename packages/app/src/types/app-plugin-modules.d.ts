@@ -13,7 +13,7 @@ import type {
   StewardTransactionHistoryProps,
   VincentStateHookArgs,
   VincentStateHookResult,
-} from "@elizaos/ui";
+} from "@elizaos/ui/config";
 import type { ComponentType } from "react";
 
 type EmptyComponent = ComponentType<Record<string, never>>;
@@ -148,7 +148,7 @@ declare module "@elizaos/plugin-task-coordinator" {
 }
 
 declare module "@elizaos/app-training" {
-  import type { FineTuningViewProps } from "@elizaos/ui";
+  import type { FineTuningViewProps } from "@elizaos/ui/config";
 
   export const FineTuningView: ComponentType<FineTuningViewProps>;
 }

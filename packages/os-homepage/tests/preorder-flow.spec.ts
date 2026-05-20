@@ -1,6 +1,6 @@
 import { expect, test } from "playwright/test";
 
-const CHECKOUT_BASE = "https://elizaos.ai/checkout";
+const CHECKOUT_BASE = "/checkout";
 const USB_SKU = "elizaos-usb";
 
 test("homepage hardware tile links to /hardware/:slug detail page", async ({
@@ -23,7 +23,7 @@ test("homepage hardware tile links to /hardware/:slug detail page", async ({
   await expect(page).toHaveURL(/\/hardware\/usb$/);
 });
 
-test("product detail page shows ElizaOS USB hero, price, and pre-order CTA pointing to elizaos.ai checkout", async ({
+test("product detail page shows ElizaOS USB hero, price, and pre-order CTA pointing to checkout", async ({
   page,
 }) => {
   await page.goto("/hardware/usb");
@@ -37,9 +37,8 @@ test("product detail page shows ElizaOS USB hero, price, and pre-order CTA point
     "Ships October 2026",
   );
 
-  // Pre-order CTA exists and points at elizaos.ai/checkout?sku=elizaos-usb
   const preorderCta = page.getByRole("link", {
-    name: /Pre-order on elizaos\.ai/i,
+    name: /Pre-order checkout/i,
   });
   await expect(preorderCta).toBeVisible();
   await expect(preorderCta).toHaveAttribute(
@@ -47,9 +46,8 @@ test("product detail page shows ElizaOS USB hero, price, and pre-order CTA point
     `${CHECKOUT_BASE}?sku=${USB_SKU}`,
   );
 
-  // Confirm checkout-stays-on-elizaos.ai note
   await expect(page.locator(".detail-note")).toContainText(
-    "Checkout stays on elizaos.ai.",
+    "Checkout stays on elizaOS.",
   );
 });
 
@@ -59,15 +57,13 @@ test("clicking pre-order does not navigate inside the spec; URL is asserted inst
   await page.goto("/hardware/usb");
 
   const preorderCta = page.getByRole("link", {
-    name: /Pre-order on elizaos\.ai/i,
+    name: /Pre-order checkout/i,
   });
 
-  // Read destination without following it (avoid leaving the test origin).
   const href = await preorderCta.getAttribute("href");
   expect(href).toBe(`${CHECKOUT_BASE}?sku=${USB_SKU}`);
 
-  const url = new URL(href as string);
-  expect(url.origin).toBe("https://elizaos.ai");
+  const url = new URL(href as string, page.url());
   expect(url.pathname).toBe("/checkout");
   expect(url.searchParams.get("sku")).toBe(USB_SKU);
 });

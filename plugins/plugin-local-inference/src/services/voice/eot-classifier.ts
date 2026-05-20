@@ -1,3 +1,5 @@
+/// <reference path="./onnxruntime-node.d.ts" />
+
 /**
  * Semantic end-of-turn (EOT) classifier — Tier 3 of the three-tier VAD.
  *

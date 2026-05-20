@@ -75,6 +75,11 @@ PREFETCH_SWEEP_PREFETCHERS = (
     "ip_stride",
     "spp_dev",
     "va_ampm_lite",
+    "berti",
+    "ipcp",
+    "bingo",
+    "bop",
+    "pythia",
 )
 MOCKINGJAY_SWEEP_REPLACEMENTS = (
     "lru",
@@ -85,8 +90,12 @@ MOCKINGJAY_SWEEP_REPLACEMENTS = (
 
 # Prefetchers/replacements that we know are external-only (not built into
 # the upstream ChampSim 2024-12 tag); their absence is reported but not a
-# hard failure.
-EXTERNAL_ONLY_PREFETCHERS = {"berti", "ipcp", "bingo", "bop", "pythia"}
+# hard failure. Berti, IPCP, Bingo, BOP, Pythia are CRC-style drop-ins;
+# faithful ports for the ChampSim 2024-12 module API now live under
+# `external/ChampSim/prefetcher/{berti,ipcp,bingo,bop,pythia}/` and so
+# are no longer EXTERNAL_ONLY for the purposes of this sweep — the
+# variant binaries are produced from `build-configs/pref_<name>.json`.
+EXTERNAL_ONLY_PREFETCHERS: set[str] = set()
 EXTERNAL_ONLY_REPLACEMENTS = {"hawkeye", "mockingjay"}
 
 DEFAULT_TRACE_GLOBS = ("*.champsimtrace.xz", "*.champsimtrace")

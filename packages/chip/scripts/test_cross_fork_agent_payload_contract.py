@@ -1,0 +1,179 @@
+#!/usr/bin/env python3
+"""Tests for scripts/check_cross_fork_agent_payload_contract.py."""
+
+from __future__ import annotations
+
+import json
+import sys
+import tempfile
+import unittest
+from argparse import Namespace
+from pathlib import Path
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT / "scripts") not in sys.path:
+    sys.path.insert(0, str(ROOT / "scripts"))
+
+import check_cross_fork_agent_payload_contract as gate  # noqa: E402
+
+
+def write(path: Path, text: str) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def bun_version_json(webkit_status: str = "") -> str:
+    return json.dumps(
+        {
+            "bun": {"tag": "bun-v1.3.13", "channel": "canary"},
+            "artifact": {
+                "filename": "bun-linux-riscv64-musl.zip",
+                "internal_layout": "bun-linux-riscv64-musl/bun",
+            },
+            "patch_series": {"webkit_recipes_status": webkit_status},
+        }
+    )
+
+
+class CrossForkAgentPayloadContractTests(unittest.TestCase):
+    def _patch_tree(self, tmp: Path):
+        workspace = tmp
+        app_core = workspace / "app-core"
+        os_rv64 = workspace / "os/linux/variants/elizaos-debian-riscv64"
+        bun_version = write(
+            app_core / "scripts/bun-riscv64/bun-version.json",
+            bun_version_json(
+                "Recipe files document the chain that an operator must realize into actual `*.patch` files before the Baseline-JIT build path is testable."
+            ),
+        )
+        android_stage = write(
+            app_core / "scripts/lib/stage-android-agent.mjs",
+            'const BUN_VERSION = "1.3.13";\n'
+            'const DEFAULT_BUN_CHANNEL = "canary";\n'
+            "const ABI_TARGETS = [{ androidAbi: 'riscv64' }];\n"
+            "const url = process.env.MILADY_BUN_RISCV64_URL;\n",
+        )
+        android_service = write(
+            app_core / "platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
+            'private static final String HEALTH_URL = "http://127.0.0.1:31337/api/health";\n',
+        )
+        linux_agent_hook = write(
+            os_rv64 / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
+            '{"stage": "placeholder", "provenance": "scaffolding"}\n',
+        )
+        linux_userland_hook = write(
+            os_rv64 / "config/hooks/normal/0030-elizaos-userland.hook.chroot",
+            "touch /opt/elizaos/STATUS_LATER_AGENT_BINARY\n",
+        )
+        linux_unit = write(
+            os_rv64 / "config/includes.chroot/etc/systemd/system/elizaos-agent.service",
+            "[Service]\nExecStart=/opt/elizaos/bin/elizaos start --headless --port=31337\n",
+        )
+        linux_manifest = write(
+            os_rv64 / "manifest.json",
+            json.dumps(
+                {
+                    "validation": {
+                        "requiredEvidence": ["qemu-virt-boot"],
+                        "evidence": [{"id": "qemu-virt-boot"}],
+                    }
+                }
+            ),
+        )
+        patches = [
+            mock.patch.object(gate, "WORKSPACE", workspace),
+            mock.patch.object(gate, "APP_CORE", app_core),
+            mock.patch.object(gate, "OS_RV64", os_rv64),
+            mock.patch.object(gate, "BUN_VERSION_JSON", bun_version),
+            mock.patch.object(gate, "ANDROID_STAGE", android_stage),
+            mock.patch.object(gate, "ANDROID_AGENT_SERVICE", android_service),
+            mock.patch.object(gate, "LINUX_AGENT_HOOK", linux_agent_hook),
+            mock.patch.object(gate, "LINUX_USERLAND_HOOK", linux_userland_hook),
+            mock.patch.object(gate, "LINUX_AGENT_UNIT", linux_unit),
+            mock.patch.object(gate, "LINUX_MANIFEST", linux_manifest),
+        ]
+        return patches, os_rv64
+
+    def test_placeholder_cross_fork_payload_blocks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            patches, _ = self._patch_tree(Path(tmpdir))
+            with PatchStack(patches):
+                report = gate.run_check(Namespace())
+        self.assertEqual(report["status"], "blocked")
+        codes = {finding["code"] for finding in report["findings"]}
+        self.assertIn("android_riscv64_bun_payload_is_url_only", codes)
+        self.assertIn("linux_rv64_agent_install_is_placeholder", codes)
+        self.assertIn("linux_rv64_status_later_agent_binary_marker", codes)
+        self.assertIn("linux_rv64_agent_unit_has_no_health_probe", codes)
+        self.assertIn("linux_rv64_manifest_missing_agent_health_evidence", codes)
+        self.assertIn("linux_rv64_does_not_consume_shared_bun_payload", codes)
+        self.assertIn("bun_riscv64_webkit_baseline_patches_not_realized", codes)
+
+    def test_real_payload_contract_passes_static_checks(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            patches, os_rv64 = self._patch_tree(tmp)
+            with PatchStack(patches):
+                gate.BUN_VERSION_JSON.write_text(
+                    bun_version_json("realized patch files validated"), encoding="utf-8"
+                )
+                gate.ANDROID_STAGE.write_text(
+                    'const BUN_VERSION = "1.3.13";\n'
+                    'const DEFAULT_BUN_CHANNEL = "canary";\n'
+                    "const ABI_TARGETS = [{ androidAbi: 'riscv64' }];\n"
+                    "const expectedSha256 = process.env.MILADY_BUN_RISCV64_SHA256;\n"
+                    "const artifact = 'bun-linux-riscv64-musl.zip';\n",
+                    encoding="utf-8",
+                )
+                gate.LINUX_AGENT_HOOK.write_text(
+                    "install -m 0755 /artifacts/elizaos /opt/elizaos/bin/elizaos\n"
+                    "echo bun-linux-riscv64-musl.zip > /opt/elizaos/INSTALL_STATE.json\n",
+                    encoding="utf-8",
+                )
+                gate.LINUX_USERLAND_HOOK.write_text(
+                    "test -x /opt/elizaos/bin/elizaos\n", encoding="utf-8"
+                )
+                gate.LINUX_AGENT_UNIT.write_text(
+                    "[Service]\n"
+                    "ExecStart=/opt/elizaos/bin/elizaos start --headless --port=31337\n"
+                    "ExecStartPost=/usr/bin/curl --fail http://127.0.0.1:31337/api/health\n",
+                    encoding="utf-8",
+                )
+                gate.LINUX_MANIFEST.write_text(
+                    json.dumps(
+                        {
+                            "validation": {
+                                "requiredEvidence": ["agent-health-live"],
+                                "evidence": [{"id": "agent-health-live"}],
+                            }
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                write(os_rv64 / "docs/runtime.md", "bun-linux-riscv64-musl.zip\n")
+                report = gate.run_check(Namespace())
+        self.assertEqual(report["status"], "pass")
+        self.assertEqual(report["findings"], [])
+        self.assertEqual(report["claim_boundary"], gate.CLAIM_BOUNDARY)
+
+
+class PatchStack:
+    def __init__(self, patches):
+        self._patches = patches
+        self._entered = []
+
+    def __enter__(self):
+        for patch in self._patches:
+            self._entered.append(patch)
+            patch.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        while self._entered:
+            self._entered.pop().__exit__(exc_type, exc, tb)
+
+
+if __name__ == "__main__":
+    unittest.main()

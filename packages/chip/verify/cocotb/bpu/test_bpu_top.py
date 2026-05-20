@@ -50,6 +50,7 @@ async def reset(dut):
     dut.resolve_misp.value = 0
     dut.resolve_pc.value = 0
     dut.resolve_target.value = 0
+    dut.resolve_call_return_pc.value = 0
     dut.resolve_taken.value = 0
     dut.resolve_kind.value = 0
     dut.resolve_ftq_idx.value = 0
@@ -68,11 +69,12 @@ async def predict(dut, pc):
     dut.lkp_valid.value = 0
 
 
-async def resolve(dut, pc, target, taken, kind, misp, ftq_idx=0):
+async def resolve(dut, pc, target, taken, kind, misp, ftq_idx=0, call_return_pc=None):
     dut.resolve_valid.value = 1
     dut.resolve_misp.value = 1 if misp else 0
     dut.resolve_pc.value = pc
     dut.resolve_target.value = target
+    dut.resolve_call_return_pc.value = (pc + 4) if call_return_pc is None else call_return_pc
     dut.resolve_taken.value = 1 if taken else 0
     dut.resolve_kind.value = kind
     dut.resolve_ftq_idx.value = ftq_idx
@@ -138,7 +140,7 @@ async def bpu_call_return_round_trip_uses_ras(dut):
     call_pc = 0x8000_2000
     callee = 0x8000_3000
     return_pc = 0x8000_3010
-    return_to = 0x8000_2020  # call_pc + 32
+    return_to = call_pc + 4  # RV64 / ARM64 fall-through after the call
 
     # First-time call: misprediction trains FTB & RAS.
     await predict(dut, call_pc)

@@ -185,6 +185,7 @@ def main() -> int:
             "iccad-2024-gate-sizing-benchmark",
             "ir-aware-eco-rl",
             "open-llm-eco",
+            "iscript-pd-tcl",
         ],
         "policy": {
             "changes_constraints": False,
@@ -275,6 +276,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "timing-tcl-generation-quarantine-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future iScript-style timing-analysis or physical-design Tcl remains advisory until script provenance, command schemas, generated-script quarantine, replay logs, and before/after STA/signoff evidence exist",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_eda_tool_agent_interop_targets.py --run-id validation",
+                    "make no-hardware-action-check",
+                    "make pd-signoff-manifest-check",
+                    "python3 scripts/check_pd_closure.py",
+                ],
+            },
+            {
                 "id": "metal-only-and-post-route-eco-watch",
                 "status": "CAPTURED_NOT_MODIFIED",
                 "target": "future post-route or metal-only ECO suggestions require localized changed-object manifests and cannot bypass DRC/LVS/antenna/STA/signoff gates",
@@ -291,6 +303,7 @@ def main() -> int:
             "no approved write-capable ECO command schema",
             "no before/after E1 ECO corpus with gate-sizing, buffer-insertion, pin-swapping, gate-cloning, route, DRC, antenna, STA, and power labels",
             "no AST-derived E1 design retrieval corpus or stage-aware OpenLane parameter replay manifest",
+            "no approved iScript-style Tcl command schema, generated-script quarantine, syntax/semantic review, commercial-tool data-handling review, or deterministic replay manifest",
             "no license-reviewed external gate-sizing or ECO optimizer with pinned revisions, seeds, and replay manifests",
             "current report is advisory and cannot waive STA or signoff failures",
         ],

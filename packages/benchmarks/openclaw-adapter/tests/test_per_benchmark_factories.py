@@ -22,6 +22,7 @@ from openclaw_adapter.mind2web import build_mind2web_agent_fn
 from openclaw_adapter.mint import build_mint_agent_fn
 from openclaw_adapter.woobench import (
     _WOOBENCH_SYSTEM_HINT,
+    _with_inferred_payment_action,
     build_openclaw_woobench_agent_fn,
     _turn_from_response as woobench_turn_from_response,
 )
@@ -135,6 +136,8 @@ def test_woobench_system_hint_allows_reflective_tarot() -> None:
     assert "do not refuse ordinary tarot" in _WOOBENCH_SYSTEM_HINT
     assert "safe fictional/reflective" in _WOOBENCH_SYSTEM_HINT
     assert "Create at most one charge" in _WOOBENCH_SYSTEM_HINT
+    assert "Treat explicit support language as the $15 tier" in _WOOBENCH_SYSTEM_HINT
+    assert "previous reading" in _WOOBENCH_SYSTEM_HINT
 
 
 def test_woobench_turn_synthesizes_visible_payment_text() -> None:
@@ -157,6 +160,38 @@ def test_woobench_turn_synthesizes_visible_payment_text() -> None:
     assert "full reading after $10.00" in result["text"]
     assert result["actions"] == ["BENCHMARK_ACTION"]
     assert result["params"]["BENCHMARK_ACTION"]["command"] == "CREATE_APP_CHARGE"
+
+
+def test_woobench_turn_infers_visible_payment_action() -> None:
+    response = MessageResponse(
+        text="I can continue with the full reading after a $15 payment.",
+        thought=None,
+        actions=[],
+        params={},
+    )
+
+    result = woobench_turn_from_response(_with_inferred_payment_action(response))
+
+    assert result["actions"] == ["BENCHMARK_ACTION"]
+    payload = result["params"]["BENCHMARK_ACTION"]
+    assert payload["command"] == "CREATE_APP_CHARGE"
+    assert payload["amount_usd"] == 15.0
+
+
+def test_woobench_turn_hides_payment_planning_text() -> None:
+    response = MessageResponse(
+        text="We need to charge $15 since this is a returning customer.",
+        thought=None,
+        actions=[],
+        params={},
+    )
+
+    result = woobench_turn_from_response(_with_inferred_payment_action(response))
+
+    assert result["text"] == (
+        "I can continue with the full reading after $15.00. "
+        "I have created the payment request; once it is paid, I will continue."
+    )
 
 
 def test_woobench_agent_fn_forwards_system_message_and_payment_actions(

@@ -37,6 +37,12 @@ compiler/executorch-eliza/
 - Preprocessor: skeleton; full lowering blocked on IREE backend build.
 - End-to-end smoke: BLOCKED until LLVM + IREE built inside the canonical
   Linux container.
+- Partitioner exercised on the 2-layer MLP and on a MobileNet-v3-shaped
+  first-Conv2d slice (single layer, plus an unsupported softmax tail to
+  prove the CPU-fallback boundary). Tracked as
+  ``partitioner_first_conv2d_partial_model`` in the evidence file;
+  evidence class is ``micro_model_partitioner_only`` and is explicitly
+  NOT a phone-class MLPerf Mobile result.
 
 ## Evidence gate
 

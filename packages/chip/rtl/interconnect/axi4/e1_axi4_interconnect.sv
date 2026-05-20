@@ -421,7 +421,12 @@ module e1_axi4_interconnect
         end
     end
 
-    // W fanout to slaves
+    // W fanout to slaves. Verilator (5.020) misreports the locally-declared
+    // 'dst' inside the 'if (w_active[m].active...)' branch as a latch even
+    // with 'automatic' lifetime, because the local is only assigned along the
+    // taken-branch path of the always_comb. The local is never read outside
+    // that branch, so there is no actual latch — silence LATCH here.
+    /* verilator lint_off LATCH */
     always_comb begin
         for (int unsigned s = 0; s < NUM_SLAVES; s++) begin
             s_wvalid[s] = 1'b0;
@@ -431,13 +436,15 @@ module e1_axi4_interconnect
         end
         for (int unsigned m = 0; m < NUM_MASTERS; m++) begin
             if (w_active[m].active && !w_active[m].is_decerr) begin
-                s_wvalid[w_active[m].slave] = m_wvalid[m];
-                s_wdata[w_active[m].slave]  = m_wdata[m];
-                s_wstrb[w_active[m].slave]  = m_wstrb[m];
-                s_wlast[w_active[m].slave]  = m_wlast[m];
+                automatic int unsigned dst = w_active[m].slave;
+                s_wvalid[dst] = m_wvalid[m];
+                s_wdata[dst]  = m_wdata[m];
+                s_wstrb[dst]  = m_wstrb[m];
+                s_wlast[dst]  = m_wlast[m];
             end
         end
     end
+    /* verilator lint_on LATCH */
 
     // ------------------------------------------------------------------
     // B channel: route per slave back to the head-of-queue master.

@@ -18,8 +18,6 @@ import {
   type Plugin,
   type UUID,
 } from "@elizaos/core";
-import anthropicPlugin from "@elizaos/plugin-anthropic";
-import openaiPlugin from "@elizaos/plugin-openai";
 import {
   actorState,
   agentLogs,
@@ -98,6 +96,22 @@ const CONTEXT_REFRESH_INTERVAL_MS = (() => {
   }
   return DEFAULT_CONTEXT_REFRESH_HOURS * MS_PER_HOUR;
 })();
+
+async function loadOptionalPlugin(
+  packageName: string,
+): Promise<Plugin | null> {
+  try {
+    const pluginModule = await import(packageName);
+    return (pluginModule.default ?? pluginModule) as Plugin;
+  } catch (error) {
+    logger.warn(
+      `Optional runtime plugin unavailable: ${packageName}`,
+      { error: error instanceof Error ? error.message : String(error) },
+      "AgentRuntimeManager",
+    );
+    return null;
+  }
+}
 
 /** Pending runtime creation promises to prevent race conditions */
 const pendingRuntimePromises = new Map<string, Promise<AgentRuntime>>();
@@ -1091,6 +1105,12 @@ export class AgentRuntimeManager {
     const hasOpenAIAccess = !!(
       process.env.OPENAI_API_KEY || process.env.ELIZACLOUD_API_KEY
     );
+    const anthropicPlugin = process.env.ANTHROPIC_API_KEY
+      ? await loadOptionalPlugin("@elizaos/plugin-anthropic")
+      : null;
+    const openaiPlugin = hasOpenAIAccess
+      ? await loadOptionalPlugin("@elizaos/plugin-openai")
+      : null;
 
     // Create runtime with groq, experience, trajectory logger, and agent core plugins
     // Type cast plugins to ensure compatibility across different @elizaos/core versions
@@ -1100,8 +1120,8 @@ export class AgentRuntimeManager {
       trajectoryLoggerPlugin as Plugin,
       // Conditionally add LLM plugins based on available API keys
       ...(hasGroqAccess ? [groqPlugin as Plugin] : []),
-      ...(process.env.ANTHROPIC_API_KEY ? [anthropicPlugin as Plugin] : []),
-      ...(hasOpenAIAccess ? [openaiPlugin as Plugin] : []),
+      ...(anthropicPlugin ? [anthropicPlugin] : []),
+      ...(openaiPlugin ? [openaiPlugin] : []),
     ];
 
     const runtimeConfig = {
@@ -1436,16 +1456,22 @@ export class AgentRuntimeManager {
     const hasOpenAIAccess = !!(
       process.env.OPENAI_API_KEY || process.env.ELIZACLOUD_API_KEY
     );
+    const anthropicPlugin =
+      !isNpc && process.env.ANTHROPIC_API_KEY
+        ? await loadOptionalPlugin("@elizaos/plugin-anthropic")
+        : null;
+    const openaiPlugin =
+      !isNpc && hasOpenAIAccess
+        ? await loadOptionalPlugin("@elizaos/plugin-openai")
+        : null;
     const plugins: Plugin[] = [
       agentCorePlugin as Plugin,
       trajectoryLoggerPlugin as Plugin,
       // GROQ (or ElizaCloud) is always available for NPCs
       ...(hasGroqAccess ? [groqPlugin as Plugin] : []),
       // Only load Anthropic/OpenAI for non-NPC agents to avoid validation spam
-      ...(!isNpc && process.env.ANTHROPIC_API_KEY
-        ? [anthropicPlugin as Plugin]
-        : []),
-      ...(!isNpc && hasOpenAIAccess ? [openaiPlugin as Plugin] : []),
+      ...(anthropicPlugin ? [anthropicPlugin] : []),
+      ...(openaiPlugin ? [openaiPlugin] : []),
     ];
 
     const runtimeConfig = {
@@ -1702,11 +1728,14 @@ export class AgentRuntimeManager {
     const hasGroqAccessCoordinator = !!(
       process.env.GROQ_API_KEY || process.env.ELIZACLOUD_API_KEY
     );
+    const anthropicPlugin = process.env.ANTHROPIC_API_KEY
+      ? await loadOptionalPlugin("@elizaos/plugin-anthropic")
+      : null;
     const plugins: Plugin[] = [
       userCorePlugin as Plugin, // Limited actions for coordinator
       trajectoryLoggerPlugin as Plugin,
       ...(hasGroqAccessCoordinator ? [groqPlugin as Plugin] : []),
-      ...(process.env.ANTHROPIC_API_KEY ? [anthropicPlugin as Plugin] : []),
+      ...(anthropicPlugin ? [anthropicPlugin] : []),
     ];
 
     const runtimeConfig = {

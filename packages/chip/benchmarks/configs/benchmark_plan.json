@@ -204,6 +204,9 @@
         "min_observed_tops",
         "max_observed_tops",
         "min_utilization_percent",
+        "total_descriptors_required",
+        "max_descriptor_queue_passes",
+        "total_dma_beats",
         "process_corner_count",
         "worst_process_corner_min_observed_tops"
       ],
@@ -229,6 +232,9 @@
         "min_observed_tops",
         "max_observed_tops",
         "min_utilization_percent",
+        "total_descriptors_required",
+        "max_descriptor_queue_passes",
+        "total_dma_beats",
         "process_corner_count",
         "worst_process_corner_min_observed_tops"
       ],

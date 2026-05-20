@@ -1,4 +1,5 @@
 import argparse
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -9,7 +10,25 @@ parser = argparse.ArgumentParser()
 parser.add_argument(
     "--release", action="store_true", help="fail on fabrication/tapeout release blockers"
 )
+parser.add_argument(
+    "--json",
+    action="store_true",
+    help="also print the final machine-readable product status report",
+)
 args = parser.parse_args()
+
+REPORT = Path("build/reports/product_release_status.json")
+
+
+def write_report(report: dict) -> None:
+    REPORT.parent.mkdir(parents=True, exist_ok=True)
+    REPORT.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def emit_json(report: dict) -> None:
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+
 
 required = [
     "package/e1-demo-pinout.yaml",
@@ -27,6 +46,8 @@ required = [
     "board/fpga/e1_demo_fpga.yaml",
     "board/fpga/constraints/e1_demo_ulx3s.lpf",
     "board/kicad/e1-demo/artifact-manifest.yaml",
+    "board/kicad/e1-phone/artifact-manifest.yaml",
+    "board/kicad/e1-phone/routed-release-plan.yaml",
     "docs/board/kicad/e1-demo/fab-notes.md",
     "docs/fw/board-smoke/tests/smoke_plan.md",
     "docs/manufacturing/e1-demo-checklist.md",
@@ -135,7 +156,7 @@ if manufacturing_release.returncode != 0:
         "run scripts/check_manufacturing_artifacts.py --release for details"
     )
 
-release_check_outputs: list[tuple[str, str, str]] = []
+release_check_outputs: list[tuple[str, int, str, str]] = []
 for release_check in [
     "scripts/check_package_cross_probe.py",
     "scripts/check_kicad_artifacts.py",
@@ -151,14 +172,59 @@ for release_check in [
     )
     if result.returncode != 0:
         release_blockers.append(f"{release_check} --release failed")
-        release_check_outputs.append((release_check, result.stdout, result.stderr))
+        release_check_outputs.append(
+            (release_check, result.returncode, result.stdout, result.stderr)
+        )
 
 if release_blockers:
+    report = {
+        "schema": "eliza.product_release_status.v1",
+        "status": "blocked",
+        "release_mode": args.release,
+        "claim_boundary": "product/package/board/PD scaffold only; not fabrication, bitstream, tapeout, or manufacturing release evidence",
+        "release_blockers": release_blockers,
+        "detail_checks": {
+            "pd_signoff": {
+                "command": [sys.executable, "scripts/check_pd_signoff.py"],
+                "returncode": pd_signoff.returncode,
+                "stdout": pd_signoff.stdout,
+                "stderr": pd_signoff.stderr,
+            },
+            "manufacturing_release": {
+                "command": [
+                    sys.executable,
+                    "scripts/check_manufacturing_artifacts.py",
+                    "--release",
+                ],
+                "returncode": manufacturing_release.returncode,
+                "stdout": manufacturing_release.stdout,
+                "stderr": manufacturing_release.stderr,
+            },
+            "release_checks": [
+                {
+                    "command": [sys.executable, release_check, "--release"],
+                    "returncode": returncode,
+                    "script": release_check,
+                    "stdout": stdout,
+                    "stderr": stderr,
+                }
+                for release_check, returncode, stdout, stderr in release_check_outputs
+            ],
+        },
+        "next_step": "close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication",
+    }
+    write_report(report)
     if not args.release:
+        emit_json(report)
+        if args.json:
+            raise SystemExit(0)
         print("product scaffold check ok; release blockers remain documented")
         print("run `make product-release-check` for fail-closed fabrication/tapeout gating")
         raise SystemExit(0)
 
+    emit_json(report)
+    if args.json:
+        raise SystemExit(1)
     print("product release check failed:")
     for blocker in release_blockers:
         print(f"  - {blocker}")
@@ -172,7 +238,7 @@ if release_blockers:
         print(manufacturing_release.stdout.rstrip())
     if manufacturing_release.stderr:
         print(manufacturing_release.stderr.rstrip(), file=sys.stderr)
-    for release_check, stdout, stderr in release_check_outputs:
+    for release_check, _returncode, stdout, stderr in release_check_outputs:
         if stdout:
             print(f"\n{release_check} detail:")
             print(stdout.rstrip())
@@ -180,4 +246,15 @@ if release_blockers:
             print(stderr.rstrip(), file=sys.stderr)
     raise SystemExit(1)
 
+report = {
+    "schema": "eliza.product_release_status.v1",
+    "status": "pass",
+    "release_mode": args.release,
+    "claim_boundary": "all configured product/package/board/PD release checks passed",
+    "release_blockers": [],
+    "detail_checks": {},
+    "next_step": "none",
+}
+write_report(report)
+emit_json(report)
 print("product release check ok")

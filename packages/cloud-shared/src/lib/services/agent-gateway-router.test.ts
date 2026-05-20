@@ -100,8 +100,28 @@ mock.module("../../db/schemas", () => ({
     created_at: "created_at",
   },
   appRequests: {},
+  appAnalytics: {},
+  apps: {},
   appUsers: {},
+  adminUsers: {},
+  containers: {},
+  conversations: {},
+  elizaRoomCharactersTable: {},
+  invoices: {},
+  mcpPricingTypeEnum: {},
+  mcpStatusEnum: {},
+  mcpUsage: {},
+  moderationViolations: {},
+  organizationEncryptionKeys: {},
+  organizations: {},
   phoneGatewayDevices: {},
+  userCharacters: {},
+  userMcps: {},
+  userModerationStatus: {},
+  users: {},
+  vertexModelAssignments: {},
+  vertexTunedModels: {},
+  vertexTuningJobs: {},
 }));
 
 mock.module("./agent-gateway-relay", () => ({
@@ -117,10 +137,6 @@ mock.module("./eliza-sandbox", () => ({
   },
 }));
 
-mock.module("./eliza-app/onboarding-chat", () => ({
-  runOnboardingChat,
-}));
-
 mock.module("./eliza-agent-config", () => ({
   readManagedAgentDiscordBinding: mock(() => null),
   readManagedAgentDiscordGateway: mock(() => null),
@@ -129,7 +145,7 @@ mock.module("./eliza-agent-config", () => ({
 const { AgentGatewayRouterService } = await import("./agent-gateway-router");
 
 function newRouter() {
-  return new AgentGatewayRouterService();
+  return new AgentGatewayRouterService({ runOnboardingChat });
 }
 
 function routeArgs(overrides: Record<string, unknown> = {}) {

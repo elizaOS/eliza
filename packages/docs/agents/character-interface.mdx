@@ -431,7 +431,7 @@ const character: Character = {
     "Our main product is an AI agent framework",
     
     // File references
-    { path: "./docs/api-reference.md" },
+    { path: "./docs/cli/overview.md" },
     { path: "./docs/tutorials/" },  // Directory
   ],
 };
@@ -448,7 +448,7 @@ character = Character(
         "Our main product is an AI agent framework",
         
         # File references
-        {"path": "./docs/api-reference.md"},
+        {"path": "./docs/cli/overview.md"},
         {"path": "./docs/tutorials/"},  # Directory
     ],
 )
@@ -462,7 +462,7 @@ let character = parse_character(r#"{
     "knowledge": [
         "The company was founded in 2020",
         "Our main product is an AI agent framework",
-        {"path": "./docs/api-reference.md"}
+        {"path": "./docs/cli/overview.md"}
     ]
 }"#)?;
 ```
@@ -831,7 +831,7 @@ runtime.initialize().await?;
   <Card title="Memory & State" icon="database" href="/agents/memory-and-state">
     How agents remember and learn
   </Card>
-  <Card title="Examples" icon="code" href="/examples-gallery">
+  <Card title="Examples" icon="code" href="/tracks/overview">
     Working code in all languages
   </Card>
 </CardGroup>

@@ -1,0 +1,63 @@
+{
+  "checkpoint": "checkpoints/text_conditioned_brax_v1",
+  "host": "192.168.1.218:9090",
+  "policy_hz": 8.0,
+  "episode_s": 3.0,
+  "mirror_period_s": 0.05,
+  "n_prompts": 5,
+  "pass_count": 5,
+  "fail_count": 0,
+  "per_prompt": [
+    {
+      "prompt": "stand still",
+      "duration_s": 203.79,
+      "samples": 1,
+      "mean_rms_mrad": 0.0,
+      "median_rms_mrad": 0.0,
+      "p95_rms_mrad": 0.0,
+      "max_rms_mrad": 0.0,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "walk forward",
+      "duration_s": 7.9,
+      "samples": 30,
+      "mean_rms_mrad": 6.825370884977148,
+      "median_rms_mrad": 6.287488685773328,
+      "p95_rms_mrad": 15.860919319169726,
+      "max_rms_mrad": 19.929050273960073,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "turn left",
+      "duration_s": 7.19,
+      "samples": 30,
+      "mean_rms_mrad": 6.806767586610225,
+      "median_rms_mrad": 3.521945733238365,
+      "p95_rms_mrad": 17.697225359714263,
+      "max_rms_mrad": 21.16394586413749,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "turn right",
+      "duration_s": 7.17,
+      "samples": 30,
+      "mean_rms_mrad": 9.260182181953006,
+      "median_rms_mrad": 12.119748802643876,
+      "p95_rms_mrad": 19.072707002900465,
+      "max_rms_mrad": 20.835587513926807,
+      "verdict": "PASS"
+    },
+    {
+      "prompt": "wave hello",
+      "duration_s": 8.17,
+      "samples": 30,
+      "mean_rms_mrad": 5.030489681307316,
+      "median_rms_mrad": 3.0630100041160073,
+      "p95_rms_mrad": 17.35245356607864,
+      "max_rms_mrad": 17.806645280806425,
+      "verdict": "PASS"
+    }
+  ],
+  "aggregate_mean_rms_mrad": 5.584562066969539
+}

@@ -42,9 +42,12 @@ def _good_iso_sha256() -> str:
 def _good_transcript() -> str:
     return (
         "OpenSBI v1.4\n"
+        "GNU GRUB  version 2.12\n"
+        "Booting `elizaOS Live (RISC-V 64)'\n"
+        "EFI stub: Booting Linux Kernel\n"
         "Linux version 6.7 (riscv64)\n"
         "systemd[1]: Reached target Multi-User System.\n"
-        "elizaos-firstboot[123]: agent up; emitting marker\n"
+        "elizaos-firstboot[123]: first boot complete; emitting marker\n"
         f"elizaos-firstboot[123]: {gate.REQUIRED_TRANSCRIPT_MARKER}\n"
         "login: \n"
     )
@@ -64,7 +67,26 @@ def _good_evidence(iso_path: Path, transcript_path: Path) -> dict:
     }
 
 
-def _good_manifest(*, evidence_path: str, iso_filename: str = ISO_FILENAME) -> dict:
+def _good_grub_evidence(iso_path: Path, transcript_path: Path) -> dict:
+    return {
+        "schema": "eliza.os.linux.grub_efi_riscv64_boot.v1",
+        "claim_boundary": "grub_efi_riscv64_boot_transcript_evidence_only_no_silicon_or_physical_board_claim",
+        "iso_path": str(iso_path),
+        "iso_sha256": _good_iso_sha256(),
+        "transcript_path": str(transcript_path),
+        "transcript_sha256": hashlib.sha256(_good_transcript().encode()).hexdigest(),
+        "boot_completed": True,
+        "grub_markers": list(gate.GRUB_TRANSCRIPT_MARKERS),
+        "provenance": "qemu_virt_transcript",
+    }
+
+
+def _good_manifest(
+    *,
+    evidence_path: str,
+    grub_evidence_path: str,
+    iso_filename: str = ISO_FILENAME,
+) -> dict:
     return {
         "id": "elizaos-debian-riscv64-live",
         "kind": "raw-image",
@@ -91,22 +113,22 @@ def _good_manifest(*, evidence_path: str, iso_filename: str = ISO_FILENAME) -> d
                     "notes": "qemu-virt boot transcript captured.",
                 },
                 {
-                    "id": "u-boot-extlinux-boot",
-                    "status": "collected",
-                    "path": "evidence/u-boot-extlinux-boot.json",
-                    "notes": "U-Boot extlinux boot captured.",
-                },
-                {
                     "id": "grub-efi-riscv64-boot",
                     "status": "collected",
-                    "path": "evidence/grub-efi-riscv64-boot.json",
+                    "path": grub_evidence_path,
                     "notes": "GRUB EFI boot captured.",
                 },
                 {
+                    "id": "u-boot-extlinux-boot",
+                    "status": "not-required",
+                    "path": None,
+                    "notes": "U-Boot extlinux boot is not required for this fixture.",
+                },
+                {
                     "id": "hardware-board-boot",
-                    "status": "collected",
-                    "path": "evidence/hardware-board-boot.json",
-                    "notes": "Hardware board boot captured.",
+                    "status": "not-required",
+                    "path": None,
+                    "notes": "Hardware board boot is not required for this fixture.",
                 },
             ],
         },
@@ -128,8 +150,14 @@ class _Sandbox:
         self.evidence_path = self.tmpdir / "evidence" / "qemu_virt_boot.json"
         self.evidence_payload = _good_evidence(self.iso_path, self.transcript_path)
         self.evidence_path.write_text(json.dumps(self.evidence_payload))
+        self.grub_evidence_path = self.tmpdir / "evidence" / "grub_efi_riscv64_boot.json"
+        self.grub_evidence_payload = _good_grub_evidence(
+            self.iso_path, self.transcript_path
+        )
+        self.grub_evidence_path.write_text(json.dumps(self.grub_evidence_payload))
         self.manifest_payload = _good_manifest(
-            evidence_path=str(self.evidence_path.relative_to(self.tmpdir))
+            evidence_path=str(self.evidence_path.relative_to(self.tmpdir)),
+            grub_evidence_path=str(self.grub_evidence_path.relative_to(self.tmpdir)),
         )
         self.manifest_path = self.tmpdir / "manifest.json"
         self.manifest_path.write_text(json.dumps(self.manifest_payload))
@@ -148,6 +176,9 @@ class _Sandbox:
 
     def remove_evidence(self) -> None:
         self.evidence_path.unlink(missing_ok=True)
+
+    def remove_grub_evidence(self) -> None:
+        self.grub_evidence_path.unlink(missing_ok=True)
 
 
 def _run(sandbox: _Sandbox) -> tuple[gate.Status, list[gate.GateResult]]:
@@ -184,6 +215,15 @@ class FixedPathTests(unittest.TestCase):
             msg=[(r.status, r.message) for r in results],
         )
 
+    def test_missing_grub_evidence_file_blocks(self) -> None:
+        self.sandbox.remove_grub_evidence()
+        status, results = _run(self.sandbox)
+        self.assertEqual(status, "BLOCKED")
+        self.assertTrue(
+            any("grub_efi_riscv64_boot.json" in r.message for r in results),
+            msg=[(r.status, r.message) for r in results],
+        )
+
     def test_iso_sha256_mismatch_fails(self) -> None:
         payload = dict(self.sandbox.manifest_payload)
         payload["sha256"] = "1" * 64
@@ -212,6 +252,17 @@ class FixedPathTests(unittest.TestCase):
             msg=[(r.status, r.message) for r in results],
         )
 
+    def test_missing_grub_marker_fails(self) -> None:
+        self.sandbox.transcript_path.write_text(
+            _good_transcript().replace("GNU GRUB", "")
+        )
+        status, results = _run(self.sandbox)
+        self.assertEqual(status, "FAIL")
+        self.assertTrue(
+            any("GRUB transcript missing required marker" in r.message for r in results),
+            msg=[(r.status, r.message) for r in results],
+        )
+
     def test_planned_status_blocks_not_fails(self) -> None:
         payload = dict(self.sandbox.manifest_payload)
         payload["status"] = "planned"
@@ -230,7 +281,7 @@ class FixedPathTests(unittest.TestCase):
         self.sandbox.write_manifest(payload)
         status, results = _run(self.sandbox)
         self.assertEqual(status, "FAIL")
-        self.assertTrue(any("u-boot-extlinux-boot" in r.message for r in results))
+        self.assertTrue(any("grub-efi-riscv64-boot" in r.message for r in results))
 
     def test_required_evidence_id_missing_fails(self) -> None:
         payload = dict(self.sandbox.manifest_payload)
@@ -248,7 +299,7 @@ class FixedPathTests(unittest.TestCase):
         payload["validation"]["evidence"] = [
             row
             for row in payload["validation"]["evidence"]
-            if row["id"] != "hardware-board-boot"
+            if row["id"] != "grub-efi-riscv64-boot"
         ]
         self.sandbox.write_manifest(payload)
         status, _results = _run(self.sandbox)
@@ -343,7 +394,7 @@ class MutationFuzz(unittest.TestCase):
     def test_promoted_with_uncollected_row_fails(self, bad_status: str) -> None:
         payload = json.loads(json.dumps(self.sandbox.manifest_payload))
         payload["status"] = "candidate"
-        payload["validation"]["evidence"][2]["status"] = bad_status
+        payload["validation"]["evidence"][1]["status"] = bad_status
         self.sandbox.write_manifest(payload)
         status, results = _run(self.sandbox)
         self.assertEqual(status, "FAIL", msg=[(r.status, r.message) for r in results])

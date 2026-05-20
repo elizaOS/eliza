@@ -38,7 +38,7 @@ module ittage
     input  logic                upd_misp,
     input  logic [$clog2(ITTAGE_TABLES+1)-1:0] upd_provider
 );
-    localparam int unsigned ITTAGE_ENTRIES_MAX = 512;
+    localparam int unsigned ITTAGE_ENTRIES_MAX = 1024;
     localparam int unsigned ITT_IDX_W = $clog2(ITTAGE_ENTRIES_MAX);
 
     typedef struct packed {
@@ -126,6 +126,41 @@ module ittage
     // -----------------------------------------------------------------------
     // Update path
     // -----------------------------------------------------------------------
+    // Allocates at most one table entry per misprediction, matching the
+    // software branch-predictor model's first-empty-table policy.
+    logic [ITT_IDX_W-1:0]     upd_idx_per_tab [ITTAGE_TABLES];
+    logic [ITTAGE_TAG_W-1:0]  upd_tag_per_tab [ITTAGE_TABLES];
+    logic [ITTAGE_TABLES-1:0] alloc_candidate;
+    logic [ITTAGE_TABLES-1:0] alloc_grant;
+    int unsigned              upd_prov;
+
+    always_comb begin
+        upd_prov = {{(32-$bits(upd_provider)){1'b0}}, upd_provider};
+        for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+            upd_idx_per_tab[t] = index_hash(t, upd_pc, upd_hist);
+            upd_tag_per_tab[t] = tag_hash(t, upd_pc, upd_hist);
+        end
+        // Build per-table allocation eligibility. Only an empty slot in a
+        // table whose rank is >= upd_prov qualifies; the model uses the
+        // same gate (`idx not in self.storage[higher]`).
+        alloc_candidate = '0;
+        for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+            if (t >= upd_prov &&
+                !storage_q[t][upd_idx_per_tab[t]].valid) begin
+                alloc_candidate[t] = 1'b1;
+            end
+        end
+        // Priority encoder: grant the lowest-index candidate that is
+        // eligible. This matches the model's "first empty wins" policy
+        // and serializes allocation to a single table per misprediction.
+        alloc_grant = '0;
+        for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
+            if (alloc_candidate[t] && (alloc_grant == '0)) begin
+                alloc_grant[t] = 1'b1;
+            end
+        end
+    end
+
     always_ff @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
             for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
@@ -140,10 +175,9 @@ module ittage
             // decremented and on saturation the table is invalidated so the
             // allocator can try a longer-history table.
             for (int unsigned t = 0; t < ITTAGE_TABLES; t++) begin
-                automatic logic [ITT_IDX_W-1:0] idx = index_hash(t, upd_pc, upd_hist);
-                automatic logic [ITTAGE_TAG_W-1:0] tag = tag_hash(t, upd_pc, upd_hist);
-                automatic int unsigned prov = {{(32-$bits(upd_provider)){1'b0}}, upd_provider};
-                if (prov == t + 1) begin
+                automatic logic [ITT_IDX_W-1:0]    idx = upd_idx_per_tab[t];
+                automatic logic [ITTAGE_TAG_W-1:0] tag = upd_tag_per_tab[t];
+                if (upd_prov == t + 1) begin
                     if (storage_q[t][idx].valid && storage_q[t][idx].tag == tag) begin
                         if (storage_q[t][idx].target == upd_target) begin
                             if (storage_q[t][idx].ctr != {ITTAGE_CTR_W{1'b1}})
@@ -158,19 +192,15 @@ module ittage
                         end
                     end
                 end
-                // Allocation: on misprediction, allocate a longer-history
-                // table that currently misses and has useful==0.
-                if (upd_misp && (t + 1 > prov)) begin
-                    if (!(storage_q[t][idx].valid && storage_q[t][idx].tag == tag) &&
-                        storage_q[t][idx].useful == '0) begin
-                        storage_q[t][idx] <= '{
-                            valid:  1'b1,
-                            tag:    tag,
-                            target: upd_target,
-                            ctr:    {1'b1, {(ITTAGE_CTR_W-1){1'b0}}},
-                            useful: '0
-                        };
-                    end
+                // Single-shot allocation on misprediction.
+                if (upd_misp && alloc_grant[t]) begin
+                    storage_q[t][idx] <= '{
+                        valid:  1'b1,
+                        tag:    tag,
+                        target: upd_target,
+                        ctr:    {1'b1, {(ITTAGE_CTR_W-1){1'b0}}},
+                        useful: '0
+                    };
                 end
             end
         end

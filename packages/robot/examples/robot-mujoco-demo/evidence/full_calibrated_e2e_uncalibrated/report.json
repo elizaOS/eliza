@@ -4,37 +4,42 @@
   "host": "192.168.1.218:9090",
   "policy_hz": 8.0,
   "episode_s": 4.0,
+  "calibrated_joints": [],
   "prompts": [
     {
       "prompt": "stand still",
-      "duration_s": 17.06,
+      "duration_s": 13.88,
       "matched_task": "stand_up",
       "similarity": 0.711,
       "steps_completed": 32
     },
     {
       "prompt": "wave hello",
-      "duration_s": 9.9,
+      "duration_s": 9.34,
       "matched_task": "wave_right",
       "similarity": 0.714,
       "steps_completed": 32
     },
     {
       "prompt": "turn left",
-      "duration_s": 9.48,
+      "duration_s": 9.65,
       "matched_task": "turn_left",
       "similarity": 0.826,
       "steps_completed": 32
     },
     {
       "prompt": "walk forward",
-      "duration_s": 10.58,
+      "duration_s": 9.46,
       "matched_task": "walk_forward",
       "similarity": 0.751,
       "steps_completed": 32
     }
   ],
   "divergence_samples": 4,
-  "divergence_mean_rms_mrad": 265.37636414933223,
-  "divergence_max_rms_mrad": 541.7974938264911
+  "divergence_mean_rms_mrad_all": 264.12752982023915,
+  "divergence_max_rms_mrad_all": 537.4060746617341,
+  "divergence_mean_rms_mrad_calibrated_joints_only": null,
+  "divergence_max_rms_mrad_calibrated_joints_only": null,
+  "divergence_mean_rms_mrad": 264.12752982023915,
+  "divergence_max_rms_mrad": 537.4060746617341
 }

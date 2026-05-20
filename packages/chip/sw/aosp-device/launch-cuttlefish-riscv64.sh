@@ -21,15 +21,20 @@ Cuttlefish riscv64 instance, and polls until the guest reports
 sys.boot_completed=1.
 
 options:
-  --clean                 stop_cvd + pkill crosvm + rm -rf ~/cuttlefish_runtime
+  --clean                 stop any running Cuttlefish instance and rm ~/cuttlefish_runtime
   --cpus=N                guest vCPU count (default: 8)
   --memory-mb=N           guest RAM in MiB (default: 12288)
   --gpu-mode=MODE         launch_cvd --gpu_mode (default: none;
                           use guest_swiftshader for home-screen boots)
+  --base-instance-num=N   first Cuttlefish instance number (default: 1)
   --boot-timeout-seconds=N
                           max wait for sys.boot_completed=1 (default: 1800)
   --launcher=PATH         override launch_cvd binary (default: auto-discover
-                          launch_cvd then cvd start)
+                          launch_cvd then cvd create)
+  --host-path=PATH        Cuttlefish host tools directory (default: auto-detect
+                          from /usr/lib/cuttlefish-common/bin or ANDROID_HOST_OUT)
+  --product-path=PATH     AOSP product images directory (default: $ANDROID_PRODUCT_OUT
+                          or <aosp>/out/target/product/eliza_ai_soc)
   --aosp=PATH             optional AOSP tree; if provided, build/envsetup.sh
                           will be sourced so launch_cvd and adb are on PATH
   --help                  this message
@@ -46,8 +51,11 @@ clean=0
 cpus=8
 memory_mb=12288
 gpu_mode=none
+base_instance_num=1
 boot_timeout_seconds=1800
 launcher=
+host_path=
+product_path=
 aosp=
 
 while [ "$#" -gt 0 ]; do
@@ -68,12 +76,24 @@ while [ "$#" -gt 0 ]; do
 			gpu_mode=${1#*=}
 			shift
 			;;
+		--base-instance-num=*)
+			base_instance_num=${1#*=}
+			shift
+			;;
 		--boot-timeout-seconds=*)
 			boot_timeout_seconds=${1#*=}
 			shift
 			;;
 		--launcher=*)
 			launcher=${1#*=}
+			shift
+			;;
+		--host-path=*)
+			host_path=${1#*=}
+			shift
+			;;
+		--product-path=*)
+			product_path=${1#*=}
 			shift
 			;;
 		--aosp=*)
@@ -94,6 +114,7 @@ done
 
 case "$cpus" in *[!0-9]*|"") echo "error: --cpus must be a positive integer" >&2; exit 2;; esac
 case "$memory_mb" in *[!0-9]*|"") echo "error: --memory-mb must be a positive integer" >&2; exit 2;; esac
+case "$base_instance_num" in *[!0-9]*|"") echo "error: --base-instance-num must be a positive integer" >&2; exit 2;; esac
 case "$boot_timeout_seconds" in *[!0-9]*|"") echo "error: --boot-timeout-seconds must be a positive integer" >&2; exit 2;; esac
 
 log() {
@@ -109,8 +130,14 @@ if [ -n "$aosp" ]; then
 	if [ ! -f "$aosp/build/envsetup.sh" ]; then
 		fail "--aosp=$aosp is not an AOSP checkout (missing build/envsetup.sh)"
 	fi
+	# envsetup.sh references $TOP which may be unset; temporarily relax nounset.
+	set +u
+	old_pwd=$(pwd)
+	cd "$aosp"
 	# shellcheck disable=SC1091
-	. "$aosp/build/envsetup.sh"
+	. build/envsetup.sh
+	cd "$old_pwd"
+	set -u
 fi
 
 log "preflight: host checks"
@@ -133,11 +160,18 @@ if [ -n "$missing_groups" ]; then
 	fail "user '$USER' is not in required groups:$missing_groups; sudo usermod -aG kvm,cvdnetwork,render \"$USER\" then re-login"
 fi
 
+if [ -n "$host_path" ]; then
+	host_qemu=$(find "$host_path/bin" -mindepth 3 -maxdepth 3 -path '*/qemu/qemu-system-riscv64' \( -type f -o -type l \) -print -quit 2>/dev/null || true)
+	if [ -n "$host_qemu" ]; then
+		PATH="$(dirname "$host_qemu"):$PATH"
+		export PATH
+	fi
+fi
 if ! command -v qemu-system-riscv64 >/dev/null 2>&1; then
 	fail "qemu-system-riscv64 not on PATH; install QEMU >= 9.2 (Cuttlefish riscv64 uses TCG, not KVM)"
 fi
 qemu_version_line=$(qemu-system-riscv64 --version | head -n1)
-qemu_version=$(printf '%s\n' "$qemu_version_line" | sed -n 's/^QEMU emulator version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
+qemu_version=$(printf '%s\n' "$qemu_version_line" | sed -n 's/^.*QEMU emulator version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p')
 if [ -z "$qemu_version" ]; then
 	fail "could not parse qemu-system-riscv64 version from: $qemu_version_line"
 fi
@@ -150,32 +184,85 @@ fi
 log "preflight: qemu-system-riscv64 $qemu_version"
 
 if [ "$clean" -eq 1 ]; then
-	log "cleanup: stop_cvd and stale crosvm + ~/cuttlefish_runtime"
-	stop_cvd >/dev/null 2>&1 || true
+	log "cleanup: stop any running Cuttlefish instances + ~/cuttlefish_runtime"
+	cvd reset -y >/dev/null 2>&1 || stop_cvd >/dev/null 2>&1 || true
 	pkill -f crosvm >/dev/null 2>&1 || true
 	rm -rf "$HOME/cuttlefish_runtime"
 fi
 
 if [ -z "$launcher" ]; then
-	if command -v launch_cvd >/dev/null 2>&1; then
-		launcher=launch_cvd
-	elif command -v cvd >/dev/null 2>&1; then
+	# Prefer the system cvd binary (supports cvd create) over the launch_cvd
+	# shim wrapper. The wrapper delegates to cvd start which requires a
+	# pre-existing device group, whereas cvd create creates and starts one.
+	if command -v cvd >/dev/null 2>&1; then
 		launcher=cvd
+	elif command -v launch_cvd >/dev/null 2>&1; then
+		launcher=launch_cvd
 	else
-		fail "neither launch_cvd nor cvd is on PATH; pass --aosp=/path/to/aosp or source build/envsetup.sh first"
+		fail "neither cvd nor launch_cvd is on PATH; pass --aosp=/path/to/aosp or source build/envsetup.sh first"
+	fi
+fi
+
+# Auto-detect host_path and product_path for the system cvd.
+# cvd create --host_path expects the parent of the bin/ directory, i.e. it
+# appends /bin/ internally. For the system package /usr/lib/cuttlefish-common,
+# the binaries live in /usr/lib/cuttlefish-common/bin/ so we pass the parent.
+# For an AOSP-built host out (ANDROID_HOST_OUT), the binaries are directly in
+# ANDROID_HOST_OUT/bin/ so we pass ANDROID_HOST_OUT (no extra /bin stripping).
+if [ "$launcher" = cvd ]; then
+	if [ -z "$host_path" ]; then
+		if [ -d /usr/lib/cuttlefish-common/bin ]; then
+			host_path=/usr/lib/cuttlefish-common
+		elif [ -n "${ANDROID_HOST_OUT:-}" ] && [ -d "$ANDROID_HOST_OUT/bin" ]; then
+			host_path=$ANDROID_HOST_OUT
+		fi
+	elif [ "$host_path" = /usr/lib/cuttlefish-common/bin ]; then
+		# Caller passed the old canonical path with trailing /bin; strip it.
+		host_path=/usr/lib/cuttlefish-common
+	fi
+	if [ -z "$product_path" ]; then
+		if [ -n "${ANDROID_PRODUCT_OUT:-}" ] && [ -d "$ANDROID_PRODUCT_OUT" ]; then
+			product_path=$ANDROID_PRODUCT_OUT
+		elif [ -n "$aosp" ]; then
+			product_path="$aosp/out/target/product/eliza_ai_soc"
+		fi
 	fi
 fi
 
 log "launcher: $launcher"
-log "launch: --cpus=$cpus --memory_mb=$memory_mb --gpu_mode=$gpu_mode"
+log "launch: --cpus=$cpus --memory_mb=$memory_mb --gpu_mode=$gpu_mode --base_instance_num=$base_instance_num"
+[ -n "$host_path" ] && log "host_path: $host_path"
+[ -n "$product_path" ] && log "product_path: $product_path"
+if [ -n "$host_path" ] && ! find "$host_path/usr/share/qemu" -path '*/efi-virtio.rom' -type f -print -quit 2>/dev/null | grep -q .; then
+	fail "Cuttlefish host tools under $host_path are missing efi-virtio.rom; install/stage ipxe-qemu-256k-compat-efi-roms into the host tools qemu data directory"
+fi
+if [ -n "$host_path" ] && ! find "$host_path/usr/share/qemu" -name 'opensbi-riscv64-generic-fw_dynamic.bin' -type f -print -quit 2>/dev/null | grep -q .; then
+	fail "Cuttlefish host tools under $host_path are missing opensbi-riscv64-generic-fw_dynamic.bin; install/stage the opensbi generic riscv64 fw_dynamic.bin under that QEMU data filename"
+fi
 
 if [ "$launcher" = cvd ]; then
-	cvd start \
+	cvd_host_arg=
+	cvd_product_arg=
+	[ -n "$host_path" ] && cvd_host_arg="--host_path=$host_path"
+	[ -n "$product_path" ] && cvd_product_arg="--product_path=$product_path"
+	# cvd create creates a new device group and starts it; unlike the legacy
+	# launch_cvd, it requires host_path when run outside an AOSP build environment.
+	# shellcheck disable=SC2086
+	cvd create \
+		${cvd_host_arg:+$cvd_host_arg} \
+		${cvd_product_arg:+$cvd_product_arg} \
 		--cpus="$cpus" \
 		--memory_mb="$memory_mb" \
 		--gpu_mode="$gpu_mode" \
+		--base_instance_num="$base_instance_num" \
+		--boot_slot=a \
 		--start_webrtc=false \
-		--vnc_server_port=0 \
+		--netsim=false \
+		--enable_wifi=false \
+		--enable_tap_devices=false \
+		--noresume \
+		--data_policy=always_create \
+		--nouse_sdcard \
 		--report_anonymous_usage_stats=n \
 		--daemon
 else
@@ -183,8 +270,15 @@ else
 		--cpus="$cpus" \
 		--memory_mb="$memory_mb" \
 		--gpu_mode="$gpu_mode" \
+		--base_instance_num="$base_instance_num" \
+		--boot_slot=a \
 		--start_webrtc=false \
-		--vnc_server_port=0 \
+		--netsim=false \
+		--enable_wifi=false \
+		--enable_tap_devices=false \
+		--noresume \
+		--data_policy=always_create \
+		--nouse_sdcard \
 		--report_anonymous_usage_stats=n \
 		--daemon
 fi

@@ -1,0 +1,10 @@
+sample_id,measurement_id,domain,unit,min,max,measured_value,pass,operator,notes
+,max_skin_temp_video_call_c,thermal,C,,43,,,,Worst-case video call or radio-active thermal soak at target ambient.
+,soc_shield_can_peak_temp_c,thermal,C,,85.0,,,,Peak shield-can temperature during sustained load.
+,cellular_desense_delta_db,rf,dB,,3.0,,,,"Cellular sensitivity delta with display, camera, and USB active."
+,wifi_bt_desense_delta_db,rf,dB,,3.0,,,,Wi-Fi/Bluetooth sensitivity delta with phone subsystems active.
+,sar_prescan_w_per_kg_1g,rf,W/kg,,1.6,,,,U.S. general-population candidate SAR pre-scan target; final limits depend on certified-region compliance plan.
+,drop_1m_functional_failures,drop,count,0.0,0.0,,,,Functional failures after 1 m corner/edge/face drop sequence.
+,drop_1m_crack_or_latch_release,drop,count,0.0,0.0,,,,"Orange shell cracks, snap release, screen lift, or glass crack after drop."
+,ip54_dust_ingress_functional_failures,ingress,count,0.0,0.0,,,,Functional failures after design-intent dust exposure.
+,ip54_splash_ingress_functional_failures,ingress,count,0.0,0.0,,,,Functional failures after design-intent splash exposure.

@@ -1,3 +1,4 @@
+import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {
   logger as coreLogger,
@@ -51,6 +52,22 @@ export class SessionCwdService extends Service {
     return this.cwdByConversation.get(conversationId) ?? this.defaultCwd();
   }
 
+  async getExistingCwd(conversationId: string | undefined): Promise<{
+    cwd: string;
+    previousCwd?: string;
+    reset: boolean;
+  }> {
+    const cwd = this.getCwd(conversationId);
+    if (await isDirectory(cwd)) {
+      return { cwd, reset: false };
+    }
+    const fallback = this.defaultCwd();
+    if (conversationId) {
+      this.cwdByConversation.set(conversationId, fallback);
+    }
+    return { cwd: fallback, previousCwd: cwd, reset: true };
+  }
+
   setCwd(conversationId: string, absPath: string): void {
     this.cwdByConversation.set(conversationId, path.resolve(absPath));
   }
@@ -75,5 +92,13 @@ export class SessionCwdService extends Service {
     else this.frames.set(conversationId, list);
     this.cwdByConversation.set(conversationId, frame.previousCwd);
     return { previousCwd: frame.previousCwd, entered: frame.entered };
+  }
+}
+
+async function isDirectory(absPath: string): Promise<boolean> {
+  try {
+    return (await fs.stat(absPath)).isDirectory();
+  } catch {
+    return false;
   }
 }

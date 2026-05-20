@@ -4,11 +4,11 @@ import { ArrowRight, Download } from "lucide-react";
 
 const appUrl = EXTERNAL_URLS.app;
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
-const checkoutBaseUrl = `${EXTERNAL_URLS.os}/checkout`;
+const checkoutPath = "/checkout";
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
 
 function productCheckoutUrl(sku: string) {
-  return `${checkoutBaseUrl}?sku=${sku}`;
+  return `${checkoutPath}?sku=${encodeURIComponent(sku)}`;
 }
 
 function ProductImage({
@@ -91,7 +91,7 @@ export function ProductDetail({ product }: { product: Product }) {
               </div>
               <div className="hero-actions">
                 <a href={productCheckoutUrl(product.sku)} className="button">
-                  Pre-order on elizaos.ai
+                  Pre-order checkout
                   <ArrowRight className="icon" />
                 </a>
                 <a href={betaManifestUrl} className="button button-dark">
@@ -99,7 +99,7 @@ export function ProductDetail({ product }: { product: Product }) {
                   <Download className="icon" />
                 </a>
               </div>
-              <p className="detail-note">Checkout stays on elizaos.ai.</p>
+              <p className="detail-note">Checkout stays on elizaOS.</p>
             </div>
             <ProductImage product={product} priority />
           </div>

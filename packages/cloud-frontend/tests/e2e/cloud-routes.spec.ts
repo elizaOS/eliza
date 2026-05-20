@@ -1,7 +1,7 @@
-import { expect, type Page, test } from "@playwright/test";
 import { readdirSync, statSync } from "node:fs";
 import pathModule from "node:path";
 import { fileURLToPath } from "node:url";
+import { expect, type Page, test } from "@playwright/test";
 
 // In live-prod mode the mocked-API specs do not apply (cookies are scoped to
 // 127.0.0.1, fixtures don't exist on real backends). Skip the whole file.
@@ -199,6 +199,14 @@ const dashboardRedirects: Array<[from: string, toPattern: RegExp]> = [
   ["/dashboard/video", /\/dashboard\/api-explorer$/],
   ["/dashboard/gallery", /\/dashboard\/api-explorer$/],
   ["/dashboard/voices", /\/dashboard\/api-explorer$/],
+];
+
+const publicRedirects: Array<[from: string, to: string, bodyText: string]> = [
+  [
+    "/checkout?collection=elizaos-hardware",
+    "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    "elizaOS checkout",
+  ],
 ];
 
 async function installApiMocks(page: Page) {
@@ -623,7 +631,9 @@ for (const route of publicRoutes) {
     // the global RootLayout <title> and trip the homepage-leak assertion).
     await page.goto(route, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toBeVisible();
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
 
@@ -658,7 +668,9 @@ for (const route of dashboardRoutes) {
     await page.goto(route);
     await expect(page.locator("body")).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
     assertNoFailures(route, captured);
@@ -681,6 +693,21 @@ for (const [from, toPattern] of dashboardRedirects) {
     await setTestAuth(page);
     await page.goto(from);
     await expect(page).toHaveURL(toPattern);
+  });
+}
+
+for (const [from, to, bodyText] of publicRedirects) {
+  test(`public redirect route: ${from}`, async ({ page }) => {
+    await page.route("https://elizaos.ai/**", (route) =>
+      route.fulfill({
+        body: `<html><body>${bodyText}</body></html>`,
+        contentType: "text/html",
+      }),
+    );
+
+    await page.goto(from);
+    await expect(page).toHaveURL(to);
+    await expect(page.getByText(bodyText)).toBeVisible();
   });
 }
 

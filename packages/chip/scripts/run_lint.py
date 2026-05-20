@@ -11,7 +11,16 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-EXCLUDED_DIRS = {".git", ".venv", "build", "external", "tools", ".claude", "__pycache__"}
+EXCLUDED_DIRS = {
+    ".git",
+    ".venv",
+    "build",
+    "external",
+    "tools",
+    ".tools",
+    ".claude",
+    "__pycache__",
+}
 
 
 def repo_files(*suffixes: str) -> list[Path]:

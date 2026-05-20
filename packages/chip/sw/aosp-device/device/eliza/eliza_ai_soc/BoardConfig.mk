@@ -16,9 +16,6 @@ TARGET_CPU_VARIANT := generic
 # simulator base.
 -include device/google/cuttlefish/vsoc_riscv64/BoardConfig.mk
 
-# Temporary workaround matching AOSP riscv64 targets while prebuilts lack
-# riscv64 variants.
-ALLOW_MISSING_DEPENDENCIES := true
 TARGET_NO_BOOTLOADER := true
 TARGET_NO_KERNEL := false
 BOARD_KERNEL_CMDLINE += console=ttyS0 earlycon androidboot.hardware=eliza_ai_soc
@@ -26,6 +23,7 @@ BOARD_KERNEL_SEPARATED_DTBO := false
 BOARD_VENDOR_SEPOLICY_DIRS += device/eliza/eliza_ai_soc/sepolicy
 DEVICE_MANIFEST_FILE += device/eliza/eliza_ai_soc/manifest.xml
 DEVICE_MANIFEST_FILE += device/eliza/eliza_ai_soc/eliza_e1.xml
+DEVICE_FRAMEWORK_COMPATIBILITY_MATRIX_FILE += device/eliza/eliza_ai_soc/device_framework_matrix.xml
 TARGET_COPY_OUT_VENDOR := vendor
 BOARD_USES_VENDORIMAGE := true
 BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := ext4

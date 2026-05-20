@@ -134,10 +134,12 @@ The UI features:
 ## Building for Production
 
 ```bash
+bun run test
+bun run typecheck
 bun run build
 ```
 
-Output will be in the `dist/` directory.
+The local smoke test checks the Vite mount point, lazy browser runtime import, local ELIZA message flow, and PGlite/no-server wiring. Production output will be in the `dist/` directory.
 
 ## Extending This Example
 

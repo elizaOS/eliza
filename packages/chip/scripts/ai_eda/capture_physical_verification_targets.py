@@ -180,6 +180,7 @@ def main() -> int:
         "status": "TARGET_CAPTURE_ONLY_NO_DRC_LVS_OR_LAYOUT_CHANGE",
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
+            "autoeda-mcp",
             "klayout-drc",
             "magic-drc-lvs",
             "netgen-lvs",
@@ -231,6 +232,17 @@ def main() -> int:
         "optional_commands": [command_entry(command) for command in OPTIONAL_COMMANDS],
         "candidate_tasks": [
             {
+                "id": "autoeda-mcp-physical-verification-service-watch",
+                "status": "CAPTURED_NOT_STARTED",
+                "target": "future AutoEDA/MCP-EDA physical-verification service calls remain blocked until pinned server revision, service allowlist, DRC/LVS deck provenance, request/response logs, tool stdout/stderr, artifact hashes, and signoff replay exist",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_eda_tool_agent_interop_targets.py --run-id validation",
+                    "make no-hardware-action-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
                 "id": "drc-lvs-antenna-log-triage-watch",
                 "status": "CAPTURED_NOT_ANALYZED",
                 "target": "hash KLayout DRC, Magic DRC, Netgen LVS, XOR, antenna, and checker logs before any AI triage or waiver recommendation is accepted",
@@ -281,6 +293,7 @@ def main() -> int:
         "blocked_by": [
             "no foundry-approved DRC/LVS/antenna signoff deck, waiver policy, or commercial-signoff correlation for E1",
             "no accepted AI-generated DRC deck, layout repair, antenna fix, or LVS waiver workflow with deterministic before/after artifacts",
+            "no approved AutoEDA/MCP-EDA DRC/LVS service path with pinned revision, service allowlist, request/response logs, artifact hashes, sandbox policy, and replay evidence",
             "no approved structural dependency schema, command whitelist, generated-script quarantine, or OpenDRC correlation evidence for physical-verification code generation",
             "no release gate allowing AI physical-verification output to bypass KLayout, Magic, Netgen, OpenROAD/OpenLane, STA, extraction, power, manufacturing, and reviewer gates",
         ],

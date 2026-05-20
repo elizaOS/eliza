@@ -10,7 +10,7 @@ import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.text.TextUtils;
 import android.util.Log;
-import app.eliza.BuildConfig;
+import ai.elizaos.app.BuildConfig;
 import androidx.work.Data;
 import androidx.work.OneTimeWorkRequest;
 import androidx.work.WorkManager;

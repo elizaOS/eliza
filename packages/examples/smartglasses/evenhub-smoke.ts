@@ -1,3 +1,4 @@
+/// <reference path="./evenhub-sdk.d.ts" />
 import { waitForEvenAppBridge } from "@evenrealities/even_hub_sdk";
 import {
   encodeMicCommand,

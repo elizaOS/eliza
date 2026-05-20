@@ -13,7 +13,7 @@ The Lens connector is an external elizaOS plugin that bridges your agent to the 
 ## Installation
 
 ```bash
-eliza plugins install @elizaos/plugin-lens
+bun add @elizaos/plugin-lens
 ```
 
 - A Lens Protocol account and API credentials from the [Lens Protocol](https://www.lens.xyz/) developer portal
@@ -60,6 +60,6 @@ The Lens connector will auto-enable once the API key is configured.
 
 ## Related
 
-- [Lens plugin reference](/plugin-registry/platform/lens)
+- [Lens plugin reference](/connectors/lens)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

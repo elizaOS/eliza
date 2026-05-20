@@ -51,19 +51,29 @@ Subsystem = Literal[
     "bsp",
     "verify",
     "benchmarks",
+    "os_rv64",
 ]
 Tier = Literal["spec", "rtl", "pd", "silicon"]
 
 
 @dataclass(frozen=True)
 class GateSpec:
-    """Static description of one gate the aggregator re-runs."""
+    """Static description of one gate the aggregator re-runs.
+
+    ``script`` may be either a chip-relative path (resolved against ``ROOT``)
+    or an absolute path to a sibling-package script. Absolute-path entries
+    let the aggregator span the chip and OS variants without duplicating
+    logic. When ``module`` is set, the gate is invoked as
+    ``python -m unittest <module>`` from the directory of ``script``'s
+    parent's parent (i.e. the package root that owns the test module).
+    """
 
     name: str
     script: str
     subsystem: Subsystem
     tier: Tier
     args: tuple[str, ...] = ()
+    module: str | None = None
 
 
 # Curated set of fail-closed gates that already exist in scripts/check_*.py
@@ -91,6 +101,25 @@ GATES: tuple[GateSpec, ...] = (
         script="scripts/check_cpu_ap_completion_gate.py",
         subsystem="cpu",
         tier="rtl",
+    ),
+    GateSpec(
+        name="boot-security-chain-contract-check",
+        script="scripts/check_boot_security_chain_contract.py",
+        subsystem="cpu",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="chipyard-ap-abi-contract-check",
+        script="scripts/check_chipyard_ap_abi_contract.py",
+        subsystem="cpu",
+        tier="spec",
+    ),
+    GateSpec(
+        name="chipyard-generated-linux-contract-check",
+        script="scripts/check_chipyard_generated_linux_contract.py",
+        subsystem="cpu",
+        tier="silicon",
+        args=("--require-boot-evidence",),
     ),
     GateSpec(
         name="rva23-compliance",
@@ -242,6 +271,12 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="pd",
         tier="pd",
     ),
+    GateSpec(
+        name="manufacturing-tapeout-scope-check",
+        script="scripts/check_manufacturing_tapeout_scope.py",
+        subsystem="pd",
+        tier="pd",
+    ),
     # ---- Platform / board / package ----------------------------------------
     GateSpec(
         name="platform-contract-check",
@@ -304,6 +339,12 @@ GATES: tuple[GateSpec, ...] = (
         tier="spec",
     ),
     GateSpec(
+        name="phone-runtime-readiness-contract-check",
+        script="scripts/check_phone_runtime_readiness_contract.py",
+        subsystem="platform",
+        tier="silicon",
+    ),
+    GateSpec(
         name="no-hardware-action-check",
         script="scripts/check_no_hardware_action_matrix.py",
         subsystem="platform",
@@ -318,10 +359,107 @@ GATES: tuple[GateSpec, ...] = (
         args=("all", "--scaffold-only"),
     ),
     GateSpec(
+        name="linux-bsp-contract-check",
+        script="scripts/check_linux_bsp_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="linux-boot-artifacts-check",
+        script="scripts/check_linux_boot_artifacts.py",
+        subsystem="bsp",
+        tier="silicon",
+        args=("--require-pass",),
+    ),
+    GateSpec(
+        name="linux-firmware-boot-chain-contract-check",
+        script="scripts/check_linux_firmware_boot_chain_contract.py",
+        subsystem="bsp",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="linux-memory-platform-contract-check",
+        script="scripts/check_linux_memory_platform_contract.py",
+        subsystem="bsp",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="chipyard-verilator-linux-smoke-check",
+        script="scripts/check_chipyard_verilator_linux_smoke.py",
+        subsystem="bsp",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="cross-fork-agent-payload-contract-check",
+        script="scripts/check_cross_fork_agent_payload_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="chip-os-bringup-workflow-contract-check",
+        script="scripts/check_chip_os_bringup_workflow_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
         name="aosp-simulator-completion-check",
         script="scripts/check_aosp_simulator_completion_gate.py",
         subsystem="bsp",
         tier="silicon",
+    ),
+    GateSpec(
+        name="aosp-linux-handoff-contract-check",
+        script="scripts/check_aosp_linux_handoff_contract.py",
+        subsystem="bsp",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="aosp-product-contract-check",
+        script="scripts/check_aosp_product_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="aosp-hal-service-contract-check",
+        script="scripts/check_aosp_hal_service_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="android-app-runtime-contract-check",
+        script="scripts/check_android_app_runtime_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="android-launcher-runtime-evidence-check",
+        script="scripts/check_android_launcher_runtime_evidence.py",
+        subsystem="bsp",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="android-evidence-capture-contract-check",
+        script="scripts/check_android_evidence_capture_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="android-simulated-peripheral-evidence-check",
+        script="scripts/check_android_simulated_peripheral_evidence.py",
+        subsystem="bsp",
+        tier="silicon",
+    ),
+    GateSpec(
+        name="android-system-bridge-contract-check",
+        script="scripts/check_android_system_bridge_contract.py",
+        subsystem="bsp",
+        tier="spec",
+    ),
+    GateSpec(
+        name="android-release-readiness-contract-check",
+        script="scripts/check_android_release_readiness_contract.py",
+        subsystem="bsp",
+        tier="spec",
     ),
     GateSpec(
         name="minimum-linux-target-check",
@@ -341,6 +479,12 @@ GATES: tuple[GateSpec, ...] = (
         subsystem="bsp",
         tier="silicon",
         args=("--run",),
+    ),
+    GateSpec(
+        name="os-rv64-chip-boot-contract-check",
+        script="scripts/check_os_rv64_chip_boot_contract.py",
+        subsystem="bsp",
+        tier="silicon",
     ),
     # ---- Verification maturity ---------------------------------------------
     GateSpec(
@@ -367,6 +511,25 @@ GATES: tuple[GateSpec, ...] = (
         script="scripts/check_prototype_status_dashboard.py",
         subsystem="benchmarks",
         tier="spec",
+    ),
+    # ---- OS RV64 (elizaOS Debian RISC-V 64 variant) ------------------------
+    # These two gates live in packages/os/linux/variants/elizaos-debian-riscv64
+    # and are invoked via chip-relative sibling-package paths so the chip aggregator can present a
+    # unified chip + OS bring-up view without duplicating their logic. The
+    # OS-side scripts are stable; the aggregator only re-runs them and
+    # classifies their PASS/FAIL/BLOCKED output with the same policy.
+    GateSpec(
+        name="os-rv64-release-check",
+        script="../os/linux/variants/elizaos-debian-riscv64/scripts/check_release_manifest.py",
+        subsystem="os_rv64",
+        tier="spec",
+    ),
+    GateSpec(
+        name="os-rv64-qemu-virt-boot-test",
+        script="../os/linux/variants/elizaos-debian-riscv64/scripts/test_qemu_virt_smoke.py",
+        subsystem="os_rv64",
+        tier="spec",
+        module="scripts.test_qemu_virt_smoke",
     ),
 )
 
@@ -431,7 +594,17 @@ def _first_evidence_line(name: str, combined_output: str, returncode: int) -> st
 
 
 def run_gate(spec: GateSpec) -> GateResult:
-    script_path = ROOT / spec.script
+    raw = Path(spec.script)
+    if raw.is_absolute():
+        script_path = raw
+        # Absolute-path gates run from the script's own directory so that any
+        # path-relative defaults inside the foreign script resolve correctly.
+        # For ``module`` gates we run from the package root (script's parent's
+        # parent) so ``python -m unittest <pkg.module>`` can import properly.
+        cwd = script_path.parent.parent if spec.module else script_path.parent
+    else:
+        script_path = ROOT / spec.script
+        cwd = script_path.parent.parent if spec.module else ROOT
     if not script_path.is_file():
         return GateResult(
             name=spec.name,
@@ -440,10 +613,13 @@ def run_gate(spec: GateSpec) -> GateResult:
             subsystem=spec.subsystem,
             tier=spec.tier,
         )
-    cmd = [sys.executable, str(script_path), *spec.args]
+    if spec.module:
+        cmd = [sys.executable, "-m", "unittest", spec.module, *spec.args]
+    else:
+        cmd = [sys.executable, str(script_path), *spec.args]
     completed = subprocess.run(
         cmd,
-        cwd=ROOT,
+        cwd=cwd,
         text=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -502,9 +678,13 @@ def print_summary(report: dict[str, object], strict: bool) -> None:
             f"{gate['evidence']}"
         )
     print("-" * len(header))
+    effective_release_blocker = bool(report["release_blocker"]) or (
+        strict and int(summary["blocked"]) > 0
+    )
     print(
         f"summary: PASS={summary['pass']} FAIL={summary['fail']} "
         f"BLOCKED={summary['blocked']}  release_blocker={report['release_blocker']}  "
+        f"effective_release_blocker={effective_release_blocker}  "
         f"strict={strict}"
     )
     print(f"report: {REPORT_PATH.relative_to(ROOT)}")

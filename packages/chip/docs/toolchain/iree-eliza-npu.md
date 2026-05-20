@@ -36,8 +36,18 @@ iree-compile \
   --iree-hal-target-backends=elizanpu \
   --iree-input-type=stablehlo \
   --iree-elizanpu-default-precision=int8 \
+  --iree-llvmcpu-enable-inner-tiled \
   model.mlir -o model.vmfb
 ```
+
+`--iree-llvmcpu-enable-inner-tiled` is required for the LLVMCPU fallback
+dispatches that elizanpu emits for unsupported ops to pick up the inner-tiled
+vector-contract path. The flag was merged upstream via
+[iree-org/iree#24219](https://github.com/iree-org/iree/pull/24219) and is
+recorded as the default in
+[`scripts/build_iree_eliza_npu.sh`](../../scripts/build_iree_eliza_npu.sh)
+under `IREE_COMPILE_DEFAULT_FLAGS` (written out to
+`build/reports/compiler/iree-compile-default-flags.txt`).
 
 Internally:
 
@@ -91,16 +101,45 @@ divergence is caught at PR review time.
 ## Reproducibility pinning
 
 - LLVM SHA: `compiler/llvm-build/llvm-pin.json`.
-- IREE SHA: `compiler/iree-eliza-npu/iree-pin.json`.
+- IREE SHA: `compiler/iree-eliza-npu/iree-pin.json` (last audited 2026-05-20).
 - Container base: `packages/chip/Dockerfile` `UBUNTU_DIGEST`.
 - Python parity: in repo CI, runs without MLIR built.
+
+### Upstream patches
+
+Patches in `compiler/iree-eliza-npu/patches/` are applied after the pinned
+SHA is checked out, before the cmake configure step. The build script does
+not yet apply them automatically; record any patch added here under
+`applied_patches` (or `pending_patches` if not yet apply-verified) in
+`iree-pin.json` so the audit trail is durable.
+
+| Patch | Upstream PR | State | Apply state on pinned tree | Why we want it |
+| --- | --- | --- | --- | --- |
+| `001-riscv-rvv-int8-vcontract.patch` | [iree-org/iree#23734](https://github.com/iree-org/iree/pull/23734) | OPEN (approved, awaiting final RISC-V sign-off; CI green 2026-04-20) | **Applied** to pinned tree `d9a3dd15` on 2026-05-20 (`git apply --check` rc=0; `git apply` rc=0; +42 insertions across 7 modified files plus new 146-line ukernel `mmt4d_riscv_64_v_i8.c`). Patch sha256: `f12083c1…51ec`. | Adds RVV widening i8*i8->i32 mmt4d ukernel (`iree_uk_mmt4d_tile_s8s8s32_*_riscv_64_v`) and `enumerateMatmulTileRiscv64` widening-i8 entries. Direct match for `elizanpu.gemm_s8` shape constraints (M<=3, N<=3, K<=7). Hardware-validated on SpacemiT X60. 285 lines, 8 files. |
+
+Apply patches manually before building (the script will be taught to
+auto-apply once the patch lands upstream or is rebased):
+
+```sh
+git -C external/iree apply \
+  $REPO/compiler/iree-eliza-npu/patches/001-riscv-rvv-int8-vcontract.patch
+```
 
 ## Status
 
 - Dialect TableGen and C++ skeleton: committed.
 - Pass implementations: skeletons; full lowering planned for P1 (Q1-Q2 2027).
-- Standalone or in-tree build: **BLOCKED** until the LLVM-trunk pin SHA is
-  set and the build script is executed inside the canonical Linux container.
+- `patches/001-riscv-rvv-int8-vcontract.patch`: **apply-verified** against
+  pinned IREE `d9a3dd15` on 2026-05-20. New ukernel file and tile-size
+  table entries land at the expected paths. Binary build of the patched
+  tree still **BLOCKED** on `build/llvm-stage2` (LLVM stage2 cmake exports
+  absent). Run `scripts/build_llvm_riscv.sh` in the canonical Linux
+  container first, then re-run `scripts/build_iree_eliza_npu.sh` to
+  produce `iree-compile` / `libIREECompilerElizaNpu.a` and capture the
+  `nm` witness for `iree_uk_mmt4d_tile_s8s8s32_*_riscv_64_v` symbols.
+- Standalone or in-tree IREE build: **BLOCKED** until the LLVM-trunk pin
+  SHA is built into `build/llvm-stage2` and the build script is executed
+  inside the canonical Linux container.
 - Python parity test: passes 290 parameterized cases in repo CI today.
 
 ## Evidence gate

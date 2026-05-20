@@ -177,6 +177,16 @@ ALLOWLIST = (
         "Integrated SoC top carries the documented AXI-Lite scaffold boundary.",
     ),
     AllowedFinding(
+        "rtl/top/e1_soc_integrated.sv",
+        "synthesises to a stub that drives the counters",
+        "CVA6-disabled integrated SoC shape drives slot-0 observability counters safe-idle.",
+    ),
+    AllowedFinding(
+        "rtl/top/e1_soc_integrated.sv",
+        "Stub the CVA6 slot-0 observability ports to zero",
+        "CVA6-disabled integrated SoC shape drives slot-0 observability ports safe-idle.",
+    ),
+    AllowedFinding(
         "verify/cocotb/axi4/e1_dram_ctrl_tb.sv",
         "stub",
         "DFI cocotb test documents the current DRAM-controller scaffold behavior.",
@@ -220,6 +230,11 @@ ALLOWLIST = (
         "verify/cocotb/integration/test_cross_domain_interfaces.py",
         "stub",
         "Cross-domain integration tests name the current safe-idle CPU fallback.",
+    ),
+    AllowedFinding(
+        "verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py",
+        "stub-out",
+        "PMC RPMI integration tests explicitly block on the remaining SPMI binding work order.",
     ),
     AllowedFinding(
         "verify/cocotb/power/test_pmc_rpmi_envelope.py",

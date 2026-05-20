@@ -117,8 +117,11 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "incrertl",
+            "spec2rtl-agent",
+            "rtlocating-evortl",
             "llm-fsm",
             "spec2assertion",
+            "vert-sva-dataset",
             "coverassert",
             "qimeng-codev-sva",
             "assertionforge",
@@ -170,7 +173,7 @@ def main() -> int:
             {
                 "id": "incremental-rtl-change-impact-watch",
                 "status": "CAPTURED_NOT_REWRITTEN",
-                "target": "future IncreRTL-style requirement evolution must localize affected files and keep generated patches quarantined until lint, simulation, formal, synthesis, and review pass",
+                "target": "future IncreRTL or RTLocating-style requirement evolution must localize affected RTL blocks, prove dependency coverage, and keep generated patches quarantined until lint, simulation, formal, synthesis, impact review, and human review pass",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
                     "make rtl-check",
@@ -179,9 +182,20 @@ def main() -> int:
                 ],
             },
             {
+                "id": "complex-spec-to-hls-rtl-agent-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future Spec2RTL-Agent-style complex-spec decomposition must keep prompts private, generated C++/HLS/RTL quarantined, HLS backend pinned, and C-sim/HLS synthesis/RTL simulation/synthesis/equivalence evidence attached before review",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_hls_accelerator_targets.py --run-id validation",
+                    "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+                    "make npu-runtime-contract-check",
+                    "make synth",
+                ],
+            },
+            {
                 "id": "nl-to-sva-pre-rtl-watch",
                 "status": "CAPTURED_NOT_BOUND",
-                "target": "future Spec2Assertion, CoverAssert, SANGAM, AssertionForge, or CodeV-SVA use must keep assertions as candidates until formal/simulation evidence accepts them",
+                "target": "future Spec2Assertion, VERT, CoverAssert, SANGAM, AssertionForge, or CodeV-SVA use must keep assertions as candidates until dataset provenance, vacuity review, and formal/simulation evidence accepts them",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/capture_verification_debug_targets.py --run-id validation",
                     "make cocotb-contract",
@@ -217,6 +231,9 @@ def main() -> int:
             "no reviewed trace matrix generator for SystemVerilog ranges, SVA candidates, cocotb tests, formal properties, and generated software contracts",
             "no local policy for AI-generated requirement changes or spec edits",
             "no accepted NL-to-SVA or spec-to-RTL backend with license review, contamination review, prompt quarantine, and deterministic replay",
+            "no approved spec-to-HLS/RTL agent workflow with prompt quarantine, HLS backend revision, C-sim, HLS synthesis, RTL simulation, and equivalence evidence",
+            "no reviewed RTL block index, dependency graph, or localization confidence policy for natural-language change requests",
+            "no license-reviewed VERT/SVA dataset revision, contamination scan, vacuity review, or generated-assertion quarantine path",
             "no equivalence or impact-analysis gate proving incremental RTL updates preserve unaffected behavior",
             "no coverage metric tying natural-language requirements to formal, cocotb, synthesis, and platform-contract evidence",
         ],

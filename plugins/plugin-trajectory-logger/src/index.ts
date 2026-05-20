@@ -20,6 +20,20 @@ const trajectoryLoggerPlugin: Plugin = {
     },
     {
       id: "trajectory-logger",
+      label: "Trajectory Logger XR",
+      description:
+        "Realtime view of the agent's last and pending HANDLE / PLAN / ACTION / EVALUATE turns",
+      icon: "Activity",
+      path: "/trajectory-logger",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "TrajectoryLoggerView",
+      tags: ["developer", "trajectory", "debugging"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "trajectory-logger",
       label: "Trajectory Logger TUI",
       description:
         "Terminal realtime trajectory inspector for HANDLE / PLAN / ACTION / EVALUATE turns",

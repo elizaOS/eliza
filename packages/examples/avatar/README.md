@@ -24,3 +24,13 @@ From repo root:
 
 - Conversations are persisted locally via `@elizaos/plugin-localdb`.
 - API keys are stored in browser `localStorage` for this demo.
+
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+The local test checks provider-mode fallback and greeting behavior without
+starting the browser scene.

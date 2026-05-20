@@ -21,6 +21,15 @@ type DirectRouteCase =
 
 export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
+    name: "companion",
+    path: "/apps/companion",
+    readyChecks: [
+      { selector: '[data-testid="companion-root"]' },
+      { selector: '[data-testid="companion-chat-dock"]' },
+    ],
+    timeoutMs: 90_000,
+  },
+  {
     name: "lifeops app window",
     path: "/apps/lifeops",
     selector: '[data-testid="lifeops-shell"]',

@@ -17,8 +17,12 @@ if [ ! -d "$CT_DIR/.git" ]; then
 fi
 
 if [ ! -d "$DP_DIR/.git" ]; then
-    git clone --recursive --branch circuit_training \
-        https://github.com/esonghori/DREAMPlace.git "$DP_DIR"
+    # limbo018/DREAMPlace is the active upstream; the original
+    # esonghori/DREAMPlace circuit_training fork is retired (see
+    # external/.archive/DREAMPlace-CT/RETIRED.md). Circuit-Training
+    # integration has been merged into limbo018 master.
+    git clone --recursive \
+        https://github.com/limbo018/DREAMPlace.git "$DP_DIR"
 fi
 
 git -C "$DP_DIR/thirdparty/pybind11" fetch --tags --force

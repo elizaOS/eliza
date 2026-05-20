@@ -109,7 +109,7 @@ const STEP_LABELS: Record<InstallerStep["id"], string> = {
   "resolve-image": "Resolve image",
   checksum: "Validate checksum",
   write: "Write image",
-  verify: "Verify media",
+  verify: "Finalize media",
   complete: "Complete",
 };
 

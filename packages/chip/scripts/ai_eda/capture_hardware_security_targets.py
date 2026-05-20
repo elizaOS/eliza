@@ -43,6 +43,9 @@ OPTIONAL_COMMANDS = (
     "sby",
     "semgrep",
     "iverilog",
+    "hal",
+    "netlist-paths",
+    "naja",
 )
 
 OPTIONAL_PYTHON_MODULES = (
@@ -52,6 +55,8 @@ OPTIONAL_PYTHON_MODULES = (
     "torch_geometric",
     "pyverilog",
     "sklearn",
+    "spydrnet",
+    "najaeda",
 )
 
 
@@ -134,18 +139,33 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "hardware-trojan-ml",
+            "veriloglavd",
+            "hardsecbench",
             "pearl-trojan-llm",
+            "hal-netlist-analysis",
+            "spydrnet-netlist-framework",
+            "netlist-paths-query-tool",
+            "naja-snl-netlist-framework",
             "trojansaint",
             "gnn-mff",
             "securerag-rtl",
+            "bugwhisperer-hw-security",
+            "vericwety",
+            "lashed-llm-static-hw-security",
+            "qihe-static-analysis",
             "trojanwhisper",
             "trojangym",
+            "netlam",
             "ghost-benchmarks",
+            "hardware-vulnerability-dataset",
             "ai-hardware-security-verification-survey",
             "safetune-rtl-poisoning",
             "trojanloc",
             "harmchip",
             "trojan-xai-comparison",
+            "goldenfuzz",
+            "mabfuzz-processor",
+            "fuzzilicon",
         ],
         "policy": {
             "changes_rtl": False,
@@ -180,7 +200,7 @@ def main() -> int:
             {
                 "id": "generated-rtl-security-review-gate",
                 "status": "CAPTURED_NOT_ENABLED",
-                "target": "future advisory gate for AI-generated or imported RTL before review and regression",
+                "target": "future advisory gate for AI-generated or imported RTL/firmware before review, regression, and secure-generation checks",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/evaluate_rtl_model.py --help",
                     "make rtl-check",
@@ -188,11 +208,31 @@ def main() -> int:
                 ],
             },
             {
+                "id": "verilog-cwe-rule-watch",
+                "status": "CAPTURED_NOT_SCANNED",
+                "target": "future VerilogLAVD-style CWE rules must remain advisory until rule hashes, RTL parser versions, alert logs, false-positive review, and deterministic follow-up checks exist",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "trojan-detection-benchmark-watch",
                 "status": "CAPTURED_NOT_IMPORTED",
-                "target": "review TrustHub/GHOST-style Trojan datasets without importing benchmarks into release evidence",
+                "target": "review TrustHub/GHOST/NETLAM/TrojanGYM-style Trojan datasets and generators without importing benchmarks or generated Trojans into release evidence",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/probe_external_ai_eda_sources.py --run-id validation",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "deterministic-netlist-security-query-watch",
+                "status": "CAPTURED_NOT_QUERIED",
+                "target": "future HAL, SpyDrNet, Netlist Paths, or Naja-style netlist security triage must pin synthesized netlist and library hashes, import/query command logs, output hashes, RTL/spec cross-references, deterministic follow-up checks, and reviewer disposition before any finding is trusted",
+                "acceptance_gates": [
+                    "make synth",
+                    "python3 scripts/ai_eda/capture_netlist_equivalence_targets.py --run-id validation",
                     "make no-hardware-action-check",
                 ],
             },
@@ -207,6 +247,27 @@ def main() -> int:
                 ],
             },
             {
+                "id": "model-based-vulnerability-triage-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future BugWhisperer/VeriCWEty-style model or embedding use requires pinned model/data revisions, license review, E1 non-overlap checks, prompt/output hashes, generated finding quarantine, deterministic RTL/formal follow-up, and security signoff",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_external_model_corpus_intake_targets.py --run-id validation",
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "static-analysis-fusion-watch",
+                "status": "CAPTURED_NOT_SCANNED",
+                "target": "future LASHED/Qihe-style static-analysis fusion requires pinned analyzer/parser/rule revisions, command logs, alert hashes, false-positive review, threat-model mapping, and before/after deterministic regression evidence",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "rtl-poisoning-and-safety-watch",
                 "status": "CAPTURED_NOT_RUN",
                 "target": "future RTL model fine-tuning, jailbreak evaluation, and line-level Trojan localization must stay quarantined until prompt, corpus, and security-review gates exist",
@@ -216,16 +277,34 @@ def main() -> int:
                     "make no-hardware-action-check",
                 ],
             },
+            {
+                "id": "processor-fuzzing-security-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future GoldenFuzz, MABFuzz, Fuzzilicon, Cascade, or DifuzzRTL-style processor fuzzing for security triage must pin generator policy, fuzzer backend, DUT/reference revisions, ISA/profile scope, generated program hashes, coverage logs, mismatch or vulnerability replay, disclosure policy, and security reviewer disposition",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_post_silicon_validation_targets.py --run-id validation",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no local known-good/known-bad E1 RTL security label set",
             "no pinned Trojan/vulnerability taxonomy mapped to E1 threat model",
             "no reviewed model, prompt, retrieval corpus, or benchmark license path",
+            "no approved Verilog CWE rule-generation workflow with rule hashes, alert triage, false-positive review, and deterministic follow-up checks",
+            "no released/reviewed HardSecBench assets, E1 non-overlap scan, or secure-generation dual RTL/firmware gate mapping",
             "no prompt quarantine or red-team isolation policy for hardware-security jailbreak prompts",
             "no poisoning-screening workflow for external RTL fine-tuning corpora",
             "no line-level Trojan-localization acceptance workflow tied to E1 RTL and formal/simulation evidence",
+            "no dual-use approval, sandbox, or no-source-import boundary for NETLAM/TrojanGYM-style adversarial Trojan-generation frameworks",
+            "no approved HAL, SpyDrNet, Netlist Paths, or Naja workflow with exact revisions, netlist/library hashes, import/query logs, output hashes, equivalence or deterministic follow-up checks, and reviewer disposition",
+            "no license-reviewed hardware vulnerability prompt dataset with taxonomy, split manifest, and prompt privacy review",
+            "no approved model-card, training-corpus, embedding-model, or line-label review workflow for model-based Verilog CWE triage",
+            "no approved static-analysis fusion workflow with analyzer revisions, parser compatibility, rule hashes, alert logs, false-positive review, and deterministic replay",
             "no acceptance contract for AI security findings, suppressions, or reviewer signoff",
             "no before/after deterministic regression gate for acting on AI security output",
+            "no approved processor-fuzzing security workflow with generator/fuzzer revisions, DUT/reference mapping, generated program hashes, coverage/mismatch replay, disclosure handling, and security reviewer disposition",
             "external Trojan insertion benchmarks are adversarial test data, not design inputs",
         ],
     }

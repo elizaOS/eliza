@@ -194,6 +194,7 @@ def build_report() -> dict[str, Any]:
 
 
 def print_text(report: dict[str, Any]) -> None:
+    print(f"STATUS: {report['status']} linux.boot_artifacts")
     print(f"linux boot artifacts: {report['status']}")
     print(f"  manifest: {report['manifest']}")
     print(f"  claim_boundary: {report['claim_boundary']}")

@@ -12,6 +12,7 @@
     "build:safari": "cd safari && npm run build",
     "dev": "cd chrome && npm run dev",
     "clean": "rm -rf chrome/dist",
+    "test": "bun test smoke.test.js && bun run --cwd chrome test && bun run --cwd safari test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "echo 'No TypeScript config; skipping typecheck'"
   }

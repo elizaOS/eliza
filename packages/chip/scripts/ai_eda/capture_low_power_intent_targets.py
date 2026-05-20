@@ -48,6 +48,7 @@ INPUT_ARTIFACTS = (
 OPTIONAL_COMMANDS = (
     "yosys",
     "openroad",
+    "abc",
     "verilator",
     "iverilog",
     "sby",
@@ -118,13 +119,23 @@ def main() -> int:
         "source_ids": [
             "ieee-1801-upf",
             "ieee-upf-open-source",
+            "openroad-upf",
             "yosys-clockgate",
             "lighter-clock-gating",
+            "openroad-clock-gating",
             "codmas-rtlopt",
             "rtl-opt-benchmark",
             "prompting-for-power",
             "poet-rtl-ppa",
             "rtl-ppa-sog",
+            "symrtlo",
+            "powergear-hls-power",
+            "opensta-power-analysis",
+            "ieda-ipower",
+            "trace2power",
+            "archpower",
+            "autopower",
+            "atompower-rtl-power",
             "openroad-two-phase-clock",
         ],
         "policy": {
@@ -164,7 +175,7 @@ def main() -> int:
             {
                 "id": "clock-gating-candidate-watch",
                 "status": "CAPTURED_NOT_TRANSFORMED",
-                "target": "future Yosys, Lighter, or LLM-assisted clock-gating candidates must preserve RTL behavior and pass scan, CDC/RDC, timing, synthesis, and power evidence gates",
+                "target": "future Yosys, Lighter, OpenROAD, or LLM-assisted clock-gating candidates must preserve RTL behavior and pass scan, CDC/RDC, timing, synthesis, and power evidence gates",
                 "acceptance_gates": [
                     "make rtl-check",
                     "make formal",
@@ -192,6 +203,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "architecture-power-model-dvfs-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future ArchPower, AutoPower, or AtomPower-style CPU/AP/RTL power priors may only inform DVFS triage after local feature mapping, activity provenance, calibration labels, and held-out E1 error analysis exist",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation",
+                    "make cpu-npu-burst-sustained-policy",
+                    "make power-thermal-evidence-check",
+                ],
+            },
+            {
                 "id": "upf-retention-isolation-verification-watch",
                 "status": "CAPTURED_NOT_VERIFIED",
                 "target": "future UPF retention, isolation, level-shifter, supply-set, and power-state artifacts require power-aware simulation or formal low-power verification evidence",
@@ -199,6 +220,26 @@ def main() -> int:
                     "make cocotb-contract",
                     "make formal",
                     "make power-thermal-evidence-check",
+                ],
+            },
+            {
+                "id": "openroad-upf-roundtrip-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future OpenROAD UPF read/write and voltage-domain command use requires reviewed E1 power-state, supply-set, always-on, reset, scan, clock, and domain ownership manifests",
+                "acceptance_gates": [
+                    "make platform-contract-check",
+                    "make pd-contract-check",
+                    "make power-thermal-evidence-check",
+                ],
+            },
+            {
+                "id": "openroad-clock-gating-backend-watch",
+                "status": "CAPTURED_NOT_TRANSFORMED",
+                "target": "future OpenROAD ABC-backed clock-gating use requires pinned OpenROAD/ABC revisions, ICG library manifests, equivalence, scan/DFT, CDC/RDC, STA, and power evidence",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make synth",
                 ],
             },
             {
@@ -211,15 +252,50 @@ def main() -> int:
                     "python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation",
                 ],
             },
+            {
+                "id": "power-aware-rtl-rewrite-watch",
+                "status": "CAPTURED_NOT_REWRITTEN",
+                "target": "future SymRTLO-style RTL rewrites with power/PPA objectives require isolated generated artifacts, equivalence, synthesis, timing, activity provenance, power reports, and review",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make formal",
+                    "make synth",
+                ],
+            },
+            {
+                "id": "hls-power-estimator-intake-watch",
+                "status": "CAPTURED_NOT_MODELED",
+                "target": "future PowerGear-style HLS power estimates require exact benchmark assets, feature provenance, HLS/RTL synthesis replay, held-out E1 error analysis, and before/after power evidence",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_hls_accelerator_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make synth",
+                ],
+            },
+            {
+                "id": "activity-power-backend-watch",
+                "status": "CAPTURED_NOT_ANALYZED",
+                "target": "future OpenSTA, iEDA iPower, or trace2power-style activity and power analysis requires pinned tool revisions, Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, command logs, report hashes, cross-tool correlation, and reviewer disposition before any low-power or DVFS claim",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_low_power_intent_targets.py --run-id validation",
+                    "python3 scripts/ai_eda/capture_power_thermal_targets.py --run-id validation",
+                    "make power-thermal-evidence-check",
+                    "make synth",
+                ],
+            },
         ],
         "blocked_by": [
             "no E1 power-state table, always-on partition, supply-set map, or IEEE 1801 UPF source",
             "no local power-aware simulation or formal low-power verification backend",
+            "no approved OpenROAD UPF revision, UPF round-trip policy, domain map, or power-aware verification replay",
             "no approved clock-gating, power-gating, DVFS, retention, isolation, or level-shifter insertion workflow",
-            "no approved Lighter plugin revision, library-map review, or RTL-OPT benchmark asset/non-overlap review",
+            "no approved Lighter or OpenROAD clock-gating revision, library-map review, ABC revision, or RTL-OPT benchmark asset/non-overlap review",
             "no scan/DFT, CDC/RDC, reset, and timing policy for generated gated clocks or power domains",
             "no workload-aligned voltage, frequency, power, and thermal traces for DVFS or idle-state validation",
             "no before/after low-power PPA corpus with equivalence and signoff evidence for E1",
+            "no calibrated HLS/RTL power-label corpus or held-out E1 error analysis for early-stage power estimators",
+            "no pinned OpenSTA, iEDA iPower, or trace2power revision with Liberty/netlist/SDC/parasitic/activity hashes, top-scope mapping, activity coverage, report hashes, or cross-tool correlation",
+            "no CPU/AP/RTL feature mapping, VCD/activity provenance, calibration labels, or held-out E1 error analysis for architecture-level power priors",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

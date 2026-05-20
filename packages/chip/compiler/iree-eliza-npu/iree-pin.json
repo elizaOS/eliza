@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schema": "eliza.iree_backend_pin.v1",
-  "as_of": "2026-05-19",
-  "claim_boundary": "pinned_recipe_only_not_executable_evidence_of_a_built_backend",
+  "as_of": "2026-05-20",
+  "last_audited": "2026-05-20",
+  "claim_boundary": "pinned_recipe_plus_patch_verified_applicable_to_pinned_tree_not_executable_evidence_of_a_built_backend",
   "blocked_until_built": true,
-  "blocked_reason": "IREE in-tree build requires LLVM-stage2 from scripts/build_llvm_riscv.sh; both run only inside the canonical Linux container",
+  "blocked_reason": "patch_001 applies cleanly to pinned IREE tree at d9a3dd15 (verified 2026-05-20); binary build still blocked on build/llvm-stage2 (stage2 LLVM not yet produced by scripts/build_llvm_riscv.sh in the canonical Linux container)",
   "upstream": {
     "project": "iree-org/iree",
     "url": "https://github.com/iree-org/iree.git",
@@ -14,6 +15,50 @@
     "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
     "refresh_policy": "quarterly, paired with the LLVM trunk pin"
   },
+  "pending_patches": [],
+  "applied_patches": [
+    {
+      "id": "001-riscv-rvv-int8-vcontract",
+      "path": "compiler/iree-eliza-npu/patches/001-riscv-rvv-int8-vcontract.patch",
+      "upstream_pr": "https://github.com/iree-org/iree/pull/23734",
+      "upstream_state": "OPEN",
+      "upstream_head_sha": "7bc368d2b0642a3cceb27f58ea0c7a73469fc7b7",
+      "upstream_last_ci_run": "2026-04-20",
+      "upstream_ci_outcome": "all RISC-V 64 + Linux CI green; one unrelated sharktank model failure on w7900",
+      "upstream_reviews": "approved by bjacob (2026-03-11), awaiting final egebeysel sign-off",
+      "title": "[LLVMCPU][RISCV] Add RVV int8 vector-contract custom kernels for widening i8*i8->i32 matmul",
+      "size_lines": 285,
+      "files_changed": 8,
+      "rationale": "Direct match for elizanpu.gemm_s8 (M<=3, N<=3, K<=7) widening i8*i8->i32; hardware-validated on SpacemiT X60. Generates RVV mmt4d ukernel via vwmul+vwadd intrinsics plus widening-i8 tile enumeration in CPUEncodingExternalModels.",
+      "applicability_to_pin": "patch_targets_stable_upstream_paths_compatible_with_pinned_sha",
+      "apply_step": "git -C external/iree apply $REPO/compiler/iree-eliza-npu/patches/001-riscv-rvv-int8-vcontract.patch",
+      "sha256": "f12083c16b6d1c485597e2d057c87501609a515477100172dd23ac2aca5951ec",
+      "captured_at_utc": "2026-05-20T00:00:00Z",
+      "apply_verification": {
+        "applied_at_utc": "2026-05-20T00:00:00Z",
+        "applied_to_sha": "d9a3dd15a552cdded3bda4fcfa65f1341d2b5f92",
+        "git_apply_check_rc": 0,
+        "git_apply_rc": 0,
+        "diff_shortstat_after_apply": "7 files changed, 42 insertions(+); 1 new file (146 lines): runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_v_i8.c",
+        "new_ukernel_symbols": [
+          "iree_uk_mmt4d_tile_s8s8s32_1xXXx1_to_7xXXx1_riscv_64_v",
+          "iree_uk_mmt4d_tile_s8s8s32_1xXXx1_riscv_64_v",
+          "iree_uk_mmt4d_tile_s8s8s32_2xXXx1_riscv_64_v"
+        ],
+        "patched_tree_diff_sha256": "3b8ce7eabf035ccc833a24ccaadc99b1ab9d509ebbb9ffafab06fa7adcd733dc",
+        "patched_tree_diff_sha256_method": "sha256 over (git diff HEAD || cat runtime/src/iree/builtins/ukernel/arch/riscv_64/mmt4d_riscv_64_v_i8.c) on external/iree at d9a3dd15"
+      }
+    }
+  ],
+  "binary_build_status": {
+    "state": "still_blocked_on_llvm_stage2",
+    "verified_on_utc": "2026-05-20T00:00:00Z",
+    "verified_by": "scripts/build_iree_eliza_npu.sh exits with `STATUS: BLOCKED iree.llvm_dependency` because build/llvm-stage2/lib/cmake/mlir is absent",
+    "unblock_step": "execute scripts/build_llvm_riscv.sh inside the canonical Linux container, then re-run scripts/build_iree_eliza_npu.sh; record build sha256 + ukernel nm symbol witness once the .a/.so artifacts exist"
+  },
+  "additional_cmake_flags_when_targeting_riscv": [
+    "--iree-llvmcpu-enable-inner-tiled (compile-time flag for iree-compile; merged via PR #24219)"
+  ],
   "submodules_policy": "init+update recursive; the IREE repository pulls in StableHLO, mlir-hlo, vulkan-headers, and tracy",
   "external_dialect_mount": "compiler/plugins/target/elizanpu",
   "external_dialect_source": "packages/chip/compiler/iree-eliza-npu",

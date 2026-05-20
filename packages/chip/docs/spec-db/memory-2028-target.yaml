@@ -388,6 +388,8 @@ phase_gates:
       - docs/evidence/memory/dma_isolation_fault_visibility_report.json
     cocotb_evidence:
       - verify/cocotb/iommu/test_riscv_iommu.py
+    simulator_evidence:
+      - benchmarks/results/memory-iommu-qos-sim.json
     status: blocked
   P1_1_shared_system_cache:
     description: 32 MiB SLC, banked 4-8 ways, coherent (TileLink-C inclusive or CHI directory).
@@ -425,6 +427,7 @@ phase_gates:
       - docs/evidence/memory/memory_qos_report.json
       - docs/evidence/memory/contended_bandwidth_latency_report.json
     simulator_evidence:
+      - benchmarks/results/memory-iommu-qos-sim.json
       - ramulator_2
       - dramsim3
     status: blocked

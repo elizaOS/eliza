@@ -52,3 +52,13 @@ const character = {
 | `TELEGRAM_BOT_TOKEN` | Yes | From @BotFather |
 | `OPENAI_API_KEY` | Yes | OpenAI API key |
 | `POSTGRES_URL` | No | PostgreSQL URL (defaults to PGLite) |
+
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+The test suite validates required environment checks and character wiring
+without connecting to Telegram.

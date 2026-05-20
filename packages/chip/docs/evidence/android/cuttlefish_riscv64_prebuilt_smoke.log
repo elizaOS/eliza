@@ -1,0 +1,89 @@
+eliza-evidence: target=aosp_cuttlefish_prebuilt artifact=cuttlefish_riscv64_prebuilt_smoke
+eliza-evidence: schema=eliza.cuttlefish_prebuilt_smoke.v1
+eliza-evidence: claim_boundary=virtual_device_launch_dry_run_not_a_boot_or_compatibility_claim
+eliza-evidence: prebuilt_root=/home/shaw/.local/cuttlefish/images/riscv64/cf
+eliza-evidence: build_branch=aosp-android-latest-release
+eliza-evidence: build_target=aosp_cf_riscv64_phone-userdebug
+eliza-evidence: build_id=15357239
+eliza-evidence: kernel_version=6.8.0-mainline-ga5ed8b92e9f6-ab11698348
+eliza-evidence: host_qemu=/home/shaw/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64
+eliza-evidence: host_qemu_version=QEMU emulator version 10.1.5 (v10.1.5-dirty)
+eliza-evidence: host_qemu_virtio_gpu=present
+eliza-evidence: host_qemu_vnc=present
+eliza-evidence: host_qemu_source=external/qemu-src (built from v10.1.5 with -Dvnc=enabled -Dpixman=enabled -Dvnc_jpeg=disabled -Dvnc_sasl=disabled -Dpng=disabled)
+eliza-evidence: host_qemu_sha256=1e33ccdaddc4a79f953a2db3d5cb5b912b2d8720ade7c1f679be7912fea2adbc
+eliza-evidence: host_qemu_origin=/home/shaw/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64 symlink -> external/qemu-src/build/qemu-system-riscv64
+eliza-evidence: host_qemu_orig_backup=/home/shaw/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64.orig-9.2.1-debian
+eliza-evidence: report_recorded_utc=2026-05-20T11:01:03Z
+
+eliza-evidence: attempt_id=1 attempt_start_utc=2026-05-19T01:15:00Z
+eliza-evidence: attempt_1_args=--cpus=4 --memory_mb=4096 --gpu_mode=none --start_webrtc=false --daemon
+eliza-evidence: attempt_1_failure_layer=qemu-system-riscv64
+eliza-evidence: attempt_1_failure_excerpt=qemu-system-riscv64: qemu_prealloc_mem: preallocating memory failed: Bad address
+eliza-evidence: attempt_1_root_cause=host had ~30 GiB total RAM but only ~497 MiB free; sibling agents + 17 GiB of active swap exhausted contiguous mmap range for guest_memory mlock
+eliza-evidence: attempt_1_status=FAIL_HOST_RAM
+
+eliza-evidence: attempt_id=2 attempt_start_utc=2026-05-19T01:30:00Z
+eliza-evidence: attempt_2_args=--cpus=4 --memory_mb=8192 --gpu_mode=none --start_webrtc=false --daemon
+eliza-evidence: attempt_2_failure_layer=assemble_cvd
+eliza-evidence: attempt_2_failure_excerpt=Not enough space remaining in fs containing "userdata.img", wanted 8545730560, got 2294603776
+eliza-evidence: attempt_2_root_cause=stale 17.5 GiB cuttlefish/instances/cvd-1/os_composite.img from attempt 1 left on the same filesystem
+eliza-evidence: attempt_2_status=FAIL_HOST_DISK
+
+eliza-evidence: attempt_id=3 attempt_start_utc=2026-05-20T01:54:56Z
+eliza-evidence: attempt_3_args=--cpus=4 --memory_mb=8192 --gpu_mode=guest_swiftshader --start_webrtc=false --daemon
+eliza-evidence: attempt_3_failure_layer=qemu-system-riscv64
+eliza-evidence: attempt_3_failure_excerpt=qemu-system-riscv64: -device virtio-gpu-pci,id=gpu0,addr=02.0,xres=720,yres=1280: 'virtio-gpu-pci' is not a valid device model name
+eliza-evidence: attempt_3_root_cause=bundled qemu-system-riscv64 (Debian 1:9.2.1+ds-1ubuntu5, extracted to ~/.local/cuttlefish/qemu/usr/bin/) was compiled without virtio-gpu; cuttlefish host package always emits a virtio-gpu-pci device even when --gpu_mode is set; --vm_manager=crosvm_manager does not bypass because the bundled crosvm in cvd-host_package-x86_64.tar.gz is only a qemu-img shim
+eliza-evidence: attempt_3_qemu_cmd_evidence_path=~/.local/cuttlefish/images/riscv64/cf/cuttlefish_runtime/launcher.log
+eliza-evidence: attempt_3_qemu_cmd_failure_grep_marker=process_monitor.cc:83
+eliza-evidence: attempt_3_runtime_subprocess_exit_code=1
+eliza-evidence: attempt_3_status=FAIL_HOST_QEMU_VIRTIO_GPU
+
+eliza-evidence: attempt_id=4 attempt_start_utc=2026-05-20T10:13:24Z
+eliza-evidence: attempt_4_args=--cpus=4 --memory_mb=4096 --gpu_mode=guest_swiftshader --start_webrtc=false --qemu_binary_dir=/home/shaw/.local/cuttlefish/qemu/bin-wrap --daemon
+eliza-evidence: attempt_4_failure_layer=qemu-system-riscv64
+eliza-evidence: attempt_4_failure_excerpt=qemu-system-riscv64: -vnc: invalid option
+eliza-evidence: attempt_4_root_cause=fresh qemu 10.1.5 rebuilt with --enable-virtio-gpu cleared the virtio-gpu-pci blocker, but the meson configure had no pixman so VNC was auto-disabled; cuttlefish always emits -vnc 127.0.0.1:544 regardless of --gpu_mode, so the new binary failed at flag parse before any guest state was loaded
+eliza-evidence: attempt_4_status=FAIL_HOST_QEMU_VNC
+
+eliza-evidence: attempt_id=5 attempt_start_utc=2026-05-20T10:33:31Z
+eliza-evidence: attempt_5_args=--cpus=4 --memory_mb=4096 --gpu_mode=guest_swiftshader --start_webrtc=false --qemu_binary_dir=/home/shaw/.local/cuttlefish/qemu/bin-wrap --daemon
+eliza-evidence: attempt_5_failure_layer=none_reached_userspace
+eliza-evidence: attempt_5_root_cause=rebuilt qemu 10.1.5 with -Dvnc=enabled -Dpixman=enabled after staging pixman from external/oss-cad-suite/lib/libpixman-1.so.0 + external/magic-deps/usr/include/pixman-1 into external/qemu-deps/sysroot; both virtio-gpu-pci and -vnc now accepted; OpenSBI handed off, kernel booted, Android init started services through bootanim/zygote/surfaceflinger/adbd; adb on 0.0.0.0:6520 was queryable
+eliza-evidence: attempt_5_guest_uptime_when_snapshot_taken_s=1409
+eliza-evidence: attempt_5_kernel_log_path=/home/shaw/.local/cuttlefish/images/riscv64/cf/cuttlefish/instances/cvd-1/logs/kernel.log
+eliza-evidence: attempt_5_kernel_log_snapshot_path=packages/chip/docs/evidence/android/cuttlefish_riscv64_kernel.log.20260520T110103Z.txt
+eliza-evidence: attempt_5_kernel_log_snapshot_sha256=a30de667a0cb0d5a1abcc2bc3d8545fb91e48806fc8d2634e3e6dceca0c2ebc8
+eliza-evidence: attempt_5_kernel_log_snapshot_lines=4210
+eliza-evidence: attempt_5_boot_summary_path=packages/chip/docs/evidence/android/cuttlefish_riscv64_boot_summary.20260520T110103Z.txt
+eliza-evidence: attempt_5_boot_summary_sha256=3e8f9c593650f33bd494dcbea70688843c1622b6f06061d36b7a284fcfa196c2
+eliza-evidence: attempt_5_launcher_log_sha256=c7757de8df55faad958de864866be4d974bbd34a7654aaf553a2eb5d6338dcd5
+eliza-evidence: attempt_5_kernel_log_live_sha256_at_snapshot=73f7b088eb0a69cd6ba96456a782e7181d584bec3a7cdb5d0d409879ece49cf7
+eliza-evidence: attempt_5_adb_devices=0.0.0.0:6520 device
+eliza-evidence: attempt_5_adb_getprop_ro_product_cpu_abi=riscv64
+eliza-evidence: attempt_5_adb_getprop_ro_build_fingerprint=generic/aosp_cf_riscv64_phone/vsoc_riscv64:16/BP4A.251205.006/15357239:userdebug/test-keys
+eliza-evidence: attempt_5_adb_getprop_ro_build_version_sdk=36
+eliza-evidence: attempt_5_adb_getprop_init_svc_zygote=running
+eliza-evidence: attempt_5_adb_getprop_init_svc_surfaceflinger=running
+eliza-evidence: attempt_5_adb_getprop_init_svc_bootanim=running
+eliza-evidence: attempt_5_adb_getprop_init_svc_adbd=running
+eliza-evidence: attempt_5_adb_getprop_sys_boot_completed=
+eliza-evidence: attempt_5_adb_getprop_dev_bootcomplete=
+eliza-evidence: attempt_5_adb_process_count_in_guest=414
+eliza-evidence: attempt_5_adb_screencap_path=/tmp/cuttlefish_screen_boot.png
+eliza-evidence: attempt_5_adb_screencap_geometry=720x1280
+eliza-evidence: attempt_5_adb_screencap_bytes=22615
+eliza-evidence: attempt_5_furthest_init_milestone=init: starting service 'cppreopts' / preloads_copy.sh / zygote already-running at uptime 864s
+eliza-evidence: attempt_5_terminal_reason=stopped by operator after kernel-log/adb evidence captured; host load average 43 (sibling cuttlefish + qemu builds saturating CPU); sys.boot_completed=1 unlikely under that load on TCG-riscv64 in finite wall time
+eliza-evidence: attempt_5_status=PARTIAL_BOOT_KERNEL_AND_INIT_REACHED_USERSPACE_FRAMEWORK_NOT_YET_COMPLETE
+
+eliza-evidence: confirmed_working_steps=launch_cvd_flag_parse; android_info_read; phone_config_selected; assemble_cvd_emits_cuttlefish_config_json; metadata_image_built; persistent_composite_built; sdcard_image_built; run_cvd_started_tombstone_receiver_cf_vhost_user_input_casimir_control_server_socket_vsock_proxy_control_env_proxy_server_adb_connector; qemu_subprocess_started_and_stays_alive; opensbi_v1_7_loaded; linux_kernel_handoff; android_init_started_all_core_services; vendor_ril_daemon_gatekeeperd_update_engine_usbd_tombstone_transmit_bootanim_zygote_surfaceflinger_adbd_running; virtio_gpu_pci_attached_display_power_mode_changed_ON; adb_transport_up_on_0.0.0.0:6520; getprop_returns_riscv64_android16_fingerprint; screencap_returns_720x1280_png
+eliza-evidence: failing_step=none_until_operator_terminated; sys_boot_completed_not_observed_within_session
+eliza-evidence: artifact_set_integrity=ok
+eliza-evidence: blockers_resolved=host_qemu_virtio_gpu_disabled,host_qemu_vnc_disabled
+eliza-evidence: blockers_remaining=tcg_riscv64_framework_boot_wall_time_under_host_load
+eliza-evidence: remediation_doc=packages/chip/sw/aosp-device/CUTTLEFISH_PREBUILT.md#smoke-launch-outcome-on-this-host-2026-05-19
+eliza-evidence: next_step_command=re-run launch_cvd on an idle host with --memory_mb=8192 --cpus=8 and wait for sys.boot_completed=1 (expect ~30-60 min on TCG-riscv64 even when host is idle)
+eliza-evidence: status=RESOLVED_QEMU_VIRTIO_GPU_AND_VNC_GAP_FULL_BOOT_REQUIRES_IDLE_HOST
+RESULT=0

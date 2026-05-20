@@ -1,0 +1,156 @@
+{
+  "claim_boundary": "Fail-closed review of GD&T/FAI measurement rows; blank template rows are not inspection evidence.",
+  "status": "blocked_no_fai_results",
+  "fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
+  "expected_characteristic_count": 13,
+  "observed_row_count": 13,
+  "complete_result_count": 0,
+  "blank_or_incomplete_characteristics": [
+    "CRIT-001",
+    "CRIT-002",
+    "CRIT-003",
+    "CRIT-004",
+    "CRIT-005",
+    "STACK-006",
+    "STACK-007",
+    "STACK-008",
+    "STACK-009",
+    "STACK-010",
+    "STACK-011",
+    "STACK-012",
+    "STACK-013"
+  ],
+  "cases": [
+    {
+      "characteristic_id": "CRIT-001",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "CRIT-002",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "CRIT-003",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "CRIT-004",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "CRIT-005",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-006",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-007",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-008",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-009",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-010",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-011",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-012",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    },
+    {
+      "characteristic_id": "STACK-013",
+      "expected_characteristic": true,
+      "sample_id_present": false,
+      "measured_value_present": false,
+      "inspector_present": false,
+      "declared_pass": false,
+      "numeric_check_pass": true,
+      "pass": false
+    }
+  ],
+  "release_rule": "Every GD&T/FAI characteristic must include sample ID, measured value, inspector, and passing disposition before tolerance release."
+}

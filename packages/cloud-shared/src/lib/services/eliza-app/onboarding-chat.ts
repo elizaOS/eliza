@@ -339,11 +339,17 @@ function transcriptText(session: OnboardingSession): string {
     .join("\n");
 }
 
-async function copyTranscriptToManagedAgent(
-  session: OnboardingSession,
-): Promise<{ session: OnboardingSession; launchUrl: string | null; copied: boolean }> {
+async function copyTranscriptToManagedAgent(session: OnboardingSession): Promise<{
+  session: OnboardingSession;
+  launchUrl: string | null;
+  copied: boolean;
+}> {
   if (!session.userId || !session.organizationId || !session.agentId || session.handoffCopiedAt) {
-    return { session, launchUrl: session.launchUrl ?? null, copied: !!session.handoffCopiedAt };
+    return {
+      session,
+      launchUrl: session.launchUrl ?? null,
+      copied: !!session.handoffCopiedAt,
+    };
   }
 
   try {

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-lifeops",
-  "version": "2.0.0-beta.4",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "description": "LifeOps app plugin: routines, goals, Google Workspace, Apple Calendar, Apple Reminders, Twilio, browser companion control, hosts-file blocking (self-control), and related agent surfaces.",
   "sideEffects": [

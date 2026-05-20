@@ -4,13 +4,11 @@ GPU-accelerated training using MJX for physics and JAX for RL.
 Following the Playground training pattern for zero-shot sim-to-real.
 
 Usage:
-    python3 -m eliza_robot.sim.mujoco.train
-    python3 -m eliza_robot.sim.mujoco.train --target
-    python3 -m eliza_robot.sim.mujoco.train --getup
-    python3 -m eliza_robot.sim.mujoco.train --num-timesteps 50000000
-    python3 -m eliza_robot.sim.mujoco.train --no-domain-rand
-    python3 -m eliza_robot.sim.mujoco.train --lr 1e-4
-    python3 -m eliza_robot.sim.mujoco.train --resume-from checkpoints/mujoco_locomotion/final_params
+    python3 -m eliza_robot.sim.mujoco.train --task joystick
+    python3 -m eliza_robot.sim.mujoco.train --task target
+    python3 -m eliza_robot.sim.mujoco.train --task getup
+    python3 -m eliza_robot.sim.mujoco.train --task text_conditioned --num-timesteps 8000000
+    python3 -m eliza_robot.sim.mujoco.train --task joystick --no-domain-rand
 """
 
 import argparse
@@ -42,6 +40,7 @@ VALID_TASKS = (
     "place",
     "demo",
     "compositional",
+    "text_conditioned",
 )
 
 
@@ -87,6 +86,14 @@ def _build_env(task: str, enable_entity_slots: bool):
         )
         cfg = compositional_default_config()
         return CompositionalEnv(config=cfg), cfg, "AiNexCompositional"
+    if task == "text_conditioned":
+        from eliza_robot.sim.mujoco.text_conditioned import (
+            TextConditionedJoystick,
+            default_config as text_conditioned_default_config,
+        )
+        cfg = text_conditioned_default_config()
+        cfg.enable_entity_slots = enable_entity_slots
+        return TextConditionedJoystick(config=cfg), cfg, "AiNexTextConditioned"
     raise ValueError(f"Unknown task {task!r}; must be one of {VALID_TASKS}")
 
 
@@ -179,7 +186,11 @@ def train(
     ckpt_dir.mkdir(parents=True, exist_ok=True)
 
     # Compute and store obs_size for checkpoint compatibility
-    obs_size = env._config.obs_history_size * env._single_obs_size
+    if hasattr(env, "observation_size"):
+        # text_conditioned env appends a non-stacked text embedding
+        obs_size = env.observation_size
+    else:
+        obs_size = env._config.obs_history_size * env._single_obs_size
     if enable_entity_slots:
         from eliza_robot.perception.entity_slots.slot_config import TOTAL_ENTITY_DIMS
         obs_size += TOTAL_ENTITY_DIMS
@@ -331,6 +342,34 @@ def train(
     # Save inference function for deployment
     inference_fn = make_inference_fn(params, deterministic=True)
     print(f"\nCheckpoints saved to {ckpt_dir}/")
+
+    # Emit a TextConditionedPolicy-compatible manifest for the text_conditioned
+    # task so the existing policy loader can pick it up without extra glue.
+    if task == "text_conditioned":
+        from eliza_robot.curriculum.loader import load_curriculum
+
+        curriculum = load_curriculum()
+        manifest = {
+            "regime": "brax_ppo",
+            "curriculum_version": curriculum.version,
+            "pca_dim": int(env._config.text_conditioned.pca_dim),
+            "active_tasks": list(env.active_tasks),
+            "obs_dim": int(obs_size),
+            "action_dim": int(env.action_size),
+            "total_steps": int(ppo_cfg["num_timesteps"]),
+            "wall_clock_s": round(elapsed, 1),
+            "best_reward": float(best_reward),
+            "seed": int(seed),
+            "ckpt": "final_params",
+            "encoder_model": "sentence-transformers/all-MiniLM-L6-v2",
+            "policy_hidden_layer_sizes": list(ppo_cfg["policy_hidden_layer_sizes"]),
+            "value_hidden_layer_sizes": list(ppo_cfg["value_hidden_layer_sizes"]),
+            "normalize_observations": bool(ppo_cfg["normalize_observations"]),
+            "proprio_dim": int(env.proprio_dim),
+            "text_dim": int(env.text_dim),
+        }
+        (ckpt_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
+        print(f"Wrote {ckpt_dir/'manifest.json'}")
 
     return inference_fn, params
 

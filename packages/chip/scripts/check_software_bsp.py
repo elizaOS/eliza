@@ -768,7 +768,7 @@ def capture_plan_commands(
             + f"sw/buildroot/scripts/capture-buildroot-evidence.sh {tree} smoke",
             "E1_NPU_ML_SMOKE_CMD='ssh "
             + target
-            + " /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' "
+            + " /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' "
             + f"sw/buildroot/scripts/capture-buildroot-evidence.sh {tree} ml-smoke",
             "python3 scripts/check_software_bsp.py buildroot --require-evidence",
         ]

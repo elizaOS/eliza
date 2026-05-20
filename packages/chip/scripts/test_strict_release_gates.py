@@ -105,6 +105,12 @@ def main() -> int:
             required_tokens=("product release check failed", "KiCad release blockers"),
         ),
         Check(
+            name="SOTA parity strict audit blocks until full phone evidence exists",
+            command=["python3", "scripts/check_sota_parity_audit.py", "--strict"],
+            expected_codes={2},
+            required_tokens=("STATUS: BLOCKED sota_parity",),
+        ),
+        Check(
             name="software bsp evidence blocks missing external Android/Linux logs",
             command=["python3", "scripts/check_software_bsp.py", "all", "--require-evidence"],
             expected_codes={1},

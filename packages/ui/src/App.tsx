@@ -531,11 +531,15 @@ function ViewRouter({
         : navigationPath;
     const remoteView =
       availableViews.find(
-        (v) => v.bundleUrl && v.path === normalizedNavigationPath,
+        (v) =>
+          v.bundleUrl &&
+          v.available !== false &&
+          v.path === normalizedNavigationPath,
       ) ??
       availableViews.find(
         (v) =>
           v.bundleUrl &&
+          v.available !== false &&
           (v.id === tab ||
             v.path === `/${tab}` ||
             v.path === `/apps/${tab}` ||

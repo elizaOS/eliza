@@ -3,8 +3,9 @@
  */
 
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { z } from "zod/v3";
 import { logger } from "../utils/logger";
+import { registerTypedTool } from "./register-typed-tool";
 
 interface GeocodeItem {
   readonly id: number;
@@ -48,7 +49,8 @@ async function geocode(query: string): Promise<GeocodeItem | null> {
 }
 
 export function registerWeatherMcpTools(server: McpServer): void {
-  server.tool(
+  registerTypedTool<{ location?: string; latitude?: number; longitude?: number }>(
+    server,
     "get_current_weather",
     "Current weather for a place name or explicit latitude/longitude.",
     {
@@ -121,7 +123,8 @@ export function registerWeatherMcpTools(server: McpServer): void {
     },
   );
 
-  server.tool(
+  registerTypedTool<{ query: string }>(
+    server,
     "search_location",
     "Resolve a place name to coordinates (Open-Meteo geocoding).",
     {

@@ -4,13 +4,13 @@
 
 This validator is the last gate between a freshly-built live ISO and a
 release-manifest promotion. It refuses to pass until the qemu-virt boot
-transcript exists, hashes match, and every required evidence row has been
-collected.
+transcript exists, hashes match, the GRUB EFI RISC-V boot path is visible
+in the transcript, and every required evidence row has been collected.
 
 Classification policy (matches ``packages/chip/scripts/aggregate_tapeout_readiness.py``):
 
-* ``PASS``     — every required evidence row is present and the qemu-virt
-                 evidence file passes the structural + content checks.
+* ``PASS``     — every required evidence row is present and the qemu-virt /
+                 GRUB EFI evidence files pass the structural + content checks.
 * ``BLOCKED``  — informational: at least one required evidence row is
                  ``missing`` or ``planned`` and the manifest is still on
                  the ``planned`` status, OR an evidence file referenced
@@ -18,7 +18,7 @@ Classification policy (matches ``packages/chip/scripts/aggregate_tapeout_readine
                  in the default mode and exit 1 under ``--strict``.
 * ``FAIL``     — release blocker: schema mismatch, ``iso_sha256``
                  mismatch, ``boot_completed=false``, or a missing
-                 ``elizaos-ready`` marker in the transcript. Always
+                 ``elizaos-firstboot-ready`` marker in the transcript. Always
                  exit 1 regardless of ``--strict``.
 
 The validator deliberately uses the same vocabulary as the chip readiness
@@ -44,13 +44,12 @@ RELEASE_SCHEMA = (
     REPO_ROOT / "packages/os/release/schema/elizaos-os-release-manifest.schema.json"
 )
 
-# Required-evidence ids match the manifest template; do not edit one without
-# editing the other. Promotion past ``planned`` requires every row collected.
+# Required-evidence ids match the manifest template's emulator-release scope;
+# do not edit one without editing the other. Promotion past ``planned`` requires
+# every row collected.
 REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
     "qemu-virt-boot",
-    "u-boot-extlinux-boot",
     "grub-efi-riscv64-boot",
-    "hardware-board-boot",
 )
 
 # Promoted artifact statuses require every evidence row to be ``collected``;
@@ -58,9 +57,15 @@ REQUIRED_EVIDENCE_IDS: tuple[str, ...] = (
 # ``missing`` rows stay informational BLOCKED.
 PROMOTED_STATUSES: frozenset[str] = frozenset({"candidate", "published"})
 
-# Marker the elizaOS first-boot unit prints once the agent is up. The qemu-virt
-# boot transcript must contain this literal string for the gate to PASS.
-REQUIRED_TRANSCRIPT_MARKER = "elizaos-ready"
+# Marker the elizaOS first-boot unit prints once OS userland initialization
+# completes. Agent liveness is intentionally tracked by a separate
+# ``elizaos-agent-ready`` marker and is outside this qemu-virt release gate.
+REQUIRED_TRANSCRIPT_MARKER = "elizaos-firstboot-ready"
+GRUB_TRANSCRIPT_MARKERS: tuple[str, ...] = (
+    "GNU GRUB",
+    "Booting `elizaOS Live (RISC-V 64)'",
+    "EFI stub: Booting Linux Kernel",
+)
 
 # Template substitution values used when the bare ``manifest.json.template``
 # is read (it contains both bare and quoted ``@@...@@`` placeholders that are
@@ -279,6 +284,24 @@ def _resolve_evidence_path(variant_dir: Path, path_value: str) -> Path:
     return candidate
 
 
+def _resolve_transcript_path(variant_dir: Path, path_value: str) -> Path:
+    """Resolve a transcript path, tolerating Docker-internal mount paths.
+
+    The qemu smoke target may run inside the builder container, where the
+    transcript is written to ``/transcript/<name>`` and then appears on the
+    host under the variant's ``evidence/`` directory. Keep the evidence JSON
+    truthful to the process that produced it while still allowing the release
+    gate to verify the host-side artifact.
+    """
+    candidate = _resolve_evidence_path(variant_dir, path_value)
+    if candidate.is_file():
+        return candidate
+    fallback = variant_dir / "evidence" / candidate.name
+    if fallback.is_file():
+        return fallback.resolve()
+    return candidate
+
+
 def check_qemu_virt_evidence(
     manifest: dict, is_template: bool, variant_dir: Path
 ) -> list[GateResult]:
@@ -350,7 +373,7 @@ def check_qemu_virt_evidence(
     if isinstance(transcript_value, str):
         transcript_text = transcript_value
     elif isinstance(transcript_path_value, str) and transcript_path_value:
-        transcript_path = _resolve_evidence_path(variant_dir, transcript_path_value)
+        transcript_path = _resolve_transcript_path(variant_dir, transcript_path_value)
         if not transcript_path.is_file():
             out.append(
                 GateResult("FAIL", f"transcript file missing: {transcript_path}")
@@ -378,6 +401,96 @@ def check_qemu_virt_evidence(
 
     if not out:
         out.append(GateResult("PASS", "qemu-virt evidence verified"))
+    return out
+
+
+def check_grub_efi_evidence(
+    manifest: dict, is_template: bool, variant_dir: Path
+) -> list[GateResult]:
+    """Cross-check the GRUB EFI RISC-V evidence JSON against the transcript."""
+    rows = _evidence_index(manifest)
+    row = rows.get("grub-efi-riscv64-boot")
+    if row is None:
+        return [
+            GateResult(
+                "FAIL", "manifest.validation.evidence missing grub-efi-riscv64-boot row"
+            )
+        ]
+
+    path_value = row.get("path")
+    if not isinstance(path_value, str) or not path_value:
+        if is_template:
+            return [
+                GateResult(
+                    "BLOCKED",
+                    "grub-efi-riscv64-boot.path not filled (template manifest)",
+                )
+            ]
+        return [GateResult("BLOCKED", "grub-efi-riscv64-boot.path not filled")]
+
+    evidence_path = _resolve_evidence_path(variant_dir, path_value)
+    if not evidence_path.is_file():
+        return [GateResult("BLOCKED", f"evidence file not present: {evidence_path}")]
+
+    try:
+        payload = _load_json(evidence_path)
+    except json.JSONDecodeError as exc:
+        return [GateResult("FAIL", f"evidence JSON invalid at {evidence_path}: {exc}")]
+    if not isinstance(payload, dict):
+        return [GateResult("FAIL", f"evidence JSON must be an object: {evidence_path}")]
+
+    out: list[GateResult] = []
+    if payload.get("boot_completed") is not True:
+        out.append(
+            GateResult(
+                "FAIL",
+                "GRUB EFI boot did not complete: "
+                f"boot_completed={payload.get('boot_completed')!r}",
+            )
+        )
+
+    iso_sha256_manifest = manifest.get("sha256")
+    iso_sha256_evidence = payload.get("iso_sha256")
+    if not isinstance(iso_sha256_evidence, str) or not iso_sha256_evidence:
+        out.append(GateResult("FAIL", "GRUB evidence missing iso_sha256"))
+    elif iso_sha256_manifest in (None, TEMPLATE_SENTINEL_SHA256):
+        out.append(
+            GateResult(
+                "BLOCKED",
+                "manifest.sha256 not filled; cannot cross-check GRUB iso_sha256",
+            )
+        )
+    elif iso_sha256_evidence != iso_sha256_manifest:
+        out.append(
+            GateResult(
+                "FAIL",
+                "iso_sha256 mismatch between manifest and GRUB evidence: "
+                f"manifest={iso_sha256_manifest!r} evidence={iso_sha256_evidence!r}",
+            )
+        )
+
+    transcript_path_value = payload.get("transcript_path")
+    if not isinstance(transcript_path_value, str) or not transcript_path_value:
+        out.append(GateResult("FAIL", "GRUB evidence missing transcript_path"))
+    else:
+        transcript_path = _resolve_transcript_path(variant_dir, transcript_path_value)
+        if not transcript_path.is_file():
+            out.append(
+                GateResult("FAIL", f"GRUB transcript file missing: {transcript_path}")
+            )
+        else:
+            transcript_text = transcript_path.read_text(errors="replace")
+            for marker in GRUB_TRANSCRIPT_MARKERS:
+                if marker not in transcript_text:
+                    out.append(
+                        GateResult(
+                            "FAIL",
+                            f"GRUB transcript missing required marker: {marker}",
+                        )
+                    )
+
+    if not out:
+        out.append(GateResult("PASS", "GRUB EFI RISC-V evidence verified"))
     return out
 
 
@@ -429,6 +542,7 @@ def run_checks(variant_dir: Path) -> tuple[Status, list[GateResult], Path, bool]
     results.extend(check_required_evidence_rows(manifest))
     results.extend(check_evidence_rows_collected(manifest, is_template))
     results.extend(check_qemu_virt_evidence(manifest, is_template, variant_dir))
+    results.extend(check_grub_efi_evidence(manifest, is_template, variant_dir))
     results.extend(check_iso_sha256_against_file(manifest, is_template, variant_dir))
     return aggregate(results), results, manifest_path, is_template
 

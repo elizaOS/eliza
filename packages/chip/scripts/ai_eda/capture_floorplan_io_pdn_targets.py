@@ -179,6 +179,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "openroad-ifp",
+            "openroad-rtlmp",
             "openroad-ioplacer",
             "openroad-tapcell",
             "openroad-pdn",
@@ -259,6 +260,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "macro-placement-baseline-watch",
+                "status": "CAPTURED_NOT_EXECUTED",
+                "target": "future OpenROAD RTLMP-style macro placement requires release-ready macro manifests, halos, blockages, package and PDN constraints, deterministic replay, routing, STA, DRC/LVS, antenna, power, and review",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation",
+                    "make pd-signoff-manifest-check",
+                    "make power-thermal-evidence-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "pin-pdn-generation-quarantine-watch",
                 "status": "CAPTURED_NOT_EXECUTED",
                 "target": "future generated pin orders, pad rings, tap/endcap settings, and PDN grids require package, SI/PI, power, routing, DRC/LVS, and reviewer gates",
@@ -274,6 +286,7 @@ def main() -> int:
         "blocked_by": [
             "no accepted write-capable schema for die/core area, IO placement, pin order, padframe, tap/endcap, track, PDN, DEF, ODB, Tcl, or patch edits",
             "no repeated completed E1 OpenLane floorplan-to-signoff corpus with held-out labels for AI floorplanning or PDN validation",
+            "no release-ready hard-macro manifest, halo/blockage policy, package constraints, or macro-placement replay logs",
             "no license-reviewed import path for external floorplanning datasets, generated floorplans, or pretrained floorplanning models",
             "no release gate allowing AI floorplan, pin, tapcell, padframe, or PDN output to bypass package, SI/PI, power, routing, STA, DRC/LVS/antenna, manufacturing, commercial-EDA, and reviewer gates",
         ],

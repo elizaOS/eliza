@@ -713,7 +713,7 @@ def main() -> int:
             "orassistant",
             "eda-corpus",
             "llm-eda-log-analysis",
-            "autoeda-mcp-server",
+            "autoeda-mcp",
             "mcp4eda",
         ],
         "index_policy": {

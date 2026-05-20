@@ -1,0 +1,6 @@
+{
+    "executable_name": "champsim_pref_bingo",
+    "LLC": { "prefetcher": "no",  "replacement": "lru" },
+    "L2C": { "prefetcher": "bingo" },
+    "L1D": { "prefetcher": "no" }
+}

@@ -1,6 +1,6 @@
 schema: eliza.display_panel_binding.v1
 as_of: 2026-05-19
-panel: v0_simple_panel_720x1280_dsi
+panel: v0_oem_5p5_fhd_1080x1920_dsi
 status: planning_binding_no_bonded_pins_no_fabricated_board
 claim_boundary: >
   Planning binding only. No DSI controller exists in `rtl/`, no DSI lanes are
@@ -10,10 +10,52 @@ claim_boundary: >
   `research/mobile_platform_2026/02_analysis/display_dsi_dsc.md`), bonded
   DSI pins, panel driver upstream coverage, and DRM/KMS transcript.
 selected_for:
-  - "First v0 hand-held panel: 5\" 720x1280 IPS or OLED with MIPI-DSI single-lane or two-lane PHY at 1-1.5 Gb/s/lane."
-  - Mainline panel-simple or panel-orisetech driver coverage.
-  - DSI command-mode or video-mode operation per panel datasheet.
+  - "First v0 hand-held panel: commodity 5.5\" 1080x1920 IPS/OLED LCM with MIPI-DSI 4-lane PHY."
+  - "Mechanical anchor: 68.04 x 120.96 mm active area, roughly 70-71 mm TFT outline."
+  - DSI command-mode or video-mode operation per selected vendor datasheet.
 panel_candidates:
+  - vendor: Chenghao Optoelectronic
+    part: CH550FH01A-CT
+    interface: MIPI-DSI
+    resolution: 1080x1920
+    refresh_hz: 60
+    active_area_mm: {width: 68.04, height: 120.96}
+    tft_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
+    module_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+    touch: capacitive
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
+  - vendor: META Display / OEM 055WU01 class
+    part: 055WU01
+    interface: MIPI-DSI 4-lane, 40-pin
+    resolution: 1080x1920
+    refresh_hz: 60
+    active_area_mm: {width: 68.04, height: 120.96}
+    brightness_typ_cd_m2: 1000
+    touch: capacitive
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
+  - vendor: Forfuture / FET
+    part: E549-HCO1 or pin-compatible AMOLED class
+    interface: MIPI-DSI 4-lane
+    resolution: 1080x1920
+    refresh_hz: 60
+    active_area_mm: {width: 68.299, height: 121.421}
+    outline_mm: {width: 70.66, height: 128.36, thickness: 0.82}
+    driver_ic: RM67191
+    touch: oncell_optional
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
+  - vendor: Alibaba OEM/ODM 5.5 inch ILI7807D class
+    part: 5p5_1080x1920_MIPI_40pin_1200nit_class
+    interface: MIPI-DSI 4-lane, 40-pin
+    resolution: 1080x1920
+    refresh_hz: 60
+    brightness_typ_cd_m2: 1200
+    driver_ic: ILI7807D
+    touch: capacitive
+    linux_driver: vendor_init_sequence_required
+    datasheet_status: supplier_request_required
   - vendor: BOE
     part: TV050QDM-N00
     interface: MIPI-DSI 4-lane (subset 1–2 lane usable)
@@ -47,7 +89,7 @@ linux_support:
   evidence_manifest: package/display/evidence-gates.yaml
 host_interfaces:
   dsi_lanes:
-    count_required: 2
+    count_required: 4
     count_optional_max: 4
     speed_per_lane_gbps:
       min: 0.8
@@ -60,6 +102,10 @@ host_interfaces:
       - {contract: DSI_D0_N, module_role: dsi_data0_n, direction_at_soc: output}
       - {contract: DSI_D1_P, module_role: dsi_data1_p, direction_at_soc: output}
       - {contract: DSI_D1_N, module_role: dsi_data1_n, direction_at_soc: output}
+      - {contract: DSI_D2_P, module_role: dsi_data2_p, direction_at_soc: output}
+      - {contract: DSI_D2_N, module_role: dsi_data2_n, direction_at_soc: output}
+      - {contract: DSI_D3_P, module_role: dsi_data3_p, direction_at_soc: output}
+      - {contract: DSI_D3_N, module_role: dsi_data3_n, direction_at_soc: output}
   control:
     signals:
       - {contract: DISP_RESET_N, module_role: panel_reset_n, direction_at_soc: output, default: low}

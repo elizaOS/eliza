@@ -89,6 +89,8 @@ def test_loca_harness_accepts_nested_or_legacy_function_tools() -> None:
     assert "examples or placeholders" in prompt
     assert "source_data/local_db" in prompt
     assert "overwrite or edit every requested CSV file" in prompt
+    assert "deadline ascending first" in prompt
+    assert "extra rows and order" in prompt
 
 
 def test_loca_harness_accepts_wrapped_tool_manifest() -> None:

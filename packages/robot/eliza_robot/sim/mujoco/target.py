@@ -32,8 +32,12 @@ def default_config() -> config_dict.ConfigDict:
         ctrl_dt=0.02,       # 50 Hz control
         sim_dt=0.004,       # 250 Hz physics
         episode_length=1000,
-        Kp=21.1,            # Position gain (matching OP3)
-        Kd=1.084,           # Velocity damping (matching OP3)
+        # AiNex PD gains — copy-paste of OP3's 21.1/1.084 was a 10×
+        # under-tuning bug (see research/sota_improvements/R-1). Joystick
+        # and getup use 200/5 because that's what the real AiNex servos
+        # need; target reaching is the same actuator population.
+        Kp=200.0,           # Position gain (AiNex servos)
+        Kd=5.0,             # Velocity damping (AiNex servos)
         early_termination=True,
         action_repeat=1,
         action_scale=0.3,

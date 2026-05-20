@@ -206,6 +206,36 @@ describe("platform context providers", () => {
 		});
 	});
 
+	it("includes platform-specific output guidance for Discord", async () => {
+		const getChatContext = vi.fn(async (target) => ({
+			target,
+			label: "#general",
+			recentMessages: [{ name: "Sam", text: "show this as a table" }],
+		}));
+		const runtime = makeRuntime([
+			makeConnector("discord", {
+				getChatContext,
+			}),
+		]);
+
+		const result = await platformChatContextProvider.get(
+			runtime,
+			makeMessage("discord"),
+			makeState(),
+		);
+
+		expect(result.text).toContain("avoid markdown tables");
+		expect(result.text).toContain("wrap each URL in angle brackets");
+		expect(result.text).not.toContain("show this as a table");
+		expect(result.data).toMatchObject({
+			source: "discord",
+			outputGuidance: [
+				expect.stringContaining("avoid markdown tables"),
+				expect.stringContaining("wrap each URL in angle brackets"),
+			],
+		});
+	});
+
 	it("resolves entity-specific user context through the relevant connector", async () => {
 		const getUserContext = vi.fn(async (entityId) => ({
 			entityId,

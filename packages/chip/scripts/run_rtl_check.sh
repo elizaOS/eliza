@@ -60,6 +60,7 @@ rtl/cache/prefetch/e1_pythia_stub.sv
 rtl/cache/replacement/e1_drrip.sv
 rtl/cache/replacement/e1_hawkeye.sv
 rtl/cache/replacement/e1_mockingjay.sv
+rtl/cache/replacement/e1_mockingjay_prod.sv
 rtl/cache/compression/e1_bdi_compress.sv
 rtl/cache/compression/e1_bdi_decompress.sv
 rtl/cache/coherence/tl_c_to_chi_bridge.sv
@@ -101,6 +102,7 @@ if command -v verilator >/dev/null 2>&1; then
     for m in e1_berti_prefetcher e1_fdip_l1i_prefetcher e1_stride_prefetcher \
              e1_best_offset_prefetcher e1_spp_prefetcher e1_ipcp_prefetcher \
              e1_pythia_stub e1_drrip e1_hawkeye e1_mockingjay \
+             e1_mockingjay_prod \
              e1_bdi_compress e1_bdi_decompress tl_c_to_chi_bridge; do
         # shellcheck disable=SC2086
         verilator --lint-only -Wall $cache_lint_waivers \

@@ -5,7 +5,7 @@ E1 application processor. The BPU is decoupled from instruction fetch: a
 Fetch Target Queue (FTQ) buffers predicted fetch blocks between the BPU and
 the L1I, so that BPU stages can run ahead of fetch and emit prefetch hints in
 the style of [FDIP](https://dl.acm.org/doi/10.5555/320080.320085) and
-[XiangShan Kunminghu](https://github.com/OpenXiangShan/XiangShan/blob/kunminghu-v2/src/main/scala/xiangshan/Parameters.scala).
+[XiangShan Kunminghu](https://github.com/OpenXiangShan/XiangShan/blob/kunminghu-v3/src/main/scala/xiangshan/Parameters.scala).
 
 This document mirrors the contract style of `docs/arch/cpu-subsystem.md`. It
 is the externally checkable description of the BPU shape, ISA-visible PMU

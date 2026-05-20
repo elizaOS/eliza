@@ -21,5 +21,5 @@ module ras_tb (
     output logic               pmu_overflow,
     output logic               pmu_underflow
 );
-    ras u_ras (.*);
+    e1_bpu_ras u_ras (.*);
 endmodule

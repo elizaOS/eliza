@@ -14,7 +14,7 @@ import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 
-import app.eliza.R;
+import ai.elizaos.app.R;
 
 /**
  * Foreground service for continuous-chat / VAD-gated voice capture

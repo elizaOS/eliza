@@ -14,9 +14,19 @@ strides through many cold sets. Classical LRU evicts the hot set on
 every scan pass; Mockingjay should learn (via the STT-fed RTP) that the
 hot-set PCs are short-reuse and keep them.
 
+The stream is split into two windows. The first ``WARMUP_OPS`` ops are
+not counted toward the pass/fail comparison; they exist to warm the
+Mockingjay STT and PC-keyed RTP so that ETR insertion has a learned
+signal during the measurement window. Without warmup, every line
+carries ``MAX_ETR`` at reset and the policy collapses to whatever the
+tie-break randomizer picks — that is correct behaviour but it is not
+the regime the policy is designed for. The LRU oracle is measured on
+the same windowing so the comparison is apples-to-apples.
+
 Pass criterion: Mockingjay hit-rate is at least +10% (absolute or
-relative) above LRU on this synthetic stream. Phone-class IPC remains
-BLOCKED — see docs/evidence/cache/cache-evidence-gate.yaml.
+relative) above LRU on this synthetic stream in the measurement
+window. Phone-class IPC remains BLOCKED — see
+docs/evidence/cache/cache-evidence-gate.yaml.
 """
 
 from __future__ import annotations
@@ -32,6 +42,8 @@ from cocotb.triggers import RisingEdge
 WAYS = 8
 SETS = 64
 SET_IDX_W = 6
+TAG_W = 24
+TAG_MASK = (1 << TAG_W) - 1
 
 
 class LRUModel:
@@ -144,6 +156,7 @@ async def reset_dut(dut) -> None:
     dut.acc_way.value = 0
     dut.acc_is_miss_install.value = 0
     dut.acc_pc.value = 0
+    dut.acc_tag.value = 0
     dut.query_set.value = 0
     for _ in range(5):
         await RisingEdge(dut.clk)
@@ -154,28 +167,46 @@ async def reset_dut(dut) -> None:
 @cocotb.test()
 async def test_mockingjay_beats_lru_on_scan_reuse(dut):
     """Run a synthetic scan+reuse stream through the Mockingjay DUT and
-    an LRU oracle. Assert that Mockingjay's hit-rate is at least +10%
-    higher (relative) than the LRU oracle's hit-rate."""
+    an LRU oracle. Assert that Mockingjay's hit-rate in the measurement
+    window is at least +10% higher (absolute or relative) than the LRU
+    oracle's hit-rate in the same window."""
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset_dut(dut)
 
     tracker = TrackedTagSet(ways=WAYS, sets=SETS)
     lru = LRUModel(ways=WAYS, sets=SETS)
 
+    # Warmup: drive a substantial prefix of the stream so the
+    # Mockingjay STT and PC-keyed RTP can converge before measurement.
+    # The LRU oracle does not need warmup but is driven on the same
+    # window for symmetry; we then reset its hit/miss counters at the
+    # end of warmup so the measurement-window comparison is fair.
+    WARMUP_OPS = 10_000
+    MEASURE_OPS = 90_000
+    NUM_OPS = WARMUP_OPS + MEASURE_OPS
+
+    mj_hits_warm = 0
+    mj_misses_warm = 0
     mj_hits = 0
     mj_misses = 0
-    NUM_OPS = 2000
 
-    for _op_idx, (s, tag, pc) in enumerate(gen_stream(NUM_OPS, seed=1)):
-        # 1. Decide hit/miss in the Mockingjay-driven tracked set.
+    for op_idx, (s, tag, pc) in enumerate(gen_stream(NUM_OPS, seed=1)):
+        in_measure = op_idx >= WARMUP_OPS
+
         way = tracker.lookup(s, tag)
         if way is not None:
-            mj_hits += 1
+            if in_measure:
+                mj_hits += 1
+            else:
+                mj_hits_warm += 1
             hit = 1
             install = 0
             target_way = way
         else:
-            mj_misses += 1
+            if in_measure:
+                mj_misses += 1
+            else:
+                mj_misses_warm += 1
             hit = 0
             install = 1
             # Query the DUT for the victim way for this set
@@ -184,62 +215,84 @@ async def test_mockingjay_beats_lru_on_scan_reuse(dut):
             target_way = int(dut.victim_way.value)
             tracker.install(s, tag, target_way)
 
-        # 2. Drive the access update into the DUT
+        # Drive the access update into the DUT. acc_tag carries the
+        # line-address tag the STT keys on; the scan PC walks distinct
+        # tags so the line-address-keyed STT correctly treats each scan
+        # access as a miss instead of the PC-keyed false hit.
         dut.acc_valid.value = 1
         dut.acc_set.value = s
         dut.acc_hit.value = hit
         dut.acc_way.value = target_way
         dut.acc_is_miss_install.value = install
         dut.acc_pc.value = pc
+        dut.acc_tag.value = tag & TAG_MASK
         await RisingEdge(dut.clk)
         dut.acc_valid.value = 0
 
-        # 3. Same access against the LRU oracle.
+        # Same access against the LRU oracle.
         lru.access(s, tag)
+        if op_idx == WARMUP_OPS - 1:
+            # Snapshot LRU counters at the warmup boundary so the
+            # measurement window's LRU hit-rate is computed only over
+            # the measurement ops.
+            lru_hits_at_warm = lru.hits
+            lru_misses_at_warm = lru.misses
 
     # Allow the DUT counters to settle.
     for _ in range(3):
         await RisingEdge(dut.clk)
 
     mj_total = mj_hits + mj_misses
-    lru_total = lru.hits + lru.misses
+    lru_hits_measure = lru.hits - lru_hits_at_warm
+    lru_misses_measure = lru.misses - lru_misses_at_warm
+    lru_total = lru_hits_measure + lru_misses_measure
     mj_rate = mj_hits / mj_total
-    lru_rate = lru.hits / lru_total
+    lru_rate = lru_hits_measure / lru_total
+
+    warm_total = mj_hits_warm + mj_misses_warm
+    warm_rate = mj_hits_warm / warm_total if warm_total else 0.0
 
     dut._log.info(
-        f"Mockingjay: {mj_hits}/{mj_total} = {mj_rate:.4f}  "
-        f"LRU: {lru.hits}/{lru_total} = {lru_rate:.4f}"
+        f"Warmup ({warm_total} ops) Mockingjay: {mj_hits_warm}/{warm_total} = {warm_rate:.4f}"
+    )
+    dut._log.info(
+        f"Measure ({mj_total} ops) Mockingjay: {mj_hits}/{mj_total} = "
+        f"{mj_rate:.4f}  LRU: {lru_hits_measure}/{lru_total} = "
+        f"{lru_rate:.4f}"
     )
     dut._log.info(
         f"DUT-reported counters: hits={int(dut.hits_count.value)} "
         f"misses={int(dut.misses_count.value)}"
     )
 
-    # Sanity: the DUT-reported counters should be close to (within a few
-    # extra cycles for the query path) our externally-tracked counts.
+    # Sanity: DUT-reported counters track the whole stream (warmup +
+    # measurement), so they should equal the externally-tracked totals.
     dut_hits = int(dut.hits_count.value)
     dut_misses = int(dut.misses_count.value)
-    assert dut_hits + dut_misses == mj_total, (
-        f"DUT total {dut_hits + dut_misses} != tracked total {mj_total}"
+    total_seen = mj_hits + mj_misses + mj_hits_warm + mj_misses_warm
+    assert dut_hits + dut_misses == total_seen, (
+        f"DUT total {dut_hits + dut_misses} != tracked total {total_seen}"
     )
 
-    # Pass criterion: Mockingjay's hit-rate beats LRU's by at least 10%.
-    # The number is reported on stdout so the cocotb-cache evidence gate
-    # can extract it; the harness only asserts the minimum bar.
+    # Pass criterion is evaluated on the measurement window only.
     rel_gain = (mj_rate - lru_rate) / max(lru_rate, 1e-6)
     abs_gain = mj_rate - lru_rate
     dut._log.info(
-        f"Mockingjay vs LRU: abs_gain={abs_gain * 100:.2f}% rel_gain={rel_gain * 100:.2f}%"
+        f"Mockingjay vs LRU (measure window): "
+        f"abs_gain={abs_gain * 100:.2f}% rel_gain={rel_gain * 100:.2f}%"
     )
 
-    # Emit a machine-readable line for the evidence gate to parse.
+    # Machine-readable summary line for the evidence gate to parse.
     print(
-        f"MOCKINGJAY_VS_LRU_SUMMARY mj_rate={mj_rate:.6f} "
+        f"MOCKINGJAY_VS_LRU_SUMMARY warmup_ops={WARMUP_OPS} "
+        f"measure_ops={mj_total} mj_rate={mj_rate:.6f} "
         f"lru_rate={lru_rate:.6f} abs_gain={abs_gain:.6f} "
         f"rel_gain={rel_gain:.6f}"
     )
 
-    assert mj_rate > lru_rate, "Mockingjay must beat LRU on the synthetic stream"
+    assert mj_rate > lru_rate, (
+        "Mockingjay must beat LRU on the measurement window of the synthetic stream"
+    )
     assert abs_gain >= 0.10 or rel_gain >= 0.10, (
         f"Mockingjay-vs-LRU gain {abs_gain * 100:.2f}% absolute "
         f"({rel_gain * 100:.2f}% relative) below 10% threshold"

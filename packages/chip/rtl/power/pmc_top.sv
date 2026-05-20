@@ -17,7 +17,12 @@
 
 module pmc_top
     import power_pkg::*;
-(
+#(
+    // PMC firmware reset vector. Must match the ORIGIN of AON_SRAM in
+    // fw/pmc/link.ld. Override in integration only if the linker script is
+    // changed in lockstep.
+    parameter logic [31:0] PMC_BOOT_ADDR = 32'h1005_0000
+) (
     input  logic        clk_aon,                // AON clock (32 kHz ref divided to PMC PLL)
     input  logic        clk_sample,             // 200 MHz sample reference
     input  logic        rst_n,
@@ -249,9 +254,30 @@ module pmc_top
     // external/ibex/ibex/rtl/ibex_top.sv at the pinned commit.
     // -------------------------------------------------------------------------
 `ifdef PMC_INSTANTIATE_IBEX
-    // PMC firmware fetch + load paths route through a small SRAM bank (8 KiB
-    // boot ROM + 32 KiB SRAM). The actual SRAM blocks live in rtl/top/, so the
-    // unbound nets here are tied at the top-level integration in rtl/top/.
+    // -------------------------------------------------------------------------
+    // AON SRAM (16 KiB) at PMC_BOOT_ADDR — backs the firmware text/data/bss
+    // sections from fw/pmc/link.ld. The cocotb harness preloads this memory
+    // with fw/pmc/build/pmc.elf via $readmemh on `+PMC_AON_SRAM_HEX=<path>`,
+    // matching the contract recorded in docs/evidence/power/pmc-fw-build-
+    // evidence.yaml. Verilator initialises unloaded words to 0 (NOP at reset).
+    // -------------------------------------------------------------------------
+    localparam int unsigned AON_SRAM_BYTES = 16 * 1024;
+    localparam int unsigned AON_SRAM_WORDS = AON_SRAM_BYTES / 4;
+    localparam int unsigned AON_SRAM_AW    = $clog2(AON_SRAM_WORDS);
+
+    logic [31:0] aon_sram_q [AON_SRAM_WORDS];
+
+    initial begin : pmc_aon_sram_preload
+        string aon_hex_path;
+        for (int unsigned w = 0; w < AON_SRAM_WORDS; w++) begin
+            aon_sram_q[w] = 32'h0000_0013;  // RV32 NOP (addi x0,x0,0)
+        end
+        if ($value$plusargs("PMC_AON_SRAM_HEX=%s", aon_hex_path)) begin
+            $display("[pmc_top] preloading AON SRAM from %s", aon_hex_path);
+            $readmemh(aon_hex_path, aon_sram_q);
+        end
+    end
+
     logic        ibex_instr_req;
     logic        ibex_instr_gnt;
     logic        ibex_instr_rvalid;
@@ -269,8 +295,57 @@ module pmc_top
     logic        ibex_data_err;
     logic        ibex_core_sleep;
 
+    // Word-aligned offsets inside the AON SRAM aperture (PMC_BOOT_ADDR
+    // .. PMC_BOOT_ADDR + AON_SRAM_BYTES). Anything outside the aperture
+    // raises an err to the Ibex bus and the firmware will trap.
+    logic [AON_SRAM_AW-1:0] instr_word_idx;
+    logic [AON_SRAM_AW-1:0] data_word_idx;
+    logic                   instr_in_aon;
+    logic                   data_in_aon;
+
+    assign instr_in_aon   = (ibex_instr_addr[31:14] == PMC_BOOT_ADDR[31:14]);
+    assign data_in_aon    = (ibex_data_addr [31:14] == PMC_BOOT_ADDR[31:14]);
+    assign instr_word_idx = ibex_instr_addr[AON_SRAM_AW+2-1:2];
+    assign data_word_idx  = ibex_data_addr [AON_SRAM_AW+2-1:2];
+
+    // Single-cycle response. The AON SRAM model accepts both instr+data
+    // requests simultaneously; the real macro will be dual-port. For the
+    // cocotb smoke this is a sufficient functional model.
+    always_ff @(posedge clk_aon or negedge rst_n) begin
+        if (!rst_n) begin
+            ibex_instr_gnt    <= 1'b0;
+            ibex_instr_rvalid <= 1'b0;
+            ibex_instr_rdata  <= 32'h0;
+            ibex_instr_err    <= 1'b0;
+            ibex_data_gnt     <= 1'b0;
+            ibex_data_rvalid  <= 1'b0;
+            ibex_data_rdata   <= 32'h0;
+            ibex_data_err     <= 1'b0;
+        end else begin
+            ibex_instr_gnt    <= ibex_instr_req;
+            ibex_instr_rvalid <= ibex_instr_req;
+            ibex_instr_err    <= ibex_instr_req && !instr_in_aon;
+            if (ibex_instr_req && instr_in_aon) begin
+                ibex_instr_rdata <= aon_sram_q[instr_word_idx];
+            end
+
+            ibex_data_gnt    <= ibex_data_req;
+            ibex_data_rvalid <= ibex_data_req;
+            ibex_data_err    <= ibex_data_req && !data_in_aon;
+            if (ibex_data_req && data_in_aon) begin
+                if (ibex_data_we) begin
+                    if (ibex_data_be[0]) aon_sram_q[data_word_idx][ 7: 0] <= ibex_data_wdata[ 7: 0];
+                    if (ibex_data_be[1]) aon_sram_q[data_word_idx][15: 8] <= ibex_data_wdata[15: 8];
+                    if (ibex_data_be[2]) aon_sram_q[data_word_idx][23:16] <= ibex_data_wdata[23:16];
+                    if (ibex_data_be[3]) aon_sram_q[data_word_idx][31:24] <= ibex_data_wdata[31:24];
+                end
+                ibex_data_rdata <= aon_sram_q[data_word_idx];
+            end
+        end
+    end
+
     ibex_top #(
-        .RV32M               (2'b01),  // ibex_pkg::RV32MSlow
+        .RV32M               (ibex_pkg::RV32MSlow),
         .RV32E               (1'b0),
         .BranchTargetALU     (1'b0),
         .WritebackStage      (1'b0),
@@ -281,64 +356,72 @@ module pmc_top
         .DbgHwBreakNum       (4),
         .SecureIbex          (1'b0)
     ) u_ibex_pmc (
-        .clk_i               (clk_aon),
-        .rst_ni              (rst_n),
-        .test_en_i           (1'b0),
-        .ram_cfg_i           ('0),
-        .hart_id_i           (32'h0),
-        .boot_addr_i         (32'h0000_0000),
+        .clk_i                     (clk_aon),
+        .rst_ni                    (rst_n),
+        .test_en_i                 (1'b0),
+        .ram_cfg_icache_tag_i      (prim_ram_1p_pkg::RAM_1P_CFG_DEFAULT),
+        .ram_cfg_rsp_icache_tag_o  (),
+        .ram_cfg_icache_data_i     (prim_ram_1p_pkg::RAM_1P_CFG_DEFAULT),
+        .ram_cfg_rsp_icache_data_o (),
+        .hart_id_i                 (32'h0),
+        .boot_addr_i               (PMC_BOOT_ADDR),
 
-        .instr_req_o         (ibex_instr_req),
-        .instr_gnt_i         (ibex_instr_gnt),
-        .instr_rvalid_i      (ibex_instr_rvalid),
-        .instr_addr_o        (ibex_instr_addr),
-        .instr_rdata_i       (ibex_instr_rdata),
-        .instr_rdata_intg_i  (7'h0),
-        .instr_err_i         (ibex_instr_err),
+        .instr_req_o               (ibex_instr_req),
+        .instr_gnt_i               (ibex_instr_gnt),
+        .instr_rvalid_i            (ibex_instr_rvalid),
+        .instr_addr_o              (ibex_instr_addr),
+        .instr_rdata_i             (ibex_instr_rdata),
+        .instr_rdata_intg_i        (7'h0),
+        .instr_err_i               (ibex_instr_err),
 
-        .data_req_o          (ibex_data_req),
-        .data_gnt_i          (ibex_data_gnt),
-        .data_rvalid_i       (ibex_data_rvalid),
-        .data_we_o           (ibex_data_we),
-        .data_be_o           (ibex_data_be),
-        .data_addr_o         (ibex_data_addr),
-        .data_wdata_o        (ibex_data_wdata),
-        .data_wdata_intg_o   (),
-        .data_rdata_i        (ibex_data_rdata),
-        .data_rdata_intg_i   (7'h0),
-        .data_err_i          (ibex_data_err),
+        .data_req_o                (ibex_data_req),
+        .data_gnt_i                (ibex_data_gnt),
+        .data_rvalid_i             (ibex_data_rvalid),
+        .data_we_o                 (ibex_data_we),
+        .data_be_o                 (ibex_data_be),
+        .data_addr_o               (ibex_data_addr),
+        .data_wdata_o              (ibex_data_wdata),
+        .data_wdata_intg_o         (),
+        .data_rdata_i              (ibex_data_rdata),
+        .data_rdata_intg_i         (7'h0),
+        .data_err_i                (ibex_data_err),
 
-        .irq_software_i      (1'b0),
-        .irq_timer_i         (1'b0),
-        .irq_external_i      (any_avfs_fault),
-        .irq_fast_i          (15'h0),
-        .irq_nm_i            (1'b0),
+        .irq_software_i            (1'b0),
+        .irq_timer_i               (1'b0),
+        .irq_external_i            (any_avfs_fault),
+        .irq_fast_i                (15'h0),
+        .irq_nm_i                  (1'b0),
 
-        .debug_req_i         (1'b0),
-        .crash_dump_o        (),
-        .double_fault_seen_o (),
+        .scramble_key_valid_i      (1'b0),
+        .scramble_key_i            ('0),
+        .scramble_nonce_i          ('0),
+        .scramble_req_o            (),
 
-        .fetch_enable_i      (4'b1001),  // ibex_pkg::IbexMuBiOn
-        .alert_minor_o       (),
-        .alert_major_internal_o (),
-        .alert_major_bus_o   (),
-        .core_sleep_o        (ibex_core_sleep),
-        .scan_rst_ni         (rst_n)
+        .debug_req_i               (1'b0),
+        .crash_dump_o              (),
+        .double_fault_seen_o       (),
+
+        .fetch_enable_i            (ibex_pkg::IbexMuBiOn),
+        .alert_minor_o             (),
+        .alert_major_internal_o    (),
+        .alert_major_bus_o         (),
+        .core_sleep_o              (ibex_core_sleep),
+        .scan_rst_ni               (rst_n),
+
+        .lockstep_cmp_en_o         (),
+        .data_req_shadow_o         (),
+        .data_we_shadow_o          (),
+        .data_be_shadow_o          (),
+        .data_addr_shadow_o        (),
+        .data_wdata_shadow_o       (),
+        .data_wdata_intg_shadow_o  (),
+        .instr_req_shadow_o        (),
+        .instr_addr_shadow_o       ()
     );
 
     /* verilator lint_off UNUSED */
-    wire _unused_ibex = ibex_instr_req | ibex_data_req | ibex_data_we |
-                        (|ibex_data_be) | (|ibex_data_addr) | (|ibex_data_wdata) |
-                        (|ibex_instr_addr) | ibex_core_sleep;
+    wire _unused_ibex = ibex_core_sleep;
     /* verilator lint_on UNUSED */
-    assign ibex_instr_gnt    = 1'b0;
-    assign ibex_instr_rvalid = 1'b0;
-    assign ibex_instr_rdata  = 32'h0;
-    assign ibex_instr_err    = 1'b0;
-    assign ibex_data_gnt     = 1'b0;
-    assign ibex_data_rvalid  = 1'b0;
-    assign ibex_data_rdata   = 32'h0;
-    assign ibex_data_err     = 1'b0;
 `endif
 
     // Suppress unused on clk_sample / avfs_target_code_i / counters — exposed

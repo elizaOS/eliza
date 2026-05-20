@@ -8,6 +8,7 @@ from benchmarks.orchestrator.adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    OSWORLD_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     VISION_LANGUAGE_REAL_INPUTS_UNAVAILABLE_REASON,
@@ -304,6 +305,26 @@ def test_calibration_report_explains_terminal_bench_docker_gate(
         "eliza": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
         "hermes": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
         "openclaw": TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
+    }
+    assert row["real_pattern"] == "no_required_real_harnesses"
+
+
+def test_calibration_report_explains_osworld_docker_gate(
+    tmp_path: Path,
+) -> None:
+    report = build_calibration_report(
+        workspace_root=tmp_path,
+        benchmark_ids={"osworld"},
+        agent_compatibility={"osworld": ()},
+    )
+    row = report["rows"][0]
+
+    assert row["real_required_harnesses"] == []
+    assert row["real_unsupported_harnesses"] == ["eliza", "hermes", "openclaw"]
+    assert row["real_unsupported_reasons"] == {
+        "eliza": OSWORLD_DOCKER_UNAVAILABLE_REASON,
+        "hermes": OSWORLD_DOCKER_UNAVAILABLE_REASON,
+        "openclaw": OSWORLD_DOCKER_UNAVAILABLE_REASON,
     }
     assert row["real_pattern"] == "no_required_real_harnesses"
 

@@ -23,7 +23,7 @@ Snapshot: updated after 2026-05-19 PD closure retry and local tool recovery.
 | npu-ml-proof | `PASS` | `generated_artifact` | `none` |
 | minimum-linux-npu-target | `BLOCK` | `tool_blocker` | `make minimum-linux-npu-target-strict` |
 | pd-contract | `PASS` | `command_pass` | `none` |
-| product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD release blockers or keep product claim below fabrication` |
+| product-package | `BLOCK` | `release_blocker` | `close package/FPGA/KiCad/PD/manufacturing release blockers or keep product claim below fabrication` |
 | benchmarks | `BLOCK` | `scaffold_only` | `python3 benchmarks/run_benchmarks.py run --metadata benchmarks/metadata/strict-blocked-template.json --strict-missing` |
 | release-pipeline | `PASS` | `generated_artifact` | `none` |
 

@@ -1,4 +1,4 @@
-/// <reference path="./external-modules.d.ts" />
+/// <reference path="../../../packages/agent/src/external-modules.d.ts" />
 // Plugin entry point — handler dispatch, error types, plugin definition.
 // For runtime wiring (boot-time handler registration, embedding warm-up)
 // import from `@elizaos/plugin-local-inference/runtime`.

@@ -16,9 +16,10 @@ manifest.
 | `ftq_to_l1i_shim`            | BPU         | FTQ entry → L1I prefetch request (`ftq_prefetch_req_t`) |
 | `zihpm`                      | CSR         | mcycle, minstret, mhpmcounter3..15 |
 | `e1_cluster_top`             | OoO         | Lite tie-off mode; presents AXI4 master contract |
-| `tl_c_to_chi_bridge`         | Cache       | TL-C ↔ CHI cache south boundary (TL-C side tied off until SLC ships) |
+| `e1_slc`                     | Cache       | One small SLC slice (64 KB / 4-way / 2-bank) driving CHI request traffic into the bridge |
+| `e1_slc_to_chi_line_shim`    | (adapter)   | Maps SLC 512-bit `dram_acq` lines onto the CHI burst request signals |
 | `e1_chi_to_axi4_bridge`      | Interconnect| CHI ↔ AXI4 burst translation; drives fabric master `m[0]` |
-| `e1_riscv_iommu`             | IOMMU       | RISC-V IOMMU v1.0.1; drives fabric master `m[1]` |
+| `e1_riscv_iommu`             | IOMMU       | RISC-V IOMMU v1.0.1; MMIO bridged onto debug aperture; drives fabric master `m[1]` |
 | `e1_axi4_interconnect`       | Interconnect| 2-master × 4-slave fabric (DRAM + decode-err sentinels) |
 | `e1_axi4_dram_model`         | Memory      | Behavioural DRAM south of the AXI4 fabric |
 | `pmc_top`                    | Power       | AON Ibex management core mailbox + droop / AVFS telemetry |
@@ -85,27 +86,62 @@ documented BLOCKED edge — see
 ### CHI → AXI4 (cache south boundary)
 
 ```text
-e1_slc / SLC banks  →  TL-C  →  tl_c_to_chi_bridge  →  CHI  →
-   e1_chi_to_axi4_bridge  →  fabric master[0]  →  DRAM
+SLC client (MMIO fixture @ 0x1008_0000)
+   →  e1_slc.dram_acq_*  (line transaction)
+      →  e1_slc_to_chi_line_shim  (line ↔ CHI burst translator)
+         →  e1_chi_to_axi4_bridge  (CHI request side)
+            →  fabric master[0]
+               →  fabric slave[0]
+                  →  e1_dram_ctrl  →  e1_axi4_dram_model
 ```
+
+One small SLC slice (`SIZE_BYTES=65536`, `WAYS=4`, `BANKS=2`,
+`LINE_BYTES=64`, `NUM_CLIENTS=2`) is instantiated to source real CHI
+request traffic from the integrated top.  The slice receives line
+requests from a single MMIO-controlled client fixture so the cocotb
+integration test can drive the CHI bridge end-to-end without a full
+cache hierarchy.  Production SLC geometry stays under
+`verify/cocotb/cache/`.
 
 The `e1_chi_to_axi4_bridge` issues 6-bit IDs; the fabric runs 4-bit IDs
 for the rest of the masters.  An adapter at the boundary slices the
 low 4 bits and pads the high 2 bits to zero on the way back.  See
-`rtl/top/adapters/README.md` for the documented width drift.
+`rtl/top/adapters/README.md` for the documented width drift.  Verified
+by `test_slc_passthrough` (single line read) and
+`test_dram_ctrl_dfi_traffic` (back-to-back reads through the DRAM
+controller scheduler).
 
 ### IOMMU translation (non-coherent masters)
 
 ```text
-NPU / DMA / display masters  →  e1_riscv_iommu.u_*  →  AXI4 d_*
-                                                    →  fabric master[1]
-                                                    →  DRAM
+DMA fixture (MMIO @ 0x1007_0000)
+   →  e1_riscv_iommu.u_*[0]  (upstream master[0])
+      →  device-id allowlist check
+         →  authorised  →  AXI4 d_*  →  fabric master[1]  →  DRAM
+         →  rejected    →  fault queue staging
+                        →  fault_irq / fault_count_dbg
+                        →  FQT advances (readable via MMIO bridge)
+
+CPU MMIO  →  iommu_mmio aperture @ 0x1006_0000 (4 KiB)
+   →  AXI-Lite slave on the IOMMU (DDTP, CQB, FQB, FQH/FQT, ...)
 ```
 
 The IOMMU surfaces `fault_irq`, `page_req_irq`, and `cmd_complete_irq`.
 The integration top exposes `fault_irq` + `fault_count` at the SoC
-boundary.  The CPU is coherent and does **not** route through the
-IOMMU; it uses the CHI bridge directly.
+boundary and bridges the IOMMU's 12-bit AXI-Lite MMIO window onto the
+v0 32-bit debug aperture at `0x1006_0000`.  Each 64-bit IOMMU register
+is reached by a write-low / write-high pair (`addr[2]==0` stashes the
+low half; `addr[2]==1` launches an AXI-Lite write with
+`{wdata, stash}`).  Reads launch an AR on every 4-byte access and
+return the low half of the IOMMU's 64-bit response.
+
+The CPU is coherent and does **not** route through the IOMMU; it uses
+the CHI bridge directly.  The DMA fixture at `0x1007_0000` lets cocotb
+inject a single AXI4 transaction at one IOMMU upstream port so the
+fault path can be exercised without instantiating a full NPU / DMA /
+display engine.  Verified by `iommu_fault_count_initially_zero`
+(observability baseline) and `test_iommu_programmed_fault` (DDTP
+program + unauthorised IOVA → fault record).
 
 ### PMC mailbox (AON ↔ main rail)
 
@@ -135,6 +171,9 @@ takes one extra cycle compared to the combinational v0 peripherals.
 | `0x1003_0000`| 256 B   | Display       | unchanged |
 | `0x1004_0000`| 2 KiB   | Weight buffer | Sky130 OpenRAM hard macro |
 | `0x1005_0000`| 4 KiB   | PMC mailbox   | new in `e1_soc_integrated` |
+| `0x1006_0000`| 4 KiB   | IOMMU MMIO    | RISC-V IOMMU v1.0.1 registers (DDTP/CQB/FQB/FQH/FQT/...); 64-bit registers split across two 32-bit halves on the v0 aperture |
+| `0x1007_0000`| 256 B   | IOMMU DMA fixture | cocotb-driven AXI4 master into `e1_riscv_iommu.u_*[0]`; one single-beat transaction with programmable IOVA + DEV_ID |
+| `0x1008_0000`| 256 B   | SLC client fixture | cocotb-driven SLC line request into `u_slc`; PADDR_LINE_LO/HI / CTRL / STATUS / GRANT_LO |
 | `0x8000_0000`| 4 KiB   | DRAM aperture | behavioural; main fabric DRAM separate |
 
 The 40-bit fabric DRAM lives behind `e1_axi4_interconnect` and is

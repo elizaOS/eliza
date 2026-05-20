@@ -18,7 +18,7 @@ module bpu_top_tb (
     output logic                pred_valid,
     output logic                pred_taken,
     output logic [VADDR_W-1:0]  pred_target,
-    output logic [1:0]          pred_kind,
+    output logic [2:0]          pred_kind,
     output logic                pred_from_uftb,
     output logic                pred_from_ftb,
     output logic                pred_from_tage,
@@ -32,15 +32,16 @@ module bpu_top_tb (
     output logic [VADDR_W-1:0]  fetch_start_pc,
     output logic [VADDR_W-1:0]  fetch_target_pc,
     output logic                fetch_taken,
-    output logic [1:0]          fetch_kind,
+    output logic [2:0]          fetch_kind,
     output logic [FTQ_IDX_W-1:0] fetch_ftq_idx,
 
     input  logic                resolve_valid,
     input  logic                resolve_misp,
     input  logic [VADDR_W-1:0]  resolve_pc,
     input  logic [VADDR_W-1:0]  resolve_target,
+    input  logic [VADDR_W-1:0]  resolve_call_return_pc,
     input  logic                resolve_taken,
-    input  logic [1:0]          resolve_kind,
+    input  logic [2:0]          resolve_kind,
     input  logic [FTQ_IDX_W-1:0] resolve_ftq_idx,
 
     input  logic                csr_re,
@@ -56,13 +57,14 @@ module bpu_top_tb (
 
     always_comb begin
         resolve_w = '0;
-        resolve_w.valid          = resolve_valid;
-        resolve_w.misprediction  = resolve_misp;
-        resolve_w.pc             = resolve_pc;
-        resolve_w.actual_target  = resolve_target;
-        resolve_w.actual_taken   = resolve_taken;
-        resolve_w.actual_kind    = br_kind_e'(resolve_kind);
-        resolve_w.ftq_idx        = resolve_ftq_idx;
+        resolve_w.valid                 = resolve_valid;
+        resolve_w.misprediction         = resolve_misp;
+        resolve_w.pc                    = resolve_pc;
+        resolve_w.actual_target         = resolve_target;
+        resolve_w.actual_call_return_pc = resolve_call_return_pc;
+        resolve_w.actual_taken          = resolve_taken;
+        resolve_w.actual_kind           = br_kind_e'(resolve_kind);
+        resolve_w.ftq_idx               = resolve_ftq_idx;
     end
 
     bpu_top u_bpu (

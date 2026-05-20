@@ -21,6 +21,7 @@ async def reset(dut):
     dut.upd_valid.value = 0
     dut.upd_pc.value = 0
     dut.upd_target.value = 0
+    dut.upd_fall_through_pc.value = 0
     dut.upd_kind.value = 0
     dut.upd_br_valid.value = 0
     dut.upd_alloc.value = 0
@@ -42,10 +43,11 @@ async def lookup(dut, pc):
     return hit, target, kind
 
 
-async def update(dut, pc, target, kind, alloc):
+async def update(dut, pc, target, kind, alloc, fall_through_pc=None):
     dut.upd_valid.value = 1
     dut.upd_pc.value = pc
     dut.upd_target.value = target
+    dut.upd_fall_through_pc.value = pc + 4 if fall_through_pc is None else fall_through_pc
     dut.upd_kind.value = kind
     dut.upd_br_valid.value = 0b11
     dut.upd_alloc.value = 1 if alloc else 0

@@ -421,6 +421,9 @@ def _eliza_prompt_from_payload(payload: Mapping[str, Any]) -> str:
             "If Canvas-specific tools are unavailable, inspect source_data/local_db and source_data/files with filesystem tools. "
             "source_data is read-only input data; write/edit the requested output CSV files at the workspace root, for example assignment_info.csv and quiz_info.csv. "
             "For CSV-output tasks, overwrite or edit every requested CSV file with the derived final rows before any final reply or claim_done call.",
+            "LOCA CSV strictness: do not preserve placeholder rows, stale example rows, already-submitted work, or rows copied from source_data unless they are part of the requested unfinished final answer. "
+            "For Canvas list tasks, sort final CSV rows exactly as requested: deadline ascending first, then course_code lexicographically for ties. "
+            "Before claim_done, reread the CSVs you wrote and fix row count, row order, headers, and course_code values; the evaluator is strict about extra rows and order.",
             "Available LOCA function tools:\n" + "\n".join(f"- {name}" for name in tool_names),
         ]
     )

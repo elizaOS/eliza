@@ -9,6 +9,7 @@
     "build": "tsc && bun --bun vite build",
     "prepreview": "node scripts/copy-pglite-assets.mjs",
     "preview": "bun --bun vite preview",
+    "test": "bun test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit"

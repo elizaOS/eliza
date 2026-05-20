@@ -24,7 +24,6 @@ const WALLET_ROUTE_PATTERNS = [
   "/dashboard/affiliates/*",
   "/checkout",
   "/checkout/*",
-  "/bsc",
   "/payment/:paymentRequestId",
 ];
 

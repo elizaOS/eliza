@@ -71,6 +71,7 @@ OPTIONAL_COMMANDS = (
     "cacti",
     "destiny",
     "nvsim",
+    "autombist",
 )
 
 OPTIONAL_PYTHON_MODULES = (
@@ -136,12 +137,30 @@ def main() -> int:
         "source_ids": [
             "openram",
             "dffram",
+            "sram22-sky130-macros",
+            "vlsida-sky130-sram-macros",
+            "openxram",
+            "openrram",
             "cacti",
             "destiny-memory-model",
             "nvsim",
             "neurosim",
+            "openacm-cim",
+            "openacmv2-cim",
+            "opencellgen-stdcell",
+            "topcell-llm-stdcell",
+            "cpcell-stdcell-dtco",
+            "charlib-stdcell-characterization",
+            "librecell-stdcell-flow",
+            "xcell-stdcell-characterization",
+            "nvcell-stdcell-rl",
             "sram-compiler-openroad",
             "sram-yield-estimation",
+            "openyield-sram",
+            "logic-bist-mbist-repair",
+            "aawo-configurable-mbist",
+            "aawo-sram-fault-model",
+            "autombist-wrapper-generator",
         ],
         "policy": {
             "downloads_pdk_or_macros": False,
@@ -175,7 +194,7 @@ def main() -> int:
             {
                 "id": "open-sram-compiler-readiness-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future OpenRAM, DFFRAM, or OpenROAD SRAM compiler use must pin compiler revisions, PDK revisions, configs, macro names, ports, timing corners, and generated artifact hashes",
+                "target": "future OpenRAM, DFFRAM, OpenXRAM, OpenRRAM, or OpenROAD SRAM/memory compiler use must pin compiler revisions, PDK/device revisions, configs, macro names, ports, timing corners, and generated artifact hashes",
                 "acceptance_gates": [
                     "python3 scripts/check_ai_eda_source_inventory.py",
                     "make pdk-portability-check",
@@ -206,9 +225,20 @@ def main() -> int:
                 ],
             },
             {
+                "id": "open-sram-macro-collateral-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future SRAM22 or VLSIDA Sky130 SRAM macro collateral review must pin repository revisions, licenses, PDK provenance, per-view hashes, wrapper mapping, DRC/LVS/extraction, STA, OpenLane replay, and reviewer disposition before any E1 macro view is imported",
+                "acceptance_gates": [
+                    "make pdk-portability-check",
+                    "make openlane-run-preflight-check",
+                    "make pd-signoff-manifest-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "sram-yield-vmin-repair-watch",
                 "status": "CAPTURED_NOT_CLAIMED",
-                "target": "future AI-assisted SRAM yield, Vmin, redundancy, ECC, BIST, or repair suggestions must remain advisory until backed by foundry/process models and deterministic E1 tests",
+                "target": "future AI-assisted SRAM yield, Vmin, redundancy, ECC, BIST, repair, or OpenYield-style benchmark suggestions must remain advisory until backed by foundry/process models and deterministic E1 tests",
                 "acceptance_gates": [
                     "make power-thermal-evidence-check",
                     "make memory-interconnect-contract-check",
@@ -216,12 +246,51 @@ def main() -> int:
                     "make docs-check",
                 ],
             },
+            {
+                "id": "memory-bist-repair-collateral-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future MBIST, BISR, SRAM fault-model, or AutoMBIST-style wrapper collateral must pin memory interfaces, March algorithms, fault taxonomy, generated RTL hashes, repair/fuse policy, simulator/formal logs, synthesis/STA/DFT replay, and reviewer disposition before source promotion",
+                "acceptance_gates": [
+                    "make memory-interconnect-contract-check",
+                    "make rtl-check",
+                    "make formal",
+                    "python3 scripts/ai_eda/capture_dft_atpg_targets.py --run-id validation",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "sram-cim-compiler-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future OpenACM/OpenACMv2-style SRAM compute-in-memory compiler or co-optimization use requires architecture, accuracy, process, generated-collateral, PVT/variation, and workload replay gates before any E1 NPU or memory change",
+                "acceptance_gates": [
+                    "make npu-runtime-contract-check",
+                    "make memory-interconnect-contract-check",
+                    "make pdk-portability-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
+            {
+                "id": "standard-cell-generation-characterization-watch",
+                "status": "CAPTURED_NOT_GENERATED",
+                "target": "future AutoCellGen, TOPCELL, CPCell, CharLib, LibreCell, xcell, or NVCell-style standard-cell synthesis, generation, and characterization requires PDK authority, generated GDS/LEF/Liberty/SPICE hashes, DRC/LVS/extraction, PVT characterization logs, STA, synthesis, OpenLane replay, licensing, and review",
+                "acceptance_gates": [
+                    "make pdk-portability-check",
+                    "make synth",
+                    "make openlane-run-preflight-check",
+                    "make pd-signoff-manifest-check",
+                ],
+            },
         ],
         "blocked_by": [
             "no approved external memory compiler revision, PDK setup, or generated SRAM macro manifest for E1 release use",
+            "no approved external Sky130 SRAM macro collateral revision, license review, PDK provenance, per-view hashes, wrapper mapping, and local DRC/LVS/extraction/STA/OpenLane replay",
             "no local DRC, LVS, extraction, Liberty, LEF, GDS, antenna, STA, and OpenLane run evidence for generated or swapped SRAM macros",
             "no technology-calibrated CACTI, DESTINY, NVSim, NeuroSim, or AI estimator correlation against E1 macro layouts and corners",
+            "no approved OpenXRAM/OpenRRAM/OpenACM revision, PDK/device model, generated collateral quarantine, workload accuracy replay, or signoff mapping",
+            "no approved standard-cell synthesis, layout generation, or characterization flow with PDK authority, DRC/LVS/extraction, Liberty, SPICE, STA, synthesis, OpenLane, and block-level replay evidence",
             "no foundry-approved SRAM yield, Vmin, redundancy, BIST, repair, or aging model",
+            "no OpenYield process/model compatibility review, train/test split, Monte Carlo replay, or local macro-test evidence",
+            "no approved MBIST/BISR controller, SRAM fault model, wrapper-generator package, March-test manifest, generated-collateral quarantine, memory repair policy, or deterministic memory-test replay evidence",
             "no release policy allowing AI-selected memory macros or library corners to bypass PDK, memory, RTL, synthesis, PD, and review gates",
         ],
     }

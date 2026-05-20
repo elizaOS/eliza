@@ -498,9 +498,7 @@ declare module "./client-base" {
       status?: string;
       category?: string;
     }): Promise<FeedPredictionMarketsResponse>;
-    getFeedPredictionMarket(
-      marketId: string,
-    ): Promise<FeedPredictionMarket>;
+    getFeedPredictionMarket(marketId: string): Promise<FeedPredictionMarket>;
     buyFeedPredictionShares(
       marketId: string,
       side: "yes" | "no",
@@ -513,9 +511,7 @@ declare module "./client-base" {
     ): Promise<FeedTradeResult>;
     getFeedPerpMarkets(): Promise<FeedPerpMarket[]>;
     getFeedOpenPerpPositions(): Promise<FeedPerpPosition[]>;
-    closeFeedPerpPosition(
-      positionId: string,
-    ): Promise<FeedPerpTradeResult>;
+    closeFeedPerpPosition(positionId: string): Promise<FeedPerpTradeResult>;
 
     // Feed social
     getFeedPosts(opts?: {
@@ -523,21 +519,13 @@ declare module "./client-base" {
       limit?: number;
       feed?: string;
     }): Promise<FeedPostsResponse>;
-    createFeedPost(
-      content: string,
-      marketId?: string,
-    ): Promise<FeedPostResult>;
-    commentOnFeedPost(
-      postId: string,
-      content: string,
-    ): Promise<FeedPostResult>;
+    createFeedPost(content: string, marketId?: string): Promise<FeedPostResult>;
+    commentOnFeedPost(postId: string, content: string): Promise<FeedPostResult>;
     likeFeedPost(postId: string): Promise<{ ok: boolean }>;
 
     // Feed messaging
     getFeedChats(): Promise<FeedChatsResponse>;
-    getFeedChatMessages(
-      chatId: string,
-    ): Promise<FeedChatMessagesResponse>;
+    getFeedChatMessages(chatId: string): Promise<FeedChatMessagesResponse>;
     sendFeedChatMessage(
       chatId: string,
       content: string,
@@ -1329,9 +1317,7 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
 // Feed terminal methods
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getFeedAgentStatus = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedAgentStatus = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/status");
 };
 
@@ -1361,9 +1347,7 @@ ElizaClient.prototype.getFeedAgentLogs = async function (
   );
 };
 
-ElizaClient.prototype.getFeedAgentWallet = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedAgentWallet = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/wallet");
 };
 
@@ -1458,9 +1442,7 @@ ElizaClient.prototype.sellFeedPredictionShares = async function (
   );
 };
 
-ElizaClient.prototype.getFeedPerpMarkets = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedPerpMarkets = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/markets/perps");
 };
 
@@ -1484,10 +1466,7 @@ ElizaClient.prototype.closeFeedPerpPosition = async function (
 // Feed social
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getFeedPosts = async function (
-  this: ElizaClient,
-  opts?,
-) {
+ElizaClient.prototype.getFeedPosts = async function (this: ElizaClient, opts?) {
   const params = new URLSearchParams();
   if (opts?.page) params.set("page", String(opts.page));
   if (opts?.limit) params.set("limit", String(opts.limit));
@@ -1556,10 +1535,7 @@ ElizaClient.prototype.sendFeedChatMessage = async function (
   );
 };
 
-ElizaClient.prototype.getFeedDM = async function (
-  this: ElizaClient,
-  userId,
-) {
+ElizaClient.prototype.getFeedDM = async function (this: ElizaClient, userId) {
   return this.fetch(
     `/api/apps/babylon/chats/dm?userId=${encodeURIComponent(userId)}`,
   );
@@ -1569,21 +1545,15 @@ ElizaClient.prototype.getFeedDM = async function (
 // Feed agent management
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getFeedAgentGoals = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedAgentGoals = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/goals");
 };
 
-ElizaClient.prototype.getFeedAgentStats = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedAgentStats = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/stats");
 };
 
-ElizaClient.prototype.getFeedAgentSummary = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedAgentSummary = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agent/summary");
 };
 
@@ -1617,9 +1587,7 @@ ElizaClient.prototype.getFeedAgentChat = async function (this: ElizaClient) {
 // Feed feed
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.getFeedFeedForYou = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.getFeedFeedForYou = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/feed/for-you");
 };
 
@@ -1635,9 +1603,7 @@ ElizaClient.prototype.getFeedTrades = async function (this: ElizaClient) {
 // Feed discover & team management
 // ---------------------------------------------------------------------------
 
-ElizaClient.prototype.discoverFeedAgents = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.discoverFeedAgents = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon@elizaos/agents/discover");
 };
 
@@ -1653,17 +1619,13 @@ ElizaClient.prototype.getFeedTeamConversations = async function (
   return this.fetch("/api/apps/babylon/team/conversations");
 };
 
-ElizaClient.prototype.pauseAllFeedAgents = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.pauseAllFeedAgents = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/admin@elizaos/agents/pause-all", {
     method: "POST",
   });
 };
 
-ElizaClient.prototype.resumeAllFeedAgents = async function (
-  this: ElizaClient,
-) {
+ElizaClient.prototype.resumeAllFeedAgents = async function (this: ElizaClient) {
   return this.fetch("/api/apps/babylon/admin@elizaos/agents/resume-all", {
     method: "POST",
   });

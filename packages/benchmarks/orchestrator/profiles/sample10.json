@@ -37,10 +37,6 @@
     "framework": {
       "flags": "--scenarios=single-message,conversation-10,startup-cold"
     },
-    "gaia": {
-      "max_questions": 1,
-      "quick_test": true
-    },
     "gauntlet": {
       "seed": 42
     },
@@ -115,13 +111,6 @@
     "webshop": {
       "max_tasks": 1,
       "sample": true
-    },
-    "gaia_orchestrated": {
-      "dataset": "sample",
-      "max_questions": 1,
-      "execution_mode": "orchestrated",
-      "providers": ["claude-code", "swe-agent", "codex"],
-      "strict_capabilities": true
     },
     "orchestrator_lifecycle": {
       "max_scenarios": 12,

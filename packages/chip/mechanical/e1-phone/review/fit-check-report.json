@@ -1,0 +1,600 @@
+{
+  "claim_boundary": "EVT0 mechanical concept; not released tooling CAD or fabricated hardware.",
+  "status": "pass",
+  "params": {
+    "device": {
+      "name": "E1 phone EVT0 mechanical concept",
+      "revision": "evt0-mechanical-cad",
+      "envelope_mm": [
+        78.0,
+        153.6,
+        9.6
+      ],
+      "corner_radius_mm": 7.5,
+      "plastic_color": "hard safety orange",
+      "wall_thickness_mm": 1.15,
+      "target_mass_g": 185,
+      "design_language": "hard orange phone-like slab with teenage-engineering/rabbit-r1 influence"
+    },
+    "display": {
+      "candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
+      "ctp_outline_mm": [
+        77.1,
+        151.77,
+        3.39
+      ],
+      "tft_outline_mm": [
+        70.78,
+        129.17,
+        1.7
+      ],
+      "active_area_mm": [
+        68.04,
+        120.96
+      ],
+      "cover_glass_mm": [
+        77.1,
+        151.77,
+        0.7
+      ],
+      "adhesive_width_mm": 1.0,
+      "adhesive_thickness_mm": 0.18,
+      "compression_target_pct": 25,
+      "fpc_connector_mm": [
+        19.0,
+        3.2,
+        1.15
+      ],
+      "fpc_bend_radius_mm": 1.0,
+      "z_from_front_mm": 0.35,
+      "source_url": "https://www.chenghaolcd.com/doc/26717023/5-5-inch-ltps-tft-lcd-module-1080-1920-resolution-mipi-lcd-screen.pdf"
+    },
+    "pcb": {
+      "source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+      "outline_mm": [
+        64.0,
+        132.0,
+        0.8
+      ],
+      "z_center_mm": -2.1,
+      "edge_clearance_mm": 2.5
+    },
+    "battery": {
+      "candidate": "LiPol LP446487 class 3.85 V 4500 mAh 17.33 Wh pouch",
+      "envelope_mm": [
+        64.0,
+        87.0,
+        4.4
+      ],
+      "z_center_mm": -2.5
+    },
+    "components": {
+      "usb_c": {
+        "candidate": "GCT USB4105 USB2 Type-C receptacle, reinforced shell",
+        "envelope_mm": [
+          8.94,
+          7.8,
+          3.25
+        ],
+        "insertion_keepout_mm": [
+          12.5,
+          10.5,
+          5.0
+        ],
+        "cycles": 20000,
+        "source_url": "https://gct.co/files/specs/usb4105-spec.pdf",
+        "distributor_url": "https://www.digikey.com/en/products/detail/gct/USB4105-GF-A/11198510"
+      },
+      "speaker_bottom": {
+        "candidate": "1115 micro speaker module with rear acoustic chamber",
+        "envelope_mm": [
+          15.0,
+          11.0,
+          3.5
+        ]
+      },
+      "earpiece": {
+        "candidate": "1206 earpiece receiver behind glass slot/gasket",
+        "envelope_mm": [
+          12.0,
+          6.0,
+          2.5
+        ]
+      },
+      "microphone_bottom": {
+        "candidate": "bottom MEMS microphone with molded sound tunnel",
+        "envelope_mm": [
+          3.5,
+          2.65,
+          1.0
+        ]
+      },
+      "microphone_top": {
+        "candidate": "noise-cancel MEMS microphone",
+        "envelope_mm": [
+          3.5,
+          2.65,
+          1.0
+        ]
+      },
+      "haptic": {
+        "candidate": "compact 0612 X-axis linear resonant actuator",
+        "envelope_mm": [
+          6.0,
+          12.0,
+          2.5
+        ],
+        "source_note": "commodity Shenzhen compact LRA class; exact vendor drawing required"
+      },
+      "sim_tray": {
+        "candidate": "nano-SIM service tray or eSIM-only blocker placeholder",
+        "envelope_mm": [
+          12.3,
+          18.0,
+          1.2
+        ],
+        "keepout_mm": [
+          14.5,
+          22.0,
+          2.0
+        ]
+      },
+      "rear_camera_glass": {
+        "candidate": "chemically strengthened rear camera cover window",
+        "envelope_mm": [
+          9.2,
+          9.2,
+          0.55
+        ]
+      },
+      "rear_camera": {
+        "candidate": "OV13855/OV13850 13 MP autofocus MIPI module",
+        "module_mm": [
+          10.0,
+          10.0,
+          5.1
+        ],
+        "lens_diameter_mm": 6.8
+      },
+      "front_camera": {
+        "candidate": "5-8 MP fixed-focus MIPI module behind cover glass",
+        "module_mm": [
+          6.5,
+          6.5,
+          3.2
+        ],
+        "lens_diameter_mm": 3.4
+      },
+      "power_button": {
+        "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+        "travel_mm": 0.35,
+        "force_n": 1.6,
+        "cap_mm": [
+          2.0,
+          12.0,
+          1.1
+        ],
+        "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247"
+      },
+      "volume_button": {
+        "candidate": "Panasonic EVQ-P7/P3/9P7 side-push tactile switch",
+        "travel_mm": 0.35,
+        "force_n": 1.5,
+        "cap_mm": [
+          2.0,
+          21.0,
+          1.1
+        ],
+        "source_url": "https://na.industrial.panasonic.com/products/switches-encoders-interface-devices/switches/light-touch-tactile-switches/series/79247"
+      }
+    },
+    "radio": {
+      "cellular": {
+        "candidate": "Quectel RG255C RedCap LGA module",
+        "envelope_mm": [
+          29.0,
+          32.0,
+          2.4
+        ],
+        "mass_g": 5.2,
+        "source_url": "https://www.quectel.com/product/5g-redcap-rg255c-series/",
+        "antenna_keepout_mm": [
+          62.0,
+          6.0,
+          2.0
+        ]
+      },
+      "wifi_bt": {
+        "candidate": "Murata Type 2EA Wi-Fi 6E + Bluetooth module",
+        "source_url": "https://www.murata.com/en-us/products/connectivitymodule/wi-fi-bluetooth/overview/lineup/type2ea",
+        "antenna_keepout_mm": [
+          34.0,
+          5.0,
+          2.0
+        ]
+      }
+    },
+    "manufacturing": {
+      "process": "low-volume CNC or soft-tool injection molding first, hard-tool injection molding later",
+      "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
+      "nominal_draft_deg": 2.0,
+      "min_internal_radius_mm": 0.6,
+      "min_boss_wall_ratio": 0.6,
+      "screw_boss_outer_diameter_mm": 4.2,
+      "screw_boss_core_diameter_mm": 1.8,
+      "rib_thickness_mm": 0.75,
+      "snap_hook_count": 8,
+      "screw_boss_count": 6,
+      "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency",
+      "sprue_diameter_mm": 4.0,
+      "runner_diameter_mm": 2.2,
+      "gate_thickness_mm": 0.85,
+      "ejector_pin_count": 8,
+      "ejector_pin_diameter_mm": 2.0,
+      "cooling_channel_diameter_mm": 4.0,
+      "cooling_channel_clearance_mm": 8.0,
+      "parting_line": "mid-plane around orange back shell perimeter"
+    },
+    "validation": {
+      "tolerance": {
+        "screen_xy_allowance_mm": 0.3,
+        "pcb_edge_clearance_mm": 2.5,
+        "usb_shell_to_aperture_clearance_mm": 0.15,
+        "battery_to_pcb_gap_mm": 0.5,
+        "button_pressure_limit_n_per_mm2": 0.2
+      },
+      "environmental_targets": {
+        "drop_height_m": 1.0,
+        "ingress_target": "IP54 design intent only",
+        "max_skin_temp_c": 43,
+        "acoustic_leakage_status": "requires sample test",
+        "rf_pre_scan_status": "requires antenna simulation and chamber pre-scan"
+      }
+    }
+  },
+  "checks": {
+    "component_presence": {
+      "pass": true,
+      "details": {
+        "orange_back_shell": true,
+        "orange_side_frame": true,
+        "screen_cover_glass": true,
+        "display_lcm": true,
+        "main_pcb": true,
+        "battery_pouch": true,
+        "usb_c_receptacle": true,
+        "bottom_speaker_module": true,
+        "earpiece_receiver": true,
+        "bottom_mic": true,
+        "top_mic": true,
+        "rear_camera_module": true,
+        "front_camera_module": true,
+        "power_button_cap": true,
+        "volume_button_cap": true,
+        "power_button_elastomer_gasket": true,
+        "power_button_labyrinth_upper_rail": true,
+        "power_button_labyrinth_lower_rail": true,
+        "volume_button_elastomer_gasket": true,
+        "volume_button_labyrinth_upper_rail": true,
+        "volume_button_labyrinth_lower_rail": true,
+        "handset_acoustic_slot": true,
+        "handset_acoustic_mesh": true,
+        "screen_adhesive_top": true,
+        "display_fpc_connector": true,
+        "orange_usb_reinforcement_saddle": true,
+        "bottom_speaker_acoustic_chamber": true,
+        "earpiece_gasket": true,
+        "usb_c_external_aperture": true,
+        "usb_c_perimeter_gasket_top": true,
+        "usb_c_perimeter_gasket_bottom": true,
+        "usb_c_perimeter_gasket_left": true,
+        "usb_c_perimeter_gasket_right": true,
+        "usb_c_molded_drip_break_lip": true,
+        "usb_c_internal_drain_shelf": true,
+        "bottom_speaker_grille_slot_1": true,
+        "bottom_speaker_dust_mesh": true,
+        "bottom_microphone_port_1": true,
+        "bottom_microphone_mesh_1": true,
+        "bottom_microphone_mesh_2": true,
+        "top_microphone_port": true,
+        "top_microphone_mesh": true,
+        "cellular_top_antenna_keepout": true,
+        "cellular_bottom_antenna_keepout": true,
+        "wifi_bt_side_antenna_keepout": true,
+        "soc_shield_can": true,
+        "pmic_shield_can": true,
+        "radio_shield_can": true,
+        "haptic_lra": true,
+        "sim_tray_keepout": true,
+        "rear_camera_cover_glass": true,
+        "service_label_recess": true
+      }
+    },
+    "pcb_edge_clearance": {
+      "pass": true,
+      "actual_mm": 7.0,
+      "required_mm": 2.5
+    },
+    "screen_mount_margin": {
+      "pass": true,
+      "actual_mm": 0.45,
+      "required_mm": 0.3
+    },
+    "rounded_enclosure_geometry": {
+      "pass": true,
+      "corner_radius_mm": 7.5,
+      "wall_thickness_mm": 1.15,
+      "back_shell_vertices": 98,
+      "side_frame_vertices": 192
+    },
+    "mesh_integrity": {
+      "pass": true,
+      "checked_parts": 85,
+      "failures": []
+    },
+    "usb_c_insertion_envelope": {
+      "pass": true,
+      "actual_mm": 8.0,
+      "required_mm": 7.8
+    },
+    "usb_c_port_seal_stack": {
+      "pass": true,
+      "gasket_parts": [
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right"
+      ],
+      "managed_ingress_parts": [
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf",
+        "orange_usb_reinforcement_saddle"
+      ],
+      "note": "Models a four-sided elastomer seat around the receptacle mouth plus molded drip-break/drain shelf for splash management."
+    },
+    "bottom_io_acoustic_apertures": {
+      "pass": true,
+      "speaker_grille_slots": 5,
+      "microphone_ports": 2,
+      "speaker_mesh_present": true,
+      "bottom_microphone_mesh_count": 2,
+      "top_microphone_port_present": true,
+      "top_microphone_mesh_present": true
+    },
+    "button_force_and_travel": {
+      "pass": true,
+      "power": {
+        "force_n": 1.6,
+        "travel_mm": 0.35
+      },
+      "volume": {
+        "force_n": 1.5,
+        "travel_mm": 0.35
+      }
+    },
+    "button_pressure_support": {
+      "pass": true,
+      "power_pressure_n_per_mm2": 0.1212,
+      "volume_pressure_n_per_mm2": 0.0649
+    },
+    "button_ingress_seal_stack": {
+      "pass": true,
+      "power_seal_parts": [
+        "power_button_elastomer_gasket",
+        "power_button_labyrinth_upper_rail",
+        "power_button_labyrinth_lower_rail"
+      ],
+      "volume_seal_parts": [
+        "volume_button_elastomer_gasket",
+        "volume_button_labyrinth_upper_rail",
+        "volume_button_labyrinth_lower_rail"
+      ],
+      "note": "Models silicone compression gasket plus molded side-key labyrinth rails behind both external orange caps."
+    },
+    "screen_mount_and_connection": {
+      "pass": true,
+      "adhesive_width_mm": 1.0,
+      "adhesive_thickness_mm": 0.18,
+      "compression_target_pct": 25,
+      "fpc_bend_radius_mm": 1.0
+    },
+    "camera_speaker_behind_glass": {
+      "pass": true,
+      "front_camera": "behind cover glass at upper-left display border",
+      "earpiece": "behind cover-glass acoustic slot with gasketed receiver",
+      "earpiece_mesh_present": true,
+      "rear_camera": "behind a separate rear cover glass window"
+    },
+    "rf_antenna_keepouts": {
+      "pass": true,
+      "cellular_keepout_mm": [
+        62.0,
+        6.0,
+        2.0
+      ],
+      "wifi_bt_keepout_mm": [
+        34.0,
+        5.0,
+        2.0
+      ]
+    },
+    "shielding_haptics_service": {
+      "pass": true,
+      "shield_cans": 3,
+      "service_features": [
+        "sim_tray_keepout",
+        "sim_tray_outline",
+        "service_label_recess"
+      ]
+    },
+    "pcb_battery_non_overlap": {
+      "pass": true,
+      "minimum_segment_gap_mm": 0.5,
+      "segment_gaps_mm": [
+        0.5,
+        0.5
+      ],
+      "note": "Checks each rigid PCB island against the battery window."
+    },
+    "injection_molding_basics": {
+      "pass": true,
+      "draft_deg": 2.0,
+      "min_internal_radius_mm": 0.6,
+      "gate_strategy": "two submarine gates into back cover long edge, fan gate alternate for color consistency"
+    },
+    "molded_retention_features": {
+      "pass": true,
+      "screw_boss_count": 6,
+      "snap_hook_count": 8,
+      "rib_to_wall_ratio": 0.652
+    },
+    "mold_runner_gate_model": {
+      "pass": true,
+      "sprue_diameter_mm": 4.0,
+      "runner_diameter_mm": 2.2,
+      "gate_thickness_mm": 0.85
+    },
+    "mold_ejector_cooling_model": {
+      "pass": true,
+      "ejector_pin_count": 8,
+      "cooling_channel_count": 3,
+      "cooling_channel_diameter_mm": 4.0,
+      "cooling_channel_clearance_mm": 8.0
+    },
+    "final_assembly_excludes_tooling_markers": {
+      "pass": true,
+      "tooling_marker_count": 0
+    },
+    "kicad_outline_integration": {
+      "pass": true,
+      "kicad_edge_cuts_mm": [
+        64.0,
+        132.0
+      ],
+      "cad_pcb_outline_mm": [
+        64.0,
+        132.0
+      ],
+      "source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb"
+    },
+    "device_compactness": {
+      "pass": true,
+      "envelope_mm": [
+        78.0,
+        153.6,
+        9.6
+      ],
+      "note": "Envelope is driven by 77.1 x 151.77 mm commodity CTP outline plus orange side rail."
+    },
+    "mass_budget": {
+      "pass": true,
+      "estimated_mass_g": 143.39,
+      "target_mass_g": 185,
+      "note": "Rough CAD estimate; placeholder void markers excluded."
+    }
+  },
+  "artifacts": {
+    "assembly_glb": "mechanical/e1-phone/out/e1-phone-assembly.glb",
+    "tooling_glb": "mechanical/e1-phone/out/e1-phone-mold-tooling.glb",
+    "manifest": "mechanical/e1-phone/out/assembly-manifest.json",
+    "tooling_manifest": "mechanical/e1-phone/out/tooling-manifest.json",
+    "manufacturing_drawing_png": "mechanical/e1-phone/review/manufacturing_drawing.png",
+    "manufacturing_drawing_svg": "mechanical/e1-phone/review/manufacturing_drawing.svg",
+    "manufacturing_drawing_json": "mechanical/e1-phone/review/manufacturing_drawing.json",
+    "manufacturing_readiness_json": "mechanical/e1-phone/review/manufacturing-readiness.json",
+    "manufacturing_readiness_md": "mechanical/e1-phone/review/manufacturing-readiness.md",
+    "mass_budget_json": "mechanical/e1-phone/review/mass-budget.json",
+    "mass_budget_md": "mechanical/e1-phone/review/mass-budget.md",
+    "compactness_optimization_json": "mechanical/e1-phone/review/compactness-optimization.json",
+    "compactness_optimization_md": "mechanical/e1-phone/review/compactness-optimization.md",
+    "compactness_optimization_png": "mechanical/e1-phone/review/compactness-optimization.png",
+    "compactness_optimization_svg": "mechanical/e1-phone/review/compactness-optimization.svg",
+    "supplier_lock_json": "mechanical/e1-phone/review/supplier-lock.json",
+    "supplier_lock_md": "mechanical/e1-phone/review/supplier-lock.md",
+    "supplier_rfq_package_json": "mechanical/e1-phone/review/supplier-rfq-package.json",
+    "supplier_rfq_package_md": "mechanical/e1-phone/review/supplier-rfq-package.md",
+    "supplier_response_template": "mechanical/e1-phone/review/supplier-response-template.csv",
+    "supplier_response_review_json": "mechanical/e1-phone/review/supplier-response-review.json",
+    "supplier_response_review_md": "mechanical/e1-phone/review/supplier-response-review.md",
+    "kicad_mechanical_handoff_json": "mechanical/e1-phone/review/kicad-mechanical-handoff.json",
+    "kicad_mechanical_handoff_md": "mechanical/e1-phone/review/kicad-mechanical-handoff.md",
+    "kicad_placement_reconciliation_json": "mechanical/e1-phone/review/kicad-placement-reconciliation.json",
+    "kicad_placement_reconciliation_md": "mechanical/e1-phone/review/kicad-placement-reconciliation.md",
+    "board_step_readiness_json": "mechanical/e1-phone/review/board-step-readiness.json",
+    "board_step_readiness_md": "mechanical/e1-phone/review/board-step-readiness.md",
+    "engineering_validation_json": "mechanical/e1-phone/review/engineering-validation.json",
+    "engineering_validation_md": "mechanical/e1-phone/review/engineering-validation.md",
+    "interface_validation_json": "mechanical/e1-phone/review/interface-validation.json",
+    "interface_validation_md": "mechanical/e1-phone/review/interface-validation.md",
+    "display_validation_json": "mechanical/e1-phone/review/display-validation.json",
+    "display_validation_md": "mechanical/e1-phone/review/display-validation.md",
+    "display_results_template": "mechanical/e1-phone/review/display-results-template.csv",
+    "display_results_review_json": "mechanical/e1-phone/review/display-results-review.json",
+    "display_results_review_md": "mechanical/e1-phone/review/display-results-review.md",
+    "acoustic_validation_json": "mechanical/e1-phone/review/acoustic-validation.json",
+    "acoustic_validation_md": "mechanical/e1-phone/review/acoustic-validation.md",
+    "acoustic_results_template": "mechanical/e1-phone/review/acoustic-results-template.csv",
+    "acoustic_results_review_json": "mechanical/e1-phone/review/acoustic-results-review.json",
+    "acoustic_results_review_md": "mechanical/e1-phone/review/acoustic-results-review.md",
+    "camera_validation_json": "mechanical/e1-phone/review/camera-validation.json",
+    "camera_validation_md": "mechanical/e1-phone/review/camera-validation.md",
+    "camera_results_template": "mechanical/e1-phone/review/camera-results-template.csv",
+    "camera_results_review_json": "mechanical/e1-phone/review/camera-results-review.json",
+    "camera_results_review_md": "mechanical/e1-phone/review/camera-results-review.md",
+    "environmental_validation_json": "mechanical/e1-phone/review/environmental-validation.json",
+    "environmental_validation_md": "mechanical/e1-phone/review/environmental-validation.md",
+    "ingress_path_review_json": "mechanical/e1-phone/review/ingress-path-review.json",
+    "ingress_path_review_md": "mechanical/e1-phone/review/ingress-path-review.md",
+    "environmental_results_template": "mechanical/e1-phone/review/environmental-results-template.csv",
+    "environmental_results_review_json": "mechanical/e1-phone/review/environmental-results-review.json",
+    "environmental_results_review_md": "mechanical/e1-phone/review/environmental-results-review.md",
+    "evt_fixtures_json": "mechanical/e1-phone/review/evt-fixtures.json",
+    "evt_fixtures_md": "mechanical/e1-phone/review/evt-fixtures.md",
+    "evt_inspection_plan_json": "mechanical/e1-phone/review/evt-inspection-plan.json",
+    "evt_inspection_plan_md": "mechanical/e1-phone/review/evt-inspection-plan.md",
+    "evt_inspection_results_template": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
+    "evt_results_review_json": "mechanical/e1-phone/review/evt-results-review.json",
+    "evt_results_review_md": "mechanical/e1-phone/review/evt-results-review.md",
+    "evt_fixture_glb": "mechanical/e1-phone/out/e1-phone-evt-fixtures.glb",
+    "evt_fixture_manifest": "mechanical/e1-phone/out/evt-fixture-manifest.json",
+    "assembly_clearance_json": "mechanical/e1-phone/review/assembly-clearance.json",
+    "assembly_clearance_md": "mechanical/e1-phone/review/assembly-clearance.md",
+    "injection_molding_dfm_json": "mechanical/e1-phone/review/injection-molding-dfm.json",
+    "injection_molding_dfm_md": "mechanical/e1-phone/review/injection-molding-dfm.md",
+    "mold_process_window_json": "mechanical/e1-phone/review/mold-process-window.json",
+    "mold_process_window_md": "mechanical/e1-phone/review/mold-process-window.md",
+    "toolmaker_signoff_package_json": "mechanical/e1-phone/review/toolmaker-signoff-package.json",
+    "toolmaker_signoff_package_md": "mechanical/e1-phone/review/toolmaker-signoff-package.md",
+    "toolmaker_signoff_response_template": "mechanical/e1-phone/review/toolmaker-signoff-response-template.csv",
+    "toolmaker_signoff_review_json": "mechanical/e1-phone/review/toolmaker-signoff-review.json",
+    "toolmaker_signoff_review_md": "mechanical/e1-phone/review/toolmaker-signoff-review.md",
+    "tolerance_stack_json": "mechanical/e1-phone/review/tolerance-stack.json",
+    "tolerance_stack_md": "mechanical/e1-phone/review/tolerance-stack.md",
+    "gdt_release_package_json": "mechanical/e1-phone/review/gdt-release-package.json",
+    "gdt_release_package_md": "mechanical/e1-phone/review/gdt-release-package.md",
+    "gdt_fai_template": "mechanical/e1-phone/review/gdt-fai-template.csv",
+    "gdt_fai_results_review_json": "mechanical/e1-phone/review/gdt-fai-results-review.json",
+    "gdt_fai_results_review_md": "mechanical/e1-phone/review/gdt-fai-results-review.md",
+    "part_review_json": "mechanical/e1-phone/review/part-review.json",
+    "part_review_md": "mechanical/e1-phone/review/part-review.md",
+    "part_review_contact_sheet": "mechanical/e1-phone/review/part-review-contact-sheet.png",
+    "visual_decision_report_json": "mechanical/e1-phone/review/visual-decision-report.json",
+    "visual_decision_report_md": "mechanical/e1-phone/review/visual-decision-report.md",
+    "solid_cad_handoff_json": "mechanical/e1-phone/review/solid-cad-handoff.json",
+    "solid_cad_handoff_md": "mechanical/e1-phone/review/solid-cad-handoff.md",
+    "step_validation_json": "mechanical/e1-phone/review/step-validation.json",
+    "step_validation_md": "mechanical/e1-phone/review/step-validation.md",
+    "solid_assembly_step": "mechanical/e1-phone/out/e1-phone-solid-assembly.step",
+    "renders": [
+      "mechanical/e1-phone/review/full_front_iso.png",
+      "mechanical/e1-phone/review/full_back_iso.png",
+      "mechanical/e1-phone/review/rear_feature_detail.png",
+      "mechanical/e1-phone/review/full_left_side.png",
+      "mechanical/e1-phone/review/full_bottom_port.png",
+      "mechanical/e1-phone/review/full_top_down.png",
+      "mechanical/e1-phone/review/exploded_iso.png",
+      "mechanical/e1-phone/review/component_stack.png",
+      "mechanical/e1-phone/review/mold_tooling.png"
+    ]
+  }
+}

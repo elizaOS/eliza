@@ -456,7 +456,7 @@ def test_descriptor_submission_programs_queue_registers_and_reports_reject_statu
 def test_descriptor_submission_rejects_invalid_requests_before_mmio():
     runtime, mmio = make_runtime()
 
-    with pytest.raises(ValueError, match="32-bit aligned"):
+    with pytest.raises(ValueError, match="aligned uint32"):
         runtime.submit_descriptors(NpuDescriptorSubmission(base=0x2002, head=0, tail=1))
     with pytest.raises(ValueError, match="at least one"):
         runtime.submit_descriptors(NpuDescriptorSubmission(base=0x2000, head=2, tail=2))

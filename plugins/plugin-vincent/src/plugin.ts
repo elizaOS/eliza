@@ -122,6 +122,20 @@ export const vincentPlugin: Plugin = {
     },
     {
       id: "vincent",
+      label: "Vincent XR",
+      description:
+        "Vincent trading dashboard — Hyperliquid/Polymarket strategy and wallet overview",
+      icon: "Zap",
+      path: "/vincent",
+      viewType: "xr",
+      bundlePath: "dist/views/bundle.js",
+      componentExport: "VincentAppView",
+      tags: ["trading", "vincent", "strategy"],
+      visibleInManager: true,
+      desktopTabEnabled: true,
+    },
+    {
+      id: "vincent",
       label: "Vincent TUI",
       description:
         "Terminal Vincent trading dashboard, strategy, and wallet overview",

@@ -1,0 +1,36 @@
+---
+title: Cloud Containers
+description: "Hosted agent container deploys."
+---
+
+Cloud containers are managed deploys of agent runtimes. You hand Cloud a container image (or let Cloud build from a repo), and it runs the agent with resource quotas, logs, and health checks.
+
+## When to use containers
+
+- The agent has a long-running background loop (autonomy, schedulers, social posting).
+- The agent needs server-side compute beyond a function's lifetime.
+- You want HA, log retention, and observability without operating it yourself.
+
+## Lifecycle
+
+- `POST /v1/containers` — create a deploy from an image or repo.
+- `GET /v1/containers/:id` — fetch status (provisioning, running, failed, stopped).
+- `PATCH /v1/containers/:id` — update env, scale, image.
+- `DELETE /v1/containers/:id` — stop and remove.
+
+Resource tiers (CPU, RAM, GPU) are picked at deploy time. Billing is per-minute.
+
+## Logs
+
+Container logs stream to the dashboard and are queryable through the Cloud API.
+
+## Source
+
+- Routes: `packages/cloud-api/v1/containers/`
+- Dashboard: `packages/cloud-frontend/src/dashboard/containers/`
+
+## See also
+
+- [Apps](/tracks/cloud/apps) — link a container to an `appId`
+- [Billing](/tracks/cloud/billing) — container minutes are billable
+- [Deployment guide](/guides/cloud)

@@ -29,14 +29,14 @@ EOF
     shift
 done
 
-if [ -d "$repo_dir/tools/bin" ]; then
-    PATH="$repo_dir/tools/bin:$PATH"
+if [ -d "$repo_dir/external/oss-cad-suite/bin" ]; then
+    PATH="$repo_dir/external/oss-cad-suite/bin:$PATH"
 fi
 if [ -d "$repo_dir/.venv/bin" ]; then
     PATH="$repo_dir/.venv/bin:$PATH"
 fi
-if [ -d "$repo_dir/external/oss-cad-suite/bin" ]; then
-    PATH="$repo_dir/external/oss-cad-suite/bin:$PATH"
+if [ -d "$repo_dir/tools/bin" ]; then
+    PATH="$repo_dir/tools/bin:$PATH"
 fi
 if [ "$(uname -s)" = "Darwin" ] && [ -d "/Applications/KiCad/KiCad.app/Contents/MacOS" ]; then
     PATH="/Applications/KiCad/KiCad.app/Contents/MacOS:$PATH"

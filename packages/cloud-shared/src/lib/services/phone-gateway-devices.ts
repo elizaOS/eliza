@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import { dbWrite } from "../../db/client";
-import { phoneGatewayDevices } from "../../db/schemas";
+import { phoneGatewayDevices } from "../../db/schemas/phone-gateway-devices";
 import { logger } from "../utils/logger";
 import { normalizePhoneNumber } from "../utils/phone-normalization";
 

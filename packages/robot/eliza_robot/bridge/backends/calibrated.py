@@ -52,28 +52,57 @@ class JointCalibration:
     rmse: float = 0.0
 
 
-def load_calibration_file(path: str | Path) -> dict[str, JointCalibration]:
-    """Load the JSON written by evidence_real_robot_sysid.py.
+def load_calibration_file(
+    path: str | Path,
+    *,
+    min_strength: float = 0.7,
+    max_strength: float = 1.3,
+    max_offset_rad: float = 0.1,
+    max_rmse_rad: float = 0.02,
+) -> dict[str, JointCalibration]:
+    """Load sys-ID JSON and accept ONLY trustworthy per-joint fits.
 
-    Skips obviously-broken fits (α ≈ 0 indicates the joint failed to
-    track the probe — applying that calibration would freeze the joint).
+    Filters out:
+      - α outside [min_strength, max_strength]: joint didn't track our
+        probe or the fit is degenerate.
+      - |β| > max_offset_rad: large offsets indicate the probe window
+        was far from the operating point and the linear model
+        extrapolates poorly when applied to typical agent commands.
+      - rmse > max_rmse_rad: noisy fits hurt more than they help.
+
+    Joints failing any filter pass through unchanged — strictly safer
+    than applying a bad linearization on top of the real robot's
+    already non-trivial PD response.
     """
     raw = json.loads(Path(path).read_text())
     out: dict[str, JointCalibration] = {}
+    dropped: list[tuple[str, str]] = []
     for name, fit in raw.get("fits", {}).items():
         alpha = float(fit.get("strength", 1.0))
-        if abs(alpha) < 0.1:
-            logger.warning(
-                "calibration: skipping %s (α=%.3f, joint did not track)",
-                name, alpha,
-            )
+        beta = float(fit.get("offset", 0.0))
+        rmse = float(fit.get("rmse", 0.0))
+        if not (min_strength <= alpha <= max_strength):
+            dropped.append((name, f"α={alpha:.3f}"))
+            continue
+        if abs(beta) > max_offset_rad:
+            dropped.append((name, f"|β|={abs(beta):.3f}"))
+            continue
+        if rmse > max_rmse_rad:
+            dropped.append((name, f"rmse={rmse:.4f}"))
             continue
         out[name] = JointCalibration(
-            name=name,
-            strength=alpha,
-            offset=float(fit.get("offset", 0.0)),
-            rmse=float(fit.get("rmse", 0.0)),
+            name=name, strength=alpha, offset=beta, rmse=rmse,
         )
+    if dropped:
+        logger.warning(
+            "calibration: dropped %d untrustworthy fits — %s",
+            len(dropped),
+            ", ".join(f"{n}({r})" for n, r in dropped[:8])
+            + (" ..." if len(dropped) > 8 else ""),
+        )
+    logger.info(
+        "calibration: accepted %d/%d fits", len(out), len(raw.get("fits", {}))
+    )
     return out
 
 

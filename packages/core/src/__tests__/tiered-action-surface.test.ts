@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { _resetActionRolePolicyCacheForTests } from "../runtime/action-role-policy";
 import { BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS } from "../runtime/builtin-field-evaluators";
 import { ResponseHandlerFieldRegistry } from "../runtime/response-handler-field-registry";
 import { runV5MessageRuntimeStage1 } from "../services/message";
@@ -8,7 +9,7 @@ import type {
 	HandlerCallback,
 	HandlerOptions,
 } from "../types/components";
-import type { AgentContext } from "../types/contexts";
+import type { AgentContext, ContextGate, RoleGate } from "../types/contexts";
 import type { Memory } from "../types/memory";
 import { ModelType } from "../types/model";
 import type { UUID } from "../types/primitives";
@@ -120,7 +121,10 @@ function getCalls(runtime: IAgentRuntime): Array<{
 function makeAction(opts: {
 	name: string;
 	description?: string;
+	similes?: string[];
 	contexts?: AgentContext[];
+	contextGate?: ContextGate;
+	roleGate?: RoleGate;
 	subActions?: Array<string | Action>;
 	validate?: (
 		runtime: IAgentRuntime,
@@ -139,10 +143,12 @@ function makeAction(opts: {
 	return {
 		name: opts.name,
 		description: opts.description ?? `${opts.name} action`,
-		similes: [],
+		similes: opts.similes ?? [],
 		examples: [],
 		parameters: [],
 		contexts: opts.contexts,
+		contextGate: opts.contextGate,
+		roleGate: opts.roleGate,
 		subActions: opts.subActions,
 		validate: opts.validate ?? (async () => true),
 		handler:
@@ -243,10 +249,13 @@ function availableActionsSection(runtime: IAgentRuntime): string {
 
 describe("v5 tiered action surface", () => {
 	let originalTrajectoryEnv: string | undefined;
+	let originalActionRolePolicy: string | undefined;
 
 	beforeEach(() => {
 		originalTrajectoryEnv = process.env.ELIZA_TRAJECTORY_RECORDING;
+		originalActionRolePolicy = process.env.ACTION_ROLE_POLICY;
 		process.env.ELIZA_TRAJECTORY_RECORDING = "0";
+		_resetActionRolePolicyCacheForTests();
 	});
 
 	afterEach(() => {
@@ -255,6 +264,12 @@ describe("v5 tiered action surface", () => {
 		} else {
 			process.env.ELIZA_TRAJECTORY_RECORDING = originalTrajectoryEnv;
 		}
+		if (originalActionRolePolicy === undefined) {
+			delete process.env.ACTION_ROLE_POLICY;
+		} else {
+			process.env.ACTION_ROLE_POLICY = originalActionRolePolicy;
+		}
+		_resetActionRolePolicyCacheForTests();
 	});
 
 	it("uses Stage 1 hints to promote a parent to Tier A and expose children", async () => {
@@ -463,6 +478,56 @@ describe("v5 tiered action surface", () => {
 		expect(toolNames).toContain("STOP");
 		// Sibling-context action that is not in Tier A / Tier B should not leak in.
 		expect(toolNames).not.toContain("SEND_EMAIL");
+	});
+
+	it("omits planner tools that execution would reject for the selected context", async () => {
+		process.env.ACTION_ROLE_POLICY = JSON.stringify({ BASH: "GUEST" });
+		_resetActionRolePolicyCacheForTests();
+
+		const shell = makeAction({
+			name: "SHELL",
+			description:
+				"Run a shell command to inspect runtime or repository state.",
+			similes: ["BASH", "EXEC"],
+			contexts: ["terminal" as AgentContext],
+			contextGate: { anyOf: ["terminal"] },
+			roleGate: { minRole: "OWNER" },
+		});
+		const file = makeAction({
+			name: "FILE",
+			description: "Read, grep, or edit workspace files.",
+			contexts: ["code" as AgentContext],
+			contextGate: { anyOf: ["code"] },
+			roleGate: { minRole: "ADMIN" },
+		});
+		const runtime = makeRuntime({
+			actions: [shell, file],
+			responses: [
+				stage1Response({
+					contexts: ["general"],
+					candidateActionNames: ["SHELL", "FILE"],
+				}),
+				plannerToolResponse("SHELL", { command: "git status --short" }),
+				finishEvaluatorResponse("Shell checked."),
+			],
+		});
+
+		await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage("check the running repository status"),
+			state: makeState(),
+			responseId: RESPONSE_ID,
+		});
+
+		const plannerCall = getCalls(runtime).find(
+			(call) => call.modelType === ModelType.ACTION_PLANNER,
+		);
+		const tools = (
+			plannerCall?.params as { tools?: Array<{ name?: string }> } | undefined
+		)?.tools;
+		const toolNames = tools?.map((tool) => tool.name).filter(Boolean) ?? [];
+		expect(toolNames).toContain("SHELL");
+		expect(toolNames).not.toContain("FILE");
 	});
 
 	it("lets a Tier B parent invoke its sub-planner and execute child actions", async () => {

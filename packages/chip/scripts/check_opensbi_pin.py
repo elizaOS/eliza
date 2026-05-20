@@ -31,10 +31,21 @@ def main() -> int:
         return 1
 
     tag = manifest.get("upstream_tag_pinned", "")
-    if not tag.startswith("v1.") or tag in ("v1.0", "v1.1", "v1.2", "v1.3", "v1.4"):
+    if not tag.startswith("v1.") or tag in (
+        "v1.0",
+        "v1.1",
+        "v1.2",
+        "v1.3",
+        "v1.3.1",
+        "v1.4",
+        "v1.5",
+        "v1.5.1",
+        "v1.6",
+        "v1.7",
+    ):
         print(
-            f"FAIL opensbi upstream_tag_pinned must be v1.5 or newer "
-            f"(MPxy + RPMI support required), got {tag}"
+            f"FAIL opensbi upstream_tag_pinned must be v1.8 or newer "
+            f"(MPxy + RPMI shared-mem mailboxes + hart-protection required), got {tag}"
         )
         return 1
 

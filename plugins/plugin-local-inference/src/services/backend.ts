@@ -64,6 +64,10 @@ export interface BackendLoadOverrides {
 	useGpu?: boolean;
 	/** Absolute path to a multimodal projector GGUF passed to llama-server as --mmproj. */
 	mmprojPath?: string;
+	/** Eliza-1 bundle root for direct bundle loads not present in the registry. */
+	bundleRoot?: string;
+	/** Manifest path for direct bundle loads not present in the registry. */
+	manifestPath?: string;
 }
 
 export function gpuLayersForKvOffload(

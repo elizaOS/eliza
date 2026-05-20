@@ -114,6 +114,9 @@ def main() -> int:
             "nettag",
             "deepgate4",
             "chiplingo",
+            "forgeeda-aig",
+            "gnn4circuits",
+            "hw2vec",
         ],
         "policy": {
             "changes_rtl": False,
@@ -181,6 +184,16 @@ def main() -> int:
                 ],
             },
             {
+                "id": "aig-netlist-graph-corpus-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future ForgeEDA, GNN4CIRCUITS, or HW2VEC use requires exact revisions, license review, graph-schema hashes, label provenance, train/test splits, contamination checks, deterministic replay, and held-out E1 tasks",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+                    "make formal",
+                ],
+            },
+            {
                 "id": "foundation-model-verification-debug-watch",
                 "status": "CAPTURED_NOT_USED",
                 "target": "future foundation-model use for bug triage or design assistance must cite local artifacts and stay behind verification-debug gates",
@@ -196,6 +209,7 @@ def main() -> int:
             "no approved data-governance policy for exporting chip-design artifacts to a model-training pipeline",
             "no pinned circuit foundation model code or model weights selected for local evaluation",
             "no local graph/text/layout embedding schema with deterministic downstream tasks and held-out splits",
+            "no approved AIG, RTL, or gate-level graph extraction schema with replayable logs and local labels",
             "no E1 netlist-function reasoning benchmark with formal, synthesis, and human-review labels",
             "no model-quality or design-decision promotion policy that can turn embeddings into release evidence",
         ],

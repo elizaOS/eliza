@@ -99,7 +99,7 @@ console.log("Generating TypeScript declarations...");
 // Ensure declaration entry points
 const reexportNode = `export * from '../index.node.js';\nexport { default } from '../index.node.js';\n`;
 const reexportBrowser = `export * from '../index.browser.js';\nexport { default } from '../index.browser.js';\n`;
-const reexportRoot = `export * from './index.node.js';\nexport { default } from './index.node.js';\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`;
+const reexportRoot = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\nexport * from './schema/index.js';\nexport type { DrizzleDatabase } from './types.js';\n`;
 const reexportRootRuntime = `export * from './node/index.node.js';\nexport { default } from './node/index.node.js';\n`;
 
 await writeFile(join(DIST, "node", "index.d.ts"), reexportNode);

@@ -36,18 +36,20 @@ REQUIRED_GENERATED_ARTIFACTS = (
     OUT_DIR / "generated-src/chipyard.harness.TestHarness.ElizaRocketConfig.dts",
     OUT_DIR / "ElizaRocketConfig.manifest.json",
 )
-REQUIRED_LOG_MARKERS = ("OpenSBI", "Linux version")
+REQUIRED_LOG_MARKERS = ("OpenSBI/SBI handoff", "Linux version")
 OPENSBI_MARKERS = ("OpenSBI", "SBI specification", "Domain0 Next Address", "Boot HART ID")
 OPENSBI_ACCEPTANCE_MARKERS = ("SBI specification", "Domain0 Next Address", "Boot HART ID")
 LINUX_MARKERS = (
     "Linux version",
     "Kernel command line:",
+    "Forcing kernel command line to:",
     "Freeing unused kernel",
     "Run /init as init process",
     "initramfs",
 )
 LINUX_ACCEPTANCE_MARKERS = (
     "Kernel command line:",
+    "Forcing kernel command line to:",
     "Freeing unused kernel",
     "Run /init as init process",
     "initramfs",
@@ -56,6 +58,35 @@ PROGRESS_MARKERS = (
     "SimDRAM loaded ELF entry=",
     "SimDRAM loading ELF ",
     "[UART] UART0 is here",
+    "Linux version",
+    "Machine model:",
+    "Forcing kernel command line to:",
+    "SBI specification",
+    "SBI implementation ID=",
+    "SBI TIME extension detected",
+    "SBI IPI extension detected",
+    "SBI RFENCE extension detected",
+    "SBI SRST extension detected",
+    "earlycon:",
+    "printk: bootconsole",
+    "Kernel panic - not syncing",
+    "OF: reserved mem:",
+    "Zone ranges:",
+    "Early memory node ranges",
+    "Initmem setup node",
+    "SBI HSM extension detected",
+    "riscv: base ISA extensions",
+    "riscv: ELF capabilities",
+    "percpu:",
+    "Kernel command line:",
+    "random: crng init done",
+    "Dentry cache hash table entries:",
+    "Inode-cache hash table entries:",
+    "Built 1 zonelists",
+    "mem auto-init:",
+    "Freeing unused kernel",
+    "Run /init as init process",
+    "initramfs",
     "eliza-evidence: command=",
     "eliza-evidence: timeout_after_seconds=",
     "eliza-evidence: exit_code=",
@@ -97,6 +128,7 @@ GENERATED_MODEL_FAILURE_PATTERNS = (
     ),
     re.compile(r"No such file or directory.*(?:mm|VTestDriver)[^\s]*\.(?:d|mk|cpp|h)"),
 )
+KERNEL_PANIC_MARKERS = ("Kernel panic - not syncing", "panic - not syncing")
 
 
 def rel(path: Path) -> str:
@@ -368,11 +400,19 @@ def has_marker_group(text: str, required: tuple[str, ...], any_of: tuple[str, ..
 
 
 def has_accepted_opensbi_markers(text: str) -> bool:
-    return has_marker_group(text, ("OpenSBI",), OPENSBI_ACCEPTANCE_MARKERS)
+    return has_marker_group(text, ("OpenSBI",), OPENSBI_ACCEPTANCE_MARKERS) or has_marker_group(
+        text,
+        ("SBI specification",),
+        ("SBI implementation ID=0x1", "SBI TIME extension detected", "SBI SRST extension detected"),
+    )
 
 
 def has_accepted_linux_markers(text: str) -> bool:
     return has_marker_group(text, ("Linux version",), LINUX_ACCEPTANCE_MARKERS)
+
+
+def has_kernel_panic(text: str) -> bool:
+    return any(marker in text for marker in KERNEL_PANIC_MARKERS)
 
 
 def remove_path(path: Path) -> None:
@@ -565,6 +605,7 @@ def parse_log_metadata() -> dict[str, object]:
         "lines_after_raw_transcript_end": 0,
         "fatal_errors": [],
         "exceptions": [],
+        "kernel_panics": [],
         "sim_failures": [],
         "sim_passes": [],
         "simdram_entry": None,
@@ -616,11 +657,15 @@ def parse_log_metadata() -> dict[str, object]:
             metadata["simdram_entry"] = line.split("=", 1)[1].strip()
             last_progress = line
         elif any(marker in line for marker in PROGRESS_MARKERS):
-            last_progress = line
+            last_progress = clean_progress_marker(line)
         if "fatal error:" in line or "%Fatal:" in line:
             fatal_errors = metadata["fatal_errors"]
             if isinstance(fatal_errors, list):
                 fatal_errors.append(line.strip())
+        if any(marker in line for marker in KERNEL_PANIC_MARKERS):
+            kernel_panics = metadata["kernel_panics"]
+            if isinstance(kernel_panics, list):
+                kernel_panics.append(line.strip())
         if (
             "Exception in thread" in line
             or line.strip().startswith("Caused by:")
@@ -645,6 +690,14 @@ def parse_log_metadata() -> dict[str, object]:
     metadata["last_progress_marker"] = last_progress
     metadata["lines_after_raw_transcript_end"] = lines_after_raw_transcript_end
     return metadata
+
+
+def clean_progress_marker(line: str) -> str:
+    marker = line.strip()
+    for suffix in ("make: ***", "[timeout-wrapper]", "eliza-evidence: raw_transcript_end"):
+        if suffix in marker:
+            marker = marker.split(suffix, 1)[0].rstrip()
+    return marker
 
 
 def output_stem_for_payload(payload: str | None) -> str:
@@ -749,6 +802,14 @@ def classify_smoke_progress(
             "stage": "no_run",
             "next_step": "run scripts/run_chipyard_eliza_linux_smoke.sh with a real OpenSBI/Linux payload",
         }
+    if has_kernel_panic(log_text):
+        return {
+            "stage": "linux_kernel_panic",
+            "next_step": (
+                "debug the generated AP Linux panic before claiming boot; inspect kernel "
+                "memory map, initramfs, and generated DTS handoff evidence"
+            ),
+        }
     if has_accepted_linux_markers(log_text):
         return {
             "stage": "linux_boot",
@@ -784,6 +845,16 @@ def classify_smoke_progress(
     if "OpenSBI" in log_text and (
         "Assertion failed in TestDriver" in log_text or "Verilog $stop" in log_text
     ):
+        if sim_timeout:
+            return {
+                "stage": "opensbi_banner_then_max_cycles",
+                "next_step": (
+                    "rerun the generated AP smoke with a larger "
+                    "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES budget and enough wall time "
+                    "to reach OpenSBI handoff and Linux boot markers, or debug why "
+                    "OpenSBI console output is too slow to reach Domain0 handoff"
+                ),
+            }
         return {
             "stage": "opensbi_banner_then_testdriver_assert",
             "next_step": (
@@ -883,7 +954,7 @@ def classify_smoke_progress(
         and log_metadata.get("exit_code")
         and log_metadata.get("exit_code") != "0"
         and not instruction_trace.get("exists")
-        and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS)
+        and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
     ):
         return {
             "stage": "fast_timeout_no_trace",
@@ -1073,6 +1144,10 @@ def main() -> int:
         if isinstance(exceptions, list):
             for exception in exceptions:
                 blockers.append(f"{rel(LOG)} records generator exception: {exception}")
+        kernel_panics = log_metadata.get("kernel_panics")
+        if isinstance(kernel_panics, list):
+            for kernel_panic in kernel_panics:
+                blockers.append(f"{rel(LOG)} records Linux kernel panic: {kernel_panic}")
         sim_failures = log_metadata.get("sim_failures")
         if isinstance(sim_failures, list):
             for sim_failure in sim_failures:
@@ -1096,7 +1171,11 @@ def main() -> int:
                 reason += f" after timeout_after_seconds={timeout_after}"
             blockers.append(reason)
         last_progress = log_metadata.get("last_progress_marker")
-        if last_progress and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS):
+        if exit_code and exit_code != "0" and last_progress:
+            blockers.append(f"last simulator progress before wrapper exit: {last_progress}")
+        if last_progress and not (
+            has_accepted_opensbi_markers(log_text) or "Linux version" in log_text
+        ):
             blockers.append(f"last simulator progress before missing boot markers: {last_progress}")
         trace_is_fresh = bool(instruction_trace.get("fresh_for_log"))
         if instruction_trace.get("exists") and not trace_is_fresh:
@@ -1108,7 +1187,7 @@ def main() -> int:
         if (
             trace_is_fresh
             and instruction_trace.get("bootrom_to_payload_handoff")
-            and not any(marker in log_text for marker in REQUIRED_LOG_MARKERS)
+            and not (has_accepted_opensbi_markers(log_text) or "Linux version" in log_text)
         ):
             blockers.append(
                 "instruction trace proves CPU forward progress through boot ROM "
@@ -1118,14 +1197,23 @@ def main() -> int:
                 f"retired={instruction_trace.get('retired_instruction_count')} "
                 f"trace={instruction_trace.get('path')}"
             )
-        for marker in REQUIRED_LOG_MARKERS:
-            if marker not in log_text:
-                blockers.append(f"{rel(LOG)} lacks required marker: {marker}")
+        if not has_accepted_opensbi_markers(log_text):
+            blockers.append(f"{rel(LOG)} lacks required marker: OpenSBI/SBI handoff")
         if "OpenSBI" in log_text and not has_accepted_opensbi_markers(log_text):
             blockers.append(
                 f"{rel(LOG)} has an OpenSBI banner but lacks accepted OpenSBI handoff markers: "
                 + ", ".join(OPENSBI_ACCEPTANCE_MARKERS)
             )
+        if (
+            "SBI specification" in log_text
+            and "OpenSBI" not in log_text
+            and not has_accepted_opensbi_markers(log_text)
+        ):
+            blockers.append(
+                f"{rel(LOG)} has Linux-observed SBI markers but lacks accepted implementation markers"
+            )
+        if "Linux version" not in log_text:
+            blockers.append(f"{rel(LOG)} lacks required marker: Linux version")
         if "Linux version" in log_text and not has_accepted_linux_markers(log_text):
             blockers.append(
                 f"{rel(LOG)} has a Linux banner but lacks accepted Linux boot markers: "

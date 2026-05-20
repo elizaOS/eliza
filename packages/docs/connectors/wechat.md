@@ -2,7 +2,7 @@
 
 Connect your agent to WeChat for personal and group messaging via a third-party proxy service using the `@elizaos/plugin-wechat` package.
 
-> **Status:** The `@elizaos/plugin-wechat` package is not currently available in the plugin registry. This page documents the planned connector interface. Check the [plugin registry](/plugins/registry) for availability updates.
+> **Status:** The `@elizaos/plugin-wechat` package is not currently available in the plugin registry. This page documents the planned connector interface. Check the [plugin registry](/tracks/plugin/publish) for availability updates.
 
 <Warning>
 This connector is **not included** in the bundled plugin registry (`plugins.json`). It is a Eliza-specific plugin that must be installed separately. Run `bun run setup:upstreams` to make it available from the local checkout.
@@ -122,6 +122,6 @@ Each account has its own API key, proxy URL, and session. Per-account fields ove
 
 ## Related
 
-- [WeChat plugin reference](/plugin-registry/platform/wechat)
+- [WeChat plugin reference](/connectors/wechat)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

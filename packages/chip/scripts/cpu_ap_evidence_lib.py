@@ -17,8 +17,8 @@ PLATFORM_CONTRACT = ROOT / "sw/platform/e1_platform_contract.json"
 
 EXPECTED_CHIPYARD = {
     "repo": "https://github.com/ucb-bar/chipyard.git",
-    "tag": "1.13.0",
-    "commit": "69eba860a352343e4ac6b6df0f3638a79a86ec78",
+    "tag": "main-2026-05-20",
+    "commit": "48f904aefbb3903dce6efa7901982642853ae6a7",
 }
 
 DEFAULT_FORBIDDEN_EVIDENCE_TERMS = [

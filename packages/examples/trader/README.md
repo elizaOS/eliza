@@ -75,6 +75,16 @@ Configurable technical indicator rules:
 - **Stop-Loss Protection**: Automatic position exits on losses
 - **Daily Loss Limits**: Stops trading after reaching max daily loss
 
+## Validation
+
+```bash
+bun run test
+bun run typecheck
+bun run build
+```
+
+The local smoke test checks the Vite mount point, core trading panels, visible risk warning, and default paper-trading runtime configuration. Real wallet or live-trading validation must use isolated funds and explicit intent.
+
 ## Architecture
 
 ```

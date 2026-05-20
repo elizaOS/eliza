@@ -516,7 +516,7 @@ export class ElizaSandboxService {
   }
 
   async deleteAgent(agentId: string, orgId: string): Promise<DeleteAgentResult> {
-    return dbWrite.transaction(async (tx) => {
+    const result = await dbWrite.transaction(async (tx) => {
       await this.lockLifecycle(tx, agentId, orgId);
 
       const rec = await this.getAgentForLifecycleMutation(tx, agentId, orgId);
@@ -584,23 +584,26 @@ export class ElizaSandboxService {
       `);
       const deletedSandbox = result.rows[0];
 
-      if (deletedSandbox) {
-        // Best-effort: revoke the per-agent API key. A failure here doesn't
-        // un-delete the sandbox; the key just lingers as inactive data.
-        try {
-          await apiKeysService.revokeForAgent(agentId);
-        } catch (err) {
-          logger.warn("[agent-sandbox] Failed to revoke per-agent API key", {
-            agentId,
-            error: err instanceof Error ? err.message : String(err),
-          });
-        }
-      }
-
       return deletedSandbox
         ? ({ success: true, deletedSandbox } as const)
         : ({ success: false, error: "Agent not found" } as const);
     });
+
+    if (result.success) {
+      // Best-effort: revoke the per-agent API key after the row delete commits.
+      // A failure here does not un-delete the sandbox; the key just lingers as
+      // inactive data and can be cleaned by ops.
+      try {
+        await apiKeysService.revokeForAgent(agentId);
+      } catch (err) {
+        logger.warn("[agent-sandbox] Failed to revoke per-agent API key", {
+          agentId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return result;
   }
 
   /**

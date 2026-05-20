@@ -34,3 +34,6 @@ nodejs
 #    and route inspection before the agent comes up).
 iproute2
 iputils-ping
+
+# ── Emulated audio smoke playback for Kokoro / llama.cpp verification.
+alsa-utils

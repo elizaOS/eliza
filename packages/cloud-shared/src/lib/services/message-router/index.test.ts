@@ -37,9 +37,29 @@ mock.module("../../../db/schemas", () => ({
   },
   agentPhoneNumbers: {},
   appRequests: {},
+  appAnalytics: {},
+  apps: {},
   appUsers: {},
+  adminUsers: {},
+  containers: {},
+  conversations: {},
+  elizaRoomCharactersTable: {},
+  invoices: {},
+  mcpPricingTypeEnum: {},
+  mcpStatusEnum: {},
+  mcpUsage: {},
+  moderationViolations: {},
+  organizationEncryptionKeys: {},
+  organizations: {},
   phoneMessageLog: {},
   phoneGatewayDevices: {},
+  userCharacters: {},
+  userMcps: {},
+  userModerationStatus: {},
+  users: {},
+  vertexModelAssignments: {},
+  vertexTunedModels: {},
+  vertexTuningJobs: {},
 }));
 
 mock.module("../secrets", () => ({
@@ -123,7 +143,7 @@ describe("MessageRouterService contact recording", () => {
     expect(recordedContact.last_outbound_at).toBeInstanceOf(Date);
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: ["provider", "contact_identifier", "agent_id"],
+        target: expect.arrayContaining(["provider", "contact_identifier", "agent_id"]),
         set: expect.objectContaining({
           organization_id: "agent-org",
           user_id: "agent-user",

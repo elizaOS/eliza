@@ -111,6 +111,7 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "symrtlo",
+            "hyperheurist",
             "rtlrewriter-bench",
             "formalrtl",
             "cktevo",
@@ -159,6 +160,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "staged-rtl-ppa-search-watch",
+                "status": "CAPTURED_NOT_SEARCHED",
+                "target": "future HYPERHEURIST-style simulated-annealing search over LLM RTL candidates must keep candidates quarantined until compile, structural, simulation, equivalence, synthesis, and before/after PPA evidence pass",
+                "acceptance_gates": [
+                    "make rtl-check",
+                    "make cocotb-contract",
+                    "make formal",
+                    "make synth",
+                ],
+            },
+            {
                 "id": "yosys-equivalence-harness-watch",
                 "status": "CAPTURED_NOT_EXECUTED",
                 "target": "future before/after miter or SAT equivalence checks for generated artifacts in build/ai_eda only",
@@ -196,7 +208,7 @@ def main() -> int:
             "no repository-level E1 RTL evolution task pack with cross-file dependency, oracle, and rollback manifests",
             "no deterministic synthesis/OpenLane before-after comparison corpus",
             "no policy for timing-control, clock-domain, reset-domain, or protocol-sensitive rewrites",
-            "no license-reviewed SymRTLO, RTLRewriter, FormalRTL, or RocketPPA implementation path",
+            "no license-reviewed SymRTLO, HYPERHEURIST, RTLRewriter, FormalRTL, or RocketPPA implementation path",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

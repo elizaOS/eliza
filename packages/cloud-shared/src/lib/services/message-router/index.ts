@@ -9,12 +9,12 @@ import { createHash, randomUUID } from "crypto";
 import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../../db/client";
+import { agentPhoneContacts } from "../../../db/schemas/agent-phone-contacts";
 import {
-  agentPhoneContacts,
   agentPhoneNumbers,
   type NewPhoneMessageLog,
   phoneMessageLog,
-} from "../../../db/schemas";
+} from "../../../db/schemas/agent-phone-numbers";
 import { ObjectNamespaces } from "../../storage/object-namespace";
 import { offloadTextField } from "../../storage/object-store";
 import { logger } from "../../utils/logger";

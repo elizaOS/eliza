@@ -946,6 +946,11 @@ grep -q 'elizaos.modelCatalog' \
     schemas/model-catalog.schema.json
 grep -q 'ELIZAOS_RELEASE_KEYRING' scripts/usb-write.sh
 grep -q 'gpgv --keyring' scripts/usb-write.sh
+grep -q 'ELIZAOS_CREATE_USB_IMAGE_FROM_ISO' scripts/usb-write.sh
+grep -q 'Refusing to write ISO directly to USB' scripts/usb-write.sh
+grep -q 'PARTITION_LABEL = "Tails"' tails/auto/scripts/create-usb-image-from-iso
+grep -q 'FILESYSTEM_LABEL = "ELIZAOS"' tails/auto/scripts/create-usb-image-from-iso
+grep -qx 'sudo' tails/config/chroot_local-packageslists/tails-common.list
 grep -q 'elizaos.sbomLite' scripts/generate-release-evidence.mjs
 grep -q 'elizaos.releaseProvenance' scripts/generate-release-evidence.mjs
 grep -q 'elizaos.modelCatalog' scripts/validate-model-catalog.mjs

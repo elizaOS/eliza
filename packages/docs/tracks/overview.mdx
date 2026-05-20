@@ -1,0 +1,48 @@
+---
+title: Tracks Overview
+description: "Six dimensions of elizaOS. Pick the one that fits your project."
+---
+
+elizaOS spans an operating system, a runtime, an app distribution layer, a hosted cloud, custom silicon, and an embodied robot stack. The documentation is organized around six dimensions. Pick the one that describes what you're building.
+
+<CardGroup cols={2}>
+  <Card title="OS" icon="computer" href="/tracks/elizaos/overview">
+    **elizaOS as an operating system.** Linux live USB and AOSP variants. Boot Eliza on real hardware.
+  </Card>
+  <Card title="Runtime" icon="cubes" href="/tracks/agent/overview">
+    **The core that makes an agent.** Agents, characters, plugins, framework, Eliza-1 models. Where most builders spend their time.
+  </Card>
+  <Card title="App" icon="window" href="/tracks/agent-app/overview">
+    **Product shells around the runtime.** Desktop / mobile / web, white-label, custom UIs on `@elizaos/core`.
+  </Card>
+  <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
+    **Managed infrastructure.** Auth, app registration, inference routing, container deploys, billing, domains.
+  </Card>
+  <Card title="Chip" icon="microchip" href="/tracks/chip/overview">
+    **The Eliza E1 SoC.** Open RISC-V AI phone chip — RTL, verification, BSP, physical design.
+  </Card>
+  <Card title="Robot" icon="robot" href="/tracks/training/robot">
+    **Embodiment.** MuJoCo simulation, RL training, real-hardware bridge, Feed.
+  </Card>
+</CardGroup>
+
+## How the dimensions compose
+
+These aren't silos. A typical project crosses several:
+
+- A **Plugin** is consumed by an **Agent** (Runtime), wrapped in an **App**, optionally deployed to **Cloud**.
+- A **Robot** policy loads an Eliza-1 model from the **Runtime**.
+- The **Chip** runs the **OS**, which hosts the **Runtime**, which runs the **App**.
+
+Start with the dimension closest to your output artifact and follow the links inward.
+
+## Where each dimension lives in the repo
+
+| Dimension  | Primary packages                                                              |
+| ---------- | ----------------------------------------------------------------------------- |
+| OS         | `packages/os/` (linux/, android/, release/, setup/, usb-installer/)           |
+| Runtime    | `packages/core/`, `packages/agent/`, `packages/training/`, plugins under `packages/` and `@elizaos/*` |
+| App        | `packages/app/`, `packages/app-core/`, `packages/elizaos/templates/project/`  |
+| Cloud      | `packages/cloud-api/`, `packages/cloud-frontend/`, `packages/cloud-shared/`, `packages/cloud-sdk/` |
+| Chip       | `packages/chip/`                                                              |
+| Robot      | `packages/robot/`, `packages/feed/`, `packages/benchmarks/`                   |

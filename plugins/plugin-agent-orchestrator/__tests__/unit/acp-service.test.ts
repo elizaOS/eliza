@@ -356,12 +356,12 @@ describe("AcpService", () => {
     );
   });
 
-  it("defaults untyped sessions to the native elizaos agent", async () => {
+  it("defaults untyped native sessions to the elizaos agent", async () => {
     const service = new AcpService(runtime({ ELIZA_ACP_TRANSPORT: undefined }));
     await service.start();
 
     const spawned = await service.spawnSession({
-      name: "default-elizaos",
+      name: "default-codex",
       workdir: "/tmp/acp-test",
     });
 

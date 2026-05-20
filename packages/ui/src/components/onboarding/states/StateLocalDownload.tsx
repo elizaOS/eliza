@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { AvatarHost } from "../../../avatar-runtime";
+import { OnboardingAvatar } from "./OnboardingAvatar";
 
 export interface LocalDownloadProgress {
   ratio: number;
@@ -78,12 +78,7 @@ export function StateLocalDownload(
       data-eliza-ob-state="local-download"
     >
       <div className="eliza-ob-agent">
-        <div
-          className="eliza-ob-agent-canvas"
-          style={{ width: "min(270px, 78vw)", height: 112 }}
-        >
-          <AvatarHost />
-        </div>
+        <OnboardingAvatar />
         <div className="eliza-ob-transcript">
           {transcript ??
             "I need to download some models so we can chat beyond this point, I'll let you know when I'm ready."}

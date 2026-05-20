@@ -23,6 +23,10 @@ BR_NONE = 0
 BR_COND = 1
 BR_CALL = 2
 BR_RET = 3
+# Indirect jump (e.g. switch dispatch, vtable, PLT). Predicted by ITTAGE
+# but does NOT push or pop the RAS. Kept distinct from BR_CALL so that
+# real traces (CBP-5, SPEC, AOSP) do not corrupt the RAS.
+BR_IND = 4
 
 # Per-table geometry mirrors rtl/cpu/bpu/bpu_pkg.sv.
 DEFAULT_GEOMETRY: dict[str, object] = {
@@ -59,12 +63,21 @@ DEFAULT_GEOMETRY: dict[str, object] = {
 
 @dataclass
 class BranchEvent:
-    """A single retired branch event consumed by the model."""
+    """A single retired branch event consumed by the model.
+
+    ``call_return_pc`` is the architectural fall-through address that
+    should be pushed onto the RAS when ``kind == BR_CALL``. For CBP-5
+    traces (RV64 / ARM64) that is ``pc + 4``; the synthetic generators
+    use larger strides and rely on the default of
+    ``pc + FETCH_BLOCK_BYTES``. ``None`` means "derive from the geometry
+    default".
+    """
 
     pc: int
     target: int
     taken: bool
     kind: int
+    call_return_pc: int | None = None
 
 
 def _mask(width: int) -> int:
@@ -398,7 +411,24 @@ class BPUSimulator:
                     else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
                 )
             )
-            self.ras.push(event.pc + self.geometry["FETCH_BLOCK_BYTES"])
+            return_pc = (
+                event.call_return_pc
+                if event.call_return_pc is not None
+                else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+            )
+            self.ras.push(return_pc)
+            return True, target
+        if event.kind == BR_IND:
+            itt_target, _provider = self.ittage.predict(event.pc, self.hist)
+            target = (
+                itt_target
+                if itt_target is not None
+                else (
+                    ftb_entry["target"]
+                    if ftb_entry
+                    else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+                )
+            )
             return True, target
         if event.kind == BR_COND:
             loop_conf, loop_taken = self.loop.predict(event.pc)
@@ -428,6 +458,10 @@ class BPUSimulator:
             self.counters["call"] += 1
             if misp:
                 self.counters["ind_misp"] += 1
+        elif event.kind == BR_IND:
+            self.counters["ind"] = self.counters.get("ind", 0) + 1
+            if misp:
+                self.counters["ind_misp"] += 1
         elif event.kind == BR_RET:
             self.counters["ret"] += 1
             if misp:
@@ -444,7 +478,16 @@ class BPUSimulator:
         elif event.kind == BR_CALL:
             _, provider = self.ittage.predict(event.pc, self.hist)
             self.ittage.update(event.pc, self.hist, actual_target, provider, misp)
-            self.ras.commit_push(event.pc + self.geometry["FETCH_BLOCK_BYTES"])
+            return_pc = (
+                event.call_return_pc
+                if event.call_return_pc is not None
+                else event.pc + self.geometry["FETCH_BLOCK_BYTES"]
+            )
+            self.ras.commit_push(return_pc)
+            self.ftb.update(event.pc, actual_target, event.kind)
+        elif event.kind == BR_IND:
+            _, provider = self.ittage.predict(event.pc, self.hist)
+            self.ittage.update(event.pc, self.hist, actual_target, provider, misp)
             self.ftb.update(event.pc, actual_target, event.kind)
         elif event.kind == BR_RET:
             self.ras.commit_pop()

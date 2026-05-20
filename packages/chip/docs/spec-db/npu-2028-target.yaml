@@ -220,11 +220,14 @@ current_repo_classification:
     - RMSNorm_s8_scalar_lowering_smoke
     - descriptor_tensor_read_stream_smoke
     - descriptor_gemm_s8_writeback_smoke
+    - prototype_descriptor_command_buffer_stage_and_submit_smoke
+    - prepared_descriptor_batch_runtime_submit_smoke
+    - descriptor_submission_window_preflight_smoke
     - deterministic_cycle_energy_scale_model
     - completion_irq
     - basic_performance_counters
   explicit_gaps:
-    - no_tensor_command_queue
+    - no_production_tensor_command_queue
     - no_production_DMA_fed_scratchpad
     - no_large_local_SRAM
     - no_systolic_array
@@ -241,6 +244,6 @@ current_repo_classification:
 next_implementation_steps:
   - Add packed low-precision primitive coverage in RTL and cocotb.
   - Replace scalar GEMM prototype with a parameterized INT8/INT4 tile model.
-  - Add descriptor-ring command ABI and DMA-fed scratchpad staging.
+  - Replace the prototype descriptor ring and host-staged scratchpad path with a production DMA queue.
   - Add cycle-accurate performance model for tile count, SRAM, and DRAM bandwidth.
   - Expand the single-matmul lowering smoke path into a real StableHLO/TFLite compiler backend.

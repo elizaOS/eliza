@@ -1,0 +1,109 @@
+{
+  "aggregate": {
+    "branch_count": 330600,
+    "instruction_count": 1995042,
+    "misprediction_count": 7896,
+    "mpki": 3.957811
+  },
+  "cbp5_tage_sc_l_reference_mpki": 3.986,
+  "claim_policy": {
+    "android_claim": false,
+    "cbp5_claim": true,
+    "evidence_class": "cbp5_train_traces_only",
+    "reason": "Real CBP-5 (CBP2025) train-trace MPKI measured on the BPU RTL via the cocotb harness. Numbers compare directly to the CBP2016 64KB TAGE-SC-L reference in reference_results_training_set.csv. CBP-5 train traces are not SPEC2017, AOSP, or JS-engine workloads; only the CBP-5 claim is supported by this evidence.",
+    "spec2017_claim": false,
+    "v8_claim": false
+  },
+  "evidence_class": "cbp5_train_traces_only",
+  "generated_at_utc": "2026-05-20T11:11:55.645057+00:00",
+  "harness": "cocotb-rtl-bpu_top",
+  "rtl_top": "bpu_top",
+  "schema": "eliza.bpu_mpki.v1",
+  "target_2028_mpki": 4.0,
+  "workloads": {
+    "sample_fp_trace": {
+      "branch_count": 148723,
+      "branch_stats": {
+        "branch_count": 148723,
+        "call_count": 10589,
+        "cond_branch_count": 111265,
+        "indirect_branch_count": 1,
+        "instruction_count": 997741,
+        "return_count": 10589
+      },
+      "indirect_misp_count": 4,
+      "indirect_misp_count_harness_observed": 4,
+      "instruction_count": 997741,
+      "misprediction_count": 4177,
+      "misprediction_count_harness_observed": 4177,
+      "mpki": 4.186457,
+      "mpki_harness_observed": 4.186457,
+      "pmu_counters_delta": {
+        "br_call": 10586,
+        "br_cond": 127505,
+        "br_cond_misp": 4169,
+        "br_ind": 0,
+        "br_ind_misp": 4,
+        "br_misp": 4177,
+        "br_pred": 148723,
+        "br_ret": 10585,
+        "br_ret_misp": 4,
+        "br_taken": 76412,
+        "ftb_miss": 47,
+        "loop_hit": 7752,
+        "ras_overflow": 0,
+        "ras_underflow": 0,
+        "sc_override": 10369,
+        "tage_alloc": 145,
+        "uftb_hit": 148637
+      },
+      "ras_misp_count": 4,
+      "ras_misp_count_harness_observed": 4,
+      "taken_branch_throughput": 0.52152,
+      "trace_class": "cbp5_train_traces_only",
+      "workload": "sample_fp_trace"
+    },
+    "sample_int_trace": {
+      "branch_count": 181877,
+      "branch_stats": {
+        "branch_count": 181877,
+        "call_count": 12900,
+        "cond_branch_count": 128874,
+        "indirect_branch_count": 14255,
+        "instruction_count": 997301,
+        "return_count": 12902
+      },
+      "indirect_misp_count": 1689,
+      "indirect_misp_count_harness_observed": 1689,
+      "instruction_count": 997301,
+      "misprediction_count": 3719,
+      "misprediction_count_harness_observed": 3719,
+      "mpki": 3.729065,
+      "mpki_harness_observed": 3.729065,
+      "pmu_counters_delta": {
+        "br_call": 12878,
+        "br_cond": 149492,
+        "br_cond_misp": 1983,
+        "br_ind": 6226,
+        "br_ind_misp": 1689,
+        "br_misp": 3719,
+        "br_pred": 181877,
+        "br_ret": 12863,
+        "br_ret_misp": 47,
+        "br_taken": 120639,
+        "ftb_miss": 418,
+        "loop_hit": 0,
+        "ras_overflow": 0,
+        "ras_underflow": 0,
+        "sc_override": 1210,
+        "tage_alloc": 292,
+        "uftb_hit": 133702
+      },
+      "ras_misp_count": 47,
+      "ras_misp_count_harness_observed": 47,
+      "taken_branch_throughput": 0.665109,
+      "trace_class": "cbp5_train_traces_only",
+      "workload": "sample_int_trace"
+    }
+  }
+}

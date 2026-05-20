@@ -1,0 +1,104 @@
+{
+  "claim_boundary": "Fail-closed review of thermal, RF, drop, and ingress lab results; blank rows are not environmental evidence.",
+  "status": "blocked_no_environmental_results",
+  "expected_measurement_count": 9,
+  "observed_row_count": 9,
+  "complete_result_count": 0,
+  "missing_measurements": [],
+  "blank_or_incomplete_measurements": [
+    "max_skin_temp_video_call_c",
+    "soc_shield_can_peak_temp_c",
+    "cellular_desense_delta_db",
+    "wifi_bt_desense_delta_db",
+    "sar_prescan_w_per_kg_1g",
+    "drop_1m_functional_failures",
+    "drop_1m_crack_or_latch_release",
+    "ip54_dust_ingress_functional_failures",
+    "ip54_splash_ingress_functional_failures"
+  ],
+  "failed_measurements": [],
+  "cases": [
+    {
+      "measurement_id": "max_skin_temp_video_call_c",
+      "expected_measurement": true,
+      "domain": "thermal",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "soc_shield_can_peak_temp_c",
+      "expected_measurement": true,
+      "domain": "thermal",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "cellular_desense_delta_db",
+      "expected_measurement": true,
+      "domain": "rf",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "wifi_bt_desense_delta_db",
+      "expected_measurement": true,
+      "domain": "rf",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "sar_prescan_w_per_kg_1g",
+      "expected_measurement": true,
+      "domain": "rf",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "drop_1m_functional_failures",
+      "expected_measurement": true,
+      "domain": "drop",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "drop_1m_crack_or_latch_release",
+      "expected_measurement": true,
+      "domain": "drop",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "ip54_dust_ingress_functional_failures",
+      "expected_measurement": true,
+      "domain": "ingress",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "ip54_splash_ingress_functional_failures",
+      "expected_measurement": true,
+      "domain": "ingress",
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    }
+  ],
+  "release_rule": "Every thermal, RF, SAR pre-scan, drop, dust, and splash row must include sample, operator, numeric passing result, and explicit pass disposition."
+}

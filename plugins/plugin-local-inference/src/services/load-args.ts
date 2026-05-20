@@ -27,6 +27,12 @@ export type KvOffloadMode = "cpu" | "gpu" | "split" | { gpuLayers: number };
  */
 export interface LocalInferenceLoadArgs {
 	modelPath: string;
+	/**
+	 * Catalog id for direct bundle loads where `modelPath` points at a GGUF
+	 * inside an Eliza-1 bundle that is not present in the installed-model
+	 * registry yet.
+	 */
+	modelId?: string;
 	contextSize?: number;
 	useGpu?: boolean;
 	maxThreads?: number;

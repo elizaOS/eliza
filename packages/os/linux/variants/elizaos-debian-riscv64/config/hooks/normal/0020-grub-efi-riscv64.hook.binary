@@ -82,7 +82,7 @@ set default=0
 set timeout=5
 
 menuentry "elizaOS Live (RISC-V 64)" {
-    linux /${KERNEL_REL} boot=live components quiet earlycon=sbi console=ttyS0,115200n8
+    linux /${KERNEL_REL} boot=live components earlycon=sbi console=ttyS0,115200n8
     initrd /${INITRD_REL}
 }
 

@@ -402,12 +402,22 @@ module e1_l2_cache
                                  input logic [LINE_BITS-1:0] wb);
         automatic l2_lookup_t r = do_lookup(paddr);
         hpm_l2_access <= 1'b1;
+        // L2 can satisfy a read hit from any non-Invalid state, including
+        // Owned: an Owner forwards the line to a new sharer without
+        // involving the next level. The Owner stays in O; the requestor
+        // installs the line in S (the L3 directory upgrade is observed
+        // via the snoop path; here we only need to forward the data).
         if (r.hit && (!is_write) &&
-            (req_state == MESI_S || r.state == MESI_M || r.state == MESI_E)) begin
+            (req_state == MESI_S ||
+             r.state == MESI_M || r.state == MESI_E ||
+             r.state == MESI_O)) begin
             l1d_grant_valid       <= 1'b1;
             l1d_grant_paddr_line  <= paddr;
             l1d_grant_data        <= r.line;
-            l1d_grant_state       <= r.state;
+            // Forwarding from Owned keeps the requester in S and the
+            // owner unchanged; from M/E we hand back the same state so
+            // L1D can promote on its next write.
+            l1d_grant_state       <= (r.state == MESI_O) ? MESI_S : r.state;
             plru[addr_index(paddr)] <=
                 plru_update(plru[addr_index(paddr)], r.way);
         end else begin
@@ -434,14 +444,37 @@ module e1_l2_cache
                 state_q               <= S_PROBE_L1D;
                 pending_paddr_q       <= l3_probe_paddr_line;
             end
-            if (r.state == MESI_M && l3_probe_target_state != MESI_M) begin
+            // MOESI snoop response: a dirty owner (M or O) supplies data.
+            //  - probe target = I and current = M/O: invalidate, write back
+            //  - probe target = S and current = M:  downgrade M->O, hand
+            //    the dirty line forward (Owner forwarding); the L3
+            //    directory installs the new requester as a sharer
+            //  - probe target = S and current = O:  Owner already exists;
+            //    hand the dirty line forward but stay in O so the writer
+            //    history continues to belong to one cache
+            if (moesi_is_dirty(r.state) &&
+                l3_probe_target_state != MESI_M) begin
                 l3_probe_has_data <= 1'b1;
                 l3_probe_wb_data  <= r.line;
             end
-            state_array[r.way][addr_index(l3_probe_paddr_line)] <=
-                l3_probe_target_state;
+            if (r.state == MESI_M && l3_probe_target_state == MESI_S) begin
+                // M -> O on the existing owner so peers may sample
+                state_array[r.way][addr_index(l3_probe_paddr_line)] <=
+                    MESI_O;
+            end else if (r.state == MESI_O &&
+                         l3_probe_target_state == MESI_S) begin
+                // Owner keeps the dirty line; no state change
+                state_array[r.way][addr_index(l3_probe_paddr_line)] <=
+                    MESI_O;
+            end else begin
+                state_array[r.way][addr_index(l3_probe_paddr_line)] <=
+                    l3_probe_target_state;
+            end
         end
         l3_probe_ack         <= 1'b1;
+        // The final state we report mirrors the directory's intended
+        // outcome from the original requester's perspective; the Owner
+        // tracks its M->O transition internally above.
         l3_probe_final_state <= l3_probe_target_state;
     endtask
 

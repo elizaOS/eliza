@@ -114,11 +114,21 @@ def build_report(bundle: Path) -> dict[str, Any]:
     )
     status = "publishable" if target_meta.get("publishEligible") is True and bench_publishable else "optimization-blocked"
     blockers: list[str] = []
-    if target_meta.get("targetText", {}).get("path") and "256k" not in str(
-        target_meta["targetText"]["path"]
-    ):
+    target_path = str(target_meta.get("targetText", {}).get("path") or "")
+    variants = target_meta.get("targetTextVariants")
+    variant_paths = []
+    if isinstance(variants, list):
+        variant_paths = [
+            str(variant.get("path"))
+            for variant in variants
+            if isinstance(variant, dict) and isinstance(variant.get("path"), str)
+        ]
+    if any("256k" in path for path in variant_paths) and "256k" not in target_path:
         blockers.append("target-meta targetText.path is not the native 256k target")
-    if target_meta.get("drafter", {}).get("matchesTargetCheckpoint") is not True:
+    drafter = target_meta.get("drafter")
+    if not isinstance(drafter, dict):
+        blockers.append("target-meta does not contain an enabled DFlash drafter")
+    elif drafter.get("matchesTargetCheckpoint") is not True:
         blockers.append("drafter does not prove matchesTargetCheckpoint=true")
     if not accepted_smoke:
         blockers.append("native runtime smoke did not prove accepted DFlash drafts")

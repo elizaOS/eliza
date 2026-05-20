@@ -48,10 +48,19 @@ OPTIONAL_COMMANDS = (
     "verilator",
     "iverilog",
     "gtkwave",
+    "surelog",
+    "verible-verilog-lint",
+    "verible-verilog-syntax",
+    "slang",
 )
 
 OPTIONAL_PYTHON_MODULES = (
+    "cocotb",
+    "cocotb_bus",
+    "cocotb_test",
+    "cocotbext.axi",
     "networkx",
+    "pyuvm",
     "pyverilog",
     "vcdvcd",
     "yaml",
@@ -91,9 +100,13 @@ def command_entry(name: str) -> dict[str, str | None]:
 
 
 def module_entry(name: str) -> dict[str, str]:
+    try:
+        present = importlib.util.find_spec(name) is not None
+    except ModuleNotFoundError:
+        present = False
     return {
         "module": name,
-        "status": "PRESENT" if importlib.util.find_spec(name) else "MISSING",
+        "status": "PRESENT" if present else "MISSING",
     }
 
 
@@ -115,11 +128,42 @@ def main() -> int:
         "claim_boundary": CLAIM_BOUNDARY,
         "source_ids": [
             "pro-v",
+            "autobench",
+            "project-ava",
+            "haven-uvm",
+            "correctbench-hdl",
+            "uvllm",
+            "uvm2-machine",
+            "verifllmbench",
+            "verilogcoder",
             "saarthi-formal-verification",
             "sangam-sva",
+            "stellar-sva",
+            "proofloop-sva",
             "fvdebug",
+            "assertsolver",
+            "veridebug",
             "siliconmind-v1",
+            "rtlfixer",
             "uvmarvel",
+            "meic-rtl-debug",
+            "r3a-rtl-repair",
+            "clover-rtl-repair",
+            "waveform-mcp",
+            "mcp-vcd-waveform",
+            "vaporview-waveform",
+            "waveeye",
+            "cocotb-core",
+            "cocotb-test",
+            "cocotb-bus",
+            "cocotb-coverage",
+            "pyuvm-cocotb",
+            "cocotbext-axi",
+            "surelog-uhdm-sv-frontend",
+            "uhdm-systemverilog-data-model",
+            "verible-sv-tooling",
+            "sv-tests-compliance",
+            "slang-sv-frontend",
         ],
         "policy": {
             "changes_rtl": False,
@@ -169,9 +213,10 @@ def main() -> int:
             {
                 "id": "verification-testbench-oracle-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future PRO-V-style testbench or oracle candidates must stay in build artifacts until deterministic cocotb regressions pass",
+                "target": "future PRO-V, AutoBench, CorrectBench, Project Ava, or VerilogCoder-style testbench/oracle candidates must stay in build artifacts until oracle independence, deterministic cocotb regressions, and reviewer disposition pass",
                 "acceptance_gates": [
                     "python3 scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation",
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
                     "make cocotb-npu",
                     "make cocotb-contract",
                 ],
@@ -179,8 +224,9 @@ def main() -> int:
             {
                 "id": "uvm-testbench-automation-watch",
                 "status": "CAPTURED_NOT_GENERATED",
-                "target": "future UVM/UVMarvel-style subsystem testbenches require a protocol IR, commercial-simulator availability, coverage logs, and cocotb/formal cross-checks before promotion",
+                "target": "future UVM/HAVEN/UVLLM/UVM2/UVMarvel/VerifLLMBench-style subsystem testbenches require a protocol IR, commercial-simulator availability, coverage logs, benchmark non-overlap review, and cocotb/formal cross-checks before promotion",
                 "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
                     "make cocotb-contract",
                     "make formal",
                     "make no-hardware-action-check",
@@ -189,7 +235,7 @@ def main() -> int:
             {
                 "id": "assertion-self-refine-watch",
                 "status": "CAPTURED_NOT_BOUND",
-                "target": "future SANGAM-style SVA search must produce reviewed assertion candidates, not direct RTL bindings",
+                "target": "future SANGAM, STELLAR, or ProofLoop-style SVA search must produce reviewed assertion candidates with retrieval/proof logs, not direct RTL bindings",
                 "acceptance_gates": [
                     "make formal",
                     "python3 scripts/ai_eda/capture_cdc_rdc_targets.py --run-id validation",
@@ -197,13 +243,79 @@ def main() -> int:
                 ],
             },
             {
+                "id": "verilog-debug-model-watch",
+                "status": "CAPTURED_NOT_CLASSIFIED",
+                "target": "future VeriDebug-style buggy-line localization, bug-type classification, or patch suggestions must remain advisory until code/model/dataset revisions, overlap scan, prompt logs, and deterministic replay gates pass",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+                    "make rtl-check",
+                    "make formal",
+                    "make synth",
+                ],
+            },
+            {
                 "id": "patch-quarantine-equivalence-watch",
                 "status": "CAPTURED_NOT_PATCHED",
-                "target": "future FVDebug or SiliconMind debug fixes must remain quarantined until review, simulation, formal, synthesis, and equivalence gates pass",
+                "target": "future MEIC, UVLLM, FVDebug, AssertSolver, VeriDebug, SiliconMind, RTLFixer, R3A, or Clover debug fixes must remain quarantined until review, simulation, formal, synthesis, and equivalence gates pass",
                 "acceptance_gates": [
                     "make formal",
                     "make synth",
                     "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+                ],
+            },
+            {
+                "id": "assertion-failure-repair-model-watch",
+                "status": "CAPTURED_NOT_PATCHED",
+                "target": "future AssertSolver-style assertion-failure repair can propose candidate RTL fixes only inside quarantine, with exact model/code revisions, assertion/testbench overlap review, prompt logs, and deterministic sim/formal/synth/equivalence replay before any source change",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_benchmark_evaluation_hygiene_targets.py --run-id validation",
+                    "make formal",
+                    "make synth",
+                    "python3 scripts/ai_eda/capture_rtl_rewrite_equivalence_targets.py --run-id validation",
+                ],
+            },
+            {
+                "id": "waveform-context-mcp-watch",
+                "status": "CAPTURED_NOT_CONNECTED",
+                "target": "future Waveform MCP, MCP VCD, VaporView, WaveEye, or similar waveform-context tooling must pin waveform hashes, allowed signal/time scopes, command/tool logs, prompt context, simulator replay, and reviewer disposition before any AI root-cause summary is trusted",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make cocotb-contract",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "deterministic-waveform-root-cause-watch",
+                "status": "CAPTURED_NOT_ANALYZED",
+                "target": "future WaveEye-style RTL/VCD root-cause analysis for AXI-Lite failures must stay advisory until RTL/VCD hashes, signal scopes, protocol assumptions, proof JSON, simulator replay, cocotb/formal correlation, and reviewer disposition are archived",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make cocotb-contract",
+                    "make formal",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "python-verification-infrastructure-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future cocotb, cocotb-test, cocotb-bus, cocotb-coverage, pyuvm, or cocotbext-axi use must pin versions, coverage schemas, bus-interface mappings, scoreboards, seed manifests, simulator logs, and cocotb/formal correlation before generated tests or coverage claims are promoted",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation",
+                    "make cocotb-npu",
+                    "make cocotb-contract",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
+                "id": "systemverilog-frontend-assertion-hygiene-watch",
+                "status": "CAPTURED_NOT_RUN",
+                "target": "future AI-generated SVA, bind stubs, or verification snippets must pass pinned Surelog/UHDM, Verible, sv-tests-qualified, or slang frontend checks with unsupported-construct reports, input hashes, diagnostics, formal/cocotb replay, and reviewer disposition before source promotion",
+                "acceptance_gates": [
+                    "python3 scripts/check_ai_eda_source_inventory.py",
+                    "make formal",
+                    "make cocotb-contract",
+                    "make no-hardware-action-check",
                 ],
             },
         ],
@@ -211,10 +323,19 @@ def main() -> int:
             "no approved AI-generated verification-plan promotion workflow",
             "no archived failing formal counterexample corpus for E1",
             "no waveform/trace-to-causal-graph parser pinned for local formal failures",
-            "no license-reviewed PRO-V, Saarthi, SANGAM, FVDebug, or SiliconMind integration path",
+            "no license-reviewed PRO-V, AutoBench, Project Ava, HAVEN, VerilogCoder, Saarthi, SANGAM, STELLAR, ProofLoop, FVDebug, VeriDebug, SiliconMind, or RTLFixer integration path",
+            "no license-reviewed CorrectBench, UVLLM, UVM2, VerifLLMBench, MEIC, R3A, or Clover asset path with benchmark non-overlap and prompt/model provenance",
             "no UVM-capable simulator/license, protocol IR, or coverage-to-cocotb correlation workflow for E1 subsystem verification",
+            "no approved mutation-test, cocotb-repair, AST-waveform tracing, or simulator failure-taxonomy workflow for generated verification collateral",
+            "no approved assertion retrieval corpus, AST fingerprint, solver-query log, or proof replay workflow",
+            "no license-reviewed AssertSolver code/model revision, assertion/testbench overlap scan, prompt log, model-access approval, or local replay harness",
+            "no license-reviewed Verilog debug model/dataset revision, benchmark overlap scan, or local replay harness",
+            "no approved oracle-independence, repair-search-trace, or coverage-waiver disposition workflow for generated verification artifacts",
             "no reviewer disposition schema for AI-suggested root causes or patches",
             "no deterministic source-promotion gate for AI-generated testbenches, assertions, or RTL fixes",
+            "no approved Waveform MCP, MCP VCD, VaporView, or WaveEye workflow with trace scope allowlists, waveform hashes, MCP/tool logs or proof JSON, prompt redaction where applicable, replay evidence, and reviewer disposition",
+            "no approved cocotb core, cocotb-test, cocotb-bus, cocotb-coverage, pyuvm, or cocotbext-axi integration path with version pins, coverage schemas, bus mappings, scoreboards, seeds, simulator logs, and cocotb/formal correlation",
+            "no approved Surelog/UHDM, Verible, sv-tests, or slang workflow with revision pins, rule/test manifests, unsupported-construct reports, parser/lint/elaboration diagnostics, input hashes, replay evidence, and reviewer disposition",
         ],
     }
     out_dir = (args.out_root / args.run_id).resolve()

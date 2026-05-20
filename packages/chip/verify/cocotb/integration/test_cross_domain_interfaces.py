@@ -90,7 +90,7 @@ BR_RET = 3
 
 VADDR_W = 39
 FTQ_IDX_W = 6  # $clog2(FTQ_ENTRIES=64)
-BR_KIND_W = 2
+BR_KIND_W = 3
 
 
 async def reset(dut):
@@ -168,7 +168,7 @@ async def read_csr(dut, addr):
     return int(dut.zihpm_csr_rdata_o.value)
 
 
-def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0):
+def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0, call_return_pc=None):
     """Pack a bpu_resolve_t.
 
     Packed struct order in `bpu_pkg` (declaration order = MSB-first):
@@ -176,17 +176,21 @@ def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0):
       logic                 misprediction;
       logic [VADDR_W-1:0]   pc;
       logic [VADDR_W-1:0]   actual_target;
+      logic [VADDR_W-1:0]   actual_call_return_pc;
       logic                 actual_taken;
-      br_kind_e             actual_kind;   // 2 bits
+      br_kind_e             actual_kind;   // 3 bits
       logic [FTQ_IDX_W-1:0] ftq_idx;       // 6 bits
 
-    Total width: 1+1+39+39+1+2+6 = 89 bits.
+    Total width: 1+1+39+39+39+1+3+6 = 129 bits.
     """
+    if call_return_pc is None:
+        call_return_pc = pc + 4
     bits = 0
     bits = (bits << 1) | (1 if valid else 0)
     bits = (bits << 1) | (1 if misp else 0)
     bits = (bits << VADDR_W) | (pc & ((1 << VADDR_W) - 1))
     bits = (bits << VADDR_W) | (target & ((1 << VADDR_W) - 1))
+    bits = (bits << VADDR_W) | (call_return_pc & ((1 << VADDR_W) - 1))
     bits = (bits << 1) | (1 if taken else 0)
     bits = (bits << BR_KIND_W) | (kind & ((1 << BR_KIND_W) - 1))
     bits = (bits << FTQ_IDX_W) | (ftq_idx & ((1 << FTQ_IDX_W) - 1))
@@ -635,48 +639,32 @@ async def test_dram_ctrl_dfi_traffic(dut):
 
 @cocotb.test()
 async def test_cva6_executes_from_bootrom(dut):
-    """CVA6 little-core fetch from boot ROM.
+    """CVA6 little-core fetch from boot ROM — lite-mode behaviour.
 
-    BLOCKED at this top by a wrapper-API drift, not by a missing checkout.
-    `external/cva6/cva6/` is now present (head cfb85e7), but the standalone
-    wrapper `rtl/cpu/e1_cva6_wrapper.sv` targets the deprecated legacy CVA6
-    API (`ariane_pkg::ArianeDefaultConfig`, module `ariane`,
-    `ariane_axi::req_t/resp_t`).  None of those symbols exist in the current
-    checkout or in any tagged release from v4.0.0 onward; current CVA6
-    exposes module `cva6` with `config_pkg::cva6_cfg_t` (built from
-    `cva6_config_pkg::cva6_cfg` via `build_config_pkg::build_config`) and
-    configurable NoC structs.  Defining `+define+E1_HAVE_CVA6` therefore
-    fails elaboration; the integrated top keeps the cluster in lite tie-off
-    mode (`cluster_to_fabric.status = TIED_OFF`).
+    The standalone wrapper `rtl/cpu/e1_cva6_wrapper.sv` has been re-targeted
+    to CVA6 v5.3.0 (`external/cva6/cva6/` pinned at commit 2ef1c1b) and the
+    NoC↔flat-AXI4 adapter `rtl/top/adapters/e1_cva6_to_e1axi4.sv` is in
+    place. The wrapper now elaborates cleanly against the v5.3.0 sources;
+    real CVA6 execution is exercised under
+    `verify/cocotb/integration/test_cva6_executes_bootrom_program.py` and
+    `test_cva6_dram_read_write.py` through the dedicated `e1_cva6_unit_tb`
+    harness (run via `make cocotb-cva6-cpu`).
 
-    This test asserts the cluster's AXI4 master surface stays quiet under
-    reset (the structural proof) and is upgraded to a real four-instruction
-    execution check once the wrapper is re-targeted.
-
-    Recovery (mechanically enforced by `make cva6-generator-check` →
-    `scripts/check_cva6_pin.py`):
-
-      1. Pin `external/cva6/cva6` to v5.3.0 (commit 2ef1c1b).
-      2. Initialise the cvfpu + hpdcache + cvfpu/src/common_cells +
-         cvfpu/src/fpu_div_sqrt_mvp submodules.
-      3. Rewrite the `ifdef E1_HAVE_CVA6 block in `e1_cva6_wrapper.sv`
-         to instantiate
-           cva6 #(.CVA6Cfg(build_config_pkg::build_config(
-                              cva6_config_pkg::cva6_cfg)))
-         and bridge its NoC/AXI structs to the flat AXI4 ports via a new
-         `rtl/top/adapters/e1_cva6_to_e1axi4.sv`.
-
-    See `external/cva6/pin-manifest.json` → `wrapper_api_drift` and
-    `docs/evidence/integration/cross-domain-interfaces.yaml` →
+    At the SoC integration top the cluster still operates in lite tie-off
+    mode: the per-core AXI port shape is 128-bit (matching the L1D cache
+    line) while CVA6's native AXI is 64-bit, so a 64↔128 AXI4 data-width
+    converter is the remaining gap before slot 0 can drive real fabric
+    traffic.  That converter is the next-step blocker; see
+    `docs/evidence/integration/cross-domain-interfaces.yaml`
     `cluster_to_fabric.blocked_reason` for the full chain.
+
+    This test therefore asserts the SoC top's quiet-under-reset baseline:
+    in lite mode no AXI4 traffic from the cluster reaches the fabric, so
+    no DMA / NPU IRQ should rise spuriously.
     """
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
     await reset(dut)
 
-    # The integrated top exposes one observable scoreboard: in lite mode
-    # no AXI4 traffic from the cluster reaches the fabric, so no DMA /
-    # NPU IRQ should rise spuriously.  Under reset + 64 idle cycles the
-    # cluster stays quiet.
     for _ in range(64):
         await RisingEdge(dut.clk)
     assert int(dut.irq_dma.value) == 0

@@ -2,23 +2,34 @@
 <!--
   VINTF manifest for the Eliza e1 AI SoC.
 
-  This manifest is intentionally scaffold-only. The hardware register layout is
-  defined in sw/platform/e1_platform_contract.json.
+  The hardware register layout is defined in
+  sw/platform/e1_platform_contract.json. The active services below are
+  fail-closed bring-up services: they must start only when their backing
+  modules build and the runtime probe can report unsupported hardware
+  explicitly instead of pretending success.
 
   HALs deliberately absent (no implementation, no backing Linux node):
     camera, audio, radio, GNSS, NFC, bluetooth, wifi, sensors, vibrator,
     fingerprint, thermal, power, health, USB, keymaster/gatekeeper/weaver,
     drm.
-
-  Reserved future HAL package/service markers:
-    e1_npu.default
-    hwcomposer.eliza_ai_soc
-
-  Do not add active <hal> entries until the matching source or reviewed
-  prebuilts are imported into the external AOSP tree and the VINTF/vendorimage
-  evidence logs are captured. The checked-in HAL stubs are fail-closed source
-  scaffolds only; this file must not claim they are active vendor services.
 -->
 <manifest version="1.0" type="device">
-
+    <hal format="hidl">
+        <name>vendor.eliza.e1_npu</name>
+        <transport>hwbinder</transport>
+        <version>1.0</version>
+        <interface>
+            <name>IE1Npu</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
+    <hal format="hidl">
+        <name>android.hardware.graphics.composer</name>
+        <transport>hwbinder</transport>
+        <version>2.4</version>
+        <interface>
+            <name>IComposer</name>
+            <instance>default</instance>
+        </interface>
+    </hal>
 </manifest>

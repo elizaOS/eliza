@@ -80,9 +80,11 @@ export default defineConfig({
     rolldownOptions: {
       external: [
         "technicalindicators",
+        "@uniswap/v3-sdk",
         "@elizaos/plugin-auto-trader",
         "@elizaos/plugin-elizacloud",
         "@elizaos/plugin-trajectory-logger",
+        "@uniswap/v3-sdk",
       ],
       output: {
         codeSplitting: {

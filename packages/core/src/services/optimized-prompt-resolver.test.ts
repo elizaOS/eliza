@@ -1,7 +1,6 @@
 /**
  * Per-task wiring tests for `OptimizedPromptService` + the runtime-aware
- * resolver. Each core task (should_respond, action_planner, response,
- * media_description, action_descriptions, autonomy) has a matrix entry covering:
+ * resolver. Each optimized prompt task has a matrix entry covering:
  *
  *   1. artifact present  → optimized prompt injected
  *   2. artifact absent   → baseline returned unchanged

@@ -23,8 +23,8 @@ const ProductDetail = lazy(() =>
 
 const appUrl = EXTERNAL_URLS.app;
 const cloudUrl = `${EXTERNAL_URLS.cloud}/login?intent=launch`;
-const checkoutBaseUrl = `${EXTERNAL_URLS.os}/checkout`;
 const betaManifestUrl = "/downloads/elizaos-beta-manifest.json";
+const checkoutPath = "/checkout";
 
 type ReleaseArtifact = {
   id: string;
@@ -54,9 +54,9 @@ const releaseFallback: ReleaseManifest = {
       kind: "raw-image",
       platform: "linux-bare-metal",
       architecture: "x86_64",
-      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-live-beta-x86_64.img.zst",
+      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/eliza-canary-linux-x64.tar.zst",
       checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
     },
     {
       id: "elizaos-usb-installer-windows-x86_64",
@@ -64,9 +64,9 @@ const releaseFallback: ReleaseManifest = {
       kind: "usb-installer",
       platform: "windows",
       architecture: "x86_64",
-      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-usb-installer-beta-windows-x86_64.exe",
+      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/eliza-canary-windows-x64.exe.zip",
       checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
     },
     {
       id: "elizaos-vm-macos-silicon",
@@ -74,9 +74,9 @@ const releaseFallback: ReleaseManifest = {
       kind: "vm-bundle",
       platform: "macos",
       architecture: "arm64",
-      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-vm-macos-silicon.zip",
+      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/eliza-canary-macos-arm64.app.tar.gz",
       checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
     },
     {
       id: "elizaos-android-beta",
@@ -84,9 +84,9 @@ const releaseFallback: ReleaseManifest = {
       kind: "android-image",
       platform: "android",
       architecture: "arm64",
-      url: "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/elizaos-android-beta.zip",
+      url: "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/elizaos-android-2.0.0-beta.2-release.apk",
       checksumUrl:
-        "https://github.com/elizaOS/eliza/releases/download/elizaos-beta/SHA256SUMS",
+        "https://github.com/elizaOS/eliza/releases/download/v2.0.0-beta.2/SHA256SUMS.txt",
     },
   ],
 };
@@ -298,7 +298,7 @@ function HomePage() {
             <div className="section-head">
               <h2>Hardware.</h2>
               <a
-                href={`${checkoutBaseUrl}?collection=elizaos-hardware`}
+                href={`${checkoutPath}?collection=elizaos-hardware`}
                 className="button button-dark"
               >
                 Open checkout

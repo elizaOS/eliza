@@ -20,7 +20,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Build dependencies:
 #   1. live-build remains installed so this variant can grow a full live image.
 #   2. debootstrap + qemu-user-static build the riscv64 Debian rootfs.
-#   3. qemu-system-misc provides qemu-system-riscv64 for the boot smoke.
+#   3. qemu-system-misc + qemu-utils provide the boot smoke tools.
 RUN dpkg --add-architecture riscv64 \
     && apt-get update && apt-get install -y --no-install-recommends \
         live-build \
@@ -28,6 +28,8 @@ RUN dpkg --add-architecture riscv64 \
         qemu-user-static \
         binfmt-support \
         qemu-system-misc \
+        qemu-utils \
+        qemu-efi-riscv64 \
         u-boot-menu \
         grub-efi-riscv64-bin:riscv64 \
         cpio \

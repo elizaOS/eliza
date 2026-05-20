@@ -3,6 +3,7 @@
 # contract on top.
 $(call inherit-product, device/google/cuttlefish/vsoc_riscv64/phone/aosp_cf.mk)
 $(call inherit-product, device/eliza/eliza_ai_soc/device.mk)
+$(call inherit-product, vendor/eliza/eliza_common.mk)
 
 PRODUCT_NAME := eliza_ai_soc
 PRODUCT_DEVICE := eliza_ai_soc

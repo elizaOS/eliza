@@ -37,7 +37,7 @@ print_version() {
         klayout)
             printf "SKIPPED_VERSION_PROBE\n"
             ;;
-        nix)
+        netgen|nix)
             printf "SKIPPED_VERSION_PROBE\n"
             ;;
         *)

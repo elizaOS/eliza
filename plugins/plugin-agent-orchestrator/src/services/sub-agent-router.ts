@@ -119,6 +119,44 @@ function extractVerifiableUrls(
   return aliasFiltered.slice(0, limit);
 }
 
+function shouldVerifyCompletionUrls(
+  text: string,
+  referenceText?: string,
+  routeVerification?: RouteUrlVerification,
+): boolean {
+  const completionUrls = collectVerifiableUrlCandidates(text);
+  const referenceUrls = referenceText
+    ? collectVerifiableUrlCandidates(referenceText)
+    : [];
+  if (completionUrls.length === 0 && referenceUrls.length === 0) {
+    return false;
+  }
+
+  if (referenceText && taskRequestsReachableArtifact(referenceText)) {
+    return true;
+  }
+  return completionUrls.some((url) =>
+    isRoutedArtifactUrl(url, routeVerification),
+  );
+}
+
+function taskRequestsReachableArtifact(text: string): boolean {
+  return /\b(?:app|site|website|webpage|page|build|built|create|created|deploy|deployed|deployment|host|hosted|hosting|preview|publish|published|serve|served|serving|static|reachable|live|verify|verified)\b/i.test(
+    text,
+  );
+}
+
+function isRoutedArtifactUrl(
+  url: string,
+  routeVerification?: RouteUrlVerification,
+): boolean {
+  if (appRoutePathPrefix(url)) return true;
+  if (!routeVerification) return false;
+  return routeVerification.mappings.some((mapping) =>
+    url.startsWith(mapping.urlPrefix),
+  );
+}
+
 function filterModelIntroducedUrlAliases(
   urls: string[],
   referenceUrls: Set<string>,
@@ -311,9 +349,17 @@ export class SubAgentRouter extends Service {
       this.log("info", "router bound to AcpService");
       return;
     }
-    // Give up after ~10s of polling and log what we got.
+    // Service startup is lazy and can happen outside this plugin's ordered
+    // eager-start path, so do not go idle forever when ACP is late. Poll
+    // quickly for the first ~10s, then keep a low-frequency retry alive.
     if (attempt >= 50) {
-      this.log("debug", "AcpService unavailable; router idle");
+      if (attempt === 50 || attempt % 30 === 0) {
+        this.log("debug", "AcpService unavailable; router still waiting");
+      }
+      this.bindRetryTimer = setTimeout(
+        () => this.tryBindSources(attempt + 1),
+        1000,
+      );
       return;
     }
     this.bindRetryTimer = setTimeout(
@@ -621,9 +667,10 @@ export class SubAgentRouter extends Service {
       const threadedResponse = originReplyTarget
         ? {
             ...response,
+            source: "sub_agent_complete",
             inReplyTo: originReplyTarget,
           }
-        : response;
+        : { ...response, source: "sub_agent_complete" };
       const delivered = await sendToTarget(
         {
           source,
@@ -1233,6 +1280,9 @@ async function annotateUnverifiedUrls(
   runtime?: IAgentRuntime,
   routeVerification?: RouteUrlVerification,
 ): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
+  if (!shouldVerifyCompletionUrls(text, referenceText, routeVerification)) {
+    return { text, dead: [], verifiedUrls: [] };
+  }
   const urls = expandRouteUrlAliases(
     extractVerifiableUrls(text, 5, referenceText, ignoredUrls),
     routeVerification,

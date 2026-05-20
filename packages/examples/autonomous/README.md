@@ -58,3 +58,13 @@ cd packages/examples/autonomous
 bun install
 bun run start
 ```
+
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+The test suite covers the local decision parser, shell-command allowlist, and
+prompt construction without starting local inference or shell services.

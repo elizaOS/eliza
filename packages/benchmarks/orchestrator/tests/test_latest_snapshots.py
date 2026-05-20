@@ -996,6 +996,7 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
                 "agent": agent,
                 "harness": agent,
                 "scenario": "skeptic_tarot_01",
+                **({"openclaw_timeout_s": 60, "reasoning_effort": "low"} if agent == "hermes" else {}),
             },
         )
 
@@ -1012,6 +1013,10 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
         f"{comparison_signature}::woobench::hermes",
         f"{comparison_signature}::woobench::openclaw",
     }
+    payload = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert payload["extra_config"]["scenario"] == "skeptic_tarot_01"
     assert index["benchmark_comparability"]["woobench"]["comparable"] is True
     assert index["matrix_contract"]["status"] == "complete"
     assert index["matrix_contract"]["summary"]["required_real_cells"] == 3
@@ -1051,6 +1056,114 @@ def test_rebuild_latest_marks_mixed_latest_configs_not_comparable(
 
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert index["benchmark_comparability"]["woobench"]["comparable"] is False
+
+
+def test_rebuild_latest_prefers_newest_complete_comparable_real_cohort(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
+        _seed_run(
+            conn,
+            benchmark_id="woobench",
+            agent=agent,
+            run_id=f"run_full_{agent}",
+            started_at=f"2026-05-12T00:0{offset}:00+00:00",
+            score=0.8,
+            extra_config={
+                "agent": agent,
+                "harness": agent,
+                "scenarios": ["friend_supporter_tarot_01", "repeat_customer_tarot_01"],
+            },
+        )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_newer_eliza_single",
+        started_at="2026-05-12T00:03:00+00:00",
+        score=0.2,
+        extra_config={
+            "agent": "eliza",
+            "harness": "eliza",
+            "scenario": "skeptic_tarot_01",
+        },
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    eliza = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert eliza["run_id"] == "run_full_eliza"
+    assert index["benchmark_comparability"]["woobench"]["comparable"] is True
+
+
+def test_rebuild_latest_prefers_within_tolerance_real_cohort(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
+        _seed_run(
+            conn,
+            benchmark_id="woobench",
+            agent=agent,
+            run_id=f"run_mid_{agent}",
+            started_at=f"2026-05-12T00:0{offset}:00+00:00",
+            score=0.5,
+            extra_config={
+                "agent": agent,
+                "harness": agent,
+                "limit": 2,
+                "suite": "smoke",
+            },
+        )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="openclaw",
+        run_id="run_newer_openclaw_high",
+        started_at="2026-05-12T00:03:00+00:00",
+        score=1.0,
+        extra_config={
+            "agent": "openclaw",
+            "harness": "openclaw",
+            "limit": 2,
+            "suite": "smoke",
+        },
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"woobench": _adapter("woobench")},
+    )
+
+    openclaw = json.loads(
+        (tmp_path / "latest" / "woobench__openclaw.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert openclaw["run_id"] == "run_mid_openclaw"
 
 
 def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:
@@ -1856,6 +1969,54 @@ def test_rebuild_latest_restores_orchestrated_swe_score_from_saved_result(
     )
     assert latest["status"] == "succeeded"
     assert latest["score"] == 0.25
+
+
+def test_rebuild_latest_restores_swe_score_from_saved_result_metrics(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["swe_bench"],
+        repo_meta={},
+    )
+    result_path = tmp_path / "swe-bench-result.json"
+    result_path.write_text(
+        json.dumps({"resolve_rate": 0.5}, sort_keys=True),
+        encoding="utf-8",
+    )
+    _seed_run(
+        conn,
+        benchmark_id="swe_bench",
+        agent="hermes",
+        run_id="run_restorable_swe",
+        started_at="2026-05-12T00:00:00+00:00",
+        status="incompatible",
+        score=None,
+        metrics={
+            "reason": "latest_row_violates_current_compatibility",
+            "supported_harnesses": [],
+        },
+        result_json_path=str(result_path),
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"swe_bench": _adapter("swe_bench", agent_compatibility=("hermes",))},
+    )
+
+    latest = json.loads(
+        (tmp_path / "latest" / "swe_bench__hermes.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert latest["status"] == "succeeded"
+    assert latest["score"] == 0.5
 
 
 def test_rebuild_latest_prunes_unknown_benchmark_snapshots(

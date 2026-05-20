@@ -19,7 +19,14 @@ describe("hearwear registry entry", () => {
       { file: FACEWEAR_ENTRY_PATH, data },
     ]);
 
+    if (parsed.kind !== "plugin") {
+      throw new Error("Expected smartglasses registry entry to be a plugin");
+    }
+
     expect(parsed.kind).toBe("plugin");
+    if (parsed.kind !== "plugin") {
+      throw new Error("Expected smartglasses registry entry to be a plugin");
+    }
     expect(parsed.subtype).toBe("media");
     expect(parsed.npmName).toBe("@elizaos/plugin-hearwear");
     expect(parsed.config).toHaveProperty("FACEWEAR_SMARTGLASSES_TRANSPORT");

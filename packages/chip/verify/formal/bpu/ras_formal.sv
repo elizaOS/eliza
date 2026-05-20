@@ -37,7 +37,7 @@ module ras_formal(input logic clk);
     assign restore_valid = 1'b0;
     assign restore_top   = '0;
 
-    ras dut (.clk(clk), .rst_n(rst_n), .*);
+    e1_bpu_ras dut (.clk(clk), .rst_n(rst_n), .*);
 
     // Settle counter for the assertion guard. We only check invariants after
     // the BMC has observed the rising edge of rst_n.

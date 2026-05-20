@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -219,6 +219,24 @@ describe("FileSessionStore", () => {
       ),
     );
     await expect(store.list()).resolves.toHaveLength(20);
+  });
+
+  it("recovers from a stale lock file", async () => {
+    const file = await tempFile();
+    const lockFile = `${file}.lock`;
+    await writeFile(lockFile, "", "utf8");
+    const old = new Date(Date.now() - 120_000);
+    await utimes(lockFile, old, old);
+
+    const logger = { warn: vi.fn() };
+    const store = new FileSessionStore(file, logger);
+    await store.create(session());
+
+    await expect(readFile(file, "utf8")).resolves.toContain("session-1");
+    expect(logger.warn).toHaveBeenCalledWith(
+      "acpx SessionStore removed a stale lock file",
+      lockFile,
+    );
   });
 
   it("recovers from corrupt JSON with an empty store and warning", async () => {

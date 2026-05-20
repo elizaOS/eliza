@@ -27,6 +27,9 @@ from .scenarios import ALL_SCENARIOS, SCENARIOS_BY_SYSTEM, SCENARIOS_BY_ARCHETYP
 def _configure_bridge_model_env(model: str) -> None:
     if not model:
         return
+    if os.environ.get("CEREBRAS_API_KEY") and not os.environ.get("BENCHMARK_MODEL_PROVIDER"):
+        os.environ.setdefault("BENCHMARK_MODEL_PROVIDER", "cerebras")
+        os.environ.setdefault("MODEL_PROVIDER", "cerebras")
     for key in (
         "BENCHMARK_MODEL_NAME",
         "MODEL_NAME",

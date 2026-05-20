@@ -88,21 +88,35 @@ round3_dependency_status:
       - E1_REQUIRE_REAL_MMU_DUT
   verilator_full_boot_transcript:
     status: blocked
-    blocking_dependency: verilator simulator wall-clock budget
+    blocking_dependency: verilator simulator wall-clock budget under host contention
     reason: |
-      Empirical throughput on this host is ~50K cycles/s in -O3 single
-      thread. A Rocket Verilator full boot of OpenSBI v1.2 + Linux 6.6
-      to "Run /init" historically needs 100-300M cycles, i.e. 30-100
-      minutes of wall time on this host. A bounded test run captured
-      the OpenSBI banner (`OpenSBI v1.2 / ____...`) in
-      build/evidence/cpu_ap/eliza_e1_linux_boot.log but not the full
-      Linux marker set within the round-3 wall-clock budget.
+      Empirical throughput on this host is ~38 us simulated / s wall, i.e.
+      ~19K cycles/s under heavy sister-agent CPU load (24-core machine,
+      observed 1-min load average >35). A Rocket Verilator full boot of
+      OpenSBI v1.2 + Linux 6.6 to "Run /init" needs ~300-500 ms simulated
+      time, which on this contended host is ~2-4 hours of wall time. A
+      bounded run earlier this round captured the OpenSBI v1.2 banner +
+      "Linux ver" line in build/evidence/cpu_ap/eliza_e1_opensbi_boot.log
+      at 200M cycles, but did not reach a Linux command-line prompt
+      because the earlier br-base/linux-poweroff-quiet kernel was built
+      with `mem=64M` which panics in `memory_present()` against the
+      generated DT memory map at 0x80000000 + 0x10000000 (256 MiB).
+      The kernel/payload has since been rebuilt with `mem=192M` which is
+      consistent with the DT; the next full-wall-time smoke needs to
+      capture a transcript with all required_markers above.
+    payload_at_rebuild:
+      br_base_bin: external/chipyard/software/firemarshal/images/firechip/br-base/br-base-bin
+      linux_poweroff_quiet_bin_nodisk: external/chipyard/software/firemarshal/images/firechip/linux-poweroff-quiet/linux-poweroff-quiet-bin-nodisk
+      linux_cmdline_post_rebuild: "console=ttyS0 console=ttySIF0,3686400 earlycon quiet loglevel=4 mem=192M"
     next_command: |
-      E1_LINUX_TIMEOUT_S=3600 E1_LINUX_MAX_CYCLES=400000000 \
+      E1_LINUX_TIMEOUT_S=14400 E1_LINUX_MAX_CYCLES=2000000000 \
+        E1_LINUX_PAYLOAD=external/chipyard/software/firemarshal/images/firechip/br-base/br-base-bin \
         scripts/run_linux_smoke.sh
     suggested_offload: |
       Run scripts/run_linux_smoke.sh on a dedicated host (Nebius H200
-      runbook or any Linux x86_64 build host) for >= 1 hour wall time
-      and stage the resulting transcript into
-      build/evidence/cpu_ap/eliza_e1_linux_boot.log, then run
-      `make linux-boot-check-strict`.
+      runbook or any Linux x86_64 build host) for >= 2 hours of wall
+      time with the host CPU otherwise idle, and stage the resulting
+      transcript into build/evidence/cpu_ap/eliza_e1_linux_boot.log,
+      then run `make linux-boot-check-strict`. FireSim FPGA acceleration
+      (sims/firesim) is the realistic acceleration path to bring full
+      boot under 1 minute; submodule is already initialized.

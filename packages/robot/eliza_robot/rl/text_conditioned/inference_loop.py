@@ -128,10 +128,14 @@ async def run_inference(
                 home_rad + config.safety_clip_rad,
             )
             joint_positions = {joint_names[i]: float(targets[i]) for i in range(len(joint_names))}
-            # Dispatch as servo.set with joint_positions so MuJoCoBackend
-            # and the real ROS path both apply the targets.
+            # Dispatch as servo.set. Use a SHORT physics duration on
+            # the sim leg so the dual-target broadcast doesn't get
+            # bottlenecked by long step_n calls — at the policy rate
+            # we only want ~one outer-loop step per tick of physics,
+            # not the full settle window.
+            servo_duration = max(0.02, min(period, 0.06))
             response = await _send(backend, "servo.set", {
-                "duration": float(period),
+                "duration": float(servo_duration),
                 "joint_positions": joint_positions,
                 "positions": _to_pulse_positions(joint_positions),
             })

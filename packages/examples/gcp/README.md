@@ -87,6 +87,17 @@ npm run dev
 # Server runs at http://localhost:8080
 ```
 
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+`bun run test` performs a non-interactive worker availability check. If no local
+or deployed worker URL is configured, it skips cleanly and prints the setup
+hint.
+
 ## Project Structure
 
 ```

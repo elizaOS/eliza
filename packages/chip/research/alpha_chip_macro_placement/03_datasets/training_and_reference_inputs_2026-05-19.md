@@ -33,6 +33,18 @@ datasets or benchmark payloads until license and redistribution terms are clear.
 - SLICE dataset index: <https://slice-ml-eda.github.io/docs/datasets.html>.
   Useful catalog for timing, parasitic, IR, Verilog, and other ML-for-EDA
   datasets.
+- VeriGen / OriGen / VeriReason / DeepV RTL model assets:
+  <https://huggingface.co/shailja/fine-tuned-codegen-2B-Verilog>,
+  <https://huggingface.co/datasets/shailja/Verilog_GitHub>,
+  <https://github.com/pku-liang/OriGen>,
+  <https://huggingface.co/henryen/OriGen>,
+  <https://huggingface.co/datasets/henryen/origen_dataset_instruction>,
+  <https://github.com/NellyW8/VeriReason>, and
+  <https://huggingface.co/spaces/FICS-LLM/DeepV>. Treat as metadata-only
+  candidates for a quarantined RTL model-evaluation harness; no weights,
+  datasets, prompts, or generated RTL may enter source without revision pins,
+  license review, contamination checks, local lint/simulation/synthesis/formal
+  logs, and reviewer disposition.
 
 ## Classic benchmark inputs
 

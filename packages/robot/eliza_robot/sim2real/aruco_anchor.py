@@ -180,3 +180,217 @@ def measure_divergence(env, pose: dict) -> dict:
         "dyaw_deg": float(_math.degrees(dyaw)),
         "rms_xy_m": float(_math.sqrt(dx * dx + dy * dy)),
     }
+
+
+# ----------------------------------------------------------------------
+# Fused anchor: joints (StateMirror) + free-joint torso pose (ArUco)
+# ----------------------------------------------------------------------
+
+
+@dataclass
+class FusedAnchorStats:
+    """Per-tick fused sim2real divergence record.
+
+    Fields:
+        joint_rms_mrad / joint_n — joint divergence the StateMirror is
+            closing each tick (real_pos - sim_pos, RMS in milliradians).
+        torso_dx_m..torso_dyaw_deg — residual torso gap *after* anchoring
+            (typically PnP / quantization noise).
+        torso_pre_dxy_m / torso_pre_dyaw_deg — torso gap *before* anchoring
+            (the drift the ArUco anchor zeroed out this tick).
+        aruco_ids_seen — every marker ID detected in the last frame.
+        aruco_pose_locked — True iff both body + origin markers were
+            detected (so the anchor ran successfully).
+    """
+
+    t_s: float
+    joint_rms_mrad: float
+    joint_n: int
+    torso_dx_m: float
+    torso_dy_m: float
+    torso_dz_m: float
+    torso_dxy_m: float
+    torso_dyaw_deg: float
+    torso_pre_dxy_m: float
+    torso_pre_dyaw_deg: float
+    aruco_ids_seen: list[int]
+    aruco_pose_locked: bool
+
+    def to_json(self) -> dict:
+        return {
+            "t_s": round(self.t_s, 3),
+            "joint_rms_mrad": round(self.joint_rms_mrad, 3),
+            "joint_n": self.joint_n,
+            "torso_dx_m": round(self.torso_dx_m, 4),
+            "torso_dy_m": round(self.torso_dy_m, 4),
+            "torso_dz_m": round(self.torso_dz_m, 4),
+            "torso_dxy_m": round(self.torso_dxy_m, 4),
+            "torso_dyaw_deg": round(self.torso_dyaw_deg, 3),
+            "torso_pre_dxy_m": round(self.torso_pre_dxy_m, 4),
+            "torso_pre_dyaw_deg": round(self.torso_pre_dyaw_deg, 3),
+            "aruco_ids_seen": list(self.aruco_ids_seen),
+            "aruco_pose_locked": self.aruco_pose_locked,
+        }
+
+
+class FusedSim2RealAnchor:
+    """Pins the sim's whole-body state to what's measurable on the real robot.
+
+    Composes two existing primitives — does NOT reimplement them:
+
+    1. **Joints** — `StateMirrorBackend` reads `real.read_joint_positions()`
+       and force-writes them into `env.data.qpos[act_qpos_idx]`. That
+       backend stays opaque here; we just observe its `stats` and re-read
+       sim qpos for divergence reporting.
+
+    2. **Free-joint torso pose** — `detect_robot_pose()` on each Obsbot
+       frame; on success, `anchor_mujoco_env()` writes
+       `env.data.qpos[0:7]` (xyz + quat).
+
+    The two anchors touch disjoint slices of `qpos` (StateMirror writes
+    joint slots from `_act_qpos_idx`; ArUco writes `qpos[0:7]`), so they
+    compose cleanly under a single `mj_forward`.
+
+    This class is the orchestrator — it owns the ArUco detector + the
+    intrinsics + the per-tick anchor call and divergence record. It does
+    NOT own the StateMirror backend (caller wires that). It is safe to
+    drive on a sim-only loop (no real backend) for synthetic-marker
+    validation, in which case `pose_source` returns frames composited
+    from the sim's external render and `joint_rms_mrad` is reported as
+    zero.
+    """
+
+    def __init__(
+        self,
+        env,
+        intrinsics: CameraIntrinsics,
+        *,
+        detector: ArucoDetector | None = None,
+        body_marker_id: int = 0,
+        ground_origin_id: int = 2,
+        marker_size_m: float = 0.0508,
+    ) -> None:
+        self._env = env
+        self._intrinsics = intrinsics
+        self._detector = detector or ArucoDetector(
+            intrinsics, marker_size_m=marker_size_m
+        )
+        self._body_marker_id = int(body_marker_id)
+        self._ground_origin_id = int(ground_origin_id)
+        self._last_pose: dict | None = None
+        self._last_anchor_t: float = 0.0
+        self._pre_anchor_pos: np.ndarray = np.zeros(3, dtype=np.float64)
+        self._pre_anchor_yaw: float = 0.0
+
+    @property
+    def detector(self) -> ArucoDetector:
+        return self._detector
+
+    @property
+    def last_pose(self) -> dict | None:
+        return self._last_pose
+
+    def anchor_from_frame(self, rgb: np.ndarray) -> dict | None:
+        """Detect markers in `rgb`, anchor sim torso if both IDs present.
+
+        Returns the pose dict on success (sim was updated), None if the
+        required markers weren't both visible (sim left alone).
+
+        Side effect: stores the **pre-anchor** sim torso pose on
+        `self._pre_anchor_pos` / `self._pre_anchor_yaw` so callers can
+        report how much drift the anchor just zeroed out.
+        """
+        # Snapshot sim's belief BEFORE we overwrite qpos[0:7].
+        self._pre_anchor_pos = self._env.get_robot_position().copy()
+        self._pre_anchor_yaw = float(self._env.get_robot_yaw())
+        pose = detect_robot_pose(
+            rgb,
+            self._intrinsics,
+            detector=self._detector,
+            body_marker_id=self._body_marker_id,
+            ground_origin_id=self._ground_origin_id,
+        )
+        if pose is not None:
+            anchor_mujoco_env(self._env, pose)
+            self._last_pose = pose
+        return pose
+
+    def divergence(
+        self,
+        t_s: float,
+        *,
+        real_joint_positions: dict[str, float] | None = None,
+        aruco_ids_seen: list[int] | None = None,
+    ) -> FusedAnchorStats:
+        """Compute per-tick fused divergence — joints + torso pose.
+
+        - `real_joint_positions`: most-recent dict from
+          `real.read_joint_positions()`. None for sim-only mode.
+        - `aruco_ids_seen`: marker IDs detected in the last frame
+          (informational; doesn't change the torso math).
+        """
+        # Joint divergence: compare real reading against current sim qpos.
+        joint_rms_mrad = 0.0
+        joint_n = 0
+        if real_joint_positions:
+            act_name_to_idx = getattr(self._env, "_act_name_to_idx", None)
+            act_qpos_idx = getattr(self._env, "_act_qpos_idx", None)
+            if act_name_to_idx is not None and act_qpos_idx is not None:
+                diffs: list[float] = []
+                for name, val in real_joint_positions.items():
+                    act_idx = act_name_to_idx.get(name)
+                    if act_idx is None:
+                        continue
+                    qpos_idx = act_qpos_idx[act_idx]
+                    sim_val = float(self._env.data.qpos[qpos_idx])
+                    diffs.append(float(val) - sim_val)
+                if diffs:
+                    joint_n = len(diffs)
+                    joint_rms_mrad = float(
+                        math.sqrt(sum(d * d for d in diffs) / len(diffs))
+                        * 1000.0
+                    )
+
+        # Torso divergence: sim's torso vs the last successful ArUco pose.
+        # The anchor runs BEFORE divergence is computed, so this measures
+        # residual gap from anchoring (typically encoder/PnP noise + any
+        # accumulation since the last successful detection).
+        torso_dx = torso_dy = torso_dz = torso_dxy = torso_dyaw_deg = 0.0
+        torso_pre_dxy = torso_pre_dyaw_deg = 0.0
+        pose_locked = self._last_pose is not None
+        if pose_locked:
+            div = measure_divergence(self._env, self._last_pose)
+            torso_dx = div["dx_m"]
+            torso_dy = div["dy_m"]
+            torso_dz = div["dz_m"]
+            torso_dxy = div["rms_xy_m"]
+            torso_dyaw_deg = div["dyaw_deg"]
+            # Pre-anchor gap: what the drift would have looked like had
+            # we *not* written the ArUco-derived pose this tick.
+            real_pos = np.asarray(
+                self._last_pose["torso_world_xyz_m"], dtype=np.float64
+            )
+            real_yaw = float(self._last_pose["yaw_rad"])
+            pre_dx = float(self._pre_anchor_pos[0] - real_pos[0])
+            pre_dy = float(self._pre_anchor_pos[1] - real_pos[1])
+            torso_pre_dxy = float(math.sqrt(pre_dx * pre_dx + pre_dy * pre_dy))
+            dyaw = math.atan2(
+                math.sin(self._pre_anchor_yaw - real_yaw),
+                math.cos(self._pre_anchor_yaw - real_yaw),
+            )
+            torso_pre_dyaw_deg = float(math.degrees(dyaw))
+
+        return FusedAnchorStats(
+            t_s=float(t_s),
+            joint_rms_mrad=joint_rms_mrad,
+            joint_n=joint_n,
+            torso_dx_m=torso_dx,
+            torso_dy_m=torso_dy,
+            torso_dz_m=torso_dz,
+            torso_dxy_m=torso_dxy,
+            torso_dyaw_deg=torso_dyaw_deg,
+            torso_pre_dxy_m=torso_pre_dxy,
+            torso_pre_dyaw_deg=torso_pre_dyaw_deg,
+            aruco_ids_seen=list(aruco_ids_seen or []),
+            aruco_pose_locked=pose_locked,
+        )

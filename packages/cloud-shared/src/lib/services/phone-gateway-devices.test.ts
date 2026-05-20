@@ -37,7 +37,20 @@ mock.module("../../db/schemas", () => ({
   },
   agentPhoneNumbers: {},
   appRequests: {},
+  appAnalytics: {},
+  apps: {},
   appUsers: {},
+  adminUsers: {},
+  containers: {},
+  conversations: {},
+  elizaRoomCharactersTable: {},
+  invoices: {},
+  mcpPricingTypeEnum: {},
+  mcpStatusEnum: {},
+  mcpUsage: {},
+  moderationViolations: {},
+  organizationEncryptionKeys: {},
+  organizations: {},
   phoneMessageLog: {},
   phoneGatewayDevices: {
     id: "id",
@@ -45,6 +58,13 @@ mock.module("../../db/schemas", () => ({
     phone_number: "phone_number",
     bridge_id: "bridge_id",
   },
+  userCharacters: {},
+  userMcps: {},
+  userModerationStatus: {},
+  users: {},
+  vertexModelAssignments: {},
+  vertexTunedModels: {},
+  vertexTuningJobs: {},
 }));
 
 const { registerPhoneGatewayDevice } = await import("./phone-gateway-devices");
@@ -93,7 +113,7 @@ describe("registerPhoneGatewayDevice", () => {
     );
     expect(onConflictDoUpdate).toHaveBeenCalledWith(
       expect.objectContaining({
-        target: ["provider", "phone_number", "bridge_id"],
+        target: expect.arrayContaining(["provider", "phone_number", "bridge_id"]),
         set: expect.objectContaining({
           organization_id: "org-1",
           phone_account_id: "+14159611510",

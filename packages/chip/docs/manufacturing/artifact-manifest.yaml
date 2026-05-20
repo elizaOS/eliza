@@ -17,6 +17,7 @@ release_gates:
 artifact_manifests:
   - package/artifact-manifest.yaml
   - board/kicad/e1-demo/artifact-manifest.yaml
+  - board/kicad/e1-phone/artifact-manifest.yaml
   - board/fpga/artifact-manifest.yaml
   - pd/signoff/manifest.yaml
 artifact_groups:

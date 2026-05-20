@@ -3,12 +3,13 @@
   "status": "ok",
   "mode": "prefetch",
   "evidence_class": "champsim_dpc3_traces_only",
-  "captured_utc": "2026-05-19T23:04:00.366095+00:00",
+  "captured_utc": "2026-05-20T02:54:54.816863+00:00",
   "champsim_bin_dir": "external/ChampSim/bin",
-  "trace_count": 2,
+  "trace_count": 3,
   "trace_files": [
     "401.bzip2-7B.champsimtrace.xz",
-    "403.gcc-16B.champsimtrace.xz"
+    "403.gcc-16B.champsimtrace.xz",
+    "429.mcf-22B.champsimtrace.xz"
   ],
   "warmup_instructions": 2000000,
   "simulation_instructions": 2000000,
@@ -17,7 +18,12 @@
     "next_line",
     "ip_stride",
     "spp_dev",
-    "va_ampm_lite"
+    "va_ampm_lite",
+    "berti",
+    "ipcp",
+    "bingo",
+    "bop",
+    "pythia"
   ],
   "variants_missing": [],
   "results": [
@@ -84,6 +90,37 @@
       "l2c_mpki": 36.5115
     },
     {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "no",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_no",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/no__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/no__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.4369155713932437,
+      "instructions": 2000002,
+      "cycles": 4577548,
+      "llc": {
+        "hit": 18345,
+        "miss": 37348,
+        "access": 55693
+      },
+      "l2c": {
+        "hit": 16261,
+        "miss": 37557,
+        "access": 53818
+      },
+      "l1d": {
+        "hit": 584786,
+        "miss": 43511,
+        "access": 628297
+      },
+      "llc_mpki": 18.673981326018673,
+      "l2c_mpki": 18.778481221518778
+    },
+    {
       "trace": "401.bzip2-7B.champsimtrace.xz",
       "label": "next_line",
       "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_next_line",
@@ -144,6 +181,37 @@
       },
       "llc_mpki": 0.5955,
       "l2c_mpki": 37.978
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "next_line",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_next_line",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/next_line__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/next_line__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.47506763178191364,
+      "instructions": 2000001,
+      "cycles": 4209929,
+      "llc": {
+        "hit": 17397,
+        "miss": 53080,
+        "access": 70477
+      },
+      "l2c": {
+        "hit": 35913,
+        "miss": 76168,
+        "access": 112081
+      },
+      "l1d": {
+        "hit": 669709,
+        "miss": 61615,
+        "access": 731324
+      },
+      "llc_mpki": 26.539986730006635,
+      "l2c_mpki": 38.08398095800952
     },
     {
       "trace": "401.bzip2-7B.champsimtrace.xz",
@@ -208,6 +276,37 @@
       "l2c_mpki": 36.674
     },
     {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "ip_stride",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_ip_stride",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/ip_stride__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/ip_stride__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.6650706088485605,
+      "instructions": 2000001,
+      "cycles": 3007201,
+      "llc": {
+        "hit": 18327,
+        "miss": 37989,
+        "access": 56316
+      },
+      "l2c": {
+        "hit": 22961,
+        "miss": 41062,
+        "access": 64023
+      },
+      "l1d": {
+        "hit": 608937,
+        "miss": 49072,
+        "access": 658009
+      },
+      "llc_mpki": 18.994490502754747,
+      "l2c_mpki": 20.530989734505134
+    },
+    {
       "trace": "401.bzip2-7B.champsimtrace.xz",
       "label": "spp_dev",
       "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_spp_dev",
@@ -270,6 +369,37 @@
       "l2c_mpki": 37.021
     },
     {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "spp_dev",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_spp_dev",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/spp_dev__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/spp_dev__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.6389181460010293,
+      "instructions": 2000001,
+      "cycles": 3130293,
+      "llc": {
+        "hit": 39187,
+        "miss": 60403,
+        "access": 99590
+      },
+      "l2c": {
+        "hit": 21652,
+        "miss": 97644,
+        "access": 119296
+      },
+      "l1d": {
+        "hit": 583240,
+        "miss": 43558,
+        "access": 626798
+      },
+      "llc_mpki": 30.20148489925755,
+      "l2c_mpki": 48.821975589012204
+    },
+    {
       "trace": "401.bzip2-7B.champsimtrace.xz",
       "label": "va_ampm_lite",
       "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
@@ -330,48 +460,584 @@
       },
       "llc_mpki": 0.5695,
       "l2c_mpki": 36.8835
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "va_ampm_lite",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_va_ampm_lite",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/va_ampm_lite__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/va_ampm_lite__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.674486884615644,
+      "instructions": 2000002,
+      "cycles": 2965220,
+      "llc": {
+        "hit": 17526,
+        "miss": 54708,
+        "access": 72234
+      },
+      "l2c": {
+        "hit": 35150,
+        "miss": 57285,
+        "access": 92435
+      },
+      "l1d": {
+        "hit": 580402,
+        "miss": 42923,
+        "access": 623325
+      },
+      "llc_mpki": 27.353972646027355,
+      "l2c_mpki": 28.642471357528642
+    },
+    {
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "label": "berti",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_berti",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/berti__401.bzip2-7B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/berti__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.5519487422625695,
+      "instructions": 2000001,
+      "cycles": 1288703,
+      "llc": {
+        "hit": 1447,
+        "miss": 977,
+        "access": 2424
+      },
+      "l2c": {
+        "hit": 28954,
+        "miss": 2131,
+        "access": 31085
+      },
+      "l1d": {
+        "hit": 473973,
+        "miss": 15006,
+        "access": 488979
+      },
+      "llc_mpki": 0.4884997557501221,
+      "l2c_mpki": 1.0654994672502665
+    },
+    {
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "label": "berti",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_berti",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/berti__403.gcc-16B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/berti__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.4004366561493873,
+      "instructions": 2000000,
+      "cycles": 1428126,
+      "llc": {
+        "hit": 144183,
+        "miss": 818,
+        "access": 145001
+      },
+      "l2c": {
+        "hit": 133188,
+        "miss": 73276,
+        "access": 206464
+      },
+      "l1d": {
+        "hit": 88041,
+        "miss": 756644,
+        "access": 844685
+      },
+      "llc_mpki": 0.409,
+      "l2c_mpki": 36.638
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "berti",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_berti",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/berti__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/berti__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.7008218880473195,
+      "instructions": 2000002,
+      "cycles": 2853795,
+      "llc": {
+        "hit": 52404,
+        "miss": 43469,
+        "access": 95873
+      },
+      "l2c": {
+        "hit": 69913,
+        "miss": 83081,
+        "access": 152994
+      },
+      "l1d": {
+        "hit": 585033,
+        "miss": 43580,
+        "access": 628613
+      },
+      "llc_mpki": 21.734478265521734,
+      "l2c_mpki": 41.54045845954154
+    },
+    {
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "label": "ipcp",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_ipcp",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/ipcp__401.bzip2-7B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/ipcp__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.549762383157836,
+      "instructions": 2000004,
+      "cycles": 1290523,
+      "llc": {
+        "hit": 1250,
+        "miss": 831,
+        "access": 2081
+      },
+      "l2c": {
+        "hit": 28985,
+        "miss": 1758,
+        "access": 30743
+      },
+      "l1d": {
+        "hit": 475843,
+        "miss": 15049,
+        "access": 490892
+      },
+      "llc_mpki": 0.415499169001662,
+      "l2c_mpki": 0.878998242003516
+    },
+    {
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "label": "ipcp",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_ipcp",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/ipcp__403.gcc-16B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/ipcp__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.4215904042647711,
+      "instructions": 2000000,
+      "cycles": 1406875,
+      "llc": {
+        "hit": 145614,
+        "miss": 1063,
+        "access": 146677
+      },
+      "l2c": {
+        "hit": 133254,
+        "miss": 74557,
+        "access": 207811
+      },
+      "l1d": {
+        "hit": 86953,
+        "miss": 757658,
+        "access": 844611
+      },
+      "llc_mpki": 0.5315,
+      "l2c_mpki": 37.2785
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "ipcp",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_ipcp",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/ipcp__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/ipcp__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.7021689978654084,
+      "instructions": 2000002,
+      "cycles": 2848320,
+      "llc": {
+        "hit": 18365,
+        "miss": 39047,
+        "access": 57412
+      },
+      "l2c": {
+        "hit": 63593,
+        "miss": 52885,
+        "access": 116478
+      },
+      "l1d": {
+        "hit": 584898,
+        "miss": 43475,
+        "access": 628373
+      },
+      "llc_mpki": 19.523480476519524,
+      "l2c_mpki": 26.442473557526444
+    },
+    {
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "label": "bop",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_bop",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/bop__401.bzip2-7B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/bop__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.542657082671599,
+      "instructions": 2000004,
+      "cycles": 1296467,
+      "llc": {
+        "hit": 1706,
+        "miss": 1070,
+        "access": 2776
+      },
+      "l2c": {
+        "hit": 23047,
+        "miss": 2182,
+        "access": 25229
+      },
+      "l1d": {
+        "hit": 475697,
+        "miss": 15202,
+        "access": 490899
+      },
+      "llc_mpki": 0.53499893000214,
+      "l2c_mpki": 1.090997818004364
+    },
+    {
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "label": "bop",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_bop",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/bop__403.gcc-16B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/bop__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.4193829516494294,
+      "instructions": 2000000,
+      "cycles": 1409063,
+      "llc": {
+        "hit": 145409,
+        "miss": 978,
+        "access": 146387
+      },
+      "l2c": {
+        "hit": 133371,
+        "miss": 74370,
+        "access": 207741
+      },
+      "l1d": {
+        "hit": 87135,
+        "miss": 757461,
+        "access": 844596
+      },
+      "llc_mpki": 0.489,
+      "l2c_mpki": 37.185
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "bop",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_bop",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/bop__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/bop__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.4689570517622811,
+      "instructions": 2000001,
+      "cycles": 4264785,
+      "llc": {
+        "hit": 17570,
+        "miss": 48229,
+        "access": 65799
+      },
+      "l2c": {
+        "hit": 30730,
+        "miss": 59790,
+        "access": 90520
+      },
+      "l1d": {
+        "hit": 583740,
+        "miss": 42795,
+        "access": 626535
+      },
+      "llc_mpki": 24.11448794275603,
+      "l2c_mpki": 29.894985052507472
+    },
+    {
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "label": "pythia",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_pythia",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/pythia__401.bzip2-7B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/pythia__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.5408244472881159,
+      "instructions": 2000004,
+      "cycles": 1298009,
+      "llc": {
+        "hit": 1802,
+        "miss": 1133,
+        "access": 2935
+      },
+      "l2c": {
+        "hit": 23007,
+        "miss": 2297,
+        "access": 25304
+      },
+      "l1d": {
+        "hit": 475595,
+        "miss": 15266,
+        "access": 490861
+      },
+      "llc_mpki": 0.566498867002266,
+      "l2c_mpki": 1.148497703004594
+    },
+    {
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "label": "pythia",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_pythia",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/pythia__403.gcc-16B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/pythia__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.4218127401530583,
+      "instructions": 2000000,
+      "cycles": 1406655,
+      "llc": {
+        "hit": 145261,
+        "miss": 1113,
+        "access": 146374
+      },
+      "l2c": {
+        "hit": 133347,
+        "miss": 74366,
+        "access": 207713
+      },
+      "l1d": {
+        "hit": 87188,
+        "miss": 757450,
+        "access": 844638
+      },
+      "llc_mpki": 0.5565,
+      "l2c_mpki": 37.183
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "pythia",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_pythia",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/pythia__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/pythia__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.4942651676929666,
+      "instructions": 2000001,
+      "cycles": 4046413,
+      "llc": {
+        "hit": 18345,
+        "miss": 40513,
+        "access": 58858
+      },
+      "l2c": {
+        "hit": 29279,
+        "miss": 47830,
+        "access": 77109
+      },
+      "l1d": {
+        "hit": 584604,
+        "miss": 43378,
+        "access": 627982
+      },
+      "llc_mpki": 20.256489871755065,
+      "l2c_mpki": 23.91498804250598
+    },
+    {
+      "trace": "401.bzip2-7B.champsimtrace.xz",
+      "label": "bingo",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_bingo",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/bingo__401.bzip2-7B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/bingo__401.bzip2-7B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.53037369411365,
+      "instructions": 2000001,
+      "cycles": 1306871,
+      "llc": {
+        "hit": 1237,
+        "miss": 795,
+        "access": 2032
+      },
+      "l2c": {
+        "hit": 20657,
+        "miss": 1577,
+        "access": 22234
+      },
+      "l1d": {
+        "hit": 473508,
+        "miss": 15385,
+        "access": 488893
+      },
+      "llc_mpki": 0.39749980125009937,
+      "l2c_mpki": 0.7884996057501972
+    },
+    {
+      "trace": "403.gcc-16B.champsimtrace.xz",
+      "label": "bingo",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_bingo",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/bingo__403.gcc-16B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/bingo__403.gcc-16B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 1.404020130840636,
+      "instructions": 2000000,
+      "cycles": 1424481,
+      "llc": {
+        "hit": 144210,
+        "miss": 752,
+        "access": 144962
+      },
+      "l2c": {
+        "hit": 133108,
+        "miss": 73252,
+        "access": 206360
+      },
+      "l1d": {
+        "hit": 88052,
+        "miss": 756629,
+        "access": 844681
+      },
+      "llc_mpki": 0.376,
+      "l2c_mpki": 36.626
+    },
+    {
+      "trace": "429.mcf-22B.champsimtrace.xz",
+      "label": "bingo",
+      "binary": "/home/shaw/milady/eliza/packages/chip/external/ChampSim/bin/champsim_pref_bingo",
+      "returncode": 0,
+      "warmup_instructions": 2000000,
+      "simulation_instructions": 2000000,
+      "json_path": "build/reports/cache/champsim_prefetch_logs/bingo__429.mcf-22B.champsimtrace.json",
+      "log_path": "build/reports/cache/champsim_prefetch_logs/bingo__429.mcf-22B.champsimtrace.log",
+      "parsed": true,
+      "ipc": 0.596051875534956,
+      "instructions": 2000002,
+      "cycles": 3355416,
+      "llc": {
+        "hit": 17481,
+        "miss": 45031,
+        "access": 62512
+      },
+      "l2c": {
+        "hit": 31139,
+        "miss": 49298,
+        "access": 80437
+      },
+      "l1d": {
+        "hit": 581820,
+        "miss": 43381,
+        "access": 625201
+      },
+      "llc_mpki": 22.515477484522517,
+      "l2c_mpki": 24.64897535102465
     }
   ],
   "aggregate": {
     "no": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4502958890253212,
-      "mean_llc_mpki": 0.404499549000902,
-      "mean_l2c_mpki": 18.636249239001522
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.1125024498146288,
+      "mean_llc_mpki": 6.494326808006825,
+      "mean_l2c_mpki": 18.683659899840606
     },
     "next_line": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4885420944900378,
-      "mean_llc_mpki": 0.5624994705010591,
-      "mean_l2c_mpki": 19.693498591002818
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.1507172735873297,
+      "mean_llc_mpki": 9.221661890336252,
+      "mean_l2c_mpki": 25.82365938000505
     },
     "ip_stride": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.473076139598989,
-      "mean_llc_mpki": 0.44399965050052426,
-      "mean_l2c_mpki": 18.76524935762596
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.2037409626821796,
+      "mean_llc_mpki": 6.627496601251932,
+      "mean_l2c_mpki": 19.35382948325235
     },
     "spp_dev": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4693703826723659,
-      "mean_llc_mpki": 0.447749529500941,
-      "mean_l2c_mpki": 19.114748791502418
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.192552970448587,
+      "mean_llc_mpki": 10.36566131941981,
+      "mean_l2c_mpki": 29.01715772400568
     },
     "va_ampm_lite": {
-      "runs": 2,
-      "parsed_runs": 2,
-      "trace_count": 2,
-      "mean_ipc": 1.4855144558721602,
-      "mean_llc_mpki": 0.711499146501707,
-      "mean_l2c_mpki": 19.363248157003685
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.215171932119988,
+      "mean_llc_mpki": 9.592323646343589,
+      "mean_l2c_mpki": 22.45632255717867
+    },
+    "berti": {
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.2177357621530922,
+      "mean_llc_mpki": 7.543992673757285,
+      "mean_l2c_mpki": 26.414652642263935
+    },
+    "ipcp": {
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.2245072617626718,
+      "mean_llc_mpki": 6.823493215173728,
+      "mean_l2c_mpki": 21.533323933176657
+    },
+    "bingo": {
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.176815233496414,
+      "mean_llc_mpki": 7.762992428590873,
+      "mean_l2c_mpki": 20.687824985591615
+    },
+    "bop": {
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.1436656953611033,
+      "mean_llc_mpki": 8.379495624252723,
+      "mean_l2c_mpki": 22.72366095683728
+    },
+    "pythia": {
+      "runs": 3,
+      "parsed_runs": 3,
+      "trace_count": 3,
+      "mean_ipc": 1.1523007850447136,
+      "mean_llc_mpki": 7.126496246252444,
+      "mean_l2c_mpki": 20.748828581836857
     }
   }
 }

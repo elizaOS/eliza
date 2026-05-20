@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-# build-aosp-riscv64.sh - AOSP build pipeline for the Cuttlefish riscv64 target,
-# overlaid with the eliza_ai_soc device tree.
+# build-aosp-riscv64.sh - AOSP build pipeline for the fused Eliza OpenAgent
+# E1 RISC-V AI SoC product.
 #
-# Default lunch combo:  aosp_cf_riscv64_phone-trunk_staging-userdebug
-# Optional lunch combo: eliza_ai_soc-trunk_staging-userdebug (requires the
-#                       overlay-mode=local-manifest path so the project is sync'd
-#                       under the AOSP tree with a proper repo project entry).
+# Default lunch combo: eliza_openagent_ai_soc_phone-trunk_staging-userdebug
+# Reference-only combo: aosp_cf_riscv64_phone-trunk_staging-userdebug.
 #
 # This script is intentionally idempotent enough to re-run incrementally:
 #   * Pre-flight is non-destructive.
@@ -26,6 +24,7 @@ SCRIPT_DIR=$(dirname "$SCRIPT_PATH")
 CHIP_ROOT=$(cd -- "$SCRIPT_DIR/../.." && pwd)
 ELIZA_ROOT=$(cd -- "$CHIP_ROOT/../.." && pwd)
 DEVICE_OVERLAY_SRC="$SCRIPT_DIR/device/eliza/eliza_ai_soc"
+ELIZA_VENDOR_SRC="$ELIZA_ROOT/packages/os/android/vendor/eliza"
 LOCAL_MANIFEST_TEMPLATE="$SCRIPT_DIR/local_manifests/eliza.xml"
 
 usage() {
@@ -38,7 +37,7 @@ required:
 build options:
   --branch BRANCH         AOSP manifest branch (default: android-latest-release).
   --lunch-target COMBO    Lunch target
-                          (default: aosp_cf_riscv64_phone-trunk_staging-userdebug).
+                          (default: eliza_openagent_ai_soc_phone-trunk_staging-userdebug).
   --jobs N                Parallelism for repo sync and `m`
                           (default: $(nproc)).
   --device-overlay-mode MODE
@@ -80,7 +79,7 @@ warn() { printf '[%s] WARN:  %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" >&2; }
 
 WORKSPACE=""
 BRANCH="android-latest-release"
-LUNCH_TARGET="aosp_cf_riscv64_phone-trunk_staging-userdebug"
+LUNCH_TARGET="eliza_openagent_ai_soc_phone-trunk_staging-userdebug"
 JOBS=$(nproc 2>/dev/null || echo 4)
 OVERLAY_MODE="symlink"
 RESYNC=0
@@ -138,6 +137,9 @@ for required in \
   "$DEVICE_OVERLAY_SRC/device.mk" \
   "$DEVICE_OVERLAY_SRC/manifest.xml" \
   "$DEVICE_OVERLAY_SRC/eliza_e1.xml" \
+  "$ELIZA_VENDOR_SRC/AndroidProducts.mk" \
+  "$ELIZA_VENDOR_SRC/eliza_common.mk" \
+  "$ELIZA_VENDOR_SRC/products/eliza_openagent_ai_soc_phone.mk" \
   "$LOCAL_MANIFEST_TEMPLATE"; do
   [ -f "$required" ] || die "missing repo artifact: $required"
 done
@@ -246,8 +248,9 @@ run_repo_sync() {
 }
 
 install_overlay_symlinks() {
-  log "overlay: dropping symlinks into device/eliza/eliza_ai_soc/"
+  log "overlay: dropping symlinks into device/eliza/eliza_ai_soc/ and vendor/eliza/"
   local dst="$WORKSPACE/device/eliza/eliza_ai_soc"
+  local vendor_dst="$WORKSPACE/vendor/eliza"
   mkdir -p "$dst"
   # Mirror the layout exactly. We symlink files (not the whole dir) so any
   # additions to the overlay are picked up on the next run.
@@ -256,6 +259,13 @@ install_overlay_symlinks() {
     rel=${rel#./}
     mkdir -p "$dst/$(dirname "$rel")"
     ln -sfn "$DEVICE_OVERLAY_SRC/$rel" "$dst/$rel"
+  done
+  mkdir -p "$vendor_dst"
+  cd "$ELIZA_VENDOR_SRC"
+  find . -type f -print0 | while IFS= read -r -d '' rel; do
+    rel=${rel#./}
+    mkdir -p "$vendor_dst/$(dirname "$rel")"
+    ln -sfn "$ELIZA_VENDOR_SRC/$rel" "$vendor_dst/$rel"
   done
 }
 
@@ -287,6 +297,13 @@ install_overlay() {
     [ -f "$WORKSPACE/device/eliza/eliza_ai_soc/$rel" ] \
       || die "overlay install: device/eliza/eliza_ai_soc/$rel did not materialize"
   done
+  for rel in \
+    AndroidProducts.mk \
+    eliza_common.mk \
+    products/eliza_openagent_ai_soc_phone.mk; do
+    [ -f "$WORKSPACE/vendor/eliza/$rel" ] \
+      || die "overlay install: vendor/eliza/$rel did not materialize"
+  done
 }
 
 run_build() {
@@ -314,8 +331,8 @@ run_build() {
 # Derive the product output directory from the lunch combo.
 product_out_dir() {
   case "$LUNCH_TARGET" in
-    aosp_cf_riscv64_phone-*) echo "$WORKSPACE/out/target/product/vsoc_riscv64" ;;
-    eliza_ai_soc-*)          echo "$WORKSPACE/out/target/product/eliza_ai_soc" ;;
+    aosp_cf_riscv64_phone-*)             echo "$WORKSPACE/out/target/product/vsoc_riscv64" ;;
+    eliza_ai_soc-*|eliza_openagent_ai_soc_phone-*) echo "$WORKSPACE/out/target/product/eliza_ai_soc" ;;
     *)
       local short=${LUNCH_TARGET%%-*}
       echo "$WORKSPACE/out/target/product/${short}"

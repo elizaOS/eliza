@@ -8,7 +8,7 @@
 #                    30+ minute build; intended for the builder host or
 #                    a CI runner, not for an interactive sub-agent).
 #   3. verify      — fail closed if the ISO is missing, < 200 MiB, or
-#                    refuses to mount via iso-info / isoinfo.
+#                    refuses to parse via an available ISO tool.
 #   4. checksum    — sha256 + size, written next to the artifact.
 #   5. manifest    — substitute build evidence into
 #                    manifest.json.template → out/<name>.manifest.json
@@ -144,14 +144,15 @@ fi
 case "${ARTIFACT_SRC}" in
     *.iso)
         # Prefer libcdio's iso-info; fall back to genisoimage's
-        # isoinfo. If neither is present, fail closed — we will not
-        # ship an ISO we did not check is mountable.
+        # isoinfo or xorriso. If none is present, fail closed.
         if command -v iso-info >/dev/null 2>&1; then
             iso-info "${ARTIFACT_SRC}" >/dev/null
         elif command -v isoinfo >/dev/null 2>&1; then
             isoinfo -d -i "${ARTIFACT_SRC}" >/dev/null
+        elif command -v xorriso >/dev/null 2>&1; then
+            xorriso -indev "${ARTIFACT_SRC}" -toc >/dev/null
         else
-            echo "ERROR: neither iso-info nor isoinfo available; cannot verify ISO is mountable." >&2
+            echo "ERROR: no ISO inspection tool available; cannot verify ISO is parseable." >&2
             exit 1
         fi
         ;;

@@ -102,13 +102,20 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
 
     cases = {
         "cpu_progress_to_payload": ("SimDRAM loaded ELF entry=0x80000000\n", payload_trace),
-        "opensbi_boot": ("OpenSBI v1.5\nDomain0 Next Address\n", payload_trace),
-        "opensbi_banner_only": ("OpenSBI v1.5\n", payload_trace),
+        "opensbi_boot": ("OpenSBI v1.8.1\nDomain0 Next Address\n", payload_trace),
+        "opensbi_banner_only": ("OpenSBI v1.8.1\n", payload_trace),
         "linux_boot": (
-            "OpenSBI v1.5\nDomain0 Next Address\nLinux version 6.6.0\nKernel command line:\n",
+            "OpenSBI v1.8.1\nDomain0 Next Address\nLinux version 6.12.\nKernel command line:\n",
             payload_trace,
         ),
-        "linux_banner_only": ("OpenSBI v1.5\nLinux version 6.6.0\n", payload_trace),
+        "linux_kernel_panic": (
+            "OpenSBI v1.8.1\n"
+            "Domain0 Next Address\n"
+            "Linux version 6.12.\n"
+            "Kernel panic - not syncing: memory_present: Failed to allocate memmap\n",
+            payload_trace,
+        ),
+        "linux_banner_only": ("OpenSBI v1.8.1\nLinux version 6.12.\n", payload_trace),
         "payload_loaded_no_cpu_progress": (
             "SimDRAM loaded ELF entry=0x80000000\n",
             no_trace,
@@ -121,7 +128,7 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
             raise AssertionError(f"expected {expected}, got {classified}")
 
     timeout_progress = smoke.classify_smoke_progress(
-        "OpenSBI v1.5\nLinux version 6.6.0\n*** FAILED *** (timeout) after 200 cycles\n",
+        "OpenSBI v1.8.1\nLinux version 6.12.\n*** FAILED *** (timeout) after 200 cycles\n",
         payload_trace,
         {"raw_transcript_closed": True, "sim_failures": ["*** FAILED *** (timeout)"]},
     )
@@ -159,6 +166,24 @@ def test_smoke_progress_classification_distinguishes_stages() -> None:
         raise AssertionError(f"expected TestDriver assertion stage, got {testdriver_assert}")
     if "CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES" not in testdriver_assert["next_step"]:
         raise AssertionError(f"expected timeout-cycle guidance, got {testdriver_assert}")
+
+    opensbi_timeout = smoke.classify_smoke_progress(
+        "OpenSBI v1.2\n"
+        "Domain0 Name              : root\n"
+        "*** FAILED ***                       (timeout) after 100000001 simulation cycles\n"
+        "[100000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver\n",
+        payload_trace,
+        {
+            "raw_transcript_closed": True,
+            "fatal_errors": ["[100000001000] %Fatal: TestDriver.v:147: Assertion failed"],
+            "sim_failures": [
+                "*** FAILED ***                       (timeout) after 100000001 simulation cycles",
+                "[100000001000] %Fatal: TestDriver.v:147: Assertion failed in TestDriver",
+            ],
+        },
+    )
+    if opensbi_timeout["stage"] != "opensbi_banner_then_max_cycles":
+        raise AssertionError(f"expected OpenSBI max-cycle stage, got {opensbi_timeout}")
 
 
 def main() -> int:

@@ -1,0 +1,8 @@
+sample_id,measurement_id,unit,min,max,measured_value,pass,operator,notes
+,rear_camera_lens_center_error_mm,mm,0.0,0.25,,,,Rear lens optical center to rear cover-window datum.
+,front_camera_under_glass_center_error_mm,mm,0.0,0.3,,,,Front camera optical center to under-glass aperture datum.
+,rear_camera_focus_mtf50_lp_per_mm,lp/mm,35.0,,,,,AF rear module focus and cover-window optical quality check.
+,front_camera_mtf50_lp_per_mm,lp/mm,25.0,,,,,Front fixed-focus module through cover-glass image sharpness.
+,front_cover_glass_color_delta_e,deltaE,0.0,3.0,,,,Color shift from cover-glass/black mask stack over front camera.
+,rear_camera_dust_or_vignette_defects,count,0.0,0.0,,,,"Dust, vignette, or gasket intrusion defects in rear cover window."
+,camera_streaming_bringup_logs,pass_flag,1.0,1.0,,,,Both front and rear cameras enumerate and stream with selected module pinout.

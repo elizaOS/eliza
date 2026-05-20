@@ -102,7 +102,7 @@ sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot defconfig
 sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot image-manifest
 E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' \
   sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot smoke
-E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu' \
+E1_NPU_ML_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-npu-ml-smoke --device /dev/e1-npu --workload gemm_s8_int8_2x2x3 --require-npu' \
   sw/buildroot/scripts/capture-buildroot-evidence.sh /path/to/buildroot ml-smoke
 make software-bsp-evidence-check
 ```
@@ -112,5 +112,55 @@ The `image-manifest` mode records SHA-256 hashes for files already present in
 unless `E1_SMOKE_CMD` exits zero on the external target. The `ml-smoke` mode
 is separate and fails unless `E1_NPU_ML_SMOKE_CMD` exits zero and the target
 transcript includes `e1-npu-ml-smoke: PASS`,
-`workload=gemm_s8_int8_2x2x3`, `/dev/e1-npu`, and
+`workload=gemm_s8_int8_2x2x3`, `--require-npu`, `/dev/e1-npu`, and
 `claim_boundary=driver_ioctl_gemm_only_not_nnapi_or_hardware_benchmark`.
+
+## qemu-virt smoke
+
+Script: `sw/buildroot/scripts/capture-buildroot-qemu-virt-smoke.sh`.
+
+Boots a Buildroot rv64gc `Image` + `rootfs.cpio` under
+`qemu-system-riscv64 -M virt`, captures the serial transcript, and writes
+an evidence JSON record with schema `eliza.chip.buildroot_qemu_virt_smoke.v1`.
+
+Default inputs (overridable via flags):
+
+- `--kernel external/buildroot-rv64/output/images/Image`
+- `--rootfs external/buildroot-rv64/output/images/rootfs.cpio`
+- `--memory 1024` (MB)
+- `--cpus 2`
+- `--timeout 300` (seconds)
+- `--evidence docs/evidence/linux/buildroot_qemu_virt_smoke.json`
+
+The transcript is written next to the evidence JSON with a
+`.transcript.log` suffix. Every input file (kernel, rootfs, transcript)
+has its SHA-256 recorded in the evidence document so downstream
+fail-closed digest checks can be applied later. The
+`claim_boundary` field is fixed at
+`buildroot_qemu_virt_smoke_evidence_only_no_silicon_or_physical_board_claim`
+so the record never implies silicon or physical-board boot.
+
+The harness validates the transcript for these required markers:
+
+- `Linux version`
+- `Welcome to Buildroot`
+- `login:`
+
+and fails closed on any of these forbidden markers:
+
+- `Kernel panic`
+- `Oops`
+- `BUG:`
+
+Make targets:
+
+```sh
+make buildroot-qemu-virt-smoke        # run the harness; expects qemu-system-riscv64
+make buildroot-qemu-virt-smoke-test   # unit-test the harness with a stubbed qemu
+```
+
+`buildroot-qemu-virt-smoke` exits with `STATUS: BLOCKED` (and writes a
+`status=blocked` evidence document) when `qemu-system-riscv64` is missing
+from `PATH` or when the kernel/initrd inputs are not on disk. It only
+exits zero when every required marker is present and no forbidden marker
+appeared in the qemu-virt transcript.

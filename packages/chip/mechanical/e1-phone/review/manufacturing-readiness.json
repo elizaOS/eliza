@@ -1,0 +1,696 @@
+{
+  "claim_boundary": "CAD automation readiness audit; not a manufacturing release.",
+  "overall_status": "cad_package_pass",
+  "manufacturing_release_ready": false,
+  "why_not_release_ready": [
+    "KiCad phone board remains concept/floorplan-level, not routed and fabricated.",
+    "Supplier mechanical drawings and samples for display, cameras, USB-C, buttons, battery, and speakers are not locked.",
+    "No mold-flow, thermal, acoustic, RF, drop, ingress, or tolerance-stack validation with physical samples.",
+    "No GD&T-controlled release drawing package or toolmaker DFM signoff."
+  ],
+  "parameters": {
+    "device_envelope_mm": [
+      78.0,
+      153.6,
+      9.6
+    ],
+    "corner_radius_mm": 7.5,
+    "plastic": "PC+ABS or glass-filled PC/ABS, molded orange",
+    "display_candidate": "Chenghao CH550FH01A-CT class 5.5 inch MIPI LCD + CTP",
+    "pcb_source": "board/kicad/e1-phone/pcb/e1-phone-mainboard-concept.kicad_pcb",
+    "estimated_mass_g": 143.39,
+    "target_mass_g": 185,
+    "compactness_status": "cad_compactness_optimized",
+    "compactness_width_excess_mm": 0.3,
+    "compactness_height_excess_mm": 1.23,
+    "compactness_area_excess_mm2": 141.7,
+    "supplier_items": 7,
+    "kicad_handoff_constraints": 8,
+    "kicad_placement_reconciliation_status": "cad_kicad_placement_reconciled",
+    "kicad_placement_footprint_cases": 12,
+    "kicad_placement_cad_projection_cases": 10,
+    "board_step_readiness_status": "blocked_concept_pcb_no_routed_step",
+    "board_step_has_tracks": false,
+    "board_step_has_production_step": false,
+    "board_step_has_concept_pcb_step": true,
+    "board_step_concept_split_islands_match_kicad": true,
+    "engineering_validation_status": "cad_validation_inputs_ready",
+    "interface_validation_status": "cad_interface_validation_pass",
+    "interface_validation_case_count": 7,
+    "display_validation_status": "cad_display_validation_ready",
+    "display_measurement_count": 7,
+    "display_results_status": "blocked_no_display_results",
+    "display_results_complete_count": 0,
+    "acoustic_validation_status": "cad_acoustic_validation_ready",
+    "acoustic_measurement_count": 7,
+    "acoustic_results_status": "blocked_no_acoustic_results",
+    "acoustic_results_complete_count": 0,
+    "camera_validation_status": "cad_camera_validation_ready",
+    "camera_measurement_count": 7,
+    "camera_results_status": "blocked_no_camera_results",
+    "camera_results_complete_count": 0,
+    "environmental_validation_status": "cad_environmental_validation_ready",
+    "ingress_path_review_status": "cad_ingress_path_review_ready",
+    "ingress_path_count": 8,
+    "environmental_measurement_count": 9,
+    "environmental_results_status": "blocked_no_environmental_results",
+    "environmental_results_complete_count": 0,
+    "evt_fixture_status": "evt_fixture_cad_ready",
+    "evt_fixture_count": 7,
+    "evt_inspection_status": "evt_inspection_plan_ready",
+    "evt_inspection_measurement_count": 10,
+    "evt_results_status": "blocked_no_physical_results",
+    "evt_results_populated_count": 0,
+    "assembly_clearance_status": "pass",
+    "injection_molding_dfm_status": "cad_dfm_inputs_ready",
+    "tolerance_stack_status": "cad_tolerance_stack_pass",
+    "gdt_release_status": "gdt_release_package_ready",
+    "gdt_characteristic_count": 13,
+    "gdt_fai_results_status": "blocked_no_fai_results",
+    "gdt_fai_results_complete_count": 0,
+    "mold_process_window_status": "cad_mold_process_window_ready",
+    "toolmaker_signoff_status": "blocked_no_toolmaker_signoff",
+    "toolmaker_signoff_complete_count": 0,
+    "visual_decision_status": "pass",
+    "solid_cad_handoff_status": "generated",
+    "solid_cad_step_part_count": 85,
+    "step_validation_status": "pass",
+    "step_validation_count": 85,
+    "supplier_rfq_status": "rfq_ready",
+    "supplier_rfq_package_count": 5,
+    "supplier_response_status": "blocked_no_supplier_responses",
+    "supplier_response_complete_count": 0,
+    "supplier_response_expected_count": 8,
+    "part_review_count": 85
+  },
+  "required_outputs": {
+    "assembly_glb": true,
+    "tooling_glb": true,
+    "assembly_manifest": true,
+    "tooling_manifest": true,
+    "fit_report": true,
+    "visual_review": true,
+    "manufacturing_drawing": true,
+    "mass_budget": true,
+    "compactness_optimization": true,
+    "supplier_lock": true,
+    "kicad_mechanical_handoff": true,
+    "kicad_placement_reconciliation": true,
+    "board_step_readiness": true,
+    "engineering_validation": true,
+    "interface_validation": true,
+    "display_validation": true,
+    "display_results_review": true,
+    "acoustic_validation": true,
+    "acoustic_results_review": true,
+    "camera_validation": true,
+    "camera_results_review": true,
+    "environmental_validation": true,
+    "environmental_results_review": true,
+    "evt_validation_fixtures": true,
+    "evt_inspection_plan": true,
+    "evt_results_review": true,
+    "assembly_clearance": true,
+    "injection_molding_dfm": true,
+    "mold_process_window": true,
+    "toolmaker_signoff_package": true,
+    "tolerance_stack": true,
+    "gdt_release_package": true,
+    "gdt_fai_results_review": true,
+    "visual_decision_report": true,
+    "solid_cad_handoff": true,
+    "supplier_rfq_package": true,
+    "supplier_response_review": true,
+    "part_review": true
+  },
+  "subsystem_evidence_present": {
+    "molded_orange_enclosure": true,
+    "compact_envelope_optimization": true,
+    "screen_stack": true,
+    "pcb_integration": true,
+    "routed_board_step_import": true,
+    "solid_cad_handoff": true,
+    "supplier_rfq_package": true,
+    "supplier_returned_evidence": true,
+    "buttons": true,
+    "usb_audio_ports": true,
+    "cameras_and_handset": true,
+    "acoustic_lab_results": true,
+    "display_touch_results": true,
+    "camera_optical_results": true,
+    "rf_shielding_haptics_service": true,
+    "thermal_rf_drop_ingress_validation": true,
+    "environmental_lab_results": true,
+    "injection_mold_tooling": true,
+    "toolmaker_moldflow_signoff": true,
+    "review_automation": true,
+    "visual_aesthetic_decision_log": true,
+    "assembly_clearance": true,
+    "engineering_validation_plan": true,
+    "physical_evt_results": true,
+    "tolerance_release_package": true,
+    "gdt_fai_results": true
+  },
+  "all_cad_checks_pass": true,
+  "visual_review_pass": true,
+  "visual_decision_pass": true,
+  "subsystems": [
+    {
+      "subsystem": "molded_orange_enclosure",
+      "status": "cad_pass",
+      "evidence": [
+        "orange_back_shell",
+        "orange_side_frame",
+        "rounded_enclosure_geometry",
+        "mesh_integrity",
+        "mass_budget",
+        "molded_retention_features",
+        "manufacturing_drawing.json",
+        "compactness-optimization.json",
+        "compactness-optimization.md",
+        "compactness-optimization.png"
+      ],
+      "remaining_blockers": [
+        "No vendor mold-flow simulation.",
+        "No measured shrink/warp data for selected PC+ABS resin.",
+        "No GD&T-controlled 2D release drawing."
+      ]
+    },
+    {
+      "subsystem": "compact_envelope_optimization",
+      "status": "cad_pass",
+      "evidence": [
+        "compactness-optimization.json",
+        "compactness-optimization.md",
+        "compactness-optimization.png",
+        "compactness-optimization.svg",
+        "device_compactness",
+        "screen_mount_margin",
+        "pcb_battery_non_overlap"
+      ],
+      "remaining_blockers": [
+        "Envelope is optimized against current EVT0 supplier envelopes only.",
+        "Need supplier STEP and routed PCB before proving no further local reduction is possible."
+      ]
+    },
+    {
+      "subsystem": "screen_stack",
+      "status": "cad_pass",
+      "evidence": [
+        "screen_cover_glass",
+        "display_lcm",
+        "screen_adhesive_top",
+        "display_fpc_connector",
+        "screen_mount_and_connection",
+        "interface-validation.json",
+        "interface-validation.md",
+        "display-validation.json",
+        "display-validation.md",
+        "display-results-template.csv",
+        "display-results-review.json",
+        "display-results-review.md"
+      ],
+      "remaining_blockers": [
+        "Need supplier drawing and exact FPC exit direction.",
+        "Need verified touch/display pinout and bend test with real sample.",
+        "Need populated display/touch bond, luminance, touch-grid, drop, and bring-up results."
+      ]
+    },
+    {
+      "subsystem": "pcb_integration",
+      "status": "cad_pass",
+      "evidence": [
+        "main_pcb",
+        "kicad_outline_integration",
+        "pcb_battery_non_overlap",
+        "kicad-placement-reconciliation.json",
+        "kicad-placement-reconciliation.md",
+        "board-step-readiness.json",
+        "board-step-readiness.md"
+      ],
+      "remaining_blockers": [
+        "KiCad source is still a concept placement, not routed fabrication data.",
+        "Need board STEP from routed KiCad with real component 3D models."
+      ]
+    },
+    {
+      "subsystem": "routed_board_step_import",
+      "status": "blocked",
+      "evidence": [
+        "board-step-readiness.json",
+        "board-step-readiness.md",
+        "main_pcb.step",
+        "kicad-placement-reconciliation.json"
+      ],
+      "remaining_blockers": [
+        "KiCad board remains a concept floorplan with placeholder footprints.",
+        "Need routed KiCad board STEP with production component 3D models before final CAD clash signoff."
+      ]
+    },
+    {
+      "subsystem": "solid_cad_handoff",
+      "status": "cad_pass",
+      "evidence": [
+        "solid-cad-handoff.json",
+        "solid-cad-handoff.md",
+        "step-validation.json",
+        "step-validation.md",
+        "e1-phone-solid-assembly.step",
+        "orange_back_shell.step",
+        "orange_side_frame.step",
+        "screen_cover_glass.step",
+        "main_pcb.step",
+        "usb_c_receptacle.step",
+        "usb_c_external_aperture.step",
+        "usb_c_perimeter_gasket_top.step",
+        "usb_c_perimeter_gasket_bottom.step",
+        "usb_c_perimeter_gasket_left.step",
+        "usb_c_perimeter_gasket_right.step",
+        "usb_c_molded_drip_break_lip.step",
+        "usb_c_internal_drain_shelf.step",
+        "bottom_mic.step",
+        "top_mic.step",
+        "bottom_speaker_module.step",
+        "earpiece_receiver.step",
+        "handset_acoustic_slot.step",
+        "rear_camera_module.step",
+        "rear_camera_cover_glass.step",
+        "front_camera_module.step",
+        "front_camera_under_glass.step",
+        "power_button_cap.step",
+        "volume_button_cap.step",
+        "power_button_elastomer_gasket.step",
+        "power_button_labyrinth_upper_rail.step",
+        "power_button_labyrinth_lower_rail.step",
+        "volume_button_elastomer_gasket.step",
+        "volume_button_labyrinth_upper_rail.step",
+        "volume_button_labyrinth_lower_rail.step",
+        "screen_adhesive_top.step",
+        "display_fpc_connector.step",
+        "orange_usb_reinforcement_saddle.step",
+        "split_interconnect_top_connector.step",
+        "split_interconnect_bottom_connector.step",
+        "split_interconnect_side_flex.step",
+        "split_interconnect_top_flex_tail.step",
+        "split_interconnect_bottom_flex_tail.step"
+      ],
+      "remaining_blockers": [
+        "STEP files are EVT0 parametric envelopes, not final supplier B-rep models.",
+        "Need routed KiCad board STEP and vendor component STEP models."
+      ]
+    },
+    {
+      "subsystem": "supplier_rfq_package",
+      "status": "cad_pass",
+      "evidence": [
+        "supplier-rfq-package.json",
+        "supplier-rfq-package.md",
+        "supplier-lock.json",
+        "solid-cad-handoff.json",
+        "manufacturing_drawing.json",
+        "tolerance-stack.json",
+        "injection-molding-dfm.json"
+      ],
+      "remaining_blockers": [
+        "RFQ package is ready to send, but no vendor has returned signed drawings, samples, or quotes.",
+        "Need supplier STEP files to replace EVT0 envelope STEP."
+      ]
+    },
+    {
+      "subsystem": "supplier_returned_evidence",
+      "status": "blocked",
+      "evidence": [
+        "supplier-response-template.csv",
+        "supplier-response-review.json",
+        "supplier-response-review.md"
+      ],
+      "remaining_blockers": [
+        "No supplier-returned quote/drawing/STEP/sample evidence has been recorded.",
+        "Need complete vendor responses before replacing EVT0 envelope CAD with supplier CAD."
+      ]
+    },
+    {
+      "subsystem": "buttons",
+      "status": "cad_pass",
+      "evidence": [
+        "power_button_cap",
+        "volume_button_cap",
+        "power_button_elastomer_gasket",
+        "volume_button_elastomer_gasket",
+        "button_force_and_travel",
+        "button_pressure_support",
+        "button_ingress_seal_stack",
+        "interface-validation.json",
+        "interface-validation.md"
+      ],
+      "remaining_blockers": [
+        "Need tactile switch vendor part and tolerance stack.",
+        "Need fatigue testing on snap retention and button caps."
+      ]
+    },
+    {
+      "subsystem": "usb_audio_ports",
+      "status": "cad_pass",
+      "evidence": [
+        "usb_c_receptacle",
+        "usb_c_external_aperture",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf",
+        "bottom_speaker_grille_slot_1",
+        "bottom_microphone_port_1",
+        "usb_c_insertion_envelope",
+        "usb_c_port_seal_stack",
+        "bottom_io_acoustic_apertures",
+        "interface-validation.json",
+        "interface-validation.md",
+        "acoustic-validation.json",
+        "acoustic-validation.md",
+        "acoustic-results-template.csv",
+        "acoustic-results-review.json",
+        "acoustic-results-review.md"
+      ],
+      "remaining_blockers": [
+        "Need USB-C receptacle supplier drawing and insertion-cycle mechanical validation.",
+        "Need acoustic simulation/measurement for speaker chamber and microphone tunnels."
+      ]
+    },
+    {
+      "subsystem": "cameras_and_handset",
+      "status": "cad_pass",
+      "evidence": [
+        "rear_camera_module",
+        "front_camera_module",
+        "front_camera_under_glass",
+        "rear_camera_cover_glass",
+        "earpiece_receiver",
+        "handset_acoustic_slot",
+        "camera_speaker_behind_glass",
+        "interface-validation.json",
+        "interface-validation.md",
+        "camera-validation.json",
+        "camera-validation.md",
+        "camera-results-template.csv",
+        "camera-results-review.json",
+        "camera-results-review.md",
+        "acoustic-validation.json",
+        "acoustic-validation.md"
+      ],
+      "remaining_blockers": [
+        "Need exact camera module lens stack, FPC, and vendor keepout drawing.",
+        "Need handset acoustic gasket compression test."
+      ]
+    },
+    {
+      "subsystem": "acoustic_lab_results",
+      "status": "blocked",
+      "evidence": [
+        "acoustic-validation.json",
+        "acoustic-validation.md",
+        "acoustic-results-template.csv",
+        "acoustic-results-review.json",
+        "acoustic-results-review.md"
+      ],
+      "remaining_blockers": [
+        "No populated speaker, microphone, earpiece, or acoustic leak lab rows are present yet.",
+        "Need measured SPL, impedance, SNR, and leak results before claiming acoustic readiness."
+      ]
+    },
+    {
+      "subsystem": "display_touch_results",
+      "status": "blocked",
+      "evidence": [
+        "display-validation.json",
+        "display-validation.md",
+        "display-results-template.csv",
+        "display-results-review.json",
+        "display-results-review.md"
+      ],
+      "remaining_blockers": [
+        "No populated display/touch/bond/bring-up lab rows are present yet.",
+        "Need measured display bring-up, touch-grid, luminance, bond, FPC bend, and drop data before claiming display readiness."
+      ]
+    },
+    {
+      "subsystem": "camera_optical_results",
+      "status": "blocked",
+      "evidence": [
+        "camera-validation.json",
+        "camera-validation.md",
+        "camera-results-template.csv",
+        "camera-results-review.json",
+        "camera-results-review.md"
+      ],
+      "remaining_blockers": [
+        "No populated camera optical, alignment, dust, color, or streaming lab rows are present yet.",
+        "Need supplier module drawings and measured capture results before claiming camera readiness."
+      ]
+    },
+    {
+      "subsystem": "rf_shielding_haptics_service",
+      "status": "cad_pass",
+      "evidence": [
+        "cellular_top_antenna_keepout",
+        "cellular_bottom_antenna_keepout",
+        "wifi_bt_side_antenna_keepout",
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can",
+        "haptic_lra",
+        "sim_tray_keepout",
+        "rf_antenna_keepouts",
+        "shielding_haptics_service",
+        "environmental-validation.json",
+        "environmental-validation.md"
+      ],
+      "remaining_blockers": [
+        "Need RF antenna simulation, SAR pre-scan, and desense test with final antennas.",
+        "Need haptic actuator vendor drawing and drive calibration.",
+        "Need SIM/eSIM product decision and serviceability review."
+      ]
+    },
+    {
+      "subsystem": "thermal_rf_drop_ingress_validation",
+      "status": "cad_pass",
+      "evidence": [
+        "environmental-validation.json",
+        "environmental-validation.md",
+        "ingress-path-review.json",
+        "ingress-path-review.md",
+        "environmental-results-template.csv",
+        "environmental-results-review.json",
+        "environmental-results-review.md",
+        "soc_shield_can",
+        "pmic_shield_can",
+        "radio_shield_can",
+        "cellular_top_antenna_keepout",
+        "cellular_bottom_antenna_keepout",
+        "wifi_bt_side_antenna_keepout",
+        "screen_adhesive_top",
+        "earpiece_gasket",
+        "usb_c_external_aperture",
+        "usb_c_perimeter_gasket_top",
+        "usb_c_perimeter_gasket_bottom",
+        "usb_c_perimeter_gasket_left",
+        "usb_c_perimeter_gasket_right",
+        "usb_c_molded_drip_break_lip",
+        "usb_c_internal_drain_shelf",
+        "bottom_speaker_dust_mesh",
+        "bottom_microphone_mesh_1",
+        "bottom_microphone_mesh_2",
+        "top_microphone_mesh",
+        "handset_acoustic_mesh"
+      ],
+      "remaining_blockers": [
+        "CAD review covers package intent only; no thermal, RF chamber, SAR, drop, dust, or splash measurements have been recorded.",
+        "Need routed board power map, final antennas, molded resin samples, and lab results before environmental release."
+      ]
+    },
+    {
+      "subsystem": "environmental_lab_results",
+      "status": "blocked",
+      "evidence": [
+        "environmental-validation.json",
+        "environmental-validation.md",
+        "environmental-results-template.csv",
+        "environmental-results-review.json",
+        "environmental-results-review.md"
+      ],
+      "remaining_blockers": [
+        "No populated thermal, RF, SAR pre-scan, drop, dust, or splash lab rows are present yet.",
+        "Need measured passing environmental data before claiming manufacturable environmental readiness."
+      ]
+    },
+    {
+      "subsystem": "injection_mold_tooling",
+      "status": "cad_pass",
+      "evidence": [
+        "mold_sprue_bushing",
+        "mold_primary_runner",
+        "mold_left_submarine_gate",
+        "mold_right_submarine_gate",
+        "mold_runner_gate_model",
+        "mold_ejector_cooling_model",
+        "injection-molding-dfm.json",
+        "injection-molding-dfm.md",
+        "mold-process-window.json",
+        "mold-process-window.md",
+        "toolmaker-signoff-package.json",
+        "toolmaker-signoff-package.md",
+        "toolmaker-signoff-response-template.csv",
+        "toolmaker-signoff-review.json",
+        "toolmaker-signoff-review.md"
+      ],
+      "remaining_blockers": [
+        "Runner/gate/ejector/cooling geometry and process window are CAD DFM proxies, not toolmaker-approved steel design.",
+        "Need mold-flow/fill/pack/warp analysis, first-shot data, and toolmaker review."
+      ]
+    },
+    {
+      "subsystem": "toolmaker_moldflow_signoff",
+      "status": "blocked",
+      "evidence": [
+        "toolmaker-signoff-package.json",
+        "toolmaker-signoff-package.md",
+        "toolmaker-signoff-response-template.csv",
+        "toolmaker-signoff-review.json",
+        "toolmaker-signoff-review.md"
+      ],
+      "remaining_blockers": [
+        "No mold-flow report, toolmaker gate/ejector/cooling markup, or CMF signoff has been returned.",
+        "Need signed toolmaker response before steel release or manufacturing-ready claim."
+      ]
+    },
+    {
+      "subsystem": "review_automation",
+      "status": "cad_pass",
+      "evidence": [
+        "fit-check-report.json",
+        "visual-review.json",
+        "part-review.json",
+        "part-review-contact-sheet.png",
+        "visual-decision-report.json",
+        "visual-decision-report.md",
+        "manufacturing_drawing.json",
+        "full_top_down.png",
+        "mold_tooling.png",
+        "rear_feature_detail.png"
+      ],
+      "remaining_blockers": [
+        "Visual checks prove nonblank/high-contrast renders and record EVT0 decisions; they do not replace CMF, tooling, or human DFM review."
+      ]
+    },
+    {
+      "subsystem": "visual_aesthetic_decision_log",
+      "status": "cad_pass",
+      "evidence": [
+        "visual-decision-report.json",
+        "visual-decision-report.md",
+        "full_front_iso.png",
+        "full_back_iso.png",
+        "rear_feature_detail.png",
+        "full_bottom_port.png",
+        "component_stack.png",
+        "mold_tooling.png"
+      ],
+      "remaining_blockers": [
+        "CAD render decisions are EVT0 packaging decisions, not CMF lock.",
+        "Back-side identity needs dedicated rear feature review before industrial-design freeze."
+      ]
+    },
+    {
+      "subsystem": "assembly_clearance",
+      "status": "cad_pass",
+      "evidence": [
+        "assembly-clearance.json",
+        "assembly-clearance.md",
+        "battery_to_pcb_islands",
+        "haptic_to_battery",
+        "usb_to_bottom_speaker",
+        "front_camera_to_earpiece"
+      ],
+      "remaining_blockers": [
+        "Clearance checks are targeted AABB/parameter checks, not full B-rep boolean interference analysis.",
+        "Need supplier STEP files and routed-board component models for final clash analysis."
+      ]
+    },
+    {
+      "subsystem": "engineering_validation_plan",
+      "status": "cad_pass",
+      "evidence": [
+        "engineering-validation.json",
+        "engineering-validation.md",
+        "interface-validation.json",
+        "interface-validation.md",
+        "evt-fixtures.json",
+        "evt-fixtures.md",
+        "evt-inspection-plan.json",
+        "evt-inspection-plan.md",
+        "evt-inspection-results-template.csv",
+        "evt-results-review.json",
+        "evt-results-review.md",
+        "e1-phone-evt-fixtures.glb",
+        "evt-fixture-manifest.json",
+        "usb_c_insertion_envelope",
+        "button_pressure_support",
+        "screen_mount_and_connection",
+        "rf_antenna_keepouts"
+      ],
+      "remaining_blockers": [
+        "Tolerance, thermal, RF, acoustic, ingress, and drop results are CAD-derived planning checks only.",
+        "Need EVT samples and lab measurements to close DVT/PVT gates.",
+        "EVT results review is fail-closed until populated sample measurements pass."
+      ]
+    },
+    {
+      "subsystem": "physical_evt_results",
+      "status": "blocked",
+      "evidence": [
+        "evt-inspection-results-template.csv",
+        "evt-results-review.json",
+        "evt-results-review.md"
+      ],
+      "remaining_blockers": [
+        "No populated EVT measurement rows are present yet.",
+        "Need measured, passing first-article data before claiming physical validation."
+      ]
+    },
+    {
+      "subsystem": "tolerance_release_package",
+      "status": "cad_pass",
+      "evidence": [
+        "tolerance-stack.json",
+        "tolerance-stack.md",
+        "gdt-release-package.json",
+        "gdt-release-package.md",
+        "gdt-fai-template.csv",
+        "gdt-fai-results-review.json",
+        "gdt-fai-results-review.md",
+        "screen_mount_margin",
+        "screen_mount_and_connection",
+        "usb_c_insertion_envelope",
+        "camera_speaker_behind_glass"
+      ],
+      "remaining_blockers": [
+        "Tolerance stack is CAD-derived and not a supplier-measured GD&T release drawing.",
+        "Need CMM data, resin shrink data, and toolmaker-approved datum scheme."
+      ]
+    },
+    {
+      "subsystem": "gdt_fai_results",
+      "status": "blocked",
+      "evidence": [
+        "gdt-fai-template.csv",
+        "gdt-fai-results-review.json",
+        "gdt-fai-results-review.md"
+      ],
+      "remaining_blockers": [
+        "No populated first-article GD&T measurement rows are present yet.",
+        "Need measured passing CMM/FAI data before claiming tolerance release."
+      ]
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import { VoicePrefixSteps } from "./VoicePrefixSteps";
 
 afterEach(() => {
   cleanup();
+  vi.clearAllMocks();
 });
 
 function makeClient(overrides?: Partial<VoiceProfilesClient>) {
@@ -50,6 +51,25 @@ describe("VoicePrefixSteps", () => {
     expect(
       screen.getByTestId("voice-prefix-welcome-request-mic").className,
     ).toContain("bg-[#0B35F1]");
+  });
+
+  it("lets users skip voice setup from the welcome step without microphone access", () => {
+    const onSkipPrefix = vi.fn();
+    render(
+      <VoicePrefixSteps
+        {...baseProps}
+        step="welcome"
+        onSkipPrefix={onSkipPrefix}
+        profilesClient={makeClient()}
+      />,
+    );
+
+    expect(
+      (screen.getByTestId("voice-prefix-continue") as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("voice-prefix-skip-prefix"));
+    expect(onSkipPrefix).toHaveBeenCalledTimes(1);
   });
 
   it("renders the tier banner for the chosen tier", () => {

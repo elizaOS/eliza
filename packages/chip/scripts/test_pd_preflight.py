@@ -65,6 +65,32 @@ def test_check_pdk_environment_reports_missing_pdk_root_as_blocker() -> None:
             os.environ["PDK_ROOT"] = old_pdk_root
 
 
+def test_check_pdk_environment_accepts_volare_pdk_layout() -> None:
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        sky130 = root / "volare/sky130/versions/test-sha/sky130A"
+        sky130.mkdir(parents=True)
+        old_pdk_root = os.environ.get("PDK_ROOT")
+        os.environ["PDK_ROOT"] = str(root)
+        try:
+            failures: list[str] = []
+            blockers: list[str] = []
+            check_pd_preflight.check_pdk_environment(
+                Path("pd/openlane/config.sky130.json"),
+                {"PDK": "sky130A", "STD_CELL_LIBRARY": "sky130_fd_sc_hd"},
+                failures,
+                blockers,
+            )
+
+            assert failures == [], failures
+            assert blockers == [], blockers
+        finally:
+            if old_pdk_root is None:
+                os.environ.pop("PDK_ROOT", None)
+            else:
+                os.environ["PDK_ROOT"] = old_pdk_root
+
+
 def test_openlane_command_constructs_docker_fallback() -> None:
     command_type, command = check_pd_preflight.openlane_command(
         check_pd_preflight.ROOT / "pd/openlane/config.sky130.json"
@@ -81,6 +107,7 @@ def main() -> int:
     test_resolve_dir_path()
     test_check_config_rejects_missing_referenced_path()
     test_check_pdk_environment_reports_missing_pdk_root_as_blocker()
+    test_check_pdk_environment_accepts_volare_pdk_layout()
     test_openlane_command_constructs_docker_fallback()
     print("PD preflight tests passed.")
     return 0

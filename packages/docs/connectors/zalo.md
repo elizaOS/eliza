@@ -12,7 +12,7 @@ A personal-account variant is also available as `@elizaos/plugin-zalouser`.
 |-------|-------|
 | Package | `@elizaos/plugin-zalo` |
 | Config key | `connectors.zalo` |
-| Install | `eliza plugins install @elizaos/plugin-zalo` |
+| Install | `bun add @elizaos/plugin-zalo` |
 
 ## Setup
 
@@ -40,7 +40,7 @@ A personal-account variant is also available as `@elizaos/plugin-zalouser`.
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install zalo
+bun add zalo
 ```
 
 Configure in `~/.eliza/eliza.json`:
@@ -101,7 +101,7 @@ export ZALO_APP_ID=YOUR_APP_ID
 A separate connector, `@elizaos/plugin-zalouser`, provides personal Zalo account messaging (as opposed to Official Account). Install it with:
 
 ```bash
-eliza plugins install zalouser
+bun add zalouser
 ```
 
 ### Package Info
@@ -147,5 +147,5 @@ eliza plugins install zalouser
 
 ## Related
 
-- [Zalo Plugin Reference](/plugin-registry/platform/zalo)
+- [Zalo Plugin Reference](/connectors/zalo)
 - [Connectors overview](/guides/connectors#zalo)

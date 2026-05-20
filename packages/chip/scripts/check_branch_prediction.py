@@ -213,6 +213,35 @@ def build_evidence(
     else:
         synthetic_mpki_ref["present"] = False
 
+    cbp5_model_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5.json"
+    cbp5_rtl_path = ROOT / "docs/evidence/cpu_ap/mpki_results_cbp5_rtl.json"
+    cbp5_mpki_ref: dict[str, object] = {
+        "comparison_table": "docs/evidence/cpu_ap/mpki_cbp5_vs_tagesc_l_64kb.md",
+        "evidence_class": "cbp5_train_traces_only",
+        "spec2017_claim": False,
+        "android_claim": False,
+        "v8_claim": False,
+        "cbp5_claim": cbp5_model_path.is_file() or cbp5_rtl_path.is_file(),
+        "model": {
+            "path": str(cbp5_model_path.relative_to(ROOT)),
+            "schema": "eliza.bpu_mpki.v1",
+            "harness": "behavioural-bpu-model",
+            "command": "python3 benchmarks/cpu/branch/run_mpki.py --backend model --traces external/cbp5-traces/",
+            "present": cbp5_model_path.is_file(),
+        },
+        "rtl": {
+            "path": str(cbp5_rtl_path.relative_to(ROOT)),
+            "schema": "eliza.bpu_mpki.v1",
+            "harness": "cocotb-rtl-bpu_top",
+            "command": "make mpki-eval-rtl",
+            "present": cbp5_rtl_path.is_file(),
+        },
+    }
+    if cbp5_model_path.is_file():
+        cbp5_mpki_ref["model"]["sha256"] = sha256_path(cbp5_model_path)  # type: ignore[index]
+    if cbp5_rtl_path.is_file():
+        cbp5_mpki_ref["rtl"]["sha256"] = sha256_path(cbp5_rtl_path)  # type: ignore[index]
+
     return {
         "schema": "eliza.bpu_params.v1",
         "status": status,
@@ -241,15 +270,19 @@ def build_evidence(
             },
         },
         "synthetic_mpki_results_ref": synthetic_mpki_ref,
+        "cbp5_mpki_results_ref": cbp5_mpki_ref,
         "claim_policy": {
             "spec2017_mpki_claim": False,
             "android_mpki_claim": False,
             "two_taken_per_cycle_claim": False,
             "fdip_claim": False,
+            "cbp5_mpki_claim": bool(cbp5_mpki_ref["cbp5_claim"]),
             "reason": (
-                "Open RTL geometry verified against 2028 thresholds. Workload"
-                " MPKI claims remain blocked until benchmarks/cpu/branch/"
-                " ingests SPEC, AOSP, and JS-engine traces."
+                "Open RTL geometry verified against 2028 thresholds. CBP-5"
+                " train-trace MPKI is on file (evidence_class"
+                " cbp5_train_traces_only); SPEC, AOSP, and JS-engine MPKI"
+                " claims remain blocked until those trace sets land in"
+                " benchmarks/cpu/branch/."
             ),
         },
     }

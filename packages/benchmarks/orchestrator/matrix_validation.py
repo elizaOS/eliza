@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    OSWORLD_DOCKER_UNAVAILABLE_REASON,
     SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_FIXED_RUNTIME_REASON,
@@ -119,14 +119,14 @@ def _trajectory_expectations(adapter_id: str) -> list[str]:
 
 
 def _incompatibility_reason(adapter_id: str, harness: str, allowed_harnesses: tuple[str, ...]) -> str:
-    if adapter_id in {"gaia", "gaia_orchestrated"} and not allowed_harnesses:
-        return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
     if adapter_id == "hyperliquid_bench" and not allowed_harnesses:
         return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
     if adapter_id == "terminal_bench" and not allowed_harnesses:
         return TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
     if adapter_id in {"swe_bench", "swe_bench_orchestrated"} and not allowed_harnesses:
         return SWE_BENCH_DOCKER_UNAVAILABLE_REASON
+    if adapter_id == "osworld" and not allowed_harnesses:
+        return OSWORLD_DOCKER_UNAVAILABLE_REASON
     if (
         adapter_id
         in {

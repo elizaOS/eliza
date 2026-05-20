@@ -1,0 +1,38 @@
+{
+  "accelerator": "vulkan",
+  "generatedAt": "2026-05-20T12:03:58Z",
+  "hostProbe": {
+    "arch": "arm64",
+    "cuda": "not available: no NVIDIA GPU and nvidia-smi is not installed",
+    "gpu": "Apple M4 Max 40-core GPU",
+    "machine": "Apple M4 Max MacBook local verification host",
+    "platform": "darwin",
+    "vulkan": "loader/device present via /opt/homebrew/bin/vulkaninfo and MoltenVK DRIVER_ID_MOLTENVK; sd-cpp Vulkan build and two image smokes passed locally on 2026-05-20"
+  },
+  "note": "This clears local sd-cpp Vulkan runtime smoke evidence. CUDA remains blocked on this Mac and is tracked separately in evidence/imagegen/sd-cpp-cuda-pending.json.",
+  "runtime": {
+    "binaryVersion": "stable-diffusion.cpp version master-633-5b0267e, commit 5b0267e",
+    "engine": "stable-diffusion.cpp",
+    "upstreamCommit": "5b0267e941cade15bd80089d89838795d9f4baa6",
+    "upstreamRepo": "leejet/stable-diffusion.cpp"
+  },
+  "schemaVersion": 1,
+  "smokes": [
+    {
+      "model": "bundles/0_8b/imagegen/sd-1.5-Q5_0.gguf",
+      "output": "evidence/imagegen/sd15-0_8b-vulkan-smoke.png",
+      "outputSha256": "00edcf7049409afe476931e9ebe909a431a34c0e715e8563f2e79fc12eef2924",
+      "report": "evidence/imagegen/sd15-0_8b-vulkan-smoke.json",
+      "status": "pass"
+    },
+    {
+      "model": "bundles/9b/imagegen/z-image-turbo-Q4_K_M.gguf",
+      "output": "evidence/imagegen/zimage-9b-vulkan-split-smoke.png",
+      "outputSha256": "ddd68578ccb3657a514f61041f4fe4a6776c1cb21164f6aa967eb8f9d43c6061",
+      "report": "evidence/imagegen/zimage-9b-vulkan-split-smoke.json",
+      "status": "pass"
+    }
+  ],
+  "status": "pass",
+  "target": "darwin-arm64-moltenvk-local-smoke"
+}

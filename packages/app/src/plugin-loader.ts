@@ -8,6 +8,7 @@ import type {
   AppBlockerSettingsCardProps,
   WebsiteBlockerSettingsCardProps,
 } from "@elizaos/shared";
+import { CharacterEditor } from "@elizaos/ui/components/character/CharacterEditor";
 import type {
   BrandingConfig,
   CodingAgentTasksPanelProps,
@@ -21,12 +22,8 @@ import type {
   StewardTransactionHistoryProps,
   VincentStateHookArgs,
   VincentStateHookResult,
-} from "@elizaos/ui";
-import {
-  type AppBootConfig,
-  CharacterEditor,
-  setBootConfig,
-} from "@elizaos/ui";
+} from "@elizaos/ui/config";
+import { type AppBootConfig, setBootConfig } from "@elizaos/ui/config";
 import { type ComponentType, lazy } from "react";
 
 // ---------------------------------------------------------------------------

@@ -10,6 +10,22 @@ const launchManagedElizaAgent = mock();
 let cloudEnv: Record<string, string | undefined> = {};
 
 mock.module("../../cache/client", () => ({
+  CacheClient: class CacheClient {
+    private values = new Map<string, unknown>();
+    isAvailable() {
+      return true;
+    }
+    async get(key: string) {
+      return this.values.get(key) ?? null;
+    }
+    async set(key: string, value: unknown) {
+      this.values.set(key, value);
+    }
+    async expire() {}
+    async del(key: string) {
+      this.values.delete(key);
+    }
+  },
   cache: {
     get: mock(async (key: string) => sessionCache.get(key) ?? null),
     set: mock(async (key: string, value: unknown) => {
@@ -29,13 +45,21 @@ mock.module("@ai-sdk/openai", () => ({
   openai: mock(() => "mock-openai-model"),
 }));
 
+class MockAPICallError extends Error {}
+class MockRetryError extends Error {}
+
 mock.module("ai", () => ({
-  APICallError: class APICallError extends Error {},
-  RetryError: class RetryError extends Error {},
+  APICallError: MockAPICallError,
+  Output: {
+    json: mock(() => ({})),
+    object: mock((value: unknown) => value),
+  },
+  RetryError: MockRetryError,
   convertToModelMessages: mock((messages: unknown) => messages),
   embed: mock(async () => ({ embedding: [] })),
   embedMany: mock(async () => ({ embeddings: [] })),
   generateText,
+  jsonSchema: mock((schema: unknown) => schema),
   streamText: mock(() => {
     throw new Error("streamText is not implemented in onboarding-chat tests");
   }),
@@ -278,8 +302,11 @@ describe("runOnboardingChat", () => {
 
   test("copies the onboarding transcript into memory once the provisioned agent is running", async () => {
     const originalFetch = globalThis.fetch;
-    const rememberRequests: Array<{ url: string; body: unknown; authorization: string | null }> =
-      [];
+    const rememberRequests: Array<{
+      url: string;
+      body: unknown;
+      authorization: string | null;
+    }> = [];
     globalThis.fetch = mock(async (input: RequestInfo | URL, init?: RequestInit) => {
       rememberRequests.push({
         url: String(input),
@@ -302,7 +329,11 @@ describe("runOnboardingChat", () => {
         status: "running",
         agentId: "agent-1",
         bridgeUrl: "https://agent-1.example",
-        sandbox: { id: "agent-1", status: "running", bridge_url: "https://agent-1.example" },
+        sandbox: {
+          id: "agent-1",
+          status: "running",
+          bridge_url: "https://agent-1.example",
+        },
       });
       launchManagedElizaAgent.mockResolvedValue({
         appUrl: "https://app.elizacloud.ai/dashboard/containers/agents/agent-1",

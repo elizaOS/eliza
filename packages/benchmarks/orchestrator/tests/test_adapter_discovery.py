@@ -60,6 +60,7 @@ from benchmarks.registry import (
     _score_from_taubench_json,
     _score_from_terminalbench_json,
     _score_from_trajectory_replay_json,
+    _score_from_vendingbench_json,
     _score_from_vision_language_json,
     _score_from_visualwebbench_json,
     _score_from_voiceagentbench_json,
@@ -258,12 +259,31 @@ def test_hyperliquid_rejects_demo_mode_execution_artifacts() -> None:
         "model": "gpt-oss-120b",
         "network": "testnet",
         "demo_mode": True,
+        "scenarios": [
+            {
+                "success": True,
+                "unique_signatures": ["perp.order.GTC:false:none"],
+            }
+        ],
     }
     with pytest.raises(ValueError, match="demo-mode result"):
         _score_from_hyperliquid_bench_json(payload)
 
     payload["demo_mode"] = False
     assert _score_from_hyperliquid_bench_json(payload).score == 3.5
+
+    payload["scenarios"] = [{"success": True, "unique_signatures": []}]
+    with pytest.raises(ValueError, match="no confirmed live action signatures"):
+        _score_from_hyperliquid_bench_json(payload)
+
+    payload["scenarios"] = [
+        {
+            "success": False,
+            "unique_signatures": ["perp.order.GTC:false:none"],
+        }
+    ]
+    with pytest.raises(ValueError, match="failed scenarios"):
+        _score_from_hyperliquid_bench_json(payload)
 
 
 def test_voiceagentbench_requires_real_audio_dataset_for_harness_rows(
@@ -599,7 +619,11 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_osworld_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_voicebench_real_audio_assets", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_voicebench_quality_real_inputs", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_voiceagentbench_real_audio_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_vision_language_compatible_harnesses", lambda: ("eliza", "hermes", "openclaw"))
     report = build_cross_matrix_report(
         _workspace_root().parent,
@@ -981,6 +1005,33 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
         )
 
 
+def test_vision_language_multimodal_model_detection_blocks_cerebras_public_models(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert (
+        orchestrator_adapters._is_vision_language_multimodal_model(
+            provider="cerebras",
+            model="kimi-k2.6",
+        )
+        is False
+    )
+    assert (
+        orchestrator_adapters._is_vision_language_multimodal_model(
+            provider="cerebras",
+            model="gpt-oss-120b",
+        )
+        is False
+    )
+    monkeypatch.setenv("VISION_LANGUAGE_MULTIMODAL", "1")
+    assert (
+        orchestrator_adapters._is_vision_language_multimodal_model(
+            provider="cerebras",
+            model="user-confirmed-dedicated-vlm",
+        )
+        is True
+    )
+
+
 def test_taubench_extracts_pass_hat_k_dict_shape() -> None:
     score = _score_from_taubench_json(
         {
@@ -1173,6 +1224,41 @@ def test_hermes_native_envs_require_sandbox_backend(
         assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "eliza") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_osworld_requires_reachable_docker_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_osworld_docker_backend",
+        lambda: False,
+    )
+    adapter = discover_adapters(_workspace_root()).adapters["osworld"]
+    assert adapter.agent_compatibility == ()
+    assert _is_harness_compatible(adapter, "eliza") is False
+    assert _is_harness_compatible(adapter, "hermes") is False
+    assert _is_harness_compatible(adapter, "openclaw") is False
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        harnesses=("eliza", "hermes", "openclaw"),
+    )
+    for cell in [cell for cell in report.cells if cell.benchmark_id == "osworld"]:
+        assert cell.compatible is False
+        assert cell.command is None
+        assert cell.reason == orchestrator_adapters.OSWORLD_DOCKER_UNAVAILABLE_REASON
+
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_osworld_docker_backend",
+        lambda: True,
+    )
+    adapter = discover_adapters(_workspace_root()).adapters["osworld"]
+    assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
+    assert _is_harness_compatible(adapter, "eliza") is True
+    assert _is_harness_compatible(adapter, "hermes") is True
+    assert _is_harness_compatible(adapter, "openclaw") is True
 
 
 def test_hermes_native_env_matrix_reports_sandbox_unavailable(
@@ -1465,6 +1551,70 @@ def test_gaia_orchestrated_registry_uses_orchestrated_entrypoint(tmp_path: Path)
         {"agent": "hermes"},
     )
     assert hermes_command[hermes_command.index("--providers") + 1] == "hermes"
+
+
+def test_gaia_registry_uses_env_dataset_path_as_local_jsonl(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia"
+    ]
+    dataset = tmp_path / "official-gaia.jsonl"
+    dataset.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GAIA_DATASET_PATH", str(dataset))
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"agent": "eliza"},
+    )
+
+    assert command[command.index("--dataset") + 1] == "jsonl"
+    assert command[command.index("--dataset-path") + 1] == str(dataset)
+
+
+def test_gaia_registry_env_dataset_path_overrides_default_gaia_source(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia_orchestrated"
+    ]
+    dataset = tmp_path / "official-gaia.jsonl"
+    dataset.write_text("", encoding="utf-8")
+    monkeypatch.setenv("GAIA_DATASET_PATH", str(dataset))
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {"dataset": "gaia", "providers": ["eliza"]},
+    )
+
+    assert command[command.index("--dataset") + 1] == "jsonl"
+    assert command[command.index("--dataset-path") + 1] == str(dataset)
+
+
+def test_gaia_orchestrated_registry_forwards_dataset_path(tmp_path: Path) -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "gaia_orchestrated"
+    ]
+    dataset = tmp_path / "official-gaia.jsonl"
+    dataset.write_text("", encoding="utf-8")
+
+    command = entry.build_command(
+        tmp_path,
+        ModelSpec(provider="cerebras", model="gpt-oss-120b"),
+        {
+            "dataset": "jsonl",
+            "dataset_path": str(dataset),
+            "max_questions": 2,
+            "providers": ["eliza"],
+        },
+    )
+
+    assert command[command.index("--dataset") + 1] == "jsonl"
+    assert command[command.index("--dataset-path") + 1] == str(dataset)
 
 
 def test_gaia_and_webshop_registry_route_cross_harnesses(tmp_path: Path) -> None:
@@ -2275,6 +2425,36 @@ def test_compactbench_adapter_uses_repaired_scorer_by_default(tmp_path: Path) ->
     assert adapter.agent_compatibility == ("eliza", "openclaw", "hermes")
 
 
+def test_compactbench_python_falls_back_when_local_python_lacks_dependencies(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    compactbench_root = tmp_path / "compactbench"
+    venv_bin = compactbench_root / ".venv" / "bin"
+    venv_bin.mkdir(parents=True)
+    local_python = venv_bin / "python"
+    local_python.write_text("#!/bin/sh\n", encoding="utf-8")
+
+    good_python = tmp_path / "conda-python"
+    good_python.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(orchestrator_adapters.sys, "executable", "/broken/sys-python")
+    monkeypatch.setattr(
+        orchestrator_adapters.shutil,
+        "which",
+        lambda name: str(good_python) if name == "python" else None,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_python_can_import",
+        lambda candidate, module: candidate == str(good_python)
+        and module == "ruamel.yaml",
+    )
+
+    assert orchestrator_adapters._compactbench_python_executable(
+        compactbench_root
+    ) == str(good_python)
+
+
 def test_compactbench_hermes_adapter_uses_native_tool_compactor(
     tmp_path: Path,
 ) -> None:
@@ -2400,6 +2580,35 @@ def test_woobench_orchestrator_default_is_bounded_multi_scenario_persona(tmp_pat
     assert command[command.index("--random-seed") + 1] == "1"
 
 
+def test_woobench_orchestrator_explicit_scenario_overrides_default_list(tmp_path: Path) -> None:
+    adapters = discover_adapters(_workspace_root()).adapters
+    adapter = adapters["woobench"]
+    extra = dict(adapter.default_extra_config)
+    extra.update({"scenario": "friend_supporter_tarot_01", "evaluator": "llm"})
+    ctx = ExecutionContext(
+        workspace_root=_workspace_root(),
+        benchmarks_root=_workspace_root() / "benchmarks",
+        output_root=tmp_path / "out",
+        run_root=tmp_path,
+        request=RunRequest(
+            benchmarks=("woobench",),
+            agent="eliza",
+            provider="cerebras",
+            model="gpt-oss-120b",
+            extra_config=extra,
+        ),
+        run_group_id="test",
+        env={},
+        repo_meta={},
+    )
+
+    command = adapter.command_builder(ctx, adapter)
+
+    assert "--scenarios" not in command
+    assert command[command.index("--scenario") + 1] == "friend_supporter_tarot_01"
+    assert command[command.index("--evaluator") + 1] == "llm"
+
+
 def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Path) -> None:
     result_path = tmp_path / "woobench_smoke.json"
     result_path.write_text(
@@ -2431,6 +2640,24 @@ def test_woobench_score_extractor_marks_interrupted_for_quarantine(tmp_path: Pat
     assert score.metrics["total_revenue"] == 9.0
     assert score.metrics["avg_revenue_per_scenario"] == 9.0
     assert score.metrics["payment_converted_count"] == 1
+
+
+def test_vending_score_rejects_zero_successful_runs() -> None:
+    with pytest.raises(ValueError, match="zero successful runs"):
+        _score_from_vendingbench_json(
+            {
+                "metadata": {"total_runs": 1, "successful_runs": 0},
+                "metrics": {"avg_net_worth": "0"},
+                "results": [
+                    {
+                        "run_id": "run_001",
+                        "simulation_days": 0,
+                        "final_net_worth": "0",
+                        "error": "Remote end closed connection without response",
+                    }
+                ],
+            }
+        )
 
 
 def test_compactbench_score_accepts_valid_hit_file_from_locator(tmp_path: Path) -> None:
@@ -3166,6 +3393,29 @@ def test_vision_language_harness_runtime_requires_multimodal_model(
 
     assert orchestrator_adapters._has_vision_language_harness_runtime() is True
 
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "local-eliza")
+    monkeypatch.setenv("VISION_LANGUAGE_MODEL", "eliza-1-9b")
+    monkeypatch.setattr(
+        orchestrator_adapters, "_has_vision_language_real_inputs", lambda: True
+    )
+
+    assert orchestrator_adapters._has_vision_language_harness_runtime() is True
+
+
+def test_vision_language_local_eliza_runtime_must_be_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("VISION_LANGUAGE_PROVIDER", raising=False)
+    monkeypatch.delenv("VISION_LANGUAGE_USE_LOCAL_ELIZA", raising=False)
+    monkeypatch.setattr(orchestrator_adapters, "_has_vision_language_bundle", lambda _tier: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_textvqa_real_inputs", lambda: True)
+
+    assert orchestrator_adapters._has_vision_language_real_inputs() is False
+
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "local-eliza")
+
+    assert orchestrator_adapters._has_vision_language_real_inputs() is True
+
 
 def test_vision_language_bundle_accepts_current_manifest_schema(
     tmp_path: Path,
@@ -3188,8 +3438,13 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
         json.dumps(
             {
                 "id": "eliza-1-9b",
+                "runtime": {"dflash": {"enabled": True}},
                 "kernels": {"required": ["dflash"]},
-                "files": {"dflash": [{"path": "dflash/drafter-9b.gguf"}]},
+                "files": {
+                    "dflash": [{"path": "dflash/drafter-9b.gguf"}],
+                    "text": [{"path": "text/eliza-1-9b-128k.gguf"}],
+                    "vision": [{"path": "vision/mmproj-9b.gguf"}],
+                },
             }
         ),
         encoding="utf-8",
@@ -3197,6 +3452,36 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
     monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / ".eliza"))
 
     assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
+
+
+def test_vision_language_bundle_rejects_manifest_without_dflash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = (
+        tmp_path
+        / ".eliza"
+        / "local-inference"
+        / "models"
+        / "eliza-1-9b.bundle"
+    )
+    (bundle / "text").mkdir(parents=True)
+    (bundle / "vision").mkdir()
+    (bundle / "text" / "eliza-1-9b-128k.gguf").write_text("text", encoding="utf-8")
+    (bundle / "vision" / "mmproj-9b.gguf").write_text("vision", encoding="utf-8")
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "eliza-1-9b",
+                "kernels": {"required": ["metal"]},
+                "files": {},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / ".eliza"))
+
+    assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is False
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

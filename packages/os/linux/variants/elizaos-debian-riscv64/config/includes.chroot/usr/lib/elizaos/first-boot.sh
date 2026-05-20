@@ -8,10 +8,10 @@
 #   2. Create /var/lib/elizaos (state) and /etc/elizaos (config) with the
 #      right ownership.
 #   3. Generate a stable instance UUID at /etc/elizaos/instance-id.
-#   4. Emit a single `elizaos-ready instance=<uuid>` line on the serial
-#      console (/dev/ttyS0) so the qemu-virt harness can detect boot
-#      completion deterministically.
-#   5. Enable + start elizaos-agent.service.
+#   4. Emit a single `elizaos-firstboot-ready instance=<uuid>` line on the
+#      serial console (/dev/ttyS0) so the qemu-virt harness can detect OS
+#      first-boot completion deterministically.
+#   5. Enable elizaos-agent.service and start it when the agent binary exists.
 #   6. Disable this first-boot service so it does not run again.
 #
 # Fail-closed: any step that cannot complete returns non-zero so the
@@ -25,6 +25,7 @@ CONFIG_DIR="/etc/elizaos"
 INSTANCE_ID_FILE="${CONFIG_DIR}/instance-id"
 FIRST_BOOT_MARKER="${STATE_DIR}/.first-boot-complete"
 SERIAL_CONSOLE="/dev/ttyS0"
+AGENT_BIN="/opt/elizaos/bin/elizaos"
 
 log() {
     printf '[elizaos-first-boot] %s\n' "$*"
@@ -79,25 +80,42 @@ fi
 #    Best-effort: if /dev/ttyS0 is not present (e.g. on a board without a
 #    virt-style 16550), fall back to the kernel printk path so the line
 #    still ends up in dmesg.
-READY_LINE="elizaos-ready instance=${INSTANCE_UUID}"
+FIRSTBOOT_READY_LINE="elizaos-firstboot-ready instance=${INSTANCE_UUID}"
 if [ -w "${SERIAL_CONSOLE}" ]; then
     log "emitting ready marker on ${SERIAL_CONSOLE}"
-    printf '%s\n' "${READY_LINE}" > "${SERIAL_CONSOLE}"
+    printf '%s\n' "${FIRSTBOOT_READY_LINE}" > "${SERIAL_CONSOLE}"
 elif [ -w /dev/kmsg ]; then
     log "serial console ${SERIAL_CONSOLE} not writable; using /dev/kmsg"
-    printf '%s\n' "${READY_LINE}" > /dev/kmsg
+    printf '%s\n' "${FIRSTBOOT_READY_LINE}" > /dev/kmsg
 else
     log "WARN: neither ${SERIAL_CONSOLE} nor /dev/kmsg writable; ready marker only in journal"
 fi
-log "${READY_LINE}"
+log "${FIRSTBOOT_READY_LINE}"
 
-# 5. Enable and start the agent.
+# 5. Enable the agent. Early RISC-V images intentionally ship with a
+#    STATUS_LATER placeholder until the agent binary is packaged, so do not
+#    block first boot on starting a unit whose ExecStart target is absent.
 log "enabling elizaos-agent.service"
 systemctl enable elizaos-agent.service
-log "starting elizaos-agent.service"
-systemctl start elizaos-agent.service || {
-    log "WARN: elizaos-agent.service failed to start (likely STATUS_LATER agent binary missing)"
-}
+if [ -x "${AGENT_BIN}" ]; then
+    log "starting elizaos-agent.service"
+    timeout 10s systemctl start --no-block elizaos-agent.service || {
+        log "WARN: elizaos-agent.service failed to queue"
+    }
+    if timeout 30s sh -c 'until systemctl is-active --quiet elizaos-agent.service; do sleep 1; done'; then
+        AGENT_READY_LINE="elizaos-agent-ready instance=${INSTANCE_UUID}"
+        if [ -w "${SERIAL_CONSOLE}" ]; then
+            printf '%s\n' "${AGENT_READY_LINE}" > "${SERIAL_CONSOLE}"
+        elif [ -w /dev/kmsg ]; then
+            printf '%s\n' "${AGENT_READY_LINE}" > /dev/kmsg
+        fi
+        log "${AGENT_READY_LINE}"
+    else
+        log "WARN: elizaos-agent.service did not become active within 30s"
+    fi
+else
+    log "agent binary missing at ${AGENT_BIN}; leaving elizaos-agent.service enabled but not started"
+fi
 
 # 6. Mark first-boot complete and disable this unit.
 install -o elizaos -g elizaos -m 0640 /dev/null "${FIRST_BOOT_MARKER}"

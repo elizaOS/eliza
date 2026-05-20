@@ -21,7 +21,18 @@
 import bpu_pkg::*;
 /* verilator lint_on IMPORTSTAR */
 
-module ras (
+// Renamed from `ras` to `e1_bpu_ras` to avoid a global module name
+// collision with CVA6 v5.3.0's `external/cva6/cva6/core/frontend/ras.sv`
+// when the integrated SoC build links both source trees (in-band
+// `+define+E1_HAVE_CVA6 +define+E1_CLUSTER_SLOT0_CVA6`).  Verilator
+// uses the first global definition of a module name it sees; renaming
+// the e1 module to a uniquely-qualified name resolves the conflict
+// without patching CVA6's source tree. The file name is kept as
+// `ras.sv` so the cocotb test wrappers (ras_tb.sv) keep matching the
+// rest of the BPU file-naming convention; the resulting
+// DECLFILENAME warning is silenced explicitly.
+/* verilator lint_off DECLFILENAME */
+module e1_bpu_ras (
     input  logic                   clk,
     input  logic                   rst_n,
 
@@ -199,4 +210,5 @@ module ras (
         end
     end
 
-endmodule : ras
+endmodule : e1_bpu_ras
+/* verilator lint_on DECLFILENAME */

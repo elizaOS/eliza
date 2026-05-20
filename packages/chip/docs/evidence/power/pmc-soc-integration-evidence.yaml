@@ -1,0 +1,237 @@
+schema: eliza.power.soc_integration_evidence.v1
+ip_name: pmc_soc_integration
+ip_role: opensbi_mpxy_to_aon_ibex_pmc_rpmi_shmem_roundtrip
+status: opensbi_built_with_pmc_dts_cocotb_roundtrip_blocked_on_shmem_routing
+release_use: prototype_only
+claim_boundary: >
+  Records the executable result of integrating OpenSBI v1.8.1 with the
+  Eliza E1 PMC RPMI shared-memory mailbox device-tree fragment and the
+  AON Ibex PMC firmware against the cocotb integration testbench
+  `e1_soc_integrated_tb`. Proof points:
+    - `dts/eliza-rocket-pmc.dts(i)` compiles cleanly with `dtc -O dtb`
+      and embeds a `riscv,rpmi-shmem-mbox` node with the four queue
+      regions (a2p-req, p2a-ack, p2a-req, a2p-ack) + a2p-doorbell
+      that match the offsets in `fw/pmc/include/rpmi_shmem_layout.h`,
+    - OpenSBI v1.8.1 (pinned commit `74434f25...`) rebuilds the
+      `generic` platform with `FW_FDT_PATH=<eliza-rocket-pmc.dtb>` and
+      the resulting `fw_dynamic.elf` exposes the embedded DTB at
+      `fw_fdt_bin` symbol (in .rodata), with the PMC mailbox compatible
+      string + reg-names visible via `strings(1)`,
+    - the cocotb roundtrip test
+      `verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py`
+      drives a spec-compliant RPMI v1.0 frame into A2P_REQ slot 0 and
+      polls P2A_ACK tail, but currently reports `BLOCKED` because three
+      remaining RTL/firmware bindings have not yet been authored
+      (see `mpxy_rpmi_roundtrip.remaining_bindings` below),
+    - the existing 54 baseline integration cocotb tests pass unchanged
+      with `PMC_INSTANTIATE_IBEX` left off (default).
+  Boot of OpenSBI on real silicon or in QEMU + RPMI control flow over
+  the SBI MPxy mailbox is not exercised here; that requires either the
+  cocotb shmem routing landing (next milestone) or a virt platform
+  emulating the AON Ibex mailbox, neither of which is in scope.
+shmem_layout:
+  source_of_truth: fw/pmc/include/rpmi_shmem_layout.h
+  aperture_base: 0x10050000
+  aperture_size_bytes: 4096
+  shmem_region_offset: 0x800
+  shmem_region_base: 0x10050800
+  shmem_region_bytes: 1028
+  slot_size_bytes: 64
+  header_slots_per_queue: 2
+  data_slots_per_queue: 2
+  slots_per_queue: 4
+  queue_bytes: 256
+  queues:
+    a2p_req:
+      base: 0x10050800
+      size: 0x100
+      direction: host_to_pmc
+      message_class: normal_request
+    p2a_ack:
+      base: 0x10050900
+      size: 0x100
+      direction: pmc_to_host
+      message_class: acknowledgement
+    p2a_req:
+      base: 0x10050A00
+      size: 0x100
+      direction: pmc_to_host
+      message_class: posted_request
+    a2p_ack:
+      base: 0x10050B00
+      size: 0x100
+      direction: host_to_pmc
+      message_class: acknowledgement
+  doorbell:
+    base: 0x10050C00
+    size: 0x4
+    value: 0x1
+    direction: host_to_pmc
+  rpmi_spec_alignment:
+    spec_version: "1.0"
+    header_layout:
+      servicegroup_id_offset: 0
+      servicegroup_id_width_bytes: 2
+      service_id_offset: 2
+      service_id_width_bytes: 1
+      flags_offset: 3
+      flags_width_bytes: 1
+      datalen_offset: 4
+      datalen_width_bytes: 2
+      token_offset: 6
+      token_width_bytes: 2
+    endianness: little
+dts_fragment:
+  fragment_path: dts/eliza-rocket-pmc.dtsi
+  fragment_sha256: b9281a58c76422fd268f1f118ec5d3986839cb00dd7ba4c8002e0a69aba2db04
+  build_dts_path: dts/eliza-rocket-pmc.dts
+  build_dts_sha256: 8f29d269596844ce1fa48d1e6afbb08bbe1d585eba067350a26f232e028ac3ab
+  compiled_dtb_path: build/opensbi-eliza/eliza-rocket-pmc.dtb
+  compiled_dtb_sha256: b855840f28911741362d75a31517a0b842e8227dd32fa79d187bc12ae98c8a47
+  compiled_dtb_bytes: 1734
+  mailbox_node_path: /soc/mailbox@10050800
+  mailbox_compatible: riscv,rpmi-shmem-mbox
+  reg_names:
+    - a2p-req
+    - p2a-ack
+    - p2a-req
+    - a2p-ack
+    - a2p-doorbell
+  slot_size: 64
+  a2p_doorbell_value: 0x1
+opensbi_rebuild:
+  pinned_tag: v1.8.1
+  pinned_commit: 74434f255873d74e56cc50aa762d1caf24c099f8
+  platform: generic
+  cross_compile: riscv64-linux-gnu-
+  toolchain_gcc: external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-gcc
+  toolchain_ld: external/riscv64-linux-gnu/usr/bin/riscv64-linux-gnu-ld
+  fw_fdt_path: build/opensbi-eliza/eliza-rocket-pmc.dtb
+  artifacts:
+    fw_dynamic_elf:
+      path: external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.elf
+      sha256: 2db12afb4814a0576cfaf139d3ba10f5970393f9d7e8be3d5692bc68f78286e1
+      text_bytes: 213413
+      data_bytes: 13784
+      bss_bytes: 3664
+      fw_fdt_bin_symbol_offset: 0x28020
+    fw_dynamic_bin:
+      path: external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.bin
+      sha256: 3926bd7f26aea7809a4c33f06f42d54fbca19b86e156a727268fcf947d00ece8
+      bytes: 275928
+  dtb_embed_proof:
+    method: riscv64-linux-gnu-strings fw_dynamic.elf
+    matched_strings:
+      - "mailbox@10050800"
+      - "riscv,rpmi-shmem-mbox"
+      - "a2p-req"
+      - "a2p-doorbell"
+      - "riscv,a2p-doorbell-value"
+  rpmi_symbols_verified: 89   # per opensbi-pin-evidence.yaml symbol count
+mpxy_rpmi_roundtrip:
+  status: BLOCKED
+  test_module: verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py
+  testbench: e1_soc_integrated_tb
+  guard_envvars:
+    - name: PMC_INSTANTIATE_IBEX
+      purpose: gate the Ibex elaboration in pmc_top.sv
+    - name: PMC_RPMI_SHMEM_ROUNDTRIP
+      purpose: >
+        gate the three remaining RTL/firmware bindings the roundtrip
+        needs.  Flips OFF -> ON once the bindings below land; until then
+        the cocotb tests report explicit BLOCKED skips with a back-
+        pointer to this manifest.
+    - name: PMC_AON_SRAM_HEX
+      purpose: select the $readmemh image preloaded into pmc_top.aon_sram_q
+  expected_request_clock_get_rate_hz: 1200000000
+  expected_request_voltage_get_level_uv: 700000
+  expected_base_spec_version: 0x10000  # RPMI v1.0
+  remaining_bindings:
+    - id: B1
+      area: rtl/power/pmc_top.sv
+      gap: >
+        Mailbox MMIO accesses at offsets 0x800..0xFFF (the shmem region)
+        currently fall through to default '0 readback because the
+        register decode only covers PMC_REG_* scalars. The Ibex data
+        port reaches the AON SRAM at 0x10050000..0x10053FFF, but the
+        MMIO-side mailbox decode does not route into the same backing
+        storage at the 0x10050800..0x10050C03 range. Until the shmem
+        region is routed through `aon_sram_q[]` (or a parallel queue
+        SRAM with both the MMIO port and the Ibex data port as
+        masters), the host cannot publish A2P requests into the queue
+        slot the Ibex reads from, nor can the host poll the P2A_ACK
+        tail the Ibex writes back.
+      proposed_change: >
+        Extend pmc_top.sv MMIO decode: when `mbox_addr_i[PMC_MBOX_AW-1] == 1`
+        (i.e. offset >= 0x800), arbitrate the MMIO-side access into
+        aon_sram_q at the index derived from `mbox_addr_i[10:2]`. The
+        Ibex data port stays as-is. A simple cycle-alternating
+        arbitration is fine for the prototype.
+    - id: B2
+      area: fw/pmc/src/main.c
+      gap: >
+        `pmc_main` polls the scalar `PMC_REG_STATUS::RX_VALID` bit (at
+        absolute address 0x10050010) to detect an incoming RPMI frame.
+        Under the new layout the host posts into the A2P_REQ tail slot
+        + rings the doorbell; the firmware must instead read the A2P_REQ
+        tail at 0x10050840, compare it to the head at 0x10050800, and
+        ingest the slot at 0x10050880 when tail > head. After dispatch,
+        the firmware writes the response into P2A_ACK slot 0
+        (0x10050980), advances the P2A_ACK tail at 0x10050940 from 0
+        to 1, then advances the A2P_REQ head at 0x10050800 from 0 to 1.
+      proposed_change: >
+        Add `pmc_drain_rpmi_a2p_request(void)` in main.c that reads /
+        writes the four queue head/tail words via `volatile uint32_t *`
+        pointers derived from the macros in rpmi_shmem_layout.h. Move
+        the legacy PMC_REG_STATUS poll into a separate compile-time-
+        disabled debug path (or remove entirely if the new RPMI server
+        supersedes it). Wrap the dispatch in the spec-compliant
+        rpmi_message_header (LE 16-bit servicegroup_id, 8-bit
+        service_id, etc.) rather than the prototype 8-bit big-endian
+        layout currently in rpmi.h.
+    - id: B3
+      area: fw/pmc/src/pmic_sequencer.c, fw/pmc/src/spmi.c
+      gap: >
+        `pmc_boot_rails` in main.c calls `pmc_pmic_power_up`, which
+        issues SPMI / I2C MMIO at addresses outside the AON aperture
+        (the SPMI master at 0x10060000+ is not modeled by pmc_top.sv).
+        Any such access traps the Ibex into `_halt_loop` in crt0.S
+        before the scheduler reaches the RPMI drain loop.
+      proposed_change: >
+        Guard `pmc_pmic_power_up` with a compile-time
+        `PMC_ENABLE_PMIC_BRINGUP` define; the cocotb roundtrip build
+        leaves it undefined so the firmware skips PMIC bringup and
+        proceeds straight to the drain loop. The production silicon
+        build defines it, gated by a separate piece of evidence once
+        the SPMI master is bound.
+  unblock_command_sequence:
+    - source tools/env.sh
+    - scripts/bootstrap_ibex.sh
+    - PATH="$PWD/external/riscv64-linux-gnu/usr/bin:$PATH" make -C external/opensbi/opensbi PLATFORM=generic CROSS_COMPILE=riscv64-linux-gnu- FW_FDT_PATH=$PWD/build/opensbi-eliza/eliza-rocket-pmc.dtb -j4
+    - make -C fw/pmc aon-hex
+    - PMC_INSTANTIATE_IBEX=1 PMC_RPMI_SHMEM_ROUNDTRIP=1 PMC_AON_SRAM_HEX=fw/pmc/build/pmc.aon.hex make cocotb-opensbi-mpxy-rpmi
+baseline_integration_tests_unchanged:
+  default_path:
+    description: PMC_INSTANTIATE_IBEX off, shmem roundtrip off
+    test_count: 54
+    expected: pass
+  reproduce:
+    - source tools/env.sh
+    - make cocotb-soc-boot-smoke
+    - make cocotb-cross-domain
+reproduce:
+  - command: source tools/env.sh
+  - command: dtc -O dtb -o build/opensbi-eliza/eliza-rocket-pmc.dtb dts/eliza-rocket-pmc.dts
+  - command: >
+      PATH="$PWD/external/riscv64-linux-gnu/usr/bin:$PATH"
+      LD_LIBRARY_PATH=$PWD/external/riscv64-linux-gnu/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+      make -C external/opensbi/opensbi PLATFORM=generic
+      CROSS_COMPILE=riscv64-linux-gnu-
+      FW_FDT_PATH=$PWD/build/opensbi-eliza/eliza-rocket-pmc.dtb -j4
+  - command: make cocotb-opensbi-mpxy-rpmi   # BLOCKED skip until B1-B3 land
+notes: >
+  This file is the source of truth for the PMC RPMI shmem roundtrip gap.
+  When the three remaining bindings (B1-B3) land, the cocotb test will
+  flip from BLOCKED to PASS with the elapsed cycle count + RPMI status
+  recorded inline.  Until then, the BLOCKED skip is the
+  evidence-driven gate that makes the gap discoverable in CI.

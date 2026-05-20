@@ -256,47 +256,6 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
-    root = expect_dict(data, ctx="gaia:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="gaia:root"), ctx="gaia:metrics")
-    metadata = root.get("metadata")
-    metadata_dict = expect_dict(metadata, ctx="gaia:metadata") if isinstance(metadata, dict) else {}
-    dataset_source = metadata_dict.get("dataset_source") or root.get("dataset_source") or ""
-    if not dataset_source:
-        orchestrated = root.get("orchestrated")
-        if isinstance(orchestrated, dict):
-            sources: set[str] = set()
-            for payload in orchestrated.values():
-                if not isinstance(payload, dict):
-                    continue
-                payload_meta = payload.get("metadata")
-                if isinstance(payload_meta, dict) and isinstance(payload_meta.get("dataset_source"), str):
-                    sources.add(str(payload_meta["dataset_source"]))
-            if len(sources) == 1:
-                dataset_source = next(iter(sources))
-            elif sources:
-                dataset_source = ",".join(sorted(sources))
-    overall = expect_float(get_required(metrics, "overall_accuracy", ctx="gaia:metrics"), ctx="gaia:overall_accuracy")
-    total_questions = expect_float(
-        get_required(metrics, "total_questions", ctx="gaia:metrics"),
-        ctx="gaia:total_questions",
-    )
-    if total_questions <= 0:
-        raise ValueError("gaia:total_questions must be positive")
-    return ScoreExtraction(
-        score=overall,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "overall_accuracy": overall,
-            "total_questions": total_questions,
-            "correct_answers": metrics.get("correct_answers") or 0,
-            "dataset_source": dataset_source,
-            "benchmark_harness": metadata_dict.get("benchmark_harness") or root.get("harness") or "",
-        },
-    )
-
-
 def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="tau_bench:root")
     domain_results = root.get("domain_results")
@@ -352,6 +311,7 @@ def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
 def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="vending_bench:root")
     metrics = expect_dict(get_required(root, "metrics", ctx="vending_bench:root"), ctx="vending_bench:metrics")
+    metadata = expect_dict(root.get("metadata") or {}, ctx="vending_bench:metadata")
     results_raw = root.get("results")
 
     def to_float(value: object) -> float:
@@ -370,6 +330,17 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
         return 0.0
 
     results = expect_list(results_raw, ctx="vending_bench:results") if isinstance(results_raw, list) else []
+    successful_runs = to_float(metadata.get("successful_runs"))
+    total_runs = to_float(metadata.get("total_runs"))
+    errored_runs = [
+        item
+        for item in results
+        if isinstance(item, dict) and isinstance(item.get("error"), str) and item.get("error")
+    ]
+    if total_runs > 0 and successful_runs <= 0:
+        raise ValueError("vending_bench: zero successful runs is not publishable")
+    if results and len(errored_runs) == len([item for item in results if isinstance(item, dict)]):
+        raise ValueError("vending_bench: all runs failed")
     total_revenue = 0.0
     total_incremental_revenue = 0.0
     total_profit = 0.0
@@ -409,6 +380,8 @@ def _score_from_vendingbench_json(data: JSONValue) -> ScoreExtraction:
             "avg_profit": avg_profit,
             "max_net_worth": max_net_worth,
             "avg_net_worth": avg_net_worth,
+            "successful_runs": successful_runs,
+            "total_runs": total_runs,
             "profitability_rate": metrics.get("profitability_rate") or 0,
             "coherence_score": metrics.get("coherence_score") or 0,
             "avg_items_sold": (total_items_sold / run_count) if run_count else (metrics.get("avg_items_sold") or 0),
@@ -1084,6 +1057,27 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
         raise ValueError(
             "hyperliquid_bench: demo-mode result is not publishable as a real harness score"
         )
+    scenarios = get_optional(root, "scenarios")
+    if not isinstance(scenarios, list) or not scenarios:
+        raise ValueError("hyperliquid_bench: missing scenario-level live execution evidence")
+    failed = [
+        item
+        for item in scenarios
+        if not (isinstance(item, dict) and item.get("success") is True)
+    ]
+    if failed:
+        raise ValueError("hyperliquid_bench: failed scenarios are not publishable")
+    unique_signatures: list[str] = []
+    for item in scenarios:
+        if not isinstance(item, dict):
+            continue
+        sigs = item.get("unique_signatures")
+        if isinstance(sigs, list):
+            unique_signatures.extend(str(sig) for sig in sigs if str(sig).strip())
+    if not unique_signatures:
+        raise ValueError(
+            "hyperliquid_bench: no confirmed live action signatures were recorded"
+        )
     overall = expect_float(
         get_required(root, "final_score", ctx="hyperliquid_bench:root"),
         ctx="hyperliquid_bench:final_score",
@@ -1104,6 +1098,7 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
             "model": get_optional(root, "model") or "",
             "network": get_optional(root, "network") or "",
             "demo_mode": demo_mode,
+            "canonical_entries": len(set(unique_signatures)),
         },
     )
 

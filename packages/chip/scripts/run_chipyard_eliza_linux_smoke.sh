@@ -15,16 +15,24 @@ binary="${CHIPYARD_LINUX_BINARY:-}"
 timeout_seconds="${CHIPYARD_LINUX_SMOKE_SECONDS:-180}"
 timeout_seconds="${CHIPYARD_LINUX_SMOKE_TIMEOUT_SECONDS:-$timeout_seconds}"
 timeout_cycles="${CHIPYARD_LINUX_SMOKE_TIMEOUT_CYCLES:-10000000}"
-run_target="${CHIPYARD_LINUX_SMOKE_RUN_TARGET:-run-binary}"
 jobs="${CHIPYARD_LINUX_SMOKE_JOBS:-1}"
 loadmem="${CHIPYARD_LINUX_SMOKE_LOADMEM:-1}"
 binary_arg="${CHIPYARD_LINUX_SMOKE_BINARY_ARG:-$binary}"
 extra_sim_flags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_FLAGS:-+custom_boot_pin=1 +uart_tx_printf=1}"
 extra_sim_cxxflags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_CXXFLAGS:-}"
 extra_sim_ldflags="${CHIPYARD_LINUX_SMOKE_EXTRA_SIM_LDFLAGS:-}"
-break_sim_prereq="${CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ:-0}"
 use_docker="${CHIPYARD_LINUX_SMOKE_USE_DOCKER:-auto}"
 attempt="${CHIPYARD_LINUX_SMOKE_ATTEMPT:-1}"
+simulator_default="$sim_dir/simulator-chipyard.harness-$config"
+simulator_archive="$out_dir/simulator/simulator-chipyard.harness-$config"
+default_run_target="run-binary"
+default_break_sim_prereq="0"
+if [ -x "$simulator_default" ] || [ -x "$simulator_archive" ]; then
+	default_run_target="run-binary-fast"
+	default_break_sim_prereq="1"
+fi
+run_target="${CHIPYARD_LINUX_SMOKE_RUN_TARGET:-$default_run_target}"
+break_sim_prereq="${CHIPYARD_LINUX_SMOKE_BREAK_SIM_PREREQ:-$default_break_sim_prereq}"
 
 mkdir -p "$out_dir"
 if ! mkdir "$lock_dir" 2>/dev/null; then
@@ -67,7 +75,12 @@ cleanup_lock() {
 	rm -f "$lock_dir/pid"
 	rmdir "$lock_dir" 2>/dev/null || true
 }
-trap cleanup_lock EXIT HUP INT TERM
+cleanup_signal() {
+	cleanup_lock
+	exit 143
+}
+trap cleanup_lock EXIT
+trap cleanup_signal HUP INT TERM
 
 if [ -z "$binary" ]; then
 	payload_export="$(python3 "$repo_dir/scripts/locate_chipyard_linux_payload.py" --export-env --require-preferred || true)"
@@ -250,11 +263,18 @@ fi
 status=$?
 set -e
 cat "$raw_log" >>"$log_tmp"
+kernel_panic=0
+if grep -E -q 'Kernel panic - not syncing|panic - not syncing' "$raw_log"; then
+	kernel_panic=1
+fi
 
 {
 	printf 'eliza-evidence: raw_transcript_end\n'
 	printf 'eliza-evidence: exit_code=%s\n' "$status"
-	if [ "$status" -eq 0 ]; then
+	if [ "$kernel_panic" = "1" ]; then
+		printf 'eliza-evidence: kernel_panic=1\n'
+		printf 'eliza-evidence: status=BLOCKED\n'
+	elif [ "$status" -eq 0 ]; then
 		printf 'eliza-evidence: status=PASS\n'
 	else
 		printf 'eliza-evidence: status=BLOCKED\n'
@@ -264,8 +284,9 @@ mv "$log_tmp" "$log"
 
 tail -n 80 "$log"
 
-if [ "$status" -ne 0 ]; then
+if [ "$status" -ne 0 ] || [ "$kernel_panic" = "1" ]; then
 	if [ "${CHIPYARD_LINUX_SMOKE_RETRY_GENERATED:-1}" = "1" ] && [ "$attempt" = "1" ] && \
+		[ "$kernel_panic" != "1" ] && \
 		python3 "$repo_dir/scripts/check_chipyard_verilator_linux_smoke.py" \
 			--classify-generated-artifact-failure "$log"; then
 		printf 'STATUS: REPAIR chipyard.verilator_linux_smoke\n'
@@ -278,7 +299,11 @@ if [ "$status" -ne 0 ]; then
 	printf '  simulator_path: external/chipyard/sims/verilator\n'
 	printf '  log: build/chipyard/eliza_rocket/verilator-linux-smoke.log\n'
 	printf '  next_command: CHIPYARD_LINUX_SMOKE_RETRY_GENERATED=1 %s\n' "${0#"$repo_dir"/}"
-	printf '  - generated AP %s exited with status %s\n' "$run_target" "$status"
+	if [ "$kernel_panic" = "1" ]; then
+		printf '  - generated AP %s reached a Linux kernel panic\n' "$run_target"
+	else
+		printf '  - generated AP %s exited with status %s\n' "$run_target" "$status"
+	fi
 	exit 2
 fi
 

@@ -192,6 +192,11 @@ function extractRoomId(rpc: BridgeRequest): string | undefined {
 export class AgentGatewayRouterService {
   private phoneTargetCache = new Map<string, { value: PhoneTargetResolution; cachedAt: number }>();
   private phoneTargetRequests = new Map<string, Promise<PhoneTargetResolution>>();
+  private readonly runOnboardingChat: typeof runOnboardingChat;
+
+  constructor(options: { runOnboardingChat?: typeof runOnboardingChat } = {}) {
+    this.runOnboardingChat = options.runOnboardingChat ?? runOnboardingChat;
+  }
 
   private async listOwnedSandboxes(orgId: string, userId: string): Promise<AgentSandbox[]> {
     const sandboxes = await agentSandboxesRepository.listByOrganization(orgId);
@@ -704,7 +709,7 @@ export class AgentGatewayRouterService {
         to: args.to,
         error: error instanceof Error ? error.message : String(error),
       });
-      const onboarding = await runOnboardingChat({
+      const onboarding = await this.runOnboardingChat({
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,
@@ -724,7 +729,7 @@ export class AgentGatewayRouterService {
 
     if (!resolved.target) {
       if (resolved.reason === "unknown_owner") {
-        const onboarding = await runOnboardingChat({
+        const onboarding = await this.runOnboardingChat({
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
@@ -748,7 +753,7 @@ export class AgentGatewayRouterService {
         resolved.organizationId &&
         !resolved.agentId
       ) {
-        const onboarding = await runOnboardingChat({
+        const onboarding = await this.runOnboardingChat({
           message: args.body,
           platform: args.provider,
           platformUserId: args.from,
@@ -850,7 +855,7 @@ export class AgentGatewayRouterService {
       resolved.userId &&
       resolved.organizationId
     ) {
-      const onboarding = await runOnboardingChat({
+      const onboarding = await this.runOnboardingChat({
         message: args.body,
         platform: args.provider,
         platformUserId: args.from,

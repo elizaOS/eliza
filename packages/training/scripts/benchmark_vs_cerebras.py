@@ -215,7 +215,8 @@ def _load_prompts(test_file: Path, max_samples: int) -> list[str]:
             except json.JSONDecodeError:
                 continue
             # Extract the last user turn as the prompt
-            messages = record.get("messages", [])
+            req = record.get("request") if isinstance(record.get("request"), dict) else {}
+            messages = req.get("messages") or record.get("messages") or []
             if messages:
                 for m in reversed(messages):
                     if m.get("role") == "user":
@@ -316,7 +317,7 @@ def benchmark_tier(
             cerebras_results = _call_cerebras_on_prompts(
                 prompts,
                 cerebras_model,
-                max_tokens=512,
+                max_tokens=2048,
             )
             elapsed = time.perf_counter() - t0
             quality = _compute_response_quality_proxy(cerebras_results)

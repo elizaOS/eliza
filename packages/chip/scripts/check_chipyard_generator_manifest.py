@@ -44,7 +44,7 @@ def check_import_template(errors: list[str]) -> None:
         errors.append("import manifest template chipyard section must be an object")
         return
     require(
-        chipyard.get("commit") == "69eba860a352343e4ac6b6df0f3638a79a86ec78",
+        chipyard.get("commit") == "48f904aefbb3903dce6efa7901982642853ae6a7",
         "import manifest template must keep the full pinned Chipyard commit",
         errors,
     )
@@ -76,9 +76,13 @@ def check_selected_manifest(errors: list[str]) -> None:
         errors,
     )
     require(selected.get("generator") == "Chipyard", "selected generator must be Chipyard", errors)
-    require(selected.get("chipyard_tag") == "1.13.0", "Chipyard tag must stay pinned", errors)
     require(
-        selected.get("chipyard_release_commit") == "69eba86",
+        selected.get("chipyard_tag") == "main-2026-05-20",
+        "Chipyard tag must stay pinned",
+        errors,
+    )
+    require(
+        selected.get("chipyard_release_commit") == "48f904ae",
         "Chipyard release commit must stay pinned",
         errors,
     )
@@ -157,13 +161,13 @@ def check_generated_import_manifest(errors: list[str]) -> None:
         errors,
     )
     require(
-        chipyard.get("tag") == "1.13.0",
+        chipyard.get("tag") == "main-2026-05-20",
         "generated manifest uses an unapproved Chipyard tag",
         errors,
     )
     commit = str(chipyard.get("commit", ""))
     require(
-        commit == "69eba86" or commit.startswith("69eba860a352343e4ac6b6df0f3638a79a86ec78"),
+        commit == "48f904ae" or commit.startswith("48f904aefbb3903dce6efa7901982642853ae6a7"),
         "generated manifest uses an unapproved Chipyard commit",
         errors,
     )

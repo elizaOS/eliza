@@ -1,0 +1,33 @@
+---
+title: Simulation & FPGA
+description: "QEMU, Renode, Verilator, VCU118 mapping, evidence gates."
+---
+
+The chip's RTL and software paths run against three reference environments before silicon:
+
+- **QEMU** — fast functional reference for software bringup.
+- **Renode** — peripheral-accurate emulation for driver work.
+- **Verilator** — cycle-accurate RTL simulation for verification.
+- **FPGA (VCU118)** — real-hardware prototype mapping.
+
+## Running
+
+```bash
+make qemu-check      # QEMU reference smoke
+make renode-check    # Renode reference smoke
+make sim             # Verilator + cocotb run
+make fpga-check      # FPGA mapping evidence (where tools are present)
+```
+
+## Evidence gates
+
+Every check emits an evidence artifact (PASS / FAIL / BLOCKED) under the run output. The set of expected gates and their current status is tracked under `packages/chip/docs/evidence/`. New work cannot land without updating the relevant evidence file.
+
+## Benchmarks
+
+`packages/chip/benchmarks/` holds CoreMark, STREAM, and TensorFlow Lite harnesses with metadata pinning the build, configuration, and acceptance criteria.
+
+## See also
+
+- [RTL & verification](/tracks/chip/rtl-verify)
+- [Architecture](/tracks/chip/architecture)

@@ -1,0 +1,39 @@
+---
+title: elizaOS AOSP
+description: "The Android variant of elizaOS."
+---
+
+elizaOS Mobile is an AOSP-derived Android build with the elizaOS app and agent runtime pre-installed. It targets a curated list of devices where AOSP can be flashed safely.
+
+## Supported devices
+
+The active device list lives in `packages/os/release/`. Devices ship in supported / experimental tiers. Always confirm your exact model and revision against the manifest before flashing — bootloader behavior varies between revisions.
+
+## Flashing
+
+The flashing flow uses standard Android tools (`fastboot`, optionally `adb`). The high-level steps:
+
+1. Unlock the bootloader (manufacturer-specific; voids most warranties).
+2. Verify the image checksum against the release manifest.
+3. `fastboot flash` the system, boot, and vendor partitions.
+4. Boot once with the verified image. Validate basic functionality.
+5. Lock the bootloader again (optional, where supported).
+
+Detailed per-device instructions ship under `packages/os/android/`.
+
+## OTA
+
+Updates are signed and distributed through the release channels (alpha / beta / stable). The OS pulls them automatically when the channel is enabled; you can also sideload via `adb sideload`.
+
+## What's pre-installed
+
+- elizaOS app (mobile build).
+- Local agent runtime (Bun-backed).
+- Default character and plugin set.
+- Native bridges for camera, microphone, contacts, notifications, secure storage.
+
+## See also
+
+- [Linux variant](/tracks/elizaos/linux)
+- [Install](/tracks/elizaos/install)
+- [Mobile app](/tracks/agent-app/mobile)

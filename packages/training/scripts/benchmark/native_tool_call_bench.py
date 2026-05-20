@@ -116,14 +116,39 @@ def _clean_json_text(text: str) -> str:
 
 def _parse_json_object(text: str) -> dict[str, Any] | None:
     cleaned = _clean_json_text(text)
-    if not cleaned.startswith("{"):
-        start = cleaned.find("{")
-        end = cleaned.rfind("}")
-        if start < 0 or end <= start:
-            return None
-        cleaned = cleaned[start:end + 1]
+    start = cleaned.find("{")
+    if start < 0:
+        return None
+    # Walk forward to find the balanced closing brace. Using rfind would
+    # corrupt the slice when the model appends trailing XML (Qwen <tool_call>
+    # blocks) after the eliza JSON object.
+    depth = 0
+    in_str = False
+    escape = False
+    end = -1
+    for i, ch in enumerate(cleaned[start:], start):
+        if escape:
+            escape = False
+            continue
+        if ch == "\\" and in_str:
+            escape = True
+            continue
+        if ch == '"':
+            in_str = not in_str
+            continue
+        if in_str:
+            continue
+        if ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    if end < 0:
+        return None
     try:
-        value = json.loads(cleaned)
+        value = json.loads(cleaned[start:end + 1])
     except json.JSONDecodeError:
         return None
     return value if isinstance(value, dict) else None
@@ -274,6 +299,16 @@ def render_prompt(record: dict[str, Any], tokenizer: Any) -> tuple[str, dict[str
     messages = list(formatted["messages"])
     if messages and messages[-1].get("role") == "assistant":
         messages = messages[:-1]
+    for _msg in messages:
+        for _tc in _msg.get("tool_calls") or []:
+            _fn = _tc.get("function")
+            if isinstance(_fn, dict):
+                _args = _fn.get("arguments")
+                if isinstance(_args, str):
+                    try:
+                        _fn["arguments"] = json.loads(_args)
+                    except json.JSONDecodeError:
+                        _fn["arguments"] = {}
     kwargs = {
         "conversation": messages,
         "tokenize": False,

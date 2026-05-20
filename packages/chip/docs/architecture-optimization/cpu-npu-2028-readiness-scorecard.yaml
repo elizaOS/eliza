@@ -1,16 +1,18 @@
 schema: eliza.cpu_npu_2028_readiness_scorecard.v1
 status: modeled_ready_release_blocked
-claim_boundary: >
-  Consolidated CPU+NPU 2028 readiness audit for this local tree. This can pass
-  modeled architecture consistency only; it cannot approve phone-class
-  benchmark, AOSP, PDK, post-route, or silicon claims without the listed release
-  gates passing with real evidence.
+claim_boundary: 'Consolidated CPU+NPU 2028 readiness audit for this local tree. This can pass modeled
+  architecture consistency only; it cannot approve phone-class benchmark, AOSP, PDK, post-route, or silicon
+  claims without the listed release gates passing with real evidence.
+
+  '
 source_artifacts:
   optimized_work_order: docs/architecture-optimization/soc-optimized-operating-point.yaml
   optimizer_report: benchmarks/results/soc-optimized-operating-point.json
   design_space_frontier: benchmarks/results/cpu-npu-2028-design-space-frontier.json
   modeled_benchmark_report: benchmarks/results/modeled-cpu-npu-2028-local/report.json
   modeled_benchmark_eval: benchmarks/results/cpu-npu-2028-modeled-eval.json
+  npu_context_queue_sim: benchmarks/results/npu-context-queue-sim.json
+  memory_iommu_qos_sim: benchmarks/results/memory-iommu-qos-sim.json
   burst_sustained_policy: benchmarks/results/cpu-npu-2028-burst-sustained-policy.json
   burst_thermal_transient: benchmarks/results/cpu-npu-2028-burst-thermal-transient.json
   aosp_governor_trace: benchmarks/results/cpu-npu-2028-aosp-governor-trace.json
@@ -21,6 +23,8 @@ source_artifacts:
   design_space_frontier_command: make cpu-npu-design-space-frontier
   modeled_benchmark_command: make benchmark-modeled-cpu-npu
   modeled_benchmark_eval_command: make cpu-npu-modeled-benchmark-eval
+  npu_context_queue_sim_command: make npu-context-queue-sim-check
+  memory_iommu_qos_sim_command: make memory-iommu-qos-sim-check
   burst_sustained_policy_command: make cpu-npu-burst-sustained-policy
   burst_thermal_transient_command: make cpu-npu-burst-thermal-transient
   aosp_governor_trace_command: make cpu-npu-aosp-governor-trace
@@ -36,7 +40,7 @@ modeled_operating_point:
   cpu_base_power_w: 1.4
   npu_base_tops: 44.0
   npu_base_power_w: 1.2
-  memory_sustained_gbps: 240.0
+  memory_sustained_gbps: 120.0
 modeled_constraints:
   max_die_c: 95.0
   min_bandwidth_margin_gbps: 0.0
@@ -69,12 +73,6 @@ proof_domains:
       - build/evidence/cpu_ap/eliza_e1_opensbi_boot.log
       - build/evidence/cpu_ap/eliza_e1_linux_boot.log
       - build/evidence/cpu_ap/eliza_e1_ap_benchmarks.log
-  - id: npu_nnapi
-    current_state: blocked_until_real_e1_npu_nnapi_accelerator_proof
-    gate_command: make e1-npu-nnapi-proof-check
-    evidence_artifacts:
-      - benchmarks/capabilities/e1_npu_nnapi.proof.json
-      - docs/evidence/android/e1-npu/android-proof-manifest.json
   - id: aosp_simulator
     current_state: blocked_until_local_aosp_virtual_device_evidence
     gate_command: make aosp-simulator-completion-check
@@ -101,6 +99,7 @@ proof_domains:
     evidence_artifacts:
       - docs/evidence/memory/uma-dram-evidence-gate.yaml
       - docs/evidence/memory/templates/bandwidth-latency-contended-access.template.json
+      - benchmarks/results/memory-iommu-qos-sim.json
   - id: process_14a
     current_state: blocked_until_pdk_extracted_timing_power_thermal_signoff
     gate_command: make process-14a-effects-check

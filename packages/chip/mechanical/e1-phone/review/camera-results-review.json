@@ -1,0 +1,77 @@
+{
+  "claim_boundary": "Fail-closed review of camera optical and bring-up results; blank rows are not image-quality evidence.",
+  "status": "blocked_no_camera_results",
+  "expected_measurement_count": 7,
+  "observed_row_count": 7,
+  "complete_result_count": 0,
+  "missing_measurements": [],
+  "blank_or_incomplete_measurements": [
+    "rear_camera_lens_center_error_mm",
+    "front_camera_under_glass_center_error_mm",
+    "rear_camera_focus_mtf50_lp_per_mm",
+    "front_camera_mtf50_lp_per_mm",
+    "front_cover_glass_color_delta_e",
+    "rear_camera_dust_or_vignette_defects",
+    "camera_streaming_bringup_logs"
+  ],
+  "failed_measurements": [],
+  "cases": [
+    {
+      "measurement_id": "rear_camera_lens_center_error_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "front_camera_under_glass_center_error_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "rear_camera_focus_mtf50_lp_per_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "front_camera_mtf50_lp_per_mm",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "front_cover_glass_color_delta_e",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "rear_camera_dust_or_vignette_defects",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    },
+    {
+      "measurement_id": "camera_streaming_bringup_logs",
+      "expected_measurement": true,
+      "populated": false,
+      "numeric_check_pass": false,
+      "declared_pass": false,
+      "pass": false
+    }
+  ],
+  "release_rule": "Every camera alignment, image-quality, dust, color, and streaming row must include sample, operator, numeric passing result, and explicit pass disposition."
+}

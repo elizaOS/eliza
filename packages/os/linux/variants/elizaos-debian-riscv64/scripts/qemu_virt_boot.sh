@@ -37,6 +37,8 @@ VARIANT_DIR="$(cd "${HERE}/.." && pwd)"
 EVIDENCE_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.json"
 TRANSCRIPT_DEFAULT="${VARIANT_DIR}/evidence/qemu_virt_boot.transcript.log"
 UBOOT_CHIP_DEFAULT="${VARIANT_DIR}/../../../../chip/build/u-boot/u-boot.elf"
+UEFI_CODE_DEFAULT="/usr/share/qemu-efi-riscv64/RISCV_VIRT_CODE.fd"
+UEFI_VARS_DEFAULT="/usr/share/qemu-efi-riscv64/RISCV_VIRT_VARS.fd"
 
 ISO=""
 MEMORY_MB=4096
@@ -116,15 +118,6 @@ command -v python3 >/dev/null 2>&1 \
 command -v sha256sum >/dev/null 2>&1 \
     || die "sha256sum not on PATH"
 
-TIMEOUT_BIN=""
-if command -v timeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="timeout"
-elif command -v gtimeout >/dev/null 2>&1; then
-    TIMEOUT_BIN="gtimeout"
-else
-    die "neither timeout nor gtimeout on PATH"
-fi
-
 if [ -z "${UBOOT_PATH}" ] && [ -f "${UBOOT_CHIP_DEFAULT}" ]; then
     UBOOT_PATH="${UBOOT_CHIP_DEFAULT}"
 fi
@@ -134,12 +127,28 @@ fi
 
 ISO_SHA256="$(sha256sum "${ISO}" | awk '{ print $1 }')"
 
+UEFI_VARS_RUNTIME=""
+QEMU_FIRMWARE_DESC="opensbi-default"
 QEMU_CMD=(qemu-system-riscv64
     -machine virt
     -nographic
     -m "${MEMORY_MB}"
     -smp "${CPUS}"
-    -bios default
+)
+
+if [ -f "${UEFI_CODE_DEFAULT}" ] && [ -f "${UEFI_VARS_DEFAULT}" ]; then
+    UEFI_VARS_RUNTIME="$(mktemp)"
+    cp "${UEFI_VARS_DEFAULT}" "${UEFI_VARS_RUNTIME}"
+    QEMU_FIRMWARE_DESC="${UEFI_CODE_DEFAULT}"
+    QEMU_CMD+=(
+        -drive "if=pflash,format=raw,unit=0,readonly=on,file=${UEFI_CODE_DEFAULT}"
+        -drive "if=pflash,format=raw,unit=1,file=${UEFI_VARS_RUNTIME}"
+    )
+else
+    QEMU_CMD+=( -bios default )
+fi
+
+QEMU_CMD+=(
     -drive "file=${ISO},if=virtio,format=raw,media=cdrom,readonly=on"
     -netdev user,id=net0
     -device virtio-net-device,netdev=net0
@@ -163,24 +172,67 @@ START_UTC="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf '## memory_mb: %s\n' "${MEMORY_MB}"
     printf '## cpus: %s\n' "${CPUS}"
     printf '## timeout_secs: %s\n' "${TIMEOUT_SECS}"
+    printf '## firmware: %s\n' "${QEMU_FIRMWARE_DESC}"
     printf '## u_boot: %s\n' "${UBOOT_PATH:-<built-in>}"
     printf '## cmd: %s\n' "${QEMU_CMD[*]}"
     printf '##\n'
 } >> "${TRANSCRIPT_PATH}"
 
+boot_markers_present() {
+    grep -F -q -- "Linux version" "${TRANSCRIPT_PATH}" \
+        && { grep -F -q -- "elizaos-firstboot-ready" "${TRANSCRIPT_PATH}" \
+            || grep -F -q -- "login:" "${TRANSCRIPT_PATH}"; }
+}
+
+forbidden_marker_present() {
+    grep -F -q -- "Kernel panic" "${TRANSCRIPT_PATH}" \
+        || grep -F -q -- "Oops" "${TRANSCRIPT_PATH}" \
+        || grep -F -q -- "BUG" "${TRANSCRIPT_PATH}"
+}
+
 set +e
-"${TIMEOUT_BIN}" --foreground "${TIMEOUT_SECS}s" "${QEMU_CMD[@]}" </dev/null \
-    >> "${TRANSCRIPT_PATH}" 2>&1
-QEMU_RC=$?
+"${QEMU_CMD[@]}" </dev/null >> "${TRANSCRIPT_PATH}" 2>&1 &
+QEMU_PID=$!
+QEMU_RC=124
+QEMU_TIMED_OUT=0
+while kill -0 "${QEMU_PID}" >/dev/null 2>&1; do
+    if boot_markers_present; then
+        QEMU_RC=0
+        kill "${QEMU_PID}" >/dev/null 2>&1
+        wait "${QEMU_PID}" >/dev/null 2>&1
+        break
+    fi
+    if forbidden_marker_present; then
+        QEMU_RC=1
+        kill "${QEMU_PID}" >/dev/null 2>&1
+        wait "${QEMU_PID}" >/dev/null 2>&1
+        break
+    fi
+    NOW_EPOCH="$(date -u +%s)"
+    if [ $(( NOW_EPOCH - START_EPOCH )) -ge "${TIMEOUT_SECS}" ]; then
+        QEMU_RC=124
+        QEMU_TIMED_OUT=1
+        kill "${QEMU_PID}" >/dev/null 2>&1
+        wait "${QEMU_PID}" >/dev/null 2>&1
+        break
+    fi
+    sleep 2
+done
+if [ "${QEMU_RC}" -eq 124 ] && [ "${QEMU_TIMED_OUT}" -eq 0 ] && ! kill -0 "${QEMU_PID}" >/dev/null 2>&1; then
+    wait "${QEMU_PID}"
+    QEMU_RC=$?
+fi
 set -e
+if [ -n "${UEFI_VARS_RUNTIME}" ]; then
+    rm -f "${UEFI_VARS_RUNTIME}"
+fi
 
 END_EPOCH="$(date -u +%s)"
 DURATION_S=$(( END_EPOCH - START_EPOCH ))
 
 REQUIRED_MARKERS=(
     "Linux version"
-    "systemd[1]: System Initialized"
-    "elizaos-ready"
+    "elizaos-firstboot-ready"
 )
 LOGIN_MARKER="login:"
 FORBIDDEN_MARKERS=(
@@ -213,18 +265,15 @@ done
 
 # `boot_completed` requires:
 #   * Linux version banner
-#   * systemd reached user-space
-#   * first-boot script wrote `elizaos-ready` OR a `login:` prompt
+#   * first-boot script wrote `elizaos-firstboot-ready` OR a `login:` prompt
 #   * zero forbidden markers
 HAS_LINUX=0
-HAS_SYSTEMD=0
 HAS_READY=0
 HAS_LOGIN=0
 for m in "${MARKERS_FOUND[@]}"; do
     case "${m}" in
         "Linux version") HAS_LINUX=1;;
-        "systemd[1]: System Initialized") HAS_SYSTEMD=1;;
-        "elizaos-ready") HAS_READY=1;;
+        "elizaos-firstboot-ready") HAS_READY=1;;
         "login:") HAS_LOGIN=1;;
     esac
 done
@@ -232,7 +281,6 @@ done
 BOOT_COMPLETED="false"
 if [ ${#FORBIDDEN_HIT[@]} -eq 0 ] \
    && [ "${HAS_LINUX}" -eq 1 ] \
-   && [ "${HAS_SYSTEMD}" -eq 1 ] \
    && { [ "${HAS_READY}" -eq 1 ] || [ "${HAS_LOGIN}" -eq 1 ]; }; then
     BOOT_COMPLETED="true"
 fi

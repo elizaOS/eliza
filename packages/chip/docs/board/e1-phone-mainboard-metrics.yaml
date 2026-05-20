@@ -1,0 +1,183 @@
+schema: eliza.e1_phone_mainboard_metrics.v1
+status: concept_floorplan_not_fabrication_evidence
+date: 2026-05-20
+claim_boundary: >
+  Metrics describe a proposed single-mainboard phone floorplan. They are not
+  KiCad layout, SI/PI, RF, thermal, DFM, or production evidence.
+
+industrial_design_assumptions:
+  device_class: handheld_phone
+  device_envelope_mm: {width: 78.0, height: 153.6, max_thickness: 9.6}
+  display_class: 5.5_in_fhd_1080x1920_mipi_oem_module
+  display_active_area_mm: {width: 68.04, height: 120.96}
+  display_reference_outline_mm: {width: 70.78, height: 129.17, thickness: 1.7}
+  touch_lens_reference_outline_mm: {width: 77.1, height: 151.77, thickness: 3.39}
+  battery_pack_keepout_mm: {width: 64.0, height: 87.0, thickness_target: 4.7}
+  selected_battery_reference_pack_mm: {width: 64.0, height: 87.0, thickness: 4.4}
+  selected_battery_reference_fit: >
+    The LiPol LP446487 3.85 V 4500 mAh public pack class matches the 17.3 Wh
+    energy target and now matches the CAD 64 x 87 x 4.4 mm cavity. The next
+    layout pass must turn the concept keepout into a routed top/bottom island
+    or rigid-flex implementation before release.
+  camera_bump_keepout_mm: {width: 26.0, height: 22.0, z_stack_requires_me_review: true}
+  speaker_boxes:
+    earpiece_top_mm: {width: 26.0, height: 4.5}
+    loudspeaker_bottom_mm: {width: 32.0, height: 7.5}
+  usb_c_port:
+    placement: bottom_center
+    board_region_mm: {x: 26.0, y: 124.0, width: 16.0, height: 6.0}
+    evt0_connector: GCT_USB4105_USB2_Type_C
+    production_connector: Molex_221632_or_217804_waterproof_24pin_Type_C
+  side_buttons:
+    placement: left_edge_side_spine
+    board_region_mm: {x: 4.0, y: 50.0, width: 7.0, height: 46.0}
+    switch_family: Panasonic_EVQ_P7_side_push_tactile
+    buttons: [power, volume_up, volume_down]
+  enclosure_interface_source: docs/board/e1-phone-enclosure-interface.yaml
+
+mainboard_outline_concept:
+  architecture: top_bottom_rigid_islands_with_full_width_battery_cavity
+  display_fit_strategy: >
+    Board width is held to 64 mm so the rigid PCB fits behind common 5.5 inch
+    1080x1920 MIPI LCMs whose active area is about 68.04 x 120.96 mm and whose
+    TFT outline is about 70-71 mm wide. The current CAD envelope is held to
+    78.0 x 153.6 mm because the easy-to-source Chenghao-class CTP module
+    outline is 77.1 x 151.77 mm and the orange rails are intentionally tight
+    for the compact hard-plastic industrial design.
+  bounding_box_mm: {width: 64.0, height: 132.0, area_mm2: 8448.0}
+  copper_regions:
+    - {name: top_logic_rf, x_mm: 0.0, y_mm: 0.0, width_mm: 64.0, height_mm: 29.0, area_mm2: 1856.0}
+    - {name: bottom_io_audio, x_mm: 0.0, y_mm: 117.0, width_mm: 64.0, height_mm: 15.0, area_mm2: 960.0}
+  estimated_board_area_mm2: 2816.0
+  battery_window_or_non_pcb_area_mm2: 5568.0
+  pcb_area_utilization_of_bounding_box_pct: 33.3
+  recommended_layer_stackup: 10_layer_0p8_mm_hdi
+  minimum_stackup_for_first_proto: 8_layer_0p8_mm_hdi
+  target_trace_classes:
+    usb2_diff_ohm: 90
+    mipi_dphy_diff_ohm: 100
+    pcie_or_usb3_diff_ohm: 85
+    rf_single_ended_ohm: 50
+    sdio_single_ended_ohm: 50
+
+placement_area_budget:
+  estimated_board_area_mm2: 2816.0
+  reserved_functional_area_mm2:
+    soc_lpddr_pmic_storage_cluster: 930.0
+    cellular_module_or_modem_rf: 850.0
+    wifi_bt_gnss_nfc_rf: 520.0
+    cameras_and_mipi_connectors: 360.0
+    usb_c_charger_audio_bottom_io: 720.0
+    speakers_mics_haptics_buttons_connectors: 420.0
+    testpoints_fiducials_shields_keepouts: 640.0
+  estimated_reserved_total_mm2: 4440.0
+  estimated_unallocated_or_wasted_area_mm2: 298.5
+  estimated_unallocated_or_wasted_pct_of_board: 10.6
+  target_unallocated_pct_after_layout: {min_pct: 10.0, max_pct: 18.0}
+  note: >
+    This treats shield-can courtyards, RF keepouts, and manufacturing access as
+    useful reserved area. True wasted space must be recomputed from the KiCad
+    board polygon, component courtyard polygons, antenna keepouts, and no-route
+    zones after placement.
+
+derived_concept_geometry:
+  source: board/kicad/e1-phone/layout-utilization.yaml
+  board_bbox_mm: {width: 64.0, height: 132.0}
+  battery_window_mm: {width: 64.0, height: 87.0}
+  physical_pcb_area_after_battery_window_mm2: 2816.0
+  antenna_keepout_area_mm2: 844.0
+  placement_area_after_battery_and_antenna_keepouts_mm2: 1972.0
+  f_fab_region_total_area_mm2: 1763.0
+  route_shield_test_reserve_pct_of_placement_area: 10.6
+  note: >
+    These numbers are generated from gr_rect geometry in the concept KiCad PCB.
+    The 64 x 87 mm battery cavity leaves only top and bottom PCB islands with a
+    narrow concept reserve. This is still placeholder floorplanning, not routed
+    board evidence; side-key, service, and other placeholders must move to
+    supplier footprints, courtyards, flex/interconnect, and DRC-clean geometry
+    before layout closure can be claimed.
+
+power_efficiency_targets:
+  battery:
+    chemistry: 1s_li_ion_polymer
+    selected_pack_class: LiPol_LP446487_3p85V_4500mAh_17p33Wh_PCM_NTC_JST_SHR_03V_class
+    target_capacity_mah: 4500
+    nominal_voltage_v: 3.85
+    nominal_energy_wh: 17.3
+    required_missing_parts:
+      - supplier_quote_and_sample_for_selected_pack_class
+      - fuel_gauge_schematic_and_layout
+      - battery_ntc_and_pack_id
+      - battery_cavity_resize_or_custom_pack_decision
+      - safety_shipping_certification
+    usb_c:
+      ports: 1
+      role: charging_data_debug_single_port
+      pd_sink_profiles: [5v_3a, 9v_3a, 12v_2p25a]
+      pps_required: true
+      data: usb2_required_usb3_optional_after_phy_decision
+      evt0_connector_strategy: usb2_type_c_with_pd_controller
+      production_connector_strategy: waterproof_24pin_usb3_type_c_if_phy_is_bonded
+  targets:
+    suspend_current_ma_max: 5
+    idle_display_off_w_max: 0.25
+    idle_display_on_w_max: 0.9
+    video_call_avg_w_max: 3.2
+    sustained_ai_workload_skin_limited_w: 4.0
+    charge_path_peak_efficiency_pct_min: 92
+    buck_peak_efficiency_pct_min: 88
+    thermal_skin_limit_c: 43
+  required_measurements:
+    - per_rail_boot_idle_suspend_and_worst_case_scope_captures
+    - calibrated_usb_c_input_power_and_battery_current_logs
+    - pmic_regulator_efficiency_vs_load_curves_on_board
+    - 30_min_cpu_npu_modem_camera_thermal_soak
+    - thermal_hal_throttle_transcript
+
+connectivity_target:
+  cellular_decision: module_for_first_phone_board
+  rationale: >
+    A certified module reduces RF tuning, carrier, PTCRB/GCF, SAR, and modem
+    firmware risk compared with a raw modem-RF chipset integration.
+  2026_latest_reference:
+    flagship_modem_rf: Qualcomm X105 5G Advanced, 3GPP Release 19 ready
+    pragmatic_module_class: Quectel_RG255C_or_RM255C_5G_RedCap_for_first_board
+    fallback_linux_bringup_module: Quectel_RM520N_GL_M2_for_dev_carrier_testing
+  required_interfaces:
+    cellular_module: [usb2_or_pcie, usb2_diag, usim_or_esim, reset, wake, wdisable, main_div_rf_feeds, gnss_optional]
+    wifi_bt: [pcie_or_sdio, uart, pcm_optional, wake_irq, 1v8_io]
+    gnss: [module_integrated_or_discrete_lna, rf_feed, pps_optional]
+    nfc: [i2c_or_spi, secure_element_link_optional, loop_antenna]
+
+procurement_shortlist:
+  display_primary:
+    class: 5.5_in_1080x1920_MIPI_DSI_4_lane_with_CTP
+    candidate: Chenghao_CH550FH01A_CT_or_pin_compatible_055WU01
+    required_before_schematic_freeze:
+      - mechanical_drawing_with_fpc_exit_and_connector_pinout
+      - initialization_command_sequence
+      - touch_controller_part_and_i2c_address
+      - backlight_current_voltage_curve
+  cameras:
+    rear_primary: OV13855_or_OV13850_13MP_AF_MIPI_CSI_module_24_to_30_pin
+    front_primary: OV5640_or_8MP_fixed_focus_MIPI_CSI_module_selected_by_z_height
+    required_before_schematic_freeze:
+      - sensor_module_drawing
+      - fpc_pinout
+      - lens_z_height_and_focus_distance
+      - Linux_V4L2_or_Android_camera_HAL_driver_plan
+  wireless:
+    wifi_bt_primary: Murata_Type_2EA_LBEE5XV2EA_802_WiFi_6E_BT_5_3
+    wifi_bt_fallback: existing_Murata_Type_1DX_for_low_risk_Linux_SDIO_BT_UART_bringup
+    cellular_primary: Quectel_RG255C_LGA_or_RM255C_M2_5G_RedCap
+    cellular_fallback: Quectel_RM520N_GL_M2_for_eMBB_dev_board_validation
+
+must_not_claim_until_closed:
+  - board_fabrication_ready
+  - rf_ready
+  - power_efficient
+  - thermal_closed
+  - carrier_ready
+  - camera_ready
+  - android_phone_ready
+  - factory_ready

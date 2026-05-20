@@ -7,6 +7,7 @@
     "dev:frontend": "bun run --cwd frontend dev",
     "build:frontend": "bun run --cwd frontend build",
     "cap:sync": "bunx cap sync",
+    "test": "bun test smoke.test.js && bun run --cwd frontend test",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "typecheck": "echo 'No TypeScript config; skipping typecheck'",
     "build": "echo 'No build step configured; skipping build'"

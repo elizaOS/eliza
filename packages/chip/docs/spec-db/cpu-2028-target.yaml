@@ -28,15 +28,16 @@ source_anchors:
     - id: rocket_chip
       role: phase_a_application_hart
       reason: >
-        In-order 5-stage scalar RV64GC core inside Chipyard 1.13.0. Used as
-        the Linux bring-up vehicle pinned by
+        In-order 5-stage scalar RV64GC core inside Chipyard
+        main-2026-05-20. Used as the Linux bring-up vehicle pinned by
         generators/chipyard/eliza-rocket-manifest.json; not a phone-class
         AP candidate.
     - id: chipyard
       role: integration_framework
       reason: >
-        Chipyard 1.13.0 commit
-        69eba860a352343e4ac6b6df0f3638a79a86ec78 is the pinned generator
+        Chipyard main-2026-05-20 commit
+        48f904aefbb3903dce6efa7901982642853ae6a7 (previous pin: 1.13.0 /
+        69eba860a352343e4ac6b6df0f3638a79a86ec78) is the pinned generator
         environment for Rocket / BOOM / Saturn / Constellation; Linux/OpenSBI
         flows already integrated.
     - id: boom
@@ -68,7 +69,7 @@ source_anchors:
       role: phase_b_vector_engine
       reason: >
         Decoupled RVV 1.0 vector engine that slots into Rocket / BOOM via
-        Chipyard 1.13.0. Tracked alternate vector path; not the Phase A
+        Chipyard main-2026-05-20. Tracked alternate vector path; not the Phase A
         selection.
     - id: ibex
       role: management_security_hart
@@ -101,7 +102,7 @@ selected_ap_path:
   rationale: >
     Rocket is correct for the Linux smoke / OpenSBI handoff / trap-timer-IRQ
     gates and is the only AP path that can be generated with no rework on
-    Chipyard 1.13.0 today. Phone-class AP work is held to Phase B and Phase C
+    Chipyard main-2026-05-20 today. Phone-class AP work is held to Phase B and Phase C
     selections below.
 
 phase_a_isa:

@@ -1,22 +1,36 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "schema": "eliza.executorch_pin.v1",
-  "as_of": "2026-05-19",
+  "as_of": "2026-05-20",
   "claim_boundary": "pinned_recipe_only_not_executable_evidence_of_a_built_backend",
   "blocked_until_built": true,
-  "blocked_reason": "ExecuTorch elizanpu backend requires IREE elizanpu build per compiler/iree-eliza-npu/iree-pin.json",
+  "blocked_reason": "ExecuTorch elizanpu backend requires IREE elizanpu build per compiler/iree-eliza-npu/iree-pin.json; v1.2.0 unblocks upstream feature gaps (Cortex-M / CMSIS-NN template, CSE pass, Ethos-U Vela 5.0.0) but the elizanpu HAL target still ships only from our IREE pin.",
   "upstream": {
     "project": "pytorch/executorch",
     "url": "https://github.com/pytorch/executorch.git",
-    "branch": "main",
-    "commit_sha": "5eb84927cb9380f2a56d1f39f28d799dd7573254",
-    "commit_resolved_via": "git ls-remote https://github.com/pytorch/executorch.git HEAD on 2026-05-19",
-    "commit_resolved_at_utc": "2026-05-19T10:15:30Z",
+    "tag": "v1.2.0",
+    "tag_released_at_utc": "2026-04-01T00:00:00Z",
+    "commit_sha": "0b0e2c5cdd67c8b4396a46ea1d1aa72ffb0128d7",
+    "previous_sha": "5eb84927cb9380f2a56d1f39f28d799dd7573254",
+    "commit_resolved_via": "gh api repos/pytorch/executorch/git/refs/tags/v1.2.0 on 2026-05-20",
+    "commit_resolved_at_utc": "2026-05-20T00:00:00Z",
+    "last_audited": "2026-05-20",
     "refresh_policy": "quarterly, paired with IREE pin"
+  },
+  "bump_rationale": [
+    "Cortex-M first-class backend with CMSIS-NN — closest upstream analog to elizanpu; serves as a template for the ElizaBackend preprocessor and partitioner integration.",
+    "CSE (common subexpression elimination) export pass available at AOT — reduces graph size before partitioning.",
+    "ARM Ethos-U SDK 26.02 + Vela 5.0.0 — proves the embedded-NPU partition + delegate pattern at production quality.",
+    "Vulkan int8 quantized — second open backend (besides XNNPACK) supporting our int8 op set; useful as a CPU-fallback cross-check.",
+    "LoRA + MultimethodLoraConfig — multi-method PTE export needed for our adapter-swap inference path.",
+    "Watch upstream: PR #19617 (RISC-V test matrix in CI), PR #18863 (Nordic AXON NPU draft — closest external analog to elizanpu, useful precedent for our delegate register-and-partition flow)."
+  ],
+  "deprecations_observed": {
+    "mps_backend": "Apple MPS backend marked deprecated in v1.2.0 README. Repo grep on 2026-05-20 confirms no chip-package code path depends on executorch MPS / torch.backends.mps; only research/landscape docs mention it. No action required."
   },
   "python_requirements": [
     "torch>=2.5,<3",
-    "executorch>=0.4,<1"
+    "executorch==1.2.0"
   ],
   "backend_registration": {
     "name": "elizanpu",

@@ -203,7 +203,11 @@ describe("USB installer server", () => {
   it("expires stored write plans before execution", async () => {
     process.env.ELIZAOS_USB_ENABLE_RAW_WRITE = "1";
     const backend = new FakeBackend();
-    const handler = createUsbInstallerHandler(backend, { planTtlMs: -1 });
+    let now = 1_000;
+    const handler = createUsbInstallerHandler(backend, {
+      now: () => now,
+      planTtlMs: 100,
+    });
 
     const planRes = await handler(
       request("/plan", {
@@ -220,6 +224,7 @@ describe("USB installer server", () => {
     const plan = (await planRes.json()) as WritePlan;
     expect(plan.planId).toEqual(expect.any(String));
 
+    now = 1_101;
     const executeRes = await handler(
       request("/execute", {
         method: "POST",

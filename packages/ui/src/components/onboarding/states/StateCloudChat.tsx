@@ -1,6 +1,6 @@
 import type { CloudSetupSessionService } from "@elizaos/cloud-sdk/cloud-setup-session";
 import { useCloudSetupSession } from "../../../api/cloud-setup";
-import { AvatarHost } from "../../../avatar-runtime";
+import { OnboardingAvatar } from "./OnboardingAvatar";
 
 export interface CloudProvisioningProgress {
   status: "chat" | "provisioning" | "running" | "error";
@@ -33,12 +33,7 @@ export function StateCloudChat(props: StateCloudChatProps): React.JSX.Element {
       data-eliza-ob-state="cloud-chat"
     >
       <div className="eliza-ob-agent">
-        <div
-          className="eliza-ob-agent-canvas"
-          style={{ width: "min(270px, 78vw)", height: 112 }}
-        >
-          <AvatarHost />
-        </div>
+        <OnboardingAvatar />
         {service ? (
           <LiveTranscript service={service} tenantId={tenantId} />
         ) : (

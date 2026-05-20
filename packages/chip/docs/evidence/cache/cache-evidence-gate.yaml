@@ -113,35 +113,6 @@ blocked_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/stream_bandwidth_report.json
       - docs/evidence/cache/stream_bandwidth_raw.log
-  - id: pythia_rl_prefetcher_dpc3
-    status: blocked
-    reason: |
-      Pythia (Bera et al., MICRO'21) is not part of the upstream ChampSim
-      2024-12 module set; it lives in the CMU-SAFARI Pythia tree as a
-      third-party drop-in. The DPC-3 sweep here exercises only the
-      modules built into upstream ChampSim (no/next_line/ip_stride/
-      spp_dev/va_ampm_lite). Pythia's IPC delta vs Berti/SPP remains
-      unmeasured.
-    unblock_requires:
-      - port CMU-SAFARI Pythia C++ module into external/ChampSim/prefetcher/
-      - rebuild champsim_pref_pythia variant binary
-      - rerun python3 scripts/champsim_sweep.py --mode prefetch
-    evidence_artifacts:
-      - docs/evidence/cache/pythia_dpc3_report.json
-  - id: berti_ipcp_bingo_bop_dpc3
-    status: blocked
-    reason: |
-      Berti / IPCP / Bingo / Best-Offset are CRC submissions, not
-      upstream ChampSim 2024-12 modules. The current DPC-3 sweep
-      exercises only the bundled modules; the third-party drop-ins must
-      be ported into external/ChampSim/prefetcher/ before they can be
-      built and swept.
-    unblock_requires:
-      - port Berti/IPCP/Bingo/BOP source into external/ChampSim/prefetcher/
-      - rebuild variant binaries
-      - rerun python3 scripts/champsim_sweep.py --mode prefetch
-    evidence_artifacts:
-      - docs/evidence/cache/champsim_external_prefetchers_report.json
   - id: hawkeye_mockingjay_dpc3_replacement
     status: blocked
     reason: |
@@ -164,11 +135,18 @@ blocked_real_claims:
   - id: pythia_rl_prefetcher
     status: blocked
     reason: |
-      Pythia (Bera et al., MICRO'21) requires a full Q-table and RL update
-      pipeline. The stub at `rtl/cache/prefetch/e1_pythia_stub.sv` is
-      next-line-equivalent and exists to fix the integration shape.
+      Pythia (Bera et al., MICRO'21) is a CPU C++ tabular-SARSA
+      prefetcher (NOT a GPU/ML stack — earlier project notes were
+      incorrect). Productization requires the full Q-table + SARSA
+      update pipeline implemented in synthesizable RTL. The stub at
+      `rtl/cache/prefetch/e1_pythia_stub.sv` is next-line-equivalent
+      and exists to fix the integration shape. The ChampSim DPC-3
+      port at external/ChampSim/prefetcher/pythia/ exists for
+      algorithmic IPC measurement only (see
+      champsim_external_prefetchers_report.json and
+      pythia_dpc3_report.json); it is not the synthesizable RTL.
     unblock_requires:
-      - CMU-SAFARI Pythia ref impl ported to RTL
+      - CMU-SAFARI Pythia ref impl ported to synthesizable RTL
       - measured Pythia IPC delta vs Berti / SPP on the same SoC
     evidence_artifacts:
       - docs/evidence/cache/pythia_productization_report.json
@@ -191,10 +169,56 @@ measured_real_claims:
       external/ChampSim/; sweep run on the DPC-3 SPECspeed traces
       403.gcc-16B, 401.bzip2-7B, and 429.mcf-22B at 2M warmup +
       2M sim instructions per (variant x trace). The sweep covers the
-      prefetchers bundled in upstream ChampSim: no, next_line,
-      ip_stride, spp_dev, va_ampm_lite. Berti / IPCP / Bingo / BOP /
-      Pythia are third-party drop-ins and remain BLOCKED.
+      prefetchers bundled in upstream ChampSim (no, next_line,
+      ip_stride, spp_dev, va_ampm_lite) plus in-tree ports of the
+      CRC-style drop-ins (berti, ipcp, bingo, bop, pythia) under
+      external/ChampSim/prefetcher/<name>/, built via
+      external/ChampSim/build-configs/pref_<name>.json. Per-port
+      algorithmic scope and any documented deviations from each
+      reference implementation are in
+      champsim_external_prefetchers_report.json.
     evidence_artifacts:
+      - docs/evidence/cache/champsim_prefetch_sweep_report.json
+      - docs/evidence/cache/champsim_external_prefetchers_report.json
+      - docs/evidence/cache/pythia_dpc3_report.json
+  - id: berti_ipcp_bingo_bop_dpc3
+    status: measured_champsim_dpc3_only
+    evidence_class: champsim_dpc3_traces_only
+    reason: |
+      Berti (MICRO'22), IPCP (ISCA'20), Bingo (HPCA'19), and BOP
+      (HPCA'16) are CRC-style drop-ins whose published reference
+      implementations target the legacy ChampSim 2.x interface
+      (free-function CACHE::l2c_prefetcher_operate(uint64_t,...) and
+      friends) and cannot link against ChampSim 2024-12 as-is. Faithful
+      ports of each algorithm to the ChampSim 2024-12 module API
+      (champsim::modules::prefetcher, champsim::address) now live under
+      external/ChampSim/prefetcher/{berti,ipcp,bingo,bop}/, and the
+      DPC-3 sweep produces measured rows for all four. Per-prefetcher
+      algorithmic scope and any documented deviations from the
+      reference implementations (e.g. Berti's latency-table not being
+      wired through 2024-12's prefetcher interface) are recorded in
+      champsim_external_prefetchers_report.json under
+      ported_modules.<name>.
+    evidence_artifacts:
+      - docs/evidence/cache/champsim_external_prefetchers_report.json
+      - docs/evidence/cache/champsim_prefetch_sweep_report.json
+  - id: pythia_rl_prefetcher_dpc3
+    status: measured_champsim_dpc3_only
+    evidence_class: champsim_dpc3_traces_only
+    reason: |
+      Pythia (Bera et al., MICRO'21) — a CPU C++ tabular-SARSA prefetcher
+      (NOT a GPU/ML stack; earlier notes in this repo were incorrect) —
+      has been ported to the ChampSim 2024-12 module API at
+      external/ChampSim/prefetcher/pythia/ (canonical 2-feature SARSA,
+      16-action offset space, alpha=1/8, gamma=1/2, eps=1/16,
+      256-entry evaluation queue). The DPC-3 sweep now produces a
+      Pythia row alongside the bundled prefetchers; the port's scope
+      and deviations from Bera et al.'s extended-feature configuration
+      are documented in champsim_external_prefetchers_report.json
+      under ported_modules.pythia.
+    evidence_artifacts:
+      - docs/evidence/cache/pythia_dpc3_report.json
+      - docs/evidence/cache/champsim_external_prefetchers_report.json
       - docs/evidence/cache/champsim_prefetch_sweep_report.json
   - id: mockingjay_vs_lru_sweep
     status: measured_champsim_dpc3_only
@@ -218,19 +242,31 @@ measured_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_vs_lru_report.json
   - id: mockingjay_cocotb_synthetic
-    status: measured_below_threshold
+    status: measured_above_threshold
     evidence_class: cocotb_synthetic_stream
     reason: |
       The cocotb harness
       `verify/cocotb/cache/test_mockingjay_accuracy.py` drives
-      `rtl/cache/replacement/e1_mockingjay_prod.sv` against a 2000-op
-      scan+reuse synthetic stream and reports its hit-rate vs a pure-
-      Python LRU oracle. Captured numbers (mj=6.40 % vs lru=50.40 %)
-      are below the +10 % threshold; root cause is documented in the
-      artifact (find_victim deterministic tie-breaker on all-MAX_ETR
-      initial state collapses to one way; the 2k-op stream is too
-      short to warm the STT/RTP). The threshold remains the
-      productization bar.
+      `rtl/cache/replacement/e1_mockingjay_prod.sv` against a
+      100000-op scan+reuse synthetic stream (10000-op warmup +
+      90000-op measurement window) and reports its hit-rate vs a
+      pure-Python LRU oracle. The R4-documented unblock plan
+      (lengthen NUM_OPS to >=50k, add LFSR tie-break in
+      `find_victim`) is applied; an additional unit-correction
+      scales reuse-distance deltas from global-access units to
+      ETR-time-units (delta >> ETR_W) before they enter the RTP.
+      The R5 next-layer root cause (Sampled Cache Tracker keyed by
+      `(pc, set_id)` instead of by line address) is fixed in R6:
+      `e1_mockingjay_prod` now takes an `acc_tag` input (parameter
+      `TAG_W`) and keys the STT by `(set_id, tag)` per HPCA'22
+      section 4; the PC-indexed RTP still updates on STT hits but
+      no longer eats false same-PC reuse signals from streaming
+      scans. Measurement-window numbers
+      (mj=58.78 % vs lru=50.03 %) give +8.76 percentage points
+      absolute and +17.50 % relative, above the +10 % relative
+      pass threshold. The threshold remains the productization
+      bar; phone-class IPC remains BLOCKED until silicon or
+      full-system-simulator evidence.
     evidence_artifacts:
       - docs/evidence/cache/mockingjay_cocotb_synthetic_report.json
 

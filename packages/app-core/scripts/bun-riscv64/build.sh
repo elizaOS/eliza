@@ -230,6 +230,16 @@ else
     )
 fi
 
+# Linker selection: the riscv64-linux-musl-clang wrapper sets --target and
+# --sysroot but does not force a linker. Debian's default linker for
+# clang's driver is `/usr/bin/ld` (GNU binutils, x86_64-only), which
+# rejects the riscv64 `elf64lriscv` emulation and aborts the very first
+# CMake C-compiler probe. Force lld via -fuse-ld=lld on every link line.
+# We do this through CMAKE_*_LINKER_FLAGS (not C/CXX flags) so the flag
+# never reaches a compile-only invocation where clang would warn it is
+# unused.
+WK_LINKER_FLAGS="-fuse-ld=lld"
+
 cmake \
     -G Ninja \
     -DCMAKE_BUILD_TYPE=Release \
@@ -239,8 +249,12 @@ cmake \
     -DCMAKE_CXX_COMPILER=/opt/cross/bin/riscv64-linux-musl-clang++ \
     -DCMAKE_AR=/usr/local/bin/llvm-ar \
     -DCMAKE_RANLIB=/usr/local/bin/llvm-ranlib \
+    -DCMAKE_LINKER=/usr/local/bin/ld.lld \
     -DCMAKE_C_FLAGS="-march=rv64gc -mabi=lp64d -O3" \
     -DCMAKE_CXX_FLAGS="-march=rv64gc -mabi=lp64d -O3" \
+    -DCMAKE_EXE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
+    -DCMAKE_SHARED_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
+    -DCMAKE_MODULE_LINKER_FLAGS_INIT="${WK_LINKER_FLAGS}" \
     -DPORT=JSCOnly \
     -DENABLE_STATIC_JSC=ON \
     -DUSE_THIN_ARCHIVES=OFF \

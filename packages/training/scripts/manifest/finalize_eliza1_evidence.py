@@ -763,6 +763,8 @@ def _manifest_weight_paths(bundle_dir: Path) -> list[str]:
         "embedding",
         "dflash",
         "wakeword",
+        "imagegen",
+        "cache",
     }
     out: set[str] = set()
     for entries in files.values():

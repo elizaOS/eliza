@@ -61,7 +61,20 @@ module e1_soc_integrated_tb
     output logic        pmc_thermal_irq_o,
 
     output logic        iommu_fault_irq_o,
-    output logic [31:0] iommu_fault_count_o
+    output logic [31:0] iommu_fault_count_o,
+
+    // CVA6 slot-0 in-band SoC traffic counters + boot-ROM mirrors.  Surfaced
+    // unconditionally so the cocotb in-band SoC boot test (run with
+    // `+define+E1_CLUSTER_SLOT0_CVA6`) can read them; when the define is
+    // off the DUT drives them to zero.
+    output logic [31:0]  cva6_slot0_ar_xfers_o,
+    output logic [31:0]  cva6_slot0_aw_xfers_o,
+    output logic [31:0]  cva6_slot0_w_xfers_o,
+    output logic [31:0]  cva6_slot0_r_xfers_o,
+    output logic [31:0]  cva6_slot0_b_xfers_o,
+    output logic [127:0] cva6_slot0_rom_word0_o,
+    output logic [127:0] cva6_slot0_rom_word1_o,
+    output logic [127:0] cva6_slot0_rom_word2_o
 );
 
     e1_soc_integrated u_soc (
@@ -101,7 +114,15 @@ module e1_soc_integrated_tb
         .pmc_wake_irq_o       (pmc_wake_irq_o),
         .pmc_thermal_irq_o    (pmc_thermal_irq_o),
         .iommu_fault_irq_o    (iommu_fault_irq_o),
-        .iommu_fault_count_o  (iommu_fault_count_o)
+        .iommu_fault_count_o  (iommu_fault_count_o),
+        .cva6_slot0_ar_xfers_o (cva6_slot0_ar_xfers_o),
+        .cva6_slot0_aw_xfers_o (cva6_slot0_aw_xfers_o),
+        .cva6_slot0_w_xfers_o  (cva6_slot0_w_xfers_o),
+        .cva6_slot0_r_xfers_o  (cva6_slot0_r_xfers_o),
+        .cva6_slot0_b_xfers_o  (cva6_slot0_b_xfers_o),
+        .cva6_slot0_rom_word0_o (cva6_slot0_rom_word0_o),
+        .cva6_slot0_rom_word1_o (cva6_slot0_rom_word1_o),
+        .cva6_slot0_rom_word2_o (cva6_slot0_rom_word2_o)
     );
 
 endmodule

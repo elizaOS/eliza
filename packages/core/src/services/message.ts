@@ -28,9 +28,14 @@ import {
 	type LocalizedActionExampleResolver,
 } from "../runtime/action-catalog";
 import { retrieveActions } from "../runtime/action-retrieval";
+import { resolveActionRolePolicyRole } from "../runtime/action-role-policy";
 import { tierActionResults } from "../runtime/action-tiering";
 import { applyAddressedTo } from "../runtime/addressed-to";
-import { filterByContextGate } from "../runtime/context-gates";
+import {
+	filterByContextGate,
+	satisfiesContextGate,
+	satisfiesRoleGate,
+} from "../runtime/context-gates";
 import { computePrefixHashes, hashString } from "../runtime/context-hash";
 import {
 	appendContextEvent,
@@ -905,6 +910,14 @@ function isBenchmarkForcingToolCall(message: Memory): boolean {
 	if (process.env.ELIZA_BENCH_FORCE_TOOL_CALL !== "1") return false;
 	const content = message.content;
 	if (!content) return false;
+	const benchmark = (content.metadata as Record<string, unknown> | undefined)
+		?.benchmark;
+	if (
+		typeof benchmark === "string" &&
+		benchmark.trim().toLowerCase() === "vending-bench"
+	) {
+		return false;
+	}
 	if (content.source === "benchmark") return true;
 	const contentMetadata = content.metadata as
 		| Record<string, unknown>
@@ -1962,11 +1975,11 @@ async function collectV5PlannerCandidateActions(args: {
 	// "general" — even when the user clearly asked for a habit/event/etc.
 	// (See `docs/audits/lifeops-2026-05-09/12-real-root-cause.md`.)
 	//
-	// Now: every action is a candidate. Role gates and per-action validate /
-	// account-policy checks still apply (those are correctness/security, not
-	// relevance). Retrieval scoring then uses `selectedContexts` as a
-	// *weight* (boost actions whose contexts intersect the active set) but
-	// never as a hard filter.
+	// Now: the surface starts from every action, then applies only the same
+	// execution gates the planner executor will enforce. That keeps role-policy
+	// overrides working for deployments that intentionally expose an action
+	// outside its declared context, while avoiding dead tools that the planner
+	// could select but execution would immediately reject.
 	const allRuntimeActions = args.runtime.actions;
 	const actionsByName = new Map(
 		allRuntimeActions.map((action) => [action.name, action]),
@@ -1983,12 +1996,19 @@ async function collectV5PlannerCandidateActions(args: {
 	const appendIfAllowed = async (
 		action: Action,
 		parentActionName?: string,
-		_activeContexts:
-			| readonly AgentContext[]
-			| undefined = args.selectedContexts,
+		activeContexts: readonly AgentContext[] | undefined = args.selectedContexts,
 	): Promise<boolean> => {
 		const normalizedName = normalizeActionIdentifier(action.name);
 		if (!normalizedName || seen.has(normalizedName)) {
+			return false;
+		}
+		if (
+			!actionPassesPlannerExecutionGates({
+				action,
+				activeContexts,
+				userRoles: args.userRoles,
+			})
+		) {
 			return false;
 		}
 		try {
@@ -2092,6 +2112,27 @@ function mergeAgentContexts(
 		}
 	}
 	return merged;
+}
+
+function actionPassesPlannerExecutionGates(args: {
+	action: Action;
+	activeContexts?: readonly AgentContext[];
+	userRoles?: readonly RoleGateRole[];
+}): boolean {
+	const policyRole = resolveActionRolePolicyRole(args.action);
+	if (policyRole) {
+		return satisfiesRoleGate(args.userRoles, { minRole: policyRole });
+	}
+
+	const contextGate = args.action.contextGate ?? {
+		contexts: args.action.contexts,
+		roleGate: args.action.roleGate,
+	};
+	if (!satisfiesContextGate(args.activeContexts, contextGate, args.userRoles)) {
+		return false;
+	}
+
+	return satisfiesRoleGate(args.userRoles, args.action.roleGate);
 }
 
 function getMessageHandlerCandidateActions(
@@ -2614,6 +2655,7 @@ const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
 				"Routes attachment/image inspection requests through ATTACHMENT instead of allowing unsupported direct vision claims.",
 			priority: 10,
 			shouldRun: ({ runtime, message, state }) =>
+				!isSubAgentCompletionArtifact(message) &&
 				looksLikeAttachmentInspectionRequest(message, state, runtime.agentId),
 			evaluate: () => ({
 				requiresTool: true,
@@ -5495,7 +5537,10 @@ export function hasTextGenerationHandler(runtime: IAgentRuntime): boolean {
  * Tracks the latest response ID per agent+room to handle message superseding
  */
 const latestResponseIds = new Map<string, Map<string, string>>();
-const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 5_000;
+// Sub-agent completions emit follow-up evaluators (URL verification, attachment
+// routing, transcript stripping) that legitimately take >5s; 30s gives them
+// room without indefinitely blocking response finalization.
+const DEFAULT_POST_DELIVERY_SIDE_EFFECT_TIMEOUT_MS = 30_000;
 
 function clearLatestResponseId(
 	agentId: UUID,
@@ -6277,7 +6322,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 	}
 
 	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|disk (?:space|usage)|storage usage)\b/iu.test(
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage)\b/iu.test(
 			normalized,
 		);
 	const asksToInspect =
@@ -6286,11 +6331,19 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
 			normalized,
 		);
+	const asksRepoStateQuestion =
+		/\b(?:is|are|what|which|where)\b[^.?!\n]{0,80}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local(?:ly)?|running|vendored|checked\s+out)\b/iu.test(normalized);
 
-	return mentionsCommand && asksToInspect && mentionsLocalSurface;
+	return (
+		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
+		asksRepoStateQuestion
+	);
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {

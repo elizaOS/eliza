@@ -64,8 +64,8 @@ type RenderTelemetryIssue = {
 };
 
 const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
-  ["Basics", "basics"],
-  ["Providers", "providers"],
+  ["Basics", "identity"],
+  ["Providers", "ai-model"],
   ["Runtime", "runtime"],
   ["Appearance", "appearance"],
   ["Voice", "voice"],
@@ -76,7 +76,10 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["App Permissions", "app-permissions"],
   ["Wallet & RPC", "wallet-rpc"],
   ["Permissions", "permissions"],
-  ["Advanced", "advanced"],
+  ["Vault", "secrets"],
+  ["Security", "security"],
+  ["Updates", "updates"],
+  ["Backup & Reset", "advanced"],
 ]);
 
 const DEFAULT_APP_STORAGE: Record<string, string> = {

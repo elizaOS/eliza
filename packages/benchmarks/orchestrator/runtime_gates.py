@@ -6,9 +6,9 @@ from pathlib import Path
 
 from . import adapters as adapter_module
 from .adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    OSWORLD_DOCKER_UNAVAILABLE_REASON,
     SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
@@ -47,14 +47,6 @@ class RuntimeGateReport:
 def build_runtime_gate_report(_workspace_root: Path | None = None) -> RuntimeGateReport:
     gates = (
         RuntimeGate(
-            id="gaia_official_dataset",
-            ok=adapter_module._has_gaia_official_dataset(),
-            reason=None
-            if adapter_module._has_gaia_official_dataset()
-            else GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
-            benchmarks=("gaia", "gaia_orchestrated"),
-        ),
-        RuntimeGate(
             id="hyperliquid_live",
             ok=adapter_module._has_hyperliquid_live_backend(),
             reason=None
@@ -77,6 +69,14 @@ def build_runtime_gate_report(_workspace_root: Path | None = None) -> RuntimeGat
             if adapter_module._has_swe_bench_docker_backend()
             else SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
             benchmarks=("swe_bench", "swe_bench_orchestrated"),
+        ),
+        RuntimeGate(
+            id="osworld_docker",
+            ok=adapter_module._has_osworld_docker_backend(),
+            reason=None
+            if adapter_module._has_osworld_docker_backend()
+            else OSWORLD_DOCKER_UNAVAILABLE_REASON,
+            benchmarks=("osworld",),
         ),
         RuntimeGate(
             id="hermes_sandbox",

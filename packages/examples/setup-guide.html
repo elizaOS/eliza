@@ -138,7 +138,7 @@
         </li>
         <li>
           Create a Roblox Open Cloud API key:
-          <a href="https://create.roblox.com/docs/cloud/open-cloud/api-keys">
+          <a href="https://create.roblox.com/docs/cloud/auth/api-keys">
             API keys
           </a>.
           Enable the experience/universe permissions needed for
@@ -167,7 +167,7 @@ bun run start</code></pre>
       <p>
         For local Studio testing, expose the bridge with a tunnel such as
         <a href="https://ngrok.com/docs/getting-started/">ngrok</a> or
-        <a href="https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/get-started/create-local-tunnel/">
+        <a href="https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/do-more-with-tunnels/local-management/create-local-tunnel/">
           Cloudflare Tunnel
         </a>
         and put the public URL plus shared secret into the Studio script.
@@ -229,8 +229,8 @@ bun run start</code></pre>
           <tr>
             <td>GCP</td>
             <td>
-              <a href="https://cloud.google.com/sdk/docs/install">Google Cloud CLI</a>,
-              <a href="https://cloud.google.com/run/docs/quickstarts/build-and-deploy/deploy-nodejs-service">Cloud Run Node.js</a>
+              <a href="https://docs.cloud.google.com/sdk/docs/install-sdk">Google Cloud CLI</a>,
+              <a href="https://docs.cloud.google.com/run/docs/quickstarts/build-and-deploy/deploy-nodejs-service">Cloud Run Node.js</a>
             </td>
             <td><code>cd packages/examples/gcp &amp;&amp; bun run build</code></td>
           </tr>
@@ -245,7 +245,7 @@ bun run start</code></pre>
           <tr>
             <td>Convex</td>
             <td>
-              <a href="https://docs.convex.dev/quickstart">Convex quickstart</a>,
+              <a href="https://docs.convex.dev/tutorial">Convex quickstart</a>,
               <a href="https://docs.convex.dev/production/environment-variables/">Convex env vars</a>
             </td>
             <td><code>cd packages/examples/convex &amp;&amp; convex dev</code></td>
@@ -262,14 +262,14 @@ bun run start</code></pre>
             <td>Vercel</td>
             <td>
               <a href="https://vercel.com/docs/cli">Vercel CLI</a>,
-              <a href="https://vercel.com/docs/projects/environment-variables">Vercel env vars</a>
+              <a href="https://vercel.com/docs/environment-variables">Vercel env vars</a>
             </td>
             <td><code>cd packages/examples/vercel &amp;&amp; bun run dev</code></td>
           </tr>
           <tr>
             <td>Social bots</td>
             <td>
-              <a href="https://discord.com/developers/docs/quick-start/getting-started">Discord apps</a>,
+              <a href="https://docs.discord.com/developers/quick-start/getting-started">Discord apps</a>,
               <a href="https://core.telegram.org/bots/tutorial">Telegram bots</a>,
               <a href="https://docs.bsky.app/docs/get-started">Bluesky API</a>,
               <a href="https://docs.neynar.com/">Neynar/Farcaster</a>
@@ -287,9 +287,9 @@ bun run start</code></pre>
           <tr>
             <td>Wallet/trading</td>
             <td>
-              <a href="https://docs.solana.com/cli/install-solana-cli-tools">Solana CLI</a>,
+              <a href="https://solana.com/docs/intro/installation">Solana CLI</a>,
               <a href="https://docs.birdeye.so/">Birdeye API</a>,
-              <a href="https://docs.li.fi/introduction">LI.FI</a>
+              <a href="https://docs.li.fi/introduction/introduction">LI.FI</a>
             </td>
             <td>Use paper trading and isolated test wallets first.</td>
           </tr>
@@ -299,11 +299,11 @@ bun run start</code></pre>
       <h2>Model Keys</h2>
       <p>
         Most server examples need one model provider key. Common options are
-        <a href="https://platform.openai.com/api-keys">OpenAI</a>,
-        <a href="https://console.anthropic.com/settings/keys">Anthropic</a>,
+        <a href="https://developers.openai.com/api/docs/quickstart#create-and-export-an-api-key">OpenAI</a>,
+        <a href="https://platform.claude.com/settings/keys">Anthropic</a>,
         <a href="https://aistudio.google.com/app/apikey">Google GenAI</a>,
         <a href="https://console.groq.com/keys">Groq</a>,
-        <a href="https://console.x.ai/">xAI</a>, and
+        <a href="https://docs.x.ai/developers/quickstart">xAI</a>, and
         <a href="https://openrouter.ai/settings/keys">OpenRouter</a>.
       </p>
     </main>

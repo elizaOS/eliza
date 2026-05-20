@@ -1,0 +1,129 @@
+{
+  "claim_boundary": "EVT inspection plan and blank results template; not completed physical test evidence.",
+  "status": "evt_inspection_plan_ready",
+  "measurement_count": 10,
+  "results_template": "mechanical/e1-phone/review/evt-inspection-results-template.csv",
+  "measurements": [
+    {
+      "id": "power_button_actuation_force",
+      "interface_case": "power_button_force_travel_pressure",
+      "fixture_case": "button_force_travel_fixture",
+      "fixture": "evt_fixture_button_force_probe",
+      "sample_count": 10,
+      "units": "N",
+      "nominal": 1.6,
+      "min": 1.2,
+      "max": 2.2,
+      "method": "Load-cell press normal to cap center until tactile event."
+    },
+    {
+      "id": "power_button_travel",
+      "interface_case": "power_button_force_travel_pressure",
+      "fixture_case": "button_force_travel_fixture",
+      "fixture": "evt_fixture_button_force_probe",
+      "sample_count": 10,
+      "units": "mm",
+      "nominal": 0.35,
+      "min": 0.25,
+      "max": 0.55,
+      "method": "Dial indicator travel from cap free height to tactile event."
+    },
+    {
+      "id": "volume_button_actuation_force",
+      "interface_case": "volume_button_force_travel_pressure",
+      "fixture_case": "button_force_travel_fixture",
+      "fixture": "evt_fixture_button_force_probe",
+      "sample_count": 10,
+      "units": "N",
+      "nominal": 1.5,
+      "min": 1.2,
+      "max": 2.2,
+      "method": "Load-cell press at volume cap center and both cap ends."
+    },
+    {
+      "id": "usb_c_insertion_force_no_rub",
+      "interface_case": "usb_c_insertion_capture",
+      "fixture_case": "usb_c_insertion_fixture",
+      "fixture": "evt_fixture_usb_c_insertion_gauge",
+      "sample_count": 5,
+      "units": "N",
+      "nominal": null,
+      "min": 0.0,
+      "max": 35.0,
+      "method": "Insert USB-C gauge/plug along port axis and record peak insertion force and aperture rub."
+    },
+    {
+      "id": "screen_adhesive_compression",
+      "interface_case": "screen_bond_and_fpc_connection",
+      "fixture_case": "screen_bond_clamp_fixture",
+      "fixture": "evt_fixture_screen_bond_clamp_frame",
+      "sample_count": 5,
+      "units": "mm",
+      "nominal": 0.045,
+      "min": 0.03,
+      "max": 0.08,
+      "method": "Measure bond-line compression witness after clamp cure cycle."
+    },
+    {
+      "id": "display_fpc_bend_radius",
+      "interface_case": "screen_bond_and_fpc_connection",
+      "fixture_case": "screen_bond_clamp_fixture",
+      "fixture": "evt_fixture_screen_bond_clamp_frame",
+      "sample_count": 5,
+      "units": "mm",
+      "nominal": 1.0,
+      "min": 1.0,
+      "max": null,
+      "method": "Inspect FPC bend path after screen placement and board connection."
+    },
+    {
+      "id": "rear_camera_lens_center_error",
+      "interface_case": "camera_glass_and_under_glass_strategy",
+      "fixture_case": "camera_alignment_fixture",
+      "fixture": "evt_fixture_rear_camera_alignment_pin",
+      "sample_count": 5,
+      "units": "mm",
+      "nominal": 0.0,
+      "min": 0.0,
+      "max": 0.25,
+      "method": "Insert rear lens datum pin and measure radial offset to camera cover window."
+    },
+    {
+      "id": "front_camera_under_glass_center_error",
+      "interface_case": "camera_glass_and_under_glass_strategy",
+      "fixture_case": "camera_alignment_fixture",
+      "fixture": "evt_fixture_front_camera_alignment_pin",
+      "sample_count": 5,
+      "units": "mm",
+      "nominal": 0.0,
+      "min": 0.0,
+      "max": 0.3,
+      "method": "Inspect under-glass aperture alignment through cover glass."
+    },
+    {
+      "id": "bottom_audio_leak_delta",
+      "interface_case": "bottom_audio_port_alignment",
+      "fixture_case": "acoustic_leak_fixture",
+      "fixture": "evt_fixture_bottom_acoustic_leak_mask",
+      "sample_count": 5,
+      "units": "dB",
+      "nominal": 0.0,
+      "min": 0.0,
+      "max": 3.0,
+      "method": "Compare masked/unmasked bottom speaker and mic path leakage at fixed tone."
+    },
+    {
+      "id": "handset_receiver_leak_delta",
+      "interface_case": "handset_receiver_gasket_stack",
+      "fixture_case": "acoustic_leak_fixture",
+      "fixture": "evt_fixture_earpiece_leak_mask",
+      "sample_count": 5,
+      "units": "dB",
+      "nominal": 0.0,
+      "min": 0.0,
+      "max": 3.0,
+      "method": "Compare masked/unmasked receiver leakage around handset gasket."
+    }
+  ],
+  "release_rule": "Every measurement row must be populated for each EVT sample and pass before claiming physical interface validation."
+}

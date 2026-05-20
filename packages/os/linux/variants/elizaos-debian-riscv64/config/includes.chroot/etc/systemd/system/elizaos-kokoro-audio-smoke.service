@@ -1,0 +1,14 @@
+[Unit]
+Description=elizaOS Kokoro llama.cpp audio smoke
+After=elizaos-first-boot.service sound.target
+Wants=sound.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/lib/elizaos/kokoro-audio-smoke.sh
+StandardOutput=journal+console
+StandardError=journal+console
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target
