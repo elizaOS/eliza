@@ -1,0 +1,84 @@
+{
+  "generatedAt": "2026-05-20T18:18:18.930Z",
+  "conclusion": "DFlash draft-one now has measured Metal speedups on 0.8B, 2B, and 4B. Current MTP remains slower/flat and is still a blocker for the full objective.",
+  "rows": [
+    {
+      "file": "evidence/speculative/rerun-20260520/true-dflash-0_8b-200step-metal-n1-512.json",
+      "speculator": "dflash",
+      "tier": "0_8b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 15,
+      "withSpec": 16.4,
+      "speedup": 1.0933333333333333,
+      "drafted": 255,
+      "accepted": 255,
+      "acceptance": 1
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/true-dflash-2b-200step-q4-metal-n1-512-rerun.json",
+      "speculator": "dflash",
+      "tier": "2b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 2.5,
+      "withSpec": 3.3,
+      "speedup": 1.3199999999999998,
+      "drafted": 255,
+      "accepted": 255,
+      "acceptance": 1
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/true-dflash-4b-existing-metal-n1-512-rerun.json",
+      "speculator": "dflash",
+      "tier": "4b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 3.6,
+      "withSpec": 5,
+      "speedup": 1.3888888888888888,
+      "drafted": 255,
+      "accepted": 255,
+      "acceptance": 1
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/mtp-0_8b-n1-512-metal.json",
+      "speculator": "mtp",
+      "tier": "0_8b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 249,
+      "withSpec": 172.6,
+      "speedup": 0.6931726907630522,
+      "drafted": 340,
+      "accepted": 170,
+      "acceptance": 0.5
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/mtp-2b-n1-512-metal.json",
+      "speculator": "mtp",
+      "tier": "2b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 113.3,
+      "withSpec": 87.1,
+      "speedup": 0.7687555163283318,
+      "drafted": 324,
+      "accepted": 187,
+      "acceptance": 0.5771604938271605
+    },
+    {
+      "file": "evidence/speculative/rerun-20260520/mtp-4b-n1-512-metal.json",
+      "speculator": "mtp",
+      "tier": "4b",
+      "status": "pass",
+      "tokens": 512,
+      "baseline": 65.9,
+      "withSpec": 65.6,
+      "speedup": 0.9954476479514414,
+      "drafted": 305,
+      "accepted": 205,
+      "acceptance": 0.6721311475409836
+    }
+  ]
+}

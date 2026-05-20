@@ -1357,7 +1357,7 @@ software-bsp-test:
 evidence-regression-test: no-hardware-action-check software-bsp-test physical-gates-test product-feature-gates-check product-check-status-test benchmark-sim-metrics-test benchmark-calibration-test benchmark-parser-test benchmark-efficiency-scope-test software-bsp-scope-test cpu-ap-scope-test npu-scope-test renode-status-test cocotb cocotb-npu cocotb-contract cocotb-cpu record-tool-versions strict-release-gate-test
 	@echo "evidence regression tests complete"
 
-.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-assets-dry-run ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-fixture-placement-train ai-eda-candidate-manifests-check ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
+.PHONY: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-external-assets-dry-run ai-eda-internal-schemas-check ai-eda-internal-fixtures ai-eda-external-fixture-convert ai-eda-e1-openlane-convert ai-eda-openlane-flow-labels ai-eda-pd-surrogate-smoke ai-eda-fixture-placement-train ai-eda-candidate-manifests-check ai-eda-tool-actions-check ai-eda-logic-synthesis-recipes ai-eda-logic-synthesis-baseline ai-eda-cuda-preflight ai-eda-cuda-payload
 ai-eda-source-inventory-check:
 	@$(PYTHON) scripts/check_ai_eda_source_inventory.py
 
@@ -1381,11 +1381,21 @@ ai-eda-e1-openlane-convert: ai-eda-internal-schemas-check
 	@$(PYTHON) scripts/ai_eda/convert_e1_openlane_to_internal_records.py --run-id validation
 	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/e1_openlane_conversion/validation/records
 
+ai-eda-openlane-flow-labels: ai-eda-e1-openlane-convert
+	@$(PYTHON) scripts/ai_eda/parse_openlane_metrics_to_flow_run.py --run-id validation
+	@$(PYTHON) scripts/ai_eda/check_internal_dataset_schemas.py --records-dir build/ai_eda/openlane_flow_labels/validation/records
+
+ai-eda-pd-surrogate-smoke: ai-eda-openlane-flow-labels
+	@$(PYTHON) scripts/ai_eda/train_pd_surrogate_smoke.py --run-id validation
+
 ai-eda-fixture-placement-train: ai-eda-internal-fixtures
 	@$(PYTHON) scripts/ai_eda/train_fixture_placement_smoke.py --run-id validation --device cpu
 
 ai-eda-candidate-manifests-check: ai-eda-fixture-placement-train
 	@$(PYTHON) scripts/ai_eda/check_candidate_manifests.py
+
+ai-eda-tool-actions-check: ai-eda-internal-schemas-check
+	@$(PYTHON) scripts/ai_eda/check_tool_action_schemas.py
 
 ai-eda-logic-synthesis-recipes:
 	@$(PYTHON) scripts/ai_eda/generate_logic_synthesis_recipe_corpus.py --run-id validation
@@ -1399,7 +1409,7 @@ ai-eda-cuda-preflight:
 ai-eda-cuda-payload:
 	@$(PYTHON) scripts/ai_eda/package_cuda_training_payload.py --run-id validation
 
-docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check
+docs-check: ai-eda-source-inventory-check ai-eda-external-assets-check ai-eda-internal-schemas-check ai-eda-candidate-manifests-check ai-eda-tool-actions-check
 	@$(PYTHON) scripts/docs_check.py
 
 tool-versions:

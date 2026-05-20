@@ -169,7 +169,7 @@ jobs:
           git -C "${TARGET_DIR}" rev-parse HEAD
 
       - name: Cache omnivoice cmake build dir
-        uses: actions/cache@v5
+        uses: actions/cache@v4
         with:
           path: plugins/plugin-local-inference/native/omnivoice.cpp/build
           key: omnivoice-build-${{ matrix.target }}-${{ hashFiles('plugins/plugin-local-inference/native/build-omnivoice.mjs') }}
@@ -222,7 +222,7 @@ jobs:
           echo "stage_dir=$STAGE_DIR" >> "$GITHUB_OUTPUT"
 
       - name: Upload libomnivoice artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: libomnivoice-${{ matrix.target }}
           path: ${{ steps.stage.outputs.stage_dir }}/*

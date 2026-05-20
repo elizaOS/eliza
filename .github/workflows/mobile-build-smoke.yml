@@ -27,12 +27,12 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
@@ -154,7 +154,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -165,7 +165,7 @@ jobs:
           java-version: 21
 
       - name: Setup Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v4
         with:
           node-version: 24
 
@@ -253,7 +253,7 @@ jobs:
 
       - name: Upload debug APK
         if: ${{ hashFiles('packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk') != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: android-debug-apk
           path: packages/app-core/platforms/android/app/build/outputs/apk/debug/app-debug.apk

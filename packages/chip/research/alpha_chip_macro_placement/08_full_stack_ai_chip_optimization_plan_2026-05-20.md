@@ -403,9 +403,29 @@ Implemented schema foundation:
   conversion captures 16 existing RTL files and one fixed SRAM macro placement,
   but records `BLOCKED_NO_OPENLANE_RUN_ARTIFACTS` until deterministic OpenLane
   reports are available.
+- `docs/spec-db/ai-eda/openlane-metrics-fixtures/e1_final_metrics.clean.json`
+  captures the OpenLane 2 `final/metrics.json` key shape expected by existing
+  PD closure gates.
+- `scripts/ai_eda/parse_openlane_metrics_to_flow_run.py` normalizes OpenLane
+  timing, area, wirelength, DRC, antenna, utilization, and power metrics into an
+  `eda.flow_run.v1` record. With the fixture metrics it reports
+  `fixture_metrics_parser_smoke_no_ppa_claim`; with a real run it must still
+  be reviewed for deterministic provenance and train/test split assignment.
+- `scripts/ai_eda/train_pd_surrogate_smoke.py` consumes normalized
+  `eda.flow_run.v1` labels and emits a dependency-free constant-mean surrogate,
+  eval report, and training-run manifest. This proves the PD surrogate artifact
+  path but makes no generalization, signoff, or PPA claim.
 - `scripts/ai_eda/check_candidate_manifests.py` validates generated
   `eda.e1_candidate.v1` manifests and refuses accepted candidates unless every
   required gate is completed.
+- `docs/spec-db/ai-eda/internal-dataset-schemas.yaml` now also defines
+  `eda.tool_action.v1` for typed EDA tool actions before any write-capable
+  agent. The schema requires command argv/cwd, read scope, write scope, input
+  artifacts, generated artifacts, approval, execution log pointers, and status.
+- `scripts/ai_eda/check_tool_action_manifests.py` enforces the initial command
+  allowlist, quarantined write paths, source-change/release-claim boundaries,
+  dry-run-only semantics for proposed actions, and approval requirements for
+  any future execute mode.
 - `make ai-eda-internal-schemas-check` and `make ai-eda-internal-fixtures`
   provide local schema/materialization gates. `make ai-eda-fixture-placement-train`
   proves the train -> infer -> candidate-manifest plumbing locally.
@@ -413,8 +433,19 @@ Implemented schema foundation:
   internal-schema conversion plumbing locally.
   `make ai-eda-e1-openlane-convert` proves checked-in E1 OpenLane conversion
   and schema validation locally.
+  `make ai-eda-logic-synthesis-baseline` generates the first E1 Yosys/ABC
+  recipe corpus and local baseline report. On this Mac, DMA passes four Yosys
+  recipes, NPU passes two generic Yosys recipes, NPU generic ABC mapping times
+  out under the interactive 20 second limit, and OpenABC-D remains blocked until
+  external assets are fetched and reviewed.
+  `make ai-eda-openlane-flow-labels` proves OpenLane metrics parsing into
+  `eda.flow_run.v1` locally using fixture metrics.
+  `make ai-eda-pd-surrogate-smoke` proves normalized flow labels can feed
+  model/eval artifacts locally.
   `make ai-eda-candidate-manifests-check` validates the fixture-generated
   candidate manifest.
+  `make ai-eda-tool-actions-check` validates the initial dry-run
+  `eda.tool_action.v1` fixture and command governance policy.
   `make docs-check` depends on the schema checker.
 
 Converters to add or complete:
@@ -990,6 +1021,7 @@ not as:
 - [x] Convert checked-in E1 OpenLane SKY130 config into internal
   `eda.design_bundle.v1`, `eda.placement_case.v1`, and blocked
   `eda.flow_run.v1` records.
+- [x] Add OpenLane final metrics parser and fixture label smoke.
 - [ ] Convert real MacroPlacement Ariane and one generated E1 softmacro case after external fetch/pin.
 - [ ] Convert real ChiPBench-D metadata and one sample case after license/storage review.
 - [ ] Convert one real CircuitNet/iDATA graph sample after license/storage review.
@@ -1000,11 +1032,11 @@ not as:
 - [x] Add model-card template for placement policies.
 - [x] Add dataset-card template for converted corpora.
 - [x] Add candidate manifest schema and checker.
-- [ ] Add logic-synthesis recipe corpus generator.
-- [ ] Add OpenABC-D/ABC/Yosys policy baseline.
-- [ ] Add PD surrogate training/eval scripts.
+- [x] Add logic-synthesis recipe corpus generator.
+- [x] Add OpenABC-D/ABC/Yosys policy baseline.
+- [x] Add PD surrogate training/eval smoke.
 - [ ] Extend cocotb stimulus search beyond NPU descriptor queue.
-- [ ] Define typed EDA tool-action schema before any write-capable agent.
+- [x] Define typed EDA tool-action schema before any write-capable agent.
 - [ ] Keep `alphachip-checkpoint-blocker.md` monthly re-audits.
 
 ## Bottom line

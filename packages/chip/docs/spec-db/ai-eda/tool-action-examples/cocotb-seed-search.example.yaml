@@ -1,0 +1,42 @@
+schema: eda.tool_action.v1
+id: cocotb-npu-seed-search-fixture
+action_type: cocotb_seed
+intent: Propose quarantined NPU descriptor queue stimulus seeds.
+mode: dry_run
+claim_boundary: example_tool_action_only_no_test_evidence_or_release_claim
+scope:
+  read_paths:
+    - verify/ai_eda/coverage_bins/e1_npu_descriptor_queue.yaml
+    - verify/regression_seeds/ai_eda_npu_descriptor_queue.yaml
+  write_paths:
+    - build/ai_eda/cocotb_stimulus/
+  forbidden_paths:
+    - verify/cocotb/
+    - rtl/
+command:
+  tool: python
+  argv:
+    - scripts/ai_eda/run_cocotb_stimulus_search.py
+    - --dry-run
+    - --run-id
+    - validation
+inputs:
+  manifests:
+    - verify/ai_eda/coverage_bins/e1_npu_descriptor_queue.yaml
+outputs:
+  report: build/ai_eda/cocotb_stimulus/validation/coverage_report.json
+  artifacts:
+    - build/ai_eda/cocotb_stimulus/validation/
+safety:
+  source_tree_write_allowed: false
+  release_use_allowed: false
+  deterministic_replay_required: true
+  human_review_required: true
+replay:
+  dry_run_command: python3 scripts/ai_eda/run_cocotb_stimulus_search.py --dry-run --run-id validation
+  verification_gates:
+    - cocotb-npu
+    - coverage_review
+decision:
+  status: dry_run_only
+  reason: generated stimulus cannot become evidence until deterministic cocotb regression passes
