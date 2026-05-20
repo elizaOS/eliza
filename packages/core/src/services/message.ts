@@ -6319,7 +6319,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 	}
 
 	const mentionsCommand =
-		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|disk (?:space|usage)|storage usage)\b/iu.test(
+		/\b(?:git|df|du|ls|pwd|cat|sed|awk|rg|grep|curl|ps|systemctl|journalctl|docker|bun|npm|node|sqlite3|gh|submodules?|disk (?:space|usage)|storage usage)\b/iu.test(
 			normalized,
 		);
 	const asksToInspect =
@@ -6328,11 +6328,21 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|workspace|worktree|repo|repository|branch|head|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|logs?|service|systemd)\b/iu.test(
+			normalized,
+		);
+	const asksRepoStateQuestion =
+		/\b(?:is|are|what|which|where)\b[\s\S]{0,140}\b(?:submodules?|commit|branch|head|checked\s+out|worktree|repo|repository)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local(?:ly)?|running|workspace|worktree|repo|repository|vendored|submodules?|checked\s+out)\b/iu.test(
 			normalized,
 		);
 
-	return mentionsCommand && asksToInspect && mentionsLocalSurface;
+	return (
+		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
+		asksRepoStateQuestion
+	);
 }
 
 function looksLikeActionExplanationRequest(text: string): boolean {
