@@ -1,0 +1,47 @@
+{
+  "name": "@elizaos/plugin-worker-runtime",
+  "version": "0.0.1",
+  "description": "Worker-side bootstrap for remote-mode elizaOS plugins. Imports the author's Plugin object, announces its surfaces over the wire envelope, dispatches worker-rpc invocations, and exposes a RuntimeProxy that marshals runtime calls back to the host.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "license": "MIT",
+  "private": true,
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test src/",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src",
+    "format": "bunx @biomejs/biome format src",
+    "format:fix": "bunx @biomejs/biome format --write src"
+  },
+  "dependencies": {
+    "@elizaos/core": "workspace:*",
+    "@elizaos/plugin-remote-manifest": "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.12",
+    "typescript": "^6.0.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./bootstrap": {
+      "types": "./dist/bootstrap.d.ts",
+      "import": "./dist/bootstrap.js",
+      "default": "./dist/bootstrap.js"
+    },
+    "./runtime-proxy": {
+      "types": "./dist/runtime-proxy.d.ts",
+      "import": "./dist/runtime-proxy.js",
+      "default": "./dist/runtime-proxy.js"
+    }
+  }
+}
