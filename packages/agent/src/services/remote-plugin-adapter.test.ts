@@ -214,15 +214,19 @@ const remoteModule: RemotePluginModuleManifest = {
 function hashRemotePluginModuleForTest(
   module: RemotePluginModuleManifest,
 ): string {
-  const { capabilityEndpointId: _endpointId, provenance: _provenance, ...rest } =
-    module;
+  const {
+    capabilityEndpointId: _endpointId,
+    provenance: _provenance,
+    ...rest
+  } = module;
   return createHash("sha256")
     .update(JSON.stringify(canonicalizeForTest(rest)), "utf8")
     .digest("hex");
 }
 
 function canonicalizeForTest(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map((entry) => canonicalizeForTest(entry));
+  if (Array.isArray(value))
+    return value.map((entry) => canonicalizeForTest(entry));
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
@@ -2971,7 +2975,9 @@ describe("remote plugin adapter", () => {
       await expect(
         bootstrapRemoteCapabilityPlugins(restartRuntime),
       ).resolves.toMatchObject({
-        registered: [expect.objectContaining({ name: "@remote/cloud-product" })],
+        registered: [
+          expect.objectContaining({ name: "@remote/cloud-product" }),
+        ],
         unloaded: [],
         skipped: [],
         trustDecisions: [
@@ -3502,12 +3508,12 @@ describe("remote plugin adapter", () => {
         "utf8",
       );
 
-    const builtBundlePath = join(distDir, "remote-view.js");
-    const buildResult = await buildRemoteViewFixtures({
-      entryPoints: [viewSource],
-      outfile: builtBundlePath,
-    });
-    expect(buildResult.errors).toHaveLength(0);
+      const builtBundlePath = join(distDir, "remote-view.js");
+      const buildResult = await buildRemoteViewFixtures({
+        entryPoints: [viewSource],
+        outfile: builtBundlePath,
+      });
+      expect(buildResult.errors).toHaveLength(0);
 
       const serverSource = join(srcDir, "capability-server.mjs");
       await writeFile(
@@ -3897,22 +3903,22 @@ export function createRouter() {
       await mkdir(srcDir, { recursive: true });
       await mkdir(distDir, { recursive: true });
 
-    const viewSource = join(srcDir, "process-view.ts");
-    const builtBundlePath = join(distDir, "process-view.js");
-    await writeFile(
-      viewSource,
-      [
-        "export const marker = 'process-built-remote-view';",
-        "export const source = 'child-process';",
-        "",
-      ].join("\n"),
-      "utf8",
-    );
-    const buildResult = await buildRemoteViewFixtures({
-      entryPoints: [viewSource],
-      outfile: builtBundlePath,
-    });
-    expect(buildResult.errors).toHaveLength(0);
+      const viewSource = join(srcDir, "process-view.ts");
+      const builtBundlePath = join(distDir, "process-view.js");
+      await writeFile(
+        viewSource,
+        [
+          "export const marker = 'process-built-remote-view';",
+          "export const source = 'child-process';",
+          "",
+        ].join("\n"),
+        "utf8",
+      );
+      const buildResult = await buildRemoteViewFixtures({
+        entryPoints: [viewSource],
+        outfile: builtBundlePath,
+      });
+      expect(buildResult.errors).toHaveLength(0);
 
       const serverSource = join(srcDir, "capability-process.mjs");
       await writeFile(

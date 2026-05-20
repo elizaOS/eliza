@@ -177,6 +177,13 @@ let lastPendingRetry: {
   trigger: "manual" | "automatic";
   result?: RetryPendingRepliesResult;
 } | null = null;
+const shortcutsInputContract = {
+  inputType: "json-file",
+  requiredKeys: ["recipient", "message"],
+  optionalKeys: ["chatGuid", "gatewayPhoneNumber", "gatewayPhoneLabel"],
+  description:
+    "Read Shortcut Input as a file, parse JSON, send message to recipient, and finish without prompting.",
+};
 
 function readSendMethod(): BlueBubblesSendMethod {
   if (process.env.BLUEBUBBLES_SEND_METHOD === "private-api") {
@@ -572,6 +579,7 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
       sendMethod: blueBubblesSendMethod,
       sendTimeoutMs: blueBubblesSendTimeoutMs,
       shortcutsSendShortcutName,
+      shortcutsInputContract,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
       pendingRepliesPath,
@@ -714,7 +722,7 @@ async function gatewayDoctor(): Promise<{
       next.push("Connect the BlueBubbles private API helper and disable SIP for private-api mode.");
     } else if (blueBubblesSendMethod === "shortcuts") {
       next.push(
-        `Install a Shortcut named "${shortcutsSendShortcutName}" and keep /usr/bin/shortcuts available.`,
+        `Install a Shortcut named "${shortcutsSendShortcutName}" that reads JSON input keys ${shortcutsInputContract.requiredKeys.join(", ")} and sends without prompting.`,
       );
     }
   }
@@ -1002,6 +1010,7 @@ async function handleRequest(
       sendMethod: blueBubblesSendMethod,
       sendTimeoutMs: blueBubblesSendTimeoutMs,
       shortcutsSendShortcutName,
+      shortcutsInputContract,
       gatewayPhoneNumber,
       gatewayPhoneLabel,
       pendingRepliesPath,

@@ -17,6 +17,7 @@ from benchmarks.orchestrator.code_agent_matrix import (
     build_benchmark_gate,
     build_coverage_gate,
     build_coverage_summary,
+    build_efficiency_queue,
     build_improvement_queue,
     build_required_stats_gate,
     build_report_gate,
@@ -312,6 +313,65 @@ def test_exit_code_summary_documents_gate_contract() -> None:
     assert exit_codes["required_stats_failed"]["code"] == 5
     assert exit_codes["coverage_gate_failed"]["code"] == 6
     assert exit_codes["report_gate_failed"]["code"] == 7
+
+
+def test_efficiency_queue_flags_token_call_and_cache_regressions() -> None:
+    results = [
+        _cell_result(
+            benchmark="swe_bench",
+            adapter="elizaos",
+            right=2,
+            wrong=0,
+            input_tokens=150,
+            output_tokens=50,
+            cached_percent=10.0,
+            llm_calls=5,
+        ),
+        _cell_result(
+            benchmark="swe_bench",
+            adapter="opencode",
+            right=2,
+            wrong=0,
+            input_tokens=90,
+            output_tokens=30,
+            cached_percent=40.0,
+            llm_calls=3,
+        ),
+    ]
+    summary = summarize_results(results)
+    head_to_head = summary["head_to_head"]
+    markdown = render_markdown(summary)
+
+    queue = build_efficiency_queue(head_to_head)
+
+    assert summary["efficiency_queue"] == queue
+    assert "## Efficiency Queue" in markdown
+    assert (
+        "| swe_bench | comparable | target used more total tokens than baseline; "
+        "target made more LLM calls than baseline; target cached-token percentage "
+        "is below baseline | 0.0000 | 80 | -30.00 | 2 |"
+    ) in markdown
+    assert queue == [
+        {
+            "benchmark": "swe_bench",
+            "status": "comparable",
+            "reasons": [
+                "target used more total tokens than baseline",
+                "target made more LLM calls than baseline",
+                "target cached-token percentage is below baseline",
+            ],
+            "accuracy_delta": 0.0,
+            "total_token_delta": 80,
+            "llm_call_delta": 2,
+            "cached_token_percent_delta": -30.0,
+            "target_total_tokens": 200,
+            "baseline_total_tokens": 120,
+            "target_llm_call_count": 5,
+            "baseline_llm_call_count": 3,
+            "target_cached_token_percent": 10.0,
+            "baseline_cached_token_percent": 40.0,
+        }
+    ]
 
 
 def test_classifies_common_failure_shapes() -> None:

@@ -127,7 +127,12 @@ export class XRSessionService extends Service {
     agentBaseUrl: string,
     config?: XRPanelConfig,
   ): void {
-    this.sendControl(connectionId, { type: "view_open", viewId, agentBaseUrl, config });
+    this.sendControl(connectionId, {
+      type: "view_open",
+      viewId,
+      agentBaseUrl,
+      config,
+    });
   }
 
   closeView(connectionId: string, viewId: string): void {
@@ -138,13 +143,22 @@ export class XRSessionService extends Service {
     this.sendControl(connectionId, { type: "view_switch", viewId });
   }
 
-  resizeView(connectionId: string, viewId: string, config: XRPanelConfig): void {
+  resizeView(
+    connectionId: string,
+    viewId: string,
+    config: XRPanelConfig,
+  ): void {
     this.sendControl(connectionId, { type: "view_resize", viewId, config });
   }
 
   sendViewsCatalog(
     connectionId: string,
-    views: Array<{ id: string; label: string; icon?: string; description?: string }>,
+    views: Array<{
+      id: string;
+      label: string;
+      icon?: string;
+      description?: string;
+    }>,
   ): void {
     this.sendControl(connectionId, { type: "views_catalog", views });
   }
@@ -233,7 +247,11 @@ export class XRSessionService extends Service {
     }
 
     if (msg.type === "view_event") {
-      console.info(`[plugin-xr] view event on ${connId}:`, msg.viewId, msg.event);
+      console.info(
+        `[plugin-xr] view event on ${connId}:`,
+        msg.viewId,
+        msg.event,
+      );
       return;
     }
   }

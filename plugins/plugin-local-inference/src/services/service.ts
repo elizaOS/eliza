@@ -660,14 +660,7 @@ export class LocalInferenceService {
 
 function parseImageGenRequiredAccelerator(
 	value: string | undefined,
-):
-	| "cpu"
-	| "cuda"
-	| "vulkan"
-	| "metal"
-	| "coreml"
-	| "tensorrt"
-	| undefined {
+): "cpu" | "cuda" | "vulkan" | "metal" | "coreml" | "tensorrt" | undefined {
 	switch (value?.toLowerCase()) {
 		case "cpu":
 		case "cuda":

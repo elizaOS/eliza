@@ -1434,6 +1434,49 @@ def build_head_to_head(
     }
 
 
+def build_efficiency_queue(head_to_head: dict[str, Any]) -> list[dict[str, Any]]:
+    queue: list[dict[str, Any]] = []
+    for row in head_to_head.get("comparisons", []):
+        if not isinstance(row, dict):
+            continue
+        reasons: list[str] = []
+        total_token_delta = row.get("total_token_delta")
+        llm_call_delta = row.get("llm_call_delta")
+        cached_delta = row.get("cached_token_percent_delta")
+        if isinstance(total_token_delta, (int, float)) and total_token_delta > 0:
+            reasons.append("target used more total tokens than baseline")
+        if isinstance(llm_call_delta, (int, float)) and llm_call_delta > 0:
+            reasons.append("target made more LLM calls than baseline")
+        if isinstance(cached_delta, (int, float)) and cached_delta < 0:
+            reasons.append("target cached-token percentage is below baseline")
+        if not reasons:
+            continue
+        queue.append(
+            {
+                "benchmark": row.get("benchmark"),
+                "status": row.get("status"),
+                "reasons": reasons,
+                "accuracy_delta": row.get("accuracy_delta"),
+                "total_token_delta": total_token_delta,
+                "llm_call_delta": llm_call_delta,
+                "cached_token_percent_delta": cached_delta,
+                "target_total_tokens": row.get("target_total_tokens"),
+                "baseline_total_tokens": row.get("baseline_total_tokens"),
+                "target_llm_call_count": row.get("target_llm_call_count"),
+                "baseline_llm_call_count": row.get("baseline_llm_call_count"),
+                "target_cached_token_percent": row.get("target_cached_token_percent"),
+                "baseline_cached_token_percent": row.get("baseline_cached_token_percent"),
+            }
+        )
+    queue.sort(
+        key=lambda item: (
+            0 if item.get("status") in {"superior", "comparable"} else 1,
+            str(item.get("benchmark") or ""),
+        )
+    )
+    return queue
+
+
 def _artifact_links(result: CellResult | None) -> dict[str, str | None]:
     if result is None:
         return {
@@ -1965,6 +2008,7 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         "coverage": build_coverage_summary(selected_benchmarks),
         "head_to_head": head_to_head,
         "exit_codes": build_exit_code_summary(),
+        "efficiency_queue": build_efficiency_queue(head_to_head),
         "improvement_queue": build_improvement_queue(results, head_to_head),
         "cells": [asdict(result) for result in results],
     }
@@ -2337,6 +2381,31 @@ def render_markdown(summary: dict[str, Any]) -> str:
                     target_llm_calls=fmt(row.get("target_llm_call_count"), 0),
                     baseline_llm_calls=fmt(row.get("baseline_llm_call_count"), 0),
                     llm_delta=fmt(row.get("llm_call_delta"), 0),
+                )
+            )
+    efficiency_queue = summary.get("efficiency_queue")
+    if isinstance(efficiency_queue, list) and efficiency_queue:
+        lines.extend(
+            [
+                "",
+                "## Efficiency Queue",
+                "",
+                "| benchmark | status | reasons | accuracy delta | total token delta | cached % delta | LLM call delta |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for item in efficiency_queue:
+            if not isinstance(item, dict):
+                continue
+            lines.append(
+                "| {benchmark} | {status} | {reasons} | {accuracy_delta} | {token_delta} | {cached_delta} | {llm_delta} |".format(
+                    benchmark=item.get("benchmark", ""),
+                    status=item.get("status", ""),
+                    reasons="; ".join(str(reason) for reason in item.get("reasons") or []),
+                    accuracy_delta=fmt(item.get("accuracy_delta")),
+                    token_delta=fmt(item.get("total_token_delta"), 0),
+                    cached_delta=fmt(item.get("cached_token_percent_delta"), 2),
+                    llm_delta=fmt(item.get("llm_call_delta"), 0),
                 )
             )
     token_by_adapter = summary.get("token_by_adapter")

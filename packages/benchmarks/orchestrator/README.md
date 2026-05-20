@@ -250,6 +250,12 @@ Use `--compare-summary` on any full or queued rerun to add a previous-summary
 comparison table showing ElizaOS accuracy, token, cached-token, and LLM-call
 deltas by benchmark.
 
+When ElizaOS is accuracy-comparable but less efficient, `summary.json` includes
+an `efficiency_queue` and the markdown includes an Efficiency Queue section.
+This flags higher total-token use, extra LLM calls, and lower cached-token
+percentage versus OpenCode so optimization work is not hidden by a passing
+accuracy gate.
+
 Use `--enforce-comparable` in CI or release gates to exit nonzero unless every
 selected benchmark is `superior` or `comparable` for ElizaOS against OpenCode.
 Inferior, weak, and missing comparisons block the gate. The generated

@@ -1,5 +1,14 @@
-import type { Action, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
-import { XR_SERVICE_TYPE, type XRSessionService } from "../services/xr-session-service.ts";
+import type {
+  Action,
+  HandlerCallback,
+  IAgentRuntime,
+  Memory,
+  State,
+} from "@elizaos/core";
+import {
+  XR_SERVICE_TYPE,
+  type XRSessionService,
+} from "../services/xr-session-service.ts";
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -26,17 +35,26 @@ export const xrOpenViewAction: Action = {
   examples: [
     [
       { name: "user", content: { text: "open the wallet in XR" } },
-      { name: "agent", content: { text: "Opening wallet view on your headset.", action: "XR_OPEN_VIEW" } },
+      {
+        name: "agent",
+        content: {
+          text: "Opening wallet view on your headset.",
+          action: "XR_OPEN_VIEW",
+        },
+      },
     ],
     [
       { name: "user", content: { text: "show training dashboard in XR" } },
-      { name: "agent", content: { text: "Launching training panel.", action: "XR_OPEN_VIEW" } },
+      {
+        name: "agent",
+        content: { text: "Launching training panel.", action: "XR_OPEN_VIEW" },
+      },
     ],
   ],
 
   validate: async (runtime): Promise<boolean> => {
     const svc = getService(runtime);
-    return svc !== null && svc.hasActiveConnections();
+    return svc?.hasActiveConnections();
   },
 
   handler: async (
@@ -52,9 +70,13 @@ export const xrOpenViewAction: Action = {
       return false;
     }
 
-    const viewId = (options.viewId as string | undefined) ?? extractViewId(message.content.text ?? "");
+    const viewId =
+      (options.viewId as string | undefined) ??
+      extractViewId(message.content.text ?? "");
     if (!viewId) {
-      await callback?.({ text: "Please specify which view to open. Try XR_LIST_VIEWS to see available views." });
+      await callback?.({
+        text: "Please specify which view to open. Try XR_LIST_VIEWS to see available views.",
+      });
       return false;
     }
 
@@ -81,29 +103,46 @@ export const xrCloseViewAction: Action = {
   examples: [
     [
       { name: "user", content: { text: "close the wallet panel" } },
-      { name: "agent", content: { text: "Closing wallet panel.", action: "XR_CLOSE_VIEW" } },
+      {
+        name: "agent",
+        content: { text: "Closing wallet panel.", action: "XR_CLOSE_VIEW" },
+      },
     ],
   ],
 
   validate: async (runtime) => {
     const svc = getService(runtime);
-    return svc !== null && svc.hasActiveConnections();
+    return svc?.hasActiveConnections();
   },
 
   handler: async (runtime, message, _state, options, callback) => {
     const svc = getService(runtime);
-    if (!svc) { await callback?.({ text: "No XR service." }); return false; }
+    if (!svc) {
+      await callback?.({ text: "No XR service." });
+      return false;
+    }
 
-    const viewId = (options.viewId as string | undefined) ?? extractViewId(message.content.text ?? "");
+    const viewId =
+      (options.viewId as string | undefined) ??
+      extractViewId(message.content.text ?? "");
     const connId = firstConnectionId(svc);
-    if (!connId) { await callback?.({ text: "No XR device connected." }); return false; }
+    if (!connId) {
+      await callback?.({ text: "No XR device connected." });
+      return false;
+    }
 
     if (viewId) {
       svc.closeView(connId, viewId);
       await callback?.({ text: `Closed ${viewId}.` });
     } else {
       // Close all
-      for (const view of ["wallet", "training", "companion", "task-coordinator", "views-manager"]) {
+      for (const view of [
+        "wallet",
+        "training",
+        "companion",
+        "task-coordinator",
+        "views-manager",
+      ]) {
         svc.closeView(connId, view);
       }
       await callback?.({ text: "Closed all XR panels." });
@@ -117,25 +156,40 @@ export const xrCloseViewAction: Action = {
 export const xrSwitchViewAction: Action = {
   name: "XR_SWITCH_VIEW",
   similes: ["SWITCH_XR_VIEW", "XR_GO_TO", "XR_NAVIGATE"],
-  description: "Switches the active (foreground) view on the XR headset without closing others.",
+  description:
+    "Switches the active (foreground) view on the XR headset without closing others.",
   examples: [
     [
       { name: "user", content: { text: "switch to companion in XR" } },
-      { name: "agent", content: { text: "Switching to companion view.", action: "XR_SWITCH_VIEW" } },
+      {
+        name: "agent",
+        content: {
+          text: "Switching to companion view.",
+          action: "XR_SWITCH_VIEW",
+        },
+      },
     ],
   ],
 
   validate: async (runtime) => {
     const svc = getService(runtime);
-    return svc !== null && svc.hasActiveConnections();
+    return svc?.hasActiveConnections();
   },
 
   handler: async (runtime, message, _state, options, callback) => {
     const svc = getService(runtime);
-    if (!svc) { await callback?.({ text: "No XR service." }); return false; }
-    const viewId = (options.viewId as string | undefined) ?? extractViewId(message.content.text ?? "");
+    if (!svc) {
+      await callback?.({ text: "No XR service." });
+      return false;
+    }
+    const viewId =
+      (options.viewId as string | undefined) ??
+      extractViewId(message.content.text ?? "");
     const connId = firstConnectionId(svc);
-    if (!connId || !viewId) { await callback?.({ text: "Specify a view id." }); return false; }
+    if (!connId || !viewId) {
+      await callback?.({ text: "Specify a view id." });
+      return false;
+    }
     svc.switchView(connId, viewId);
     await callback?.({ text: `Switched to ${viewId}.` });
     return true;
@@ -152,7 +206,13 @@ export const xrListViewsAction: Action = {
   examples: [
     [
       { name: "user", content: { text: "what can I open in XR?" } },
-      { name: "agent", content: { text: "Available XR views: wallet, training, companion, task-coordinator.", action: "XR_LIST_VIEWS" } },
+      {
+        name: "agent",
+        content: {
+          text: "Available XR views: wallet, training, companion, task-coordinator.",
+          action: "XR_LIST_VIEWS",
+        },
+      },
     ],
   ],
 
@@ -163,7 +223,10 @@ export const xrListViewsAction: Action = {
 
   handler: async (runtime, _message, _state, options, callback) => {
     const svc = getService(runtime);
-    if (!svc) { await callback?.({ text: "No XR service." }); return false; }
+    if (!svc) {
+      await callback?.({ text: "No XR service." });
+      return false;
+    }
 
     // Collect XR view declarations from all registered plugins
     const xrViews = collectXRViews(runtime);
@@ -196,33 +259,58 @@ export const xrResizeViewAction: Action = {
   examples: [
     [
       { name: "user", content: { text: "make the panel bigger" } },
-      { name: "agent", content: { text: "Scaling up the panel.", action: "XR_RESIZE_VIEW" } },
+      {
+        name: "agent",
+        content: { text: "Scaling up the panel.", action: "XR_RESIZE_VIEW" },
+      },
     ],
     [
       { name: "user", content: { text: "make it smaller and move closer" } },
-      { name: "agent", content: { text: "Resizing and moving panel closer.", action: "XR_RESIZE_VIEW" } },
+      {
+        name: "agent",
+        content: {
+          text: "Resizing and moving panel closer.",
+          action: "XR_RESIZE_VIEW",
+        },
+      },
     ],
   ],
 
   validate: async (runtime) => {
     const svc = getService(runtime);
-    return svc !== null && svc.hasActiveConnections();
+    return svc?.hasActiveConnections();
   },
 
   handler: async (runtime, message, _state, options, callback) => {
     const svc = getService(runtime);
-    if (!svc) { await callback?.({ text: "No XR service." }); return false; }
+    if (!svc) {
+      await callback?.({ text: "No XR service." });
+      return false;
+    }
     const connId = firstConnectionId(svc);
-    if (!connId) { await callback?.({ text: "No XR device connected." }); return false; }
+    if (!connId) {
+      await callback?.({ text: "No XR device connected." });
+      return false;
+    }
 
     const text = message.content.text?.toLowerCase() ?? "";
     let scale = (options.scale as number | undefined) ?? 1.0;
     let distance = (options.distance as number | undefined) ?? 1.5;
 
-    if (text.includes("bigger") || text.includes("larger") || text.includes("bigger")) scale = 1.5;
+    if (
+      text.includes("bigger") ||
+      text.includes("larger") ||
+      text.includes("bigger")
+    )
+      scale = 1.5;
     if (text.includes("smaller") || text.includes("tiny")) scale = 0.6;
     if (text.includes("closer") || text.includes("nearer")) distance = 0.8;
-    if (text.includes("farther") || text.includes("further") || text.includes("away")) distance = 2.5;
+    if (
+      text.includes("farther") ||
+      text.includes("further") ||
+      text.includes("away")
+    )
+      distance = 2.5;
     if (text.includes("fullscreen") || text.includes("full screen")) {
       svc.resizeView(connId, "", { scale: 2.0, fullscreen: true });
       await callback?.({ text: "Panel fullscreened." });
@@ -242,9 +330,21 @@ export const xrResizeViewAction: Action = {
 function extractViewId(text: string): string {
   const lower = text.toLowerCase();
   const known = [
-    "wallet", "companion", "training", "task-coordinator", "views-manager",
-    "polymarket", "vincent", "steward", "shopify", "phone", "contacts",
-    "messages", "babylon", "2004scape", "defense-of-the-agents",
+    "wallet",
+    "companion",
+    "training",
+    "task-coordinator",
+    "views-manager",
+    "polymarket",
+    "vincent",
+    "steward",
+    "shopify",
+    "phone",
+    "contacts",
+    "messages",
+    "babylon",
+    "2004scape",
+    "defense-of-the-agents",
   ];
   for (const id of known) {
     if (lower.includes(id.replace("-", " ")) || lower.includes(id)) return id;
@@ -259,14 +359,37 @@ function extractViewId(text: string): string {
 function collectXRViews(
   runtime: IAgentRuntime,
 ): Array<{ id: string; label: string; icon?: string; description?: string }> {
-  const plugins = (runtime as unknown as { plugins?: Array<{ views?: Array<{ id: string; label: string; viewType?: string; icon?: string; description?: string }> }> }).plugins ?? [];
+  const plugins =
+    (
+      runtime as unknown as {
+        plugins?: Array<{
+          views?: Array<{
+            id: string;
+            label: string;
+            viewType?: string;
+            icon?: string;
+            description?: string;
+          }>;
+        }>;
+      }
+    ).plugins ?? [];
   const seen = new Set<string>();
-  const result: Array<{ id: string; label: string; icon?: string; description?: string }> = [];
+  const result: Array<{
+    id: string;
+    label: string;
+    icon?: string;
+    description?: string;
+  }> = [];
   for (const plugin of plugins) {
     for (const view of plugin.views ?? []) {
       if (view.viewType === "xr" && !seen.has(view.id)) {
         seen.add(view.id);
-        result.push({ id: view.id, label: view.label, icon: view.icon, description: view.description });
+        result.push({
+          id: view.id,
+          label: view.label,
+          icon: view.icon,
+          description: view.description,
+        });
       }
     }
   }

@@ -69,7 +69,12 @@ export type XRServerControl =
   | { type: "pong" }
   // ── View commands ────────────────────────────────────────────────────────
   /** Open (or bring to front) a view by its registered view id */
-  | { type: "view_open"; viewId: string; agentBaseUrl: string; config?: XRPanelConfig }
+  | {
+      type: "view_open";
+      viewId: string;
+      agentBaseUrl: string;
+      config?: XRPanelConfig;
+    }
   /** Close a specific view panel */
   | { type: "view_close"; viewId: string }
   /** Switch the "active" (foreground) view */
@@ -77,7 +82,15 @@ export type XRServerControl =
   /** Resize / reposition the active or named panel */
   | { type: "view_resize"; viewId?: string; config: XRPanelConfig }
   /** Send all available views to the device for the launcher */
-  | { type: "views_catalog"; views: Array<{ id: string; label: string; icon?: string; description?: string }> };
+  | {
+      type: "views_catalog";
+      views: Array<{
+        id: string;
+        label: string;
+        icon?: string;
+        description?: string;
+      }>;
+    };
 
 // ── Server → Client (binary frames) ────────────────────────────────────────
 

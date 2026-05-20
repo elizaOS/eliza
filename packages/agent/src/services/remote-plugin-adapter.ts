@@ -1184,8 +1184,11 @@ function hashRemotePluginModuleForProvenance(
 function canonicalJsonForRemotePluginProvenance(
   module: RemotePluginModuleManifest,
 ): string {
-  const { capabilityEndpointId: _endpointId, provenance: _provenance, ...rest } =
-    module;
+  const {
+    capabilityEndpointId: _endpointId,
+    provenance: _provenance,
+    ...rest
+  } = module;
   return JSON.stringify(canonicalizeForRemotePluginProvenance(rest));
 }
 

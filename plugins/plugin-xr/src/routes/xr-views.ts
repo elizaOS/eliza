@@ -1,5 +1,8 @@
 import type { Route } from "@elizaos/core";
-import { XR_SERVICE_TYPE, type XRSessionService } from "../services/xr-session-service.ts";
+import {
+  XR_SERVICE_TYPE,
+  type XRSessionService,
+} from "../services/xr-session-service.ts";
 
 /**
  * GET /api/xr/views
@@ -11,20 +14,23 @@ export const xrViewsRoute: Route = {
   path: "/xr/views",
   description: "Lists all XR-capable views from registered plugins",
   routeHandler: async (ctx) => {
-    const plugins = (ctx.runtime as unknown as {
-      plugins?: Array<{
-        name?: string;
-        views?: Array<{
-          id: string;
-          label: string;
-          viewType?: string;
-          icon?: string;
-          description?: string;
-          tags?: string[];
-          xrOptions?: Record<string, unknown>;
-        }>;
-      }>;
-    }).plugins ?? [];
+    const plugins =
+      (
+        ctx.runtime as unknown as {
+          plugins?: Array<{
+            name?: string;
+            views?: Array<{
+              id: string;
+              label: string;
+              viewType?: string;
+              icon?: string;
+              description?: string;
+              tags?: string[];
+              xrOptions?: Record<string, unknown>;
+            }>;
+          }>;
+        }
+      ).plugins ?? [];
 
     const views: Array<{
       id: string;
@@ -52,9 +58,11 @@ export const xrViewsRoute: Route = {
       }
     }
 
-    const connections = ctx.runtime.getService<XRSessionService>(XR_SERVICE_TYPE)
-      ?.getConnections()
-      .map((c) => ({ id: c.id, deviceType: c.deviceType })) ?? [];
+    const connections =
+      ctx.runtime
+        .getService<XRSessionService>(XR_SERVICE_TYPE)
+        ?.getConnections()
+        .map((c) => ({ id: c.id, deviceType: c.deviceType })) ?? [];
 
     return {
       status: 200,

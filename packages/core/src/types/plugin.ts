@@ -437,7 +437,13 @@ export interface PluginAppUiExtension {
 }
 
 /** Platform availability for a view. */
-export type ViewPlatform = "web" | "desktop" | "ios" | "android" | "quest" | "xreal";
+export type ViewPlatform =
+	| "web"
+	| "desktop"
+	| "ios"
+	| "android"
+	| "quest"
+	| "xreal";
 
 /** Presentation/runtime family for a view. */
 export type ViewType = "gui" | "tui" | "xr";
