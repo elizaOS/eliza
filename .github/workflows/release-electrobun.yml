@@ -1657,7 +1657,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-artifacts
           pattern: electrobun-*
@@ -1772,7 +1772,7 @@ jobs:
       contents: write
     steps:
       - name: Download Agent Browser Bridge artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: browser-bridge-release
           pattern: browser-bridge-*
