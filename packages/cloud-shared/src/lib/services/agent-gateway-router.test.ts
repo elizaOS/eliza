@@ -8,8 +8,11 @@ const routeToSession = mock();
 const bridge = mock();
 const runOnboardingChat = mock();
 
-let phoneContactsResult: Array<Record<string, unknown>> = [];
+let selectResults: Array<Array<Record<string, unknown>>> = [];
+let selectErrors: unknown[] = [];
 let selectCalls = 0;
+const updateSet = mock();
+const updateWhere = mock();
 
 const selectBuilder = {
   from: mock(() => selectBuilder),
@@ -18,15 +21,31 @@ const selectBuilder = {
   orderBy: mock(() => selectBuilder),
   limit: mock(async () => {
     selectCalls += 1;
-    return phoneContactsResult;
+    const error = selectErrors.shift();
+    if (error) throw error;
+    return selectResults.shift() ?? [];
   }),
 };
+
+const updateBuilder = {
+  set: updateSet,
+  where: updateWhere,
+};
+
+function queueSelectResult(...results: Array<Array<Record<string, unknown>>>) {
+  selectResults = [...results];
+}
+
+function queueSelectError(...errors: unknown[]) {
+  selectErrors = [...errors];
+}
 
 mock.module("../../db/client", () => ({
   db: {},
   dbRead: {},
   dbWrite: {
     select: mock(() => selectBuilder),
+    update: mock(() => updateBuilder),
   },
   getDbConnectionInfo: mock(() => ({ databaseUrlConfigured: true })),
   runWithDbCache: (fn: () => unknown) => fn(),
@@ -53,6 +72,17 @@ mock.module("../../db/repositories/agent-sandboxes", () => ({
 }));
 
 mock.module("../../db/schemas", () => ({
+  agentPhoneContacts: {
+    agent_id: "contact_agent_id",
+    organization_id: "contact_organization_id",
+    user_id: "contact_user_id",
+    provider: "contact_provider",
+    contact_identifier: "contact_identifier",
+    is_active: "contact_is_active",
+    last_contacted_at: "contact_last_contacted_at",
+    last_inbound_at: "contact_last_inbound_at",
+    updated_at: "contact_updated_at",
+  },
   agentPhoneNumbers: {
     id: "id",
     agent_id: "agent_id",
@@ -121,7 +151,12 @@ describe("AgentGatewayRouterService phone routing", () => {
     selectBuilder.where.mockClear();
     selectBuilder.orderBy.mockClear();
     selectBuilder.limit.mockClear();
-    phoneContactsResult = [];
+    updateSet.mockReset();
+    updateSet.mockReturnValue(updateBuilder);
+    updateWhere.mockReset();
+    updateWhere.mockResolvedValue(undefined);
+    selectResults = [];
+    selectErrors = [];
     selectCalls = 0;
   });
 
@@ -157,12 +192,13 @@ describe("AgentGatewayRouterService phone routing", () => {
 
   test("routes unknown senders to an agent that previously messaged them", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
-    phoneContactsResult = [
+    queueSelectResult([
       {
         organizationId: "owner-org",
         agentId: "friend-agent",
+        userId: "owner-user",
       },
-    ];
+    ]);
     listOwnerSessions.mockResolvedValue([]);
     findRunningSandbox.mockResolvedValue({
       id: "friend-agent",
@@ -187,11 +223,93 @@ describe("AgentGatewayRouterService phone routing", () => {
       userId: "owner-user",
     });
     expect(findRunningSandbox).toHaveBeenCalledWith("friend-agent", "owner-org");
+    expect(updateSet).toHaveBeenCalledWith(
+      expect.objectContaining({
+        last_contacted_at: expect.any(Date),
+        last_inbound_at: expect.any(Date),
+        updated_at: expect.any(Date),
+      }),
+    );
+    expect(updateWhere).toHaveBeenCalledTimes(1);
+  });
+
+  test("falls back to outbound phone message log when no contact row exists", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue(null);
+    queueSelectResult(
+      [],
+      [
+        {
+          organizationId: "owner-org",
+          agentId: "logged-agent",
+        },
+      ],
+    );
+    findRunningSandbox.mockResolvedValue({
+      id: "logged-agent",
+      organization_id: "owner-org",
+      user_id: "owner-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockResolvedValue({
+      result: {
+        text: "logged agent reply",
+      },
+    });
+
+    const result = await newRouter().routePhoneMessage(routeArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "logged agent reply",
+      agentId: "logged-agent",
+      organizationId: "owner-org",
+      userId: "owner-user",
+    });
+    expect(selectCalls).toBe(2);
+    expect(findRunningSandbox).toHaveBeenCalledWith("logged-agent", "owner-org");
+  });
+
+  test("falls back to outbound phone message log when contact table is not migrated", async () => {
+    findByPhoneNumberWithOrganization.mockResolvedValue(null);
+    const missingTable = new Error('relation "agent_phone_contacts" does not exist');
+    (missingTable as Error & { code?: string }).code = "42P01";
+    queueSelectError(missingTable);
+    queueSelectResult([
+      {
+        organizationId: "owner-org",
+        agentId: "logged-agent",
+      },
+    ]);
+    findRunningSandbox.mockResolvedValue({
+      id: "logged-agent",
+      organization_id: "owner-org",
+      user_id: "owner-user",
+      status: "running",
+      agent_config: {},
+    });
+    bridge.mockResolvedValue({
+      result: {
+        text: "logged agent reply",
+      },
+    });
+
+    const result = await newRouter().routePhoneMessage(routeArgs());
+
+    expect(result).toMatchObject({
+      handled: true,
+      replyText: "logged agent reply",
+      agentId: "logged-agent",
+      organizationId: "owner-org",
+      userId: "owner-user",
+    });
+    expect(selectCalls).toBe(2);
+    expect(findRunningSandbox).toHaveBeenCalledWith("logged-agent", "owner-org");
   });
 
   test("starts onboarding for phone numbers with no owner or contact relationship", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
-    phoneContactsResult = [];
+    queueSelectResult([], []);
     runOnboardingChat.mockResolvedValue({
       reply: "onboarding reply",
       session: {
@@ -257,7 +375,7 @@ describe("AgentGatewayRouterService phone routing", () => {
       organization_id: "known-org",
     });
     listOwnerSessions.mockRejectedValue(new Error("relay lookup failed"));
-    phoneContactsResult = [];
+    queueSelectResult([], []);
     runOnboardingChat.mockResolvedValue({
       reply: "known user provisioning reply",
       session: {
@@ -334,12 +452,13 @@ describe("AgentGatewayRouterService phone routing", () => {
 
   test("returns bridge_failed instead of onboarding when a friend contact target throws", async () => {
     findByPhoneNumberWithOrganization.mockResolvedValue(null);
-    phoneContactsResult = [
+    queueSelectResult([
       {
         organizationId: "owner-org",
         agentId: "friend-agent",
+        userId: "owner-user",
       },
-    ];
+    ]);
     listOwnerSessions.mockResolvedValue([]);
     findRunningSandbox.mockResolvedValue({
       id: "friend-agent",

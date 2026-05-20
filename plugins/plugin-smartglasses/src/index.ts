@@ -59,7 +59,7 @@ export const smartglassesPlugin: Plugin = {
         label: "Smartglasses",
         icon: "Glasses",
         path: "/apps/smartglasses",
-        componentExport: "@elizaos/plugin-smartglasses#SmartglassesView",
+        componentExport: "@elizaos/plugin-smartglasses/register#SmartglassesView",
       },
     ],
   },
@@ -115,4 +115,3 @@ export {
   getWebBluetoothG1Transport,
   WebBluetoothG1Transport,
 } from "./transport/web-bluetooth.js";
-export { SmartglassesView } from "./ui/SmartglassesView.js";

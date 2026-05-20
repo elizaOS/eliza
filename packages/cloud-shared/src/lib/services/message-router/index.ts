@@ -6,7 +6,7 @@
  */
 
 import { createHash, randomUUID } from "crypto";
-import { and, eq } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { z } from "zod";
 import { dbWrite } from "../../../db/client";
 import {
@@ -53,6 +53,57 @@ function isUndefinedTableError(error: unknown): boolean {
 
 // Maximum metadata size to prevent DoS via large payloads (10KB)
 const MAX_METADATA_SIZE = 10 * 1024;
+
+let ensureAgentPhoneContactsTablePromise: Promise<void> | null = null;
+
+async function ensureAgentPhoneContactsTable(): Promise<void> {
+  ensureAgentPhoneContactsTablePromise ??= (async () => {
+    await dbWrite.execute(sql`
+      CREATE TABLE IF NOT EXISTS "agent_phone_contacts" (
+        "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+        "organization_id" uuid NOT NULL REFERENCES "organizations"("id") ON DELETE cascade,
+        "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE cascade,
+        "agent_id" uuid NOT NULL REFERENCES "agent_sandboxes"("id") ON DELETE cascade,
+        "provider" text NOT NULL,
+        "contact_identifier" text NOT NULL,
+        "contact_display_name" text,
+        "first_contacted_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "last_contacted_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "last_inbound_at" timestamp with time zone,
+        "last_outbound_at" timestamp with time zone,
+        "is_active" boolean DEFAULT true NOT NULL,
+        "metadata" text DEFAULT '{}' NOT NULL,
+        "created_at" timestamp with time zone DEFAULT now() NOT NULL,
+        "updated_at" timestamp with time zone DEFAULT now() NOT NULL
+      )
+    `);
+    await dbWrite.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS "agent_phone_contacts_agent_contact_idx"
+      ON "agent_phone_contacts" ("provider", "contact_identifier", "agent_id")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_lookup_idx"
+      ON "agent_phone_contacts" ("provider", "contact_identifier", "is_active", "last_contacted_at")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_agent_idx"
+      ON "agent_phone_contacts" ("agent_id")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_organization_idx"
+      ON "agent_phone_contacts" ("organization_id")
+    `);
+    await dbWrite.execute(sql`
+      CREATE INDEX IF NOT EXISTS "agent_phone_contacts_user_idx"
+      ON "agent_phone_contacts" ("user_id")
+    `);
+  })().catch((error) => {
+    ensureAgentPhoneContactsTablePromise = null;
+    throw error;
+  });
+
+  return ensureAgentPhoneContactsTablePromise;
+}
 
 async function preparePhoneMessagePayload(
   data: NewPhoneMessageLog,
@@ -491,7 +542,7 @@ class MessageRouterService {
     }
 
     const now = new Date();
-    try {
+    const upsert = async () =>
       await dbWrite
         .insert(agentPhoneContacts)
         .values({
@@ -522,10 +573,21 @@ class MessageRouterService {
             updated_at: now,
           },
         });
+
+    try {
+      await upsert();
     } catch (error) {
       if (isUndefinedTableError(error)) {
-        logger.warn("[MessageRouter] agent_phone_contacts table is not migrated yet");
-        return;
+        try {
+          await ensureAgentPhoneContactsTable();
+          await upsert();
+          return;
+        } catch (ensureError) {
+          logger.warn("[MessageRouter] agent_phone_contacts table is not migrated yet", {
+            error: ensureError instanceof Error ? ensureError.message : String(ensureError),
+          });
+          return;
+        }
       }
       throw error;
     }

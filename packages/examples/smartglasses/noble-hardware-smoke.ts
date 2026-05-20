@@ -18,11 +18,16 @@ import {
 const scanTimeoutMs = Number(
   process.env.SMARTGLASSES_SCAN_TIMEOUT_MS ?? 20_000,
 );
-const holdMs = Number(process.env.SMARTGLASSES_HOLD_MS ?? 5_000);
+const holdMs = Number(process.env.SMARTGLASSES_HOLD_MS ?? 60_000);
+const wearingTimeoutMs = Number(
+  process.env.SMARTGLASSES_WEARING_TIMEOUT_MS ?? 30_000,
+);
+const directMicMs = Number(process.env.SMARTGLASSES_DIRECT_MIC_MS ?? 0);
 const reportPath = process.env.SMARTGLASSES_REPORT_PATH;
+const requestedInitMode = process.env.SMARTGLASSES_INIT_MODE;
 const initMode =
-  process.env.SMARTGLASSES_INIT_MODE === "official"
-    ? "official"
+  requestedInitMode === "official" || requestedInitMode === "android-f4"
+    ? requestedInitMode
     : "lens-specific";
 
 const report = createHardwareEvidenceReport({ scanTimeoutMs, holdMs, initMode });
@@ -91,6 +96,54 @@ transport.onEvent((event) => {
   });
 });
 
+async function waitForWearing(): Promise<void> {
+  if (wearingTimeoutMs <= 0) return;
+  updateHardwareEvidenceStatus(report, service.getStatus());
+  if (report.headsetState.physical === "wearing") return;
+  log(
+    "action required",
+    "remove the glasses from the charging base and wear them before tap/audio validation",
+  );
+  const deadline = Date.now() + wearingTimeoutMs;
+  while (Date.now() < deadline) {
+    updateHardwareEvidenceStatus(report, service.getStatus());
+    if (report.headsetState.physical === "wearing") {
+      log("wearing observed", report.headsetState);
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error("Glasses did not report wearing state before tap/audio validation");
+}
+
+async function runDirectMicDiagnostic(): Promise<void> {
+  if (directMicMs <= 0) return;
+  log("direct mic diagnostic", "speak clearly until the diagnostic window ends");
+  await service.setMicrophoneEnabled(true);
+  const deadline = Date.now() + directMicMs;
+  while (Date.now() < deadline) {
+    updateHardwareEvidenceStatus(report, service.getStatus());
+    if (report.checks.audioObserved) break;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await service.setMicrophoneEnabled(false);
+}
+
+async function runTapAudioValidation(): Promise<void> {
+  await service.setMicrophoneEnabled(false);
+  log("mic disabled; single tap to enable, speak, then double tap to disable", {
+    holdMs,
+  });
+  const deadline = Date.now() + holdMs;
+  while (Date.now() < deadline) {
+    updateHardwareEvidenceStatus(report, service.getStatus());
+    if (missingHardwareEvidence(report).length === 0) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  await service.setMicrophoneEnabled(false);
+  log("mic disabled");
+}
+
 try {
   log("scanning", { scanTimeoutMs });
   await service.connect();
@@ -114,13 +167,9 @@ try {
   await service.setGlassesWearDetection(true);
   log("settings sent");
 
-  await service.setMicrophoneEnabled(false);
-  log("mic disabled; single tap to enable, speak, then double tap to disable", {
-    holdMs,
-  });
-  await new Promise((resolve) => setTimeout(resolve, holdMs));
-  await service.setMicrophoneEnabled(false);
-  log("mic disabled");
+  await waitForWearing();
+  await runDirectMicDiagnostic();
+  await runTapAudioValidation();
 
   updateHardwareEvidenceStatus(report, service.getStatus());
   const missingChecks = missingHardwareEvidence(report);

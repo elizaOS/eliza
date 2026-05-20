@@ -205,6 +205,23 @@ describe("smartglasses actions", () => {
       [G1Command.Init, 0x01],
     ]);
 
+    const androidConnectionReadyResult =
+      await smartglassesControlAction.handler(
+        runtime,
+        memory('{"op":"connection_ready","initMode":"android-f4"}'),
+        undefined,
+        undefined,
+        callback as never,
+      );
+    expectResult(androidConnectionReadyResult);
+    expect(androidConnectionReadyResult.success).toBe(true);
+    expect(
+      transport.writes.slice(-2).map((write) => Array.from(write.data)),
+    ).toEqual([
+      [G1Command.RightInit, 0x01],
+      [G1Command.RightInit, 0x01],
+    ]);
+
     const serialResult = await smartglassesControlAction.handler(
       runtime,
       memory('{"op":"get_serial","side":"right"}'),

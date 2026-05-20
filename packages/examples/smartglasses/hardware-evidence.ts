@@ -28,6 +28,8 @@ export type HardwareEvidenceReport = {
     side: string;
     type: string;
     label?: string;
+    stateCategory?: string;
+    stateName?: string;
     sequence?: number;
     serialNumber?: string;
   }>;
@@ -40,6 +42,11 @@ export type HardwareEvidenceReport = {
     bytes: number;
   }>;
   status?: SmartglassesStatus;
+  headsetState: {
+    physical: string | null;
+    battery: string | null;
+    device: string | null;
+  };
   error?: string;
 };
 
@@ -84,6 +91,11 @@ export function createHardwareEvidenceReport(options: {
     writes: [],
     events: [],
     audio: [],
+    headsetState: {
+      physical: null,
+      battery: null,
+      device: null,
+    },
   };
 }
 
@@ -118,11 +130,20 @@ export function recordHardwareEvent(
   report: HardwareEvidenceReport,
   event: G1Event,
 ): void {
+  if (event.stateCategory === "physical") {
+    report.headsetState.physical = event.stateName ?? event.label ?? null;
+  } else if (event.stateCategory === "battery") {
+    report.headsetState.battery = event.stateName ?? event.label ?? null;
+  } else if (event.stateCategory === "device") {
+    report.headsetState.device = event.stateName ?? event.label ?? null;
+  }
   report.events.push({
     at: new Date().toISOString(),
     side: event.side,
     type: event.type,
     label: event.label,
+    stateCategory: event.stateCategory,
+    stateName: event.stateName,
     sequence: event.sequence,
     serialNumber: event.serialNumber,
   });
@@ -177,6 +198,15 @@ export function updateHardwareEvidenceStatus(
   status: SmartglassesStatus,
 ): void {
   report.status = status;
+  if (status.physicalState !== null) {
+    report.headsetState.physical = status.physicalState;
+  }
+  if (status.batteryState !== null) {
+    report.headsetState.battery = status.batteryState;
+  }
+  if (status.deviceState !== null) {
+    report.headsetState.device = status.deviceState;
+  }
   report.ok = missingHardwareEvidence(report).length === 0;
 }
 

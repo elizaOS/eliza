@@ -219,6 +219,17 @@ describe("Even G1 protocol", () => {
     ]);
   });
 
+  it("encodes Android EvenDemoApp F4 connection-ready init packets", () => {
+    expect(Array.from(encodeConnectionReady("left", "android-f4"))).toEqual([
+      G1Command.RightInit,
+      0x01,
+    ]);
+    expect(Array.from(encodeConnectionReady("right", "android-f4"))).toEqual([
+      G1Command.RightInit,
+      0x01,
+    ]);
+  });
+
   it("encodes native low-level control packets from the official app", () => {
     expect(Array.from(encodeExitFunction())).toEqual([G1Command.ExitFunction]);
     expect(Array.from(encodeGetSerial())).toEqual([G1Command.GetSerial]);

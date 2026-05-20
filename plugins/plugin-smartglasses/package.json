@@ -98,10 +98,10 @@
       },
       "SMARTGLASSES_INIT_MODE": {
         "type": "string",
-        "description": "G1 connection-ready init packet mode. lens-specific sends 0x4D to left and 0xF4 to right; official sends 0x4D to both lenses as in EvenDemoApp.",
+        "description": "G1 connection-ready init packet mode. lens-specific sends 0x4D to left and 0xF4 to right; official sends 0x4D to both lenses as in EvenDemoApp iOS; android-f4 sends 0xF4 to both lenses as in EvenDemoApp Android.",
         "required": false,
         "default": "lens-specific",
-        "enum": ["lens-specific", "official"],
+        "enum": ["lens-specific", "official", "android-f4"],
         "sensitive": false
       }
     }

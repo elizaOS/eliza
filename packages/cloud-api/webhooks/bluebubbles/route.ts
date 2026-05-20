@@ -109,7 +109,13 @@ export async function handleBlueBubblesWebhookPayload(
   c: AppContext,
   payload: unknown,
 ): Promise<Response> {
-  const bridgeId = c.req.param("bridgeId") || c.req.param("orgId") || "default";
+  const bridgeId =
+    readEnvString(c, "BLUEBUBBLES_BRIDGE_ID") ??
+    c.req.param("bridgeId") ??
+    c.req.header("x-eliza-bridge") ??
+    c.req.query("bridge") ??
+    c.req.param("orgId") ??
+    "default";
 
   if (!authorized(c)) {
     return c.json({ error: "Unauthorized" }, 401);

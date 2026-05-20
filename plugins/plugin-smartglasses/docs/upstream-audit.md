@@ -1,9 +1,9 @@
 # Smartglasses Upstream Audit
 
 This plugin was built from the gitignored research checkouts under
-`research/even-realities/`. The repository root `.gitignore` ignores
-`research/`, so these checkouts are local evidence and are not part of the
-committed package.
+`research/even-realities/`. The repository root `.gitignore` ignores that
+checkout folder, so these upstream repos remain local evidence and are not part
+of the committed package.
 
 ## Repository Coverage
 
@@ -19,7 +19,7 @@ committed package.
 | `emingenc/g1_flutter_blue_plus` | `research/even-realities/g1_flutter_blue_plus` | `lib/services/commands.dart`, `lib/services/reciever.dart`, `lib/services/bluetooth_manager.dart`, `lib/main.dart` | Flutter BLE discovery and direct G1 receiver behavior cross-checked command constants, `_L_`/`_R_` pairing, `0xF5` taps, `0x0E` mic responses, and `0xF1` voice data. |
 | `nickustinov/tesla-even-g2` | `research/even-realities/tesla-even-g2` | `g2/events.ts`, `g2/renderer.ts`, `g2/navigation.ts`, `g2/ui.tsx`, `README.md` | G2 bridge event normalization for nested event keys, click/double-click/scroll fallback, and dashboard/menu rendering expectations used by `src/transport/even-bridge.ts` and simulator smoke. |
 | `galfaroth/awesome-even-realities-g1` | `research/even-realities/awesome-even-realities-g1` | `README.md` | Ecosystem cross-check for the G1 SDK/demo sources and command families. |
-| `even-realities/EvenDemoApp` | `research/even-realities/EvenDemoApp` | `lib/ble_manager.dart`, `lib/services/ble.dart`, `lib/services/evenai.dart`, `lib/services/features_services.dart`, `lib/controllers/bmp_update_manager.dart`, `ios/Runner/BluetoothManager.swift` | Official demo behavior for right-lens mic, LC3 audio, text streaming, native exit, serial request, app whitelist, official same-init (`0x4D 0x01` to both lenses), notification flows, and BMP transfer. |
+| `even-realities/EvenDemoApp` | `research/even-realities/EvenDemoApp` | `lib/ble_manager.dart`, `lib/services/ble.dart`, `lib/services/evenai.dart`, `lib/services/features_services.dart`, `lib/controllers/bmp_update_manager.dart`, `ios/Runner/BluetoothManager.swift`, `android/app/src/main/kotlin/com/example/demo_ai_even/bluetooth/BleManager.kt` | Official demo behavior for right-lens mic, LC3 audio, text streaming, native exit, serial request, app whitelist, iOS same-init (`0x4D 0x01` to both lenses), Android same-init (`0xF4 0x01` to both lenses), notification flows, and BMP transfer. |
 | `Mentra-Community/MentraOS` | `research/even-realities/MentraOS` | `cloud/docs/sdk/display-layouts.mdx`, `cloud/docs/cloud-architecture/managers/audio-manager.mdx`, `cloud/docs/cloud-architecture/managers/microphone-manager.mdx`, `cloud/docs/cloud-architecture/managers/transcription-manager.mdx`, `sdk/*`, `mobile/*` | Bridge/native display APIs, `setMicState`, `mic_pcm`/`mic_lc3`, local transcription streams, display width/glyph constraints, and hardware validation requirements used by `src/transport/even-bridge.ts`, display wrapping, transcript events, and hardware smoke evidence. |
 
 ## Implemented Surface
@@ -52,7 +52,8 @@ The implementation is covered by:
 - `src/__tests__/service.test.ts`: Eliza service display streaming, RSVP,
   sequence counters, mic toggle state, side tap behavior, long press/stop
   recording, raw and decoded audio paths, transcript events, startup auto-init,
-  heartbeat loop, and transport preference.
+  heartbeat loop, pre-connected transport listener attachment, and transport
+  preference.
 - `src/__tests__/actions.test.ts`: exported action/provider/service wiring.
 - `src/__tests__/even-bridge.test.ts`: G2/EvenHub/Mentra bridge rendering,
   audio, transcription, and input normalization.
