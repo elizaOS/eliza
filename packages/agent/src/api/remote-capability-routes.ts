@@ -18,6 +18,8 @@ import {
   type ConnectRemoteCapabilityEndpointProviderResult,
   connectRemoteCapabilityEndpointProvider,
   directRemoteCapabilityEndpointProvider,
+  normalizeEndpointTrustPolicyOptions,
+  type RemoteCapabilityEndpointTrustPolicyOptions,
   type RemoteCapabilityEndpointProvider,
 } from "../services/remote-capability-endpoint-provider.ts";
 import type { RemoteCapabilityEndpointConfig } from "../services/remote-capability-router.ts";
@@ -28,7 +30,10 @@ import {
   mobileCompanionCapabilityEndpointProvider,
   type UrlRemoteCapabilityEndpointProviderOptions,
 } from "../services/remote-capability-url-endpoint-providers.ts";
-import type { RemotePluginSyncResult } from "../services/remote-plugin-adapter.ts";
+import type {
+  RemotePluginSyncResult,
+  RemotePluginTrustPolicy,
+} from "../services/remote-plugin-adapter.ts";
 import {
   detectClientPlatform,
   isDynamicLoadingAllowed,
@@ -66,6 +71,7 @@ type ConnectBody = {
   persist?: unknown;
   requestTimeoutMs?: unknown;
   allowedModuleIds?: unknown;
+  trustPolicy?: unknown;
 };
 
 type DirectEndpointBody = {
@@ -84,6 +90,7 @@ type EndpointProviderMode =
 type DirectEndpointProviderOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
 };
 
 type EndpointProviderOptions =
@@ -100,6 +107,7 @@ type CloudBody = {
   timeoutMs?: unknown;
   pollIntervalMs?: unknown;
   allowedModuleIds?: unknown;
+  trustPolicy?: unknown;
 };
 
 export async function handleRemoteCapabilityRoutes(
@@ -165,6 +173,10 @@ export async function handleRemoteCapabilityRoutes(
     body.allowedModuleIds,
     "allowedModuleIds",
   );
+  const trustPolicy = parseOptionalEndpointTrustPolicy(
+    body.trustPolicy,
+    "trustPolicy",
+  );
   const requestTimeoutMs = optionalPositiveInteger(
     body.requestTimeoutMs,
     "requestTimeoutMs",
@@ -199,10 +211,11 @@ export async function handleRemoteCapabilityRoutes(
         unloadMissing,
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
         ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+        ...(trustPolicy === undefined ? {} : { trustPolicy }),
       });
       const persistedEndpoint = result.endpoint ?? endpoint;
       if (persist) {
-        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds, {
+        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds, trustPolicy, {
           mode: providerMode === "direct" ? "endpoint" : providerMode,
           provider: result.providerId,
           endpoint: persistedEndpoint,
@@ -223,6 +236,14 @@ export async function handleRemoteCapabilityRoutes(
 
     if (body.cloud !== undefined) {
       const cloud = parseCloudOptions(body.cloud);
+      if (trustPolicy !== undefined && cloud.trustPolicy !== undefined) {
+        error(
+          res,
+          "Cloud requests must set trustPolicy either at the top level or inside 'cloud', not both.",
+          400,
+        );
+        return true;
+      }
       if (
         allowedModuleIds !== undefined &&
         cloud.allowedModuleIds !== undefined
@@ -235,6 +256,7 @@ export async function handleRemoteCapabilityRoutes(
         return true;
       }
       const cloudAllowedModuleIds = allowedModuleIds ?? cloud.allowedModuleIds;
+      const cloudTrustPolicy = trustPolicy ?? cloud.trustPolicy;
       const connectCloudSandbox =
         ctx.connectCloudSandbox ?? connectCloudCapabilitySandbox;
       const result = await connectCloudSandbox(runtime, {
@@ -243,10 +265,11 @@ export async function handleRemoteCapabilityRoutes(
         ...(cloudAllowedModuleIds === undefined
           ? {}
           : { allowedModuleIds: cloudAllowedModuleIds }),
+        ...(cloudTrustPolicy === undefined ? {} : { trustPolicy: cloudTrustPolicy }),
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
       });
       if (persist) {
-        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds, {
+        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds, cloudTrustPolicy, {
           mode: "cloud",
           provider: result.providerId,
           endpoint: result.endpoint,
