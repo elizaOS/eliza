@@ -62,6 +62,7 @@ export * from "./services/pairing";
 export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
+export * from "./services/runtime-capability-service";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
 export * from "./settings";
