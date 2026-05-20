@@ -162,6 +162,7 @@
               "plugins/patterns",
               "plugins/schemas",
               "plugins/testing",
+              "plugins/scenarios",
               "plugins/local-plugins",
               "plugins/plugin-eject",
               "plugins/publish",
@@ -265,7 +266,8 @@
               "apps/mobile",
               "apps/mobile/build-guide",
               "apps/mobile/capacitor-plugins",
-              "apps/dashboard"
+              "apps/dashboard",
+              "apps/ui-library"
             ]
           },
           {

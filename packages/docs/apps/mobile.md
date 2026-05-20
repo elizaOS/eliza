@@ -73,7 +73,7 @@ is assembled.
 
 | Platform | Minimum Version | Scheme | Notes |
 |----------|----------------|--------|-------|
-| **iOS** | iOS 14+ (armv7) | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
+| **iOS** | iOS 16+ (arm64) | HTTPS | Automatic content inset, mobile-preferred content mode, link preview disabled |
 | **Android** | API 26 (Android 8.0+) | HTTPS | Input capture enabled, mixed content disabled, WebContents debugging off in production |
 
 **App ID:** `com.elizaai.eliza`
@@ -560,7 +560,7 @@ The Android manifest declares these permissions:
 | Property | Value |
 |----------|-------|
 | `minSdkVersion` | 26 (Android 8.0) |
-| `compileSdkVersion` | 35 |
+| `compileSdkVersion` | 36 |
 | `targetSdkVersion` | 35 |
 | `applicationId` | `com.elizaai.eliza` |
 | `namespace` | `ai.eliza.app` |
