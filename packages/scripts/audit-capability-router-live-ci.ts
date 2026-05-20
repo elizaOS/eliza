@@ -523,10 +523,16 @@ export function validateCapabilityRouterLiveCi(
     liveReportValidatorSource?: string;
     liveReportWriterSource?: string;
     workflowPath?: string;
+    onlyCheckNames?: Iterable<string>;
   } = {},
 ): LiveCiAuditFailure[] {
   const path = options.workflowPath ?? workflowPath;
+  const onlyCheckNames =
+    options.onlyCheckNames === undefined
+      ? undefined
+      : new Set(options.onlyCheckNames);
   return checks
+    .filter((check) => !onlyCheckNames || onlyCheckNames.has(check.name))
     .filter((check) => {
       const content = getCheckContent(check, workflow, options);
       return !check.pattern.test(content);
