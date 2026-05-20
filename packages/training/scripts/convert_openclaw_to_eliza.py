@@ -167,6 +167,23 @@ def _content_str(content: Any) -> str:
     return str(content) if content is not None else ""
 
 
+def _normalize_openclaw_tool_calls(raw_calls: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    result = []
+    for tc in raw_calls:
+        name = tc.get("name", "").strip()
+        args = tc.get("arguments") or tc.get("args") or {}
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                args = {}
+        # Skip obvious placeholder calls
+        if not name or (isinstance(args, dict) and args.get("command") == "echo placeholder"):
+            continue
+        result.append({"name": name, "args": args if isinstance(args, dict) else {}})
+    return result
+
+
 def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
     messages = raw.get("messages") or raw.get("conversations") or []
     if not messages:
@@ -193,6 +210,40 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
 
         if role in ("user", "tool"):
             turns.append({"role": role, "content": content})
+
+    # openclaw-opencode format: assistant response is in `target` dict, not messages
+    target = raw.get("target")
+    if final_assistant_content is None and isinstance(target, dict):
+        thought_text = target.get("assistant", "").strip()
+        final_response = target.get("final_response", "").strip()
+        raw_tool_calls = target.get("tool_calls") or []
+
+        if not any(t["role"] == "user" for t in turns):
+            return None
+
+        tool_calls = _normalize_openclaw_tool_calls(raw_tool_calls)
+
+        record_id = stable_id("openclaw", raw.get("id", ""), final_response[:64])
+
+        if tool_calls:
+            return native_tool_call_record(
+                system=system,
+                turns=turns,
+                thought=thought_text or "Use the appropriate tool to fulfill the request.",
+                tool_calls=tool_calls,
+                message_to_user=final_response or None,
+                metadata={"source": "openclaw", "id": record_id, "task_type": raw.get("task_type")},
+            )
+
+        if not final_response or _has_trope(final_response):
+            return None
+
+        return native_text_record(
+            system=system,
+            user=turns,
+            response_text=final_response,
+            metadata={"source": "openclaw", "id": record_id, "task_type": raw.get("task_type")},
+        )
 
     if final_assistant_content is None:
         return None
