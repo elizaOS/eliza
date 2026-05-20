@@ -50,6 +50,7 @@ type SmartglassesControlOp =
   | "wifi_scan"
   | "wifi_status"
   | "wifi_configure"
+  | "wifi_setup"
   | "navigation_start"
   | "navigation_directions"
   | "navigation_primary_image"
@@ -97,6 +98,7 @@ const SUPPORTED_OPS: SmartglassesControlOp[] = [
   "wifi_scan",
   "wifi_status",
   "wifi_configure",
+  "wifi_setup",
   "navigation_start",
   "navigation_directions",
   "navigation_primary_image",
@@ -165,6 +167,9 @@ const OP_ALIASES = new Map<string, SmartglassesControlOp>([
   ["wifi_connect", "wifi_configure"],
   ["configure_wifi", "wifi_configure"],
   ["set_wifi", "wifi_configure"],
+  ["wifi_prompt", "wifi_setup"],
+  ["wifi_setup_request", "wifi_setup"],
+  ["request_wifi_setup", "wifi_setup"],
 ]);
 
 function parseParams(message: Memory): Record<string, unknown> {
@@ -599,6 +604,13 @@ export const smartglassesControlAction: Action = {
           await service.configureWifi(
             stringParam(params, "ssid"),
             typeof params.password === "string" ? params.password : "",
+          ),
+        );
+        break;
+      case "wifi_setup":
+        operationResult = wifiActionValue(
+          await service.requestWifiSetup(
+            typeof params.reason === "string" ? params.reason : undefined,
           ),
         );
         break;

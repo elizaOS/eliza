@@ -363,12 +363,17 @@ describe("EvenBridgeTransport", () => {
 
   it("routes Wi-Fi scan, status, and credential setup through bridge APIs", async () => {
     const credentials: Array<{ ssid: string; password: string }> = [];
+    const setupReasons: string[] = [];
     const transport = new EvenBridgeTransport({
       requestWifiScan: () => ({
         status: "scan-complete",
         networks: [{ ssid: "Home" }, { SSID: "Office" }, "Guest"],
       }),
       requestWifiStatus: () => ({ connectedSsid: "Home" }),
+      requestWifiSetup: (reason) => {
+        setupReasons.push(reason ?? "");
+        return { message: "setup-opened" };
+      },
       setWifiCredentials: (ssid, password) => {
         credentials.push({ ssid, password });
         return { message: "queued" };
@@ -388,8 +393,40 @@ describe("EvenBridgeTransport", () => {
     ).resolves.toMatchObject({
       status: "queued",
     });
+    await expect(
+      transport.requestWifiSetup("Eliza needs headset Wi-Fi"),
+    ).resolves.toMatchObject({
+      status: "setup-opened",
+    });
 
     expect(credentials).toEqual([{ ssid: "Home", password: "secret" }]);
+    expect(setupReasons).toEqual(["Eliza needs headset Wi-Fi"]);
+  });
+
+  it("routes Mentra-style Wi-Fi setup through callEvenApp when only the raw bridge is present", async () => {
+    const calls: Array<{ name: string; payload?: Record<string, unknown> }> =
+      [];
+    const transport = new EvenBridgeTransport({
+      rawBridge: {
+        callEvenApp: async (name, payload) => {
+          calls.push({ name, payload });
+          return { status: "requested" };
+        },
+      },
+    });
+
+    await expect(transport.requestWifiSetup("Need upload")).resolves.toMatchObject(
+      {
+        status: "requested",
+      },
+    );
+
+    expect(calls).toEqual([
+      {
+        name: "request_wifi_setup",
+        payload: { reason: "Need upload" },
+      },
+    ]);
   });
 
   it("does not advertise Wi-Fi when a display-only bridge lacks Wi-Fi hooks", async () => {

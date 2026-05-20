@@ -17,6 +17,7 @@ const manifestPath = path.join(
 );
 const installScriptPath = path.join(appCoreRoot, "scripts", "install-android-sms-gateway.mjs");
 const watchScriptPath = path.join(appCoreRoot, "scripts", "watch-sms-gateway-readiness.mjs");
+const readinessScriptPath = path.join(appCoreRoot, "scripts", "check-sms-gateway-readiness.mjs");
 const packageJsonPath = path.join(appCoreRoot, "package.json");
 
 test("Android template keeps the default SMS gateway surface", () => {
@@ -53,6 +54,7 @@ function escapeRegExp(value) {
 test("Android gateway installer supports one-command wireless pairing", () => {
   const script = fs.readFileSync(installScriptPath, "utf8");
   const watchScript = fs.readFileSync(watchScriptPath, "utf8");
+  const readinessScript = fs.readFileSync(readinessScriptPath, "utf8");
   const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
 
   for (const marker of [
@@ -63,6 +65,7 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     "adb connect",
     "_adb-tls-pairing",
     "_adb-tls-connect",
+    "none look like an Android phone",
   ]) {
     assert.match(script, new RegExp(escapeRegExp(marker)));
   }
@@ -73,8 +76,18 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     "ADB_PAIR_CODE=<pairing-code>",
     "--pair",
     "--connect auto",
+    "Pixel|Samsung",
   ]) {
     assert.match(watchScript, new RegExp(escapeRegExp(marker)));
+  }
+
+  for (const marker of [
+    "printGateSection",
+    "\\bBLOCKED\\b",
+    '"status"\\s*:\\s*"blocked"',
+    "none look like an Android phone",
+  ]) {
+    assert.match(readinessScript, new RegExp(escapeRegExp(marker)));
   }
 
   assert.equal(

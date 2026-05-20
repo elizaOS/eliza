@@ -117,7 +117,13 @@ function listHostUsbDevices() {
     }
     if (!devices.includes(trimmed)) devices.push(trimmed);
   }
-  return devices.slice(0, 10);
+  return devices
+    .filter((name) =>
+      /\b(Android|ADB|MTP|Pixel|Samsung|Galaxy|Motorola|Moto|OnePlus|Xiaomi|Redmi|OPPO|Vivo|Nothing|Nokia|Sony|LG|HTC|Huawei|iPhone)\b/i.test(
+        name,
+      ),
+    )
+    .slice(0, 10);
 }
 
 function readBridgeDoctor() {

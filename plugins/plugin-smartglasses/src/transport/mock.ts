@@ -15,9 +15,10 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
   readonly name = "mock-smartglasses";
   readonly writes: Array<{ side: GlassSide; data: Uint8Array }> = [];
   readonly wifiRequests: Array<{
-    op: "scan" | "status" | "configure";
+    op: "scan" | "status" | "configure" | "setup";
     ssid?: string;
     password?: string;
+    reason?: string;
   }> = [];
   wifiResult: SmartglassesWifiResult = {
     available: true,
@@ -157,6 +158,14 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
     return {
       ...this.wifiResult,
       status: `mock credentials sent for ${ssid}`,
+    };
+  }
+
+  async requestWifiSetup(reason?: string): Promise<SmartglassesWifiResult> {
+    this.wifiRequests.push({ op: "setup", reason });
+    return {
+      ...this.wifiResult,
+      status: "mock Wi-Fi setup requested",
     };
   }
 

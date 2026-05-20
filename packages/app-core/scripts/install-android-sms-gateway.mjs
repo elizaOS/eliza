@@ -622,6 +622,29 @@ function collectUsbDeviceNames(items, output = []) {
   return output;
 }
 
+function summarizeUsbDevices(devices, emptyDetail) {
+  const visible = devices
+    .filter((name) => !/USB\s*(3\.|2\.|1\.|XHCI|Bus)/i.test(name))
+    .slice(0, 10);
+  if (visible.length === 0) {
+    return { ok: false, detail: emptyDetail };
+  }
+
+  const phoneLike = visible.filter((name) =>
+    /\b(Android|ADB|MTP|Pixel|Samsung|Galaxy|Motorola|Moto|OnePlus|Xiaomi|Redmi|OPPO|Vivo|Nothing|Nokia|Sony|LG|HTC|Huawei|iPhone)\b/i.test(
+      name,
+    ),
+  );
+  if (phoneLike.length > 0) {
+    return { ok: true, detail: phoneLike.join(", ") };
+  }
+
+  return {
+    ok: false,
+    detail: `USB devices visible but none look like an Android phone: ${visible.join(", ")}`,
+  };
+}
+
 function hostUsbInventoryFromSystemProfiler() {
   const result = run("system_profiler", ["SPUSBDataType", "-json"], {
     allowFailure: true,
@@ -634,13 +657,10 @@ function hostUsbInventoryFromSystemProfiler() {
   }
   try {
     const body = JSON.parse(result.stdout);
-    const devices = collectUsbDeviceNames(body.SPUSBDataType)
-      .filter((name) => !/USB\s*(3\.|2\.|1\.|XHCI|Bus)/i.test(name))
-      .slice(0, 10);
-    return {
-      ok: devices.length > 0,
-      detail: devices.length > 0 ? devices.join(", ") : "no USB devices enumerated by macOS",
-    };
+    return summarizeUsbDevices(
+      collectUsbDeviceNames(body.SPUSBDataType),
+      "no USB devices enumerated by macOS",
+    );
   } catch (error) {
     return {
       ok: false,
@@ -669,10 +689,7 @@ function hostUsbInventoryFromIoreg() {
     if (!trimmed || /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)) continue;
     if (!names.includes(trimmed)) names.push(trimmed);
   }
-  return {
-    ok: names.length > 0,
-    detail: names.length > 0 ? names.slice(0, 10).join(", ") : "no USB devices enumerated by ioreg",
-  };
+  return summarizeUsbDevices(names, "no USB devices enumerated by ioreg");
 }
 
 function listHostUsbDevices() {

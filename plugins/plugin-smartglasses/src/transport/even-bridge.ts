@@ -17,6 +17,7 @@ import type {
 type EvenBridge = {
   requestWifiScan?: () => Promise<unknown> | unknown;
   requestWifiStatus?: () => Promise<unknown> | unknown;
+  requestWifiSetup?: (reason?: string) => Promise<unknown> | unknown;
   setWifiCredentials?: (
     ssid: string,
     password: string,
@@ -226,10 +227,21 @@ export class EvenBridgeTransport implements SmartglassesTransport {
     return normalizeWifiResult(raw, `Wi-Fi credentials sent for ${ssid}`);
   }
 
+  async requestWifiSetup(reason?: string): Promise<SmartglassesWifiResult> {
+    this.assertWifiSupported();
+    const raw = this.bridge.requestWifiSetup
+      ? await this.bridge.requestWifiSetup(reason)
+      : await this.bridge.rawBridge?.callEvenApp?.("request_wifi_setup", {
+          reason,
+        });
+    return normalizeWifiResult(raw, "Wi-Fi setup requested");
+  }
+
   supportsWifi(): boolean {
     return Boolean(
       this.bridge.requestWifiScan ||
         this.bridge.requestWifiStatus ||
+        this.bridge.requestWifiSetup ||
         this.bridge.setWifiCredentials ||
         this.bridge.sendWifiCredentials ||
         this.bridge.rawBridge?.callEvenApp,

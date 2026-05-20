@@ -538,6 +538,13 @@ export class SmartglassesService extends Service {
     return result;
   }
 
+  async requestWifiSetup(reason?: string): Promise<SmartglassesWifiResult> {
+    const wifi = this.requireWifiCapability("requestWifiSetup");
+    const result = await wifi.requestWifiSetup(reason);
+    this.lastWifiStatus = result;
+    return result;
+  }
+
   async startNavigation(): Promise<void> {
     await this.writeBoth(encodeNavigationInit(this.nextNavigationSeq()));
   }
@@ -837,7 +844,11 @@ export class SmartglassesService extends Service {
   }
 
   private requireWifiCapability<
-    K extends "scanWifi" | "getWifiStatus" | "configureWifi",
+    K extends
+      | "scanWifi"
+      | "getWifiStatus"
+      | "configureWifi"
+      | "requestWifiSetup",
   >(
     method: K,
   ): SmartglassesTransport & Required<Pick<SmartglassesTransport, K>> {
@@ -858,7 +869,8 @@ export class SmartglassesService extends Service {
     return Boolean(
       this.transport.scanWifi ||
         this.transport.getWifiStatus ||
-        this.transport.configureWifi,
+        this.transport.configureWifi ||
+        this.transport.requestWifiSetup,
     );
   }
 

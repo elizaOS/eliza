@@ -69,6 +69,7 @@ type BridgeSubscription =
 type SmartglassesBridge = {
   requestWifiScan?: () => Promise<BridgeResult> | BridgeResult;
   requestWifiStatus?: () => Promise<BridgeResult> | BridgeResult;
+  requestWifiSetup?: (reason?: string) => Promise<BridgeResult> | BridgeResult;
   setWifiCredentials?: (
     ssid: string,
     password: string,
@@ -274,6 +275,9 @@ async function callWifiBridge(
   }
   if (command === "request_wifi_status" && bridge.requestWifiStatus) {
     return bridge.requestWifiStatus();
+  }
+  if (command === "request_wifi_setup" && bridge.requestWifiSetup) {
+    return bridge.requestWifiSetup(String(payload?.reason ?? ""));
   }
   if (command === "set_wifi_credentials") {
     const ssid = String(payload?.ssid ?? "");
@@ -675,6 +679,26 @@ export function SmartglassesView() {
     }
   }
 
+  async function requestWifiSetup(): Promise<void> {
+    setBusy("wifi-setup");
+    setError(null);
+    try {
+      if (!bridge)
+        throw new Error("No native smartglasses bridge is available");
+      await callWifiBridge(bridge, "request_wifi_setup", {
+        reason: "Eliza smartglasses setup",
+      });
+      setWifiStatus("Native Wi-Fi setup requested");
+      appendEvent("wifi", "Requested native Wi-Fi setup flow");
+    } catch (err) {
+      setError(normalizeError(err));
+      setWifiStatus(normalizeError(err));
+      appendEvent("error", normalizeError(err));
+    } finally {
+      setBusy(null);
+    }
+  }
+
   async function copyReport(): Promise<void> {
     window.smartglassesHardwareReport = report;
     await navigator.clipboard?.writeText(JSON.stringify(report, null, 2));
@@ -852,6 +876,12 @@ export function SmartglassesView() {
                 disabled={!bridge || busy !== null}
               >
                 Configure Wi-Fi
+              </ActionButton>
+              <ActionButton
+                onClick={requestWifiSetup}
+                disabled={!bridge || busy !== null}
+              >
+                Native Setup
               </ActionButton>
             </div>
             <p className="mt-3 text-xs text-muted">{wifiStatus}</p>

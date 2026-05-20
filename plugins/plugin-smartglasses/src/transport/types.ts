@@ -35,6 +35,7 @@ export interface SmartglassesTransport {
     ssid: string,
     password: string,
   ): Promise<SmartglassesWifiResult>;
+  requestWifiSetup?(reason?: string): Promise<SmartglassesWifiResult>;
   supportsWifi?(): boolean;
   getConnectedLenses?(): SmartglassesConnectedLenses;
 }
