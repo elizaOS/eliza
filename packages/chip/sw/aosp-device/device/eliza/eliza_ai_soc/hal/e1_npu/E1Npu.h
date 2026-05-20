@@ -35,7 +35,7 @@ private:
     // Offset into the device that returns the driver identity word.
     // Matches sw/linux/drivers/e1/e1_platform_contract.h
     // (E1_NPU_RESULT_OFFSET).
-    static constexpr off_t kResultOffset = 0x10;
+    static constexpr off_t kResultOffset = 0x08;
 };
 
 }  // namespace implementation

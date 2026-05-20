@@ -4,8 +4,8 @@
 # Backing kernel node: /dev/e1-npu.
 #
 # Policy:
-#   - The e1_npu HAL package is not started from this root init scaffold until
-#     the matching service binary is included in PRODUCT_PACKAGES.
+#   - The e1_npu HAL starts only after post-fs ownership/mode setup for the
+#     backing kernel device has run.
 #   - The hwcomposer HAL is the only graphics HAL declared. There is no
 #     surfaceflinger override and no GLES library mapping.
 #   - No audio, camera, radio, BT, WiFi, sensors, or thermal services.
@@ -22,3 +22,4 @@ on post-fs
     chmod 0660 /dev/e1-npu
     # Vendor scratch directory for the HAL (no persistent state in v0).
     mkdir /mnt/vendor/e1_npu 0770 system system
+    setprop vendor.e1_npu.ready 1

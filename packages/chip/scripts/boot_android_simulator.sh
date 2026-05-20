@@ -13,8 +13,8 @@ report="${ANDROID_SIM_BOOT_REPORT:-$repo_root/build/reports/android_sim_boot.jso
 evidence_dir="$repo_root/docs/evidence/android"
 aosp_dir=${AOSP_DIR:-}
 aosp_shell=${AOSP_SHELL:-bash}
-aosp_product=${AOSP_PRODUCT:-eliza_ai_soc-trunk_staging-userdebug}
-aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-aosp_cf_riscv64_phone-trunk_staging-userdebug}
+aosp_product=${AOSP_PRODUCT:-eliza_openagent_ai_soc_phone-trunk_staging-userdebug}
+aosp_cuttlefish_product=${AOSP_CUTTLEFISH_PRODUCT:-eliza_cf_riscv64_phone-trunk_staging-userdebug}
 aosp_cuttlefish_args=${AOSP_CUTTLEFISH_ARGS:---cpus=4 --memory_mb=8192 --gpu_mode=none}
 aosp_cuttlefish_launcher=${AOSP_CUTTLEFISH_LAUNCHER:-}
 aosp_adb_timeout_seconds=${AOSP_ADB_TIMEOUT_SECONDS:-180}

@@ -33,5 +33,15 @@
               dest="device/eliza/eliza_ai_soc/sepolicy/file_contexts" />
     <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/e1_npu.te"
               dest="device/eliza/eliza_ai_soc/sepolicy/e1_npu.te" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/property_contexts"
+              dest="device/eliza/eliza_ai_soc/sepolicy/property_contexts" />
+    <linkfile src="sw/aosp-device/device/eliza/eliza_ai_soc/sepolicy/hwservice_contexts"
+              dest="device/eliza/eliza_ai_soc/sepolicy/hwservice_contexts" />
+    <linkfile src="packages/os/android/vendor/eliza/AndroidProducts.mk"
+              dest="vendor/eliza/AndroidProducts.mk" />
+    <linkfile src="packages/os/android/vendor/eliza/eliza_common.mk"
+              dest="vendor/eliza/eliza_common.mk" />
+    <linkfile src="packages/os/android/vendor/eliza/products/eliza_openagent_ai_soc_phone.mk"
+              dest="vendor/eliza/products/eliza_openagent_ai_soc_phone.mk" />
   </project>
 </manifest>

@@ -192,6 +192,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     openagent_inherits = inherit_products(openagent_text)
     chip_packages = makefile_product_packages(chip_device_text)
     os_common_packages = makefile_product_packages(os_common_text)
+    chip_inherits_eliza_common = "vendor/eliza/eliza_common.mk" in chip_inherits
+    effective_chip_packages = chip_packages | (
+        os_common_packages if chip_inherits_eliza_common else set()
+    )
     local_dests = local_manifest_dests(LOCAL_MANIFEST)
     chip_manifest_hals = manifest_hal_names(CHIP_MANIFEST)
 
@@ -235,10 +239,10 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     )
     add_if(
         findings,
-        bool(REQUIRED_ELIZA_PACKAGES - chip_packages),
+        bool(REQUIRED_ELIZA_PACKAGES - effective_chip_packages),
         "chip_product_missing_eliza_privapp_packages",
         "chip eliza_ai_soc product does not install the Eliza privileged app and permission XML packages",
-        f"missing={sorted(REQUIRED_ELIZA_PACKAGES - chip_packages)} chip_packages={sorted(chip_packages)}",
+        f"missing={sorted(REQUIRED_ELIZA_PACKAGES - effective_chip_packages)} effective_packages={sorted(effective_chip_packages)}",
         "Install the Eliza APK, default-permissions XML, and privapp permissions in the selected chip Android product.",
     )
     add_if(
@@ -310,6 +314,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
         "chip_product_inherits": sorted(chip_inherits),
         "os_openagent_inherits": sorted(openagent_inherits),
         "chip_product_packages": sorted(chip_packages),
+        "effective_chip_product_packages": sorted(effective_chip_packages),
         "os_common_packages": sorted(os_common_packages),
         "local_manifest_dest_count": len(local_dests),
         "chip_vintf_hals": sorted(chip_manifest_hals),
