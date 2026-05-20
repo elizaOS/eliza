@@ -180,23 +180,34 @@ export function VoicePrefixSteps(
       </main>
 
       <footer className="flex items-center justify-between">
-        {previousVoicePrefixStep(props.step, tier) ? (
-          <Button
-            variant="ghost"
-            size="sm"
-            className={ELIZAOS_GHOST_BUTTON}
-            onClick={() => {
-              const prev = previousVoicePrefixStep(props.step, tier);
-              if (prev) props.onAdvance(prev);
-              else props.onBack();
-            }}
-            data-testid="voice-prefix-back"
-          >
-            Back
-          </Button>
-        ) : (
-          <span aria-hidden="true" />
-        )}
+        <div className="flex items-center gap-2">
+          {previousVoicePrefixStep(props.step, tier) ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={ELIZAOS_GHOST_BUTTON}
+              onClick={() => {
+                const prev = previousVoicePrefixStep(props.step, tier);
+                if (prev) props.onAdvance(prev);
+                else props.onBack();
+              }}
+              data-testid="voice-prefix-back"
+            >
+              Back
+            </Button>
+          ) : null}
+          {props.step === "welcome" && props.onSkipPrefix ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className={ELIZAOS_GHOST_BUTTON}
+              onClick={props.onSkipPrefix}
+              data-testid="voice-prefix-skip-prefix"
+            >
+              Skip voice setup
+            </Button>
+          ) : null}
+        </div>
         <div className="flex items-center gap-2">
           {stepMeta.optional ? (
             <Button
