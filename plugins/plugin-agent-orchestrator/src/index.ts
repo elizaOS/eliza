@@ -343,9 +343,9 @@ export function createAgentOrchestratorPlugin(): Plugin {
         CodingWorkspaceService.serviceType,
       ];
       setTimeout(() => {
-        void Promise.all(
-          types.map((sType) =>
-            runtime.getServiceLoadPromise(sType).catch((err: unknown) =>
+        void (async () => {
+          for (const sType of types) {
+            await runtime.getServiceLoadPromise(sType).catch((err: unknown) =>
               runtime.logger?.warn?.(
                 {
                   src: "@elizaos/plugin-agent-orchestrator",
@@ -354,9 +354,8 @@ export function createAgentOrchestratorPlugin(): Plugin {
                 },
                 "Failed to eager-start orchestrator service",
               ),
-            ),
-          ),
-        ).then(() => {
+            );
+          }
           disposeProgressHook = registerProgressHook(runtime);
           // Orphan recovery runs AFTER the progress hook so resumed-session
           // events (tool_running / task_complete / heartbeat) flow into the
@@ -371,7 +370,7 @@ export function createAgentOrchestratorPlugin(): Plugin {
               "resumeOrphanedBusySessions failed",
             ),
           );
-        });
+        })();
       }, 0);
     },
     async dispose(runtime) {
