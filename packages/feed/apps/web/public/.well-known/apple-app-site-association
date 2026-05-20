@@ -3,7 +3,7 @@
     "apps": [],
     "details": [
       {
-        "appIDs": ["TEAM_ID.market.babylon.app"],
+        "appIDs": ["TEAM_ID.market.feed.app"],
         "paths": [
           "/redirect",
           "/post/*",
