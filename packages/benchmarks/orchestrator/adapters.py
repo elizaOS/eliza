@@ -255,7 +255,7 @@ def _has_terminal_bench_docker_backend() -> bool:
     return _TERMINAL_BENCH_DOCKER_AVAILABLE
 
 
-def _docker_info_available(*, attempts: int = 2, timeout_s: float = 8.0) -> bool:
+def _docker_info_available(*, attempts: int = 3, timeout_s: float = 20.0) -> bool:
     if not shutil.which("docker"):
         return False
     for attempt in range(max(attempts, 1)):
