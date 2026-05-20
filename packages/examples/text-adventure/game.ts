@@ -213,7 +213,7 @@ function createGameWorld(): Record<string, Room> {
 // GAME ENGINE
 // ============================================================================
 
-class AdventureGame {
+export class AdventureGame {
   private world: Record<string, Room>;
   private state: GameState;
 
@@ -513,6 +513,19 @@ class AdventureGame {
   getStatusLine(): string {
     return `❤️ ${this.state.health}/${this.state.maxHealth} | ⭐ ${this.state.score} | 🔄 Turn ${this.state.turnsPlayed}`;
   }
+}
+
+export function playScriptedAdventure(actions: string[]): GameState {
+  const game = new AdventureGame();
+
+  for (const action of actions) {
+    if (game.getState().gameOver) {
+      break;
+    }
+    game.executeAction(action);
+  }
+
+  return game.getState();
 }
 
 // ============================================================================

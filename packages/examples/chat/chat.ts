@@ -11,13 +11,13 @@ import {
   type UUID,
 } from "@elizaos/core";
 
-type LLMProvider = {
+export type LLMProvider = {
   name: string;
   envKey: string;
   specifier: string;
 };
 
-const LLM_PROVIDERS: LLMProvider[] = [
+export const LLM_PROVIDERS: LLMProvider[] = [
   {
     name: "OpenAI",
     envKey: "OPENAI_API_KEY",
@@ -45,12 +45,12 @@ const LLM_PROVIDERS: LLMProvider[] = [
   },
 ];
 
-function hasValidApiKey(envKey: string): boolean {
+export function hasValidApiKey(envKey: string): boolean {
   const value = process.env[envKey];
   return typeof value === "string" && value.trim().length > 0;
 }
 
-async function detectLLMPlugin(): Promise<{
+export async function detectLLMPlugin(): Promise<{
   plugin: Plugin;
   providerName: string;
 } | null> {
@@ -68,7 +68,7 @@ async function detectLLMPlugin(): Promise<{
   return null;
 }
 
-function printAvailableProviders(): void {
+export function printAvailableProviders(): void {
   console.log("\nSupported LLM providers and their API keys:\n");
   for (const provider of LLM_PROVIDERS) {
     const hasKey = hasValidApiKey(provider.envKey);
@@ -175,7 +175,9 @@ async function main() {
   prompt();
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+if (import.meta.main) {
+  main().catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}

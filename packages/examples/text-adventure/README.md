@@ -15,7 +15,6 @@ export OPENAI_API_KEY=your_key_here
 
 ```bash
 cd packages/examples/text-adventure
-cp .env.example .env   # set OPENAI_API_KEY
 bun install
 
 # Quieter logs
@@ -24,6 +23,16 @@ LOG_LEVEL=fatal bun run game.ts
 # Optional persistent DB
 PGLITE_DATA_DIR=./adventure-db LOG_LEVEL=fatal bun run game.ts
 ```
+
+## Test
+
+```bash
+bun test
+```
+
+The test suite exercises the local dungeon engine with a deterministic no-LLM
+playthrough. Running the interactive or autonomous CLI still requires
+`OPENAI_API_KEY`.
 
 ## Features
 
