@@ -1119,13 +1119,13 @@ def test_rebuild_latest_prefers_within_tolerance_real_cohort(
         run_group_id="rg_test",
         created_at="2026-05-12T00:00:00+00:00",
         request={},
-        benchmarks=["lifeops_bench"],
+        benchmarks=["woobench"],
         repo_meta={},
     )
     for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
         _seed_run(
             conn,
-            benchmark_id="lifeops_bench",
+            benchmark_id="woobench",
             agent=agent,
             run_id=f"run_mid_{agent}",
             started_at=f"2026-05-12T00:0{offset}:00+00:00",
@@ -1139,7 +1139,7 @@ def test_rebuild_latest_prefers_within_tolerance_real_cohort(
         )
     _seed_run(
         conn,
-        benchmark_id="lifeops_bench",
+        benchmark_id="woobench",
         agent="openclaw",
         run_id="run_newer_openclaw_high",
         started_at="2026-05-12T00:03:00+00:00",
@@ -1155,11 +1155,11 @@ def test_rebuild_latest_prefers_within_tolerance_real_cohort(
     _rebuild_latest_result_snapshots(
         conn,
         tmp_path,
-        {"lifeops_bench": _adapter("lifeops_bench")},
+        {"woobench": _adapter("woobench")},
     )
 
     openclaw = json.loads(
-        (tmp_path / "latest" / "lifeops_bench__openclaw.json").read_text(
+        (tmp_path / "latest" / "woobench__openclaw.json").read_text(
             encoding="utf-8"
         )
     )

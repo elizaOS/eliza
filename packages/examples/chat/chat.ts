@@ -56,9 +56,9 @@ async function detectLLMPlugin(): Promise<{
 } | null> {
   for (const provider of LLM_PROVIDERS) {
     if (hasValidApiKey(provider.envKey)) {
-      const module = (await import(
-        /* @vite-ignore */ provider.specifier
-      )) as { default: Plugin };
+      const module = (await import(/* @vite-ignore */ provider.specifier)) as {
+        default: Plugin;
+      };
       return {
         plugin: module.default,
         providerName: provider.name,

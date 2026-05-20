@@ -1768,9 +1768,15 @@ def _required_real_latest_agents(
 
 
 def _cohort_recency_key(rows_by_agent: dict[str, dict[str, Any]]) -> tuple[str, str]:
+    rows: list[dict[str, Any]] = []
+    for value in rows_by_agent.values():
+        if isinstance(value, dict):
+            rows.append(value)
+        elif isinstance(value, list):
+            rows.extend(item for item in value if isinstance(item, dict))
     timestamps = [
         str(row.get("ended_at") or row.get("started_at") or "")
-        for row in rows_by_agent.values()
+        for row in rows
     ]
     return (min(timestamps) if timestamps else "", max(timestamps) if timestamps else "")
 

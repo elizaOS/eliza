@@ -8,9 +8,9 @@ import {
 } from "@elizaos/ui/cloud-ui/components/icons";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
 import {
+  type CSSProperties,
   lazy,
   Suspense,
-  type CSSProperties,
   useCallback,
   useEffect,
   useRef,
