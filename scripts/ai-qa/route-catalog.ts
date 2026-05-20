@@ -41,7 +41,7 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
   "/apps": [{ selector: '[data-testid="apps-shell"]' }],
   "/views": [{ text: "Views" }],
   "/apps/lifeops": [{ selector: '[data-testid="lifeops-shell"]' }],
-  "/apps/plugins": [{ selector: '[data-testid="plugins-shell"]' }],
+  "/apps/plugins": [{ text: "Browser Workspace" }, { text: "AI Providers" }],
   "/apps/skills": [{ selector: '[data-testid="skills-shell"]' }],
   "/apps/fine-tuning": [{ selector: '[data-testid="fine-tuning-view"]' }],
   "/apps/trajectories": [{ selector: '[data-testid="trajectories-view"]' }],

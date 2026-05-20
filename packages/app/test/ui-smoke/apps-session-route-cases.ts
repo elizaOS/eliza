@@ -29,7 +29,7 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
   {
     name: "plugins app window",
     path: "/apps/plugins",
-    selector: '[data-testid="plugins-shell"]',
+    readyChecks: [{ text: "Browser Workspace" }, { text: "AI Providers" }],
     timeoutMs: 90_000,
   },
   {
