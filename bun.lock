@@ -1804,6 +1804,7 @@
         "idb-keyval": "^6.2.2",
         "ioredis": "^5.8.2",
         "jose": "^6.2.2",
+        "lightweight-charts": "^5.0.9",
         "lucide-react": "^0.555.0",
         "nanoid": "5.1.7",
         "next": "16.2.1",
@@ -1877,7 +1878,11 @@
       "name": "@feed/agents",
       "version": "0.1.0",
       "dependencies": {
+        "@elizaos/core": "2.0.0-alpha.109",
         "@feed/a2a": "workspace:*",
+        "@feed/db": "workspace:*",
+        "@feed/shared": "workspace:*",
+        "js-tiktoken": "^1.0.21",
         "posthog-node": "^5.17.0",
       },
       "devDependencies": {

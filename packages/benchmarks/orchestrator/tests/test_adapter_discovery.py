@@ -598,6 +598,7 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
     monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_swe_bench_docker_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_vision_language_compatible_harnesses", lambda: ("eliza", "hermes", "openclaw"))
     report = build_cross_matrix_report(
@@ -729,6 +730,11 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
     monkeypatch.setattr(
         orchestrator_adapters,
         "_has_hermes_sandbox_backend",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_swe_bench_docker_backend",
         lambda: True,
     )
     monkeypatch.setattr(
