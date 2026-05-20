@@ -1,0 +1,36 @@
+---
+title: CLI
+description: "The elizaOS CLI — create projects and plugins."
+---
+
+The CLI is intentionally small. It does two things: scaffold new agent projects and scaffold new plugin packages. Everything else is driven by your project's own scripts (`bun run dev`, `bun run build`, `bun run test`).
+
+## Install
+
+```bash
+npx elizaos --help
+```
+
+Or globally:
+
+```bash
+bun add -g @elizaos/cli
+elizaos --help
+```
+
+## Commands
+
+<CardGroup cols={2}>
+  <Card title="Create a project" icon="folder-plus" href="/cli/create-project">
+    Scaffold a new agent project.
+  </Card>
+  <Card title="Create a plugin" icon="puzzle-piece" href="/cli/create-plugin">
+    Scaffold a new plugin package.
+  </Card>
+</CardGroup>
+
+## Source
+
+- CLI: [`packages/elizaos/`](https://github.com/elizaOS/eliza/tree/develop/packages/elizaos)
+- Create command: [`packages/elizaos/src/commands/create.ts`](https://github.com/elizaOS/eliza/blob/develop/packages/elizaos/src/commands/create.ts)
+- Templates: [`packages/elizaos/templates/`](https://github.com/elizaOS/eliza/tree/develop/packages/elizaos/templates)

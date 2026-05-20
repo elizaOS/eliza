@@ -1,0 +1,52 @@
+---
+title: Create a Plugin
+description: "Scaffold a new Eliza plugin package."
+---
+
+```bash
+npx elizaos create <name> --template plugin
+```
+
+## Templates
+
+| Template      | Use case                                                                       |
+| ------------- | ------------------------------------------------------------------------------ |
+| `plugin`      | Default. Plugin with sample action, provider, service, e2e tests, build config.|
+| `min-plugin`  | Minimal. Just `plugin.ts` and one action.                                      |
+
+```bash
+npx elizaos create my-plugin --template min-plugin
+```
+
+## What you get
+
+- `src/plugin.ts` — the `Plugin` export.
+- `src/actions/`, `src/providers/`, `src/services/` — starter implementations (full template).
+- `src/__tests__/` — unit tests with a runtime fixture.
+- `e2e/` — end-to-end tests against a real agent (full template).
+- `tsdown.config.ts` — bundler config producing `dist/`.
+- `package.json` — scoped under your namespace, ready for `npm publish`.
+
+## Next steps
+
+```bash
+cd <name>
+bun install
+bun run build
+bun run test
+```
+
+To iterate against a real agent, link the plugin into an agent project:
+
+```bash
+cd ../my-agent
+bun add link:../my-plugin
+```
+
+Add `'my-plugin'` to your character's `plugins` array.
+
+## See also
+
+- [Plugin track](/tracks/plugin/overview)
+- [Plugin anatomy](/tracks/plugin/anatomy)
+- [Publish](/tracks/plugin/publish)

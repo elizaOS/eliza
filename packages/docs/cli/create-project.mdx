@@ -1,0 +1,42 @@
+---
+title: Create a Project
+description: "Scaffold a new Eliza agent project."
+---
+
+```bash
+npx elizaos create <name> [--template <template>]
+```
+
+## Templates
+
+| Template      | Use case                                                                  |
+| ------------- | ------------------------------------------------------------------------- |
+| `project`     | Default. Full-stack project with `character.ts`, plugins, app shell stubs.|
+| `min-project` | Minimal. Just a `character.ts`, a runtime entry, and the SQL plugin.      |
+
+```bash
+npx elizaos create my-agent --template min-project
+```
+
+## What you get
+
+- `character.ts` — your agent's identity and plugin list.
+- `src/index.ts` — runtime entry point.
+- `package.json` — wired to `@elizaos/core` and the default plugin set.
+- `bunfig.toml`, `tsconfig.json` — build config.
+- `.env.example` — required env variables for the included plugins.
+
+## Next steps
+
+```bash
+cd <name>
+bun install
+cp .env.example .env   # fill in model provider key
+bun run dev
+```
+
+## See also
+
+- [Agent track](/tracks/agent/overview)
+- [Character files](/tracks/agent/character)
+- [Connect channels](/tracks/agent/connect-channels)
