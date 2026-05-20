@@ -536,6 +536,9 @@ class MessageRouterService {
       return;
     }
 
+    const agentId = params.agentId;
+    const agentOrganizationId = params.agentOrganizationId;
+    const agentUserId = params.agentUserId;
     const contactIdentifier = this.normalizeContactIdentifier(params.to);
     if (!contactIdentifier) {
       return;
@@ -546,9 +549,9 @@ class MessageRouterService {
       await dbWrite
         .insert(agentPhoneContacts)
         .values({
-          organization_id: params.agentOrganizationId,
-          user_id: params.agentUserId,
-          agent_id: params.agentId,
+          organization_id: agentOrganizationId,
+          user_id: agentUserId,
+          agent_id: agentId,
           provider: params.provider,
           contact_identifier: contactIdentifier,
           contact_display_name: params.contactDisplayName,
@@ -564,8 +567,8 @@ class MessageRouterService {
             agentPhoneContacts.agent_id,
           ],
           set: {
-            organization_id: params.agentOrganizationId,
-            user_id: params.agentUserId,
+            organization_id: agentOrganizationId,
+            user_id: agentUserId,
             contact_display_name: params.contactDisplayName,
             last_contacted_at: now,
             last_outbound_at: now,

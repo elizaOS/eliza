@@ -1030,6 +1030,7 @@ function assertFails(
     remotePluginAdapterTestSource: candidateRemotePluginAdapterTestSource,
     rootPackageJson: candidateRootPackageJson,
     workflowPath: "mutated-workflow.yml",
+    onlyCheckNames: [expectedCheckName],
   });
   const expectedFailure = failures.find(
     (failure) => failure.name === expectedCheckName,

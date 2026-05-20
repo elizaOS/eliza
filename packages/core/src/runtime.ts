@@ -65,7 +65,6 @@ import {
 	type TrajectoryRuntimeLlmCallLogger,
 	withProviderStep,
 } from "./trajectory-utils";
-import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import {
 	type Action,
 	type ActionMode,
@@ -210,6 +209,7 @@ import {
 import { buildDeterministicSeed } from "./utils/deterministic";
 import { getNumberEnv } from "./utils/environment";
 import { getErrorMessage, isTransientModelError } from "./utils/model-errors";
+import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import {
 	ResponseSkeletonStreamExtractor,
 	StructuredFieldStreamExtractor,
