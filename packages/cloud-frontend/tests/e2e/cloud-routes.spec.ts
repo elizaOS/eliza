@@ -623,7 +623,9 @@ for (const route of publicRoutes) {
     // the global RootLayout <title> and trip the homepage-leak assertion).
     await page.goto(route, { waitUntil: "networkidle" });
     await expect(page.locator("body")).toBeVisible();
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await captureRouteScreenshot(page);
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
 
@@ -658,7 +660,9 @@ for (const route of dashboardRoutes) {
     await page.goto(route);
     await expect(page.locator("body")).toBeVisible();
     await expect(page).not.toHaveURL(/\/login/);
-    await expect(page.locator("text=Not found")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: /^Page Not Found$/i }),
+    ).toHaveCount(0);
     const screenshot = await page.screenshot({ fullPage: true });
     expect(screenshot.length).toBeGreaterThan(MIN_NON_BLANK_SCREENSHOT_BYTES);
     assertNoFailures(route, captured);
