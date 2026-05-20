@@ -10,12 +10,24 @@ const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
 );
-const distDir = path.join(packageRoot, ".next");
+const finalDistDir = path.join(packageRoot, ".next");
+const tempDistDirName = ".next-build";
+const tempDistDir = path.join(packageRoot, tempDistDirName);
 
 const compatibilityFiles = [
   {
-    file: path.join(distDir, "server", "pages-manifest.json"),
+    file: path.join(tempDistDir, "server", "pages-manifest.json"),
     content: "{}\n",
+  },
+  {
+    file: path.join(
+      tempDistDir,
+      "server",
+      "app",
+      "_not-found",
+      "page.js.nft.json",
+    ),
+    content: '{"version":1,"files":[]}\n',
   },
 ];
 
@@ -35,11 +47,13 @@ async function writeIfMissing(file, content) {
 
 async function writeCompatibilityFiles() {
   await Promise.all(
-    compatibilityFiles.map(({ file, content }) => writeIfMissing(file, content)),
+    compatibilityFiles.map(({ file, content }) =>
+      writeIfMissing(file, content),
+    ),
   );
 }
 
-await rm(distDir, {
+await rm(tempDistDir, {
   force: true,
   maxRetries: 5,
   recursive: true,
@@ -63,6 +77,10 @@ const exitCode = await new Promise((resolve) => {
 
   const child = spawn(process.execPath, [nextCliPath, "build"], {
     cwd: packageRoot,
+    env: {
+      ...process.env,
+      NEXT_DIST_DIR: tempDistDirName,
+    },
     stdio: "inherit",
   });
 
@@ -71,5 +89,22 @@ const exitCode = await new Promise((resolve) => {
     resolve(code ?? 1);
   });
 });
+
+if (exitCode === 0) {
+  await rm(finalDistDir, {
+    force: true,
+    maxRetries: 5,
+    recursive: true,
+    retryDelay: 100,
+  });
+  await rename(tempDistDir, finalDistDir);
+} else {
+  await rm(tempDistDir, {
+    force: true,
+    maxRetries: 5,
+    recursive: true,
+    retryDelay: 100,
+  });
+}
 
 process.exit(exitCode);
