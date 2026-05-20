@@ -6,8 +6,8 @@ import type {
   ConnectorAccountRole,
 } from "../../api/client-agent";
 import {
-  useConnectorAccounts,
   type UseConnectorAccountsResult,
+  useConnectorAccounts,
 } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
 import { Button } from "../ui/button";

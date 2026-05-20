@@ -307,7 +307,9 @@ export async function getDesktopRuntimeMode(): Promise<DesktopRuntimeModeInfo | 
   });
 }
 
-export async function getDesktopRemotePluginStoreRoot(): Promise<string | null> {
+export async function getDesktopRemotePluginStoreRoot(): Promise<
+  string | null
+> {
   const result = await invokeDesktopBridgeRequest<{ storeRoot: string }>({
     rpcMethod: "remotePluginGetStoreRoot",
     ipcChannel: "remote-plugin:getStoreRoot",
@@ -446,8 +448,9 @@ export function subscribeDesktopRemotePluginStoreChanged(
     rpcMessage: "remotePluginStoreChanged",
     ipcChannel: "remote-plugin:storeChanged",
     listener: (payload) => {
-      const snapshot = (payload as { snapshot?: DesktopRemotePluginStoreSnapshot })
-        ?.snapshot;
+      const snapshot = (
+        payload as { snapshot?: DesktopRemotePluginStoreSnapshot }
+      )?.snapshot;
       if (snapshot) listener(snapshot);
     },
   });

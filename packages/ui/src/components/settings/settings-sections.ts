@@ -1,13 +1,13 @@
 import {
   Archive,
   Brain,
-  Puzzle,
   KeyRound,
   LayoutGrid,
   Lock,
   type LucideIcon,
   Mic,
   Palette,
+  Puzzle,
   RefreshCw,
   Server,
   Shield,
@@ -24,11 +24,11 @@ import { AppearanceSettingsSection } from "./AppearanceSettingsSection";
 import { AppPermissionsSection } from "./AppPermissionsSection";
 import { AppsManagementSection } from "./AppsManagementSection";
 import { CapabilitiesSection } from "./CapabilitiesSection";
-import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { ConnectorsSection } from "./ConnectorsSection";
 import { IdentitySettingsSection } from "./IdentitySettingsSection";
 import { PermissionsSection } from "./PermissionsSection";
 import { ProviderSwitcher } from "./ProviderSwitcher";
+import { RemotePluginHostSection } from "./RemotePluginHostSection";
 import { RuntimeSettingsSection } from "./RuntimeSettingsSection";
 import { SecretsManagerSection } from "./SecretsManagerSection";
 import { SecuritySettingsSection } from "./SecuritySettingsSection";

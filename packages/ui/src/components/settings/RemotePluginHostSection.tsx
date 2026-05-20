@@ -19,10 +19,10 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  type DesktopInstalledRemotePluginSnapshot,
   type DesktopRemotePluginPermissionTag,
   type DesktopRemotePluginStoreSnapshot,
   type DesktopRemotePluginWorkerStatus,
-  type DesktopInstalledRemotePluginSnapshot,
   desktopOpenPath,
   getDesktopRemotePluginLogs,
   getDesktopRemotePluginStoreRoot,
@@ -76,7 +76,9 @@ function formatRelative(epochMs: number): string {
   return new Date(epochMs).toLocaleDateString();
 }
 
-function permissionGroups(permissions: readonly DesktopRemotePluginPermissionTag[]): {
+function permissionGroups(
+  permissions: readonly DesktopRemotePluginPermissionTag[],
+): {
   host: string[];
   bun: string[];
   isolation: string | null;
@@ -154,7 +156,9 @@ function RemotePluginRow({
             <span className="text-[10px] font-mono text-muted">
               {remotePlugin.id}
             </span>
-            <span className="text-[10px] text-muted">v{remotePlugin.version}</span>
+            <span className="text-[10px] text-muted">
+              v{remotePlugin.version}
+            </span>
             <span className="rounded bg-bg/40 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
               {remotePlugin.mode}
             </span>
@@ -228,7 +232,9 @@ function RemotePluginRow({
             updated {formatRelative(remotePlugin.updatedAt)}
           </span>
         ) : null}
-        {remotePlugin.devMode ? <span className="text-warn/80">dev-mode</span> : null}
+        {remotePlugin.devMode ? (
+          <span className="text-warn/80">dev-mode</span>
+        ) : null}
       </div>
 
       {logsOpen ? (
@@ -241,9 +247,8 @@ function RemotePluginRow({
 }
 
 export function RemotePluginHostSection() {
-  const [snapshot, setSnapshot] = useState<DesktopRemotePluginStoreSnapshot | null>(
-    null,
-  );
+  const [snapshot, setSnapshot] =
+    useState<DesktopRemotePluginStoreSnapshot | null>(null);
   const [statuses, setStatuses] = useState<WorkerStatusMap>({});
   const [storeRoot, setStoreRoot] = useState<string | null>(null);
   const [sourceDir, setSourceDir] = useState("");
@@ -368,11 +373,11 @@ export function RemotePluginHostSection() {
           Process isolation lands when a Bun.spawn-based runner is wired.
         </p>
         <p className="text-xs text-muted">
-          <span className="text-warn">Auth token:</span> a remote plugin can request
-          your API token via the host bridge and call Milady's HTTP API as you.
-          Future versions will issue per-plugin scoped tokens; the current
-          bridge forwards the host token verbatim. Only install remote plugins from
-          sources you trust.
+          <span className="text-warn">Auth token:</span> a remote plugin can
+          request your API token via the host bridge and call Milady's HTTP API
+          as you. Future versions will issue per-plugin scoped tokens; the
+          current bridge forwards the host token verbatim. Only install remote
+          plugins from sources you trust.
         </p>
         {storeRoot ? (
           <p className="flex items-center gap-1 text-[11px] text-muted/80">
@@ -439,7 +444,10 @@ export function RemotePluginHostSection() {
         {remotePlugins.length === 0 ? (
           <p className="text-xs text-muted">
             No remote plugins installed. Try installing the bundled example at{" "}
-            <code>packages/plugin-remote-manifest/examples/hello-remote-plugin</code>.
+            <code>
+              packages/plugin-remote-manifest/examples/hello-remote-plugin
+            </code>
+            .
           </p>
         ) : (
           <div className="space-y-2">
