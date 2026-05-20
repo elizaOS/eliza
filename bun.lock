@@ -2962,6 +2962,7 @@
         "google-auth-library": "^10.0.0",
         "jsdom": "^29.0.0",
         "json5": "^2.2.3",
+        "react-dom": "*",
         "ts-morph": "28.0.0",
         "tsup": "^8.5.1",
         "vite": "^8.0.0",
@@ -2969,6 +2970,7 @@
       },
       "peerDependencies": {
         "react": "*",
+        "react-dom": "*",
       },
     },
     "plugins/plugin-line": {
