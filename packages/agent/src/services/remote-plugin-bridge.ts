@@ -26,6 +26,7 @@ import type {
   Provider,
   ProviderResult,
   State,
+  Validator,
 } from "@elizaos/core";
 import type {
   HostRpcMessage,
@@ -288,7 +289,7 @@ export class RemotePluginBridge {
       return result as unknown as ReturnType<Action["handler"]>;
     };
 
-    const validate: Action["validate"] = validateRef
+    const validate: Validator = validateRef
       ? async (_runtime, message, state) => {
           const result = await this.workerRpc<boolean>(
             "action",

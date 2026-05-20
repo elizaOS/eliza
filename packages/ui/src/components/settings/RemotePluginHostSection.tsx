@@ -45,6 +45,11 @@ interface WorkerStatusMap {
   [remotePluginId: string]: DesktopRemotePluginWorkerStatus | undefined;
 }
 
+type RemotePluginStoreSnapshotCompat = DesktopRemotePluginStoreSnapshot & {
+  carrots?: DesktopInstalledRemotePluginSnapshot[];
+  remotePlugins?: DesktopInstalledRemotePluginSnapshot[];
+};
+
 const STATE_TONE: Record<RemotePluginViewState, string> = {
   stopped: "bg-bg/40 text-muted",
   starting: "bg-warn/20 text-warn",
@@ -74,6 +79,13 @@ function formatRelative(epochMs: number): string {
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 30) return `${diffDay}d ago`;
   return new Date(epochMs).toLocaleDateString();
+}
+
+function remotePluginsFromSnapshot(
+  snapshot: DesktopRemotePluginStoreSnapshot | null,
+): DesktopInstalledRemotePluginSnapshot[] {
+  const compat = snapshot as RemotePluginStoreSnapshotCompat | null;
+  return compat?.remotePlugins ?? compat?.carrots ?? [];
 }
 
 function permissionGroups(
@@ -353,7 +365,7 @@ export function RemotePluginHostSection() {
     [refresh],
   );
 
-  const remotePlugins = snapshot?.remotePlugins ?? [];
+  const remotePlugins = remotePluginsFromSnapshot(snapshot);
 
   return (
     <div className="space-y-4">

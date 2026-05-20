@@ -16,7 +16,8 @@ import { elizaLogger } from "@elizaos/core";
  *   - no competing OpenAI-compat key is present (`OPENAI_API_KEY`,
  *     `OPENAI_BASE_URL`, and `ELIZA_PROVIDER` are all unset)
  *
- * Never overwrites an existing OPENAI_* or ELIZA_PROVIDER value.
+ * Never overwrites an existing OPENAI_* or ELIZA_PROVIDER value unless the
+ * benchmark run explicitly selected Cerebras.
  *
  * The resulting `OPENAI_BASE_URL=https://api.cerebras.ai/v1` is the V1 root
  * onto which `@ai-sdk/openai`'s `openai.chat(model)` appends
@@ -28,13 +29,27 @@ import { elizaLogger } from "@elizaos/core";
 export function autoWireCerebras(): void {
   const cerebrasKey = process.env.CEREBRAS_API_KEY?.trim();
   if (!cerebrasKey) return;
+  const cerebrasBase =
+    process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
+  const selectedModel =
+    process.env.BENCHMARK_MODEL_NAME?.trim() ||
+    process.env.CEREBRAS_MODEL?.trim() ||
+    "";
+  const modelIsCerebras =
+    selectedModel === "gpt-oss-120b" ||
+    selectedModel === "qwen-3-235b-a22b-instruct-2507";
+  const explicitCerebras =
+    process.env.BENCHMARK_MODEL_PROVIDER?.trim().toLowerCase() === "cerebras" ||
+    process.env.ELIZA_PROVIDER?.trim().toLowerCase() === "cerebras" ||
+    process.env.OPENAI_BASE_URL?.includes("cerebras.ai") === true ||
+    modelIsCerebras;
   const hasOpenAiKey = !!process.env.OPENAI_API_KEY?.trim();
   const hasOpenAiBase = !!process.env.OPENAI_BASE_URL?.trim();
   const hasElizaProvider = !!process.env.ELIZA_PROVIDER?.trim();
-  if (hasOpenAiKey || hasOpenAiBase || hasElizaProvider) return;
+  if (!explicitCerebras && (hasOpenAiKey || hasOpenAiBase || hasElizaProvider)) {
+    return;
+  }
 
-  const cerebrasBase =
-    process.env.CEREBRAS_BASE_URL?.trim() || "https://api.cerebras.ai/v1";
   process.env.OPENAI_BASE_URL = cerebrasBase;
   process.env.OPENAI_API_KEY = cerebrasKey;
   process.env.ELIZA_PROVIDER = "cerebras";

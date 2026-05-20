@@ -36,7 +36,9 @@
       "@elizaos/plugin-capacitor-bridge": ["../../plugins/plugin-capacitor-bridge/src/index.ts"],
       "@elizaos/plugin-capacitor-bridge/*": ["../../plugins/plugin-capacitor-bridge/src/*"],
       "@elizaos/plugin-local-inference": ["../../plugins/plugin-local-inference/src/index.ts"],
-      "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"]
+      "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"],
+      "@elizaos/ui": ["../../packages/ui/src/index.ts"],
+      "@elizaos/ui/*": ["../../packages/ui/src/*"]
     }
   },
   "include": ["src/**/*"],

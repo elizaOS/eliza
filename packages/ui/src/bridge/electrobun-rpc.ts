@@ -180,7 +180,7 @@ export interface DesktopInstalledRemotePluginSnapshot {
 
 export interface DesktopRemotePluginStoreSnapshot {
   version: 1;
-  carrots: DesktopInstalledRemotePluginSnapshot[];
+  remotePlugins: DesktopInstalledRemotePluginSnapshot[];
 }
 
 export type DesktopRemotePluginWorkerState =

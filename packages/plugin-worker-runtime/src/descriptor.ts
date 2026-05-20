@@ -33,7 +33,7 @@ export type RemoteServiceClass = {
   /** Identifier used by `runtime.getService(serviceType)`. */
   serviceType: string;
   /** Explicit allowlist of methods that can be invoked via host RPC. */
-  rpcMethods: string[];
+  rpcMethods: readonly string[];
   /** Optional human-readable description; passes through to the host. */
   capabilityDescription?: string;
   /** Factory; the bootstrap calls this to materialise the service. */
@@ -42,10 +42,9 @@ export type RemoteServiceClass = {
   stopRuntime?: (runtime: unknown) => Promise<void>;
 };
 
-export type RemoteServiceInstance = {
+export interface RemoteServiceInstance {
   stop?: () => Promise<void> | void;
-  [methodName: string]: unknown;
-};
+}
 
 /** Mapping from rpc.id → live handler, plus its surface kind for routing. */
 export interface HandlerRegistry {
@@ -156,7 +155,7 @@ async function serviceMethodTrampoline(
     serviceInstances.set(service, instancePromise);
   }
   const instance = await instancePromise;
-  const fn = instance[method];
+  const fn = (instance as Record<string, unknown>)[method];
   if (typeof fn !== "function") {
     throw new Error(
       `Service ${service.serviceType} has no rpcMethod "${method}".`,

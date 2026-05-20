@@ -1310,14 +1310,13 @@ async def _run_instance(
     task_id = f"{provider_label}:{instance.instance_id}" if provider_label else instance.instance_id
     repo_root: Path | None = None
     manager: RepositoryManager | None = None
-    if provider_label in _ELIZA_WORKTREE_PROVIDERS:
-        manager = RepositoryManager(
-            Path(os.environ.get("SWE_BENCH_WORKSPACE_DIR", "swe-bench-workspace"))
-        )
-        try:
-            repo_root = await manager.setup_repo(instance)
-        except Exception:
-            repo_root = None
+    manager = RepositoryManager(
+        Path(os.environ.get("SWE_BENCH_WORKSPACE_DIR", "swe-bench-workspace"))
+    )
+    try:
+        repo_root = await manager.setup_repo(instance)
+    except Exception:
+        repo_root = None
     try:
         send_message = client.send_message  # type: ignore[attr-defined]
         client.reset(task_id=task_id, benchmark="swe_bench")  # type: ignore[attr-defined]
@@ -1427,11 +1426,20 @@ async def _run_instance(
                 },
             )
             repair_text = getattr(repair_response, "text", "") or ""
-            repair_patch = _extract_patch(repair_text)
+            repair_patch = (
+                _extract_patch_for_repo(repair_text, repo_root)
+                if repo_root
+                else _extract_patch(repair_text)
+            )
             if not repair_patch:
                 repair_params = getattr(repair_response, "params", None)
                 if isinstance(repair_params, dict) and repair_params:
-                    repair_patch = _extract_patch(json.dumps(repair_params))
+                    repair_params_text = json.dumps(repair_params)
+                    repair_patch = (
+                        _extract_patch_for_repo(repair_params_text, repo_root)
+                        if repo_root
+                        else _extract_patch(repair_params_text)
+                    )
             if not repair_patch:
                 result.status = (
                     f"{result.status} repair_attempts={attempt + 1} "
