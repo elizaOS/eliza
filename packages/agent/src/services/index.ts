@@ -74,6 +74,7 @@ export * from "./remote-capability-endpoint-provider.ts";
 export * from "./remote-capability-live-report.ts";
 export * from "./remote-capability-router.ts";
 export * from "./remote-capability-url-endpoint-providers.ts";
+export * from "./remote-plugin-bridge.ts";
 export * from "./remote-plugin-adapter.ts";
 export * from "./remote-signing-service.ts";
 export { ResearchTaskExecutor } from "./research-task-executor.ts";
