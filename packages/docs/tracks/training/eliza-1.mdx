@@ -1,30 +1,46 @@
 ---
 title: Eliza-1
-description: "Open-weight Eliza models — fine-tuning, quantization, publishing."
+description: "Open-weight Eliza models — Qwen-based, APOLLO-trained, multi-stage quantized."
 ---
 
-**Eliza-1** is the model family Eliza agents run locally by default. Built on Qwen base models, fine-tuned for native tool-calling and agent loops, quantized for on-device inference.
+**Eliza-1** is the model family Eliza agents run locally by default. Built on Qwen base models, fine-tuned for native tool-calling and agent loops, then put through a three-stage quantization pipeline for on-device inference.
 
-## Sizes
+## Shipping sizes
 
-- **0.8B** — mobile / edge tier.
-- **2B** — laptop CPU + small GPU.
-- **7B** — workstation GPU.
-- **14B / 27B** — server GPU.
+| Tier        | Model           | Base                  | Audience                          |
+| ----------- | --------------- | --------------------- | --------------------------------- |
+| Mobile      | `eliza-1-0_8b`  | Qwen3.5-0.8B-Base     | Phone / edge.                     |
+| Laptop      | `eliza-1-2b`    | Qwen3.5-2B-Base       | Laptop CPU + small GPU.           |
+| Workstation | `eliza-1-4b`    | Qwen3.5-4B-Base       | Single consumer GPU.              |
+| Workstation | `eliza-1-9b`    | Qwen3.5-9B            | Mid-range workstation GPU.        |
+| Cloud       | `eliza-1-27b`   | Qwen3.6-27B           | Server-class GPU.                 |
 
-Larger sizes track agent benchmarks closer to flagship frontier models on tool-calling and autonomy tasks; smaller sizes prioritize latency and footprint.
+All sizes are published under the [`elizaos/eliza-1`](https://huggingface.co/elizaos/eliza-1) HuggingFace repo with per-tier bundles. Legacy Qwen3 dense bases (0.6B / 1.7B / 4B) were dropped 2026-05-12 — they're incompatible with the dflash speculative-decode path.
 
-## Pipeline
+## Optimizer
 
-1. **Dataset prep** — normalize trajectories, filter, embed metadata. `packages/training/data/`.
-2. **SFT** — native tool-calling supervised fine-tune. APOLLO optimizer. `packages/training/scripts/`.
-3. **Quantization** — PolarQuant / TurboQuant / QJL. Post-training, no quality regression.
-4. **Publish** — HuggingFace repos with model cards. Bundle manifests reference exact training and eval runs.
+**APOLLO is locked.** Memory-efficient, no alternatives ship.
 
-## Training requirements
+- 0.8B / 2B / 4B — `apollo_mini` (rank=1)
+- 9B / 27B — `apollo`
 
-- GPU tier scales with model size. 0.8B fits on a 24 GB consumer GPU; 27B requires 8x H100.
-- Remote orchestration via Vast.ai integration in `packages/training/scripts/`.
+## Quantization
+
+Three real, shipping methods. The post-SFT pipeline runs all three:
+
+| Method        | Target           | Technique                                                                 |
+| ------------- | ---------------- | ------------------------------------------------------------------------- |
+| **PolarQuant**| 4-bit weights    | Hadamard rotation ([arXiv:2603.29078](https://arxiv.org/abs/2603.29078)). fp16 norms in a sidecar safetensors file. |
+| **TurboQuant**| 4-bit V-cache    | Online KV-cache quantization ([arXiv:2504.19874](https://arxiv.org/abs/2504.19874)). Pure-PyTorch reference plus a Triton-fused fast path. |
+| **QJL**       | 1-bit K-cache    | JL-projected K-cache ([arXiv:2406.03482](https://arxiv.org/abs/2406.03482)). Vendored CUDA C++ extension. Available on 1.5B / 2B / 4B / 9B; V-side stays bf16 on Qwen3.5 pending upstream gated-q_proj patch. |
+
+GGUF variants (`q3_k_m`, `q4_k_m`, `q5_k_m`, `q6_k`, `q8_0`) are also produced for llama.cpp consumption.
+
+## Pipeline order
+
+`base_bench → APOLLO SFT → fine_tuned_bench → PolarQuant + TurboQuant + QJL → quantized_bench`
+
+Every stage emits a benchmark report so regressions land with evidence.
 
 ## Loading in an agent
 

@@ -16,37 +16,39 @@
 
 import { afterEach, beforeAll, describe, expect, mock, test } from "bun:test";
 
-const validateAndConsumeSIWE = mock<
-  (
-    redis: unknown,
-    message: string,
-    signature: string,
-    host: string,
-  ) => Promise<{ address: string }>
->();
+const validateAndConsumeSIWE =
+  mock<
+    (
+      redis: unknown,
+      message: string,
+      signature: string,
+      host: string,
+    ) => Promise<{ address: string }>
+  >();
 
-const getByWalletAddress = mock<
-  (address: string) => Promise<{ id: string } | undefined>
->();
+const getByWalletAddress =
+  mock<(address: string) => Promise<{ id: string } | undefined>>();
 
-const usersServiceUpdate = mock<
-  (
-    id: string,
-    data: Record<string, unknown>,
-  ) => Promise<
-    | {
-        id: string;
-        wallet_address: string;
-        wallet_chain_type: string;
-        wallet_verified: boolean;
-      }
-    | undefined
-  >
->();
+const usersServiceUpdate =
+  mock<
+    (
+      id: string,
+      data: Record<string, unknown>,
+    ) => Promise<
+      | {
+          id: string;
+          wallet_address: string;
+          wallet_chain_type: string;
+          wallet_verified: boolean;
+        }
+      | undefined
+    >
+  >();
 
-const requireUser = mock<
-  (c: unknown) => Promise<{ id: string; wallet_address: string | null }>
->();
+const requireUser =
+  mock<
+    (c: unknown) => Promise<{ id: string; wallet_address: string | null }>
+  >();
 
 const buildRedisClient = mock<(env: unknown) => unknown>();
 

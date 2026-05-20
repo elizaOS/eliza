@@ -256,47 +256,6 @@ def _score_from_terminalbench_json(data: JSONValue) -> ScoreExtraction:
     )
 
 
-def _score_from_gaia_json(data: JSONValue) -> ScoreExtraction:
-    root = expect_dict(data, ctx="gaia:root")
-    metrics = expect_dict(get_required(root, "metrics", ctx="gaia:root"), ctx="gaia:metrics")
-    metadata = root.get("metadata")
-    metadata_dict = expect_dict(metadata, ctx="gaia:metadata") if isinstance(metadata, dict) else {}
-    dataset_source = metadata_dict.get("dataset_source") or root.get("dataset_source") or ""
-    if not dataset_source:
-        orchestrated = root.get("orchestrated")
-        if isinstance(orchestrated, dict):
-            sources: set[str] = set()
-            for payload in orchestrated.values():
-                if not isinstance(payload, dict):
-                    continue
-                payload_meta = payload.get("metadata")
-                if isinstance(payload_meta, dict) and isinstance(payload_meta.get("dataset_source"), str):
-                    sources.add(str(payload_meta["dataset_source"]))
-            if len(sources) == 1:
-                dataset_source = next(iter(sources))
-            elif sources:
-                dataset_source = ",".join(sorted(sources))
-    overall = expect_float(get_required(metrics, "overall_accuracy", ctx="gaia:metrics"), ctx="gaia:overall_accuracy")
-    total_questions = expect_float(
-        get_required(metrics, "total_questions", ctx="gaia:metrics"),
-        ctx="gaia:total_questions",
-    )
-    if total_questions <= 0:
-        raise ValueError("gaia:total_questions must be positive")
-    return ScoreExtraction(
-        score=overall,
-        unit="ratio",
-        higher_is_better=True,
-        metrics={
-            "overall_accuracy": overall,
-            "total_questions": total_questions,
-            "correct_answers": metrics.get("correct_answers") or 0,
-            "dataset_source": dataset_source,
-            "benchmark_harness": metadata_dict.get("benchmark_harness") or root.get("harness") or "",
-        },
-    )
-
-
 def _score_from_taubench_json(data: JSONValue) -> ScoreExtraction:
     root = expect_dict(data, ctx="tau_bench:root")
     domain_results = root.get("domain_results")

@@ -1,11 +1,12 @@
-import { client, type AppRunSummary } from "@elizaos/ui/api";
 import {
+  type AppOperatorSurfaceProps,
+  type AppRunSummary,
+  client,
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-} from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
-import type { AppOperatorSurfaceProps } from "@elizaos/ui/components/apps/surfaces/types";
-import { useApp } from "@elizaos/ui/state";
+  useApp,
+} from "@elizaos/ui";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 type RunEventSummary = {
@@ -14,14 +15,6 @@ type RunEventSummary = {
   message: string;
   severity?: string;
   createdAt?: string | null;
-};
-
-type RunActivitySummary = {
-  id: string;
-  type: string;
-  message: string;
-  severity?: string;
-  timestamp?: string | null;
 };
 
 const PRIMARY_COMMANDS = [
@@ -132,7 +125,7 @@ function collectRunEvents(
     })) satisfies GameOperatorEvent[];
 
   const activityEvents: GameOperatorEvent[] =
-    run.session?.activity?.map((entry: RunActivitySummary) => ({
+    run.session?.activity?.map((entry) => ({
       id: entry.id,
       label: entry.type,
       message: cleanClawvilleMessage(entry.message),

@@ -8,7 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
@@ -210,15 +209,6 @@ def _unsupported_real_reasons(
     unsupported_real_harnesses: list[str],
     supported_real_harnesses: list[str],
 ) -> dict[str, str]:
-    if (
-        benchmark_id in {"gaia", "gaia_orchestrated"}
-        and unsupported_real_harnesses
-        and not supported_real_harnesses
-    ):
-        return {
-            agent: GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
-            for agent in unsupported_real_harnesses
-        }
     if (
         benchmark_id == "hyperliquid_bench"
         and unsupported_real_harnesses

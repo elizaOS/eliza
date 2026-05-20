@@ -81,6 +81,9 @@ _NEGATION_CUES = {
     "prohibited",
     "prohibiting",
     "prohibits",
+    "override",
+    "overridden",
+    "overrode",
     "reject",
     "rejected",
     "supersede",
@@ -561,7 +564,7 @@ def _is_negated_mention(
         or any(token in {"avoid", "avoids", "avoided", "avoiding"} for token in before[-4:])
         or any(token in {"block", "blocks", "blocked", "blocking"} for token in before[-4:])
         or any(token in {"retract", "retracted", "rescind", "rescinded", "abandon", "abandoned", "cancel", "canceled", "cancelled"} for token in before)
-        or any(token in {"supersede", "supersedes", "superseded"} for token in before)
+        or any(token in {"override", "overrode", "overridden", "supersede", "supersedes", "superseded"} for token in before)
     ):
         return True
 
@@ -587,6 +590,10 @@ def _is_negated_mention(
         or "has been retracted" in joined_after
         or "was abandoned" in joined_after
         or "has been abandoned" in joined_after
+        or "was overridden" in joined_after
+        or "has been overridden" in joined_after
+        or "was overrode" in joined_after
+        or "has been overrode" in joined_after
         or "not in effect" in joined_after
         or "not being pursued" in joined_after
         or "not pursued" in joined_after

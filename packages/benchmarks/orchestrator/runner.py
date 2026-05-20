@@ -16,7 +16,6 @@ from typing import Any
 from uuid import uuid4
 
 from .adapters import (
-    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
     OSWORLD_DOCKER_UNAVAILABLE_REASON,
@@ -1182,8 +1181,6 @@ def _latest_matrix_unsupported_reason(
     harness: str,
     allowed_harnesses: tuple[str, ...],
 ) -> str:
-    if benchmark_id in {"gaia", "gaia_orchestrated"} and not allowed_harnesses:
-        return GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
     if benchmark_id == "hyperliquid_bench" and not allowed_harnesses:
         return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
     if benchmark_id == "terminal_bench" and not allowed_harnesses:

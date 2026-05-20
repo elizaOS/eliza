@@ -3402,6 +3402,21 @@ def test_vision_language_harness_runtime_requires_multimodal_model(
     assert orchestrator_adapters._has_vision_language_harness_runtime() is True
 
 
+def test_vision_language_local_eliza_runtime_must_be_explicit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("VISION_LANGUAGE_PROVIDER", raising=False)
+    monkeypatch.delenv("VISION_LANGUAGE_USE_LOCAL_ELIZA", raising=False)
+    monkeypatch.setattr(orchestrator_adapters, "_has_vision_language_bundle", lambda _tier: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_textvqa_real_inputs", lambda: True)
+
+    assert orchestrator_adapters._has_vision_language_real_inputs() is False
+
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "local-eliza")
+
+    assert orchestrator_adapters._has_vision_language_real_inputs() is True
+
+
 def test_vision_language_bundle_accepts_current_manifest_schema(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
