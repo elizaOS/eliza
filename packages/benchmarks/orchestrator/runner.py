@@ -18,6 +18,7 @@ from .adapters import (
     GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
     HERMES_SANDBOX_UNAVAILABLE_REASON,
     HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
+    SWE_BENCH_DOCKER_UNAVAILABLE_REASON,
     TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON,
     VISION_LANGUAGE_FIXED_RUNTIME_REASON,
     VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
@@ -1127,6 +1128,8 @@ def _latest_matrix_unsupported_reason(
         return HYPERLIQUID_LIVE_UNAVAILABLE_REASON
     if benchmark_id == "terminal_bench" and not allowed_harnesses:
         return TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON
+    if benchmark_id in {"swe_bench", "swe_bench_orchestrated"} and not allowed_harnesses:
+        return SWE_BENCH_DOCKER_UNAVAILABLE_REASON
     if (
         benchmark_id
         in {
