@@ -237,9 +237,16 @@ function isActionCallingBenchmarkName(benchmark: string): boolean {
   return (
     normalized === "action-calling" ||
     normalized === "action_calling" ||
+    normalized === "vending-bench" ||
+    normalized === "vending_bench" ||
     normalized === "tau_bench" ||
     normalized === "tau-bench"
   );
+}
+
+function isVendingBenchmarkName(benchmark: string): boolean {
+  const normalized = benchmark.trim().toLowerCase();
+  return normalized === "vending-bench" || normalized === "vending_bench";
 }
 
 function normalizeActionCallingNativeMessages(
@@ -2489,10 +2496,14 @@ export async function startBenchmarkServer() {
           ) {
             const nativeMessages = _isTauBenchmarkName(session.benchmark)
               ? _normalizeTauNativeMessages(text, benchmarkContext)
-              : normalizeActionCallingNativeMessages(text, benchmarkContext);
+              : isVendingBenchmarkName(session.benchmark)
+                ? normalizeLocaNativeMessages(benchmarkContext.messages)
+                : normalizeActionCallingNativeMessages(text, benchmarkContext);
             const openAiMessages = _isTauBenchmarkName(session.benchmark)
               ? nativeMessages
-              : normalizeActionCallingOpenAiMessages(text, benchmarkContext);
+              : isVendingBenchmarkName(session.benchmark)
+                ? nativeMessages
+                : normalizeActionCallingOpenAiMessages(text, benchmarkContext);
             const maxTokens =
               typeof benchmarkContext.max_tokens === "number"
                 ? benchmarkContext.max_tokens

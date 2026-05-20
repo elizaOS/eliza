@@ -326,6 +326,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
     "@types/bun": "^1.3.12",
     "@types/jsdom": "^28.0.0",
     "@types/node": "^25.2.0",

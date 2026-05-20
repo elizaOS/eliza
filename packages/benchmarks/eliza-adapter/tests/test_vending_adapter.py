@@ -10,6 +10,7 @@ class _FakeClient:
     def __init__(self, response: MessageResponse | None = None) -> None:
         self.reset_task_ids: list[str] = []
         self.contexts: list[dict[str, object]] = []
+        self.messages: list[str] = []
         self.response = response
 
     def wait_until_ready(self, timeout: float = 120.0, poll: float = 1.0) -> None:
@@ -20,6 +21,7 @@ class _FakeClient:
         return {"ok": True, "benchmark": benchmark}
 
     def send_message(self, text: str, context: dict[str, object]) -> MessageResponse:
+        self.messages.append(text)
         self.contexts.append(context)
         if self.response is not None:
             return self.response
@@ -42,6 +44,10 @@ def test_vending_provider_sends_to_the_per_turn_reset_session() -> None:
     assert client.reset_task_ids
     assert client.contexts[0]["task_id"] == client.reset_task_ids[-1]
     assert client.contexts[0]["benchmark"] == "vending-bench"
+    assert "system_prompt" not in client.contexts[0]
+    assert "messages" not in client.contexts[0]
+    assert "## Eliza short-run benchmark strategy" in client.messages[0]
+    assert "What next?" in client.messages[0]
 
 
 def test_vending_provider_normalizes_bare_tool_json() -> None:

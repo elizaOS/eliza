@@ -432,8 +432,46 @@ export default defineConfig(({ mode }) => {
       },
       rolldownOptions: {
         output: {
+          // Explicit code-splitting groups. With `groups: []` (the previous
+          // value) Rolldown auto-derives `vendor-wallet-*` chunks from the
+          // wagmi/viem/RainbowKit/WalletConnect graph and emits multiple
+          // cross-importing chunks. Under the wagmi 3.x layout that produced
+          // a circular import: the chunk holding `@wagmi/core` `connect` +
+          // `ConnectorUnavailableReconnectingError` ran a top-level
+          // `n()` against a binding imported from a sibling wallet chunk
+          // that wasn't initialized yet, throwing
+          // `TypeError: n is not a function` and killing hydration on every
+          // page that loads the wallet stack (/login, /bsc, dashboard).
+          //
+          // Each `test` below collapses one logical graph into a single
+          // chunk. Rolldown's `includeDependenciesRecursively` default
+          // (true) then pulls each module's deps in with it, so no
+          // sibling-chunk cycles can form. `priority` is set so the more
+          // specific groups (wallet stack, solana) match before the
+          // generic `vendor-core` fallback.
           codeSplitting: {
-            groups: [],
+            groups: [
+              {
+                name: "vendor-wallet",
+                test: /[\\/]node_modules[\\/](wagmi|@wagmi[\\/]|viem[\\/]|@rainbow-me[\\/]|@walletconnect[\\/]|@reown[\\/]|@coinbase[\\/]wallet|mipd|eventemitter3)([\\/]|$)/,
+                priority: 30,
+              },
+              {
+                name: "vendor-solana",
+                test: /[\\/]node_modules[\\/]@solana[\\/]/,
+                priority: 25,
+              },
+              {
+                name: "vendor-react",
+                test: /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|@tanstack[\\/]react-query|scheduler)[\\/]/,
+                priority: 20,
+              },
+              {
+                name: "vendor-core",
+                test: /[\\/]node_modules[\\/]/,
+                priority: 10,
+              },
+            ],
           },
         },
       },

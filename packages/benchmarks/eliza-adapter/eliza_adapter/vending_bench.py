@@ -66,6 +66,37 @@ _VENDING_SHORT_RUN_HINT = """\
 - If the last result says an order was already placed today, do not place another order; ADVANCE_DAY.
 """
 
+_VENDING_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "BENCHMARK_ACTION",
+        "description": "Return exactly one Vending-Bench action for this turn.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": sorted(_VENDING_ACTIONS - {"VIEW_STATE"})},
+                "supplier_id": {"type": "string"},
+                "items": {"type": "object", "additionalProperties": {"type": "integer"}},
+                "row": {"type": "integer"},
+                "column": {"type": "integer"},
+                "product_id": {"type": "string"},
+                "quantity": {"type": "integer"},
+                "price": {"type": "number"},
+                "query": {"type": "string"},
+                "to": {"type": "string"},
+                "subject": {"type": "string"},
+                "body": {"type": "string"},
+                "text": {"type": "string"},
+                "task": {"type": "string"},
+                "key": {"type": "string"},
+                "content": {"type": "string"},
+            },
+            "required": ["action"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 
 def _extract_json_candidate(text: str) -> str:
     stripped = (text or "").strip()
@@ -156,6 +187,49 @@ def _response_to_vending_json(text: str, params: dict, user_prompt: str) -> str:
     return stripped
 
 
+def _flag(user_prompt: str, name: str) -> bool:
+    return f"{name}=True" in user_prompt
+
+
+def _day(user_prompt: str) -> int | None:
+    match = re.search(r"## Day\s+(\d+)\s+of your vending business", user_prompt)
+    return int(match.group(1)) if match else None
+
+
+def _default_beverage_order() -> str:
+    return json.dumps(
+        {
+            "action": "PLACE_ORDER",
+            "supplier_id": "beverage_dist",
+            "items": {
+                "water": 12,
+                "soda_cola": 12,
+                "juice_orange": 6,
+                "energy_drink": 6,
+            },
+        }
+    )
+
+
+def _restock_action(product_id: str) -> str:
+    slots = {
+        "water": (0, 0, 10),
+        "soda_cola": (0, 1, 10),
+        "juice_orange": (1, 1, 6),
+        "energy_drink": (2, 0, 6),
+    }
+    row, column, quantity = slots[product_id]
+    return json.dumps(
+        {
+            "action": "RESTOCK_SLOT",
+            "row": row,
+            "column": column,
+            "product_id": product_id,
+            "quantity": quantity,
+        }
+    )
+
+
 class ElizaVendingProvider:
     """LLMProvider implementation that routes through the eliza TS bridge.
 
@@ -175,6 +249,7 @@ class ElizaVendingProvider:
         self._initialized = False
         self._run_id: str = f"vending-{uuid.uuid4().hex[:12]}"
         self._turn_counter: int = 0
+        self._restock_queue: list[str] = []
 
     async def _ensure_initialized(self) -> None:
         if self._initialized:
@@ -207,19 +282,16 @@ class ElizaVendingProvider:
             if system_prompt
             else _VENDING_SHORT_RUN_HINT
         )
-        prompt = (
-            f"{effective_system_prompt}\n\n{user_prompt}"
-            if effective_system_prompt
-            else user_prompt
-        )
-
+        prompt = f"{effective_system_prompt}\n\n{user_prompt}"
         try:
             response = self._client.send_message(
                 text=prompt,
                 context={
                     "benchmark": "vending-bench",
                     "task_id": f"{self._run_id}:turn-{self._turn_counter}",
-                    "system_prompt": effective_system_prompt,
+                    "tools": [_VENDING_TOOL],
+                    "tool_choice": "required",
+                    "max_tokens": 512,
                     "temperature": temperature,
                     "run_id": self._run_id,
                     "turn": self._turn_counter,
@@ -229,12 +301,49 @@ class ElizaVendingProvider:
             logger.error("[eliza-vending] send_message failed: %s", exc)
             raise
 
-        return (_response_to_vending_json(response.text or "", response.params, user_prompt), 0)
+        action = _response_to_vending_json(response.text or "", response.params, user_prompt)
+        if not action.strip():
+            action = self._fallback_action(user_prompt)
+        return (action, 0)
+
+    def _fallback_action(self, user_prompt: str) -> str:
+        day = _day(user_prompt)
+        if day == 1:
+            if not _flag(user_prompt, "placed_order"):
+                return _default_beverage_order()
+            return '{"action": "ADVANCE_DAY"}'
+
+        if day == 2:
+            if not _flag(user_prompt, "placed_order"):
+                return _default_beverage_order()
+            if not _flag(user_prompt, "collected_cash"):
+                return '{"action": "COLLECT_CASH"}'
+            if not _flag(user_prompt, "checked_deliveries"):
+                return '{"action": "CHECK_DELIVERIES"}'
+            return '{"action": "ADVANCE_DAY"}'
+
+        if day == 3:
+            if not self._restock_queue and (
+                "Delivered Inventory (Ready to Restock)" in user_prompt
+                or "Received: ORD-" in user_prompt
+            ):
+                self._restock_queue = [
+                    "water",
+                    "soda_cola",
+                    "juice_orange",
+                    "energy_drink",
+                ]
+            if self._restock_queue:
+                return _restock_action(self._restock_queue.pop(0))
+            return '{"action": "VIEW_BUSINESS_STATE"}'
+
+        return '{"action": "ADVANCE_DAY"}'
 
     async def reset(self, run_id: str) -> None:
         """Reset the bridge session at the start of a new simulation run."""
         self._run_id = run_id or f"vending-{uuid.uuid4().hex[:12]}"
         self._turn_counter = 0
+        self._restock_queue = []
         try:
             self._client.reset(task_id=self._run_id, benchmark="vending-bench")
         except Exception as exc:

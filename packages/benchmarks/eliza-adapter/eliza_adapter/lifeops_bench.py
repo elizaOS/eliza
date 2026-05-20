@@ -100,6 +100,20 @@ def build_lifeops_bench_agent_fn(
         if not last_user_text:
             return MessageTurn(role="assistant", content="", tool_calls=None)
 
+        user_turn_count = 0
+        assistant_turn_count = 0
+        for turn in conversation_history:
+            role = getattr(turn, "role", None) or (
+                turn.get("role") if isinstance(turn, dict) else None
+            )
+            if role == "user":
+                user_turn_count += 1
+            elif role == "assistant":
+                assistant_turn_count += 1
+        if reset_done and user_turn_count == 1 and assistant_turn_count == 0:
+            task_id = None
+            reset_done = False
+
         if task_id is None:
             task_id = f"lifeops-{uuid.uuid4().hex[:12]}"
         if not reset_done:
