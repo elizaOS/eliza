@@ -47,17 +47,17 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
   "/apps/trajectories": [{ selector: '[data-testid="trajectories-view"]' }],
   "/apps/relationships": [{ selector: '[data-testid="relationships-view"]' }],
   "/apps/memories": [{ selector: '[data-testid="memory-viewer-view"]' }],
+  "/apps/inventory": [{ selector: '[data-testid="wallet-shell"]' }],
   "/apps/runtime": [{ selector: '[data-testid="runtime-view"]' }],
   "/apps/database": [{ selector: '[data-testid="database-view"]' }],
+  "/apps/elizamaker": [{ selector: '[data-testid="chat-composer-textarea"]' }],
   "/apps/logs": [{ selector: '[data-testid="logs-view"]' }],
   "/apps/tasks": [{ selector: '[data-testid="tasks-view"]' }],
   "/character": [{ selector: '[data-testid="character-editor-view"]' }],
   "/character/select": [{ selector: '[data-testid="character-editor-view"]' }],
   "/character/documents": [{ selector: '[data-testid="documents-view"]' }],
   "/wallet": [{ selector: '[data-testid="wallet-shell"]' }],
-  "/browser": [
-    { selector: '[data-testid="browser-workspace-address-input"]' },
-  ],
+  "/browser": [{ selector: '[data-testid="browser-workspace-address-input"]' }],
   "/stream": [{ selector: "#root" }],
   "/automations": [{ selector: '[data-testid="automations-shell"]' }],
   "/settings": [{ selector: '[data-testid="settings-shell"]' }],
@@ -68,8 +68,25 @@ const READY_CHECKS_BY_PATH: Record<string, readonly ReadyCheck[]> = {
 };
 
 const catalog = buildRouteCatalog(new Date("2026-01-01T00:00:00.000Z"));
+const extraAppWindowRoutes = [
+  {
+    tabId: "app-window-inventory",
+    path: "/apps/inventory",
+    label: "Inventory App Window",
+    platformGate: null,
+  },
+  {
+    tabId: "app-window-elizamaker",
+    path: "/apps/elizamaker",
+    label: "ElizaMaker App Window",
+    platformGate: null,
+  },
+] as const;
 
-export const AI_QA_ROUTES: readonly AiQaRoute[] = catalog.routes
+export const AI_QA_ROUTES: readonly AiQaRoute[] = [
+  ...catalog.routes,
+  ...extraAppWindowRoutes,
+]
   .filter((route) => route.platformGate !== "android")
   .map((route) => ({
     id: route.tabId,
@@ -88,5 +105,8 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] =
   catalog.settingsSections.map((section) => ({
     id: section.id,
     label: section.label,
-    match: new RegExp(`^${section.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i"),
+    match: new RegExp(
+      `^${section.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+      "i",
+    ),
   }));
