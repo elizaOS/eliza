@@ -17,6 +17,7 @@
  * this component as a "AGENT-only with the future-proof shape" placeholder.
  */
 
+import { useConnectorAccounts } from "../../hooks/useConnectorAccounts";
 import { cn } from "../../lib/utils";
 import { ConnectorAccountList } from "./ConnectorAccountList";
 
@@ -46,6 +47,14 @@ export function OwnerAgentConnectorSetupPanel({
   agentTitle,
   description,
 }: OwnerAgentConnectorSetupPanelProps) {
+  // Hoist the accounts hook to the panel so both the OWNER and AGENT lists
+  // share a single polling instance + cache, instead of each calling the
+  // hook independently and double-firing `GET /api/connectors/:provider/accounts`
+  // every poll cycle.
+  const accountsHook = useConnectorAccounts(provider, connectorId ?? provider, {
+    pollMs,
+  });
+
   return (
     <div className={cn("flex flex-col gap-3", className)}>
       {description ? <p className="text-xs text-muted">{description}</p> : null}
@@ -55,7 +64,7 @@ export function OwnerAgentConnectorSetupPanel({
           connectorId={connectorId}
           accountRole="OWNER"
           title={ownerTitle}
-          pollMs={pollMs}
+          externalAccounts={accountsHook}
         />
       ) : null}
       {enableAgent ? (
@@ -64,7 +73,7 @@ export function OwnerAgentConnectorSetupPanel({
           connectorId={connectorId}
           accountRole="AGENT"
           title={agentTitle}
-          pollMs={pollMs}
+          externalAccounts={accountsHook}
         />
       ) : null}
     </div>
