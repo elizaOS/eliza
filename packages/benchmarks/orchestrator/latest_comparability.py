@@ -116,7 +116,7 @@ def validate_latest_comparability(
                 )
             else:
                 scores[agent] = float(score)
-            signature = _comparison_signature_for_run(row)
+            signature = _comparison_signature_for_latest_row(row)
             if signature:
                 signatures[agent] = signature
 
@@ -176,6 +176,13 @@ def _load_index(latest_dir: Path) -> dict[str, Any]:
     except (OSError, json.JSONDecodeError):
         return {}
     return payload if isinstance(payload, dict) else {}
+
+
+def _comparison_signature_for_latest_row(row: dict[str, Any]) -> str:
+    existing = row.get("comparison_signature")
+    if isinstance(existing, str) and existing.strip():
+        return existing.strip()
+    return _comparison_signature_for_run(row)
 
 
 def _required_harnesses(contract: Any) -> tuple[str, ...]:

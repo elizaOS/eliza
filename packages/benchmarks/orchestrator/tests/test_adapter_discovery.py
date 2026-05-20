@@ -3354,6 +3354,7 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
         json.dumps(
             {
                 "id": "eliza-1-9b",
+                "runtime": {"dflash": {"enabled": True}},
                 "kernels": {"required": ["dflash"]},
                 "files": {
                     "dflash": [{"path": "dflash/drafter-9b.gguf"}],
@@ -3367,6 +3368,38 @@ def test_vision_language_bundle_accepts_current_manifest_schema(
     monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / ".eliza"))
 
     assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is True
+
+
+def test_vision_language_bundle_rejects_manifest_without_runtime_dflash(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle = (
+        tmp_path
+        / ".eliza"
+        / "local-inference"
+        / "models"
+        / "eliza-1-9b.bundle"
+    )
+    (bundle / "text").mkdir(parents=True)
+    (bundle / "vision").mkdir()
+    (bundle / "dflash").mkdir()
+    (bundle / "text" / "eliza-1-9b-128k.gguf").write_text("text", encoding="utf-8")
+    (bundle / "vision" / "mmproj-9b.gguf").write_text("vision", encoding="utf-8")
+    (bundle / "dflash" / "drafter-9b.gguf").write_text("dflash", encoding="utf-8")
+    (bundle / "eliza-1.manifest.json").write_text(
+        json.dumps(
+            {
+                "id": "eliza-1-9b",
+                "kernels": {"required": ["dflash"]},
+                "files": {"dflash": [{"path": "dflash/drafter-9b.gguf"}]},
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("ELIZA_STATE_DIR", str(tmp_path / ".eliza"))
+
+    assert orchestrator_adapters._has_vision_language_bundle("eliza-1-9b") is False
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

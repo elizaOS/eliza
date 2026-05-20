@@ -140,16 +140,7 @@ def _comparison_signature_from_parts(
     model: str,
     extra_config: dict[str, Any] | None,
 ) -> str:
-    normalized_extra = dict(extra_config or {})
-    injected_agent = str(normalized_extra.get("agent") or "").strip().lower()
-    injected_harness = str(normalized_extra.get("harness") or "").strip().lower()
-    comparable_agents = set(LATEST_SNAPSHOT_AGENTS) | set(SYNTHETIC_HARNESSES)
-    if injected_agent in comparable_agents:
-        normalized_extra.pop("agent", None)
-    if injected_harness in comparable_agents:
-        normalized_extra.pop("harness", None)
-    if agent.strip().lower() in CALIBRATION_HARNESSES:
-        normalized_extra["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    normalized_extra = _comparison_extra_config(extra_config, agent=agent)
     payload = {
         "benchmark_id": benchmark_id,
         "benchmark_directory": benchmark_directory,
@@ -158,6 +149,36 @@ def _comparison_signature_from_parts(
         "extra_config": normalized_extra,
     }
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")).hexdigest()
+
+
+def _comparison_extra_config(
+    extra_config: dict[str, Any] | None,
+    *,
+    agent: str,
+) -> dict[str, Any]:
+    normalized_extra = dict(extra_config or {})
+    injected_agent = str(normalized_extra.get("agent") or "").strip().lower()
+    injected_harness = str(normalized_extra.get("harness") or "").strip().lower()
+    comparable_agents = set(LATEST_SNAPSHOT_AGENTS) | set(SYNTHETIC_HARNESSES)
+    if injected_agent in comparable_agents:
+        normalized_extra.pop("agent", None)
+    if injected_harness in comparable_agents:
+        normalized_extra.pop("harness", None)
+    for runtime_key in (
+        "eliza_bench_http_timeout_s",
+        "openclaw_timeout_s",
+        "timeout_s",
+    ):
+        normalized_extra.pop(runtime_key, None)
+    if str(normalized_extra.get("reasoning_effort") or "").strip().lower() == "low":
+        normalized_extra.pop("reasoning_effort", None)
+    dataset = str(normalized_extra.get("dataset") or "").strip()
+    suite = str(normalized_extra.get("suite") or "").strip()
+    if dataset and suite and dataset == suite:
+        normalized_extra.pop("dataset", None)
+    if agent.strip().lower() in CALIBRATION_HARNESSES:
+        normalized_extra["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    return normalized_extra
 
 
 def _comparison_signature_for_row(
@@ -1235,6 +1256,7 @@ def _rebuild_latest_result_snapshots(
     latest_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     latest_by_signature: dict[tuple[str, str, str], dict[str, Any]] = {}
     latest_by_comparison_signature: dict[tuple[str, str, str], tuple[dict[str, Any], str]] = {}
+    rows_by_comparison_signature: dict[str, dict[str, dict[str, dict[str, Any]]]] = {}
     quarantine_by_key: dict[tuple[str, str], dict[str, Any]] = {}
     valid_benchmark_ids = set(adapters) if adapters is not None else None
     for row in list_runs(conn, limit=None):
@@ -1282,6 +1304,20 @@ def _rebuild_latest_result_snapshots(
         comparison_key = (comparison_signature, benchmark_id, agent)
         if comparison_key not in latest_by_comparison_signature:
             latest_by_comparison_signature[comparison_key] = (row, comparison_signature)
+        if (
+            agent in CANONICAL_REAL_HARNESSES
+            and str(row.get("status") or "") == "succeeded"
+            and _is_numeric_score(row.get("score"))
+        ):
+            rows_by_comparison_signature.setdefault(benchmark_id, {}).setdefault(
+                comparison_signature, {}
+            ).setdefault(agent, row)
+
+    _promote_latest_comparable_real_cohorts(
+        latest_by_key=latest_by_key,
+        rows_by_comparison_signature=rows_by_comparison_signature,
+        adapters=adapters,
+    )
 
     preserved_latest: dict[tuple[str, str], tuple[dict[str, Any], Path]] = {}
     for path in sorted(latest_dir.glob("*.json")):
@@ -1404,6 +1440,7 @@ def _rebuild_latest_result_snapshots(
             "agent": agent,
             "provider": row.get("provider"),
             "model": row.get("model"),
+            "extra_config": row.get("extra_config") or {},
             "score": row.get("score"),
             "unit": row.get("unit"),
             "higher_is_better": row.get("higher_is_better"),
@@ -1652,6 +1689,68 @@ def _is_stale_compatibility_incompatible_row(
         "harness_not_in_compatibility",
         "latest_row_violates_current_compatibility",
     }
+
+
+def _promote_latest_comparable_real_cohorts(
+    *,
+    latest_by_key: dict[tuple[str, str], dict[str, Any]],
+    rows_by_comparison_signature: dict[str, dict[str, dict[str, dict[str, Any]]]],
+    adapters: dict[str, BenchmarkAdapter] | None,
+) -> None:
+    """Prefer a complete apples-to-apples real-harness cohort for latest rows.
+
+    Rerunning a single harness with a narrower scenario should not silently
+    replace one cell and make ``benchmark_results/latest`` compare different
+    task sets. If a newer per-harness row creates a mixed latest set but a
+    complete common comparison signature exists, publish that coherent cohort.
+    """
+
+    for benchmark_id, rows_by_signature in rows_by_comparison_signature.items():
+        required_agents = _required_real_latest_agents(benchmark_id, adapters)
+        if len(required_agents) < 2:
+            continue
+        current_signatures: set[str] = set()
+        for agent in required_agents:
+            row = latest_by_key.get((benchmark_id, agent))
+            if row is None:
+                break
+            current_signatures.add(
+                _comparison_signature_for_row(row, benchmark_id=benchmark_id, agent=agent)
+            )
+        else:
+            if len(current_signatures) <= 1:
+                continue
+
+        candidates: list[dict[str, dict[str, Any]]] = []
+        for rows_by_agent in rows_by_signature.values():
+            if all(agent in rows_by_agent for agent in required_agents):
+                candidates.append(rows_by_agent)
+        if not candidates:
+            continue
+        best = max(candidates, key=_cohort_recency_key)
+        for agent in required_agents:
+            latest_by_key[(benchmark_id, agent)] = best[agent]
+
+
+def _required_real_latest_agents(
+    benchmark_id: str,
+    adapters: dict[str, BenchmarkAdapter] | None,
+) -> tuple[str, ...]:
+    if adapters is None:
+        return CANONICAL_REAL_HARNESSES
+    adapter = adapters.get(benchmark_id)
+    if adapter is None:
+        return CANONICAL_REAL_HARNESSES
+    compatible = set(adapter.agent_compatibility)
+    return tuple(agent for agent in CANONICAL_REAL_HARNESSES if agent in compatible)
+
+
+def _cohort_recency_key(rows_by_agent: dict[str, dict[str, Any]]) -> tuple[str, str]:
+    timestamps = [
+        str(row.get("ended_at") or row.get("started_at") or "")
+        for row in rows_by_agent.values()
+    ]
+    return (min(timestamps) if timestamps else "", max(timestamps) if timestamps else "")
 
 
 def _repair_current_compatibility_statuses(

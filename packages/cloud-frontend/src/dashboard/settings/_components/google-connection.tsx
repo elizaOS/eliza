@@ -30,20 +30,33 @@ export function GoogleConnection() {
 
   const fetchConnections = useCallback(async (signal?: AbortSignal) => {
     setIsLoading(true);
-    const response = await fetch("/api/v1/oauth/connections?platform=google", {
-      signal,
-    });
-    if (signal?.aborted) return;
-    if (!response.ok) {
-      toast.error("Failed to fetch Google connections");
-      setIsLoading(false);
-      return;
+    try {
+      const response = await fetch(
+        "/api/v1/oauth/connections?platform=google",
+        {
+          signal,
+        },
+      );
+      if (signal?.aborted) return;
+      if (!response.ok) {
+        toast.error("Failed to fetch Google connections");
+        return;
+      }
+      const data = (await response.json()) as {
+        connections?: GoogleConnection[];
+      };
+      if (!signal?.aborted) {
+        setConnections(data.connections ?? []);
+      }
+    } catch {
+      if (!signal?.aborted) {
+        toast.error("Failed to fetch Google connections");
+      }
+    } finally {
+      if (!signal?.aborted) {
+        setIsLoading(false);
+      }
     }
-    const data = (await response.json()) as {
-      connections?: GoogleConnection[];
-    };
-    setConnections(data.connections ?? []);
-    setIsLoading(false);
   }, []);
 
   useEffect(() => {

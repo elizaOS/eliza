@@ -148,17 +148,10 @@ def _expected_for(agent: str) -> float:
 def _comparison_signature_for_run(run: dict[str, Any]) -> str:
     """Match runner comparison signatures without importing runner internals."""
 
-    extra_config = dict(run.get("extra_config") or {})
-    comparable_agents = set(REAL_HARNESSES) | set(SYNTHETIC_HARNESSES)
-    injected_agent = str(extra_config.get("agent") or "").strip().lower()
-    injected_harness = str(extra_config.get("harness") or "").strip().lower()
-    if injected_agent in comparable_agents:
-        extra_config.pop("agent", None)
-    if injected_harness in comparable_agents:
-        extra_config.pop("harness", None)
-    agent = str(run.get("agent") or "").strip().lower()
-    if agent in CALIBRATION_HARNESSES:
-        extra_config["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    extra_config = _comparison_extra_config(
+        run.get("extra_config") if isinstance(run.get("extra_config"), dict) else {},
+        agent=str(run.get("agent") or ""),
+    )
     payload = {
         "benchmark_id": run.get("benchmark_id"),
         "benchmark_directory": run.get("benchmark_directory") or run.get("benchmark_id"),
@@ -169,6 +162,33 @@ def _comparison_signature_for_run(run: dict[str, Any]) -> str:
     return hashlib.sha256(
         json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
     ).hexdigest()
+
+
+def _comparison_extra_config(extra_config: dict[str, Any], *, agent: str) -> dict[str, Any]:
+    extra_config = dict(extra_config)
+    comparable_agents = set(REAL_HARNESSES) | set(SYNTHETIC_HARNESSES)
+    injected_agent = str(extra_config.get("agent") or "").strip().lower()
+    injected_harness = str(extra_config.get("harness") or "").strip().lower()
+    if injected_agent in comparable_agents:
+        extra_config.pop("agent", None)
+    if injected_harness in comparable_agents:
+        extra_config.pop("harness", None)
+    for runtime_key in (
+        "eliza_bench_http_timeout_s",
+        "openclaw_timeout_s",
+        "timeout_s",
+    ):
+        extra_config.pop(runtime_key, None)
+    if str(extra_config.get("reasoning_effort") or "").strip().lower() == "low":
+        extra_config.pop("reasoning_effort", None)
+    dataset = str(extra_config.get("dataset") or "").strip()
+    suite = str(extra_config.get("suite") or "").strip()
+    if dataset and suite and dataset == suite:
+        extra_config.pop("dataset", None)
+    agent = agent.strip().lower()
+    if agent in CALIBRATION_HARNESSES:
+        extra_config["calibration_spec_version"] = CALIBRATION_SPEC_VERSION
+    return extra_config
 
 
 def _discover_agent_compatibility(workspace_root: Path) -> dict[str, tuple[str, ...]]:

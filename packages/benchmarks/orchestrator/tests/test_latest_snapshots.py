@@ -996,6 +996,7 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
                 "agent": agent,
                 "harness": agent,
                 "scenario": "skeptic_tarot_01",
+                **({"openclaw_timeout_s": 60, "reasoning_effort": "low"} if agent == "hermes" else {}),
             },
         )
 
@@ -1012,6 +1013,10 @@ def test_rebuild_latest_indexes_cross_harness_comparison_signature(
         f"{comparison_signature}::woobench::hermes",
         f"{comparison_signature}::woobench::openclaw",
     }
+    payload = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    assert payload["extra_config"]["scenario"] == "skeptic_tarot_01"
     assert index["benchmark_comparability"]["woobench"]["comparable"] is True
     assert index["matrix_contract"]["status"] == "complete"
     assert index["matrix_contract"]["summary"]["required_real_cells"] == 3
@@ -1051,6 +1056,57 @@ def test_rebuild_latest_marks_mixed_latest_configs_not_comparable(
 
     index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
     assert index["benchmark_comparability"]["woobench"]["comparable"] is False
+
+
+def test_rebuild_latest_prefers_newest_complete_comparable_real_cohort(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["woobench"],
+        repo_meta={},
+    )
+    for offset, agent in enumerate(("eliza", "hermes", "openclaw")):
+        _seed_run(
+            conn,
+            benchmark_id="woobench",
+            agent=agent,
+            run_id=f"run_full_{agent}",
+            started_at=f"2026-05-12T00:0{offset}:00+00:00",
+            score=0.8,
+            extra_config={
+                "agent": agent,
+                "harness": agent,
+                "scenarios": ["friend_supporter_tarot_01", "repeat_customer_tarot_01"],
+            },
+        )
+    _seed_run(
+        conn,
+        benchmark_id="woobench",
+        agent="eliza",
+        run_id="run_newer_eliza_single",
+        started_at="2026-05-12T00:03:00+00:00",
+        score=0.2,
+        extra_config={
+            "agent": "eliza",
+            "harness": "eliza",
+            "scenario": "skeptic_tarot_01",
+        },
+    )
+
+    _rebuild_latest_result_snapshots(conn, tmp_path, {"woobench": _adapter("woobench")})
+
+    eliza = json.loads(
+        (tmp_path / "latest" / "woobench__eliza.json").read_text(encoding="utf-8")
+    )
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    assert eliza["run_id"] == "run_full_eliza"
+    assert index["benchmark_comparability"]["woobench"]["comparable"] is True
 
 
 def test_rebuild_latest_ignores_newer_running_rows(tmp_path: Path) -> None:

@@ -25,8 +25,6 @@ import {
   registerBlueskyHandlers,
 } from "../handlers";
 
-type BlueSkyModule = typeof import("@elizaos/plugin-bluesky");
-
 // Load environment
 config({ path: "../../.env" });
 config();
@@ -36,8 +34,25 @@ const hasBlueskyCredentials = Boolean(
   process.env.BLUESKY_HANDLE && process.env.BLUESKY_PASSWORD,
 );
 
-const loadBlueSkyClient = async (): Promise<BlueSkyModule> => {
-  return (await import("@elizaos/plugin-bluesky")) as BlueSkyModule;
+const loadBlueSkyClient = async (): Promise<{
+  BlueSkyClient: new (config: {
+    dryRun?: boolean;
+    handle: string;
+    password: string;
+    service: string;
+  }) => {
+    authenticate: () => Promise<{ did: string; handle: string }>;
+    getNotifications: (
+      limit: number,
+    ) => Promise<{ notifications: unknown[] }>;
+    getTimeline: (params: { limit: number }) => Promise<{ feed: unknown[] }>;
+    sendPost: (params: {
+      content: { text: string };
+    }) => Promise<{ cid: string; uri: string }>;
+  };
+}> => {
+  const specifier = "@elizaos/plugin-bluesky";
+  return await import(/* @vite-ignore */ specifier);
 };
 
 // ============================================================================

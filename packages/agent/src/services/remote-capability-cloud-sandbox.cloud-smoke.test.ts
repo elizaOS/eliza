@@ -12,6 +12,7 @@ import {
 import {
   installRemoteCapabilityEndpoint,
   provisionCloudCapabilitySandbox,
+  waitForCloudCapabilityEndpointAvailability,
 } from "./remote-capability-cloud-sandbox.ts";
 import { assertRemoteCapabilityEndpointConformance } from "./remote-capability-endpoint-conformance.ts";
 import {
@@ -76,6 +77,19 @@ describe("cloud capability sandbox live smoke", () => {
           },
         });
         agentId = provisioned.agentId;
+
+        await waitForCloudCapabilityEndpointAvailability({
+          endpoint: provisioned.endpoint,
+          timeoutMs: 120_000,
+          pollIntervalMs: 5_000,
+          requestTimeoutMs: 60_000,
+          onProgress: (detail) => {
+            console.log(`[cloud-capability-live] availability: ${detail}`);
+          },
+        });
+        console.log(
+          `[cloud-capability-live] availability: endpoint ${provisioned.endpoint.id} reports plugin capability.`,
+        );
 
         installRemoteCapabilityEndpoint(runtime, {
           enabled: true,

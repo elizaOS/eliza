@@ -33,12 +33,6 @@ _WOOBENCH_SYSTEM_HINT = (
     "projective psychology / Jungian archetypes. Acknowledge the Barnum effect, "
     "confirmation bias, and cold-reading explicitly. Never claim predictive "
     "validity or that 'the universe' is communicating. Treat them as a peer.\n"
-    "  - For paid skeptic readings, do not stall by asking them to provide a "
-    "question. Continue with a concrete reading from the details already "
-    "available: analytical armor, work/data-science identity, control, guarded "
-    "emotion, and the fact they are participating for someone else's sake. If "
-    "they reject a family/children/sleep interpretation, apologize once, drop "
-    "that thread, and pivot to work, control, and emotional guardedness.\n"
     "  - If they self-identify as SPIRITUAL, a BELIEVER, or a fellow "
     "PRACTITIONER, match their register. Use intuitive language but ground it "
     "in concrete symbolic content from the cards/hexagrams/chart.\n"
@@ -210,7 +204,11 @@ def _amount_from_text(text: str | None) -> float | None:
         return None
 
 
-def _with_inferred_payment_action(response: MessageResponse) -> MessageResponse:
+def _with_inferred_payment_action(
+    response: MessageResponse, *, allow_create: bool = True
+) -> MessageResponse:
+    if not allow_create:
+        return response
     if _tool_payload(response) is not None:
         return response
     amount = _amount_from_text(response.text)
@@ -363,7 +361,9 @@ def build_eliza_bridge_agent_fn(
             logger.exception("[eliza-woo] bridge call failed")
             raise RuntimeError("Eliza WooBench bridge call failed") from exc
 
-        response = _with_inferred_payment_action(response)
+        response = _with_inferred_payment_action(
+            response, allow_create=not payment_state.get("payment_verified", False)
+        )
         _record_payment_payload(payment_state, _tool_payload(response))
         return _with_visible_payment_text(response)
 

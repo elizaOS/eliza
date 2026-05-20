@@ -6,11 +6,11 @@ import {
   TelegramIcon,
   WhatsAppIcon,
 } from "@elizaos/ui/cloud-ui/components/icons";
-import { animated, useSpring, useTrail } from "@react-spring/web";
 import { ArrowLeft, Check, Copy, ExternalLink, Info, Send } from "lucide-react";
 import {
   lazy,
   Suspense,
+  type CSSProperties,
   useCallback,
   useEffect,
   useRef,
@@ -370,27 +370,26 @@ export default function GetStartedPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const headerSpring = useSpring({
+  const headerStyle: CSSProperties = {
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(-20px)",
-    config: { mass: 1, tension: 280, friction: 24 },
-    delay: 200,
-  });
+    transition: "opacity 260ms ease 200ms, transform 260ms ease 200ms",
+  };
 
-  const titleSpring = useSpring({
+  const titleStyle: CSSProperties = {
     opacity: showContent ? 1 : 0,
     transform: showContent ? "translateY(0px)" : "translateY(30px)",
-    config: { mass: 1, tension: 280, friction: 24 },
-    delay: 400,
-  });
+    transition: "opacity 320ms ease 400ms, transform 320ms ease 400ms",
+  };
 
-  const cardTrail = useTrail(4, {
+  const cardStyle = (index: number): CSSProperties => ({
     opacity: showContent ? 1 : 0,
     transform: showContent
       ? "translateY(0px) scale(1)"
       : "translateY(40px) scale(0.95)",
-    config: { mass: 1, tension: 280, friction: 24 },
-    delay: 600,
+    transition: `opacity 320ms ease ${600 + index * 70}ms, transform 320ms ease ${
+      600 + index * 70
+    }ms`,
   });
 
   const countryOptions = useCountryOptions();
@@ -917,9 +916,9 @@ export default function GetStartedPage() {
           backgroundSize: "256px 256px",
         }}
       />
-      <animated.header
+      <header
         className="relative z-10 p-4 flex items-center justify-between"
-        style={headerSpring}
+        style={headerStyle}
       >
         <div className="w-16">
           {step === "DISCORD_SETUP_GUIDE" ? null : step !== "SELECT_METHOD" ? (
@@ -947,19 +946,19 @@ export default function GetStartedPage() {
         </div>
         <ElizaLogo className="h-8" />
         <div className="w-16" />
-      </animated.header>
+      </header>
 
       <div className="relative z-10 flex-1 flex flex-col items-center justify-center px-4 pb-20">
         <div className="w-full max-w-[400px] flex flex-col items-center">
           {step === "SELECT_METHOD" && (
             <>
-              <animated.div style={titleSpring}>
+              <div style={titleStyle}>
                 <h1 className="text-2xl sm:text-3xl font-bold text-neutral-900 text-center mb-8 whitespace-nowrap">
                   {t("homepage_eliza.getStarted.selectHeader", {
                     defaultValue: "Anywhere you want her to be.",
                   })}
                 </h1>
-              </animated.div>
+              </div>
 
               {(discordError || telegramError) && (
                 <div className="w-full mb-4 p-3 rounded-sm bg-red-50 border border-red-200">
@@ -970,10 +969,11 @@ export default function GetStartedPage() {
               )}
 
               <div className="w-full flex flex-col gap-3">
-                <animated.button
+                <button
+                  type="button"
                   onClick={() => handleMethodSelect("telegram")}
                   className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[0]}
+                  style={cardStyle(0)}
                 >
                   <div className="w-12 h-12 rounded-sm bg-[#229ED9]/20 flex items-center justify-center shrink-0">
                     <TelegramIcon className="size-6 text-[#229ED9]" />
@@ -985,12 +985,13 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </animated.button>
+                </button>
 
-                <animated.button
+                <button
+                  type="button"
                   onClick={() => handleMethodSelect("imessage")}
                   className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[1]}
+                  style={cardStyle(1)}
                 >
                   <div className="w-12 h-12 shrink-0 flex items-center justify-center">
                     <AppleMessagesIcon className="size-12" />
@@ -1002,12 +1003,13 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </animated.button>
+                </button>
 
-                <animated.button
+                <button
+                  type="button"
                   onClick={() => handleMethodSelect("whatsapp")}
                   className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[2]}
+                  style={cardStyle(2)}
                 >
                   <div className="w-12 h-12 rounded-sm bg-[#25D366]/20 flex items-center justify-center shrink-0">
                     <WhatsAppIcon className="size-6 text-[#25D366]" />
@@ -1019,12 +1021,13 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </animated.button>
+                </button>
 
-                <animated.button
+                <button
+                  type="button"
                   onClick={() => handleMethodSelect("discord")}
                   className="w-full h-[72px] bg-white hover:bg-[var(--brand-orange)] text-black rounded-sm border border-black transition-colors flex items-center gap-4 px-5 cursor-pointer"
-                  style={cardTrail[3]}
+                  style={cardStyle(3)}
                 >
                   <div className="w-12 h-12 rounded-sm bg-[#5865F2]/20 flex items-center justify-center shrink-0">
                     <DiscordIcon className="size-6 text-[#5865F2]" />
@@ -1036,7 +1039,7 @@ export default function GetStartedPage() {
                       })}
                     </p>
                   </div>
-                </animated.button>
+                </button>
               </div>
             </>
           )}
