@@ -104,7 +104,7 @@ export const VOICE_PREFIX_STEP_META: Record<
 };
 
 export function resolveVoicePrefixSteps(
-  tier: "MAX" | "GOOD" | "OKAY" | "POOR" | null,
+  _tier: "MAX" | "GOOD" | "OKAY" | "POOR" | null,
 ): readonly VoicePrefixStep[] {
   return VOICE_PREFIX_STEPS;
 }

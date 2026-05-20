@@ -178,7 +178,9 @@ describe("VoiceProfilesClient.appendOwnerCapture", () => {
       durationMs: 1000,
     });
 
-    expect(calls).toEqual(["/api/voice/onboarding/profile/append?id=session-x"]);
+    expect(calls).toEqual([
+      "/api/voice/onboarding/profile/append?id=session-x",
+    ]);
   });
 
   it("does not block onboarding when the route rejects the temporary JSON capture body", async () => {

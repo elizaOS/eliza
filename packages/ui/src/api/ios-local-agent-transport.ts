@@ -1,16 +1,16 @@
 import { Capacitor } from "@capacitor/core";
-import {
-  handleIosLocalAgentRequest,
-  startIosLocalAgentKernel,
-} from "./ios-local-agent-kernel";
-import { createIttpAgentTransport } from "./ittp-agent-transport";
-import type { AgentRequestTransport } from "./transport";
 import { isStoreBuild } from "../build-variant";
 import {
   isMobileLocalAgentUrl as isConfiguredMobileLocalAgentUrl,
   isMobileLocalAgentIpcUrl,
   mobileLocalAgentPathFromUrl,
 } from "../onboarding/mobile-runtime-mode";
+import {
+  handleIosLocalAgentRequest,
+  startIosLocalAgentKernel,
+} from "./ios-local-agent-kernel";
+import { createIttpAgentTransport } from "./ittp-agent-transport";
+import type { AgentRequestTransport } from "./transport";
 
 let transport: AgentRequestTransport | null = null;
 let globalRequestHandlerInstalled = false;
@@ -572,10 +572,7 @@ export async function handleIosLocalAgentNativeRequest(
   if (!/^[A-Z]{1,16}$/.test(method)) {
     throw new Error("Unsupported HTTP method");
   }
-  if (
-    isNativeIosCloudRuntime() &&
-    !isCloudRuntimeAllowedLocalAgentPath(path)
-  ) {
+  if (isNativeIosCloudRuntime() && !isCloudRuntimeAllowedLocalAgentPath(path)) {
     throw new TypeError(
       "iOS cloud builds cannot use local-agent IPC unless local runtime mode is active",
     );

@@ -268,8 +268,7 @@ button.onboarding-step-item.onboarding-step-item--clickable:hover
   outline: none;
   letter-spacing: 0.03em;
   text-align: center;
-  transition:
-    background-color 0.3s;
+  transition: background-color 0.3s;
 }
 
 .onboarding-input:focus {

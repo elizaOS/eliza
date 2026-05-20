@@ -366,7 +366,7 @@ function VoiceReadinessStep(
               : readiness?.status === "assets-ready" ||
                   readiness?.status === "ready"
                 ? "Voice assets added"
-              : "Voice bundle"}
+                : "Voice bundle"}
           </p>
           <p className="text-xs text-muted">
             {readiness?.message ??
@@ -381,7 +381,10 @@ function VoiceReadinessStep(
               aria-valuemax={100}
               data-testid="voice-prefix-bundle-progress"
             >
-              <div className="h-full bg-accent" style={{ width: `${percent}%` }} />
+              <div
+                className="h-full bg-accent"
+                style={{ width: `${percent}%` }}
+              />
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">

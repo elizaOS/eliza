@@ -11,8 +11,8 @@
  * gracefully when the server endpoints aren't live (I2 may not have landed).
  */
 
-import * as React from "react";
 import { Capacitor } from "@capacitor/core";
+import * as React from "react";
 import type {
   CatalogModel,
   DownloadJob,
@@ -28,11 +28,11 @@ import { IOS_LOCAL_AGENT_IPC_BASE } from "../../onboarding/mobile-runtime-mode";
 import type { VoicePrefixStep } from "../../onboarding/voice-prefix";
 import { selectRecommendedModelForSlot } from "../../services/local-inference/recommendation";
 import { toArrayBuffer } from "../../voice/voice-chat-types";
-import {
-  VoicePrefixSteps,
-  type VoiceBundleReadiness,
-} from "./VoicePrefixSteps";
 import { Button } from "../ui/button";
+import {
+  type VoiceBundleReadiness,
+  VoicePrefixSteps,
+} from "./VoicePrefixSteps";
 
 export interface VoicePrefixGateProps {
   /** Called when the user completes or skips the voice prefix flow. */
@@ -163,9 +163,11 @@ function downloadReadiness(
 function voiceBundleReadinessFromHub(
   hub: ModelHubSnapshot,
 ): VoiceBundleReadiness {
-  const voiceReadiness = (hub as ModelHubSnapshot & {
-    voiceReadiness?: LocalVoiceReadinessSnapshot;
-  }).voiceReadiness;
+  const voiceReadiness = (
+    hub as ModelHubSnapshot & {
+      voiceReadiness?: LocalVoiceReadinessSnapshot;
+    }
+  ).voiceReadiness;
   const model = selectRecommendedModelForSlot(
     "TEXT_SMALL",
     hub.hardware,
@@ -292,7 +294,9 @@ function voiceBundleStatusBadge(readiness: VoiceBundleReadiness): string {
   }
 }
 
-function diagnosticsText(diagnostics: NativeLocalTtsDiagnostics | null): string {
+function diagnosticsText(
+  diagnostics: NativeLocalTtsDiagnostics | null,
+): string {
   if (!diagnostics) return "";
   return JSON.stringify(diagnostics, null, 2).slice(0, 6_000);
 }
@@ -326,8 +330,12 @@ async function loadNativeIosLocalTtsStatus(): Promise<VoiceBundleReadiness | nul
   if (!nativeIosLocalTtsEnabled()) return null;
   const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
   if (typeof ElizaBunRuntime.getLocalTtsStatus !== "function") return null;
-  const status = (await ElizaBunRuntime.getLocalTtsStatus()) as NativeLocalTtsStatus;
-  if (status.ready && (status.status === "engine-ready" || status.status === "ready")) {
+  const status =
+    (await ElizaBunRuntime.getLocalTtsStatus()) as NativeLocalTtsStatus;
+  if (
+    status.ready &&
+    (status.status === "engine-ready" || status.status === "ready")
+  ) {
     return {
       modelId: status.modelId ?? "",
       status: "engine-ready",
@@ -377,7 +385,9 @@ async function synthesizeNativeIosLocalTts(
 ): Promise<NativeLocalTtsResult> {
   const { ElizaBunRuntime } = await import("@elizaos/capacitor-bun-runtime");
   if (typeof ElizaBunRuntime.synthesizeLocalTts !== "function") {
-    throw new Error("This build is missing the iOS local voice playback engine.");
+    throw new Error(
+      "This build is missing the iOS local voice playback engine.",
+    );
   }
   return ElizaBunRuntime.synthesizeLocalTts({
     text,
@@ -524,7 +534,7 @@ export function VoicePrefixGate({
       alive = false;
       window.clearInterval(interval);
     };
-  }, [refreshVoiceBundleReadiness]);
+  }, []);
 
   const handleAdvance = React.useCallback(
     (next: VoicePrefixStep | null) => {
@@ -565,32 +575,35 @@ export function VoicePrefixGate({
     }
   }, []);
 
-  const handleNativeTtsDiagnostics = React.useCallback(async (probe: boolean) => {
-    setLocalTtsDiagnosticBusy(true);
-    try {
-      const diagnostics = await diagnoseNativeIosLocalTts(probe);
-      setLocalTtsDiagnostics(diagnostics);
-      if (diagnostics.probe?.ok === true) {
-        setVoiceBundleReadiness((current) => ({
-          ...current,
-          status: "engine-ready",
-          message: "Voice engine is warmed and ready.",
-          percent: 100,
-          canStartDownload: false,
-        }));
+  const handleNativeTtsDiagnostics = React.useCallback(
+    async (probe: boolean) => {
+      setLocalTtsDiagnosticBusy(true);
+      try {
+        const diagnostics = await diagnoseNativeIosLocalTts(probe);
+        setLocalTtsDiagnostics(diagnostics);
+        if (diagnostics.probe?.ok === true) {
+          setVoiceBundleReadiness((current) => ({
+            ...current,
+            status: "engine-ready",
+            message: "Voice engine is warmed and ready.",
+            percent: 100,
+            canStartDownload: false,
+          }));
+        }
+      } catch (err) {
+        setLocalTtsDiagnostics({
+          available: false,
+          message:
+            err instanceof Error
+              ? err.message
+              : "Failed to run local voice diagnostics.",
+        });
+      } finally {
+        setLocalTtsDiagnosticBusy(false);
       }
-    } catch (err) {
-      setLocalTtsDiagnostics({
-        available: false,
-        message:
-          err instanceof Error
-            ? err.message
-            : "Failed to run local voice diagnostics.",
-      });
-    } finally {
-      setLocalTtsDiagnosticBusy(false);
-    }
-  }, []);
+    },
+    [],
+  );
 
   React.useEffect(() => {
     if (!nativeIosLocalTtsEnabled() || autoDiagnosticStartedRef.current) return;
@@ -836,11 +849,11 @@ function VoiceBundleStatusStrip({
       ? Math.max(0, Math.min(100, readiness.percent))
       : null;
   const showProgress =
-    (readiness.status === "queued" ||
-      readiness.status === "downloading" ||
-      readiness.status === "assets-ready" ||
-      readiness.status === "engine-ready" ||
-      readiness.status === "ready");
+    readiness.status === "queued" ||
+    readiness.status === "downloading" ||
+    readiness.status === "assets-ready" ||
+    readiness.status === "engine-ready" ||
+    readiness.status === "ready";
   const progressWidth =
     percent !== null
       ? `${percent}%`

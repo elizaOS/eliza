@@ -1,4 +1,3 @@
-import type { BuildOnboardingConnectionArgs } from "../onboarding/onboarding-config";
 import {
   getOnboardingProviderOption,
   isElizaCloudLinkedInConfig,
@@ -9,6 +8,7 @@ import {
   resolveServiceRoutingInConfig,
 } from "@elizaos/shared";
 import { readPersistedMobileRuntimeMode } from "../onboarding/mobile-runtime-mode";
+import type { BuildOnboardingConnectionArgs } from "../onboarding/onboarding-config";
 import { asRecord } from "./config-readers";
 import type { OnboardingStep } from "./types";
 

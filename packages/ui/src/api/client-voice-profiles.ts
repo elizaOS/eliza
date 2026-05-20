@@ -363,7 +363,9 @@ function fallbackOwnerCaptureSession(): VoiceCaptureSession {
   };
 }
 
-function fallbackOwnerSubmitResult(sessionId: string): VoiceCaptureSubmitResult {
+function fallbackOwnerSubmitResult(
+  sessionId: string,
+): VoiceCaptureSubmitResult {
   return {
     profileId: `owner-${sessionId}`,
     entityId: `owner-entity-${sessionId}`,
@@ -436,7 +438,9 @@ function normaliseScriptPrompt(raw: unknown): VoiceCapturePrompt | null {
   };
 }
 
-function isPrompt(value: VoiceCapturePrompt | null): value is VoiceCapturePrompt {
+function isPrompt(
+  value: VoiceCapturePrompt | null,
+): value is VoiceCapturePrompt {
   return value !== null;
 }
 
