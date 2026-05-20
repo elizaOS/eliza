@@ -44,8 +44,8 @@
       "loc_total": 230,
       "attached_to": "L2C",
       "algorithm_summary": "Region-based spatial-pattern prefetcher with 2 KiB regions (32 blocks). 64-entry filter table (first-touch), 128-entry accumulation table (pattern bitmap accumulation per region), 8 K-entry PHT keyed by (PC<<6 | offset). On first touch into a new region, probe PHT and stream matching blocks within the same page.",
-      "algorithmic_adaptation": "The HPCA'19 Bingo uses dual-tag PHT lookups (PC+address full tag and PC+offset short tag) with voting across multiple PC+offset matches. This port uses the PC+offset key only (the high-recall path) with no voting fan-in; eviction-time AT->PHT training is also not wired (our intrusive lru_map evicts internally without exposing the victim). Both simplifications reduce Bingo's recall ceiling but preserve its core spatial-pattern recognition behavior.",
-      "deviation_class": "structural_port_without_pc_address_lookup"
+      "algorithmic_adaptation": "The HPCA'19 Bingo uses dual-tag PHT lookups (PC+address full tag and PC+offset short tag) with voting across multiple PC+offset matches. This port uses the PC+offset key only (the high-recall path) with no voting fan-in. AT->PHT eviction-time training is wired through the in-house lru_map: insert() returns the evicted slot's (key, value) when the table was at capacity, which trains the PHT. Filter/accumulation table sizes are 32/32 (smaller than HPCA'19 reference 64/128) to keep PHT training time short under the 2M-warmup window; PHT remains 8192 entries.",
+      "deviation_class": "structural_port_without_pc_address_lookup_or_voting"
     },
     {
       "name": "bop",

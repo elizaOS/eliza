@@ -113,45 +113,6 @@ blocked_real_claims:
     evidence_artifacts:
       - docs/evidence/cache/stream_bandwidth_report.json
       - docs/evidence/cache/stream_bandwidth_raw.log
-  - id: pythia_rl_prefetcher_dpc3
-    status: measured_champsim_dpc3_only
-    evidence_class: champsim_dpc3_traces_only
-    reason: |
-      Pythia (Bera et al., MICRO'21) — a CPU C++ tabular-SARSA prefetcher
-      (NOT a GPU/ML stack; earlier notes in this repo were incorrect) —
-      has been ported to the ChampSim 2024-12 module API at
-      external/ChampSim/prefetcher/pythia/ (canonical 2-feature SARSA,
-      16-action offset space, alpha=1/8, gamma=1/2, eps=1/16,
-      256-entry evaluation queue). The DPC-3 sweep now produces a
-      Pythia row alongside the bundled prefetchers; the port's scope
-      and deviations from Bera et al.'s extended-feature configuration
-      are documented in champsim_external_prefetchers_report.json
-      under ported_modules.pythia.
-    evidence_artifacts:
-      - docs/evidence/cache/pythia_dpc3_report.json
-      - docs/evidence/cache/champsim_external_prefetchers_report.json
-      - docs/evidence/cache/champsim_prefetch_sweep_report.json
-  - id: berti_ipcp_bingo_bop_dpc3
-    status: measured_champsim_dpc3_only
-    evidence_class: champsim_dpc3_traces_only
-    reason: |
-      Berti (MICRO'22), IPCP (ISCA'20), Bingo (HPCA'19), and BOP
-      (HPCA'16) are CRC-style drop-ins whose published reference
-      implementations target the legacy ChampSim 2.x interface
-      (free-function CACHE::l2c_prefetcher_operate(uint64_t,...) and
-      friends) and cannot link against ChampSim 2024-12 as-is. Faithful
-      ports of each algorithm to the ChampSim 2024-12 module API
-      (champsim::modules::prefetcher, champsim::address) now live under
-      external/ChampSim/prefetcher/{berti,ipcp,bingo,bop}/, and the
-      DPC-3 sweep produces measured rows for all four. Per-prefetcher
-      algorithmic scope and any documented deviations from the
-      reference implementations (e.g. Berti's latency-table not being
-      wired through 2024-12's prefetcher interface) are recorded in
-      champsim_external_prefetchers_report.json under
-      ported_modules.<name>.
-    evidence_artifacts:
-      - docs/evidence/cache/champsim_external_prefetchers_report.json
-      - docs/evidence/cache/champsim_prefetch_sweep_report.json
   - id: hawkeye_mockingjay_dpc3_replacement
     status: blocked
     reason: |
@@ -220,6 +181,45 @@ measured_real_claims:
       - docs/evidence/cache/champsim_prefetch_sweep_report.json
       - docs/evidence/cache/champsim_external_prefetchers_report.json
       - docs/evidence/cache/pythia_dpc3_report.json
+  - id: berti_ipcp_bingo_bop_dpc3
+    status: measured_champsim_dpc3_only
+    evidence_class: champsim_dpc3_traces_only
+    reason: |
+      Berti (MICRO'22), IPCP (ISCA'20), Bingo (HPCA'19), and BOP
+      (HPCA'16) are CRC-style drop-ins whose published reference
+      implementations target the legacy ChampSim 2.x interface
+      (free-function CACHE::l2c_prefetcher_operate(uint64_t,...) and
+      friends) and cannot link against ChampSim 2024-12 as-is. Faithful
+      ports of each algorithm to the ChampSim 2024-12 module API
+      (champsim::modules::prefetcher, champsim::address) now live under
+      external/ChampSim/prefetcher/{berti,ipcp,bingo,bop}/, and the
+      DPC-3 sweep produces measured rows for all four. Per-prefetcher
+      algorithmic scope and any documented deviations from the
+      reference implementations (e.g. Berti's latency-table not being
+      wired through 2024-12's prefetcher interface) are recorded in
+      champsim_external_prefetchers_report.json under
+      ported_modules.<name>.
+    evidence_artifacts:
+      - docs/evidence/cache/champsim_external_prefetchers_report.json
+      - docs/evidence/cache/champsim_prefetch_sweep_report.json
+  - id: pythia_rl_prefetcher_dpc3
+    status: measured_champsim_dpc3_only
+    evidence_class: champsim_dpc3_traces_only
+    reason: |
+      Pythia (Bera et al., MICRO'21) — a CPU C++ tabular-SARSA prefetcher
+      (NOT a GPU/ML stack; earlier notes in this repo were incorrect) —
+      has been ported to the ChampSim 2024-12 module API at
+      external/ChampSim/prefetcher/pythia/ (canonical 2-feature SARSA,
+      16-action offset space, alpha=1/8, gamma=1/2, eps=1/16,
+      256-entry evaluation queue). The DPC-3 sweep now produces a
+      Pythia row alongside the bundled prefetchers; the port's scope
+      and deviations from Bera et al.'s extended-feature configuration
+      are documented in champsim_external_prefetchers_report.json
+      under ported_modules.pythia.
+    evidence_artifacts:
+      - docs/evidence/cache/pythia_dpc3_report.json
+      - docs/evidence/cache/champsim_external_prefetchers_report.json
+      - docs/evidence/cache/champsim_prefetch_sweep_report.json
   - id: mockingjay_vs_lru_sweep
     status: measured_champsim_dpc3_only
     evidence_class: champsim_dpc3_traces_only

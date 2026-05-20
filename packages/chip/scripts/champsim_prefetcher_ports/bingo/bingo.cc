@@ -75,12 +75,13 @@ uint32_t bingo::prefetcher_cache_operate(champsim::address addr, champsim::addre
       ae.pattern.fill(false);
       ae.pattern[fe->offset] = true;
       ae.pattern[region_offset] = true;
-      // Note: accum_table_.insert may evict an entry — in the reference
-      // impl that eviction trains the PHT. Our lru_map evicts internally
-      // without exposing the victim, so PHT training happens at end of
-      // simulation only for entries that overflow naturally. This is a
-      // documented approximation versus the CRC drop-in.
-      accum_table_.insert(region, std::move(ae));
+      // accum_table_.insert evicts a victim entry when at capacity; the
+      // evicted region's accumulated pattern trains the PHT (this is how
+      // Bingo learns spatial patterns).
+      auto victim = accum_table_.insert(region, std::move(ae));
+      if (victim) {
+        evict_region_to_pht(victim->first, victim->second);
+      }
       filter_table_.erase(region);
     }
     return metadata_in;

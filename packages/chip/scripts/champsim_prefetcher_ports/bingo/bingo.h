@@ -20,6 +20,7 @@
 #include <array>
 #include <cstdint>
 #include <list>
+#include <optional>
 #include <unordered_map>
 #include <vector>
 
@@ -32,10 +33,12 @@ class bingo : public champsim::modules::prefetcher
 public:
   static constexpr int REGION_LOG2 = 11;                          // 2 KiB region
   static constexpr int PATTERN_LEN = (1 << (REGION_LOG2 - 6));    // 32 blocks
-  static constexpr std::size_t FILTER_TABLE_SIZE = 64;
-  static constexpr std::size_t ACCUM_TABLE_SIZE = 128;
+  // Smaller tables than the HPCA'19 reference (which sized for 1 GHz +
+  // multi-million-instruction warmups). With 2 M warmup + 2 M sim we
+  // need the accumulation table to overflow quickly so the PHT trains.
+  static constexpr std::size_t FILTER_TABLE_SIZE = 32;
+  static constexpr std::size_t ACCUM_TABLE_SIZE = 32;
   static constexpr std::size_t PHT_SIZE = 8192;
-  static constexpr float VOTE_THRESHOLD = 0.40f; // fraction of voters needed to issue
 
   using prefetcher::prefetcher;
 
@@ -73,21 +76,30 @@ private:
       order_.splice(order_.begin(), order_, it->second.lru_it);
       return &it->second.value;
     }
-    void insert(uint64_t key, V value)
+    // Insert and return the evicted (key, value) pair if the table was at
+    // capacity. Returning the victim lets the AT->PHT training path see
+    // the pattern that just left the accumulation table.
+    std::optional<std::pair<uint64_t, V>> insert(uint64_t key, V value)
     {
       auto it = map_.find(key);
       if (it != map_.end()) {
         it->second.value = std::move(value);
         order_.splice(order_.begin(), order_, it->second.lru_it);
-        return;
+        return std::nullopt;
       }
+      std::optional<std::pair<uint64_t, V>> victim_out;
       if (map_.size() >= cap_) {
         uint64_t victim = order_.back();
+        auto vit = map_.find(victim);
+        if (vit != map_.end()) {
+          victim_out = std::make_pair(victim, std::move(vit->second.value));
+          map_.erase(vit);
+        }
         order_.pop_back();
-        map_.erase(victim);
       }
       order_.push_front(key);
       map_.emplace(key, slot{std::move(value), order_.begin()});
+      return victim_out;
     }
     void erase(uint64_t key)
     {

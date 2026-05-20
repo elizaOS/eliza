@@ -79,8 +79,6 @@ REQUIRED_BLOCKED_IDS = {
     "phone_class_ipc",
     "phone_class_latency_curve",
     "phone_class_sustained_bandwidth",
-    "pythia_rl_prefetcher_dpc3",
-    "berti_ipcp_bingo_bop_dpc3",
     "hawkeye_mockingjay_dpc3_replacement",
     "pythia_rl_prefetcher",
     "silicon_evidence",
@@ -92,6 +90,8 @@ REQUIRED_MEASURED_IDS = {
     "champsim_prefetcher_sweep": "champsim_dpc3_traces_only",
     "mockingjay_vs_lru_sweep": "champsim_dpc3_traces_only",
     "mockingjay_cocotb_synthetic": "cocotb_synthetic_stream",
+    "berti_ipcp_bingo_bop_dpc3": "champsim_dpc3_traces_only",
+    "pythia_rl_prefetcher_dpc3": "champsim_dpc3_traces_only",
 }
 
 
