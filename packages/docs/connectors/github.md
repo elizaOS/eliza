@@ -16,7 +16,7 @@ The GitHub plugin is an elizaOS feature plugin that bridges your agent to the Gi
 |-------|-------|
 | Package | `@elizaos/plugin-github` |
 | Config key | `connectors.github` |
-| Install | `eliza plugins install @elizaos/plugin-github` |
+| Install | `bun add @elizaos/plugin-github` |
 
 ## Setup Requirements
 

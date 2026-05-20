@@ -85,13 +85,13 @@ Install → Register → Initialize → Active → Shutdown
 ### Install from Registry
 
 ```bash
-eliza plugins install @elizaos/plugin-openai
+bun add @elizaos/plugin-openai
 ```
 
 ### List Installed Plugins
 
 ```bash
-eliza plugins list
+# Plugins are declared in character.plugins — read that file
 ```
 
 ### Enable/Disable
@@ -108,10 +108,10 @@ Enable or disable a plugin by setting its `enabled` flag in `eliza.json`:
 }
 ```
 
-Or edit the config file directly (`eliza config path` shows the file location):
+Or edit the config file directly (usually ~/.eliza/eliza.json):
 
 ```bash
-$EDITOR "$(eliza config path)"
+$EDITOR "~/.eliza/eliza.json"
 ```
 
 ### Eject (Copy to Local)

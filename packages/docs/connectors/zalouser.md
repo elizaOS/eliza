@@ -20,7 +20,7 @@ The Zalouser connector is a personal-account variant of the [Zalo](/connectors/z
 ## Installation
 
 ```bash
-eliza plugins install zalouser
+bun add zalouser
 ```
 
 ## Setup

@@ -338,7 +338,7 @@ globalThis.fetch = vi.fn()
 
 ## TestSuite: Embedded Plugin Tests
 
-Plugins can embed tests via the `tests` field. These run when users execute `eliza plugins test <name>`:
+Plugins can embed tests via the `tests` field. These run when users execute `bun test`:
 
 ```typescript
 import type { Plugin, TestSuite, Memory, State } from '@elizaos/core';

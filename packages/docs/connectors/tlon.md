@@ -12,7 +12,7 @@ The Tlon connector is an elizaOS plugin that bridges your agent to the Urbit net
 |-------|-------|
 | Package | `@elizaos/plugin-tlon` |
 | Config key | `connectors.tlon` |
-| Install | `eliza plugins install @elizaos/plugin-tlon` |
+| Install | `bun add @elizaos/plugin-tlon` |
 
 ## Setup
 
@@ -38,7 +38,7 @@ The Tlon connector is an elizaOS plugin that bridges your agent to the Urbit net
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install tlon
+bun add tlon
 ```
 
 Configure in `~/.eliza/eliza.json`:

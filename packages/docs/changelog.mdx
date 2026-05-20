@@ -1034,7 +1034,7 @@ Wallet trade and transfer endpoints now support delegated signing through the St
 <Update label="2026-03-23" description="WeChat connector, settings redesign, Windows fixes" tags={["Feature", "Update", "Fix"]}>
 ## WeChat connector
 
-Your agent can now connect to WeChat, the 21st supported messaging platform. The connector supports text and image messaging in both direct messages and group chats, multi-account management, and QR code login. Install it with `eliza plugins install wechat` and configure it in your [social settings](/guides/connectors).
+Your agent can now connect to WeChat, the 21st supported messaging platform. The connector supports text and image messaging in both direct messages and group chats, multi-account management, and QR code login. Install it with `bun add wechat` and configure it in your [social settings](/guides/connectors).
 
 ## Tagalog language support
 
@@ -1108,7 +1108,7 @@ Docs: [Desktop app — battery and energy (macOS)](/apps/desktop#battery-and-ene
 - **`scripts/dev-platform.mjs`** ( **`dev:desktop` / `dev:desktop:watch`** ) — Before spawning children, probes **`ELIZA_API_PORT`** (default **31337**) and, in Vite dev mode, **`ELIZA_PORT`** (default **2138**), advancing to the next free **127.0.0.1** TCP port when needed. **Why:** Vite’s `server.port` + proxy target and Electrobun’s **`ELIZA_RENDERER_URL` / `ELIZA_DESKTOP_API_BASE`** must match the **same** numbers the API process binds; pre-allocating in the orchestrator avoids a race where Vite loads config before the API picks a dynamic port. **Implementation:** `scripts/lib/allocate-loopback-port.mjs` (brief bind test per candidate).
 - **`apps/app/vite.config.ts`** — Dev server **`port`** reads **`ELIZA_PORT`** (default **2138**) so the Vite child started by dev-platform listens where the orchestrator chose. **Why:** the config file used to hard-code **2138**, ignoring env when the orchestrator moved the UI port.
 - **Embedded desktop agent (`apps/app/electrobun/src/native/agent.ts`)** — Resolves a free port from the preferred **`ELIZA_PORT`** via **`findFirstAvailableLoopbackPort`** (`loopback-port.ts`) instead of killing foreign PIDs by default. **Why:** coexistence with another Eliza (or any server) on the default port should not require root or surprise SIGKILL. After a healthy start, the **Electrobun main process** sets **`process.env.ELIZA_PORT` / `ELIZA_API_PORT`** to the real API port so late readers and tooling stay consistent. **Opt-in legacy reclaim:** **`ELIZA_AGENT_RECLAIM_STALE_PORT=1`** restores **`lsof` + SIGKILL** on the preferred port first (single-instance / “take over” dev workflows).
-- **`packages/app-core/src/runtime/eliza.ts`** ( **`eliza start`** server-only path) — After **`startApiServer`**, syncs **`ELIZA_PORT`** and **`ELIZA_API_PORT`** to the **actual** bound port. **Why:** upstream may fall back if the requested port is busy; the CLI banner and anything reading env must match **`/api/health`**.
+- **`packages/app-core/src/runtime/eliza.ts`** ( **`bun run dev`** server-only path) — After **`startApiServer`**, syncs **`ELIZA_PORT`** and **`ELIZA_API_PORT`** to the **actual** bound port. **Why:** upstream may fall back if the requested port is busy; the CLI banner and anything reading env must match **`/api/health`**.
 - **`packages/app-core/src/runtime/dev-server.ts`** — Syncs **`ELIZA_API_PORT`** and **`ELIZA_PORT`** to the actual bind; **does not** overwrite **`ELIZA_PORT`** when it carries the **Vite UI** port from dev-platform. **Why:** one process serves both “logical” roles in desktop dev; conflating UI and API env vars would break **`GET /api/dev/stack`** `desktop.uiPort` and proxy assumptions.
 - **Electrobun `index.ts` + `surface-windows.ts`** — On **`agent:status`** updates with a port, **`injectApiBase`** runs for the **main** window and **every** detached surface window. **Why:** dynamic API ports must reach Settings / Chat / etc. without a full reload.
 
@@ -1435,7 +1435,7 @@ Your agent can now connect to six additional platforms:
 - **Linear** — issue tracking integration.
 - **Zalo** — messaging on Vietnam's largest chat platform.
 
-Install any connector with `eliza plugins install <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
 
 ## Updates
 
@@ -1483,7 +1483,7 @@ Your agent can now connect to three additional messaging platforms:
 - **Nostr** — relay-based decentralized social with private key auth, configurable relay list, and DM support.
 - **Nextcloud Talk** — webhook-based bot integration with per-room filtering.
 
-Install any connector with `eliza plugins install <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
 
 ## Updates
 
@@ -1541,7 +1541,7 @@ Your agent can now connect to six additional messaging platforms out of the box:
 - **Google Chat** — service account integration with webhook delivery and per-space configuration. See the [Google Chat plugin docs](/connectors/googlechat).
 - **Mattermost** — self-hosted team messaging with bot token auth and mention filtering. See the [Mattermost plugin docs](/connectors/mattermost).
 
-Install any connector with `eliza plugins install <name>` and configure it in your [social settings](/guides/connectors).
+Install any connector with adding to character.plugins and running `bun add <name>` and configure it in your [social settings](/guides/connectors).
 
 ## Lens Protocol connector
 
@@ -1659,7 +1659,7 @@ You can now manage cloud agents directly from the Eliza homepage. The new dashbo
 
 ## Cloud-first onboarding
 
-Running `eliza start` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/guides/cloud) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/guides/cloud) for details.
+Running `bun run dev` for the first time now asks "Where should your agent live?" with [Eliza Cloud](/guides/cloud) as the recommended option. Choose cloud for a hosted runtime with no local setup, or local to run on your own machine. Cloud configuration is saved automatically so subsequent launches reconnect without prompting. See the [cloud guide](/guides/cloud) for details.
 
 ## Game-style notebook character editor
 

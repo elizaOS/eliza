@@ -17,7 +17,7 @@ The Twitter connector is an elizaOS plugin that bridges your agent to Twitter/X.
 ## Installation
 
 ```bash
-eliza plugins install @elizaos/plugin-x
+bun add @elizaos/plugin-x
 ```
 
 ## Configuration

@@ -12,7 +12,7 @@ The LINE connector is an elizaOS plugin that bridges your agent to LINE Messagin
 |-------|-------|
 | Package | `@elizaos/plugin-line` |
 | Config key | `connectors.line` |
-| Install | `eliza plugins install @elizaos/plugin-line` |
+| Install | `bun add @elizaos/plugin-line` |
 
 ## Setup
 
@@ -39,7 +39,7 @@ The LINE connector is an elizaOS plugin that bridges your agent to LINE Messagin
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install line
+bun add line
 ```
 
 Configure in `~/.eliza/eliza.json`:

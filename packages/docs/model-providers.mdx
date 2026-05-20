@@ -140,26 +140,11 @@ Add keys directly in `~/.eliza/eliza.json`:
 }
 ```
 
-### Option 3: Interactive setup
-
-```bash
-eliza configure
-```
-
-This walks you through setting common environment variables including your preferred model provider.
-
 <Warning>
 When using the config file approach, your API keys are stored in plaintext in `eliza.json`. The `.env` file approach keeps secrets separate from configuration and is easier to exclude from version control.
 </Warning>
 
 ---
-
-## CLI Commands
-
-```bash
-eliza models             # list configured model providers and their status
-eliza configure          # show provider status and env variable guide (read-only)
-```
 
 ### Setting the default model
 
@@ -339,5 +324,5 @@ Some providers accept multiple env variable names for convenience (e.g., both `A
 </Tip>
 
 <Info>
-**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `eliza plugins install local-ai` or by adding `"local-ai"` to `plugins.allow` in `eliza.json`. See the [local models guide](/guides/local-models) and [embedding configuration schema](/config-schema#embedding) for configuration.
+**Local AI** does not auto-enable via an environment variable. Enable it explicitly with `bun add local-ai` or by adding `"local-ai"` to `plugins.allow` in `eliza.json`. See the [local models guide](/guides/local-models) and [embedding configuration schema](/config-schema#embedding) for configuration.
 </Info>

@@ -33,10 +33,10 @@ Two environment variables control where Eliza looks for configuration:
 
 ```bash
 # Use a custom state directory (config lives at /opt/eliza/eliza.json)
-ELIZA_STATE_DIR=/opt/eliza eliza start
+ELIZA_STATE_DIR=/opt/eliza bun run dev
 
 # Point to a specific config file
-ELIZA_CONFIG_PATH=~/projects/bot/config.json5 eliza start
+ELIZA_CONFIG_PATH=~/projects/bot/config.json5 bun run dev
 ```
 
 ### Other State Directory Paths
@@ -447,7 +447,7 @@ Plugins extend Eliza with connectors, providers, and feature capabilities.
 
 Eliza automatically enables plugins based on your configuration. You do not need to manually add plugins to the allowlist in most cases.
 
-**Connector plugins** are auto-enabled when a connector is configured with credentials. Connectors marked with * are upstream elizaOS plugins not included in the Eliza bundled registry — they must be installed first (`eliza plugins install <package>`):
+**Connector plugins** are auto-enabled when a connector is configured with credentials. Connectors marked with * are upstream elizaOS plugins not included in the Eliza bundled registry — they must be installed by adding to your character.plugins array plus `bun add <package>`:
 
 | Connector | Plugin | Auto-Enable Trigger |
 |-----------|--------|---------------------|
@@ -1254,7 +1254,7 @@ Key environment variables that affect Eliza behavior:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
-| `ELIZA_API_PORT` | `31337` | API + WebSocket port. Used in dev mode (`bun run dev`) where the API and UI run on separate ports. In production (`eliza start`) the API is served on `ELIZA_PORT` instead |
+| `ELIZA_API_PORT` | `31337` | API + WebSocket port. Used in dev mode (`bun run dev`) where the API and UI run on separate ports. In production (`bun run dev`) the API is served on `ELIZA_PORT` instead |
 | `ELIZA_PORT` | `2138` | Dashboard (Web UI) port. In production this port also serves the API. In dev mode this port is the Vite dev server only |
 | `ELIZA_GATEWAY_PORT` | `18789` | Gateway port |
 | `ELIZA_HOME_PORT` | `2142` | Home Dashboard port |
@@ -1262,7 +1262,7 @@ Key environment variables that affect Eliza behavior:
 
 ```bash
 # Custom ports
-ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 eliza start
+ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 bun run dev
 ```
 
 ### Model Provider API Keys
@@ -1289,34 +1289,11 @@ ELIZA_GATEWAY_PORT=19000 ELIZA_PORT=3000 eliza start
 
 See the [Model Providers](/model-providers) page for a full list of supported providers.
 
-## CLI Config Commands
+## Editing config
 
-Eliza provides CLI commands to inspect configuration without editing JSON directly:
+To change values, edit `~/.eliza/eliza.json` directly. It supports JSON5 (comments, trailing commas, etc.). `ELIZA_STATE_DIR` and `ELIZA_CONFIG_PATH` redirect that location.
 
-```bash
-# Configuration guidance (common env vars and usage)
-eliza configure
-
-# Read a config value (dot-notation)
-eliza config get agents.defaults.model
-eliza config get gateway.port
-
-# Print the resolved config file path
-eliza config path
-
-# Display all config values grouped by section
-eliza config show
-eliza config show --all    # Include advanced/hidden fields
-eliza config show --json   # Raw JSON output
-```
-
-To change values, edit `~/.eliza/eliza.json` directly (it supports JSON5 with comments).
-
-<Tip>
-Use `eliza configure` for a quick reference of common configuration options
-and environment variables. For local bootstrap, run `eliza setup`, or edit
-`~/.eliza/eliza.json` directly.
-</Tip>
+The CLI does not provide config get/set/show commands — read or write the JSON file with your editor, or pipe it through `jq` for scripted access.
 
 ## Full Example
 

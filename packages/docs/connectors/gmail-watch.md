@@ -14,7 +14,7 @@ The Gmail Watch plugin is an elizaOS feature plugin that monitors Gmail inboxes 
 |-------|-------|
 | Package | `@elizaos/plugin-gmail-watch` |
 | Feature flag | `features.gmailWatch` |
-| Install | `eliza plugins install @elizaos/plugin-gmail-watch` |
+| Install | `bun add @elizaos/plugin-gmail-watch` |
 
 ## Setup Requirements
 
@@ -29,7 +29,7 @@ Gmail Watch does not use environment variables for configuration. It is enabled 
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install gmail-watch
+bun add gmail-watch
 ```
 
 Enable in `~/.eliza/eliza.json`:
@@ -47,7 +47,7 @@ Enable in `~/.eliza/eliza.json`:
 1. Set up a Google Cloud project with the Gmail API enabled.
 2. Configure a Pub/Sub topic for Gmail push notifications.
 3. Create a service account or OAuth credentials with Gmail API access.
-4. Install the plugin: `eliza plugins install gmail-watch`.
+4. Install the plugin: `bun add gmail-watch`.
 5. Enable the feature in your config as shown above.
 6. Start your agent.
 

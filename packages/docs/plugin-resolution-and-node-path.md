@@ -23,7 +23,7 @@ Node resolves this by walking up from the **importing file's directory**. When e
 | Entry point | Importing file location | Walks up from | Reaches root `node_modules`? |
 |---|---|---|---|
 | `bun run dev` | `src/runtime/eliza.ts` | `src/runtime/` | Usually yes (2 levels) |
-| `eliza start` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
+| `bun run dev` (CLI) | `dist/runtime/eliza.js` | `dist/runtime/` | Usually yes (2 levels) |
 | Electrobun dev | `eliza-dist/eliza.js` | `apps/app/electrobun/eliza-dist/` | **No** — walks into `apps/` |
 | Electrobun packaged | `app.asar.unpacked/eliza-dist/eliza.js` | Inside the `.app` bundle | **No** — different filesystem |
 

@@ -4,26 +4,28 @@ description: "Scaffold a new Eliza plugin package."
 ---
 
 ```bash
-npx elizaos create <name> --template plugin
+npx elizaos create [name] --template plugin
 ```
 
-## Templates
+## Flags
 
-| Template      | Use case                                                                       |
-| ------------- | ------------------------------------------------------------------------------ |
-| `plugin`      | Default. Plugin with sample action, provider, service, e2e tests, build config.|
-| `min-plugin`  | Minimal. Just `plugin.ts` and one action.                                      |
-
-```bash
-npx elizaos create my-plugin --template min-plugin
-```
+| Flag                              | Purpose                                                  |
+| --------------------------------- | -------------------------------------------------------- |
+| `-t, --template plugin`           | Use the plugin template.                                 |
+| `-l, --language <lang>`           | TypeScript (default).                                    |
+| `-y, --yes`                       | Skip confirmation prompts.                               |
+| `--description <description>`     | Plugin description (written into package.json).          |
+| `--github-username <username>`    | GitHub owner (written into package.json repository).     |
+| `--repo-url <url>`                | Override the generated repository URL.                   |
 
 ## What you get
 
+The `plugin` template scaffolds an elizaOS plugin starter:
+
 - `src/plugin.ts` — the `Plugin` export.
-- `src/actions/`, `src/providers/`, `src/services/` — starter implementations (full template).
+- `src/actions/`, `src/providers/`, `src/services/` — starter implementations.
 - `src/__tests__/` — unit tests with a runtime fixture.
-- `e2e/` — end-to-end tests against a real agent (full template).
+- `e2e/` — end-to-end tests against a real agent.
 - `tsdown.config.ts` — bundler config producing `dist/`.
 - `package.json` — scoped under your namespace, ready for `npm publish`.
 
@@ -36,7 +38,7 @@ bun run build
 bun run test
 ```
 
-To iterate against a real agent, link the plugin into an agent project:
+To iterate against a real agent, link the plugin into a project:
 
 ```bash
 cd ../my-agent
@@ -44,6 +46,14 @@ bun add link:../my-plugin
 ```
 
 Add `'my-plugin'` to your character's `plugins` array.
+
+## Submit to the registry
+
+When you're ready to publish, `npm publish` ships the package. To also submit it to the elizaOS plugin registry:
+
+```bash
+elizaos plugins submit
+```
 
 ## See also
 
