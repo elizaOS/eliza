@@ -15,10 +15,10 @@ import type {
   WorkerRpcMessage,
   WorkerRpcResultMessage,
 } from "@elizaos/plugin-remote-manifest";
-import type { HandlerEntry, HandlerRegistry } from "./descriptor.ts";
-import type { WorkerChannel } from "./envelope.ts";
-import { toWireError } from "./error.ts";
-import type { RuntimeProxyApi } from "./runtime-proxy.ts";
+import type { HandlerEntry, HandlerRegistry } from "./descriptor";
+import type { WorkerChannel } from "./envelope";
+import { toWireError } from "./error";
+import type { RuntimeProxyApi } from "./runtime-proxy";
 
 /** Subset of the runtime proxy that the dispatcher exposes to handlers. */
 export interface DispatchContext {

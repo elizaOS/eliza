@@ -48,15 +48,17 @@ class AndroidAppRuntimeContractTests(unittest.TestCase):
 """,
         )
         service_java = write(
-            tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
+            tmp
+            / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaAgentService.java",
             'class ElizaAgentService { static final String HEALTH_URL = "http://127.0.0.1:31337/api/health"; }\n',
         )
-        plugin_java = write(
+        write(
             tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/AgentPlugin.java",
             'class AgentPlugin { String path = "/api/health"; }\n',
         )
         native_bridge_java = write(
-            tmp / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaNativeBridge.java",
+            tmp
+            / "app-core/platforms/android/app/src/main/java/ai/elizaos/app/ElizaNativeBridge.java",
             "class ElizaNativeBridge { String getLocalAgentToken() { return null; } }\n",
         )
         apk = make_apk(tmp / "os/android/vendor/eliza/apps/Eliza/Eliza.apk", apk_entries)

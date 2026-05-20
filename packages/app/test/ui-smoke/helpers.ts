@@ -71,7 +71,7 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
-  ["Carrots", "carrots"],
+  ["Carrots", "remote-plugins"],
   ["Connectors", "connectors"],
   ["App Permissions", "app-permissions"],
   ["Wallet & RPC", "wallet-rpc"],
@@ -518,6 +518,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
         cloudVoiceProxyAvailable: false,
         hasApiKey: false,
       }),
+    });
+  });
+
+  await page.route("**/api/facewear/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ connected: false, devices: [] }),
     });
   });
 

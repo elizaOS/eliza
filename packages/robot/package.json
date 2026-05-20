@@ -66,6 +66,7 @@
     "@types/node": "^25.0.3",
     "tsdown": "^0.22.0",
     "typescript": "^6.0.3",
+    "unrun": "^0.3.0",
     "vitest": "^4.1.4"
   },
   "publishConfig": {

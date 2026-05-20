@@ -45,7 +45,9 @@
       "@elizaos/plugin-computeruse": ["../plugin-computeruse/dist/index.d.ts"],
       "@elizaos/plugin-computeruse/*": ["../plugin-computeruse/dist/*"],
       "@elizaos/plugin-registry": ["./src/index.ts"],
-      "@elizaos/plugin-registry/*": ["./src/*"]
+      "@elizaos/plugin-registry/*": ["./src/*"],
+      "@elizaos/plugin-browser": ["../plugin-browser/src/index.ts"],
+      "@elizaos/plugin-browser/*": ["../plugin-browser/src/*"]
     }
   },
   "include": [

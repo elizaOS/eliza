@@ -487,10 +487,15 @@ function ViewRouter({
   const { lifeOpsPageView: LifeOpsPageView } = useBootConfig();
   const androidPhoneSurfaceEnabled = isAndroidPhoneSurfaceEnabled();
   const dynamicPage = useResolvedDynamicPage(tab);
-  const developerModeEnabled = useIsDeveloperMode();
   const [navigationPath, setNavigationPath] = useState(() =>
     typeof window === "undefined" ? "/" : getWindowNavigationPath(),
   );
+  const appSlug =
+    tab === "apps" || tab === "views"
+      ? getAppSlugFromPath(navigationPath)
+      : null;
+  const dynamicAppPage = useResolvedDynamicPage(appSlug ?? "");
+  const developerModeEnabled = useIsDeveloperMode();
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -513,6 +518,16 @@ function ViewRouter({
         </TabContentView>
       );
     }
+    if (
+      dynamicAppPage &&
+      (developerModeEnabled || !dynamicAppPage.developerOnly)
+    ) {
+      return (
+        <TabContentView chatScope="page-apps">
+          <DynamicPluginPage resolved={dynamicAppPage} />
+        </TabContentView>
+      );
+    }
     if (tab === "lifeops") {
       // LifeOpsPageView owns its own AppWorkspaceChrome (nav rail + main
       // + right chat), so don't double-wrap or route it through /api/views.
@@ -521,10 +536,6 @@ function ViewRouter({
     // Check if the current tab matches a dynamically-registered view with a
     // remote bundle URL. These are plugin-contributed views loaded at runtime
     // from /api/views — they live outside the main bundle.
-    const appSlug =
-      tab === "apps" || tab === "views"
-        ? getAppSlugFromPath(navigationPath)
-        : null;
     const normalizedNavigationPath =
       navigationPath.length > 1 && navigationPath.endsWith("/")
         ? navigationPath.slice(0, -1)

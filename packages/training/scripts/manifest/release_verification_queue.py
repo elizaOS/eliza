@@ -215,31 +215,23 @@ def _platform_command(bundle_root: str, tier: str, target: str, eval_python: str
 
 def _mtp_command(bundle_root: str, tier: str, eval_python: str) -> str:
     bundle = _bundle_dir(bundle_root, tier)
-    validation_tier = "27b" if tier == "27b-256k" else tier
     target_gguf = Path(bundle) / text_artifact_name(tier, "256k")
     return _guarded(
         eval_python,
-        f"{eval_python} packages/training/scripts/dflash/validate_drafter.py "
-        f"--tier {validation_tier} "
-        f"--target-gguf {target_gguf} "
-        f"--drafter-gguf {bundle}/dflash/drafter-{tier}.gguf "
-        "--skip-acceptance-rollout "
-        f"--report-out {bundle}/dflash/validation-real.json && "
-        "node plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs "
+        "regenerate the target GGUF from the Qwen3.5/3.6 HF checkpoint with "
+        "packages/training/scripts/quantization/gguf_eliza1_apply.py "
+        "--preserve-mtp so the GGUF contains *.nextn_predict_layers and "
+        "blk.*.nextn.* tensors, then run "
+        "node plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs "
         f"--tier {tier} "
         f"--target-model {target_gguf} "
-        f"--drafter-model {bundle}/dflash/drafter-{tier}.gguf "
-        "--spec-type dflash "
-        "--bench --bench-tokens 128 --bench-context 128 "
-        f"--report {bundle}/dflash/runtime-smoke-native.json "
-        f"--bench-report {bundle}/evals/dflash-native-bench.json && "
+        "--bench --bench-tokens 128 --bench-context 128 --bench-draft-n-max 2 "
+        f"--report {bundle}/mtp/runtime-smoke-native.json "
+        f"--bench-report {bundle}/evals/mtp-native-bench.json && "
         f"{_eval_suite_command(eval_python, bundle, tier, '--threads', '8', '--timeout', '600')} && "
-        f"{eval_python} packages/training/scripts/manifest/dflash_tuning_report.py "
-        f"{bundle} --out {bundle}/evals/dflash-tuning-report.json && "
-        f"publish bundles/{tier}/dflash/target-meta.json, "
-        f"bundles/{tier}/dflash/validation-real.json, "
-        f"bundles/{tier}/dflash/runtime-smoke-native.json, and "
-        f"bundles/{tier}/evals/dflash-accept.json only after native runtime acceptanceRate and speedup meet the release gates",
+        f"publish bundles/{tier}/mtp/runtime-smoke-native.json and "
+        f"bundles/{tier}/evals/mtp-native-bench.json only after metadataStatus "
+        "passes, draft-mtp accepted tokens are recorded, and speedup meets the release gate",
     )
 
 
@@ -499,11 +491,9 @@ def build_queue(
                 requires_hardware=True,
                 command=_mtp_command(bundle_root, tier, eval_python),
                 evidence=(
-                    f"bundles/{tier}/dflash/target-meta.json",
-                    f"bundles/{tier}/dflash/validation-real.json",
-                    f"bundles/{tier}/dflash/runtime-smoke-native.json",
-                    f"bundles/{tier}/evals/dflash-accept.json",
-                    f"bundles/{tier}/evals/dflash-tuning-report.json",
+                    f"bundles/{tier}/text/{text_artifact_name(tier, '256k')}",
+                    f"bundles/{tier}/mtp/runtime-smoke-native.json",
+                    f"bundles/{tier}/evals/mtp-native-bench.json",
                 ),
                 source=name,
                 detail=detail,

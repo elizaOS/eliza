@@ -237,17 +237,17 @@ def add_if(
 def run_check(args: argparse.Namespace) -> dict[str, object]:
     findings: list[Finding] = []
     required_paths = (
-            APP_GRADLE,
-            APP_MANIFEST,
-            AGENT_SERVICE_JAVA,
-            APP_JAVA_DIR,
-            NATIVE_BRIDGE_JAVA,
-            PREBUILT_APK if args.apk is None else Path(args.apk),
-            *VENDOR_PERMISSION_XMLS,
-            VENDOR_OVERLAY,
-            VENDOR_COMMON_MK,
-            *CHIP_AOSP_SCRIPTS,
-        )
+        APP_GRADLE,
+        APP_MANIFEST,
+        AGENT_SERVICE_JAVA,
+        APP_JAVA_DIR,
+        NATIVE_BRIDGE_JAVA,
+        PREBUILT_APK if args.apk is None else Path(args.apk),
+        *VENDOR_PERMISSION_XMLS,
+        VENDOR_OVERLAY,
+        VENDOR_COMMON_MK,
+        *CHIP_AOSP_SCRIPTS,
+    )
     missing = [
         path
         for path in required_paths
@@ -369,9 +369,7 @@ def run_check(args: argparse.Namespace) -> dict[str, object]:
     scripts_use_legacy_self_status = "/api/agent/self-status" in script_endpoint_union
     add_if(
         findings,
-        app_health_ok
-        and scripts_use_legacy_self_status
-        and not scripts_use_app_health,
+        app_health_ok and scripts_use_legacy_self_status and not scripts_use_app_health,
         "android_agent_health_contract_mismatch",
         "chip smoke scripts check /api/agent/self-status while the Android service watchdog uses /api/health",
         json.dumps(

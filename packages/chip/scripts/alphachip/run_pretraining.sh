@@ -131,7 +131,7 @@ TRAIN_LOG="${ROOT_DIR}/train.log"
 : >"${COLLECT_LOG}"
 : >"${TRAIN_LOG}"
 
-# shellcheck disable=SC2329
+# shellcheck disable=SC2317,SC2329
 cleanup() {
     if [ -n "${REVERB_PID:-}" ]; then kill "${REVERB_PID}" 2>/dev/null || true; fi
     if [ -n "${COLLECT_PID:-}" ]; then kill "${COLLECT_PID}" 2>/dev/null || true; fi

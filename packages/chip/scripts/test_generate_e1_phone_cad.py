@@ -421,7 +421,9 @@ def test_evt0_phone_interface_validation_tracks_named_mechanical_interfaces(
     interfaces = {item["interface"] for item in report["interfaces"]}
 
     assert report["status"] == "cad_interface_validation_pass"
-    usb_case = next(item for item in report["interfaces"] if item["id"] == "usb_c_insertion_capture")
+    usb_case = next(
+        item for item in report["interfaces"] if item["id"] == "usb_c_insertion_capture"
+    )
     assert usb_case["pass"]
     assert "usb_c_port_seal_stack" in usb_case["evidence"]
     assert {

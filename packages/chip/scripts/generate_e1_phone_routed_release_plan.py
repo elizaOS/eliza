@@ -55,7 +55,7 @@ def main() -> int:
     manufacturing = load_yaml(MANUFACTURING)
     production = load_yaml(PRODUCTION)
     manifest = load_yaml(MANIFEST)
-    routing = load_yaml(ROUTING)
+    load_yaml(ROUTING)
     pinout = load_yaml(PINOUT)
     procurement = load_yaml(PROCUREMENT)
     enclosure = load_yaml(ENCLOSURE)
@@ -197,7 +197,13 @@ def main() -> int:
             ],
         },
         "display_touch": {
-            "required_nets": ["DSI_CLK_P", "DSI_D0_P", "DISP_AVDD_5V5", "DISP_AVEE_N5V5", "TOUCH_I2C_SCL"],
+            "required_nets": [
+                "DSI_CLK_P",
+                "DSI_D0_P",
+                "DISP_AVDD_5V5",
+                "DISP_AVEE_N5V5",
+                "TOUCH_I2C_SCL",
+            ],
             "required_evidence": [
                 "selected display/touch FPC pinout converted into real KiCad connector symbol and footprint",
                 "MIPI D-PHY post-route length/impedance review",
@@ -213,7 +219,13 @@ def main() -> int:
             ],
         },
         "radios": {
-            "required_nets": ["CELL_RF_MAIN", "CELL_RF_DIV", "CELL_GNSS_RF", "WIFI_BT_RF0", "WIFI_BT_RF1"],
+            "required_nets": [
+                "CELL_RF_MAIN",
+                "CELL_RF_DIV",
+                "CELL_GNSS_RF",
+                "WIFI_BT_RF0",
+                "WIFI_BT_RF1",
+            ],
             "required_evidence": [
                 "cellular and Wi-Fi/Bluetooth module reference layout adherence",
                 "50 ohm feed, matching, conducted access, and antenna keepout closure",
@@ -235,7 +247,15 @@ def main() -> int:
             ],
         },
         "split_interconnect": {
-            "required_nets": ["USB_DP", "USB_DN", "VBUS", "SYS", "I2S_BCLK", "PDM_CLK", "HAPTIC_OUT"],
+            "required_nets": [
+                "USB_DP",
+                "USB_DN",
+                "VBUS",
+                "SYS",
+                "I2S_BCLK",
+                "PDM_CLK",
+                "HAPTIC_OUT",
+            ],
             "required_evidence": [
                 "top and bottom connector supplier land patterns and mating-height stack",
                 "flex cable pinout, stiffener, bend, strain relief, and continuity test",
@@ -249,7 +269,14 @@ def main() -> int:
             ],
         },
         "compute_storage": {
-            "required_nets": ["LPDDR_CK_P", "LPDDR_DQS_P", "UFS_REFCLK_P", "UFS_TX_P", "UFS_RX_P", "JTAG_TCK"],
+            "required_nets": [
+                "LPDDR_CK_P",
+                "LPDDR_DQS_P",
+                "UFS_REFCLK_P",
+                "UFS_TX_P",
+                "UFS_RX_P",
+                "JTAG_TCK",
+            ],
             "required_evidence": [
                 "SoC, LPDDR, UFS, boot strap, and debug exact footprints",
                 "post-route memory/storage SI and boot-mode bring-up coverage",

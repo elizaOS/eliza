@@ -337,6 +337,29 @@ def main(argv: list[str] | None = None) -> int:
             "the converter is skipped (only the sidecar JSONs are refreshed)."
         ),
     )
+    mtp_group = ap.add_mutually_exclusive_group()
+    mtp_group.add_argument(
+        "--preserve-mtp",
+        dest="preserve_mtp",
+        action="store_true",
+        default=True,
+        help=(
+            "Preserve Qwen3.5/3.6 built-in MTP/NextN heads in the target GGUF "
+            "when the source checkpoint has them. This is the default and "
+            "enables llama.cpp --spec-type draft-mtp without a separate "
+            "DFlash drafter artifact."
+        ),
+    )
+    mtp_group.add_argument(
+        "--drop-mtp",
+        dest="preserve_mtp",
+        action="store_false",
+        help=(
+            "Pass --no-mtp to convert_hf_to_gguf.py and drop built-in "
+            "MTP/NextN heads. Only use when intentionally publishing a "
+            "trunk-only GGUF plus a separate speculative artifact."
+        ),
+    )
     ap.add_argument(
         "--dry-run",
         action="store_true",
@@ -443,6 +466,11 @@ def main(argv: list[str] | None = None) -> int:
         # (or a runtime-side path) lands.
         "polarquant_artifacts": str(polar_sidecar_path) if polar_sidecar else None,
     }
+    ext_metadata["speculative"] = {
+        "preferred": "draft-mtp" if args.preserve_mtp else "external-drafter",
+        "preserveMtp": bool(args.preserve_mtp),
+        "externalDrafterRequired": not bool(args.preserve_mtp),
+    }
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
     ext_path = args.output.with_suffix(args.output.suffix + ".eliza1.json")
@@ -468,6 +496,7 @@ def main(argv: list[str] | None = None) -> int:
             "convertedVia": str(convert_path) if convert_path else None,
             "outtype": args.outtype,
             "ggmlTypeSlots": ELIZA1_GGML_TYPES,
+            "preserveMtp": bool(args.preserve_mtp),
         }
 
     if args.dry_run:
@@ -512,6 +541,8 @@ def main(argv: list[str] | None = None) -> int:
         "--outfile",
         str(args.output),
     ]
+    if not args.preserve_mtp:
+        cmd.append("--no-mtp")
     log.info("running converter: %s", " ".join(cmd))
     rc = subprocess.run(cmd, check=False).returncode
     if rc != 0:

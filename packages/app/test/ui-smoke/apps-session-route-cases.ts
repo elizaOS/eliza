@@ -107,4 +107,16 @@ export const DIRECT_ROUTE_CASES: readonly DirectRouteCase[] = [
     selector: '[data-testid="tasks-view"]',
     timeoutMs: 90_000,
   },
+  {
+    name: "hearwear app window",
+    path: "/apps/hearwear",
+    readyChecks: [{ text: "Facewear" }, { text: "No devices connected" }],
+    timeoutMs: 90_000,
+  },
+  {
+    name: "smartglasses app window",
+    path: "/apps/smartglasses",
+    readyChecks: [{ text: "Smartglasses" }, { text: "Connect Headset" }],
+    timeoutMs: 90_000,
+  },
 ];

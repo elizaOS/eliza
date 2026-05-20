@@ -7,7 +7,7 @@
  * ```ts
  * // worker.ts
  * import { bootstrap } from "@elizaos/plugin-worker-runtime";
- * import { pluginFooRemote } from "./plugin.ts";
+ * import { pluginFooRemote } from "./plugin";
  * bootstrap(pluginFooRemote);
  * ```
  *
@@ -28,15 +28,15 @@ import {
   buildAnnounceDescriptor,
   createHandlerRegistry,
   type WorkerPluginShape,
-} from "./descriptor.ts";
-import { createWorkerRpcDispatcher } from "./dispatch.ts";
+} from "./descriptor";
+import { createWorkerRpcDispatcher } from "./dispatch";
 import {
   createDefaultChannel,
   createRequestIdAllocator,
   type WorkerChannel,
-} from "./envelope.ts";
-import { toWireError } from "./error.ts";
-import { buildRuntimeProxyApi, RuntimeProxy } from "./runtime-proxy.ts";
+} from "./envelope";
+import { toWireError } from "./error";
+import { buildRuntimeProxyApi, RuntimeProxy } from "./runtime-proxy";
 
 /** Options accepted by {@link bootstrap}. */
 export interface BootstrapOptions {

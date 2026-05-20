@@ -69,7 +69,7 @@ def _server_command(server_script: Path) -> list[str]:
     if shutil.which("node"):
         return ["node", "--import", "tsx", str(server_script)]
     if shutil.which("bun"):
-        return ["bun", "run", str(server_script)]
+        return ["bun", "--no-env-file", "run", str(server_script)]
     return ["node", "--import", "tsx", str(server_script)]
 
 
@@ -92,19 +92,26 @@ def _normalize_model_env(env: dict[str, str]) -> None:
     ).strip()
     if provider == "cerebras" and model.startswith("openai/"):
         model = model.split("/", 1)[1]
+    model_is_cerebras = model in {"gpt-oss-120b", "qwen-3-235b-a22b-instruct-2507"}
 
     cerebras_key = env.get("CEREBRAS_API_KEY", "").strip()
     if cerebras_key and (
         provider == "cerebras"
         or env.get("CEREBRAS_BASE_URL", "").strip()
+        or model_is_cerebras
         or not env.get("OPENAI_API_KEY", "").strip()
     ):
-        env.setdefault("ELIZA_PROVIDER", "cerebras")
-        env.setdefault(
-            "OPENAI_BASE_URL",
-            env.get("CEREBRAS_BASE_URL", "").strip() or "https://api.cerebras.ai/v1",
+        cerebras_base_url = (
+            env.get("CEREBRAS_BASE_URL", "").strip() or "https://api.cerebras.ai/v1"
         )
-        env.setdefault("OPENAI_API_KEY", cerebras_key)
+        if provider == "cerebras" or model_is_cerebras:
+            env["ELIZA_PROVIDER"] = "cerebras"
+            env["OPENAI_BASE_URL"] = cerebras_base_url
+            env["OPENAI_API_KEY"] = cerebras_key
+        else:
+            env.setdefault("ELIZA_PROVIDER", "cerebras")
+            env.setdefault("OPENAI_BASE_URL", cerebras_base_url)
+            env.setdefault("OPENAI_API_KEY", cerebras_key)
         model = model or "gpt-oss-120b"
 
     if not model:

@@ -340,7 +340,7 @@ def usb_c_seal_specs(params: dict[str, Any]) -> list[dict[str, Any]]:
     height = float(params["device"]["envelope_mm"][1])
     aperture_w = 10.2
     aperture_z = 3.6
-    y_front = -height / 2 - 0.08
+    -height / 2 - 0.08
     y_inside = -height / 2 + 0.32
     z_center = -1.45
     return [
@@ -1270,7 +1270,7 @@ def write_solid_cad_handoff_artifacts(
             if safe_radius > 0.05:
                 with suppress(Exception):
                     solid = solid.edges("|Z").fillet(safe_radius)
-        return solid.translate(tuple(float(value) for value in center))
+        return solid.translate((float(center[0]), float(center[1]), float(center[2])))
 
     def cq_composite_box(segments: list[tuple[list[float], list[float], str]]) -> Any:
         solid = None
@@ -1980,7 +1980,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
         if path.is_file() and expected:
             try:
                 imported = cq.importers.importStep(str(path))
-                bbox = imported.val().BoundingBox()
+                bbox = imported.val().BoundingBox()  # type: ignore[union-attr]
                 actual = [bbox.xlen, bbox.ylen, bbox.zlen]
                 errors = [abs(float(a) - float(e)) for a, e in zip(actual, expected, strict=True)]
                 case.update(
@@ -2008,7 +2008,7 @@ def write_step_validation_artifacts(solid_cad: dict[str, Any]) -> dict[str, Any]
     if assembly_path.is_file():
         try:
             imported = cq.importers.importStep(str(assembly_path))
-            bbox = imported.val().BoundingBox()
+            bbox = imported.val().BoundingBox()  # type: ignore[union-attr]
             assembly_case.update(
                 {
                     "imported": True,
@@ -4574,10 +4574,8 @@ def write_camera_validation_artifacts(
             "pass": bool(
                 interface_cases.get("camera_glass_and_under_glass_strategy", {}).get("pass")
             )
-            and sum(1 for name in part_names if name.startswith("rear_camera_cover_adhesive_"))
-            >= 4
-            and sum(1 for name in part_names if name.startswith("rear_camera_light_baffle_"))
-            >= 2
+            and sum(1 for name in part_names if name.startswith("rear_camera_cover_adhesive_")) >= 4
+            and sum(1 for name in part_names if name.startswith("rear_camera_light_baffle_")) >= 2
             and "front_camera_black_mask_window" in part_names,
         },
     ]

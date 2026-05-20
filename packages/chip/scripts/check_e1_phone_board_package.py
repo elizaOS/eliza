@@ -1930,8 +1930,13 @@ def check_routed_release_plan() -> None:
         raise SystemExit(f"unexpected routed release plan status: {plan['status']}")
     if plan["release_target"] != "EVT1-routed-first-article":
         raise SystemExit(f"unexpected routed release target: {plan['release_target']}")
-    if "board/kicad/e1-phone/routed-release-plan.yaml" not in manifest["current_artifacts"]["planning"]:
-        raise SystemExit("artifact manifest must list routed-release-plan.yaml as planning evidence")
+    if (
+        "board/kicad/e1-phone/routed-release-plan.yaml"
+        not in manifest["current_artifacts"]["planning"]
+    ):
+        raise SystemExit(
+            "artifact manifest must list routed-release-plan.yaml as planning evidence"
+        )
     for rel in [
         "board/kicad/e1-phone/manufacturing-closure.yaml",
         "board/kicad/e1-phone/production-readiness.yaml",
@@ -2023,15 +2028,22 @@ def check_routed_release_plan() -> None:
     for domain, item in requirements.items():
         if not item.get("required_nets") or not item.get("required_evidence"):
             raise SystemExit(f"routed release domain is too weak: {domain}")
-    if requirements["manufacturing"]["required_nets"] != production["factory_test_coverage_required"]["power_rails"]:
-        raise SystemExit("routed release manufacturing nets diverge from factory power rail coverage")
+    if (
+        requirements["manufacturing"]["required_nets"]
+        != production["factory_test_coverage_required"]["power_rails"]
+    ):
+        raise SystemExit(
+            "routed release manufacturing nets diverge from factory power rail coverage"
+        )
     for net in routing["power_integrity"]["test_points_required"]:
         if net not in plan["power_thermal_release_dependency"]["required_test_points"]:
             raise SystemExit(f"routed release power dependency missing test point {net}")
     if plan["rf_release_dependency"]["required_rf_nets"] != rf["required_rf_nets"]:
         raise SystemExit("routed release RF dependency diverges from RF closure")
     for required in ["VNA", "SAR", "carrier"]:
-        if not any(required in item for item in plan["rf_release_dependency"]["requires_measurements"]):
+        if not any(
+            required in item for item in plan["rf_release_dependency"]["requires_measurements"]
+        ):
             raise SystemExit(f"routed release RF dependency missing measurement {required}")
 
     for flag in ["ready_to_fabricate", "ready_for_enclosure", "ready_for_factory_test"]:

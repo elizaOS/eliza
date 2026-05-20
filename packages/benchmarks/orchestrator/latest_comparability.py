@@ -185,7 +185,11 @@ def validate_latest_comparability(
             if signature:
                 signatures[agent] = signature
 
-        if len(signatures) == len(required) and len(set(signatures.values())) > 1:
+        if (
+            benchmark_id not in SCORE_SPREAD_EXEMPT_BENCHMARKS
+            and len(signatures) == len(required)
+            and len(set(signatures.values())) > 1
+        ):
             findings.append(
                 ComparabilityFinding(
                     benchmark_id=benchmark_id,

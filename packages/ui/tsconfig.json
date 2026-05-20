@@ -52,6 +52,18 @@
       "@elizaos/plugin-coding-tools": [
         "../../plugins/plugin-coding-tools/src/index.ts"
       ],
+      "@elizaos/plugin-remote-manifest": [
+        "../plugin-remote-manifest/src/index.ts"
+      ],
+      "@elizaos/plugin-remote-manifest/*": [
+        "../plugin-remote-manifest/src/*"
+      ],
+      "@elizaos/plugin-worker-runtime": [
+        "../plugin-worker-runtime/src/index.ts"
+      ],
+      "@elizaos/plugin-worker-runtime/*": [
+        "../plugin-worker-runtime/src/*"
+      ],
       "@elizaos/plugin-companion": [
         "../../plugins/plugin-companion/src/index.ts"
       ],

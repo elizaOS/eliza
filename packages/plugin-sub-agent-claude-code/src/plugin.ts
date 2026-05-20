@@ -26,7 +26,7 @@
  * down the agent process.
  */
 
-import { ClaudeCodeSubAgentService } from "./sub-agent-service.ts";
+import { ClaudeCodeSubAgentService } from "./sub-agent-service";
 
 // We intentionally use loose typing for the Plugin shape rather than
 // pulling in @elizaos/core (which would force a heavyweight dep tree

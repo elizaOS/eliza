@@ -355,7 +355,7 @@ const root = process.cwd();
 for (const relativePath of [
   "package.json",
   "electrobun.config.ts",
-  "carrot.json",
+  "plugin.json",
   "src/protocol/runtime-client.ts",
   "src/web/index.html",
 ]) {

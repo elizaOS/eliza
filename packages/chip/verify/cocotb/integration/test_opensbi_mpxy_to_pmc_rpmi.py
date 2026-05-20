@@ -105,8 +105,8 @@ EXPECTED_VOLTAGE_UV = 700_000
 # and complete at least one scheduler-loop iteration to drain the request.
 CLK_PERIOD_NS = 10
 RESET_WAIT_CYCLES = 8
-BOOT_SETUP_CYCLES = 4096          # let pmc_main reach the drain loop
-ROUNDTRIP_TIMEOUT_CYCLES = 8192   # poll for the response
+BOOT_SETUP_CYCLES = 4096  # let pmc_main reach the drain loop
+ROUNDTRIP_TIMEOUT_CYCLES = 8192  # poll for the response
 
 
 def _ibex_guard_active() -> bool:
@@ -121,7 +121,7 @@ def _shmem_roundtrip_unblocked() -> bool:
     flips on once the gating commits land.  Until then the test reports
     an explicit BLOCKED skip so the suite stays green and the gap is
     discoverable in `docs/evidence/power/pmc-soc-integration-
-    evidence.yaml::mpxy_rpmi_roundtrip`. """
+    evidence.yaml::mpxy_rpmi_roundtrip`."""
     val = os.environ.get("PMC_RPMI_SHMEM_ROUNDTRIP", "0")
     return val not in ("0", "", "false", "False")
 
@@ -179,8 +179,9 @@ async def _mmio_read32(dut, addr: int) -> int:
     return value
 
 
-def _pack_rpmi_frame(servicegroup_id: int, service_id: int, msg_type: int,
-                     token: int, payload: bytes) -> bytes:
+def _pack_rpmi_frame(
+    servicegroup_id: int, service_id: int, msg_type: int, token: int, payload: bytes
+) -> bytes:
     """Build an RPMI v1.0 frame (little-endian) ready for shmem store."""
     if len(payload) > SLOT_SIZE - 8:
         raise ValueError("payload too large for a single slot")
@@ -230,8 +231,7 @@ async def _wait_for_p2a_ack(dut, expected_tail: int) -> int:
             return cycle
         await RisingEdge(dut.clk)
     raise AssertionError(
-        f"P2A_ACK tail never reached {expected_tail} within "
-        f"{ROUNDTRIP_TIMEOUT_CYCLES} cycles"
+        f"P2A_ACK tail never reached {expected_tail} within {ROUNDTRIP_TIMEOUT_CYCLES} cycles"
     )
 
 
@@ -299,8 +299,7 @@ async def opensbi_rpmi_clock_get_rate_roundtrip(dut):
         f"expected {RPMI_SRVGRP_CLOCK:#x}"
     )
     assert header["service_id"] == RPMI_CLOCK_SRV_GET_RATE, (
-        f"service_id mismatch: got {header['service_id']:#x}, "
-        f"expected {RPMI_CLOCK_SRV_GET_RATE:#x}"
+        f"service_id mismatch: got {header['service_id']:#x}, expected {RPMI_CLOCK_SRV_GET_RATE:#x}"
     )
     assert (header["flags"] & 0x7) == RPMI_MSG_TYPE_ACKNOWLEDGEMENT, (
         f"message type not ACK: flags={header['flags']:#x}"
@@ -324,9 +323,7 @@ async def opensbi_rpmi_clock_get_rate_roundtrip(dut):
 @cocotb.test()
 async def opensbi_rpmi_voltage_get_level_roundtrip(dut):
     if not _ibex_guard_active():
-        raise TestSuccess(
-            "skipped: PMC_INSTANTIATE_IBEX not set."
-        )
+        raise TestSuccess("skipped: PMC_INSTANTIATE_IBEX not set.")
     if not _shmem_roundtrip_unblocked():
         raise TestSuccess(
             "BLOCKED: PMC_RPMI_SHMEM_ROUNDTRIP not set.  See "
@@ -380,9 +377,7 @@ async def opensbi_rpmi_base_spec_version_roundtrip(dut):
     GET_SPEC_VERSION at init to validate that the PMC RPMI server is at
     v1.0.  Returns status + version composite."""
     if not _ibex_guard_active():
-        raise TestSuccess(
-            "skipped: PMC_INSTANTIATE_IBEX not set."
-        )
+        raise TestSuccess("skipped: PMC_INSTANTIATE_IBEX not set.")
     if not _shmem_roundtrip_unblocked():
         raise TestSuccess(
             "BLOCKED: PMC_RPMI_SHMEM_ROUNDTRIP not set.  See "

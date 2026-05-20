@@ -979,8 +979,6 @@ def _quality_guardrail_next_action(scope: str, reason: str, value: str) -> str:
         return "Run the full benchmark matrix and publish a latest/index.json with a complete matrix_contract."
     if scope.startswith("publishability:"):
         return "Generate or restore packages/benchmarks/benchmark_results/latest before validating readiness."
-    if scope == "runtime_gate:gaia_official_dataset":
-        return "Set HF_TOKEN/HUGGINGFACE_HUB_TOKEN or GAIA_DATASET_PATH, or pre-cache gaia-benchmark/GAIA."
     if scope == "runtime_gate:hyperliquid_live":
         return "Set HL_PRIVATE_KEY and rerun the Hyperliquid harness without demo mode."
     if scope in {

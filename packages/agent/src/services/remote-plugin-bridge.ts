@@ -18,17 +18,15 @@
  * follow-up), streaming model tokens (P2).
  */
 
-import { Service } from "@elizaos/core";
 import type {
   Action,
-  EventPayload,
   IAgentRuntime,
   Memory,
   Plugin,
   Provider,
   ProviderResult,
-  ServiceClass,
   State,
+  Validator,
 } from "@elizaos/core";
 import type {
   HostRpcMessage,
@@ -72,83 +70,6 @@ interface AttachedState {
   pending: Map<number, PendingRequest>;
   nextRequestId: () => number;
   unsubscribe: (() => void) | undefined;
-}
-
-type ActionDescriptor = JsonObject & {
-  name: string;
-  handler: RemoteFunctionRef;
-  validate?: RemoteFunctionRef;
-};
-
-type ProviderDescriptor = JsonObject & {
-  name: string;
-  get: RemoteFunctionRef;
-};
-
-type ServiceDescriptor = JsonObject & {
-  serviceType: string;
-  rpcMethods: string[];
-  capabilityDescription?: string;
-};
-
-type RouteDescriptor = JsonObject & {
-  path: string;
-  routeHandler?: RemoteFunctionRef;
-};
-
-function isJsonObject(value: JsonValue | undefined): value is JsonObject {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function isRemoteFunctionRef(
-  value: JsonValue | undefined,
-): value is RemoteFunctionRef {
-  return isJsonObject(value) && value.rpc === true && typeof value.id === "string";
-}
-
-function readObjectArray<T extends JsonObject>(
-  value: JsonValue | undefined,
-): T[] | undefined {
-  if (!Array.isArray(value)) return undefined;
-  return value.filter(isJsonObject) as T[];
-}
-
-function readTypedJson<T>(value: JsonValue | undefined): T | undefined {
-  if (value === undefined || value === null) return undefined;
-  return value as T;
-}
-
-function readFunctionRefRecord(
-  value: JsonValue | undefined,
-): Record<string, RemoteFunctionRef> | undefined {
-  if (!isJsonObject(value)) return undefined;
-  const record: Record<string, RemoteFunctionRef> = {};
-  for (const [key, ref] of Object.entries(value)) {
-    if (isRemoteFunctionRef(ref)) record[key] = ref;
-  }
-  return record;
-}
-
-function readFunctionRefArrayRecord(
-  value: JsonValue | undefined,
-): Record<string, RemoteFunctionRef[]> | undefined {
-  if (!isJsonObject(value)) return undefined;
-  const record: Record<string, RemoteFunctionRef[]> = {};
-  for (const [key, refs] of Object.entries(value)) {
-    if (!Array.isArray(refs)) continue;
-    record[key] = refs.filter(isRemoteFunctionRef);
-  }
-  return record;
-}
-
-function buildEventPayload(
-  runtime: IAgentRuntime,
-  payload: JsonValue | undefined,
-): EventPayload {
-  if (isJsonObject(payload)) {
-    return { runtime, ...payload };
-  }
-  return Object.assign({ runtime }, { payload });
 }
 
 export class RemotePluginBridge {
@@ -244,21 +165,25 @@ export class RemotePluginBridge {
       plugin.dependencies = (descriptor.dependencies as string[]) ?? [];
     }
 
-    const actions = readObjectArray<ActionDescriptor>(descriptor.actions);
+    const actions = descriptor.actions as
+      | Array<JsonObject & { name: string; handler: RemoteFunctionRef }>
+      | undefined;
     if (actions?.length) {
       plugin.actions = actions.map((action) => this.makeActionStub(action));
     }
 
-    const providers = readObjectArray<ProviderDescriptor>(
-      descriptor.providers,
-    );
+    const providers = descriptor.providers as
+      | Array<JsonObject & { name: string; get: RemoteFunctionRef }>
+      | undefined;
     if (providers?.length) {
       plugin.providers = providers.map((provider) =>
         this.makeProviderStub(provider),
       );
     }
 
-    const events = readFunctionRefArrayRecord(descriptor.events);
+    const events = descriptor.events as unknown as
+      | Record<string, RemoteFunctionRef[]>
+      | undefined;
     if (events) {
       const eventMap: NonNullable<Plugin["events"]> = {};
       for (const [eventName, refs] of Object.entries(events)) {
@@ -268,7 +193,9 @@ export class RemotePluginBridge {
       plugin.events = eventMap;
     }
 
-    const models = readFunctionRefRecord(descriptor.models);
+    const models = descriptor.models as unknown as
+      | Record<string, RemoteFunctionRef>
+      | undefined;
     if (models) {
       const modelMap: NonNullable<Plugin["models"]> = {} as NonNullable<
         Plugin["models"]
@@ -283,15 +210,27 @@ export class RemotePluginBridge {
     // Services: opt-in via `static rpcMethods`. The descriptor carries
     // one entry per service with the methods list and per-method rpc
     // ids; we synthesise a ServiceClass with dynamic methods.
-    const services = readObjectArray<ServiceDescriptor>(descriptor.services);
+    const services = descriptor.services as unknown as
+      | Array<
+          JsonObject & {
+            serviceType: string;
+            rpcMethods: string[];
+            capabilityDescription?: string;
+          }
+        >
+      | undefined;
     if (services?.length) {
-      plugin.services = services.map((svc) => this.makeServiceClassStub(svc));
+      plugin.services = services.map((svc) =>
+        this.makeServiceClassStub(svc),
+      ) as Plugin["services"];
     }
 
     // Routes: the agent's existing plugin-route lifecycle will pick
     // these up. Each routeHandler is wrapped to forward
     // RouteHandlerContext via worker-rpc and return RouteHandlerResult.
-    const routes = readObjectArray<RouteDescriptor>(descriptor.routes);
+    const routes = descriptor.routes as unknown as
+      | Array<JsonObject & { path: string; routeHandler?: RemoteFunctionRef }>
+      | undefined;
     if (routes?.length) {
       plugin.routes = routes
         .map((r) => this.makeRouteStub(r))
@@ -301,29 +240,29 @@ export class RemotePluginBridge {
     // Views/widgets/componentTypes are pure JSON metadata; pass them
     // through unchanged so the existing view registry serves the
     // remote plugin's bundle the same way it does direct plugins'.
-    const views = readTypedJson<Plugin["views"]>(descriptor.views);
-    if (views) plugin.views = views;
-    const widgets = readTypedJson<Plugin["widgets"]>(descriptor.widgets);
-    if (widgets) plugin.widgets = widgets;
+    if (descriptor.views)
+      plugin.views = descriptor.views as unknown as Plugin["views"];
+    if (descriptor.widgets)
+      plugin.widgets = descriptor.widgets as unknown as Plugin["widgets"];
     if (descriptor.componentTypes) {
-      plugin.componentTypes = readTypedJson<Plugin["componentTypes"]>(
-        descriptor.componentTypes,
-      );
+      plugin.componentTypes =
+        descriptor.componentTypes as unknown as Plugin["componentTypes"];
     }
 
     return plugin;
   }
 
   private makeActionStub(
-    descriptor: ActionDescriptor,
+    descriptor: JsonObject & { name: string; handler: RemoteFunctionRef },
   ): Action {
     const name = descriptor.name;
     const similes = (descriptor.similes as string[] | undefined) ?? [];
     const description = String(descriptor.description ?? "");
-    const examples = readTypedJson<Action["examples"]>(descriptor.examples) ?? [];
-    const validateRef = isRemoteFunctionRef(descriptor.validate)
-      ? descriptor.validate
-      : undefined;
+    const examples =
+      (descriptor.examples as unknown as Action["examples"]) ?? [];
+    const validateRef = descriptor.validate as unknown as
+      | RemoteFunctionRef
+      | undefined;
 
     const handler: Action["handler"] = async (
       _runtime,
@@ -350,28 +289,33 @@ export class RemotePluginBridge {
       return result as unknown as ReturnType<Action["handler"]>;
     };
 
-    const validate: Action["validate"] = async (_runtime, message, state) => {
-      if (!validateRef) return true;
-      const result = await this.workerRpc<boolean>("action", validateRef.id, {
-        message: this.normalize(message),
-        state: this.normalize(state ?? null),
-      });
-      return Boolean(result);
-    };
+    const validate: Validator = validateRef
+      ? async (_runtime, message, state) => {
+          const result = await this.workerRpc<boolean>(
+            "action",
+            validateRef.id,
+            {
+              message: this.normalize(message),
+              state: this.normalize(state ?? null),
+            },
+          );
+          return Boolean(result);
+        }
+      : async () => true;
 
     const action: Action = {
       name,
       similes,
       description,
       examples,
-      validate,
       handler,
+      validate,
     };
     return action;
   }
 
   private makeProviderStub(
-    descriptor: ProviderDescriptor,
+    descriptor: JsonObject & { name: string; get: RemoteFunctionRef },
   ): Provider {
     const name = descriptor.name;
     const description = String(descriptor.description ?? "");
@@ -420,41 +364,47 @@ export class RemotePluginBridge {
    * private worker methods from the host, which is the whole point of
    * the opt-in.
    */
-  private makeServiceClassStub(descriptor: ServiceDescriptor): ServiceClass {
+  private makeServiceClassStub(descriptor: {
+    serviceType: string;
+    rpcMethods: string[];
+    capabilityDescription?: string;
+    [rpcKey: string]: unknown;
+  }): unknown {
     const bridge = this;
     const serviceType = descriptor.serviceType;
     const description = descriptor.capabilityDescription ?? "";
     const methodIdMap = new Map<string, RpcId>();
     for (const method of descriptor.rpcMethods) {
-      const ref = descriptor[`rpc:${method}`];
-      if (isRemoteFunctionRef(ref)) methodIdMap.set(method, ref.id);
+      const ref = descriptor[`rpc:${method}`] as RemoteFunctionRef | undefined;
+      if (ref?.rpc) methodIdMap.set(method, ref.id);
     }
 
-    class RemoteServiceProxy extends Service {
+    // Build the proxy class on the fly. The Service base class isn't
+    // imported here to avoid pulling all of @elizaos/core into this
+    // module; the runtime only needs the static fields it checks.
+    class RemoteServiceProxy {
       static readonly serviceType = serviceType;
       static readonly capabilityDescription = description;
       readonly capabilityDescription = description;
-      static async start(runtime: IAgentRuntime): Promise<Service> {
-        return new RemoteServiceProxy(runtime);
+      static async start(runtime: IAgentRuntime): Promise<RemoteServiceProxy> {
+        const instance = new RemoteServiceProxy(runtime);
+        return instance;
       }
-
-      constructor(runtime?: IAgentRuntime) {
-        super(runtime);
+      constructor(_runtime: IAgentRuntime) {
         for (const method of descriptor.rpcMethods) {
           const id = methodIdMap.get(method);
           if (!id) continue;
-          Object.defineProperty(this, method, {
-            configurable: false,
-            enumerable: false,
-            value: async (...callArgs: unknown[]) =>
-              bridge.workerRpc("service", id, {
-                args: callArgs.map((a) => bridge.normalize(a)),
-              }),
-          });
+          (this as unknown as Record<string, unknown>)[method] = async (
+            ...callArgs: unknown[]
+          ) =>
+            bridge.workerRpc("service", id, {
+              args: callArgs.map((a) => bridge.normalize(a)),
+            });
         }
       }
-
       async stop(): Promise<void> {
+        // Stopping the proxy doesn't tear down the worker; the
+        // RemotePluginHost owns the worker lifecycle.
       }
     }
     return RemoteServiceProxy;
@@ -634,9 +584,10 @@ export class RemotePluginBridge {
       }
       case "emitEvent": {
         const eventName = String(args.name);
+        const payload = args.payload as JsonValue;
         await this.runtime.emitEvent(
-          eventName,
-          buildEventPayload(this.runtime, args.payload),
+          eventName as Parameters<IAgentRuntime["emitEvent"]>[0],
+          payload as unknown as Parameters<IAgentRuntime["emitEvent"]>[1],
         );
         return null;
       }
