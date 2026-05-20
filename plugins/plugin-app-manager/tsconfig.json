@@ -10,6 +10,7 @@
     "strictNullChecks": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
+    "jsx": "react-jsx",
     "ignoreDeprecations": "6.0",
     "forceConsistentCasingInFileNames": true,
     "allowImportingTsExtensions": true,
@@ -28,7 +29,14 @@
       "@elizaos/agent": ["../../packages/agent/src/index.ts"],
       "@elizaos/agent/config/*": ["../../packages/agent/src/config/*.ts"],
       "@elizaos/agent/utils/*": ["../../packages/agent/src/utils/*.ts"],
-      "@elizaos/agent/services/*": ["../../packages/agent/src/services/*.ts"]
+      "@elizaos/agent/services/*": ["../../packages/agent/src/services/*.ts"],
+      "@elizaos/app-core": ["../../packages/app-core/src/index.ts"],
+      "@elizaos/app-core/agent-bridge": ["../../packages/app-core/src/agent-bridge.ts"],
+      "@elizaos/app-core/*": ["../../packages/app-core/src/*"],
+      "@elizaos/plugin-capacitor-bridge": ["../../plugins/plugin-capacitor-bridge/src/index.ts"],
+      "@elizaos/plugin-capacitor-bridge/*": ["../../plugins/plugin-capacitor-bridge/src/*"],
+      "@elizaos/plugin-local-inference": ["../../plugins/plugin-local-inference/src/index.ts"],
+      "@elizaos/plugin-local-inference/*": ["../../plugins/plugin-local-inference/src/*"]
     }
   },
   "include": ["src/**/*"],

@@ -8,7 +8,7 @@ import {
   headsetSetupHint,
   isCradleOrChargingState,
   markHardwareMicrophoneCommand,
-  missingHardwareEvidence,
+  missingCompleteHardwareEvidence,
   recordHardwareAudio,
   recordHardwareEvent,
   recordHardwareWrite,
@@ -96,15 +96,15 @@ function updateReport(): void {
 }
 
 function reportJson(): string {
-  updateHardwareEvidenceStatus(report, service.getStatus());
   report.finishedAt = new Date().toISOString();
+  updateHardwareEvidenceStatus(report, service.getStatus());
   window.smartglassesHardwareReport = report;
   renderMissingChecks();
   return `${JSON.stringify(report, null, 2)}\n`;
 }
 
 function renderMissingChecks(): void {
-  const missing = missingHardwareEvidence(report);
+  const missing = missingCompleteHardwareEvidence(report);
   missingEl.replaceChildren(
     ...(missing.length === 0
       ? [document.createElement("li")]
@@ -115,7 +115,10 @@ function renderMissingChecks(): void {
         })),
   );
   if (missing.length === 0) {
-    missingEl.firstElementChild!.textContent = "All required evidence captured";
+    const completeItem = missingEl.firstElementChild;
+    if (completeItem) {
+      completeItem.textContent = "All required evidence captured";
+    }
   }
 }
 
@@ -160,9 +163,8 @@ function instrumentTransport(nextTransport: WebBluetoothG1Transport): void {
     recordHardwareWrite(report, "both", data);
     await originalWriteBoth(data);
   };
-  const originalOpenMicrophone = nextTransport.openMicrophone.bind(
-    nextTransport,
-  );
+  const originalOpenMicrophone =
+    nextTransport.openMicrophone.bind(nextTransport);
   nextTransport.openMicrophone = async (enabled) => {
     markHardwareMicrophoneCommand(report, enabled);
     await originalOpenMicrophone(enabled);
@@ -178,6 +180,8 @@ function setConnected(enabled: boolean): void {
       : "Connect Headset Right";
   connectLeftButton.disabled = enabled || connecting;
   connectRightButton.disabled = enabled || connecting;
+  connectLeftButton.hidden = !enabled && headsetConnectStep === "left";
+  connectRightButton.hidden = !enabled && headsetConnectStep === "left";
   disconnectButton.disabled = !enabled;
   displayButton.disabled = !enabled;
   clearButton.disabled = !enabled;
@@ -274,7 +278,7 @@ async function connectHeadset(): Promise<void> {
     log(
       "connect headset",
       side === "left"
-        ? "Select the left lens. Then click Connect Headset Right."
+        ? "Step 1 of 2: select the left lens. The same headset button will then prompt for the right lens."
         : "Select the right lens to complete the headset.",
     );
     const connected = await connectLens(side);
@@ -392,7 +396,7 @@ async function runGuidedValidation(): Promise<void> {
 
     await service.setMicrophoneEnabled(false);
     updateReport();
-    const missing = missingHardwareEvidence(report);
+    const missing = missingCompleteHardwareEvidence(report);
     if (missing.length === 0) {
       log("guided validation pass", { checks: report.checks });
     } else {
@@ -434,6 +438,7 @@ downloadReportButton.addEventListener("click", () => {
 log("ready", { initMode: effectiveInitMode });
 renderMissingChecks();
 updateHeadsetState();
+setConnected(false);
 
 function withTimeout<T>(
   promise: Promise<T>,
@@ -441,7 +446,10 @@ function withTimeout<T>(
   message: string,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error(message)), timeoutMs);
+    const timeout = window.setTimeout(
+      () => reject(new Error(message)),
+      timeoutMs,
+    );
     promise.then(
       (value) => {
         window.clearTimeout(timeout);

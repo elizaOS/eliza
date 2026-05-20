@@ -76,13 +76,15 @@
       <h1>Even G1 Smartglasses Hardware Smoke</h1>
       <section>
         <p>
-          Requires a browser with Web Bluetooth support. Select the left lens first, then the right lens.
-          The page sends real G1 UART packets through <code>WebBluetoothG1Transport</code>.
+          Requires a browser with Web Bluetooth support. Use Connect Headset for the
+          two-step whole-headset pairing flow; it prompts for both lenses and only
+          enables tests once the headset is complete. The page sends real G1 UART
+          packets through <code>WebBluetoothG1Transport</code>.
         </p>
         <div class="controls">
           <button id="connect-headset" type="button">Connect Headset</button>
-          <button id="connect-left" type="button">Connect Left</button>
-          <button id="connect-right" type="button">Connect Right</button>
+          <button id="connect-left" type="button" title="Advanced: repair only the left lens">Repair Left Lens</button>
+          <button id="connect-right" type="button" title="Advanced: repair only the right lens">Repair Right Lens</button>
           <button id="disconnect" type="button" disabled>Disconnect</button>
           <button id="mic-on" type="button" disabled>Mic On</button>
           <button id="mic-off" type="button" disabled>Mic Off</button>

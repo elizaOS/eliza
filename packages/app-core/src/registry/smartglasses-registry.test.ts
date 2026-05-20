@@ -48,7 +48,13 @@ describe("smartglasses registry entry", () => {
     );
     expect(parsed.render.actions).toContain("launch");
     expect(data.launch.target).toBe("smartglasses");
-    expect(data.launch.capabilities).toContain("wifi-provisioning");
+    expect(data.launch.capabilities).toEqual(
+      expect.arrayContaining([
+        "whole-headset-pairing",
+        "side-tap-microphone-control",
+        "wifi-provisioning",
+      ]),
+    );
     expect(registry.byId.get("smartglasses")?.name).toBe("Smartglasses");
     expect(registry.byNpmName.get("@elizaos/plugin-smartglasses")?.id).toBe(
       "smartglasses",

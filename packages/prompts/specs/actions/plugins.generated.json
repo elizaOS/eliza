@@ -4243,9 +4243,9 @@
     },
     {
       "name": "SMARTGLASSES_CONTROL",
-      "description": "Run Even Realities G1 control operations: clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
+      "description": "Run Even Realities G1 control operations: whole-headset connect/disconnect, clear/exit/start AI, connection-ready init including official iOS same-init and Android F4 same-init modes, RSVP display, heartbeat loop, raw packets, serial request, app whitelist/setup, silent mode, brightness, bridge Wi-Fi scan/status/configure, dashboard content, navigation, translation overlays, head-up angle, wear detection, notes, voice notes, notifications, and BMP images. Provide JSON with op and parameters.",
       "parameters": [],
-      "descriptionCompressed": "smartglasses-control: display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
+      "descriptionCompressed": "smartglasses-control: connect, display session, raw packets, settings, Wi-Fi, dashboard, navigation, translate, notes, notifications, BMP",
       "similes": [
         "EVEN_GLASSES_CONTROL",
         "SMARTGLASSES_SETTINGS",
@@ -5781,9 +5781,49 @@
       ]
     },
     {
+      "name": "XR_CLOSE_VIEW",
+      "description": "Closes a specific view panel on the connected XR headset.",
+      "parameters": [],
+      "similes": ["CLOSE_XR_VIEW", "HIDE_XR_PANEL", "XR_CLOSE", "XR_DISMISS"]
+    },
+    {
+      "name": "XR_LIST_VIEWS",
+      "description": "Lists all views available on the XR device and optionally sends a launcher catalog to the headset. Use this before XR_OPEN_VIEW.",
+      "parameters": [],
+      "similes": [
+        "LIST_XR_VIEWS",
+        "XR_VIEWS",
+        "WHAT_XR_VIEWS",
+        "SHOW_XR_LAUNCHER"
+      ]
+    },
+    {
+      "name": "XR_OPEN_VIEW",
+      "description": "Opens a view panel on the connected XR headset by view id. Use XR_LIST_VIEWS first to discover available view ids.",
+      "parameters": [],
+      "similes": ["OPEN_XR_VIEW", "SHOW_XR_PANEL", "XR_SHOW", "XR_LAUNCH"]
+    },
+    {
       "name": "XR_QUERY_VISION",
       "description": "Describe what the user is currently looking at through their XR headset camera. Use this when the user asks 'what do you see', 'look at this', or any question about their surroundings.",
       "parameters": []
+    },
+    {
+      "name": "XR_RESIZE_VIEW",
+      "description": "Resizes or repositions the active XR view panel. Accepts scale (0.5 = half, 2.0 = double) and distance.",
+      "parameters": [],
+      "similes": [
+        "RESIZE_XR_PANEL",
+        "XR_MAKE_BIGGER",
+        "XR_MAKE_SMALLER",
+        "XR_SCALE"
+      ]
+    },
+    {
+      "name": "XR_SWITCH_VIEW",
+      "description": "Switches the active (foreground) view on the XR headset without closing others.",
+      "parameters": [],
+      "similes": ["SWITCH_XR_VIEW", "XR_GO_TO", "XR_NAVIGATE"]
     }
   ]
 }

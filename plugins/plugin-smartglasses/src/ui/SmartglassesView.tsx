@@ -30,7 +30,7 @@ import {
   WebBluetoothG1Transport,
 } from "../transport/web-bluetooth.js";
 
-type LensState = "idle" | "prompting" | "connected" | "failed";
+export type LensState = "idle" | "prompting" | "connected" | "failed";
 type PlatformKey = "desktop" | "ios" | "android";
 
 interface ReportEvent {
@@ -40,11 +40,13 @@ interface ReportEvent {
 }
 
 interface HardwareReport {
+  ok: boolean;
   generatedAt: string;
   transport: string | null;
   connected: boolean;
   lenses: Record<GlassSide, LensState>;
   tests: Record<string, boolean>;
+  missingEvidence: string[];
   events: ReportEvent[];
   wifi: {
     available: boolean;
@@ -221,6 +223,30 @@ function headsetValidationBlocker(
   return `Tap and microphone validation requires a wearing state; current state is ${stateText}.`;
 }
 
+export function missingViewEvidence(
+  tests: Record<string, boolean>,
+  lenses: Record<GlassSide, LensState>,
+  physicalState: string | null,
+  batteryState: string | null,
+): string[] {
+  const missing = [
+    lenses.left !== "connected" && "leftLensConnected",
+    lenses.right !== "connected" && "rightLensConnected",
+    physicalState !== "wearing" && "wearingStateObserved",
+    isCradleOrChargingState(physicalState, batteryState) && "headsetInCradle",
+    !tests.init && "connectionReadySent",
+    !tests.display && "displayPacketsSent",
+    !tests.serial && "serialRequested",
+    !tests.settings && "settingsSent",
+    !tests.micEnableWrite && "rightMicEnableWrite",
+    !tests.micDisableWrite && "rightMicDisableWrite",
+    !tests.tapMicEnable && "tapMicEnable",
+    !tests.tapMicDisable && "tapMicDisable",
+    !tests.audio && "rightOrBridgeAudio",
+  ].filter((value): value is string => typeof value === "string");
+  return [...new Set(missing)];
+}
+
 function parseWifiNetworks(result: unknown): string[] {
   if (!result || typeof result !== "object") return [];
   const value = result as Record<string, unknown>;
@@ -292,6 +318,8 @@ export function SmartglassesView() {
     serial: false,
     settings: false,
     microphone: false,
+    micEnableWrite: false,
+    micDisableWrite: false,
     tapMicEnable: false,
     tapMicDisable: false,
     audio: false,
@@ -304,13 +332,19 @@ export function SmartglassesView() {
   const webBluetoothAvailable = Boolean(getWebBluetoothG1Transport());
   const headsetConnected =
     lenses.left === "connected" && lenses.right === "connected";
+  const missingEvidence = useMemo(
+    () => missingViewEvidence(tests, lenses, physicalState, batteryState),
+    [batteryState, lenses, physicalState, tests],
+  );
   const report = useMemo<HardwareReport>(
     () => ({
+      ok: missingEvidence.length === 0,
       generatedAt: now(),
       transport: transport?.name ?? (bridge ? "native-bridge" : null),
       connected: headsetConnected,
       lenses,
       tests,
+      missingEvidence,
       events,
       wifi: {
         available: Boolean(bridge),
@@ -328,6 +362,7 @@ export function SmartglassesView() {
       events,
       headsetConnected,
       lenses,
+      missingEvidence,
       physicalState,
       tests,
       transport,
@@ -374,10 +409,26 @@ export function SmartglassesView() {
         if (isMicEnableTap(event.label)) {
           markTest("tapMicEnable");
           setMicEnabled(true);
+          void nextTransport
+            .openMicrophone(true)
+            .then(() => {
+              markTest("microphone");
+              markTest("micEnableWrite");
+              appendEvent("microphone", "Enabled by tap");
+            })
+            .catch((err) => appendEvent("error", normalizeError(err)));
         }
         if (isMicDisableTap(event.label)) {
           markTest("tapMicDisable");
           setMicEnabled(false);
+          void nextTransport
+            .openMicrophone(false)
+            .then(() => {
+              markTest("microphone");
+              markTest("micDisableWrite");
+              appendEvent("microphone", "Disabled by tap");
+            })
+            .catch((err) => appendEvent("error", normalizeError(err)));
         }
         appendEvent(
           "event",
@@ -516,6 +567,7 @@ export function SmartglassesView() {
       await nextTransport.openMicrophone(false);
       setMicEnabled(false);
       markTest("microphone");
+      markTest("micDisableWrite");
 
       const pages = paginateDisplayText(
         "Validation: single tap, speak clearly, then double tap.",
@@ -567,6 +619,7 @@ export function SmartglassesView() {
       await nextTransport.openMicrophone(enabled);
       setMicEnabled(enabled);
       markTest("microphone");
+      markTest(enabled ? "micEnableWrite" : "micDisableWrite");
       appendEvent("microphone", enabled ? "Enabled" : "Disabled");
     } catch (err) {
       setError(normalizeError(err));
@@ -851,6 +904,15 @@ export function SmartglassesView() {
             </div>
             <div className="mt-3 grid gap-2 text-xs">
               <ReportRow label="Transport" value={report.transport ?? "none"} />
+              <ReportRow label="Complete" value={report.ok ? "yes" : "no"} />
+              <ReportRow
+                label="Missing"
+                value={
+                  report.missingEvidence.length === 0
+                    ? "none"
+                    : String(report.missingEvidence.length)
+                }
+              />
               <ReportRow label="Bridge" value={bridge ? "available" : "none"} />
               <ReportRow
                 label="State"
@@ -1045,6 +1107,8 @@ function labelForTest(id: string): string {
     serial: "Serial request",
     settings: "Settings",
     microphone: "Microphone",
+    micEnableWrite: "Mic enable write",
+    micDisableWrite: "Mic disable write",
     tapMicEnable: "Tap mic enable",
     tapMicDisable: "Tap mic disable",
     audio: "Audio",

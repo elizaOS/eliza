@@ -35,6 +35,13 @@ COMMAND_NAMES = {
     0x27: "wear-detection",
 }
 
+SETTINGS_EVENTS = {
+    0x01: "brightness",
+    0x22: "dashboard",
+    0x0B: "head-up-angle",
+    0x27: "wear-detection",
+}
+
 INTERACTIONS = {
     0x00: "double_tap",
     0x01: "single_tap",
@@ -115,6 +122,10 @@ def make_report(scan_timeout_ms: int, hold_ms: int, init_mode: str) -> dict[str,
         },
         "writes": [],
         "events": [],
+        "lenses": {
+            "left": {"connected": False},
+            "right": {"connected": False},
+        },
         "audio": [],
         "headsetState": {
             "physical": None,
@@ -136,6 +147,7 @@ def make_report(scan_timeout_ms: int, hold_ms: int, init_mode: str) -> dict[str,
             "physicalState": None,
             "batteryState": None,
             "deviceState": None,
+            "connectedLenses": {},
         },
     }
 
@@ -196,6 +208,14 @@ class G1BleakSmoke:
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
         self.report["checks"]["connected"] = True
         self.report["status"]["connected"] = True
+        for side, lens in self.lenses.items():
+            lens_report = {
+                "connected": lens.client.is_connected,
+                "name": lens.name,
+                "address": lens.address,
+            }
+            self.report["lenses"][side] = lens_report
+            self.report["status"]["connectedLenses"][side] = lens_report
         self.log("connected", {side: lens.name for side, lens in self.lenses.items()})
 
     async def _connect_lens(self, lens: Lens) -> None:
@@ -444,8 +464,16 @@ class G1BleakSmoke:
     def finish_status(self) -> None:
         self.report["finishedAt"] = now()
         self.report["status"]["connected"] = True
+        for side, lens in self.lenses.items():
+            lens_report = {
+                "connected": lens.client.is_connected,
+                "name": lens.name,
+                "address": lens.address,
+            }
+            self.report["lenses"][side] = lens_report
+            self.report["status"]["connectedLenses"][side] = lens_report
         self.report["setupHint"] = setup_hint(self.report["headsetState"])
-        self.report["ok"] = all(self.report["checks"][check] for check in REQUIRED)
+        self.report["ok"] = len(missing_complete_hardware_evidence(self.report)) == 0
 
     async def write_report(self) -> None:
         self.finish_status()
@@ -459,6 +487,31 @@ class G1BleakSmoke:
 
 def parse_event(side: str, data: bytes) -> dict[str, Any]:
     command = data[0] if data else None
+    if command is None:
+        return {"side": side, "type": "unknown", "label": "empty"}
+    if command == 0x4D:
+        return {
+            "side": side,
+            "type": "init",
+            "label": "init",
+            "code": data[1] if len(data) > 1 else None,
+        }
+    if command == 0xF4:
+        return {
+            "side": side,
+            "type": "init",
+            "label": "right_init",
+            "code": data[1] if len(data) > 1 else None,
+        }
+    if command == 0x4E:
+        return {"side": side, "type": "display-result", "label": "display_result_ack"}
+    if command in SETTINGS_EVENTS:
+        return {
+            "side": side,
+            "type": "settings-response",
+            "label": SETTINGS_EVENTS[command],
+            "code": data[1] if len(data) > 1 else None,
+        }
     if command == 0xF5:
         code = data[1] if len(data) > 1 else None
         if code in INTERACTIONS:
@@ -501,6 +554,9 @@ def parse_event(side: str, data: bytes) -> dict[str, Any]:
             "side": side,
             "type": "mic-response",
             "label": "mic_enabled" if ok and enabled else "mic_disabled" if ok else "mic_failed",
+            "micEnabled": ok and enabled,
+            "micRequested": enabled,
+            "responseOk": ok,
         }
     if command == 0xF1:
         return {"side": side, "type": "mic-data", "label": "mic_data", "sequence": data[1], "audioData": data[2:]}
@@ -509,7 +565,52 @@ def parse_event(side: str, data: bytes) -> dict[str, Any]:
         return {"side": side, "type": "serial", "label": "serial_number", "serialNumber": serial}
     if command == 0x25:
         return {"side": side, "type": "heartbeat", "label": "heartbeat"}
+    if len(data) > 1 and data[1] in (0xC9, 0xCA):
+        return {
+            "side": side,
+            "type": "response" if data[1] == 0xC9 else "error",
+            "label": "response" if data[1] == 0xC9 else "error",
+            "code": data[1],
+        }
     return {"side": side, "type": "unknown", "label": f"unknown_0x{command:02x}"}
+
+
+def missing_complete_hardware_evidence(report: dict[str, Any]) -> list[str]:
+    failures = [check for check in REQUIRED if not report["checks"].get(check)]
+    lenses = report.get("lenses") or {}
+    status = report.get("status") or {}
+    connected_lenses = status.get("connectedLenses") or {}
+    headset_state = report.get("headsetState") or {}
+    physical = headset_state.get("physical") or status.get("physicalState")
+    battery = headset_state.get("battery") or status.get("batteryState")
+    if not (lenses.get("left") or {}).get("connected"):
+        failures.append("missingLeftLensConnection")
+    if not (lenses.get("right") or {}).get("connected"):
+        failures.append("missingRightLensConnection")
+    if not (connected_lenses.get("left") or {}).get("connected"):
+        failures.append("missingStatusLeftLensConnection")
+    if not (connected_lenses.get("right") or {}).get("connected"):
+        failures.append("missingStatusRightLensConnection")
+    if not any(
+        write.get("command") == "open-mic" and write.get("side") == "right" and "0e01" in write.get("hex", "")
+        for write in report.get("writes") or []
+    ):
+        failures.append("missingMicEnableWrite")
+    if not any(
+        write.get("command") == "open-mic" and write.get("side") == "right" and "0e00" in write.get("hex", "")
+        for write in report.get("writes") or []
+    ):
+        failures.append("missingMicDisableWrite")
+    if not any(
+        chunk.get("side") == "right" and chunk.get("bytes", 0) > 0
+        for chunk in report.get("audio") or []
+    ):
+        failures.append("missingRightLensAudioChunk")
+    if physical != "wearing" and is_cradle_or_charging_state(physical, battery):
+        failures.append("headsetInCradle")
+    if physical != "wearing":
+        failures.append("wearingStateNotObserved")
+    return list(dict.fromkeys(failures))
 
 
 def setup_hint(headset_state: dict[str, str | None]) -> str | None:
@@ -528,6 +629,14 @@ def setup_hint(headset_state: dict[str, str | None]) -> str | None:
             "and wear them before tap or microphone validation."
         )
     return f"Tap and microphone validation requires wearing state; current state is {state_text}."
+
+
+def is_cradle_or_charging_state(physical: str | None, battery: str | None) -> bool:
+    return physical in {"cradle_open", "cradle_closed", "charged_in_cradle"} or battery in {
+        "glasses_fully_charged",
+        "cradle_charging_cable_changed",
+        "cradle_fully_charged",
+    }
 
 
 def encode_display_text(text: str) -> list[bytes]:

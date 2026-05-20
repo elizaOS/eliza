@@ -63,3 +63,20 @@ The bridge exposes this under `outboundReadiness` in `/health` and
 all three egress modes even when only one mode is active. `/doctor` summarizes
 the same checks as pass/blocked and lists the next action. Do not drain queued
 replies until `outboundReadiness.ready` is true.
+
+Validate a real send path without draining queued replies:
+
+```sh
+curl -X POST http://127.0.0.1:8795/outbound/validate \
+  -H 'content-type: application/json' \
+  -d '{
+    "recipient": "+14153024399",
+    "message": "Eliza Cloud outbound validation",
+    "method": "shortcuts"
+  }'
+```
+
+`method` is optional and defaults to `BLUEBUBBLES_SEND_METHOD`. Set it to
+`apple-script`, `private-api`, or `shortcuts` to test a specific egress path
+after repairing Messages automation, the BlueBubbles private API helper, or the
+Shortcut.

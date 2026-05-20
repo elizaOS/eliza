@@ -1,5 +1,9 @@
 import type { Action, ActionResult, IAgentRuntime } from "@elizaos/core";
 import { getSmartglassesService } from "../services/smartglasses-service.js";
+import {
+  formatConnectedLensesForAction,
+  setupSummaryForStatus,
+} from "../status-format.js";
 
 export const smartglassesStatusAction: Action = {
   name: "SMARTGLASSES_STATUS",
@@ -20,10 +24,14 @@ export const smartglassesStatusAction: Action = {
       };
     }
     const status = service.getStatus();
+    const setup = setupSummaryForStatus(status);
     const lines = [
       `available: ${status.available}`,
       `connected: ${status.connected}`,
       `transport: ${status.transport ?? "(none)"}`,
+      `connectedLenses: ${formatConnectedLensesForAction(
+        status.connectedLenses,
+      )}`,
       `microphoneEnabled: ${status.microphoneEnabled}`,
       `heartbeatRunning: ${status.heartbeatRunning}`,
       `heartbeatIntervalMs: ${status.heartbeatIntervalMs ?? "(none)"}`,
@@ -36,6 +44,10 @@ export const smartglassesStatusAction: Action = {
       `physicalState: ${status.physicalState ?? "(none)"}`,
       `batteryState: ${status.batteryState ?? "(none)"}`,
       `deviceState: ${status.deviceState ?? "(none)"}`,
+      `setupHint: ${setup.setupHint ?? "(none)"}`,
+      `wholeHeadsetConnected: ${setup.wholeHeadsetConnected}`,
+      `wearingReady: ${setup.wearingReady}`,
+      `physicalBlocker: ${setup.physicalBlocker ?? "(none)"}`,
       `lastSerialNumber: ${status.lastSerialNumber ?? "(none)"}`,
       `wifiAvailable: ${status.wifiAvailable}`,
       `lastWifiStatus: ${status.lastWifiStatus?.status ?? "(none)"}`,
@@ -44,7 +56,11 @@ export const smartglassesStatusAction: Action = {
       }`,
       `lastEvent: ${status.lastEvent?.label ?? "(none)"}`,
     ];
-    return { success: true, text: lines.join("\n"), values: { ...status } };
+    return {
+      success: true,
+      text: lines.join("\n"),
+      values: { ...status, setup },
+    };
   },
   examples: [],
 };

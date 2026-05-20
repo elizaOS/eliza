@@ -36,6 +36,7 @@ export interface SmartglassesTransport {
     password: string,
   ): Promise<SmartglassesWifiResult>;
   supportsWifi?(): boolean;
+  getConnectedLenses?(): SmartglassesConnectedLenses;
 }
 
 export interface SmartglassesTransportFactory {
@@ -48,3 +49,13 @@ export interface SmartglassesWifiResult {
   networks: string[];
   raw?: unknown;
 }
+
+export interface SmartglassesLensConnection {
+  connected: boolean;
+  name?: string;
+  address?: string;
+}
+
+export type SmartglassesConnectedLenses = Partial<
+  Record<GlassSide, SmartglassesLensConnection>
+>;

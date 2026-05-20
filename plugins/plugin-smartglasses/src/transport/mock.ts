@@ -5,7 +5,11 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport, SmartglassesWifiResult } from "./types.js";
+import type {
+  SmartglassesConnectedLenses,
+  SmartglassesTransport,
+  SmartglassesWifiResult,
+} from "./types.js";
 
 export class MockSmartglassesTransport implements SmartglassesTransport {
   readonly name = "mock-smartglasses";
@@ -45,6 +49,22 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  getConnectedLenses(): SmartglassesConnectedLenses {
+    if (!this.connected) return {};
+    return {
+      left: {
+        connected: true,
+        name: "Mock Even G1 Left",
+        address: "mock-left",
+      },
+      right: {
+        connected: true,
+        name: "Mock Even G1 Right",
+        address: "mock-right",
+      },
+    };
   }
 
   async write(side: GlassSide, data: Uint8Array): Promise<void> {

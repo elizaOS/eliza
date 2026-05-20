@@ -23,6 +23,11 @@ export type ShortcutsDiagnosticsForReadiness = {
   available: boolean;
   shortcuts?: string[];
   error?: string;
+  validation?: {
+    required: boolean;
+    validated: boolean;
+    detail?: string;
+  };
 };
 
 export type OutboundReadiness = {
@@ -101,6 +106,13 @@ export function outboundReadiness(args: {
         installed.length > 0
           ? `Shortcut "${args.shortcutsSendShortcutName}" is not installed; installed shortcuts: ${installed.join(", ")}`
           : `Shortcut "${args.shortcutsSendShortcutName}" is not installed`,
+      );
+    } else if (
+      args.shortcuts.validation?.required &&
+      !args.shortcuts.validation.validated
+    ) {
+      reasons.push(
+        `Shortcut outbound validation missing: ${args.shortcuts.validation.detail ?? "no successful validation send recorded"}`,
       );
     }
   }

@@ -48,6 +48,25 @@ webhook when `BLUEBUBBLES_GATEWAY_SECRET` is available in the environment or in
 it also reports whether any USB phone-like device is visible to the host so an
 empty `adb devices` result can be separated from a cabling/trust issue.
 
+If the phone is on the same network but does not appear in `adb devices -l`,
+open Android Developer Options > Wireless debugging > Pair device with pairing
+code. Leave that pairing screen open, then run:
+
+```sh
+ADB_PAIR_CODE='<six-digit-code-from-phone>' \
+node packages/app-core/scripts/install-android-sms-gateway.mjs \
+  --pair auto \
+  --connect auto \
+  --wait-device 60 \
+  --grant-role \
+  --clear-logcat \
+  --watch-logs 60
+```
+
+`--pair auto` uses the `_adb-tls-pairing._tcp` service advertised while the
+pairing dialog is open. `--connect auto` uses the `_adb-tls-connect._tcp`
+service advertised by Wireless debugging after pairing.
+
 Wait for a phone to appear, then install, request the SMS role, and watch logs:
 
 ```sh

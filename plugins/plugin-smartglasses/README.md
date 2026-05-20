@@ -86,7 +86,19 @@ before sending the final completion frame:
 { "op": "brightness", "level": 10, "auto": true }
 ```
 
-Supported `op` values: `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
+Supported `op` values: `connect`, `disconnect`, `clear`, `exit_dashboard`, `exit_function`, `start_ai`, `connection_ready`, `page_up`, `page_down`, `rsvp_text`, `heartbeat`, `heartbeat_start`, `heartbeat_stop`, `raw`, `get_serial`, `app_whitelist`, `g1_setup`, `silent_mode`, `brightness`, `wifi_scan`, `wifi_status`, `wifi_configure`, `dashboard`, `dashboard_layout`, `dashboard_calendar`, `dashboard_time_weather`, `headup_angle`, `wear_detection`, `navigation_start`, `navigation_directions`, `navigation_primary_image`, `navigation_secondary_image`, `navigation_poller`, `navigation_end`, `translate_setup`, `translate_start`, `translate_languages`, `translate_original`, `translate_translated`, `note_add`, `note_delete`, `voice_note_fetch`, `voice_note_delete`, `notification`, `bmp_image`.
+
+`connect` pairs or reconnects the whole headset through the configured
+transport and sends connection-ready init packets by default. Aliases include
+`pair`, `pair_headset`, and `connect_headset`. Pass `init: false` to reconnect
+without sending init packets:
+
+```json
+{ "op": "connect", "init": false }
+```
+
+`disconnect` closes the active headset transport. Aliases include `unpair` and
+`disconnect_headset`.
 
 Bridge-backed Wi-Fi actions are available only when the active transport
 exposes native phone/headset setup APIs:
@@ -225,6 +237,8 @@ bun run --cwd packages/examples/smartglasses start
 bun run --cwd packages/examples/smartglasses smoke:package
 bun run --cwd packages/examples/smartglasses smoke:simulator
 bun run --cwd packages/examples/smartglasses typecheck
+bun run --cwd packages/examples/smartglasses verify:software
+bun run --cwd packages/examples/smartglasses hardware:status-latest
 ```
 
 ## Hardware Smoke
@@ -235,7 +249,14 @@ The browser hardware smoke example exercises the direct G1 BLE path:
 bun run --cwd packages/examples/smartglasses dev:hardware
 ```
 
-Open `http://127.0.0.1:5178/hardware-smoke.html` in a Web Bluetooth-capable browser. Select the left lens first and the right lens second. The page sends connection-ready/init, serial request, display, mic, brightness, dashboard, head-up angle, and wear-detection commands, then logs a structured evidence checklist for single-tap mic enable, double-tap mic disable, LC3 audio notifications, serial responses, packet writes, and final service status.
+Open `http://127.0.0.1:5178/hardware-smoke.html` in a Web Bluetooth-capable
+browser. Use **Connect Headset** for the two-step whole-headset flow; the same
+button prompts for the left lens and then the right lens because browsers
+require a user gesture for each Bluetooth picker. The page sends
+connection-ready/init, serial request, display, mic, brightness, dashboard,
+head-up angle, and wear-detection commands, then logs a structured evidence
+checklist for single-tap mic enable, double-tap mic disable, LC3 audio
+notifications, serial responses, packet writes, and final service status.
 
 The EvenHub simulator can exercise the G2 bridge surface without physical hardware:
 
@@ -266,7 +287,34 @@ The Node/Bun hardware smoke exercises the Noble transport:
 bun run --cwd packages/examples/smartglasses hardware:noble
 ```
 
-It scans for left/right lenses, connects to the UART service, sends connection-ready/init, serial request, display, and settings packets, disables the right microphone, waits for a `wearing` physical state, then requires a single tap to enable microphone capture, speech audio, and a double tap to disable capture during the smoke window. The glasses must be out of the charging cradle and worn for tap and microphone evidence. `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTGLASSES_HOLD_MS`, `SMARTGLASSES_WEARING_TIMEOUT_MS=30000`, `SMARTGLASSES_INIT_MODE=official|lens-specific|android-f4`, and `SMARTGLASSES_DIRECT_MIC_MS=15000` can tune scan, microphone wait time, wearing wait, init variant, and direct mic diagnostics. Set `SMARTGLASSES_REPORT_PATH=./smartglasses-hardware-report.json` to write a structured evidence artifact covering packet writes, serial state, headset physical/battery/device state, side-tap mic state, audio chunks, and final service status.
+It scans for left/right lenses, connects to the UART service, sends
+connection-ready/init, serial request, display, and settings packets, disables
+the right microphone, waits for a `wearing` physical state, then requires a
+single tap to enable microphone capture, speech audio, and a double tap to
+disable capture during the smoke window. The glasses must be out of the
+charging cradle and worn for tap and microphone evidence.
+`SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTGLASSES_HOLD_MS`,
+`SMARTGLASSES_WEARING_TIMEOUT_MS=30000`,
+`SMARTGLASSES_INIT_MODE=official|lens-specific|android-f4`, and
+`SMARTGLASSES_DIRECT_MIC_MS=15000` can tune scan, microphone wait time, wearing
+wait, init variant, and direct mic diagnostics. Set
+`SMARTGLASSES_REPORT_PATH=./smartglasses-hardware-report.json` to write a
+structured evidence artifact covering packet writes, serial state, headset
+physical/battery/device state, side-tap mic state, audio chunks, and final
+service status.
+
+For the final auditable hardware proof run, use the bundled latest-report
+helpers. They write `/tmp/smartglasses-hardware-report-latest.json`, print a
+setup/status summary even when the smoke fails, and then run the strict
+validator:
+
+```bash
+bun run --cwd packages/examples/smartglasses hardware:prove:bleak
+```
+
+```bash
+bun run --cwd packages/examples/smartglasses hardware:prove:noble
+```
 
 Validate that artifact independently before treating physical hardware support as proven:
 

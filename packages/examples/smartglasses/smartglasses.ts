@@ -16,7 +16,9 @@ service.onRawAudio((audio, sampleRate, side, encoding, sequence) => {
   );
 });
 service.onAudio((pcm, sampleRate, side) => {
-  console.log(`decoded pcm side=${side} sampleRate=${sampleRate} samples=${pcm.length}`);
+  console.log(
+    `decoded pcm side=${side} sampleRate=${sampleRate} samples=${pcm.length}`,
+  );
 });
 
 await service.connect();

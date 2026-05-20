@@ -8,7 +8,11 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport, SmartglassesWifiResult } from "./types.js";
+import type {
+  SmartglassesConnectedLenses,
+  SmartglassesTransport,
+  SmartglassesWifiResult,
+} from "./types.js";
 
 type EvenBridge = {
   requestWifiScan?: () => Promise<unknown> | unknown;
@@ -116,6 +120,20 @@ export class EvenBridgeTransport implements SmartglassesTransport {
 
   isConnected(): boolean {
     return this.connected;
+  }
+
+  getConnectedLenses(): SmartglassesConnectedLenses {
+    if (!this.connected) return {};
+    return {
+      left: {
+        connected: true,
+        name: "Native bridge left lens",
+      },
+      right: {
+        connected: true,
+        name: "Native bridge right lens",
+      },
+    };
   }
 
   async write(side: GlassSide, data: Uint8Array): Promise<void> {

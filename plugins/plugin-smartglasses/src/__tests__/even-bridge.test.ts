@@ -70,6 +70,16 @@ describe("EvenBridgeTransport", () => {
     eventHandler({ audioEvent: { audioPcm: [1, 2, 3] } });
 
     expect(transport.isConnected()).toBe(true);
+    expect(transport.getConnectedLenses()).toEqual({
+      left: {
+        connected: true,
+        name: "Native bridge left lens",
+      },
+      right: {
+        connected: true,
+        name: "Native bridge right lens",
+      },
+    });
     expect(writes).toEqual([
       { side: "left", data: [G1Command.SendResult, 1] },
       { side: "right", data: [G1Command.SendResult, 1] },
@@ -80,6 +90,7 @@ describe("EvenBridgeTransport", () => {
     expect(encodings).toEqual(["pcm16"]);
 
     await transport.disconnect();
+    expect(transport.getConnectedLenses()).toEqual({});
     expect(audioControls).toEqual([true, false]);
     expect(unsubscribed).toBe(true);
   });

@@ -5,7 +5,10 @@ import {
   parseG1Notification,
   type SmartglassesAudioEncoding,
 } from "../protocol.js";
-import type { SmartglassesTransport } from "./types.js";
+import type {
+  SmartglassesConnectedLenses,
+  SmartglassesTransport,
+} from "./types.js";
 
 type BluetoothRemoteGATTCharacteristicLike = {
   value?: DataView;
@@ -33,6 +36,7 @@ type BluetoothRemoteGATTServerLike = {
 
 type BluetoothDeviceLike = {
   name?: string;
+  id?: string;
   gatt?: {
     connect: () => Promise<BluetoothRemoteGATTServerLike>;
   };
@@ -72,8 +76,13 @@ export class WebBluetoothG1Transport implements SmartglassesTransport {
   ) {}
 
   async connect(): Promise<void> {
-    await this.connectLens("left");
-    await this.connectLens("right");
+    try {
+      await this.connectLens("left");
+      await this.connectLens("right");
+    } catch (error) {
+      await this.disconnect();
+      throw error;
+    }
   }
 
   async disconnect(): Promise<void> {
@@ -95,6 +104,18 @@ export class WebBluetoothG1Transport implements SmartglassesTransport {
         (connection) => connection.server.connected !== false,
       )
     );
+  }
+
+  getConnectedLenses(): SmartglassesConnectedLenses {
+    const lenses: SmartglassesConnectedLenses = {};
+    for (const [side, connection] of this.sides) {
+      lenses[side] = {
+        connected: connection.server.connected !== false,
+        name: connection.device.name,
+        address: connection.device.id,
+      };
+    }
+    return lenses;
   }
 
   async write(side: GlassSide, data: Uint8Array): Promise<void> {
@@ -152,9 +173,14 @@ export class WebBluetoothG1Transport implements SmartglassesTransport {
       optionalServices: [EVEN_G1_UART.service],
     });
     if (device.name && !device.name.includes(nameMarker)) {
-      // Some platforms hide names until after selection; keep this advisory rather than failing.
-      console.warn(
-        `[smartglasses] selected ${device.name} for ${side}, expected name containing ${nameMarker}`,
+      throw new Error(
+        `Selected ${device.name} for ${side}, expected a lens name containing ${nameMarker}`,
+      );
+    }
+    const duplicateSide = this.findConnectedDeviceSide(device);
+    if (duplicateSide) {
+      throw new Error(
+        `Selected the ${duplicateSide} lens again while connecting the ${side} lens`,
       );
     }
     if (!device.gatt)
@@ -179,6 +205,16 @@ export class WebBluetoothG1Transport implements SmartglassesTransport {
     rx.addEventListener("characteristicvaluechanged", listener);
     await rx.startNotifications();
     this.sides.set(side, { device, server, tx, rx, listener });
+  }
+
+  private findConnectedDeviceSide(
+    device: BluetoothDeviceLike,
+  ): GlassSide | null {
+    for (const [side, connection] of this.sides) {
+      if (connection.device === device) return side;
+      if (device.id && connection.device.id === device.id) return side;
+    }
+    return null;
   }
 
   private emitParsed(event: G1Event): void {

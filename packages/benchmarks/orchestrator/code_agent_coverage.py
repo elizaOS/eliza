@@ -55,11 +55,11 @@ CODE_AGENT_COVERAGE: tuple[CodeAgentBenchmark, ...] = (
     ),
     CodeAgentBenchmark(
         benchmark_id="swe_bench_multilingual",
-        status=DEFERRED_STATUS,
+        status=INCLUDED_STATUS,
         domains=("coding",),
         reason=(
-            "The repository has upstream multilingual harness sources, but the "
-            "matrix does not yet have an adapter prediction-generation path for it."
+            "SWE-bench Multilingual is routed through the shared SWE-bench "
+            "adapter bridge with the multilingual dataset variant."
         ),
     ),
     CodeAgentBenchmark(

@@ -50,6 +50,7 @@ function createFakeBluetooth() {
         if (!device) throw new Error("No fake devices left");
         requests.push({ options, deviceName: device.name });
         return {
+          id: device.name,
           name: device.name,
           gatt: {
             connect: async () => ({
@@ -63,6 +64,84 @@ function createFakeBluetooth() {
           },
         };
       },
+    },
+  };
+}
+
+function createWrongSideBluetooth() {
+  const tx = new FakeCharacteristic();
+  const rx = new FakeCharacteristic();
+  return {
+    bluetooth: {
+      requestDevice: async () => ({
+        name: "Even_G1_R_wrong_step",
+        gatt: {
+          connect: async () => ({
+            connected: true,
+            getPrimaryService: async () => ({
+              getCharacteristic: async (uuid: string) =>
+                uuid.includes("0002") ? tx : rx,
+            }),
+          }),
+        },
+      }),
+    },
+  };
+}
+
+function createSecondStepMismatchBluetooth() {
+  const leftTx = new FakeCharacteristic();
+  const leftRx = new FakeCharacteristic();
+  const wrongTx = new FakeCharacteristic();
+  const wrongRx = new FakeCharacteristic();
+  const devices = [
+    { name: "Even_G1_L_demo", tx: leftTx, rx: leftRx },
+    { name: "Even_G1_L_again", tx: wrongTx, rx: wrongRx },
+  ];
+  return {
+    leftRx,
+    bluetooth: {
+      requestDevice: async () => {
+        const device = devices.shift();
+        if (!device) throw new Error("No fake devices left");
+        return {
+          id: device.name,
+          name: device.name,
+          gatt: {
+            connect: async () => ({
+              connected: true,
+              disconnect: () => undefined,
+              getPrimaryService: async () => ({
+                getCharacteristic: async (uuid: string) =>
+                  uuid.includes("0002") ? device.tx : device.rx,
+              }),
+            }),
+          },
+        };
+      },
+    },
+  };
+}
+
+function createDuplicateDeviceBluetooth() {
+  const tx = new FakeCharacteristic();
+  const rx = new FakeCharacteristic();
+  const device = {
+    id: "same-device-id",
+    name: undefined,
+    gatt: {
+      connect: async () => ({
+        connected: true,
+        getPrimaryService: async () => ({
+          getCharacteristic: async (uuid: string) =>
+            uuid.includes("0002") ? tx : rx,
+        }),
+      }),
+    },
+  };
+  return {
+    bluetooth: {
+      requestDevice: async () => device,
     },
   };
 }
@@ -111,5 +190,46 @@ describe("WebBluetoothG1Transport", () => {
     await transport.disconnect();
     expect(fake.leftRx.notificationsStopped).toBe(true);
     expect(fake.rightRx.notificationsStopped).toBe(true);
+  });
+
+  it("rejects a visible lens-side mismatch during whole-headset pairing", async () => {
+    const fake = createWrongSideBluetooth();
+    const transport = new WebBluetoothG1Transport(fake.bluetooth);
+
+    await expect(transport.connectLens("left")).rejects.toThrow(
+      "expected a lens name containing _L_",
+    );
+    expect(transport.isConnected()).toBe(false);
+    expect(transport.getConnectedLenses()).toEqual({});
+  });
+
+  it("cleans up a partial connection when whole-headset connect fails", async () => {
+    const fake = createSecondStepMismatchBluetooth();
+    const transport = new WebBluetoothG1Transport(fake.bluetooth);
+
+    await expect(transport.connect()).rejects.toThrow(
+      "expected a lens name containing _R_",
+    );
+    expect(transport.isConnected()).toBe(false);
+    expect(transport.getConnectedLenses()).toEqual({});
+    expect(fake.leftRx.notificationsStopped).toBe(true);
+  });
+
+  it("rejects selecting the same unnamed device for both lenses", async () => {
+    const fake = createDuplicateDeviceBluetooth();
+    const transport = new WebBluetoothG1Transport(fake.bluetooth);
+
+    await transport.connectLens("left");
+    await expect(transport.connectLens("right")).rejects.toThrow(
+      "Selected the left lens again",
+    );
+    expect(transport.isConnected()).toBe(false);
+    expect(transport.getConnectedLenses()).toEqual({
+      left: {
+        connected: true,
+        name: undefined,
+        address: "same-device-id",
+      },
+    });
   });
 });

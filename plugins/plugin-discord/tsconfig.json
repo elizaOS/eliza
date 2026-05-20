@@ -43,6 +43,7 @@
 		"**/__tests__/**",
 		"**/*.test.ts",
 		"**/*.test.tsx",
-		"**/*.e2e.test.ts"
+		"**/*.e2e.test.ts",
+		"test/live/**"
 	]
 }

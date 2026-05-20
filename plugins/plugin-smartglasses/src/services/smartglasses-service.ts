@@ -54,6 +54,7 @@ import {
 import { getGlobalEvenBridgeTransport } from "../transport/even-bridge.js";
 import { getNobleG1Transport } from "../transport/noble.js";
 import type {
+  SmartglassesConnectedLenses,
   SmartglassesTransport,
   SmartglassesWifiResult,
 } from "../transport/types.js";
@@ -98,6 +99,7 @@ export interface SmartglassesStatus {
   batteryState: string | null;
   deviceState: string | null;
   lastSerialNumber: string | null;
+  connectedLenses: SmartglassesConnectedLenses;
   wifiAvailable: boolean;
   lastWifiStatus: SmartglassesWifiResult | null;
 }
@@ -267,6 +269,7 @@ export class SmartglassesService extends Service {
       batteryState: this.batteryState,
       deviceState: this.deviceState,
       lastSerialNumber: this.lastSerialNumber,
+      connectedLenses: this.transport?.getConnectedLenses?.() ?? {},
       wifiAvailable: this.isWifiAvailable(),
       lastWifiStatus: this.lastWifiStatus,
     };

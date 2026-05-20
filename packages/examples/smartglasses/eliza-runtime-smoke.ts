@@ -1,3 +1,4 @@
+import { readFile } from "node:fs/promises";
 import {
   AgentRuntime,
   createCharacter,
@@ -8,11 +9,10 @@ import {
   G1Command,
   MockSmartglassesTransport,
   SMARTGLASSES_SERVICE_NAME,
-  SmartglassesService,
+  type SmartglassesService,
   setSmartglassesTransportForRuntime,
   smartglassesPlugin,
 } from "@elizaos/plugin-smartglasses";
-import { readFile } from "node:fs/promises";
 
 const characterConfig = JSON.parse(
   await readFile(new URL("./character.json", import.meta.url), "utf8"),
@@ -48,7 +48,12 @@ try {
   const statusProvider = runtime.providers.find(
     (provider) => provider.name === "smartglassesStatus",
   );
-  if (!displayAction || !microphoneAction || !controlAction || !statusProvider) {
+  if (
+    !displayAction ||
+    !microphoneAction ||
+    !controlAction ||
+    !statusProvider
+  ) {
     throw new Error("Runtime did not register smartglasses components");
   }
 
