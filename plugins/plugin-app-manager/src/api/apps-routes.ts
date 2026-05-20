@@ -551,7 +551,7 @@ function resolveRunSteeringTarget(
   const routeSlug = packageNameToAppRouteSlug(run.appName) ?? run.appName;
   if (!routeSlug) return null;
 
-  if (routeSlug === "babylon") {
+  if (routeSlug === "feed") {
     if (subroute === "message") {
       return {
         pathname: `/api/apps/${encodeURIComponent(routeSlug)}/agent/chat`,

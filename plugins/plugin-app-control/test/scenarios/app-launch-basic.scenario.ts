@@ -20,7 +20,7 @@ export default scenario({
 		{
 			kind: "message",
 			name: "user-asks-launch",
-			text: "launch the babylon app",
+			text: "launch the feed app",
 		},
 	],
 	finalChecks: [

@@ -237,7 +237,7 @@ const APP_PLUGIN_NAMES = new Set([
   "plugin-app-manager",
   "plugin-browser",
   "plugin-2004scape",
-  "plugin-babylon",
+  "plugin-feed",
   "plugin-clawville",
   "plugin-companion",
   "plugin-defense-of-the-agents",

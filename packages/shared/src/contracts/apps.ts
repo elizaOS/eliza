@@ -708,8 +708,8 @@ export const ELIZA_CURATED_APP_DEFINITIONS: readonly ElizaCuratedAppDefinition[]
       aliases: ["@elizaos/plugin-hyperscape"],
     },
     {
-      slug: "babylon",
-      canonicalName: "@elizaos/plugin-babylon",
+      slug: "feed",
+      canonicalName: "@elizaos/plugin-feed",
       aliases: [],
     },
     {

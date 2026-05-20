@@ -291,7 +291,7 @@
   "avatarselector.SelectVrmFile": "Pumili ng .vrm file.",
   "avatarselector.UploadCustomVrm": "Mag-upload ng custom .vrm (i-click o i-drag)",
   "avatarselector.dropVrm": "i-drop ang .vrm",
-  "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "Sabihin sa agent kung ano ang gagawin, ano ang iwasan, o ano ang ipapaliwanag.",
+  "feed.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "Sabihin sa agent kung ano ang gagawin, ano ang iwasan, o ano ang ipapaliwanag.",
   "browserworkspace.ActionFailed": "Hindi gumana ang browser action.",
   "browserworkspace.AddressPlaceholder": "Maglagay ng URL",
   "browserworkspace.AgentActive": "Nasa tab na ito ang agent",

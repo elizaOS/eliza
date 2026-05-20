@@ -35,7 +35,7 @@
       "@elizaos/plugin-wallet-ui": [
         "../../plugins/plugin-wallet-ui/dist/index.d.ts"
       ],
-      "@elizaos/plugin-babylon": ["./src/types/side-effect-app-modules.d.ts"],
+      "@elizaos/plugin-feed": ["./src/types/side-effect-app-modules.d.ts"],
       "@elizaos/plugin-scape": ["./src/types/side-effect-app-modules.d.ts"],
       "@elizaos/plugin-hyperscape": [
         "./src/types/side-effect-app-modules.d.ts"

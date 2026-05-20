@@ -1,8 +1,8 @@
 {
-  "id": "babylon",
-  "name": "Babylon",
-  "description": "Babylon.js scene host for embodied agents.",
-  "npmName": "@elizaos/plugin-babylon",
+  "id": "feed",
+  "name": "Feed",
+  "description": "Feed prediction market operator dashboard.",
+  "npmName": "@elizaos/plugin-feed",
   "source": "bundled",
   "tags": [],
   "config": {},
@@ -22,6 +22,6 @@
   "launch": {
     "type": "server-launch",
     "capabilities": [],
-    "curatedSlug": "babylon"
+    "curatedSlug": "feed"
   }
 }

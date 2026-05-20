@@ -291,7 +291,7 @@
   "avatarselector.SelectVrmFile": "Escolha um arquivo .vrm.",
   "avatarselector.UploadCustomVrm": "Carregar .vrm personalizado (clique ou arraste)",
   "avatarselector.dropVrm": "solte .vrm",
-  "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "Diga ao agente o que fazer, o que evitar ou o que explicar.",
+  "feed.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "Diga ao agente o que fazer, o que evitar ou o que explicar.",
   "browserworkspace.ActionFailed": "Falha na ação do navegador.",
   "browserworkspace.AddressPlaceholder": "Digite uma URL",
   "browserworkspace.AgentActive": "O agente está nesta aba",

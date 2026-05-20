@@ -202,7 +202,7 @@
       "@elizaos/plugin-hyperscape": [
         "./plugins/plugin-hyperscape/dist/index.d.ts"
       ],
-      "@elizaos/plugin-babylon": ["./plugins/plugin-babylon/dist/index.d.ts"],
+      "@elizaos/plugin-feed": ["./plugins/plugin-feed/dist/index.d.ts"],
       "@elizaos/plugin-openrouter": [
         "./plugins/plugin-openrouter/dist/index.d.ts"
       ],

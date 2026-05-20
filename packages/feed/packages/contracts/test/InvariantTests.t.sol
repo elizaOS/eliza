@@ -8,7 +8,7 @@ import "../core/DiamondCutFacet.sol";
 import "../core/DiamondLoupeFacet.sol";
 import "../core/PredictionMarketFacet.sol";
 import "../libraries/LibDiamond.sol";
-import "../src/game/BabylonGameOracle.sol";
+import "../src/game/FeedGameOracle.sol";
 
 /// @title InvariantTests
 /// @notice Invariant testing for critical contract properties
@@ -18,7 +18,7 @@ contract InvariantTests is Test {
     DiamondCutFacet diamondCutFacet;
     DiamondLoupeFacet diamondLoupeFacet;
     PredictionMarketFacet predictionMarketFacet;
-    BabylonGameOracle babylonOracle;
+    FeedGameOracle feedOracle;
 
     address owner;
     address user1;
@@ -48,7 +48,7 @@ contract InvariantTests is Test {
         _setupDiamondFacets();
 
         // Deploy oracle
-        babylonOracle = new BabylonGameOracle(gameServer);
+        feedOracle = new FeedGameOracle(gameServer);
 
         // Deploy handler for invariant testing
         handler = new MarketHandler(address(diamond), owner);

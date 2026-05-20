@@ -1318,7 +1318,7 @@ ElizaClient.prototype.getBlueBubblesStatus = async function (
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getFeedAgentStatus = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/status");
+  return this.fetch("/api/apps/feed/agent/status");
 };
 
 ElizaClient.prototype.getFeedAgentActivity = async function (
@@ -1329,9 +1329,7 @@ ElizaClient.prototype.getFeedAgentActivity = async function (
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.type) params.set("type", opts.type);
   const qs = params.toString();
-  return this.fetch(
-    `/api/apps/babylon@elizaos/agent/activity${qs ? `?${qs}` : ""}`,
-  );
+  return this.fetch(`/api/apps/feed/agent/activity${qs ? `?${qs}` : ""}`);
 };
 
 ElizaClient.prototype.getFeedAgentLogs = async function (
@@ -1342,21 +1340,19 @@ ElizaClient.prototype.getFeedAgentLogs = async function (
   if (opts?.type) params.set("type", opts.type);
   if (opts?.level) params.set("level", opts.level);
   const qs = params.toString();
-  return this.fetch(
-    `/api/apps/babylon@elizaos/agent/logs${qs ? `?${qs}` : ""}`,
-  );
+  return this.fetch(`/api/apps/feed/agent/logs${qs ? `?${qs}` : ""}`);
 };
 
 ElizaClient.prototype.getFeedAgentWallet = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/wallet");
+  return this.fetch("/api/apps/feed/agent/wallet");
 };
 
 ElizaClient.prototype.getFeedTeam = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/team");
+  return this.fetch("/api/apps/feed/team");
 };
 
 ElizaClient.prototype.getFeedTeamChat = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/team/info");
+  return this.fetch("/api/apps/feed/team/info");
 };
 
 ElizaClient.prototype.sendFeedTeamChat = async function (
@@ -1364,7 +1360,7 @@ ElizaClient.prototype.sendFeedTeamChat = async function (
   content,
   mentions?,
 ) {
-  return this.fetch("/api/apps/babylon/team/chat", {
+  return this.fetch("/api/apps/feed/team/chat", {
     method: "POST",
     body: JSON.stringify({ content, mentions }),
   });
@@ -1374,7 +1370,7 @@ ElizaClient.prototype.toggleFeedAgent = async function (
   this: ElizaClient,
   action,
 ) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/toggle", {
+  return this.fetch("/api/apps/feed/agent/toggle", {
     method: "POST",
     body: JSON.stringify({ action }),
   });
@@ -1384,7 +1380,7 @@ ElizaClient.prototype.toggleFeedAgentAutonomy = async function (
   this: ElizaClient,
   opts,
 ) {
-  return this.fetch("/api/apps/babylon", {
+  return this.fetch("/api/apps/feed", {
     method: "POST",
     body: JSON.stringify(opts),
   });
@@ -1404,9 +1400,7 @@ ElizaClient.prototype.getFeedPredictionMarkets = async function (
   if (opts?.status) params.set("status", opts.status);
   if (opts?.category) params.set("category", opts.category);
   const qs = params.toString();
-  return this.fetch(
-    `/api/apps/babylon/markets/predictions${qs ? `?${qs}` : ""}`,
-  );
+  return this.fetch(`/api/apps/feed/markets/predictions${qs ? `?${qs}` : ""}`);
 };
 
 ElizaClient.prototype.getFeedPredictionMarket = async function (
@@ -1414,7 +1408,7 @@ ElizaClient.prototype.getFeedPredictionMarket = async function (
   marketId,
 ) {
   return this.fetch(
-    `/api/apps/babylon/markets/predictions/${encodeURIComponent(marketId)}`,
+    `/api/apps/feed/markets/predictions/${encodeURIComponent(marketId)}`,
   );
 };
 
@@ -1425,7 +1419,7 @@ ElizaClient.prototype.buyFeedPredictionShares = async function (
   amount,
 ) {
   return this.fetch(
-    `/api/apps/babylon/markets/predictions/${encodeURIComponent(marketId)}/buy`,
+    `/api/apps/feed/markets/predictions/${encodeURIComponent(marketId)}/buy`,
     { method: "POST", body: JSON.stringify({ side, amount }) },
   );
 };
@@ -1437,19 +1431,19 @@ ElizaClient.prototype.sellFeedPredictionShares = async function (
   amount,
 ) {
   return this.fetch(
-    `/api/apps/babylon/markets/predictions/${encodeURIComponent(marketId)}/sell`,
+    `/api/apps/feed/markets/predictions/${encodeURIComponent(marketId)}/sell`,
     { method: "POST", body: JSON.stringify({ side, amount }) },
   );
 };
 
 ElizaClient.prototype.getFeedPerpMarkets = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/markets/perps");
+  return this.fetch("/api/apps/feed/markets/perps");
 };
 
 ElizaClient.prototype.getFeedOpenPerpPositions = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/apps/babylon/markets/perps/open");
+  return this.fetch("/api/apps/feed/markets/perps/open");
 };
 
 ElizaClient.prototype.closeFeedPerpPosition = async function (
@@ -1457,7 +1451,7 @@ ElizaClient.prototype.closeFeedPerpPosition = async function (
   positionId,
 ) {
   return this.fetch(
-    `/api/apps/babylon/markets/perps/position/${encodeURIComponent(positionId)}/close`,
+    `/api/apps/feed/markets/perps/position/${encodeURIComponent(positionId)}/close`,
     { method: "POST", body: JSON.stringify({}) },
   );
 };
@@ -1472,7 +1466,7 @@ ElizaClient.prototype.getFeedPosts = async function (this: ElizaClient, opts?) {
   if (opts?.limit) params.set("limit", String(opts.limit));
   if (opts?.feed) params.set("feed", opts.feed);
   const qs = params.toString();
-  return this.fetch(`/api/apps/babylon/posts${qs ? `?${qs}` : ""}`);
+  return this.fetch(`/api/apps/feed/posts${qs ? `?${qs}` : ""}`);
 };
 
 ElizaClient.prototype.createFeedPost = async function (
@@ -1480,7 +1474,7 @@ ElizaClient.prototype.createFeedPost = async function (
   content,
   marketId?,
 ) {
-  return this.fetch("/api/apps/babylon/posts", {
+  return this.fetch("/api/apps/feed/posts", {
     method: "POST",
     body: JSON.stringify({ content, marketId }),
   });
@@ -1492,7 +1486,7 @@ ElizaClient.prototype.commentOnFeedPost = async function (
   content,
 ) {
   return this.fetch(
-    `/api/apps/babylon/posts/${encodeURIComponent(postId)}/comments`,
+    `/api/apps/feed/posts/${encodeURIComponent(postId)}/comments`,
     { method: "POST", body: JSON.stringify({ content }) },
   );
 };
@@ -1501,10 +1495,9 @@ ElizaClient.prototype.likeFeedPost = async function (
   this: ElizaClient,
   postId,
 ) {
-  return this.fetch(
-    `/api/apps/babylon/posts/${encodeURIComponent(postId)}/like`,
-    { method: "POST" },
-  );
+  return this.fetch(`/api/apps/feed/posts/${encodeURIComponent(postId)}/like`, {
+    method: "POST",
+  });
 };
 
 // ---------------------------------------------------------------------------
@@ -1512,7 +1505,7 @@ ElizaClient.prototype.likeFeedPost = async function (
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getFeedChats = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/chats");
+  return this.fetch("/api/apps/feed/chats");
 };
 
 ElizaClient.prototype.getFeedChatMessages = async function (
@@ -1520,7 +1513,7 @@ ElizaClient.prototype.getFeedChatMessages = async function (
   chatId,
 ) {
   return this.fetch(
-    `/api/apps/babylon/chats/${encodeURIComponent(chatId)}/messages`,
+    `/api/apps/feed/chats/${encodeURIComponent(chatId)}/messages`,
   );
 };
 
@@ -1530,14 +1523,14 @@ ElizaClient.prototype.sendFeedChatMessage = async function (
   content,
 ) {
   return this.fetch(
-    `/api/apps/babylon/chats/${encodeURIComponent(chatId)}/message`,
+    `/api/apps/feed/chats/${encodeURIComponent(chatId)}/message`,
     { method: "POST", body: JSON.stringify({ content }) },
   );
 };
 
 ElizaClient.prototype.getFeedDM = async function (this: ElizaClient, userId) {
   return this.fetch(
-    `/api/apps/babylon/chats/dm?userId=${encodeURIComponent(userId)}`,
+    `/api/apps/feed/chats/dm?userId=${encodeURIComponent(userId)}`,
   );
 };
 
@@ -1546,41 +1539,41 @@ ElizaClient.prototype.getFeedDM = async function (this: ElizaClient, userId) {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getFeedAgentGoals = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/goals");
+  return this.fetch("/api/apps/feed/agent/goals");
 };
 
 ElizaClient.prototype.getFeedAgentStats = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/stats");
+  return this.fetch("/api/apps/feed/agent/stats");
 };
 
 ElizaClient.prototype.getFeedAgentSummary = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/summary");
+  return this.fetch("/api/apps/feed/agent/summary");
 };
 
 ElizaClient.prototype.getFeedAgentRecentTrades = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/recent-trades");
+  return this.fetch("/api/apps/feed/agent/recent-trades");
 };
 
 ElizaClient.prototype.getFeedAgentTradingBalance = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/trading-balance");
+  return this.fetch("/api/apps/feed/agent/trading-balance");
 };
 
 ElizaClient.prototype.sendFeedAgentChat = async function (
   this: ElizaClient,
   content,
 ) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/chat", {
+  return this.fetch("/api/apps/feed/agent/chat", {
     method: "POST",
     body: JSON.stringify({ content }),
   });
 };
 
 ElizaClient.prototype.getFeedAgentChat = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agent/chat");
+  return this.fetch("/api/apps/feed/agent/chat");
 };
 
 // ---------------------------------------------------------------------------
@@ -1588,15 +1581,15 @@ ElizaClient.prototype.getFeedAgentChat = async function (this: ElizaClient) {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.getFeedFeedForYou = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/feed/for-you");
+  return this.fetch("/api/apps/feed/feed/for-you");
 };
 
 ElizaClient.prototype.getFeedFeedHot = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/feed/hot");
+  return this.fetch("/api/apps/feed/feed/hot");
 };
 
 ElizaClient.prototype.getFeedTrades = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/trades");
+  return this.fetch("/api/apps/feed/trades");
 };
 
 // ---------------------------------------------------------------------------
@@ -1604,29 +1597,29 @@ ElizaClient.prototype.getFeedTrades = async function (this: ElizaClient) {
 // ---------------------------------------------------------------------------
 
 ElizaClient.prototype.discoverFeedAgents = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon@elizaos/agents/discover");
+  return this.fetch("/api/apps/feed/agents/discover");
 };
 
 ElizaClient.prototype.getFeedTeamDashboard = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/apps/babylon/team/dashboard");
+  return this.fetch("/api/apps/feed/team/dashboard");
 };
 
 ElizaClient.prototype.getFeedTeamConversations = async function (
   this: ElizaClient,
 ) {
-  return this.fetch("/api/apps/babylon/team/conversations");
+  return this.fetch("/api/apps/feed/team/conversations");
 };
 
 ElizaClient.prototype.pauseAllFeedAgents = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/admin@elizaos/agents/pause-all", {
+  return this.fetch("/api/apps/feed/admin/agents/pause-all", {
     method: "POST",
   });
 };
 
 ElizaClient.prototype.resumeAllFeedAgents = async function (this: ElizaClient) {
-  return this.fetch("/api/apps/babylon/admin@elizaos/agents/resume-all", {
+  return this.fetch("/api/apps/feed/admin/agents/resume-all", {
     method: "POST",
   });
 };

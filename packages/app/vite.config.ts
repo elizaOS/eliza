@@ -1125,7 +1125,7 @@ export default defineConfig({
       // Side-effect app modules are loaded by the renderer only to register
       // UI surfaces/pages. Route handlers and runtime services stay server-side.
       ...[
-        ["@elizaos/plugin-babylon", "plugins/plugin-babylon/src/ui/index.ts"],
+        ["@elizaos/plugin-feed", "plugins/plugin-feed/src/ui/index.ts"],
         ["@elizaos/plugin-scape", "plugins/plugin-scape/src/ui/index.ts"],
         [
           "@elizaos/plugin-hyperscape",

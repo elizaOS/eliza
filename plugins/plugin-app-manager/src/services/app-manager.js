@@ -367,7 +367,7 @@ function isLocalPlugin(appInfo) {
         return false;
     }
     // Check for directory names that match the app
-    // E.g., @elizaos/plugin-babylon -> app-babylon
+    // E.g., @elizaos/plugin-feed -> app-feed
     const bareName = appInfo.name.replace(/^@[^/]+\//, "");
     const possibleDirs = [bareName, appInfo.name.replace("/", "-")];
     for (const dirName of possibleDirs) {

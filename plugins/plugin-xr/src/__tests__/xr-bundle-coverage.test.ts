@@ -149,8 +149,8 @@ const PLUGIN_BUNDLES: Array<{ pluginDir: string; manifestPath: string }> = [
     manifestPath: "plugins/plugin-2004scape/src/index.ts",
   },
   {
-    pluginDir: "plugins/plugin-babylon",
-    manifestPath: "plugins/plugin-babylon/src/index.ts",
+    pluginDir: "plugins/plugin-feed",
+    manifestPath: "plugins/plugin-feed/src/index.ts",
   },
   {
     pluginDir: "plugins/plugin-app-control",

@@ -1,12 +1,12 @@
 import {
   type AppOperatorSurfaceProps,
+  client,
   type FeedActivityItem,
   type FeedAgentGoal,
   type FeedAgentStatus,
   type FeedChatMessage,
   type FeedPredictionMarket,
   type FeedWallet,
-  client,
   formatDetailTimestamp,
   SurfaceBadge,
   SurfaceCard,
@@ -22,16 +22,16 @@ import {
 import { Button, Input, TerminalPluginView } from "@elizaos/ui";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  type FeedAgentSummaryEnvelope,
-  type FeedTeamConversation,
-  type FeedTeamDashboard,
   extractAgentSummary,
   extractChatMessages,
   extractTeamConversations,
   extractTeamDashboard,
   extractTradingBalance,
+  type FeedAgentSummaryEnvelope,
+  type FeedTeamConversation,
+  type FeedTeamDashboard,
   summarizeFeedActivity,
-} from "./babylon-data";
+} from "./feed-data";
 
 function extractWallet(value: unknown): FeedWallet | null {
   if (!value || typeof value !== "object") return null;
@@ -88,7 +88,7 @@ function listPreview(items: FeedPredictionMarket[]): string {
     .join(" · ");
 }
 
-export function BabylonOperatorSurface({
+export function FeedOperatorSurface({
   appName,
   variant = "detail",
   focus = "all",
@@ -99,9 +99,7 @@ export function BabylonOperatorSurface({
     [appName, appRuns],
   );
 
-  const [agentStatus, setAgentStatus] = useState<FeedAgentStatus | null>(
-    null,
-  );
+  const [agentStatus, setAgentStatus] = useState<FeedAgentStatus | null>(null);
   const [agentSummary, setAgentSummary] =
     useState<FeedAgentSummaryEnvelope | null>(null);
   const [agentGoals, setAgentGoals] = useState<FeedAgentGoal[]>([]);
@@ -116,9 +114,9 @@ export function BabylonOperatorSurface({
   const [teamConversations, setTeamConversations] = useState<
     FeedTeamConversation[]
   >([]);
-  const [agentChatMessages, setAgentChatMessages] = useState<
-    FeedChatMessage[]
-  >([]);
+  const [agentChatMessages, setAgentChatMessages] = useState<FeedChatMessage[]>(
+    [],
+  );
   const [wallet, setWallet] = useState<FeedWallet | null>(null);
   const [tradingBalance, setTradingBalance] = useState(0);
   const [chatInput, setChatInput] = useState("");
@@ -134,10 +132,10 @@ export function BabylonOperatorSurface({
   const teamTotals = teamDashboard.summary?.totals ?? null;
   const surfaceTitle =
     variant === "live"
-      ? "Babylon Live Dashboard"
+      ? "Feed Live Dashboard"
       : variant === "running"
-        ? "Babylon Run Dashboard"
-        : "Babylon Operator Dashboard";
+        ? "Feed Run Dashboard"
+        : "Feed Operator Dashboard";
   const showDashboard = focus !== "chat";
   const showChat = focus !== "dashboard";
   const controlAction = run?.session?.controls?.includes("pause")
@@ -196,14 +194,14 @@ export function BabylonOperatorSurface({
       setTradingBalance(extractTradingBalance(tradingBalanceResponse));
       setStatusMessage(
         status.agentStatus
-          ? `Babylon agent status: ${status.agentStatus}`
-          : "Babylon operator dashboard refreshed.",
+          ? `Feed agent status: ${status.agentStatus}`
+          : "Feed operator dashboard refreshed.",
       );
     } catch (error) {
       setStatusMessage(
         error instanceof Error
           ? error.message
-          : "Failed to load the Babylon operator surface.",
+          : "Failed to load the Feed operator surface.",
       );
     } finally {
       setLoading(false);
@@ -231,14 +229,14 @@ export function BabylonOperatorSurface({
       setStatusMessage(
         response.message ??
           (controlAction === "pause"
-            ? "Babylon autonomy paused."
-            : "Babylon autonomy resumed."),
+            ? "Feed autonomy paused."
+            : "Feed autonomy resumed."),
       );
     } catch (error) {
       setStatusMessage(
         error instanceof Error
           ? error.message
-          : "Failed to update Babylon autonomy.",
+          : "Failed to update Feed autonomy.",
       );
     }
   }, [controlAction, loadDashboard, run]);
@@ -252,13 +250,13 @@ export function BabylonOperatorSurface({
     try {
       const result = await client.sendAppRunMessage(run.runId, content);
       setChatInput("");
-      setStatusMessage(result.message ?? "Suggestion sent to Babylon.");
+      setStatusMessage(result.message ?? "Suggestion sent to Feed.");
       await loadDashboard();
     } catch (error) {
       setStatusMessage(
         error instanceof Error
           ? error.message
-          : "Failed to send the Babylon operator message.",
+          : "Failed to send the Feed operator message.",
       );
     } finally {
       setSending(false);
@@ -274,13 +272,13 @@ export function BabylonOperatorSurface({
       setStatusMessage(null);
       try {
         const result = await client.sendAppRunMessage(run.runId, content);
-        setStatusMessage(result.message ?? "Suggestion sent to Babylon.");
+        setStatusMessage(result.message ?? "Suggestion sent to Feed.");
         await loadDashboard();
       } catch (error) {
         setStatusMessage(
           error instanceof Error
             ? error.message
-            : "Failed to send the Babylon operator message.",
+            : "Failed to send the Feed operator message.",
         );
       } finally {
         setSending(false);
@@ -292,8 +290,8 @@ export function BabylonOperatorSurface({
   if (!run) {
     return (
       <SurfaceEmptyState
-        title="Babylon operator surface"
-        body="Launch Babylon to see live team coordination, market activity, and the agent chat stream here."
+        title="Feed operator surface"
+        body="Launch Feed to see live team coordination, market activity, and the agent chat stream here."
       />
     );
   }
@@ -303,10 +301,10 @@ export function BabylonOperatorSurface({
       className={`space-y-3 ${variant === "live" ? "p-3" : ""}`}
       data-testid={
         variant === "live"
-          ? "babylon-live-operator-surface"
+          ? "feed-live-operator-surface"
           : variant === "running"
-            ? "babylon-running-operator-surface"
-            : "babylon-detail-operator-surface"
+            ? "feed-running-operator-surface"
+            : "feed-detail-operator-surface"
       }
     >
       <div className="flex flex-wrap items-center gap-2">
@@ -336,7 +334,7 @@ export function BabylonOperatorSurface({
               subtitle={
                 agentStatus
                   ? `${agentStatus.agentStatus ?? "idle"} · ${agentStatus.autonomous ? "autonomous" : "operator-led"}`
-                  : "The Babylon agent has not published status yet."
+                  : "The Feed agent has not published status yet."
               }
             />
             <SurfaceCard
@@ -531,7 +529,7 @@ export function BabylonOperatorSurface({
             <Input
               value={chatInput}
               onChange={(event) => setChatInput(event.target.value)}
-              placeholder="Tell Babylon what to prioritize, avoid, or explain."
+              placeholder="Tell Feed what to prioritize, avoid, or explain."
               className="min-h-11 rounded-xl"
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -558,18 +556,18 @@ export function BabylonOperatorSurface({
         </div>
       ) : null}
       <div className="text-2xs uppercase tracking-[0.18em] text-muted">
-        {loading ? "Refreshing Babylon surface..." : "Babylon surface ready."}
+        {loading ? "Refreshing Feed surface..." : "Feed surface ready."}
       </div>
     </section>
   );
 }
 
-export function BabylonTuiView() {
+export function FeedTuiView() {
   return (
     <TerminalPluginView
-      id="babylon"
-      label="Babylon TUI"
-      description="Terminal Babylon prediction market operator dashboard"
+      id="feed"
+      label="Feed TUI"
+      description="Terminal Feed prediction market operator dashboard"
       commands={[
         "get-state",
         "refresh-agent-status",
@@ -577,9 +575,9 @@ export function BabylonTuiView() {
         "send-team-message",
       ]}
       endpoints={[
-        "/api/apps/babylon/agent/status",
-        "/api/apps/babylon/team/dashboard",
-        "/api/apps/babylon/markets",
+        "/api/apps/feed/agent/status",
+        "/api/apps/feed/team/dashboard",
+        "/api/apps/feed/markets",
       ]}
     />
   );
@@ -589,7 +587,7 @@ async function readFeedJson(response: Response): Promise<unknown> {
   const text = await response.text();
   if (!response.ok) {
     throw new Error(
-      text || `[babylon] ${response.status} ${response.statusText}`.trim(),
+      text || `[feed] ${response.status} ${response.statusText}`.trim(),
     );
   }
   return text ? JSON.parse(text) : {};
@@ -601,13 +599,13 @@ export async function interact(
 ): Promise<unknown> {
   if (capability === "get-state" || capability === "refresh-agent-status") {
     const [status, dashboard, markets] = await Promise.all([
-      fetch("/api/apps/babylon/agent/status", {
+      fetch("/api/apps/feed/agent/status", {
         headers: { Accept: "application/json" },
       }).then(readFeedJson),
-      fetch("/api/apps/babylon/team/dashboard", {
+      fetch("/api/apps/feed/team/dashboard", {
         headers: { Accept: "application/json" },
       }).then(readFeedJson),
-      fetch("/api/apps/babylon/markets?pageSize=5", {
+      fetch("/api/apps/feed/markets?pageSize=5", {
         headers: { Accept: "application/json" },
       }).then(readFeedJson),
     ]);
@@ -616,11 +614,11 @@ export async function interact(
 
   if (capability === "open-live-dashboard") {
     return {
-      path: "/babylon",
+      path: "/feed",
       endpoints: [
-        "/api/apps/babylon/agent/status",
-        "/api/apps/babylon/team/dashboard",
-        "/api/apps/babylon/markets",
+        "/api/apps/feed/agent/status",
+        "/api/apps/feed/team/dashboard",
+        "/api/apps/feed/markets",
       ],
     };
   }
@@ -630,7 +628,7 @@ export async function interact(
       typeof params?.content === "string" && params.content.trim()
         ? params.content.trim()
         : "Terminal status check";
-    const response = await fetch("/api/apps/babylon/team/chat", {
+    const response = await fetch("/api/apps/feed/team/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ content }),
@@ -638,5 +636,5 @@ export async function interact(
     return readFeedJson(response);
   }
 
-  throw new Error(`Babylon TUI does not support "${capability}".`);
+  throw new Error(`Feed TUI does not support "${capability}".`);
 }

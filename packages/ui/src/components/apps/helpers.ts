@@ -356,7 +356,7 @@ export function getAppCatalogSectionKey(
     case "@elizaos/plugin-hyperliquid-app":
     case "@elizaos/plugin-polymarket-app":
       return "finance";
-    case "@elizaos/plugin-babylon":
+    case "@elizaos/plugin-feed":
       return "games";
     case "@hyperscape/plugin-hyperscape":
     case "@elizaos/plugin-hyperscape":

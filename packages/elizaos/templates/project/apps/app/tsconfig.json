@@ -14,8 +14,8 @@
       "@elizaos/plugin-2004scape": [
         "../../../../../../plugins/plugin-2004scape/src/index.ts"
       ],
-      "@elizaos/plugin-babylon": [
-        "../../../../../../plugins/plugin-babylon/src/index.ts"
+      "@elizaos/plugin-feed": [
+        "../../../../../../plugins/plugin-feed/src/index.ts"
       ],
       "@elizaos/plugin-defense-of-the-agents": [
         "../../../../../../plugins/plugin-defense-of-the-agents/src/index.ts"

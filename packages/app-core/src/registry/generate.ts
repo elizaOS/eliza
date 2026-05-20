@@ -124,7 +124,7 @@ const FEATURE_SUBGROUP: Record<string, string> = {
   experience: "storage",
   minecraft: "gaming",
   roblox: "gaming",
-  babylon: "gaming",
+  feed: "gaming",
   mysticism: "gaming",
   moltbook: "gaming",
 };
@@ -228,7 +228,7 @@ const DEFAULT_ICONS: Record<string, string> = {
   experience: "Star",
   minecraft: "Pickaxe",
   roblox: "BrickWall",
-  babylon: "Gamepad",
+  feed: "Gamepad",
   mysticism: "Sparkle",
   moltbook: "ScrollText",
   tee: "LockKeyhole",

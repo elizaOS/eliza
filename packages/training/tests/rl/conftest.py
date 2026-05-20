@@ -1,7 +1,7 @@
 """
 Compat shim for RL tests.
 
-Tests authored against the babylon layout import from `src.training.<module>`
+Tests authored against the feed layout import from `src.training.<module>`
 and `src.models`. After the merge into packages/training, those modules live
 under packages/training/scripts/rl/. This conftest:
 

@@ -43,7 +43,7 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-vincent/src/plugin.ts",
   "plugins/plugin-wallet-ui/src/plugin.ts",
   "plugins/plugin-2004scape/src/index.ts",
-  "plugins/plugin-babylon/src/index.ts",
+  "plugins/plugin-feed/src/index.ts",
   "plugins/plugin-app-control/src/index.ts",
   "plugins/plugin-clawville/src/index.ts",
   "plugins/plugin-defense-of-the-agents/src/index.ts",
@@ -138,7 +138,7 @@ const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {
     "terminal-2004scape-pause",
     "terminal-2004scape-resume",
   ],
-  "plugins/plugin-babylon/src/ui/BabylonOperatorSurface.tsx": [
+  "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx": [
     "get-state",
     "refresh-agent-status",
     "open-live-dashboard",

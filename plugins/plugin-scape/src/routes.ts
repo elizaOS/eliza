@@ -275,7 +275,7 @@ function buildViewerHtml(clientUrl: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Response helpers (same shape defense / babylon use)
+// Response helpers (same shape defense / feed use)
 // ---------------------------------------------------------------------------
 
 interface MutableResponse {

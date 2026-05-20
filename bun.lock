@@ -214,7 +214,6 @@
         "@elizaos/capacitor-wifi": "workspace:*",
         "@elizaos/plugin-2004scape": "workspace:*",
         "@elizaos/plugin-agent-orchestrator": "workspace:*",
-        "@elizaos/plugin-babylon": "workspace:*",
         "@elizaos/plugin-background-runner": "workspace:*",
         "@elizaos/plugin-clawville": "workspace:*",
         "@elizaos/plugin-companion": "workspace:*",
@@ -222,6 +221,7 @@
         "@elizaos/plugin-defense-of-the-agents": "workspace:*",
         "@elizaos/plugin-device-settings": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
+        "@elizaos/plugin-feed": "workspace:*",
         "@elizaos/plugin-hearwear": "workspace:*",
         "@elizaos/plugin-hyperliquid-app": "workspace:*",
         "@elizaos/plugin-hyperscape": "workspace:*",
@@ -2942,24 +2942,6 @@
         "vitest": "^4.0.0",
       },
     },
-    "plugins/plugin-babylon": {
-      "name": "@elizaos/plugin-babylon",
-      "version": "2.0.1-beta.0",
-      "dependencies": {
-        "@elizaos/app-core": "workspace:*",
-        "@elizaos/core": "workspace:*",
-        "@elizaos/shared": "workspace:*",
-        "@elizaos/ui": "workspace:*",
-      },
-      "devDependencies": {
-        "tsup": "^8.5.1",
-        "typescript": "^6.0.3",
-        "vite": "^8.0.0",
-      },
-      "peerDependencies": {
-        "react": "^19.0.0",
-      },
-    },
     "plugins/plugin-background-runner": {
       "name": "@elizaos/plugin-background-runner",
       "version": "2.0.1-beta.0",
@@ -3479,6 +3461,24 @@
         "esbuild": "^0.28.0",
         "typescript": "^6.0.3",
         "vitest": "^4.0.0",
+      },
+    },
+    "plugins/plugin-feed": {
+      "name": "@elizaos/plugin-feed",
+      "version": "2.0.1-beta.0",
+      "dependencies": {
+        "@elizaos/app-core": "workspace:*",
+        "@elizaos/core": "workspace:*",
+        "@elizaos/shared": "workspace:*",
+        "@elizaos/ui": "workspace:*",
+      },
+      "devDependencies": {
+        "tsup": "^8.5.1",
+        "typescript": "^6.0.3",
+        "vite": "^8.0.0",
+      },
+      "peerDependencies": {
+        "react": "^19.0.0",
       },
     },
     "plugins/plugin-feishu": {
@@ -6075,8 +6075,6 @@
 
     "@elizaos/plugin-app-manager": ["@elizaos/plugin-app-manager@workspace:plugins/plugin-app-manager"],
 
-    "@elizaos/plugin-babylon": ["@elizaos/plugin-babylon@workspace:plugins/plugin-babylon"],
-
     "@elizaos/plugin-background-runner": ["@elizaos/plugin-background-runner@workspace:plugins/plugin-background-runner"],
 
     "@elizaos/plugin-benchmarks": ["@elizaos/plugin-benchmarks@workspace:plugins/plugin-benchmarks"],
@@ -6130,6 +6128,8 @@
     "@elizaos/plugin-elizamaker": ["@elizaos/plugin-elizamaker@workspace:plugins/plugin-elizamaker"],
 
     "@elizaos/plugin-farcaster": ["@elizaos/plugin-farcaster@workspace:plugins/plugin-farcaster"],
+
+    "@elizaos/plugin-feed": ["@elizaos/plugin-feed@workspace:plugins/plugin-feed"],
 
     "@elizaos/plugin-feishu": ["@elizaos/plugin-feishu@workspace:plugins/plugin-feishu"],
 

@@ -2,20 +2,20 @@
 pragma solidity ^0.8.27;
 
 import "forge-std/Test.sol";
-import {BabylonGameOracle} from "../src/game/BabylonGameOracle.sol";
+import {FeedGameOracle} from "../src/game/FeedGameOracle.sol";
 
 /**
- * @title BabylonGameOracleTest
- * @notice Tests for BabylonGameOracle - THE GAME IS THE PREDICTION ORACLE
+ * @title FeedGameOracleTest
+ * @notice Tests for FeedGameOracle - THE GAME IS THE PREDICTION ORACLE
  * @dev Tests the IPredictionOracle implementation that external contracts query
  * 
  * Architecture:
- * - Game engine commits/reveals outcomes via BabylonGameOracle
- * - BabylonGameOracle stores outcomes on-chain
+ * - Game engine commits/reveals outcomes via FeedGameOracle
+ * - FeedGameOracle stores outcomes on-chain
  * - External contracts (Diamond, etc.) query getOutcome(sessionId)
  */
-contract BabylonGameOracleTest is Test {
-    BabylonGameOracle public oracle;
+contract FeedGameOracleTest is Test {
+    FeedGameOracle public oracle;
     
     address public gameServer = address(0x1);
     address public user1 = address(0x2);
@@ -28,7 +28,7 @@ contract BabylonGameOracleTest is Test {
     bytes32 public salt = keccak256("secret-salt");
     bool public outcome = true;
     
-    event BabylonGameCommitted(
+    event FeedGameCommitted(
         bytes32 indexed sessionId,
         string questionId,
         uint256 questionNumber,
@@ -36,7 +36,7 @@ contract BabylonGameOracleTest is Test {
         bytes32 commitment
     );
     
-    event BabylonGameRevealed(
+    event FeedGameRevealed(
         bytes32 indexed sessionId,
         string questionId,
         bool outcome,
@@ -45,7 +45,7 @@ contract BabylonGameOracleTest is Test {
     
     function setUp() public {
         // Deploy oracle - THE GAME IS THE PREDICTION ORACLE
-        oracle = new BabylonGameOracle(gameServer);
+        oracle = new FeedGameOracle(gameServer);
         
         // Generate commitment
         commitment = keccak256(abi.encode(outcome, salt));
@@ -55,9 +55,9 @@ contract BabylonGameOracleTest is Test {
         vm.prank(gameServer);
         
         vm.expectEmit(false, false, false, true);
-        emit BabylonGameCommitted(bytes32(0), questionId, 1, question, commitment);
+        emit FeedGameCommitted(bytes32(0), questionId, 1, question, commitment);
         
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,  // questionNumber
             question,
@@ -86,7 +86,7 @@ contract BabylonGameOracleTest is Test {
     function testRevealGame() public {
         // First commit
         vm.prank(gameServer);
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -101,9 +101,9 @@ contract BabylonGameOracleTest is Test {
         
         vm.prank(gameServer);
         vm.expectEmit(true, false, false, true);
-        emit BabylonGameRevealed(sessionId, questionId, outcome, 2);
+        emit FeedGameRevealed(sessionId, questionId, outcome, 2);
         
-        oracle.revealBabylonGame(
+        oracle.revealFeedGame(
             sessionId,
             outcome,
             salt,
@@ -133,7 +133,7 @@ contract BabylonGameOracleTest is Test {
     function testIPredictionOracleInterface() public {
         // Commit game
         vm.prank(gameServer);
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -150,7 +150,7 @@ contract BabylonGameOracleTest is Test {
         winners[0] = user1;
         
         vm.prank(gameServer);
-        oracle.revealBabylonGame(sessionId, outcome, salt, "", winners, 0);
+        oracle.revealFeedGame(sessionId, outcome, salt, "", winners, 0);
         
         // After reveal: getOutcome returns (true, true)
         (bool outcomeAfter, bool finalizedAfter) = oracle.getOutcome(sessionId);
@@ -169,7 +169,7 @@ contract BabylonGameOracleTest is Test {
     function testRevealWithInvalidSalt() public {
         // Commit
         vm.prank(gameServer);
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -183,7 +183,7 @@ contract BabylonGameOracleTest is Test {
         
         vm.prank(gameServer);
         vm.expectRevert("Commitment mismatch");
-        oracle.revealBabylonGame(
+        oracle.revealFeedGame(
             sessionId,
             outcome,
             wrongSalt,
@@ -196,7 +196,7 @@ contract BabylonGameOracleTest is Test {
     function testOnlyGameServerCanCommit() public {
         vm.prank(user1);  // Not game server
         vm.expectRevert("Only game server");
-        oracle.commitBabylonGame(
+        oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -208,7 +208,7 @@ contract BabylonGameOracleTest is Test {
     function testOnlyGameServerCanReveal() public {
         // Commit as game server
         vm.prank(gameServer);
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -220,7 +220,7 @@ contract BabylonGameOracleTest is Test {
         address[] memory winners = new address[](0);
         vm.prank(user1);
         vm.expectRevert("Only game server");
-        oracle.revealBabylonGame(
+        oracle.revealFeedGame(
             sessionId,
             outcome,
             salt,
@@ -249,7 +249,7 @@ contract BabylonGameOracleTest is Test {
         (uint256 committedBefore, , ) = oracle.getStatistics();
         
         vm.prank(gameServer);
-        bytes32[] memory sessionIds = oracle.batchCommitBabylonGames(
+        bytes32[] memory sessionIds = oracle.batchCommitFeedGames(
             questionIds,
             questionNumbers,
             questions,
@@ -274,7 +274,7 @@ contract BabylonGameOracleTest is Test {
         
         vm.prank(gameServer);
         vm.expectRevert();
-        oracle.commitBabylonGame(
+        oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -285,7 +285,7 @@ contract BabylonGameOracleTest is Test {
         oracle.unpause();
         
         vm.prank(gameServer);
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -299,7 +299,7 @@ contract BabylonGameOracleTest is Test {
     function testCannotCommitSameQuestionTwice() public {
         vm.startPrank(gameServer);
         
-        oracle.commitBabylonGame(
+        oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -308,7 +308,7 @@ contract BabylonGameOracleTest is Test {
         );
         
         vm.expectRevert();
-        oracle.commitBabylonGame(
+        oracle.commitFeedGame(
             questionId,
             2,  // Different question number
             "Different question?",
@@ -321,7 +321,7 @@ contract BabylonGameOracleTest is Test {
     
     function testQuestionIdMappings() public {
         vm.prank(gameServer);
-        sessionId = oracle.commitBabylonGame(
+        sessionId = oracle.commitFeedGame(
             questionId,
             1,
             question,
@@ -342,7 +342,7 @@ contract BabylonGameOracleTest is Test {
         assertTrue(bytes(metadata).length > 0, "Metadata should not be empty");
         // Should contain prediction-oracle type
         assertTrue(
-            keccak256(bytes(metadata)) == keccak256(bytes('{"type":"prediction-oracle","subtype":"babylon-game","name":"Babylon Game Oracle","category":"social-prediction","version":"1.0.0"}')),
+            keccak256(bytes(metadata)) == keccak256(bytes('{"type":"prediction-oracle","subtype":"feed-game","name":"Feed Game Oracle","category":"social-prediction","version":"1.0.0"}')),
             "Metadata should match expected format"
         );
     }

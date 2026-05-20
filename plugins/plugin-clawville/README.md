@@ -87,7 +87,7 @@ plugins/plugin-clawville/
 ├── README.md               # this file
 └── src/
     ├── index.ts            # re-exports handleAppRoutes, resolveLaunchSession, refreshRunSession
-    ├── clawville-auth.ts   # config + fetch helpers (pattern from app-babylon)
+    ├── clawville-auth.ts   # config + fetch helpers (pattern from app-feed)
     └── routes.ts           # resolveLaunchSession + handleAppRoutes + viewer HTML rewrite
 ```
 

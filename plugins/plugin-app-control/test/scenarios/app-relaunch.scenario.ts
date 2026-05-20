@@ -20,7 +20,7 @@ export default scenario({
 		{
 			kind: "message",
 			name: "user-asks-relaunch",
-			text: "relaunch babylon",
+			text: "relaunch feed",
 		},
 	],
 	finalChecks: [
@@ -31,7 +31,7 @@ export default scenario({
 		{
 			type: "selectedActionArguments",
 			actionName: "APP",
-			includesAll: [/relaunch/i, /babylon/i],
+			includesAll: [/relaunch/i, /feed/i],
 		},
 		{
 			type: "actionCalled",

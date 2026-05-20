@@ -194,10 +194,10 @@ const PLUGIN_REGISTRY: Array<{
     requiredTerms: ["TwoThousandFourScapeOperatorSurface", "useState"],
   },
   {
-    pluginDir: "plugins/plugin-babylon",
-    manifestPath: "plugins/plugin-babylon/src/index.ts",
-    xrComponentSrc: "plugins/plugin-babylon/src/ui/BabylonOperatorSurface.tsx",
-    requiredTerms: ["BabylonOperatorSurface", "useState"],
+    pluginDir: "plugins/plugin-feed",
+    manifestPath: "plugins/plugin-feed/src/index.ts",
+    xrComponentSrc: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
+    requiredTerms: ["FeedOperatorSurface", "useState"],
   },
   {
     pluginDir: "plugins/plugin-app-control",
@@ -309,8 +309,8 @@ const TUI_CAPABILITY_SOURCE_MAP: Record<
       "plugins/plugin-2004scape/src/ui/TwoThousandFourScapeOperatorSurface.tsx",
     capabilities: ["terminal-2004scape-state", "terminal-2004scape-command"],
   },
-  "plugins/plugin-babylon": {
-    srcFile: "plugins/plugin-babylon/src/ui/BabylonOperatorSurface.tsx",
+  "plugins/plugin-feed": {
+    srcFile: "plugins/plugin-feed/src/ui/FeedOperatorSurface.tsx",
     capabilities: ["get-state", "refresh-agent-status"],
   },
   "plugins/plugin-clawville": {

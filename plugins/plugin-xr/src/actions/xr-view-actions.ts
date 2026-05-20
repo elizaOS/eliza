@@ -360,7 +360,7 @@ function extractViewId(text: string): string {
     "phone",
     "contacts",
     "messages",
-    "babylon",
+    "feed",
     "2004scape",
     "clawville",
     "hyperliquid",

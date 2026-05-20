@@ -1,4 +1,4 @@
-declare module "@elizaos/plugin-babylon";
+declare module "@elizaos/plugin-feed";
 declare module "@elizaos/plugin-scape";
 declare module "@elizaos/plugin-hyperscape";
 declare module "@elizaos/plugin-2004scape";

@@ -1,4 +1,4 @@
-/** Babylon terminal API response types. */
+/** Feed terminal API response types. */
 
 export interface FeedAgentStatus {
   id: string;

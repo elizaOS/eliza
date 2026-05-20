@@ -291,7 +291,7 @@
   "avatarselector.SelectVrmFile": "请选择一个 .vrm 文件。",
   "avatarselector.UploadCustomVrm": "上传自定义 .vrm（单击或拖动）",
   "avatarselector.dropVrm": "丢弃.vrm",
-  "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "告诉代理该做什么、避免什么或解释什么。",
+  "feed.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "告诉代理该做什么、避免什么或解释什么。",
   "browserworkspace.ActionFailed": "浏览器操作失败。",
   "browserworkspace.AddressPlaceholder": "输入 URL",
   "browserworkspace.AgentActive": "代理当前位于此标签页",
