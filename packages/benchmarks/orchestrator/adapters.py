@@ -112,6 +112,11 @@ TERMINAL_BENCH_DOCKER_UNAVAILABLE_REASON = (
     "(start Docker Desktop/daemon so real Docker-backed tasks can run); "
     "harness not run"
 )
+SWE_BENCH_DOCKER_UNAVAILABLE_REASON = (
+    "SWE-Bench Docker evaluation unavailable "
+    "(start Docker Desktop/daemon so official SWE-Bench tests can run); "
+    "harness not run"
+)
 HERMES_SANDBOX_UNAVAILABLE_REASON = (
     "Hermes sandbox execution unavailable "
     "(set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon); "
@@ -139,6 +144,8 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         return ALL_HARNESSES if _has_hyperliquid_live_backend() else ()
     if benchmark_id == "terminal_bench":
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
+    if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
+        return ALL_HARNESSES if _has_swe_bench_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -147,7 +154,7 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         "hermes_yc_bench",
         "hermes_swe_env",
     }:
-        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
+        return ("hermes",) if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":
         return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
     if benchmark_id == "voicebench_quality":
@@ -259,6 +266,18 @@ def _has_terminal_bench_docker_backend() -> bool:
     except (OSError, subprocess.TimeoutExpired):
         _TERMINAL_BENCH_DOCKER_AVAILABLE = False
         return False
+
+
+_SWE_BENCH_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_swe_bench_docker_backend() -> bool:
+    """Return true when Docker can run the official SWE-Bench evaluator."""
+    global _SWE_BENCH_DOCKER_AVAILABLE
+    if _SWE_BENCH_DOCKER_AVAILABLE is not None:
+        return _SWE_BENCH_DOCKER_AVAILABLE
+    _SWE_BENCH_DOCKER_AVAILABLE = _has_terminal_bench_docker_backend()
+    return _SWE_BENCH_DOCKER_AVAILABLE
 
 
 def _has_hermes_sandbox_backend() -> bool:

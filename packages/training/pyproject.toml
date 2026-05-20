@@ -92,6 +92,9 @@ train = [
   # pytest is consumed by the pre-flight gate (scripts/preflight.sh) and
   # by the CPU-only unit tests it sweeps.
   "pytest>=8.0.0",
+  # The RL scenario-pool tests use @pytest.mark.asyncio; collected in
+  # tests/rl/ and gated by tests/rl/conftest.py compat shim.
+  "pytest-asyncio>=1.0.0",
 ]
 rl = [
   # ByteDance verl — GRPO trainer with bundled vLLM/SGLang rollout server,
@@ -164,8 +167,12 @@ serve = [
 # alone is not enough. `pythonpath = ["."]` makes the repo importable from
 # every test invocation, including the pre-flight gate (scripts/preflight.sh).
 pythonpath = ["."]
-testpaths = ["scripts", "benchmarks"]
+testpaths = ["scripts", "benchmarks", "tests"]
 addopts = "-q"
+asyncio_mode = "auto"
+markers = [
+    "asyncio: marks tests as asyncio (handled by pytest-asyncio)",
+]
 
 [tool.uv]
 package = false
