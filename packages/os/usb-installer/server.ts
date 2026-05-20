@@ -26,6 +26,7 @@ const DEFAULT_ALLOWED_ORIGINS = [
 interface UsbInstallerHandlerOptions {
   allowedOrigins?: readonly string[];
   planTtlMs?: number;
+  now?: () => number;
 }
 
 interface StoredWritePlan {
@@ -142,11 +143,12 @@ export function createUsbInstallerHandler(
   const plans = new Map<string, StoredWritePlan>();
   const allowedOrigins = configuredAllowedOrigins(options);
   const planTtlMs = configuredPlanTtlMs(options);
+  const now = options.now ?? Date.now;
 
   function deleteExpiredPlans(): void {
-    const now = Date.now();
+    const timestamp = now();
     for (const [planId, stored] of plans) {
-      if (now - stored.createdAt > planTtlMs) {
+      if (timestamp - stored.createdAt >= planTtlMs) {
         plans.delete(planId);
       }
     }
@@ -166,7 +168,7 @@ export function createUsbInstallerHandler(
     const planId = randomUUID();
     plans.set(planId, {
       plan,
-      createdAt: Date.now(),
+      createdAt: now(),
     });
     return { ...plan, planId };
   }

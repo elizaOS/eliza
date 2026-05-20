@@ -61,6 +61,22 @@ function platformNotes(platform: RemovableDrive["platform"] | undefined) {
   ];
 }
 
+function completionCopy(platform: RemovableDrive["platform"] | undefined) {
+  if (platform === "darwin") {
+    return "macOS was asked to eject the drive. If it still appears mounted, eject it before unplugging, then boot from the drive.";
+  }
+
+  if (platform === "linux") {
+    return "Linux has flushed pending writes. If your desktop still shows the drive mounted, eject it before unplugging, then boot from the drive.";
+  }
+
+  if (platform === "win32") {
+    return "Windows has finalized the disk state. Safely eject the drive before unplugging, then boot from the drive.";
+  }
+
+  return "Safely eject the drive before unplugging, then boot from the drive.";
+}
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -959,8 +975,8 @@ export function InstallerApp({ backend }: InstallerAppProps) {
             <h2>Write Complete ✅</h2>
             <p>
               <strong>elizaOS</strong> has been written to your{" "}
-              <strong>{writePlan.drive.name}</strong>. Wait for the operating
-              system to finish any eject prompt, then boot from the drive.
+              <strong>{writePlan.drive.name}</strong>.{" "}
+              {completionCopy(writePlan.drive.platform)}
             </p>
             <p className="muted">
               To boot: connect the drive to a PC and select it as the boot

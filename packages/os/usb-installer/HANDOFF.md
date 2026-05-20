@@ -9,9 +9,11 @@ Last updated: 2026-05-20
 - Branch: `nubs/messylinux-cloud-e2e-hardening`
 - Previous PR #7803: https://github.com/elizaOS/eliza/pull/7803 (merged)
 - Follow-up PR #7825: https://github.com/elizaOS/eliza/pull/7825
-- Verified local base: `origin/develop@f6f16699fc66650318a66ba9278504e166ffd0eb`
-- Latest locally validated code head: `e9adb7fd02de92a0da70fcdb1164d64395cefb5d`
-- Latest local CI-fix validation: 2026-05-20 05:24 UTC
+- Latest rebased base for PR #7825: `origin/develop@51196656219dce9e8e6a13216c7c0e994bd40651`
+- Latest fetched `origin/develop`: `51196656219dce9e8e6a13216c7c0e994bd40651`
+- Latest locally validated code head: `6ab4cf964ba2d3b24addc2e21e6c10938ab467ab`
+  (final handoff-only amend may change the commit hash without changing code)
+- Latest local USB/cloud validation: 2026-05-20 05:47 UTC
 
 ## What This Package Is
 
@@ -27,7 +29,7 @@ behind the backend contract and future signed/elevated helpers.
 - CI has wiring for lint/typecheck/test/build/package in:
   - `.github/workflows/elizaos-os-release.yml`
   - `.github/workflows/release-usb-installer.yml`
-- PR #7803 is pushed and current with `origin/develop` as of the verified head.
+- PR #7825 is prepared on the latest fetched `origin/develop` listed above.
 - GitHub checks must still be treated as source of truth for mergeability; the
   last local pass below validates the USB installer and the root build path that
   previously failed in CI.
@@ -106,6 +108,19 @@ behind the backend contract and future signed/elevated helpers.
   - OS release CI and the Linux release-packaging path now run Playwright E2E
     and run the opt-in `scsi_debug` virtual block-device proof when the runner
     kernel provides that module.
+- Follow-up USB hardening added on 2026-05-20 after the read-only audit:
+  - Linux drive enumeration now also reads `/proc/self/mountinfo` and resolves
+    `/dev/*` mount sources through sysfs block-device ancestry, so a current
+    root/live USB disk is blocked even when `lsblk` does not attach the system
+    mountpoint to the candidate disk tree;
+  - live-write plan expiry now has a deterministic clock hook for tests and
+    expires at the TTL boundary instead of only after it;
+  - backend step labels use `Finalize media` instead of overclaiming readback
+    verification on platforms that currently flush/eject/finalize only;
+  - completion copy is platform-specific, distinguishing macOS eject, Linux
+    flushed writes, and Windows finalized disk state;
+  - the Linux drive enumeration logic was split into smaller parse/transform
+    helpers after CodeFactor flagged the combined method complexity.
 - Additional cloud mock-stack E2E hardening added on 2026-05-20:
   - fixed the cloud E2E repo-root resolution so the PGlite TCP bridge script
     resolves from the repository root, not `packages/`;
@@ -181,6 +196,28 @@ behind the backend contract and future signed/elevated helpers.
   - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
     against `scsi_debug`;
   - `git diff --check` passed.
+- Follow-up local USB validation on 2026-05-20 after mountinfo/sysfs root-disk
+  hardening, honest finalize/eject copy, and the CodeFactor complexity refactor:
+  - `bun run --cwd packages/os/usb-installer typecheck` passed;
+  - `bun run --cwd packages/os/usb-installer test` passed: 9 files passed, 1
+    skipped, 81 tests passed, 1 skipped;
+  - `bun run --cwd packages/os/usb-installer lint` passed;
+  - `bun run --cwd packages/os/usb-installer build` passed;
+  - `bun run --cwd packages/os/usb-installer test:e2e` passed: 6 Playwright
+    tests;
+  - `bun run --cwd packages/os/usb-installer test:linux-virtual-usb` passed
+    against `scsi_debug`;
+  - `git diff --check` passed.
+- Follow-up local cloud validation on 2026-05-20 after rebasing onto
+  `origin/develop@5119665621`:
+  - `bun install --frozen-lockfile` passed;
+  - `bun run --cwd packages/cloud-shared typecheck` passed;
+  - `bun run --cwd packages/cloud-shared lint` passed;
+  - `bun run --cwd packages/cloud-api typecheck` passed;
+  - `bun run --cwd packages/test/cloud-e2e typecheck` passed;
+  - `bun run test:cloud` passed: 279 tests across 30 files;
+  - `bun run cloud:e2e` passed: 4 Playwright tests covering onboarding,
+    provision, deprovision, and stuck cleanup.
 - Disk cleanup on 2026-05-19:
   - removed ignored/generated stale ISO artifacts and root `dist/`;
   - removed inactive `/tmp/eliza-pr7803` temp checkout after confirming no
@@ -234,8 +271,8 @@ so the package needs hardening before we call it production-ready.
   now reject those placeholders; production needs an official signed manifest.
 - Tests still need broader UI component coverage and platform write-sequence
   coverage for macOS/Windows mocked subprocesses.
-- UI copy is still too macOS-specific in places and should adapt to the
-  selected drive platform.
+- macOS and Windows need broader mocked subprocess write-sequence tests before
+  being called production-proven on those platforms.
 - Keep visual branding white/blue and use official shared elizaOS logo assets.
   Avoid orange/black-heavy shell styling.
 
