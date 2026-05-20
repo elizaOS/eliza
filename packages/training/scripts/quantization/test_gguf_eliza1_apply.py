@@ -114,6 +114,11 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
     assert rc == 0
     plan = json.loads(capsys.readouterr().out)
     ext = plan["ext_metadata"]
+    assert ext["speculative"] == {
+        "preferred": "draft-mtp",
+        "preserveMtp": True,
+        "externalDrafterRequired": False,
+    }
     assert ext["sidecar_inputs"]["fused_turboquant"].endswith(
         "fused_turboquant.json"
     )
@@ -135,4 +140,33 @@ def test_dry_run_merges_all_quantization_recipe_sidecars(
         "turbo3",
         "turbo4",
         "turbo3_tcq",
+    }
+
+
+def test_dry_run_can_request_trunk_only_without_mtp(
+    tmp_path: Path,
+    capsys,
+) -> None:
+    checkpoint = tmp_path / "checkpoint"
+    checkpoint.mkdir()
+
+    rc = main(
+        [
+            "--checkpoint",
+            str(checkpoint),
+            "--output",
+            str(tmp_path / "model.gguf"),
+            "--outtype",
+            "q8_0",
+            "--drop-mtp",
+            "--dry-run",
+        ]
+    )
+
+    assert rc == 0
+    plan = json.loads(capsys.readouterr().out)
+    assert plan["ext_metadata"]["speculative"] == {
+        "preferred": "external-drafter",
+        "preserveMtp": False,
+        "externalDrafterRequired": True,
     }

@@ -15,7 +15,7 @@
  * - {@link createWorkerRpcDispatcher} — worker-rpc handler
  */
 
-export { type BootstrapOptions, bootstrap } from "./bootstrap.ts";
+export { type BootstrapOptions, bootstrap } from "./bootstrap";
 export {
   type AnyHandler,
   buildAnnounceDescriptor,
@@ -23,19 +23,19 @@ export {
   type HandlerEntry,
   type HandlerRegistry,
   type WorkerPluginShape,
-} from "./descriptor.ts";
+} from "./descriptor";
 export {
   createWorkerRpcDispatcher,
   type DispatchContext,
-} from "./dispatch.ts";
+} from "./dispatch";
 export {
   createDefaultChannel,
   createRequestIdAllocator,
   createSubprocessChannel,
   createWorkerChannel,
   type WorkerChannel,
-} from "./envelope.ts";
-export { fromWireError, toWireError, type WireError } from "./error.ts";
+} from "./envelope";
+export { fromWireError, toWireError, type WireError } from "./error";
 export {
   buildRuntimeProxyApi,
   RuntimeProxy,
@@ -43,4 +43,4 @@ export {
   type RuntimeProxyMethod,
   type RuntimeProxyOptions,
   SUPPORTED_RUNTIME_METHODS,
-} from "./runtime-proxy.ts";
+} from "./runtime-proxy";

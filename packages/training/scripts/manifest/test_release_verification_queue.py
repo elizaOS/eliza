@@ -347,22 +347,16 @@ def test_build_queue_expands_mtp_and_finetune_blockers() -> None:
     assert mtp.requires_hardware is True
     assert mtp.category == "mtpDrafter"
     assert mtp.command.startswith("python3 packages/training/scripts/manifest/release_process_guard.py && ")
-    assert "scripts/dflash/validate_drafter.py" in mtp.command
+    assert "gguf_eliza1_apply.py" in mtp.command
+    assert "--preserve-mtp" in mtp.command
+    assert "mtp_runtime_smoke.mjs" in mtp.command
     assert "--tier 4b" in mtp.command
-    assert "--target-gguf /bundles/eliza-1-4b.bundle/text/eliza-1-4b-256k.gguf" in mtp.command
-    assert "--drafter-gguf /bundles/eliza-1-4b.bundle/dflash/drafter-4b.gguf" in mtp.command
-    assert "--skip-acceptance-rollout" in mtp.command
-    assert "--report-out /bundles/eliza-1-4b.bundle/dflash/validation-real.json" in mtp.command
-    assert "dflash_drafter_runtime_smoke.mjs" in mtp.command
     assert "--target-model /bundles/eliza-1-4b.bundle/text/eliza-1-4b-256k.gguf" in mtp.command
-    assert "--spec-type dflash" in mtp.command
-    assert "--bench --bench-tokens 128 --bench-context 128" in mtp.command
-    assert "--report /bundles/eliza-1-4b.bundle/dflash/runtime-smoke-native.json" in mtp.command
-    assert "--bench-report /bundles/eliza-1-4b.bundle/evals/dflash-native-bench.json" in mtp.command
-    assert "dflash_tuning_report.py" in mtp.command
-    assert "bundles/4b/dflash/runtime-smoke-native.json" in mtp.evidence
-    assert "bundles/4b/evals/dflash-accept.json" in mtp.evidence
-    assert "bundles/4b/evals/dflash-tuning-report.json" in mtp.evidence
+    assert "--bench --bench-tokens 128 --bench-context 128 --bench-draft-n-max 2" in mtp.command
+    assert "--report /bundles/eliza-1-4b.bundle/mtp/runtime-smoke-native.json" in mtp.command
+    assert "--bench-report /bundles/eliza-1-4b.bundle/evals/mtp-native-bench.json" in mtp.command
+    assert "bundles/4b/mtp/runtime-smoke-native.json" in mtp.evidence
+    assert "bundles/4b/evals/mtp-native-bench.json" in mtp.evidence
     finetune = items[1]
     assert finetune.requires_hardware is True
     assert finetune.category == "fineTuneComparison"
@@ -391,9 +385,9 @@ def test_build_queue_maps_27b_256k_mtp_to_validation_tier_27b() -> None:
 
     assert [item.id for item in items] == ["27b-256k:mtp-drafter"]
     command = items[0].command
-    assert "--tier 27b" in command
-    assert "--target-gguf /bundles/eliza-1-27b-256k.bundle/text/eliza-1-27b-256k.gguf" in command
-    assert "--drafter-gguf /bundles/eliza-1-27b-256k.bundle/dflash/drafter-27b-256k.gguf" in command
+    assert "--tier 27b-256k" in command
+    assert "--target-model /bundles/eliza-1-27b-256k.bundle/text/eliza-1-27b-256k.gguf" in command
+    assert "--drafter-gguf" not in command
 
 
 def test_filter_queue_can_select_mtp_hardware_category() -> None:

@@ -186,7 +186,7 @@ export function buildAnnounceDescriptor(
     return { rpc: true, id };
   };
 
-  const descriptor: JsonObject = {
+  const descriptor: Record<string, JsonValue> = {
     name: plugin.name,
     mode: "remote",
   };
@@ -198,7 +198,7 @@ export function buildAnnounceDescriptor(
 
   if (plugin.actions?.length) {
     descriptor.actions = plugin.actions.map((action) => {
-      const entry: JsonObject = {
+      const entry: Record<string, JsonValue> = {
         name: action.name,
         handler: refOf(
           action.handler,
@@ -222,7 +222,7 @@ export function buildAnnounceDescriptor(
 
   if (plugin.providers?.length) {
     descriptor.providers = plugin.providers.map((provider) => {
-      const entry: JsonObject = {
+      const entry: Record<string, JsonValue> = {
         name: provider.name,
         get: refOf(
           provider.get,
@@ -239,7 +239,7 @@ export function buildAnnounceDescriptor(
   }
 
   if (plugin.models) {
-    const modelDescriptor: JsonObject = {};
+    const modelDescriptor: Record<string, JsonValue> = {};
     for (const [modelType, fn] of Object.entries(plugin.models)) {
       modelDescriptor[modelType] = refOf(
         fn,
@@ -251,7 +251,7 @@ export function buildAnnounceDescriptor(
   }
 
   if (plugin.events) {
-    const eventDescriptor: JsonObject = {};
+    const eventDescriptor: Record<string, JsonValue> = {};
     for (const [eventName, handlers] of Object.entries(plugin.events)) {
       eventDescriptor[eventName] = handlers.map(
         (handler, index) =>
@@ -267,7 +267,7 @@ export function buildAnnounceDescriptor(
 
   if (plugin.services?.length) {
     descriptor.services = plugin.services.map((service) => {
-      const entry: JsonObject = {
+      const entry: Record<string, JsonValue> = {
         serviceType: service.serviceType,
         rpcMethods: service.rpcMethods,
       };
@@ -294,7 +294,7 @@ export function buildAnnounceDescriptor(
 
   if (plugin.evaluators?.length) {
     descriptor.evaluators = plugin.evaluators.map((evaluator) => {
-      const entry: JsonObject = {
+      const entry: Record<string, JsonValue> = {
         name: evaluator.name,
         handler: refOf(
           evaluator.handler,
@@ -316,7 +316,7 @@ export function buildAnnounceDescriptor(
 
   if (plugin.routes?.length) {
     descriptor.routes = plugin.routes.map((route) => {
-      const entry: JsonObject = {
+      const entry: Record<string, JsonValue> = {
         path: route.path,
       };
       if (route.type) entry.type = route.type;

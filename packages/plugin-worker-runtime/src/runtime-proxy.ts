@@ -19,8 +19,8 @@ import type {
   JsonValue,
   RemotePluginWorkerMessage,
 } from "@elizaos/plugin-remote-manifest";
-import type { WorkerChannel } from "./envelope.ts";
-import { fromWireError } from "./error.ts";
+import type { WorkerChannel } from "./envelope";
+import { fromWireError } from "./error";
 
 /** Subset of host-rpc methods supported in P1. */
 export const SUPPORTED_RUNTIME_METHODS = [

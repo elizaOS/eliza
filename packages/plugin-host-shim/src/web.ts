@@ -13,7 +13,7 @@
  */
 
 import type { JsonValue } from "@elizaos/plugin-remote-manifest";
-import { installHostShim, type PluginHostShim } from "./index.ts";
+import { installHostShim, type PluginHostShim } from "./index";
 
 interface ParentRequest {
   kind: "elizaos.shim.request";

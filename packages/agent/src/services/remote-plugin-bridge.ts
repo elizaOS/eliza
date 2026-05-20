@@ -180,7 +180,7 @@ export class RemotePluginBridge {
       );
     }
 
-    const events = descriptor.events as
+    const events = descriptor.events as unknown as
       | Record<string, RemoteFunctionRef[]>
       | undefined;
     if (events) {
@@ -192,7 +192,7 @@ export class RemotePluginBridge {
       plugin.events = eventMap;
     }
 
-    const models = descriptor.models as
+    const models = descriptor.models as unknown as
       | Record<string, RemoteFunctionRef>
       | undefined;
     if (models) {
@@ -209,7 +209,7 @@ export class RemotePluginBridge {
     // Services: opt-in via `static rpcMethods`. The descriptor carries
     // one entry per service with the methods list and per-method rpc
     // ids; we synthesise a ServiceClass with dynamic methods.
-    const services = descriptor.services as
+    const services = descriptor.services as unknown as
       | Array<
           JsonObject & {
             serviceType: string;
@@ -219,13 +219,15 @@ export class RemotePluginBridge {
         >
       | undefined;
     if (services?.length) {
-      plugin.services = services.map((svc) => this.makeServiceClassStub(svc));
+      plugin.services = services.map((svc) =>
+        this.makeServiceClassStub(svc),
+      ) as Plugin["services"];
     }
 
     // Routes: the agent's existing plugin-route lifecycle will pick
     // these up. Each routeHandler is wrapped to forward
     // RouteHandlerContext via worker-rpc and return RouteHandlerResult.
-    const routes = descriptor.routes as
+    const routes = descriptor.routes as unknown as
       | Array<JsonObject & { path: string; routeHandler?: RemoteFunctionRef }>
       | undefined;
     if (routes?.length) {
@@ -237,12 +239,13 @@ export class RemotePluginBridge {
     // Views/widgets/componentTypes are pure JSON metadata; pass them
     // through unchanged so the existing view registry serves the
     // remote plugin's bundle the same way it does direct plugins'.
-    if (descriptor.views) plugin.views = descriptor.views as Plugin["views"];
+    if (descriptor.views)
+      plugin.views = descriptor.views as unknown as Plugin["views"];
     if (descriptor.widgets)
-      plugin.widgets = descriptor.widgets as Plugin["widgets"];
+      plugin.widgets = descriptor.widgets as unknown as Plugin["widgets"];
     if (descriptor.componentTypes) {
       plugin.componentTypes =
-        descriptor.componentTypes as Plugin["componentTypes"];
+        descriptor.componentTypes as unknown as Plugin["componentTypes"];
     }
 
     return plugin;
@@ -254,8 +257,11 @@ export class RemotePluginBridge {
     const name = descriptor.name;
     const similes = (descriptor.similes as string[] | undefined) ?? [];
     const description = String(descriptor.description ?? "");
-    const examples = (descriptor.examples as Action["examples"]) ?? [];
-    const validateRef = descriptor.validate as RemoteFunctionRef | undefined;
+    const examples =
+      (descriptor.examples as unknown as Action["examples"]) ?? [];
+    const validateRef = descriptor.validate as unknown as
+      | RemoteFunctionRef
+      | undefined;
 
     const handler: Action["handler"] = async (
       _runtime,
@@ -294,7 +300,7 @@ export class RemotePluginBridge {
           );
           return Boolean(result);
         }
-      : undefined;
+      : async () => true;
 
     const action: Action = {
       name,
@@ -302,8 +308,8 @@ export class RemotePluginBridge {
       description,
       examples,
       handler,
+      validate,
     };
-    if (validate) action.validate = validate;
     return action;
   }
 
@@ -580,7 +586,7 @@ export class RemotePluginBridge {
         const payload = args.payload as JsonValue;
         await this.runtime.emitEvent(
           eventName as Parameters<IAgentRuntime["emitEvent"]>[0],
-          payload as Parameters<IAgentRuntime["emitEvent"]>[1],
+          payload as unknown as Parameters<IAgentRuntime["emitEvent"]>[1],
         );
         return null;
       }

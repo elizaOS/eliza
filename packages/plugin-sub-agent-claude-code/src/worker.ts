@@ -6,6 +6,6 @@
  */
 
 import { bootstrap } from "@elizaos/plugin-worker-runtime";
-import { plugin } from "./plugin.ts";
+import { plugin } from "./plugin";
 
 await bootstrap(plugin);

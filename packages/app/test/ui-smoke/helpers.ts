@@ -71,7 +71,7 @@ const SETTINGS_SECTION_IDS_BY_LABEL = new Map<string, string>([
   ["Voice", "voice"],
   ["Capabilities", "capabilities"],
   ["Apps", "apps"],
-  ["Carrots", "carrots"],
+  ["Carrots", "remote-plugins"],
   ["Connectors", "connectors"],
   ["App Permissions", "app-permissions"],
   ["Wallet & RPC", "wallet-rpc"],
