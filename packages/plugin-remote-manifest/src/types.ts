@@ -242,7 +242,163 @@ export type RemotePluginWorkerMessage =
   | HostRequestMessage
   | HostResponseMessage
   | WorkerResponseMessage
-  | WorkerReadyMessage;
+  | WorkerReadyMessage
+  // Plugin/mode unification (P0): forward-looking message types used by the
+  // surface-parity wire envelope. P0 ships only the type spine; P1 wires the
+  // runtime dispatch for action / provider / event / model surfaces, P2
+  // adds service / route / view dispatch, P3 adds agent-generated plugins.
+  | WorkerAnnouncePluginMessage
+  | WorkerAnnounceDynamicMessage
+  | WorkerInitCompleteMessage
+  | WorkerRpcMessage
+  | WorkerRpcResultMessage
+  | HostRpcMessage
+  | HostRpcResultMessage
+  | StreamChunkMessage
+  | StreamEndMessage;
+
+/**
+ * Forward-looking wire envelope for the unified Plugin/mode design.
+ *
+ * The transport (Worker postMessage locally; HTTPS for cloud-hosted remote
+ * plugins) speaks the same JSON envelope. Switching transport is a
+ * constructor argument in `RemotePluginHost`, not a code change.
+ *
+ * See packages/agent/docs/capability-router-remote-plugins.md and the P0
+ * architecture review for the complete protocol design.
+ */
+export type PluginSurfaceKind =
+  | "action"
+  | "provider"
+  | "service"
+  | "model"
+  | "event"
+  | "route"
+  | "evaluator"
+  | "tests";
+
+/** Tag pointing to a function that lives on the worker side; surfaced in the announce payload. */
+export interface RemoteFunctionRef {
+  rpc: true;
+  /** Stable id assigned by the worker bootstrap. */
+  id: string;
+}
+
+/**
+ * Sent once by the worker after `ready`. Describes the full {@link Plugin}
+ * object the worker exports, with every function value replaced by a
+ * {@link RemoteFunctionRef}. The host uses this to synthesise local stubs
+ * (action handlers, provider getters, service-method proxies, etc.) that
+ * forward calls to the worker via {@link WorkerRpcMessage}.
+ */
+export interface WorkerAnnouncePluginMessage {
+  type: "worker-announce-plugin";
+  /** JSON descriptor of the Plugin object, with `{ rpc, id }` in lieu of fns. */
+  descriptor: JsonObject;
+}
+
+/**
+ * Sent by the worker bootstrap after the author's `Plugin.init(...)` has
+ * returned, carrying any surface registrations that `init` made
+ * dynamically (e.g. calls to runtime.registerProvider). The host applies
+ * these atomically and the {@link WorkerInitCompleteMessage} follows.
+ */
+export interface WorkerAnnounceDynamicMessage {
+  type: "worker-announce-dynamic";
+  descriptor: JsonObject;
+}
+
+/** Sent by the worker once `init()` returns; signals the plugin is live. */
+export interface WorkerInitCompleteMessage {
+  type: "init-complete";
+}
+
+/** Host → worker: invoke a registered surface on the worker. */
+export interface WorkerRpcMessage {
+  type: "worker-rpc";
+  requestId: number;
+  surface: PluginSurfaceKind;
+  /** Surface-specific target, e.g. action name, `serviceType.method`, route id. */
+  target: string;
+  args: JsonValue;
+  /** When true, reply is delivered as a stream of {@link StreamChunkMessage}. */
+  streamReply?: boolean;
+}
+
+/** Worker → host: result for a {@link WorkerRpcMessage}. */
+export interface WorkerRpcResultMessage {
+  type: "worker-rpc-result";
+  requestId: number;
+  ok: boolean;
+  /** Present on success when `streamReply !== true`. */
+  payload?: JsonValue;
+  /** Present on success when `streamReply === true`; consume via stream-chunk/-end. */
+  streamId?: string;
+  /** Present when `ok === false`. */
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+    cause?: JsonValue;
+    code?: string;
+  };
+}
+
+/**
+ * Worker → host: call a method on the host-side `RuntimeProxy`. Subsumes the
+ * existing {@link HostRequestMessage} channel for action-style operations
+ * (open-file-dialog, list-remote-plugins, etc.) while also supporting
+ * full runtime API access: `runtime.getService`, `runtime.useModel`,
+ * `runtime.getMemory`, `runtime.emitEvent`, etc.
+ */
+export interface HostRpcMessage {
+  type: "host-rpc";
+  requestId: number;
+  /** API namespace; "runtime" is the only namespace today. */
+  api: "runtime";
+  method: string;
+  args: JsonValue;
+  streamReply?: boolean;
+}
+
+/** Host → worker: result for a {@link HostRpcMessage}. */
+export interface HostRpcResultMessage {
+  type: "host-rpc-result";
+  requestId: number;
+  ok: boolean;
+  payload?: JsonValue;
+  streamId?: string;
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+    cause?: JsonValue;
+    code?: string;
+  };
+}
+
+/** Either direction: next chunk for an open stream. */
+export interface StreamChunkMessage {
+  type: "stream-chunk";
+  streamId: string;
+  chunk: JsonValue;
+}
+
+/** Either direction: terminal message for a stream. */
+export interface StreamEndMessage {
+  type: "stream-end";
+  streamId: string;
+  /** Optional terminal value (single-shot result). */
+  value?: JsonValue;
+  /** Optional error; mutually exclusive with `value`. */
+  error?: {
+    name: string;
+    message: string;
+    stack?: string;
+    cause?: JsonValue;
+    code?: string;
+  };
+}
 
 export interface RemotePluginViewRPC {
   bun: {
