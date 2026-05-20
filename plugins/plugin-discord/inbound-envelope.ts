@@ -22,6 +22,8 @@ export interface DiscordReplyContext {
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const ENVELOPE_REPLY_MAX_CHARS = 200;
 const STORED_REPLY_MAX_CHARS = 1500;
+const REPLY_REFERENCE_START = "[platform_reply_reference]";
+const REPLY_REFERENCE_END = "[/platform_reply_reference]";
 
 function formatTimestamp(timestamp: number | Date): string {
 	const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
@@ -107,6 +109,25 @@ function truncateText(text: string, maxChars: number): string {
 	return `${trimmed.slice(0, maxChars)}...`;
 }
 
+function sanitizeReplyReferenceText(text: string): string {
+	return text
+		.replaceAll(REPLY_REFERENCE_START, "[platform_reply_reference escaped]")
+		.replaceAll(REPLY_REFERENCE_END, "[/platform_reply_reference escaped]");
+}
+
+function formatReplyReferenceBlock(replyContext: DiscordReplyContext): string {
+	const lines = [
+		REPLY_REFERENCE_START,
+		`author: ${sanitizeReplyReferenceText(replyContext.authorName)}`,
+		...(replyContext.authorId ? [`author_id: ${replyContext.authorId}`] : []),
+		`message_id: ${replyContext.messageId}`,
+		"text:",
+		sanitizeReplyReferenceText(replyContext.content),
+		REPLY_REFERENCE_END,
+	];
+	return lines.join("\n");
+}
+
 export async function getDiscordReplyContext(
 	message: DiscordMessage,
 ): Promise<DiscordReplyContext | null> {
@@ -164,9 +185,10 @@ export async function formatInboundEnvelope(
 		// Use typographic curly quotes as outer delimiters so embedded straight
 		// `"` characters in the quoted content don't visually break the wrapper
 		// or confuse an LLM classifier reading the result.
-		replyContextText = truncated
-			? `\n(in reply to @${refContext.authorName}: “${truncated}”)`
-			: `\n(in reply to @${refContext.authorName})`;
+		const humanReplyContext = truncated
+			? `(in reply to @${refContext.authorName}: “${truncated}”)`
+			: `(in reply to @${refContext.authorName})`;
+		replyContextText = `\n${formatReplyReferenceBlock(refContext)}\n${humanReplyContext}`;
 	}
 
 	const header = `[Discord ${channelLabel}] @${senderName} (${timestamp})`;

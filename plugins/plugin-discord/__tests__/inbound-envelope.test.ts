@@ -54,7 +54,14 @@ describe("inbound Discord envelope", () => {
 		);
 
 		expect(envelope.formattedContent).toContain(
-			"@assistant can you try this?\n(in reply to @Teammate:",
+			"@assistant can you try this?\n[platform_reply_reference]",
+		);
+		expect(envelope.formattedContent).toContain("author: Teammate");
+		expect(envelope.formattedContent).toContain(
+			"message_id: 1234567890123456789",
+		);
+		expect(envelope.formattedContent).toContain(
+			"[/platform_reply_reference]\n(in reply to @Teammate:",
 		);
 		expect(envelope.formattedContent).toContain(
 			"please note this as something the agent should learn from",

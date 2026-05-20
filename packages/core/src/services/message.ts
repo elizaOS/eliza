@@ -1693,15 +1693,82 @@ function readMessageContentString(
 	return trimmed.length > 0 ? trimmed : undefined;
 }
 
-function replyReferenceEventForContext(message: Memory): ContextEvent | null {
-	const text = readMessageContentString(message, "replyToMessageText");
+type PlatformReplyReference = {
+	text: string;
+	sender?: string;
+	externalId?: string;
+};
+
+const PLATFORM_REPLY_REFERENCE_START = "[platform_reply_reference]";
+const PLATFORM_REPLY_REFERENCE_END = "[/platform_reply_reference]";
+
+function valueAfterPrefix(line: string, prefix: string): string | undefined {
+	if (!line.startsWith(prefix)) return undefined;
+	const value = line.slice(prefix.length).trim();
+	return value.length > 0 ? value : undefined;
+}
+
+function parsePlatformReplyReferenceBlock(
+	text: string | undefined,
+): PlatformReplyReference | null {
 	if (!text) return null;
-	const sender = readMessageContentString(message, "replyToSenderName");
-	const externalId = readMessageContentString(
-		message,
-		"replyToExternalMessageId",
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
+	const start = lines.findLastIndex(
+		(line) => line.trim() === PLATFORM_REPLY_REFERENCE_START,
 	);
-	const header = sender ? `${sender}: ${text}` : text;
+	if (start === -1) return null;
+	const end = lines.findIndex(
+		(line, index) =>
+			index > start && line.trim() === PLATFORM_REPLY_REFERENCE_END,
+	);
+	if (end === -1) return null;
+
+	const body = lines.slice(start + 1, end);
+	const textIndex = body.findIndex((line) => line.trim() === "text:");
+	if (textIndex === -1) return null;
+
+	let sender: string | undefined;
+	let externalId: string | undefined;
+	for (const line of body.slice(0, textIndex)) {
+		const trimmed = line.trim();
+		sender ??= valueAfterPrefix(trimmed, "author:");
+		externalId ??= valueAfterPrefix(trimmed, "message_id:");
+	}
+
+	const referenceText = body
+		.slice(textIndex + 1)
+		.join("\n")
+		.trim();
+	return referenceText ? { text: referenceText, sender, externalId } : null;
+}
+
+function replyReferenceForContext(
+	message: Memory,
+): PlatformReplyReference | null {
+	const explicitText = readMessageContentString(message, "replyToMessageText");
+	if (explicitText) {
+		return {
+			text: explicitText,
+			sender: readMessageContentString(message, "replyToSenderName"),
+			externalId: readMessageContentString(message, "replyToExternalMessageId"),
+		};
+	}
+
+	const content = message.content;
+	return parsePlatformReplyReferenceBlock(
+		content && typeof content === "object" && typeof content.text === "string"
+			? content.text
+			: undefined,
+	);
+}
+
+function replyReferenceEventForContext(message: Memory): ContextEvent | null {
+	const reference = replyReferenceForContext(message);
+	if (!reference) return null;
+	const header = reference.sender
+		? `${reference.sender}: ${reference.text}`
+		: reference.text;
+	const externalId = reference.externalId;
 	const id = `reply-reference:${message.id ?? externalId ?? "current"}`;
 	return {
 		id,
