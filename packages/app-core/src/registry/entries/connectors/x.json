@@ -213,5 +213,25 @@
       "TWITTER_BROKER_URL",
       "TWITTER_BROKER_TOKEN"
     ]
+  },
+  "accounts": {
+    "owner": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [
+        "TWITTER_BROKER_URL",
+        "TWITTER_BROKER_TOKEN"
+      ],
+      "notes": "The user's own X account, connected via Eliza Cloud OAuth so the agent can post / reply / DM on the user's behalf."
+    },
+    "agent": {
+      "supported": true,
+      "authKind": "oauth-cloud",
+      "credentialKeys": [
+        "TWITTER_BROKER_URL",
+        "TWITTER_BROKER_TOKEN"
+      ],
+      "notes": "A separate X account that represents the agent's own identity. Same OAuth flow, different X account at the OAuth screen."
+    }
   }
 }
