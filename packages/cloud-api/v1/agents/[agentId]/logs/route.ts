@@ -37,7 +37,7 @@ app.get("/", async (c) => {
       identity.organizationId,
     );
     if (!agent) {
-      return c.json({ error: "Agent not found" }, 404);
+      return c.json({ success: false, error: "Agent not found" }, 404);
     }
 
     const rawTail = parseInt(c.req.query("tail") ?? "100", 10);
