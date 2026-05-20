@@ -1015,6 +1015,9 @@ function assertFails(
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
   const check = checks.find((candidate) => candidate.name === expectedCheckName);
   if (!check) throw new Error(`unknown check "${expectedCheckName}"`);
+  if (process.env.DEBUG_CAPABILITY_ROUTER_AUDIT_SELF_TEST === "true") {
+    console.error(`audit self-test check: ${expectedCheckName}`);
+  }
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
     coreCapabilitiesSource: candidateCoreCapabilitiesSource,
