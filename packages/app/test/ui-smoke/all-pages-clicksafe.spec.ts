@@ -171,7 +171,24 @@ const SAFE_APP_TILES: readonly {
   readyChecks: readonly ReadyCheck[];
 }[] = [];
 
-const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [];
+const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
+  /^Basics$/,
+  /^Providers$/,
+  /^Runtime$/,
+  /^Appearance$/,
+  /^Voice$/,
+  /^Capabilities$/,
+  /^Apps$/,
+  /^Carrots$/,
+  /^Connectors$/,
+  /^App Permissions$/,
+  /^Wallet & RPC$/,
+  /^Permissions$/,
+  /^Vault$/,
+  /^Security$/,
+  /^Updates$/,
+  /^Backup & Reset$/,
+];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=";
