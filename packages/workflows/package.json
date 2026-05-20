@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/workflows",
-  "version": "2.0.1",
+  "version": "2.0.1-beta.0",
   "description": "Workflow type contracts consumed by elizaOS workflow plugins.",
   "type": "module",
   "main": "dist/index.js",

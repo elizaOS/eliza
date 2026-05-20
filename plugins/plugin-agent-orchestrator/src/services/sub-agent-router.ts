@@ -119,6 +119,44 @@ function extractVerifiableUrls(
   return aliasFiltered.slice(0, limit);
 }
 
+function shouldVerifyCompletionUrls(
+  text: string,
+  referenceText?: string,
+  routeVerification?: RouteUrlVerification,
+): boolean {
+  const completionUrls = collectVerifiableUrlCandidates(text);
+  const referenceUrls = referenceText
+    ? collectVerifiableUrlCandidates(referenceText)
+    : [];
+  if (completionUrls.length === 0 && referenceUrls.length === 0) {
+    return false;
+  }
+
+  if (referenceText && taskRequestsReachableArtifact(referenceText)) {
+    return true;
+  }
+  return completionUrls.some((url) =>
+    isRoutedArtifactUrl(url, routeVerification),
+  );
+}
+
+function taskRequestsReachableArtifact(text: string): boolean {
+  return /\b(?:app|site|website|webpage|page|build|built|create|created|deploy|deployed|deployment|host|hosted|hosting|preview|publish|published|serve|served|serving|static|reachable|live|verify|verified)\b/i.test(
+    text,
+  );
+}
+
+function isRoutedArtifactUrl(
+  url: string,
+  routeVerification?: RouteUrlVerification,
+): boolean {
+  if (appRoutePathPrefix(url)) return true;
+  if (!routeVerification) return false;
+  return routeVerification.mappings.some((mapping) =>
+    url.startsWith(mapping.urlPrefix),
+  );
+}
+
 function filterModelIntroducedUrlAliases(
   urls: string[],
   referenceUrls: Set<string>,
@@ -1242,6 +1280,9 @@ async function annotateUnverifiedUrls(
   runtime?: IAgentRuntime,
   routeVerification?: RouteUrlVerification,
 ): Promise<{ text: string; dead: DeadUrl[]; verifiedUrls: string[] }> {
+  if (!shouldVerifyCompletionUrls(text, referenceText, routeVerification)) {
+    return { text, dead: [], verifiedUrls: [] };
+  }
   const urls = expandRouteUrlAliases(
     extractVerifiableUrls(text, 5, referenceText, ignoredUrls),
     routeVerification,

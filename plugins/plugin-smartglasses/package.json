@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-smartglasses",
-  "version": "2.0.0-beta.2",
+  "version": "2.0.1-beta.0",
   "type": "module",
   "description": "Even Realities G1/G2 smartglasses plugin for ElizaOS: display text, receive microphone audio, and route side-tap microphone controls.",
   "main": "./dist/index.js",
@@ -83,7 +83,12 @@
         "description": "Preferred smartglasses transport. auto selects an injected transport, Even bridge, Web Bluetooth, then Noble BLE.",
         "required": false,
         "default": "auto",
-        "enum": ["auto", "even-bridge", "web-bluetooth", "noble"],
+        "enum": [
+          "auto",
+          "even-bridge",
+          "web-bluetooth",
+          "noble"
+        ],
         "sensitive": false
       },
       "SMARTGLASSES_SCAN_TIMEOUT_MS": {
@@ -105,7 +110,11 @@
         "description": "G1 connection-ready init packet mode. lens-specific sends 0x4D to left and 0xF4 to right; official sends 0x4D to both lenses as in EvenDemoApp iOS; android-f4 sends 0xF4 to both lenses as in EvenDemoApp Android.",
         "required": false,
         "default": "lens-specific",
-        "enum": ["lens-specific", "official", "android-f4"],
+        "enum": [
+          "lens-specific",
+          "official",
+          "android-f4"
+        ],
         "sensitive": false
       }
     }
@@ -114,5 +123,8 @@
     "access": "public"
   },
   "types": "./dist/index.d.ts",
-  "files": ["dist", "docs"]
+  "files": [
+    "dist",
+    "docs"
+  ]
 }
