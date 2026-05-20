@@ -183,6 +183,7 @@ describe("subAgentCompletionResponseEvaluator", () => {
       messageHandler: {
         plan: {
           contexts: ["simple"],
+          candidateActions: ["ATTACHMENT"],
           reply:
             "Could you share the command output so I can see the disk usage?",
           requiresTool: false,

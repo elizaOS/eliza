@@ -64,6 +64,7 @@ function hasOnlyStaleCompletionHints(values: readonly string[] | undefined) {
     hints.every(
       (hint) =>
         hint === "TASKS" ||
+        hint === "ATTACHMENT" ||
         hint === "SPAWN_AGENT" ||
         hint === "TASKS_SPAWN_AGENT",
     )
