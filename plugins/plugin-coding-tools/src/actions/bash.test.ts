@@ -8,6 +8,7 @@ import {
   type ElizaCapabilityRouter,
   type IAgentRuntime,
   type Memory,
+  UnavailableCapabilityRouter,
   type UUID,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -92,6 +93,7 @@ function unavailableCapability(
 function makeShellRouter(
   runCommand: ElizaCapabilityRouter["pty"]["runCommand"],
 ): ElizaCapabilityRouter {
+  const unavailable = new UnavailableCapabilityRouter("desktop");
   return {
     environment: "desktop",
     availability: async () => ({
@@ -119,6 +121,7 @@ function makeShellRouter(
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
+    plugin: unavailable.plugin,
   };
 }
 

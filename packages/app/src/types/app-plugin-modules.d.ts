@@ -168,7 +168,7 @@ declare module "@elizaos/plugin-vincent" {
   export * from "@elizaos/app-vincent";
 }
 
-declare module "@elizaos/app-babylon" {
+declare module "@elizaos/app-feed" {
   export {};
 }
 

@@ -805,7 +805,7 @@ export function AppsView() {
     ],
   );
 
-  // Auto-launch from URL slug on first load (e.g. /apps/babylon after refresh)
+  // Auto-launch from URL slug on first load (e.g. /apps/feed after refresh)
   useEffect(() => {
     if (slugAutoLaunchDone.current || apps.length === 0) return;
 

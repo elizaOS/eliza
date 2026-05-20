@@ -93,7 +93,7 @@
     "@elizaos/capacitor-wifi": "workspace:*",
     "@elizaos/plugin-2004scape": "workspace:*",
     "@elizaos/plugin-agent-orchestrator": "workspace:*",
-    "@elizaos/plugin-babylon": "workspace:*",
+    "@elizaos/plugin-feed": "workspace:*",
     "@elizaos/plugin-background-runner": "workspace:*",
     "@elizaos/plugin-clawville": "workspace:*",
     "@elizaos/plugin-companion": "workspace:*",

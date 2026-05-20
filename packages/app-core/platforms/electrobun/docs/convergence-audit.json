@@ -519,10 +519,10 @@
       "notes": "Needs owner review before any migration, deletion, or dynamic-view work."
     },
     {
-      "id": "plugin-babylon",
-      "path": "plugins/plugin-babylon",
+      "id": "plugin-feed",
+      "path": "plugins/plugin-feed",
       "category": "app-plugin",
-      "currentPurpose": "Eliza app integration for Babylon prediction market game.",
+      "currentPurpose": "Eliza app integration for Feed prediction market game.",
       "keepAs": "app-plugin",
       "shouldBecomeSatellite": false,
       "shouldRegisterDynamicViews": false,

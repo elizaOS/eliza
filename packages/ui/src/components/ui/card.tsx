@@ -3,24 +3,20 @@ import * as React from "react";
 
 import { cn } from "../../lib/utils";
 
-const cardVariants = cva(
-  "rounded-sm bg-card/70 text-card-fg",
-  {
-    variants: {
-      variant: {
-        default: "",
-        interactive:
-          "transition-colors hover:bg-card cursor-pointer",
-        status: "",
-        setting: "p-0",
-        flat: "",
-      },
-    },
-    defaultVariants: {
-      variant: "default",
+const cardVariants = cva("rounded-sm bg-card/70 text-card-fg", {
+  variants: {
+    variant: {
+      default: "",
+      interactive: "transition-colors hover:bg-card cursor-pointer",
+      status: "",
+      setting: "p-0",
+      flat: "",
     },
   },
-);
+  defaultVariants: {
+    variant: "default",
+  },
+});
 
 export interface CardProps
   extends React.HTMLAttributes<HTMLDivElement>,

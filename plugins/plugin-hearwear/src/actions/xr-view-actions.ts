@@ -40,7 +40,7 @@ export const ALL_XR_VIEW_IDS = [
   "phone",
   "contacts",
   "messages",
-  "babylon",
+  "feed",
   "2004scape",
   "defense-of-the-agents",
   "clawville",

@@ -65,7 +65,6 @@ async function startNativeAgentIfAvailable(): Promise<void> {
   }
 }
 
-import { buildOnboardingRuntimeConfig } from "../onboarding/onboarding-config";
 import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
@@ -86,6 +85,7 @@ import {
   shouldUseCloudOnboardingFastTrack,
 } from "../onboarding/flow";
 import { persistMobileRuntimeModeForServerTarget } from "../onboarding/mobile-runtime-mode";
+import { buildOnboardingRuntimeConfig } from "../onboarding/onboarding-config";
 import { isElizaCloudOnboardingTarget } from "../onboarding/server-target";
 import { PREMADE_VOICES } from "../voice/types";
 import {

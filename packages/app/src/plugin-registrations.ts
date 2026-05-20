@@ -6,8 +6,8 @@ type SideEffectAppModuleLoader = {
 export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[] =
   [
     {
-      key: "@elizaos/plugin-babylon",
-      load: () => import("@elizaos/plugin-babylon"),
+      key: "@elizaos/plugin-feed",
+      load: () => import("@elizaos/plugin-feed"),
     },
     {
       key: "@elizaos/plugin-scape",

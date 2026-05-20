@@ -303,7 +303,7 @@
   "avatarselector.SelectVrmFile": ".vrmファイルを選択してください。",
   "avatarselector.UploadCustomVrm": "カスタム.vrmをアップロード（クリックまたはドラッグ）",
   "avatarselector.dropVrm": ".vrmをドロップ",
-  "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "エージェントに何をすべきか、何を避けるべきか、何を説明するかを伝えてください。",
+  "feed.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "エージェントに何をすべきか、何を避けるべきか、何を説明するかを伝えてください。",
   "browserworkspace.ActionFailed": "ブラウザ操作を実行できませんでした。",
   "browserworkspace.AddressPlaceholder": "URLを入力",
   "browserworkspace.AgentActive": "エージェントはこのタブにいます",

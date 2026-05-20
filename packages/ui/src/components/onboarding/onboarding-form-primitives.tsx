@@ -18,8 +18,7 @@ export const onboardingHelperTextClassName = `text-xs leading-relaxed ${onboardi
 const onboardingFieldLabelClassName = `text-xs font-semibold uppercase tracking-[0.14em] ${onboardingReadableTextMutedClassName}`;
 export const onboardingTextSupportClassName =
   "rounded-sm bg-[var(--onboarding-text-support-bg)] px-3 py-2 my-2";
-const onboardingInputSurfaceClassName =
-  "bg-[var(--onboarding-input-bg)]";
+const onboardingInputSurfaceClassName = "bg-[var(--onboarding-input-bg)]";
 export const onboardingInputClassName = `h-12 w-full rounded-sm px-4 text-left ${onboardingReadableTextPrimaryClassName} transition-[border-color,background-color] duration-200 placeholder:text-[var(--onboarding-text-subtle)] focus-visible:border-[var(--onboarding-field-focus-border)] focus-visible:ring-0 focus-visible:ring-offset-0 ${onboardingInputSurfaceClassName}`;
 
 interface OnboardingFieldProps {

@@ -328,7 +328,7 @@ Do not blindly push every local phase into the platform convergence PR unless ma
 | plugin-aosp-local-inference | model-plugin | model-pipeline-participant | connect-to-local-model | no | no | no | medium | Keep as model/local-inference integration. Use eliza.local-model and voice validation as control and observability wrappers. |
 | plugin-app-control | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-app-manager | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
-| plugin-babylon | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
+| plugin-feed | app-plugin | app-plugin | add-trace-hooks | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-background-runner | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-benchmarks | dev-tooling | plugin | leave-alone | no | no | no | medium | Needs owner review before any migration, deletion, or dynamic-view work. |
 | plugin-bluebubbles | connector-plugin | connector | add-trace-hooks | no | yes | no | medium | Keep as a connector plugin. Add trace hooks for ingress, action execution, reply, rate limit, and failure events where useful. |

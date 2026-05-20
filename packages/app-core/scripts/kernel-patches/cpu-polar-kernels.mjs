@@ -57,16 +57,22 @@ import { fileURLToPath } from "node:url";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// packages/app-core/scripts/kernel-patches -> packages/native/plugins/polarquant-cpu
-const POLAR_CPU_SRC_DIR = path.resolve(
-  __dirname,
-  "..",
-  "..",
-  "..",
-  "native",
-  "plugins",
-  "polarquant-cpu",
-);
+function firstExistingPath(candidates) {
+  return candidates.find((candidate) => fs.existsSync(candidate)) ?? candidates[0];
+}
+
+const POLAR_CPU_SRC_DIR = firstExistingPath([
+  path.resolve(
+    __dirname,
+    "..",
+    "..",
+    "..",
+    "native",
+    "plugins",
+    "polarquant-cpu",
+  ),
+  path.resolve(__dirname, "..", "..", "..", "native-plugins", "polarquant-cpu"),
+]);
 
 const SENTINEL = "ELIZA-CPU-POLAR-PREHT-V1";
 

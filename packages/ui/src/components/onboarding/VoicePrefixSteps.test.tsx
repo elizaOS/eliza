@@ -87,7 +87,9 @@ describe("VoicePrefixSteps", () => {
     fireEvent.click(screen.getByTestId("voice-prefix-welcome-request-mic"));
 
     await waitFor(() => {
-      expect(screen.getByTestId("voice-prefix-welcome-mic-granted")).toBeTruthy();
+      expect(
+        screen.getByTestId("voice-prefix-welcome-mic-granted"),
+      ).toBeTruthy();
     });
     expect(onAgentSpeak).not.toHaveBeenCalled();
   });
@@ -133,8 +135,9 @@ describe("VoicePrefixSteps", () => {
     });
     expect(onAgentSpeak.mock.calls[0]?.[0]).toContain("Eliza");
     await waitFor(() => {
-      expect(screen.getByTestId("voice-prefix-agent-speaks-play").textContent)
-        .toContain("Replay greeting");
+      expect(
+        screen.getByTestId("voice-prefix-agent-speaks-play").textContent,
+      ).toContain("Replay greeting");
     });
   });
 
@@ -152,8 +155,9 @@ describe("VoicePrefixSteps", () => {
     );
     fireEvent.click(screen.getByTestId("voice-prefix-agent-speaks-play"));
     await waitFor(() => {
-      expect(screen.getByTestId("voice-prefix-agent-error").textContent)
-        .toContain("Native voice playback failed.");
+      expect(
+        screen.getByTestId("voice-prefix-agent-error").textContent,
+      ).toContain("Native voice playback failed.");
     });
   });
 

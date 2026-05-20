@@ -23,7 +23,7 @@ function parsePatchPath(path: string): string[] | null {
     .map(decodePathSegment);
 }
 
-function patchError(message: string, path: string): ElizaGenUiPatchResult {
+function _patchError(message: string, path: string): ElizaGenUiPatchResult {
   return {
     ok: false,
     errors: [{ code: "invalid_spec", message, path }],

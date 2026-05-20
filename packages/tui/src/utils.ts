@@ -30,6 +30,7 @@ const zeroWidthRegex =
   /^(?:\p{Default_Ignorable_Code_Point}|\p{Control}|\p{Mark}|\p{Surrogate})+$/u;
 const leadingNonPrintingRegex =
   /^[\p{Default_Ignorable_Code_Point}\p{Control}\p{Format}\p{Mark}\p{Surrogate}]+/u;
+const rgiEmojiRegex = new RegExp("^\\p{RGI_Emoji}$", "v");
 
 // Cache for non-ASCII strings
 const WIDTH_CACHE_SIZE = 512;

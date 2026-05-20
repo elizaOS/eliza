@@ -24,13 +24,13 @@ import { ChevronLeft } from "lucide-react";
 import * as React from "react";
 import { client, ElizaClient } from "../../api";
 import type {
-  CloudCompatAgent,
-  CloudCompatJob,
-} from "../../api/client-types-cloud";
-import type {
   DownloadJob,
   ModelHubSnapshot,
 } from "../../api/client-local-inference";
+import type {
+  CloudCompatAgent,
+  CloudCompatJob,
+} from "../../api/client-types-cloud";
 import {
   discoverGatewayEndpoints,
   type GatewayDiscoveryEndpoint,
@@ -376,7 +376,10 @@ function isActiveDownload(job: DownloadJob): boolean {
 
 function downloadPercent(job: DownloadJob): number | null {
   if (job.total <= 0) return null;
-  return Math.max(0, Math.min(100, Math.round((job.received / job.total) * 100)));
+  return Math.max(
+    0,
+    Math.min(100, Math.round((job.received / job.total) * 100)),
+  );
 }
 
 function formatEta(etaMs: number | null): string | null {
@@ -418,7 +421,8 @@ function describeLocalSetupStatus(
     return {
       state: "loading",
       label: "Warming local model",
-      detail: "The bundle is installed. First voice output starts after warmup.",
+      detail:
+        "The bundle is installed. First voice output starts after warmup.",
       percent: null,
     };
   }
@@ -482,7 +486,8 @@ function useLocalSetupStatus(args: {
       setStatus({
         state: "unavailable",
         label: "On-device runtime not ready",
-        detail: "Cloud is available now. Local can retry after the agent starts.",
+        detail:
+          "Cloud is available now. Local can retry after the agent starts.",
         percent: null,
       });
       return;
@@ -1980,7 +1985,7 @@ export function RuntimeGate() {
                 value={localApiKey}
                 onChange={(e) => setLocalApiKey(e.target.value)}
                 disabled={localSaving}
-                  className="!h-11 !rounded-sm !border-transparent !bg-white/92 !px-3 !text-sm !text-black"
+                className="!h-11 !rounded-sm !border-transparent !bg-white/92 !px-3 !text-sm !text-black"
               />
 
               {localError ? (
@@ -2281,7 +2286,8 @@ function SubviewHeader({ title, subtitle }: SubviewHeaderProps) {
       <h1
         style={{
           fontFamily: MONO_FONT,
-          textShadow: "0 1px 0 rgba(255,255,255,0.62), 0 12px 28px rgba(35,46,64,0.16)",
+          textShadow:
+            "0 1px 0 rgba(255,255,255,0.62), 0 12px 28px rgba(35,46,64,0.16)",
         }}
         className="text-2xl font-light uppercase tracking-tight text-[var(--onboarding-text-strong)] sm:text-3xl"
       >

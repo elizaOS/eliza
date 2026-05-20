@@ -1,17 +1,17 @@
 import type { IAgentRuntime } from "@elizaos/core";
 
 const FETCH_TIMEOUT_MS = 8_000;
-const DEFAULT_API_BASE_PROD = "https://staging.babylon.market";
+const DEFAULT_API_BASE_PROD = "https://staging.feed.market";
 const DEFAULT_API_BASE_DEV = "http://localhost:3000";
-const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
-const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
+const FEED_AGENT_SESSION_TOKEN_KEY = "FEED_AGENT_SESSION_TOKEN";
+const FEED_AGENT_SESSION_EXPIRES_AT_KEY = "FEED_AGENT_SESSION_EXPIRES_AT";
 
-interface BabylonAuthToken {
+interface FeedAuthToken {
   token: string;
   expiresAt: number;
 }
 
-let cachedToken: BabylonAuthToken | null = null;
+let cachedToken: FeedAuthToken | null = null;
 
 interface RuntimeLike {
   agentId?: string;
@@ -43,45 +43,43 @@ export function resolveSettingLike(
   return undefined;
 }
 
-export interface BabylonConfig {
+export interface FeedConfig {
   apiBaseUrl: string;
   agentId: string | undefined;
   agentSecret: string | undefined;
   runtime: IAgentRuntime | null;
 }
 
-export function resolveBabylonConfig(
-  runtime: IAgentRuntime | null,
-): BabylonConfig {
+export function resolveFeedConfig(runtime: IAgentRuntime | null): FeedConfig {
   return {
     apiBaseUrl: (
-      resolveSettingLike(runtime, "BABYLON_API_URL") ??
-      resolveSettingLike(runtime, "BABYLON_APP_URL") ??
-      resolveSettingLike(runtime, "BABYLON_CLIENT_URL") ??
+      resolveSettingLike(runtime, "FEED_API_URL") ??
+      resolveSettingLike(runtime, "FEED_APP_URL") ??
+      resolveSettingLike(runtime, "FEED_CLIENT_URL") ??
       (process.env.NODE_ENV === "production"
         ? DEFAULT_API_BASE_PROD
         : DEFAULT_API_BASE_DEV)
     ).replace(/\/+$/, ""),
-    agentId: resolveSettingLike(runtime, "BABYLON_AGENT_ID"),
-    agentSecret: resolveSettingLike(runtime, "BABYLON_AGENT_SECRET"),
+    agentId: resolveSettingLike(runtime, "FEED_AGENT_ID"),
+    agentSecret: resolveSettingLike(runtime, "FEED_AGENT_SECRET"),
     runtime,
   };
 }
 
-export function resolveBabylonClientUrl(
+export function resolveFeedClientUrl(
   runtime: IAgentRuntime | RuntimeLike | null | undefined,
 ): string {
   return (
-    resolveSettingLike(runtime, "BABYLON_CLIENT_URL") ??
-    resolveSettingLike(runtime, "BABYLON_APP_URL") ??
-    resolveSettingLike(runtime, "BABYLON_API_URL") ??
+    resolveSettingLike(runtime, "FEED_CLIENT_URL") ??
+    resolveSettingLike(runtime, "FEED_APP_URL") ??
+    resolveSettingLike(runtime, "FEED_API_URL") ??
     (process.env.NODE_ENV === "production"
       ? DEFAULT_API_BASE_PROD
       : DEFAULT_API_BASE_DEV)
   ).replace(/\/+$/, "");
 }
 
-export function persistBabylonCredential(
+export function persistFeedCredential(
   runtime: IAgentRuntime | RuntimeLike | null,
   key: string,
   value: string,
@@ -106,10 +104,10 @@ export function persistBabylonCredential(
   character.secrets[key] = value;
 }
 
-async function authenticate(config: BabylonConfig): Promise<string> {
+async function authenticate(config: FeedConfig): Promise<string> {
   if (!config.agentId || !config.agentSecret) {
     throw new Error(
-      "Babylon agent credentials not configured. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET.",
+      "Feed agent credentials not configured. Set FEED_AGENT_ID and FEED_AGENT_SECRET.",
     );
   }
 
@@ -127,7 +125,7 @@ async function authenticate(config: BabylonConfig): Promise<string> {
   if (!response.ok) {
     const text = await response.text().catch(() => "");
     throw new Error(
-      `Babylon auth failed (${response.status}): ${text || response.statusText}`,
+      `Feed auth failed (${response.status}): ${text || response.statusText}`,
     );
   }
 
@@ -138,7 +136,7 @@ async function authenticate(config: BabylonConfig): Promise<string> {
   };
   const token = data.token ?? data.sessionToken;
   if (!token) {
-    throw new Error("Babylon auth response did not include a session token.");
+    throw new Error("Feed auth response did not include a session token.");
   }
 
   const expiresIn = data.expiresIn ?? 14 * 60;
@@ -146,15 +144,15 @@ async function authenticate(config: BabylonConfig): Promise<string> {
     token,
     expiresAt: Date.now() + expiresIn * 1000,
   };
-  persistBabylonCredential(
+  persistFeedCredential(
     config.runtime,
-    BABYLON_AGENT_SESSION_TOKEN_KEY,
+    FEED_AGENT_SESSION_TOKEN_KEY,
     token,
     true,
   );
-  persistBabylonCredential(
+  persistFeedCredential(
     config.runtime,
-    BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
+    FEED_AGENT_SESSION_EXPIRES_AT_KEY,
     String(cachedToken.expiresAt),
     true,
   );
@@ -162,7 +160,7 @@ async function authenticate(config: BabylonConfig): Promise<string> {
   return token;
 }
 
-async function getSessionToken(config: BabylonConfig): Promise<string | null> {
+async function getSessionToken(config: FeedConfig): Promise<string | null> {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
     return cachedToken.token;
   }
@@ -178,8 +176,8 @@ function clearCachedToken(): void {
   cachedToken = null;
 }
 
-export async function proxyBabylonRequest(
-  config: BabylonConfig,
+export async function proxyFeedRequest(
+  config: FeedConfig,
   method: string,
   apiPath: string,
   body?: unknown,
@@ -192,12 +190,12 @@ export async function proxyBabylonRequest(
 
   if (token) {
     headers.Authorization = `Bearer ${token}`;
-    headers.Cookie = `babylon_session=${token}`;
+    headers.Cookie = `feed_session=${token}`;
   }
 
-  const apiKey = resolveSettingLike(config.runtime, "BABYLON_A2A_API_KEY");
+  const apiKey = resolveSettingLike(config.runtime, "FEED_A2A_API_KEY");
   if (apiKey) {
-    headers["X-Babylon-Api-Key"] = apiKey;
+    headers["X-Feed-Api-Key"] = apiKey;
   }
 
   const response = await fetch(url, {
@@ -212,7 +210,7 @@ export async function proxyBabylonRequest(
     const newToken = await getSessionToken(config);
     if (newToken && newToken !== token) {
       headers.Authorization = `Bearer ${newToken}`;
-      headers.Cookie = `babylon_session=${newToken}`;
+      headers.Cookie = `feed_session=${newToken}`;
       return fetch(url, {
         method,
         headers,

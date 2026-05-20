@@ -9,6 +9,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type State,
+  UnavailableCapabilityRouter,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -40,6 +41,7 @@ function unavailableCapability(
 function makeListRouter(
   list: ElizaCapabilityRouter["fs"]["list"],
 ): ElizaCapabilityRouter {
+  const unavailable = new UnavailableCapabilityRouter("desktop");
   return {
     environment: "desktop",
     availability: async () => ({
@@ -68,6 +70,7 @@ function makeListRouter(
     model: {
       status: async () => unavailableCapability("model", "model.status"),
     },
+    plugin: unavailable.plugin,
   };
 }
 

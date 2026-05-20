@@ -13,18 +13,18 @@ import type {
 } from "@elizaos/shared";
 import {
   asRuntimeLike,
-  type BabylonConfig,
-  persistBabylonCredential,
-  proxyBabylonRequest,
-  resolveBabylonClientUrl,
-  resolveBabylonConfig,
+  type FeedConfig,
+  persistFeedCredential,
+  proxyFeedRequest,
+  resolveFeedClientUrl,
+  resolveFeedConfig,
   resolveSettingLike,
-} from "./babylon-auth";
+} from "./feed-auth";
 
-const APP_NAME = "@elizaos/plugin-babylon";
-const APP_DISPLAY_NAME = "Babylon";
-const BABYLON_AGENT_SESSION_TOKEN_KEY = "BABYLON_AGENT_SESSION_TOKEN";
-const BABYLON_AGENT_SESSION_EXPIRES_AT_KEY = "BABYLON_AGENT_SESSION_EXPIRES_AT";
+const APP_NAME = "@elizaos/plugin-feed";
+const APP_DISPLAY_NAME = "Feed";
+const FEED_AGENT_SESSION_TOKEN_KEY = "FEED_AGENT_SESSION_TOKEN";
+const FEED_AGENT_SESSION_EXPIRES_AT_KEY = "FEED_AGENT_SESSION_EXPIRES_AT";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -34,33 +34,33 @@ function getRuntime(ctx: RouteContext): IAgentRuntime | null {
   return (asRuntimeLike(ctx.runtime) as IAgentRuntime | null) ?? null;
 }
 
-function getConfig(ctx: RouteContext): BabylonConfig {
-  return resolveBabylonConfig(getRuntime(ctx));
+function getConfig(ctx: RouteContext): FeedConfig {
+  return resolveFeedConfig(getRuntime(ctx));
 }
 
-function getAgentId(config: BabylonConfig): string | undefined {
+function getAgentId(config: FeedConfig): string | undefined {
   return config.agentId;
 }
 
-/** Strip the `/api/apps/babylon` prefix to get the sub-path. */
+/** Strip the `/api/apps/feed` prefix to get the sub-path. */
 function subpath(pathname: string): string {
-  const match = pathname.match(/^\/api\/apps\/babylon(\/.*)?$/);
+  const match = pathname.match(/^\/api\/apps\/feed(\/.*)?$/);
   return match?.[1] ?? "";
 }
 
 async function proxyGet(
-  config: BabylonConfig,
+  config: FeedConfig,
   apiPath: string,
   ctx: RouteContext,
 ): Promise<boolean> {
   try {
-    const response = await proxyBabylonRequest(config, "GET", apiPath);
+    const response = await proxyFeedRequest(config, "GET", apiPath);
     const data = await response.json();
     ctx.json(ctx.res, data, response.ok ? 200 : response.status);
   } catch (err) {
     ctx.error(
       ctx.res,
-      err instanceof Error ? err.message : "Babylon API request failed.",
+      err instanceof Error ? err.message : "Feed API request failed.",
       502,
     );
   }
@@ -68,19 +68,19 @@ async function proxyGet(
 }
 
 async function proxyPost(
-  config: BabylonConfig,
+  config: FeedConfig,
   apiPath: string,
   body: unknown,
   ctx: RouteContext,
 ): Promise<boolean> {
   try {
-    const response = await proxyBabylonRequest(config, "POST", apiPath, body);
+    const response = await proxyFeedRequest(config, "POST", apiPath, body);
     const data = await response.json();
     ctx.json(ctx.res, data, response.ok ? 200 : response.status);
   } catch (err) {
     ctx.error(
       ctx.res,
-      err instanceof Error ? err.message : "Babylon API request failed.",
+      err instanceof Error ? err.message : "Feed API request failed.",
       502,
     );
   }
@@ -88,11 +88,11 @@ async function proxyPost(
 }
 
 // ---------------------------------------------------------------------------
-// SSE proxy — streams Babylon's SSE endpoint through to the client
+// SSE proxy — streams Feed's SSE endpoint through to the client
 // ---------------------------------------------------------------------------
 
 async function handleSSEProxy(
-  config: BabylonConfig,
+  config: FeedConfig,
   ctx: RouteContext,
 ): Promise<boolean> {
   const agentId = getAgentId(config);
@@ -105,9 +105,9 @@ async function handleSSEProxy(
     Accept: "text/event-stream",
   };
 
-  const apiKey = resolveSettingLike(config.runtime, "BABYLON_A2A_API_KEY");
+  const apiKey = resolveSettingLike(config.runtime, "FEED_A2A_API_KEY");
   if (apiKey) {
-    headers["X-Babylon-Api-Key"] = apiKey;
+    headers["X-Feed-Api-Key"] = apiKey;
   }
 
   try {
@@ -117,7 +117,7 @@ async function handleSSEProxy(
     });
 
     if (!upstream.ok || !upstream.body) {
-      ctx.error(ctx.res, `Babylon SSE failed (${upstream.status})`, 502);
+      ctx.error(ctx.res, `Feed SSE failed (${upstream.status})`, 502);
       return true;
     }
 
@@ -159,7 +159,7 @@ async function handleSSEProxy(
   } catch (err) {
     ctx.error(
       ctx.res,
-      err instanceof Error ? err.message : "Babylon SSE connection failed.",
+      err instanceof Error ? err.message : "Feed SSE connection failed.",
       502,
     );
   }
@@ -171,19 +171,19 @@ async function handleSSEProxy(
 // ---------------------------------------------------------------------------
 
 function buildSessionState(
-  config: BabylonConfig,
+  config: FeedConfig,
   agentData?: Record<string, unknown>,
 ): AppSessionState {
   const agentId = getAgentId(config);
   const name =
     (agentData?.displayName as string) ??
     (agentData?.name as string) ??
-    "Babylon Agent";
+    "Feed Agent";
   const balance = (agentData?.balance as number) ?? 0;
   const pnl = (agentData?.lifetimePnL as number) ?? 0;
 
   return {
-    sessionId: agentId ?? "babylon",
+    sessionId: agentId ?? "feed",
     appName: APP_NAME,
     mode: "spectate-and-steer",
     status: agentData ? "connected" : "connecting",
@@ -193,7 +193,7 @@ function buildSessionState(
     controls: ["pause", "resume"],
     summary: agentData
       ? `${name} | $${balance.toFixed(2)} | PnL: ${pnl >= 0 ? "+" : ""}${pnl.toFixed(2)}`
-      : "Connecting to Babylon...",
+      : "Connecting to Feed...",
     goalLabel: null,
     suggestedPrompts: [
       "What markets are trending?",
@@ -217,16 +217,14 @@ function asSessionNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-async function readSessionState(
-  config: BabylonConfig,
-): Promise<AppSessionState> {
+async function readSessionState(config: FeedConfig): Promise<AppSessionState> {
   const agentId = getAgentId(config);
   if (!agentId) {
     return buildSessionState(config);
   }
 
   try {
-    const response = await proxyBabylonRequest(
+    const response = await proxyFeedRequest(
       config,
       "GET",
       `/api/agents/${encodeURIComponent(agentId)}`,
@@ -241,23 +239,19 @@ async function readSessionState(
   return buildSessionState(config);
 }
 
-async function probeBabylonDevCredentials(
+async function probeFeedDevCredentials(
   baseUrl: string,
 ): Promise<{ agentId: string; agentSecret: string } | null> {
   const nodeCrypto = await import("node:crypto");
   const os = await import("node:os");
-  const agentIds = [
-    "babylon-agent-alice",
-    "babylon-test-agent",
-    "dev-admin-local",
-  ];
+  const agentIds = ["feed-agent-alice", "feed-test-agent", "dev-admin-local"];
   const hostnames = new Set<string>(["localhost", "0.0.0.0"]);
   if (process.env.HOSTNAME) hostnames.add(process.env.HOSTNAME);
   hostnames.add(os.hostname());
   const secrets = Array.from(hostnames, (hostname) => {
     const hash = nodeCrypto
       .createHash("sha256")
-      .update(`babylon-dev:${hostname}:agent`)
+      .update(`feed-dev:${hostname}:agent`)
       .digest("hex")
       .substring(0, 32);
     return `dev_agent_${hash}`;
@@ -288,7 +282,7 @@ async function probeBabylonDevCredentials(
   return null;
 }
 
-async function authenticateBabylonAgentSession(
+async function authenticateFeedAgentSession(
   baseUrl: string,
   agentId: string,
   agentSecret: string,
@@ -325,32 +319,32 @@ function persistSession(
   runtime: IAgentRuntime | null,
   session: { sessionToken: string; expiresAt?: string },
 ): void {
-  persistBabylonCredential(
+  persistFeedCredential(
     runtime,
-    BABYLON_AGENT_SESSION_TOKEN_KEY,
+    FEED_AGENT_SESSION_TOKEN_KEY,
     session.sessionToken,
     true,
   );
   if (session.expiresAt) {
-    persistBabylonCredential(
+    persistFeedCredential(
       runtime,
-      BABYLON_AGENT_SESSION_EXPIRES_AT_KEY,
+      FEED_AGENT_SESSION_EXPIRES_AT_KEY,
       session.expiresAt,
       true,
     );
   }
 }
 
-async function prepareBabylonCredentials(
+async function prepareFeedCredentials(
   runtime: IAgentRuntime | null,
 ): Promise<AppLaunchDiagnostic[]> {
-  const config = resolveBabylonConfig(runtime);
+  const config = resolveFeedConfig(runtime);
   const existingId = config.agentId;
   const existingSecret = config.agentSecret;
 
   if (existingId && existingSecret) {
     try {
-      const session = await authenticateBabylonAgentSession(
+      const session = await authenticateFeedAgentSession(
         config.apiBaseUrl,
         existingId,
         existingSecret,
@@ -361,18 +355,18 @@ async function prepareBabylonCredentials(
       }
       return [
         {
-          code: "babylon-auth-failed",
+          code: "feed-auth-failed",
           severity: "warning",
           message:
-            "Babylon credentials are set but authentication failed. Check BABYLON_AGENT_ID and BABYLON_AGENT_SECRET.",
+            "Feed credentials are set but authentication failed. Check FEED_AGENT_ID and FEED_AGENT_SECRET.",
         },
       ];
     } catch {
       return [
         {
-          code: "babylon-unreachable",
+          code: "feed-unreachable",
           severity: "warning",
-          message: `Cannot reach Babylon at ${config.apiBaseUrl}. Is the server running?`,
+          message: `Cannot reach Feed at ${config.apiBaseUrl}. Is the server running?`,
         },
       ];
     }
@@ -386,23 +380,23 @@ async function prepareBabylonCredentials(
     } catch {
       return [
         {
-          code: "babylon-unreachable",
+          code: "feed-unreachable",
           severity: "warning",
-          message: `Cannot reach Babylon at ${config.apiBaseUrl}. Start the Babylon dev server and re-launch.`,
+          message: `Cannot reach Feed at ${config.apiBaseUrl}. Start the Feed dev server and re-launch.`,
         },
       ];
     }
 
-    const devCreds = await probeBabylonDevCredentials(config.apiBaseUrl);
+    const devCreds = await probeFeedDevCredentials(config.apiBaseUrl);
     if (devCreds) {
-      persistBabylonCredential(runtime, "BABYLON_AGENT_ID", devCreds.agentId);
-      persistBabylonCredential(
+      persistFeedCredential(runtime, "FEED_AGENT_ID", devCreds.agentId);
+      persistFeedCredential(
         runtime,
-        "BABYLON_AGENT_SECRET",
+        "FEED_AGENT_SECRET",
         devCreds.agentSecret,
         true,
       );
-      const session = await authenticateBabylonAgentSession(
+      const session = await authenticateFeedAgentSession(
         config.apiBaseUrl,
         devCreds.agentId,
         devCreds.agentSecret,
@@ -415,20 +409,20 @@ async function prepareBabylonCredentials(
 
     return [
       {
-        code: "babylon-no-agent-id",
+        code: "feed-no-agent-id",
         severity: "warning",
         message:
-          "Could not auto-provision Babylon credentials. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET in your environment.",
+          "Could not auto-provision Feed credentials. Set FEED_AGENT_ID and FEED_AGENT_SECRET in your environment.",
       },
     ];
   }
 
   return [
     {
-      code: "babylon-no-agent-id",
+      code: "feed-no-agent-id",
       severity: "warning",
       message:
-        "BABYLON_AGENT_ID is not set. Set BABYLON_AGENT_ID and BABYLON_AGENT_SECRET for full Babylon integration.",
+        "FEED_AGENT_ID is not set. Set FEED_AGENT_ID and FEED_AGENT_SECRET for full Feed integration.",
     },
   ];
 }
@@ -461,14 +455,14 @@ function readPathSegment(pathValue: string, index: number): string | null {
 export async function resolveLaunchSession(
   ctx: AppLaunchSessionContext,
 ): Promise<AppLaunchResult["session"]> {
-  const config = resolveBabylonConfig(ctx.runtime);
+  const config = resolveFeedConfig(ctx.runtime);
   return readSessionState(config);
 }
 
 export async function refreshRunSession(
   ctx: AppRunSessionContext,
 ): Promise<AppLaunchResult["session"]> {
-  const config = resolveBabylonConfig(ctx.runtime);
+  const config = resolveFeedConfig(ctx.runtime);
   return readSessionState(config);
 }
 
@@ -477,10 +471,10 @@ export async function prepareLaunch(ctx: {
 }): Promise<AppLaunchPreparation> {
   const runtime = getRuntime({ runtime: ctx.runtime } as RouteContext);
   return {
-    diagnostics: await prepareBabylonCredentials(runtime),
-    launchUrl: resolveBabylonClientUrl(runtime),
+    diagnostics: await prepareFeedCredentials(runtime),
+    launchUrl: resolveFeedClientUrl(runtime),
     viewer: {
-      url: resolveBabylonClientUrl(runtime),
+      url: resolveFeedClientUrl(runtime),
       postMessageAuth: true,
     },
   };
@@ -490,18 +484,18 @@ export async function resolveViewerAuthMessage(ctx: {
   runtime: IAgentRuntime | null;
 }): Promise<AppViewerAuthMessage | null> {
   const runtime = getRuntime({ runtime: ctx.runtime } as RouteContext);
-  const config = resolveBabylonConfig(runtime);
+  const config = resolveFeedConfig(runtime);
   const agentId = config.agentId;
   const sessionToken =
-    resolveSettingLike(runtime, BABYLON_AGENT_SESSION_TOKEN_KEY) ??
-    process.env[BABYLON_AGENT_SESSION_TOKEN_KEY]?.trim();
+    resolveSettingLike(runtime, FEED_AGENT_SESSION_TOKEN_KEY) ??
+    process.env[FEED_AGENT_SESSION_TOKEN_KEY]?.trim();
 
   if (!agentId || !sessionToken) {
     return null;
   }
 
   return {
-    type: "BABYLON_AUTH",
+    type: "FEED_AUTH",
     authToken: sessionToken,
     sessionToken,
     agentId,
@@ -521,7 +515,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   // --- Agent status ---
   if (ctx.method === "GET" && path === "/agent/status") {
     if (!agentId) {
-      ctx.json(ctx.res, { error: "No BABYLON_AGENT_ID configured" }, 400);
+      ctx.json(ctx.res, { error: "No FEED_AGENT_ID configured" }, 400);
       return true;
     }
     return proxyGet(config, `/api/agents/${encodeURIComponent(agentId)}`, ctx);
@@ -577,7 +571,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   // --- Granular autonomy control ---
   if (ctx.method === "POST" && path === "/agent/autonomy") {
     if (!agentId) {
-      ctx.error(ctx.res, "No BABYLON_AGENT_ID configured.", 400);
+      ctx.error(ctx.res, "No FEED_AGENT_ID configured.", 400);
       return true;
     }
     const body = (await ctx.readJsonBody()) as Record<string, boolean> | null;
@@ -623,7 +617,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
   // --- Agent toggle (pause/resume) ---
   if (ctx.method === "POST" && path === "/agent/toggle") {
     if (!agentId) {
-      ctx.error(ctx.res, "No BABYLON_AGENT_ID configured.", 400);
+      ctx.error(ctx.res, "No FEED_AGENT_ID configured.", 400);
       return true;
     }
     const body = (await ctx.readJsonBody()) as {
@@ -966,7 +960,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
 
   if (ctx.method === "POST" && path === "/agent/chat") {
     if (!agentId) {
-      ctx.error(ctx.res, "No BABYLON_AGENT_ID configured.", 400);
+      ctx.error(ctx.res, "No FEED_AGENT_ID configured.", 400);
       return true;
     }
     const body = await ctx.readJsonBody();
@@ -1098,7 +1092,7 @@ export async function handleAppRoutes(ctx: RouteContext): Promise<boolean> {
         action?: string;
       } | null;
       if (!agentId) {
-        ctx.error(ctx.res, "No BABYLON_AGENT_ID configured.", 400);
+        ctx.error(ctx.res, "No FEED_AGENT_ID configured.", 400);
         return true;
       }
       return proxyPost(

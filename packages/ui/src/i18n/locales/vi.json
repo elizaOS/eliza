@@ -291,7 +291,7 @@
   "avatarselector.SelectVrmFile": "Vui lòng chọn tệp .vrm.",
   "avatarselector.UploadCustomVrm": "Tải .vrm tuỳ chỉnh (click hoặc kéo thả)",
   "avatarselector.dropVrm": "thả .vrm",
-  "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "Cho agent biết cần làm gì, tránh gì hoặc cần giải thích gì.",
+  "feed.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "Cho agent biết cần làm gì, tránh gì hoặc cần giải thích gì.",
   "browserworkspace.ActionFailed": "Hành động trình duyệt thất bại.",
   "browserworkspace.AddressPlaceholder": "Nhập một URL",
   "browserworkspace.AgentActive": "Agent đang ở tab này",

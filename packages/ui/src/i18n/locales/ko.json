@@ -291,7 +291,7 @@
   "avatarselector.SelectVrmFile": ".vrm 파일을 선택해 주세요.",
   "avatarselector.UploadCustomVrm": "사용자 정의 .vrm 업로드(클릭 또는 드래그)",
   "avatarselector.dropVrm": ".vrm 드래그",
-  "babylon.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "에이전트가 무엇을 해야 하는지, 피해야 하는지, 설명해야 하는지 알려 주세요.",
+  "feed.tellTheAgentWhatToDoWhatToAvoidOrWhatToExplain": "에이전트가 무엇을 해야 하는지, 피해야 하는지, 설명해야 하는지 알려 주세요.",
   "browserworkspace.ActionFailed": "브라우저 동작에 실패했어요.",
   "browserworkspace.AddressPlaceholder": "URL을 입력하세요",
   "browserworkspace.AgentActive": "에이전트가 이 탭에 있어요",
