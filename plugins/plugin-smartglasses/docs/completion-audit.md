@@ -19,7 +19,7 @@ physical microphone and tap path.
 | Provide an Eliza View Manager view for connect/test/setup. | `src/index.ts` declares `views` and app nav tabs; `src/register.ts` registers `/apps/smartglasses`; `src/ui/SmartglassesView.tsx` implements connect, diagnostics, Wi-Fi bridge, and guided validation; `packages/app-core/src/registry/entries/plugins/smartglasses.json` launches the internal tab and advertises whole-headset pairing, side-tap mic control, and Wi-Fi provisioning; `bun run --cwd plugins/plugin-smartglasses verify:app` covers app registry and registration tests. | Complete |
 | Support iOS, Android, desktop setup paths where possible. | View Manager setup copy and transports cover native bridge, Web Bluetooth, Noble/Bleak, and EvenHub/Mentra bridge APIs. Direct G1 BLE Wi-Fi provisioning remains unverified upstream and is bridge-only. | Complete with documented Wi-Fi limit |
 | Add an example in `packages/examples`. | `packages/examples/smartglasses` contains package/runtime/simulator/browser/Noble/Bleak smokes, validation helpers, and docs. | Complete |
-| Test with Eliza end to end. | `bun run --cwd packages/examples/smartglasses verify:software` passed on 2026-05-20 05:18:34Z: example lint/tests, Bleak parser test, plugin build, typecheck, public package smoke, AgentRuntime smoke, and simulator display/tap automation. `bun run --cwd plugins/plugin-smartglasses lint && bun run typecheck && bun run test && bun run verify:app` passed on 2026-05-20 05:19:01Z. Follow-up setup UX, registry metadata, hardware-proof script cleanup, Web Bluetooth side-mismatch/duplicate-device hardening, whole-headset partial-connect cleanup, bridge lens status reporting, structured agent-facing setup guidance in status/control results, and structured CLI hardware status readiness passed `bun run --cwd packages/examples/smartglasses lint`, `typecheck`, `test`, `smoke:package`, `hardware:status-latest`, `bun run --cwd plugins/plugin-smartglasses lint`, `typecheck`, `test`, and `verify:app` by 2026-05-20 05:43:59Z. | Software-complete |
+| Test with Eliza end to end. | `bun run --cwd packages/examples/smartglasses verify:software` passed on 2026-05-20 05:18:34Z: example lint/tests, Bleak parser test, plugin build, typecheck, public package smoke, AgentRuntime smoke, and simulator display/tap automation. `bun run --cwd plugins/plugin-smartglasses lint && bun run typecheck && bun run test && bun run verify:app` passed on 2026-05-20 05:19:01Z. Follow-up setup UX, registry metadata, hardware-proof script cleanup, Web Bluetooth side-mismatch/duplicate-device hardening, whole-headset partial-connect cleanup, bridge lens status reporting, structured agent-facing setup guidance in status/control results, and structured CLI hardware status readiness passed `bun run --cwd packages/examples/smartglasses lint`, `typecheck`, `test`, `smoke:package`, `hardware:status-latest`, `bun run --cwd plugins/plugin-smartglasses lint`, `typecheck`, `test`, and `verify:app` by 2026-05-20 05:43:59Z. The final status-report cleanup passed `bun run --cwd packages/examples/smartglasses lint`, `test`, `typecheck`, and `hardware:status-latest`, plus `bun run --cwd plugins/plugin-smartglasses lint`, `typecheck`, `test`, and `verify:app` on 2026-05-20 05:48:02Z. | Software-complete |
 | Prove physical hardware tap and microphone path. | Latest `/tmp/smartglasses-hardware-report-latest.json` from 2026-05-20 05:22:44Z connects both lenses and observes serial `S110LABC040019`, 17 writes, 24 parsed events, init/display/settings responses, state packets, heartbeat packets, and a right-lens mic-disable response. It still reports `charged_in_cradle` / `cradle_fully_charged`, no tap events, no right-lens mic-enable write, and no right-lens audio. | Blocked on physical worn-state evidence |
 
 ## Hardware Completion Gate
@@ -64,11 +64,13 @@ is observed, 17 writes and 24 parsed events are recorded, and event types
 include `init`, `serial`, `display-result`, `settings-response`, `state`,
 `mic-response`, and `heartbeat`. A fresh short `hardware:bleak` run reconfirmed
 this on 2026-05-20 05:22:44Z, and `hardware:status-latest` summarized it
-immediately afterward. The headset state is `charged_in_cradle` /
-`cradle_fully_charged`, so it still fails the physical portion of the
-gate: `headsetInCradle`, `wearingStateNotObserved`, missing tap events,
-missing right-lens mic-enable write, and missing right-lens audio. Remove the
-glasses from the charging base, wear them, then run
+again on 2026-05-20 05:48:02Z with `wholeHeadsetConnected: true`,
+`wearingReady: false`, `physicalBlocker: "in_charging_base"`, and a setup hint
+that asks for both lenses to be removed from the charging base and worn. The
+headset state is `charged_in_cradle` / `cradle_fully_charged`, so it still fails
+the physical portion of the gate: `headsetInCradle`, `wearingStateNotObserved`,
+missing tap events, missing right-lens mic-enable write, and missing right-lens
+audio. Remove the glasses from the charging base, wear them, then run
 the latest helper and perform single tap, speech, and double tap:
 
 ```bash
