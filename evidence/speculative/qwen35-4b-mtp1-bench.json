@@ -1,0 +1,59 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T16:46:20.730Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "speculator": "mtp",
+  "tier": "4b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-4B-MTP-GGUF/snapshots/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 128,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd"
+  },
+  "drafted": null,
+  "accepted": null,
+  "acceptanceRate": null,
+  "speedup": 0.7432432432432432,
+  "withDrafter": {
+    "available": true,
+    "withMtp": true,
+    "status": 0,
+    "wallMs": 7669,
+    "failure": null,
+    "outputTail": "  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative Decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain what it is, how it works, and its purpose/benefit concisely.\n\n2.  **Identify Key Concepts:**\n    *   Large Language Models (LLMs).\n    *   Inference latency/speed.\n    *   Generation process (token by token).\n    *   Standard decoding (greedy/beam search) vs. Speculative decoding.\n    *   Mechanism: A smaller model\n\n[ Prompt: 124.1 t/s | Generation: 22.0 t/s ]\n\nExiting...",
+    "tokensPerSecond": 22,
+    "accepted": null,
+    "drafted": null,
+    "acceptanceRate": null
+  },
+  "withoutDrafter": {
+    "available": true,
+    "withMtp": false,
+    "status": 0,
+    "wallMs": 6602,
+    "failure": null,
+    "outputTail": "  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative Decoding (in the context of LLMs/NLP).\n    *   **Format:** Short paragraph.\n    *   **Goal:** Explain what it is concisely.\n\n2.  **Identify Key Concepts:**\n    *   Context: Large Language Models (LLMs), inference speed.\n    *   Problem: Standard autoregressive generation is slow (one token at a time).\n    *   Solution: Generate multiple tokens in parallel using a smaller, faster model (or the same model with\n\n[ Prompt: 183.0 t/s | Generation: 29.6 t/s ]\n\nExiting...",
+    "tokensPerSecond": 29.6,
+    "accepted": null,
+    "drafted": null,
+    "acceptanceRate": null
+  },
+  "summary": {
+    "speculator": "mtp",
+    "tier": "4b",
+    "backend": "unknown",
+    "binarySha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd",
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "speedup": 0.7432432432432432,
+    "status": "pass",
+    "failure": null
+  }
+}

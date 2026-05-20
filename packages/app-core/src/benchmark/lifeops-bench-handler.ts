@@ -188,6 +188,14 @@ function completedResponseForRepeatedLifeOpsPrompt(
   const translated = translateUmbrellaAction(call.name, call.arguments);
   const args = translated.kwargs;
   const result = isPlainRecord(call.result) ? call.result : {};
+  const originalSubaction =
+    typeof call.arguments.subaction === "string"
+      ? call.arguments.subaction
+      : typeof call.arguments.action === "string"
+        ? call.arguments.action
+        : typeof result.subaction === "string"
+          ? result.subaction
+          : "";
 
   if (
     translated.name === "MESSAGE" &&
@@ -201,9 +209,11 @@ function completedResponseForRepeatedLifeOpsPrompt(
   if (
     (call.name === "CALENDAR_CHECK_AVAILABILITY" ||
       translated.name === "calendar.check_availability" ||
+      translated.name === "calendar.list_events" ||
       translated.name === "CALENDAR") &&
     (args.subaction === "check_availability" ||
-      args.action === "check_availability")
+      args.action === "check_availability" ||
+      originalSubaction === "check_availability")
   ) {
     const events = Array.isArray(result.events) ? result.events : [];
     if (events.length === 0) return "You are free for that time.";

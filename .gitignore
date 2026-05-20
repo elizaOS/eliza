@@ -612,6 +612,7 @@ reports/
 !packages/cloud-api/v1/reports/**
 docs/*
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
+!docs/tee-architecture-implementation-plan.md
 yolov8n.pt
 *.pt
 

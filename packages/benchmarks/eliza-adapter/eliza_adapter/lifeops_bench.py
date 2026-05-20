@@ -63,6 +63,31 @@ def _normalize_lifeops_tool_arguments(
     return normalized
 
 
+def _tool_name(tool: dict[str, Any]) -> str:
+    function = tool.get("function")
+    if isinstance(function, dict) and isinstance(function.get("name"), str):
+        return function["name"]
+    if isinstance(tool.get("name"), str):
+        return tool["name"]
+    return ""
+
+
+def _filter_lifeops_tools(
+    user_text: str,
+    tools: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Keep the native tool manifest focused on the user's current intent."""
+    lowered = user_text.lower()
+    if any(term in lowered for term in ("free", "available", "availability")):
+        allowed = {"CALENDAR", "CALENDAR_CHECK_AVAILABILITY"}
+    elif any(term in lowered for term in ("archive", "newsletter", "thread", "email", "inbox")):
+        allowed = {"MESSAGE", "ARCHIVE_THREAD", "ARCHIVE_EMAIL_THREAD"}
+    else:
+        return tools
+    filtered = [tool for tool in tools if _tool_name(tool) in allowed]
+    return filtered or tools
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: ElizaClient | None = None,
@@ -162,7 +187,7 @@ def build_lifeops_bench_agent_fn(
             raw = bridge.lifeops_message(
                 task_id=task_id,
                 text=last_user_text,
-                tools=tools or None,
+                tools=_filter_lifeops_tools(last_user_text, tools) or None,
             )
         except Exception as exc:
             logger.exception("[eliza-lifeops] bridge call failed")

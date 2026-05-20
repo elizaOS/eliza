@@ -1,6 +1,6 @@
 "use client";
 
-import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import vscDarkPlus from "react-syntax-highlighter/dist/esm/styles/prism/vsc-dark-plus";
 import { cn } from "../../lib/utils";
 import { SyntaxHighlighter } from "./prism-light";
 

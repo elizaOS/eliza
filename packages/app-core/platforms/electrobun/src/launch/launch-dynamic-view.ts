@@ -25,7 +25,8 @@ export function createLaunchDiagnosticsViewManifest(): DynamicViewManifest {
   return {
     id: LAUNCH_DIAGNOSTICS_VIEW_ID,
     title: "Launch Diagnostics",
-    description: "Contextual diagnostics for startup, onboarding, and recovery.",
+    description:
+      "Contextual diagnostics for startup, onboarding, and recovery.",
     source: "system",
     entrypoint: resolveLaunchDiagnosticsEntrypoint(),
     placement: "debug",

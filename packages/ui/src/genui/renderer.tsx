@@ -140,7 +140,7 @@ function renderChoicePicker(component: ElizaGenUiComponent): React.ReactNode {
       value={stringProp(component, "value")}
       onChange={() => {}}
     >
-      {options.map((option, index) => {
+      {options.map((option) => {
         const record =
           option && typeof option === "object" && !Array.isArray(option)
             ? (option as Record<string, ElizaGenUiJsonValue>)
@@ -148,7 +148,7 @@ function renderChoicePicker(component: ElizaGenUiComponent): React.ReactNode {
         const label = typeof record?.label === "string" ? record.label : "";
         const value = typeof record?.value === "string" ? record.value : label;
         return (
-          <option key={`${value}-${index}`} value={value}>
+          <option key={value || label || JSON.stringify(option)} value={value}>
             {label}
           </option>
         );
@@ -167,15 +167,16 @@ function renderTabs(
   return (
     <div className="flex flex-col gap-3" data-eliza-genui-tabs={component.id}>
       <div className="flex flex-wrap gap-2" role="tablist">
-        {items.map((item, index) => {
+        {items.map((item) => {
           const record =
             item && typeof item === "object" && !Array.isArray(item)
               ? (item as Record<string, ElizaGenUiJsonValue>)
               : null;
           const title = typeof record?.title === "string" ? record.title : "";
+          const child = typeof record?.child === "string" ? record.child : "";
           return (
             <button
-              key={`${title}-${index}`}
+              key={child || title || JSON.stringify(item)}
               type="button"
               className="rounded-sm border border-border px-3 py-1 text-sm"
               role="tab"
@@ -186,14 +187,14 @@ function renderTabs(
         })}
       </div>
       <div className="flex flex-col gap-3">
-        {items.map((item, index) => {
+        {items.map((item) => {
           const record =
             item && typeof item === "object" && !Array.isArray(item)
               ? (item as Record<string, ElizaGenUiJsonValue>)
               : null;
           const child = typeof record?.child === "string" ? record.child : "";
           return (
-            <div key={`${child}-${index}`} role="tabpanel">
+            <div key={child || JSON.stringify(item)} role="tabpanel">
               {context.renderComponent(child, [...stack, component.id])}
             </div>
           );
@@ -224,8 +225,12 @@ function renderPrimitiveComponent(
     case "List":
       return (
         <ul className="list-disc space-y-1 pl-5">
-          {renderChildList(component, context, stack).map((child, index) => (
-            <li key={index}>{child}</li>
+          {React.Children.toArray(
+            renderChildList(component, context, stack),
+          ).map((child) => (
+            <li key={React.isValidElement(child) ? child.key : String(child)}>
+              {child}
+            </li>
           ))}
         </ul>
       );

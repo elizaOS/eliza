@@ -231,6 +231,8 @@ function isIgnorableLine(line) {
     /\bvalidation failed\b/i,
     /\btimeout:\s*\d+ms\b/i,
     /\b(requestTimeout|headersTimeout|keepAliveTimeout)=\d+ms\b/i,
+    /\[boot\] resolving plugins \(timeout=\d+ms\)/i,
+    /dynamicPromptExecFromState failed after 0 retries .* \d+\/\d+ successful/i,
     /script "dev" was terminated by signal SIGTERM/i,
     /Polite quit request/i,
   ].some((pattern) => pattern.test(line));

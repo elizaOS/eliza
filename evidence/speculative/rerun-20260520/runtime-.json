@@ -1,0 +1,37 @@
+{
+  "generatedAt": "2026-05-20T17:19:56.801Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "--drafter-model",
+  "drafterModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-0_8b.bundle/dflash/drafter-0_8b.gguf",
+  "cliFeatures": {
+    "installed": {
+      "available": true,
+      "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+      "supportedOptionalFlags": [
+        "--device",
+        "--device-draft",
+        "--draft",
+        "--spec-draft-n-min",
+        "--draft-min",
+        "--spec-draft-n-max",
+        "--draft-max",
+        "--spec-draft-p-min",
+        "--draft-p-min",
+        "--spec-type",
+        "--temp"
+      ],
+      "helpStatus": 0,
+      "helpSignal": null,
+      "skippedReason": null
+    },
+    "reference": null
+  },
+  "checks": {
+    "tierShipsDflash": false,
+    "drafterRequired": false
+  },
+  "metadata": null,
+  "runtime": [],
+  "status": "not-applicable",
+  "reason": "tier 4b evidence/speculative/dflash-local/drafter-4b.full-tokenizer-repaired.gguf ~/.eliza/local-inference/models/eliza-1-4b.bundle/text/eliza-1-4b-64k.gguf bench-4b-dflash-metal-128 does not ship a DFlash drafter"
+}

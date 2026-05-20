@@ -382,17 +382,18 @@ def _repair_bare_hunk_headers(patch: str, repo_root: Path | None) -> str:
         else:
             has_context = any(item.startswith(" ") for item in hunk_lines)
             start = match_idx + 1
-            if not has_context:
-                if match_idx > 0:
-                    hunk_lines = [" " + source_lines[match_idx - 1]] + hunk_lines
-                    start -= 1
-                    old_count += 1
-                    new_count += 1
-                after_idx = match_idx + len(old_lines)
-                if after_idx < len(source_lines):
-                    hunk_lines = hunk_lines + [" " + source_lines[after_idx]]
-                    old_count += 1
-                    new_count += 1
+            needs_leading_context = not has_context or hunk_lines[0].startswith(("+", "-"))
+            needs_trailing_context = not has_context or hunk_lines[-1].startswith(("+", "-"))
+            if needs_leading_context and match_idx > 0:
+                hunk_lines = [" " + source_lines[match_idx - 1]] + hunk_lines
+                start -= 1
+                old_count += 1
+                new_count += 1
+            after_idx = match_idx + len(old_lines)
+            if needs_trailing_context and after_idx < len(source_lines):
+                hunk_lines = hunk_lines + [" " + source_lines[after_idx]]
+                old_count += 1
+                new_count += 1
             header = (
                 "@@ -"
                 + _format_hunk_range(start, old_count)

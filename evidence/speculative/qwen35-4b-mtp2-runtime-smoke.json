@@ -1,0 +1,95 @@
+{
+  "reportSchema": "eliza.mtp-runtime-smoke.v1",
+  "generatedAt": "2026-05-20T16:47:05.581Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "tier": "4b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-4B-MTP-GGUF/snapshots/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "metadataStatus": "pass",
+  "mtp": {
+    "pass": true,
+    "nextnPredictLayers": 1,
+    "keys": [
+      "qwen35.nextn_predict_layers"
+    ]
+  },
+  "cli": {
+    "available": true,
+    "status": 0,
+    "supportsDraftMtp": true,
+    "outputTail": "                                        llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4,\n                                        megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken,\n                                        mistral-v7, mistral-v7-tekken, monarch, openchat, orion,\n                                        pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open,\n                                        vicuna, vicuna-orca, yandex, zephyr\n                                        (env: LLAMA_ARG_CHAT_TEMPLATE_FILE)\n--skip-chat-parsing, --no-skip-chat-parsing\n                                        force a pure content parser, even if a Jinja template is specified;\n                                        model will output everything in the content section, including any\n                                        reasoning and/or tool calls (default: disabled)\n                                        (env: LLAMA_ARG_SKIP_CHAT_PARSING)\n--simple-io                             use basic IO for better compatibility in subprocesses and limited\n                                        consoles\n--spec-replace TARGET DRAFT             translate the string in TARGET into DRAFT if the draft model and main\n                                        model are not compatible\n--gpt-oss-20b-default                   use gpt-oss-20b (note: can download weights from the internet)\n--gpt-oss-120b-default                  use gpt-oss-120b (note: can download weights from the internet)\n--vision-gemma-4b-default               use Gemma 3 4B QAT (note: can download weights from the internet)\n--vision-gemma-12b-default              use Gemma 3 12B QAT (note: can download weights from the internet)\n--spec-default                          enable default speculative decoding config"
+  },
+  "runtime": [
+    {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 9644,
+      "failure": null,
+      "outputTail": "  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative Decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain the concept clearly and concisely.\n\n2.  **Identify Key Concepts:**\n    *   What is it? A technique for speeding up autoregressive language model generation.\n    *   How does it work? Uses a small, fast model to predict multiple tokens, then a large, slow model validates them (one by one or in batches).\n    *   Why use it? Improves inference speed without sacrificing quality\n\n[ Prompt: 56.6 t/s | Generation: 17.6 t/s ]\n\nExiting...",
+      "tokensPerSecond": 17.6,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    }
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T16:47:22.957Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+    "speculator": "mtp",
+    "tier": "4b",
+    "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-4B-MTP-GGUF/snapshots/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 128,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd"
+    },
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "speedup": 0.5966101694915255,
+    "withDrafter": {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 9644,
+      "failure": null,
+      "outputTail": "  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative Decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain the concept clearly and concisely.\n\n2.  **Identify Key Concepts:**\n    *   What is it? A technique for speeding up autoregressive language model generation.\n    *   How does it work? Uses a small, fast model to predict multiple tokens, then a large, slow model validates them (one by one or in batches).\n    *   Why use it? Improves inference speed without sacrificing quality\n\n[ Prompt: 56.6 t/s | Generation: 17.6 t/s ]\n\nExiting...",
+      "tokensPerSecond": 17.6,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "withoutDrafter": {
+      "available": true,
+      "withMtp": false,
+      "status": 0,
+      "wallMs": 7730,
+      "failure": null,
+      "outputTail": "  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain what it is, how it works, and why it's useful.\n\n2.  **Identify Key Concepts:**\n    *   What is speculative decoding? It's an algorithm/technique for large language models (LLMs).\n    *   Who uses it? Mostly for inference acceleration.\n    *   How does it work? Use a small, faster model to \"speculate\" a sequence of tokens (draft), then\n\n[ Prompt: 174.0 t/s | Generation: 29.5 t/s ]\n\nExiting...",
+      "tokensPerSecond": 29.5,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "summary": {
+      "speculator": "mtp",
+      "tier": "4b",
+      "backend": "unknown",
+      "binarySha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd",
+      "drafted": null,
+      "accepted": null,
+      "acceptanceRate": null,
+      "speedup": 0.5966101694915255,
+      "status": "pass",
+      "failure": null
+    }
+  }
+}

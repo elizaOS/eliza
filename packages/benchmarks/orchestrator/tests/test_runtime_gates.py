@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from benchmarks.orchestrator import adapters
@@ -47,3 +48,22 @@ def test_runtime_gate_report_explains_failed_runtime_probes(monkeypatch) -> None
         "swe_bench",
         "swe_bench_orchestrated",
     )
+    assert failed["hyperliquid_live"].metadata == {
+        "required_env": ["HL_PRIVATE_KEY"]
+    }
+    payload = json.loads(report.to_json())
+    hyperliquid_gate = next(
+        gate for gate in payload["gates"] if gate["id"] == "hyperliquid_live"
+    )
+    assert hyperliquid_gate["metadata"] == {"required_env": ["HL_PRIVATE_KEY"]}
+
+
+def test_hyperliquid_live_probe_tracks_current_environment(monkeypatch) -> None:
+    monkeypatch.delenv("HL_PRIVATE_KEY", raising=False)
+    assert adapters._has_hyperliquid_live_backend() is False
+
+    monkeypatch.setenv("HL_PRIVATE_KEY", "0xabc")
+    assert adapters._has_hyperliquid_live_backend() is True
+
+    monkeypatch.delenv("HL_PRIVATE_KEY", raising=False)
+    assert adapters._has_hyperliquid_live_backend() is False

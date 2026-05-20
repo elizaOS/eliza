@@ -34,12 +34,12 @@ export {
   initializeAppBootstrapBridges,
   installAppBootstrapClientPatches,
 } from "./platform/capacitor-bootstrap";
+export * from "./platform/ios-runtime-backends";
 export {
   IOS_FULL_BUN_SMOKE_REQUEST_KEY,
   IOS_FULL_BUN_SMOKE_RESULT_KEY,
   runIosFullBunSmokeIfRequested,
 } from "./platform/ios-runtime-bridge";
-export * from "./platform/ios-runtime-backends";
 export * from "./registry";
 // `ConfigField` and `getPlugins` also exist in @elizaos/ui, which is bridged
 // below for legacy app-core UI consumers. Keep the app-core registry exports

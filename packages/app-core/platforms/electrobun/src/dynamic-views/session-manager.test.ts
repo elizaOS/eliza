@@ -56,7 +56,10 @@ function manifest(entrypoint: string): DynamicViewManifest {
 function withTempView<T>(fn: (dir: string) => Promise<T> | T): Promise<T> | T {
   const dir = mkdtempSync(join(tmpdir(), "dynamic-view-"));
   try {
-    writeFileSync(join(dir, "trace.html"), "<!doctype html><title>trace</title>");
+    writeFileSync(
+      join(dir, "trace.html"),
+      "<!doctype html><title>trace</title>",
+    );
     return fn(dir);
   } finally {
     rmSync(dir, { recursive: true, force: true });

@@ -17,6 +17,10 @@ function isLocalApiBase(value: string): boolean {
   );
 }
 
+function isLocalBrowserHost(hostname: string): boolean {
+  return /^(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])$/i.test(hostname);
+}
+
 function configuredApiBase(): string | null {
   const raw =
     viteEnv("VITE_API_URL") ||
@@ -33,6 +37,7 @@ function configuredApiBase(): string | null {
 function browserApiBase(): string | null {
   if (typeof window === "undefined") return null;
   const host = window.location.hostname.toLowerCase();
+  if (isLocalBrowserHost(host)) return null;
   if (host.endsWith(".pages.dev")) return "https://api-staging.elizacloud.ai";
   return configuredApiBase() ?? ELIZA_API_HOSTS[host] ?? null;
 }

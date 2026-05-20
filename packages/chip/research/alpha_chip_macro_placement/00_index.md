@@ -39,6 +39,9 @@ flow, and judged by physical-design evidence rather than proxy reward alone.
   from CT proxy cost through OpenROAD/OpenLane routed evidence.
 - `06_e1_notes/softmacro_benchmark_2026-05-19.md`: live E1 soft-macro
   benchmark results and run commands.
+- `08_full_stack_ai_chip_optimization_plan_2026-05-20.md`: full-stack
+  reproducible AI chip optimization plan covering public corpus intake,
+  training, inference, E1 candidate replay, and deterministic evidence gates.
 
 ## Practical pipeline
 

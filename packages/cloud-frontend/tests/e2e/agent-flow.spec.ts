@@ -169,10 +169,9 @@ test("agent flow: landing → login → create agent → chat", async ({
   await dialog.getByLabel(/agent name/i).fill("playwright-agent");
   await dialog.getByRole("button", { name: /deploy/i }).click();
 
-  // ── 5. Provisioning view appears, transitions back to the running list ──
-  await expect(dialog.getByText(/launching agent/i)).toBeVisible();
-
-  // Back on the list, the running agent should now appear.
+  // ── 5. Provisioning completes and the running agent appears ─────────────
+  // The mocked job can complete quickly enough to skip the transient
+  // "launching" state, so assert the durable post-provisioning outcome.
   await expect(
     page.getByRole("link", { name: "playwright-agent" }).first(),
   ).toBeVisible({ timeout: 10_000 });

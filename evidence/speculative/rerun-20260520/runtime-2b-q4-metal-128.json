@@ -1,0 +1,537 @@
+{
+  "generatedAt": "2026-05-20T17:20:12.634Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+  "drafterModel": "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+  "cliFeatures": {
+    "installed": {
+      "available": true,
+      "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+      "supportedOptionalFlags": [
+        "--device",
+        "--device-draft",
+        "--draft",
+        "--spec-draft-n-min",
+        "--draft-min",
+        "--spec-draft-n-max",
+        "--draft-max",
+        "--spec-draft-p-min",
+        "--draft-p-min",
+        "--spec-type",
+        "--temp"
+      ],
+      "helpStatus": 0,
+      "helpSignal": null,
+      "skippedReason": null
+    },
+    "reference": null
+  },
+  "checks": {
+    "drafterShape": "plain-ar",
+    "upstreamDflashShapeOk": false,
+    "plainArShapeOk": true,
+    "drafterSmallerThanTarget": true,
+    "hasTargetCheckpointSha256": true,
+    "targetCheckpointMatchesTarget": true,
+    "targetCheckpointFailure": null,
+    "targetDrafterTokenizerCompatible": true,
+    "targetDrafterTokenizerFailure": null,
+    "gpt2TokenizerHasMerges": true
+  },
+  "metadata": {
+    "target": {
+      "version": 3,
+      "tensorCount": 320,
+      "kvCount": 41,
+      "architecture": "qwen35",
+      "name": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+      "sha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2"
+    },
+    "version": 3,
+    "tensorCount": 214,
+    "kvCount": 34,
+    "architecture": "qwen35",
+    "drafterShape": "plain-ar",
+    "tokenizerModel": "gpt2",
+    "tokenizerPre": "qwen35",
+    "hasTokenizerMerges": true,
+    "targetCheckpointSha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2",
+    "targetCheckpointCompatibility": {
+      "compatible": true,
+      "recordedSha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2",
+      "actualSha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2",
+      "blockingReason": null,
+      "reason": "target checkpoint sha256 ok (a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2)"
+    },
+    "dflash": {},
+    "upstreamRequiredTensors": {
+      "dflash_fc.weight": false,
+      "dflash_hidden_norm.weight": false,
+      "output_norm.weight": true
+    },
+    "plainArMarkers": {
+      "token_embd.weight": true,
+      "blk.0.attn_q.weight": false,
+      "blk.0.attn_k.weight": false
+    },
+    "tokenizerCompatibility": {
+      "compatible": true,
+      "reason": "target and drafter tokenizer metadata are byte-compatible",
+      "mismatches": [],
+      "requiredMissing": [],
+      "blockingReasons": []
+    },
+    "tokenizers": {
+      "target": {
+        "architecture": "qwen35",
+        "name": "15852e8c16360a2fea060d615a32b45270f8a8fc",
+        "tokenizerModel": "gpt2",
+        "tokenizerPre": "qwen35",
+        "tokensLength": 248320,
+        "tokenTypeLength": 248320,
+        "mergesLength": 247587,
+        "eosTokenId": 248046,
+        "bosTokenId": null,
+        "paddingTokenId": 248044,
+        "addBosToken": false,
+        "addEosToken": null,
+        "hashes": {
+          "model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenType": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "eosTokenId": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "bosTokenId": null,
+          "paddingTokenId": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "addBosToken": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "addEosToken": null
+        },
+        "hashByKey": {
+          "tokenizer.ggml.model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "tokenizer.ggml.pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokenizer.ggml.tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenizer.ggml.token_type": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "tokenizer.ggml.merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "tokenizer.ggml.eos_token_id": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "tokenizer.ggml.add_bos_token": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "valueByKey": {
+          "tokenizer.ggml.model": "gpt2",
+          "tokenizer.ggml.pre": "qwen35",
+          "tokenizer.ggml.eos_token_id": 248046,
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": 248044,
+          "tokenizer.ggml.add_bos_token": false,
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "lengthByKey": {
+          "tokenizer.ggml.tokens": 248320,
+          "tokenizer.ggml.token_type": 248320,
+          "tokenizer.ggml.merges": 247587
+        }
+      },
+      "drafter": {
+        "architecture": "qwen35",
+        "name": "Checkpoint Final",
+        "tokenizerModel": "gpt2",
+        "tokenizerPre": "qwen35",
+        "tokensLength": 248320,
+        "tokenTypeLength": 248320,
+        "mergesLength": 247587,
+        "eosTokenId": 248046,
+        "bosTokenId": null,
+        "paddingTokenId": 248044,
+        "addBosToken": false,
+        "addEosToken": null,
+        "hashes": {
+          "model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenType": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "eosTokenId": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "bosTokenId": null,
+          "paddingTokenId": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "addBosToken": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "addEosToken": null
+        },
+        "hashByKey": {
+          "tokenizer.ggml.model": "8ea11b17a0d9f84d44a620494a4e65be9ff28fc28694262b12835d8ba0351868",
+          "tokenizer.ggml.pre": "1c7e27d8d06f1f147e1e137376cc6c2e068d93be8005c48d7088a081f1f7e7b0",
+          "tokenizer.ggml.tokens": "8602a5aeb57ffeab205af479d8d776f6d26a87ea71908599b5beef21a9e10001",
+          "tokenizer.ggml.token_type": "76adce07e4c8d6808a375cf050fc14ac9028c821be794047709bae160387353a",
+          "tokenizer.ggml.merges": "a284225c6b7eb3356459a6594322984eeb28a45ca0e5c7621459743f55fefa2b",
+          "tokenizer.ggml.eos_token_id": "201a8bab084b2a57aa2f6a8ceb51b3609f4c5a297d952bf51dbf4cd321e16151",
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": "19d4fed54ce56ffde6ed7821add93245af560cc26af49557c9ffa61cc92b95c2",
+          "tokenizer.ggml.add_bos_token": "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d",
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "valueByKey": {
+          "tokenizer.ggml.model": "gpt2",
+          "tokenizer.ggml.pre": "qwen35",
+          "tokenizer.ggml.eos_token_id": 248046,
+          "tokenizer.ggml.bos_token_id": null,
+          "tokenizer.ggml.padding_token_id": 248044,
+          "tokenizer.ggml.add_bos_token": false,
+          "tokenizer.ggml.add_eos_token": null
+        },
+        "lengthByKey": {
+          "tokenizer.ggml.tokens": 248320,
+          "tokenizer.ggml.token_type": 248320,
+          "tokenizer.ggml.merges": 247587
+        }
+      }
+    },
+    "targetMeta": {
+      "file": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/dflash/target-meta.json",
+      "status": "loaded",
+      "data": {
+        "acceptanceRate": null,
+        "acceptanceWindow": null,
+        "drafter": {
+          "finalElizaWeights": true,
+          "matchesTargetCheckpoint": false,
+          "path": "dflash/drafter-2b.gguf",
+          "provenance": "dflash-drafter:stamp-only",
+          "sha256": "9d8472987aed5b36a0d167543a695bcbf349939445ca5382a4245219829f4581",
+          "targetCheckpointSha256": null
+        },
+        "kernelCaps": {
+          "optional": [],
+          "required": [
+            "turboquant_q4",
+            "qjl",
+            "polarquant",
+            "dflash"
+          ]
+        },
+        "publishBlockingReasons": [
+          "DFlash drafter for 2b is the qwen3.5-0.8B full LM at 46% size ratio to the 2B target — exceeds the 5-20% spec-dec sweet spot; pending migration to MTP-baked-trunk (unsloth/Qwen3.5-2B-MTP-GGUF) once the llama.cpp MTP port lands",
+          "DFlash drafter for 2b is stamped against the text-checkpoint sha256 but not yet re-distilled to the rebranded text weights; acceptance-rate eval is pending",
+          "required text quality, ASR WER, VAD latency, expressive voice, DFlash acceptance, first-token, first-audio, barge-in, 30-turn, mobile RSS, and thermal evals are not yet run for these bytes",
+          "required Metal, Vulkan, and CPU backend verification has not been run against the staged bytes",
+          "release evidence is weights-staged, not an upload candidate; the publish orchestrator will not upload"
+        ],
+        "publishEligible": false,
+        "pendingMtpMigration": true,
+        "plannedReplacement": {
+          "source": "unsloth/Qwen3.5-2B-MTP-GGUF",
+          "quant": "Q4_K_M",
+          "strategy": "replace-trunk-with-mtp-baked",
+          "specType": "draft-mtp",
+          "rationale": "Current drafter (qwen3.5-0.8b-LM, 557 MB) is 46% of the 2B target — exceeds the 5-20% spec-dec sweet spot; draft generation eats throughput that should be saved by verification. The MTP-baked-trunk variant bakes MTP heads into the trunk file, eliminating the separate drafter and putting drafting cost at near zero. Migration is gated on the concurrent llama.cpp MTP port (agent ac27b0c5) landing.",
+          "migrationSteps": [
+            "Download unsloth/Qwen3.5-2B-MTP-Q4_K_M.gguf into bundle",
+            "Replace trunk text file",
+            "Remove DFlash drafter (will then be redundant)",
+            "Update manifest to point at the new trunk and use --spec-type draft-mtp instead of --spec-type dflash"
+          ]
+        },
+        "schemaVersion": 2,
+        "status": "weights-staged",
+        "targetText": {
+          "finalElizaWeights": true,
+          "path": "text/eliza-1-2b-32k.gguf",
+          "provenance": "eliza-1-text:Q4_K_M",
+          "sha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2"
+        },
+        "targetTextVariants": [
+          {
+            "finalElizaWeights": true,
+            "path": "text/eliza-1-2b-32k.gguf",
+            "provenance": "eliza-1-text:Q4_K_M",
+            "sha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2"
+          },
+          {
+            "finalElizaWeights": true,
+            "path": "text/eliza-1-2b-64k.gguf",
+            "provenance": "eliza-1-text:Q4_K_M",
+            "sha256": "a511452ec932613d6b26b4fa24488fd431eb61eac69321460447d475edc221e2"
+          }
+        ],
+        "tier": "2b"
+      }
+    }
+  },
+  "runtime": [
+    {
+      "label": "installed",
+      "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+      "args": [
+        "-m",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+        "-md",
+        "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+        "-p",
+        "Hello",
+        "-n",
+        "1",
+        "-c",
+        "128",
+        "-ngl",
+        "99",
+        "-ngld",
+        "99",
+        "--spec-draft-n-min",
+        "1",
+        "--spec-draft-n-max",
+        "1",
+        "--spec-draft-p-min",
+        "0.1",
+        "--spec-type",
+        "dflash"
+      ],
+      "skippedCliFlags": [
+        {
+          "flag": "--ctx-size-draft",
+          "alternatives": [
+            "--spec-draft-ctx-size",
+            "-cd"
+          ],
+          "values": [
+            "128"
+          ],
+          "reason": "not advertised by binary --help"
+        }
+      ],
+      "status": null,
+      "signal": "SIGPIPE",
+      "classification": "runtime_failed_unclassified",
+      "dflash": {
+        "drafted": null,
+        "accepted": null,
+        "acceptanceRate": null,
+        "tokensPerSecond": 1000000,
+        "generation": {
+          "encoded": null,
+          "decoded": null,
+          "tokensPerSecond": null
+        },
+        "timings": {
+          "targetPromptEval": null,
+          "targetEval": null,
+          "draftPromptEval": null,
+          "draftEval": null
+        },
+        "vocabIncompatibleWarning": false,
+        "requiresTrueDrafting": true,
+        "tokenizerCompatible": true,
+        "draftingActive": false
+      },
+      "dflashFailure": null,
+      "outputTail": "\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n> \n\n>"
+    }
+  ],
+  "runtimePolicy": {
+    "requiresTrueDflashDrafting": true,
+    "reason": "plain autoregressive drafter smoke"
+  },
+  "metadataStatus": "metadata_invalid",
+  "metadataFailures": [
+    "dflash/target-meta.json does not prove drafter.matchesTargetCheckpoint=true"
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T17:20:25.531Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+    "speculator": "dflash",
+    "tier": "2b",
+    "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+    "drafterModel": "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 128,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+    },
+    "drafted": 63,
+    "accepted": 63,
+    "acceptanceRate": 1,
+    "speedup": 1.3383685800604228,
+    "withDrafter": {
+      "available": true,
+      "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+      "withDrafter": true,
+      "args": [
+        "-m",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+        "-md",
+        "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+        "-p",
+        "Write a short paragraph about speculative decoding.",
+        "-n",
+        "128",
+        "-c",
+        "2048",
+        "-ngl",
+        "99",
+        "-ngld",
+        "99",
+        "--single-turn",
+        "--simple-io",
+        "--no-display-prompt",
+        "--log-disable",
+        "--spec-draft-n-min",
+        "1",
+        "--spec-draft-n-max",
+        "1",
+        "--spec-draft-p-min",
+        "0.1",
+        "--spec-type",
+        "dflash"
+      ],
+      "skippedCliFlags": [
+        {
+          "flag": "--ctx-size-draft",
+          "alternatives": [
+            "--spec-draft-ctx-size",
+            "-cd"
+          ],
+          "values": [
+            "2048"
+          ],
+          "reason": "not advertised by binary --help"
+        }
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null,
+      "wallMs": 2593,
+      "contextTokens": 2048,
+      "draftMin": 1,
+      "draftMax": 1,
+      "tokensRequested": 128,
+      "drafted": 63,
+      "accepted": 63,
+      "acceptanceRate": 1,
+      "tokensPerSecond": 88.6,
+      "generation": {
+        "encoded": null,
+        "decoded": null,
+        "tokensPerSecond": null
+      },
+      "timings": {
+        "targetPromptEval": null,
+        "targetEval": null,
+        "draftPromptEval": null,
+        "draftEval": null
+      },
+      "vocabIncompatibleWarning": false,
+      "draftingActive": true,
+      "dflashFailure": null,
+      "tokenizerCompatible": true,
+      "outputTail": "\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-2b-64k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding (a key concept in machine learning, specifically large language models/LLMs).\n    *   **Format:** A short paragraph.\n    *   **Goal:** Provide an explanation or overview of the concept.\n\n2.  **Identify Key Concepts of Speculative Decoding:**\n    *   What is it? A method to speed up LLM inference by using multiple predictions in parallel.\n    *   How does it work? Instead of decoding token by token, it generates a candidate sequence for multiple steps\n\n[ Prompt: 586.5 t/s | Generation: 88.6 t/s ]\n[ Draft: 63 accepted / 63 generated | Acceptance: 1.0000 ]\n\nExiting..."
+    },
+    "withoutDrafter": {
+      "available": true,
+      "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+      "withDrafter": false,
+      "args": [
+        "-m",
+        "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+        "-md",
+        "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+        "-p",
+        "Write a short paragraph about speculative decoding.",
+        "-n",
+        "128",
+        "-c",
+        "2048",
+        "-ngl",
+        "99",
+        "-ngld",
+        "99",
+        "--single-turn",
+        "--simple-io",
+        "--no-display-prompt",
+        "--log-disable",
+        "--spec-draft-n-min",
+        "0",
+        "--spec-draft-n-max",
+        "0",
+        "--spec-draft-p-min",
+        "1",
+        "--spec-type",
+        "dflash"
+      ],
+      "skippedCliFlags": [
+        {
+          "flag": "--ctx-size-draft",
+          "alternatives": [
+            "--spec-draft-ctx-size",
+            "-cd"
+          ],
+          "values": [
+            "2048"
+          ],
+          "reason": "not advertised by binary --help"
+        }
+      ],
+      "status": 0,
+      "signal": null,
+      "error": null,
+      "wallMs": 3092,
+      "contextTokens": 2048,
+      "draftMin": 0,
+      "draftMax": 0,
+      "tokensRequested": 128,
+      "drafted": null,
+      "accepted": null,
+      "acceptanceRate": null,
+      "tokensPerSecond": 66.2,
+      "generation": {
+        "encoded": null,
+        "decoded": null,
+        "tokensPerSecond": null
+      },
+      "timings": {
+        "targetPromptEval": null,
+        "targetEval": null,
+        "draftPromptEval": null,
+        "draftEval": null
+      },
+      "vocabIncompatibleWarning": false,
+      "draftingActive": false,
+      "dflashFailure": null,
+      "tokenizerCompatible": true,
+      "outputTail": "Loading model... \n\n\n▄▄ ▄▄\n██ ██\n██ ██  ▀▀█▄ ███▄███▄  ▀▀█▄    ▄████ ████▄ ████▄\n██ ██ ▄█▀██ ██ ██ ██ ▄█▀██    ██    ██ ██ ██ ██\n██ ██ ▀█▄██ ██ ██ ██ ▀█▄██ ██ ▀████ ████▀ ████▀\n                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-2b-64k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding (in the context of machine learning/LLMs).\n    *   **Format:** A short paragraph.\n    *   **Goal:** Explain what it is, how it works, and why it's important, concisely.\n\n2.  **Define Speculative Decoding:**\n    *   What is it? It's a technique used in large language models (LLMs) like LLaMA, Qwen2, etc.\n    *   How does it work? Instead of decoding every token\n\n[ Prompt: 311.4 t/s | Generation: 66.2 t/s ]\n\nExiting..."
+    },
+    "summary": {
+      "tokensPerSecondWithDrafter": 88.6,
+      "tokensPerSecondBaseline": 66.2,
+      "generationTokensPerSecondWithDrafter": null,
+      "generationTokensPerSecondBaseline": null,
+      "targetEvalTokensPerSecondWithDrafter": null,
+      "draftEvalTokensPerSecondWithDrafter": null,
+      "dflashDraftedTokens": 63,
+      "dflashAcceptedTokens": 63,
+      "dflashAcceptanceRate": 1,
+      "dflashSpeedup": 1.3383685800604228,
+      "dflashDraftingActive": true,
+      "dflashFailure": null,
+      "tokenizerCompatible": true,
+      "speculator": "dflash",
+      "tier": "2b",
+      "backend": "unknown",
+      "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+      "drafted": 63,
+      "accepted": 63,
+      "acceptanceRate": 1,
+      "speedup": 1.3383685800604228,
+      "status": "pass",
+      "failure": null
+    },
+    "draftingActive": true,
+    "dflashFailure": null
+  }
+}

@@ -45,13 +45,13 @@ import {
   classifyDatabaseError,
   createDatabaseSnapshot,
   createUnknownDatabaseSnapshot,
+  type DatabaseSnapshot,
+  type DatabaseStartupLock,
   ensurePgliteDataDir,
   redactDatabaseTarget,
   resetPgliteDirectory,
   resolveDatabaseMode,
   updateDatabaseSnapshotStatus,
-  type DatabaseSnapshot,
-  type DatabaseStartupLock,
 } from "../database";
 import { logger } from "../logger";
 import { recordStartupPhase, resolveStartupBundlePath } from "../startup-trace";

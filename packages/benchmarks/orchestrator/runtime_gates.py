@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 from . import adapters as adapter_module
 from .adapters import (
@@ -22,6 +23,7 @@ class RuntimeGate:
     ok: bool
     reason: str | None
     benchmarks: tuple[str, ...]
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -53,6 +55,9 @@ def build_runtime_gate_report(_workspace_root: Path | None = None) -> RuntimeGat
             if adapter_module._has_hyperliquid_live_backend()
             else HYPERLIQUID_LIVE_UNAVAILABLE_REASON,
             benchmarks=("hyperliquid_bench",),
+            metadata=None
+            if adapter_module._has_hyperliquid_live_backend()
+            else {"required_env": ["HL_PRIVATE_KEY"]},
         ),
         RuntimeGate(
             id="terminal_bench_docker",
@@ -120,4 +125,10 @@ def print_runtime_gate_report(report: RuntimeGateReport) -> None:
         if gate.ok:
             print(f"- {gate.id}: {state} benchmarks={benchmarks}")
         else:
-            print(f"- {gate.id}: {state} benchmarks={benchmarks} reason={gate.reason}")
+            suffix = ""
+            if gate.metadata:
+                suffix = f" metadata={json.dumps(gate.metadata, sort_keys=True)}"
+            print(
+                f"- {gate.id}: {state} benchmarks={benchmarks} "
+                f"reason={gate.reason}{suffix}"
+            )

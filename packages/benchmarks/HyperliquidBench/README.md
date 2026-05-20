@@ -78,6 +78,7 @@ requests via an Ethereum private key.
 environment variables via `dotenvy`).
    ```bash
    export HL_PRIVATE_KEY=0xabc...                # required for signing
+   export CEREBRAS_API_KEY=csk-...               # required for gpt-oss-120b plan generation
    export HL_BUILDER_CODE=mybuilder              # optional revenue share tag
    export HL_API_URL=https://api.hyperliquid.com # optional override
    export HL_WS_URL=wss://api.hyperliquid.com/ws # optional override
@@ -133,10 +134,11 @@ Artifacts match the live format but `run_meta.json` includes `"demoMode": true` 
 
 You can still exercise the LLM pipeline in demo mode. That lets you validate prompts, caching, and plan decoding without hitting the exchange.
 
-1. **Set credentials** (only the OpenRouter key is required in demo mode):
+1. **Set credentials** (Cerebras is the benchmark default for gpt-oss-120b; OpenRouter remains usable if you explicitly select it):
    ```bash
-   export OPENROUTER_API_KEY=sk-or-...
-   export LLM_MODEL="google/gemini-2.5-pro"   # or any OpenRouter model you have access to
+   export CEREBRAS_API_KEY=csk-...
+   export BENCHMARK_MODEL_PROVIDER=cerebras
+   export BENCHMARK_MODEL_NAME=gpt-oss-120b
    export HL_LLM_DRYRUN=1                     # skip on-venue execution entirely
    ```
 2. **Generate a coverage plan via LLM**:
@@ -159,6 +161,28 @@ You can still exercise the LLM pipeline in demo mode. That lets you validate pro
    ```
 
 `run_meta.json` records the LLM metadata (`model`, `temperature`, `prompt_hash`, cache hits) alongside the standard demo flags, giving you a reproducible artifact for each prompt test.
+
+##### Orchestrated Cerebras live run
+
+For release-comparable Eliza/Hermes/OpenClaw rows, use the orchestrator so all
+three harnesses share the same `gpt-oss-120b` request shape and latest snapshot
+contract:
+
+```bash
+HL_PRIVATE_KEY=0x... \
+CEREBRAS_API_KEY=csk-... \
+PYTHONPATH=. \
+python -m benchmarks.orchestrator run \
+  --benchmarks hyperliquid_bench \
+  --all-harnesses \
+  --provider cerebras \
+  --model gpt-oss-120b \
+  --force \
+  --show-incompatible
+```
+
+The normalized orchestrator path passes `--no-demo`; demo-mode Hyperliquid
+artifacts are intentionally rejected by the publishability gate.
 
 #### Option B – Live network execution
 

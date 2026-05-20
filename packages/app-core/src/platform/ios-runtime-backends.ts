@@ -128,7 +128,9 @@ export function getIosLocalRuntimeProductionBlockers(
     blockers.push("dynamic native code loading is not allowed");
   }
   if (definition.supportsCodingAgentsInApp) {
-    blockers.push("coding agents must run in a sandbox, cloud, or trusted host");
+    blockers.push(
+      "coding agents must run in a sandbox, cloud, or trusted host",
+    );
   }
   if (!definition.supportsHttpRequestBridge) {
     blockers.push("http_request bridge support is required");
@@ -156,7 +158,8 @@ export function selectIosLocalRuntimeBackend(
     return {
       backend: null,
       definition: null,
-      reason: "production local iOS runtime requires ElizaBunEngine.xcframework",
+      reason:
+        "production local iOS runtime requires ElizaBunEngine.xcframework",
       warnings: [
         "swift-bun-jscore and ittp-jscontext are bridge compatibility paths only",
       ],
@@ -168,7 +171,8 @@ export function selectIosLocalRuntimeBackend(
     return {
       backend: definition.id,
       definition,
-      reason: "SwiftBun-compatible JavaScriptCore bridge was explicitly enabled",
+      reason:
+        "SwiftBun-compatible JavaScriptCore bridge was explicitly enabled",
       warnings: getIosLocalRuntimeProductionBlockers(definition.id),
     };
   }

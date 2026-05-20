@@ -224,6 +224,7 @@ export * from "./runtime/trajectory-persistence.ts";
 export * from "./runtime/trajectory-query.ts";
 export * from "./runtime/version.ts";
 export * from "./security/index.ts";
+export * from "./services/dstack-tee-provider.ts";
 export {
   isStewardEvmBridgeActive,
   setStewardEvmBridgeActive,
@@ -292,6 +293,13 @@ export {
   type ShellRouterContext,
   type ShellSandboxBackend,
 } from "./services/shell-execution-router.ts";
+export * from "./services/tee-evidence.ts";
+export * from "./services/tee-key-release.ts";
+export * from "./services/tee-policy.ts";
+export * from "./services/tee-release-policy.ts";
+export * from "./services/tee-revocation.ts";
+export * from "./services/tee-runtime-config.ts";
+export * from "./services/tee-signer-backend.ts";
 export { resolveDefaultAgentWorkspaceDir } from "./shared/workspace-resolution.ts";
 export * from "./test-support/index.ts";
 export * from "./test-utils/sqlite-compat.ts";

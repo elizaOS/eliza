@@ -14,6 +14,12 @@ import {
   type RemotePluginTrustPolicy,
   syncRemoteCapabilityPlugins,
 } from "./remote-plugin-adapter.ts";
+import type { TeeEvidenceProvider } from "./tee-evidence.ts";
+import {
+  evaluateTeeEvidencePolicy,
+  type TeeEvidencePolicy,
+  type TeeEvidencePolicyDecision,
+} from "./tee-policy.ts";
 
 const DEFAULT_REMOTE_ENDPOINT_ID = "direct";
 const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
@@ -21,6 +27,9 @@ const DEFAULT_REQUEST_TIMEOUT_MS = 60_000;
 export type RemoteCapabilityEndpointProviderId =
   | "direct"
   | "cloud"
+  | "dstack"
+  | "dstack-cloud"
+  | "cvm-direct"
   | "e2b"
   | "home-machine"
   | "mobile-companion"
@@ -44,7 +53,10 @@ export type RemoteCapabilityEndpointTrustPolicyOptions = Pick<
   | "requireSignedProvenance"
   | "requireVerifiedProvenance"
   | "requireProvenanceDigestMatch"
->;
+> & {
+  requireTeeEvidence?: boolean;
+  teePolicy?: TeeEvidencePolicy;
+};
 
 export type RemoteCapabilityEndpointProvider<TOptions = unknown> = {
   id: RemoteCapabilityEndpointProviderId;
@@ -56,6 +68,15 @@ export type RemoteCapabilityEndpointProvider<TOptions = unknown> = {
 export type DirectRemoteCapabilityEndpointProviderOptions = {
   endpoint: RemoteCapabilityEndpointConfig;
   allowedModuleIds?: string[];
+};
+
+export type TeeRemoteCapabilityEndpointProviderOptions = {
+  endpoint: RemoteCapabilityEndpointConfig;
+  evidenceProvider: TeeEvidenceProvider;
+  providerId?: RemoteCapabilityEndpointProviderId;
+  allowedModuleIds?: string[];
+  trustPolicy?: RemoteCapabilityEndpointTrustPolicyOptions;
+  metadata?: Record<string, unknown>;
 };
 
 export type ConnectRemoteCapabilityEndpointProviderOptions<TOptions = unknown> =
@@ -71,6 +92,7 @@ export type ConnectRemoteCapabilityEndpointProviderOptions<TOptions = unknown> =
 export type ConnectRemoteCapabilityEndpointProviderResult =
   ProvisionedRemoteCapabilityEndpoint & {
     sync: RemotePluginSyncResult;
+    teeTrustDecision?: TeeEvidencePolicyDecision;
   };
 
 export function directRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpointProvider<DirectRemoteCapabilityEndpointProviderOptions> {
@@ -80,6 +102,29 @@ export function directRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpoi
       providerId: "direct",
       endpoint: normalizeEndpoint(endpoint),
       ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+    }),
+  };
+}
+
+export function teeRemoteCapabilityEndpointProvider(): RemoteCapabilityEndpointProvider<TeeRemoteCapabilityEndpointProviderOptions> {
+  return {
+    id: "dstack",
+    provision: async ({
+      endpoint,
+      evidenceProvider,
+      providerId,
+      allowedModuleIds,
+      trustPolicy,
+      metadata,
+    }) => ({
+      providerId: providerId ?? "dstack",
+      endpoint: normalizeEndpoint(endpoint),
+      ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
+      ...(trustPolicy === undefined ? {} : { trustPolicy }),
+      metadata: {
+        ...(metadata ?? {}),
+        teeEvidence: await evidenceProvider.collectEvidence(),
+      },
     }),
   };
 }
@@ -143,6 +188,10 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
   const trustPolicy = normalizeEndpointTrustPolicyOptions(
     options.trustPolicy ?? provisioned.trustPolicy,
   );
+  const teeTrustDecision = evaluateProvisionedEndpointTeeTrust(
+    provisioned,
+    trustPolicy,
+  );
 
   const router = installRemoteCapabilityEndpoint(runtime, {
     enabled: true,
@@ -174,6 +223,7 @@ export async function connectRemoteCapabilityEndpointProvider<TOptions>(
     endpoint,
     ...(allowedModuleIds === undefined ? {} : { allowedModuleIds }),
     ...(Object.keys(trustPolicy).length === 0 ? {} : { trustPolicy }),
+    ...(teeTrustDecision === undefined ? {} : { teeTrustDecision }),
     sync: {
       ...sync,
       skipped: mergeSkippedRemoteCapabilityPlugins(sync.skipped, skipped, {
@@ -210,7 +260,50 @@ export function normalizeEndpointTrustPolicyOptions(
     ...(trustPolicy.requireProvenanceDigestMatch === true
       ? { requireProvenanceDigestMatch: true, requireSignedProvenance: true }
       : {}),
+    ...(trustPolicy.requireTeeEvidence === true
+      ? { requireTeeEvidence: true }
+      : {}),
+    ...(trustPolicy.teePolicy === undefined
+      ? {}
+      : { teePolicy: trustPolicy.teePolicy }),
   };
+}
+
+function evaluateProvisionedEndpointTeeTrust(
+  provisioned: ProvisionedRemoteCapabilityEndpoint,
+  trustPolicy: RemoteCapabilityEndpointTrustPolicyOptions,
+): TeeEvidencePolicyDecision | undefined {
+  const teePolicy =
+    trustPolicy.teePolicy === undefined &&
+    trustPolicy.requireTeeEvidence !== true
+      ? undefined
+      : {
+          ...(trustPolicy.teePolicy ?? {}),
+          ...(trustPolicy.requireTeeEvidence === true
+            ? { required: true }
+            : {}),
+        };
+  if (!teePolicy) return undefined;
+  const decision = evaluateTeeEvidencePolicy(
+    readProvisionedTeeEvidence(provisioned),
+    teePolicy,
+  );
+  if (!decision.trusted) {
+    throw new Error(
+      `Remote capability endpoint "${provisioned.endpoint.id}" failed TEE trust policy: ${decision.detail ?? decision.reason}`,
+    );
+  }
+  return decision;
+}
+
+function readProvisionedTeeEvidence(
+  provisioned: ProvisionedRemoteCapabilityEndpoint,
+): unknown {
+  const metadata = provisioned.metadata;
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return undefined;
+  }
+  return (metadata as { teeEvidence?: unknown }).teeEvidence;
 }
 
 function normalizeTrustedProvenancePublicKeys(

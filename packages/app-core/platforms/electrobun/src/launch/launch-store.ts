@@ -1,11 +1,11 @@
+import type { JsonValue } from "@elizaos/electrobun-carrots";
+import { createUnknownDatabaseSnapshot } from "../database";
 import type {
   LaunchEvent,
   LaunchEventsTailResult,
   LaunchPhase,
   LaunchSnapshot,
 } from "./types";
-import type { JsonValue } from "@elizaos/electrobun-carrots";
-import { createUnknownDatabaseSnapshot } from "../database";
 
 const DEFAULT_MAX_EVENTS = 500;
 

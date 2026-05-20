@@ -1,0 +1,59 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T16:46:13.562Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "speculator": "mtp",
+  "tier": "2b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-2B-MTP-GGUF/snapshots/e05864f8066d874d5f85aaff007ae57a2a7d1efe/Qwen3.5-2B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 128,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd"
+  },
+  "drafted": null,
+  "accepted": null,
+  "acceptanceRate": null,
+  "speedup": 0.2495412844036697,
+  "withDrafter": {
+    "available": true,
+    "withMtp": true,
+    "status": 0,
+    "wallMs": 5088,
+    "failure": null,
+    "outputTail": "available commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding (a technique in computer architecture and machine learning).\n    *   **Format:** A short paragraph.\n    *   **Goal:** Explain the concept clearly and concisely.\n\n2.  **Define Speculative Decoding:**\n    *   What is it? It's an optimization technique used in high-performance computing (specifically in CPUs for machine translation, decoding, etc., and increasingly in AI inference) to improve performance.\n    *   How does it work? Instead of decoding every possible path from\n\n[ Prompt: 103.7 t/s | Generation: 40.8 t/s ]\n\nExiting...",
+    "tokensPerSecond": 40.8,
+    "accepted": null,
+    "drafted": null,
+    "acceptanceRate": null
+  },
+  "withoutDrafter": {
+    "available": true,
+    "withMtp": false,
+    "status": 0,
+    "wallMs": 2059,
+    "failure": null,
+    "outputTail": "  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative Decoding (SD).\n    *   **Format:** Short paragraph.\n    *   **Goal:** Provide an accurate, concise explanation of the concept.\n\n2.  **Define Speculative Decoding:**\n    *   What is it? It's a technique in computer architecture (specifically CPUs/GPUs).\n    *   Problem: Instruction pipelines (fetch, decode, execute) are slow, but the CPU cannot pause indefinitely for every instruction.\n    *   Solution: Use multiple cores or pipelines to\n\n[ Prompt: 588.1 t/s | Generation: 163.5 t/s ]\n\nExiting...",
+    "tokensPerSecond": 163.5,
+    "accepted": null,
+    "drafted": null,
+    "acceptanceRate": null
+  },
+  "summary": {
+    "speculator": "mtp",
+    "tier": "2b",
+    "backend": "unknown",
+    "binarySha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd",
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "speedup": 0.2495412844036697,
+    "status": "pass",
+    "failure": null
+  }
+}

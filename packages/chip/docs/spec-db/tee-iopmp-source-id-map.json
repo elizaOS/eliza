@@ -1,0 +1,115 @@
+{
+  "schemaVersion": 1,
+  "policy": "eliza-tee-iopmp-v0",
+  "defaultAction": "deny",
+  "masters": [
+    {
+      "id": "usb",
+      "sourceId": 16,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": ["usb-bounce"]
+    },
+    {
+      "id": "emmc-ufs",
+      "sourceId": 17,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": ["storage-bounce", "ota-staging"]
+    },
+    {
+      "id": "display",
+      "sourceId": 18,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": ["display-scanout"]
+    },
+    {
+      "id": "isp",
+      "sourceId": 19,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": ["camera-capture-bounce"]
+    },
+    {
+      "id": "npu-dma",
+      "sourceId": 20,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": ["npu-command-queue", "npu-shared-output"],
+      "requiresMeasuredFirmware": true,
+      "requiresQueueOwnershipCheck": true
+    },
+    {
+      "id": "network",
+      "sourceId": 21,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": ["network-rx-bounce", "network-tx-bounce"]
+    },
+    {
+      "id": "debug-transport",
+      "sourceId": 22,
+      "canDma": true,
+      "confidentialMemoryDefault": "deny",
+      "allowedSharedRegions": [],
+      "requiresProductionLifecycleDisable": true
+    }
+  ],
+  "sharedRegions": [
+    {
+      "id": "usb-bounce",
+      "owner": "monitor",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "storage-bounce",
+      "owner": "monitor",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "ota-staging",
+      "owner": "os-domain",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "display-scanout",
+      "owner": "os-domain",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "camera-capture-bounce",
+      "owner": "monitor",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "npu-command-queue",
+      "owner": "os-domain",
+      "pageState": "device-assigned",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "npu-shared-output",
+      "owner": "os-domain",
+      "pageState": "device-assigned",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "network-rx-bounce",
+      "owner": "monitor",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    },
+    {
+      "id": "network-tx-bounce",
+      "owner": "monitor",
+      "pageState": "shared",
+      "scrubOnRevoke": true
+    }
+  ]
+}

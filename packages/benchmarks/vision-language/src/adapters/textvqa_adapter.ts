@@ -91,7 +91,10 @@ export async function predictTextVqa(
     try {
       const text = await runtime.ask({
         imagePath: sample.imagePath,
-        question: sample.question,
+        question:
+          `${sample.question}\n` +
+          "Answer with only the exact visible text or shortest possible answer. " +
+          "Do not explain.",
         maxTokens: 32,
       });
       out.push({ text, latencyMs: Date.now() - startedAt });

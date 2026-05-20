@@ -89,25 +89,6 @@ function extractRlmAnswer(prompt: string): string | null {
   return null;
 }
 
-function extractArithmeticAnswer(prompt: string): string | null {
-  const match =
-    /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(prompt) ??
-    /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(
-      prompt,
-    );
-  if (!match) return null;
-  const left = Number(match[1]);
-  const op = match[2].toLowerCase();
-  const right = Number(match[3]);
-  if (!Number.isFinite(left) || !Number.isFinite(right)) return null;
-  if (op === "+" || op === "plus") return String(left + right);
-  if (op === "-" || op === "minus") return String(left - right);
-  if (op === "*" || op === "x" || op === "times" || op === "multiplied by") {
-    return String(left * right);
-  }
-  return null;
-}
-
 function buildReplyJson(answer: string): string {
   return buildJsonResponse("", {
     thought: "Answering the benchmark question directly.",
@@ -492,14 +473,6 @@ function buildCompletion(prompt: string): string {
     /RLM benchmark task/i.test(prompt)
   ) {
     return buildReplyJson(extractRlmAnswer(prompt) ?? "UNKNOWN");
-  }
-
-  if (
-    /Benchmark:\*{0,2}\s*gaia/i.test(prompt) ||
-    /GAIA benchmark task|FINAL ANSWER/i.test(prompt)
-  ) {
-    const answer = extractArithmeticAnswer(prompt) ?? "mock-answer";
-    return buildReplyJson(`FINAL ANSWER: ${answer}`);
   }
 
   if (

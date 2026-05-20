@@ -172,16 +172,12 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
 _GAUNTLET_REAL_SURFPOOL_AVAILABLE: bool | None = None
 
 
-_HYPERLIQUID_LIVE_AVAILABLE: bool | None = None
-
-
 def _has_hyperliquid_live_backend() -> bool:
     """Return true when Hyperliquid can run outside demo/smoke mode."""
-    global _HYPERLIQUID_LIVE_AVAILABLE
-    if _HYPERLIQUID_LIVE_AVAILABLE is not None:
-        return _HYPERLIQUID_LIVE_AVAILABLE
-    _HYPERLIQUID_LIVE_AVAILABLE = bool(os.environ.get("HL_PRIVATE_KEY"))
-    return _HYPERLIQUID_LIVE_AVAILABLE
+    # This is an environment-only probe. Do not cache it: tests and runbook
+    # scripts often validate the matrix, set HL_PRIVATE_KEY, then validate
+    # again in the same Python process.
+    return bool(os.environ.get("HL_PRIVATE_KEY"))
 
 
 def _surfpool_start_help(binary: str) -> str:
@@ -2689,7 +2685,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
         },
         "vision_language": {
             "sub_benchmark": "textvqa",
-            "samples": 5,
+            "samples": 20,
             "tier": "eliza-1-9b",
             **(
                 {"model_provider": os.environ["VISION_LANGUAGE_PROVIDER"]}

@@ -86,7 +86,10 @@ function validateSubscriptions(
     }
     return {
       satelliteId: subscription.satelliteId,
-      events: validateStringList(subscription.events, "eventSubscriptions.events"),
+      events: validateStringList(
+        subscription.events,
+        "eventSubscriptions.events",
+      ),
     };
   });
 }
@@ -140,9 +143,7 @@ export function normalizeDynamicViewManifest(
     manifest.requiredSatellites,
     "requiredSatellites",
   );
-  const eventSubscriptions = validateSubscriptions(
-    manifest.eventSubscriptions,
-  );
+  const eventSubscriptions = validateSubscriptions(manifest.eventSubscriptions);
   const invokeTargets = validateStringList(
     manifest.invokeTargets,
     "invokeTargets",

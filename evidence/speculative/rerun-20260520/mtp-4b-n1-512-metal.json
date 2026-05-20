@@ -1,0 +1,59 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T17:22:12.152Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "speculator": "mtp",
+  "tier": "4b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-4B-MTP-GGUF/snapshots/86835bf9949e4d14d6860f7910b1340ad4f271a9/Qwen3.5-4B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 512,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 305,
+  "accepted": 205,
+  "acceptanceRate": 0.6721311475409836,
+  "speedup": 0.9954476479514414,
+  "withDrafter": {
+    "available": true,
+    "withMtp": true,
+    "status": 0,
+    "wallMs": 9164,
+    "failure": null,
+    "outputTail": "\n2.  **Identify Key Concepts of Speculative Decoding:**\n    *   What is it? A technique for accelerating Large Language Model (LLM) inference.\n    *   How does it work? Uses a small \"speculative\" model to generate candidate tokens quickly.\n    *   Verification: A larger \"target\" model checks if the tokens are correct.\n    *   Outcome: If correct, accept them (save computation). If incorrect, revert and only re-generate the failed token.\n    *   Benefit: Speedup without significant accuracy loss (up to 10x speedup sometimes).\n\n3.  **Drafting - Attempt 1 (Mental Outline):**\n    Speculative decoding is a way to make LLMs faster. It uses a tiny model to guess the next words. Then a big model checks the guesses. If the big model says it's right, they use it. If not, they fix it. This saves time.\n\n4.  **Drafting - Attempt 2 (Adding Detail & Flow):**\n    Speculative decoding is an optimization technique designed to accelerate the inference process of large language models. It works by using a smaller, fast-trained model to generate a batch of candidate tokens before a larger, more accurate model validates them. If the large model confirms the candidates are correct, it accepts them without re-generating, effectively reducing the computational cost for that batch. This method allows for significant speedups while maintaining high output quality, making it a crucial advancement for real-time generation tasks.\n\n5.  **Refining for Conciseness and Impact (Final Polish):**\n    *   Make sure to mention \"compute budget\" or \"latency reduction.\"\n    *   Ensure the distinction between speculative and target models is clear.\n\n6.  **Final Selection (similar to Attempt 2 but tighter):**\n    Speculative decoding is an optimization technique designed to accelerate the inference process of large language models by using two models of different sizes. A smaller, faster \"speculative\" model generates a batch of candidate tokens in advance, which are then verified by a larger, more accurate \"target\" model. If the target model confirms the candidates are correct, the generation proceeds without further computation for those tokens;\n\n[ Prompt: 178.3 t/s | Generation: 65.6 t/s ]\n[ Draft: 205 accepted / 305 generated | Acceptance: 0.6721 ]\n\nExiting...",
+    "tokensPerSecond": 65.6,
+    "accepted": 205,
+    "drafted": 305,
+    "acceptanceRate": 0.6721311475409836
+  },
+  "withoutDrafter": {
+    "available": true,
+    "withMtp": false,
+    "status": 0,
+    "wallMs": 9669,
+    "failure": null,
+    "outputTail": "\n1.  **Analyze the Request:**\n    *   Topic: Speculative Decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain the concept clearly and concisely.\n\n2.  **Identify Key Concepts of Speculative Decoding:**\n    *   What is it? An optimization technique for Large Language Models (LLMs).\n    *   Problem it solves: Latency/slow inference (generating tokens one by one with a slow, high-accuracy model).\n    *   How it works: A small, fast \"speculative model\" generates a batch of tokens. A large, accurate \"target model\" verifies them.\n    *   Outcome: Accepts correct tokens, reverts and regenerates incorrect ones, speeds up generation.\n    *   Analogy (optional but helpful): Drafting a story vs. proofreading, or writing a draft then checking.\n\n3.  **Drafting - Attempt 1 (Mental Outline):**\n    Speculative decoding is a way to make LLMs faster. Instead of the big model generating every word, a small model guesses the next few words first. Then the big model checks them. If they are right, everyone moves on together. If wrong, the big model takes over. This reduces the number of steps the big model has to take.\n\n4.  **Refining - Attempt 2 (Adding technical detail and flow):**\n    Speculative decoding is a technique used to accelerate large language model inference. It involves a small, lightweight model that generates a batch of candidate tokens. These candidates are then verified by the main, larger model. If the large model agrees with the small model, the tokens are accepted and committed to the output, skipping individual generation steps. If it disagrees, the generation process backtracks. This significantly reduces latency compared to standard autoregressive generation.\n\n5.  **Polishing - Attempt 3 (Focusing on clarity and impact):**\n    Speculative decoding is a technique designed to accelerate large language model inference by leveraging a small, fast \"speculative model\" to generate a batch of candidate tokens before a larger, more accurate \"target model\" verifies them. Instead of the primary model generating every token sequentially at high computational cost, the speculative model drafts a sequence quickly, and the target model performs a parallel verification process. If the target model agrees with the speculative draft, the tokens are committed without further re-generation, effectively skipping redundant computation steps\n\n[ Prompt: 208.8 t/s | Generation: 65.9 t/s ]\n\nExiting...",
+    "tokensPerSecond": 65.9,
+    "accepted": null,
+    "drafted": null,
+    "acceptanceRate": null
+  },
+  "summary": {
+    "speculator": "mtp",
+    "tier": "4b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 305,
+    "accepted": 205,
+    "acceptanceRate": 0.6721311475409836,
+    "speedup": 0.9954476479514414,
+    "status": "pass",
+    "failure": null
+  }
+}

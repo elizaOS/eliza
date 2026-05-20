@@ -1,5 +1,5 @@
-import { randomUUID } from "node:crypto";
 import { Buffer } from "node:buffer";
+import { randomUUID } from "node:crypto";
 import type { JsonValue } from "@elizaos/electrobun-carrots";
 import { TraceError } from "./errors";
 import type {

@@ -1,12 +1,16 @@
 {
   "blockers": [
     {
-      "detail": "/home/shaw/milady/eliza/packages/chip/external/linux",
-      "id": "external_linux_tree_invalid"
+      "detail": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux",
+      "id": "external_linux_tree_missing"
     },
     {
       "detail": "set CROSS_COMPILE=... or install a riscv64 Linux compiler",
       "id": "riscv_cross_compiler_missing"
+    },
+    {
+      "detail": "GNU Make 3.81",
+      "id": "gnu_make_too_old_or_missing"
     },
     {
       "detail": "docs/evidence/linux/eliza_e1_kernel_build.log",
@@ -45,24 +49,24 @@
   "imported_bsp": {
     "status": "missing_tree"
   },
-  "linux_tree": "/home/shaw/milady/eliza/packages/chip/external/linux",
+  "linux_tree": "/Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux",
   "linux_tree_valid": false,
   "producer_commands": {
-    "configure": "cd /home/shaw/milady/eliza/packages/chip/external/linux && make ARCH=riscv eliza_e1.config olddefconfig",
-    "dtb_check": "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux dtb-check",
-    "import": "sw/linux/scripts/import-linux-bsp.sh /home/shaw/milady/eliza/packages/chip/external/linux",
-    "import_check": "sw/linux/scripts/import-linux-bsp.sh --check /home/shaw/milady/eliza/packages/chip/external/linux",
-    "kernel_build": "sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux kernel-build",
-    "mmio_smoke": "E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /home/shaw/milady/eliza/packages/chip/external/linux smoke"
+    "configure": "cd /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux && make ARCH=riscv eliza_e1.config olddefconfig",
+    "dtb_check": "sw/linux/scripts/capture-linux-bsp-evidence.sh /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux dtb-check",
+    "import": "sw/linux/scripts/import-linux-bsp.sh /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux",
+    "import_check": "sw/linux/scripts/import-linux-bsp.sh --check /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux",
+    "kernel_build": "sw/linux/scripts/capture-linux-bsp-evidence.sh /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux kernel-build",
+    "mmio_smoke": "E1_SMOKE_CMD='ssh root@TARGET /usr/bin/e1-mmio-smoke' sw/linux/scripts/capture-linux-bsp-evidence.sh /Users/shawwalters/eliza-workspace/milady/eliza/packages/chip/external/linux smoke"
   },
   "schema": "eliza.linux_external_bsp_status.v1",
   "status": "blocked",
   "tools": {
     "cross_compile": "",
-    "dtc": "",
+    "dtc": "/opt/homebrew/bin/dtc",
     "make": "/usr/bin/make",
-    "make_version": "GNU Make 4.3",
-    "make_version_ok": true,
+    "make_version": "GNU Make 3.81",
+    "make_version_ok": false,
     "riscv_compiler": ""
   }
 }

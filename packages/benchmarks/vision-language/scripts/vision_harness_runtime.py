@@ -83,7 +83,6 @@ def _client(
     raise ValueError(f"unsupported vision harness: {harness!r}")
 
 
-<<<<<<< HEAD
 class _ElizaCodeAgentVisionClient:
     def __init__(self, *, adapter: str, provider: str, model: str, timeout_s: float):
         self.adapter = adapter
@@ -139,7 +138,8 @@ def _repo_root() -> Path:
         if (parent / "packages" / "benchmarks" / "eliza-adapter").exists():
             return parent
     raise FileNotFoundError("Could not locate repository root from vision harness runtime")
-=======
+
+
 def _extract_text_and_image(messages: object) -> tuple[str, str]:
     if not isinstance(messages, list):
         return "", ""
@@ -293,7 +293,6 @@ def _local_eliza_openai_server(tier: str):
         server.shutdown()
         server.server_close()
         tmp.cleanup()
->>>>>>> origin/develop
 
 
 def main() -> int:

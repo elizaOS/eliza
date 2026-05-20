@@ -53,38 +53,6 @@ function createBenchmarkActionJson(prompt: string): string {
   }
 
   if (
-    /Benchmark:\*{0,2}\s*gaia/i.test(prompt) ||
-    /GAIA benchmark task|FINAL ANSWER/i.test(prompt)
-  ) {
-    const arithmetic =
-      /Question:\s*(?:what is\s*)?(-?\d+)\s*([+*x-])\s*(-?\d+)/i.exec(prompt) ??
-      /Question:\s*(?:what is\s*)?(-?\d+)\s+(times|multiplied by|plus|minus)\s+(-?\d+)/i.exec(
-        prompt,
-      );
-    let answer = "mock-answer";
-    if (arithmetic) {
-      const left = Number(arithmetic[1]);
-      const right = Number(arithmetic[3]);
-      const op = arithmetic[2].toLowerCase();
-      if (op === "+" || op === "plus") answer = String(left + right);
-      if (op === "-" || op === "minus") answer = String(left - right);
-      if (
-        op === "*" ||
-        op === "x" ||
-        op === "times" ||
-        op === "multiplied by"
-      ) {
-        answer = String(left * right);
-      }
-    }
-    return buildJsonResponse({
-      thought: "Answering the GAIA question directly.",
-      actions: "REPLY",
-      text: `FINAL ANSWER: ${answer}`,
-    });
-  }
-
-  if (
     /Benchmark:\*{0,2}\s*(hyperliquid_bench|hyperliquid-bench|hyperliquidbench)/i.test(
       prompt,
     ) ||

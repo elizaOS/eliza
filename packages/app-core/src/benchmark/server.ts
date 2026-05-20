@@ -1149,6 +1149,47 @@ function lifeOpsToolCallsFromNativeToolCalls(
   });
 }
 
+function shouldDropLifeOpsReadOnlyFollowupToolCalls(params: {
+  userText: string;
+  responseText: string;
+  lifeopsContext: Record<string, unknown>;
+  toolCalls: Array<{ name: string; arguments: Record<string, unknown> }>;
+}): boolean {
+  if (params.userText.trim() || !params.responseText.trim()) return false;
+  if (params.toolCalls.length === 0) return false;
+  const onlyReminderCreates = params.toolCalls.every((call) => {
+    const name = call.name.trim().toUpperCase();
+    const action = String(call.arguments.action ?? "").toLowerCase();
+    return (
+      (name === "SCHEDULED_TASKS" || name === "REMINDERS") &&
+      (action === "create" || action === "add" || action === "")
+    );
+  });
+  if (!onlyReminderCreates) return false;
+
+  const previousToolResults = params.lifeopsContext.previousToolResults;
+  if (!Array.isArray(previousToolResults)) return false;
+  return previousToolResults.some((entry) => {
+    if (!entry || typeof entry !== "object") return false;
+    const record = entry as Record<string, unknown>;
+    if (record.ok !== true) return false;
+    const tool = String(record.tool ?? "").toUpperCase();
+    if (!tool.startsWith("CALENDAR")) return false;
+    const args =
+      record.arguments && typeof record.arguments === "object"
+        ? (record.arguments as Record<string, unknown>)
+        : {};
+    const result =
+      record.result && typeof record.result === "object"
+        ? (record.result as Record<string, unknown>)
+        : {};
+    const subaction = String(
+      args.subaction ?? args.action ?? result.subaction ?? "",
+    ).toLowerCase();
+    return subaction === "check_availability";
+  });
+}
+
 function isAllowedOrigin(origin: string | undefined): boolean {
   if (!origin) return false;
   try {
@@ -2247,6 +2288,17 @@ export async function startBenchmarkServer() {
           name,
           arguments: argumentsObj,
         });
+      }
+
+      if (
+        shouldDropLifeOpsReadOnlyFollowupToolCalls({
+          userText,
+          responseText,
+          lifeopsContext,
+          toolCalls,
+        })
+      ) {
+        toolCalls.length = 0;
       }
 
       const usage = summarizeBenchmarkTurnUsage(turnUsageBuffer);

@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "deploymentId": "eliza-agent-dstack-local-example",
+  "provider": "dstack",
+  "teeKinds": ["dstack", "tdx", "cove"],
+  "image": {
+    "repository": "ghcr.io/elizaos/agent",
+    "tag": "tee-local-example",
+    "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  },
+  "composeDigest": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "policyDigest": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "kms": {
+    "url": "https://kms.example.test/v1/tee/key-release",
+    "requiresFreshNonce": true
+  },
+  "requiredClaims": {
+    "debugDisabled": true,
+    "secureBoot": true,
+    "memoryEncrypted": true,
+    "ioProtected": true
+  },
+  "requiredMeasurements": {
+    "agent": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "policy": "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "container": "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  },
+  "secretScopes": ["agent-session", "model-key", "remote-signing"],
+  "network": {
+    "raTlsRequired": true,
+    "externalNetworkingAllowed": true
+  }
+}

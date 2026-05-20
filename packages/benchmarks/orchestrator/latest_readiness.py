@@ -15,6 +15,7 @@ class ReadinessFinding:
     scope: str
     reason: str
     value: str
+    metadata: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +128,7 @@ def validate_latest_readiness(
                         scope=f"{benchmark_id}::{harness}",
                         reason=str(state or "unknown_state"),
                         value=str(cell.get("reason") or cell.get("status") or ""),
+                        metadata=_cell_readiness_metadata(cell),
                     )
                 )
     if filters_active and isinstance(contract, dict) and selected_contract_benchmarks == 0:
@@ -174,6 +176,7 @@ def validate_latest_readiness(
                 scope=f"runtime_gate:{gate.id}",
                 reason="runtime_gate_blocked",
                 value=str(gate.reason or ""),
+                metadata=gate.metadata,
             )
             for gate in runtime_gates.gates
             if not gate.ok
@@ -195,7 +198,20 @@ def print_readiness_report(report: ReadinessReport) -> None:
         print("Latest benchmark matrix is complete, publishable, and comparable.")
         return
     for finding in report.findings:
-        print(f"- {finding.scope}: {finding.reason} value={finding.value}")
+        suffix = ""
+        if finding.metadata:
+            suffix = f" metadata={json.dumps(finding.metadata, sort_keys=True)}"
+        print(f"- {finding.scope}: {finding.reason} value={finding.value}{suffix}")
+
+
+def _cell_readiness_metadata(cell: dict[str, Any]) -> dict[str, Any] | None:
+    metadata: dict[str, Any] = {}
+    required_env = cell.get("required_env")
+    if isinstance(required_env, list):
+        env_values = [str(value) for value in required_env if str(value).strip()]
+        if env_values:
+            metadata["required_env"] = env_values
+    return metadata or None
 
 
 def _load_index(latest_dir: Path) -> dict[str, Any]:

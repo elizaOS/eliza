@@ -40,6 +40,7 @@ function parseArgs(argv) {
       process.env.ELIZA_MTP_BENCH_PROMPT ||
       "Write a short paragraph about speculative decoding.",
     benchDraftMax: process.env.ELIZA_MTP_BENCH_DRAFT_MAX || "2",
+    benchLogDisable: process.env.ELIZA_MTP_BENCH_LOG_DISABLE !== "0",
     benchTimeoutMs: Number.parseInt(
       process.env.ELIZA_MTP_BENCH_TIMEOUT_MS || "600000",
       10,
@@ -67,6 +68,8 @@ function parseArgs(argv) {
     else if (arg === "--bench-context") args.benchContext = Number.parseInt(next(), 10);
     else if (arg === "--bench-prompt") args.benchPrompt = next();
     else if (arg === "--bench-draft-n-max") args.benchDraftMax = next();
+    else if (arg === "--bench-log-disable") args.benchLogDisable = true;
+    else if (arg === "--bench-keep-logs") args.benchLogDisable = false;
     else if (arg === "--bench-timeout-ms")
       args.benchTimeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
@@ -86,6 +89,7 @@ function parseArgs(argv) {
           "  --bench-tokens <N>          Tokens to generate per run",
           "  --bench-context <N>         Context size",
           "  --bench-draft-n-max <N>     Max MTP draft tokens",
+          "  --bench-keep-logs           Preserve llama.cpp logs so draft counters can be parsed",
           "  --bench-report <path>       Speculative speedup report path",
         ].join("\n"),
       );
@@ -222,12 +226,14 @@ function detectCliFeatures(binary) {
     available: true,
     status: result.status,
     supportsDraftMtp: /draft-mtp|mtp/.test(output),
-    outputTail: output.trim().split(/\r?\n/).slice(-20).join("\n"),
+    outputTail: outputTail(output, 20),
   };
 }
 
-function parseBenchOutput(output) {
+export function parseBenchOutput(output) {
   const tps =
+    Number(output.match(/\[\s*Prompt:\s*[0-9.]+\s*t\/s\s*\|\s*Generation:\s*([0-9.]+)\s*t\/s\s*\]/i)?.[1]) ||
+    Number(output.match(/llama_perf_context_print:\s*eval time\s*=.*?,\s*([0-9.]+)\s*tokens per second/i)?.[1]) ||
     Number(output.match(/tok\/s:\s*([0-9.]+)/i)?.[1]) ||
     Number(output.match(/,\s*([0-9.]+)\s+tokens per second/i)?.[1]) ||
     null;
@@ -242,6 +248,15 @@ function parseBenchOutput(output) {
         ? accepted / drafted
         : null,
   };
+}
+
+function outputTail(output, lines = 25) {
+  return String(output ?? "")
+    .slice(-256 * 1024)
+    .trim()
+    .split(/\r?\n/)
+    .slice(-lines)
+    .join("\n");
 }
 
 function runBench(binary, args, withMtp) {
@@ -259,7 +274,13 @@ function runBench(binary, args, withMtp) {
     String(args.benchContext),
     "-ngl",
     String(args.ngl),
+    "--single-turn",
+    "--simple-io",
+    "--no-display-prompt",
   ];
+  if (args.benchLogDisable) {
+    cliArgs.push("--log-disable");
+  }
   if (withMtp) {
     cliArgs.push("--spec-type", "draft-mtp", "--spec-draft-n-max", String(args.benchDraftMax));
   }
@@ -268,7 +289,7 @@ function runBench(binary, args, withMtp) {
     encoding: "utf8",
     timeout: Math.max(1, args.benchTimeoutMs),
     killSignal: "SIGKILL",
-    maxBuffer: 32 * 1024 * 1024,
+    maxBuffer: 64 * 1024 * 1024,
   });
   const output = `${result.stdout || ""}${result.stderr || ""}`;
   const parsed = parseBenchOutput(output);
@@ -282,7 +303,7 @@ function runBench(binary, args, withMtp) {
     status: result.status,
     wallMs: Date.now() - started,
     failure,
-    outputTail: output.trim().split(/\r?\n/).slice(-25).join("\n"),
+    outputTail: outputTail(output),
     ...parsed,
   };
 }
@@ -340,4 +361,6 @@ function main() {
   if (!mtp.pass) process.exitCode = 3;
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

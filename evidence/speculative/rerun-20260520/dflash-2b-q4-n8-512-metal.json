@@ -1,0 +1,199 @@
+{
+  "reportSchema": "eliza.speculative-benchmark.v1",
+  "generatedAt": "2026-05-20T17:26:07.368Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/dflash_drafter_runtime_smoke.mjs",
+  "speculator": "dflash",
+  "tier": "2b",
+  "targetModel": "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+  "drafterModel": "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "benchTokens": 512,
+  "available": true,
+  "status": "pass",
+  "failure": null,
+  "backend": "unknown",
+  "binary": {
+    "path": ".tmp/llama-mtp-build/bin/llama-cli",
+    "exists": true,
+    "sha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9"
+  },
+  "drafted": 2028,
+  "accepted": 255,
+  "acceptanceRate": 0.1257396449704142,
+  "speedup": 0.36986301369863017,
+  "withDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": true,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+      "-md",
+      "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "512",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "2",
+      "--spec-draft-n-max",
+      "8",
+      "--spec-draft-p-min",
+      "0.1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 32883,
+    "contextTokens": 2048,
+    "draftMin": 2,
+    "draftMax": 8,
+    "tokensRequested": 512,
+    "drafted": 2028,
+    "accepted": 255,
+    "acceptanceRate": 0.1257396449704142,
+    "tokensPerSecond": 16.2,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "build      : b10002-96dd1a846\nmodel      : eliza-1-2b-64k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding.\n    *   **Format:** Short paragraph.\n    *   **Goal:** Explain the concept clearly and concisely.\n\n2.  **Define Speculative Decoding:**\n    *   What is it? A technique used in machine learning/deep learning (specifically in NLP, LLMs, etc.).\n    *   Context: Training large language models (LLMs) or neural networks.\n    *   Problem: Standard training requires every prediction to be generated.\n    *   Solution: Speculative decoding (or speculative decoding in general context) reduces latency and improves throughput by allowing the model to generate a prediction based on a smaller, pre-trained model while the main model trains on the full output.\n    *   Wait, is \"speculative decoding\" the standard term here?\n        *   In the context of *training* (e.g., LoRA, LLaMA), speculative decoding is often about *decoding* (generating text) or *training* (few-shot learning).\n        *   Actually, the most common context for \"speculative decoding\" is in the context of **LLM training acceleration** or **decoding efficiency**.\n        *   *Correction:* \"Speculative decoding\" usually refers to a specific optimization technique where the decoder uses a model trained on a larger dataset to decode a sequence faster than using a standard decoder.\n        *   Wait, let's verify the definition. In the context of large language models (LLMs), there is a technique called **Speculative Decoding** (e.g., in the context of LLaMA, LLaMA 3, etc.). It involves using a pre-trained model to predict the next token *before* the full model trains, or using a smaller model in a loop.\n        *   Actually, a more precise definition: Speculative decoding (in the context of *training* LLMs) refers to a method where the training process uses a pre-trained, larger model to generate predictions (speculative) while the training data is processed by a smaller model (the \"base\" model). Or, it refers to the specific technique in *language models* where the decoder predicts the next token based on previous tokens and the model's internal state.\n        *   *Refinement:* Let's look at the most common usage.\n            *   Option A: In\n\n[ Prompt: 573.1 t/s | Generation: 16.2 t/s ]\n[ Draft: 255 accepted / 2028 generated | Acceptance: 0.1257 ]\n\nExiting..."
+  },
+  "withoutDrafter": {
+    "available": true,
+    "binary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "withDrafter": false,
+    "args": [
+      "-m",
+      "/Users/shawwalters/.eliza/local-inference/models/eliza-1-2b.bundle/text/eliza-1-2b-64k.gguf",
+      "-md",
+      "evidence/speculative/nebius-drafters/drafter-2b-q4_k_m.gguf",
+      "-p",
+      "Write a short paragraph about speculative decoding.",
+      "-n",
+      "512",
+      "-c",
+      "2048",
+      "-ngl",
+      "99",
+      "-ngld",
+      "99",
+      "--single-turn",
+      "--simple-io",
+      "--no-display-prompt",
+      "--log-disable",
+      "--spec-draft-n-min",
+      "0",
+      "--spec-draft-n-max",
+      "0",
+      "--spec-draft-p-min",
+      "1",
+      "--spec-type",
+      "dflash"
+    ],
+    "skippedCliFlags": [
+      {
+        "flag": "--ctx-size-draft",
+        "alternatives": [
+          "--spec-draft-ctx-size",
+          "-cd"
+        ],
+        "values": [
+          "2048"
+        ],
+        "reason": "not advertised by binary --help"
+      }
+    ],
+    "status": 0,
+    "signal": null,
+    "error": null,
+    "wallMs": 14315,
+    "contextTokens": 2048,
+    "draftMin": 0,
+    "draftMax": 0,
+    "tokensRequested": 512,
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "tokensPerSecond": 43.8,
+    "generation": {
+      "encoded": null,
+      "decoded": null,
+      "tokensPerSecond": null
+    },
+    "timings": {
+      "targetPromptEval": null,
+      "targetEval": null,
+      "draftPromptEval": null,
+      "draftEval": null
+    },
+    "vocabIncompatibleWarning": false,
+    "draftingActive": false,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "outputTail": "                                    ██    ██\n                                    ▀▀    ▀▀\n\nbuild      : b10002-96dd1a846\nmodel      : eliza-1-2b-64k.gguf\nmodalities : text\n\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   **Topic:** Speculative decoding (a technique in computer science/compilers).\n    *   **Format:** Short paragraph.\n    *   **Goal:** Provide a concise definition and overview of the concept.\n\n2.  **Define Speculative Decoding:**\n    *   *What is it?* A hardware/software optimization technique.\n    *   *How does it work?* Predicting the outcome of an operation based on prior information (e.g., control flow, data dependencies) to reduce the cost of speculative execution.\n    *   *Key Benefit:* Improving performance (reducing cache misses, latency) without changing the code.\n    *   *Context:* Often used in compilers (like LLVM, AMD) or high-performance computing.\n    *   *Correction/Nuance:* It's not just \"speculative execution\" (like predicting the branch outcome). Speculative decoding is about generating code or data for a future point in time, often related to data movement or cache access. Wait, I need to be precise.\n    *   *Clarification:* In the context of high-performance computing (HPC) and compiler optimization, speculative decoding usually refers to techniques where the compiler predicts the result of a program execution ahead of time and optimizes the code accordingly. Specifically, it involves predicting the outcome of a speculative instruction, such as a memory access (load/store), based on prior context. This avoids cache misses.\n    *   *Wait, let's refine:* In modern computing, speculative execution is different. Speculative decoding is often a specific term in the context of *compilers* or *low-latency inference* models (like in LLMs).\n    *   *Correction on \"Speculative Decoding\":* In the context of **compiler optimization**, speculative decoding is a compiler technique where the compiler generates code that assumes a specific outcome (e.g., a data dependency or a specific memory access pattern) and performs the operation, while waiting for the actual outcome.\n    *   *Wait, is there another context?* In **Large Language Models (LLMs)** or **Neural Architecture Search (NAS)**, speculative decoding often refers to using an LLM to predict the output of a small model, but that's \"speculative decoding\" in the context of *LLM inference* (e.g., predicting text before it's generated).\n    *   *Most likely intended meaning:*\n\n[ Prompt: 443.5 t/s | Generation: 43.8 t/s ]\n\nExiting..."
+  },
+  "summary": {
+    "tokensPerSecondWithDrafter": 16.2,
+    "tokensPerSecondBaseline": 43.8,
+    "generationTokensPerSecondWithDrafter": null,
+    "generationTokensPerSecondBaseline": null,
+    "targetEvalTokensPerSecondWithDrafter": null,
+    "draftEvalTokensPerSecondWithDrafter": null,
+    "dflashDraftedTokens": 2028,
+    "dflashAcceptedTokens": 255,
+    "dflashAcceptanceRate": 0.1257396449704142,
+    "dflashSpeedup": 0.36986301369863017,
+    "dflashDraftingActive": true,
+    "dflashFailure": null,
+    "tokenizerCompatible": true,
+    "speculator": "dflash",
+    "tier": "2b",
+    "backend": "unknown",
+    "binarySha256": "ff9e4ed6bf303fe54095b5757fd66d04799ea28d3548db3f5dc5d6cae50d52f9",
+    "drafted": 2028,
+    "accepted": 255,
+    "acceptanceRate": 0.1257396449704142,
+    "speedup": 0.36986301369863017,
+    "status": "pass",
+    "failure": null
+  },
+  "draftingActive": true,
+  "dflashFailure": null
+}

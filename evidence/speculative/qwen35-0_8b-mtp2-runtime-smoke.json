@@ -1,0 +1,95 @@
+{
+  "reportSchema": "eliza.mtp-runtime-smoke.v1",
+  "generatedAt": "2026-05-20T16:47:05.579Z",
+  "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+  "tier": "0_8b",
+  "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+  "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+  "metadataStatus": "pass",
+  "mtp": {
+    "pass": true,
+    "nextnPredictLayers": 1,
+    "keys": [
+      "qwen35.nextn_predict_layers"
+    ]
+  },
+  "cli": {
+    "available": true,
+    "status": 0,
+    "supportsDraftMtp": true,
+    "outputTail": "                                        llama2, llama2-sys, llama2-sys-bos, llama2-sys-strip, llama3, llama4,\n                                        megrez, minicpm, mistral-v1, mistral-v3, mistral-v3-tekken,\n                                        mistral-v7, mistral-v7-tekken, monarch, openchat, orion,\n                                        pangu-embedded, phi3, phi4, rwkv-world, seed_oss, smolvlm, solar-open,\n                                        vicuna, vicuna-orca, yandex, zephyr\n                                        (env: LLAMA_ARG_CHAT_TEMPLATE_FILE)\n--skip-chat-parsing, --no-skip-chat-parsing\n                                        force a pure content parser, even if a Jinja template is specified;\n                                        model will output everything in the content section, including any\n                                        reasoning and/or tool calls (default: disabled)\n                                        (env: LLAMA_ARG_SKIP_CHAT_PARSING)\n--simple-io                             use basic IO for better compatibility in subprocesses and limited\n                                        consoles\n--spec-replace TARGET DRAFT             translate the string in TARGET into DRAFT if the draft model and main\n                                        model are not compatible\n--gpt-oss-20b-default                   use gpt-oss-20b (note: can download weights from the internet)\n--gpt-oss-120b-default                  use gpt-oss-120b (note: can download weights from the internet)\n--vision-gemma-4b-default               use Gemma 3 4B QAT (note: can download weights from the internet)\n--vision-gemma-12b-default              use Gemma 3 12B QAT (note: can download weights from the internet)\n--spec-default                          enable default speculative decoding config"
+  },
+  "runtime": [
+    {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 5600,
+      "failure": null,
+      "outputTail": "\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Constraint: Write a short paragraph.\n    *   Intent: The user wants a concise definition or explanation of \"speculative decoding,\" likely within the context of Artificial Intelligence (AI) or general information.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? It's a process of predicting how data is processed or structured (like machine learning or AI) to understand information. It's often associated with deep learning or the \"predictive\" aspect of how\n\n[ Prompt: 386.6 t/s | Generation: 34.2 t/s ]\n\nExiting...",
+      "tokensPerSecond": 34.2,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    }
+  ],
+  "bench": {
+    "reportSchema": "eliza.speculative-benchmark.v1",
+    "generatedAt": "2026-05-20T16:47:17.448Z",
+    "verifier": "plugins/plugin-local-inference/native/verify/mtp_runtime_smoke.mjs",
+    "speculator": "mtp",
+    "tier": "0_8b",
+    "targetModel": "/Users/shawwalters/.cache/huggingface/hub/models--unsloth--Qwen3.5-0.8B-MTP-GGUF/snapshots/cf8a611f6ed2c2060046219a19f12cd3d5ecd67c/Qwen3.5-0.8B-UD-Q4_K_XL.gguf",
+    "specBinary": ".tmp/llama-mtp-build/bin/llama-cli",
+    "benchTokens": 128,
+    "available": true,
+    "status": "pass",
+    "failure": null,
+    "backend": "unknown",
+    "binary": {
+      "path": ".tmp/llama-mtp-build/bin/llama-cli",
+      "exists": true,
+      "sha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd"
+    },
+    "drafted": null,
+    "accepted": null,
+    "acceptanceRate": null,
+    "speedup": 0.7916666666666666,
+    "withDrafter": {
+      "available": true,
+      "withMtp": true,
+      "status": 0,
+      "wallMs": 5600,
+      "failure": null,
+      "outputTail": "\navailable commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Constraint: Write a short paragraph.\n    *   Intent: The user wants a concise definition or explanation of \"speculative decoding,\" likely within the context of Artificial Intelligence (AI) or general information.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? It's a process of predicting how data is processed or structured (like machine learning or AI) to understand information. It's often associated with deep learning or the \"predictive\" aspect of how\n\n[ Prompt: 386.6 t/s | Generation: 34.2 t/s ]\n\nExiting...",
+      "tokensPerSecond": 34.2,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "withoutDrafter": {
+      "available": true,
+      "withMtp": false,
+      "status": 0,
+      "wallMs": 6268,
+      "failure": null,
+      "outputTail": "available commands:\n  /exit or Ctrl+C     stop or exit\n  /regen              regenerate the last response\n  /clear              clear the chat history\n  /read <file>        add a text file\n  /glob <pattern>     add text files using globbing pattern\n\n\n> Write a short paragraph about speculative decoding.\n\n[Start thinking]\nThinking Process:\n\n1.  **Analyze the Request:**\n    *   Topic: Speculative decoding.\n    *   Format: Short paragraph.\n    *   Goal: Explain the concept in a concise yet descriptive manner.\n\n2.  **Define \"Speculative Decoding\":**\n    *   What is it? It's a method of analyzing or processing text or data with a \"speculative\" or \"guessing\" component, often in a theoretical or fictional context.\n    *   Wait, is there a specific term? \"Speculative decoding\" isn't a standard technical term like \"NLP\n\n[ Prompt: 867.6 t/s | Generation: 43.2 t/s ]\n\nExiting...",
+      "tokensPerSecond": 43.2,
+      "accepted": null,
+      "drafted": null,
+      "acceptanceRate": null
+    },
+    "summary": {
+      "speculator": "mtp",
+      "tier": "0_8b",
+      "backend": "unknown",
+      "binarySha256": "5c76f76a93344e103d01c1e99e65976caf00710700c1e514b297127218b97dbd",
+      "drafted": null,
+      "accepted": null,
+      "acceptanceRate": null,
+      "speedup": 0.7916666666666666,
+      "status": "pass",
+      "failure": null
+    }
+  }
+}
