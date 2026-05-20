@@ -150,22 +150,14 @@ export class VoiceProfilesClient {
   /** Start onboarding capture for the OWNER profile. */
   async startOwnerCapture(): Promise<VoiceCaptureSession> {
     try {
-      return await this.client.fetch<VoiceCaptureSession>(
+      const raw = await this.client.fetch<unknown>(
         "/api/voice/onboarding/profile/start",
         { method: "POST" },
       );
+      return normaliseCaptureSession(raw);
     } catch (err) {
       if (isMissingEndpointError(err)) {
-        // R10 §3.2 step 5 fallback script — small, fixed prompts so the
-        // onboarding UI can render even before I2 ships the endpoint.
-        return {
-          sessionId: `local-${Date.now().toString(36)}`,
-          prompts: OWNER_CAPTURE_FALLBACK_PROMPTS,
-          expectedSeconds: OWNER_CAPTURE_FALLBACK_PROMPTS.reduce(
-            (sum, p) => sum + p.targetSeconds,
-            0,
-          ),
-        };
+        return fallbackCaptureSession();
       }
       throw new VoiceProfilesUnavailableError(
         "/api/voice/onboarding/profile/start",
@@ -366,6 +358,70 @@ const OWNER_CAPTURE_FALLBACK_PROMPTS: VoiceCapturePrompt[] = [
     targetSeconds: 6,
   },
 ];
+
+function fallbackCaptureSession(sessionId?: string): VoiceCaptureSession {
+  // R10 §3.2 step 5 fallback script — small, fixed prompts so onboarding can
+  // render even when the voice service route is absent or partially deployed.
+  return {
+    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
+    prompts: OWNER_CAPTURE_FALLBACK_PROMPTS,
+    expectedSeconds: OWNER_CAPTURE_FALLBACK_PROMPTS.reduce(
+      (sum, p) => sum + p.targetSeconds,
+      0,
+    ),
+  };
+}
+
+function normaliseCaptureSession(raw: unknown): VoiceCaptureSession {
+  if (!raw || typeof raw !== "object") {
+    return fallbackCaptureSession();
+  }
+  const r = raw as Record<string, unknown>;
+  const sessionId =
+    typeof r.sessionId === "string" && r.sessionId.length > 0
+      ? r.sessionId
+      : undefined;
+  const prompts = Array.isArray(r.prompts)
+    ? r.prompts.map(normaliseCapturePrompt).filter(isCapturePrompt)
+    : [];
+
+  if (prompts.length === 0) {
+    return fallbackCaptureSession(sessionId);
+  }
+
+  const expectedSeconds =
+    typeof r.expectedSeconds === "number" && r.expectedSeconds > 0
+      ? r.expectedSeconds
+      : prompts.reduce((sum, p) => sum + p.targetSeconds, 0);
+
+  return {
+    sessionId: sessionId ?? `local-${Date.now().toString(36)}`,
+    prompts,
+    expectedSeconds,
+  };
+}
+
+function normaliseCapturePrompt(raw: unknown): VoiceCapturePrompt | null {
+  if (!raw || typeof raw !== "object") return null;
+  const r = raw as Record<string, unknown>;
+  const id = typeof r.id === "string" && r.id.length > 0 ? r.id : null;
+  const text = typeof r.text === "string" && r.text.length > 0 ? r.text : null;
+  if (!id || !text) return null;
+  return {
+    id,
+    text,
+    targetSeconds:
+      typeof r.targetSeconds === "number" && r.targetSeconds > 0
+        ? r.targetSeconds
+        : 5,
+  };
+}
+
+function isCapturePrompt(
+  value: VoiceCapturePrompt | null,
+): value is VoiceCapturePrompt {
+  return value !== null;
+}
 
 function isProfile(value: VoiceProfile | null): value is VoiceProfile {
   return value !== null;

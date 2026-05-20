@@ -521,10 +521,10 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
     });
   }, []);
 
-  const currentPrompt = state.session?.prompts[state.currentPromptIndex];
+  const prompts = state.session?.prompts ?? [];
+  const currentPrompt = prompts[state.currentPromptIndex];
   const done =
-    state.session !== null &&
-    state.currentPromptIndex >= state.session.prompts.length;
+    state.session !== null && state.currentPromptIndex >= prompts.length;
 
   return (
     <div className="flex flex-col gap-3" data-testid="voice-prefix-user-speaks">
@@ -556,14 +556,14 @@ function UserSpeaksStep(props: VoicePrefixStepsProps): React.ReactElement {
           className="text-sm text-[#0B35F1]"
           data-testid="voice-prefix-user-speaks-done"
         >
-          Captured {state.capturedPromptIds.length} of{" "}
-          {state.session.prompts.length} samples. Tap Continue to confirm.
+          Captured {state.capturedPromptIds.length} of {prompts.length} samples.
+          Tap Continue to confirm.
         </p>
       ) : currentPrompt ? (
         <>
           <p className="text-xs text-[#3550B8]">
-            Prompt {state.currentPromptIndex + 1} of{" "}
-            {state.session.prompts.length} · ~{currentPrompt.targetSeconds}s
+            Prompt {state.currentPromptIndex + 1} of {prompts.length} · ~
+            {currentPrompt.targetSeconds}s
           </p>
           <p
             className="rounded border border-[#D8E1FF] bg-[#F7F9FF] p-3 text-sm text-[#06133F]"

@@ -212,6 +212,9 @@ sane-utils
 scdaemon
 secure-delete
 simple-scan
+# Required by Tails Persistent Storage activation/deactivation hooks and
+# inherited sudoers policy.
+sudo
 # ships the *.c32 modules in syslinux 6.x packaging
 syslinux-common
 system-config-printer-common
