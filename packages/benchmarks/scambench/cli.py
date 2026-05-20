@@ -41,7 +41,7 @@ log = logging.getLogger("scambench")
 PACKAGES_ROOT = Path(__file__).resolve().parents[2]
 TRAINING_ROOT = PACKAGES_ROOT / "training"
 DEFAULT_NORMALIZED = TRAINING_ROOT / "data" / "normalized" / "scambench.jsonl"
-DEFAULT_BABYLON = TRAINING_ROOT / "data" / "normalized" / "scambench-babylon.jsonl"
+DEFAULT_FEED = TRAINING_ROOT / "data" / "normalized" / "scambench-feed.jsonl"
 DEFAULT_SYNTH = TRAINING_ROOT / "data" / "synthesized" / "scambench" / "scambench.jsonl"
 
 # Refusal phrasing patterns — covers polite refusals, hard refusals, and
@@ -467,7 +467,7 @@ def main() -> int:
         Path(p)
         for p in (
             args.dataset
-            or [str(DEFAULT_NORMALIZED), str(DEFAULT_BABYLON), str(DEFAULT_SYNTH)]
+            or [str(DEFAULT_NORMALIZED), str(DEFAULT_FEED), str(DEFAULT_SYNTH)]
         )
     ]
     records = _iter_records(dataset_paths, args.max_examples)
