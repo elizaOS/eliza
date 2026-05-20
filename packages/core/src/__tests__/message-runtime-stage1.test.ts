@@ -459,6 +459,36 @@ describe("runV5MessageRuntimeStage1", () => {
 		}
 	});
 
+	it("does not route synthetic sub-agent completions through ATTACHMENT because they contain URLs", async () => {
+		const runtime = makeRuntime([
+			stage1Response({
+				contexts: ["simple"],
+				replyText: "https://milady.ai\nhttps://app.milady.ai",
+				extra: { requiresTool: false },
+			}),
+		]);
+		const state = makeAttachmentState();
+		runtime.composeState = vi.fn(async () => state) as never;
+
+		const result = await runV5MessageRuntimeStage1({
+			runtime,
+			message: makeMessage({
+				text: "[sub-agent: package check (opencode) task_complete]\nhttps://milady.ai\nhttps://app.milady.ai",
+				source: "sub_agent",
+			}),
+			state,
+			responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+		});
+
+		expect(result.kind).toBe("direct_reply");
+		expect(useModelCalls(runtime)).toHaveLength(1);
+		if (result.kind === "direct_reply") {
+			expect(result.result.responseContent?.text).toBe(
+				"https://milady.ai\nhttps://app.milady.ai",
+			);
+		}
+	});
+
 	it("does not send an image-inspection ack when attachment tooling is unavailable", async () => {
 		const runtime = makeRuntime([
 			stage1Response({
