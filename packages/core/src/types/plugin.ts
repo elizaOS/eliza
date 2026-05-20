@@ -657,9 +657,161 @@ export interface PluginOwnership {
 	registeredAt: number;
 }
 
+/**
+ * Plugin execution mode.
+ *
+ * - `direct`: loaded in-process via `import` and registered with the runtime as
+ *   a normal Plugin object. Trusted, full agent privilege, shared crash domain.
+ *   This is the default for every existing plugin in the monorepo.
+ * - `remote`: hosted by `RemotePluginHost` as a sandboxed Bun Worker (or
+ *   isolated Bun process when `remote.isolation === "isolated-process"`).
+ *   Communicates with the agent via the wire envelope defined in
+ *   `@elizaos/plugin-remote-manifest`. Permissions are declared by the plugin
+ *   and enforced by the host. Typically installed dynamically at runtime via
+ *   `runtime.installRemotePlugin(...)` by an agent that has authored a plugin
+ *   on the fly (e.g. a coding sub-agent).
+ */
+export type PluginMode = "direct" | "remote";
+
+/**
+ * High-level role of a remote-mode plugin. Used to classify the plugin and
+ * to inform the `RuntimeCapabilityService` whether to surface the plugin as
+ * a capability provider.
+ */
+export type RemotePluginRole =
+	| "capability"
+	| "sub-agent"
+	| "view-host"
+	| "system"
+	| "user";
+
+/**
+ * Permission grants for a remote-mode plugin. The author declares the request
+ * ceiling; the host narrows against (a) the agent's own granted permissions
+ * and (b) the inline-source defaults for agent-authored plugins, taking the
+ * intersection. A plugin runs with the *narrowed* grant, never with what it
+ * requested verbatim.
+ */
+export interface RemotePluginPermissions {
+	/** Bun runtime permissions inside the worker. */
+	bun: {
+		/** Outbound network policy. */
+		network?: "none" | "loopback" | "allowlist" | "any";
+		/** Host allowlist used when `network === "allowlist"`. */
+		networkAllowlist?: string[];
+		/** Filesystem access policy. */
+		fs?: "none" | "readonly" | "readwrite";
+		/** Filesystem path allowlist when `fs !== "none"`. */
+		fsAllowlist?: string[];
+		/** May spawn child processes (`Bun.spawn`, `child_process`). */
+		process?: boolean;
+		/** Environment variable names the worker may read. */
+		env?: string[];
+	};
+	/** Host-side proxy permissions (what the worker can ask the runtime for). */
+	host: {
+		/** `runtime.getService(serviceType)` allowlist. Empty array = none. */
+		services?: string[];
+		/** `runtime.useModel(modelType, ...)` allowlist. */
+		models?: string[];
+		/** Event-name allowlist (both emit and listen). */
+		events?: string[];
+		/** Memory API access. */
+		memory?: "none" | "read" | "readwrite";
+	};
+}
+
+/**
+ * Isolation strategy for the remote plugin worker.
+ *
+ * - `shared-worker`: a Bun `Worker` sharing the host process. Cheap, but a
+ *   panic crashes the host. Use for trusted first-party plugins that need
+ *   shared-memory access (e.g. GPU-backed local-model plugins).
+ * - `isolated-process`: a separate Bun subprocess (`Bun.spawn`). The worker
+ *   crashing only affects itself. Required for `role: "sub-agent"` and for
+ *   any agent-authored plugin with `source.kind === "inline"`.
+ */
+export type RemotePluginIsolation = "shared-worker" | "isolated-process";
+
+/**
+ * Deployment-target constraints for a remote plugin. Declares where the
+ * plugin is *allowed* to run; the actual target is inferred by the host at
+ * install time based on which environments are reachable.
+ */
+export interface RemotePluginDeployment {
+	/** Hint to the host. Default `"auto"`. */
+	preferred?: "host" | "cloud" | "auto";
+	/** Hard constraint on allowed deploy targets. Default `["host", "cloud"]`. */
+	allowedTargets?: ("host" | "cloud")[];
+	/**
+	 * When `true`, the plugin must be hosted with `isolation: "isolated-process"`
+	 * and cannot be downgraded to a `shared-worker`. Forced for `role: "sub-agent"`.
+	 */
+	requiresProcess?: boolean;
+}
+
+/**
+ * Configuration block required when {@link Plugin.mode} is `"remote"`.
+ * Describes how, where, and with what privileges the plugin's worker runs.
+ */
+export interface RemotePluginConfig {
+	/** Classification for routing and discovery. */
+	role?: RemotePluginRole;
+	/** Permission request ceiling (narrowed by the host at install time). */
+	permissions: RemotePluginPermissions;
+	/** Worker isolation strategy. */
+	isolation: RemotePluginIsolation;
+	/** Path to the worker entrypoint, relative to the plugin package root. */
+	worker: { relativePath: string };
+	/** Optional view bundle entrypoint for plugins that contribute UI. */
+	view?: { relativePath: string; hidden?: boolean };
+	/** Deployment constraints. */
+	deployment?: RemotePluginDeployment;
+	/**
+	 * Lifetime of the plugin installation.
+	 * - `"session"`: uninstalled on runtime shutdown. Default for
+	 *   `runtime.installRemotePlugin(...)`.
+	 * - `"persistent"`: registration is written to the local plugin store and
+	 *   re-installed on next boot.
+	 */
+	lifetime?: "session" | "persistent";
+	/**
+	 * Sub-agent runner configuration. Present iff `role === "sub-agent"`.
+	 * Describes which coding-agent CLI the worker drives and how prompts are
+	 * delivered to it.
+	 */
+	subAgent?: {
+		runner: "claude-code" | "codex" | "opencode" | "eliza";
+		promptInjection: "stdin-only" | "argv" | "env";
+	};
+	/**
+	 * Optional explicit allowlist of host-callable RPC methods. When omitted,
+	 * the announced surface (actions/providers/services/...) defines what's
+	 * reachable.
+	 */
+	protocol?: { methods?: string[] };
+}
+
 export interface Plugin {
 	name: string;
 	description: string;
+
+	/**
+	 * Execution mode. Default `"direct"` — i.e., the plugin is loaded in-process
+	 * and registered with the runtime exactly as plugins have always been.
+	 * Setting `"remote"` requires a {@link Plugin.remote} block; the host
+	 * installs the plugin via `RemotePluginHost` and the runtime mirrors its
+	 * surfaces through stubs that proxy across the wire envelope.
+	 *
+	 * For remote-mode plugins, the surface arrays (`actions`, `providers`,
+	 * `services`, `models`, `events`, `routes`, `views`, `widgets`,
+	 * `componentTypes`, `evaluators`, `init`) describe what the WORKER
+	 * contributes; the host runtime materialises matching stubs.
+	 */
+	mode?: PluginMode;
+
+	/** Remote-mode configuration. Required when {@link Plugin.mode} is `"remote"`. */
+	remote?: RemotePluginConfig;
 
 	// Initialize plugin with runtime services
 	init?: (
