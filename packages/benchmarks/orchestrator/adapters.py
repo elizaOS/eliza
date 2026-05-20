@@ -1141,9 +1141,13 @@ def _command_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[s
 def _env_webshop(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:
     existing = ctx.env.get("PYTHONPATH", "")
     adapter_path = str((ctx.benchmarks_root / "eliza-adapter").resolve())
-    return {
+    env = {
         "PYTHONPATH": os.pathsep.join([adapter_path, existing]).rstrip(os.pathsep),
     }
+    harness = str(ctx.request.agent or "").strip().lower()
+    if harness == "eliza":
+        env["ELIZA_BENCH_SKIP_CORE_PLUGINS"] = "true"
+    return env
 
 
 def _command_woobench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> list[str]:

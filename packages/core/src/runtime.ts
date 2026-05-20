@@ -65,6 +65,7 @@ import {
 	type TrajectoryRuntimeLlmCallLogger,
 	withProviderStep,
 } from "./trajectory-utils";
+import { PromptBatcher, PromptDispatcher } from "./utils/prompt-batcher";
 import {
 	type Action,
 	type ActionMode,
@@ -729,6 +730,7 @@ export class AgentRuntime implements IAgentRuntime {
 	events: RuntimeEventStorage = {};
 	stateCache = new Map<string, State>();
 	readonly fetch = fetch;
+	promptBatcher: PromptBatcher;
 	services = new Map<ServiceTypeName, Service[]>();
 	private serviceTypes = new Map<ServiceTypeName, ServiceClass[]>();
 	models = new Map<string, ModelHandler[]>();
@@ -937,6 +939,37 @@ export class AgentRuntime implements IAgentRuntime {
 
 		this.plugins = []; // Initialize plugins as an empty array
 		this.characterPlugins = opts.plugins ?? []; // Store the original character plugins
+		this.promptBatcher = new PromptBatcher(
+			this,
+			new PromptDispatcher({
+				packingDensity: getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
+				maxTokensPerCall:
+					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ??
+					24_000,
+				maxParallelCalls:
+					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
+				modelSeparation:
+					getNumberEnv("PROMPT_BATCHER_MODEL_SEPARATION", 1) ?? 1,
+				maxSectionsPerCall:
+					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
+			}),
+			{
+				batchSize: getNumberEnv("PROMPT_BATCHER_BATCH_SIZE", 8) ?? 8,
+				maxDrainIntervalMs:
+					getNumberEnv("PROMPT_BATCHER_MAX_DRAIN_INTERVAL_MS", 30_000) ??
+					30_000,
+				maxSectionsPerCall:
+					getNumberEnv("PROMPT_BATCHER_MAX_SECTIONS_PER_CALL", 8) ?? 8,
+				packingDensity: getNumberEnv("PROMPT_BATCHER_PACKING_DENSITY", 0.85) ?? 0.85,
+				maxTokensPerCall:
+					getNumberEnv("PROMPT_BATCHER_MAX_TOKENS_PER_CALL", 24_000) ??
+					24_000,
+				maxParallelCalls:
+					getNumberEnv("PROMPT_BATCHER_MAX_PARALLEL_CALLS", 2) ?? 2,
+				modelSeparation:
+					getNumberEnv("PROMPT_BATCHER_MODEL_SEPARATION", 1) ?? 1,
+			},
+		);
 
 		// Store action planning option (undefined means check settings at runtime)
 		this.actionPlanningOption = opts.actionPlanning;

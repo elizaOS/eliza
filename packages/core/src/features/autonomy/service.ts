@@ -46,6 +46,17 @@ export const AUTONOMY_TASK_NAME = "AUTONOMY_THINK" as const;
  */
 export const AUTONOMY_TASK_TAGS = ["repeat", "autonomy", "internal"] as const;
 const AUTONOMY_MESSAGE_SERVER_ID = stringToUuid("autonomy-message-server");
+const AUTONOMY_RECENT_THOUGHT_LIMIT = 10;
+const AUTONOMY_CONTEXT_MEMORY_LIMIT = 80;
+const AUTONOMY_COMPACTED_MAX_CHARS = 4_000;
+
+interface AutonomyCompactionCacheEntry {
+	summary: string;
+	sourceCount: number;
+	sourceNewestId: string;
+	sourceNewestCreatedAt: number;
+	createdAt: number;
+}
 
 /**
  * AutonomyService - Manages autonomous agent operation.
@@ -64,6 +75,13 @@ export class AutonomyService extends Service {
 	protected autonomousWorldId: UUID;
 	private isThinking = false;
 	protected autonomyEntityId: UUID; // Dedicated entity ID for autonomy prompts (not the agent's ID)
+	private autonomyCompactionStats = {
+		cacheHits: 0,
+		cacheWrites: 0,
+		compactions: 0,
+		lastSourceCount: 0,
+		lastSummaryChars: 0,
+	};
 
 	private getAutonomyMode(): "continuous" | "task" {
 		const raw = this.runtime.getSetting("AUTONOMY_MODE");
@@ -123,7 +141,7 @@ export class AutonomyService extends Service {
 				: Promise.resolve([]),
 			this.runtime.getMemories({
 				roomId: this.autonomousRoomId,
-				limit: perRoomLimit,
+				limit: AUTONOMY_CONTEXT_MEMORY_LIMIT,
 				tableName: "memories",
 			}),
 		]);
@@ -173,18 +191,148 @@ export class AutonomyService extends Service {
 			return `Room: ${roomName}\n${lines.join("\n")}`;
 		});
 
-		const autonomyThoughts = autonomyMemories
-			.filter((memory) => memory.entityId === this.runtime.agentId)
-			.map((memory) =>
-				typeof memory.content.text === "string" ? memory.content.text : "",
-			)
-			.filter((text) => text.trim().length > 0);
 		const autonomySection =
-			autonomyThoughts.length > 0
-				? ["Autonomous thoughts:", ...autonomyThoughts].join("\n")
-				: "Autonomous thoughts: (none)";
+			await this.buildCompactedAutonomyThoughtSection(autonomyMemories);
 
 		return [...roomSections, autonomySection].join("\n\n");
+	}
+
+	private async buildCompactedAutonomyThoughtSection(
+		autonomyMemories: Memory[],
+	): Promise<string> {
+		const autonomyThoughtMemories = autonomyMemories
+			.filter((memory) => this.isAutonomousResponseMemory(memory))
+			.sort((a, b) => (a.createdAt ?? 0) - (b.createdAt ?? 0));
+
+		if (autonomyThoughtMemories.length === 0) {
+			return "Autonomous thoughts: (none)";
+		}
+
+		const recent = autonomyThoughtMemories.slice(-AUTONOMY_RECENT_THOUGHT_LIMIT);
+		const older = autonomyThoughtMemories.slice(
+			0,
+			Math.max(0, autonomyThoughtMemories.length - recent.length),
+		);
+		const recentLines = recent
+			.map((memory) => this.readMemoryText(memory))
+			.filter((text) => text.trim().length > 0);
+
+		if (older.length === 0) {
+			return ["Autonomous thoughts:", ...recentLines].join("\n");
+		}
+
+		const compacted = await this.getCompactedAutonomyThoughts(older);
+		return [
+			"Compacted autonomous context:",
+			compacted.summary,
+			"",
+			"Recent autonomous thoughts:",
+			...recentLines,
+		].join("\n");
+	}
+
+	private isAutonomousResponseMemory(memory: Memory): boolean {
+		if (memory.entityId !== this.runtime.agentId) {
+			return false;
+		}
+		if (!this.readMemoryText(memory)) {
+			return false;
+		}
+		const metadata = this.readMetadata(memory);
+		return (
+			metadata.isAutonomous === true &&
+			metadata.type === "autonomous-response"
+		);
+	}
+
+	private readMetadata(memory: Memory): Record<string, ContentValue> {
+		return typeof memory.content.metadata === "object" &&
+			memory.content.metadata !== null &&
+			!Array.isArray(memory.content.metadata)
+			? (memory.content.metadata as Record<string, ContentValue>)
+			: {};
+	}
+
+	private readMemoryText(memory: Memory): string {
+		return typeof memory.content.text === "string" ? memory.content.text : "";
+	}
+
+	private async getCompactedAutonomyThoughts(
+		memories: Memory[],
+	): Promise<AutonomyCompactionCacheEntry> {
+		const newest = memories[memories.length - 1];
+		const sourceNewestId = String(newest?.id ?? "none");
+		const sourceNewestCreatedAt = newest?.createdAt ?? 0;
+		const cacheKey = [
+			"autonomy-compaction",
+			String(this.runtime.agentId),
+			String(this.autonomousRoomId),
+			String(memories.length),
+			sourceNewestId,
+			String(sourceNewestCreatedAt),
+		].join(":");
+
+		if (typeof this.runtime.getCache === "function") {
+			const cached =
+				await this.runtime.getCache<AutonomyCompactionCacheEntry>(cacheKey);
+			if (cached?.summary) {
+				this.autonomyCompactionStats.cacheHits += 1;
+				this.autonomyCompactionStats.lastSourceCount = cached.sourceCount;
+				this.autonomyCompactionStats.lastSummaryChars = cached.summary.length;
+				return cached;
+			}
+		}
+
+		const summary = this.compactAutonomyThoughtsDeterministically(memories);
+		const entry: AutonomyCompactionCacheEntry = {
+			summary,
+			sourceCount: memories.length,
+			sourceNewestId,
+			sourceNewestCreatedAt,
+			createdAt: Date.now(),
+		};
+		this.autonomyCompactionStats.compactions += 1;
+		this.autonomyCompactionStats.lastSourceCount = memories.length;
+		this.autonomyCompactionStats.lastSummaryChars = summary.length;
+
+		if (typeof this.runtime.setCache === "function") {
+			const stored = await this.runtime.setCache(cacheKey, entry);
+			if (stored !== false) {
+				this.autonomyCompactionStats.cacheWrites += 1;
+			}
+		}
+
+		return entry;
+	}
+
+	private compactAutonomyThoughtsDeterministically(memories: Memory[]): string {
+		const importantLines: string[] = [];
+		const seen = new Set<string>();
+		for (const memory of memories) {
+			const text = this.readMemoryText(memory).replace(/\s+/g, " ").trim();
+			if (!text) {
+				continue;
+			}
+			const normalized = text.toLowerCase();
+			if (seen.has(normalized)) {
+				continue;
+			}
+			seen.add(normalized);
+			const marker = new Date(memory.createdAt ?? Date.now()).toISOString();
+			importantLines.push(`- ${marker}: ${text.slice(0, 500)}`);
+		}
+
+		const header = `Compacted ${memories.length} prior autonomous thoughts. Preserve standing goals, unresolved blockers, commitments, and recently discovered facts:`;
+		let summary = [header, ...importantLines].join("\n");
+		if (summary.length > AUTONOMY_COMPACTED_MAX_CHARS) {
+			const tailBudget = Math.max(0, AUTONOMY_COMPACTED_MAX_CHARS - header.length - 16);
+			const tail = importantLines
+				.join("\n")
+				.slice(-tailBudget)
+				.replace(/^[^\n]*\n?/, "");
+			summary = [header, "...", tail].filter(Boolean).join("\n");
+		}
+		return summary;
 	}
 
 	constructor() {
@@ -1035,6 +1183,10 @@ export class AutonomyService extends Service {
 			interval: this.intervalMs,
 			autonomousRoomId: this.autonomousRoomId,
 		};
+	}
+
+	getAutonomyCompactionStats(): Readonly<typeof this.autonomyCompactionStats> {
+		return { ...this.autonomyCompactionStats };
 	}
 
 	/**
