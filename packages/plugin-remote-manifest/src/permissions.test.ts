@@ -9,7 +9,10 @@ import {
   parseRemotePluginPermissionTag,
   toBunWorkerPermissions,
 } from "./permissions.js";
-import type { RemotePluginPermissionGrant, RemotePluginPermissionTag } from "./types.js";
+import type {
+  RemotePluginPermissionGrant,
+  RemotePluginPermissionTag,
+} from "./types.js";
 
 describe("remote plugin permissions", () => {
   it("normalizes legacy permissions into host and bun grants", () => {

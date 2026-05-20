@@ -8,18 +8,18 @@ import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type {
-  RemotePluginInstallRecord,
-  RemotePluginListEntry,
-  RemotePluginPermissionGrant,
-  RemotePluginRuntimeContext,
-  RemotePluginStoreSnapshot,
-  RemotePluginWorkerMessage,
   HostActionMessage,
   HostRequestMessage,
   HostResponseMessage,
   InstalledRemotePlugin,
   InstalledRemotePluginSnapshot,
   JsonValue,
+  RemotePluginInstallRecord,
+  RemotePluginListEntry,
+  RemotePluginPermissionGrant,
+  RemotePluginRuntimeContext,
+  RemotePluginStoreSnapshot,
+  RemotePluginWorkerMessage,
   WorkerInitMessage,
   WorkerResponseMessage,
 } from "@elizaos/plugin-remote-manifest";
@@ -28,11 +28,11 @@ import {
   ensureRemotePluginSourceDirectory,
   hasHostPermission,
   installPrebuiltRemotePlugin,
+  loadInstalledRemotePlugin,
   loadRemotePluginListEntries,
   loadRemotePluginStoreSnapshot,
-  loadInstalledRemotePlugin,
-  toRemotePluginListEntry,
   toInstalledRemotePluginSnapshot,
+  toRemotePluginListEntry,
   uninstallInstalledRemotePlugin,
 } from "@elizaos/plugin-remote-manifest";
 import { resolveApiToken } from "@elizaos/shared";
@@ -42,7 +42,11 @@ import type { SendToWebview } from "../types.js";
 
 type RemotePluginWindowInstance = InstanceType<typeof BrowserWindow>;
 
-export type RemotePluginWorkerState = "stopped" | "starting" | "running" | "error";
+export type RemotePluginWorkerState =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "error";
 
 export interface RemotePluginWorkerStatus {
   id: string;
@@ -163,7 +167,9 @@ class BrowserWorkerHandle implements RemotePluginWorkerHandle {
 class BrowserRemotePluginWorkerRunner implements RemotePluginWorkerRunner {
   start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle {
     return new BrowserWorkerHandle(
-      new Worker(pathToFileURL(remotePlugin.workerPath).href, { type: "module" }),
+      new Worker(pathToFileURL(remotePlugin.workerPath).href, {
+        type: "module",
+      }),
     );
   }
 }
@@ -190,7 +196,10 @@ class SubprocessWorkerHandle implements RemotePluginWorkerHandle {
   private pendingLineBuffer = "";
   private killTimer: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(workerEntry: string, runtimeContext: { cwd: string; env: Record<string, string> }) {
+  constructor(
+    workerEntry: string,
+    runtimeContext: { cwd: string; env: Record<string, string> },
+  ) {
     this.proc = Bun.spawn({
       cmd: [process.execPath, workerEntry],
       stdin: "pipe",
@@ -258,7 +267,9 @@ class SubprocessWorkerHandle implements RemotePluginWorkerHandle {
         let newlineIndex = this.pendingLineBuffer.indexOf("\n");
         while (newlineIndex !== -1) {
           const line = this.pendingLineBuffer.slice(0, newlineIndex);
-          this.pendingLineBuffer = this.pendingLineBuffer.slice(newlineIndex + 1);
+          this.pendingLineBuffer = this.pendingLineBuffer.slice(
+            newlineIndex + 1,
+          );
           if (line.trim()) {
             try {
               const message = JSON.parse(line) as RemotePluginWorkerMessage;
@@ -422,12 +433,16 @@ export class RemotePluginHost {
     options: RemotePluginInstallFromDirectoryOptions,
   ): InstalledRemotePluginSnapshot {
     const sourceDir = ensureRemotePluginSourceDirectory(options.sourceDir);
-    const remotePlugin = installPrebuiltRemotePlugin(this.storeRoot, sourceDir, {
-      devMode: options.devMode === true,
-      permissionsGranted: options.permissionsGranted,
-      source: { kind: "local", path: sourceDir },
-      now: this.now,
-    });
+    const remotePlugin = installPrebuiltRemotePlugin(
+      this.storeRoot,
+      sourceDir,
+      {
+        devMode: options.devMode === true,
+        permissionsGranted: options.permissionsGranted,
+        source: { kind: "local", path: sourceDir },
+        now: this.now,
+      },
+    );
     this.emitStoreChanged();
     return toInstalledRemotePluginSnapshot(remotePlugin);
   }
@@ -619,7 +634,9 @@ export class RemotePluginHost {
   getWorkerStatus(id: string): RemotePluginWorkerStatus | null {
     const record = this.workers.get(id);
     if (record) return record.status;
-    return loadInstalledRemotePlugin(this.storeRoot, id) ? stoppedStatus(id) : null;
+    return loadInstalledRemotePlugin(this.storeRoot, id)
+      ? stoppedStatus(id)
+      : null;
   }
 
   listWorkerStatuses(): RemotePluginWorkerStatus[] {
@@ -805,7 +822,9 @@ export class RemotePluginHost {
     }
     const target = this.workers.get(targetId);
     if (!target?.handle || target.status.state !== "running") {
-      throw new Error(`invoke-remote-plugin: target ${targetId} is not running.`);
+      throw new Error(
+        `invoke-remote-plugin: target ${targetId} is not running.`,
+      );
     }
     const targetHandle = target.handle;
 
@@ -864,7 +883,8 @@ export class RemotePluginHost {
           ? {}
           : { payload: response.payload }
         : {
-            error: response.error ?? "invoke-remote-plugin: target returned failure",
+            error:
+              response.error ?? "invoke-remote-plugin: target returned failure",
           }),
     });
   }

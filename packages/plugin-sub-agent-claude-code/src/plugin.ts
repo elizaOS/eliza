@@ -33,42 +33,42 @@ import { ClaudeCodeSubAgentService } from "./sub-agent-service.ts";
 // onto every sub-agent runner). The runtime materialises this through
 // the worker-runtime descriptor builder, which validates structurally.
 export const plugin = {
-	name: "@elizaos/plugin-sub-agent-claude-code",
-	description:
-		"Drives the Claude Code CLI as a sub-agent inside an isolated subprocess.",
-	mode: "remote" as const,
-	services: [ClaudeCodeSubAgentService],
-	remote: {
-		role: "sub-agent" as const,
-		permissions: {
-			bun: {
-				network: "allowlist" as const,
-				networkAllowlist: ["api.anthropic.com"],
-				fs: "readwrite" as const,
-				fsAllowlist: ["."],
-				process: true,
-				env: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
-			},
-			host: {
-				services: [],
-				models: [],
-				events: ["sub-agent.session.created", "sub-agent.session.terminated"],
-				memory: "none" as const,
-			},
-		},
-		isolation: "isolated-process" as const,
-		worker: { relativePath: "dist/worker.js" },
-		deployment: {
-			preferred: "auto" as const,
-			allowedTargets: ["host", "cloud"] as ("host" | "cloud")[],
-			requiresProcess: true,
-		},
-		lifetime: "session" as const,
-		subAgent: {
-			runner: "claude-code" as const,
-			promptInjection: "stdin-only" as const,
-		},
-	},
+  name: "@elizaos/plugin-sub-agent-claude-code",
+  description:
+    "Drives the Claude Code CLI as a sub-agent inside an isolated subprocess.",
+  mode: "remote" as const,
+  services: [ClaudeCodeSubAgentService],
+  remote: {
+    role: "sub-agent" as const,
+    permissions: {
+      bun: {
+        network: "allowlist" as const,
+        networkAllowlist: ["api.anthropic.com"],
+        fs: "readwrite" as const,
+        fsAllowlist: ["."],
+        process: true,
+        env: ["ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN"],
+      },
+      host: {
+        services: [],
+        models: [],
+        events: ["sub-agent.session.created", "sub-agent.session.terminated"],
+        memory: "none" as const,
+      },
+    },
+    isolation: "isolated-process" as const,
+    worker: { relativePath: "dist/worker.js" },
+    deployment: {
+      preferred: "auto" as const,
+      allowedTargets: ["host", "cloud"] as ("host" | "cloud")[],
+      requiresProcess: true,
+    },
+    lifetime: "session" as const,
+    subAgent: {
+      runner: "claude-code" as const,
+      promptInjection: "stdin-only" as const,
+    },
+  },
 };
 
 export default plugin;

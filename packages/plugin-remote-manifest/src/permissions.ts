@@ -1,13 +1,13 @@
 import {
   BUN_PERMISSIONS,
   type BunPermission,
+  HOST_PERMISSIONS,
+  type HostPermission,
+  type LegacyRemotePluginPermission,
   REMOTE_PLUGIN_ISOLATIONS,
   type RemotePluginIsolation,
   type RemotePluginPermissionGrant,
   type RemotePluginPermissionTag,
-  HOST_PERMISSIONS,
-  type HostPermission,
-  type LegacyRemotePluginPermission,
 } from "./types.js";
 
 export type RemotePluginBunWorkerPermissions = Record<BunPermission, boolean>;
@@ -20,7 +20,9 @@ export function isBunPermission(value: string): value is BunPermission {
   return BUN_PERMISSIONS.includes(value as BunPermission);
 }
 
-export function isRemotePluginIsolation(value: string): value is RemotePluginIsolation {
+export function isRemotePluginIsolation(
+  value: string,
+): value is RemotePluginIsolation {
   return REMOTE_PLUGIN_ISOLATIONS.includes(value as RemotePluginIsolation);
 }
 
@@ -84,8 +86,14 @@ export function flattenRemotePluginPermissions(
 }
 
 export function mergeRemotePluginPermissions(
-  defaults?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
-  overrides?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
+  defaults?:
+    | RemotePluginPermissionGrant
+    | LegacyRemotePluginPermission[]
+    | null,
+  overrides?:
+    | RemotePluginPermissionGrant
+    | LegacyRemotePluginPermission[]
+    | null,
 ): RemotePluginPermissionGrant {
   const base = normalizeRemotePluginPermissions(defaults);
   const extra = normalizeRemotePluginPermissions(overrides);
@@ -103,14 +111,22 @@ export function mergeRemotePluginPermissions(
 }
 
 export function hasHostPermission(
-  input: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null | undefined,
+  input:
+    | RemotePluginPermissionGrant
+    | LegacyRemotePluginPermission[]
+    | null
+    | undefined,
   permission: HostPermission,
 ): boolean {
   return normalizeRemotePluginPermissions(input).host?.[permission] === true;
 }
 
 export function hasBunPermission(
-  input: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null | undefined,
+  input:
+    | RemotePluginPermissionGrant
+    | LegacyRemotePluginPermission[]
+    | null
+    | undefined,
   permission: BunPermission,
 ): boolean {
   return normalizeRemotePluginPermissions(input).bun?.[permission] === true;
@@ -146,6 +162,8 @@ export function parseRemotePluginPermissionTag(
   return null;
 }
 
-export function isRemotePluginPermissionTag(tag: string): tag is RemotePluginPermissionTag {
+export function isRemotePluginPermissionTag(
+  tag: string,
+): tag is RemotePluginPermissionTag {
   return parseRemotePluginPermissionTag(tag) !== null;
 }

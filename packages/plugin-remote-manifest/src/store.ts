@@ -19,6 +19,9 @@ import {
 } from "./permissions.js";
 import type {
   BunPermission,
+  HostPermission,
+  JsonObject,
+  JsonValue,
   RemotePluginInstallRecord,
   RemotePluginInstallSource,
   RemotePluginListEntry,
@@ -26,12 +29,12 @@ import type {
   RemotePluginPermissionGrant,
   RemotePluginRegistry,
   RemotePluginRuntimeContext,
-  HostPermission,
-  JsonObject,
-  JsonValue,
 } from "./types.js";
 import { BUN_PERMISSIONS, HOST_PERMISSIONS } from "./types.js";
-import { isValidRemotePluginId, validateRemotePluginManifest } from "./validation.js";
+import {
+  isValidRemotePluginId,
+  validateRemotePluginManifest,
+} from "./validation.js";
 
 const REGISTRY_FILE_NAME = "registry.json";
 const INSTALL_FILE_NAME = "install.json";
@@ -112,7 +115,9 @@ function ensureStoreRoot(storeRoot: string): void {
 function stringField(object: JsonObject, key: string, path: string): string {
   const value = object[key];
   if (typeof value !== "string" || value.length === 0) {
-    throw new RemotePluginStoreError(`Invalid ${path}.${key}: expected string.`);
+    throw new RemotePluginStoreError(
+      `Invalid ${path}.${key}: expected string.`,
+    );
   }
   return value;
 }
@@ -120,7 +125,9 @@ function stringField(object: JsonObject, key: string, path: string): string {
 function numberField(object: JsonObject, key: string, path: string): number {
   const value = object[key];
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new RemotePluginStoreError(`Invalid ${path}.${key}: expected number.`);
+    throw new RemotePluginStoreError(
+      `Invalid ${path}.${key}: expected number.`,
+    );
   }
   return value;
 }
@@ -133,7 +140,9 @@ function optionalBooleanField(
   const value = object[key];
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") {
-    throw new RemotePluginStoreError(`Invalid ${path}.${key}: expected boolean.`);
+    throw new RemotePluginStoreError(
+      `Invalid ${path}.${key}: expected boolean.`,
+    );
   }
   return value;
 }
@@ -176,7 +185,9 @@ function parseOptionalNumberOrNull(
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new RemotePluginStoreError(`Invalid ${path}: expected number or null.`);
+    throw new RemotePluginStoreError(
+      `Invalid ${path}: expected number or null.`,
+    );
   }
   return value;
 }
@@ -194,10 +205,14 @@ function parseBooleanRecord<K extends string>(
   for (const [key, entry] of Object.entries(value)) {
     const permission = allowed.find((allowedKey) => allowedKey === key);
     if (!permission) {
-      throw new RemotePluginStoreError(`Invalid ${path}.${key}: unknown permission.`);
+      throw new RemotePluginStoreError(
+        `Invalid ${path}.${key}: unknown permission.`,
+      );
     }
     if (typeof entry !== "boolean") {
-      throw new RemotePluginStoreError(`Invalid ${path}.${key}: expected boolean.`);
+      throw new RemotePluginStoreError(
+        `Invalid ${path}.${key}: expected boolean.`,
+      );
     }
     output[permission] = entry;
   }
@@ -227,7 +242,10 @@ function parsePermissionGrant(
   const isolation = value.isolation;
   if (isolation === undefined) {
     grant.isolation = "shared-worker";
-  } else if (typeof isolation === "string" && isRemotePluginIsolation(isolation)) {
+  } else if (
+    typeof isolation === "string" &&
+    isRemotePluginIsolation(isolation)
+  ) {
     grant.isolation = isolation;
   } else {
     throw new RemotePluginStoreError(
@@ -300,7 +318,9 @@ function normalizeInstallRecord(
   return {
     ...record,
     source: normalizeInstallSource(record.source, record.currentHash),
-    permissionsGranted: normalizeRemotePluginPermissions(record.permissionsGranted),
+    permissionsGranted: normalizeRemotePluginPermissions(
+      record.permissionsGranted,
+    ),
     devMode: record.devMode ?? false,
     lastBuildAt: record.lastBuildAt ?? null,
     lastBuildError: record.lastBuildError ?? null,
@@ -354,14 +374,22 @@ function parseInstallRecord(
 
 function parseRegistry(value: JsonValue): RemotePluginRegistry {
   if (!isJsonObject(value)) {
-    throw new RemotePluginStoreError("Invalid remote plugin registry: expected object.");
+    throw new RemotePluginStoreError(
+      "Invalid remote plugin registry: expected object.",
+    );
   }
-  if (value.version !== REGISTRY_VERSION || !isJsonObject(value.remotePlugins)) {
+  if (
+    value.version !== REGISTRY_VERSION ||
+    !isJsonObject(value.remotePlugins)
+  ) {
     throw new RemotePluginStoreError("Invalid remote plugin registry.");
   }
   const remotePlugins: Record<string, RemotePluginInstallRecord> = {};
   for (const [id, record] of Object.entries(value.remotePlugins)) {
-    remotePlugins[id] = parseInstallRecord(record, `registry.remotePlugins.${id}`);
+    remotePlugins[id] = parseInstallRecord(
+      record,
+      `registry.remotePlugins.${id}`,
+    );
   }
   return { version: REGISTRY_VERSION, remotePlugins };
 }
@@ -379,7 +407,9 @@ export function getRemotePluginStorePaths(
     rootDir !== normalizedStoreRoot &&
     !rootDir.startsWith(`${normalizedStoreRoot}${sep}`)
   ) {
-    throw new RemotePluginStoreError(`Remote plugin id escapes store root: ${id}`);
+    throw new RemotePluginStoreError(
+      `Remote plugin id escapes store root: ${id}`,
+    );
   }
   return {
     rootDir,
@@ -400,7 +430,9 @@ export function resolveRemotePluginPathInside(
     resolvedPath !== normalizedRoot &&
     !resolvedPath.startsWith(`${normalizedRoot}${sep}`)
   ) {
-    throw new RemotePluginStoreError(`Path escapes remote plugin root: ${relativePath}`);
+    throw new RemotePluginStoreError(
+      `Path escapes remote plugin root: ${relativePath}`,
+    );
   }
   return resolvedPath;
 }
@@ -409,7 +441,9 @@ export function toRemotePluginViewUrl(relativePath: string): string {
   return `views://${relativePath.replace(/^\/+/, "")}`;
 }
 
-export function readRemotePluginManifestAt(manifestPath: string): RemotePluginManifest {
+export function readRemotePluginManifestAt(
+  manifestPath: string,
+): RemotePluginManifest {
   const parsed = parseJsonFile(manifestPath);
   const result = validateRemotePluginManifest(parsed);
   if (!result.ok) {
@@ -423,7 +457,9 @@ export function readRemotePluginManifestAt(manifestPath: string): RemotePluginMa
   return result.manifest;
 }
 
-export function assertRemotePluginPayload(payloadDir: string): RemotePluginManifest {
+export function assertRemotePluginPayload(
+  payloadDir: string,
+): RemotePluginManifest {
   const manifestPath = join(payloadDir, "plugin.json");
   if (!existsSync(manifestPath)) {
     throw new RemotePluginStoreError(`Missing plugin.json in ${payloadDir}`);
@@ -453,7 +489,9 @@ export function assertRemotePluginPayload(payloadDir: string): RemotePluginManif
   return manifest;
 }
 
-export function readRemotePluginRegistry(storeRoot: string): RemotePluginRegistry {
+export function readRemotePluginRegistry(
+  storeRoot: string,
+): RemotePluginRegistry {
   ensureStoreRoot(storeRoot);
   const filePath = registryPath(storeRoot);
   if (!existsSync(filePath)) {
@@ -482,7 +520,9 @@ export function writeRemotePluginRegistry(
   return normalized;
 }
 
-export function listInstalledRemotePluginDirectories(storeRoot: string): string[] {
+export function listInstalledRemotePluginDirectories(
+  storeRoot: string,
+): string[] {
   ensureStoreRoot(storeRoot);
   return readdirSync(storeRoot, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
@@ -522,7 +562,8 @@ export function buildRemotePluginRuntimeContext(
   permissionsGranted: RemotePluginPermissionGrant,
   authToken: string | null = null,
 ): RemotePluginRuntimeContext {
-  const grantedPermissions = normalizeRemotePluginPermissions(permissionsGranted);
+  const grantedPermissions =
+    normalizeRemotePluginPermissions(permissionsGranted);
   return {
     currentDir,
     statePath: join(stateDir, "state.json"),
@@ -577,7 +618,9 @@ function loadInstalledRemotePluginRecord(
   record: RemotePluginInstallRecord,
 ): InstalledRemotePlugin {
   const paths = getRemotePluginStorePaths(storeRoot, record.id);
-  const manifest = readRemotePluginManifestAt(join(paths.currentDir, "plugin.json"));
+  const manifest = readRemotePluginManifestAt(
+    join(paths.currentDir, "plugin.json"),
+  );
   const bundleWorkerPath = resolveRemotePluginPathInside(
     paths.currentDir,
     manifest.worker.relativePath,
@@ -626,7 +669,9 @@ export function loadInstalledRemotePlugin(
   return record ? loadInstalledRemotePluginRecord(storeRoot, record) : null;
 }
 
-export function syncRemotePluginRegistry(storeRoot: string): RemotePluginRegistry {
+export function syncRemotePluginRegistry(
+  storeRoot: string,
+): RemotePluginRegistry {
   const records = new Map<string, RemotePluginInstallRecord>();
   for (const directory of listInstalledRemotePluginDirectories(storeRoot)) {
     const record = readRemotePluginInstallRecord(storeRoot, directory);
@@ -645,7 +690,9 @@ export function syncRemotePluginRegistry(storeRoot: string): RemotePluginRegistr
   });
 }
 
-export function loadInstalledRemotePlugins(storeRoot: string): InstalledRemotePlugin[] {
+export function loadInstalledRemotePlugins(
+  storeRoot: string,
+): InstalledRemotePlugin[] {
   const registry = syncRemotePluginRegistry(storeRoot);
   return Object.values(registry.remotePlugins)
     .map((record) => loadInstalledRemotePluginRecord(storeRoot, record))
@@ -672,8 +719,12 @@ export function toInstalledRemotePluginSnapshot(
     devMode: install.devMode ?? false,
     lastBuildAt: install.lastBuildAt ?? null,
     lastBuildError: install.lastBuildError ?? null,
-    requestedPermissions: normalizeRemotePluginPermissions(manifest.permissions),
-    grantedPermissions: normalizeRemotePluginPermissions(install.permissionsGranted),
+    requestedPermissions: normalizeRemotePluginPermissions(
+      manifest.permissions,
+    ),
+    grantedPermissions: normalizeRemotePluginPermissions(
+      install.permissionsGranted,
+    ),
     view: {
       ...manifest.view,
       viewUrl: remotePlugin.viewUrl,
@@ -683,7 +734,9 @@ export function toInstalledRemotePluginSnapshot(
   };
 }
 
-export function toRemotePluginListEntry(remotePlugin: InstalledRemotePlugin): RemotePluginListEntry {
+export function toRemotePluginListEntry(
+  remotePlugin: InstalledRemotePlugin,
+): RemotePluginListEntry {
   const { install, manifest } = remotePlugin;
   return {
     id: manifest.id,
@@ -702,11 +755,15 @@ export function loadRemotePluginStoreSnapshot(
 ): RemotePluginStoreSnapshot {
   return {
     version: REGISTRY_VERSION,
-    remotePlugins: loadInstalledRemotePlugins(storeRoot).map(toInstalledRemotePluginSnapshot),
+    remotePlugins: loadInstalledRemotePlugins(storeRoot).map(
+      toInstalledRemotePluginSnapshot,
+    ),
   };
 }
 
-export function loadRemotePluginListEntries(storeRoot: string): RemotePluginListEntry[] {
+export function loadRemotePluginListEntries(
+  storeRoot: string,
+): RemotePluginListEntry[] {
   return loadInstalledRemotePlugins(storeRoot).map(toRemotePluginListEntry);
 }
 
@@ -782,7 +839,9 @@ export function isRemotePluginSourceDirectory(directory: string): boolean {
 export function ensureRemotePluginSourceDirectory(directory: string): string {
   const normalized = resolve(directory);
   if (!existsSync(normalized) || !statSync(normalized).isDirectory()) {
-    throw new RemotePluginStoreError(`Remote plugin source folder not found: ${normalized}`);
+    throw new RemotePluginStoreError(
+      `Remote plugin source folder not found: ${normalized}`,
+    );
   }
   if (!isRemotePluginSourceDirectory(normalized)) {
     throw new RemotePluginStoreError(

@@ -3,13 +3,13 @@ import { isRemotePluginIsolation } from "./permissions.js";
 import {
   BUN_PERMISSIONS,
   type BunPermission,
-  type RemotePluginManifest,
-  type RemotePluginViewMode,
-  type RemotePluginPermissionGrant,
   HOST_PERMISSIONS,
   type HostPermission,
   type JsonObject,
   type JsonValue,
+  type RemotePluginManifest,
+  type RemotePluginPermissionGrant,
+  type RemotePluginViewMode,
 } from "./types.js";
 
 export interface RemotePluginManifestValidationIssue {
@@ -152,7 +152,10 @@ function validatePermissions(
   const isolation = object.isolation;
   if (isolation === undefined) {
     grant.isolation = "shared-worker";
-  } else if (typeof isolation === "string" && isRemotePluginIsolation(isolation)) {
+  } else if (
+    typeof isolation === "string" &&
+    isRemotePluginIsolation(isolation)
+  ) {
     grant.isolation = isolation;
   } else {
     issues.push({

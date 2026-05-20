@@ -5,13 +5,13 @@ import {
 import {
   BUN_PERMISSIONS,
   type BunPermission,
+  HOST_PERMISSIONS,
+  type HostPermission,
   type RemotePluginInstallSource,
   type RemotePluginManifest,
   type RemotePluginPermissionConsentRequest,
   type RemotePluginPermissionGrant,
   type RemotePluginPermissionTag,
-  HOST_PERMISSIONS,
-  type HostPermission,
 } from "./types.js";
 
 export interface RemotePluginPermissionDiff {

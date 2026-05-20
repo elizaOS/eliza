@@ -9,7 +9,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RemotePluginWorkerMessage } from "@elizaos/plugin-remote-manifest";
 import { describe, expect, it } from "vitest";
-import { RemotePluginHost, type RemotePluginWorkerHandle } from "./remote-plugin-host";
+import {
+  RemotePluginHost,
+  type RemotePluginWorkerHandle,
+} from "./remote-plugin-host";
 
 function withTempDir<T>(fn: (dir: string) => T): T {
   const dir = mkdtempSync(join(tmpdir(), "electrobun-remote-plugin-host-"));
@@ -27,7 +30,8 @@ function writePayload(
   const payloadDir = join(root, "payload");
   mkdirSync(join(payloadDir, "views"), { recursive: true });
   const grant: Record<string, boolean> = { notifications: true };
-  if (options.manageRemotePlugins !== false) grant["manage-remote-plugins"] = true;
+  if (options.manageRemotePlugins !== false)
+    grant["manage-remote-plugins"] = true;
   writeFileSync(
     join(payloadDir, "plugin.json"),
     JSON.stringify({
@@ -58,8 +62,9 @@ function writePayload(
 class FakeWorkerHandle implements RemotePluginWorkerHandle {
   readonly messages: RemotePluginWorkerMessage[] = [];
   terminated = false;
-  private messageListener: ((message: RemotePluginWorkerMessage) => void) | null =
-    null;
+  private messageListener:
+    | ((message: RemotePluginWorkerMessage) => void)
+    | null = null;
   private errorListener: ((error: Error) => void) | null = null;
 
   postMessage(message: RemotePluginWorkerMessage): void {

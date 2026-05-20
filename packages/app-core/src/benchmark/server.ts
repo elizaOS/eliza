@@ -230,8 +230,7 @@ function isOsworldBenchmarkName(benchmark: string): boolean {
 function isHermesNativeEnvProxyName(benchmark: string): boolean {
   const normalized = benchmark.trim().toLowerCase();
   return (
-    normalized === "hermes_native_env" ||
-    normalized === "hermes-native-env"
+    normalized === "hermes_native_env" || normalized === "hermes-native-env"
   );
 }
 

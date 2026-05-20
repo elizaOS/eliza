@@ -13,10 +13,10 @@
  */
 
 import type {
+  InstalledRemotePluginSnapshot,
   RemotePluginListEntry,
   RemotePluginPermissionGrant,
   RemotePluginStoreSnapshot,
-  InstalledRemotePluginSnapshot,
 } from "@elizaos/plugin-remote-manifest";
 import type { RPCSchema } from "electrobun/bun";
 
@@ -748,7 +748,11 @@ export interface CorePluginsSnapshot {
   optional: CorePluginEntry[];
 }
 
-export type RemotePluginWorkerState = "stopped" | "starting" | "running" | "error";
+export type RemotePluginWorkerState =
+  | "stopped"
+  | "starting"
+  | "running"
+  | "error";
 
 export interface RemotePluginWorkerStatus {
   id: string;

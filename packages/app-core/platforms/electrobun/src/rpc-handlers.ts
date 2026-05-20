@@ -71,10 +71,6 @@ import { getBrowserWorkspaceManager } from "./native/browser-workspace";
 import { getCameraManager } from "./native/camera";
 import { getCanvasManager } from "./native/canvas";
 import {
-  configureRemotePluginHostEvents,
-  getRemotePluginHost,
-} from "./native/remote-plugin-host";
-import {
   scanAndValidateProviderCredentials,
   scanProviderCredentials,
 } from "./native/credentials";
@@ -88,6 +84,10 @@ import { getLocationManager } from "./native/location";
 import { getMusicPlayerManager } from "./native/music-player";
 import { getPermissionManager } from "./native/permissions";
 import type { AllPermissionsState } from "./native/permissions-shared";
+import {
+  configureRemotePluginHostEvents,
+  getRemotePluginHost,
+} from "./native/remote-plugin-host";
 import { getScreenCaptureManager } from "./native/screencapture";
 import {
   getStewardStatus,
@@ -780,10 +780,15 @@ export function buildBunRpcHandlers({
     }),
 
     // ---- Remote Plugins ----
-    remotePluginGetStoreRoot: async () => ({ storeRoot: remotePlugins.getStoreRoot() }),
-    remotePluginList: async () => ({ remotePlugins: remotePluginHost.listRemotePlugins() }),
+    remotePluginGetStoreRoot: async () => ({
+      storeRoot: remotePlugins.getStoreRoot(),
+    }),
+    remotePluginList: async () => ({
+      remotePlugins: remotePluginHost.listRemotePlugins(),
+    }),
     remotePluginGetStoreSnapshot: async () => remotePlugins.getStoreSnapshot(),
-    remotePluginGet: async (params: { id: string }) => remotePluginHost.getRemotePlugin(params.id),
+    remotePluginGet: async (params: { id: string }) =>
+      remotePluginHost.getRemotePlugin(params.id),
     remotePluginInstallFromDirectory: async (params) =>
       remotePluginHost.installFromDirectory(params),
     remotePluginUninstall: async (params: { id: string }) =>

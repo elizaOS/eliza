@@ -1,11 +1,11 @@
 import { describe, expect, it } from "bun:test";
 import {
   buildRemotePluginRuntimeContext,
-  RemotePluginStoreError,
   loadRemotePluginListEntries,
   loadRemotePluginStoreSnapshot,
-  toRemotePluginListEntry,
+  RemotePluginStoreError,
   toInstalledRemotePluginSnapshot,
+  toRemotePluginListEntry,
 } from "./index.js";
 
 describe("remote plugin package barrel", () => {

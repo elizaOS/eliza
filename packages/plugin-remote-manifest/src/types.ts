@@ -16,7 +16,10 @@ export const BUN_PERMISSIONS = [
   "worker",
 ] as const;
 
-export const REMOTE_PLUGIN_ISOLATIONS = ["shared-worker", "isolated-process"] as const;
+export const REMOTE_PLUGIN_ISOLATIONS = [
+  "shared-worker",
+  "isolated-process",
+] as const;
 
 export type HostPermission = (typeof HOST_PERMISSIONS)[number];
 export type BunPermission = (typeof BUN_PERMISSIONS)[number];

@@ -214,6 +214,14 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
   },
 ];
 
+function coreRouteProbe(name: string): RouteProbe {
+  const route = CORE_ROUTE_PROBES.find((probe) => probe.name === name);
+  if (!route) {
+    throw new Error(`Missing core route probe: ${name}`);
+  }
+  return route;
+}
+
 const APP_TOOL_ROUTE_PROBES: readonly RouteProbe[] = DIRECT_ROUTE_CASES.map(
   (routeCase) => ({
     name: `app tool ${routeCase.name}`,
@@ -1354,17 +1362,17 @@ async function clickSafeAllowlist(
   page: Page,
   issues: readonly string[],
 ): Promise<void> {
-  await probeRoute(page, CORE_ROUTE_PROBES[0]);
+  await probeRoute(page, coreRouteProbe("chat"));
   await clickIfVisible(page.getByTestId("header-tasks-events-toggle"));
   await page.waitForTimeout(250);
   await expectNoPageIssues(issues, "chat safe toggle");
 
-  await probeRoute(page, CORE_ROUTE_PROBES[2]);
+  await probeRoute(page, coreRouteProbe("apps catalog"));
   await clickIfVisible(page.getByRole("button", { name: "Add to favorites" }));
   await page.waitForTimeout(250);
   await expectNoPageIssues(issues, "apps favorite toggle");
 
-  await probeRoute(page, CORE_ROUTE_PROBES[7]);
+  await probeRoute(page, coreRouteProbe("settings"));
   for (const section of SETTING_SECTIONS_TO_CLICK) {
     await openSettingsSection(page, section);
     await page.waitForTimeout(150);
@@ -1414,7 +1422,7 @@ test("visible safe app tiles and allowlisted buttons are click-safe", async ({
 
   for (const tile of SAFE_APP_TILES) {
     await test.step(tile.name, async () => {
-      await probeRoute(page, CORE_ROUTE_PROBES[2]);
+      await probeRoute(page, coreRouteProbe("apps catalog"));
       const card = page.getByTestId(tile.testId);
       await expect(card).toBeVisible({ timeout: 60_000 });
       await card.click();

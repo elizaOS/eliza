@@ -26,35 +26,35 @@ import type { JsonValue } from "@elizaos/plugin-remote-manifest";
 
 /** Cross-platform contract every shim implements. */
 export interface PluginHostShim {
-	/**
-	 * Resolve a relative view asset to an absolute URL the platform can
-	 * load. Used to build `<script>` / `<link>` URLs for assets the view
-	 * needs.
-	 */
-	resolveViewUrl(pluginName: string, relativePath: string): URL;
+  /**
+   * Resolve a relative view asset to an absolute URL the platform can
+   * load. Used to build `<script>` / `<link>` URLs for assets the view
+   * needs.
+   */
+  resolveViewUrl(pluginName: string, relativePath: string): URL;
 
-	/**
-	 * Issue a host-mediated request to the plugin's host. The host
-	 * routes it to the corresponding remote-mode plugin worker over the
-	 * standard wire envelope.
-	 *
-	 * Methods follow the `surface.target` convention from the wire
-	 * envelope:
-	 * - `provider.<name>` → invoke a provider's `get`
-	 * - `action.<name>`   → invoke an action's handler
-	 * - `event.<name>`    → emit an event into the runtime
-	 */
-	request<T extends JsonValue = JsonValue>(
-		method: string,
-		params: JsonValue,
-	): Promise<T>;
+  /**
+   * Issue a host-mediated request to the plugin's host. The host
+   * routes it to the corresponding remote-mode plugin worker over the
+   * standard wire envelope.
+   *
+   * Methods follow the `surface.target` convention from the wire
+   * envelope:
+   * - `provider.<name>` → invoke a provider's `get`
+   * - `action.<name>`   → invoke an action's handler
+   * - `event.<name>`    → emit an event into the runtime
+   */
+  request<T extends JsonValue = JsonValue>(
+    method: string,
+    params: JsonValue,
+  ): Promise<T>;
 
-	/**
-	 * Subscribe to host → view events. Returns an unsubscribe function.
-	 * The host emits these via the existing `event` envelope with the
-	 * matching event name.
-	 */
-	on(event: string, handler: (data: JsonValue) => void): () => void;
+  /**
+   * Subscribe to host → view events. Returns an unsubscribe function.
+   * The host emits these via the existing `event` envelope with the
+   * matching event name.
+   */
+  on(event: string, handler: (data: JsonValue) => void): () => void;
 }
 
 /**
@@ -66,21 +66,21 @@ let activeShim: PluginHostShim | null = null;
 
 /** Install a shim. Called once by the platform package. */
 export function installHostShim(shim: PluginHostShim): void {
-	activeShim = shim;
+  activeShim = shim;
 }
 
 /** Get the active shim. Throws if no platform has installed one. */
 export function getHostShim(): PluginHostShim {
-	if (!activeShim) {
-		throw new Error(
-			"PluginHostShim not installed. Did you import a platform package " +
-				"(@elizaos/plugin-host-shim-electrobun / -ios / -android / -web)?",
-		);
-	}
-	return activeShim;
+  if (!activeShim) {
+    throw new Error(
+      "PluginHostShim not installed. Did you import a platform package " +
+        "(@elizaos/plugin-host-shim-electrobun / -ios / -android / -web)?",
+    );
+  }
+  return activeShim;
 }
 
 /** Reset the shim. Used in tests; never in production. */
 export function resetHostShim(): void {
-	activeShim = null;
+  activeShim = null;
 }

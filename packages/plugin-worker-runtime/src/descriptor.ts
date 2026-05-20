@@ -12,10 +12,10 @@
  */
 
 import type {
-	JsonObject,
-	JsonValue,
-	PluginSurfaceKind,
-	RemoteFunctionRef,
+  JsonObject,
+  JsonValue,
+  PluginSurfaceKind,
+  RemoteFunctionRef,
 } from "@elizaos/plugin-remote-manifest";
 
 /** Live handler registered by the descriptor builder. */
@@ -30,100 +30,100 @@ export type AnyHandler = (...args: unknown[]) => unknown;
  * private to the worker.
  */
 export type RemoteServiceClass = {
-	/** Identifier used by `runtime.getService(serviceType)`. */
-	serviceType: string;
-	/** Explicit allowlist of methods that can be invoked via host RPC. */
-	rpcMethods: string[];
-	/** Optional human-readable description; passes through to the host. */
-	capabilityDescription?: string;
-	/** Factory; the bootstrap calls this to materialise the service. */
-	start: (runtime: unknown) => Promise<RemoteServiceInstance>;
-	/** Optional per-runtime teardown. */
-	stopRuntime?: (runtime: unknown) => Promise<void>;
+  /** Identifier used by `runtime.getService(serviceType)`. */
+  serviceType: string;
+  /** Explicit allowlist of methods that can be invoked via host RPC. */
+  rpcMethods: string[];
+  /** Optional human-readable description; passes through to the host. */
+  capabilityDescription?: string;
+  /** Factory; the bootstrap calls this to materialise the service. */
+  start: (runtime: unknown) => Promise<RemoteServiceInstance>;
+  /** Optional per-runtime teardown. */
+  stopRuntime?: (runtime: unknown) => Promise<void>;
 };
 
 export type RemoteServiceInstance = {
-	stop?: () => Promise<void> | void;
-	[methodName: string]: unknown;
+  stop?: () => Promise<void> | void;
+  [methodName: string]: unknown;
 };
 
 /** Mapping from rpc.id → live handler, plus its surface kind for routing. */
 export interface HandlerRegistry {
-	get(id: string): HandlerEntry | undefined;
-	set(id: string, entry: HandlerEntry): void;
-	clear(): void;
-	readonly size: number;
+  get(id: string): HandlerEntry | undefined;
+  set(id: string, entry: HandlerEntry): void;
+  clear(): void;
+  readonly size: number;
 }
 
 export interface HandlerEntry {
-	id: string;
-	surface: PluginSurfaceKind;
-	/** Surface-specific target name (action name, service.method, etc.). */
-	target: string;
-	handler: AnyHandler;
+  id: string;
+  surface: PluginSurfaceKind;
+  /** Surface-specific target name (action name, service.method, etc.). */
+  target: string;
+  handler: AnyHandler;
 }
 
 export function createHandlerRegistry(): HandlerRegistry {
-	const inner = new Map<string, HandlerEntry>();
-	return {
-		get: (id) => inner.get(id),
-		set: (id, entry) => {
-			inner.set(id, entry);
-		},
-		clear: () => inner.clear(),
-		get size() {
-			return inner.size;
-		},
-	};
+  const inner = new Map<string, HandlerEntry>();
+  return {
+    get: (id) => inner.get(id),
+    set: (id, entry) => {
+      inner.set(id, entry);
+    },
+    clear: () => inner.clear(),
+    get size() {
+      return inner.size;
+    },
+  };
 }
 
 /** Plugin object as seen by the worker bootstrap (loose typing to avoid pulling in @elizaos/core internals here). */
 export type WorkerPluginShape = {
-	name: string;
-	description?: string;
-	mode?: "direct" | "remote";
-	priority?: number;
-	dependencies?: string[];
-	config?: Record<string, JsonValue>;
-	schema?: Record<string, JsonValue>;
-	actions?: Array<{
-		name: string;
-		similes?: string[];
-		description?: string;
-		examples?: JsonValue;
-		validate?: AnyHandler;
-		handler: AnyHandler;
-	}>;
-	providers?: Array<{
-		name: string;
-		description?: string;
-		dynamic?: boolean;
-		position?: number;
-		private?: boolean;
-		get: AnyHandler;
-	}>;
-	services?: Array<RemoteServiceClass>;
-	models?: Record<string, AnyHandler>;
-	events?: Record<string, Array<AnyHandler>>;
-	routes?: Array<{
-		type?: string;
-		name?: string;
-		path: string;
-		public?: boolean;
-		isMultipart?: boolean;
-		routeHandler?: AnyHandler;
-	}>;
-	views?: Array<JsonValue>;
-	widgets?: Array<JsonValue>;
-	componentTypes?: Array<JsonValue>;
-	evaluators?: Array<{
-		name: string;
-		description?: string;
-		validate?: AnyHandler;
-		handler: AnyHandler;
-	}>;
-	init?: AnyHandler;
-	[key: string]: unknown;
+  name: string;
+  description?: string;
+  mode?: "direct" | "remote";
+  priority?: number;
+  dependencies?: string[];
+  config?: Record<string, JsonValue>;
+  schema?: Record<string, JsonValue>;
+  actions?: Array<{
+    name: string;
+    similes?: string[];
+    description?: string;
+    examples?: JsonValue;
+    validate?: AnyHandler;
+    handler: AnyHandler;
+  }>;
+  providers?: Array<{
+    name: string;
+    description?: string;
+    dynamic?: boolean;
+    position?: number;
+    private?: boolean;
+    get: AnyHandler;
+  }>;
+  services?: Array<RemoteServiceClass>;
+  models?: Record<string, AnyHandler>;
+  events?: Record<string, Array<AnyHandler>>;
+  routes?: Array<{
+    type?: string;
+    name?: string;
+    path: string;
+    public?: boolean;
+    isMultipart?: boolean;
+    routeHandler?: AnyHandler;
+  }>;
+  views?: Array<JsonValue>;
+  widgets?: Array<JsonValue>;
+  componentTypes?: Array<JsonValue>;
+  evaluators?: Array<{
+    name: string;
+    description?: string;
+    validate?: AnyHandler;
+    handler: AnyHandler;
+  }>;
+  init?: AnyHandler;
+  [key: string]: unknown;
 };
 
 /**
@@ -137,193 +137,210 @@ export type WorkerPluginShape = {
  * calls reuse the cached instance until the worker shuts down or the
  * service's stop() is called externally.
  */
-const serviceInstances = new WeakMap<RemoteServiceClass, Promise<RemoteServiceInstance>>();
+const serviceInstances = new WeakMap<
+  RemoteServiceClass,
+  Promise<RemoteServiceInstance>
+>();
 
 async function serviceMethodTrampoline(
-	service: RemoteServiceClass,
-	method: string,
-	args: unknown[],
+  service: RemoteServiceClass,
+  method: string,
+  args: unknown[],
 ): Promise<unknown> {
-	let instancePromise = serviceInstances.get(service);
-	if (!instancePromise) {
-		// First call: bootstrap the service. The runtime arg is the
-		// RuntimeProxyApi the dispatcher injects (see dispatch.ts).
-		const [runtime] = args;
-		instancePromise = service.start(runtime as unknown);
-		serviceInstances.set(service, instancePromise);
-	}
-	const instance = await instancePromise;
-	const fn = instance[method];
-	if (typeof fn !== "function") {
-		throw new Error(
-			`Service ${service.serviceType} has no rpcMethod "${method}".`,
-		);
-	}
-	// args[0] is runtime; args[1..] are the actual method args.
-	return (fn as (...a: unknown[]) => unknown).apply(instance, args.slice(1));
+  let instancePromise = serviceInstances.get(service);
+  if (!instancePromise) {
+    // First call: bootstrap the service. The runtime arg is the
+    // RuntimeProxyApi the dispatcher injects (see dispatch.ts).
+    const [runtime] = args;
+    instancePromise = service.start(runtime as unknown);
+    serviceInstances.set(service, instancePromise);
+  }
+  const instance = await instancePromise;
+  const fn = instance[method];
+  if (typeof fn !== "function") {
+    throw new Error(
+      `Service ${service.serviceType} has no rpcMethod "${method}".`,
+    );
+  }
+  // args[0] is runtime; args[1..] are the actual method args.
+  return (fn as (...a: unknown[]) => unknown).apply(instance, args.slice(1));
 }
 
 export function buildAnnounceDescriptor(
-	plugin: WorkerPluginShape,
-	registry: HandlerRegistry,
+  plugin: WorkerPluginShape,
+  registry: HandlerRegistry,
 ): JsonObject {
-	let counter = 0;
-	const allocId = (kind: PluginSurfaceKind, target: string): string => {
-		counter += 1;
-		return `${kind}:${target}:${counter}`;
-	};
+  let counter = 0;
+  const allocId = (kind: PluginSurfaceKind, target: string): string => {
+    counter += 1;
+    return `${kind}:${target}:${counter}`;
+  };
 
-	const refOf = (
-		fn: AnyHandler,
-		surface: PluginSurfaceKind,
-		target: string,
-	): RemoteFunctionRef => {
-		const id = allocId(surface, target);
-		registry.set(id, { id, surface, target, handler: fn });
-		return { rpc: true, id };
-	};
+  const refOf = (
+    fn: AnyHandler,
+    surface: PluginSurfaceKind,
+    target: string,
+  ): RemoteFunctionRef => {
+    const id = allocId(surface, target);
+    registry.set(id, { id, surface, target, handler: fn });
+    return { rpc: true, id };
+  };
 
-	const descriptor: JsonObject = {
-		name: plugin.name,
-		mode: "remote",
-	};
-	if (plugin.description) descriptor.description = plugin.description;
-	if (plugin.priority !== undefined) descriptor.priority = plugin.priority;
-	if (plugin.dependencies) descriptor.dependencies = plugin.dependencies;
-	if (plugin.config) descriptor.config = plugin.config as JsonValue;
-	if (plugin.schema) descriptor.schema = plugin.schema as JsonValue;
+  const descriptor: JsonObject = {
+    name: plugin.name,
+    mode: "remote",
+  };
+  if (plugin.description) descriptor.description = plugin.description;
+  if (plugin.priority !== undefined) descriptor.priority = plugin.priority;
+  if (plugin.dependencies) descriptor.dependencies = plugin.dependencies;
+  if (plugin.config) descriptor.config = plugin.config as JsonValue;
+  if (plugin.schema) descriptor.schema = plugin.schema as JsonValue;
 
-	if (plugin.actions?.length) {
-		descriptor.actions = plugin.actions.map((action) => {
-			const entry: JsonObject = {
-				name: action.name,
-				handler: refOf(action.handler, "action", action.name) as unknown as JsonValue,
-			};
-			if (action.similes) entry.similes = action.similes;
-			if (action.description) entry.description = action.description;
-			if (action.examples !== undefined) entry.examples = action.examples;
-			if (action.validate) {
-				entry.validate = refOf(
-					action.validate,
-					"action",
-					`${action.name}.validate`,
-				) as unknown as JsonValue;
-			}
-			return entry;
-		});
-	}
+  if (plugin.actions?.length) {
+    descriptor.actions = plugin.actions.map((action) => {
+      const entry: JsonObject = {
+        name: action.name,
+        handler: refOf(
+          action.handler,
+          "action",
+          action.name,
+        ) as unknown as JsonValue,
+      };
+      if (action.similes) entry.similes = action.similes;
+      if (action.description) entry.description = action.description;
+      if (action.examples !== undefined) entry.examples = action.examples;
+      if (action.validate) {
+        entry.validate = refOf(
+          action.validate,
+          "action",
+          `${action.name}.validate`,
+        ) as unknown as JsonValue;
+      }
+      return entry;
+    });
+  }
 
-	if (plugin.providers?.length) {
-		descriptor.providers = plugin.providers.map((provider) => {
-			const entry: JsonObject = {
-				name: provider.name,
-				get: refOf(provider.get, "provider", provider.name) as unknown as JsonValue,
-			};
-			if (provider.description) entry.description = provider.description;
-			if (provider.dynamic !== undefined) entry.dynamic = provider.dynamic;
-			if (provider.position !== undefined) entry.position = provider.position;
-			if (provider.private !== undefined) entry.private = provider.private;
-			return entry;
-		});
-	}
+  if (plugin.providers?.length) {
+    descriptor.providers = plugin.providers.map((provider) => {
+      const entry: JsonObject = {
+        name: provider.name,
+        get: refOf(
+          provider.get,
+          "provider",
+          provider.name,
+        ) as unknown as JsonValue,
+      };
+      if (provider.description) entry.description = provider.description;
+      if (provider.dynamic !== undefined) entry.dynamic = provider.dynamic;
+      if (provider.position !== undefined) entry.position = provider.position;
+      if (provider.private !== undefined) entry.private = provider.private;
+      return entry;
+    });
+  }
 
-	if (plugin.models) {
-		const modelDescriptor: JsonObject = {};
-		for (const [modelType, fn] of Object.entries(plugin.models)) {
-			modelDescriptor[modelType] = refOf(
-				fn,
-				"model",
-				modelType,
-			) as unknown as JsonValue;
-		}
-		descriptor.models = modelDescriptor;
-	}
+  if (plugin.models) {
+    const modelDescriptor: JsonObject = {};
+    for (const [modelType, fn] of Object.entries(plugin.models)) {
+      modelDescriptor[modelType] = refOf(
+        fn,
+        "model",
+        modelType,
+      ) as unknown as JsonValue;
+    }
+    descriptor.models = modelDescriptor;
+  }
 
-	if (plugin.events) {
-		const eventDescriptor: JsonObject = {};
-		for (const [eventName, handlers] of Object.entries(plugin.events)) {
-			eventDescriptor[eventName] = handlers.map((handler, index) =>
-				refOf(handler, "event", `${eventName}#${index}`) as unknown as JsonValue,
-			);
-		}
-		descriptor.events = eventDescriptor;
-	}
+  if (plugin.events) {
+    const eventDescriptor: JsonObject = {};
+    for (const [eventName, handlers] of Object.entries(plugin.events)) {
+      eventDescriptor[eventName] = handlers.map(
+        (handler, index) =>
+          refOf(
+            handler,
+            "event",
+            `${eventName}#${index}`,
+          ) as unknown as JsonValue,
+      );
+    }
+    descriptor.events = eventDescriptor;
+  }
 
-	if (plugin.services?.length) {
-		descriptor.services = plugin.services.map((service) => {
-			const entry: JsonObject = {
-				serviceType: service.serviceType,
-				rpcMethods: service.rpcMethods,
-			};
-			if (service.capabilityDescription) {
-				entry.capabilityDescription = service.capabilityDescription;
-			}
-			// Each rpcMethod becomes a registered handler keyed by the
-			// service.method combo. The actual instance is started lazily
-			// when the host first invokes a method (see dispatch.ts).
-			for (const method of service.rpcMethods) {
-				const target = `${service.serviceType}.${method}`;
-				// Register a closure that defers to the service instance
-				// resolved by dispatch.ts when this id is invoked. The handler
-				// receives the runtime + method args.
-				const handler: AnyHandler = async (...args: unknown[]) =>
-					serviceMethodTrampoline(service, method, args);
-				const id = allocId("service", target);
-				registry.set(id, { id, surface: "service", target, handler });
-				entry[`rpc:${method}`] = { rpc: true, id } as unknown as JsonValue;
-			}
-			return entry;
-		});
-	}
+  if (plugin.services?.length) {
+    descriptor.services = plugin.services.map((service) => {
+      const entry: JsonObject = {
+        serviceType: service.serviceType,
+        rpcMethods: service.rpcMethods,
+      };
+      if (service.capabilityDescription) {
+        entry.capabilityDescription = service.capabilityDescription;
+      }
+      // Each rpcMethod becomes a registered handler keyed by the
+      // service.method combo. The actual instance is started lazily
+      // when the host first invokes a method (see dispatch.ts).
+      for (const method of service.rpcMethods) {
+        const target = `${service.serviceType}.${method}`;
+        // Register a closure that defers to the service instance
+        // resolved by dispatch.ts when this id is invoked. The handler
+        // receives the runtime + method args.
+        const handler: AnyHandler = async (...args: unknown[]) =>
+          serviceMethodTrampoline(service, method, args);
+        const id = allocId("service", target);
+        registry.set(id, { id, surface: "service", target, handler });
+        entry[`rpc:${method}`] = { rpc: true, id } as unknown as JsonValue;
+      }
+      return entry;
+    });
+  }
 
-	if (plugin.evaluators?.length) {
-		descriptor.evaluators = plugin.evaluators.map((evaluator) => {
-			const entry: JsonObject = {
-				name: evaluator.name,
-				handler: refOf(
-					evaluator.handler,
-					"evaluator",
-					evaluator.name,
-				) as unknown as JsonValue,
-			};
-			if (evaluator.description) entry.description = evaluator.description;
-			if (evaluator.validate) {
-				entry.validate = refOf(
-					evaluator.validate,
-					"evaluator",
-					`${evaluator.name}.validate`,
-				) as unknown as JsonValue;
-			}
-			return entry;
-		});
-	}
+  if (plugin.evaluators?.length) {
+    descriptor.evaluators = plugin.evaluators.map((evaluator) => {
+      const entry: JsonObject = {
+        name: evaluator.name,
+        handler: refOf(
+          evaluator.handler,
+          "evaluator",
+          evaluator.name,
+        ) as unknown as JsonValue,
+      };
+      if (evaluator.description) entry.description = evaluator.description;
+      if (evaluator.validate) {
+        entry.validate = refOf(
+          evaluator.validate,
+          "evaluator",
+          `${evaluator.name}.validate`,
+        ) as unknown as JsonValue;
+      }
+      return entry;
+    });
+  }
 
-	if (plugin.routes?.length) {
-		descriptor.routes = plugin.routes.map((route) => {
-			const entry: JsonObject = {
-				path: route.path,
-			};
-			if (route.type) entry.type = route.type;
-			if (route.name) entry.name = route.name;
-			if (route.public !== undefined) entry.public = route.public;
-			if (route.isMultipart !== undefined) entry.isMultipart = route.isMultipart;
-			if (route.routeHandler) {
-				entry.routeHandler = refOf(
-					route.routeHandler,
-					"route",
-					`${route.type ?? "GET"} ${route.path}`,
-				) as unknown as JsonValue;
-			}
-			return entry;
-		});
-	}
+  if (plugin.routes?.length) {
+    descriptor.routes = plugin.routes.map((route) => {
+      const entry: JsonObject = {
+        path: route.path,
+      };
+      if (route.type) entry.type = route.type;
+      if (route.name) entry.name = route.name;
+      if (route.public !== undefined) entry.public = route.public;
+      if (route.isMultipart !== undefined)
+        entry.isMultipart = route.isMultipart;
+      if (route.routeHandler) {
+        entry.routeHandler = refOf(
+          route.routeHandler,
+          "route",
+          `${route.type ?? "GET"} ${route.path}`,
+        ) as unknown as JsonValue;
+      }
+      return entry;
+    });
+  }
 
-	// JSON-only metadata fields: copy through unchanged.
-	if (plugin.views) descriptor.views = plugin.views as JsonValue;
-	if (plugin.widgets) descriptor.widgets = plugin.widgets as JsonValue;
-	if (plugin.componentTypes) {
-		descriptor.componentTypes = plugin.componentTypes as JsonValue;
-	}
+  // JSON-only metadata fields: copy through unchanged.
+  if (plugin.views) descriptor.views = plugin.views as JsonValue;
+  if (plugin.widgets) descriptor.widgets = plugin.widgets as JsonValue;
+  if (plugin.componentTypes) {
+    descriptor.componentTypes = plugin.componentTypes as JsonValue;
+  }
 
-	return descriptor;
+  return descriptor;
 }

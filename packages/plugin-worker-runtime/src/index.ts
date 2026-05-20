@@ -15,32 +15,32 @@
  * - {@link createWorkerRpcDispatcher} — worker-rpc handler
  */
 
-export { bootstrap, type BootstrapOptions } from "./bootstrap.ts";
+export { type BootstrapOptions, bootstrap } from "./bootstrap.ts";
 export {
-	createDefaultChannel,
-	createRequestIdAllocator,
-	createSubprocessChannel,
-	createWorkerChannel,
-	type WorkerChannel,
-} from "./envelope.ts";
-export {
-	RuntimeProxy,
-	buildRuntimeProxyApi,
-	SUPPORTED_RUNTIME_METHODS,
-	type RuntimeProxyApi,
-	type RuntimeProxyMethod,
-	type RuntimeProxyOptions,
-} from "./runtime-proxy.ts";
-export {
-	buildAnnounceDescriptor,
-	createHandlerRegistry,
-	type AnyHandler,
-	type HandlerEntry,
-	type HandlerRegistry,
-	type WorkerPluginShape,
+  type AnyHandler,
+  buildAnnounceDescriptor,
+  createHandlerRegistry,
+  type HandlerEntry,
+  type HandlerRegistry,
+  type WorkerPluginShape,
 } from "./descriptor.ts";
 export {
-	createWorkerRpcDispatcher,
-	type DispatchContext,
+  createWorkerRpcDispatcher,
+  type DispatchContext,
 } from "./dispatch.ts";
-export { toWireError, fromWireError, type WireError } from "./error.ts";
+export {
+  createDefaultChannel,
+  createRequestIdAllocator,
+  createSubprocessChannel,
+  createWorkerChannel,
+  type WorkerChannel,
+} from "./envelope.ts";
+export { fromWireError, toWireError, type WireError } from "./error.ts";
+export {
+  buildRuntimeProxyApi,
+  RuntimeProxy,
+  type RuntimeProxyApi,
+  type RuntimeProxyMethod,
+  type RuntimeProxyOptions,
+  SUPPORTED_RUNTIME_METHODS,
+} from "./runtime-proxy.ts";

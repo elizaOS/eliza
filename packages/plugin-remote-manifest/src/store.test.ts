@@ -11,14 +11,14 @@ import { join } from "node:path";
 import {
   assertRemotePluginPayload,
   buildRemotePluginRuntimeContext,
-  RemotePluginStoreError,
   ensureRemotePluginSourceDirectory,
   getRemotePluginStorePaths,
   installPrebuiltRemotePlugin,
-  loadRemotePluginListEntries,
-  loadRemotePluginStoreSnapshot,
   loadInstalledRemotePlugin,
   loadInstalledRemotePlugins,
+  loadRemotePluginListEntries,
+  loadRemotePluginStoreSnapshot,
+  RemotePluginStoreError,
   readRemotePluginRegistry,
   resolveRemotePluginPathInside,
   uninstallInstalledRemotePlugin,
@@ -109,7 +109,9 @@ describe("remote plugin store", () => {
 
       const registry = readRemotePluginRegistry(storeRoot);
       expect(Object.keys(registry.remotePlugins)).toEqual(["bunny.search"]);
-      expect(registry.remotePlugins["bunny.search"]?.installedAt).toBe(1700000000000);
+      expect(registry.remotePlugins["bunny.search"]?.installedAt).toBe(
+        1700000000000,
+      );
     }));
 
   it("loads installed remote plugins and preserves the bootstrap context", () =>
@@ -129,7 +131,9 @@ describe("remote plugin store", () => {
       );
 
       const all = loadInstalledRemotePlugins(storeRoot);
-      expect(all.map((remotePlugin) => remotePlugin.manifest.id)).toEqual(["bunny.search"]);
+      expect(all.map((remotePlugin) => remotePlugin.manifest.id)).toEqual([
+        "bunny.search",
+      ]);
       if (!loaded) throw new Error("Expected remote plugin to load.");
       const bootstrap = readFileSync(loaded.workerPath, "utf8");
       expect(bootstrap).toContain('"authToken":null');
@@ -254,10 +258,12 @@ describe("remote plugin store", () => {
       };
       const payloadDir = writePayload(dir, escapedManifest);
 
-      expect(() => assertRemotePluginPayload(payloadDir)).toThrow(RemotePluginStoreError);
-      expect(() => resolveRemotePluginPathInside(payloadDir, "../worker.js")).toThrow(
+      expect(() => assertRemotePluginPayload(payloadDir)).toThrow(
         RemotePluginStoreError,
       );
+      expect(() =>
+        resolveRemotePluginPathInside(payloadDir, "../worker.js"),
+      ).toThrow(RemotePluginStoreError);
     }));
 
   it("rejects remote plugin ids before deriving store paths", () =>

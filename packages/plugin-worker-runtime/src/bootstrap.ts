@@ -17,35 +17,35 @@
  */
 
 import type {
-	JsonObject,
-	JsonValue,
-	RemotePluginWorkerMessage,
-	WorkerAnnouncePluginMessage,
-	WorkerInitCompleteMessage,
-	WorkerRpcMessage,
+  JsonObject,
+  JsonValue,
+  RemotePluginWorkerMessage,
+  WorkerAnnouncePluginMessage,
+  WorkerInitCompleteMessage,
+  WorkerRpcMessage,
 } from "@elizaos/plugin-remote-manifest";
 import {
-	buildAnnounceDescriptor,
-	createHandlerRegistry,
-	type WorkerPluginShape,
+  buildAnnounceDescriptor,
+  createHandlerRegistry,
+  type WorkerPluginShape,
 } from "./descriptor.ts";
 import { createWorkerRpcDispatcher } from "./dispatch.ts";
 import {
-	createDefaultChannel,
-	createRequestIdAllocator,
-	type WorkerChannel,
+  createDefaultChannel,
+  createRequestIdAllocator,
+  type WorkerChannel,
 } from "./envelope.ts";
 import { toWireError } from "./error.ts";
 import { buildRuntimeProxyApi, RuntimeProxy } from "./runtime-proxy.ts";
 
 /** Options accepted by {@link bootstrap}. */
 export interface BootstrapOptions {
-	/** Override the message transport. Defaults to a Worker channel. */
-	channel?: WorkerChannel;
-	/** Override the host-rpc timeout. Default: no timeout. */
-	runtimeRpcTimeoutMs?: number;
-	/** Optional plugin config map passed to `plugin.init` if present. */
-	initConfig?: Record<string, string>;
+  /** Override the message transport. Defaults to a Worker channel. */
+  channel?: WorkerChannel;
+  /** Override the host-rpc timeout. Default: no timeout. */
+  runtimeRpcTimeoutMs?: number;
+  /** Optional plugin config map passed to `plugin.init` if present. */
+  initConfig?: Record<string, string>;
 }
 
 /**
@@ -58,60 +58,60 @@ export interface BootstrapOptions {
  * @param options  Transport overrides for testing.
  */
 export async function bootstrap(
-	plugin: WorkerPluginShape,
-	options: BootstrapOptions = {},
+  plugin: WorkerPluginShape,
+  options: BootstrapOptions = {},
 ): Promise<void> {
-	const channel = options.channel ?? createDefaultChannel();
-	const allocRequestId = createRequestIdAllocator();
-	const registry = createHandlerRegistry();
-	const proxy = new RuntimeProxy({
-		channel,
-		allocRequestId,
-		...(options.runtimeRpcTimeoutMs !== undefined
-			? { defaultTimeoutMs: options.runtimeRpcTimeoutMs }
-			: {}),
-	});
-	proxy.attach();
-	const runtimeApi = buildRuntimeProxyApi(proxy);
+  const channel = options.channel ?? createDefaultChannel();
+  const allocRequestId = createRequestIdAllocator();
+  const registry = createHandlerRegistry();
+  const proxy = new RuntimeProxy({
+    channel,
+    allocRequestId,
+    ...(options.runtimeRpcTimeoutMs !== undefined
+      ? { defaultTimeoutMs: options.runtimeRpcTimeoutMs }
+      : {}),
+  });
+  proxy.attach();
+  const runtimeApi = buildRuntimeProxyApi(proxy);
 
-	const dispatchRpc = createWorkerRpcDispatcher(registry, {
-		runtime: runtimeApi,
-		channel,
-	});
+  const dispatchRpc = createWorkerRpcDispatcher(registry, {
+    runtime: runtimeApi,
+    channel,
+  });
 
-	channel.onMessage((message) => {
-		if (message.type === "worker-rpc") {
-			void dispatchRpc(message as WorkerRpcMessage);
-		}
-	});
+  channel.onMessage((message) => {
+    if (message.type === "worker-rpc") {
+      void dispatchRpc(message as WorkerRpcMessage);
+    }
+  });
 
-	// Build + send the announce payload.
-	const descriptor: JsonObject = buildAnnounceDescriptor(plugin, registry);
-	const announce: WorkerAnnouncePluginMessage = {
-		type: "worker-announce-plugin",
-		descriptor,
-	};
-	channel.send(announce);
+  // Build + send the announce payload.
+  const descriptor: JsonObject = buildAnnounceDescriptor(plugin, registry);
+  const announce: WorkerAnnouncePluginMessage = {
+    type: "worker-announce-plugin",
+    descriptor,
+  };
+  channel.send(announce);
 
-	// Run author init (if any). Surface registrations made from inside init
-	// can be reported as worker-announce-dynamic in a follow-up; for now we
-	// require the static surface arrays on the Plugin object to be complete.
-	if (typeof plugin.init === "function") {
-		try {
-			await (plugin.init as (config: unknown, runtime: unknown) => unknown)(
-				options.initConfig ?? {},
-				runtimeApi,
-			);
-		} catch (error) {
-			channel.send({
-				type: "event",
-				name: "plugin.init.failed",
-				payload: { error: toWireError(error) as unknown as JsonValue },
-			} as RemotePluginWorkerMessage);
-			throw error;
-		}
-	}
+  // Run author init (if any). Surface registrations made from inside init
+  // can be reported as worker-announce-dynamic in a follow-up; for now we
+  // require the static surface arrays on the Plugin object to be complete.
+  if (typeof plugin.init === "function") {
+    try {
+      await (plugin.init as (config: unknown, runtime: unknown) => unknown)(
+        options.initConfig ?? {},
+        runtimeApi,
+      );
+    } catch (error) {
+      channel.send({
+        type: "event",
+        name: "plugin.init.failed",
+        payload: { error: toWireError(error) as unknown as JsonValue },
+      } as RemotePluginWorkerMessage);
+      throw error;
+    }
+  }
 
-	const initComplete: WorkerInitCompleteMessage = { type: "init-complete" };
-	channel.send(initComplete);
+  const initComplete: WorkerInitCompleteMessage = { type: "init-complete" };
+  channel.send(initComplete);
 }
