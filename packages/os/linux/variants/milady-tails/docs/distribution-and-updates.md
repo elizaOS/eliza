@@ -278,10 +278,12 @@ Until this exists, builds are test artifacts even if the ISO boots.
 
 ## Built-In USB Writer
 
-The developer script already does the right kind of checks: it accepts a
-specific target device, verifies that it is removable, refuses mounted
-targets, and writes the ISO directly. The desktop app should reuse that
-same policy before offering a GUI writer:
+The developer script already does the right kind of device checks: it accepts a
+specific target device, verifies that it is removable, refuses mounted targets,
+and writes the raw USB image. It now refuses direct ISO writes by default
+because Tails Persistent Storage expects the USB-image layout, not a CD-ROM ISO
+layout. The desktop app should reuse that same policy before offering a GUI
+writer:
 
 - show only removable drives
 - display size, model, serial, and current mounts
@@ -299,6 +301,11 @@ should not depend on it. The production flasher should be signed:
   target volumes, clear warning about post-write format prompts
 - Linux: AppImage or archive plus CLI, `lsblk --json` enumeration, polkit
   or root only for the write step
+
+The release artifact set must include a persistence-compatible `.img` USB
+image. The visible filesystem label can be `ELIZAOS`, but the internal GPT
+system partition name must stay `Tails` unless all inherited Tails persistence
+and IUK checks are changed together.
 
 ## Demo Debt
 
