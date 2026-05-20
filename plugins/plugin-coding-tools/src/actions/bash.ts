@@ -101,10 +101,11 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
   },
 ];
 
-const BOUNDED_DISK_INSPECTION_COMMAND =
-  'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
 const LOCAL_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -sS "http://127.0.0.1:\${PORT}/api/health"`;
 const LOCAL_MEMORY_COMMAND = "free -m";
+const BOUNDED_DISK_INSPECTION_COMMAND =
+  'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
+const BOUNDED_DISK_AND_MEMORY_INSPECTION_COMMAND = `${BOUNDED_DISK_INSPECTION_COMMAND}; printf '\\n--- memory ---\\n'; ${LOCAL_MEMORY_COMMAND}`;
 const SOURCE_SEARCH_EXCLUDES = [
   "!**/.git/**",
   "!**/node_modules/**",
@@ -114,6 +115,8 @@ const SOURCE_SEARCH_EXCLUDES = [
   "!**/coverage/**",
   "!**/.next/**",
 ] as const;
+const VENDORED_OPENCODE_SOURCE_ROOT =
+  "plugins/plugin-agent-orchestrator/vendor/opencode";
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -259,6 +262,15 @@ function asksForDiskInspection(text: string): boolean {
   );
 }
 
+function asksForMemoryStatus(text: string): boolean {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return false;
+  return (
+    /\b(?:ram|memory)\b/.test(normalized) &&
+    /\b(?:free|available|right now|current|currently)\b/.test(normalized)
+  );
+}
+
 function usesBroadDiskUsageScan(command: string): boolean {
   const normalized = command.replace(/\s+/g, " ").trim();
   if (!/\bdu\b/.test(normalized)) return false;
@@ -274,6 +286,12 @@ export function resolveDiskInspectionCommand(args: {
 }): DiskInspectionCommandResolution {
   if (!asksForDiskInspection(args.messageText)) {
     return { command: args.command, rewritten: false };
+  }
+  if (asksForMemoryStatus(args.messageText)) {
+    return {
+      command: BOUNDED_DISK_AND_MEMORY_INSPECTION_COMMAND,
+      rewritten: args.command !== BOUNDED_DISK_AND_MEMORY_INSPECTION_COMMAND,
+    };
   }
   if (!usesBroadDiskUsageScan(args.command)) {
     return { command: args.command, rewritten: false };
@@ -292,13 +310,14 @@ function requestedLocalStatusKind(text: string): LocalStatusKind | undefined {
   ) {
     return "health";
   }
-  if (
-    /\b(?:ram|memory)\b/.test(normalized) &&
-    /\b(?:free|available|right now|current|currently)\b/.test(normalized)
-  ) {
+  if (asksForMemoryStatus(normalized)) {
     return "memory";
   }
   return undefined;
+}
+
+function includesDiskProbe(command: string): boolean {
+  return /\b(?:df|du)\b/u.test(command);
 }
 
 export function resolveLocalStatusCommand(args: {
@@ -314,6 +333,12 @@ export function resolveLocalStatusCommand(args: {
     };
   }
   if (kind === "memory") {
+    if (
+      asksForDiskInspection(args.messageText) &&
+      includesDiskProbe(args.command)
+    ) {
+      return { command: args.command, kind, rewritten: false };
+    }
     return {
       command: LOCAL_MEMORY_COMMAND,
       kind,
@@ -341,36 +366,81 @@ function broadRecursiveGrepPattern(command: string): string | undefined {
   if (!/\bgrep\b[^;&|]*-(?:[^\s-]*r|[^\s-]*R)\b/i.test(normalized)) {
     return undefined;
   }
-  if (
-    !/(?:^|\s)(?:\/|\/home(?:\/[^\s;&|]+)?)(?:\s|$|[;&|])/u.test(normalized)
-  ) {
-    return undefined;
-  }
   const quoted = command.match(/\bgrep\b[\s\S]*?(?:"([^"]+)"|'([^']+)')/u);
   const pattern = quoted?.[1] ?? quoted?.[2];
   return pattern?.trim() || undefined;
 }
 
-function boundedSourceSearchCommand(pattern: string): string {
+function sourceInspectionRoot(messageText: string): string {
+  const normalized = messageText.toLowerCase();
+  if (
+    /\bopencode\b/.test(normalized) &&
+    /\b(?:vendored|vendor|source)\b/.test(normalized)
+  ) {
+    return VENDORED_OPENCODE_SOURCE_ROOT;
+  }
+  return ".";
+}
+
+function usesBroadSourceDirectoryWalk(command: string): boolean {
+  const normalized = command.replace(/\s+/g, " ");
+  return (
+    /\bfind\s+(?:\/|\/home(?:\/[^\s;&|]+)?|\.\/?)(?:\s|$)/iu.test(normalized) ||
+    /\bls\s+(?:-[^\s;&|]*R[^\s;&|]*|[^\s;&|]*R[^\s;&|]*)\s+(?:\/|\/home(?:\/[^\s;&|]+)?|plugins(?:\/[^\s;&|]+)?|\.\/?)(?:\s|$|[;&|])/iu.test(
+      normalized,
+    )
+  );
+}
+
+function boundedSourceListCommand(root: string): string {
+  const quotedRoot = shellSingleQuote(root);
+  const findPrunes = [
+    "*/.git/*",
+    "*/node_modules/*",
+    "*/dist/*",
+    "*/.turbo/*",
+    "*/.cache/*",
+    "*/coverage/*",
+    "*/.next/*",
+  ]
+    .map((glob) => `-path ${shellSingleQuote(glob)}`)
+    .join(" -o ");
+  return [
+    `SEARCH_ROOT=${quotedRoot};`,
+    '[ -d "$SEARCH_ROOT" ] || SEARCH_ROOT=.;',
+    `find "$SEARCH_ROOT" -maxdepth 5 \\( ${findPrunes} \\) -prune -o -type f -print 2>/dev/null | sed -n '1,120p'`,
+  ].join(" ");
+}
+
+function boundedSourceSearchCommand(pattern: string, root: string): string {
   const quotedPattern = shellSingleQuote(pattern);
+  const quotedRoot = shellSingleQuote(root);
   const gitExcludes = SOURCE_SEARCH_EXCLUDES.map((glob) =>
     shellSingleQuote(`:(exclude)${glob.slice(1)}`),
   ).join(" ");
   const rgGlobs = SOURCE_SEARCH_EXCLUDES.map(
     (glob) => `--glob ${shellSingleQuote(glob)}`,
   ).join(" ");
-  const findPrunes = SOURCE_SEARCH_EXCLUDES.map((glob) =>
-    glob.replace(/^!\*\*\//u, "./").replace(/\/\*\*$/u, ""),
-  )
-    .map((dir) => `-path ${shellSingleQuote(dir)}`)
+  const findPrunes = [
+    "*/.git/*",
+    "*/node_modules/*",
+    "*/dist/*",
+    "*/.turbo/*",
+    "*/.cache/*",
+    "*/coverage/*",
+    "*/.next/*",
+  ]
+    .map((glob) => `-path ${shellSingleQuote(glob)}`)
     .join(" -o ");
   return [
+    `SEARCH_ROOT=${quotedRoot};`,
+    '[ -d "$SEARCH_ROOT" ] || SEARCH_ROOT=.;',
     "if git rev-parse --show-toplevel >/dev/null 2>&1; then",
-    `git grep -n --recurse-submodules -- ${quotedPattern} -- . ${gitExcludes} || true;`,
+    `git grep -n --recurse-submodules -- ${quotedPattern} -- "$SEARCH_ROOT" ${gitExcludes} || true;`,
     "elif command -v rg >/dev/null 2>&1; then",
-    `rg -n --hidden ${rgGlobs} ${quotedPattern} . || true;`,
+    `rg -n --hidden ${rgGlobs} ${quotedPattern} "$SEARCH_ROOT" || true;`,
     "else",
-    `find . \\( ${findPrunes} \\) -prune -o -type f -exec grep -n -I -m 20 -- ${quotedPattern} {} + 2>/dev/null || true;`,
+    `find "$SEARCH_ROOT" \\( ${findPrunes} \\) -prune -o -type f -exec grep -n -I -m 20 -- ${quotedPattern} {} + 2>/dev/null || true;`,
     "fi",
   ].join(" ");
 }
@@ -382,10 +452,19 @@ export function resolveSourceInspectionCommand(args: {
   if (!asksForLocalSourceInspection(args.messageText)) {
     return { command: args.command, rewritten: false };
   }
+  const root = sourceInspectionRoot(args.messageText);
   const pattern = broadRecursiveGrepPattern(args.command);
-  if (!pattern) return { command: args.command, rewritten: false };
+  if (!pattern) {
+    if (!usesBroadSourceDirectoryWalk(args.command)) {
+      return { command: args.command, rewritten: false };
+    }
+    return {
+      command: boundedSourceListCommand(root),
+      rewritten: true,
+    };
+  }
   return {
-    command: boundedSourceSearchCommand(pattern),
+    command: boundedSourceSearchCommand(pattern, root),
     rewritten: true,
   };
 }
@@ -655,6 +734,54 @@ function memoryUserFacingText(stdout: string): string | undefined {
   const available = parts[6];
   if (!total || !free) return undefined;
   return `Free RAM: ${free} MB (${available ?? "unknown"} MB available) of ${total} MB total.`;
+}
+
+function rootDiskSummary(stdout: string): string | undefined {
+  for (const line of stdout.split(/\r?\n/u)) {
+    const parts = line.trim().split(/\s+/u);
+    if (parts.length < 6 || parts.at(-1) !== "/") continue;
+    const available = parts[3];
+    const usedPercent = parts[4];
+    if (available && usedPercent) {
+      return `Root disk: ${usedPercent} used, ${available} available.`;
+    }
+  }
+  return undefined;
+}
+
+function biggestCleanupCandidate(stdout: string): string | undefined {
+  const markerIndex = stdout
+    .split(/\r?\n/u)
+    .findIndex((line) => line.trim() === "--- cleanup candidates ---");
+  if (markerIndex < 0) return undefined;
+  const lines = stdout.split(/\r?\n/u).slice(markerIndex + 1);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("--- ") && trimmed.endsWith(" ---")) break;
+    const match = trimmed.match(/^(\S+)\s+(.+)$/u);
+    if (!match) continue;
+    const [, size, target] = match;
+    if (size && target && target !== "---") {
+      return `Biggest cleanup candidate: ${target} (${size}).`;
+    }
+  }
+  return undefined;
+}
+
+export function localResourceUserFacingText(args: {
+  message: Memory;
+  stdout: string;
+}): string | undefined {
+  const text = messageText(args.message);
+  if (!asksForDiskInspection(text) || !asksForMemoryStatus(text)) {
+    return undefined;
+  }
+  const parts = [
+    rootDiskSummary(args.stdout),
+    biggestCleanupCandidate(args.stdout),
+    memoryUserFacingText(args.stdout),
+  ].filter((part): part is string => Boolean(part));
+  return parts.length > 0 ? parts.join(" ") : undefined;
 }
 
 function localStatusUserFacingText(args: {
@@ -1038,7 +1165,9 @@ export const shellAction: Action = {
         message,
         command,
         stdout: result.stdout,
-      }) ?? localStatusUserFacingText({ message, stdout: result.stdout });
+      }) ??
+      localResourceUserFacingText({ message, stdout: result.stdout }) ??
+      localStatusUserFacingText({ message, stdout: result.stdout });
     return userFacingText ? { ...actionResult, userFacingText } : actionResult;
   },
   examples: [
