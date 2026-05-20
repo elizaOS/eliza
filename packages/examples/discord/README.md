@@ -1,6 +1,6 @@
-# Discord Agent Examples
+# Discord Agent Example
 
-Full-featured Discord AI agents using elizaOS, available in **TypeScript**, **Python**, and **Rust**.
+Full-featured TypeScript Discord AI agent using elizaOS.
 
 ## Features
 
@@ -46,73 +46,36 @@ Required variables:
 
 ### 4. Run the Agent
 
-Choose your preferred language:
-
-#### TypeScript
 ```bash
-cd typescript
+cd packages/examples/discord
 bun install
-bun start
+bun run start
 # or for development with hot reload:
-bun dev
-```
-
-#### Python
-```bash
-cd python
-pip install -r requirements.txt
-python agent.py
-```
-
-#### Rust
-```bash
-cd rust/discord-agent
-cargo run --release
+bun run dev
 ```
 
 ## Project Structure
 
 ```
-examples/discord/
+packages/examples/discord/
 ├── env.example              # Environment template
 ├── README.md               # This file
-├── typescript/             # TypeScript implementation
-│   ├── agent.ts           # Main entry point
-│   ├── character.ts       # Bot personality
-│   ├── handlers.ts        # Event handlers
-│   ├── package.json
-│   └── __tests__/         # Tests
-├── python/                 # Python implementation
-│   ├── agent.py           # Main entry point
-│   ├── character.py       # Bot personality
-│   ├── handlers.py        # Event handlers
-│   ├── requirements.txt
-│   └── tests/             # Tests
-└── rust/                   # Rust implementation
-    └── discord-agent/
-        ├── Cargo.toml
-        ├── src/
-        │   ├── main.rs    # Main entry point
-        │   ├── character.rs # Bot personality
-        │   └── handlers.rs  # Event handlers
-        └── tests/         # Tests
+├── agent.ts                # Main entry point
+├── character.ts            # Bot personality
+├── handlers.ts             # Event handlers
+├── package.json
+└── tsconfig.json
 ```
 
 ## Customization
 
 ### Modify Bot Personality
 
-Edit the character file for your language:
-- TypeScript: `typescript/character.ts`
-- Python: `python/character.py`
-- Rust: `rust/discord-agent/src/character.rs`
+Edit `character.ts`.
 
 ### Add Custom Commands
 
-Edit the handlers file to add new slash commands:
-- TypeScript: `typescript/handlers.ts`
-- Python: `python/handlers.py`
-- Rust: `rust/discord-agent/src/handlers.rs`
+Edit `handlers.ts` to add new slash commands.
 
 ### Discord Settings
 
@@ -137,14 +100,8 @@ Configure bot behavior in the character settings:
 ## Testing
 
 ```bash
-# TypeScript
-cd typescript && bun test
-
-# Python
-cd python && pytest
-
-# Rust
-cd rust/discord-agent && cargo test
+cd packages/examples/discord
+bun run test
 ```
 
 ## Troubleshooting

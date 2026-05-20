@@ -74,13 +74,23 @@ def _find_checkpoint(output_dir: Path, tier: str, entry: Any) -> Path | None:
 
     Search order: polarquant → fused_turboquant → turboquant → plain final.
     Returns None if no checkpoint is found.
+
+    Matches directories starting with any of:
+    - entry.eliza_short_name (e.g. "eliza-1-0_8b")
+    - tier with dots→dashes (e.g. "qwen3-5-0-8b")
+    - tier safe variant (e.g. "eliza-1-qwen3_5_0_8b" for APOLLO runs)
     """
     eliza_name = entry.eliza_short_name
-    # Find the most recent run dir matching the tier
+    safe_tier = tier.replace(".", "_").replace("-", "_")
+    apollo_prefix = f"eliza-1-{safe_tier}"
     candidates: list[Path] = []
     if output_dir.exists():
         for d in sorted(output_dir.iterdir(), reverse=True):
-            if d.is_dir() and (d.name.startswith(eliza_name) or d.name.startswith(tier.replace(".", "-"))):
+            if d.is_dir() and (
+                d.name.startswith(eliza_name)
+                or d.name.startswith(tier.replace(".", "-"))
+                or d.name.startswith(apollo_prefix)
+            ):
                 candidates.append(d)
 
     for run_dir in candidates:
