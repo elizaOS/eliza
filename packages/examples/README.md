@@ -12,6 +12,10 @@ The normal local validation path does not need API keys:
 bun install
 ```
 
+For human-gated setup instructions with links for Roblox, Minecraft,
+cloud CLIs, social bots, hardware, and wallet/trading examples, open
+[`setup-guide.html`](./setup-guide.html).
+
 For total live testing, configure the credentials below. Never commit `.env`
 files, private keys, app passwords, or bot tokens.
 

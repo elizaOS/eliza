@@ -43,7 +43,11 @@ def find_blocked_processes(ps_output: str, *, current_pid: int) -> list[str]:
             continue
         comm = parts[3]
         command = parts[4]
-        if comm == "rg":
+        if comm == "rg" or " rg " in command or "| rg" in command:
+            continue
+        if comm in {"zsh", "bash", "sh", "/bin/zsh", "/bin/bash", "/bin/sh"} and any(
+            marker in command for marker in ("git diff", "git status", "ps -axo")
+        ):
             continue
         if "release_process_guard.py" in command:
             continue
