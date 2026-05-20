@@ -1506,7 +1506,7 @@ async function initializeDesktopShell(): Promise<void> {
   subscribeDesktopBridgeEvent({
     rpcMessage: "desktopShortcutPressed",
     ipcChannel: "desktop:shortcutPressed",
-    listener: (payload) => {
+    listener: (payload: unknown) => {
       const id = (payload as { id?: string } | null | undefined)?.id;
       if (id === "command-palette") {
         dispatchAppEvent(COMMAND_PALETTE_EVENT);
@@ -1528,7 +1528,7 @@ async function initializeDesktopShell(): Promise<void> {
   subscribeDesktopBridgeEvent({
     rpcMessage: "shareTargetReceived",
     ipcChannel: "desktop:shareTargetReceived",
-    listener: (payload) => {
+    listener: (payload: unknown) => {
       const url = (payload as { url?: string } | null | undefined)?.url;
       if (typeof url !== "string" || url.trim().length === 0) {
         return;

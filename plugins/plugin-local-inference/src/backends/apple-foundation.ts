@@ -31,7 +31,7 @@ import type {
 	FoundationModelOptions,
 	FoundationModelResult,
 	IosComputerUseBridge,
-} from "@elizaos/plugin-computeruse";
+} from "@elizaos/plugin-computeruse/mobile/ios-bridge";
 
 export interface AppleFoundationGenerateArgs {
 	readonly prompt: string;

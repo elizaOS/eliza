@@ -14,7 +14,13 @@ import {
   ShieldCheck,
   Smartphone,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  type ChangeEvent,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
 type ThreadSummary = {
   id: string;
@@ -401,7 +407,9 @@ export function MessagesAppView({ exitToApps, t }: OverlayAppContext) {
                 <Input
                   id="messages-compose-address"
                   value={composeAddress}
-                  onChange={(event) => setComposeAddress(event.target.value)}
+                  onChange={(event: ChangeEvent<HTMLInputElement>) =>
+                    setComposeAddress(event.target.value)
+                  }
                   placeholder="+1 555 123 4567"
                   inputMode="tel"
                   className="mt-1"
