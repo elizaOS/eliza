@@ -901,11 +901,11 @@ function runDoctor({ apk, adbPath }) {
     );
     if (pairing?.length > 0) {
       console.log(
-        `[android-sms-gateway] next: pair wireless debugging with: ADB_PAIR_CODE=<pairing-code> node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing[0].endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
+        `[android-sms-gateway] next: pair wireless debugging with: node packages/app-core/scripts/install-android-sms-gateway.mjs --pair ${pairing[0].endpoint} --connect auto --wait-device 60 --grant-role --clear-logcat --watch-logs 60`,
       );
     } else if (connect?.length > 0) {
       console.log(
-        `[android-sms-gateway] next: wireless adb is advertising ${connect[0].endpoint}, but no device is connected. If connect fails, open Android Developer Options > Wireless debugging > Pair device with pairing code, then run ADB_PAIR_CODE=<pairing-code> bun run --cwd packages/app-core sms-gateway:pair.`,
+        `[android-sms-gateway] next: wireless adb is advertising ${connect[0].endpoint}, but no device is connected. If connect fails, open Android Developer Options > Wireless debugging > Pair device with pairing code, then run bun run --cwd packages/app-core sms-gateway:pair.`,
       );
     }
     console.log(
@@ -919,6 +919,9 @@ async function main() {
   assertNonNegativeInteger(args.logcatLines, "--logcat-lines");
   assertNonNegativeInteger(args.watchLogsSeconds, "--watch-logs");
   assertNonNegativeInteger(args.waitDeviceSeconds, "--wait-device");
+  if (args.waitPairSeconds !== null) {
+    assertNonNegativeInteger(args.waitPairSeconds, "--wait-pair");
+  }
   const apk = resolveApk(args.apk);
   if (args.printApk) {
     console.log(apk);
@@ -930,10 +933,13 @@ async function main() {
     return;
   }
   if (args.pairEndpoint) {
-    pairWirelessAdb({
+    const waitPairSeconds =
+      args.waitPairSeconds ?? (args.pairEndpoint === "auto" ? 60 : 0);
+    await pairWirelessAdb({
       adbPath,
       endpoint: args.pairEndpoint,
       code: args.pairCode,
+      waitSeconds: waitPairSeconds,
     });
   }
   if (args.connectEndpoint || args.pairEndpoint) {

@@ -39,6 +39,7 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
   private transcriptCallbacks = new Set<
     (text: string, isFinal: boolean, metadata?: Record<string, unknown>) => void
   >();
+  private wifiCallbacks = new Set<(status: SmartglassesWifiResult) => void>();
 
   async connect(): Promise<void> {
     this.connected = true;
@@ -111,6 +112,11 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
     return () => this.transcriptCallbacks.delete(callback);
   }
 
+  onWifiStatus(callback: (status: SmartglassesWifiResult) => void): () => void {
+    this.wifiCallbacks.add(callback);
+    return () => this.wifiCallbacks.delete(callback);
+  }
+
   emitRaw(side: GlassSide, data: Uint8Array): void {
     const event = parseG1Notification(side, data);
     this.emitEvent(event);
@@ -138,6 +144,10 @@ export class MockSmartglassesTransport implements SmartglassesTransport {
   ): void {
     for (const callback of this.transcriptCallbacks)
       callback(text, isFinal, metadata);
+  }
+
+  emitWifiStatus(status: SmartglassesWifiResult): void {
+    for (const callback of this.wifiCallbacks) callback(status);
   }
 
   async scanWifi(): Promise<SmartglassesWifiResult> {
