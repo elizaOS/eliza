@@ -173,15 +173,24 @@ async function __hono_POST(
     }
 
     try {
+      // Distinct from `agent_provision` so the daemon can tell a user-
+      // initiated resume from a fresh provision in audit logs, and so a
+      // future `docker start` fast path can hook in without touching
+      // the route. Today executeResume always re-provisions to restore
+      // bridge/health URLs via the sandbox handle.
       const { job, created } =
-        await provisioningJobService.enqueueAgentProvisionOnce({
+        await provisioningJobService.enqueueAgentResumeOnce({
           agentId,
           organizationId: user.organization_id,
           userId: user.id,
-          agentName: agent.agent_name ?? agentId,
           webhookUrl,
-          expectedUpdatedAt: agent.updated_at,
         });
+
+      // Best-effort wake of the orchestrator so the user does not wait for
+      // the next cron tick. Same pattern as provision/delete/suspend.
+      void provisioningJobService.triggerImmediate().catch(() => {
+        // Logged inside the service; nothing actionable here.
+      });
 
       return applyCorsHeaders(
         Response.json(
@@ -195,7 +204,7 @@ async function __hono_POST(
               jobId: job.id,
               status: job.status,
               message: created
-                ? "Resume job created. Agent will restore from latest snapshot."
+                ? "Resume job created. Poll the job endpoint for status."
                 : "Resume is already in progress.",
             },
             polling: {

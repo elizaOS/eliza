@@ -1,8 +1,14 @@
 /**
  * POST /api/v1/agents/[agentId]/restart
  *
- * Service-to-service: shutdown then re-provision an agent.
- * Auth: X-Service-Key header.
+ * Service-to-service: enqueue an `agent_restart` job. The orchestrator
+ * daemon SSH-stops the existing container and runs a full `provision()`
+ * to recreate it (URLs restored from the fresh sandbox handle). Atomic
+ * on the daemon side so concurrent restarts can't interleave.
+ *
+ * Replaces the Worker-side `shutdown()` + `provision()` sequence which
+ * silently no-op'd the stop from CF Workers (no SSH) and could leave
+ * the old container running alongside the new one.
  */
 
 import { Hono } from "hono";
@@ -13,6 +19,7 @@ import {
   rateLimit,
 } from "@/lib/middleware/rate-limit-hono-cloudflare";
 import { elizaSandboxService } from "@/lib/services/eliza-sandbox";
+import { provisioningJobService } from "@/lib/services/provisioning-jobs";
 import { logger } from "@/lib/utils/logger";
 import type { AppEnv } from "@/types/cloud-worker-env";
 
@@ -25,33 +32,53 @@ app.post("/", async (c) => {
     const identity = await requireServiceKey(c);
     const agentId = c.req.param("agentId") ?? "";
 
-    logger.info("[service-api] Restarting agent", { agentId });
+    logger.info("[service-api] Restart requested", { agentId });
 
-    const shutdownResult = await elizaSandboxService.shutdown(
+    const agent = await elizaSandboxService.getAgentForWrite(
       agentId,
       identity.organizationId,
     );
-    if (!shutdownResult.success) {
-      if (shutdownResult.error === "Agent not found")
-        throw NotFoundError("Agent not found");
-      logger.warn(
-        "[service-api] Shutdown during restart returned error, continuing",
-        {
-          agentId,
-          error: shutdownResult.error,
-        },
+    if (!agent) {
+      throw NotFoundError("Agent not found");
+    }
+
+    if (agent.status === "provisioning") {
+      return c.json(
+        { success: false, error: "Agent provisioning is in progress" },
+        409,
       );
     }
 
-    const result = await elizaSandboxService.provision(
+    const enqueueResult = await provisioningJobService.enqueueAgentRestartOnce({
       agentId,
-      identity.organizationId,
-    );
-    if (!result.success) {
-      return c.json({ success: false, error: result.error }, 500);
-    }
+      organizationId: identity.organizationId,
+      userId: identity.userId,
+    });
 
-    return c.json({ success: true });
+    void provisioningJobService.triggerImmediate().catch(() => {
+      // Logged inside the service.
+    });
+
+    return c.json(
+      {
+        success: true,
+        created: enqueueResult.created,
+        alreadyInProgress: !enqueueResult.created,
+        data: {
+          agentId,
+          action: "restart",
+          jobId: enqueueResult.job.id,
+          status: enqueueResult.job.status,
+          previousStatus: agent.status,
+        },
+        polling: {
+          endpoint: `/api/v1/jobs/${enqueueResult.job.id}`,
+          intervalMs: 5_000,
+          expectedDurationMs: 90_000,
+        },
+      },
+      202,
+    );
   } catch (error) {
     return failureResponse(c, error);
   }
