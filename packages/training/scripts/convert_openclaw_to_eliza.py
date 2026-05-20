@@ -29,7 +29,7 @@ from lib.native_record import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 log = logging.getLogger("convert_openclaw")
 
-OPENCLAW_DATASET = "CyberAGI/openclaw-operator-data"
+OPENCLAW_DATASET = "awax1122/openclaw-opencode-dataset"
 ELIZA_SYSTEM_PROMPT = "You are Eliza, an AI assistant. Help the user with their request."
 
 _THINK_RE = re.compile(r"<think>(.*?)</think>", re.DOTALL)
@@ -298,7 +298,7 @@ def main() -> None:
         else:
             records.append(rec)
 
-    slug = "openclaw-operator-data"
+    slug = OPENCLAW_DATASET.replace("/", "-")
     log.info("%s: total=%d converted=%d dropped=%d", slug, total, len(records), total - len(records))
 
     if not args.dry_run and records:

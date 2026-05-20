@@ -101,16 +101,37 @@ def _extract_think(text: str) -> tuple[str, str]:
     return "", text.strip()
 
 
+_GLAIVE_CALL_RE = re.compile(r"<functioncall>\s*(\{.*?\})", re.DOTALL)
+
+
 def _extract_tool_calls(text: str) -> list[dict[str, Any]]:
     calls = []
+    # Hermes XML-style: <tool_call>...</tool_call>
     for m in _TOOL_CALL_RE.finditer(text):
-        raw = m.group(1).strip()
+        raw_json = m.group(1).strip()
         try:
-            obj = json.loads(raw)
+            obj = json.loads(raw_json)
         except json.JSONDecodeError:
             continue
         if isinstance(obj, dict) and "name" in obj:
             calls.append({"name": obj["name"], "args": obj.get("arguments", obj.get("args", {}))})
+    if calls:
+        return calls
+    # Glaive-style: <functioncall> {"name": ..., "arguments": ...}
+    for m in _GLAIVE_CALL_RE.finditer(text):
+        raw_json = m.group(1).strip()
+        try:
+            obj = json.loads(raw_json)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict) and "name" in obj:
+            args = obj.get("arguments", obj.get("args", {}))
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args)
+                except json.JSONDecodeError:
+                    args = {}
+            calls.append({"name": obj["name"], "args": args if isinstance(args, dict) else {}})
     return calls
 
 
@@ -120,12 +141,58 @@ def _normalize_system(system: str) -> str:
     return system.strip() or ELIZA_SYSTEM_PROMPT
 
 
+_GLAIVE_FUNC_RE = re.compile(r"<functioncall>\s*(.*?)(?:\s*<\|endoftext\|>|\s*$)", re.DOTALL)
+_GLAIVE_FUNC_RESP_RE = re.compile(r"FUNCTION RESPONSE:\s*(.*?)(?=USER:|A:|$)", re.DOTALL)
+
+
+def _parse_glaive_chat(system_raw: str, chat: str) -> dict[str, Any] | None:
+    """Parse glaive-function-calling-v2 system+chat fields into a raw conversations dict."""
+    # Clean system prompt: strip "SYSTEM: " prefix and embedded function JSON
+    system = re.sub(r"^SYSTEM:\s*", "", system_raw, flags=re.IGNORECASE).strip()
+    # Remove the function listing embedded in system prompt
+    system = re.sub(r"You are a helpful assistant with access to the following functions.*", "", system, flags=re.DOTALL).strip()
+    system = system or ELIZA_SYSTEM_PROMPT
+
+    # Split chat into turns
+    parts = re.split(r"(USER:|A:)", chat)
+    turns = []
+    i = 1
+    while i < len(parts) - 1:
+        speaker = parts[i].strip()
+        content = parts[i + 1].split("<|endoftext|>")[0].strip()
+        i += 2
+        if speaker == "USER:":
+            # Strip out FUNCTION RESPONSE blocks (they're tool results embedded in user turn)
+            func_resp = _GLAIVE_FUNC_RESP_RE.search(content)
+            if func_resp:
+                tool_result = func_resp.group(1).strip()
+                content = content[:func_resp.start()].strip()
+                if content:
+                    turns.append({"from": "human", "value": content})
+                if tool_result:
+                    turns.append({"from": "tool", "value": tool_result})
+            elif content:
+                turns.append({"from": "human", "value": content})
+        elif speaker == "A:":
+            if content:
+                turns.append({"from": "gpt", "value": content})
+
+    return {"system_raw": system, "conversations": turns}
+
+
 def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
+    # Handle glaive format (system + chat fields)
+    if "chat" in raw and "system" in raw and "conversations" not in raw:
+        parsed = _parse_glaive_chat(raw["system"], raw["chat"])
+        if parsed is None:
+            return None
+        raw = {**raw, **parsed}
+
     conversations = raw.get("conversations") or raw.get("messages") or []
     if not conversations:
         return None
 
-    system = ELIZA_SYSTEM_PROMPT
+    system = raw.get("system_raw") or ELIZA_SYSTEM_PROMPT
     turns: list[dict[str, Any]] = []
     final_assistant: str | None = None
     final_tools_str: str | None = None

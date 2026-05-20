@@ -61,7 +61,7 @@ async function __hono_POST(
       },
     );
 
-    void provisioningJobService.triggerImmediate().catch(() => {
+    void provisioningJobService.triggerImmediate(c.env).catch(() => {
       // Logged inside the service.
     });
 

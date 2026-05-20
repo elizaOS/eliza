@@ -188,7 +188,7 @@ async function __hono_POST(
 
       // Best-effort wake of the orchestrator so the user does not wait for
       // the next cron tick. Same pattern as provision/delete/suspend.
-      void provisioningJobService.triggerImmediate().catch(() => {
+      void provisioningJobService.triggerImmediate(c.env).catch(() => {
         // Logged inside the service; nothing actionable here.
       });
 
