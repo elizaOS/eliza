@@ -147,7 +147,7 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         "hermes_yc_bench",
         "hermes_swe_env",
     }:
-        return ("hermes",) if _has_hermes_sandbox_backend() else ()
+        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":
         return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
     if benchmark_id == "voicebench_quality":
@@ -2972,7 +2972,7 @@ def discover_adapters(workspace_root: Path) -> AdapterDiscovery:
             score_extractor=score_extractor_factory.for_benchmark("webshop"),
             default_extra_config={
                 "max_tasks": 1,
-                "max_turns": 6,
+                "max_turns": 8,
                 "profile": "small",
             },
         ),

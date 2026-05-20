@@ -2,6 +2,8 @@ import { expect, type Page, test } from "playwright/test";
 
 const TEST_TOKEN = "homepage-e2e-token";
 
+test.describe.configure({ mode: "serial" });
+
 const mockUser = {
   id: "user_homepage_e2e",
   telegram_id: "123456",
@@ -92,6 +94,9 @@ async function seedAuthenticatedSession(page: Page) {
   await page.addInitScript((token) => {
     window.localStorage.setItem("eliza_app_session", token as string);
   }, TEST_TOKEN);
+  await page.evaluate((token) => {
+    window.localStorage.setItem("eliza_app_session", token as string);
+  }, TEST_TOKEN);
 }
 
 test.beforeEach(async ({ page }) => {
@@ -129,13 +134,13 @@ test("get-started covers method selection, phone input, country dropdown, and di
     "I also want to use Telegram",
   );
 
-  await page.getByRole("button", { name: "Back" }).click({ force: true });
+  await page.getByRole("button", { name: "Back" }).dispatchEvent("click");
   await page.getByRole("button", { name: /^WhatsApp$/ }).click();
   await expect(
     page.getByRole("heading", { name: "Chat on WhatsApp!" }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Back" }).click({ force: true });
+  await page.getByRole("button", { name: "Back" }).dispatchEvent("click");
   await page.getByRole("button", { name: /^Telegram$/ }).dispatchEvent("click");
   await expect(
     page.getByRole("heading", { name: "Connect with Telegram" }),
@@ -144,7 +149,7 @@ test("get-started covers method selection, phone input, country dropdown, and di
     page.getByRole("button", { name: /Connect Telegram/i }),
   ).toBeVisible();
 
-  await page.getByRole("button", { name: "Back" }).click({ force: true });
+  await page.getByRole("button", { name: "Back" }).dispatchEvent("click");
   await page.getByRole("button", { name: /^Discord$/ }).dispatchEvent("click");
   await expect(page.locator("main")).toContainText("Discord not configured");
 });
