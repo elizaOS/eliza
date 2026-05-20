@@ -44,6 +44,7 @@ VERILOG_SOURCES := \
 	$(REPO)/rtl/npu/e1_npu.sv \
 	$(REPO)/rtl/display/e1_display.sv \
 	$(REPO)/rtl/top/adapters/e1_slc_to_chi_line_shim.sv \
+	$(REPO)/rtl/top/adapters/e1_axi4_width_converter.sv \
 	$(REPO)/rtl/top/e1_soc_integrated.sv \
 	$(PWD)/e1_soc_integrated_tb.sv
 
