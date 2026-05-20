@@ -287,7 +287,10 @@ function createHarnessRuntime(args: {
   };
 }
 
-function addUsage(target: Required<UsageTelemetry>, usage: UsageTelemetry): void {
+function addUsage(
+  target: Required<UsageTelemetry>,
+  usage: UsageTelemetry,
+): void {
   target.input_tokens += usage.input_tokens ?? 0;
   target.output_tokens += usage.output_tokens ?? 0;
   target.total_tokens += usage.total_tokens ?? 0;
@@ -297,7 +300,10 @@ function addUsage(target: Required<UsageTelemetry>, usage: UsageTelemetry): void
     usage.llm_call_count ?? (Object.keys(usage).length ? 1 : 0);
 }
 
-function usageFromPayload(payload: { usage?: unknown; params?: unknown }): UsageTelemetry {
+function usageFromPayload(payload: {
+  usage?: unknown;
+  params?: unknown;
+}): UsageTelemetry {
   const direct = normalizeUsage(payload.usage);
   if (Object.keys(direct).length) return direct;
   const params = payload.params;

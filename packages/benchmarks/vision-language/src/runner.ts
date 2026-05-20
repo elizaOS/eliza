@@ -125,8 +125,12 @@ function parseArgs(argv: string[]): Args {
     } else if (arg === "--harness") {
       const next = argv[++i];
       if (!next) throw new Error("--harness requires a value");
-      if (!["eliza", "hermes", "openclaw", "elizaos", "opencode"].includes(next)) {
-        throw new Error("--harness must be one of eliza, hermes, openclaw, elizaos, opencode");
+      if (
+        !["eliza", "hermes", "openclaw", "elizaos", "opencode"].includes(next)
+      ) {
+        throw new Error(
+          "--harness must be one of eliza, hermes, openclaw, elizaos, opencode",
+        );
       }
       args.harness = next as Args["harness"];
     } else if (arg === "--model-provider") {

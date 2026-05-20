@@ -135,7 +135,13 @@ function checkIos() {
 }
 
 function checkAndroid() {
-  const androidRoot = path.join(appRoot, "..", "app-core", "platforms", "android");
+  const androidRoot = path.join(
+    appRoot,
+    "..",
+    "app-core",
+    "platforms",
+    "android",
+  );
   addCheck(
     "Android project",
     fs.existsSync(path.join(androidRoot, "gradlew")),
