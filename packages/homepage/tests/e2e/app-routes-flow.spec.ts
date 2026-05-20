@@ -165,9 +165,7 @@ test("get-started covers Discord callback errors and setup guide", async ({
   await expect(
     page.getByText(/Authentication failed: invalid state/i),
   ).toBeVisible();
-  await expect(
-    page.getByRole("button", { name: /^Discord$/ }),
-  ).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Discord$/ })).toBeVisible();
 
   await seedAuthenticatedSession(page);
   await page.goto("/get-started?guide=discord");
