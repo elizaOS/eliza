@@ -59,7 +59,8 @@ export const smartglassesPlugin: Plugin = {
         label: "Smartglasses",
         icon: "Glasses",
         path: "/apps/smartglasses",
-        componentExport: "@elizaos/plugin-smartglasses/register#SmartglassesView",
+        componentExport:
+          "@elizaos/plugin-smartglasses/register#SmartglassesView",
       },
     ],
   },

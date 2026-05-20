@@ -33,7 +33,10 @@ ELIZA_SYSTEM_PROMPT = "You are Eliza, an AI assistant. Help the user with their 
 
 HERMES_DATASETS = {
     "hermes-function-calling-v1": "NousResearch/hermes-function-calling-v1",
-    "hermes-function-calling-v2": "NousResearch/Hermes-Function-Calling-V2",
+    # Hermes-3 uses from/value conversation format; handled by _convert_record
+    "hermes-3": "NousResearch/Hermes-3-Dataset",
+    # Glaive function-calling v2: system+chat template format
+    "glaive-function-calling-v2": "glaiveai/glaive-function-calling-v2",
 }
 
 _TOOL_CALL_RE = re.compile(r"<tool_call>\s*(.*?)\s*</tool_call>", re.DOTALL)
