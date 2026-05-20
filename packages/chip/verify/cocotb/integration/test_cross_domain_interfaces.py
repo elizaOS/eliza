@@ -90,7 +90,7 @@ BR_RET = 3
 
 VADDR_W = 39
 FTQ_IDX_W = 6  # $clog2(FTQ_ENTRIES=64)
-BR_KIND_W = 2
+BR_KIND_W = 3
 
 
 async def reset(dut):
@@ -168,7 +168,7 @@ async def read_csr(dut, addr):
     return int(dut.zihpm_csr_rdata_o.value)
 
 
-def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0):
+def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0, call_return_pc=None):
     """Pack a bpu_resolve_t.
 
     Packed struct order in `bpu_pkg` (declaration order = MSB-first):
@@ -176,17 +176,21 @@ def encode_resolve(*, pc, valid, taken, misp, kind, target, ftq_idx=0):
       logic                 misprediction;
       logic [VADDR_W-1:0]   pc;
       logic [VADDR_W-1:0]   actual_target;
+      logic [VADDR_W-1:0]   actual_call_return_pc;
       logic                 actual_taken;
-      br_kind_e             actual_kind;   // 2 bits
+      br_kind_e             actual_kind;   // 3 bits
       logic [FTQ_IDX_W-1:0] ftq_idx;       // 6 bits
 
-    Total width: 1+1+39+39+1+2+6 = 89 bits.
+    Total width: 1+1+39+39+39+1+3+6 = 129 bits.
     """
+    if call_return_pc is None:
+        call_return_pc = pc + 4
     bits = 0
     bits = (bits << 1) | (1 if valid else 0)
     bits = (bits << 1) | (1 if misp else 0)
     bits = (bits << VADDR_W) | (pc & ((1 << VADDR_W) - 1))
     bits = (bits << VADDR_W) | (target & ((1 << VADDR_W) - 1))
+    bits = (bits << VADDR_W) | (call_return_pc & ((1 << VADDR_W) - 1))
     bits = (bits << 1) | (1 if taken else 0)
     bits = (bits << BR_KIND_W) | (kind & ((1 << BR_KIND_W) - 1))
     bits = (bits << FTQ_IDX_W) | (ftq_idx & ((1 << FTQ_IDX_W) - 1))

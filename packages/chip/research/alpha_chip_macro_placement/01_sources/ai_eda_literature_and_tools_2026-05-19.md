@@ -576,6 +576,26 @@ candidate inputs to reproducible gates, not as standalone evidence.
   hardware assurance workflows. E1 status: graph-extraction reference only
   until source revisions, extraction logs, labels, held-out splits, formal or
   synthesis cross-checks, and review exist.
+- OpenROAD Hier-RTLMP:
+  <https://openroad.readthedocs.io/en/latest/main/src/mpl/README.html>. Local
+  deterministic macro-placement baseline. E1 status: target capture only until
+  macro manifests, halos, blockages, routing, STA, DRC/LVS, antenna, PDN/power,
+  package, and reviewer evidence are available.
+- WireMask-BBO: <https://arxiv.org/abs/2306.16844> and
+  <https://github.com/lamda-bbo/WireMask-BBO>. Code-bearing black-box macro
+  placement optimizer. E1 status: code reference only until revision, license,
+  benchmark, generated-placement quarantine, and downstream signoff replay are
+  pinned.
+- BBOPlace-Bench: <https://arxiv.org/abs/2510.23472> and
+  <https://github.com/lamda-bbo/BBOPlace-Bench>. Benchmark framework for black-
+  box chip placement optimization. E1 status: benchmark reference only until
+  asset manifests, splits, non-overlap review, replay logs, and local
+  OpenROAD/OpenLane correlation exist.
+- Macro Placement Challenge 2026:
+  <https://github.com/partcleda/macro-place-challenge-2026>. Current OpenROAD-
+  oriented macro-placement challenge scaffold. E1 status: challenge reference
+  only until terms, revisions, split policy, generated-output quarantine, and
+  benchmark non-overlap review are complete.
 - AI-driven NoC DSE: <https://arxiv.org/abs/2512.07877>. Current inverse-ML
   NoC design-space exploration method using BookSim-generated data and MLP,
   CVAE, and conditional-diffusion models for topology/parameter prediction.

@@ -550,6 +550,7 @@ stages:
       - tilos-macroplacement
       - autodmp
       - dreamplace
+      - openroad-rtlmp
     local_lane: p1-openroad-openlane-autotune
     current_artifacts:
       - scripts/ai_eda/run_openroad_autotune_e1.sh
@@ -563,6 +564,7 @@ stages:
     source_ids:
       - openroad-gpl
       - openroad-dpl
+      - openroad-rtlmp
       - google-circuit-training
       - tilos-macroplacement
       - autodmp
@@ -573,6 +575,9 @@ stages:
       - flowplace
       - chipbench-d
       - routeplacer
+      - wiremask-bbo
+      - bboplace-bench
+      - macro-place-challenge-2026
     local_lane: p1-placement-legalization-target-capture
     current_artifacts:
       - scripts/ai_eda/capture_placement_legalization_targets.py
@@ -584,8 +589,9 @@ stages:
       OpenROAD GPL/DPL are the deterministic local references; generative
       placement, diffusion, flow-matching, RL, and GPU placement frameworks are
       useful only as quarantined target-capture context until E1 has repeated
-      completed runs, held-out local labels, exact legalizer replay, downstream
-      route/STA/physical-verification/power gates, and reviewer signoff.
+      completed runs, held-out local labels, exact macro-placer/legalizer
+      replay, benchmark non-overlap review, downstream route/STA/physical-
+      verification/power gates, and reviewer signoff.
   - id: npu_architecture_dse
     rating: READY_DRY_RUN
     source_ids:
@@ -888,6 +894,7 @@ stages:
     rating: READY_DRY_RUN
     source_ids:
       - openroad-ifp
+      - openroad-rtlmp
       - openroad-ioplacer
       - openroad-tapcell
       - openroad-pdn
@@ -906,11 +913,11 @@ stages:
       Floorplan, IO pin, tap/endcap, and PDN choices define the downstream
       feasibility envelope for placement, routing, timing, SI/PI, power, and
       package integration. OpenROAD IFP, IO placement, tapcell, and PDN are the
-      deterministic local references; FloorSet, pin-assignment-aware
+      deterministic local references; RTLMP, FloorSet, pin-assignment-aware
       floorplanning, industrial FP-OPT, NL2GDS-style agents, and OpeNPDN remain
-      target-capture context until E1 has repeated completed runs, package and
-      padframe cross-probe evidence, SI/PI and power labels, deterministic
-      signoff replay, and reviewer signoff.
+      target-capture context until E1 has repeated completed runs, macro
+      manifests, package and padframe cross-probe evidence, SI/PI and power
+      labels, deterministic signoff replay, and reviewer signoff.
   - id: hardware_security_ai
     rating: READY_DRY_RUN
     source_ids:

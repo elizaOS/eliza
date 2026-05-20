@@ -21,18 +21,37 @@ CVA6_REPO_DIR ?= $(REPO)/external/cva6/cva6
 HPDCACHE_DIR  ?= $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
 TARGET_CFG    ?= cv64a6_imafdc_sv39
 
-# Gate the verilator full-conversion pass.  Until a Verilator release that
-# accepts CVA6 btb.sv whole-array NBA is on PATH, this Makefile exits with
-# a clear blocker message instead of running.  Opt in by exporting
-# CVA6_VERILATOR_FULL_OK=1 (also picked up by the cocotb tests
-# themselves to flip them from skip to run).
-ifeq ($(CVA6_VERILATOR_FULL_OK),)
-$(info STATUS: BLOCKED cocotb-cva6-cpu — Verilator 5.049 internal error)
-$(info   V3Delayed.cpp:958 Unexpected LHS form at)
-$(info     external/cva6/cva6/core/frontend/btb.sv:188 (btb_q <= btb_d))
-$(info   See external/cva6/pin-manifest.json::verilator_full_conversion_blocker.)
-$(info   Set CVA6_VERILATOR_FULL_OK=1 once a fixed Verilator release lands.)
-$(error CVA6 cocotb runner gated on verilator_full_conversion_blocker)
+# The Verilator 5.049 V3Delayed internal error on
+# external/cva6/cva6/core/frontend/btb.sv:188 (whole-array NBA on the
+# 2D unpacked struct array btb_q) is unblocked by the tracked patches
+# under patches/cva6/, which are applied just-in-time by
+# scripts/apply_cva6_patches.sh below.  The patches replace whole-array
+# NBAs with semantically-equivalent per-element nested loops that
+# V3Delayed lowers correctly.
+#
+# Optional escape hatches:
+#   - CVA6_SKIP_LOCAL_PATCHES=1   skip the patch step (eg. to reproduce
+#                                 the upstream Verilator crash).
+#   - CVA6_VERILATOR_FULL_OK=1    historical opt-in retained so the
+#                                 cocotb test files keep their explicit
+#                                 run gate; defaulted to 1 here now that
+#                                 the local patch covers the blocker.
+CVA6_VERILATOR_FULL_OK ?= 1
+export CVA6_VERILATOR_FULL_OK
+
+# Optional CVA6 cocotb tracing.  Set CVA6_COCOTB_TRACE=1 to enable VCD dump
+# (the TB contains an $test$plusargs("trace") gate that calls $dumpvars).
+ifeq ($(CVA6_COCOTB_TRACE),1)
+VERILATOR_TRACE := 1
+export VERILATOR_TRACE
+PLUSARGS += +trace
+endif
+
+ifeq ($(CVA6_SKIP_LOCAL_PATCHES),)
+CVA6_PATCH_RC := $(shell $(REPO)/scripts/apply_cva6_patches.sh >&2 && echo OK || echo FAIL)
+ifneq ($(CVA6_PATCH_RC),OK)
+$(error scripts/apply_cva6_patches.sh failed — CVA6 sources cannot be Verilator-lowered without local patches)
+endif
 endif
 
 CVA6_FLIST_OUT  := $(PWD)/.cva6_flist.txt

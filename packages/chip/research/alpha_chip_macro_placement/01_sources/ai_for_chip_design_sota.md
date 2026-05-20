@@ -157,6 +157,24 @@ power, and manufacturing preparation.
 - Use: offline RL / decision transformer for transferable chip placement.
 - E1 fit: research baseline for macro-placement experiments.
 
+### OpenROAD RTLMP, BBO placement, and macro-placement benchmarks
+
+- OpenROAD Hier-RTLMP:
+  https://openroad.readthedocs.io/en/latest/main/src/mpl/README.html
+- WireMask-BBO: https://arxiv.org/abs/2306.16844 and
+  https://github.com/lamda-bbo/WireMask-BBO
+- BBOPlace-Bench: https://arxiv.org/abs/2510.23472 and
+  https://github.com/lamda-bbo/BBOPlace-Bench
+- Macro Placement Challenge 2026:
+  https://github.com/partcleda/macro-place-challenge-2026
+- Use: deterministic macro-placement baseline, black-box optimization methods,
+  and current benchmark/scoring references for macro-placement experiments.
+- E1 fit: target capture only. Do not run macro placement, import challenge or
+  benchmark assets, tune BBO loops, generate placements, or claim placement QoR
+  until E1 has release-ready macro manifests, halos/blockages, legalizer replay,
+  routing, STA, DRC/LVS, antenna, PDN/power, package constraints, benchmark
+  non-overlap review, and reviewer signoff.
+
 ## Architecture exploration
 
 ### ArchGym

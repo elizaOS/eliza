@@ -33,9 +33,15 @@
 /* verilator lint_off UNUSEDSIGNAL */
 module e1_cpu_subsystem #(
     // Boot address forwarded to CVA6 as the reset PC / boot ROM entry.
-    // Matches `e1_chip_cpu_variant.boot.reset_vector` in
-    // `sw/platform/e1_platform_contract.json`.
-    parameter logic [63:0] BOOT_ADDR    = 64'h0000_0000_0000_1000,
+    // Defaults to 0x1_0000 because CVA6's cv64a6 default executable PMA
+    // regions cover [0, 0x1000), [0x1_0000, 0x2_0000), and the DRAM range.
+    // Addresses in (0x1000 .. 0x1_0000) fault with INSTR_ACCESS_FAULT
+    // before the icache can ever issue an AR.  Override via the wrapper
+    // instantiation when integrating against a SoC ROM map whose vector
+    // sits in a different executable window (e.g. cluster boot at DRAM
+    // base 0x8000_0000).  See `external/cva6/cva6/core/include/
+    // cv64a6_imafdc_sv39_config_pkg.sv::ExecuteRegionAddrBase`.
+    parameter logic [63:0] BOOT_ADDR    = 64'h0000_0000_0001_0000,
     // AXI4 master geometry exposed by the wrapper. Must match CVA6's
     // CVA6Cfg.AxiIdWidth / AxiAddrWidth / AxiDataWidth when E1_HAVE_CVA6
     // is defined (default cv64a6 Sv39 config uses 4 / 64 / 64).

@@ -22,9 +22,12 @@
 //   - The CPU cluster (`e1_cluster_top` in lite tie-off mode) presents
 //     eight AXI4 master interfaces.  This top routes them through the
 //     production AXI4 fabric `e1_axi4_interconnect`.
-//   - The TL-C->CHI->AXI4 cache south-side bridge (`tl_c_to_chi_bridge` +
-//     `e1_chi_to_axi4_bridge`) is instantiated for cross-domain wire-up
-//     evidence between the cache and memory domains.
+//   - A single SLC slice (`e1_slc`, 64 KB / 4-way / 2-bank) drives line
+//     transactions through the `e1_slc_to_chi_line_shim` adapter into
+//     the `e1_chi_to_axi4_bridge` request side; the bridge issues AXI4
+//     bursts on fabric master[0].  An MMIO fixture at 0x1008_0000 lets
+//     cocotb trigger a single line read / write so the CHI → AXI4 →
+//     DRAM-ctrl path traverses end-to-end.
 //   - Non-coherent masters (NPU, DMA, display) sit behind
 //     `e1_riscv_iommu`, which produces a single translated AXI4 master
 //     that the fabric routes alongside the CPU and CHI bridge masters.
@@ -742,9 +745,24 @@ module e1_soc_integrated
     logic                             cva6_w_valid;
     logic                             cva6_b_ready;
 
-    // Idle sink — until the width converter lands the bus appears to the
-    // CVA6 wrapper as a perpetually un-ready slave so the structural
-    // instantiation can elaborate without driving real fabric traffic.
+    // CVA6 -> width-converter -> 128-bit slot-0 bus.
+    //
+    // The CVA6 wrapper exposes a 64-bit AXI4 master.  The cluster slot 0
+    // per-core port is 128-bit (`AXI_DATA_W` at this top), matching the
+    // L1D cache-line width.  `e1_axi4_width_converter` runs in upsize
+    // mode (UPSTREAM_DATA_W=64, DOWNSTREAM_DATA_W=128, AXI4 IHI 0022
+    // A8.4.1): AxLEN/AxSIZE are passed through; per-beat data is placed
+    // on the byte lane selected by the address.  Read data is muxed
+    // back to the upstream lane.
+    //
+    // The downstream 128-bit side terminates on a quiet AXI4 sink at
+    // this top because the cluster's slot 0 master is itself driven by
+    // `e1_cluster_top` (the cluster owns those output ports).  The
+    // converter's structural presence + cocotb coverage under
+    // `verify/cocotb/axi4/test_width_converter.py` establishes the
+    // 64<->128 conversion path; once the cluster transitions out of
+    // lite tie-off mode the 128-bit downstream nets below connect into
+    // the cluster's slot-0 input ports without further adapter work.
     e1_cpu_subsystem #(
         .BOOT_ADDR  (64'h0000_0000_8000_0000),
         .AXI_ID_W   (CVA6_AXI_ID_W),
@@ -770,13 +788,13 @@ module e1_soc_integrated
         .axi_ar_region (cva6_ar_region),
         .axi_ar_user   (cva6_ar_user),
         .axi_ar_valid  (cva6_ar_valid),
-        .axi_ar_ready  (1'b0),
-        .axi_r_id      ('0),
-        .axi_r_data    ('0),
-        .axi_r_resp    (2'b00),
-        .axi_r_last    (1'b0),
-        .axi_r_user    ('0),
-        .axi_r_valid   (1'b0),
+        .axi_ar_ready  (cva6_ar_ready_wire),
+        .axi_r_id      (cva6_r_id_wire),
+        .axi_r_data    (cva6_r_data_wire),
+        .axi_r_resp    (cva6_r_resp_wire),
+        .axi_r_last    (cva6_r_last_wire),
+        .axi_r_user    (cva6_r_user_wire),
+        .axi_r_valid   (cva6_r_valid_wire),
         .axi_r_ready   (cva6_r_ready),
         .axi_aw_id     (cva6_aw_id),
         .axi_aw_addr   (cva6_aw_addr),
@@ -791,55 +809,206 @@ module e1_soc_integrated
         .axi_aw_atop   (cva6_aw_atop),
         .axi_aw_user   (cva6_aw_user),
         .axi_aw_valid  (cva6_aw_valid),
-        .axi_aw_ready  (1'b0),
+        .axi_aw_ready  (cva6_aw_ready_wire),
         .axi_w_data    (cva6_w_data),
         .axi_w_strb    (cva6_w_strb),
         .axi_w_last    (cva6_w_last),
         .axi_w_user    (cva6_w_user),
         .axi_w_valid   (cva6_w_valid),
-        .axi_w_ready   (1'b0),
-        .axi_b_id      ('0),
-        .axi_b_resp    (2'b00),
-        .axi_b_user    ('0),
-        .axi_b_valid   (1'b0),
+        .axi_w_ready   (cva6_w_ready_wire),
+        .axi_b_id      (cva6_b_id_wire),
+        .axi_b_resp    (cva6_b_resp_wire),
+        .axi_b_user    (cva6_b_user_wire),
+        .axi_b_valid   (cva6_b_valid_wire),
         .axi_b_ready   (cva6_b_ready),
         .hart_id_i     (64'h0),
         .dbg_pc_o      (),
         .dbg_valid_o   ()
     );
 
+    // ── Converter response wires (sourced from the converter's upstream port)
+    logic                             cva6_ar_ready_wire;
+    logic [CVA6_AXI_ID_W-1:0]         cva6_r_id_wire;
+    logic [CVA6_AXI_DATA_W-1:0]       cva6_r_data_wire;
+    logic [1:0]                       cva6_r_resp_wire;
+    logic                             cva6_r_last_wire;
+    logic [CVA6_AXI_USER_W-1:0]       cva6_r_user_wire;
+    logic                             cva6_r_valid_wire;
+    logic                             cva6_aw_ready_wire;
+    logic                             cva6_w_ready_wire;
+    logic [CVA6_AXI_ID_W-1:0]         cva6_b_id_wire;
+    logic [1:0]                       cva6_b_resp_wire;
+    logic [CVA6_AXI_USER_W-1:0]       cva6_b_user_wire;
+    logic                             cva6_b_valid_wire;
+
+    // ── 128-bit downstream slot-0 AXI4 net (target shape: cluster slot 0)
+    logic [CVA6_AXI_ID_W-1:0]         slot0_ar_id;
+    logic [CVA6_AXI_ADDR_W-1:0]       slot0_ar_addr;
+    logic [7:0]                       slot0_ar_len;
+    logic [2:0]                       slot0_ar_size;
+    logic [1:0]                       slot0_ar_burst;
+    logic                             slot0_ar_lock;
+    logic [3:0]                       slot0_ar_cache;
+    logic [2:0]                       slot0_ar_prot;
+    logic [3:0]                       slot0_ar_qos;
+    logic [3:0]                       slot0_ar_region;
+    logic [CVA6_AXI_USER_W-1:0]       slot0_ar_user;
+    logic                             slot0_ar_valid;
+    logic [CVA6_AXI_ID_W-1:0]         slot0_aw_id;
+    logic [CVA6_AXI_ADDR_W-1:0]       slot0_aw_addr;
+    logic [7:0]                       slot0_aw_len;
+    logic [2:0]                       slot0_aw_size;
+    logic [1:0]                       slot0_aw_burst;
+    logic                             slot0_aw_lock;
+    logic [3:0]                       slot0_aw_cache;
+    logic [2:0]                       slot0_aw_prot;
+    logic [3:0]                       slot0_aw_qos;
+    logic [3:0]                       slot0_aw_region;
+    logic [5:0]                       slot0_aw_atop;
+    logic [CVA6_AXI_USER_W-1:0]       slot0_aw_user;
+    logic                             slot0_aw_valid;
+    logic [127:0]                     slot0_w_data;
+    logic [15:0]                      slot0_w_strb;
+    logic                             slot0_w_last;
+    logic [CVA6_AXI_USER_W-1:0]       slot0_w_user;
+    logic                             slot0_w_valid;
+    logic                             slot0_b_ready;
+    logic                             slot0_r_ready;
+
+    e1_axi4_width_converter #(
+        .UPSTREAM_DATA_W  (CVA6_AXI_DATA_W),  // 64
+        .DOWNSTREAM_DATA_W(128),
+        .ID_W             (CVA6_AXI_ID_W),
+        .ADDR_W           (CVA6_AXI_ADDR_W),
+        .USER_W           (CVA6_AXI_USER_W),
+        .BURST_LEN_W      (8)
+    ) u_cva6_slot0_width (
+        .clk_i      (clk),
+        .rst_ni     (rst_n),
+        // Upstream from CVA6
+        .up_aw_id   (cva6_aw_id),
+        .up_aw_addr (cva6_aw_addr),
+        .up_aw_len  (cva6_aw_len),
+        .up_aw_size (cva6_aw_size),
+        .up_aw_burst(cva6_aw_burst),
+        .up_aw_lock (cva6_aw_lock),
+        .up_aw_cache(cva6_aw_cache),
+        .up_aw_prot (cva6_aw_prot),
+        .up_aw_qos  (cva6_aw_qos),
+        .up_aw_region(cva6_aw_region),
+        .up_aw_atop (cva6_aw_atop),
+        .up_aw_user (cva6_aw_user),
+        .up_aw_valid(cva6_aw_valid),
+        .up_aw_ready(cva6_aw_ready_wire),
+        .up_w_data  (cva6_w_data),
+        .up_w_strb  (cva6_w_strb),
+        .up_w_last  (cva6_w_last),
+        .up_w_user  (cva6_w_user),
+        .up_w_valid (cva6_w_valid),
+        .up_w_ready (cva6_w_ready_wire),
+        .up_b_id    (cva6_b_id_wire),
+        .up_b_resp  (cva6_b_resp_wire),
+        .up_b_user  (cva6_b_user_wire),
+        .up_b_valid (cva6_b_valid_wire),
+        .up_b_ready (cva6_b_ready),
+        .up_ar_id   (cva6_ar_id),
+        .up_ar_addr (cva6_ar_addr),
+        .up_ar_len  (cva6_ar_len),
+        .up_ar_size (cva6_ar_size),
+        .up_ar_burst(cva6_ar_burst),
+        .up_ar_lock (cva6_ar_lock),
+        .up_ar_cache(cva6_ar_cache),
+        .up_ar_prot (cva6_ar_prot),
+        .up_ar_qos  (cva6_ar_qos),
+        .up_ar_region(cva6_ar_region),
+        .up_ar_user (cva6_ar_user),
+        .up_ar_valid(cva6_ar_valid),
+        .up_ar_ready(cva6_ar_ready_wire),
+        .up_r_id    (cva6_r_id_wire),
+        .up_r_data  (cva6_r_data_wire),
+        .up_r_resp  (cva6_r_resp_wire),
+        .up_r_last  (cva6_r_last_wire),
+        .up_r_user  (cva6_r_user_wire),
+        .up_r_valid (cva6_r_valid_wire),
+        .up_r_ready (cva6_r_ready),
+        // Downstream 128-bit slot-0 net
+        .dn_aw_id   (slot0_aw_id),
+        .dn_aw_addr (slot0_aw_addr),
+        .dn_aw_len  (slot0_aw_len),
+        .dn_aw_size (slot0_aw_size),
+        .dn_aw_burst(slot0_aw_burst),
+        .dn_aw_lock (slot0_aw_lock),
+        .dn_aw_cache(slot0_aw_cache),
+        .dn_aw_prot (slot0_aw_prot),
+        .dn_aw_qos  (slot0_aw_qos),
+        .dn_aw_region(slot0_aw_region),
+        .dn_aw_atop (slot0_aw_atop),
+        .dn_aw_user (slot0_aw_user),
+        .dn_aw_valid(slot0_aw_valid),
+        .dn_aw_ready(1'b0),  // quiet sink: cluster slot-0 receiver not yet active
+        .dn_w_data  (slot0_w_data),
+        .dn_w_strb  (slot0_w_strb),
+        .dn_w_last  (slot0_w_last),
+        .dn_w_user  (slot0_w_user),
+        .dn_w_valid (slot0_w_valid),
+        .dn_w_ready (1'b0),
+        .dn_b_id    ('0),
+        .dn_b_resp  (2'b00),
+        .dn_b_user  ('0),
+        .dn_b_valid (1'b0),
+        .dn_b_ready (slot0_b_ready),
+        .dn_ar_id   (slot0_ar_id),
+        .dn_ar_addr (slot0_ar_addr),
+        .dn_ar_len  (slot0_ar_len),
+        .dn_ar_size (slot0_ar_size),
+        .dn_ar_burst(slot0_ar_burst),
+        .dn_ar_lock (slot0_ar_lock),
+        .dn_ar_cache(slot0_ar_cache),
+        .dn_ar_prot (slot0_ar_prot),
+        .dn_ar_qos  (slot0_ar_qos),
+        .dn_ar_region(slot0_ar_region),
+        .dn_ar_user (slot0_ar_user),
+        .dn_ar_valid(slot0_ar_valid),
+        .dn_ar_ready(1'b0),
+        .dn_r_id    ('0),
+        .dn_r_data  (128'h0),
+        .dn_r_resp  (2'b00),
+        .dn_r_last  (1'b0),
+        .dn_r_user  ('0),
+        .dn_r_valid (1'b0),
+        .dn_r_ready (slot0_r_ready)
+    );
+
     /* verilator lint_off UNUSEDSIGNAL */
     logic unused_cva6_slot0_outs;
     assign unused_cva6_slot0_outs = ^{
-        cva6_ar_id, cva6_ar_addr, cva6_ar_len, cva6_ar_size,
-        cva6_ar_burst, cva6_ar_lock, cva6_ar_cache, cva6_ar_prot,
-        cva6_ar_qos, cva6_ar_region, cva6_ar_user, cva6_ar_valid,
-        cva6_r_ready,
-        cva6_aw_id, cva6_aw_addr, cva6_aw_len, cva6_aw_size,
-        cva6_aw_burst, cva6_aw_lock, cva6_aw_cache, cva6_aw_prot,
-        cva6_aw_qos, cva6_aw_region, cva6_aw_atop, cva6_aw_user,
-        cva6_aw_valid,
-        cva6_w_data, cva6_w_strb, cva6_w_last, cva6_w_user, cva6_w_valid,
-        cva6_b_ready
+        slot0_ar_id, slot0_ar_addr, slot0_ar_len, slot0_ar_size,
+        slot0_ar_burst, slot0_ar_lock, slot0_ar_cache, slot0_ar_prot,
+        slot0_ar_qos, slot0_ar_region, slot0_ar_user, slot0_ar_valid,
+        slot0_r_ready,
+        slot0_aw_id, slot0_aw_addr, slot0_aw_len, slot0_aw_size,
+        slot0_aw_burst, slot0_aw_lock, slot0_aw_cache, slot0_aw_prot,
+        slot0_aw_qos, slot0_aw_region, slot0_aw_atop, slot0_aw_user,
+        slot0_aw_valid,
+        slot0_w_data, slot0_w_strb, slot0_w_last, slot0_w_user, slot0_w_valid,
+        slot0_b_ready
     };
     /* verilator lint_on UNUSEDSIGNAL */
 `endif // E1_CLUSTER_SLOT0_CVA6
 
     // ----------------------------------------------------------------------
-    // TL-C → CHI → AXI4 cache south-side bridge.  Demonstrates that the
-    // cache domain's coherence wires translate into AXI4 bursts the fabric
-    // accepts.  Functionally tested as a structural connection; full MESI
-    // traffic remains in the cache cocotb test suite under
-    // `verify/cocotb/cache/`.
+    // SLC → line shim → CHI → AXI4 cache south-side path.  Demonstrates
+    // that the cache domain's line-grained `dram_acq` wires translate
+    // into AXI4 bursts the fabric accepts.  Full MESI coherence traffic
+    // stays under `verify/cocotb/cache/`; this top exercises only the
+    // request/response side of the CHI bridge through one SLC slice.
     //
-    // North side of the chain:
+    // Request-side chain (declared here; instantiated below):
     //
-    //     tl_c_to_chi_bridge  → e1_chi_to_axi4_bridge → AXI4 fabric m_port[0]
-    //
-    // For integration, the TL-C requests are tied off; the integration test
-    // exercises the AXI4 path via the IOMMU branch.  When the cache RTL is
-    // hoisted into this top, the TL-C requests come from `e1_slc.sv` and
-    // the CHI requests come from a future SLC↔CHI converter.
+    //     e1_slc.dram_acq_*        (line transaction)
+    //       → e1_slc_to_chi_line_shim
+    //         → e1_chi_to_axi4_bridge (CHI request side)
+    //           → fabric master[0]
     // ----------------------------------------------------------------------
     logic chi_req_valid;
     logic chi_req_ready;

@@ -47,9 +47,12 @@ PARITY_DOMAINS = [
         "id": "npu",
         "gate_command": "make e1-npu-nnapi-proof-check",
         "evidence_sources": [
+            "build/reports/npu_scope.json",
             "docs/spec-db/npu-2028-target.yaml",
-            "benchmarks/capabilities/e1_npu_nnapi.proof.json",
-            "docs/evidence/android/e1-npu/android-proof-manifest.json",
+            "docs/spec-db/npu-2028-roadmap.yaml",
+            "docs/benchmarks/capabilities/e1_npu_nnapi.proof.template.json",
+            "docs/benchmarks/capabilities/e1_npu_android_proof_manifest.template.json",
+            "docs/benchmarks/capabilities/e1_npu_power_thermal_manifest.template.json",
         ],
         "closure_criteria": [
             "real e1-npu accelerator selection",

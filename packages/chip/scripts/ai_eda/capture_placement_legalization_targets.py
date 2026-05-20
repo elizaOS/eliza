@@ -180,6 +180,7 @@ def main() -> int:
         "source_ids": [
             "openroad-gpl",
             "openroad-dpl",
+            "openroad-rtlmp",
             "google-circuit-training",
             "tilos-macroplacement",
             "autodmp",
@@ -190,6 +191,9 @@ def main() -> int:
             "flowplace",
             "chipbench-d",
             "routeplacer",
+            "wiremask-bbo",
+            "bboplace-bench",
+            "macro-place-challenge-2026",
         ],
         "policy": {
             "changes_floorplan": False,
@@ -254,6 +258,17 @@ def main() -> int:
                 ],
             },
             {
+                "id": "macro-placement-bbo-benchmark-watch",
+                "status": "CAPTURED_NOT_IMPORTED",
+                "target": "future RTLMP, WireMask-BBO, BBOPlace-Bench, or macro-placement challenge use requires macro manifests, exact revisions, license and split review, generated-output quarantine, legalizer replay, routing, STA, DRC/LVS, antenna, PDN, power, and review",
+                "acceptance_gates": [
+                    "python3 scripts/ai_eda/capture_floorplan_io_pdn_targets.py --run-id validation",
+                    "python3 scripts/ai_eda/capture_placement_legalization_targets.py --run-id validation",
+                    "make pd-signoff-manifest-check",
+                    "make no-hardware-action-check",
+                ],
+            },
+            {
                 "id": "placement-parameter-autotune-quarantine-watch",
                 "status": "CAPTURED_NOT_EXECUTED",
                 "target": "future density, padding, routability, timing-driven, legalization, and filler-placement parameter sweeps must be replayable and cannot bypass signoff",
@@ -270,6 +285,7 @@ def main() -> int:
             "no repeated completed E1 OpenLane placement-to-route runs with held-out labels for placement model validation",
             "no accepted write-capable schema for placement, density, padding, legalizer, filler, DEF, ODB, Tcl, or macro-placement edits",
             "no license-reviewed import path for external placement benchmarks, generated placements, or pretrained placement models",
+            "no release-ready hard-macro manifest, macro-placement benchmark non-overlap review, or hidden/public split policy for competition-style tasks",
             "no release gate allowing AI placement output to bypass deterministic OpenROAD/OpenLane, routing, STA, DRC/LVS/antenna, power, manufacturing, and reviewer gates",
         ],
     }

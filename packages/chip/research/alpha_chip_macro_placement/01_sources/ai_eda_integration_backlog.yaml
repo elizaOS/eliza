@@ -279,6 +279,7 @@ work_items:
     source_ids:
       - openroad-gpl
       - openroad-dpl
+      - openroad-rtlmp
       - google-circuit-training
       - tilos-macroplacement
       - autodmp
@@ -289,6 +290,9 @@ work_items:
       - flowplace
       - chipbench-d
       - routeplacer
+      - wiremask-bbo
+      - bboplace-bench
+      - macro-place-challenge-2026
     target_area:
       - global_placement
       - detailed_placement
@@ -299,10 +303,10 @@ work_items:
     owner_scope: dry-run target capture only; no floorplan, placement, DEF, ODB, GDS, PD config, constraints, netlist, density, padding, macro-placement, Tcl, patch, model, benchmark import, or tool execution
     objective: >
       Capture local E1 OpenROAD/OpenLane global-placement, detailed-placement,
-      legalization, filler, placement-check, DEF/ODB, metrics, and signoff
-      context for future AI-assisted placement triage while quarantining
-      diffusion, flow-matching, RL, GPU-placement, and benchmark-derived
-      placement outputs.
+      macro-placement, legalization, filler, placement-check, DEF/ODB, metrics,
+      and signoff context for future AI-assisted placement triage while
+      quarantining diffusion, flow-matching, BBO, RL, GPU-placement, competition
+      benchmark, and benchmark-derived placement outputs.
     deliverables:
       - scripts/ai_eda/capture_placement_legalization_targets.py
       - build/ai_eda/placement_legalization_targets/<run-id>/targets_report.json
@@ -324,11 +328,13 @@ work_items:
       - No repeated completed E1 OpenLane placement-to-route runs with held-out labels for placement model validation
       - No accepted write-capable schema for placement, density, padding, legalizer, filler, DEF, ODB, Tcl, or macro-placement edits
       - No license-reviewed import path for external placement benchmarks, generated placements, or pretrained placement models
+      - No macro-placement benchmark non-overlap review or hidden/public split policy for competition-style tasks
       - Current PD closure evidence is not release-clean
     acceptance_criteria:
       - Report hashes source registry, placement notes, OpenLane configs, constraints, signoff manifests, post-route evidence, OpenROAD/OpenLane placement artifacts, RAG, routing, timing, and physical-verification target inputs.
       - Report states no floorplan, placement, DEF, ODB, GDS, PD-config, constraint, netlist, OpenROAD, OpenLane, global-placement, detailed-placement, legalization, filler, model, LLM, download, benchmark import, placement generation, density/padding change, macro placement, Tcl, patch, prediction, QoR, timing, routability, signoff, or release action is enabled.
       - Candidate tasks list deterministic source inventory, placement capture, RAG, OpenLane preflight, PD signoff, PD closure, routing, timing, physical verification, no-hardware-action, docs, PD snapshot, autotune, synthesis, power, and commercial-EDA gates.
+      - BBO and competition benchmark sources remain metadata-only until revision, license, split, non-overlap, generated-output quarantine, and signoff replay gates pass.
   - id: p1-llm4dv-cocotb-stimulus-loop
     title: Coverage-Directed cocotb Stimulus Search
     priority: P1
@@ -1254,6 +1260,7 @@ work_items:
     status: IN_PROGRESS
     source_ids:
       - openroad-ifp
+      - openroad-rtlmp
       - openroad-ioplacer
       - openroad-tapcell
       - openroad-pdn
@@ -1272,10 +1279,11 @@ work_items:
       - power_integrity
     owner_scope: dry-run target capture only; no die/core area, macro placement, IO placement, pin order, padframe, tap/endcap, track, PDN, DEF, ODB, GDS, PD config, constraint, Tcl, patch, model, or benchmark import
     objective: >
-      Capture local E1 floorplan, IO pin-order, padframe, tap/endcap, PDN,
-      package, SI/PI, DEF/ODB, metrics, and signoff context for future
-      AI-assisted floorplanning and pin/PDN triage while quarantining generated
-      floorplans, pin assignments, and power grids.
+      Capture local E1 floorplan, macro-placement, IO pin-order, padframe,
+      tap/endcap, PDN, package, SI/PI, DEF/ODB, metrics, and signoff context
+      for future AI-assisted floorplanning and pin/PDN triage while
+      quarantining generated floorplans, macro placements, pin assignments, and
+      power grids.
     deliverables:
       - scripts/ai_eda/capture_floorplan_io_pdn_targets.py
       - build/ai_eda/floorplan_io_pdn_targets/<run-id>/targets_report.json
@@ -1299,6 +1307,7 @@ work_items:
     blocked_by:
       - No accepted write-capable schema for die/core area, IO placement, pin order, padframe, tap/endcap, track, PDN, DEF, ODB, Tcl, or patch edits
       - No repeated completed E1 OpenLane floorplan-to-signoff corpus with held-out labels for AI floorplanning or PDN validation
+      - No release-ready hard-macro manifest, halo/blockage policy, or macro-placement replay logs for RTLMP-style flows
       - No license-reviewed import path for external floorplanning datasets, generated floorplans, or pretrained floorplanning models
       - Current PD closure and commercial signoff evidence are not release-clean
     acceptance_criteria:

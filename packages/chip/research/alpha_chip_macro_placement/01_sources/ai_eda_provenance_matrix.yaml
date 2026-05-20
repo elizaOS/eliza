@@ -454,6 +454,12 @@ entries:
     license_status: review_required
     release_use: blocked_until_placement_legality_and_signoff_evidence_exist
     allowed_current_use: local_tool_reference_only
+  - source_id: openroad-rtlmp
+    asset_type: deterministic_hierarchical_macro_placer
+    asset_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    license_status: review_required
+    release_use: blocked_until_macro_manifest_and_downstream_signoff_evidence_exist
+    allowed_current_use: local_tool_reference_only
   - source_id: xplace
     asset_type: gpu_placement_framework
     asset_url: https://github.com/cuhk-eda/Xplace
@@ -483,6 +489,24 @@ entries:
     asset_url: https://huggingface.co/datasets/MIRA-Lab/ChiPBench-D
     license_status: review_required
     release_use: blocked_pending_dataset_license_manifest_and_non_overlap_review
+    allowed_current_use: citation_reference_only
+  - source_id: wiremask-bbo
+    asset_type: macro_placement_black_box_optimizer
+    asset_url: https://github.com/lamda-bbo/WireMask-BBO
+    license_status: review_required
+    release_use: blocked_pending_revision_benchmark_license_and_signoff_replay
+    allowed_current_use: citation_and_code_review_reference_only
+  - source_id: bboplace-bench
+    asset_type: black_box_chip_placement_benchmark
+    asset_url: https://github.com/lamda-bbo/BBOPlace-Bench
+    license_status: review_required
+    release_use: blocked_pending_revision_license_manifest_split_and_non_overlap_review
+    allowed_current_use: citation_reference_only
+  - source_id: macro-place-challenge-2026
+    asset_type: macro_placement_competition_benchmark
+    asset_url: https://github.com/partcleda/macro-place-challenge-2026
+    license_status: challenge_terms_review_required
+    release_use: blocked_pending_terms_revision_manifest_split_and_non_overlap_review
     allowed_current_use: citation_reference_only
   - source_id: zigzag
     asset_type: accelerator_dse_tool

@@ -2233,6 +2233,36 @@ entries:
     risk:
       - Legalization can repair overlaps while creating timing, congestion,
         filler, well-tap, antenna, or DRC regressions.
+  - id: openroad-rtlmp
+    name: OpenROAD Hier-RTLMP
+    kind: deterministic_hierarchical_macro_placer
+    stage:
+      - macro_placement
+      - floorplanning
+      - physical_design
+    priority: P1
+    source_url: https://openroad.readthedocs.io/en/latest/main/src/mpl/README.html
+    code_url: https://github.com/The-OpenROAD-Project/OpenROAD
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Deterministic OpenROAD macro-placement reference for future E1 hard-macro
+      floorplanning once real SRAM, cache, NPU, IO, and analog macro manifests
+      are release-ready.
+    integration_action: >
+      Track as local baseline context only; do not generate or promote macro
+      placements until E1 has macro manifests, halos, blockages, routing, STA,
+      PDN, physical-verification, package, and review evidence.
+    evidence_gate: >
+      RTLMP use requires command manifests, macro and blockage inputs,
+      generated placement file hashes, DEF/ODB/GDS hashes, route, STA, DRC/LVS,
+      antenna, PDN, power, package, and reviewer evidence.
+    risk:
+      - Macro placements can improve HPWL while breaking PDN, pin access,
+        clocking, routing, timing, or package assumptions.
   - id: openroad-ifp
     name: OpenROAD Initialize Floorplan
     kind: deterministic_floorplan_initialization_tool
@@ -2538,6 +2568,97 @@ entries:
     risk:
       - Reported routability improvements may depend on benchmark/floorplan mix.
       - Without local labels this remains only research context.
+  - id: wiremask-bbo
+    name: WireMask-BBO
+    kind: macro_placement_black_box_optimizer
+    stage:
+      - macro_placement
+      - floorplanning
+      - black_box_optimization
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2306.16844
+    code_url: https://github.com/lamda-bbo/WireMask-BBO
+    model_url: null
+    dataset_url: null
+    license_status: review_required
+    code_status: available_to_review
+    model_status: no_model
+    e1_fit: >
+      Useful black-box macro-placement optimizer and fine-tuning reference for
+      future E1 macro layouts, but only after deterministic OpenROAD replay and
+      downstream signoff labels exist.
+    integration_action: >
+      Track as quarantined method/code context only; do not run, import
+      benchmarks, or promote generated macro placements without exact revisions
+      and local signoff replay.
+    evidence_gate: >
+      Use requires pinned code revision, benchmark/license review, input macro
+      and netlist hashes, output placement hashes, legalization, routing, STA,
+      DRC/LVS, antenna, PDN, power, and reviewer evidence.
+    risk:
+      - HPWL-oriented BBO can miss pin access, power-grid, timing, congestion,
+        DRC, and package constraints.
+  - id: bboplace-bench
+    name: BBOPlace-Bench
+    kind: black_box_chip_placement_benchmark
+    stage:
+      - placement_benchmark
+      - macro_placement
+      - black_box_optimization
+      - physical_design
+    priority: P2
+    source_url: https://arxiv.org/abs/2510.23472
+    code_url: https://github.com/lamda-bbo/BBOPlace-Bench
+    model_url: null
+    dataset_url: https://github.com/lamda-bbo/BBOPlace-Bench
+    license_status: review_required
+    code_status: available_to_review
+    model_status: benchmark_framework
+    e1_fit: >
+      Relevant benchmark framework for comparing placement BBO formulations and
+      algorithms, but public benchmark scores are not E1 floorplan evidence.
+    integration_action: >
+      Track as benchmark-hygiene context only; do not import tasks or compare
+      E1 methods until exact assets, licenses, splits, and non-overlap review
+      are pinned.
+    evidence_gate: >
+      Benchmark use requires revision hashes, license review, file manifest,
+      split manifest, non-overlap review, replay logs, generated placement
+      quarantine, and local OpenROAD/OpenLane signoff correlation.
+    risk:
+      - Benchmark formulations can reward proxy quality while hiding E1
+        signoff, hierarchy, technology, or package failures.
+  - id: macro-place-challenge-2026
+    name: Partcl/HRT Macro Placement Challenge
+    kind: macro_placement_competition_benchmark
+    stage:
+      - macro_placement
+      - placement_benchmark
+      - openroad_replay
+      - physical_design
+    priority: P2
+    source_url: https://github.com/partcleda/macro-place-challenge-2026
+    code_url: https://github.com/partcleda/macro-place-challenge-2026
+    model_url: null
+    dataset_url: https://github.com/partcleda/macro-place-challenge-2026
+    license_status: challenge_terms_review_required
+    code_status: available_to_review
+    model_status: benchmark_framework
+    e1_fit: >
+      Current macro-placement benchmark and evaluation-flow reference with
+      OpenROAD-based scoring expectations, but not an E1 release benchmark.
+    integration_action: >
+      Track as benchmark and scoring-policy context only; do not submit, import
+      designs, or tune E1 placements against challenge tasks without legal,
+      license, and non-overlap review.
+    evidence_gate: >
+      Use requires challenge-term review, exact repository revision, benchmark
+      manifests, hidden/public split policy, replay logs, generated placement
+      quarantine, and downstream OpenROAD/OpenLane signoff evidence.
+    risk:
+      - Competition proxy metrics and public/private splits can create
+        overfitting or contamination risks for E1 evaluation.
   - id: openroad-fastroute
     name: OpenROAD FastRoute
     kind: global_routing_tool

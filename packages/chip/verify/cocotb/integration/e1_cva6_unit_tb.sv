@@ -47,7 +47,14 @@ module e1_cva6_unit_tb (
     output logic [31:0] aw_xfer_count_o,
     output logic [31:0] w_xfer_count_o,
     output logic [31:0] r_xfer_count_o,
-    output logic [31:0] b_xfer_count_o
+    output logic [31:0] b_xfer_count_o,
+    // Mirrors of the first ROM/DRAM words so the test can verify cocotb's
+    // unpacked-array writes landed (Verilator's GPI table does not always
+    // surface every element of `logic [63:0] boot_rom [...]`).
+    output logic [63:0] boot_rom_word0_o,
+    output logic [63:0] boot_rom_word1_o,
+    output logic [63:0] boot_rom_word2_o,
+    output logic [63:0] dram_mem_word0_o
 );
 
     // CVA6 wrapper-side AXI4 nets at the cv64a6_imafdc_sv39 native
@@ -56,9 +63,14 @@ module e1_cva6_unit_tb (
     localparam int unsigned AXI_ADDR_W = 64;
     localparam int unsigned AXI_DATA_W = 64;
     localparam int unsigned AXI_USER_W = 1;
-    // Boot vector — small ROM lives at 0x1000 by convention; tests load
-    // their instruction stream here before releasing reset.
-    localparam logic [63:0] BOOT_ADDR  = 64'h0000_0000_0000_1000;
+    // Boot vector — boot ROM lives in CVA6's second default execute region
+    // (`ExecuteRegionAddrBase[1] = 0x1_0000`, length `0x10000`).  The first
+    // execute region covers only [0, 0x1000) so the historical 0x1000 value
+    // sat just outside any executable PMA window and CVA6 raised
+    // INSTR_ACCESS_FAULT before it ever issued a fetch.  See
+    // `external/cva6/cva6/core/include/cv64a6_imafdc_sv39_config_pkg.sv`
+    // `ExecuteRegionAddrBase` / `ExecuteRegionLength`.
+    localparam logic [63:0] BOOT_ADDR  = 64'h0000_0000_0001_0000;
 
     // Wrapper AXI4 master signals
     logic [AXI_ID_W-1:0]         w_ar_id;
@@ -183,16 +195,53 @@ module e1_cva6_unit_tb (
     // a single response with last=1 for len=0.
     localparam int unsigned ROM_WORDS  = 512;   // 4 KiB / 8 B
     localparam int unsigned DRAM_WORDS = 2048;  // 16 KiB / 8 B
-    localparam logic [63:0] ROM_BASE   = 64'h0000_0000_0000_1000;
+    // ROM_BASE must match BOOT_ADDR (CVA6's executable PMA region 1 starts
+    // at 0x1_0000).  DRAM_BASE matches CVA6's cacheable + executable region
+    // at 0x8000_0000.
+    localparam logic [63:0] ROM_BASE   = 64'h0000_0000_0001_0000;
     localparam logic [63:0] DRAM_BASE  = 64'h0000_0000_8000_0000;
 
     logic [63:0] boot_rom  [0:ROM_WORDS-1];
     logic [63:0] dram_mem  [0:DRAM_WORDS-1];
 
-    // Initialise to 0 so cocotb's writes are observable.
-    initial begin
-        for (int i = 0; i < ROM_WORDS;  i++) boot_rom[i]  = 64'h0;
+    // Initialise to 0, then preload the boot ROM from a $readmemh-friendly
+    // hex file.  Cocotb writes the program payload into the file before
+    // simulation starts; the TB picks the path up from the BOOT_ROM_HEX
+    // plusarg (default "boot_rom.hex" relative to the simulator cwd).
+    // This indirection avoids the Verilator+cocotb-GPI limitation where
+    // `dut.boot_rom[i].value = X` silently no-ops because Verilator's GPI
+    // does not register a writable handle for every element of an
+    // unpacked logic array; the cocotb test additionally enforces a
+    // sanity check on the flat-port mirrors (`boot_rom_word0_o` ..) so a
+    // missing/empty hex file fails the test loudly.
+    initial begin : init_mem
+        string rom_path;
+        for (int i = 0; i < ROM_WORDS;  i++) boot_rom[i] = 64'h0;
         for (int i = 0; i < DRAM_WORDS; i++) dram_mem[i] = 64'h0;
+        if (!$value$plusargs("BOOT_ROM_HEX=%s", rom_path)) begin
+            rom_path = "boot_rom.hex";
+        end
+        $readmemh(rom_path, boot_rom);
+    end
+
+    // ── Cocotb-observable mirrors of the first ROM/DRAM words ──────────
+    // The simulator does not surface every element of an unpacked array
+    // in its GPI signal handle table or the VCD by default.  These mirror
+    // nets re-export the first three ROM words (the cocotb tests preload
+    // a 4-instruction or 6-instruction program here) so the tests can
+    // assert the preload actually landed before releasing reset.
+    assign boot_rom_word0_o = boot_rom[0];
+    assign boot_rom_word1_o = boot_rom[1];
+    assign boot_rom_word2_o = boot_rom[2];
+    assign dram_mem_word0_o = dram_mem[0];
+
+    // Optional VCD trace gated by +trace plusarg.
+    // Simulator must enable trace support for $dumpfile/$dumpvars to emit.
+    initial begin
+        if ($test$plusargs("trace")) begin
+            $dumpfile("e1_cva6_unit_tb.vcd");
+            $dumpvars(0, e1_cva6_unit_tb);
+        end
     end
 
     // Region select helpers

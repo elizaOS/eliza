@@ -25,39 +25,64 @@ side-channel observer reads the dram_mem array, the test will also
 verify dram_mem[0] == 0xCAFEBABE.  Until that side-channel exists the
 B-handshake count is the structural proof the store completed.
 
-BLOCKED on Verilator 5.049 internal error (`V3Delayed: Unexpected LHS
-form`) at `external/cva6/cva6/core/frontend/btb.sv:188` — see
-`external/cva6/pin-manifest.json` `verilator_full_conversion_blocker`.
-Set `CVA6_VERILATOR_FULL_OK=1` once a fixed Verilator release lands.
+The Verilator 5.049 V3Delayed `Unexpected LHS form` crash on CVA6
+btb.sv:188 (and the identical bht.sv:122 pattern) is unblocked by the
+tracked patches under `patches/cva6/`, applied by
+`scripts/apply_cva6_patches.sh` before each Verilator run.  See
+`external/cva6/pin-manifest.json::verilator_full_conversion_blocker`
+(now `status: RESOLVED`).  The `cocotb-cva6-cpu-*` Makefile targets
+export `CVA6_VERILATOR_FULL_OK=1` by default so the tests run.
 """
 
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
 
-_RUN_CVA6 = os.environ.get("CVA6_VERILATOR_FULL_OK", "0") == "1"
+_RUN_CVA6 = os.environ.get("CVA6_VERILATOR_FULL_OK", "1") == "1"
+_BOOT_ROM_HEX = Path("boot_rom.hex")
 
 # RV64I encoding (objdump-style) for the store/load program.
-# Constants chosen so the program fits in the boot ROM region.
 #
-#   00:  lui   x1, 0xCAFEC         ; upper bits of 0xCAFEBABE
-#   04:  addi  x1, x1, -1346       ; 0xCAFEBABE = 0xCAFEC000 + -0x542
-#   08:  lui   x2, 0x80000         ; 0x80000000 = DRAM base
-#   0c:  sd    x1, 0(x2)
-#   10:  ld    x3, 0(x2)
-#   14:  j     .                   ; spin
+#   00:  lui   x1, 0xCAFEC         ; x1 = 0xFFFF_FFFF_CAFEC000 (sign-ext)
+#   04:  addi  x1, x1, -1346       ; x1 = 0xFFFF_FFFF_CAFEBABE
+#   08:  lui   x2, 0x80000         ; x2 = 0xFFFF_FFFF_8000_0000
+#   0c:  sd    x1, 0(x2)           ; mem[0x8000_0000] = x1
+#   10:  ld    x3, 0(x2)           ; x3 = mem[0x8000_0000]
+#   14:  j     .                   ; spin-loop
+#
+# LUI encoding: imm[31:12] in bits [31:12], rd in [11:7], opcode 0b0110111 in [6:0].
+# 0xCAFEC -> instr = (0xCAFEC << 12) | (1 << 7) | 0x37 = 0xCAFEC0B7
+# 0x80000 -> instr = (0x80000 << 12) | (2 << 7) | 0x37 = 0x80000137
+# (Note: lui x2, 0x80000 sign-extends to 0xFFFF_FFFF_8000_0000 on RV64;
+#  the upper bits are masked away when CVA6 issues the AXI4 address.)
 PROGRAM = [
-    0x000CAFEC | 0x00000037,  # lui x1, 0xCAFEC  -> 0xCAFEC0B7
-    0xABE08093,  # addi x1, x1, -1346
-    0x80000137,  # lui x2, 0x80000
-    0x00113023,  # sd x1, 0(x2)
-    0x00013183,  # ld x3, 0(x2)
-    0x0000006F,  # j .
+    0xCAFEC0B7,  # lui  x1, 0xCAFEC
+    0xABE08093,  # addi x1, x1, -1346  -> x1 = 0xCAFEBABE (sign-extended)
+    0x80000137,  # lui  x2, 0x80000
+    0x00113023,  # sd   x1, 0(x2)
+    0x00013183,  # ld   x3, 0(x2)
+    0x0000006F,  # jal  x0, 0 (j .)
 ]
+
+
+def _write_rom_hex_at_import(program: list[int], path: Path) -> None:
+    rom_words = (len(program) + 1) // 2
+    lines = []
+    for i in range(rom_words):
+        lo = program[2 * i] if 2 * i < len(program) else 0
+        hi = program[2 * i + 1] if 2 * i + 1 < len(program) else 0
+        lines.append(f"{(hi << 32) | lo:016x}\n")
+    path.write_text("".join(lines))
+
+
+# Write the boot-ROM hex file at import time so the TB's initial
+# `$readmemh` sees the payload before simulation time 0.
+_write_rom_hex_at_import(PROGRAM, _BOOT_ROM_HEX)
 
 
 async def reset(dut, cycles: int = 16) -> None:
@@ -72,12 +97,32 @@ async def reset(dut, cycles: int = 16) -> None:
     await RisingEdge(dut.clk)
 
 
-def _preload_rom(dut, program: list[int]) -> None:
-    rom_words = (len(program) + 1) // 2
-    for i in range(rom_words):
-        lo = program[2 * i] if 2 * i < len(program) else 0
-        hi = program[2 * i + 1] if 2 * i + 1 < len(program) else 0
-        dut.boot_rom[i].value = (hi << 32) | lo
+def _expected_word(program: list[int], idx: int) -> int:
+    lo = program[2 * idx] if 2 * idx < len(program) else 0
+    hi = program[2 * idx + 1] if 2 * idx + 1 < len(program) else 0
+    return (hi << 32) | lo
+
+
+async def _assert_rom_preloaded(dut, program: list[int]) -> None:
+    """Take the assert after one clock edge so the TB's initial-time
+    `$readmemh` has run.  See the bootrom test for the long-form rationale.
+    """
+    await RisingEdge(dut.clk)
+    expected_w0 = _expected_word(program, 0)
+    expected_w1 = _expected_word(program, 1)
+    expected_w2 = _expected_word(program, 2)
+    got_w0 = int(dut.boot_rom_word0_o.value)
+    got_w1 = int(dut.boot_rom_word1_o.value)
+    got_w2 = int(dut.boot_rom_word2_o.value)
+    assert got_w0 == expected_w0, (
+        f"boot_rom[0] preload failed: expected 0x{expected_w0:016x}, got 0x{got_w0:016x}."
+    )
+    assert got_w1 == expected_w1, (
+        f"boot_rom[1] preload failed: expected 0x{expected_w1:016x}, got 0x{got_w1:016x}."
+    )
+    assert got_w2 == expected_w2, (
+        f"boot_rom[2] preload failed: expected 0x{expected_w2:016x}, got 0x{got_w2:016x}."
+    )
 
 
 @cocotb.test(skip=not _RUN_CVA6)
@@ -91,7 +136,7 @@ async def test_cva6_dram_store(dut):
         model accepted it.
     """
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
-    _preload_rom(dut, PROGRAM)
+    await _assert_rom_preloaded(dut, PROGRAM)
     await reset(dut)
 
     # Allow enough cycles for: instruction fetch + decode + issue +
@@ -126,7 +171,7 @@ async def test_cva6_dram_load(dut):
         simply require AR + R counts to grow beyond the fetch baseline.
     """
     cocotb.start_soon(Clock(dut.clk, 10, units="ns").start())
-    _preload_rom(dut, PROGRAM)
+    await _assert_rom_preloaded(dut, PROGRAM)
     await reset(dut)
 
     # Run long enough to cover both the store and the subsequent load.
