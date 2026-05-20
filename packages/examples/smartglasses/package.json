@@ -6,6 +6,7 @@
   "scripts": {
     "dev:simulator": "vite --host 127.0.0.1 --port 5178",
     "dev:hardware": "vite --host 127.0.0.1 --port 5178",
+    "hardware:bleak": "python3 bleak-hardware-smoke.py",
     "hardware:noble": "bun run --cwd ../../../plugins/plugin-smartglasses build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run noble-hardware-smoke.ts",
     "hardware:validate-report": "bun run validate-hardware-report.ts",
     "simulator": "npx @evenrealities/evenhub-simulator@latest http://127.0.0.1:5178/evenhub-smoke.html --automation-port 9898",

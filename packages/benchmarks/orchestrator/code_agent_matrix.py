@@ -13,6 +13,7 @@ import argparse
 import json
 import os
 import re
+import shutil
 import shlex
 import subprocess
 import sys
@@ -23,10 +24,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from .analyze_trajectory import summarize as summarize_trajectory
 from .code_agent_coverage import included_benchmark_ids
 
 DEFAULT_ADAPTERS = ("elizaos", "opencode")
 DEFAULT_BENCHMARKS = included_benchmark_ids()
+DEFAULT_TARGET_ADAPTER = "elizaos"
+DEFAULT_BASELINE_ADAPTER = "opencode"
 DEFAULT_MODEL = "gpt-oss-120b"
 DEFAULT_PROVIDER = "cerebras"
 DEFAULT_CEREBRAS_BASE_URL = "https://api.cerebras.ai/v1"
@@ -82,6 +86,8 @@ class CellResult:
     failure_class: str
     notes: list[str] = field(default_factory=list)
     score: float | None = None
+    outcome_metrics: dict[str, int | float | None] = field(default_factory=dict)
+    token_metrics: dict[str, int | float | None] = field(default_factory=dict)
     resumed: bool = False
 
 
@@ -103,6 +109,16 @@ def now_id() -> str:
 
 def default_swe_bench_repo_cache_dir() -> Path:
     return Path(tempfile.gettempdir()) / "eliza-swe-bench-repo-cache"
+
+
+def provider_key_name(provider: str) -> str | None:
+    return {
+        "anthropic": "ANTHROPIC_API_KEY",
+        "cerebras": "CEREBRAS_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+    }.get(provider.lower())
 
 
 def env_name(adapter: str, benchmark: str) -> str:
@@ -168,6 +184,92 @@ def child_env(cell: MatrixCell) -> dict[str, str]:
     if opencode_shim.exists():
         env.setdefault("OPENCODE_BIN", str(opencode_shim))
     return env
+
+
+def _opencode_bin(root: Path, env: dict[str, str]) -> str | None:
+    configured = env.get("OPENCODE_BIN")
+    if configured:
+        return configured if Path(configured).exists() or shutil.which(configured) else None
+    opencode_shim = root / "plugins" / "plugin-agent-orchestrator" / "bin" / "opencode"
+    if opencode_shim.exists():
+        return str(opencode_shim)
+    return shutil.which("opencode")
+
+
+def preflight_matrix(
+    *,
+    root: Path,
+    cells: list[MatrixCell],
+    provider: str,
+    require_provider_key: bool = True,
+    env: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    env = dict(os.environ if env is None else env)
+    issues: list[dict[str, str]] = []
+    key_name = provider_key_name(provider)
+    if require_provider_key and key_name and not env.get(key_name):
+        issues.append(
+            {
+                "severity": "error",
+                "kind": "missing_provider_key",
+                "message": f"{key_name} is required for provider {provider}",
+            }
+        )
+
+    opencode_bin = _opencode_bin(root, env)
+    if any(cell.adapter == "opencode" for cell in cells) and not opencode_bin:
+        issues.append(
+            {
+                "severity": "error",
+                "kind": "missing_opencode_cli",
+                "message": "opencode adapter selected but OPENCODE_BIN or opencode CLI was not found",
+            }
+        )
+
+    cell_checks: list[dict[str, Any]] = []
+    for cell in cells:
+        executable = cell.command[0] if cell.command else ""
+        executable_ok = bool(executable and (Path(executable).exists() or shutil.which(executable)))
+        cwd_ok = Path(cell.cwd).exists()
+        if not executable_ok:
+            issues.append(
+                {
+                    "severity": "error",
+                    "kind": "missing_executable",
+                    "message": f"{cell.benchmark}/{cell.adapter} executable not found: {executable}",
+                }
+            )
+        if not cwd_ok:
+            issues.append(
+                {
+                    "severity": "error",
+                    "kind": "missing_cwd",
+                    "message": f"{cell.benchmark}/{cell.adapter} cwd not found: {cell.cwd}",
+                }
+            )
+        cell_checks.append(
+            {
+                "benchmark": cell.benchmark,
+                "adapter": cell.adapter,
+                "executable": executable,
+                "executable_ok": executable_ok,
+                "cwd": cell.cwd,
+                "cwd_ok": cwd_ok,
+                "output_dir": cell.output_dir,
+                "trajectory_dir": cell.trajectory_dir,
+            }
+        )
+
+    return {
+        "ok": not any(issue["severity"] == "error" for issue in issues),
+        "provider": provider,
+        "provider_key": key_name,
+        "provider_key_present": bool(key_name and env.get(key_name)),
+        "provider_key_required": bool(require_provider_key and key_name),
+        "opencode_bin": opencode_bin,
+        "issues": issues,
+        "cells": cell_checks,
+    }
 
 
 def default_command(
@@ -379,6 +481,8 @@ def build_cell(
             smoke=smoke,
             no_docker=no_docker,
         )
+    if benchmark == "webshop" and smoke:
+        env_overrides["WEBSHOP_ALLOW_SPACY_STUB"] = "1"
     return MatrixCell(
         benchmark=benchmark,
         adapter=adapter,
@@ -395,6 +499,14 @@ def _cell_root(cell: MatrixCell) -> Path:
 
 
 def find_latest_result(output_dir: Path) -> Path | None:
+    nested_matches = [
+        p
+        for p in output_dir.rglob("results.json")
+        if p.is_file() and p.parent.name == "summary"
+    ]
+    if nested_matches:
+        return max(nested_matches, key=lambda p: p.stat().st_mtime)
+
     patterns = [
         "orchestrated-*.json",
         "swe-bench-*.json",
@@ -454,6 +566,10 @@ def classify_failure(
     combined = "\n".join([stdout, stderr])
     score = score_from_payload(result_payload)
     if exit_code == 0 and score is not None and score >= 1.0:
+        return "pass", notes
+    outcome = collect_outcome_metrics(result_payload)
+    accuracy = outcome.get("accuracy")
+    if exit_code == 0 and isinstance(accuracy, (int, float)) and accuracy >= 1.0:
         return "pass", notes
 
     if _text_has(
@@ -533,6 +649,175 @@ def score_from_payload(payload: Any) -> float | None:
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             return float(value)
     return None
+
+
+def _metric_number(payload: dict[str, Any], *keys: str) -> int | float | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)):
+            return value
+    return None
+
+
+def collect_outcome_metrics(payload: Any) -> dict[str, int | float | None]:
+    metrics: dict[str, int | float | None] = {
+        "right": None,
+        "wrong": None,
+        "total": None,
+        "accuracy": None,
+    }
+    if isinstance(payload, list):
+        scores = [
+            item.get("score")
+            for item in payload
+            if isinstance(item, dict)
+            and isinstance(item.get("score"), (int, float))
+            and not isinstance(item.get("score"), bool)
+        ]
+        if scores:
+            right = sum(float(score) for score in scores)
+            total = len(scores)
+            metrics.update(
+                {
+                    "right": right,
+                    "wrong": total - right,
+                    "total": total,
+                    "accuracy": right / total,
+                }
+            )
+        return metrics
+    if not isinstance(payload, dict):
+        return metrics
+
+    metrics_payload = payload.get("metrics")
+    if isinstance(metrics_payload, dict):
+        accuracy = _metric_number(
+            metrics_payload,
+            "overall_score",
+            "accuracy",
+            "score",
+            "success_rate",
+        )
+        if accuracy is not None:
+            metrics["accuracy"] = accuracy
+
+    summary = payload.get("summary")
+    if isinstance(summary, dict):
+        total = _metric_number(summary, "total_instances", "total_tasks", "total")
+        right = _metric_number(summary, "resolved", "passed_tasks", "passed", "successes")
+        wrong = _metric_number(summary, "unresolved", "failed_tasks", "failed", "failures")
+        accuracy = _metric_number(summary, "resolve_rate", "accuracy", "score")
+        if total is not None or right is not None or wrong is not None or accuracy is not None:
+            metrics.update(
+                {
+                    "right": right,
+                    "wrong": wrong,
+                    "total": total,
+                    "accuracy": accuracy if accuracy is not None else metrics.get("accuracy"),
+                }
+            )
+            return _complete_outcome_metrics(metrics)
+
+    total = _metric_number(payload, "total_tasks", "total_trials", "total_instances", "total")
+    right = _metric_number(payload, "passed_tasks", "successes", "resolved", "passed")
+    wrong = _metric_number(payload, "failed_tasks", "failures", "unresolved", "failed")
+    accuracy = _metric_number(
+        payload,
+        "overall_accuracy",
+        "success_rate",
+        "overall_task_success_rate",
+        "overall_step_accuracy",
+        "average_reward",
+        "mean_reward",
+        "accuracy",
+        "resolve_rate",
+        "score",
+    )
+    if total is not None or right is not None or wrong is not None or accuracy is not None:
+        metrics.update(
+            {
+                "right": right,
+                "wrong": wrong,
+                "total": total,
+                "accuracy": accuracy if accuracy is not None else metrics.get("accuracy"),
+            }
+        )
+        return _complete_outcome_metrics(metrics)
+
+    items = _collect_result_items(payload)
+    if items:
+        right_count = 0
+        wrong_count = 0
+        scored = 0
+        for item in items:
+            score = _metric_number(item, "score", "reward", "accuracy")
+            if score is not None:
+                bounded_score = max(0.0, min(1.0, float(score)))
+                scored += 1
+                right_count += bounded_score
+                wrong_count += 1.0 - bounded_score
+                continue
+            success = item.get("success")
+            if isinstance(success, bool):
+                scored += 1
+                if success:
+                    right_count += 1
+                else:
+                    wrong_count += 1
+                continue
+        if scored:
+            metrics.update(
+                {
+                    "right": right_count,
+                    "wrong": wrong_count,
+                    "total": scored,
+                    "accuracy": right_count / scored,
+                }
+            )
+    return _complete_outcome_metrics(metrics)
+
+
+def _complete_outcome_metrics(
+    metrics: dict[str, int | float | None]
+) -> dict[str, int | float | None]:
+    right = metrics.get("right")
+    wrong = metrics.get("wrong")
+    total = metrics.get("total")
+    accuracy = metrics.get("accuracy")
+    if total is None and isinstance(right, (int, float)) and isinstance(wrong, (int, float)):
+        total = int(right + wrong)
+        metrics["total"] = total
+    if wrong is None and isinstance(total, (int, float)) and isinstance(right, (int, float)):
+        metrics["wrong"] = int(total - right)
+    if right is None and isinstance(total, (int, float)) and isinstance(wrong, (int, float)):
+        metrics["right"] = int(total - wrong)
+    if accuracy is None and isinstance(total, (int, float)) and total > 0 and isinstance(right, (int, float)):
+        metrics["accuracy"] = float(right) / float(total)
+    if right is None and isinstance(total, (int, float)) and isinstance(accuracy, (int, float)):
+        metrics["right"] = float(total) * float(accuracy)
+    if wrong is None and isinstance(total, (int, float)) and isinstance(metrics.get("right"), (int, float)):
+        metrics["wrong"] = float(total) - float(metrics["right"])
+    return metrics
+
+
+def collect_token_metrics(trajectory_dir: Path) -> dict[str, int | float | None]:
+    summary, records = summarize_trajectory(trajectory_dir)
+    cached_percent: float | None = None
+    if summary.prompt_tokens:
+        cached_percent = (summary.cached_tokens / summary.prompt_tokens) * 100.0
+    return {
+        "input_tokens": summary.prompt_tokens,
+        "output_tokens": summary.completion_tokens,
+        "total_tokens": summary.total_tokens,
+        "cached_tokens": summary.cached_tokens,
+        "cache_creation_tokens": summary.cache_creation_tokens,
+        "cached_token_percent": cached_percent,
+        "llm_call_count": summary.llm_call_count,
+        "trajectory_turn_count": summary.turns,
+        "trajectory_file_count": summary.files,
+    }
 
 
 def write_json(path: Path, payload: Any) -> None:
@@ -638,6 +923,8 @@ def _load_existing_result(cell: MatrixCell) -> CellResult | None:
             failure_class=str(payload.get("failure_class") or "unknown_failure"),
             notes=list(payload.get("notes") or []),
             score=payload.get("score"),
+            outcome_metrics=dict(payload.get("outcome_metrics") or {}),
+            token_metrics=dict(payload.get("token_metrics") or {}),
             resumed=True,
         )
     except (KeyError, TypeError, ValueError):
@@ -656,6 +943,8 @@ def _result_from_cell_payload(
     failure_class: str,
     notes: list[str],
     score: float | None,
+    outcome_metrics: dict[str, int | float | None] | None = None,
+    token_metrics: dict[str, int | float | None] | None = None,
     resumed: bool = False,
 ) -> CellResult:
     return CellResult(
@@ -671,6 +960,8 @@ def _result_from_cell_payload(
         failure_class=failure_class,
         notes=notes,
         score=score,
+        outcome_metrics=outcome_metrics or {},
+        token_metrics=token_metrics or {},
         resumed=resumed,
     )
 
@@ -707,6 +998,8 @@ def run_cell(
             failure_class="stopped_early",
             notes=["dry run only"],
             score=None,
+            outcome_metrics=collect_outcome_metrics(None),
+            token_metrics=collect_token_metrics(Path(cell.trajectory_dir)),
         )
         write_json(cell_root / "cell-result.json", asdict(result))
         return result
@@ -761,6 +1054,8 @@ def run_cell(
     )
     score = score_from_payload(payload)
     status = "succeeded" if exit_code == 0 and result_path is not None else "failed"
+    outcome_metrics = collect_outcome_metrics(payload)
+    token_metrics = collect_token_metrics(Path(cell.trajectory_dir))
     result = _result_from_cell_payload(
         cell=cell,
         status=status,
@@ -772,9 +1067,670 @@ def run_cell(
         failure_class=failure_class,
         notes=notes,
         score=score,
+        outcome_metrics=outcome_metrics,
+        token_metrics=token_metrics,
     )
     write_json(cell_root / "cell-result.json", asdict(result))
     return result
+
+
+def _sum_metric(
+    results: list[CellResult],
+    field: str,
+    metric: str,
+) -> int | float | None:
+    total: int | float = 0
+    seen = False
+    for result in results:
+        source = result.outcome_metrics if field == "outcome" else result.token_metrics
+        value = source.get(metric)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            continue
+        total += value
+        seen = True
+    return total if seen else None
+
+
+def _aggregate_by_adapter(results: list[CellResult], field: str) -> dict[str, dict[str, int | float | None]]:
+    by_adapter: dict[str, list[CellResult]] = {}
+    for result in results:
+        by_adapter.setdefault(result.adapter, []).append(result)
+    metric_names = (
+        ("right", "wrong", "total", "accuracy")
+        if field == "outcome"
+        else (
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cached_tokens",
+            "cache_creation_tokens",
+            "cached_token_percent",
+            "llm_call_count",
+            "trajectory_turn_count",
+            "trajectory_file_count",
+        )
+    )
+    output: dict[str, dict[str, int | float | None]] = {}
+    for adapter, adapter_results in by_adapter.items():
+        row: dict[str, int | float | None] = {}
+        for metric in metric_names:
+            if metric in {"accuracy", "cached_token_percent"}:
+                continue
+            row[metric] = _sum_metric(adapter_results, field, metric)
+        if field == "outcome":
+            right = row.get("right")
+            total = row.get("total")
+            row["accuracy"] = (
+                float(right) / float(total)
+                if isinstance(right, (int, float)) and isinstance(total, (int, float)) and total > 0
+                else None
+            )
+        else:
+            cached = row.get("cached_tokens")
+            input_tokens = row.get("input_tokens")
+            row["cached_token_percent"] = (
+                (float(cached) / float(input_tokens)) * 100.0
+                if isinstance(cached, (int, float))
+                and isinstance(input_tokens, (int, float))
+                and input_tokens > 0
+                else None
+            )
+        output[adapter] = row
+    return output
+
+
+def build_token_evidence(results: list[CellResult]) -> dict[str, Any]:
+    """Summarize whether each cell produced usable LLM/token telemetry."""
+    cells: list[dict[str, Any]] = []
+    counts = {
+        "present": 0,
+        "empty": 0,
+        "missing": 0,
+    }
+    for result in results:
+        metrics = result.token_metrics
+        files = metrics.get("trajectory_file_count")
+        calls = metrics.get("llm_call_count")
+        total_tokens = metrics.get("total_tokens")
+        input_tokens = metrics.get("input_tokens")
+        output_tokens = metrics.get("output_tokens")
+        has_files = isinstance(files, (int, float)) and not isinstance(files, bool) and files > 0
+        has_calls = isinstance(calls, (int, float)) and not isinstance(calls, bool) and calls > 0
+        has_tokens = any(
+            isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0
+            for value in (total_tokens, input_tokens, output_tokens)
+        )
+        if has_calls and has_tokens:
+            status = "present"
+            note = "LLM call and token telemetry found"
+        elif has_files:
+            status = "empty"
+            note = "trajectory artifacts found but no LLM token usage was extracted"
+        else:
+            status = "missing"
+            note = "no trajectory artifacts or token usage found"
+        counts[status] += 1
+        cells.append(
+            {
+                "benchmark": result.benchmark,
+                "adapter": result.adapter,
+                "status": status,
+                "note": note,
+                "trajectory_file_count": files,
+                "llm_call_count": calls,
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "total_tokens": total_tokens,
+                "cached_token_percent": metrics.get("cached_token_percent"),
+                "trajectory_dir": str(Path(result.output_dir).parent / "trajectories"),
+            }
+        )
+    return {
+        "ok": counts["missing"] == 0 and counts["empty"] == 0,
+        "status_counts": counts,
+        "cells": cells,
+        "message": (
+            "all cells produced LLM token telemetry"
+            if counts["missing"] == 0 and counts["empty"] == 0
+            else "some cells did not produce usable LLM token telemetry"
+        ),
+    }
+
+
+def _has_positive_total(outcome: dict[str, int | float | None]) -> bool:
+    total = outcome.get("total")
+    return isinstance(total, (int, float)) and not isinstance(total, bool) and total > 0
+
+
+def _is_zero_score(outcome: dict[str, int | float | None]) -> bool:
+    accuracy = outcome.get("accuracy")
+    return (
+        _has_positive_total(outcome)
+        and isinstance(accuracy, (int, float))
+        and not isinstance(accuracy, bool)
+        and accuracy <= 0
+    )
+
+
+def _comparison_status(
+    target_accuracy: Any,
+    baseline_accuracy: Any,
+    target_outcome: dict[str, int | float | None],
+    baseline_outcome: dict[str, int | float | None],
+) -> str:
+    if not isinstance(target_accuracy, (int, float)) or not isinstance(baseline_accuracy, (int, float)):
+        return "missing"
+    if not _has_positive_total(target_outcome) or not _has_positive_total(baseline_outcome):
+        return "missing"
+    if _is_zero_score(target_outcome) and _is_zero_score(baseline_outcome):
+        return "weak"
+    if target_accuracy + 1e-9 < baseline_accuracy:
+        return "inferior"
+    if target_accuracy > baseline_accuracy + 1e-9:
+        return "superior"
+    return "comparable"
+
+
+def _delta(target: Any, baseline: Any) -> int | float | None:
+    if isinstance(target, bool) or isinstance(baseline, bool):
+        return None
+    if isinstance(target, (int, float)) and isinstance(baseline, (int, float)):
+        return target - baseline
+    return None
+
+
+def build_head_to_head(
+    results: list[CellResult],
+    *,
+    target_adapter: str = DEFAULT_TARGET_ADAPTER,
+    baseline_adapter: str = DEFAULT_BASELINE_ADAPTER,
+) -> dict[str, Any]:
+    by_benchmark: dict[str, dict[str, CellResult]] = {}
+    for result in results:
+        by_benchmark.setdefault(result.benchmark, {})[result.adapter] = result
+
+    comparisons: list[dict[str, Any]] = []
+    for benchmark, adapter_results in sorted(by_benchmark.items()):
+        target = adapter_results.get(target_adapter)
+        baseline = adapter_results.get(baseline_adapter)
+        target_outcome = target.outcome_metrics if target else {}
+        baseline_outcome = baseline.outcome_metrics if baseline else {}
+        target_tokens = target.token_metrics if target else {}
+        baseline_tokens = baseline.token_metrics if baseline else {}
+        target_accuracy = target_outcome.get("accuracy")
+        baseline_accuracy = baseline_outcome.get("accuracy")
+        status = _comparison_status(
+            target_accuracy,
+            baseline_accuracy,
+            target_outcome,
+            baseline_outcome,
+        )
+        comparisons.append(
+            {
+                "benchmark": benchmark,
+                "status": status,
+                "target_adapter": target_adapter,
+                "baseline_adapter": baseline_adapter,
+                "target_accuracy": target_accuracy,
+                "baseline_accuracy": baseline_accuracy,
+                "accuracy_delta": _delta(target_accuracy, baseline_accuracy),
+                "target_right": target_outcome.get("right"),
+                "baseline_right": baseline_outcome.get("right"),
+                "right_delta": _delta(target_outcome.get("right"), baseline_outcome.get("right")),
+                "target_wrong": target_outcome.get("wrong"),
+                "baseline_wrong": baseline_outcome.get("wrong"),
+                "wrong_delta": _delta(target_outcome.get("wrong"), baseline_outcome.get("wrong")),
+                "target_total": target_outcome.get("total"),
+                "baseline_total": baseline_outcome.get("total"),
+                "target_input_tokens": target_tokens.get("input_tokens"),
+                "baseline_input_tokens": baseline_tokens.get("input_tokens"),
+                "input_token_delta": _delta(
+                    target_tokens.get("input_tokens"),
+                    baseline_tokens.get("input_tokens"),
+                ),
+                "target_output_tokens": target_tokens.get("output_tokens"),
+                "baseline_output_tokens": baseline_tokens.get("output_tokens"),
+                "output_token_delta": _delta(
+                    target_tokens.get("output_tokens"),
+                    baseline_tokens.get("output_tokens"),
+                ),
+                "target_total_tokens": target_tokens.get("total_tokens"),
+                "baseline_total_tokens": baseline_tokens.get("total_tokens"),
+                "total_token_delta": _delta(
+                    target_tokens.get("total_tokens"),
+                    baseline_tokens.get("total_tokens"),
+                ),
+                "target_cached_token_percent": target_tokens.get("cached_token_percent"),
+                "baseline_cached_token_percent": baseline_tokens.get("cached_token_percent"),
+                "cached_token_percent_delta": _delta(
+                    target_tokens.get("cached_token_percent"),
+                    baseline_tokens.get("cached_token_percent"),
+                ),
+                "target_llm_call_count": target_tokens.get("llm_call_count"),
+                "baseline_llm_call_count": baseline_tokens.get("llm_call_count"),
+                "llm_call_delta": _delta(
+                    target_tokens.get("llm_call_count"),
+                    baseline_tokens.get("llm_call_count"),
+                ),
+            }
+        )
+    return {
+        "target_adapter": target_adapter,
+        "baseline_adapter": baseline_adapter,
+        "status_counts": {
+            status: sum(1 for row in comparisons if row["status"] == status)
+            for status in ("superior", "comparable", "inferior", "weak", "missing")
+        },
+        "inferior_benchmarks": [
+            row["benchmark"] for row in comparisons if row["status"] == "inferior"
+        ],
+        "comparisons": comparisons,
+    }
+
+
+def _artifact_links(result: CellResult | None) -> dict[str, str | None]:
+    if result is None:
+        return {
+            "output_dir": None,
+            "result_path": None,
+            "stdout_path": None,
+            "stderr_path": None,
+            "trajectory_dir": None,
+        }
+    output_dir = Path(result.output_dir)
+    return {
+        "output_dir": result.output_dir,
+        "result_path": result.result_path,
+        "stdout_path": result.stdout_path,
+        "stderr_path": result.stderr_path,
+        "trajectory_dir": str(output_dir.parent / "trajectories"),
+    }
+
+
+def _trajectory_review(trajectory_dir: str | None) -> dict[str, Any]:
+    if not trajectory_dir:
+        return {
+            "trajectory_dir": None,
+            "trajectory_files": 0,
+            "turns": 0,
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "total_tokens": 0,
+            "cached_token_percent": None,
+            "mean_latency_ms": None,
+            "p95_latency_ms": None,
+            "repeated_prefix_count": 0,
+            "top_repeated_prefixes": [],
+            "review_notes": ["no trajectory directory recorded"],
+        }
+    summary, _records = summarize_trajectory(Path(trajectory_dir))
+    cached_percent: float | None = None
+    if summary.prompt_tokens:
+        cached_percent = (summary.cached_tokens / summary.prompt_tokens) * 100.0
+    notes: list[str] = []
+    if summary.files == 0:
+        notes.append("no trajectory files found")
+    if summary.turns == 0:
+        notes.append("no trajectory turns found")
+    if summary.repeated_prefixes:
+        notes.append("repeated prompt prefixes detected")
+    if cached_percent is None:
+        notes.append("no cached-token telemetry found")
+    return {
+        "trajectory_dir": trajectory_dir,
+        "trajectory_files": summary.files,
+        "turns": summary.turns,
+        "input_tokens": summary.prompt_tokens,
+        "output_tokens": summary.completion_tokens,
+        "total_tokens": summary.total_tokens,
+        "cached_token_percent": cached_percent,
+        "mean_latency_ms": summary.mean_latency_ms,
+        "p95_latency_ms": summary.p95_latency_ms,
+        "repeated_prefix_count": len(summary.repeated_prefixes),
+        "top_repeated_prefixes": [
+            {"count": count, "snippet": snippet[:160]}
+            for snippet, count in summary.repeated_prefixes[:3]
+        ],
+        "review_notes": notes,
+    }
+
+
+def build_improvement_queue(
+    results: list[CellResult],
+    head_to_head: dict[str, Any],
+    *,
+    target_adapter: str = DEFAULT_TARGET_ADAPTER,
+    baseline_adapter: str = DEFAULT_BASELINE_ADAPTER,
+    run_config: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    by_benchmark: dict[str, dict[str, CellResult]] = {}
+    for result in results:
+        by_benchmark.setdefault(result.benchmark, {})[result.adapter] = result
+
+    queue: list[dict[str, Any]] = []
+    for row in head_to_head.get("comparisons", []):
+        if not isinstance(row, dict):
+            continue
+        status = row.get("status")
+        if status not in {"inferior", "weak", "missing"}:
+            continue
+        benchmark = str(row.get("benchmark") or "")
+        adapter_results = by_benchmark.get(benchmark, {})
+        target = adapter_results.get(target_adapter)
+        baseline = adapter_results.get(baseline_adapter)
+        target_artifacts = _artifact_links(target)
+        baseline_artifacts = _artifact_links(baseline)
+        priority = "p0" if status in {"inferior", "weak"} else "p1"
+        queue.append(
+            {
+                "benchmark": benchmark,
+                "status": status,
+                "priority": priority,
+                "rerun_command_template": _queue_rerun_command_template(
+                    priority=priority,
+                    status=str(status),
+                    run_config=run_config,
+                ),
+                "next_action": (
+                    "review target and baseline trajectories, then improve elizaos"
+                    if status == "inferior"
+                    else "review benchmark evidence because both adapters scored zero"
+                    if status == "weak"
+                    else "run live benchmark cell until both adapters have comparable outcome metrics"
+                ),
+                "accuracy_delta": row.get("accuracy_delta"),
+                "right_delta": row.get("right_delta"),
+                "total_token_delta": row.get("total_token_delta"),
+                "cached_token_percent_delta": row.get("cached_token_percent_delta"),
+                "llm_call_delta": row.get("llm_call_delta"),
+                "target_failure_class": target.failure_class if target else None,
+                "baseline_failure_class": baseline.failure_class if baseline else None,
+                "target_notes": target.notes if target else [],
+                "baseline_notes": baseline.notes if baseline else [],
+                "target_artifacts": target_artifacts,
+                "baseline_artifacts": baseline_artifacts,
+                "target_trajectory_review": _trajectory_review(
+                    target_artifacts.get("trajectory_dir")
+                ),
+                "baseline_trajectory_review": _trajectory_review(
+                    baseline_artifacts.get("trajectory_dir")
+                ),
+            }
+        )
+    queue.sort(key=lambda item: (item["priority"], item["benchmark"]))
+    return queue
+
+
+def _append_config_args(parts: list[str], run_config: dict[str, Any] | None) -> None:
+    if not isinstance(run_config, dict):
+        return
+    provider = run_config.get("provider")
+    if provider:
+        parts.extend(["--provider", str(provider)])
+    model = run_config.get("model")
+    if model:
+        parts.extend(["--model", str(model)])
+    max_tasks = run_config.get("max_tasks")
+    if max_tasks is not None:
+        parts.extend(["--max-tasks", str(max_tasks)])
+    timeout_seconds = run_config.get("timeout_seconds")
+    if timeout_seconds is not None:
+        parts.extend(["--timeout-seconds", str(timeout_seconds)])
+    mode = run_config.get("mode")
+    if mode == "smoke" or run_config.get("smoke") is True:
+        parts.append("--smoke")
+    elif mode == "dry_run" or run_config.get("dry_run") is True:
+        parts.append("--dry-run")
+    if run_config.get("no_docker") is True:
+        parts.append("--no-docker")
+    if run_config.get("enforce_comparable") is True:
+        parts.append("--enforce-comparable")
+    if run_config.get("enforce_token_evidence") is True:
+        parts.append("--enforce-token-evidence")
+
+
+def _command_template(parts: list[str]) -> str:
+    return " ".join(part if part == "{summary_json}" else shlex.quote(part) for part in parts)
+
+
+def _matrix_rerun_command_template(
+    summary: dict[str, Any],
+    *,
+    benchmarks: list[str],
+    adapters: list[str],
+) -> str:
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--benchmarks",
+        ",".join(benchmarks),
+        "--adapters",
+        ",".join(adapters),
+    ]
+    _append_config_args(parts, summary.get("run_config"))
+    parts.extend(["--force", "--enforce-required-stats"])
+    return _command_template(parts)
+
+
+def _queue_rerun_command_template(
+    *,
+    priority: str,
+    status: str,
+    run_config: dict[str, Any] | None = None,
+) -> str:
+    parts = [
+        "python",
+        "-m",
+        "benchmarks.orchestrator.code_agent_matrix",
+        "--rerun-queue",
+        "{summary_json}",
+        "--queue-priorities",
+        priority,
+        "--queue-statuses",
+        status,
+        "--compare-summary",
+        "{summary_json}",
+    ]
+    _append_config_args(parts, run_config)
+    parts.append("--force")
+    return _command_template(parts)
+
+
+def _head_to_head_rows(summary: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    head_to_head = summary.get("head_to_head")
+    if not isinstance(head_to_head, dict):
+        return {}
+    rows: dict[str, dict[str, Any]] = {}
+    for row in head_to_head.get("comparisons", []):
+        if isinstance(row, dict) and isinstance(row.get("benchmark"), str):
+            rows[str(row["benchmark"])] = row
+    return rows
+
+
+def _trend_status(delta: int | float | None) -> str:
+    if delta is None:
+        return "missing"
+    if delta > 0:
+        return "improved"
+    if delta < 0:
+        return "regressed"
+    return "unchanged"
+
+
+def build_previous_summary_comparison(
+    current_summary: dict[str, Any],
+    previous_summary: dict[str, Any],
+) -> dict[str, Any]:
+    current_rows = _head_to_head_rows(current_summary)
+    previous_rows = _head_to_head_rows(previous_summary)
+    benchmarks = sorted(set(current_rows) | set(previous_rows))
+    comparisons: list[dict[str, Any]] = []
+    for benchmark in benchmarks:
+        current = current_rows.get(benchmark, {})
+        previous = previous_rows.get(benchmark, {})
+        target_accuracy_delta = _delta(
+            current.get("target_accuracy"),
+            previous.get("target_accuracy"),
+        )
+        comparisons.append(
+            {
+                "benchmark": benchmark,
+                "trend": _trend_status(target_accuracy_delta),
+                "previous_status": previous.get("status"),
+                "current_status": current.get("status"),
+                "previous_target_accuracy": previous.get("target_accuracy"),
+                "current_target_accuracy": current.get("target_accuracy"),
+                "target_accuracy_delta": target_accuracy_delta,
+                "previous_accuracy_delta": previous.get("accuracy_delta"),
+                "current_accuracy_delta": current.get("accuracy_delta"),
+                "accuracy_delta_change": _delta(
+                    current.get("accuracy_delta"),
+                    previous.get("accuracy_delta"),
+                ),
+                "target_total_token_delta": _delta(
+                    current.get("target_total_tokens"),
+                    previous.get("target_total_tokens"),
+                ),
+                "target_cached_token_percent_delta": _delta(
+                    current.get("target_cached_token_percent"),
+                    previous.get("target_cached_token_percent"),
+                ),
+                "target_llm_call_delta": _delta(
+                    current.get("target_llm_call_count"),
+                    previous.get("target_llm_call_count"),
+                ),
+            }
+        )
+    return {
+        "previous_generated_at": previous_summary.get("generated_at"),
+        "current_generated_at": current_summary.get("generated_at"),
+        "trend_counts": {
+            trend: sum(1 for row in comparisons if row["trend"] == trend)
+            for trend in ("improved", "unchanged", "regressed", "missing")
+        },
+        "comparisons": comparisons,
+    }
+
+
+def build_benchmark_gate(summary: dict[str, Any]) -> dict[str, Any]:
+    head_to_head = summary.get("head_to_head")
+    comparisons = []
+    if isinstance(head_to_head, dict):
+        comparisons = [
+            row
+            for row in head_to_head.get("comparisons", [])
+            if isinstance(row, dict)
+        ]
+    blocking = [
+        str(row.get("benchmark"))
+        for row in comparisons
+        if row.get("status") in {"inferior", "weak", "missing"}
+    ]
+    status_counts = (
+        head_to_head.get("status_counts", {})
+        if isinstance(head_to_head, dict)
+        else {}
+    )
+    return {
+        "ok": not blocking and bool(comparisons),
+        "required_statuses": ["superior", "comparable"],
+        "blocking_statuses": ["inferior", "weak", "missing"],
+        "blocking_benchmarks": sorted(blocking),
+        "status_counts": status_counts,
+        "message": (
+            "elizaos is comparable-or-better on all selected benchmarks"
+            if not blocking and comparisons
+            else "elizaos is not yet comparable-or-better on all selected benchmarks"
+        ),
+    }
+
+
+def build_required_stats_gate(
+    summary: dict[str, Any],
+    *,
+    mode: str | None = None,
+    require_token_evidence: bool | None = None,
+) -> dict[str, Any]:
+    if require_token_evidence is None:
+        require_token_evidence = mode not in {"smoke", "dry_run", "summarize"}
+    benchmark_gate = summary.get("benchmark_gate")
+    token_evidence = summary.get("token_evidence")
+    outcome_ok = bool(
+        isinstance(benchmark_gate, dict) and benchmark_gate.get("ok")
+    )
+    token_ok = bool(
+        isinstance(token_evidence, dict) and token_evidence.get("ok")
+    )
+    outcome_blocking_benchmarks = (
+        list(benchmark_gate.get("blocking_benchmarks") or [])
+        if isinstance(benchmark_gate, dict)
+        else []
+    )
+    head_to_head = summary.get("head_to_head")
+    outcome_blocking_comparisons = (
+        [
+            {
+                "benchmark": row.get("benchmark"),
+                "status": row.get("status"),
+                "target_accuracy": row.get("target_accuracy"),
+                "baseline_accuracy": row.get("baseline_accuracy"),
+                "target_total": row.get("target_total"),
+                "baseline_total": row.get("baseline_total"),
+                "rerun_command_template": _matrix_rerun_command_template(
+                    summary,
+                    benchmarks=[str(row.get("benchmark") or "")],
+                    adapters=[DEFAULT_TARGET_ADAPTER, DEFAULT_BASELINE_ADAPTER],
+                ),
+            }
+            for row in head_to_head.get("comparisons", [])
+            if isinstance(row, dict) and row.get("status") in {"inferior", "weak", "missing"}
+        ]
+        if isinstance(head_to_head, dict)
+        else []
+    )
+    token_blocking_cells = (
+        [
+            {
+                "benchmark": cell.get("benchmark"),
+                "adapter": cell.get("adapter"),
+                "status": cell.get("status"),
+                "trajectory_dir": cell.get("trajectory_dir"),
+                "note": cell.get("note"),
+                "rerun_command_template": _matrix_rerun_command_template(
+                    summary,
+                    benchmarks=[str(cell.get("benchmark") or "")],
+                    adapters=[str(cell.get("adapter") or "")],
+                ),
+            }
+            for cell in token_evidence.get("cells", [])
+            if isinstance(cell, dict) and cell.get("status") != "present"
+        ]
+        if isinstance(token_evidence, dict)
+        else []
+    )
+    blocking: list[str] = []
+    if not outcome_ok:
+        blocking.append("outcome_right_wrong_totals")
+    if require_token_evidence and not token_ok:
+        blocking.append("llm_token_telemetry")
+    return {
+        "ok": not blocking,
+        "mode": mode,
+        "outcome_evidence_required": True,
+        "outcome_evidence_ok": outcome_ok,
+        "token_evidence_required": bool(require_token_evidence),
+        "token_evidence_ok": token_ok,
+        "blocking_requirements": blocking,
+        "outcome_blocking_benchmarks": outcome_blocking_benchmarks,
+        "outcome_blocking_comparisons": outcome_blocking_comparisons,
+        "token_blocking_cells": token_blocking_cells if require_token_evidence else [],
+        "message": (
+            "required benchmark stats are complete for this run mode"
+            if not blocking
+            else "required benchmark stats are incomplete for this run mode"
+        ),
+    }
 
 
 def summarize_results(results: list[CellResult]) -> dict[str, Any]:
@@ -786,7 +1742,8 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         by_benchmark.setdefault(result.benchmark, {})
         by_benchmark[result.benchmark][result.failure_class] = by_benchmark[result.benchmark].get(result.failure_class, 0) + 1
 
-    return {
+    head_to_head = build_head_to_head(results)
+    summary = {
         "generated_at": datetime.now(UTC).isoformat(),
         "total": len(results),
         "status_counts": {
@@ -799,36 +1756,415 @@ def summarize_results(results: list[CellResult]) -> dict[str, Any]:
         },
         "by_adapter": by_adapter,
         "by_benchmark": by_benchmark,
+        "outcome_by_adapter": _aggregate_by_adapter(results, "outcome"),
+        "token_by_adapter": _aggregate_by_adapter(results, "token"),
+        "token_evidence": build_token_evidence(results),
+        "head_to_head": head_to_head,
+        "improvement_queue": build_improvement_queue(results, head_to_head),
         "cells": [asdict(result) for result in results],
+    }
+    summary["benchmark_gate"] = build_benchmark_gate(summary)
+    return summary
+
+
+def build_run_config(
+    args: argparse.Namespace,
+    *,
+    run_root: Path,
+    cell_pairs: tuple[tuple[str, str], ...],
+) -> dict[str, Any]:
+    adapters = sorted({adapter for _benchmark, adapter in cell_pairs})
+    benchmarks = sorted({benchmark for benchmark, _adapter in cell_pairs})
+    mode = "summarize" if args.summarize else "dry_run" if args.dry_run else "smoke" if args.smoke else "live"
+    return {
+        "mode": mode,
+        "provider": args.provider,
+        "model": args.model,
+        "adapters": adapters,
+        "benchmarks": benchmarks,
+        "max_tasks": args.max_tasks,
+        "timeout_seconds": args.timeout_seconds,
+        "run_root": str(run_root),
+        "smoke": bool(args.smoke),
+        "dry_run": bool(args.dry_run),
+        "no_docker": bool(args.no_docker),
+        "resume": not bool(args.no_resume),
+        "force": bool(args.force),
+        "summarize": str(args.summarize or ""),
+        "rerun_queue": str(args.rerun_queue or ""),
+        "queue_priorities": str(args.queue_priorities or ""),
+        "queue_statuses": str(args.queue_statuses or ""),
+        "compare_summary": str(args.compare_summary or ""),
+        "enforce_comparable": bool(args.enforce_comparable),
+        "enforce_token_evidence": bool(args.enforce_token_evidence),
+        "enforce_required_stats": bool(args.enforce_required_stats),
     }
 
 
+def previous_run_mode(run_root: Path) -> str | None:
+    previous_summary = read_json(run_root / "summary.json")
+    if not isinstance(previous_summary, dict):
+        return None
+    run_config = previous_summary.get("run_config")
+    if not isinstance(run_config, dict):
+        return None
+    mode = run_config.get("mode")
+    return mode if isinstance(mode, str) and mode else None
+
+
 def render_markdown(summary: dict[str, Any]) -> str:
+    def fmt(value: Any, digits: int = 4) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, float):
+            return f"{value:.{digits}f}"
+        return str(value)
+
     lines = [
         "# Code Agent Matrix Summary",
         "",
         f"Generated: {summary.get('generated_at')}",
         f"Cells: {summary.get('total')}",
-        "",
-        "## Cells",
-        "",
-        "| benchmark | adapter | status | score | failure_class | result |",
-        "| --- | --- | --- | ---: | --- | --- |",
     ]
+    run_config = summary.get("run_config")
+    if isinstance(run_config, dict):
+        lines.extend(
+            [
+                "",
+                "## Run Config",
+                "",
+                f"Mode: {run_config.get('mode', '')}",
+                f"Provider/model: {run_config.get('provider', '')}/{run_config.get('model', '')}",
+                f"Benchmarks: {', '.join(run_config.get('benchmarks') or [])}",
+                f"Adapters: {', '.join(run_config.get('adapters') or [])}",
+                f"Max tasks: {run_config.get('max_tasks', '')}",
+                f"Timeout seconds: {run_config.get('timeout_seconds', '')}",
+                f"Enforce comparable: {run_config.get('enforce_comparable')}",
+                f"Enforce token evidence: {run_config.get('enforce_token_evidence')}",
+                f"Enforce required stats: {run_config.get('enforce_required_stats')}",
+            ]
+        )
+    preflight = summary.get("preflight")
+    if isinstance(preflight, dict):
+        lines.extend(
+            [
+                "",
+                "## Preflight",
+                "",
+                f"Status: {'ok' if preflight.get('ok') else 'blocked'}",
+                f"Provider: {preflight.get('provider', '')}",
+                f"Provider key: {preflight.get('provider_key', '')} ({'present' if preflight.get('provider_key_present') else 'missing'}, {'required' if preflight.get('provider_key_required') else 'not required'})",
+                f"OpenCode: {preflight.get('opencode_bin') or 'missing'}",
+            ]
+        )
+        issues = preflight.get("issues")
+        if isinstance(issues, list) and issues:
+            lines.extend(["", "| severity | kind | message |", "| --- | --- | --- |"])
+            for issue in issues:
+                if not isinstance(issue, dict):
+                    continue
+                lines.append(
+                    "| {severity} | {kind} | {message} |".format(
+                        severity=issue.get("severity", ""),
+                        kind=issue.get("kind", ""),
+                        message=issue.get("message", ""),
+                    )
+                )
+    lines.extend(
+        [
+            "",
+            "## Benchmark Gate",
+            "",
+        ]
+    )
+    gate = summary.get("benchmark_gate")
+    if isinstance(gate, dict):
+        lines.extend(
+            [
+                f"Status: {'ok' if gate.get('ok') else 'blocked'}",
+                f"Message: {gate.get('message', '')}",
+                f"Blocking benchmarks: {', '.join(gate.get('blocking_benchmarks') or []) or '(none)'}",
+                "",
+            ]
+        )
+    required_stats_gate = summary.get("required_stats_gate")
+    if isinstance(required_stats_gate, dict):
+        lines.extend(
+            [
+                "## Required Stats Gate",
+                "",
+                f"Status: {'ok' if required_stats_gate.get('ok') else 'blocked'}",
+                f"Message: {required_stats_gate.get('message', '')}",
+                f"Token evidence required: {required_stats_gate.get('token_evidence_required')}",
+                f"Blocking requirements: {', '.join(required_stats_gate.get('blocking_requirements') or []) or '(none)'}",
+                "",
+            ]
+        )
+        outcome_blocking_comparisons = required_stats_gate.get("outcome_blocking_comparisons")
+        if isinstance(outcome_blocking_comparisons, list) and outcome_blocking_comparisons:
+            lines.extend(
+                [
+                    "| benchmark | outcome status | target accuracy | baseline accuracy | target total | baseline total | rerun |",
+                    "| --- | --- | ---: | ---: | ---: | ---: | --- |",
+                ]
+            )
+            for row in outcome_blocking_comparisons:
+                if not isinstance(row, dict):
+                    continue
+                lines.append(
+                    "| {benchmark} | {status} | {target_accuracy} | {baseline_accuracy} | {target_total} | {baseline_total} | `{rerun}` |".format(
+                        benchmark=row.get("benchmark", ""),
+                        status=row.get("status", ""),
+                        target_accuracy=fmt(row.get("target_accuracy")),
+                        baseline_accuracy=fmt(row.get("baseline_accuracy")),
+                        target_total=fmt(row.get("target_total"), 0),
+                        baseline_total=fmt(row.get("baseline_total"), 0),
+                        rerun=row.get("rerun_command_template", ""),
+                    )
+                )
+            lines.append("")
+        token_blocking_cells = required_stats_gate.get("token_blocking_cells")
+        if isinstance(token_blocking_cells, list) and token_blocking_cells:
+            lines.extend(
+                [
+                    "| benchmark | adapter | token evidence | trajectory dir | note | rerun |",
+                    "| --- | --- | --- | --- | --- | --- |",
+                ]
+            )
+            for cell in token_blocking_cells:
+                if not isinstance(cell, dict):
+                    continue
+                lines.append(
+                    "| {benchmark} | {adapter} | {status} | {trajectory_dir} | {note} | `{rerun}` |".format(
+                        benchmark=cell.get("benchmark", ""),
+                        adapter=cell.get("adapter", ""),
+                        status=cell.get("status", ""),
+                        trajectory_dir=cell.get("trajectory_dir", ""),
+                        note=cell.get("note", ""),
+                        rerun=cell.get("rerun_command_template", ""),
+                    )
+                )
+            lines.append("")
+    lines.extend(
+        [
+            "## Cells",
+            "",
+            "| benchmark | adapter | status | score | right | wrong | total | cached % | input tokens | output tokens | LLM calls | failure_class | result |",
+            "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- | --- |",
+        ]
+    )
     for cell in summary.get("cells", []):
         result_path = cell.get("result_path") or ""
         score = cell.get("score")
         score_text = "" if score is None else f"{float(score):.4f}"
+        outcome = cell.get("outcome_metrics") if isinstance(cell.get("outcome_metrics"), dict) else {}
+        tokens = cell.get("token_metrics") if isinstance(cell.get("token_metrics"), dict) else {}
         lines.append(
-            "| {benchmark} | {adapter} | {status} | {score} | {failure_class} | {result} |".format(
+            "| {benchmark} | {adapter} | {status} | {score} | {right} | {wrong} | {total} | {cached} | {input_tokens} | {output_tokens} | {llm_calls} | {failure_class} | {result} |".format(
                 benchmark=cell.get("benchmark", ""),
                 adapter=cell.get("adapter", ""),
                 status=cell.get("status", ""),
                 score=score_text,
+                right=fmt(outcome.get("right"), 0),
+                wrong=fmt(outcome.get("wrong"), 0),
+                total=fmt(outcome.get("total"), 0),
+                cached=fmt(tokens.get("cached_token_percent"), 2),
+                input_tokens=fmt(tokens.get("input_tokens"), 0),
+                output_tokens=fmt(tokens.get("output_tokens"), 0),
+                llm_calls=fmt(tokens.get("llm_call_count"), 0),
                 failure_class=cell.get("failure_class", ""),
                 result=result_path,
             )
         )
+    head_to_head = summary.get("head_to_head")
+    if isinstance(head_to_head, dict):
+        lines.extend(
+            [
+                "",
+                "## ElizaOS vs OpenCode",
+                "",
+                "| benchmark | status | target accuracy | baseline accuracy | accuracy delta | target right/wrong | baseline right/wrong | total token delta | cached % delta | LLM call delta |",
+                "| --- | --- | ---: | ---: | ---: | --- | --- | ---: | ---: | ---: |",
+            ]
+        )
+        for row in head_to_head.get("comparisons", []):
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                "| {benchmark} | {status} | {target_accuracy} | {baseline_accuracy} | {accuracy_delta} | {target_rw} | {baseline_rw} | {token_delta} | {cached_delta} | {llm_delta} |".format(
+                    benchmark=row.get("benchmark", ""),
+                    status=row.get("status", ""),
+                    target_accuracy=fmt(row.get("target_accuracy")),
+                    baseline_accuracy=fmt(row.get("baseline_accuracy")),
+                    accuracy_delta=fmt(row.get("accuracy_delta")),
+                    target_rw=f"{fmt(row.get('target_right'), 0)}/{fmt(row.get('target_wrong'), 0)}",
+                    baseline_rw=f"{fmt(row.get('baseline_right'), 0)}/{fmt(row.get('baseline_wrong'), 0)}",
+                    token_delta=fmt(row.get("total_token_delta"), 0),
+                    cached_delta=fmt(row.get("cached_token_percent_delta"), 2),
+                    llm_delta=fmt(row.get("llm_call_delta"), 0),
+                )
+            )
+    token_by_adapter = summary.get("token_by_adapter")
+    if isinstance(token_by_adapter, dict):
+        lines.extend(["", "## Token Totals By Adapter", ""])
+        lines.append("| adapter | input | output | total | cached | cached % | LLM calls |")
+        lines.append("| --- | ---: | ---: | ---: | ---: | ---: | ---: |")
+        for adapter, metrics in sorted(token_by_adapter.items()):
+            if not isinstance(metrics, dict):
+                continue
+            lines.append(
+                "| {adapter} | {input_tokens} | {output_tokens} | {total_tokens} | {cached_tokens} | {cached_percent} | {llm_calls} |".format(
+                    adapter=adapter,
+                    input_tokens=fmt(metrics.get("input_tokens"), 0),
+                    output_tokens=fmt(metrics.get("output_tokens"), 0),
+                    total_tokens=fmt(metrics.get("total_tokens"), 0),
+                    cached_tokens=fmt(metrics.get("cached_tokens"), 0),
+                    cached_percent=fmt(metrics.get("cached_token_percent"), 2),
+                    llm_calls=fmt(metrics.get("llm_call_count"), 0),
+                )
+            )
+    token_evidence = summary.get("token_evidence")
+    if isinstance(token_evidence, dict):
+        lines.extend(
+            [
+                "",
+                "## Token Evidence",
+                "",
+                f"Status: {'ok' if token_evidence.get('ok') else 'incomplete'}",
+                f"Message: {token_evidence.get('message', '')}",
+                "",
+                "| benchmark | adapter | evidence | LLM calls | input | output | total | cached % | note |",
+                "| --- | --- | --- | ---: | ---: | ---: | ---: | ---: | --- |",
+            ]
+        )
+        for cell in token_evidence.get("cells", []):
+            if not isinstance(cell, dict):
+                continue
+            lines.append(
+                "| {benchmark} | {adapter} | {status} | {llm_calls} | {input_tokens} | {output_tokens} | {total_tokens} | {cached_percent} | {note} |".format(
+                    benchmark=cell.get("benchmark", ""),
+                    adapter=cell.get("adapter", ""),
+                    status=cell.get("status", ""),
+                    llm_calls=fmt(cell.get("llm_call_count"), 0),
+                    input_tokens=fmt(cell.get("input_tokens"), 0),
+                    output_tokens=fmt(cell.get("output_tokens"), 0),
+                    total_tokens=fmt(cell.get("total_tokens"), 0),
+                    cached_percent=fmt(cell.get("cached_token_percent"), 2),
+                    note=cell.get("note", ""),
+                )
+            )
+    previous_comparison = summary.get("previous_summary_comparison")
+    if isinstance(previous_comparison, dict):
+        lines.extend(
+            [
+                "",
+                "## Previous Summary Comparison",
+                "",
+                "| benchmark | trend | previous status | current status | target accuracy delta | accuracy gap change | target token delta | cached % delta | LLM call delta |",
+                "| --- | --- | --- | --- | ---: | ---: | ---: | ---: | ---: |",
+            ]
+        )
+        for row in previous_comparison.get("comparisons", []):
+            if not isinstance(row, dict):
+                continue
+            lines.append(
+                "| {benchmark} | {trend} | {previous_status} | {current_status} | {target_accuracy_delta} | {gap_change} | {token_delta} | {cached_delta} | {llm_delta} |".format(
+                    benchmark=row.get("benchmark", ""),
+                    trend=row.get("trend", ""),
+                    previous_status=row.get("previous_status") or "",
+                    current_status=row.get("current_status") or "",
+                    target_accuracy_delta=fmt(row.get("target_accuracy_delta")),
+                    gap_change=fmt(row.get("accuracy_delta_change")),
+                    token_delta=fmt(row.get("target_total_token_delta"), 0),
+                    cached_delta=fmt(row.get("target_cached_token_percent_delta"), 2),
+                    llm_delta=fmt(row.get("target_llm_call_delta"), 0),
+                )
+            )
+    improvement_queue = summary.get("improvement_queue")
+    if isinstance(improvement_queue, list) and improvement_queue:
+        lines.extend(
+            [
+                "",
+                "## Improvement Queue",
+                "",
+                "| priority | benchmark | status | next action | accuracy delta | target failure | baseline failure | target trajectories | baseline trajectories |",
+                "| --- | --- | --- | --- | ---: | --- | --- | --- | --- |",
+            ]
+        )
+        for item in improvement_queue:
+            if not isinstance(item, dict):
+                continue
+            target_artifacts = item.get("target_artifacts")
+            baseline_artifacts = item.get("baseline_artifacts")
+            target_trajectory = (
+                target_artifacts.get("trajectory_dir")
+                if isinstance(target_artifacts, dict)
+                else ""
+            )
+            baseline_trajectory = (
+                baseline_artifacts.get("trajectory_dir")
+                if isinstance(baseline_artifacts, dict)
+                else ""
+            )
+            lines.append(
+                "| {priority} | {benchmark} | {status} | {next_action} | {accuracy_delta} | {target_failure} | {baseline_failure} | {target_trajectory} | {baseline_trajectory} |".format(
+                    priority=item.get("priority", ""),
+                    benchmark=item.get("benchmark", ""),
+                    status=item.get("status", ""),
+                    next_action=item.get("next_action", ""),
+                    accuracy_delta=fmt(item.get("accuracy_delta")),
+                    target_failure=item.get("target_failure_class") or "",
+                    baseline_failure=item.get("baseline_failure_class") or "",
+                    target_trajectory=target_trajectory or "",
+                    baseline_trajectory=baseline_trajectory or "",
+                )
+            )
+        command_templates = []
+        seen_commands: set[str] = set()
+        for item in improvement_queue:
+            if not isinstance(item, dict):
+                continue
+            command = item.get("rerun_command_template")
+            if isinstance(command, str) and command and command not in seen_commands:
+                command_templates.append(command)
+                seen_commands.add(command)
+        if command_templates:
+            lines.extend(["", "### Queue Rerun Commands", ""])
+            for command in command_templates:
+                lines.extend(["```bash", command, "```", ""])
+        lines.extend(
+            [
+                "",
+                "### Trajectory Review Briefs",
+                "",
+                "| benchmark | adapter | files | turns | input | output | cached % | repeated prefixes | notes |",
+                "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
+            ]
+        )
+        for item in improvement_queue:
+            if not isinstance(item, dict):
+                continue
+            for adapter_key, review_key in (
+                ("target", "target_trajectory_review"),
+                ("baseline", "baseline_trajectory_review"),
+            ):
+                review = item.get(review_key)
+                if not isinstance(review, dict):
+                    continue
+                notes = ", ".join(str(note) for note in review.get("review_notes") or [])
+                lines.append(
+                    "| {benchmark} | {adapter} | {files} | {turns} | {input_tokens} | {output_tokens} | {cached_percent} | {repeats} | {notes} |".format(
+                        benchmark=item.get("benchmark", ""),
+                        adapter=adapter_key,
+                        files=fmt(review.get("trajectory_files"), 0),
+                        turns=fmt(review.get("turns"), 0),
+                        input_tokens=fmt(review.get("input_tokens"), 0),
+                        output_tokens=fmt(review.get("output_tokens"), 0),
+                        cached_percent=fmt(review.get("cached_token_percent"), 2),
+                        repeats=fmt(review.get("repeated_prefix_count"), 0),
+                        notes=notes,
+                    )
+                )
     lines.extend(["", "## Failure Classes", ""])
     for klass, count in sorted((summary.get("failure_classes") or {}).items()):
         if count:
@@ -879,16 +2215,60 @@ def summarize_existing(run_root: Path) -> list[CellResult]:
                 failure_class=failure_class,
                 notes=notes,
                 score=score_from_payload(payload),
+                outcome_metrics=collect_outcome_metrics(payload),
+                token_metrics=collect_token_metrics(Path(str(meta.get("trajectory_dir") or (cell_dir / "trajectories")))),
                 resumed=True,
             )
         )
     return results
 
 
+def queue_cell_pairs(
+    summary: dict[str, Any],
+    *,
+    priorities: set[str] | None = None,
+    statuses: set[str] | None = None,
+) -> tuple[tuple[str, str], ...]:
+    pairs: set[tuple[str, str]] = set()
+    queue = summary.get("improvement_queue")
+    if not isinstance(queue, list):
+        return ()
+    for item in queue:
+        if not isinstance(item, dict):
+            continue
+        priority = str(item.get("priority") or "")
+        status = str(item.get("status") or "")
+        if priorities is not None and priority not in priorities:
+            continue
+        if statuses is not None and status not in statuses:
+            continue
+        benchmark = str(item.get("benchmark") or "")
+        if not benchmark:
+            continue
+        for artifacts_key in ("target_artifacts", "baseline_artifacts"):
+            artifacts = item.get(artifacts_key)
+            if not isinstance(artifacts, dict):
+                continue
+            output_dir = artifacts.get("output_dir")
+            if not isinstance(output_dir, str) or not output_dir:
+                continue
+            adapter = Path(output_dir).parent.name
+            if adapter:
+                pairs.add((benchmark, adapter))
+    return tuple(sorted(pairs))
+
+
 def parse_csv(value: str | None, default: tuple[str, ...]) -> tuple[str, ...]:
     if not value:
         return default
     return tuple(item.strip() for item in value.split(",") if item.strip())
+
+
+def parse_optional_csv_set(value: str | None) -> set[str] | None:
+    if not value:
+        return None
+    items = {item.strip() for item in value.split(",") if item.strip()}
+    return items or None
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -903,9 +2283,45 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--no-docker", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--preflight", action="store_true", help="Print readiness checks and exit.")
+    parser.add_argument(
+        "--enforce-comparable",
+        action="store_true",
+        help="Exit nonzero unless elizaos is comparable-or-better on every selected benchmark.",
+    )
+    parser.add_argument(
+        "--enforce-token-evidence",
+        action="store_true",
+        help="Exit nonzero unless every selected cell produced usable LLM token telemetry.",
+    )
+    parser.add_argument(
+        "--enforce-required-stats",
+        action="store_true",
+        help="Exit nonzero unless required right/wrong and token stats are complete for the run mode.",
+    )
     parser.add_argument("--force", action="store_true", help="Re-run cells even when cell-result.json exists.")
     parser.add_argument("--no-resume", action="store_true", help="Ignore existing cell-result.json files.")
     parser.add_argument("--summarize", default="", help="Summarize an existing run root instead of executing.")
+    parser.add_argument(
+        "--compare-summary",
+        default="",
+        help="Attach trend deltas against a previous summary.json.",
+    )
+    parser.add_argument(
+        "--rerun-queue",
+        default="",
+        help="Read a previous summary.json and run only queued target/baseline cells.",
+    )
+    parser.add_argument(
+        "--queue-priorities",
+        default="",
+        help="Comma-separated queue priorities to rerun, for example p0,p1.",
+    )
+    parser.add_argument(
+        "--queue-statuses",
+        default="",
+        help="Comma-separated queue statuses to rerun, for example inferior,missing.",
+    )
     return parser.parse_args(argv)
 
 
@@ -913,13 +2329,34 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     root = workspace_root()
     default_run_root = root / "benchmark_results" / "code-agent-matrix" / now_id()
-    run_root = Path(args.summarize or args.run_root or default_run_root).expanduser().resolve()
+    queue_summary_path = Path(args.rerun_queue).expanduser().resolve() if args.rerun_queue else None
+    run_root = Path(
+        args.summarize
+        or args.run_root
+        or (queue_summary_path.parent if queue_summary_path is not None else default_run_root)
+    ).expanduser().resolve()
+    summarized_previous_mode = previous_run_mode(run_root) if args.summarize else None
 
     if args.summarize:
         results = summarize_existing(run_root)
+        preflight = None
+        cell_pairs = tuple(
+            sorted({(result.benchmark, result.adapter) for result in results})
+        )
     else:
-        adapters = parse_csv(args.adapters, DEFAULT_ADAPTERS)
-        benchmarks = parse_csv(args.benchmarks, DEFAULT_BENCHMARKS)
+        if queue_summary_path is not None:
+            queue_summary = read_json(queue_summary_path)
+            if not isinstance(queue_summary, dict):
+                raise SystemExit(f"Could not read queue summary: {queue_summary_path}")
+            cell_pairs = queue_cell_pairs(
+                queue_summary,
+                priorities=parse_optional_csv_set(args.queue_priorities),
+                statuses=parse_optional_csv_set(args.queue_statuses),
+            )
+        else:
+            adapters = parse_csv(args.adapters, DEFAULT_ADAPTERS)
+            benchmarks = parse_csv(args.benchmarks, DEFAULT_BENCHMARKS)
+            cell_pairs = tuple((benchmark, adapter) for benchmark in benchmarks for adapter in adapters)
         cells = [
             build_cell(
                 root=root,
@@ -932,9 +2369,20 @@ def main(argv: list[str] | None = None) -> int:
                 smoke=args.smoke,
                 no_docker=args.no_docker,
             )
-            for benchmark in benchmarks
-            for adapter in adapters
+            for benchmark, adapter in cell_pairs
         ]
+        preflight = preflight_matrix(
+            root=root,
+            cells=cells,
+            provider=args.provider,
+            require_provider_key=not (args.smoke or args.dry_run),
+        )
+        if args.preflight:
+            print(json.dumps(preflight, indent=2, sort_keys=True))
+            return 0 if preflight["ok"] else 2
+        if not preflight["ok"]:
+            print(json.dumps(preflight, indent=2, sort_keys=True))
+            return 2
         results = [
             run_cell(
                 cell,
@@ -947,9 +2395,57 @@ def main(argv: list[str] | None = None) -> int:
         ]
 
     summary = summarize_results(results)
+    summary["run_config"] = build_run_config(
+        args,
+        run_root=run_root,
+        cell_pairs=cell_pairs,
+    )
+    if args.summarize and summarized_previous_mode:
+        summary["run_config"]["mode"] = summarized_previous_mode
+        summary["run_config"]["summarized_existing"] = True
+    summary["improvement_queue"] = build_improvement_queue(
+        results,
+        summary["head_to_head"],
+        run_config=summary["run_config"],
+    )
+    summary["required_stats_gate"] = build_required_stats_gate(
+        summary,
+        mode=summary["run_config"].get("mode"),
+        require_token_evidence=(
+            True
+            if args.enforce_token_evidence
+            else None
+        ),
+    )
+    if preflight is not None:
+        summary["preflight"] = preflight
+    if args.compare_summary:
+        previous_summary = read_json(Path(args.compare_summary).expanduser().resolve())
+        if not isinstance(previous_summary, dict):
+            raise SystemExit(f"Could not read comparison summary: {args.compare_summary}")
+        summary["previous_summary_comparison"] = build_previous_summary_comparison(
+            summary,
+            previous_summary,
+        )
     write_json(run_root / "summary.json", summary)
     (run_root / "summary.md").write_text(render_markdown(summary), encoding="utf-8")
     print(json.dumps({"run_root": str(run_root), "summary": str(run_root / "summary.json")}, indent=2))
+    if args.enforce_comparable and not summary["benchmark_gate"]["ok"]:
+        return 3
+    token_evidence = summary.get("token_evidence")
+    if (
+        args.enforce_token_evidence
+        and isinstance(token_evidence, dict)
+        and not token_evidence.get("ok")
+    ):
+        return 4
+    required_stats_gate = summary.get("required_stats_gate")
+    if (
+        args.enforce_required_stats
+        and isinstance(required_stats_gate, dict)
+        and not required_stats_gate.get("ok")
+    ):
+        return 5
     return 0
 
 

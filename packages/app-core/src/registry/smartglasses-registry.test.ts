@@ -24,6 +24,18 @@ describe("smartglasses registry entry", () => {
     expect(parsed.npmName).toBe("@elizaos/plugin-smartglasses");
     expect(parsed.config).toHaveProperty("SMARTGLASSES_TRANSPORT");
     expect(parsed.config).toHaveProperty("SMARTGLASSES_INIT_MODE");
+    expect(parsed.config.SMARTGLASSES_TRANSPORT?.type).toBe("select");
+    expect(
+      parsed.config.SMARTGLASSES_TRANSPORT?.options?.map(
+        (option) => option.value,
+      ),
+    ).toEqual(["auto", "even-bridge", "web-bluetooth", "noble"]);
+    expect(parsed.config.SMARTGLASSES_INIT_MODE?.type).toBe("select");
+    expect(
+      parsed.config.SMARTGLASSES_INIT_MODE?.options?.map(
+        (option) => option.value,
+      ),
+    ).toEqual(["lens-specific", "official", "android-f4"]);
     expect(parsed.tags).toEqual(
       expect.arrayContaining([
         "smartglasses",
@@ -33,8 +45,8 @@ describe("smartglasses registry entry", () => {
       ]),
     );
     expect(parsed.render.actions).toContain("launch");
-    expect(parsed.launch?.target).toBe("smartglasses");
-    expect(parsed.launch?.capabilities).toContain("wifi-provisioning");
+    expect(data.launch.target).toBe("smartglasses");
+    expect(data.launch.capabilities).toContain("wifi-provisioning");
     expect(registry.byId.get("smartglasses")?.name).toBe("Smartglasses");
     expect(registry.byNpmName.get("@elizaos/plugin-smartglasses")?.id).toBe(
       "smartglasses",

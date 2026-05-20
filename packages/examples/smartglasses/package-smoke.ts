@@ -186,6 +186,14 @@ try {
   await controlAction.handler(
     runtime as never,
     {
+      content: {
+        text: '{"op":"connection_ready","initMode":"android-f4"}',
+      },
+    } as never,
+  );
+  await controlAction.handler(
+    runtime as never,
+    {
       content: { text: '{"op":"heartbeat_start","intervalMs":1000}' },
     } as never,
   );
@@ -279,6 +287,16 @@ try {
     ).length < 3
   ) {
     throw new Error("Package smoke did not send official same-init packets");
+  }
+  if (
+    transport.writes.filter(
+      (write) =>
+        write.data[0] === G1Command.RightInit &&
+        write.data[1] === 0x01 &&
+        (write.side === "left" || write.side === "right"),
+    ).length < 3
+  ) {
+    throw new Error("Package smoke did not send Android F4 same-init packets");
   }
   if (!commands.includes(G1Command.Heartbeat)) {
     throw new Error("Package smoke did not send heartbeat packets");

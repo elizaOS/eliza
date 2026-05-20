@@ -70,6 +70,7 @@ await service.setSilentMode(false);
 await service.setGlassesWearDetection(true);
 await service.sendConnectionReady();
 await service.sendConnectionReady("both", "official");
+await service.sendConnectionReady("both", "android-f4");
 await service.exitFunction();
 await service.requestSerial("right");
 await service.sendAppWhitelist({ apps: ["eliza"] });
@@ -172,6 +173,16 @@ if (
   ).length < 3
 ) {
   throw new Error("Example did not send official same-init packets");
+}
+if (
+  transport.writes.filter(
+    (write) =>
+      write.data[0] === G1Command.RightInit &&
+      write.data[1] === 0x01 &&
+      (write.side === "left" || write.side === "right"),
+  ).length < 3
+) {
+  throw new Error("Example did not send Android F4 same-init packets");
 }
 if (
   !transport.writes.some((write) => write.data[0] === G1Command.ExitFunction)

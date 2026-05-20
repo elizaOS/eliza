@@ -15,6 +15,7 @@ the tests are skipped rather than failed so a freshly-cloned repo can still
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -28,15 +29,23 @@ _HEAVY_DEPS_OK: tuple[bool, str | None]
 
 def _check_upstream_importable() -> tuple[bool, str | None]:
     benchmark_dir = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(benchmark_dir))
     sys.path.insert(0, str(benchmark_dir / "upstream"))
     try:
-        import spacy  # noqa: F401
-        try:
-            spacy.load("en_core_web_sm")
-        except Exception as exc:
-            return False, f"spaCy model 'en_core_web_sm' not available: {exc}"
+        if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB"):
+            sys.modules.pop("spacy", None)
+        else:
+            import spacy  # noqa: F401
+            try:
+                spacy.load("en_core_web_sm")
+            except Exception as exc:
+                return False, f"spaCy model 'en_core_web_sm' not available: {exc}"
         import torch  # noqa: F401
-        import thefuzz  # noqa: F401
+        if os.environ.get("WEBSHOP_ALLOW_SPACY_STUB"):
+            sys.modules.pop("thefuzz", None)
+            sys.modules.pop("thefuzz.fuzz", None)
+        else:
+            import thefuzz  # noqa: F401
         import bs4  # noqa: F401
         # Trigger the environment module to install BM25 / pyserini-stub
         # shims; that is the entry point real callers use.
@@ -129,7 +138,7 @@ def test_get_reward_is_upstream_tfidf_based() -> None:
 # ---------------------------------------------------------------------------
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture()
 def sample_env():
     """Construct a real WebShopEnvironment over the bundled sample catalog."""
     from elizaos_webshop.dataset import WebShopDataset
@@ -183,4 +192,5 @@ def test_mock_agent_runs_episode_to_completion(sample_env) -> None:
 
     assert steps, "agent produced no steps"
     assert env.done, "agent failed to reach a terminal state"
-    assert 0.0 <= env.final_reward <= 1.0
+    assert env.final_reward == 1.0
+    assert env.purchased_product_id == task.target_product_ids[0]

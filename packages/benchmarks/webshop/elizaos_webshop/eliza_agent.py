@@ -8,8 +8,10 @@ but intentionally does not import ``elizaos``.
 
 from __future__ import annotations
 
+import json
 import logging
 from dataclasses import dataclass, field
+from typing import Any
 
 from elizaos_webshop.environment import StepOutcome, WebShopEnvironment
 from elizaos_webshop.trajectory_integration import WebShopTrajectoryIntegration
@@ -85,9 +87,10 @@ async def get_webshop_context_provider(*_args: object, **_kwargs: object) -> obj
 class MockWebShopAgent:
     """Deterministic agent that drives the real upstream env.
 
-    Strategy: extract a short query from the goal, search, click the first
-    product, select the first value for each option, then buy. Used for
-    smoke tests and harness validation, *not* as a baseline.
+    Strategy: use structural task metadata from upstream WebShop goals when it
+    is available, search, click the target product, select requested option
+    values, then buy. Used for smoke tests and harness validation, *not* as a
+    baseline.
     """
 
     def __init__(self, env: WebShopEnvironment, *, max_turns: int = 20) -> None:
@@ -123,46 +126,45 @@ class MockWebShopAgent:
             ctx.last_observation = outcome.observation
             return outcome
 
-        # Build a simple query from the instruction text.
-        query = " ".join(task.instruction.split()[:8]).strip() or "product"
+        goal = self._goal_payload(task)
+
+        # Prefer upstream's query field when present. It avoids polluting the
+        # search string with option and budget text from human instructions.
+        query = str(goal.get("query") or "").strip()
+        if not query:
+            query = " ".join(task.instruction.split()[:8]).strip() or "product"
         take_step(f"search[{query}]")
         if ctx.done:
             ctx.final_response = self._final_message()
             return list(ctx.steps), ctx.final_response, ctx.last_observation
 
-        # Click the first product-link clickable in the available actions.
+        target_asins = [asin.lower() for asin in task.target_product_ids if asin]
         avail = self.env.available_actions
-        product_click = next(
-            (a for a in avail if a.startswith("click[") and "next >" not in a.lower()
-             and "< prev" not in a.lower() and "back to search" not in a.lower()
-             and "buy now" not in a.lower()),
-            None,
-        )
+        product_click = self._first_matching_click(avail, target_asins)
+        if product_click is None:
+            product_click = next(
+                (a for a in avail if a.startswith("click[") and "next >" not in a.lower()
+                 and "< prev" not in a.lower() and "back to search" not in a.lower()
+                 and "buy now" not in a.lower()),
+                None,
+            )
         if product_click is not None:
             take_step(product_click)
 
-        # Select first value for every visible option (click[<value>] entries
-        # appear as button clickables on the item page).
+        # Select only the option values requested by the upstream goal. Clicking
+        # every option overwrites earlier selections and turns smoke tests into
+        # guaranteed partial rewards.
         if not ctx.done:
-            seen: set[str] = set()
-            for _ in range(self.max_turns):
+            option_values = [
+                str(value).strip().lower()
+                for value in self._goal_options(goal).values()
+                if str(value).strip()
+            ]
+            for option_value in option_values:
                 avail = self.env.available_actions
-                # An option clickable is anything that isn't a navigation/page button.
-                option_click = next(
-                    (a for a in avail
-                     if a.startswith("click[")
-                     and a not in seen
-                     and not any(k in a.lower() for k in (
-                         "buy now", "back to search", "next >", "< prev",
-                         "description", "features", "reviews", "attributes",
-                     ))
-                     and not any(a.startswith(f"click[b000") for _ in (0,))  # not a different ASIN
-                     ),
-                    None,
-                )
+                option_click = self._first_matching_click(avail, [option_value])
                 if option_click is None:
-                    break
-                seen.add(option_click)
+                    continue
                 take_step(option_click)
                 if ctx.done:
                     break
@@ -186,6 +188,38 @@ class MockWebShopAgent:
 
     async def close(self) -> None:
         return None
+
+    @staticmethod
+    def _click_value(action: str) -> str:
+        if action.lower().startswith("click[") and action.endswith("]"):
+            return action[6:-1].strip().lower()
+        return ""
+
+    @classmethod
+    def _first_matching_click(cls, actions: list[str], values: list[str]) -> str | None:
+        wanted = {value.lower() for value in values if value}
+        if not wanted:
+            return None
+        for action in actions:
+            if cls._click_value(action) in wanted:
+                return action
+        return None
+
+    @staticmethod
+    def _goal_payload(task: WebShopTask) -> dict[str, Any]:
+        raw = task.metadata.get("upstream_goal_json")
+        if not isinstance(raw, str) or not raw.strip():
+            return {}
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        return payload if isinstance(payload, dict) else {}
+
+    @staticmethod
+    def _goal_options(goal: dict[str, Any]) -> dict[str, Any]:
+        options = goal.get("goal_options")
+        return options if isinstance(options, dict) else {}
 
 
 def get_model_provider_plugin(_provider: str | None = None) -> None:

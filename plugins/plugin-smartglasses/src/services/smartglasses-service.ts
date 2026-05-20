@@ -195,8 +195,16 @@ export class SmartglassesService extends Service {
   async connect(): Promise<void> {
     if (!this.transport)
       throw new Error("No smartglasses transport is configured");
-    if (this.transport.isConnected()) return;
+    if (this.transport.isConnected()) {
+      this.attachTransportListeners();
+      return;
+    }
     await this.transport.connect();
+    this.attachTransportListeners();
+  }
+
+  private attachTransportListeners(): void {
+    if (!this.transport || this.disposers.length > 0) return;
     this.disposers.push(
       this.transport.onEvent((event) => void this.handleEvent(event)),
     );
@@ -947,6 +955,13 @@ function readConnectionReadyModeSetting(
     value === "same-init"
   )
     return "official";
+  if (
+    value === "android-f4" ||
+    value === "android" ||
+    value === "even-demo-android" ||
+    value === "f4"
+  )
+    return "android-f4";
   return "lens-specific";
 }
 

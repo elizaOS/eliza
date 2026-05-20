@@ -4,6 +4,11 @@ Even Realities G1/G2 smartglasses integration for ElizaOS.
 
 ## Implemented Surfaces
 
+- View Manager page at `/apps/smartglasses` for whole-headset pairing,
+  diagnostics, platform setup guidance, report export, and bridge-backed Wi-Fi
+  scan/configuration when a native bridge exposes those APIs.
+  The page uses a native Even/Mentra bridge when present for iOS/Android-style
+  hosts and falls back to direct Web Bluetooth for desktop browsers.
 - G1 UART protocol constants for Nordic UART service:
   - service `6E400001-B5A3-F393-E0A9-E50E24DCCA9E`
   - TX `6E400002-B5A3-F393-E0A9-E50E24DCCA9E`
@@ -28,7 +33,7 @@ Even Realities G1/G2 smartglasses integration for ElizaOS.
 - Managed heartbeat loop for G1 connection maintenance, matching the upstream SDK pattern of periodic `0x25` packets.
 - G1 controls:
   - clear display
-  - start AI, connection-ready init (`0x4D 0x01` left / `0xF4 0x01` right by default, or official EvenDemoApp same-init `0x4D 0x01` to both lenses), exit to dashboard, native function exit (`0x18`), serial request/response (`0x34`), app whitelist (`0x04`), raw packet writes, one-shot heartbeat, and managed heartbeat start/stop
+  - start AI, connection-ready init (`0x4D 0x01` left / `0xF4 0x01` right by default, official EvenDemoApp iOS same-init `0x4D 0x01` to both lenses, or EvenDemoApp Android `0xF4 0x01` to both lenses), exit to dashboard, native function exit (`0x18`), serial request/response (`0x34`), app whitelist (`0x04`), raw packet writes, one-shot heartbeat, and managed heartbeat start/stop
   - manual-mode page up/down (`0xF5 0x01`, left for page-up and right for page-down)
   - silent mode
   - brightness
@@ -48,6 +53,10 @@ Even Realities G1/G2 smartglasses integration for ElizaOS.
   - `WebBluetoothG1Transport` for direct browser BLE
   - `NobleG1Transport` for optional Node/Bun BLE through `@abandonware/noble`
   - `MockSmartglassesTransport` for tests and examples
+
+Direct G1 BLE does not expose a verified Wi-Fi provisioning command in the
+reviewed upstreams. Wi-Fi scan/configuration is therefore available only through
+native/bridge APIs such as Mentra/ASG bridge surfaces.
 
 ## Eliza Actions
 
@@ -89,7 +98,9 @@ examples while still using the plugin's normal display packet encoder:
 (`left`, `right`, or `both`). This keeps low-level SDK commands such as native
 connection-ready packets reachable while `connection_ready` covers the common
 left/right initialization pair directly. Pass `initMode: "official"` to send
-the official EvenDemoApp same-init form (`0x4D 0x01`) to both lenses:
+the EvenDemoApp iOS same-init form (`0x4D 0x01`) to both lenses, or
+`initMode: "android-f4"` to send the EvenDemoApp Android form (`0xF4 0x01`) to
+both lenses:
 
 ```json
 { "op": "connection_ready", "initMode": "official" }
@@ -122,7 +133,7 @@ Fahrplan in addition to plain text display:
 - `SMARTGLASSES_TRANSPORT`: `auto` (default), `even-bridge`, `web-bluetooth`, or `noble`.
 - `SMARTGLASSES_SCAN_TIMEOUT_MS`: optional Noble BLE scan timeout in milliseconds.
 - `SMARTGLASSES_AUTO_INIT`: send left/right initialization packets after Eliza-managed startup. Defaults to `true`.
-- `SMARTGLASSES_INIT_MODE`: `lens-specific` (default) sends `0x4D 0x01` to the left lens and `0xF4 0x01` to the right lens; `official` sends `0x4D 0x01` to both lenses as in EvenDemoApp.
+- `SMARTGLASSES_INIT_MODE`: `lens-specific` (default) sends `0x4D 0x01` to the left lens and `0xF4 0x01` to the right lens; `official` sends `0x4D 0x01` to both lenses as in EvenDemoApp iOS; `android-f4` sends `0xF4 0x01` to both lenses as in EvenDemoApp Android.
 
 ## Microphone Audio
 
@@ -152,7 +163,9 @@ setSmartglassesAudioDecoderForRuntime(decodeLc3ToPcm16);
 
 ## Upstream Evidence
 
-The implementation was derived from the ignored research checkouts in `research/even-realities/`. The reviewed sources and resulting implementation choices are:
+The implementation was derived from the ignored research checkouts in
+`research/even-realities/`. The reviewed sources and resulting implementation
+choices are:
 
 See `docs/upstream-audit.md` for the full source-to-implementation audit with
 local file references and test coverage.
@@ -227,7 +240,7 @@ The Node/Bun hardware smoke exercises the Noble transport:
 bun run --cwd packages/examples/smartglasses hardware:noble
 ```
 
-It scans for left/right lenses, connects to the UART service, sends connection-ready/init, serial request, display, and settings packets, disables the right microphone, then requires a single tap to enable microphone capture, speech audio, and a double tap to disable capture during the smoke window. `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTGLASSES_HOLD_MS`, and `SMARTGLASSES_INIT_MODE=official` can tune scan, microphone wait time, and the init variant. Set `SMARTGLASSES_REPORT_PATH=./smartglasses-hardware-report.json` to write a structured evidence artifact covering packet writes, serial state, side-tap mic state, audio chunks, and final service status.
+It scans for left/right lenses, connects to the UART service, sends connection-ready/init, serial request, display, and settings packets, disables the right microphone, waits for a `wearing` physical state, then requires a single tap to enable microphone capture, speech audio, and a double tap to disable capture during the smoke window. The glasses must be out of the charging cradle and worn for tap and microphone evidence. `SMARTGLASSES_SCAN_TIMEOUT_MS`, `SMARTGLASSES_HOLD_MS`, `SMARTGLASSES_WEARING_TIMEOUT_MS=30000`, `SMARTGLASSES_INIT_MODE=official|lens-specific|android-f4`, and `SMARTGLASSES_DIRECT_MIC_MS=15000` can tune scan, microphone wait time, wearing wait, init variant, and direct mic diagnostics. Set `SMARTGLASSES_REPORT_PATH=./smartglasses-hardware-report.json` to write a structured evidence artifact covering packet writes, serial state, headset physical/battery/device state, side-tap mic state, audio chunks, and final service status.
 
 Validate that artifact independently before treating physical hardware support as proven:
 
@@ -240,4 +253,6 @@ display packet writes, serial request and observed serial response, settings
 writes, observed tap events, single-tap microphone enable, double-tap
 microphone disable, non-empty microphone audio, and final connected service
 status with serial and audio counters. Simulator and mock tests are useful
-regression coverage, but they do not satisfy this physical hardware gate.
+regression coverage, but they do not satisfy this physical hardware gate. The
+validator reports `headsetInCradle` and `wearingStateNotObserved` separately
+when the setup state explains missing tap or microphone evidence.

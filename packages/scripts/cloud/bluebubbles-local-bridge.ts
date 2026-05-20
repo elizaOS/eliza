@@ -89,6 +89,12 @@ type BlueBubblesWebhook = {
   created: string;
 };
 
+type BlueBubblesConfigSnapshot = {
+  enablePrivateApi?: string;
+  enableFaceTimePrivateApi?: string;
+  privateApiMode?: string;
+};
+
 type BlueBubblesServerInfo = {
   status?: number;
   message?: string;
@@ -229,6 +235,25 @@ function readBlueBubblesQueueCount(): number {
   try {
     const row = db.query<{ count: number }, []>("select count(*) as count from queue").get();
     return row?.count ?? 0;
+  } finally {
+    db.close();
+  }
+}
+
+function readBlueBubblesConfigSnapshot(): BlueBubblesConfigSnapshot {
+  const db = new Database(blueBubblesConfigDbPath(), { readonly: true });
+  try {
+    const rows = db
+      .query<{ name: string; value: string }, []>(
+        "select name, value from config where name in ('enable_private_api', 'enable_ft_private_api', 'private_api_mode')",
+      )
+      .all();
+    const configs = new Map(rows.map((row) => [row.name, row.value]));
+    return {
+      enablePrivateApi: configs.get("enable_private_api"),
+      enableFaceTimePrivateApi: configs.get("enable_ft_private_api"),
+      privateApiMode: configs.get("private_api_mode"),
+    };
   } finally {
     db.close();
   }
@@ -568,6 +593,7 @@ async function gatewayDiagnostics(): Promise<Record<string, unknown>> {
     },
     blueBubbles: {
       serverInfo,
+      config: readBlueBubblesConfigSnapshot(),
       webhooks,
       queueCount: readBlueBubblesQueueCount(),
       expectedWebhookUrl: expectedBlueBubblesWebhookUrl,
@@ -597,24 +623,25 @@ async function gatewayDoctor(): Promise<{
 }> {
   const diagnostics = await gatewayDiagnostics();
   const senderOptionsSummary = diagnostics.senderOptions as OutboundReadiness[] | undefined;
-  const bridge = diagnostics.bridge as {
+  const bridge = (diagnostics.bridge ?? {}) as {
     status?: string;
     outboundReadiness?: { ready?: boolean; method?: string; reasons?: string[] };
     pendingReplyCount?: number;
     hasGatewaySecret?: boolean;
     hasBlueBubblesPassword?: boolean;
   };
-  const blueBubbles = diagnostics.blueBubbles as {
+  const blueBubbles = (diagnostics.blueBubbles ?? {}) as {
     serverInfo?: BlueBubblesServerInfo | { error: string };
+    config?: BlueBubblesConfigSnapshot;
     expectedWebhookConfigured?: boolean;
     expectedWebhookEvents?: string[] | null;
   };
-  const macos = diagnostics.macos as {
+  const macos = (diagnostics.macos ?? {}) as {
     sipStatus?: string;
     shortcuts?: ShortcutsDiagnostics;
   };
 
-  const serverInfo = blueBubbles.serverInfo;
+  const serverInfo = blueBubbles.serverInfo ?? { error: "server info unavailable" };
   const serverInfoReady = hasServerInfoData(serverInfo ?? {});
   const outbound = bridge.outboundReadiness;
   const webhookEvents = blueBubbles.expectedWebhookEvents ?? [];
@@ -652,7 +679,14 @@ async function gatewayDoctor(): Promise<{
       status: outbound?.ready ? "pass" : "blocked",
       detail: outbound?.ready
         ? `${outbound.method ?? blueBubblesSendMethod} ready`
-        : (outbound?.reasons ?? ["outbound readiness unavailable"]).join("; "),
+        : [
+            ...(outbound?.reasons ?? ["outbound readiness unavailable"]),
+            blueBubbles.config?.enablePrivateApi || blueBubbles.config?.privateApiMode
+              ? `BlueBubbles config private_api=${blueBubbles.config?.enablePrivateApi ?? "unknown"} mode=${blueBubbles.config?.privateApiMode ?? "unknown"}`
+              : null,
+          ]
+            .filter(Boolean)
+            .join("; "),
     },
     {
       name: "pending-replies",

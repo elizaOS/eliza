@@ -28,8 +28,12 @@ const env = {
   BLUEBUBBLES_GATEWAY_SECRET: "test-secret",
 };
 
-function request(body: unknown, headers: Record<string, string> = {}) {
-  return new Request("https://api.example.test/", {
+function request(
+  body: unknown,
+  headers: Record<string, string> = {},
+  url = "https://api.example.test/",
+) {
+  return new Request(url, {
     method: "POST",
     headers: {
       "content-type": "application/json",
@@ -165,6 +169,37 @@ describe("BlueBubbles webhook", () => {
         phoneGatewayDeviceRegistered: true,
       },
     });
+  });
+
+  test("uses bridge query/header identity when the Blooio compatibility route forwards BlueBubbles", async () => {
+    const response = await app.fetch(
+      request(
+        inboundPayload,
+        {
+          "x-eliza-gateway-secret": "test-secret",
+          "x-eliza-bridge": "bluebubbles",
+        },
+        "https://api.example.test/?bridge=bluebubbles",
+      ),
+      env,
+    );
+
+    await expect(response.json()).resolves.toMatchObject({
+      success: true,
+      gatewayDeviceRegistered: true,
+    });
+    expect(registerPhoneGatewayDevice).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bridgeId: "bluebubbles",
+      }),
+    );
+    expect(routePhoneMessage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          bluebubblesBridgeId: "bluebubbles",
+        }),
+      }),
+    );
   });
 
   test("preserves onboarding replies after the user provides a preferred name", async () => {

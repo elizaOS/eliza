@@ -103,4 +103,24 @@ describe("BlueBubbles local bridge readiness", () => {
       reasons: ['Shortcut "Eliza Cloud Send Message" is not installed'],
     });
   });
+
+  it("lists installed Shortcuts when the ready Shortcut name is missing", () => {
+    expect(
+      outboundReadiness({
+        ...base,
+        method: "shortcuts",
+        shortcuts: {
+          available: true,
+          shortcuts: ["Eliza Cloud Send Message"],
+        },
+        shortcutsSendShortcutName: "Eliza Cloud Send Message Ready",
+      }),
+    ).toEqual({
+      method: "shortcuts",
+      ready: false,
+      reasons: [
+        'Shortcut "Eliza Cloud Send Message Ready" is not installed; installed shortcuts: Eliza Cloud Send Message',
+      ],
+    });
+  });
 });

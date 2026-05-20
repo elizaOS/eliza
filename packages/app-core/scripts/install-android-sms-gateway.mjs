@@ -388,13 +388,13 @@ function resolveAndroidBuildTool(toolName) {
 function readBridgeHealth() {
   const result = run(
     "curl",
-    ["-sS", "--max-time", "5", "http://127.0.0.1:8795/health"],
+    ["-sS", "--max-time", "5", "http://127.0.0.1:8795/doctor"],
     { allowFailure: true },
   );
   if (result.status !== 0 || !result.stdout.trim()) {
     return {
       ok: false,
-      error: result.stderr || result.stdout || "bridge health request failed",
+      error: result.stderr || result.stdout || "bridge doctor request failed",
     };
   }
   try {
@@ -532,10 +532,7 @@ function collectUsbDeviceNames(items, output = []) {
   return output;
 }
 
-function listHostUsbDevices() {
-  if (process.platform !== "darwin") {
-    return { ok: true, detail: "host USB inventory is only available on macOS" };
-  }
+function hostUsbInventoryFromSystemProfiler() {
   const result = run("system_profiler", ["SPUSBDataType", "-json"], {
     allowFailure: true,
   });
@@ -560,6 +557,46 @@ function listHostUsbDevices() {
       detail: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+function hostUsbInventoryFromIoreg() {
+  const result = run("ioreg", ["-p", "IOUSB", "-l", "-w", "0"], {
+    allowFailure: true,
+  });
+  if (result.status !== 0 || !result.stdout.trim()) {
+    return {
+      ok: false,
+      detail: result.stderr || result.stdout || "ioreg failed",
+    };
+  }
+  const names = [];
+  for (const line of result.stdout.split(/\r?\n/)) {
+    const nameMatch = line.match(/"USB Product Name"\s*=\s*"([^"]+)"/);
+    const registryMatch = line.match(/\+\-o\s+([^@<]+)@/);
+    const name = nameMatch?.[1] ?? registryMatch?.[1];
+    if (!name) continue;
+    const trimmed = name.trim();
+    if (!trimmed || /Root Hub|XHCI|\bUSB\s*(?:3\.|2\.|1\.|Bus)\b/i.test(trimmed)) continue;
+    if (!names.includes(trimmed)) names.push(trimmed);
+  }
+  return {
+    ok: names.length > 0,
+    detail: names.length > 0 ? names.slice(0, 10).join(", ") : "no USB devices enumerated by ioreg",
+  };
+}
+
+function listHostUsbDevices() {
+  if (process.platform !== "darwin") {
+    return { ok: true, detail: "host USB inventory is only available on macOS" };
+  }
+  const profiler = hostUsbInventoryFromSystemProfiler();
+  if (profiler.ok) return profiler;
+  const ioreg = hostUsbInventoryFromIoreg();
+  if (ioreg.ok) return ioreg;
+  return {
+    ok: false,
+    detail: `${profiler.detail}; ${ioreg.detail}`,
+  };
 }
 
 function apkManifestSummary(apk) {
@@ -663,17 +700,18 @@ function runDoctor({ apk, adbPath }) {
 
   const bridge = readBridgeHealth();
   const bridgeBody = bridge.ok ? bridge.body : null;
+  const bridgeChecks = Array.isArray(bridgeBody?.checks) ? bridgeBody.checks : [];
+  const bridgeStatus = bridgeChecks.find((check) => check.name === "bridge");
+  const bridgeOutbound = bridgeChecks.find((check) => check.name === "outbound");
   checks.push({
     name: "bridge",
-    ok: bridge.ok && bridgeBody?.status === "ok",
-    detail: bridge.ok ? bridgeBody?.cloudWebhookUrl : bridge.error,
+    ok: bridge.ok && bridgeStatus?.status === "pass",
+    detail: bridge.ok ? (bridgeStatus?.detail ?? `doctor status=${bridgeBody?.status ?? "unknown"}`) : bridge.error,
   });
   checks.push({
     name: "bridge-outbound",
-    ok: Boolean(bridgeBody?.outboundReadiness?.ready),
-    detail: bridgeBody?.outboundReadiness?.ready
-      ? `${bridgeBody.outboundReadiness.method} ready`
-      : (bridgeBody?.outboundReadiness?.reasons ?? ["bridge health unavailable"]).join("; "),
+    ok: bridgeOutbound?.status === "pass",
+    detail: bridgeOutbound?.detail ?? "bridge doctor unavailable",
   });
 
   const cloudSmoke = runCloudWebhookSmoke();

@@ -53,6 +53,22 @@
         overflow: auto;
         min-height: 220px;
       }
+      .state {
+        margin-top: 12px;
+        border: 1px solid #d8e0e8;
+        border-radius: 6px;
+        padding: 10px 12px;
+        font-size: 14px;
+        background: #f7f9fb;
+      }
+      .state.warning {
+        border-color: #d39d3f;
+        background: #fff7e8;
+      }
+      .state.ready {
+        border-color: #3b9b61;
+        background: #eefaf2;
+      }
     </style>
   </head>
   <body>
@@ -64,15 +80,20 @@
           The page sends real G1 UART packets through <code>WebBluetoothG1Transport</code>.
         </p>
         <div class="controls">
+          <button id="connect-headset" type="button">Connect Headset</button>
           <button id="connect-left" type="button">Connect Left</button>
           <button id="connect-right" type="button">Connect Right</button>
           <button id="disconnect" type="button" disabled>Disconnect</button>
           <button id="mic-on" type="button" disabled>Mic On</button>
           <button id="mic-off" type="button" disabled>Mic Off</button>
           <button id="settings" type="button" disabled>Send Settings</button>
+          <button id="guided-validation" type="button" disabled>Guided Tap + Audio Validation</button>
           <button id="finalize-report" type="button" disabled>Finalize Report</button>
           <button id="copy-report" type="button" disabled>Copy Report</button>
           <button id="download-report" type="button" disabled>Download Report</button>
+        </div>
+        <div id="headset-state" class="state">
+          Headset state: no state yet. Remove the glasses from the charging base and wear them before tap/audio validation.
         </div>
       </section>
       <section>
@@ -82,6 +103,14 @@
           <button id="display" type="button" disabled>Display Text</button>
           <button id="clear" type="button" disabled>Clear Display</button>
         </div>
+      </section>
+      <section>
+        <h2>Required evidence</h2>
+        <p>
+          After both lenses connect, use guided validation. It sends display and settings packets,
+          then waits for single tap microphone enable, microphone audio, and double tap microphone disable.
+        </p>
+        <ul id="missing"></ul>
       </section>
       <section>
         <h2>Log</h2>

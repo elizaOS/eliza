@@ -4,6 +4,7 @@ const blooioApiRequest = mock();
 const secretsGet = mock();
 const insertValues = mock();
 const onConflictDoUpdate = mock();
+const execute = mock();
 
 const insertBuilder = {
   values: insertValues,
@@ -12,6 +13,7 @@ const insertBuilder = {
 
 const dbWrite = {
   insert: mock(() => insertBuilder),
+  execute,
 };
 
 mock.module("../../../db/client", () => ({
@@ -57,6 +59,8 @@ describe("MessageRouterService contact recording", () => {
     insertValues.mockReturnValue(insertBuilder);
     onConflictDoUpdate.mockReset();
     onConflictDoUpdate.mockResolvedValue(undefined);
+    execute.mockReset();
+    execute.mockResolvedValue(undefined);
   });
 
   test("records a phone contact after a successful agent outbound message", async () => {
@@ -146,5 +150,28 @@ describe("MessageRouterService contact recording", () => {
 
     expect(sent).toBe(false);
     expect(dbWrite.insert).not.toHaveBeenCalled();
+  });
+
+  test("repairs the contact table on first successful outbound when the migration is missing", async () => {
+    secretsGet.mockResolvedValue("blooio-api-key");
+    blooioApiRequest.mockResolvedValue({ id: "sent-message" });
+    onConflictDoUpdate
+      .mockRejectedValueOnce(new Error('relation "agent_phone_contacts" does not exist'))
+      .mockResolvedValueOnce(undefined);
+
+    const sent = await messageRouterService.sendMessage({
+      provider: "blooio",
+      organizationId: "gateway-org",
+      from: "+14159611510",
+      to: "+14155550100",
+      body: "hello friend",
+      agentId: "agent-1",
+      agentOrganizationId: "agent-org",
+      agentUserId: "agent-user",
+    });
+
+    expect(sent).toBe(true);
+    expect(execute).toHaveBeenCalledTimes(6);
+    expect(dbWrite.insert).toHaveBeenCalledTimes(2);
   });
 });

@@ -194,7 +194,18 @@ The matrix writes one directory per `(benchmark, adapter)` cell under
 - `stdout.log` and `stderr.log` with secret-looking env values redacted.
 - benchmark output JSON under each cell's `output/` directory.
 - requested trajectory output under each cell's `trajectories/` directory.
-- top-level `summary.json` and `summary.md` with failure buckets.
+- top-level `summary.json` and `summary.md` with failure buckets, normalized
+  right/wrong/total/accuracy, input/output/cached token metrics, LLM call
+  counts, run configuration metadata, an ElizaOS-vs-OpenCode head-to-head
+  status per benchmark, and an explicit token-evidence section that flags
+  cells where no usable LLM/token telemetry was captured. Reports also include
+  an improvement queue pointing to logs, results, and trajectory directories
+  for inferior, weak, or missing comparisons. `weak` means both adapters
+  produced measured zero accuracy, so the result is not accepted as meaningful
+  comparability. Queue entries include compact trajectory review briefs with
+  turn/token counts, cached-token percentage, latency, and repeated-prefix
+  signals when telemetry files are present, plus rerun command templates for
+  targeted follow-up runs.
 
 Smoke mode uses each benchmark's cheap offline fixtures where available:
 Mind2Web `--sample --mock`, VisualWebBench `--use-sample-tasks --mock`,
@@ -209,6 +220,53 @@ rerun, or summarize an interrupted/keyed run without executing anything:
 cd /Users/shawwalters/milaidy/eliza/packages
 python -m benchmarks.orchestrator.code_agent_matrix \
   --summarize /path/to/benchmark_results/code-agent-matrix/20260516T120000Z
+```
+
+To rerun only queued comparisons from a previous report, point at its
+`summary.json`. This is useful after fixing ElizaOS behavior on one inferior
+benchmark because it avoids rebuilding the full matrix:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --rerun-queue /path/to/benchmark_results/code-agent-matrix/20260516T120000Z/summary.json \
+  --compare-summary /path/to/benchmark_results/code-agent-matrix/20260516T120000Z/summary.json \
+  --queue-priorities p0 \
+  --force
+```
+
+Use `--compare-summary` on any full or queued rerun to add a previous-summary
+comparison table showing ElizaOS accuracy, token, cached-token, and LLM-call
+deltas by benchmark.
+
+Use `--enforce-comparable` in CI or release gates to exit nonzero unless every
+selected benchmark is `superior` or `comparable` for ElizaOS against OpenCode.
+Inferior, weak, and missing comparisons block the gate. The generated
+`summary.json` always includes `benchmark_gate` with the same blocking
+benchmark list.
+
+Use `--enforce-token-evidence` for live runs where token telemetry is required.
+It exits nonzero unless every selected cell produced usable LLM-call and token
+usage evidence. This should usually be omitted for no-LLM smoke fixtures.
+
+Use `--enforce-required-stats` when a run should fail unless the report has
+all stats required for the head-to-head benchmark claim. It checks measured
+right/wrong/total outcome evidence for every selected benchmark and requires
+token evidence for live runs. Smoke, dry-run, and summarize reports do not
+require token evidence unless `--enforce-token-evidence` is also set.
+
+Before a run, use `--preflight` to check the OpenCode adapter executable,
+benchmark working directories, command executables, and provider keys for live
+runs. Smoke and dry-run preflights do not require provider keys because they do
+not make LLM calls:
+
+```bash
+cd /Users/shawwalters/milaidy/eliza/packages
+python -m benchmarks.orchestrator.code_agent_matrix \
+  --preflight \
+  --smoke \
+  --no-docker \
+  --max-tasks 1
 ```
 
 No-key smoke/dry validation:
