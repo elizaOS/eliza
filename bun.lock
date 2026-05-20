@@ -587,6 +587,9 @@
     "packages/cloud-infra": {
       "name": "@elizaos/cloud-infra",
       "version": "2.0.0-beta.0",
+      "devDependencies": {
+        "yaml": "^2.9.0",
+      },
     },
     "packages/cloud-routing": {
       "name": "@elizaos/cloud-routing",
