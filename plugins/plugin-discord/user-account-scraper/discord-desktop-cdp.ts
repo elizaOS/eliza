@@ -3,7 +3,16 @@
 // Chrome DevTools Protocol port exposed (e.g. relaunched by Eliza). Sends
 // and probes go through the same scraper primitives but over CDP rather
 // than the workspace bridge.
+//
+// Platform support: macOS and Windows. Discord Desktop on both OSes
+// accepts the Electron `--remote-debugging-port` flag (empirically
+// verified against Discord 1.0.9237 / Electron 37.6.0 on Windows; same
+// flag has been the macOS path since this file's introduction). Linux
+// support is not implemented yet — the desktop control surface there
+// would need a separate process-detection + launch path.
 import { execFile } from "node:child_process";
+import { readdir } from "node:fs/promises";
+import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import {
   buildDiscordProbeScript,
@@ -110,13 +119,88 @@ function execFileAsync(
   });
 }
 
+function isDiscordDesktopSupportedPlatform(
+  platform: NodeJS.Platform,
+): platform is "darwin" | "win32" {
+  return platform === "darwin" || platform === "win32";
+}
+
 async function discordAppRunning(): Promise<boolean> {
   try {
-    await execFileAsync("/usr/bin/pgrep", ["-x", "Discord"], 1_000);
-    return true;
+    if (process.platform === "darwin") {
+      await execFileAsync("/usr/bin/pgrep", ["-x", "Discord"], 1_000);
+      return true;
+    }
+    if (process.platform === "win32") {
+      // `tasklist /FI "IMAGENAME eq Discord.exe"` returns the header
+      // "INFO: No tasks are running which match the specified criteria."
+      // when no process is found, and a table row per match otherwise.
+      // Use CSV + no-header so the presence of any output line means
+      // Discord.exe is running.
+      const { stdout } = await execFileAsync(
+        "tasklist",
+        ["/FI", "IMAGENAME eq Discord.exe", "/FO", "CSV", "/NH"],
+        2_000,
+      );
+      return /Discord\.exe/i.test(stdout);
+    }
+    return false;
   } catch {
     return false;
   }
+}
+
+/**
+ * Locate the latest installed Discord.exe under `%LOCALAPPDATA%\Discord`.
+ *
+ * Discord on Windows is squirrel-installed per-user, with each release
+ * unpacked into its own `app-<version>` folder alongside an `Update.exe`
+ * shim. We pick the highest-versioned `app-*` directory's `Discord.exe`
+ * so an in-flight self-update doesn't strand us on an old executable.
+ *
+ * Falls back to `null` when no install is found; the caller surfaces a
+ * helpful lastError instead of throwing.
+ */
+async function findDiscordExeWindows(): Promise<string | null> {
+  const localAppData = process.env.LOCALAPPDATA;
+  if (!localAppData) {
+    return null;
+  }
+  const discordRoot = join(localAppData, "Discord");
+  let entries: string[];
+  try {
+    entries = await readdir(discordRoot);
+  } catch {
+    return null;
+  }
+  const appVersions = entries
+    .filter((name) => name.startsWith("app-"))
+    .map((name) => ({
+      name,
+      // Parse "app-1.0.9237" → [1, 0, 9237] for numeric sort. Non-numeric
+      // segments fall back to comparing the raw string segment so a build
+      // tag like "app-1.0.9237-canary" stays comparable.
+      parts: name
+        .slice("app-".length)
+        .split(".")
+        .map((segment) => {
+          const num = Number.parseInt(segment, 10);
+          return Number.isFinite(num) ? num : Number.NEGATIVE_INFINITY;
+        }),
+    }))
+    .sort((a, b) => {
+      const maxLen = Math.max(a.parts.length, b.parts.length);
+      for (let i = 0; i < maxLen; i++) {
+        const av = a.parts[i] ?? 0;
+        const bv = b.parts[i] ?? 0;
+        if (av !== bv) return bv - av;
+      }
+      return 0;
+    });
+  if (appVersions.length === 0) {
+    return null;
+  }
+  return join(discordRoot, appVersions[0].name, "Discord.exe");
 }
 
 async function fetchJson<T>(url: string, timeoutMs: number): Promise<T> {
@@ -309,9 +393,10 @@ export async function getDiscordDesktopCdpStatus(
 ): Promise<DiscordDesktopCdpStatus> {
   const platform = process.platform;
   const port = configuredDiscordDesktopCdpPort(env);
+  const platformSupported = isDiscordDesktopSupportedPlatform(platform);
   if (discordDesktopCdpDisabled(env)) {
     return {
-      supported: platform === "darwin",
+      supported: platformSupported,
       platform,
       port,
       appRunning: false,
@@ -324,8 +409,8 @@ export async function getDiscordDesktopCdpStatus(
       lastError: "Discord Desktop CDP disabled by environment.",
     };
   }
-  const appRunning = platform === "darwin" ? await discordAppRunning() : false;
-  if (platform !== "darwin") {
+  const appRunning = platformSupported ? await discordAppRunning() : false;
+  if (!platformSupported) {
     return {
       supported: false,
       platform,
@@ -337,7 +422,8 @@ export async function getDiscordDesktopCdpStatus(
       targetTitle: null,
       webSocketDebuggerUrl: null,
       probe: null,
-      lastError: "Discord Desktop control is currently supported on macOS.",
+      lastError:
+        "Discord Desktop control is currently supported on macOS and Windows.",
     };
   }
 
@@ -671,28 +757,62 @@ export async function relaunchDiscordDesktopForCdp(
     return current;
   }
 
-  if (current.appRunning) {
+  const port = configuredDiscordDesktopCdpPort(env);
+  const cdpArgs = [
+    `--remote-debugging-port=${port}`,
+    `--remote-debugging-address=${DISCORD_DESKTOP_CDP_HOST}`,
+    "--remote-allow-origins=*",
+  ];
+
+  if (process.platform === "darwin") {
+    if (current.appRunning) {
+      await execFileAsync(
+        "/usr/bin/osascript",
+        ["-e", 'quit app "Discord"'],
+        5_000,
+      );
+      await waitForDiscordToQuit();
+    }
     await execFileAsync(
-      "/usr/bin/osascript",
-      ["-e", 'quit app "Discord"'],
+      "/usr/bin/open",
+      ["-a", "Discord", "--args", ...cdpArgs],
       5_000,
     );
-    await waitForDiscordToQuit();
+  } else if (process.platform === "win32") {
+    if (current.appRunning) {
+      // `/F` force-kills, `/T` walks the process tree (Discord spawns
+      // multiple Electron helpers). Discord ignores SIGTERM-equivalents
+      // and stays in the tray otherwise.
+      await execFileAsync(
+        "taskkill",
+        ["/F", "/T", "/IM", "Discord.exe"],
+        5_000,
+      );
+      await waitForDiscordToQuit();
+    }
+    const exePath = await findDiscordExeWindows();
+    if (!exePath) {
+      throw new Error(
+        "Discord.exe not found under %LOCALAPPDATA%\\Discord — is Discord Desktop installed?",
+      );
+    }
+    // `start` returns immediately (Discord keeps running in the
+    // background after we hand off). `""` is the required (empty)
+    // window title for cmd `start` when the next arg is a quoted path.
+    await execFileAsync(
+      "cmd",
+      ["/d", "/s", "/c", "start", "", exePath, ...cdpArgs],
+      5_000,
+    );
+  } else {
+    // Defensive: getDiscordDesktopCdpStatus already returns supported=false
+    // for non-darwin/non-win32 platforms, so this branch shouldn't be
+    // reached. Throw rather than silently no-op so a misconfigured caller
+    // surfaces immediately.
+    throw new Error(
+      `Discord Desktop relaunch not supported on ${process.platform}.`,
+    );
   }
-
-  const port = configuredDiscordDesktopCdpPort(env);
-  await execFileAsync(
-    "/usr/bin/open",
-    [
-      "-a",
-      "Discord",
-      "--args",
-      `--remote-debugging-port=${port}`,
-      `--remote-debugging-address=${DISCORD_DESKTOP_CDP_HOST}`,
-      "--remote-allow-origins=*",
-    ],
-    5_000,
-  );
 
   return waitForDiscordCdpReady(env);
 }
