@@ -74,7 +74,13 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr(
         stage,
         "text_context_for_manifest",
-        lambda path: 262144 if path.name == "eliza-1-0_8b-128k.gguf" else None,
+        lambda path: (
+            131072
+            if "-128k." in path.name
+            else 262144
+            if "-256k." in path.name
+            else None
+        ),
     )
     bundle = tmp_path / "eliza-1-0_8b.bundle"
     bundle.mkdir(parents=True)
@@ -106,10 +112,10 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert manifest["lineage"]["text"]["base"] == "Qwen/Qwen3.5-0.8B@deadbeef"
     # 0_8b ships no separate embedding artifact (text backbone IS the embedding).
     assert "embedding" not in manifest["lineage"]
-    assert "drafter" not in manifest["lineage"]
-    assert manifest["files"]["text"][0]["ctx"] == 262144
+    assert "drafter" in manifest["lineage"]
+    assert sorted(f["ctx"] for f in manifest["files"]["text"]) == [131072, 262144]
     assert manifest["files"]["text"][0]["path"] == "text/eliza-1-0_8b-128k.gguf"
-    assert manifest["files"]["dflash"] == []
+    assert manifest["files"]["dflash"][0]["path"] == "dflash/drafter-0_8b.gguf"
     assert manifest["files"]["vision"][0]["path"] == "vision/mmproj-0_8b.gguf"
     assert manifest["files"]["vad"][0]["path"] == "vad/silero-vad-v5.gguf"
     assert manifest["evals"]["vadLatencyMs"]["boundaryMs"] == 0.0
@@ -122,13 +128,14 @@ def test_stage_real_bundle_offline_layout(tmp_path: Path, monkeypatch) -> None:
     assert release["final"]["evals"] is False
 
     target_meta = json.loads((bundle / "dflash" / "target-meta.json").read_text())
-    assert target_meta["status"] == "disabled"
-    assert target_meta["dflashEnabled"] is False
+    assert target_meta["status"] == "weights-staged"
+    assert target_meta["dflashEnabled"] is True
+    assert target_meta["targetText"]["path"] == "text/eliza-1-0_8b-256k.gguf"
     assert target_meta["targetText"]["finalElizaWeights"] is True
-    assert target_meta["drafter"] is None
+    assert target_meta["drafter"]["path"] == "dflash/drafter-0_8b.gguf"
     assert target_meta["kernelCaps"]["required"]
-    assert (bundle / "dflash" / "dflash-disabled-0_8b.release-policy.json").is_file()
-    assert not (bundle / "dflash" / "drafter-0_8b.gguf").exists()
+    assert not (bundle / "dflash" / "dflash-disabled-0_8b.release-policy.json").exists()
+    assert (bundle / "dflash" / "drafter-0_8b.gguf").is_file()
 
     # wakeword lineage entry must have been dropped (no wakeword files staged).
     lineage = json.loads((bundle / "lineage.json").read_text())
@@ -167,6 +174,25 @@ def test_stage_real_bundle_embedding_tier_keeps_embedding_lineage(tmp_path: Path
     manifest = json.loads((bundle / "eliza-1.manifest.json").read_text())
     assert manifest["lineage"]["embedding"]["base"] == "Qwen/Qwen3-Embedding-0.6B-GGUF"
     assert manifest["files"]["embedding"][0]["path"] == "embedding/eliza-1-embedding.gguf"
-    # 4b ships the half-context 128k variant as its release floor.
+    # 4b ships both half-context and native-context variants.
     ctxs = sorted(f["ctx"] for f in manifest["files"]["text"])
-    assert ctxs == [131072]
+    assert ctxs == [131072, 262144]
+
+
+def test_remove_stale_text_variants_handles_27b_256k_bundle_names(tmp_path: Path) -> None:
+    bundle = tmp_path / "eliza-1-27b-256k.bundle"
+    keep_128 = _write(bundle / "text" / "eliza-1-27b-128k.gguf", b"128k")
+    keep_256 = _write(bundle / "text" / "eliza-1-27b-256k.gguf", b"256k")
+    stale = _write(bundle / "text" / "eliza-1-27b-64k.gguf", b"stale")
+
+    removed = stage._remove_stale_text_variants(
+        bundle,
+        tier="27b-256k",
+        expected=(keep_128, keep_256),
+        force=True,
+    )
+
+    assert removed == ["text/eliza-1-27b-64k.gguf"]
+    assert not stale.exists()
+    assert keep_128.exists()
+    assert keep_256.exists()

@@ -1061,7 +1061,11 @@ export class LocalInferenceEngine {
 		return this.dispatcher.hasLoadedModel();
 	}
 
-	activeBackendId(): "node-llama-cpp" | "llama-server" | null {
+	activeBackendId():
+		| "capacitor-llama"
+		| "node-llama-cpp"
+		| "llama-server"
+		| null {
 		return this.dispatcher.activeBackendId();
 	}
 

@@ -8,8 +8,16 @@ const workflowPath = ".github/workflows/test.yml";
 const workflow = readFileSync(workflowPath, "utf8");
 const rootPackageJson = readFileSync("package.json", "utf8");
 const agentPackageJson = readFileSync("packages/agent/package.json", "utf8");
+const coreCapabilitiesSource = readFileSync(
+  "packages/core/src/capabilities/index.ts",
+  "utf8",
+);
 const endpointConformanceSource = readFileSync(
   "packages/agent/src/services/remote-capability-endpoint-conformance.ts",
+  "utf8",
+);
+const remoteCapabilityRoutesSource = readFileSync(
+  "packages/agent/src/api/remote-capability-routes.ts",
   "utf8",
 );
 const liveReportValidatorSource = readFileSync(
@@ -26,6 +34,18 @@ const liveReportWriterSource = readFileSync(
 );
 const providerSmokeSource = readFileSync(
   "packages/agent/src/services/remote-capability-url-endpoint-providers.provider-smoke.test.ts",
+  "utf8",
+);
+const remotePluginAdapterTestSource = readFileSync(
+  "packages/agent/src/services/remote-plugin-adapter.test.ts",
+  "utf8",
+);
+const githubLiveArtifactValidatorSource = readFileSync(
+  "packages/scripts/validate-capability-router-github-live-artifacts.ts",
+  "utf8",
+);
+const githubLiveArtifactValidatorSelfTestSource = readFileSync(
+  "packages/scripts/validate-capability-router-github-live-artifacts.self-test.ts",
   "utf8",
 );
 
@@ -51,6 +71,14 @@ assertFails(
   "GitHub live evidence validator self-test is a CI gate",
   workflow.replace(
     "      - name: Remote capability GitHub live evidence self-test\n        run: bun run test:remote-capabilities:github-live-evidence:self-test\n\n",
+    "",
+  ),
+);
+
+assertFails(
+  "GitHub live artifact validator self-test is a CI gate",
+  workflow.replace(
+    "      - name: Remote capability GitHub live artifact self-test\n        run: bun run test:remote-capabilities:github-live-artifacts:self-test\n\n",
     "",
   ),
 );
@@ -102,9 +130,25 @@ assertRootPackageFailure(
 );
 
 assertRootPackageFailure(
+  "GitHub live artifact validator script exists",
+  rootPackageJson.replace(
+    '    "test:remote-capabilities:github-live-artifacts": "bun packages/scripts/validate-capability-router-github-live-artifacts.ts",\n',
+    "",
+  ),
+);
+
+assertRootPackageFailure(
   "GitHub live evidence validator self-test script exists",
   rootPackageJson.replace(
     '    "test:remote-capabilities:github-live-evidence:self-test": "bun packages/scripts/validate-capability-router-github-live-evidence.self-test.ts",\n',
+    "",
+  ),
+);
+
+assertRootPackageFailure(
+  "GitHub live artifact validator self-test script exists",
+  rootPackageJson.replace(
+    '    "test:remote-capabilities:github-live-artifacts:self-test": "bun packages/scripts/validate-capability-router-github-live-artifacts.self-test.ts",\n',
     "",
   ),
 );
@@ -133,6 +177,217 @@ assertFails(
     "",
   ),
 );
+
+const endpointScopedUnloadFailure = assertFails(
+  "remote adapter test covers endpoint-scoped stale unload",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource.replace(
+    "scopes stale unloads to the selected endpoint so another device remains loaded",
+    "scopes stale unloads",
+  ),
+);
+if (
+  endpointScopedUnloadFailure.sourcePath !==
+  "packages/agent/src/services/remote-plugin-adapter.test.ts"
+) {
+  throw new Error(
+    `endpoint-scoped unload failure reported wrong source path: ${endpointScopedUnloadFailure.sourcePath}`,
+  );
+}
+
+const provenanceProtocolFailure = assertFails(
+  "core capability protocol includes signed module provenance",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource,
+  remoteCapabilityRoutesSource,
+  coreCapabilitiesSource.replace(
+    "export type RemotePluginModuleProvenance",
+    "type RemotePluginModuleProvenanceDisabled",
+  ),
+);
+if (
+  provenanceProtocolFailure.sourcePath !==
+  "packages/core/src/capabilities/index.ts"
+) {
+  throw new Error(
+    `provenance protocol failure reported wrong source path: ${provenanceProtocolFailure.sourcePath}`,
+  );
+}
+
+const trustAuditRouteFailure = assertFails(
+  "product connect persists redacted trust audit records",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource,
+  remoteCapabilityRoutesSource.replace(
+    "endpoint: redactEndpoint(audit.endpoint),",
+    "endpoint: audit.endpoint as never,",
+  ),
+);
+if (
+  trustAuditRouteFailure.sourcePath !==
+  "packages/agent/src/api/remote-capability-routes.ts"
+) {
+  throw new Error(
+    `trust audit route failure reported wrong source path: ${trustAuditRouteFailure.sourcePath}`,
+  );
+}
+
+const trustAuditTestFailure = assertFails(
+  "remote adapter test covers redacted product trust audit records",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource.replace(
+    '      expect(JSON.stringify(trustAudit)).not.toContain("product-token");\n',
+    "",
+  ),
+);
+if (
+  trustAuditTestFailure.sourcePath !==
+  "packages/agent/src/services/remote-plugin-adapter.test.ts"
+) {
+  throw new Error(
+    `trust audit test failure reported wrong source path: ${trustAuditTestFailure.sourcePath}`,
+  );
+}
+
+const cloudRestartViewFailure = assertFails(
+  "remote adapter test covers Cloud provision restart reopened view",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource.replace(
+    "reopens a persisted Cloud-provisioned remote view after restart",
+    "reopens a persisted Cloud-provisioned remote view",
+  ),
+);
+if (
+  cloudRestartViewFailure.sourcePath !==
+  "packages/agent/src/services/remote-plugin-adapter.test.ts"
+) {
+  throw new Error(
+    `cloud restart view failure reported wrong source path: ${cloudRestartViewFailure.sourcePath}`,
+  );
+}
+
+const provenanceTrustPolicyFailure = assertFails(
+  "remote adapter test covers signed provenance trust policy",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource.replaceAll(
+    "requireSignedProvenance: true,",
+    "requireSignedProvenance: false,",
+  ),
+);
+if (
+  provenanceTrustPolicyFailure.sourcePath !==
+  "packages/agent/src/services/remote-plugin-adapter.test.ts"
+) {
+  throw new Error(
+    `provenance trust policy failure reported wrong source path: ${provenanceTrustPolicyFailure.sourcePath}`,
+  );
+}
+
+const provenanceVerificationFailure = assertFails(
+  "remote adapter test covers signed provenance trust policy",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource.replaceAll(
+    "requireVerifiedProvenance: true,",
+    "requireVerifiedProvenance: false,",
+  ),
+);
+if (
+  provenanceVerificationFailure.sourcePath !==
+  "packages/agent/src/services/remote-plugin-adapter.test.ts"
+) {
+  throw new Error(
+    `provenance verification failure reported wrong source path: ${provenanceVerificationFailure.sourcePath}`,
+  );
+}
+
+const provenanceDigestFailure = assertFails(
+  "remote adapter test covers signed provenance trust policy",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource,
+  githubLiveArtifactValidatorSelfTestSource,
+  remotePluginAdapterTestSource.replaceAll(
+    "requireProvenanceDigestMatch: true,",
+    "requireProvenanceDigestMatch: false,",
+  ),
+);
+if (
+  provenanceDigestFailure.sourcePath !==
+  "packages/agent/src/services/remote-plugin-adapter.test.ts"
+) {
+  throw new Error(
+    `provenance digest failure reported wrong source path: ${provenanceDigestFailure.sourcePath}`,
+  );
+}
 
 const writerFailure = assertFails(
   "live report writer records runtime module surface counts",
@@ -440,6 +695,14 @@ assertFails(
 );
 
 assertFails(
+  "cloud live credentials are required on observed runs",
+  workflow.replace(
+    '              echo "::error::No Eliza Cloud API key configured for observed cloud live E2E."\n              exit 1\n',
+    '              echo "::warning::No Eliza Cloud API key configured for observed cloud live E2E."\n              echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+  ),
+);
+
+assertFails(
   "cloud live report validation is strict",
   workflow.replace(
     " --require-ci --require-file-identity --match-github-env reports/remote-capabilities/cloud",
@@ -551,6 +814,22 @@ assertFails(
 );
 
 assertFails(
+  "provider live endpoints are required on observed runs",
+  workflow.replace(
+    '              echo "::error::No remote capability provider endpoints configured for observed provider live E2E."\n              exit 1\n',
+    '              echo "::warning::No remote capability provider endpoints configured for observed provider live E2E."\n              echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+  ),
+);
+
+assertFails(
+  "provider live primary endpoints are required on observed runs",
+  workflow.replace(
+    '              echo "::error::${message}"\n              exit 1\n',
+    '              echo "::notice::${message}"\n              echo "skip=true" >> "$GITHUB_OUTPUT"\n',
+  ),
+);
+
+assertFails(
   "provider live report validation requires all primary providers",
   workflow.replace(
     " --require-providers e2b,home-machine,mobile-companion --require-ci",
@@ -590,6 +869,54 @@ assertFails(
   ),
 );
 
+const githubArtifactValidatorFailure = assertFails(
+  "GitHub live artifact validator downloads and validates reports",
+  workflow,
+  rootPackageJson,
+  agentPackageJson,
+  providerSmokeSource,
+  liveReportValidatorSource,
+  liveReportWriterSource,
+  endpointConformanceSource,
+  liveReportValidatorSelfTestSource,
+  githubLiveArtifactValidatorSource.replace(
+    "      \"e2b,home-machine,mobile-companion\",\n",
+    "      \"e2b,home-machine\",\n",
+  ),
+);
+if (
+  githubArtifactValidatorFailure.sourcePath !==
+  "packages/scripts/validate-capability-router-github-live-artifacts.ts"
+) {
+  throw new Error(
+    `github live artifact validator failure reported wrong source path: ${githubArtifactValidatorFailure.sourcePath}`,
+  );
+}
+
+assertGithubArtifactValidatorSelfTestFailure(
+  "GitHub live artifact validator self-test covers downloaded reports",
+  githubLiveArtifactValidatorSelfTestSource.replace(
+    'assertCommand("downloads both named artifacts", "gh", [',
+    'assertCommand("downloads artifact", "gh", [',
+  ),
+);
+
+assertGithubArtifactValidatorSelfTestFailure(
+  "GitHub live artifact validator self-test covers provider requirements",
+  githubLiveArtifactValidatorSelfTestSource.replace(
+    '"e2b,home-machine,mobile-companion",',
+    '"e2b,home-machine",',
+  ),
+);
+
+assertGithubArtifactValidatorSelfTestFailure(
+  "GitHub live artifact validator self-test rejects push runs before download",
+  githubLiveArtifactValidatorSelfTestSource.replace(
+    '"push run is rejected before artifact download",',
+    '"push run is rejected",',
+  ),
+);
+
 console.log(
   `Capability-router live CI audit self-test passed (${checks.length} checks).`,
 );
@@ -604,15 +931,27 @@ function assertPasses(
   candidateLiveReportWriterSource = liveReportWriterSource,
   candidateEndpointConformanceSource = endpointConformanceSource,
   candidateLiveReportValidatorSelfTestSource = liveReportValidatorSelfTestSource,
+  candidateGithubLiveArtifactValidatorSource = githubLiveArtifactValidatorSource,
+  candidateGithubLiveArtifactValidatorSelfTestSource = githubLiveArtifactValidatorSelfTestSource,
+  candidateRemotePluginAdapterTestSource = remotePluginAdapterTestSource,
+  candidateRemoteCapabilityRoutesSource = remoteCapabilityRoutesSource,
+  candidateCoreCapabilitiesSource = coreCapabilitiesSource,
 ): void {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
+    coreCapabilitiesSource: candidateCoreCapabilitiesSource,
     endpointConformanceSource: candidateEndpointConformanceSource,
+    githubLiveArtifactValidatorSource:
+      candidateGithubLiveArtifactValidatorSource,
+    githubLiveArtifactValidatorSelfTestSource:
+      candidateGithubLiveArtifactValidatorSelfTestSource,
     liveReportValidatorSelfTestSource:
       candidateLiveReportValidatorSelfTestSource,
     liveReportValidatorSource: candidateLiveReportValidatorSource,
     liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,
+    remoteCapabilityRoutesSource: candidateRemoteCapabilityRoutesSource,
+    remotePluginAdapterTestSource: candidateRemotePluginAdapterTestSource,
     rootPackageJson: candidateRootPackageJson,
     workflowPath: `${name}.yml`,
   });
@@ -635,15 +974,27 @@ function assertFails(
   candidateLiveReportWriterSource = liveReportWriterSource,
   candidateEndpointConformanceSource = endpointConformanceSource,
   candidateLiveReportValidatorSelfTestSource = liveReportValidatorSelfTestSource,
+  candidateGithubLiveArtifactValidatorSource = githubLiveArtifactValidatorSource,
+  candidateGithubLiveArtifactValidatorSelfTestSource = githubLiveArtifactValidatorSelfTestSource,
+  candidateRemotePluginAdapterTestSource = remotePluginAdapterTestSource,
+  candidateRemoteCapabilityRoutesSource = remoteCapabilityRoutesSource,
+  candidateCoreCapabilitiesSource = coreCapabilitiesSource,
 ): ReturnType<typeof validateCapabilityRouterLiveCi>[number] {
   const failures = validateCapabilityRouterLiveCi(candidate, {
     agentPackageJson: candidateAgentPackageJson,
+    coreCapabilitiesSource: candidateCoreCapabilitiesSource,
     endpointConformanceSource: candidateEndpointConformanceSource,
+    githubLiveArtifactValidatorSource:
+      candidateGithubLiveArtifactValidatorSource,
+    githubLiveArtifactValidatorSelfTestSource:
+      candidateGithubLiveArtifactValidatorSelfTestSource,
     liveReportValidatorSelfTestSource:
       candidateLiveReportValidatorSelfTestSource,
     liveReportValidatorSource: candidateLiveReportValidatorSource,
     liveReportWriterSource: candidateLiveReportWriterSource,
     providerSmokeSource: candidateProviderSmokeSource,
+    remoteCapabilityRoutesSource: candidateRemoteCapabilityRoutesSource,
+    remotePluginAdapterTestSource: candidateRemotePluginAdapterTestSource,
     rootPackageJson: candidateRootPackageJson,
     workflowPath: "mutated-workflow.yml",
   });
@@ -681,6 +1032,33 @@ function assertValidatorSelfTestFailure(
   ) {
     throw new Error(
       `live report validator self-test failure reported wrong source path: ${failure.sourcePath}`,
+    );
+  }
+}
+
+function assertGithubArtifactValidatorSelfTestFailure(
+  expectedCheckName: string,
+  candidateGithubLiveArtifactValidatorSelfTestSource: string,
+): void {
+  const failure = assertFails(
+    expectedCheckName,
+    workflow,
+    rootPackageJson,
+    agentPackageJson,
+    providerSmokeSource,
+    liveReportValidatorSource,
+    liveReportWriterSource,
+    endpointConformanceSource,
+    liveReportValidatorSelfTestSource,
+    githubLiveArtifactValidatorSource,
+    candidateGithubLiveArtifactValidatorSelfTestSource,
+  );
+  if (
+    failure.sourcePath !==
+    "packages/scripts/validate-capability-router-github-live-artifacts.self-test.ts"
+  ) {
+    throw new Error(
+      `github live artifact validator self-test failure reported wrong source path: ${failure.sourcePath}`,
     );
   }
 }

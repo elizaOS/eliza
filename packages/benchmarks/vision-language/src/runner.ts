@@ -61,6 +61,9 @@ const VALID_TIERS = new Set<string>([
 
 interface Args {
   tier: Eliza1TierId | "stub";
+  harness: "eliza" | "hermes" | "openclaw";
+  provider: string;
+  model?: string;
   benchmarks: BenchmarkName[];
   samples: number;
   output?: string;
@@ -75,6 +78,9 @@ Flags:
   --tier <id>          eliza-1 tier; one of eliza-1-0_8b, eliza-1-2b,
                        eliza-1-4b, eliza-1-9b, eliza-1-27b, eliza-1-27b-256k.
                        Default: eliza-1-9b.
+  --harness <name>     eliza, hermes, or openclaw. Default: eliza.
+  --model-provider <p> OpenAI-compatible provider for hermes/openclaw VLM runs.
+  --model <id>         Multimodal model id for hermes/openclaw VLM runs.
   --benchmark <name>   one of textvqa, docvqa, chartqa, screenspot, osworld.
                        May be repeated; "all" expands to every benchmark.
                        Default: all.
@@ -92,6 +98,8 @@ Flags:
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     tier: "eliza-1-9b",
+    harness: "eliza",
+    provider: "openai",
     benchmarks: ALL_BENCHMARKS,
     samples: 100,
     smoke: false,
@@ -112,6 +120,21 @@ function parseArgs(argv: string[]): Args {
         );
       }
       args.tier = next as Eliza1TierId | "stub";
+    } else if (arg === "--harness") {
+      const next = argv[++i];
+      if (!next) throw new Error("--harness requires a value");
+      if (!["eliza", "hermes", "openclaw"].includes(next)) {
+        throw new Error("--harness must be one of eliza, hermes, openclaw");
+      }
+      args.harness = next as Args["harness"];
+    } else if (arg === "--model-provider") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model-provider requires a value");
+      args.provider = next;
+    } else if (arg === "--model") {
+      const next = argv[++i];
+      if (!next) throw new Error("--model requires a value");
+      args.model = next;
     } else if (arg === "--benchmark") {
       const next = argv[++i];
       if (!next) throw new Error("--benchmark requires a value");
@@ -334,12 +357,15 @@ async function main(): Promise<void> {
     process.exit(2);
   }
   process.stdout.write(
-    `vision-language bench — tier=${args.tier} benchmarks=${args.benchmarks.join(",")} ` +
+    `vision-language bench — tier=${args.tier} harness=${args.harness} benchmarks=${args.benchmarks.join(",")} ` +
       `samples=${args.samples} smoke=${args.smoke}\n`,
   );
   const runtime = await resolveRuntime({
     tier: args.tier,
     forceStub: args.forceStub,
+    harness: args.harness,
+    provider: args.provider,
+    model: args.model,
   });
   process.stdout.write(`runtime: ${runtime.id}\n`);
   const reports: BenchReport[] = [];

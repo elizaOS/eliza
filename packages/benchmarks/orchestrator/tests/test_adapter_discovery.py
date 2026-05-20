@@ -597,6 +597,9 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 ) -> None:
     monkeypatch.setattr(orchestrator_adapters, "_has_gaia_official_dataset", lambda: True)
     monkeypatch.setattr(orchestrator_adapters, "_has_hyperliquid_live_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_terminal_bench_docker_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_has_hermes_sandbox_backend", lambda: True)
+    monkeypatch.setattr(orchestrator_adapters, "_vision_language_compatible_harnesses", lambda: ("eliza", "hermes", "openclaw"))
     report = build_cross_matrix_report(
         _workspace_root().parent,
         provider="cerebras",
@@ -605,16 +608,10 @@ def test_cross_matrix_validation_constructs_all_compatible_cells(
 
     assert report.adapter_count == len(discover_adapters(_workspace_root()).adapters)
     assert report.compatible_cell_count > 0
-    assert report.incompatible_cell_count == 2
+    assert report.incompatible_cell_count == 0
     assert report.error_count == 0
     incompatible = [cell for cell in report.cells if not cell.compatible]
-    assert {
-        (cell.benchmark_id, cell.harness, cell.reason)
-        for cell in incompatible
-    } == {
-        ("vision_language", "hermes", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
-        ("vision_language", "openclaw", orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON),
-    }
+    assert incompatible == []
 
     compatible = [cell for cell in report.cells if cell.compatible]
     assert compatible
@@ -852,7 +849,7 @@ def test_direct_and_native_rows_keep_truthful_matrix_compatibility(
         else:
             assert cell.compatible is False
             assert cell.command is None
-            assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_FIXED_RUNTIME_REASON
+            assert cell.reason == orchestrator_adapters.VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON
 
     compactbench_hermes = cells[("compactbench", "hermes")]
     assert compactbench_hermes.compatible is True
@@ -1165,6 +1162,30 @@ def test_hermes_native_envs_require_sandbox_backend(
         assert _is_harness_compatible(adapter, "hermes") is False
         assert _is_harness_compatible(adapter, "eliza") is False
         assert _is_harness_compatible(adapter, "openclaw") is False
+
+
+def test_hermes_native_env_matrix_reports_sandbox_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_hermes_sandbox_backend",
+        lambda: False,
+    )
+
+    report = build_cross_matrix_report(
+        _workspace_root().parent,
+        provider="cerebras",
+        model="gpt-oss-120b",
+    )
+    cell = next(
+        cell
+        for cell in report.cells
+        if cell.benchmark_id == "hermes_tblite" and cell.harness == "hermes"
+    )
+
+    assert cell.compatible is False
+    assert cell.reason == orchestrator_adapters.HERMES_SANDBOX_UNAVAILABLE_REASON
 
 
 def test_openclaw_bench_publishes_real_harness_rows() -> None:
@@ -2900,7 +2921,11 @@ def test_terminalbench_default_allows_real_corpus_test_bootstrap(tmp_path: Path)
     )
 
     assert request.extra_config["network_mode"] == "bridge"
+    assert request.extra_config["max_tasks"] == 2
+    assert request.extra_config["task_ids"] == ["hello-world", "classifier-debug"]
     assert command[command.index("--network-mode") + 1] == "bridge"
+    assert command[command.index("--task-ids") + 1] == "hello-world"
+    assert command[command.index("--task-ids") + 2] == "classifier-debug"
 
 
 def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:
@@ -2923,6 +2948,52 @@ def test_terminalbench_forwards_task_ids_and_single(tmp_path: Path) -> None:
         "jsonl-aggregator",
     ]
     assert command[command.index("--single") + 1] == "assign-seats"
+
+
+def test_terminalbench_requires_reachable_docker_backend(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        orchestrator_adapters,
+        "_has_terminal_bench_docker_backend",
+        lambda: False,
+    )
+
+    adapter = discover_adapters(_workspace_root()).adapters["terminal_bench"]
+
+    assert adapter.agent_compatibility == ()
+    for harness in ("eliza", "hermes", "openclaw"):
+        assert _is_harness_compatible(adapter, harness) is False
+
+
+def test_terminalbench_score_rejects_docker_unavailable_results() -> None:
+    entry = {item.id: item for item in get_benchmark_registry(_workspace_root())}[
+        "terminal_bench"
+    ]
+
+    with pytest.raises(ValueError, match="Docker-unavailable"):
+        entry.extract_score(
+            {
+                "summary": {
+                    "accuracy": 0.0,
+                    "total_tasks": 2,
+                    "passed_tasks": 0,
+                    "failed_tasks": 2,
+                },
+                "results": [
+                    {
+                        "task_id": "hello-world",
+                        "success": False,
+                        "error_message": "Docker daemon is not reachable.",
+                    },
+                    {
+                        "task_id": "classifier-debug",
+                        "success": False,
+                        "error_message": "Docker daemon is not reachable.",
+                    },
+                ],
+            }
+        )
 
 
 def test_evm_primary_score_is_normalized_ratio(tmp_path: Path) -> None:
@@ -3024,6 +3095,9 @@ def test_vision_language_registry_uses_real_runtime_unless_smoke_stub_is_explici
     assert command[command.index("--tier") + 1] == "eliza-1-9b"
     assert command[command.index("--benchmark") + 1] == "screenspot"
     assert command[command.index("--samples") + 1] == "3"
+    assert command[command.index("--harness") + 1] == "eliza"
+    assert command[command.index("--model-provider") + 1] == "cerebras"
+    assert command[command.index("--model") + 1] == "gpt-oss-120b"
     assert command[command.index("--output") + 1] == str(
         tmp_path / "vision-language-results.json"
     )
@@ -3063,6 +3137,23 @@ def test_vision_language_score_rejects_smoke_and_stub_reports() -> None:
     stub_payload["runtime_id"] = "eliza-1-9b-stub"
     with pytest.raises(ValueError, match="stub runtime"):
         _score_from_vision_language_json(stub_payload)
+
+
+def test_vision_language_harness_runtime_requires_multimodal_model(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "cerebras")
+    monkeypatch.setenv("VISION_LANGUAGE_MODEL", "gpt-oss-120b")
+    monkeypatch.setenv("CEREBRAS_API_KEY", "test-key")
+    monkeypatch.delenv("VISION_LANGUAGE_MULTIMODAL", raising=False)
+
+    assert orchestrator_adapters._has_vision_language_harness_runtime() is False
+
+    monkeypatch.setenv("VISION_LANGUAGE_PROVIDER", "openai")
+    monkeypatch.setenv("VISION_LANGUAGE_MODEL", "gpt-4o-mini")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+
+    assert orchestrator_adapters._has_vision_language_harness_runtime() is True
 
 
 def test_rlm_registry_forwards_model_to_root_and_subcall(tmp_path: Path) -> None:

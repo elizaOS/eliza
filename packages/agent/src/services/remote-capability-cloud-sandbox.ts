@@ -40,6 +40,7 @@ export type ConnectCloudCapabilitySandboxOptions =
 
 export type ConnectCloudCapabilitySandboxResult =
   CloudCapabilitySandboxProvisionResult & {
+    providerId: string;
     sync: RemotePluginSyncResult;
   };
 
@@ -173,6 +174,8 @@ export async function provisionCloudCapabilitySandbox(
     Date.now() + (options.timeoutMs ?? DEFAULT_CLOUD_PROVISION_TIMEOUT_MS);
   const pollIntervalMs =
     options.pollIntervalMs ?? DEFAULT_CLOUD_PROVISION_POLL_MS;
+  let lastStatus: string | undefined;
+  let lastError: string | undefined;
   while (Date.now() < deadline) {
     await sleep(pollIntervalMs);
     const job = await cloudJson<JobResponse>(
@@ -187,6 +190,8 @@ export async function provisionCloudCapabilitySandbox(
     const status = job.data?.data?.status ?? job.data?.status;
     const result = job.data?.data?.result ?? job.data?.result;
     const error = job.data?.data?.error ?? job.data?.error;
+    lastStatus = status;
+    lastError = error;
     const endpoint = endpointFromProvisionPayload(options, result);
     if (status === "completed" && endpoint) {
       options.onProgress?.("ready", "Cloud capability endpoint ready.");
@@ -203,7 +208,11 @@ export async function provisionCloudCapabilitySandbox(
     );
   }
 
-  throw new Error("Cloud capability sandbox provisioning timed out.");
+  throw new Error(
+    `Cloud capability sandbox provisioning timed out.${
+      lastStatus ? ` Last status: ${lastStatus}.` : ""
+    }${lastError ? ` Last error: ${lastError}.` : ""}`,
+  );
 }
 
 export async function connectCloudCapabilitySandbox(
@@ -222,6 +231,7 @@ export async function connectCloudCapabilitySandbox(
   assertCloudProvisionResult(result);
   return {
     agentId: result.agentId,
+    providerId: result.providerId,
     endpoint: result.endpoint,
     ...(result.jobId === undefined ? {} : { jobId: result.jobId }),
     sync: result.sync,

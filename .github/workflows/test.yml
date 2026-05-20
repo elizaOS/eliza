@@ -122,6 +122,9 @@ jobs:
       - name: Remote capability GitHub live evidence self-test
         run: bun run test:remote-capabilities:github-live-evidence:self-test
 
+      - name: Remote capability GitHub live artifact self-test
+        run: bun run test:remote-capabilities:github-live-artifacts:self-test
+
       - name: Remote capability Docker smoke
         run: bun run test:remote-capabilities:docker
 

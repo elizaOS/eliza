@@ -202,7 +202,13 @@ export async function handleRemoteCapabilityRoutes(
       });
       const persistedEndpoint = result.endpoint ?? endpoint;
       if (persist) {
-        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds);
+        await persistEndpoint(ctx, persistedEndpoint, allowedModuleIds, {
+          mode: providerMode === "direct" ? "endpoint" : providerMode,
+          provider: result.providerId,
+          endpoint: persistedEndpoint,
+          allowedModuleIds,
+          sync: result.sync,
+        });
       }
       json(res, {
         success: true,
@@ -240,7 +246,13 @@ export async function handleRemoteCapabilityRoutes(
         requestTimeoutMs: requestTimeoutMs ?? 60_000,
       });
       if (persist) {
-        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds);
+        await persistEndpoint(ctx, result.endpoint, cloudAllowedModuleIds, {
+          mode: "cloud",
+          provider: result.providerId,
+          endpoint: result.endpoint,
+          allowedModuleIds: cloudAllowedModuleIds,
+          sync: result.sync,
+        });
       }
       json(res, {
         success: true,
@@ -366,6 +378,7 @@ function persistEndpoint(
   >,
   endpoint: RemoteCapabilityEndpointConfig,
   allowedModuleIds?: string[],
+  audit?: CapabilityRouterTrustAuditInput,
 ): Promise<void> {
   const config = ctx.config;
   const saveConfig = ctx.saveConfig;
@@ -379,6 +392,7 @@ function persistEndpoint(
     { config, saveConfig, persistConfigEnv },
     endpoint,
     allowedModuleIds,
+    audit,
   );
 }
 
@@ -390,6 +404,7 @@ async function persistEndpointInner(
   },
   endpoint: RemoteCapabilityEndpointConfig,
   allowedModuleIds?: string[],
+  audit?: CapabilityRouterTrustAuditInput,
 ): Promise<void> {
   const env = ctx.config.env ?? {};
   const vars = { ...(env.vars ?? {}) };
@@ -424,11 +439,98 @@ async function persistEndpointInner(
   } else {
     delete vars.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
   }
+  if (audit !== undefined) {
+    vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = JSON.stringify(
+      appendTrustAuditRecord(
+        readTrustAuditRecords(
+          process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT ??
+            vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
+        ),
+        audit,
+      ),
+    );
+  }
   ctx.config.env = {
     ...env,
     vars,
   };
   ctx.saveConfig(ctx.config);
+}
+
+type CapabilityRouterTrustAuditInput = {
+  mode: string;
+  provider: string;
+  endpoint: RemoteCapabilityEndpointConfig;
+  allowedModuleIds?: string[];
+  sync: RemotePluginSyncResult;
+};
+
+type CapabilityRouterTrustAuditRecord = {
+  recordedAt: string;
+  mode: string;
+  provider: string;
+  endpoint: JsonObject;
+  allowedModuleIds: string[];
+  registered: string[];
+  skipped: string[];
+  unloaded: string[];
+  trustDecisions: RemotePluginSyncResult["trustDecisions"];
+};
+
+function readTrustAuditRecords(
+  value: string | undefined,
+): CapabilityRouterTrustAuditRecord[] {
+  if (!value?.trim()) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(isTrustAuditRecord);
+  } catch {
+    return [];
+  }
+}
+
+function appendTrustAuditRecord(
+  existing: CapabilityRouterTrustAuditRecord[],
+  audit: CapabilityRouterTrustAuditInput,
+): CapabilityRouterTrustAuditRecord[] {
+  return [
+    ...existing,
+    {
+      recordedAt: new Date().toISOString(),
+      mode: audit.mode,
+      provider: audit.provider,
+      endpoint: redactEndpoint(audit.endpoint),
+      allowedModuleIds: normalizeStringList(audit.allowedModuleIds ?? []),
+      registered: audit.sync.registered.map((plugin) => plugin.name),
+      skipped: [...audit.sync.skipped],
+      unloaded: [...audit.sync.unloaded],
+      trustDecisions: audit.sync.trustDecisions.map((decision) => ({
+        ...decision,
+      })),
+    },
+  ].slice(-50);
+}
+
+function isTrustAuditRecord(
+  value: unknown,
+): value is CapabilityRouterTrustAuditRecord {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.recordedAt === "string" &&
+    typeof record.mode === "string" &&
+    typeof record.provider === "string" &&
+    !!record.endpoint &&
+    typeof record.endpoint === "object" &&
+    Array.isArray(record.allowedModuleIds) &&
+    Array.isArray(record.registered) &&
+    Array.isArray(record.skipped) &&
+    Array.isArray(record.unloaded) &&
+    Array.isArray(record.trustDecisions)
+  );
 }
 
 function readPersistedModuleAllowlists(

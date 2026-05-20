@@ -47,6 +47,7 @@ import process from "node:process";
 
 const ARG_JSON = process.argv.includes("--json");
 const ARG_HUMAN = process.argv.includes("--human");
+const REQUIRED_ACCELERATOR = resolveRequiredAccelerator();
 
 const SUPPORTED_MODELS = [
 	"imagegen-sd-1_5-q5_0",
@@ -58,6 +59,13 @@ const SUPPORTED_MODELS = [
 // `auto` and `cpu` are always legal sd-cpp modes. GPU accelerators are added
 // only when the binary manifest, --help, or --version proves support.
 const BASE_ACCELERATORS = ["auto", "cpu"];
+
+function resolveRequiredAccelerator() {
+	const raw = process.env.ELIZA_IMAGEGEN_ACCELERATOR;
+	if (typeof raw !== "string" || !raw.trim()) return null;
+	const value = raw.trim().toLowerCase();
+	return isAccelerator(value) || value === "auto" ? value : null;
+}
 
 function resolveBinary() {
 	const fromEnv = process.env.SD_CPP_BIN;
@@ -216,6 +224,23 @@ async function main() {
 	}
 
 	const capabilities = await probeCapabilities(binary, versionResult);
+	if (
+		REQUIRED_ACCELERATOR &&
+		!capabilities.accelerators.includes(REQUIRED_ACCELERATOR)
+	) {
+		emit({
+			available: false,
+			binary,
+			version: parseVersionLine(versionResult.stdout, versionResult.stderr),
+			supportedModels: SUPPORTED_MODELS,
+			accelerators: capabilities.accelerators,
+			evidence: capabilities.evidence,
+			requiredAccelerator: REQUIRED_ACCELERATOR,
+			reason: `${REQUIRED_ACCELERATOR}_missing`,
+			hint: `'${binary}' is available but does not prove ${REQUIRED_ACCELERATOR} support via manifest, --help, or --version. Use an sd-cpp build for that accelerator or clear ELIZA_IMAGEGEN_ACCELERATOR.`,
+		});
+		return;
+	}
 	emit({
 		available: true,
 		binary,
@@ -223,6 +248,7 @@ async function main() {
 		supportedModels: SUPPORTED_MODELS,
 		accelerators: capabilities.accelerators,
 		evidence: capabilities.evidence,
+		requiredAccelerator: REQUIRED_ACCELERATOR ?? undefined,
 	});
 }
 
@@ -239,8 +265,14 @@ function emit(payload) {
 			lines.push(
 				`accelerators: ${(payload.accelerators ?? []).join(", ")}`,
 			);
+			if (payload.requiredAccelerator) {
+				lines.push(`required accelerator: ${payload.requiredAccelerator}`);
+			}
 		} else {
 			lines.push(`reason: ${payload.reason}`);
+			if (payload.requiredAccelerator) {
+				lines.push(`required accelerator: ${payload.requiredAccelerator}`);
+			}
 			if (payload.hint) lines.push(`hint: ${payload.hint}`);
 		}
 		process.stdout.write(`${lines.join("\n")}\n`);

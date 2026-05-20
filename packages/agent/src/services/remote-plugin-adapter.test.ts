@@ -1,4 +1,5 @@
 import { type ChildProcessByStdio, execFile, spawn } from "node:child_process";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -211,6 +212,29 @@ const remoteModule: RemotePluginModuleManifest = {
   ],
 };
 
+function hashRemotePluginModuleForTest(
+  module: RemotePluginModuleManifest,
+): string {
+  const { capabilityEndpointId: _endpointId, provenance: _provenance, ...rest } =
+    module;
+  return createHash("sha256")
+    .update(JSON.stringify(canonicalizeForTest(rest)), "utf8")
+    .digest("hex");
+}
+
+function canonicalizeForTest(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map((entry) => canonicalizeForTest(entry));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, entry]) => entry !== undefined)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, entry]) => [key, canonicalizeForTest(entry)]),
+    );
+  }
+  return value;
+}
+
 const originalFetch = globalThis.fetch;
 type CapabilityServerChild = ChildProcessByStdio<null, Readable, Readable>;
 const dockerSmoke =
@@ -226,6 +250,8 @@ const esbuildSmoke =
 const registeredViewPlugins = [
   "@remote/device-tools",
   "@remote/cloud-tools",
+  "@remote/device-a",
+  "@remote/device-b",
   "@remote/localhost-tools",
   "@remote/built-source",
   "@remote/process-plugin",
@@ -1483,6 +1509,252 @@ describe("remote plugin adapter", () => {
         },
       },
     });
+
+    const signedModule: RemotePluginModuleManifest = {
+      ...trustedModule,
+      provenance: {
+        issuer: "eliza-cloud-build",
+        subject: "cloud://agents/trusted-cloud/modules/remote-demo",
+        digestSha256:
+          "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        signatureAlgorithm: "ed25519",
+        signature: "signed-remote-demo",
+      },
+    };
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [signedModule],
+        reloadExisting: true,
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedModuleIds: ["remote-demo"],
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          requireEndpointId: true,
+          requireSignedProvenance: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [{ name: "@remote/demo" }],
+      trustDecisions: [
+        {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [trustedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          requireSignedProvenance: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" does not include signed provenance.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          trusted: false,
+          reason: "missing-provenance",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [signedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedProvenanceIssuers: ["other-issuer"],
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance issuer "eliza-cloud-build" is not trusted for registration.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "provenance-issuer-not-allowed",
+        },
+      },
+    });
+
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicKeyPem = publicKey.export({
+      type: "spki",
+      format: "pem",
+    }) as string;
+    const verifiedDigest = hashRemotePluginModuleForTest(trustedModule);
+    const verifiedProvenance = {
+      issuer: "eliza-cloud-build",
+      subject: "cloud://agents/trusted-cloud/modules/remote-demo",
+      digestSha256: verifiedDigest,
+      signatureAlgorithm: "ed25519",
+      signature: "",
+    };
+    const verifiedModule: RemotePluginModuleManifest = {
+      ...trustedModule,
+      provenance: {
+        ...verifiedProvenance,
+        signature: sign(
+          null,
+          Buffer.from(
+            [
+              `issuer:${verifiedProvenance.issuer}`,
+              `subject:${verifiedProvenance.subject}`,
+              `digestSha256:${verifiedProvenance.digestSha256}`,
+            ].join("\n"),
+            "utf8",
+          ),
+          privateKey,
+        ).toString("base64"),
+      },
+    };
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [verifiedModule],
+        reloadExisting: true,
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          allowedProvenanceIssuers: ["eliza-cloud-build"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": publicKeyPem,
+          },
+          requireEndpointId: true,
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [{ name: "@remote/demo" }],
+      trustDecisions: [
+        {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: true,
+          reason: "allowed",
+        },
+      ],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...verifiedModule,
+            provenance: {
+              ...verifiedModule.provenance!,
+              signature: "not-a-valid-signature",
+            },
+          },
+        ],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": publicKeyPem,
+          },
+          requireVerifiedProvenance: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance signature is invalid.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "invalid-provenance-signature",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [
+          {
+            ...verifiedModule,
+            description: "Tampered remote demo plugin.",
+          },
+        ],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          trustedProvenancePublicKeys: {
+            "eliza-cloud-build": publicKeyPem,
+          },
+          requireVerifiedProvenance: true,
+          requireProvenanceDigestMatch: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance digest does not match module contents.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "invalid-provenance-digest",
+        },
+      },
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [verifiedModule],
+        trustPolicy: {
+          allowedEndpointIds: ["trusted-cloud"],
+          requireVerifiedProvenance: true,
+        },
+      }),
+    ).rejects.toMatchObject({
+      code: "CAPABILITY_UNAVAILABLE",
+      capability: "plugin",
+      method: "plugin.modules.list",
+      message:
+        'Remote plugin module "remote-demo" provenance issuer "eliza-cloud-build" has no trusted verification key.',
+      details: {
+        trustDecision: {
+          moduleId: "remote-demo",
+          pluginName: "@remote/demo",
+          endpointId: "trusted-cloud",
+          provenanceIssuer: "eliza-cloud-build",
+          trusted: false,
+          reason: "missing-provenance-public-key",
+        },
+      },
+    });
   });
 
   it("rejects duplicate remote action and provider names in the same sync batch", async () => {
@@ -2008,6 +2280,105 @@ describe("remote plugin adapter", () => {
     expect(getView("volatile.view")).toBeUndefined();
   });
 
+  it("scopes stale unloads to the selected endpoint so another device remains loaded", async () => {
+    const deviceAModule: RemotePluginModuleManifest = {
+      id: "device-a-tools",
+      name: "@remote/device-a",
+      capabilityEndpointId: "device-a",
+      actions: [
+        {
+          name: "DEVICE_A_ACTION",
+          description: "Action owned by device A.",
+        },
+      ],
+      routes: [
+        {
+          method: "POST",
+          path: "/device-a/route",
+          public: true,
+        },
+      ],
+      views: [
+        {
+          id: "device-a.view",
+          label: "Device A View",
+          bundleUrl: "https://device-a.example/view.js",
+        },
+      ],
+    };
+    const deviceBModule: RemotePluginModuleManifest = {
+      id: "device-b-tools",
+      name: "@remote/device-b",
+      capabilityEndpointId: "device-b",
+      actions: [
+        {
+          name: "DEVICE_B_ACTION",
+          description: "Action owned by device B.",
+        },
+      ],
+      routes: [
+        {
+          method: "POST",
+          path: "/device-b/route",
+          public: true,
+        },
+      ],
+      views: [
+        {
+          id: "device-b.view",
+          label: "Device B View",
+          bundleUrl: "https://device-b.example/view.js",
+        },
+      ],
+    };
+    const runtime = makeLifecycleRuntime(makeRouter());
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [deviceAModule, deviceBModule],
+        trustPolicy: {
+          allowedEndpointIds: ["device-a", "device-b"],
+          allowedModuleIds: ["device-a-tools", "device-b-tools"],
+          requireEndpointId: true,
+        },
+      }),
+    ).resolves.toMatchObject({
+      registered: [
+        expect.objectContaining({ name: "@remote/device-a" }),
+        expect.objectContaining({ name: "@remote/device-b" }),
+      ],
+      unloaded: [],
+    });
+
+    await expect(
+      syncRemoteCapabilityPlugins(runtime, {
+        modules: [],
+        unloadMissing: true,
+        unloadMissingEndpointIds: ["device-a"],
+      }),
+    ).resolves.toEqual({
+      registered: [],
+      unloaded: ["@remote/device-a"],
+      skipped: [],
+      trustDecisions: [],
+    });
+
+    expect(runtime.plugins.map((plugin) => plugin.name)).toEqual([
+      "@remote/device-b",
+    ]);
+    expect(runtime.actions.map((action) => action.name)).toEqual([
+      "DEVICE_B_ACTION",
+    ]);
+    expect(runtime.routes.map((route) => route.path)).toEqual([
+      "/device-b/route",
+    ]);
+    expect(getView("device-a.view")).toBeUndefined();
+    expect(getView("device-b.view")).toMatchObject({
+      pluginName: "@remote/device-b",
+      bundleUrl: "https://device-b.example/view.js",
+    });
+  });
+
   it("bootstraps to no-op when the remote router is not configured", async () => {
     const runtime = makeRuntime(null, {
       getSetting: (key) =>
@@ -2321,6 +2692,38 @@ describe("remote plugin adapter", () => {
         },
       });
       expect(JSON.stringify(savedConfig)).not.toContain("product-token");
+      const trustAudit = JSON.parse(
+        (
+          savedConfig.env as {
+            vars: Record<string, string>;
+          }
+        ).vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
+      );
+      expect(trustAudit).toEqual([
+        expect.objectContaining({
+          mode: "endpoint",
+          provider: "direct",
+          endpoint: {
+            id: "product-device",
+            baseUrl: "https://product-device.example",
+            hasToken: true,
+          },
+          allowedModuleIds: ["remote-demo"],
+          registered: ["@remote/demo"],
+          skipped: [],
+          unloaded: [],
+          trustDecisions: [
+            expect.objectContaining({
+              endpointId: "product-device",
+              moduleId: "remote-demo",
+              pluginName: "@remote/demo",
+              trusted: true,
+              reason: "allowed",
+            }),
+          ],
+        }),
+      ]);
+      expect(JSON.stringify(trustAudit)).not.toContain("product-token");
 
       saveElizaConfig(savedConfig as never);
       delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
@@ -2380,6 +2783,257 @@ describe("remote plugin adapter", () => {
         process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
           previousAllowedModules;
       }
+      await rm(stateDir, { force: true, recursive: true });
+    }
+  });
+
+  it("reopens a persisted Cloud-provisioned remote view after restart", async () => {
+    const previousStateDir = process.env.ELIZA_STATE_DIR;
+    const previousEnabled = process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+    const previousUrls = process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+    const previousAllowedModules =
+      process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+    const previousTrustAudit = process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+    const stateDir = await mkdtemp(
+      join(tmpdir(), "remote-capability-cloud-view-restart-"),
+    );
+    const cloudModule: RemotePluginModuleManifest = {
+      id: "cloud-product-plugin",
+      name: "@remote/cloud-product",
+      capabilityEndpointId: "cloud-product",
+      views: [
+        {
+          id: "cloud.restart.view",
+          label: "Cloud Restart View",
+          bundlePath: "/assets/cloud-view.js",
+        },
+      ],
+    };
+    const httpCalls: Array<{
+      url: string;
+      authorization: string | null;
+      method: string;
+    }> = [];
+
+    try {
+      process.env.ELIZA_STATE_DIR = stateDir;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+
+      const routeRuntime = makeProductConnectRuntime();
+      const savedConfig: Record<string, unknown> = {};
+      const json = vi.fn();
+      const error = vi.fn();
+      await expect(
+        handleRemoteCapabilityRoutes({
+          req: {} as never,
+          res: {} as never,
+          method: "POST",
+          pathname: "/api/capability-router/connect",
+          runtime: routeRuntime,
+          config: savedConfig,
+          saveConfig: (config) => Object.assign(savedConfig, config),
+          persistConfigEnv,
+          connectCloudSandbox: vi.fn().mockResolvedValue({
+            providerId: "cloud",
+            agentId: "cloud-agent-1",
+            jobId: "cloud-job-1",
+            endpoint: {
+              id: "cloud-product",
+              baseUrl: "https://cloud-product.example",
+              token: "cloud-product-token",
+            },
+            allowedModuleIds: ["cloud-product-plugin"],
+            sync: {
+              registered: [
+                createRemoteCapabilityPlugin({
+                  ...cloudModule,
+                  capabilityEndpointId: "cloud-product",
+                }),
+              ],
+              unloaded: [],
+              skipped: [],
+              trustDecisions: [
+                {
+                  endpointId: "cloud-product",
+                  moduleId: "cloud-product-plugin",
+                  pluginName: "@remote/cloud-product",
+                  trusted: true,
+                  reason: "allowed",
+                },
+              ],
+            },
+          }),
+          readJsonBody: vi.fn().mockResolvedValue({
+            cloud: {
+              cloudApiBase: "https://cloud.example",
+              authToken: "cloud-auth-token",
+              name: "Cloud Product View",
+              endpointId: "cloud-product",
+              allowedModuleIds: ["cloud-product-plugin"],
+            },
+            persist: true,
+          }),
+          json,
+          error,
+        }),
+      ).resolves.toBe(true);
+
+      expect(error).not.toHaveBeenCalled();
+      expect(json.mock.calls[0]?.[1]).toMatchObject({
+        success: true,
+        mode: "cloud",
+        agentId: "cloud-agent-1",
+        jobId: "cloud-job-1",
+        endpoint: {
+          id: "cloud-product",
+          baseUrl: "https://cloud-product.example",
+          hasToken: true,
+        },
+        persisted: true,
+      });
+      expect(JSON.stringify(savedConfig)).not.toContain("cloud-product-token");
+      expect(
+        (
+          savedConfig.env as {
+            vars: Record<string, string>;
+          }
+        ).vars.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT,
+      ).toContain("cloud-product-plugin");
+
+      saveElizaConfig(savedConfig as never);
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+      loadElizaConfig();
+
+      globalThis.fetch = vi.fn(
+        async (input: RequestInfo | URL, init?: RequestInit) => {
+          const request = new Request(input, init);
+          httpCalls.push({
+            url: request.url,
+            authorization: request.headers.get("authorization"),
+            method: request.method,
+          });
+          if (request.method === "POST") {
+            const body = await request.json();
+            if (isInvokeBody(body, "plugin.modules.list")) {
+              return jsonResponse({
+                ok: true,
+                result: { modules: [cloudModule] },
+              });
+            }
+            if (isInvokeBody(body, "plugin.asset.get")) {
+              return jsonResponse({
+                ok: true,
+                result: {
+                  path: "/assets/cloud-view.js",
+                  contentType: "text/javascript",
+                  bodyBase64: Buffer.from(
+                    "export const cloudRestartView = true;",
+                  ).toString("base64"),
+                },
+              });
+            }
+          }
+          return jsonResponse({
+            ok: false,
+            error: { message: `unexpected request ${request.url}` },
+          });
+        },
+      ) as unknown as typeof fetch;
+
+      const restartRuntime = makeProductConnectRuntime();
+      await expect(
+        bootstrapRemoteCapabilityPlugins(restartRuntime),
+      ).resolves.toMatchObject({
+        registered: [expect.objectContaining({ name: "@remote/cloud-product" })],
+        unloaded: [],
+        skipped: [],
+        trustDecisions: [
+          expect.objectContaining({
+            endpointId: "cloud-product",
+            moduleId: "cloud-product-plugin",
+            trusted: true,
+          }),
+        ],
+      });
+
+      const reopenedView = getView("cloud.restart.view");
+      expect(reopenedView).toMatchObject({
+        pluginName: "@remote/cloud-product",
+        bundleUrl:
+          "/api/capability-router/assets/cloud-product/cloud-product-plugin/assets/cloud-view.js",
+      });
+      const writeHead = vi.fn();
+      const end = vi.fn();
+      await expect(
+        handleRemoteCapabilityRoutes({
+          req: { headers: {} } as never,
+          res: { writeHead, end } as never,
+          method: "GET",
+          pathname:
+            "/api/capability-router/assets/cloud-product/cloud-product-plugin/assets/cloud-view.js",
+          runtime: restartRuntime,
+          readJsonBody: vi.fn(),
+          json: vi.fn(),
+          error: vi.fn(),
+        }),
+      ).resolves.toBe(true);
+
+      expect(writeHead).toHaveBeenCalledWith(
+        200,
+        expect.objectContaining({
+          "Content-Type": "text/javascript",
+          "Content-Length": Buffer.byteLength(
+            "export const cloudRestartView = true;",
+          ),
+        }),
+      );
+      expect(end).toHaveBeenCalledWith(
+        Buffer.from("export const cloudRestartView = true;"),
+      );
+      expect(httpCalls).toContainEqual({
+        url: "https://cloud-product.example/v1/capabilities/invoke",
+        authorization: "Bearer cloud-product-token",
+        method: "POST",
+      });
+      expect(httpCalls).toContainEqual({
+        url: "https://cloud-product.example/v1/capabilities/invoke",
+        authorization: "Bearer cloud-product-token",
+        method: "POST",
+      });
+    } finally {
+      if (previousStateDir === undefined) {
+        delete process.env.ELIZA_STATE_DIR;
+      } else {
+        process.env.ELIZA_STATE_DIR = previousStateDir;
+      }
+      if (previousEnabled === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ENABLED;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ENABLED = previousEnabled;
+      }
+      if (previousUrls === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_URLS;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_URLS = previousUrls;
+      }
+      if (previousAllowedModules === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_ALLOWED_MODULES =
+          previousAllowedModules;
+      }
+      if (previousTrustAudit === undefined) {
+        delete process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT;
+      } else {
+        process.env.ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT = previousTrustAudit;
+      }
+      unregisterPluginViews("@remote/cloud-product");
       await rm(stateDir, { force: true, recursive: true });
     }
   });
@@ -4272,6 +4926,7 @@ function makeProductConnectRuntime(): IAgentRuntime {
       runtime.providers.push(...(plugin.providers ?? []));
       runtime.evaluators.push(...(plugin.evaluators ?? []));
       runtime.routes.push(...(plugin.routes ?? []));
+      await registerPluginViews(plugin);
     },
   });
   return runtime;

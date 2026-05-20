@@ -12,6 +12,10 @@ from benchmarks.orchestrator.db import (
     recover_stale_running_runs,
     update_run_result,
 )
+from benchmarks.orchestrator.adapters import (
+    GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON,
+    VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
+)
 from benchmarks.orchestrator.runner import _rebuild_latest_result_snapshots
 from benchmarks.orchestrator.types import BenchmarkAdapter, ExecutionContext, ScoreSummary
 
@@ -278,6 +282,7 @@ def test_rebuild_latest_prunes_preserved_snapshot_excluded_by_current_compatibil
         "status": "unsupported",
         "score": None,
         "run_id": None,
+        "reason": VISION_LANGUAGE_HARNESS_RUNTIME_UNAVAILABLE_REASON,
     }
 
 
@@ -1519,7 +1524,48 @@ def test_rebuild_latest_routes_current_incompatible_rows_out_of_latest(
         "status": "unsupported",
         "score": None,
         "run_id": None,
+        "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
+
+
+def test_rebuild_latest_matrix_contract_marks_no_required_real_harness_incomplete(
+    tmp_path: Path,
+) -> None:
+    conn = connect_database(tmp_path / "orchestrator.sqlite")
+    initialize_database(conn)
+    create_run_group(
+        conn,
+        run_group_id="rg_test",
+        created_at="2026-05-12T00:00:00+00:00",
+        request={},
+        benchmarks=["gaia"],
+        repo_meta={},
+    )
+    _seed_run(
+        conn,
+        benchmark_id="gaia",
+        agent="eliza",
+        run_id="run_unsupported",
+        started_at="2026-05-12T00:00:00+00:00",
+    )
+
+    _rebuild_latest_result_snapshots(
+        conn,
+        tmp_path,
+        {"gaia": _adapter("gaia", agent_compatibility=())},
+    )
+
+    index = json.loads((tmp_path / "latest" / "index.json").read_text(encoding="utf-8"))
+    contract = index["matrix_contract"]
+    assert contract["status"] == "incomplete"
+    assert contract["summary"]["complete_benchmarks"] == 0
+    assert contract["summary"]["incomplete_benchmarks"] == 1
+    assert contract["summary"]["no_required_real_harness_benchmarks"] == 1
+    assert contract["benchmarks"]["gaia"]["complete"] is False
+    assert (
+        contract["benchmarks"]["gaia"]["cells"]["eliza"]["reason"]
+        == GAIA_OFFICIAL_DATASET_UNAVAILABLE_REASON
+    )
 
 
 def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
@@ -1564,6 +1610,7 @@ def test_rebuild_latest_repairs_stale_success_that_is_now_incompatible(
         "status": "unsupported",
         "score": None,
         "run_id": None,
+        "reason": "harness 'openclaw' not in adapter compatibility (eliza, hermes)",
     }
 
 

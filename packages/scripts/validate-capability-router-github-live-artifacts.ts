@@ -7,8 +7,24 @@ import { validateGithubLiveEvidence } from "./validate-capability-router-github-
 const CLOUD_ARTIFACT = "remote-capability-cloud-live-report";
 const PROVIDER_ARTIFACT = "remote-capability-provider-live-report";
 
+type GithubLiveArtifactOptions = {
+  keepArtifacts: boolean;
+  maxAgeMinutes: number;
+  outputDir?: string;
+  runId: string;
+};
+
+type CommandRunner = (command: string, args: string[]) => string;
+
 function main(): void {
   const options = parseArgs(process.argv.slice(2));
+  validateGithubLiveArtifacts(options);
+}
+
+export function validateGithubLiveArtifacts(
+  options: GithubLiveArtifactOptions,
+  runCommand: CommandRunner = runShellCommand,
+): void {
   const workspace =
     options.outputDir ??
     mkdtempSync(join(tmpdir(), "capability-router-github-live-artifacts-"));
@@ -94,12 +110,7 @@ function main(): void {
   }
 }
 
-function parseArgs(args: string[]): {
-  keepArtifacts: boolean;
-  maxAgeMinutes: number;
-  outputDir?: string;
-  runId: string;
-} {
+function parseArgs(args: string[]): GithubLiveArtifactOptions {
   let keepArtifacts = false;
   let maxAgeMinutes = 90;
   let outputDir: string | undefined;
@@ -162,7 +173,7 @@ function parsePositiveNumber(value: string, option: string): number {
   return parsed;
 }
 
-function runCommand(command: string, args: string[]): string {
+function runShellCommand(command: string, args: string[]): string {
   const result = spawnSync(command, args, {
     encoding: "utf8",
     stdio: ["ignore", "pipe", "pipe"],

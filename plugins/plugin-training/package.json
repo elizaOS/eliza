@@ -39,7 +39,8 @@
     "@elizaos/ui": "workspace:*"
   },
   "peerDependencies": {
-    "react": "*"
+    "react": "*",
+    "react-dom": "*"
   },
   "agentConfig": {
     "pluginType": "elizaos:plugin:1.0.0",
@@ -58,7 +59,12 @@
     "dist"
   ],
   "devDependencies": {
+    "@testing-library/react": "^16.3.2",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "dotenv": "^17.2.3",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
     "tsup": "^8.5.1",
     "typescript": "^6.0.3",
     "vitest": "^4.0.17",

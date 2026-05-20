@@ -142,6 +142,13 @@ The standard methods currently implemented in core are:
       "id": "device-tools",
       "name": "@remote/device-tools",
       "version": "1.0.0",
+      "provenance": {
+        "issuer": "eliza-cloud-build",
+        "subject": "cloud://agents/example/modules/device-tools",
+        "digestSha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        "signatureAlgorithm": "ed25519",
+        "signature": "base64-signature"
+      },
       "description": "Device-backed tools",
       "config": {
         "DEVICE_MODE": "production",
@@ -310,6 +317,12 @@ Manifest decoding is strict at the capability-router boundary:
   `description`, evaluator `prompt`, model `modelType`, widget `id`, widget
   `label`, route `path`, view `id`, and view `label` must be non-empty
   strings.
+- `provenance`, when present, must include non-empty `issuer`, `subject`,
+  `signatureAlgorithm`, and `signature` strings plus a 64-character SHA-256
+  hex `digestSha256`. The digest is normalized to lowercase. This metadata is
+  available to local trust policy before registration, and the adapter can
+  verify Ed25519 provenance signatures and require the digest to match the
+  module manifest contents when a policy supplies trusted issuer public keys.
 - Route `method` must be one of `GET`, `POST`, `PUT`, `PATCH`, `DELETE`, or
   `STATIC`. The remote plugin adapter currently rejects remote `STATIC` routes
   because local route dispatch skips static routes and there is no remote static
@@ -526,15 +539,35 @@ an optional `trustPolicy` on `registerRemoteCapabilityPlugins`,
 - `allowedEndpointIds` rejects modules whose `capabilityEndpointId` is missing
   or not in the allowlist.
 - `allowedModuleIds` rejects modules whose `module.id` is not in the allowlist.
+- `allowedProvenanceIssuers` rejects modules whose signed provenance issuer is
+  missing or not in the allowlist.
 - `requireEndpointId` rejects modules without endpoint provenance.
+- `requireSignedProvenance` rejects modules without the manifest `provenance`
+  block.
+- `requireVerifiedProvenance` verifies the manifest provenance signature with a
+  PEM SPKI public key from `trustedProvenancePublicKeys[issuer]`. The supported
+  signature algorithm is `ed25519`, the manifest `signature` is base64, and the
+  canonical signed payload is:
+
+```text
+issuer:<issuer>
+subject:<subject>
+digestSha256:<lowercase digest>
+```
+- `requireProvenanceDigestMatch` hashes a canonical JSON copy of the module
+  manifest, excluding `capabilityEndpointId` and `provenance`, and rejects the
+  module when that SHA-256 digest does not match the signed
+  `provenance.digestSha256`.
 
 This gives product flows a concrete allow/deny boundary before remote modules
 become normal runtime plugins. `syncRemoteCapabilityPlugins` and
 `bootstrapRemoteCapabilityPlugins` return `trustDecisions` for accepted modules,
 and trust-policy rejections include the rejected decision in the structured
-`CapabilityError.details`. The policy is local to registration; stronger
-attestation, signatures, and durable operator audit records still belong in the
-provider/product layer.
+`CapabilityError.details`. The policy is local to registration and can require
+typed signed-provenance metadata from approved issuers, including Ed25519
+signature verification with product-provided trusted public keys and digest
+binding to the module manifest contents. Endpoint attestation still belongs in
+the provider/product layer.
 
 Product connection flows use this policy by default. Direct endpoint connect
 and cloud sandbox provisioning install one endpoint, then sync with
@@ -557,6 +590,11 @@ keyed by endpoint id. On restart, `bootstrapRemoteCapabilityPlugins` derives a
 trust policy from configured endpoint ids and these saved module allowlists, so
 restart sync does not broaden trust beyond the original connected endpoint or
 operator-selected modules.
+Persisted endpoint connects also write a redacted
+`ELIZA_CAPABILITY_ROUTER_TRUST_AUDIT` config record containing the connect mode,
+provider id, redacted endpoint metadata, module allowlist, registered/skipped/
+unloaded plugin names, and trust decisions, so operator review does not depend
+on the transient HTTP response.
 
 ## Why Not "Satellite" As The Abstraction
 
@@ -956,14 +994,21 @@ the live jobs as strict. Use
 `gh run view <run-id> --json databaseId,event,status,conclusion,jobs | bun run
 test:remote-capabilities:github-live-evidence -` to prove a scheduled/manual
 run actually observed Cloud and provider live smoke, validation, and artifact
-upload steps. Push runs intentionally fail that evidence validator unless
+upload steps. Use
+`bun run test:remote-capabilities:github-live-artifacts <run-id>` for the
+stronger proof: it validates the run metadata, downloads
+`remote-capability-cloud-live-report` and
+`remote-capability-provider-live-report`, then validates the downloaded report
+contents with the Cloud and provider artifact validators. Push runs
+intentionally fail that evidence validator unless
 `--allow-unobserved` is passed, because skipped-success live jobs are not live
 artifact evidence. Provider live reports must include `providerEvidence`
 showing the provider family, canonical endpoint runtime (`e2b-sandbox`,
 `home-machine`, `mobile-companion`, or `desktop-companion`), `github-actions`
 as the observing agent runtime, and the `url-backed-provider` adapter path.
-The validator self-test generates complete and partial live report fixtures so
-the artifact validator is itself covered without external credentials. The
+The validator self-tests generate complete and partial live report fixtures and
+mocked GitHub artifact downloads so the live report validators and GitHub
+artifact validator are covered without external credentials. The
 source-build smoke builds a temporary remote plugin source tree
 and consumes it only through the capability protocol, then repeats the same
 runtime path across a child-process endpoint. The fixture-server smoke builds a
@@ -1356,7 +1401,7 @@ packages/agent/src/services/remote-capability-cloud-sandbox.cloud-smoke.test.ts
 | Mobile bundle reachability                                 | Android and iOS JSC mobile agent bundles include the capability-router service, bootstrap plugin sync, endpoint-provider contract, and connect route; remote frontend asset proxy is blocked for restricted mobile platforms.                                                                                                                                                                                                                                                     | Implemented for protocol reachability; dynamic frontend bundles intentionally restricted on app-store platforms |
 | Agent product flow can connect remote capability endpoints | API, CLI, and Settings UI connect direct endpoints, URL-backed E2B/home/mobile/desktop-companion providers, and Cloud provisioning payloads.                                                                                                                                                                                                                                                                                                                                      | Implemented with focused smokes                                                                                 |
 | Frontend bundles load from remote plugins                  | View registry metadata, same-origin asset proxy for token-bearing bundles, app-shell loader tests, and Playwright UI smoke cover compiled remote bundles on web/desktop. The same proxy is blocked for iOS/Android clients to respect dynamic-code-loading policy.                                                                                                                                                                                                                | Implemented for web/desktop; restricted on app-store mobile                                                     |
-| Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, duplicate/colliding identities are rejected, and restart bootstrap derives trust from persisted endpoint/module config.                                                                                                                                                                                                                                                                                        | Implemented                                                                                                     |
+| Endpoint and module trust is explicit                      | Connect flows use endpoint allowlists, optional module allowlists, optional signed-provenance issuer allowlists, optional verified provenance public keys, optional module-manifest digest binding, duplicate/colliding identities are rejected, restart bootstrap derives trust from persisted endpoint/module config, and persisted connects record redacted trust-audit entries for operator review.                                                                    | Implemented                                                                                                     |
 | Real CI exercises the path                                 | Server CI runs focused remote-capability tests and Docker smoke; UI smoke runs compiled remote bundle and Settings connect flows; a live-CI audit statically enforces that Cloud and URL-backed provider smokes stay wired to scheduled/manual observation, strict live report validation, required provider endpoints, required artifact upload, and matching report directories from smoke output through validation/upload. Provider live report validation also requires unique redacted endpoint URL fingerprints across provider artifacts. | Implemented, live provider observations pending                                                                 |
 | Real Cloud sandbox provider                                | Live smoke provisions an Eliza Cloud endpoint, verifies manifest/view asset, syncs modules, and executes action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge when `ELIZAOS_CLOUD_API_KEY` is present.                                                                                                                                                                                            | Implemented but must be observed green                                                                          |
 | E2B/home-machine/mobile provider coverage                  | Exported URL-backed providers normalize and validate concrete E2B, home-machine, mobile-companion, and desktop-companion endpoints; focused conformance exercises E2B/home/mobile through action/provider/evaluator/response-handler evaluator/response-handler field evaluator/route/model/lifecycle/event/service/app-bridge/view/asset RPC; optional scheduled/manual provider-live CI smokes use the reusable endpoint conformance harness against configured real endpoints. | Implemented for URL-backed provider layer; live endpoint observations pending                                   |
@@ -1417,8 +1462,9 @@ This is not complete until the following are true:
   endpoints into a runtime with verified restart persistence through
   `config.env`; the product Settings UI now exposes and smoke-tests direct
   endpoint connection and Cloud provisioning payload construction. Direct
-  product-route restart hydration is covered; Cloud provision, persist, restart,
-  and reopen-view E2E remains pending.
+  product-route restart hydration is covered, and a mocked Cloud provision path
+  now persists, restarts, reopens the remote view, and fetches its bundle through
+  the asset proxy with the persisted bearer token.
 - Auth is specified and enforced for endpoint registration, invocation, and
   frontend asset access.
 - Endpoint identity, module identity, route namespace, view registry identity,
@@ -1426,14 +1472,17 @@ This is not complete until the following are true:
   bridge route key, and model type collision rules are enforced in the local
   adapter/router, including collisions against already-registered remote modules
   and local runtime handlers. The adapter also accepts an explicit trust policy for
-  endpoint/module allowlists before registration. Remaining trust work is
-  attestation and operator audit records for those decisions.
+  endpoint/module/provenance-issuer allowlists, verified provenance public keys,
+  and module-manifest digest binding before registration, and persisted connect
+  flows write redacted operator audit records for those decisions. Remaining
+  trust work is endpoint/provider attestation beyond the signed manifest.
 - Remote view loading is covered through the browser-facing view registry
   metadata path, real compiled bundle fetch/evaluation smokes, app-shell loader
   unit coverage, and a focused Playwright app-shell smoke against a running
   remote capability-style server. The Settings connect flow is now covered for
-  direct endpoints and Cloud provisioning payloads; a fuller E2E that provisions
-  through Cloud, persists, restarts, and reopens the remote view is still needed.
+  direct endpoints and Cloud provisioning payloads, and the mocked product route
+  covers Cloud provision, persistence, restart, remote view reopening, and asset
+  proxy fetch with the persisted token. Real Cloud observation is still required.
 - CI runs focused remote-capability tests plus a Docker-backed container smoke
   without external credentials.
 - Credentialed nightly/manual CI runs a real Eliza Cloud capability sandbox
