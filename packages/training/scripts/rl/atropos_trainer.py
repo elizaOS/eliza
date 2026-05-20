@@ -123,7 +123,7 @@ def _create_optimizer(
 
 
 # Load environment variables
-project_root = Path(__file__).parent.parent.parent.parent
+project_root = Path(__file__).parent.parent.parent
 env_path = project_root / ".env"
 env_local_path = project_root / ".env.local"
 

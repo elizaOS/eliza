@@ -409,12 +409,10 @@ export class AutomationPipeline {
     const trainingMode = process.env.TRAINING_MODE || 'atropos';
     const useTinker = trainingMode.toLowerCase() === 'tinker';
 
-    // Trigger appropriate Python training script based on mode
-    // Scripts are in packages/training/python/src/training/
     const pythonScript = path.resolve(
       process.cwd(),
-      'packages/training/python/src/training',
-      useTinker ? 'tinker_trainer.py' : 'atropos_trainer.py'
+      'packages/training/scripts/rl',
+      useTinker ? 'tinker/tinker_trainer.py' : 'atropos_trainer.py'
     );
 
     // Set environment variables for Python script

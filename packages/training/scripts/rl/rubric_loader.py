@@ -12,13 +12,10 @@ import json
 from pathlib import Path
 from typing import Optional
 
-# Rubric version - increment when rubrics change significantly
-# This should match RUBRICS_VERSION in packages/training/src/rubrics/index.ts
 RUBRICS_VERSION = "1.0.0"
 
-# Find the config directory relative to this file
 _CURRENT_DIR = Path(__file__).parent
-_CONFIG_DIR = _CURRENT_DIR.parent.parent.parent / "config"
+_CONFIG_DIR = _CURRENT_DIR.parent.parent / "config"
 _RUBRICS_FILE = _CONFIG_DIR / "rubrics.json"
 
 

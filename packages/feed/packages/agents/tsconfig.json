@@ -29,7 +29,6 @@
     { "path": "../engine" },
     { "path": "../core" },
     { "path": "../api" },
-    { "path": "../a2a" },
-    { "path": "../training" }
+    { "path": "../a2a" }
   ]
 }

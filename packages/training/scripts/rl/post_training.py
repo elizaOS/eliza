@@ -226,7 +226,7 @@ def run_benchmark(config: PostTrainingConfig) -> bool:
 
     # Build benchmark command
     # Find the benchmark script relative to this script
-    script_dir = Path(__file__).parent.parent.parent / "scripts"
+    script_dir = Path(__file__).parent.parent
     benchmark_script = script_dir / "run-benchmark-suite.ts"
 
     if not benchmark_script.exists():
