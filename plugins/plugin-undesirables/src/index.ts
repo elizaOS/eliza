@@ -186,17 +186,24 @@ async function generateResponse(
 ): Promise<ActionResult> {
   try {
     const result = await runtime.generateText(context);
-    const text = typeof result === "string" ? result : result?.text || context;
+    const text = typeof result === "string" ? result : result?.text || "";
+    if (!text) {
+      const fallback = "I processed your request but received an empty response. Please try again.";
+      if (callback) await callback({ text: fallback, source: "plugin-undesirables" }, actionName);
+      return { success: false, text: fallback };
+    }
     if (callback) {
       await callback({ text, source: "plugin-undesirables" }, actionName);
     }
     return { success: true, text };
-  } catch {
-    // Fallback: return context as-is if generateText unavailable
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : "Unknown error";
+    console.error(`[Undesirables] generateText failed for ${actionName}: ${errorMsg}`);
+    const safeResponse = "I wasn't able to process that right now — the language model is temporarily unavailable. Please try again shortly.";
     if (callback) {
-      await callback({ text: context, source: "plugin-undesirables" }, actionName);
+      await callback({ text: safeResponse, source: "plugin-undesirables" }, actionName);
     }
-    return { success: true, text: context };
+    return { success: false, text: safeResponse, data: { error: errorMsg } };
   }
 }
 
