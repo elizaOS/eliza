@@ -6,7 +6,7 @@
  *
  * Features:
  * - Load any of 4,444 unique soul personalities
- * - 34 unique tools across the collection
+ * - 9 actions + 24 skill matchers across the collection
  * - Market analysis with personality-driven perspective
  * - Business Pilot — 23 AI-powered business modules
  * - Meme Machine — content creation & marketing
@@ -404,7 +404,7 @@ const memeMachineAction: Action = {
 const loadSkillAction: Action = {
   name: "UNDESIRABLE_LOAD_SKILL",
   description:
-    "Load and execute any of the 34 tools from the Undesirable soul workspace — market analysis, content creation, portfolio check, entry signals, exit strategy, whale tracking, snipe evaluation, and more.",
+    "Load and execute any of the 24 skills from the Undesirable soul workspace — market analysis, content creation, portfolio check, entry signals, exit strategy, whale tracking, snipe evaluation, and more.",
   similes: [
     "USE_SKILL",
     "RUN_SKILL",
@@ -847,9 +847,9 @@ const undesirablePlugin: Plugin = {
   description:
     "The Undesirables — 4,444 autonomous AI agents on Ethereum. " +
     "Pioneers 'Personality-as-Code' via verifiable soul workspaces. " +
-    "Adds soul personality, market analysis, Business Pilot (23 modules), " +
+    "Adds soul personality, market analysis, Business Pilot, " +
     "Meme Machine, whale tracking, entry signals, portfolio checks, " +
-    "exit strategies, risk assessment, and 34 tools to any ElizaOS agent.",
+    "exit strategies, risk assessment, and 24 skill matchers to any ElizaOS agent.",
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     const validation = validateUndesirableConfig(runtime);
     if (!validation.valid) {
