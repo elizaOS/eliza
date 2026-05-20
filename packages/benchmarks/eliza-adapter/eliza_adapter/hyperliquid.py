@@ -153,15 +153,17 @@ def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
     if len(_CANONICAL_STEP_KEYS.intersection(step)) == 1:
         return step
 
-    action = str(
-        _first_present(step, "action", "type", "name", "tool", "tool_name") or ""
-    ).strip().lower()
+    action = re.sub(
+        r"[^a-z0-9]+",
+        "",
+        str(_first_present(step, "action", "type", "name", "tool", "tool_name") or "").lower(),
+    )
 
-    if action in {"open_perp", "place_order", "perp_order", "perp_orders", "order"}:
+    if action in {"openperp", "placeorder", "perporder", "perporders", "order"}:
         side = str(_first_present(step, "side", "direction") or "buy").strip().lower()
         if side not in {"buy", "sell"}:
             side = "buy"
-        tif = str(_first_present(step, "tif", "time_in_force") or "GTC").strip().upper()
+        tif = str(_first_present(step, "tif", "time_in_force", "timeInForce") or "GTC").strip().upper()
         if tif not in {"GTC", "ALO", "IOC"}:
             tif = "GTC"
         order: dict[str, Any] = {
@@ -177,14 +179,14 @@ def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
         }
         return {"perp_orders": {"orders": [order]}}
 
-    if action in {"cancel_all", "cancel", "cancel_orders"}:
+    if action in {"cancelall", "cancel", "cancelorders"}:
         coin = _first_present(step, "coin", "symbol", "asset", "market")
         inner: dict[str, Any] = {}
         if coin is not None:
             inner["coin"] = _normalize_coin(coin)
         return {"cancel_all": inner}
 
-    if action in {"transfer", "usd_class_transfer", "class_transfer", "wallet_transfer"}:
+    if action in {"transfer", "usdclasstransfer", "classtransfer", "wallettransfer"}:
         to_perp_value = _first_present(step, "toPerp", "to_perp", "direction")
         if to_perp_value is None:
             destination = str(_first_present(step, "to_account", "destination", "to") or "").lower()
@@ -198,7 +200,7 @@ def _normalize_action_step(step: dict[str, Any]) -> dict[str, Any] | None:
             }
         }
 
-    if action in {"set_leverage", "leverage"}:
+    if action in {"setleverage", "leverage"}:
         return {
             "set_leverage": {
                 "coin": _normalize_coin(_first_present(step, "coin", "symbol", "asset", "market")),

@@ -1,7 +1,12 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { expect, type APIRequestContext, type Locator, test } from "playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  test,
+} from "playwright/test";
 import { HARDWARE_PRODUCTS } from "@elizaos/shared/hardware-catalog";
 
 type ReleaseArtifact = {
@@ -34,11 +39,15 @@ async function expectReachable(
   label: string,
   target: string,
 ) {
-  const response = await request.fetch(target, {
+  const head = await request.fetch(target, {
     method: "HEAD",
     maxRedirects: 5,
     timeout: 20_000,
   });
+  const response =
+    head.status() === 405
+      ? await request.get(target, { maxRedirects: 5, timeout: 20_000 })
+      : head;
   expect(
     response.status(),
     `${label} should resolve without a broken live target: ${target}`,
@@ -83,14 +92,11 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
     await expect(hardwareSection).toBeVisible();
     await expect(
       hardwareSection.getByRole("link", { name: /Open checkout/i }),
-    ).toHaveAttribute(
-      "href",
-      "https://elizaos.ai/checkout?collection=elizaos-hardware",
+    ).toHaveAttribute("href", "/checkout?collection=elizaos-hardware");
+    const collectionCheckout = await page.request.get(
+      "/checkout?collection=elizaos-hardware",
     );
-    liveTargets.set(
-      "https://elizaos.ai/checkout?collection=elizaos-hardware",
-      "hardware collection checkout",
-    );
+    expect(collectionCheckout.status()).toBeLessThan(400);
 
     for (const product of HARDWARE_PRODUCTS) {
       const productLink = hardwareSection.locator(
@@ -119,7 +125,6 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
   for (const product of HARDWARE_PRODUCTS) {
     test(`hardware detail live links resolve for ${product.name}`, async ({
       page,
-      request,
     }) => {
       await page.goto(`/hardware/${product.slug}`, {
         waitUntil: "domcontentloaded",
@@ -129,16 +134,17 @@ test.describe("live elizaOS marketing and hardware link integrity", () => {
       ).toBeVisible();
 
       const preorder = await href(
-        page.getByRole("link", { name: /Pre-order on elizaos\.ai/i }),
+        page.getByRole("link", { name: /Pre-order checkout/i }),
       );
-      expect(preorder).toBe(`https://elizaos.ai/checkout?sku=${product.sku}`);
+      expect(preorder).toBe(`/checkout?sku=${product.sku}`);
 
       const beta = await href(
         page.getByRole("link", { name: /Download beta/i }),
       );
       expect(beta).toBe("/downloads/elizaos-beta-manifest.json");
 
-      await expectReachable(request, `${product.name} checkout`, preorder);
+      const checkoutResponse = await page.request.get(preorder);
+      expect(checkoutResponse.status()).toBeLessThan(400);
       const manifestResponse = await page.request.get(beta);
       expect(manifestResponse.status()).toBeLessThan(400);
       const body = (await manifestResponse.json()) as ReleaseManifest;

@@ -109,6 +109,53 @@ def test_extract_json_plan_normalizes_openclaw_batch_actions() -> None:
     }
 
 
+def test_extract_json_plan_normalizes_camel_case_bridge_actions() -> None:
+    raw_plan = """
+    {
+      "steps": [
+        {
+          "action": "setLeverage",
+          "coin": "ETH",
+          "leverage": 5
+        },
+        {
+          "action": "placeOrder",
+          "coin": "BTC",
+          "side": "Sell",
+          "size": 0.003,
+          "price": 34000,
+          "reduceOnly": false,
+          "timeInForce": "IOC"
+        },
+        {
+          "action": "cancelAll"
+        }
+      ]
+    }
+    """
+
+    assert _extract_json_plan(raw_plan) == {
+        "steps": [
+            {"set_leverage": {"coin": "ETH", "leverage": 5, "cross": False}},
+            {
+                "perp_orders": {
+                    "orders": [
+                        {
+                            "coin": "BTC",
+                            "side": "sell",
+                            "tif": "IOC",
+                            "sz": 0.003,
+                            "reduceOnly": False,
+                            "px": 34000.0,
+                        }
+                    ]
+                }
+            },
+            {"cancel_all": {}},
+        ]
+    }
+
+
 def test_hyperliquid_bridge_malformed_plans_fail_cleanly_after_bounded_retries(
     monkeypatch,
     tmp_path,
