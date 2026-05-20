@@ -11,7 +11,7 @@
     "hardware:bleak:watch": "SMARTGLASSES_REPORT_PATH=/tmp/smartglasses-hardware-report-latest.json SMARTGLASSES_WEARING_TIMEOUT_MS=600000 SMARTGLASSES_HOLD_MS=120000 SMARTGLASSES_DIRECT_MIC_MS=10000 bun run hardware:bleak",
     "hardware:prove:bleak": "sh -c 'bun run hardware:bleak:latest; bun run hardware:status-latest; bun run hardware:validate-latest'",
     "hardware:prove:bleak:watch": "sh -c 'bun run hardware:bleak:watch; bun run hardware:status-latest; bun run hardware:validate-latest'",
-    "hardware:noble": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run noble-hardware-smoke.ts",
+    "hardware:noble": "bun run --cwd ../../../plugins/plugin-hearwear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run noble-hardware-smoke.ts",
     "hardware:noble:latest": "SMARTGLASSES_REPORT_PATH=/tmp/smartglasses-hardware-report-latest.json SMARTGLASSES_WEARING_TIMEOUT_MS=90000 SMARTGLASSES_HOLD_MS=90000 SMARTGLASSES_DIRECT_MIC_MS=10000 bun run hardware:noble",
     "hardware:noble:watch": "SMARTGLASSES_REPORT_PATH=/tmp/smartglasses-hardware-report-latest.json SMARTGLASSES_WEARING_TIMEOUT_MS=600000 SMARTGLASSES_HOLD_MS=120000 SMARTGLASSES_DIRECT_MIC_MS=10000 bun run hardware:noble",
     "hardware:prove:noble": "sh -c 'bun run hardware:noble:latest; bun run hardware:status-latest; bun run hardware:validate-latest'",
@@ -24,20 +24,20 @@
     "hardware:validate-report": "bun run validate-hardware-report.ts",
     "simulator": "npx @evenrealities/evenhub-simulator@latest http://127.0.0.1:5178/evenhub-smoke.html --automation-port 9898",
     "smoke:simulator": "bun run simulator-automation-smoke.ts",
-    "smoke:package": "bun run --cwd ../../../plugins/plugin-facewear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run package-smoke.ts",
-    "smoke:runtime": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package turbo@2.9.14 turbo run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run eliza-runtime-smoke.ts",
+    "smoke:package": "bun run --cwd ../../../plugins/plugin-hearwear build && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run package-smoke.ts",
+    "smoke:runtime": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package turbo@2.9.14 turbo run build --filter=@elizaos/plugin-hearwear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && bun run eliza-runtime-smoke.ts",
     "lint": "bunx @biomejs/biome check .",
     "start": "bun run smartglasses.ts",
     "test": "bun test smartglasses.test.ts smartglasses-protocol.test.ts",
     "test:protocol": "bun test smartglasses-protocol.test.ts",
-    "typecheck": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package turbo@2.9.14 turbo run build --filter=@elizaos/plugin-facewear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --ignoreConfig --noEmit --moduleResolution bundler --allowImportingTsExtensions --module ESNext --target ES2022 --lib ES2022,DOM --types node --skipLibCheck --strict false eliza-runtime-smoke.ts evenhub-smoke.ts hardware-evidence.ts hardware-local-bluetooth.ts hardware-report-status.ts hardware-smoke.ts noble-hardware-smoke.ts package-smoke.ts simulator-automation-smoke.ts validate-hardware-report.ts",
+    "typecheck": "BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package turbo@2.9.14 turbo run build --filter=@elizaos/plugin-hearwear --concurrency=1 && node ../../../packages/scripts/ensure-workspace-symlinks.mjs && BUN_INSTALL_CACHE_DIR=/tmp/eliza-bun-cache-clean bunx --package typescript@6.0.3 tsc --ignoreConfig --noEmit --moduleResolution bundler --allowImportingTsExtensions --module ESNext --target ES2022 --lib ES2022,DOM --types node --skipLibCheck --strict false eliza-runtime-smoke.ts evenhub-smoke.ts hardware-evidence.ts hardware-local-bluetooth.ts hardware-report-status.ts hardware-smoke.ts noble-hardware-smoke.ts package-smoke.ts simulator-automation-smoke.ts validate-hardware-report.ts",
     "verify:software": "bun run lint && bun run test && bun run test:protocol && bun run hardware:test-bleak-parser && bun run hardware:test-doctor && bun run typecheck && bun run smoke:package && bun run smoke:runtime && bun run smoke:simulator",
     "clean": "rm -rf .turbo node_modules/.vite node_modules/.vite-temp"
   },
   "dependencies": {
     "@abandonware/noble": "^1.9.2-25",
     "@elizaos/core": "workspace:*",
-    "@elizaos/plugin-facewear": "workspace:*",
+    "@elizaos/plugin-hearwear": "workspace:*",
     "@evenrealities/even_hub_sdk": "0.0.10"
   },
   "devDependencies": {

@@ -234,6 +234,35 @@ def test_latest_comparability_checks_code_agent_required_cell(tmp_path: Path) ->
     assert report.findings[0].value == "inferior"
 
 
+def test_latest_comparability_rejects_mislabeled_code_agent_status(
+    tmp_path: Path,
+) -> None:
+    latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
+    _write_json(latest / "index.json", _code_agent_index("swe_bench"))
+    row = _code_agent_row("swe_bench", comparison_status="superior")
+    row.update(
+        {
+            "target_accuracy": 1.0,
+            "baseline_accuracy": 1.0,
+            "target_right": 1,
+            "target_total": 1,
+            "baseline_right": 1,
+            "baseline_total": 1,
+        }
+    )
+    _write_json(latest / "swe_bench__elizaos_vs_opencode.json", row)
+
+    report = validate_latest_comparability(tmp_path)
+
+    assert not report.ok
+    assert any(
+        finding.benchmark_id == "swe_bench"
+        and finding.reason == "code_agent_comparison_status_mismatch"
+        and '"expected_status": "comparable"' in finding.value
+        for finding in report.findings
+    )
+
+
 def test_latest_comparability_flags_missing_code_agent_row(tmp_path: Path) -> None:
     latest = tmp_path / "benchmarks" / "benchmark_results" / "latest"
     _write_json(latest / "index.json", _code_agent_index("terminal_bench"))

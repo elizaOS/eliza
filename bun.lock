@@ -217,7 +217,7 @@
         "@elizaos/plugin-defense-of-the-agents": "workspace:*",
         "@elizaos/plugin-device-settings": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
-        "@elizaos/plugin-facewear": "workspace:*",
+        "@elizaos/plugin-hearwear": "workspace:*",
         "@elizaos/plugin-hyperliquid-app": "workspace:*",
         "@elizaos/plugin-hyperscape": "workspace:*",
         "@elizaos/plugin-lifeops": "workspace:*",
@@ -1511,7 +1511,7 @@
       "dependencies": {
         "@abandonware/noble": "^1.9.2-25",
         "@elizaos/core": "workspace:*",
-        "@elizaos/plugin-facewear": "workspace:*",
+        "@elizaos/plugin-hearwear": "workspace:*",
         "@evenrealities/even_hub_sdk": "0.0.10",
       },
       "devDependencies": {
@@ -3326,8 +3326,8 @@
         "tsup": "^8.5.1",
       },
     },
-    "plugins/plugin-facewear": {
-      "name": "@elizaos/plugin-facewear",
+    "plugins/plugin-hearwear": {
+      "name": "@elizaos/plugin-hearwear",
       "version": "0.1.0",
       "dependencies": {
         "@elizaos/core": "workspace:*",
@@ -5980,7 +5980,7 @@
 
     "@elizaos/plugin-elizamaker": ["@elizaos/plugin-elizamaker@workspace:plugins/plugin-elizamaker"],
 
-    "@elizaos/plugin-facewear": ["@elizaos/plugin-facewear@workspace:plugins/plugin-facewear"],
+    "@elizaos/plugin-hearwear": ["@elizaos/plugin-hearwear@workspace:plugins/plugin-hearwear"],
 
     "@elizaos/plugin-farcaster": ["@elizaos/plugin-farcaster@workspace:plugins/plugin-farcaster"],
 

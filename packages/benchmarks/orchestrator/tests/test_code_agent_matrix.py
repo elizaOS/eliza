@@ -2152,6 +2152,83 @@ def test_code_agent_latest_publisher_contract_rejects_inferior_rows(tmp_path: Pa
     assert "cached-token percent worse" in cell["reason"]
 
 
+def test_code_agent_latest_publisher_rejects_mislabeled_comparison_status(
+    tmp_path: Path,
+) -> None:
+    latest_dir = tmp_path / "latest"
+    summary = {
+        "generated_at": "2026-05-20T12:00:00+00:00",
+        "artifact_paths": {"summary_json": str(tmp_path / "summary.json")},
+        "run_config": {
+            "run_root": str(tmp_path / "run"),
+            "provider": "cerebras",
+            "model": "gpt-oss-120b",
+        },
+        "report_rows": [
+            {
+                "benchmark": "swe_bench",
+                "mode": "live",
+                "status": "superior",
+                "target_adapter": "elizaos",
+                "baseline_adapter": "opencode",
+                "target_accuracy": 1.0,
+                "baseline_accuracy": 1.0,
+                "accuracy_delta": 0.0,
+                "target_right": 1,
+                "target_wrong": 0,
+                "target_total": 1,
+                "baseline_right": 1,
+                "baseline_wrong": 0,
+                "baseline_total": 1,
+                "target_input_tokens": 70,
+                "target_output_tokens": 30,
+                "target_total_tokens": 100,
+                "target_cached_token_percent": 10.0,
+                "target_llm_call_count": 2,
+                "baseline_input_tokens": 90,
+                "baseline_output_tokens": 30,
+                "baseline_total_tokens": 120,
+                "baseline_cached_token_percent": 10.0,
+                "baseline_llm_call_count": 3,
+                "input_token_delta": -20,
+                "output_token_delta": 0,
+                "total_token_delta": -20,
+                "llm_call_delta": -1,
+                "cached_token_percent_delta": 0.0,
+                "target_result_path": "/tmp/result.json",
+                "baseline_result_path": "/tmp/baseline-result.json",
+                "target_command_path": "/tmp/command.json",
+                "baseline_command_path": "/tmp/baseline-command.json",
+                "target_trajectory_dir": "/tmp/trajectories",
+                "baseline_trajectory_dir": "/tmp/baseline-trajectories",
+                "coverage_gate_ok": True,
+                "benchmark_gate_ok": True,
+                "required_stats_gate_ok": True,
+                "efficiency_gate_ok": True,
+                "quality_guardrail_gate_ok": True,
+                "trajectory_review_gate_ok": True,
+                "live_report_gate_ok": True,
+                "report_gate_ok": True,
+                "release_readiness_ok": True,
+            }
+        ],
+    }
+
+    artifacts = code_agent_matrix.write_code_agent_latest_snapshots(latest_dir, summary)
+    snapshot = json.loads(Path(artifacts["latest_rows"][0]).read_text(encoding="utf-8"))
+    index = json.loads((latest_dir / "index.json").read_text(encoding="utf-8"))
+    cell = index["matrix_contract"]["benchmarks"]["swe_bench"]["cells"][
+        "elizaos_vs_opencode"
+    ]
+
+    assert snapshot["status"] == "failed"
+    assert snapshot["comparison_status"] == "superior"
+    assert snapshot["failure_reasons"] == ["comparison status should be comparable"]
+    assert index["matrix_contract"]["status"] == "incomplete"
+    assert cell["state"] == "failed"
+    assert cell["reason"] == "comparison status should be comparable"
+
+
 def test_code_agent_latest_publisher_prunes_stale_code_agent_rows(tmp_path: Path) -> None:
     latest_dir = tmp_path / "latest"
     latest_dir.mkdir()

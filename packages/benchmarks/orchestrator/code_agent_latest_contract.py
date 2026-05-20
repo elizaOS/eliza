@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import math
+from typing import Any
+
 CODE_AGENT_LATEST_AGENT = "elizaos_vs_opencode"
 
 CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS: tuple[str, ...] = (
@@ -53,3 +56,39 @@ CODE_AGENT_LATEST_REQUIRED_TRUE_FIELDS: tuple[str, ...] = (
 CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES: frozenset[str] = frozenset(
     {"superior", "comparable"}
 )
+
+
+def expected_code_agent_comparison_status(payload: dict[str, Any]) -> str | None:
+    target_accuracy = code_agent_accuracy_for_status(payload, "target")
+    baseline_accuracy = code_agent_accuracy_for_status(payload, "baseline")
+    if target_accuracy is None or baseline_accuracy is None:
+        return None
+    if target_accuracy <= 0 and baseline_accuracy <= 0:
+        return "weak"
+    if target_accuracy + 1e-9 < baseline_accuracy:
+        return "inferior"
+    if target_accuracy > baseline_accuracy + 1e-9:
+        return "superior"
+    return "comparable"
+
+
+def code_agent_accuracy_for_status(
+    payload: dict[str, Any],
+    prefix: str,
+) -> float | None:
+    explicit = payload.get(f"{prefix}_accuracy")
+    if _is_finite_number(explicit):
+        return float(explicit)
+    right = payload.get(f"{prefix}_right")
+    total = payload.get(f"{prefix}_total")
+    if _is_finite_number(right) and _is_finite_number(total) and float(total) > 0:
+        return float(right) / float(total)
+    return None
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        isinstance(value, (int, float))
+        and not isinstance(value, bool)
+        and math.isfinite(float(value))
+    )

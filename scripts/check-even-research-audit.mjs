@@ -5,8 +5,8 @@ import { resolve } from "node:path";
 const repoRoot = resolve(import.meta.dirname, "..");
 const researchRoot = "research/even-realities";
 const upstreamAuditPath =
-  "plugins/plugin-facewear/docs/smartglasses-upstream-audit.md";
-const smartglassesDocsPath = "plugins/plugin-facewear/docs/smartglasses.md";
+  "plugins/plugin-hearwear/docs/smartglasses-upstream-audit.md";
+const smartglassesDocsPath = "plugins/plugin-hearwear/docs/smartglasses.md";
 const requestedRepos = [
   ["fabioglimb/even-toolkit", "even-toolkit"],
   ["BxNxM/even-dev", "even-dev"],
@@ -22,13 +22,13 @@ const requestedRepos = [
   ["Mentra-Community/MentraOS", "MentraOS"],
 ];
 const implementedSurfacePaths = [
-  "plugins/plugin-facewear/src/protocol/smartglasses.ts",
-  "plugins/plugin-facewear/src/services/smartglasses-service.ts",
-  "plugins/plugin-facewear/src/actions/facewear-control.ts",
-  "plugins/plugin-facewear/src/providers/smartglasses-status.ts",
-  "plugins/plugin-facewear/src/transport/web-bluetooth.ts",
-  "plugins/plugin-facewear/src/transport/noble.ts",
-  "plugins/plugin-facewear/src/transport/even-bridge.ts",
+  "plugins/plugin-hearwear/src/protocol/smartglasses.ts",
+  "plugins/plugin-hearwear/src/services/smartglasses-service.ts",
+  "plugins/plugin-hearwear/src/actions/facewear-control.ts",
+  "plugins/plugin-hearwear/src/providers/smartglasses-status.ts",
+  "plugins/plugin-hearwear/src/transport/web-bluetooth.ts",
+  "plugins/plugin-hearwear/src/transport/noble.ts",
+  "plugins/plugin-hearwear/src/transport/even-bridge.ts",
   "packages/examples/smartglasses/hardware-smoke.ts",
   "packages/examples/smartglasses/noble-hardware-smoke.ts",
   "packages/examples/smartglasses/hardware-evidence.ts",

@@ -10,6 +10,7 @@ from .calibration_report import _comparison_signature_for_run
 from .code_agent_latest_contract import (
     CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES,
     CODE_AGENT_LATEST_AGENT,
+    expected_code_agent_comparison_status,
 )
 
 REAL_HARNESSES: tuple[str, ...] = ("eliza", "hermes", "openclaw")
@@ -155,6 +156,21 @@ def validate_latest_comparability(
                             benchmark_id=benchmark_id,
                             reason="code_agent_not_comparable_or_better",
                             value=str(row.get("comparison_status")),
+                        )
+                    )
+                expected_status = expected_code_agent_comparison_status(row)
+                if expected_status is not None and comparison_status != expected_status:
+                    findings.append(
+                        ComparabilityFinding(
+                            benchmark_id=benchmark_id,
+                            reason="code_agent_comparison_status_mismatch",
+                            value=json.dumps(
+                                {
+                                    "expected_status": expected_status,
+                                    "row_status": comparison_status,
+                                },
+                                sort_keys=True,
+                            ),
                         )
                     )
             signature = _comparison_signature_for_run(row)

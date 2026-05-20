@@ -9,9 +9,9 @@ import {
   setSmartglassesAudioDecoderForRuntime,
   setSmartglassesTransportForRuntime,
   smartglassesPlugin,
-} from "@elizaos/plugin-facewear";
+} from "@elizaos/plugin-hearwear";
 
-if (smartglassesPlugin.name !== "@elizaos/plugin-facewear") {
+if (smartglassesPlugin.name !== "@elizaos/plugin-hearwear") {
   throw new Error("Unexpected plugin name from package export");
 }
 

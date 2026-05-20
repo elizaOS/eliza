@@ -40,6 +40,7 @@ from .code_agent_latest_contract import (
     CODE_AGENT_LATEST_REQUIRED_NUMERIC_FIELDS,
     CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS,
     CODE_AGENT_LATEST_REQUIRED_TRUE_FIELDS,
+    expected_code_agent_comparison_status,
 )
 
 DEFAULT_ADAPTERS = ("elizaos", "opencode")
@@ -4617,6 +4618,9 @@ def _code_agent_latest_failure_reasons(payload: dict[str, Any]) -> list[str]:
     comparison_status = str(payload.get("comparison_status") or "").strip()
     if comparison_status not in CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES:
         reasons.append("not comparable or better")
+    expected_status = expected_code_agent_comparison_status(payload)
+    if expected_status is not None and comparison_status != expected_status:
+        reasons.append(f"comparison status should be {expected_status}")
     for key in CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS:
         value = payload.get(key)
         if not isinstance(value, str) or not value.strip():

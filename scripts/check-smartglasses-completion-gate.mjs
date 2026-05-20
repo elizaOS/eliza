@@ -41,32 +41,32 @@ process.exit(1);
 function softwareGateFailures() {
   const failures = [];
   for (const relPath of [
-    "plugins/plugin-facewear/package.json",
-    "plugins/plugin-facewear/src/services/smartglasses-service.ts",
-    "plugins/plugin-facewear/src/protocol/smartglasses.ts",
-    "plugins/plugin-facewear/src/ui/SmartglassesView.tsx",
-    "plugins/plugin-facewear/src/register.ts",
-    "plugins/plugin-facewear/src/index.ts",
-    "plugins/plugin-facewear/src/routes/views.ts",
-    "plugins/plugin-facewear/src/actions/display-text.ts",
-    "plugins/plugin-facewear/src/actions/microphone.ts",
-    "plugins/plugin-facewear/src/actions/facewear-status.ts",
-    "plugins/plugin-facewear/src/actions/facewear-control.ts",
-    "plugins/plugin-facewear/src/actions/facewear-connect.ts",
-    "plugins/plugin-facewear/src/providers/smartglasses-status.ts",
-    "plugins/plugin-facewear/src/status-format.ts",
-    "plugins/plugin-facewear/src/__tests__/smartglasses-basic-actions.test.ts",
-    "plugins/plugin-facewear/src/__tests__/protocol-smartglasses.test.ts",
-    "plugins/plugin-facewear/src/__tests__/facewear-service.test.ts",
-    "plugins/plugin-facewear/src/__tests__/smartglasses-view-report.test.ts",
-    "plugins/plugin-facewear/src/__tests__/xr-smartglasses-bridge.test.ts",
-    "plugins/plugin-facewear/src/__tests__/smartglasses-control-action.test.ts",
-    "plugins/plugin-facewear/src/transport/web-bluetooth.ts",
-    "plugins/plugin-facewear/src/transport/noble.ts",
-    "packages/app-core/src/registry/entries/plugins/facewear.json",
+    "plugins/plugin-hearwear/package.json",
+    "plugins/plugin-hearwear/src/services/smartglasses-service.ts",
+    "plugins/plugin-hearwear/src/protocol/smartglasses.ts",
+    "plugins/plugin-hearwear/src/ui/SmartglassesView.tsx",
+    "plugins/plugin-hearwear/src/register.ts",
+    "plugins/plugin-hearwear/src/index.ts",
+    "plugins/plugin-hearwear/src/routes/views.ts",
+    "plugins/plugin-hearwear/src/actions/display-text.ts",
+    "plugins/plugin-hearwear/src/actions/microphone.ts",
+    "plugins/plugin-hearwear/src/actions/facewear-status.ts",
+    "plugins/plugin-hearwear/src/actions/facewear-control.ts",
+    "plugins/plugin-hearwear/src/actions/facewear-connect.ts",
+    "plugins/plugin-hearwear/src/providers/smartglasses-status.ts",
+    "plugins/plugin-hearwear/src/status-format.ts",
+    "plugins/plugin-hearwear/src/__tests__/smartglasses-basic-actions.test.ts",
+    "plugins/plugin-hearwear/src/__tests__/protocol-smartglasses.test.ts",
+    "plugins/plugin-hearwear/src/__tests__/facewear-service.test.ts",
+    "plugins/plugin-hearwear/src/__tests__/smartglasses-view-report.test.ts",
+    "plugins/plugin-hearwear/src/__tests__/xr-smartglasses-bridge.test.ts",
+    "plugins/plugin-hearwear/src/__tests__/smartglasses-control-action.test.ts",
+    "plugins/plugin-hearwear/src/transport/web-bluetooth.ts",
+    "plugins/plugin-hearwear/src/transport/noble.ts",
+    "packages/app-core/src/registry/entries/plugins/hearwear.json",
     "packages/app/src/plugin-registrations.ts",
-    "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/G1BleService.kt",
-    "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/AgentBridgeService.kt",
+    "plugins/plugin-hearwear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/G1BleService.kt",
+    "plugins/plugin-hearwear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/AgentBridgeService.kt",
     "packages/examples/smartglasses/package.json",
     "packages/examples/smartglasses/package-smoke.ts",
     "packages/examples/smartglasses/eliza-runtime-smoke.ts",
@@ -77,9 +77,9 @@ function softwareGateFailures() {
     "packages/examples/smartglasses/bleak-hardware-smoke.py",
     "packages/examples/smartglasses/noble-hardware-smoke.ts",
     "scripts/check-even-research-audit.mjs",
-    "plugins/plugin-facewear/docs/smartglasses.md",
-    "plugins/plugin-facewear/docs/smartglasses-upstream-audit.md",
-    "plugins/plugin-facewear/docs/smartglasses-completion-audit.md",
+    "plugins/plugin-hearwear/docs/smartglasses.md",
+    "plugins/plugin-hearwear/docs/smartglasses-upstream-audit.md",
+    "plugins/plugin-hearwear/docs/smartglasses-completion-audit.md",
   ]) {
     if (!existsSync(resolve(repoRoot, relPath)))
       failures.push(`${relPath}: missing`);
@@ -129,15 +129,15 @@ function softwareGateFailures() {
   }
   failures.push(
     ...sourceTokenFailures("scripts/verify-smartglasses-software.mjs", [
-      "plugins/plugin-facewear",
+      "plugins/plugin-hearwear",
       "lint",
       "typecheck",
       "test",
       "verify:app",
       "packages/examples/smartglasses",
       "verify:software",
-      "audit:facewear-consolidation:fix-lock",
-      "scripts/check-facewear-consolidation.mjs",
+      "audit:hearwear-consolidation:fix-lock",
+      "scripts/check-hearwear-consolidation.mjs",
       "scripts/check-even-research-audit.mjs",
       '"--self-test"',
       "scripts/check-smartglasses-completion-gate.mjs",
@@ -193,10 +193,10 @@ function softwareGateFailures() {
     }
   }
   if (
-    examplePackage?.dependencies?.["@elizaos/plugin-facewear"] !== "workspace:*"
+    examplePackage?.dependencies?.["@elizaos/plugin-hearwear"] !== "workspace:*"
   ) {
     failures.push(
-      "packages/examples/smartglasses/package.json: missing @elizaos/plugin-facewear workspace dependency",
+      "packages/examples/smartglasses/package.json: missing @elizaos/plugin-hearwear workspace dependency",
     );
   }
   const verifySoftwareScript = String(scripts["verify:software"] ?? "");
@@ -220,15 +220,15 @@ function softwareGateFailures() {
   const typecheckScript = String(scripts.typecheck ?? "");
   if (
     !typecheckScript.includes("turbo run build") ||
-    !typecheckScript.includes("--filter=@elizaos/plugin-facewear") ||
+    !typecheckScript.includes("--filter=@elizaos/plugin-hearwear") ||
     !typecheckScript.includes("hardware-local-bluetooth.ts")
   ) {
     failures.push(
-      "packages/examples/smartglasses/package.json: typecheck must build Facewear dependencies before tsc and include hardware-local-bluetooth.ts",
+      "packages/examples/smartglasses/package.json: typecheck must build Hearwear dependencies before tsc and include hardware-local-bluetooth.ts",
     );
   }
 
-  const facewearPackage = readJson("plugins/plugin-facewear/package.json");
+  const facewearPackage = readJson("plugins/plugin-hearwear/package.json");
   const facewearScripts = facewearPackage?.scripts ?? {};
   for (const scriptName of [
     "lint",
@@ -241,18 +241,18 @@ function softwareGateFailures() {
   ]) {
     if (!facewearScripts[scriptName]) {
       failures.push(
-        `plugins/plugin-facewear/package.json: missing script ${scriptName}`,
+        `plugins/plugin-hearwear/package.json: missing script ${scriptName}`,
       );
     }
   }
   if (!String(facewearScripts.test ?? "").includes("build:views")) {
     failures.push(
-      "plugins/plugin-facewear/package.json: test must build views before vitest",
+      "plugins/plugin-hearwear/package.json: test must build views before vitest",
     );
   }
   if (!String(facewearScripts.test ?? "").includes("emulator:build")) {
     failures.push(
-      "plugins/plugin-facewear/package.json: test must build emulator before vitest",
+      "plugins/plugin-hearwear/package.json: test must build emulator before vitest",
     );
   }
   const buildScript = String(facewearScripts.build ?? "");
@@ -264,14 +264,14 @@ function softwareGateFailures() {
     !buildScript.includes("build:types")
   ) {
     failures.push(
-      "plugins/plugin-facewear/package.json: build must run js, views, and types",
+      "plugins/plugin-hearwear/package.json: build must run js, views, and types",
     );
   }
   if (
     !buildJsScript.includes("tsup --config ../tsup.plugin-packages.shared.ts")
   ) {
     failures.push(
-      "plugins/plugin-facewear/package.json: build:js must use the workspace tsup binary",
+      "plugins/plugin-hearwear/package.json: build:js must use the workspace tsup binary",
     );
   }
   if (
@@ -279,7 +279,7 @@ function softwareGateFailures() {
     !buildViewsScript.includes("vite build --config vite.config.views.ts")
   ) {
     failures.push(
-      "plugins/plugin-facewear/package.json: build:views must use the stable Vite 7 view build",
+      "plugins/plugin-hearwear/package.json: build:views must use the stable Vite 7 view build",
     );
   }
 
@@ -289,7 +289,7 @@ function softwareGateFailures() {
 
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/services/smartglasses-service.ts",
+      "plugins/plugin-hearwear/src/services/smartglasses-service.ts",
       [
         "async displayText",
         "async displayRsvpText",
@@ -304,7 +304,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/protocol/smartglasses.ts",
+      "plugins/plugin-hearwear/src/protocol/smartglasses.ts",
       [
         "OpenMic = 0x0e",
         "encodeTextPackets",
@@ -319,7 +319,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/ui/SmartglassesView.tsx",
+      "plugins/plugin-hearwear/src/ui/SmartglassesView.tsx",
       [
         "missingViewEvidence",
         "buildViewDisplayPackets",
@@ -336,7 +336,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/docs/smartglasses-completion-audit.md",
+      "plugins/plugin-hearwear/docs/smartglasses-completion-audit.md",
       [
         "npm run verify:smartglasses-software",
         "workspace `tsup` binary",
@@ -345,21 +345,21 @@ function softwareGateFailures() {
         "bun run --cwd packages/examples/smartglasses verify:software",
         "software gate includes `hardware:test-doctor`",
         "scanned 34,567 files",
-        "completion gate now also checks critical lockfile/manifest paths plus the stable Facewear build scripts",
+        "completion gate now also checks critical lockfile/manifest paths plus the stable Hearwear build scripts",
         "Blocked on physical headset advertising/availability",
       ],
     ),
   );
   failures.push(
-    ...sourceTokenFailures("plugins/plugin-facewear/src/register.ts", [
+    ...sourceTokenFailures("plugins/plugin-hearwear/src/register.ts", [
       'id: "smartglasses"',
       'path: "/apps/smartglasses"',
       "Component: SmartglassesView",
-      "@elizaos/plugin-facewear",
+      "@elizaos/plugin-hearwear",
     ]),
   );
   failures.push(
-    ...sourceTokenFailures("plugins/plugin-facewear/src/index.ts", [
+    ...sourceTokenFailures("plugins/plugin-hearwear/src/index.ts", [
       'path: "/apps/smartglasses"',
       'componentExport: "SmartglassesView"',
       "smartglassesStatusProvider",
@@ -368,7 +368,7 @@ function softwareGateFailures() {
     ]),
   );
   failures.push(
-    ...sourceTokenFailures("plugins/plugin-facewear/src/routes/views.ts", [
+    ...sourceTokenFailures("plugins/plugin-hearwear/src/routes/views.ts", [
       'path: "/xr/views"',
       "plugin.views",
       "views.push",
@@ -376,7 +376,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/actions/display-text.ts",
+      "plugins/plugin-hearwear/src/actions/display-text.ts",
       [
         'name: "SMARTGLASSES_DISPLAY_TEXT"',
         "displayParamsFromMessage",
@@ -388,7 +388,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/actions/microphone.ts",
+      "plugins/plugin-hearwear/src/actions/microphone.ts",
       [
         'name: "SMARTGLASSES_MICROPHONE"',
         "enabledFromMessage",
@@ -400,7 +400,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/actions/facewear-status.ts",
+      "plugins/plugin-hearwear/src/actions/facewear-status.ts",
       [
         'name: "SMARTGLASSES_STATUS"',
         "service.getStatus()",
@@ -410,7 +410,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/actions/facewear-control.ts",
+      "plugins/plugin-hearwear/src/actions/facewear-control.ts",
       [
         'name: "SMARTGLASSES_CONTROL"',
         "scanWifi",
@@ -432,13 +432,13 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/actions/facewear-connect.ts",
+      "plugins/plugin-hearwear/src/actions/facewear-connect.ts",
       ['name: "FACEWEAR_CONNECT"', "FacewearService", "connect"],
     ),
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/providers/smartglasses-status.ts",
+      "plugins/plugin-hearwear/src/providers/smartglasses-status.ts",
       [
         "setupSummaryForStatus",
         "formatConnectedLensesForProvider",
@@ -452,7 +452,7 @@ function softwareGateFailures() {
     ),
   );
   failures.push(
-    ...sourceTokenFailures("plugins/plugin-facewear/src/status-format.ts", [
+    ...sourceTokenFailures("plugins/plugin-hearwear/src/status-format.ts", [
       "setupSummaryForStatus",
       "wholeHeadsetConnected",
       "wearingReady",
@@ -466,7 +466,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/__tests__/smartglasses-basic-actions.test.ts",
+      "plugins/plugin-hearwear/src/__tests__/smartglasses-basic-actions.test.ts",
       [
         "returns display action failures when no transport can send text",
         "returns microphone action failures when no transport can toggle mic",
@@ -475,7 +475,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/__tests__/protocol-smartglasses.test.ts",
+      "plugins/plugin-hearwear/src/__tests__/protocol-smartglasses.test.ts",
       [
         "wraps text into centered five-line display pages",
         "encodes microphone enable and disable packets",
@@ -499,7 +499,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/__tests__/facewear-service.test.ts",
+      "plugins/plugin-hearwear/src/__tests__/facewear-service.test.ts",
       [
         "FacewearService",
         "FACEWEAR_SERVICE_TYPE",
@@ -510,7 +510,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/__tests__/smartglasses-view-report.test.ts",
+      "plugins/plugin-hearwear/src/__tests__/smartglasses-view-report.test.ts",
       [
         "classifies whole-headset and partial pairing states",
         "requires wearing state, both lenses, display/settings, tap mic toggles, and audio",
@@ -525,13 +525,13 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/__tests__/xr-smartglasses-bridge.test.ts",
+      "plugins/plugin-hearwear/src/__tests__/xr-smartglasses-bridge.test.ts",
       ["g1_raw", "mic_lc3", "single_tap", "microphoneEnabled"],
     ),
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/__tests__/smartglasses-control-action.test.ts",
+      "plugins/plugin-hearwear/src/__tests__/smartglasses-control-action.test.ts",
       [
         "returns action failures for invalid parameters instead of throwing",
         "requests battery status from both lenses",
@@ -605,7 +605,7 @@ function softwareGateFailures() {
     ]),
   );
   failures.push(
-    ...sourceTokenFailures("plugins/plugin-facewear/src/index.ts", [
+    ...sourceTokenFailures("plugins/plugin-hearwear/src/index.ts", [
       "facewearControlAction",
       "facewearStatusAction",
       "facewearMicrophoneAction",
@@ -618,24 +618,24 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "packages/app-core/src/registry/entries/plugins/facewear.json",
+      "packages/app-core/src/registry/entries/plugins/hearwear.json",
       [
-        '"npmName": "@elizaos/plugin-facewear"',
+        '"npmName": "@elizaos/plugin-hearwear"',
         "whole-headset pairing",
         "side-tap mic control",
-        '"target": "facewear"',
+        '"target": "hearwear"',
       ],
     ),
   );
   failures.push(
     ...sourceTokenFailures("packages/app/src/plugin-registrations.ts", [
-      '"@elizaos/plugin-facewear/register"',
-      'import("@elizaos/plugin-facewear/register")',
+      '"@elizaos/plugin-hearwear/register"',
+      'import("@elizaos/plugin-hearwear/register")',
     ]),
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/src/transport/web-bluetooth.ts",
+      "plugins/plugin-hearwear/src/transport/web-bluetooth.ts",
       [
         'await this.connectLens("left")',
         'await this.connectLens("right")',
@@ -650,7 +650,7 @@ function softwareGateFailures() {
     ),
   );
   failures.push(
-    ...sourceTokenFailures("plugins/plugin-facewear/src/transport/noble.ts", [
+    ...sourceTokenFailures("plugins/plugin-hearwear/src/transport/noble.ts", [
       'this.connectPeripheral("left"',
       'this.connectPeripheral("right"',
       "await this.disconnect()",
@@ -792,7 +792,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/G1BleService.kt",
+      "plugins/plugin-hearwear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/G1BleService.kt",
       [
         "cmdOpenMic = 0x0E.toByte()",
         "writeSide(GlassSide.RIGHT",
@@ -805,7 +805,7 @@ function softwareGateFailures() {
   );
   failures.push(
     ...sourceTokenFailures(
-      "plugins/plugin-facewear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/AgentBridgeService.kt",
+      "plugins/plugin-hearwear/native/android/even-realities/app/src/main/java/com/elizaos/facewear/evenrealities/AgentBridgeService.kt",
       [
         '"g1_raw"',
         '"mic_lc3"',
@@ -817,7 +817,7 @@ function softwareGateFailures() {
   );
 
   const completionAudit = readText(
-    "plugins/plugin-facewear/docs/smartglasses-completion-audit.md",
+    "plugins/plugin-hearwear/docs/smartglasses-completion-audit.md",
   );
   for (const expected of [
     "npm run smartglasses:hardware:prove:watch",
@@ -828,13 +828,13 @@ function softwareGateFailures() {
   ]) {
     if (!completionAudit.includes(expected)) {
       failures.push(
-        `plugins/plugin-facewear/docs/smartglasses-completion-audit.md: missing ${expected}`,
+        `plugins/plugin-hearwear/docs/smartglasses-completion-audit.md: missing ${expected}`,
       );
     }
   }
 
   const upstreamAudit = readText(
-    "plugins/plugin-facewear/docs/smartglasses-upstream-audit.md",
+    "plugins/plugin-hearwear/docs/smartglasses-upstream-audit.md",
   );
   for (const expected of [
     "fabioglimb/even-toolkit",
@@ -852,13 +852,13 @@ function softwareGateFailures() {
   ]) {
     if (!upstreamAudit.includes(expected)) {
       failures.push(
-        `plugins/plugin-facewear/docs/smartglasses-upstream-audit.md: missing ${expected}`,
+        `plugins/plugin-hearwear/docs/smartglasses-upstream-audit.md: missing ${expected}`,
       );
     }
   }
 
   const smartglassesDocs = readText(
-    "plugins/plugin-facewear/docs/smartglasses.md",
+    "plugins/plugin-hearwear/docs/smartglasses.md",
   );
   for (const expected of [
     "npm run verify:smartglasses-software",
@@ -881,13 +881,13 @@ function softwareGateFailures() {
   ]) {
     if (!smartglassesDocs.includes(expected)) {
       failures.push(
-        `plugins/plugin-facewear/docs/smartglasses.md: missing ${expected}`,
+        `plugins/plugin-hearwear/docs/smartglasses.md: missing ${expected}`,
       );
     }
   }
   if (smartglassesDocs.includes("docs/upstream-audit.md")) {
     failures.push(
-      "plugins/plugin-facewear/docs/smartglasses.md: stale docs/upstream-audit.md link",
+      "plugins/plugin-hearwear/docs/smartglasses.md: stale docs/upstream-audit.md link",
     );
   }
 
@@ -914,7 +914,7 @@ function softwareGateFailures() {
     "npm run smartglasses:dev:simulator",
     "npm run smartglasses:simulator",
     "npm run smartglasses:smoke:simulator",
-    "Facewear consolidation audit",
+    "Hearwear consolidation audit",
     "Even Realities research audit self-test",
     "Even Realities research audit",
     "smartglasses completion self-test",
@@ -931,9 +931,9 @@ function softwareGateFailures() {
   }
 
   for (const scriptName of [
-    "audit:facewear-consolidation",
-    "audit:facewear-consolidation:fix-lock",
-    "audit:facewear-consolidation:self-test",
+    "audit:hearwear-consolidation",
+    "audit:hearwear-consolidation:fix-lock",
+    "audit:hearwear-consolidation:self-test",
     "audit:even-research",
     "audit:even-research:self-test",
     "audit:smartglasses-completion",

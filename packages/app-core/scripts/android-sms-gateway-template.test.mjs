@@ -372,6 +372,17 @@ test("Android gateway installer supports one-command wireless pairing", () => {
     "sms-gateway:verify:bluebubbles",
     "sms-gateway-completion-audit-latest.json",
     "auditEvidencePath",
+    "readAuditEvidence",
+    "findRequirement",
+    "supplementalSummary",
+    "evidence homepage-public-dns",
+    "evidence android-transport",
+    "evidence bluebubbles-validation",
+    "evidence bluebubbles-egress",
+    "sms-gateway-blockers-latest.json",
+    "buildBlockerBundle",
+    "writeBlockerBundle",
+    "[sms-gateway-status] blockers=",
     "[sms-gateway-status] evidence=",
   ]) {
     assert.match(smsGatewayStatusScript, new RegExp(escapeRegExp(marker)));

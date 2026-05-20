@@ -12,7 +12,7 @@ import {
   type SmartglassesService,
   setSmartglassesTransportForRuntime,
   smartglassesPlugin,
-} from "@elizaos/plugin-facewear";
+} from "@elizaos/plugin-hearwear";
 
 const characterConfig = JSON.parse(
   await readFile(new URL("./character.json", import.meta.url), "utf8"),

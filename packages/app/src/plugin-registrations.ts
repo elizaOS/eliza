@@ -70,7 +70,7 @@ export const SIDE_EFFECT_APP_MODULE_LOADERS: readonly SideEffectAppModuleLoader[
       load: () => import("@elizaos/plugin-wifi/register"),
     },
     {
-      key: "@elizaos/plugin-facewear/register",
-      load: () => import("@elizaos/plugin-facewear/register"),
+      key: "@elizaos/plugin-hearwear/register",
+      load: () => import("@elizaos/plugin-hearwear/register"),
     },
   ];

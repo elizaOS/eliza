@@ -10,13 +10,13 @@
     "strict": false,
     "types": ["node", "bun-types"],
     "paths": {
-      "@elizaos/plugin-facewear": [
-        "../../../plugins/plugin-facewear/src/index.ts"
+      "@elizaos/plugin-hearwear": [
+        "../../../plugins/plugin-hearwear/src/index.ts"
       ],
-      "@elizaos/plugin-facewear/register": [
-        "../../../plugins/plugin-facewear/src/register.ts"
+      "@elizaos/plugin-hearwear/register": [
+        "../../../plugins/plugin-hearwear/src/register.ts"
       ],
-      "@elizaos/plugin-facewear/*": ["../../../plugins/plugin-facewear/src/*"]
+      "@elizaos/plugin-hearwear/*": ["../../../plugins/plugin-hearwear/src/*"]
     }
   },
   "include": [
@@ -30,7 +30,7 @@
     "package-smoke.ts",
     "simulator-automation-smoke.ts",
     "validate-hardware-report.ts",
-    "../../../plugins/plugin-facewear/src/**/*.ts"
+    "../../../plugins/plugin-hearwear/src/**/*.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

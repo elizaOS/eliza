@@ -1,6 +1,6 @@
 # Smartglasses Example
 
-This example exercises `@elizaos/plugin-facewear` without physical glasses by using the plugin's mock transport. It validates the same G1 packet path used by the runtime service:
+This example exercises `@elizaos/plugin-hearwear` without physical glasses by using the plugin's mock transport. It validates the same G1 packet path used by the runtime service:
 
 - display text is pixel-wrapped with the G1 glyph width profile, chunked into G1 `0x4E` display packets, and sent to both lenses in both Even AI and direct Text Show modes
 - RSVP word-group display is exercised through the same G1 display packet path
@@ -26,9 +26,9 @@ For the canonical software proof from the repository root, run:
 npm run verify:smartglasses-software
 ```
 
-That command runs the Facewear plugin lint/typecheck/test/app-registration
+That command runs the Hearwear plugin lint/typecheck/test/app-registration
 gates, then this example's full software verification, repairs any Bun lockfile
-churn back to `@elizaos/plugin-facewear`, and then reruns the Facewear consolidation audit,
+churn back to `@elizaos/plugin-hearwear`, and then reruns the Hearwear consolidation audit,
 Even Realities research audit self-test, Even Realities research audit, and
 smartglasses completion self-test.
 
@@ -55,7 +55,7 @@ character config in `character.json`:
 bun run --cwd packages/examples/smartglasses smoke:runtime
 ```
 
-This loads `@elizaos/plugin-facewear` into an `AgentRuntime`, starts the
+This loads `@elizaos/plugin-hearwear` into an `AgentRuntime`, starts the
 plugin service with the mock transport, exercises display and microphone
 actions, routes control actions including bridge Wi-Fi setup, checks side-tap
 mic disable behavior, and reads the status provider.

@@ -45,7 +45,7 @@ const VIEW_MANIFESTS = [
   "plugins/plugin-task-coordinator/src/index.ts",
   "plugins/plugin-trajectory-logger/src/index.ts",
   "plugins/plugin-training/src/setup-routes.ts",
-  "plugins/plugin-facewear/src/index.ts",
+  "plugins/plugin-hearwear/src/index.ts",
 ] as const;
 
 const TUI_PARITY_CAPABILITIES: Record<string, readonly string[]> = {

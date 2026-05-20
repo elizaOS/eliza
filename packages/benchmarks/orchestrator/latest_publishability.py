@@ -13,6 +13,8 @@ from .code_agent_latest_contract import (
     CODE_AGENT_LATEST_REQUIRED_NUMERIC_FIELDS,
     CODE_AGENT_LATEST_REQUIRED_PROVENANCE_FIELDS,
     CODE_AGENT_LATEST_REQUIRED_TRUE_FIELDS,
+    code_agent_accuracy_for_status,
+    expected_code_agent_comparison_status,
 )
 
 NON_REAL_FLAG_KEYS: frozenset[str] = frozenset(
@@ -361,7 +363,7 @@ def _scan_code_agent_comparison_status_consistency(
     path: str,
     findings: list[PublishabilityFinding],
 ) -> None:
-    expected = _expected_code_agent_comparison_status(payload)
+    expected = expected_code_agent_comparison_status(payload)
     if expected is None:
         return
     actual = str(payload.get("comparison_status") or "").strip()
@@ -373,13 +375,13 @@ def _scan_code_agent_comparison_status_consistency(
                 reason="code_agent_comparison_status_mismatch",
                 value=json.dumps(
                     {
-                        "baseline_accuracy": _code_agent_accuracy_for_status(
+                        "baseline_accuracy": code_agent_accuracy_for_status(
                             payload,
                             "baseline",
                         ),
                         "expected_status": expected,
                         "row_status": actual,
-                        "target_accuracy": _code_agent_accuracy_for_status(
+                        "target_accuracy": code_agent_accuracy_for_status(
                             payload,
                             "target",
                         ),
@@ -388,34 +390,6 @@ def _scan_code_agent_comparison_status_consistency(
                 ),
             )
         )
-
-
-def _expected_code_agent_comparison_status(payload: dict[str, Any]) -> str | None:
-    target_accuracy = _code_agent_accuracy_for_status(payload, "target")
-    baseline_accuracy = _code_agent_accuracy_for_status(payload, "baseline")
-    if target_accuracy is None or baseline_accuracy is None:
-        return None
-    if target_accuracy <= 0 and baseline_accuracy <= 0:
-        return "weak"
-    if target_accuracy + 1e-9 < baseline_accuracy:
-        return "inferior"
-    if target_accuracy > baseline_accuracy + 1e-9:
-        return "superior"
-    return "comparable"
-
-
-def _code_agent_accuracy_for_status(
-    payload: dict[str, Any],
-    prefix: str,
-) -> float | None:
-    explicit = payload.get(f"{prefix}_accuracy")
-    if _is_finite_number(explicit):
-        return float(explicit)
-    right = payload.get(f"{prefix}_right")
-    total = payload.get(f"{prefix}_total")
-    if _is_finite_number(right) and _is_finite_number(total) and float(total) > 0:
-        return float(right) / float(total)
-    return None
 
 
 def _scan_code_agent_provenance_artifact(
