@@ -1,0 +1,33 @@
+{
+  "name": "@elizaos/plugin-host-shim-ios",
+  "version": "0.0.1",
+  "description": "iOS (WKWebView) implementation of PluginHostShim. Bridges remote-mode plugin view bundles to plugin-capacitor-bridge's in-process Bun runtime via WKScriptMessageHandler.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "license": "MIT",
+  "private": true,
+  "files": ["dist"],
+  "scripts": {
+    "clean": "rm -rf dist",
+    "build": "rm -rf dist tsconfig.build.tsbuildinfo && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test src/",
+    "lint": "bunx @biomejs/biome check src",
+    "lint:fix": "bunx @biomejs/biome check --write src"
+  },
+  "dependencies": {
+    "@elizaos/plugin-host-shim": "workspace:*",
+    "@elizaos/plugin-remote-manifest": "workspace:*"
+  },
+  "devDependencies": {
+    "bun-types": "^1.3.12",
+    "typescript": "^6.0.3"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  }
+}
