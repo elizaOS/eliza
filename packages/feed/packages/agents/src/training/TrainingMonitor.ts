@@ -6,7 +6,7 @@
  */
 
 import { and, db, eq, lt, trainingBatches } from '@feed/db';
-import { logger } from '/shared';
+import { logger } from '@feed/shared';
 
 export type TrainingStatus =
   | 'pending'

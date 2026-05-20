@@ -16,8 +16,8 @@ import {
   trajectories,
 } from '@feed/db'; // keep this at db not engine to avoid circular dep
 import type { JsonValue } from '@feed/shared';
-import { logger } from '/shared';
-import { generateSnowflakeId } from '/shared';
+import { logger } from '@feed/shared';
+import { generateSnowflakeId } from '@feed/shared';
 import { computeDeterministicRewardJudgment } from './reward-judgments';
 import type {
   Action,

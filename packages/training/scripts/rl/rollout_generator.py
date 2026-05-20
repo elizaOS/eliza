@@ -22,7 +22,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from ..models import (
+from .models import (
     Action,
     FeedTrajectory,
     EnvironmentState,

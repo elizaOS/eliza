@@ -17,7 +17,7 @@ import {
   users,
 } from '@feed/db';
 import type { IAgentRuntime } from '@elizaos/core';
-import { logger } from '/shared';
+import { logger } from '@feed/shared';
 
 export interface ModelUsageStats {
   agentId: string;

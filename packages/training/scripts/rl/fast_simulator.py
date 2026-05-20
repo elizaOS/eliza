@@ -43,7 +43,7 @@ from typing import Literal, Protocol
 
 import asyncpg
 
-from ..models import (
+from .models import (
     FeedTrajectory,
     EnvironmentState,
 )

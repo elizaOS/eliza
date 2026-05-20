@@ -6,7 +6,7 @@
  */
 
 import { and, db, eq, marketOutcomes, trajectories } from '@feed/db';
-import { logger } from '/shared';
+import { logger } from '@feed/shared';
 import { MarketOutcomesTracker } from './MarketOutcomesTracker';
 import type { TrajectoryStep } from './types';
 

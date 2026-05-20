@@ -1,6 +1,6 @@
 import { db, eq, rewardJudgments, trajectories } from '@feed/db';
 import type { JsonValue } from '@feed/shared';
-import { generateSnowflakeId } from '/shared';
+import { generateSnowflakeId } from '@feed/shared';
 import type { TrajectoryStep } from './types';
 
 const DETERMINISTIC_JUDGE_MODEL = 'feed-deterministic';

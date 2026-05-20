@@ -10,7 +10,7 @@
  * - Support quantized models for efficient multi-model loading
  */
 
-import { logger } from '/shared';
+import { logger } from '@feed/shared';
 
 /**
  * Quantization modes for model loading

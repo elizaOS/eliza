@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Literal
 
-from ..models import (
+from .models import (
     Action,
     FeedTrajectory,
     EnvironmentState,

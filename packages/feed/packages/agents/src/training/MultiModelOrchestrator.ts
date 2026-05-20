@@ -11,7 +11,7 @@
  * - Real vLLM/OpenAI-compatible API integration
  */
 
-import { logger } from '/shared';
+import { logger } from '@feed/shared';
 import {
   getModelForArchetype as getArchetypeModel,
   getMultiModelConfig,
