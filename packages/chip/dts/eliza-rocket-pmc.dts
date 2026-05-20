@@ -1,0 +1,114 @@
+// SPDX-License-Identifier: GPL-2.0-only OR BSD-2-Clause
+/*
+ * Eliza E1 — Self-contained device tree for the OpenSBI `generic` platform
+ * with the PMC RPMI shmem mailbox node enabled.
+ *
+ * This DTS is intended to be compiled with `dtc -O dtb -o eliza-rocket-pmc.dtb
+ * dts/eliza-rocket-pmc.dts` and then passed to OpenSBI via FW_FDT_PATH at
+ * build time, producing an `fw_dynamic.elf` that has the PMC mailbox node
+ * embedded.  The cocotb integration test then drives the same memory layout
+ * directly to verify roundtrip behaviour against the AON Ibex PMC.
+ *
+ * The CPU / PLIC / CLINT description is the minimum the OpenSBI `generic`
+ * platform requires to elaborate; it is intentionally simplified relative
+ * to `sw/linux/dts/eliza-e1.dts` (which is the production Linux BSP).
+ * Boot of OpenSBI on real silicon uses the full BSP DTB; this trimmed DTS
+ * is the artifact OpenSBI consumes at build time for the MPxy / RPMI
+ * roundtrip evidence.
+ */
+
+/dts-v1/;
+
+/ {
+	#address-cells = <2>;
+	#size-cells = <2>;
+
+	compatible = "eliza,e1-rocket-pmc", "eliza,e1";
+	model = "Eliza E1 Rocket + PMC mailbox (OpenSBI generic)";
+
+	chosen {
+		stdout-path = "/soc/serial@10001000";
+	};
+
+	cpus {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		timebase-frequency = <10000000>;
+
+		cpu0: cpu@0 {
+			compatible = "riscv";
+			device_type = "cpu";
+			reg = <0>;
+			riscv,isa = "rv64imafdc";
+			mmu-type = "riscv,sv39";
+			status = "okay";
+
+			cpu0_intc: interrupt-controller {
+				compatible = "riscv,cpu-intc";
+				interrupt-controller;
+				#interrupt-cells = <1>;
+			};
+		};
+	};
+
+	memory@80000000 {
+		device_type = "memory";
+		reg = <0x0 0x80000000 0x0 0x10000000>;
+	};
+
+	soc {
+		compatible = "simple-bus";
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		clint0: clint@2000000 {
+			compatible = "riscv,clint0";
+			reg = <0x0 0x02000000 0x0 0x00010000>;
+			interrupts-extended = <&cpu0_intc 3>, <&cpu0_intc 7>;
+		};
+
+		plic0: interrupt-controller@c000000 {
+			compatible = "riscv,plic0";
+			reg = <0x0 0x0c000000 0x0 0x04000000>;
+			interrupt-controller;
+			#address-cells = <0>;
+			#interrupt-cells = <1>;
+			riscv,ndev = <32>;
+			interrupts-extended = <&cpu0_intc 11>;
+		};
+
+		serial@10001000 {
+			compatible = "ns16550a";
+			reg = <0x0 0x10001000 0x0 0x00001000>;
+			interrupt-parent = <&plic0>;
+			interrupts = <1>;
+			clock-frequency = <50000000>;
+			reg-shift = <0>;
+		};
+
+		/*
+		 * PMC RPMI shmem mailbox — the focus of this fragment.
+		 * Geometry matches fw/pmc/include/rpmi_shmem_layout.h and the
+		 * commentary in dts/eliza-rocket-pmc.dtsi.
+		 */
+		pmc_mbox: mailbox@10050800 {
+			compatible = "riscv,rpmi-shmem-mbox";
+			reg = <0x0 0x10050800 0x0 0x00000100>,
+			      <0x0 0x10050900 0x0 0x00000100>,
+			      <0x0 0x10050A00 0x0 0x00000100>,
+			      <0x0 0x10050B00 0x0 0x00000100>,
+			      <0x0 0x10050C00 0x0 0x00000004>;
+			reg-names = "a2p-req",
+				    "p2a-ack",
+				    "p2a-req",
+				    "a2p-ack",
+				    "a2p-doorbell";
+
+			riscv,slot-size = <64>;
+			riscv,a2p-doorbell-value = <0x1>;
+
+			#mbox-cells = <1>;
+		};
+	};
+};
