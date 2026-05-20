@@ -34,6 +34,35 @@ logger = logging.getLogger(__name__)
 # Hermes consumers that share the same eliza_adapter wheel).
 
 
+def _normalize_lifeops_tool_arguments(
+    name: str,
+    arguments: dict[str, Any],
+) -> dict[str, Any]:
+    """Normalize Eliza planner aliases to the Python LifeOps executor ABI."""
+    normalized = dict(arguments)
+    if name == "MESSAGE":
+        if "operation" not in normalized and isinstance(normalized.get("action"), str):
+            normalized["operation"] = normalized["action"]
+        target = normalized.get("target")
+        target_kind = normalized.get("targetKind")
+        if isinstance(target, str):
+            if (
+                "threadId" not in normalized
+                and (target_kind == "thread" or target.startswith("thread_"))
+            ):
+                normalized["threadId"] = target
+                normalized.pop("target", None)
+            if (
+                "messageId" not in normalized
+                and (
+                    target_kind in {"message", "email"}
+                    or target.startswith("email_")
+                )
+            ):
+                normalized["messageId"] = target
+    return normalized
+
+
 def build_lifeops_bench_agent_fn(
     *,
     client: ElizaClient | None = None,
@@ -155,6 +184,7 @@ def build_lifeops_bench_agent_fn(
                 args = entry.get("arguments")
                 if not isinstance(args, dict):
                     args = {}
+                args = _normalize_lifeops_tool_arguments(name, args)
                 tool_calls.append(
                     {
                         "id": str(entry.get("id") or f"call_{len(tool_calls)}"),
