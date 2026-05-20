@@ -1317,6 +1317,12 @@ def _rebuild_latest_result_snapshots(
                 comparison_signature, {}
             ).setdefault(agent, []).append(row)
 
+    _promote_latest_comparable_real_cohorts(
+        latest_by_key=latest_by_key,
+        rows_by_comparison_signature=rows_by_comparison_signature,
+        adapters=adapters,
+    )
+
     preserved_latest: dict[tuple[str, str], tuple[dict[str, Any], Path]] = {}
     for path in sorted(latest_dir.glob("*.json")):
         if path.name == "index.json":

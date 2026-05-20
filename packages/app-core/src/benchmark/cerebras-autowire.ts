@@ -46,7 +46,10 @@ export function autoWireCerebras(): void {
   const hasOpenAiKey = !!process.env.OPENAI_API_KEY?.trim();
   const hasOpenAiBase = !!process.env.OPENAI_BASE_URL?.trim();
   const hasElizaProvider = !!process.env.ELIZA_PROVIDER?.trim();
-  if (!explicitCerebras && (hasOpenAiKey || hasOpenAiBase || hasElizaProvider)) {
+  if (
+    !explicitCerebras &&
+    (hasOpenAiKey || hasOpenAiBase || hasElizaProvider)
+  ) {
     return;
   }
 
