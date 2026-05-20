@@ -9,7 +9,10 @@ const pluginRequire = createRequire(
   `${process.cwd()}/plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx`,
 );
 const React = pluginRequire("react") as typeof ReactTypes;
-const { createRoot } = pluginRequire("react-dom/client") as typeof import("react-dom/client");
+const { flushSync } = pluginRequire("react-dom") as typeof import("react-dom");
+const { createRoot } = pluginRequire(
+  "react-dom/client",
+) as typeof import("react-dom/client");
 const { act } = React;
 const mountedRoots: Array<{
   container: HTMLElement;
@@ -104,7 +107,7 @@ function renderSurface(component: ReactTypes.ReactElement) {
   document.body.append(container);
   const root = createRoot(container);
   mountedRoots.push({ container, root });
-  act(() => {
+  flushSync(() => {
     root.render(component);
   });
   return { container, root };
@@ -112,7 +115,7 @@ function renderSurface(component: ReactTypes.ReactElement) {
 
 function cleanupSurfaces() {
   for (const { container, root } of mountedRoots.splice(0)) {
-    act(() => {
+    flushSync(() => {
       root.unmount();
     });
     container.remove();
