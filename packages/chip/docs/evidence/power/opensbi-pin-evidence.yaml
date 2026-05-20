@@ -54,24 +54,32 @@ pin_check_run:
   outcome: "STATUS: PASS power.opensbi_pin - HEAD=74434f2 matches manifest pin"
 rv64_generic_build:
   command: >
-    make PLATFORM=generic CROSS_COMPILE=riscv64-linux-gnu- -j$(nproc)
+    PATH="$PWD/external/riscv64-linux-gnu/usr/bin:$PATH"
+    LD_LIBRARY_PATH=$PWD/external/riscv64-linux-gnu/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH
+    make PLATFORM=generic CROSS_COMPILE=riscv64-linux-gnu-
+    FW_FDT_PATH=$PWD/build/opensbi-eliza/eliza-rocket-pmc.dtb -j$(nproc)
   exit_status: 0
+  fdt_embedded:
+    dts_source: dts/eliza-rocket-pmc.dts
+    dtb_path: build/opensbi-eliza/eliza-rocket-pmc.dtb
+    dtb_bytes: 1734
+    dtb_sha256: b855840f28911741362d75a31517a0b842e8227dd32fa79d187bc12ae98c8a47
   artifacts:
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.bin
       bytes: 275928
-      sha256: 5bfe691ae891450fc570b4b536a6482fe5f3464e06e0f0882cadece9ebac2250
+      sha256: 3926bd7f26aea7809a4c33f06f42d54fbca19b86e156a727268fcf947d00ece8
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_dynamic.elf
-      bytes: 2054200
-      sha256: 934e0573a7c9ed40bed73d041ff75428e3bd9f42430d5766b6ae3fbb59f11673
+      bytes: 2058352
+      sha256: 2db12afb4814a0576cfaf139d3ba10f5970393f9d7e8be3d5692bc68f78286e1
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_jump.bin
       bytes: 275888
-      sha256: eb2da6e73ea3b3356e288cc8a6004532456f44feff3fd23da455bda46a3210a3
+      sha256: f1ea17e9fcc134a10a8a9e1935d74a9d2267240eea5b37b6dcb28870a9922e6d
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_jump.elf
-      bytes: 2053792
-      sha256: 354fc6455b43fb2badf35b266ec32be5aa2542cd6119ac5d1f02889d96e2ff8b
+      bytes: 2057928
+      sha256: 1fecfd92e1eadc02edcd4caa5fde8c568cf641c25458044e78d11b94210f7ed7
     - path: external/opensbi/opensbi/build/platform/generic/firmware/fw_payload.bin
       bytes: 2105672
-      sha256: 89817764b4c7c6985de163f02aabb6aee97fc159826deb08d5230f5dd561417d
+      sha256: 697d3fa86d4edd056bfe1a30dbcbd73026ca328221136f0aa0ff274beeb0c4a5
 rv32_generic_build_blocked:
   attempted_command: >
     make PLATFORM=generic CROSS_COMPILE=riscv64-linux-gnu-

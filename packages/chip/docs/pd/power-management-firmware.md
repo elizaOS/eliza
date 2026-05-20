@@ -66,6 +66,12 @@ unsuitable for the RPMI v1.0 control plane. Version delta since v1.5:
 Pin manifest: `external/opensbi/pin-manifest.json`. Build + symbol-presence
 evidence: `docs/evidence/power/opensbi-pin-evidence.yaml`.
 
+The build is rebuilt with the Eliza E1 PMC mailbox device-tree fragment
+embedded via `FW_FDT_PATH`, so the resulting `fw_dynamic.elf` exposes the
+RPMI shmem mailbox node at `/soc/mailbox@10050800` with compatible
+`riscv,rpmi-shmem-mbox`. DTS source: `dts/eliza-rocket-pmc.dts(i)`.
+SoC integration evidence: `docs/evidence/power/pmc-soc-integration-evidence.yaml`.
+
 ### AON Ibex PMC firmware
 
 Targets **RV32IMC** Ibex management core. Lives in `fw/pmc/`:
@@ -234,6 +240,32 @@ PMC restores the rails it had already commanded before the failure.
 - OpenSBI release tag pinned at v1.8.1 with MPxy + RPMI present in-tree.
   Build artifacts and 89 verified MPxy/RPMI symbols recorded in
   `docs/evidence/power/opensbi-pin-evidence.yaml`.
+- OpenSBI v1.8.1 rebuilt against `dts/eliza-rocket-pmc.dts(i)` with
+  `FW_FDT_PATH` set to the compiled DTB. The resulting `fw_dynamic.elf`
+  embeds the PMC mailbox node + reg-names (verified by `strings` +
+  `objdump -t fw_fdt_bin`). Recorded in
+  `docs/evidence/power/pmc-soc-integration-evidence.yaml::opensbi_rebuild`.
+
+## Outstanding integration milestone
+
+- MPxy -> RPMI shmem -> AON Ibex roundtrip in cocotb is staged but
+  reports `BLOCKED` because three RTL/firmware bindings have not yet
+  landed:
+    1. `rtl/power/pmc_top.sv` must route mailbox-MMIO accesses at
+       offsets `0x800..0xFFF` into the AON SRAM the Ibex data port also
+       sees (so the host can publish A2P requests and poll P2A_ACK).
+    2. `fw/pmc/src/main.c` must drain the A2P_REQ tail/head pair from
+       the new layout instead of polling the legacy `PMC_REG_STATUS`
+       scalar register.
+    3. `fw/pmc/src/main.c::pmc_boot_rails` must be gated by
+       `PMC_ENABLE_PMIC_BRINGUP` so the cocotb build skips SPMI / I2C
+       MMIO that traps on off-AON addresses.
+  The cocotb test
+  `verify/cocotb/integration/test_opensbi_mpxy_to_pmc_rpmi.py`
+  guards on `PMC_INSTANTIATE_IBEX` + `PMC_RPMI_SHMEM_ROUNDTRIP`; the
+  current default-off path emits the BLOCKED skip with a back-pointer
+  to `docs/evidence/power/pmc-soc-integration-evidence.yaml::
+  mpxy_rpmi_roundtrip.remaining_bindings`.
 
 ## Resolved milestones
 
