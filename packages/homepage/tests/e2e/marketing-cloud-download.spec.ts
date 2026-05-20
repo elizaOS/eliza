@@ -1,4 +1,9 @@
-import { expect, type APIRequestContext, type Locator, test } from "playwright/test";
+import {
+  expect,
+  type APIRequestContext,
+  type Locator,
+  test,
+} from "playwright/test";
 import { releaseData } from "../../src/generated/release-data";
 
 function escapeRegExp(value: string): string {
@@ -166,17 +171,29 @@ test("homepage live marketing links resolve for cloud, os, release, and download
     uniqueHrefs.set(url.toString(), link.label);
   }
 
-  expect([...uniqueHrefs.keys()].sort()).toEqual(
-    [
-      "https://elizaos.ai/",
-      "https://www.elizacloud.ai/login?intent=launch",
-      releaseData.release.url,
-      releaseData.release.checksum?.url,
-      ...releaseData.release.downloads.map((download) => download.url),
-    ]
-      .filter((href): href is string => Boolean(href))
-      .sort(),
+  const cloudLinks = [...uniqueHrefs.keys()].filter((href) => {
+    const url = new URL(href);
+    return url.hostname.endsWith("elizacloud.ai");
+  });
+  expect(cloudLinks).toHaveLength(1);
+  expect(new URL(cloudLinks[0]).pathname).toMatch(/^\/login\/?$/);
+  expect(new URL(cloudLinks[0]).searchParams.get("intent")).toBe("launch");
+
+  const downloadTargets =
+    releaseData.release.downloads.length > 0
+      ? releaseData.release.downloads.map((download) => download.url)
+      : ["https://github.com/elizaOS/eliza/releases"];
+  const expectedNonCloudTargets = [
+    "https://elizaos.ai/",
+    releaseData.release.url,
+    releaseData.release.checksum?.url,
+    ...downloadTargets,
+  ].filter((href): href is string => Boolean(href));
+
+  const nonCloudHrefs = [...uniqueHrefs.keys()].filter(
+    (href) => !new URL(href).hostname.endsWith("elizacloud.ai"),
   );
+  expect(nonCloudHrefs.sort()).toEqual(expectedNonCloudTargets.sort());
 
   for (const [href, label] of uniqueHrefs) {
     await expectReachableHead(request, label, href);

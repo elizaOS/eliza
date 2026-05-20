@@ -61,6 +61,36 @@ def test_vending_provider_normalizes_bare_tool_json() -> None:
     assert response == '{"supplier_id": "beverage_dist", "items": {"water": 12}, "action": "PLACE_ORDER"}'
 
 
+def test_vending_provider_strips_bridge_action_context() -> None:
+    client = _FakeClient(
+        MessageResponse(
+            text="",
+            thought=None,
+            actions=["BENCHMARK_ACTION"],
+            params={
+                "BENCHMARK_ACTION": {
+                    "action": "RESTOCK_SLOT",
+                    "row": 0,
+                    "column": 1,
+                    "product_id": "soda_cola",
+                    "quantity": 5,
+                    "actionContext": {"previousResults": []},
+                    "previousResults": [],
+                }
+            },
+            metadata={},
+        )
+    )
+    provider = ElizaVendingProvider(client=client)
+
+    response, _tokens = asyncio.run(provider.generate("", "What next?"))
+
+    assert response == (
+        '{"row": 0, "column": 1, "product_id": "soda_cola", '
+        '"quantity": 5, "action": "RESTOCK_SLOT"}'
+    )
+
+
 def test_vending_provider_does_not_synthesize_profitable_fallback() -> None:
     client = _FakeClient(
         MessageResponse(

@@ -11,6 +11,7 @@
  *   bun run examples/game-of-life/game.ts
  *   bun run examples/game-of-life/game.ts --fast
  *   bun run examples/game-of-life/game.ts --agents 20
+ *   bun run examples/game-of-life/game.ts --fast --agents=2 --ticks=3
  */
 
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
@@ -1013,6 +1014,13 @@ async function main(): Promise<void> {
   const agentCount = agentCountArg
     ? parseInt(agentCountArg.split("=")[1], 10)
     : CONFIG.INITIAL_AGENTS;
+  const maxTicksArg = args.find((a) => a.startsWith("--ticks="));
+  const parsedMaxTicks = maxTicksArg
+    ? parseInt(maxTicksArg.split("=")[1], 10)
+    : CONFIG.MAX_TICKS;
+  const maxTicks = Number.isFinite(parsedMaxTicks)
+    ? Math.max(1, parsedMaxTicks)
+    : CONFIG.MAX_TICKS;
 
   console.log(`
 ╔════════════════════════════════════════════════════════════════════════╗
@@ -1062,7 +1070,7 @@ async function main(): Promise<void> {
   const tickDelay = fast ? CONFIG.TICK_DELAY_MS / 5 : CONFIG.TICK_DELAY_MS;
 
   // Main loop
-  while (world.tick < CONFIG.MAX_TICKS) {
+  while (world.tick < maxTicks) {
     world.tick++;
 
     // Process each live agent

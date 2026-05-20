@@ -1197,6 +1197,7 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
   const context = String(options.benchContext > 0 ? options.benchContext : 2048);
   const draftMin = withDrafter ? String(options.benchDraftMin ?? "2") : "0";
   const draftMax = withDrafter ? String(options.benchDraftMax ?? "6") : "0";
+  const draftPMin = withDrafter ? String(options.benchDraftPMin ?? "0.1") : "1";
   const args = [
     "-m",
     targetModel,
@@ -1225,6 +1226,13 @@ function runBenchPass(binary, targetModel, drafterModel, options, withDrafter) {
     skippedCliFlags,
     options.cliFeatures,
     draftMax,
+  );
+  pushOptionalFlag(
+    args,
+    skippedCliFlags,
+    options.cliFeatures,
+    "--spec-draft-p-min",
+    draftPMin,
   );
   if (options.deviceNone) {
     pushOptionalFlag(

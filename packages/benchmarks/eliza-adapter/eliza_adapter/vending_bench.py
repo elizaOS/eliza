@@ -94,7 +94,16 @@ def _normalize_vending_payload(payload: object) -> str | None:
     out = {
         str(k).strip(): v
         for k, v in data.items()
-        if str(k).strip() not in {"action", "name", "command", "tool_name", "arguments"}
+        if str(k).strip()
+        not in {
+            "action",
+            "name",
+            "command",
+            "tool_name",
+            "arguments",
+            "actionContext",
+            "previousResults",
+        }
     }
     out["action"] = normalized
     return json.dumps(out)

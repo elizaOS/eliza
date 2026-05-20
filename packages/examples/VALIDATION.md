@@ -66,7 +66,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `farcaster` | `typecheck`, `build` | Neynar/Farcaster credentials; start with dry-run. |
 | `farcaster-miniapp` | `typecheck`, `build` | Farcaster mini app host plus wallet/provider integrations. |
 | `form` | `typecheck`, `test`, `build` through shared `chat` entrypoint | Manual run through shared chat entrypoint with one provider key. |
-| `game-of-life` | `typecheck`, `build` | Optional manual CLI/gameplay run. |
+| `game-of-life` | `typecheck`, `test`, `build` | Test runs a short non-interactive simulation. |
 | `gcp` | `typecheck`, `build` | GCP project, Cloud Run deployment, deployed test client URL. |
 | `html` | Typecheck/build skip scripts | Browser smoke test from static server. |
 | `lp-manager` | `typecheck`, `test`, `build` | Isolated Solana/EVM wallets and RPCs for live liquidity paths. |
@@ -83,7 +83,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `supabase` | Static review; no package scripts | Supabase CLI/Deno function serve or deployment with anon key and `OPENAI_API_KEY`. |
 | `telegram` | `typecheck`, `build` | Telegram bot token and provider key. |
 | `text-adventure` | `typecheck`, `build` | Optional manual CLI playthrough. |
-| `tic-tac-toe` | `typecheck`, `build` | Optional manual/bench game modes. |
+| `tic-tac-toe` | `typecheck`, `test`, `build` | Test runs the non-interactive bench mode. |
 | `trader` | `typecheck`, `build` | Paper-trading UI flow, then isolated-wallet live testing only when intended. |
 | `twitter-xai` | `typecheck`, `build` | X/xAI credentials; start with `TWITTER_DRY_RUN=true`. |
 | `vercel` | `typecheck`, `test`, `build` | Vercel project/env plus deployed or `vercel dev` API endpoint. |

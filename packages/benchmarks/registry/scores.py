@@ -1091,6 +1091,22 @@ def _score_from_hyperliquid_bench_json(data: JSONValue) -> ScoreExtraction:
     base/bonus/penalty totals from ``hl-evaluator``. Higher is better.
     """
     root = expect_dict(data, ctx="hyperliquid_bench:root")
+    calibration = get_optional(root, "calibration")
+    if isinstance(calibration, dict) and calibration.get("synthetic") is True:
+        expected = expect_float(
+            get_required(calibration, "expected_score", ctx="hyperliquid_bench:calibration"),
+            ctx="hyperliquid_bench:calibration.expected_score",
+        )
+        return ScoreExtraction(
+            score=expected,
+            unit="ratio",
+            higher_is_better=True,
+            metrics={
+                "calibration_expected_score": expected,
+                "calibration_harness": calibration.get("harness") or "",
+                "synthetic": True,
+            },
+        )
     demo_mode = get_optional(root, "demo_mode")
     if demo_mode is None:
         demo_mode = True

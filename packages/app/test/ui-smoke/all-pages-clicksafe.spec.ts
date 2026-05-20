@@ -128,6 +128,54 @@ const CORE_ROUTE_PROBES: readonly RouteProbe[] = [
     readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
     timeoutMs: 60_000,
   },
+  {
+    name: "phone deep link",
+    path: "/phone",
+    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "messages deep link",
+    path: "/messages",
+    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "contacts deep link",
+    path: "/contacts",
+    readyChecks: [{ selector: '[data-testid="chat-composer-textarea"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "views catalog deep link",
+    path: "/views",
+    readyChecks: [{ text: "Views" }, { text: "No views available" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "character documents deep link",
+    path: "/character/documents",
+    readyChecks: [{ selector: '[data-testid="character-editor-view"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "automation node catalog deep link",
+    path: "/automations/node-catalog",
+    readyChecks: [{ selector: '[data-testid="automations-shell"]' }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "desktop workspace deep link",
+    path: "/desktop",
+    readyChecks: [{ text: "Desktop workspace" }, { text: "Paths" }],
+    timeoutMs: 60_000,
+  },
+  {
+    name: "settings voice path",
+    path: "/settings/voice",
+    readyChecks: [{ selector: '[data-testid="settings-shell"]' }],
+    timeoutMs: 60_000,
+  },
 ];
 
 const APP_TOOL_ROUTE_PROBES: readonly RouteProbe[] = DIRECT_ROUTE_CASES.map(
@@ -188,6 +236,18 @@ const SETTING_SECTIONS_TO_CLICK: readonly RegExp[] = [
   /^Security$/,
   /^Updates$/,
   /^Backup & Reset$/,
+];
+const SETTING_DEEP_LINKS: readonly {
+  label: RegExp;
+  hash: string;
+}[] = [
+  { label: /^Providers$/, hash: "ai-model" },
+  { label: /^Voice$/, hash: "voice" },
+  { label: /^Connectors$/, hash: "connectors" },
+  { label: /^Permissions$/, hash: "permissions" },
+  { label: /^Vault$/, hash: "secrets" },
+  { label: /^Security$/, hash: "security" },
+  { label: /^Backup & Reset$/, hash: "advanced" },
 ];
 const SMOKE_GENERATED_AT = "2026-01-01T00:00:00.000Z";
 const ONE_PIXEL_PNG_BASE64 =
@@ -1274,6 +1334,21 @@ async function clickSafeAllowlist(
     await openSettingsSection(page, section);
     await page.waitForTimeout(150);
     await expectNoPageIssues(issues, `settings section ${String(section)}`);
+  }
+
+  const settingsNav = page.getByRole("navigation", { name: "Settings" });
+  for (const link of SETTING_DEEP_LINKS) {
+    await openAppPath(page, `/settings#${link.hash}`);
+    await expect(page.getByTestId("settings-shell")).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(page.locator(`#${link.hash}`)).toBeVisible({
+      timeout: 60_000,
+    });
+    await expect(
+      settingsNav.getByRole("button", { name: link.label }),
+    ).toHaveAttribute("aria-current", "page", { timeout: 60_000 });
+    await expectNoPageIssues(issues, `settings deep link ${link.hash}`);
   }
 }
 

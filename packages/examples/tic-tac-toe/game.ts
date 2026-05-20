@@ -15,7 +15,6 @@
 process.env.LOG_LEVEL = process.env.LOG_LEVEL || "fatal";
 
 import { randomUUID } from "node:crypto";
-import * as clack from "@clack/prompts";
 import {
   AgentRuntime,
   ChannelType,
@@ -37,6 +36,34 @@ import {
 type Player = "X" | "O";
 type Cell = Player | null;
 type Board = [Cell, Cell, Cell, Cell, Cell, Cell, Cell, Cell, Cell];
+type ClackModule = typeof import("@clack/prompts");
+
+let clackModulePromise: Promise<ClackModule> | null = null;
+
+function loadClack(): Promise<ClackModule> {
+  clackModulePromise ??= import("@clack/prompts");
+  return clackModulePromise;
+}
+
+async function loadSqlPlugin(): Promise<Plugin> {
+  try {
+    const sqlPluginSpecifier = "@elizaos/" + "plugin-sql";
+    const module = await import(/* @vite-ignore */ sqlPluginSpecifier);
+    return module.default as Plugin;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.includes("plugin-sql/src/dist/index.d.ts")) {
+      throw error;
+    }
+
+    const workspaceBuildUrl = new URL(
+      "../../../plugins/plugin-sql/src/dist/node/index.node.js",
+      import.meta.url,
+    );
+    const module = await import(workspaceBuildUrl.href);
+    return module.default as Plugin;
+  }
+}
 
 interface GameState {
   board: Board;
@@ -380,10 +407,15 @@ interface GameSession {
   gameMasterId: UUID;
 }
 
-async function createSession(): Promise<GameSession> {
-  const { default: sqlPlugin } = await import("@elizaos/plugin-sql");
-  const task = clack.spinner();
-  task.start("Initializing tic-tac-toe agent...");
+async function createSession(usePromptUi = true): Promise<GameSession> {
+  const sqlPlugin = await loadSqlPlugin();
+  const clack = usePromptUi ? await loadClack() : null;
+  const task = clack?.spinner();
+  if (task) {
+    task.start("Initializing tic-tac-toe agent...");
+  } else {
+    console.log("Initializing tic-tac-toe agent...");
+  }
 
   // Create runtime with NO character (anonymous) and NO LLM
   // Uses our custom tic-tac-toe plugin for model handling
@@ -415,9 +447,12 @@ async function createSession(): Promise<GameSession> {
     type: ChannelType.DM,
   });
 
-  task.stop(
-    `✅ Agent "${runtime.character.name}" ready! (No LLM - pure minimax)`,
-  );
+  const readyMessage = `✅ Agent "${runtime.character.name}" ready! (No LLM - pure minimax)`;
+  if (task) {
+    task.stop(readyMessage);
+  } else {
+    console.log(readyMessage);
+  }
 
   return { runtime, game, roomId, worldId, gameMasterId };
 }
@@ -522,8 +557,13 @@ async function getBenchmarkAIMove(session: GameSession): Promise<number> {
 // DISPLAY FUNCTIONS
 // ============================================================================
 
-function showIntro(): void {
-  clack.intro("🎮 elizaOS Tic-Tac-Toe Demo");
+async function showIntro(usePromptUi = true): Promise<void> {
+  if (usePromptUi) {
+    const clack = await loadClack();
+    clack.intro("🎮 elizaOS Tic-Tac-Toe Demo");
+  } else {
+    console.log("🎮 elizaOS Tic-Tac-Toe Demo");
+  }
   console.log(`
 ╔════════════════════════════════════════════════════════════════════╗
 ║                   PERFECT TIC-TAC-TOE AI                            ║
@@ -561,6 +601,7 @@ function showResult(winner: "X" | "O" | "draw"): void {
 
 async function playHumanVsAI(session: GameSession): Promise<void> {
   const { game } = session;
+  const clack = await loadClack();
 
   console.log("\n📋 You are X, AI is O. You go first!\n");
   showBoard(game);
@@ -610,6 +651,7 @@ async function playHumanVsAI(session: GameSession): Promise<void> {
 
 async function playAIVsAI(session: GameSession): Promise<void> {
   const { game } = session;
+  const clack = await loadClack();
 
   console.log("\n🤖 Watching two perfect AIs play each other...\n");
   console.log("(Both use minimax - this will always be a draw!)\n");
@@ -702,10 +744,11 @@ function parseArgs(): { mode?: GameMode; noPrompt?: boolean } {
 
 async function main(): Promise<void> {
   const { mode: cliMode, noPrompt } = parseArgs();
+  const usePromptUi = !(cliMode === "bench" && noPrompt);
 
-  showIntro();
+  await showIntro(usePromptUi);
 
-  const session = await createSession();
+  const session = await createSession(usePromptUi);
 
   let mode: GameMode;
 
@@ -715,6 +758,7 @@ async function main(): Promise<void> {
     console.log(`\n🎯 Mode: ${mode} (from command line)\n`);
   } else {
     // Interactive mode selection
+    const clack = await loadClack();
     const selected = await clack.select({
       message: "Choose game mode:",
       options: [
@@ -753,6 +797,7 @@ async function main(): Promise<void> {
     if (noPrompt || cliMode) {
       playAgain = false;
     } else {
+      const clack = await loadClack();
       const again = await clack.confirm({
         message: "Play again?",
       });
@@ -764,7 +809,12 @@ async function main(): Promise<void> {
   }
 
   await session.runtime.stop();
-  clack.outro("Thanks for playing! 🎮");
+  if (usePromptUi) {
+    const clack = await loadClack();
+    clack.outro("Thanks for playing! 🎮");
+  } else {
+    console.log("Thanks for playing! 🎮");
+  }
 }
 
 if (import.meta.main) {
