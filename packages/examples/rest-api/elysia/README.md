@@ -2,8 +2,9 @@
 
 A simple REST API server for chatting with an elizaOS agent using Elysia (Bun's fast web framework).
 
-**No API keys or external services required!** Uses:
+**No API keys or external services required for local mode.** Uses:
 
+- `plugin-sql` with PGLite by default for local storage
 - `plugin-eliza-classic` for pattern-matching responses (no LLM needed)
 
 ## Quick Start
@@ -66,6 +67,16 @@ Set the `PORT` environment variable to change the default port:
 ```bash
 PORT=8080 bun run start
 ```
+
+## Validate
+
+```bash
+bun run test
+bun run typecheck
+```
+
+The test suite imports the Elysia app without binding port 3000 and verifies
+CORS plus request validation.
 
 ## Why Elysia?
 

@@ -54,7 +54,7 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `app/electron/backend` | `typecheck`, `test`, `build` | Provider-key chat flow from the packaged Electron shell. |
 | `app/electron/frontend` | `typecheck`, `build` | Renderer smoke test in Electron and browser dev-server mode. |
 | `autonomous` | `test`, `typecheck`, `build` | Decision parser, shell allowlist, and prompt tests; optional local model and shell sandbox configuration. |
-| `avatar` | `typecheck`, `build` | Browser microphone/audio flow, selected model key, optional ElevenLabs key. |
+| `avatar` | `test`, `typecheck`, `build` | Provider-mode fallback tests; browser microphone/audio flow, selected model key, optional ElevenLabs key. |
 | `aws` | `typecheck`, `test`, `build` | AWS account, SAM deployment, and Lambda invocation with `OPENAI_API_KEY`. |
 | `bluesky` | `typecheck`, `test`, `build` | `LIVE_TEST=true` with Bluesky credentials and dry-run/posting flags. |
 | `browser-extension` | Parent typecheck skip and documented Chrome/Safari package checks | Load unpacked Chrome extension; Safari requires Xcode signing/install. |
@@ -72,17 +72,17 @@ The local examples sweep has been run in this worktree with these outcomes:
 | `farcaster-miniapp` | `typecheck`, `build` | Farcaster mini app host plus wallet/provider integrations. |
 | `form` | `typecheck`, `test`, `build` through shared `chat` entrypoint | Manual run through shared chat entrypoint with one provider key. |
 | `game-of-life` | `typecheck`, `test`, `build` | Test runs a short non-interactive simulation. |
-| `gcp` | `typecheck`, `build` | GCP project, Cloud Run deployment, deployed test client URL. |
-| `html` | Typecheck/build skip scripts | Browser smoke test from static server. |
+| `gcp` | `test`, `typecheck`, `build` | Non-interactive worker availability check; GCP project, Cloud Run deployment, deployed test client URL. |
+| `html` | `test`, typecheck/build skip scripts | Import-map and DOM wiring test; browser smoke test from static server. |
 | `lp-manager` | `typecheck`, `test`, `build` | Isolated Solana/EVM wallets and RPCs for live liquidity paths. |
 | `mcp` | `typecheck`, `test`, `build` | OpenAI key or compatible endpoint for live MCP chat. |
 | `moltbook` | `typecheck`, `build` | `LLM_API_KEY`; token only for write actions. |
 | `moltbook/bags-claimer` | Typecheck/build skip scripts | Wallet/RPC setup for claim flow. |
 | `next` | `typecheck`, explicit build skip | `build:next` for opt-in Next.js bundle verification; provider key for live chat. |
 | `react` | `typecheck`, `build` | Browser smoke test. |
-| `rest-api/elysia` | `typecheck`, `build` | Start server and run HTTP chat flow. |
-| `rest-api/express` | `typecheck`, `build` | Start server and run HTTP chat flow. |
-| `rest-api/hono` | `typecheck`, `build` | Start server and run HTTP chat flow. |
+| `rest-api/elysia` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |
+| `rest-api/express` | `test`, `typecheck`, `build` | Ephemeral-port CORS/request validation tests; start server for full HTTP chat flow. |
+| `rest-api/hono` | `test`, `typecheck`, `build` | In-process CORS/request validation tests; start server for full HTTP chat flow. |
 | `roblox` | `typecheck`, `test`, `build` | Roblox Studio place, Open Cloud key, tunnel/shared-secret bridge test. |
 | `smartglasses` | `typecheck`, `test` | Even Realities simulator or BLE hardware evidence report. |
 | `supabase` | Static review; no package scripts | Supabase CLI/Deno function serve or deployment with anon key and `OPENAI_API_KEY`. |

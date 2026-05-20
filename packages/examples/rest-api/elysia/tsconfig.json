@@ -9,7 +9,7 @@
     "resolveJsonModule": true,
     "declaration": false,
     "noEmit": true,
-    "types": ["node"]
+    "types": ["node", "bun-types"]
   },
   "include": ["*.ts"],
   "exclude": ["node_modules", "dist"],

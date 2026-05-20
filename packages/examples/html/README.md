@@ -136,6 +136,15 @@ bun install
 bun run build
 ```
 
+## Validate
+
+```bash
+bun run test
+```
+
+The local test checks the import map, required chat controls, and browser
+runtime wiring without starting a server.
+
 ## License
 
 MIT

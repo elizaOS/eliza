@@ -125,7 +125,7 @@ interface ChatRequest {
 // Elysia App
 // ============================================================================
 
-const _app = new Elysia()
+export const app = new Elysia()
   .use(cors())
 
   // GET / - Info endpoint
@@ -224,25 +224,26 @@ const _app = new Elysia()
       userId,
       mode: "elizaos",
     };
-  })
-
-  .listen(PORT);
+  });
 
 // ============================================================================
 // Server Startup
 // ============================================================================
 
 // Pre-initialize runtime
-getRuntime().then((rt) => {
-  console.log(`\n🌐 elizaOS REST API (Elysia)`);
-  console.log(`   http://localhost:${PORT}\n`);
-  console.log(`📚 Endpoints:`);
-  console.log(`   GET  /       - Agent info`);
-  console.log(`   GET  /health - Health check`);
-  console.log(
-    `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
-  );
-  if (!rt) {
-    console.log(`⚠️  Runtime initialization issue: ${initError}\n`);
-  }
-});
+if (import.meta.main) {
+  app.listen(PORT);
+  getRuntime().then((rt) => {
+    console.log(`\n🌐 elizaOS REST API (Elysia)`);
+    console.log(`   http://localhost:${PORT}\n`);
+    console.log(`📚 Endpoints:`);
+    console.log(`   GET  /       - Agent info`);
+    console.log(`   GET  /health - Health check`);
+    console.log(
+      `   POST /chat   - Chat with agent (uses runtime.messageService.handleMessage)\n`,
+    );
+    if (!rt) {
+      console.log(`⚠️  Runtime initialization issue: ${initError}\n`);
+    }
+  });
+}
