@@ -347,6 +347,31 @@ describe("messageHandlerFromFieldResult — bogus candidate actions", () => {
 		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
 	});
 
+	it("routes ack-only local source inspection questions to shell", () => {
+		const handler = messageHandlerFromFieldResult(
+			{
+				shouldRespond: "RESPOND",
+				contexts: [],
+				candidateActionNames: [],
+				replyText: "On it.",
+				intents: [],
+				facts: [],
+				addressedTo: [],
+			},
+			undefined,
+			{
+				actions: [SHELL],
+				messageText:
+					"does the vendored opencode source include Cerebras endpoint detection? concise",
+			},
+		);
+
+		expect(handler.plan.simple).toBe(false);
+		expect(handler.plan.requiresTool).toBe(true);
+		expect(handler.plan.contexts).toEqual(["general"]);
+		expect(handler.plan.candidateActions).toEqual(["SHELL"]);
+	});
+
 	it("routes ack-only local health endpoint checks to shell", () => {
 		const handler = messageHandlerFromFieldResult(
 			{

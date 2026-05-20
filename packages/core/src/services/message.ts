@@ -6331,7 +6331,7 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		);
 	const mentionsLocalSurface =
 		/(?:^|\s)(?:\/home\/|~\/|\.\/|\.\.\/)/u.test(normalized) ||
-		/\b(?:this vps|local(?:ly)?|server|workspace|worktree|repo|repository|branch|head|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time|logs?|service|systemd)\b/iu.test(
+		/\b(?:this vps|local(?:ly)?|server|workspace|worktree|repo|repository|branch|head|vendored|submodules?|origin\/(?:develop|main|master)|git status|disk (?:space|usage)|storage usage|health endpoint|api\/health|ready status|plugins?|ram|memory|uptime|utc time|server time|logs?|service|systemd)\b/iu.test(
 			normalized,
 		);
 	const asksRepoStateQuestion =
@@ -6348,11 +6348,19 @@ function looksLikeLocalShellRequest(text: string): boolean {
 		/\b(?:local|server|bot|runtime|right now|current|ready)\b/iu.test(
 			normalized,
 		);
+	const asksLocalSourceInspection =
+		/\b(?:does|do|is|are|can|could|check|verify|inspect|show)\b[\s\S]{0,160}\b(?:local|vendored|workspace|worktree|repo|repository|submodules?|source|code)\b[\s\S]{0,160}\b(?:include|contain|have|support|implement|detect|use)\b/iu.test(
+			normalized,
+		) &&
+		/\b(?:local|vendored|workspace|worktree|repo|repository|submodules?)\b/iu.test(
+			normalized,
+		);
 
 	return (
 		(mentionsCommand && asksToInspect && mentionsLocalSurface) ||
 		asksRepoStateQuestion ||
-		asksLocalStatusQuestion
+		asksLocalStatusQuestion ||
+		asksLocalSourceInspection
 	);
 }
 
