@@ -24,6 +24,7 @@
   "dependencies": {
     "@elizaos/core": "2.0.0-alpha.109",
     "@ai-sdk/groq": "^3.0.39",
+    "@vercel/blob": "2.3.2",
     "@feed/a2a": "workspace:*",
     "@feed/db": "workspace:*",
     "@feed/shared": "workspace:*",

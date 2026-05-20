@@ -132,7 +132,7 @@ def test_latest_readiness_includes_current_runtime_gate_findings(
     monkeypatch.setattr(adapters, "_has_terminal_bench_docker_backend", lambda: True)
     monkeypatch.setattr(adapters, "_has_swe_bench_docker_backend", lambda: True)
     monkeypatch.setattr(adapters, "_has_hermes_sandbox_backend", lambda: True)
-    monkeypatch.setattr(adapters, "_has_textvqa_real_inputs", lambda: True)
+    monkeypatch.setattr(adapters, "_has_vision_language_real_inputs", lambda: True)
     monkeypatch.setattr(adapters, "_has_vision_language_harness_runtime", lambda: True)
 
     report = validate_latest_readiness(tmp_path)

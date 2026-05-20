@@ -275,7 +275,7 @@ export const checks: Check[] = [
   {
     name: "live report validator self-test covers provider runtime evidence",
     pattern:
-      /(?=[\s\S]*missingProviderEvidenceDir)(?=[\s\S]*mismatchedProviderEvidenceDir)(?=[\s\S]*makeMissingProviderEvidenceReport\(\))(?=[\s\S]*makeMismatchedProviderEvidenceReport\(\))(?=[\s\S]*providerEvidence must be an object)(?=[\s\S]*providerEvidence\.endpointRuntime must be)/,
+      /missingProviderEvidenceDir[\s\S]*mismatchedProviderEvidenceDir[\s\S]*makeMissingProviderEvidenceReport\(\)[\s\S]*makeMismatchedProviderEvidenceReport\(\)[\s\S]*providerEvidence must be an object[\s\S]*providerEvidence\.endpointRuntime must be/,
     source: "live-report-validator-self-test",
     message:
       "live report validator self-test must cover missing and mismatched provider runtime evidence.",
@@ -417,7 +417,7 @@ export const checks: Check[] = [
   {
     name: "cloud live smoke is observed only on manual or scheduled runs",
     pattern:
-      /Remote capability cloud sandbox live smoke[\s\S]*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]*test:remote-capabilities:cloud-live/,
+      /Remote capability cloud sandbox live smoke[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:cloud-live/,
     message:
       "cloud live smoke must run on workflow_dispatch or schedule events.",
   },
@@ -466,7 +466,7 @@ export const checks: Check[] = [
   {
     name: "provider live smoke is observed only on manual or scheduled runs",
     pattern:
-      /Remote capability URL-backed provider live smoke[\s\S]*github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]*test:remote-capabilities:provider-live/,
+      /Remote capability URL-backed provider live smoke[\s\S]{0,300}github\.event_name == 'workflow_dispatch' \|\| github\.event_name == 'schedule'[\s\S]{0,300}test:remote-capabilities:provider-live/,
     message:
       "provider live smoke must run on workflow_dispatch or schedule events.",
   },

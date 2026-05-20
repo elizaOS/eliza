@@ -141,51 +141,86 @@ def _normalize_system(system: str) -> str:
     return system.strip() or ELIZA_SYSTEM_PROMPT
 
 
-_GLAIVE_FUNC_RE = re.compile(r"<functioncall>\s*(.*?)(?:\s*<\|endoftext\|>|\s*$)", re.DOTALL)
-_GLAIVE_FUNC_RESP_RE = re.compile(r"FUNCTION RESPONSE:\s*(.*?)(?=USER:|A:|$)", re.DOTALL)
+_GLAIVE_TOOL_JSON_RE = re.compile(r"\{[\s\S]*\}", re.DOTALL)
+
+
+def _extract_glaive_tools(system_raw: str) -> list[dict[str, Any]]:
+    """Extract tool definitions embedded in a glaive system prompt.
+
+    The system field looks like:
+      "SYSTEM: You are a helpful assistant...\\n{\\n  \\"name\\": \\"fn\\",...\\n}\\n\\n..."
+    One or more JSON objects follow the introductory sentence.
+    """
+    tools: list[dict[str, Any]] = []
+    # Find all top-level JSON objects in the text
+    depth = 0
+    start = -1
+    for idx, ch in enumerate(system_raw):
+        if ch == "{":
+            if depth == 0:
+                start = idx
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start != -1:
+                blob = system_raw[start:idx + 1]
+                try:
+                    obj = json.loads(blob)
+                    if isinstance(obj, dict) and "name" in obj:
+                        tools.append(obj)
+                except json.JSONDecodeError:
+                    pass
+                start = -1
+    return tools
 
 
 def _parse_glaive_chat(system_raw: str, chat: str) -> dict[str, Any] | None:
-    """Parse glaive-function-calling-v2 system+chat fields into a raw conversations dict."""
-    # Clean system prompt: strip "SYSTEM: " prefix and embedded function JSON
+    """Parse glaive-function-calling-v2 system+chat fields into a raw conversations dict.
+
+    The glaive v2 format uses ASSISTANT: (not A:) and <functioncall> JSON tags.
+    Tools are embedded as JSON in the system prompt, not in a separate field.
+    """
+    # Extract tool definitions before stripping the system prompt
+    tools_raw = _extract_glaive_tools(system_raw)
+
+    # Clean system prompt: strip "SYSTEM: " prefix and the embedded function JSON
     system = re.sub(r"^SYSTEM:\s*", "", system_raw, flags=re.IGNORECASE).strip()
-    # Remove the function listing embedded in system prompt
-    system = re.sub(r"You are a helpful assistant with access to the following functions.*", "", system, flags=re.DOTALL).strip()
+    system = re.sub(
+        r"You are a helpful assistant with access to the following functions[.\s\S]*",
+        "",
+        system,
+        flags=re.DOTALL,
+    ).strip()
     system = system or ELIZA_SYSTEM_PROMPT
 
-    # Split chat into turns
-    parts = re.split(r"(USER:|A:)", chat)
-    turns = []
+    # Split chat into turns on all known role markers
+    parts = re.split(r"(USER:|ASSISTANT:|FUNCTION RESPONSE:|FUNCTION CALL:|FUNCTION RESULT:)", chat)
+    turns: list[dict[str, Any]] = []
     i = 1
     while i < len(parts) - 1:
         speaker = parts[i].strip()
-        content = parts[i + 1].split("<|endoftext|>")[0].strip()
+        content = re.sub(r"\s*<\|endoftext\|>\s*", "", parts[i + 1]).strip()
         i += 2
+        if not content:
+            continue
         if speaker == "USER:":
-            # Strip out FUNCTION RESPONSE blocks (they're tool results embedded in user turn)
-            func_resp = _GLAIVE_FUNC_RESP_RE.search(content)
-            if func_resp:
-                tool_result = func_resp.group(1).strip()
-                content = content[:func_resp.start()].strip()
-                if content:
-                    turns.append({"from": "human", "value": content})
-                if tool_result:
-                    turns.append({"from": "tool", "value": tool_result})
-            elif content:
-                turns.append({"from": "human", "value": content})
-        elif speaker == "A:":
-            if content:
-                turns.append({"from": "gpt", "value": content})
+            turns.append({"from": "human", "value": content})
+        elif speaker in ("ASSISTANT:",):
+            turns.append({"from": "gpt", "value": content})
+        elif speaker in ("FUNCTION RESPONSE:", "FUNCTION RESULT:"):
+            turns.append({"from": "tool", "value": content})
 
-    return {"system_raw": system, "conversations": turns}
+    return {"system_raw": system, "conversations": turns, "_tools_raw": tools_raw}
 
 
 def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
     # Handle glaive format (system + chat fields)
+    tools_from_system: list[dict[str, Any]] = []
     if "chat" in raw and "system" in raw and "conversations" not in raw:
         parsed = _parse_glaive_chat(raw["system"], raw["chat"])
         if parsed is None:
             return None
+        tools_from_system = parsed.pop("_tools_raw", [])
         raw = {**raw, **parsed}
 
     conversations = raw.get("conversations") or raw.get("messages") or []
@@ -210,6 +245,9 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
             continue
 
         if role == "assistant":
+            # Keep intermediate assistant turns (e.g. function calls) in context
+            if final_assistant is not None:
+                turns.append({"role": "assistant", "content": final_assistant})
             final_assistant = content
             final_tools_str = content
             continue
@@ -226,19 +264,34 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
     thought, response_text = _extract_think(final_assistant)
     tool_calls = _extract_tool_calls(final_tools_str or "")
 
+    # Build tools list: prefer explicit field, fall back to system-prompt extraction
+    tools_field = raw.get("tools") or raw.get("functions")
+    tools_list: list[dict[str, Any]] | None = None
+    if tools_field:
+        from lib.adapters import _normalize_tools  # type: ignore[import]
+        tools_list = _normalize_tools(tools_field) or None
+    elif tools_from_system:
+        tools_list = tools_from_system
+
     total_text = system + " ".join(t["content"] for t in turns) + (final_assistant or "")
     if _estimate_tokens(total_text) > MAX_TOKEN_ESTIMATE:
         return None
 
+    source_tag = "glaive" if tools_from_system else "hermes"
+    rec_id = stable_id(source_tag, raw.get("id", ""), final_assistant[:64])
+
     if tool_calls:
         clean_response = _TOOL_CALL_RE.sub("", response_text).strip()
+        # Strip glaive-style <functioncall> from display text too
+        clean_response = re.sub(r"<functioncall>[^<]*", "", clean_response).strip()
         return native_tool_call_record(
             system=system,
             turns=turns,
             thought=thought or "Use the appropriate tool to fulfill the request.",
             tool_calls=tool_calls,
             message_to_user=clean_response or None,
-            metadata={"source": "hermes", "id": stable_id("hermes", raw.get("id", ""), final_assistant[:64])},
+            tools=tools_list,
+            metadata={"source": source_tag, "id": rec_id},
         )
 
     if _has_trope(response_text):
@@ -251,7 +304,8 @@ def _convert_record(raw: dict[str, Any]) -> dict[str, Any] | None:
         system=system,
         user=turns,
         response_text=response_text,
-        metadata={"source": "hermes", "id": stable_id("hermes", raw.get("id", ""), response_text[:64])},
+        tools=tools_list,
+        metadata={"source": source_tag, "id": rec_id},
     )
 
 

@@ -148,7 +148,7 @@ The native surface map mirrors the core elizaOS desktop flows:
 The Plugins surface includes the current internal and registry app catalog exposed by elizaOS:
 
 - Internal app windows: LifeOps, Plugin Viewer, Skills Viewer, Fine Tuning, Trajectory Viewer, Relationship Viewer, Memory Viewer, Steward, Runtime Debugger, Database Viewer, Log Viewer, and Automations.
-- Bundled registry apps: Model Tester, Knowledge/Documents, Companion, ElizaMaker, 2004scape, Defense of the Agents, Hyperscape, 'scape, Vincent, ClawVille, Babylon, Shopify, Hyperliquid, and Polymarket.
+- Bundled registry apps: Model Tester, Knowledge/Documents, Companion, ElizaMaker, 2004scape, Defense of the Agents, Hyperscape, 'scape, Vincent, ClawVille, Feed, Shopify, Hyperliquid, and Polymarket.
 - Renderer handoffs use the existing `appWindow=1#/apps/<slug>` route shape; detached shell surfaces use `?shell=surface&tab=<surface>`, and Browser uses the existing `browse` query parameter.
 
 On first launch the main window switches into a transparent AppKit-backed mode and shows the Eliza name prompt over animated glowing orbs. The saved profile name is reused across Dashboard, Welcome, Runtime, Settings, the menu bar dashboard, and runtime launch environment variables.

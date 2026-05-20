@@ -511,7 +511,7 @@ parts:
         --filter=@elizaos/plugin-wallet-ui \
         --filter=@elizaos/plugin-wechat \
         --filter=@elizaos/plugin-whatsapp \
-        --filter=@elizaos/scenario-runner/schema
+        --filter=@elizaos/scenario-runner
       rm -rf node_modules/@types
       rm -rf "$SNAP_BUILD_TYPES_DIR"
 
