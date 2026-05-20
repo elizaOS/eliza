@@ -287,6 +287,18 @@ async function structJudgeScore(userContext: string, actual: string, rubric: str
   return num;
 }
 
+// Extract a named field from JSON output, returning lowercase string or null
+function extractJsonField(text: string, field: string): string | null {
+  try {
+    const obj = JSON.parse(text.trim().replace(/^```[a-z]*\n?/i, "").replace(/\n?```$/i, ""));
+    const val = obj[field];
+    if (val !== undefined && val !== null) return String(val).toLowerCase().trim();
+  } catch {}
+  const m = text.match(new RegExp(`"${field}"\\s*:\\s*(?:"([^"]*)"|(true|false|\\d+))`));
+  if (m) return ((m[1] ?? m[2]) ?? "").toLowerCase().trim();
+  return null;
+}
+
 // Extract action name from autonomy decision output
 function extractAutonomyAction(text: string): string | null {
   try {
@@ -303,6 +315,20 @@ function extractAutonomyAction(text: string): string | null {
   return null;
 }
 
+// Tasks that use struct-aware LLM judge (complex JSON output)
+const STRUCT_JUDGE_TASKS = new Set([
+  "fact_extraction", "extract_action_params",
+  "add_contact", "search_contacts", "schedule_follow_up",
+  "extract_secrets", "custom_action_generate",
+  "observation_extraction", "long_term_extraction", "extract_secret_operation",
+]);
+
+// Tasks that use exact-match on a single extracted JSON field
+const FIELD_MATCH_TASKS: Record<string, string> = {
+  update_role: "new_role",
+  choose_option: "selected_id",
+};
+
 function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
   return async (prompt: string, examples: OptimizationExample[]): Promise<number> => {
     if (examples.length === 0) return 0;
@@ -310,29 +336,58 @@ function buildScorer(task: string, _adapter: LlmAdapter, useJudge: boolean) {
     for (const ex of examples) {
       const resp = await callCerebras(prompt, ex.input.user, 0, 1024);
       const actual = resp.text;
+
       if (task === "action_planner" || task === "message_handler") {
         const a = extractPlannerAction(actual);
         const e = extractPlannerAction(ex.expectedOutput);
         total += a && e && a === e ? 1 : 0;
+
       } else if (task === "should_respond" || task === "should_respond_runtime") {
         const aYes = actual.toLowerCase().includes("yes") || actual.toLowerCase().includes("respond");
         const eYes = ex.expectedOutput.toLowerCase().includes("yes") || ex.expectedOutput.toLowerCase().includes("respond");
         const aVerdict = aYes && !actual.toLowerCase().includes("ignore") ? "yes" : "no";
         const eVerdict = eYes ? "yes" : "no";
         total += aVerdict === eVerdict ? 1 : 0;
+
       } else if (task === "autonomy_decision") {
         const expectedAction = extractAutonomyAction(ex.expectedOutput) ?? "NONE";
         const actualAction = extractAutonomyAction(actual) ?? "NONE";
         total += actualAction === expectedAction ? 1 : 0;
-      } else if (task === "fact_extraction" || task === "extract_action_params") {
-        // Struct-aware judge for JSON output with specific structure
+
+      } else if (
+        task === "should_follow_room" || task === "should_mute_room" ||
+        task === "should_unfollow_room" || task === "should_unmute_room"
+      ) {
+        const expectedDecision = extractJsonField(ex.expectedOutput, "decision");
+        const actualDecision = extractJsonField(actual, "decision");
+        total += expectedDecision !== null && actualDecision !== null && expectedDecision === actualDecision ? 1 : 0;
+
+      } else if (task === "option_extraction") {
+        const eTaskId = extractJsonField(ex.expectedOutput, "taskId");
+        const aTaskId = extractJsonField(actual, "taskId");
+        const eOpt = extractJsonField(ex.expectedOutput, "selectedOption");
+        const aOpt = extractJsonField(actual, "selectedOption");
+        const nullish = (v: string | null) => v === null || v === "null";
+        const taskMatch = nullish(eTaskId) ? nullish(aTaskId) : eTaskId === aTaskId;
+        const optMatch = nullish(eOpt) ? nullish(aOpt) : eOpt === aOpt;
+        total += taskMatch && optMatch ? 1 : 0;
+
+      } else if (FIELD_MATCH_TASKS[task]) {
+        const field = FIELD_MATCH_TASKS[task]!;
+        const expected = extractJsonField(ex.expectedOutput, field);
+        const actual2 = extractJsonField(actual, field);
+        total += expected !== null && actual2 !== null && expected === actual2 ? 1 : 0;
+
+      } else if (STRUCT_JUDGE_TASKS.has(task)) {
         const score = await structJudgeScore(ex.input.user, actual, ex.rubric ?? ex.expectedOutput);
         total += score;
+
       } else if (useJudge) {
         const score = task === "response"
           ? await responseQualityScore(ex.input.user, actual, ex.rubric)
           : await llmJudgeScore(ex.input.user, actual, ex.rubric);
         total += score;
+
       } else {
         total += jaccardScore(actual, ex.expectedOutput);
       }
@@ -681,6 +736,286 @@ If a value is genuinely indeterminable from the conversation, return null for th
 
 Return a JSON object containing values for the missing fields only.
 JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // REPLY_TEMPLATE baseline — generates agent dialog
+  reply: `Generate the next message in the conversation.
+
+Write a natural, helpful reply to the user's message. Be direct and conversational.
+
+JSON:
+thought: Your brief reasoning
+text: Your message to the user
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // OBSERVATION_EXTRACTION_TEMPLATE baseline
+  observation_extraction: `Extract durable observations about the user from recent conversation exchanges.
+
+Categories to look for:
+- Preferences (tools, languages, workflows, communication style)
+- Facts (role, location, projects they work on, tech stack)
+- Standing instructions (things they always/never want)
+- Patterns (recurring topics, how they like to work)
+
+Return a JSON array of short observation strings (max 150 chars each).
+If nothing meaningful is found, return an empty array [].
+Do NOT include observations about the conversation itself, only about the user.
+
+JSON only. Return one JSON array. No prose, fences, thinking, or markdown.`,
+
+  // MEMORY_CONTEXT_QA_TEMPLATE baseline
+  memory_qa: `Answer the query using only the provided context. If context is insufficient, say so explicitly.
+Keep the answer under 120 words.
+
+JSON only. Return one JSON object with an "answer" field. No prose, fences, thinking, or markdown.`,
+
+  // CHOOSE_OPTION_TEMPLATE baseline
+  choose_option: `Select the most appropriate option from the available choices based on context.
+
+Provide reasoning and the selected option ID.
+
+JSON:
+thought: Your reasoning for the selection
+selected_id: The ID of the selected option
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // REFLECTION_TEMPLATE baseline
+  reflection: `Analyze recent agent behavior and interactions.
+
+Consider:
+1. Communication clarity and helpfulness
+2. Context appropriateness
+3. Mistakes made
+4. Improvements possible
+
+JSON:
+thought: Your detailed analysis
+quality_score: Score 0-100
+strengths: What went well
+improvements: What could be improved
+learnings: Key takeaways
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // UPDATE_SUMMARIZATION_TEMPLATE baseline
+  update_summarization: `Update and condense the existing conversation summary with new messages.
+
+Merge existing summary + new message insights. Remove redundant details. Keep important context.
+Keep the updated summary under 2500 tokens.
+
+JSON:
+text: Your updated summary
+topics: [topic1, topic2]
+keyPoints: [key point 1, key point 2]
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // LONG_TERM_EXTRACTION_TEMPLATE baseline
+  long_term_extraction: `Extract long-term memory items from this conversation.
+
+Only extract critical, persistent user info using these categories:
+- EPISODIC: specific events with temporal context (who did what, when/where)
+- SEMANTIC: stable facts about the user (role, expertise, identity)
+- PROCEDURAL: skills and workflows demonstrated 3+ times or explicitly stated
+
+STRICT criteria: default to NOT extracting. Require overwhelming evidence.
+Single mentions, casual conversation, temporary state → do NOT extract.
+
+Return memories array or empty array if nothing qualifies.
+
+JSON:
+memories[0]:
+  category: semantic|episodic|procedural
+  content: The fact
+  confidence: 0.85-1.0
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // IMAGE_GENERATION_TEMPLATE baseline
+  image_generation: `Generate an image prompt based on the conversation context.
+
+Create a specific, detailed image-generation prompt that captures the visual concept discussed.
+
+JSON:
+thought: Your reasoning for the image prompt
+prompt: Detailed image generation prompt
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // POST_CREATION_TEMPLATE baseline
+  post_creation: `Create a social media post about the given topic.
+
+Requirements:
+- 1-3 sentences (random length)
+- No questions. Brief, concise statements only.
+- Total character count under 280
+- No emojis
+- Write in first-person perspective
+
+JSON:
+thought: What you're thinking about
+post: The post text
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // CUSTOM_ACTION_GENERATE_TEMPLATE baseline
+  custom_action_generate: `Generate a custom action definition from the user's description.
+
+Return a JSON object with:
+- name: UPPER_SNAKE_CASE action name
+- description: what the action does
+- handlerType: "http" | "shell" | "code"
+- handler: object with type-specific fields
+- parameters: array of {name, description, required}
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // SHOULD_FOLLOW_ROOM_TEMPLATE baseline
+  should_follow_room: `Decide whether the agent should follow this room.
+
+Return true only when the user clearly asks the agent to follow this room.
+Return false when the request is ambiguous or unrelated.
+Default to false when uncertain.
+
+JSON:
+decision: true|false
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // SHOULD_MUTE_ROOM_TEMPLATE baseline
+  should_mute_room: `Decide whether the agent should mute this room.
+
+Return true only when the user clearly asks the agent to mute this room.
+Return false when the request is ambiguous or unrelated.
+Default to false when uncertain.
+
+JSON:
+decision: true|false
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // SHOULD_UNFOLLOW_ROOM_TEMPLATE baseline
+  should_unfollow_room: `Decide whether the agent should unfollow this room.
+
+Return true only when the user clearly asks the agent to unfollow or leave this room.
+Return false when the request is ambiguous or unrelated.
+Default to false when uncertain.
+
+JSON:
+decision: true|false
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // SHOULD_UNMUTE_ROOM_TEMPLATE baseline
+  should_unmute_room: `Decide whether the agent should unmute this room.
+
+Return true only when the user clearly asks the agent to unmute this room.
+Return false when the request is ambiguous or unrelated.
+Default to false when uncertain.
+
+JSON:
+decision: true|false
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // ADD_CONTACT_TEMPLATE baseline
+  add_contact: `Extract contact information to add to relationships from the user's message.
+
+Identify the contact name, categories, notes, timezone, and language when clearly present.
+Include a short reason for saving this contact.
+
+JSON:
+contactName: Name of the contact
+entityId: null or UUID if known
+categories: comma-separated (vip, colleague, friend, etc.)
+notes: relevant notes if present
+reason: why to save this contact
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // SEARCH_CONTACTS_TEMPLATE baseline
+  search_contacts: `Extract contact search criteria from the user's message.
+
+Identify the search intent and any filters mentioned.
+
+JSON:
+categories: comma-separated filter list (if any)
+tags: comma-separated tag filter (if any)
+searchTerm: name or free-text lookup (if any)
+intent: count|list
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // SCHEDULE_FOLLOW_UP_TEMPLATE baseline
+  schedule_follow_up: `Extract follow-up scheduling information from the user's request.
+
+Identify who to follow up with, when, why, and at what priority.
+
+JSON:
+contactName: Who to follow up with
+scheduledAt: ISO datetime (or null if unclear)
+reason: Why following up
+priority: high|medium|low
+message: Specific message to include (if requested)
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // EXTRACT_SECRET_OPERATION_TEMPLATE baseline
+  extract_secret_operation: `Determine the secret management operation from the user's message.
+
+Operations:
+- get: Retrieve a secret value
+- set: Store a new secret
+- delete: Remove a secret
+- list: Show all secrets
+- check: Check if a secret exists
+
+JSON:
+operation: get|set|delete|list|check
+key: SECRET_KEY_NAME (if applicable)
+value: secret_value (for set only)
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // EXTRACT_SECRETS_TEMPLATE baseline
+  extract_secrets: `Extract secret/configuration values from the user's message.
+
+Identify the secret key name (UPPERCASE_WITH_UNDERSCORES) and value.
+Infer key name from context if not explicitly stated.
+
+JSON:
+secrets[0]:
+  key: SECRET_KEY_NAME
+  value: the_value
+  type: api_key|secret|credential|url|config
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // OPTION_EXTRACTION_TEMPLATE baseline
+  option_extraction: `Extract the selected task and option from the user's message.
+
+Match against available tasks and options. Return task ID and option name exactly as listed.
+Return null for both if no clear selection.
+
+JSON:
+taskId: string_or_null
+selectedOption: OPTION_NAME_or_null
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
+
+  // UPDATE_ROLE_TEMPLATE baseline
+  update_role: `Extract the role change request from the user's message.
+
+Normalize new_role to: OWNER, ADMIN, MEMBER, GUEST, or NONE.
+Only identify single entity whose role changes.
+
+JSON:
+thought: Brief description of the change
+entity_id: UUID or null
+new_role: OWNER|ADMIN|MEMBER|GUEST|NONE
+
+JSON only. Return one JSON object. No prose, fences, thinking, or markdown.`,
 };
 
 // ── Synthetic training examples ───────────────────────────────────────────────
@@ -1028,12 +1363,444 @@ const SYNTHETIC_DATASETS: Record<string, OptimizationExample[]> = {
       rubric: "Must return null for all fields. User explicitly said they haven't decided. Do NOT invent values.",
     },
   ],
+
+  // REPLY_TEMPLATE — dialog generation quality
+  reply: [
+    { id: "rl-1", input: { user: "User: Hey! How are you doing today?\nContext: First message of the day" }, expectedOutput: '{"thought":"Friendly greeting, respond warmly","text":"Doing great, thanks for asking! What can I help you with today?"}', reward: 1, rubric: "Should be warm, brief, and natural. Must include thought + text fields. No verbose padding." },
+    { id: "rl-2", input: { user: "User: Can you explain recursion in 2 sentences?\nContext: Technical chat" }, expectedOutput: '{"thought":"Need a concise 2-sentence recursion explanation","text":"Recursion is when a function calls itself to solve a smaller version of the same problem. The key is a base case that stops the recursion — without it, you get infinite loops."}', reward: 1, rubric: "Must explain recursion in exactly 2 sentences. Clear and accurate. JSON format." },
+    { id: "rl-3", input: { user: "User: I'm frustrated with my code, it keeps throwing TypeErrors.\nContext: Debugging session" }, expectedOutput: '{"thought":"User is frustrated; be empathetic and helpful","text":"TypeErrors in JS/TS are usually about type mismatches or null/undefined values. Can you share the error message and the line causing it?"}', reward: 1, rubric: "Should be empathetic, then ask for the specific error. Not generic advice. JSON format." },
+    { id: "rl-4", input: { user: "User: What's 12 × 13?\nContext: Quick math question" }, expectedOutput: '{"thought":"Simple multiplication","text":"156."}', reward: 1, rubric: "Must give the correct answer 156. One word/number acceptable. JSON format required." },
+    { id: "rl-5", input: { user: "User: Thanks, that worked perfectly!\nContext: User confirming a solution worked" }, expectedOutput: '{"thought":"User is happy with the solution","text":"Great, glad it worked! Let me know if anything else comes up."}', reward: 1, rubric: "Should acknowledge success briefly and offer continued help. Short, natural." },
+    { id: "rl-6", input: { user: "User: Schedule a meeting for tomorrow at 3pm with the team.\nContext: Task request that needs a tool — agent is in planning mode" }, expectedOutput: '{"thought":"This needs a calendar tool, not a direct text reply","text":"On it — scheduling the team meeting for tomorrow at 3pm."}', reward: 1, rubric: "Should acknowledge the task briefly ('On it', 'Scheduling now'). Should NOT try to actually schedule in text. Should be an ack, not a final answer." },
+    { id: "rl-7", input: { user: "User: Who was the first person to walk on the moon?\nContext: Factual question" }, expectedOutput: '{"thought":"Simple factual question","text":"Neil Armstrong, on July 20, 1969 during the Apollo 11 mission."}', reward: 1, rubric: "Must answer correctly: Neil Armstrong, 1969. Concise. JSON format." },
+    { id: "rl-8", input: { user: "User: goodbye!\nContext: User ending conversation" }, expectedOutput: '{"thought":"User is leaving","text":"Goodbye! Come back anytime."}', reward: 1, rubric: "Brief farewell. No padding. JSON format." },
+  ],
+
+  // OBSERVATION_EXTRACTION_TEMPLATE — extract durable user observations
+  observation_extraction: [
+    {
+      id: "oe-1",
+      input: { user: "Recent exchanges:\nUser: I always use vim bindings everywhere I can\nAssistant: Got it, you prefer vim motions." },
+      expectedOutput: '["User prefers vim key bindings"]',
+      reward: 1,
+      rubric: "Must extract: preference for vim bindings. JSON array format. Short observation.",
+    },
+    {
+      id: "oe-2",
+      input: { user: "Recent exchanges:\nUser: how's the weather today?\nAssistant: I don't have access to live weather data.\nUser: oh ok, never mind" },
+      expectedOutput: '[]',
+      reward: 1,
+      rubric: "Must return empty array. No durable observations — just a casual question with no personal info.",
+    },
+    {
+      id: "oe-3",
+      input: { user: "Recent exchanges:\nUser: I'm a senior backend engineer at Stripe, mostly TypeScript and Go\nAssistant: Great background. What are you working on today?" },
+      expectedOutput: '["User is a senior backend engineer at Stripe","User primarily uses TypeScript and Go"]',
+      reward: 1,
+      rubric: "Must extract role (senior backend at Stripe) and tech stack (TypeScript, Go). JSON array.",
+    },
+    {
+      id: "oe-4",
+      input: { user: "Recent exchanges:\nUser: please always respond in bullet points, I hate paragraphs\nAssistant: Understood, bullet points it is." },
+      expectedOutput: '["User prefers responses in bullet point format, not paragraphs"]',
+      reward: 1,
+      rubric: "Must extract the standing instruction: respond in bullet points. This is a preference worth remembering.",
+    },
+    {
+      id: "oe-5",
+      input: { user: "Recent exchanges:\nUser: ok thanks\nAssistant: You're welcome!" },
+      expectedOutput: '[]',
+      reward: 1,
+      rubric: "Must return empty array. Single-word acknowledgment contains no observations.",
+    },
+    {
+      id: "oe-6",
+      input: { user: "Recent exchanges:\nUser: I always write tests before my implementation, TDD all the way\nAssistant: TDD is great for catching regressions early.\nUser: yeah I can't work without it at this point" },
+      expectedOutput: '["User follows TDD workflow — writes tests before implementation"]',
+      reward: 1,
+      rubric: "Must extract: TDD workflow preference. Confirmed by multiple statements. Not a single mention.",
+    },
+  ],
+
+  // MEMORY_CONTEXT_QA_TEMPLATE — answer from memory context
+  memory_qa: [
+    {
+      id: "mq-1",
+      input: { user: "Query: What is the user's favorite programming language?\n\nSaved memory notes:\n- User prefers TypeScript for all new projects\n- User has 8 years of Python experience but avoids it for new work\n\nKnowledge snippets: []" },
+      expectedOutput: '{"answer":"TypeScript — the user prefers it for all new projects, though they have extensive Python experience."}',
+      reward: 1,
+      rubric: "Must answer TypeScript from memory notes. Should reference both notes for completeness.",
+    },
+    {
+      id: "mq-2",
+      input: { user: "Query: What is the capital of France?\n\nSaved memory notes: []\n\nKnowledge snippets: []" },
+      expectedOutput: '{"answer":"Context is insufficient to answer this — no relevant notes or knowledge snippets available."}',
+      reward: 1,
+      rubric: "Must say context is insufficient. Should NOT hallucinate the answer (Paris) from general knowledge.",
+    },
+    {
+      id: "mq-3",
+      input: { user: "Query: When is the user's team standup?\n\nSaved memory notes:\n- Daily standup at 9am EST with the backend team\n- User sometimes skips Fridays\n\nKnowledge snippets: []" },
+      expectedOutput: '{"answer":"Daily standup is at 9am EST with the backend team. The user sometimes skips on Fridays."}',
+      reward: 1,
+      rubric: "Must answer with time (9am EST) and note about Fridays. All from notes.",
+    },
+    {
+      id: "mq-4",
+      input: { user: "Query: What medications does the user take?\n\nSaved memory notes:\n- User takes metformin 500mg twice daily for diabetes management\n- Allergic to penicillin\n\nKnowledge snippets: []" },
+      expectedOutput: '{"answer":"Metformin 500mg twice daily. The user is also allergic to penicillin."}',
+      reward: 1,
+      rubric: "Must state metformin 500mg twice daily AND penicillin allergy. Both are in notes.",
+    },
+    {
+      id: "mq-5",
+      input: { user: "Query: What database does the user's company use?\n\nSaved memory notes:\n- User works on the frontend team at Acme Corp\n\nKnowledge snippets: []" },
+      expectedOutput: '{"answer":"Context is insufficient — the notes mention Acme Corp but don\'t specify which database they use."}',
+      reward: 1,
+      rubric: "Must say insufficient context — database not in notes, only company name and team.",
+    },
+    {
+      id: "mq-6",
+      input: { user: "Query: Does the user have any dietary restrictions?\n\nSaved memory notes:\n- User is vegetarian and avoids all meat\n- User also avoids gluten (celiac disease)\n\nKnowledge snippets: []" },
+      expectedOutput: '{"answer":"Yes — the user is vegetarian and has celiac disease, so they avoid all meat and gluten."}',
+      reward: 1,
+      rubric: "Must state both: vegetarian AND celiac/gluten-free. Both critical health notes.",
+    },
+  ],
+
+  // CHOOSE_OPTION_TEMPLATE — option selection
+  choose_option: [
+    {
+      id: "co-1",
+      input: { user: "Context: User asked for help with a TypeScript error\n\nAvailable options:\n- id: OPT_DEBUG | Debug the error step by step\n- id: OPT_FIX | Apply an immediate code fix\n- id: OPT_EXPLAIN | Explain what the error means\n\nUser said: 'just fix it for me'" },
+      expectedOutput: '{"thought":"User wants immediate fix, not explanation or step-by-step","selected_id":"OPT_FIX"}',
+      reward: 1,
+      rubric: "Must select OPT_FIX. User said 'just fix it' — not debug or explain.",
+    },
+    {
+      id: "co-2",
+      input: { user: "Context: User is learning about machine learning\n\nAvailable options:\n- id: BEGINNER | Start with basics (what is ML, types of ML)\n- id: INTERMEDIATE | Jump to algorithms and training\n- id: ADVANCED | Dive into neural network architectures\n\nUser said: 'I have a CS degree but never touched ML'" },
+      expectedOutput: '{"thought":"CS background but ML novice — intermediate is right, not too basic or too advanced","selected_id":"INTERMEDIATE"}',
+      reward: 1,
+      rubric: "Must select INTERMEDIATE. CS degree = not beginner; no ML experience = not advanced.",
+    },
+    {
+      id: "co-3",
+      input: { user: "Context: User wants to export their data\n\nAvailable options:\n- id: CSV | Export as CSV spreadsheet\n- id: JSON | Export as JSON file\n- id: PDF | Export as PDF report\n\nUser said: 'I want to open it in Excel'" },
+      expectedOutput: '{"thought":"User wants Excel compatibility — CSV is the right format for Excel","selected_id":"CSV"}',
+      reward: 1,
+      rubric: "Must select CSV. Excel natively opens CSV files, not JSON or PDF.",
+    },
+    {
+      id: "co-4",
+      input: { user: "Context: User is deploying an app\n\nAvailable options:\n- id: STAGING | Deploy to staging environment\n- id: PRODUCTION | Deploy to production\n- id: DEV | Deploy to development server\n\nUser said: 'Let's test this before going live'" },
+      expectedOutput: '{"thought":"User wants to test before going live = staging","selected_id":"STAGING"}',
+      reward: 1,
+      rubric: "Must select STAGING. 'Test before going live' is the canonical staging use case.",
+    },
+    {
+      id: "co-5",
+      input: { user: "Context: User is configuring notifications\n\nAvailable options:\n- id: ALL | Receive all notifications\n- id: IMPORTANT | Only important notifications\n- id: NONE | No notifications\n\nUser said: 'I don't want to be bothered unless it's urgent'" },
+      expectedOutput: '{"thought":"User wants minimal, urgent-only notifications = IMPORTANT","selected_id":"IMPORTANT"}',
+      reward: 1,
+      rubric: "Must select IMPORTANT. 'Unless it's urgent' = important only, not all or none.",
+    },
+    {
+      id: "co-6",
+      input: { user: "Context: User is asking about response format\n\nAvailable options:\n- id: SHORT | Brief 1-2 sentence answers\n- id: DETAILED | Comprehensive explanations with examples\n- id: BULLETS | Structured bullet points\n\nUser said: 'Give me a full deep dive with examples'" },
+      expectedOutput: '{"thought":"User explicitly wants detailed explanation with examples","selected_id":"DETAILED"}',
+      reward: 1,
+      rubric: "Must select DETAILED. 'Full deep dive with examples' = comprehensive.",
+    },
+  ],
+
+  // REFLECTION_TEMPLATE — agent self-reflection quality
+  reflection: [
+    {
+      id: "rf-1",
+      input: { user: "Recent interactions:\n1. User asked for Python help, agent gave a clear example → User: 'Perfect, thanks!'\n2. User asked a vague question, agent asked for clarification → User clarified and got a good answer\n3. Agent gave a long response to a simple yes/no question → User seemed annoyed" },
+      expectedOutput: '{"thought":"Two good interactions, one clear mistake: over-verbose response to simple question","quality_score":72,"strengths":"Good clarification-seeking and accurate technical help","improvements":"Match response length to question complexity","learnings":"Yes/no questions get yes/no answers"}',
+      reward: 1,
+      rubric: "Must identify the verbose response as the weakness. Quality score should be 65-80. All JSON fields required.",
+    },
+    {
+      id: "rf-2",
+      input: { user: "Recent interactions:\n1. Agent helped debug a React hook issue correctly → User: 'That fixed it!'\n2. Agent scheduled a meeting correctly\n3. Agent answered all 5 questions accurately and concisely" },
+      expectedOutput: '{"thought":"All interactions went well - accurate, helpful responses across different task types","quality_score":90,"strengths":"Technical accuracy, task execution, concise answers","improvements":"Could add more proactive suggestions","learnings":"Current approach working well across task types"}',
+      reward: 1,
+      rubric: "High quality score (80-95) appropriate since all interactions went well. Honest positive assessment.",
+    },
+    {
+      id: "rf-3",
+      input: { user: "Recent interactions:\n1. Agent misunderstood 'cancel' as cancel the meeting not cancel the action → User had to repeat themselves\n2. Agent gave wrong timezone conversion (said EST instead of PST)\n3. Agent interrupted user mid-thought with an early response" },
+      expectedOutput: '{"thought":"Three distinct errors: ambiguity mishandling, factual error, premature response","quality_score":35,"strengths":"At least responded promptly","improvements":"Clarify ambiguous words before acting; double-check time conversions; wait for user to finish","learnings":"Ambiguity and factual accuracy are critical gaps"}',
+      reward: 1,
+      rubric: "Low quality score (25-45) appropriate. Must identify all 3 failures specifically. Honest assessment.",
+    },
+  ],
+
+  // UPDATE_SUMMARIZATION_TEMPLATE — rolling summary updates
+  update_summarization: [
+    {
+      id: "us-1",
+      input: { user: "Existing summary: 'User is planning a trip to Japan in March. Interested in Tokyo (3 days) and Kyoto.'\nExisting topics: Japan trip, travel planning\nNew messages:\nUser: What about Osaka? Should I add a day there?\nAssistant: Osaka is worth a day — Dotonbori, Namba, day trip to Nara possible." },
+      expectedOutput: '{"text":"User is planning a Japan trip in March: Tokyo (3 days), Kyoto, and considering adding Osaka (1 day for Dotonbori, Namba). Nara possible as a day trip from Osaka.","topics":["Japan trip","travel planning","Osaka","Kyoto","Tokyo"],"keyPoints":["March trip to Japan","Tokyo 3 days then Kyoto","Adding Osaka — Dotonbori, Namba","Nara possible day trip from Osaka"]}',
+      reward: 1,
+      rubric: "Must merge existing summary (Tokyo/Kyoto) with new Osaka discussion. Topics should include Osaka.",
+    },
+    {
+      id: "us-2",
+      input: { user: "Existing summary: 'Team chose PostgreSQL over MongoDB for relational data model.'\nExisting topics: database, PostgreSQL\nNew messages:\nUser: We also decided to use Prisma as the ORM instead of Drizzle.\nAssistant: Good choice — Prisma has great TypeScript integration and a mature migration system." },
+      expectedOutput: '{"text":"Team chose PostgreSQL for relational data model. ORM decision updated: Prisma selected over Drizzle for its TypeScript integration and migration system.","topics":["database","PostgreSQL","Prisma","ORM"],"keyPoints":["PostgreSQL chosen for relational data","Prisma selected as ORM (changed from Drizzle)","Prisma: strong TypeScript integration and migrations"]}',
+      reward: 1,
+      rubric: "Must update summary to reflect ORM change from Drizzle to Prisma. Keep PostgreSQL decision.",
+    },
+    {
+      id: "us-3",
+      input: { user: "Existing summary: 'User is debugging a Python memory leak in a data processing pipeline.'\nExisting topics: Python, debugging, memory leak\nNew messages:\nUser: I found it — was an unclosed file handle in the CSV reader loop.\nAssistant: Classic. Wrap with 'with open()' to ensure proper cleanup.\nUser: Fixed! Memory usage is stable now." },
+      expectedOutput: '{"text":"User was debugging a Python memory leak in a data processing pipeline. Root cause: unclosed file handle in CSV reader. Fixed using context manager (with open()). Memory usage now stable.","topics":["Python","debugging","memory leak","fixed"],"keyPoints":["Bug: unclosed file handle in CSV reader","Fix: use with open() context manager","Result: memory usage now stable"]}',
+      reward: 1,
+      rubric: "Must update summary to show RESOLVED status. Include root cause, fix, and confirmation it worked.",
+    },
+    {
+      id: "us-4",
+      input: { user: "Existing summary: 'Long discussion about React vs Vue for a new project.'\nExisting topics: React, Vue, framework choice\nNew messages:\nUser: ok we're going with React, final decision\nAssistant: Great. React's ecosystem and team familiarity make it the safe choice." },
+      expectedOutput: '{"text":"Team finalized framework selection: React chosen over Vue. Reasons: ecosystem size and team familiarity.","topics":["React","framework decision","final"],"keyPoints":["Final decision: React","Reasons: ecosystem and team familiarity"]}',
+      reward: 1,
+      rubric: "Must condense the long discussion into just the decision (React) and reasons. Remove verbose discussion.",
+    },
+  ],
+
+  // LONG_TERM_EXTRACTION_TEMPLATE — deep memory extraction
+  long_term_extraction: [
+    {
+      id: "lt-1",
+      input: { user: "Conversation:\nUser: I've been doing TDD for 6 years. I can't write code without tests first.\nAssistant: TDD is great for confidence.\nUser: Yeah, I literally always write the test before the function, even for tiny utils.\nAssistant: That's strong discipline.\nUser: It's just how I work at this point.\nExisting long-term memories: []" },
+      expectedOutput: '{"memories":[{"category":"procedural","content":"User follows strict TDD: always writes tests before implementation, including small utilities","confidence":0.95}]}',
+      reward: 1,
+      rubric: "Must extract PROCEDURAL memory about TDD. High confidence (0.9+) justified by 3+ confirmations and 6 years experience.",
+    },
+    {
+      id: "lt-2",
+      input: { user: "Conversation:\nUser: I tried Rust once last year, couldn't figure out the borrow checker\nAssistant: It has a steep learning curve.\nExisting long-term memories: []" },
+      expectedOutput: '{"memories":[]}',
+      reward: 1,
+      rubric: "Must return empty memories. Single frustrated mention of Rust does not qualify as long-term memory.",
+    },
+    {
+      id: "lt-3",
+      input: { user: "Conversation:\nUser: I'm a principal engineer at Google, been there 9 years\nAssistant: That's impressive tenure.\nUser: Yeah, I lead the infrastructure reliability team\nExisting long-term memories: []" },
+      expectedOutput: '{"memories":[{"category":"semantic","content":"Principal engineer at Google (9 years), leads infrastructure reliability team","confidence":0.97}]}',
+      reward: 1,
+      rubric: "Must extract SEMANTIC memory about role at Google. Very high confidence - explicitly stated, specific.",
+    },
+    {
+      id: "lt-4",
+      input: { user: "Conversation:\nUser: what's 2+2?\nAssistant: 4.\nUser: and 5+5?\nAssistant: 10.\nExisting long-term memories: []" },
+      expectedOutput: '{"memories":[]}',
+      reward: 1,
+      rubric: "Must return empty memories. Simple math questions contain zero user-specific facts.",
+    },
+    {
+      id: "lt-5",
+      input: { user: "Conversation:\nUser: I deployed a major auth system migration at work in Q4 2024. Moved from JWT to OAuth2 with Okta. Took 3 months.\nAssistant: That's a significant project.\nUser: Yeah it was, affected all 50k users.\nExisting long-term memories: []" },
+      expectedOutput: '{"memories":[{"category":"episodic","content":"Led auth migration from JWT to OAuth2/Okta in Q4 2024, 3 months, affected 50k users","confidence":0.93}]}',
+      reward: 1,
+      rubric: "Must extract EPISODIC memory. Specific event (Q4 2024), magnitude (50k users), technology (Okta). High confidence.",
+    },
+    {
+      id: "lt-6",
+      input: { user: "Conversation:\nUser: I might try learning Rust someday\nAssistant: It's a great systems language.\nExisting long-term memories: []" },
+      expectedOutput: '{"memories":[]}',
+      reward: 1,
+      rubric: "Must return empty. 'Might try someday' is speculative, not a fact. Do not extract vague intentions.",
+    },
+  ],
+
+  // IMAGE_GENERATION_TEMPLATE — image prompt creation
+  image_generation: [
+    { id: "ig-1", input: { user: "Conversation context: User is writing a sci-fi novel set in a post-apocalyptic Tokyo in 2150.\nRecent messages: User: I want a book cover image for my novel." }, expectedOutput: '{"thought":"Book cover for post-apocalyptic Tokyo sci-fi novel","prompt":"Post-apocalyptic Tokyo skyline in 2150, crumbling skyscrapers with bioluminescent plants growing through ruins, perpetual smog, dramatic neon lights, cinematic wide shot, hyper-detailed digital art"}', reward: 1, rubric: "Must generate a specific, visual image prompt matching post-apocalyptic Tokyo sci-fi. Not generic." },
+    { id: "ig-2", input: { user: "Conversation context: User runs a bakery and wants marketing photos.\nRecent messages: User: Create an image for my new sourdough bread." }, expectedOutput: '{"thought":"Marketing photo for artisan sourdough bread","prompt":"Artisan sourdough loaf on a rustic wooden cutting board, golden crust with scored pattern, soft morning light, steam rising, fresh herbs beside it, warm tones, professional food photography"}', reward: 1, rubric: "Should generate an appetizing food photography prompt. Specific details: crust, lighting, composition." },
+    { id: "ig-3", input: { user: "Conversation context: User is designing a mobile app for meditation.\nRecent messages: User: I need a calming hero image for my app." }, expectedOutput: '{"thought":"Calming hero image for meditation app","prompt":"Serene mountain lake at dawn, mist rising from still water, soft pink and gold sky, reflection of snow-capped mountains, minimal composition, tranquil atmosphere, pastel palette, digital illustration"}', reward: 1, rubric: "Must be calming and serene. Match meditation theme. Specific visual elements." },
+    { id: "ig-4", input: { user: "Conversation context: Tech startup.\nRecent messages: User: Generate a professional LinkedIn banner for our AI company." }, expectedOutput: '{"thought":"Professional LinkedIn banner for AI company","prompt":"Abstract digital neural network visualization, dark navy background, interconnected glowing nodes in blue and purple, geometric circuit patterns, clean minimalist design, corporate professional aesthetic, 1584x396 banner format"}', reward: 1, rubric: "Must be professional, tech-themed, mention dimensions or banner context, not a photo but a graphic." },
+  ],
+
+  // POST_CREATION_TEMPLATE — social media posts
+  post_creation: [
+    { id: "pc-1", input: { user: "Topic: the importance of code reviews in software development" }, expectedOutput: '{"thought":"Code reviews improve code quality and team knowledge","post":"Code reviews aren\'t just bug detection — they\'re knowledge transfer. Every review makes the whole team stronger."}', reward: 1, rubric: "Should be 1-3 sentences, under 280 chars, no emojis, insightful take on code reviews. JSON format." },
+    { id: "pc-2", input: { user: "Topic: getting better at deep work and focus" }, expectedOutput: '{"thought":"Deep work requires intentional time blocking","post":"Your best work happens in uninterrupted blocks, not between notifications. Protect your calendar like it\'s your most valuable asset."}', reward: 1, rubric: "Should be concise and actionable. No emojis. Under 280 chars. On-topic about focus/deep work." },
+    { id: "pc-3", input: { user: "Topic: lessons learned from shipping a failed product" }, expectedOutput: '{"thought":"Failure teaches what success hides","post":"Shipped a product nobody wanted. Learned more in 3 months of failure than 2 years of comfortable growth. Some lessons only come from shipping."}', reward: 1, rubric: "Should be personal, reflective, authentic. First-person perspective. No emojis. Under 280 chars." },
+    { id: "pc-4", input: { user: "Topic: why walking meetings beat sitting meetings" }, expectedOutput: '{"thought":"Movement improves creativity and engagement","post":"Walking meetings end 40% sooner and generate better ideas. Staring at a whiteboard isn\'t the only way to think."}', reward: 1, rubric: "Should make a clear point with concrete detail. Under 280 chars. No emojis. Assertive tone." },
+  ],
+
+  // CUSTOM_ACTION_GENERATE_TEMPLATE — generate action definitions
+  custom_action_generate: [
+    {
+      id: "cag-1",
+      input: { user: "User request: Create an action that sends an HTTP GET request to a URL and returns the response body" },
+      expectedOutput: '{"name":"HTTP_GET","description":"Send an HTTP GET request and return the response body","handlerType":"http","handler":{"type":"http","method":"GET","url":"{{url}}"},"parameters":[{"name":"url","description":"URL to fetch","required":true}]}',
+      reward: 1,
+      rubric: "Must have: name=HTTP_GET (UPPER_SNAKE_CASE), handlerType=http, handler with GET method, url parameter.",
+    },
+    {
+      id: "cag-2",
+      input: { user: "User request: Create an action that lists all files in a directory using the ls command" },
+      expectedOutput: '{"name":"LIST_FILES","description":"List all files in a directory","handlerType":"shell","handler":{"type":"shell","command":"ls {{directory}}"},"parameters":[{"name":"directory","description":"Path to directory","required":true}]}',
+      reward: 1,
+      rubric: "Must have: handlerType=shell, command with ls, directory parameter.",
+    },
+    {
+      id: "cag-3",
+      input: { user: "User request: Create an action that adds two numbers together" },
+      expectedOutput: '{"name":"ADD_NUMBERS","description":"Add two numbers together and return the sum","handlerType":"code","handler":{"type":"code","code":"return params.a + params.b;"},"parameters":[{"name":"a","description":"First number","required":true},{"name":"b","description":"Second number","required":true}]}',
+      reward: 1,
+      rubric: "Must have: handlerType=code, code does addition, two required parameters a and b.",
+    },
+    {
+      id: "cag-4",
+      input: { user: "User request: Create an action that posts a message to a Slack webhook URL" },
+      expectedOutput: '{"name":"SLACK_WEBHOOK","description":"Post a message to a Slack webhook","handlerType":"http","handler":{"type":"http","method":"POST","url":"{{webhookUrl}}","bodyTemplate":"{\"text\":\"{{message}}\"}"},"parameters":[{"name":"webhookUrl","description":"Slack webhook URL","required":true},{"name":"message","description":"Message to post","required":true}]}',
+      reward: 1,
+      rubric: "Must have: POST method, webhook URL parameter, message body template, JSON content type.",
+    },
+  ],
+
+  // SHOULD_FOLLOW_ROOM_TEMPLATE — room follow decision
+  should_follow_room: [
+    { id: "sfr-1", input: { user: "User message: Hey assistant, can you start following this channel? I want you active here." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear explicit request to follow the room." },
+    { id: "sfr-2", input: { user: "User message: What's the weather like today?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Weather question has nothing to do with following rooms." },
+    { id: "sfr-3", input: { user: "User message: Please join and monitor this room from now on." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Join and monitor' = follow this room." },
+    { id: "sfr-4", input: { user: "User message: I was thinking you might be useful in this channel but I'm not sure." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Ambiguous — 'might be useful' and 'not sure' = default to false." },
+    { id: "sfr-5", input: { user: "User message: Follow this room please." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Direct explicit request." },
+    { id: "sfr-6", input: { user: "User message: Can you help me debug this error?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Debugging question, not a room follow request." },
+  ],
+
+  // SHOULD_MUTE_ROOM_TEMPLATE — room mute decision
+  should_mute_room: [
+    { id: "smr-1", input: { user: "User message: Can you mute this channel? Too much noise." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear explicit mute request." },
+    { id: "smr-2", input: { user: "User message: Let's go back to talking about the project." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. No mute request present." },
+    { id: "smr-3", input: { user: "User message: Stop responding in here please, mute this room." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Mute this room' is explicit." },
+    { id: "smr-4", input: { user: "User message: This channel is getting busy." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Observation about busyness ≠ request to mute." },
+    { id: "smr-5", input: { user: "User message: Silence yourself in this channel." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Silence yourself' = mute." },
+    { id: "smr-6", input: { user: "User message: thanks" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Single word acknowledgment." },
+  ],
+
+  // SHOULD_UNFOLLOW_ROOM_TEMPLATE — room unfollow decision
+  should_unfollow_room: [
+    { id: "sur-1", input: { user: "User message: Please leave this channel, we don't need you here anymore." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear request to leave/unfollow." },
+    { id: "sur-2", input: { user: "User message: What time is the meeting tomorrow?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Unrelated question." },
+    { id: "sur-3", input: { user: "User message: Stop following this room." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Direct unfollow request." },
+    { id: "sur-4", input: { user: "User message: You can unfollow this channel now, we're done here." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Explicit unfollow with context." },
+    { id: "sur-5", input: { user: "User message: I don't know if this channel is useful to you." }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Ambiguous musing, not a clear unfollow request." },
+    { id: "sur-6", input: { user: "User message: ok bye" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. 'Bye' to the user, not an instruction to unfollow." },
+  ],
+
+  // SHOULD_UNMUTE_ROOM_TEMPLATE — room unmute decision
+  should_unmute_room: [
+    { id: "surt-1", input: { user: "User message: You can unmute this channel now, please start responding again." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Clear unmute request." },
+    { id: "surt-2", input: { user: "User message: Hey can you help me?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Asking for help is not an unmute request." },
+    { id: "surt-3", input: { user: "User message: Unmute yourself here." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. Direct unmute instruction." },
+    { id: "surt-4", input: { user: "User message: Come back to this channel." }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Come back' = re-engage = unmute." },
+    { id: "surt-5", input: { user: "User message: Is the channel working now?" }, expectedOutput: '{"decision":false}', reward: 1, rubric: "Must return false. Question about channel status ≠ unmute request." },
+    { id: "surt-6", input: { user: "User message: start paying attention to this chat again please" }, expectedOutput: '{"decision":true}', reward: 1, rubric: "Must return true. 'Pay attention again' = unmute/re-engage." },
+  ],
+
+  // ADD_CONTACT_TEMPLATE — contact extraction
+  add_contact: [
+    { id: "ac-1", input: { user: "User: Please add Sarah Chen to my contacts. She's my project manager at Acme and works in the New York office. Very important person to track." }, expectedOutput: '{"contactName":"Sarah Chen","entityId":null,"categories":"colleague","notes":"Project manager at Acme, works in New York office","reason":"Important project contact to track"}', reward: 1, rubric: "Must extract: name=Sarah Chen, role/notes, reason. No entityId since not specified." },
+    { id: "ac-2", input: { user: "User: Add John Smith as a VIP contact. He's a major investor." }, expectedOutput: '{"contactName":"John Smith","entityId":null,"categories":"vip","reason":"Major investor"}', reward: 1, rubric: "Must extract: name=John Smith, categories=vip, reason=major investor." },
+    { id: "ac-3", input: { user: "User: Save Dr. Martinez — family doctor. Spanish speaker." }, expectedOutput: '{"contactName":"Dr. Martinez","entityId":null,"categories":"personal","notes":"Family doctor","language":"Spanish","reason":"Family medical contact"}', reward: 1, rubric: "Must extract name, notes=family doctor, language=Spanish." },
+    { id: "ac-4", input: { user: "User: Remember to add Alice from marketing. She prefers email over calls. She's in London, so timezone is Europe/London." }, expectedOutput: '{"contactName":"Alice","entityId":null,"categories":"colleague","notes":"Prefers email over calls","timezone":"Europe/London","reason":"Marketing contact with communication preferences"}', reward: 1, rubric: "Must extract: name, preference (email), timezone (Europe/London)." },
+  ],
+
+  // SEARCH_CONTACTS_TEMPLATE — contact search criteria
+  search_contacts: [
+    { id: "sc-1", input: { user: "User: Show me all my VIP contacts" }, expectedOutput: '{"categories":"vip","intent":"list"}', reward: 1, rubric: "Must extract: categories=vip, intent=list. No searchTerm." },
+    { id: "sc-2", input: { user: "User: How many contacts do I have?" }, expectedOutput: '{"intent":"count"}', reward: 1, rubric: "Must extract: intent=count. No categories or searchTerm." },
+    { id: "sc-3", input: { user: "User: Find Sarah in my contacts" }, expectedOutput: '{"searchTerm":"Sarah","intent":"list"}', reward: 1, rubric: "Must extract: searchTerm=Sarah, intent=list." },
+    { id: "sc-4", input: { user: "User: Show me my colleagues tagged with AI" }, expectedOutput: '{"categories":"colleague","tags":"ai","intent":"list"}', reward: 1, rubric: "Must extract: categories=colleague, tags=ai, intent=list." },
+    { id: "sc-5", input: { user: "User: Count how many investors I have" }, expectedOutput: '{"categories":"investor","intent":"count"}', reward: 1, rubric: "Must extract: categories=investor, intent=count." },
+  ],
+
+  // SCHEDULE_FOLLOW_UP_TEMPLATE — follow-up scheduling
+  schedule_follow_up: [
+    { id: "sfu-1", input: { user: "User: Remind me to follow up with David next Monday about the contract proposal.", "context": "current_datetime: 2026-05-20T10:00:00Z" }, expectedOutput: '{"contactName":"David","scheduledAt":"2026-05-25T09:00:00.000Z","reason":"Follow up on contract proposal","priority":"medium"}', reward: 1, rubric: "Must extract: David, next Monday date (~May 25), reason=contract proposal." },
+    { id: "sfu-2", input: { user: "User: High priority — call Alice tomorrow at 3pm to discuss the funding round." }, expectedOutput: '{"contactName":"Alice","scheduledAt":"2026-05-21T15:00:00.000Z","reason":"Discuss funding round","priority":"high"}', reward: 1, rubric: "Must extract: Alice, tomorrow 3pm, priority=high, reason=funding round." },
+    { id: "sfu-3", input: { user: "User: Low priority — maybe reach out to Bob sometime next week." }, expectedOutput: '{"contactName":"Bob","scheduledAt":null,"reason":null,"priority":"low"}', reward: 1, rubric: "Must extract: Bob, priority=low. scheduledAt null (vague 'sometime'). No specific reason." },
+    { id: "sfu-4", input: { user: "User: Follow up with the dentist in 6 months for my next checkup. Tell them I need a cleaning." }, expectedOutput: '{"contactName":"dentist","scheduledAt":null,"reason":"Next checkup","priority":"medium","message":"Need a cleaning"}', reward: 1, rubric: "Must extract: dentist, message about cleaning, priority=medium. 6 months = relative date." },
+  ],
+
+  // EXTRACT_SECRET_OPERATION_TEMPLATE — secret management ops
+  extract_secret_operation: [
+    { id: "eso-1", input: { user: "User: What's my OpenAI API key?" }, expectedOutput: '{"operation":"get","key":"OPENAI_API_KEY"}', reward: 1, rubric: "Must extract: operation=get, key=OPENAI_API_KEY." },
+    { id: "eso-2", input: { user: "User: Set my Discord bot token to Bot-abc123xyz" }, expectedOutput: '{"operation":"set","key":"DISCORD_BOT_TOKEN","value":"Bot-abc123xyz"}', reward: 1, rubric: "Must extract: operation=set, key=DISCORD_BOT_TOKEN, value=Bot-abc123xyz." },
+    { id: "eso-3", input: { user: "User: Show me all my saved secrets" }, expectedOutput: '{"operation":"list"}', reward: 1, rubric: "Must extract: operation=list. No key needed." },
+    { id: "eso-4", input: { user: "User: Delete my old Stripe key" }, expectedOutput: '{"operation":"delete","key":"STRIPE_API_KEY"}', reward: 1, rubric: "Must extract: operation=delete, key=STRIPE_API_KEY (inferred from 'Stripe key')." },
+    { id: "eso-5", input: { user: "User: Do I have a Telegram token configured?" }, expectedOutput: '{"operation":"check","key":"TELEGRAM_BOT_TOKEN"}', reward: 1, rubric: "Must extract: operation=check, key=TELEGRAM_BOT_TOKEN (inferred)." },
+    { id: "eso-6", input: { user: "User: My Anthropic key is sk-ant-abc123" }, expectedOutput: '{"operation":"set","key":"ANTHROPIC_API_KEY","value":"sk-ant-abc123"}', reward: 1, rubric: "Must extract: operation=set (providing a key = setting it), key=ANTHROPIC_API_KEY, value=sk-ant-abc123." },
+    { id: "eso-7", input: { user: "User: Remove TWITTER_API_KEY from my config" }, expectedOutput: '{"operation":"delete","key":"TWITTER_API_KEY"}', reward: 1, rubric: "Must extract: operation=delete, key=TWITTER_API_KEY (explicitly named)." },
+    { id: "eso-8", input: { user: "User: Is GITHUB_TOKEN set?" }, expectedOutput: '{"operation":"check","key":"GITHUB_TOKEN"}', reward: 1, rubric: "Must extract: operation=check, key=GITHUB_TOKEN." },
+  ],
+
+  // EXTRACT_SECRETS_TEMPLATE — extract secret key+value pairs
+  extract_secrets: [
+    { id: "es-1", input: { user: "User: Set my OpenAI key to sk-proj-abc123" }, expectedOutput: '{"secrets":[{"key":"OPENAI_API_KEY","value":"sk-proj-abc123","type":"api_key"}]}', reward: 1, rubric: "Must extract: key=OPENAI_API_KEY, value=sk-proj-abc123, type=api_key." },
+    { id: "es-2", input: { user: "User: My database URL is postgres://user:pass@localhost:5432/mydb" }, expectedOutput: '{"secrets":[{"key":"DATABASE_URL","value":"postgres://user:pass@localhost:5432/mydb","type":"url"}]}', reward: 1, rubric: "Must infer key=DATABASE_URL, value=the postgres URL, type=url." },
+    { id: "es-3", input: { user: "User: ANTHROPIC_API_KEY=sk-ant-xyz789 and OPENAI_API_KEY=sk-abc456" }, expectedOutput: '{"secrets":[{"key":"ANTHROPIC_API_KEY","value":"sk-ant-xyz789","type":"api_key"},{"key":"OPENAI_API_KEY","value":"sk-abc456","type":"api_key"}]}', reward: 1, rubric: "Must extract BOTH secrets correctly. Multiple secrets in one message." },
+    { id: "es-4", input: { user: "User: Discord bot token is: MTA0NzI4..." }, expectedOutput: '{"secrets":[{"key":"DISCORD_BOT_TOKEN","value":"MTA0NzI4...","type":"credential"}]}', reward: 1, rubric: "Must infer key=DISCORD_BOT_TOKEN, type=credential." },
+    { id: "es-5", input: { user: "User: How's the weather?" }, expectedOutput: '{"secrets":[]}', reward: 1, rubric: "Must return empty secrets array. No secrets in this message." },
+  ],
+
+  // OPTION_EXTRACTION_TEMPLATE — extract selected option from user
+  option_extraction: [
+    {
+      id: "opex-1",
+      input: { user: "Available tasks:\n- task_abc (Database Migration): Options: START, ABORT, PAUSE\nRecent messages:\nUser: Let's start the database migration.\nCurrent message: Yeah, go for it." },
+      expectedOutput: '{"taskId":"task_abc","selectedOption":"START"}',
+      reward: 1,
+      rubric: "Must extract: taskId=task_abc, selectedOption=START.",
+    },
+    {
+      id: "opex-2",
+      input: { user: "Available tasks:\n- task_xyz (Deploy to Production): Options: CONFIRM, CANCEL\nRecent messages:\nUser: Actually, let's not deploy today.\nCurrent message: Yeah cancel it." },
+      expectedOutput: '{"taskId":"task_xyz","selectedOption":"CANCEL"}',
+      reward: 1,
+      rubric: "Must extract: taskId=task_xyz, selectedOption=CANCEL.",
+    },
+    {
+      id: "opex-3",
+      input: { user: "Available tasks:\n- task_123 (Send Newsletter): Options: SEND_NOW, SCHEDULE, ABORT\nRecent messages:\nUser: Can we schedule it for later?\nCurrent message: yeah schedule please." },
+      expectedOutput: '{"taskId":"task_123","selectedOption":"SCHEDULE"}',
+      reward: 1,
+      rubric: "Must extract: taskId=task_123, selectedOption=SCHEDULE.",
+    },
+    {
+      id: "opex-4",
+      input: { user: "Available tasks:\n- task_789 (Data Export): Options: CSV, JSON, PDF\nRecent messages:\nUser: I haven't decided yet.\nCurrent message: hmm maybe later." },
+      expectedOutput: '{"taskId":null,"selectedOption":null}',
+      reward: 1,
+      rubric: "Must return null for both. User hasn't made a clear selection.",
+    },
+  ],
+
+  // UPDATE_ROLE_TEMPLATE — role change extraction
+  update_role: [
+    { id: "ur-1", input: { user: "User: Make Sarah an admin.\nContext: Users: Sarah (MEMBER, id: user-sarah-123)" }, expectedOutput: '{"thought":"Sarah\'s role should be elevated to admin","entity_id":"user-sarah-123","new_role":"ADMIN"}', reward: 1, rubric: "Must extract: entity_id=user-sarah-123, new_role=ADMIN." },
+    { id: "ur-2", input: { user: "User: Remove Alice's admin access.\nContext: Users: Alice (ADMIN, id: user-alice-456)" }, expectedOutput: '{"thought":"Remove elevated access from Alice","entity_id":"user-alice-456","new_role":"MEMBER"}', reward: 1, rubric: "Must extract: entity_id=user-alice-456, new_role=MEMBER (downgrade from ADMIN)." },
+    { id: "ur-3", input: { user: "User: Make Bob the owner.\nContext: Users: Bob (ADMIN, id: user-bob-789)" }, expectedOutput: '{"thought":"Promote Bob to owner role","entity_id":"user-bob-789","new_role":"OWNER"}', reward: 1, rubric: "Must extract: new_role=OWNER." },
+    { id: "ur-4", input: { user: "User: Kick Charlie from the team entirely.\nContext: Users: Charlie (MEMBER, id: user-charlie-000)" }, expectedOutput: '{"thought":"Remove Charlie from team","entity_id":"user-charlie-000","new_role":"NONE"}', reward: 1, rubric: "Must extract: new_role=NONE (no role = removed)." },
+    { id: "ur-5", input: { user: "User: Give the new hire guest access.\nContext: Users: NewUser (no role, id: user-new-111)" }, expectedOutput: '{"thought":"Assign guest role to new hire","entity_id":"user-new-111","new_role":"GUEST"}', reward: 1, rubric: "Must extract: new_role=GUEST." },
+  ],
 };
 
 // ── Task configuration ─────────────────────────────────────────────────────────
 
 // Tasks that benefit from LLM-as-judge (open-ended or structured JSON responses)
-const JUDGE_TASKS = new Set(["response", "media_description", "conversation_summary"]);
+const JUDGE_TASKS = new Set([
+  "response", "media_description", "conversation_summary",
+  "reply", "memory_qa", "reflection", "update_summarization",
+  "image_generation", "post_creation",
+]);
 
 // ── Main eval loop ────────────────────────────────────────────────────────────
 
