@@ -545,21 +545,23 @@ class MessageRouterService {
     }
 
     const now = new Date();
+    const contactDisplayName = params.contactDisplayName ?? null;
+    const contactValues: typeof agentPhoneContacts.$inferInsert = {
+      organization_id: agentOrganizationId,
+      user_id: agentUserId,
+      agent_id: agentId,
+      provider: params.provider,
+      contact_identifier: contactIdentifier,
+      contact_display_name: contactDisplayName,
+      first_contacted_at: now,
+      last_contacted_at: now,
+      last_outbound_at: now,
+      is_active: true,
+    };
     const upsert = async () =>
       await dbWrite
         .insert(agentPhoneContacts)
-        .values({
-          organization_id: agentOrganizationId,
-          user_id: agentUserId,
-          agent_id: agentId,
-          provider: params.provider,
-          contact_identifier: contactIdentifier,
-          contact_display_name: params.contactDisplayName,
-          first_contacted_at: now,
-          last_contacted_at: now,
-          last_outbound_at: now,
-          is_active: true,
-        })
+        .values(contactValues)
         .onConflictDoUpdate({
           target: [
             agentPhoneContacts.provider,
@@ -569,7 +571,7 @@ class MessageRouterService {
           set: {
             organization_id: agentOrganizationId,
             user_id: agentUserId,
-            contact_display_name: params.contactDisplayName,
+            contact_display_name: contactDisplayName,
             last_contacted_at: now,
             last_outbound_at: now,
             is_active: true,

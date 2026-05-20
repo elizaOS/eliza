@@ -57,7 +57,9 @@ mock.module("./user-service", () => ({
   },
 }));
 
-const { runOnboardingChat } = await import("./onboarding-chat.ts?test=onboarding-chat");
+const { runOnboardingChat } = await import(
+  `./onboarding-chat.ts?test=onboarding-chat-${Date.now()}`
+);
 
 describe("runOnboardingChat", () => {
   beforeEach(() => {
@@ -282,6 +284,12 @@ describe("runOnboardingChat", () => {
       trustedPlatformIdentity: true,
     });
     ensureElizaAppProvisioning.mockClear();
+    ensureElizaAppProvisioning.mockResolvedValue({
+      status: "provisioning",
+      agentId: "agent-1",
+      bridgeUrl: null,
+      sandbox: null,
+    });
 
     const result = await runOnboardingChat({
       platform: "blooio",
