@@ -148,7 +148,6 @@ def validate_latest_comparability(
                 )
             else:
                 scores[agent] = float(score)
-<<<<<<< HEAD
             if agent == CODE_AGENT_LATEST_AGENT:
                 comparison_status = str(row.get("comparison_status") or "").strip()
                 if comparison_status not in CODE_AGENT_LATEST_ACCEPTABLE_COMPARISON_STATUSES:
@@ -174,10 +173,7 @@ def validate_latest_comparability(
                             ),
                         )
                     )
-            signature = _comparison_signature_for_run(row)
-=======
             signature = _comparison_signature_for_latest_row(row)
->>>>>>> origin/develop
             if signature:
                 signatures[agent] = signature
 
