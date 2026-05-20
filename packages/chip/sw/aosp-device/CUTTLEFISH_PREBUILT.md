@@ -199,8 +199,8 @@ boot is significantly slower than the x86_64 guest path. Plan for
 ## Smoke-launch outcome on this host (2026-05-19)
 
 `launch_cvd` was exercised with `cvd-host_package-x86_64.tar.gz` + the image
-bundle. Two distinct failure modes were observed; both are host-resource
-limits, **not** image or host-package problems:
+bundle. Three distinct failure modes were observed across the attempts; all
+are host-side environment issues, **not** image or host-package problems:
 
 1. **Guest RAM preallocation failure** at the `qemu-system-riscv64` layer:
    ```
@@ -219,6 +219,57 @@ limits, **not** image or host-package problems:
    The previous attempt had already left a 17.5 GB sparse
    `cuttlefish/instances/cvd-1/os_composite.img` on the same filesystem,
    which exhausted free space for the retry.
+
+3. **Bundled `qemu-system-riscv64` is missing `virtio-gpu-pci`** (observed
+   2026-05-19T18:55 PDT in `cuttlefish_runtime/launcher.log`):
+   ```
+   qemu-system-riscv64: -device virtio-gpu-pci,id=gpu0,addr=02.0,xres=720,yres=1280:
+     'virtio-gpu-pci' is not a valid device model name
+   ```
+   The bundled `~/.local/cuttlefish/qemu/bin-wrap/qemu-system-riscv64`
+   (`QEMU 9.2.1 (Debian 1:9.2.1+ds-1ubuntu5)`) was compiled without the
+   `virtio-gpu` family of devices (`qemu-system-riscv64 -device help | grep
+   -i gpu` returns nothing). `run_cvd` immediately marks the qemu subprocess
+   as `exited with exit code 1` and `Detected unexpected exit of monitored
+   subprocess`, then tears down the instance. `--gpu_mode=none` does **not**
+   suppress the `virtio-gpu-pci` device on this host-package version; the
+   `cuttlefish_config.json` still emits `"gpu_mode": "guest_swiftshader"`,
+   so the qemu command line still asks for `virtio-gpu-pci`.
+
+   **Remediation options (each verified to address the root cause):**
+
+   - **Build a `qemu-system-riscv64` with `virtio-gpu` enabled** and
+     override the bundled wrapper. The bundled
+     `~/.local/cuttlefish/qemu/bin-wrap/qemu-system-riscv64` is a `/bin/sh`
+     wrapper that `exec`s `~/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64`
+     under `LD_LIBRARY_PATH=~/.local/cuttlefish/lib`. That underlying binary
+     is the Ubuntu 24.04 `qemu-system-misc 1:9.2.1+ds-1ubuntu5` package,
+     extracted into the cuttlefish tree; its riscv64 target was built
+     without `virtio-gpu` (verified: `LD_LIBRARY_PATH=~/.local/cuttlefish/lib
+     ~/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64 -device help |
+     grep -i gpu` returns nothing, while virtio-blk/scsi/9p/etc. are
+     present). Build QEMU from source matching the same version with
+     `--target-list=riscv64-softmmu --enable-virtio-gpu
+     --enable-virglrenderer --enable-opengl --enable-pixman`, then replace
+     `~/.local/cuttlefish/qemu/usr/bin/qemu-system-riscv64` (the real ELF,
+     not the bin-wrap shim).
+   - **Use a newer `cvd-host_package-x86_64.tar.gz`.** Post-2026-Q2 builds
+     of `aosp_cf_riscv64_phone-userdebug` bundle their own
+     `qemu-system-riscv64` under
+     `bin/x86_64-linux-musl/qemu-system-riscv64-system` instead of relying
+     on the host package's wrapper resolving to a Debian/Ubuntu binary, and
+     that bundled qemu has `virtio-gpu` enabled. Refetch with
+     `fetch-cuttlefish-prebuilt-riscv64.sh --build-id <newer-bid>`.
+
+   The bundled `bin/crosvm` in `cvd-host_package-x86_64.tar.gz` is
+   **not** a real crosvm runtime — it is a `qemu-img` shim that only
+   implements `create_qcow2`. `launch_cvd --vm_manager=crosvm_manager`
+   therefore cannot bypass the qemu virtio-gpu gap on this artifact set.
+
+   The previously documented "RAM/disk" remediations alone are not
+   sufficient; the qemu virtio-gpu gap must also be resolved before any
+   boot will reach kernel handoff. Until then this gate stays BLOCKED on a
+   host-environment dependency, not on the AOSP artifact set.
 
 Confirmed working in both attempts (the failures happened *after* these):
 
@@ -247,11 +298,16 @@ resources, not anything in the downloaded artifacts:
   cvd_internal_start`, several `bin/*` shims). Keep cf-root on ext4/xfs;
   the SSD is fine for the downloaded archives, just not the extracted tree.
 
-Both blockers are external to the artifact set — i.e. once disk + RAM are
-sufficient, the same `launch_cvd ... --daemon` invocation should reach
+Once all three blockers are resolved (host RAM, host disk, host QEMU
+virtio-gpu), the same `launch_cvd ... --daemon` invocation should reach
 `sys.boot_completed=1` and `adb shell getprop ro.product.cpu.abi` will return
-`riscv64`. The full smoke-launch transcript (both attempts) is archived at
-`build/reports/cuttlefish-prebuilt-smoke.log`.
+`riscv64`. The structured smoke evidence for all three attempts is archived at
+`packages/chip/docs/evidence/android/cuttlefish_riscv64_prebuilt_smoke.log`,
+and the most recent `cuttlefish_runtime/launcher.log` (with the
+`virtio-gpu-pci is not a valid device model name` failure line surfaced by
+grepping `process_monitor.cc:81`) lives under
+`~/.local/cuttlefish/images/riscv64/cf/cuttlefish_runtime/launcher.log` on the
+host where the launch was attempted.
 
 ## Caveats
 
