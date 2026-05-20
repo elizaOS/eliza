@@ -83,7 +83,7 @@ export function flattenRemotePluginPermissions(
   return tags;
 }
 
-export function mergeCarrotPermissions(
+export function mergeRemotePluginPermissions(
   defaults?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
   overrides?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
 ): RemotePluginPermissionGrant {
@@ -128,7 +128,7 @@ export function toBunWorkerPermissions(
   ) as RemotePluginBunWorkerPermissions;
 }
 
-export function parseCarrotPermissionTag(
+export function parseRemotePluginPermissionTag(
   tag: string,
 ): RemotePluginPermissionTag | null {
   const parts = tag.split(":");
@@ -146,6 +146,6 @@ export function parseCarrotPermissionTag(
   return null;
 }
 
-export function isCarrotPermissionTag(tag: string): tag is RemotePluginPermissionTag {
-  return parseCarrotPermissionTag(tag) !== null;
+export function isRemotePluginPermissionTag(tag: string): tag is RemotePluginPermissionTag {
+  return parseRemotePluginPermissionTag(tag) !== null;
 }

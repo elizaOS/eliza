@@ -1,9 +1,9 @@
 import { appendFileSync } from "node:fs";
 
-const bootstrap = globalThis.__bunnyCarrotBootstrap;
+const bootstrap = globalThis.__remotePluginBootstrap;
 if (!bootstrap) {
   throw new Error(
-    "carrot-clock: __bunnyCarrotBootstrap missing — not running inside Bunny Ears",
+    "carrot-clock: __remotePluginBootstrap missing — not running inside Bunny Ears",
   );
 }
 

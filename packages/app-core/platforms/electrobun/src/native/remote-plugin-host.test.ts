@@ -22,12 +22,12 @@ function withTempDir<T>(fn: (dir: string) => T): T {
 
 function writePayload(
   root: string,
-  options: { manageCarrots?: boolean } = {},
+  options: { manageRemotePlugins?: boolean } = {},
 ): string {
   const payloadDir = join(root, "payload");
   mkdirSync(join(payloadDir, "views"), { recursive: true });
   const grant: Record<string, boolean> = { notifications: true };
-  if (options.manageCarrots !== false) grant["manage-remote-plugins"] = true;
+  if (options.manageRemotePlugins !== false) grant["manage-remote-plugins"] = true;
   writeFileSync(
     join(payloadDir, "plugin.json"),
     JSON.stringify({
@@ -381,7 +381,7 @@ describe("RemotePluginHost", () => {
         now: () => 1700000000000,
       });
       manager.installFromDirectory({
-        sourceDir: writePayload(dir, { manageCarrots: false }),
+        sourceDir: writePayload(dir, { manageRemotePlugins: false }),
       });
       manager.startWorker("bunny.search");
 

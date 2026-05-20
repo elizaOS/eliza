@@ -3,10 +3,10 @@ import {
   flattenRemotePluginPermissions,
   hasBunPermission,
   hasHostPermission,
-  isCarrotPermissionTag,
-  mergeCarrotPermissions,
+  isRemotePluginPermissionTag,
+  mergeRemotePluginPermissions,
   normalizeRemotePluginPermissions,
-  parseCarrotPermissionTag,
+  parseRemotePluginPermissionTag,
   toBunWorkerPermissions,
 } from "./permissions.js";
 import type { RemotePluginPermissionGrant, RemotePluginPermissionTag } from "./types.js";
@@ -45,7 +45,7 @@ describe("remote plugin permissions", () => {
   });
 
   it("merges overrides over defaults", () => {
-    const merged = mergeCarrotPermissions(
+    const merged = mergeRemotePluginPermissions(
       {
         host: { storage: true },
         bun: { read: true },
@@ -94,14 +94,14 @@ describe("remote plugin permissions", () => {
   });
 
   it("parses only canonical permission tags", () => {
-    expect(parseCarrotPermissionTag("host:tray")).toBe("host:tray");
-    expect(parseCarrotPermissionTag("bun:read")).toBe("bun:read");
-    expect(parseCarrotPermissionTag("isolation:shared-worker")).toBe(
+    expect(parseRemotePluginPermissionTag("host:tray")).toBe("host:tray");
+    expect(parseRemotePluginPermissionTag("bun:read")).toBe("bun:read");
+    expect(parseRemotePluginPermissionTag("isolation:shared-worker")).toBe(
       "isolation:shared-worker",
     );
-    expect(parseCarrotPermissionTag("host:tray:extra")).toBeNull();
-    expect(parseCarrotPermissionTag("host:camera")).toBeNull();
-    expect(isCarrotPermissionTag("bun:worker")).toBe(true);
-    expect(isCarrotPermissionTag("bun:network")).toBe(false);
+    expect(parseRemotePluginPermissionTag("host:tray:extra")).toBeNull();
+    expect(parseRemotePluginPermissionTag("host:camera")).toBeNull();
+    expect(isRemotePluginPermissionTag("bun:worker")).toBe(true);
+    expect(isRemotePluginPermissionTag("bun:network")).toBe(false);
   });
 });

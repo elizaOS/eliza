@@ -129,6 +129,8 @@ import {
 	type PipelineHookSpec,
 	type Plugin,
 	type PluginOwnership,
+	type RemotePluginInstallOptions,
+	type RemotePluginInstanceHandle,
 	type PostConnector,
 	type PostConnectorMetadata,
 	type PostConnectorRegistration,
@@ -9054,5 +9056,14 @@ ${section_end}`;
 		offset?: number,
 	): Promise<Room[]> {
 		return this.adapter.getRoomsByWorlds(worldIds, limit, offset);
+	}
+
+	async installRemotePlugin(
+		_plugin: Plugin,
+		_options?: RemotePluginInstallOptions,
+	): Promise<RemotePluginInstanceHandle> {
+		throw new Error(
+			"installRemotePlugin requires a host with RemotePluginBridge wiring (see @elizaos/agent).",
+		);
 	}
 }

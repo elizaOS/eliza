@@ -85,7 +85,7 @@ export interface RemotePluginStorePaths {
   installPath: string;
 }
 
-export interface InstallPrebuiltCarrotOptions {
+export interface InstallPrebuiltRemotePluginOptions {
   permissionsGranted?: RemotePluginPermissionGrant;
   source?: RemotePluginInstallSource;
   currentHash?: string | null;
@@ -390,7 +390,7 @@ export function getRemotePluginStorePaths(
   };
 }
 
-export function resolveCarrotPathInside(
+export function resolveRemotePluginPathInside(
   rootDir: string,
   relativePath: string,
 ): string {
@@ -405,11 +405,11 @@ export function resolveCarrotPathInside(
   return resolvedPath;
 }
 
-export function toCarrotViewUrl(relativePath: string): string {
+export function toRemotePluginViewUrl(relativePath: string): string {
   return `views://${relativePath.replace(/^\/+/, "")}`;
 }
 
-export function readCarrotManifestAt(manifestPath: string): RemotePluginManifest {
+export function readRemotePluginManifestAt(manifestPath: string): RemotePluginManifest {
   const parsed = parseJsonFile(manifestPath);
   const result = validateRemotePluginManifest(parsed);
   if (!result.ok) {
@@ -429,8 +429,8 @@ export function assertRemotePluginPayload(payloadDir: string): RemotePluginManif
     throw new RemotePluginStoreError(`Missing plugin.json in ${payloadDir}`);
   }
 
-  const manifest = readCarrotManifestAt(manifestPath);
-  const workerPath = resolveCarrotPathInside(
+  const manifest = readRemotePluginManifestAt(manifestPath);
+  const workerPath = resolveRemotePluginPathInside(
     payloadDir,
     manifest.worker.relativePath,
   );
@@ -440,7 +440,7 @@ export function assertRemotePluginPayload(payloadDir: string): RemotePluginManif
     );
   }
 
-  const viewPath = resolveCarrotPathInside(
+  const viewPath = resolveRemotePluginPathInside(
     payloadDir,
     manifest.view.relativePath,
   );
@@ -462,7 +462,7 @@ export function readRemotePluginRegistry(storeRoot: string): RemotePluginRegistr
   return parseRegistry(parseJsonFile(filePath));
 }
 
-export function writeCarrotRegistry(
+export function writeRemotePluginRegistry(
   storeRoot: string,
   registry: RemotePluginRegistry,
 ): RemotePluginRegistry {
@@ -490,7 +490,7 @@ export function listInstalledRemotePluginDirectories(storeRoot: string): string[
     .sort();
 }
 
-export function readCarrotInstallRecord(
+export function readRemotePluginInstallRecord(
   storeRoot: string,
   id: string,
 ): RemotePluginInstallRecord | null {
@@ -499,7 +499,7 @@ export function readCarrotInstallRecord(
   return parseInstallRecord(parseJsonFile(installPath), installPath);
 }
 
-export function writeCarrotInstallRecord(
+export function writeRemotePluginInstallRecord(
   storeRoot: string,
   record: RemotePluginInstallRecord,
 ): RemotePluginInstallRecord {
@@ -511,11 +511,11 @@ export function writeCarrotInstallRecord(
     `${JSON.stringify(normalized, null, 2)}\n`,
     "utf8",
   );
-  syncCarrotRegistry(storeRoot);
+  syncRemotePluginRegistry(storeRoot);
   return normalized;
 }
 
-export function buildCarrotRuntimeContext(
+export function buildRemotePluginRuntimeContext(
   currentDir: string,
   stateDir: string,
   remotePluginId: string,
@@ -534,7 +534,7 @@ export function buildCarrotRuntimeContext(
   };
 }
 
-export function writeCarrotWorkerBootstrap(
+export function writeRemotePluginWorkerBootstrap(
   currentDir: string,
   manifest: RemotePluginManifest,
   install: RemotePluginInstallRecord,
@@ -554,9 +554,9 @@ export function writeCarrotWorkerBootstrap(
   writeFileSync(
     bootstrapPath,
     [
-      `globalThis.__bunnyCarrotBootstrap = ${JSON.stringify({
+      `globalThis.__remotePluginBootstrap = ${JSON.stringify({
         manifest,
-        context: buildCarrotRuntimeContext(
+        context: buildRemotePluginRuntimeContext(
           currentDir,
           stateDir,
           manifest.id,
@@ -577,12 +577,12 @@ function loadInstalledRemotePluginRecord(
   record: RemotePluginInstallRecord,
 ): InstalledRemotePlugin {
   const paths = getRemotePluginStorePaths(storeRoot, record.id);
-  const manifest = readCarrotManifestAt(join(paths.currentDir, "plugin.json"));
-  const bundleWorkerPath = resolveCarrotPathInside(
+  const manifest = readRemotePluginManifestAt(join(paths.currentDir, "plugin.json"));
+  const bundleWorkerPath = resolveRemotePluginPathInside(
     paths.currentDir,
     manifest.worker.relativePath,
   );
-  const viewPath = resolveCarrotPathInside(
+  const viewPath = resolveRemotePluginPathInside(
     paths.currentDir,
     manifest.view.relativePath,
   );
@@ -599,7 +599,7 @@ function loadInstalledRemotePluginRecord(
 
   mkdirSync(paths.stateDir, { recursive: true });
   mkdirSync(paths.extractionDir, { recursive: true });
-  const workerPath = writeCarrotWorkerBootstrap(
+  const workerPath = writeRemotePluginWorkerBootstrap(
     paths.currentDir,
     manifest,
     record,
@@ -614,7 +614,7 @@ function loadInstalledRemotePluginRecord(
     bundleWorkerPath,
     workerPath,
     viewPath,
-    viewUrl: toCarrotViewUrl(manifest.view.relativePath),
+    viewUrl: toRemotePluginViewUrl(manifest.view.relativePath),
   };
 }
 
@@ -622,14 +622,14 @@ export function loadInstalledRemotePlugin(
   storeRoot: string,
   id: string,
 ): InstalledRemotePlugin | null {
-  const record = readCarrotInstallRecord(storeRoot, id);
+  const record = readRemotePluginInstallRecord(storeRoot, id);
   return record ? loadInstalledRemotePluginRecord(storeRoot, record) : null;
 }
 
-export function syncCarrotRegistry(storeRoot: string): RemotePluginRegistry {
+export function syncRemotePluginRegistry(storeRoot: string): RemotePluginRegistry {
   const records = new Map<string, RemotePluginInstallRecord>();
   for (const directory of listInstalledRemotePluginDirectories(storeRoot)) {
-    const record = readCarrotInstallRecord(storeRoot, directory);
+    const record = readRemotePluginInstallRecord(storeRoot, directory);
     if (record) {
       records.set(record.id, record);
     }
@@ -637,7 +637,7 @@ export function syncCarrotRegistry(storeRoot: string): RemotePluginRegistry {
   const sortedRecords = Array.from(records.values()).sort((left, right) =>
     left.name.localeCompare(right.name),
   );
-  return writeCarrotRegistry(storeRoot, {
+  return writeRemotePluginRegistry(storeRoot, {
     version: REGISTRY_VERSION,
     remotePlugins: Object.fromEntries(
       sortedRecords.map((record) => [record.id, record]),
@@ -646,7 +646,7 @@ export function syncCarrotRegistry(storeRoot: string): RemotePluginRegistry {
 }
 
 export function loadInstalledRemotePlugins(storeRoot: string): InstalledRemotePlugin[] {
-  const registry = syncCarrotRegistry(storeRoot);
+  const registry = syncRemotePluginRegistry(storeRoot);
   return Object.values(registry.remotePlugins)
     .map((record) => loadInstalledRemotePluginRecord(storeRoot, record))
     .sort((left, right) =>
@@ -697,7 +697,7 @@ export function toRemotePluginListEntry(remotePlugin: InstalledRemotePlugin): Re
   };
 }
 
-export function loadCarrotStoreSnapshot(
+export function loadRemotePluginStoreSnapshot(
   storeRoot: string,
 ): RemotePluginStoreSnapshot {
   return {
@@ -706,17 +706,17 @@ export function loadCarrotStoreSnapshot(
   };
 }
 
-export function loadCarrotListEntries(storeRoot: string): RemotePluginListEntry[] {
+export function loadRemotePluginListEntries(storeRoot: string): RemotePluginListEntry[] {
   return loadInstalledRemotePlugins(storeRoot).map(toRemotePluginListEntry);
 }
 
 export function installPrebuiltRemotePlugin(
   storeRoot: string,
   payloadDir: string,
-  options: InstallPrebuiltCarrotOptions = {},
+  options: InstallPrebuiltRemotePluginOptions = {},
 ): InstalledRemotePlugin {
   const manifest = assertRemotePluginPayload(payloadDir);
-  const previousInstall = readCarrotInstallRecord(storeRoot, manifest.id);
+  const previousInstall = readRemotePluginInstallRecord(storeRoot, manifest.id);
   const paths = getRemotePluginStorePaths(storeRoot, manifest.id);
   const now = options.now?.() ?? Date.now();
 
@@ -734,7 +734,7 @@ export function installPrebuiltRemotePlugin(
     rmSync(tempRootDir, { recursive: true, force: true });
   }
 
-  const installRecord = writeCarrotInstallRecord(storeRoot, {
+  const installRecord = writeRemotePluginInstallRecord(storeRoot, {
     id: manifest.id,
     name: manifest.name,
     version: manifest.version,
@@ -758,17 +758,17 @@ export function uninstallInstalledRemotePlugin(
   storeRoot: string,
   id: string,
 ): RemotePluginInstallRecord | null {
-  const record = readCarrotInstallRecord(storeRoot, id);
+  const record = readRemotePluginInstallRecord(storeRoot, id);
   if (!record) return null;
   rmSync(getRemotePluginStorePaths(storeRoot, id).rootDir, {
     recursive: true,
     force: true,
   });
-  syncCarrotRegistry(storeRoot);
+  syncRemotePluginRegistry(storeRoot);
   return record;
 }
 
-export function isCarrotSourceDirectory(directory: string): boolean {
+export function isRemotePluginSourceDirectory(directory: string): boolean {
   return (
     existsSync(join(directory, "electrobun.config.ts")) ||
     existsSync(join(directory, "plugin.json")) ||
@@ -779,12 +779,12 @@ export function isCarrotSourceDirectory(directory: string): boolean {
   );
 }
 
-export function ensureCarrotSourceDirectory(directory: string): string {
+export function ensureRemotePluginSourceDirectory(directory: string): string {
   const normalized = resolve(directory);
   if (!existsSync(normalized) || !statSync(normalized).isDirectory()) {
     throw new RemotePluginStoreError(`Remote plugin source folder not found: ${normalized}`);
   }
-  if (!isCarrotSourceDirectory(normalized)) {
+  if (!isRemotePluginSourceDirectory(normalized)) {
     throw new RemotePluginStoreError(
       `Selected folder does not look like a remote plugin source tree: ${normalized}`,
     );

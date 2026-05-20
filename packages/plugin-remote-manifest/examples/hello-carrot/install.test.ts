@@ -31,13 +31,13 @@ describe("hello-carrot example", () => {
       expect(installed.manifest.mode).toBe("background");
       expect(existsSync(installed.workerPath)).toBe(true);
       expect(installed.workerPath).toContain(
-        ".bunny/carrot-bun-entrypoint.mjs",
+        ".bunny/plugin-bun-entrypoint.mjs",
       );
 
       const bootstrap = readFileSync(installed.workerPath, "utf8");
-      expect(bootstrap).toContain("__bunnyCarrotBootstrap");
+      expect(bootstrap).toContain("__remotePluginBootstrap");
       expect(bootstrap).toContain('"id":"hello-carrot"');
-      expect(bootstrap).toContain('"channel":"carrot:hello-carrot"');
+      expect(bootstrap).toContain('"channel":"remote-plugin:hello-carrot"');
       expect(bootstrap).toContain("await import");
 
       const reloaded = loadInstalledRemotePlugin(storeRoot, "hello-carrot");
@@ -90,13 +90,13 @@ describe("hello-carrot example", () => {
 
       expect(existsSync(statePath)).toBe(true);
       const stateText = readFileSync(statePath, "utf8");
-      expect(stateText).toContain('"carrot": "hello-carrot"');
+      expect(stateText).toContain('"remotePluginId": "hello-carrot"');
       expect(stateText).toContain('"bootedAt"');
 
       expect(existsSync(logsPath)).toBe(true);
       const logsText = readFileSync(logsPath, "utf8");
       expect(logsText).toContain("hello-carrot booted");
-      expect(logsText).toContain("channel=carrot:hello-carrot");
+      expect(logsText).toContain("channel=remote-plugin:hello-carrot");
 
       const actionLogs = messages.filter(
         (m): m is ActionMessage => m.type === "action" && m.action === "log",

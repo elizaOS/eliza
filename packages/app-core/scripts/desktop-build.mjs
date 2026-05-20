@@ -60,8 +60,8 @@ function resolveWorkspacePackageDir(packageDirName) {
 
 const APP_CORE_PACKAGE_DIR = resolveWorkspacePackageDir("app-core");
 const CORE_PACKAGE_DIR = resolveWorkspacePackageDir("core");
-const ELECTROBUN_CARROTS_PACKAGE_DIR =
-  resolveWorkspacePackageDir("electrobun-carrots");
+const PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR =
+  resolveWorkspacePackageDir("plugin-remote-manifest");
 const SHARED_PACKAGE_DIR = resolveWorkspacePackageDir("shared");
 const UI_PACKAGE_DIR = resolveWorkspacePackageDir("ui");
 const VAULT_PACKAGE_DIR = resolveWorkspacePackageDir("vault");
@@ -591,8 +591,8 @@ function ensureWorkspaceRuntimePackagesBuilt() {
   ensureWorkspaceRuntimePackageBuilt("@elizaos/shared", SHARED_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt("@elizaos/vault", VAULT_PACKAGE_DIR);
   ensureWorkspaceRuntimePackageBuilt(
-    "@elizaos/electrobun-carrots",
-    ELECTROBUN_CARROTS_PACKAGE_DIR,
+    "@elizaos/plugin-remote-manifest",
+    PLUGIN_REMOTE_MANIFEST_PACKAGE_DIR,
   );
   ensureWorkspaceRuntimePackageBuilt("@elizaos/app-core", APP_CORE_PACKAGE_DIR);
 }

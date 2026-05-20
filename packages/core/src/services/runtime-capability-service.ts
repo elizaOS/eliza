@@ -127,9 +127,10 @@ export class RuntimeCapabilityService
 		this.strategies = options.strategies ?? [];
 		this.fallback =
 			options.fallback ??
-			new UnavailableCapabilityRouter({
-				reason: "no-capability-strategy-configured",
-			});
+			new UnavailableCapabilityRouter(
+				"unknown",
+				"no-capability-strategy-configured",
+			);
 	}
 
 	static override async start(

@@ -48,7 +48,7 @@ function enabledBunPermissions(
   );
 }
 
-export function diffCarrotPermissions(
+export function diffRemotePluginPermissions(
   requested: RemotePluginPermissionGrant,
   previous?: RemotePluginPermissionGrant | null,
 ): RemotePluginPermissionDiff {
@@ -74,10 +74,10 @@ export function getRemotePluginManifestPermissionTags(
   return flattenRemotePluginPermissions(manifest.permissions);
 }
 
-export function buildCarrotPermissionConsentRequest(
+export function buildRemotePluginPermissionConsentRequest(
   input: RemotePluginConsentRequestInput,
 ): RemotePluginPermissionConsentRequest {
-  const diff = diffCarrotPermissions(
+  const diff = diffRemotePluginPermissions(
     input.manifest.permissions,
     input.previousGrant,
   );

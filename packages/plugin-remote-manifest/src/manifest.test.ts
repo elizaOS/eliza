@@ -1,7 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import {
-  buildCarrotPermissionConsentRequest,
-  diffCarrotPermissions,
+  buildRemotePluginPermissionConsentRequest,
+  diffRemotePluginPermissions,
   getRemotePluginManifestPermissionTags,
 } from "./manifest.js";
 import type { RemotePluginManifest } from "./types.js";
@@ -38,7 +38,7 @@ describe("remote plugin manifests", () => {
 
   it("diffs new permissions against an existing grant", () => {
     expect(
-      diffCarrotPermissions(manifest.permissions, {
+      diffRemotePluginPermissions(manifest.permissions, {
         host: { storage: true },
         bun: { read: true },
         isolation: "shared-worker",
@@ -58,7 +58,7 @@ describe("remote plugin manifests", () => {
   });
 
   it("builds a consent request from manifest metadata", () => {
-    const request = buildCarrotPermissionConsentRequest({
+    const request = buildRemotePluginPermissionConsentRequest({
       requestId: "req-1",
       manifest,
       source: { kind: "local", path: "/tmp/search" },

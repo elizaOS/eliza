@@ -10,17 +10,17 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
   assertRemotePluginPayload,
-  buildCarrotRuntimeContext,
+  buildRemotePluginRuntimeContext,
   RemotePluginStoreError,
-  ensureCarrotSourceDirectory,
+  ensureRemotePluginSourceDirectory,
   getRemotePluginStorePaths,
   installPrebuiltRemotePlugin,
-  loadCarrotListEntries,
-  loadCarrotStoreSnapshot,
+  loadRemotePluginListEntries,
+  loadRemotePluginStoreSnapshot,
   loadInstalledRemotePlugin,
   loadInstalledRemotePlugins,
   readRemotePluginRegistry,
-  resolveCarrotPathInside,
+  resolveRemotePluginPathInside,
   uninstallInstalledRemotePlugin,
 } from "./store.js";
 import type { RemotePluginManifest } from "./types.js";
@@ -139,7 +139,7 @@ describe("remote plugin store", () => {
   it("builds a complete remote plugin runtime context", () =>
     withTempDir((dir) => {
       expect(
-        buildCarrotRuntimeContext(
+        buildRemotePluginRuntimeContext(
           join(dir, "current"),
           join(dir, "state"),
           "bunny.search",
@@ -172,7 +172,7 @@ describe("remote plugin store", () => {
         now: () => 1700000000000,
       });
 
-      const snapshot = loadCarrotStoreSnapshot(storeRoot);
+      const snapshot = loadRemotePluginStoreSnapshot(storeRoot);
 
       expect(snapshot).toMatchObject({
         version: 1,
@@ -232,7 +232,7 @@ describe("remote plugin store", () => {
         now: () => 1700000000000,
       });
 
-      expect(loadCarrotListEntries(storeRoot)).toEqual([
+      expect(loadRemotePluginListEntries(storeRoot)).toEqual([
         {
           id: "bunny.search",
           name: "Search",
@@ -255,7 +255,7 @@ describe("remote plugin store", () => {
       const payloadDir = writePayload(dir, escapedManifest);
 
       expect(() => assertRemotePluginPayload(payloadDir)).toThrow(RemotePluginStoreError);
-      expect(() => resolveCarrotPathInside(payloadDir, "../worker.js")).toThrow(
+      expect(() => resolveRemotePluginPathInside(payloadDir, "../worker.js")).toThrow(
         RemotePluginStoreError,
       );
     }));
@@ -289,7 +289,7 @@ describe("remote plugin store", () => {
         "utf8",
       );
 
-      expect(ensureCarrotSourceDirectory(sourceDir)).toBe(sourceDir);
+      expect(ensureRemotePluginSourceDirectory(sourceDir)).toBe(sourceDir);
       expect(getRemotePluginStorePaths(dir, "bunny.search").installPath).toBe(
         join(dir, "bunny.search", "install.json"),
       );

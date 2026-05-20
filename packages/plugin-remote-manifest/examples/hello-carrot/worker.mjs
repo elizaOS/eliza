@@ -1,10 +1,10 @@
 import { appendFileSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
-const bootstrap = globalThis.__bunnyCarrotBootstrap;
+const bootstrap = globalThis.__remotePluginBootstrap;
 if (!bootstrap) {
   throw new Error(
-    "hello-carrot: __bunnyCarrotBootstrap missing — not running inside Bunny Ears",
+    "hello-carrot: __remotePluginBootstrap missing — not running inside Bunny Ears",
   );
 }
 
@@ -15,7 +15,7 @@ mkdirSync(stateDir, { recursive: true });
 const bootStamp = new Date().toISOString();
 writeFileSync(
   context.statePath,
-  `${JSON.stringify({ carrot: manifest.id, bootedAt: bootStamp }, null, 2)}\n`,
+  `${JSON.stringify({ remotePluginId: manifest.id, bootedAt: bootStamp }, null, 2)}\n`,
   "utf8",
 );
 
@@ -44,16 +44,16 @@ self.addEventListener("message", (event) => {
     data.requestId === LIST_REQUEST_ID
   ) {
     const summary = data.success
-      ? `ok ${Array.isArray(data.payload) ? data.payload.length : "?"} carrots`
+      ? `ok ${Array.isArray(data.payload) ? data.payload.length : "?"} remote plugins`
       : `err ${data.error ?? "unknown"}`;
-    appendFileSync(context.logsPath, `[list-carrots] ${summary}\n`, "utf8");
+    appendFileSync(context.logsPath, `[list-remote-plugins] ${summary}\n`, "utf8");
   }
 });
 
 self.postMessage({
   type: "host-request",
   requestId: LIST_REQUEST_ID,
-  method: "list-carrots",
+  method: "list-remote-plugins",
 });
 
 self.postMessage({ type: "ready" });

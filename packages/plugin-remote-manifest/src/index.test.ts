@@ -1,9 +1,9 @@
 import { describe, expect, it } from "bun:test";
 import {
-  buildCarrotRuntimeContext,
+  buildRemotePluginRuntimeContext,
   RemotePluginStoreError,
-  loadCarrotListEntries,
-  loadCarrotStoreSnapshot,
+  loadRemotePluginListEntries,
+  loadRemotePluginStoreSnapshot,
   toRemotePluginListEntry,
   toInstalledRemotePluginSnapshot,
 } from "./index.js";
@@ -11,9 +11,9 @@ import {
 describe("remote plugin package barrel", () => {
   it("exports public store snapshot helpers", () => {
     expect(typeof RemotePluginStoreError).toBe("function");
-    expect(typeof buildCarrotRuntimeContext).toBe("function");
-    expect(typeof loadCarrotListEntries).toBe("function");
-    expect(typeof loadCarrotStoreSnapshot).toBe("function");
+    expect(typeof buildRemotePluginRuntimeContext).toBe("function");
+    expect(typeof loadRemotePluginListEntries).toBe("function");
+    expect(typeof loadRemotePluginStoreSnapshot).toBe("function");
     expect(typeof toRemotePluginListEntry).toBe("function");
     expect(typeof toInstalledRemotePluginSnapshot).toBe("function");
   });

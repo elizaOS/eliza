@@ -24,12 +24,12 @@ import type {
   WorkerResponseMessage,
 } from "@elizaos/plugin-remote-manifest";
 import {
-  buildCarrotRuntimeContext,
-  ensureCarrotSourceDirectory,
+  buildRemotePluginRuntimeContext,
+  ensureRemotePluginSourceDirectory,
   hasHostPermission,
   installPrebuiltRemotePlugin,
-  loadCarrotListEntries,
-  loadCarrotStoreSnapshot,
+  loadRemotePluginListEntries,
+  loadRemotePluginStoreSnapshot,
   loadInstalledRemotePlugin,
   toRemotePluginListEntry,
   toInstalledRemotePluginSnapshot,
@@ -117,7 +117,7 @@ function resolveUtilsUserData(): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-export function resolveCarrotStoreRoot(
+export function resolveRemotePluginStoreRoot(
   env: NodeJS.ProcessEnv = process.env,
 ): string {
   for (const key of REMOTE_PLUGIN_STORE_ENV_KEYS) {
@@ -160,7 +160,7 @@ class BrowserWorkerHandle implements RemotePluginWorkerHandle {
   }
 }
 
-class BrowserCarrotWorkerRunner implements RemotePluginWorkerRunner {
+class BrowserRemotePluginWorkerRunner implements RemotePluginWorkerRunner {
   start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle {
     return new BrowserWorkerHandle(
       new Worker(pathToFileURL(remotePlugin.workerPath).href, { type: "module" }),
@@ -310,7 +310,7 @@ export class IsolatedProcessWorkerRunner implements RemotePluginWorkerRunner {
  * process.
  */
 export class AdaptiveWorkerRunner implements RemotePluginWorkerRunner {
-  private readonly browser = new BrowserCarrotWorkerRunner();
+  private readonly browser = new BrowserRemotePluginWorkerRunner();
   private readonly subprocess = new IsolatedProcessWorkerRunner();
 
   start(remotePlugin: InstalledRemotePlugin): RemotePluginWorkerHandle {
@@ -391,7 +391,7 @@ export class RemotePluginHost {
   private nextInvokeId = 1;
 
   constructor(options: RemotePluginHostOptions = {}) {
-    this.storeRoot = options.storeRoot ?? resolveCarrotStoreRoot();
+    this.storeRoot = options.storeRoot ?? resolveRemotePluginStoreRoot();
     this.workerRunner = options.workerRunner ?? new AdaptiveWorkerRunner();
     this.now = options.now ?? Date.now;
     this.events = options.events ?? {};
@@ -406,11 +406,11 @@ export class RemotePluginHost {
   }
 
   listRemotePlugins(): RemotePluginListEntry[] {
-    return loadCarrotListEntries(this.storeRoot);
+    return loadRemotePluginListEntries(this.storeRoot);
   }
 
   getStoreSnapshot(): RemotePluginStoreSnapshot {
-    return loadCarrotStoreSnapshot(this.storeRoot);
+    return loadRemotePluginStoreSnapshot(this.storeRoot);
   }
 
   getRemotePlugin(id: string): InstalledRemotePluginSnapshot | null {
@@ -421,7 +421,7 @@ export class RemotePluginHost {
   installFromDirectory(
     options: RemotePluginInstallFromDirectoryOptions,
   ): InstalledRemotePluginSnapshot {
-    const sourceDir = ensureCarrotSourceDirectory(options.sourceDir);
+    const sourceDir = ensureRemotePluginSourceDirectory(options.sourceDir);
     const remotePlugin = installPrebuiltRemotePlugin(this.storeRoot, sourceDir, {
       devMode: options.devMode === true,
       permissionsGranted: options.permissionsGranted,
@@ -458,11 +458,11 @@ export class RemotePluginHost {
 
     fs.mkdirSync(remotePlugin.stateDir, { recursive: true });
     // Isolation is honored by the AdaptiveWorkerRunner (default):
-    //  - "shared-worker"     → BrowserCarrotWorkerRunner (Bun Worker)
+    //  - "shared-worker"     → BrowserRemotePluginWorkerRunner (Bun Worker)
     //  - "isolated-process"  → IsolatedProcessWorkerRunner (Bun.spawn)
     // Both speak the same wire envelope; the worker bootstrap detects
     // ELIZA_REMOTE_PLUGIN_CHANNEL=stdio to choose the subprocess channel.
-    const context = buildCarrotRuntimeContext(
+    const context = buildRemotePluginRuntimeContext(
       remotePlugin.currentDir,
       remotePlugin.stateDir,
       remotePlugin.manifest.id,
@@ -556,7 +556,7 @@ export class RemotePluginHost {
         windowId: win.id,
       });
       win.on("close", () => {
-        this.handleCarrotWindowClosed(remotePlugin.manifest.id);
+        this.handleRemotePluginWindowClosed(remotePlugin.manifest.id);
       });
       return win;
     } catch (error) {
@@ -569,7 +569,7 @@ export class RemotePluginHost {
     }
   }
 
-  private handleCarrotWindowClosed(id: string): void {
+  private handleRemotePluginWindowClosed(id: string): void {
     const record = this.workers.get(id);
     if (!record) return;
     record.window = null;
@@ -640,7 +640,7 @@ export class RemotePluginHost {
     if (!remotePlugin) {
       throw new Error(`Remote plugin is not installed: ${id}`);
     }
-    const context = buildCarrotRuntimeContext(
+    const context = buildRemotePluginRuntimeContext(
       remotePlugin.currentDir,
       remotePlugin.stateDir,
       remotePlugin.manifest.id,
@@ -722,11 +722,11 @@ export class RemotePluginHost {
     }
 
     if (message.action === "emit-remote-plugin-event") {
-      this.dispatchEmitCarrotEvent(id, message.payload);
+      this.dispatchEmitRemotePluginEvent(id, message.payload);
     }
   }
 
-  private dispatchEmitCarrotEvent(
+  private dispatchEmitRemotePluginEvent(
     callerId: string,
     payload: JsonValue | undefined,
   ): void {
@@ -755,7 +755,7 @@ export class RemotePluginHost {
   ): void {
     if (request.method === "invoke-remote-plugin") {
       try {
-        this.startInvokeCarrot(callerId, handle, request);
+        this.startInvokeRemotePlugin(callerId, handle, request);
       } catch (error) {
         this.postHostResponse(handle, {
           type: "host-response",
@@ -786,12 +786,12 @@ export class RemotePluginHost {
       });
   }
 
-  private startInvokeCarrot(
+  private startInvokeRemotePlugin(
     callerId: string,
     callerHandle: RemotePluginWorkerHandle,
     request: HostRequestMessage,
   ): void {
-    this.requireManageCarrots(callerId, "invoke-remote-plugin");
+    this.requireManageRemotePlugins(callerId, "invoke-remote-plugin");
     if (!isRecord(request.params)) {
       throw new Error("invoke-remote-plugin: missing params object.");
     }
@@ -896,7 +896,7 @@ export class RemotePluginHost {
     handle.postMessage(response);
   }
 
-  private requireManageCarrots(callerId: string, action: string): void {
+  private requireManageRemotePlugins(callerId: string, action: string): void {
     const record = this.workers.get(callerId);
     const grant = record?.context?.grantedPermissions ?? null;
     if (!hasHostPermission(grant, "manage-remote-plugins")) {
@@ -926,13 +926,13 @@ export class RemotePluginHost {
       case "list-remote-plugins":
         return this.listRemotePlugins() as unknown as JsonValue;
       case "start-remote-plugin": {
-        this.requireManageCarrots(callerId, "start-remote-plugin");
+        this.requireManageRemotePlugins(callerId, "start-remote-plugin");
         const targetId = hostRequestStringField(params, "id");
         this.startWorker(targetId);
         return { ok: true };
       }
       case "stop-remote-plugin": {
-        this.requireManageCarrots(callerId, "stop-remote-plugin");
+        this.requireManageRemotePlugins(callerId, "stop-remote-plugin");
         const targetId = hostRequestStringField(params, "id");
         this.stopWorker(targetId);
         return { ok: true };
@@ -949,7 +949,7 @@ export class RemotePluginHost {
       }
       case "invoke-remote-plugin":
         throw new Error(
-          "invoke-remote-plugin must be routed through startInvokeCarrot",
+          "invoke-remote-plugin must be routed through startInvokeRemotePlugin",
         );
       case "set-auth-token": {
         const record = this.workers.get(callerId);
@@ -1026,7 +1026,7 @@ export function configureRemotePluginHostEvents(
   });
 }
 
-export function resetCarrotManagerForTesting(
+export function resetRemotePluginHostForTesting(
   manager: RemotePluginHost | null = null,
 ): void {
   activeRemotePluginHost = manager;
