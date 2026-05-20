@@ -25,6 +25,7 @@ import {
   type ConnectorOAuthStartResult,
   type IAgentRuntime,
   logger,
+  readRequestedConnectorRole,
 } from "@elizaos/core";
 import { readCalendlyAccounts, resolveCalendlyAccountId } from "./accounts.js";
 import { persistConnectorCredentialRefs } from "./connector-credential-refs.js";
@@ -345,11 +346,10 @@ export function createCalendlyConnectorAccountProvider(
       };
       const flowMetadata =
         (request.flow.metadata as Record<string, unknown> | undefined) ?? {};
-      const requestedRoleRaw = flowMetadata.requestedRole;
-      const role: "OWNER" | "AGENT" | "TEAM" =
-        requestedRoleRaw === "AGENT" || requestedRoleRaw === "TEAM"
-          ? requestedRoleRaw
-          : "OWNER";
+      const role = readRequestedConnectorRole(
+        flowMetadata,
+        "plugin:calendly:connector",
+      );
 
       const pendingAccount = await manager.upsertAccount(
         CALENDLY_PROVIDER_NAME,

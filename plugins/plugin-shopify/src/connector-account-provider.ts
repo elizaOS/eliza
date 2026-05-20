@@ -23,6 +23,7 @@ import {
   type ConnectorOAuthStartResult,
   type IAgentRuntime,
   logger,
+  readRequestedConnectorRole,
 } from "@elizaos/core";
 import { readShopifyAccounts } from "./accounts.js";
 
@@ -313,11 +314,10 @@ export function createShopifyConnectorAccountProvider(
         );
       }
 
-      const requestedRoleRaw = flowMetadata.requestedRole;
-      const role: "OWNER" | "AGENT" | "TEAM" =
-        requestedRoleRaw === "AGENT" || requestedRoleRaw === "TEAM"
-          ? requestedRoleRaw
-          : "OWNER";
+      const role = readRequestedConnectorRole(
+        flowMetadata,
+        "plugin:shopify:connector",
+      );
 
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: SHOPIFY_PROVIDER_NAME,

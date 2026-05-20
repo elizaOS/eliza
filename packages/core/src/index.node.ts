@@ -25,6 +25,7 @@ export * from "./connection";
 export * from "./connectors";
 export * from "./connectors/account-manager";
 export * from "./connectors/connector-config";
+export * from "./connectors/oauth-role";
 export * from "./connectors/privacy";
 // Export additional constants not re-exported by character-utils
 export {
