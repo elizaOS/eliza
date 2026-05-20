@@ -7,6 +7,24 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const PACKAGE_ROOT = path.resolve(HERE, "../..");
 const SRC_ROOT = path.join(PACKAGE_ROOT, "src");
 const APP_SOURCE = path.join(SRC_ROOT, "App.tsx");
+const CLOUD_ROUTES_SPEC = path.join(HERE, "cloud-routes.spec.ts");
+
+const ROUTE_PARAM_EXAMPLES: Record<string, string> = {
+  ":approvalId": "approval_1",
+  ":appId": "app_1",
+  ":ballotId": "ballot_1",
+  ":characterRef": "agent_1",
+  ":chargeId": "charge_1",
+  ":id": "agent_1",
+  ":paymentRequestId": "pay_req_1",
+};
+
+const ROUTE_SAMPLE_OVERRIDES: Record<string, string> = {
+  "/dashboard/apps/:id": "/dashboard/apps/app_1",
+  "/dashboard/containers/:id": "/dashboard/containers/container_1",
+  "/dashboard/containers/agents/:id": "/dashboard/containers/agents/agent_1",
+  "/dashboard/invoices/:id": "/dashboard/invoices/inv_1",
+};
 
 function walkPageComponents(dir: string): string[] {
   const files: string[] = [];
@@ -45,6 +63,58 @@ function lazyRouteImports(appSource: string): Set<string> {
   );
 }
 
+function normalizePath(pathValue: string): string {
+  return pathValue.replace(/\/+/g, "/").replace(/\/$/, "") || "/";
+}
+
+function routePatternToSample(routePattern: string): string | null {
+  if (routePattern.includes("*")) return null;
+  const override = ROUTE_SAMPLE_OVERRIDES[routePattern];
+  if (override) return override;
+  const segments = routePattern.split("/").map((segment) => {
+    if (!segment.startsWith(":")) return segment;
+    return ROUTE_PARAM_EXAMPLES[segment] ?? `${segment.slice(1)}_1`;
+  });
+  return normalizePath(segments.join("/"));
+}
+
+function routerRouteSamples(appSource: string): string[] {
+  const routeStack: string[] = [];
+  const samples = new Set<string>();
+
+  for (const line of appSource.split("\n")) {
+    const routeMatch = line.match(/<Route(?:\s+[^>]*)?>/);
+    if (routeMatch) {
+      const pathMatch = line.match(/path="([^"]+)"/);
+      const indexRoute = /\sindex(?:\s|>|$)/.test(line);
+      if (pathMatch || indexRoute) {
+        const parentPath = routeStack.at(-1) ?? "";
+        const ownPath = indexRoute ? "" : (pathMatch?.[1] ?? "");
+        const fullPath = normalizePath(`${parentPath}/${ownPath}`);
+        const sample = routePatternToSample(fullPath);
+        if (sample) samples.add(sample);
+        if (!/\/>\s*$/.test(line)) routeStack.push(fullPath);
+        continue;
+      }
+    }
+
+    if (line.includes("</Route>")) {
+      routeStack.pop();
+    }
+  }
+
+  return [...samples].sort();
+}
+
+function smokeRouteSamplesFromSpec(specSource: string): Set<string> {
+  return new Set(
+    [...specSource.matchAll(/["'](\/[^"']*)["']/g)]
+      .map((match) => match[1] ?? "")
+      .filter((route) => !route.includes(":"))
+      .map((route) => normalizePath(route.split("?")[0] ?? route)),
+  );
+}
+
 test("every cloud page component is reachable from the router", async () => {
   const appSource = readFileSync(APP_SOURCE, "utf8");
   const routeImports = lazyRouteImports(appSource);
@@ -65,5 +135,20 @@ test("every cloud page component is reachable from the router", async () => {
     `These page components are not lazy-loaded by src/App.tsx:\n${missing
       .map(({ filePath, importPath }) => `  - ${filePath} (${importPath})`)
       .join("\n")}`,
+  ).toEqual([]);
+});
+
+test("cloud route smoke covers every concrete router path", () => {
+  const appSource = readFileSync(APP_SOURCE, "utf8");
+  const smokeSource = readFileSync(CLOUD_ROUTES_SPEC, "utf8");
+  const smokeRoutes = smokeRouteSamplesFromSpec(smokeSource);
+
+  const missing = routerRouteSamples(appSource).filter(
+    (route) => !smokeRoutes.has(route),
+  );
+
+  expect(
+    missing,
+    `Missing cloud route smoke coverage for: ${missing.join(", ")}`,
   ).toEqual([]);
 });
