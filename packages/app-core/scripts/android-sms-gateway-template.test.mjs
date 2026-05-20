@@ -60,7 +60,10 @@ test("Android gateway installer supports one-command wireless pairing", () => {
   for (const marker of [
     "--pair <endpoint>",
     "--pair-code <code>",
+    "--wait-pair <seconds>",
     "--connect <endpoint>",
+    "Enter Wireless debugging pairing code",
+    "Timed out waiting",
     "adb pair",
     "adb connect",
     "_adb-tls-pairing",
@@ -73,7 +76,7 @@ test("Android gateway installer supports one-command wireless pairing", () => {
   for (const marker of [
     "mdns",
     "_adb-tls-pairing",
-    "ADB_PAIR_CODE=<pairing-code>",
+    "wireless pairing ready",
     "--pair",
     "--connect auto",
     "Pixel|Samsung",
