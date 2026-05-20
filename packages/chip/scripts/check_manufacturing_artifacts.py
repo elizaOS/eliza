@@ -316,7 +316,7 @@ def resolved_manifest(manifest_paths: list[str]) -> dict:
             if isinstance(groups, dict):
                 for group_name in sorted(str(name) for name in groups):
                     paths = as_list(groups[group_name])
-                    artifacts_out = []
+                    artifacts_out: list[dict[str, object]] = []
                     for rel_path in paths:
                         path_obj = repo_path(rel_path)
                         files = []
@@ -349,7 +349,7 @@ def resolved_manifest(manifest_paths: list[str]) -> dict:
                 group = groups[group_name]
                 if not isinstance(group, dict):
                     continue
-                artifacts_out: list[dict] = []
+                artifacts_out: list[dict[str, object]] = []
                 artifacts = group.get("artifacts", [])
                 if isinstance(artifacts, list):
                     for artifact in artifacts:
