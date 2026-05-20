@@ -84,7 +84,9 @@ function createCerebrasTextPlugin(opts: {
     params: GenerateTextParams,
   ): Promise<string> => {
     const promptText =
-      typeof params.prompt === "string" ? params.prompt : JSON.stringify(params);
+      typeof params.prompt === "string"
+        ? params.prompt
+        : JSON.stringify(params);
     const response = await fetch(
       `${opts.baseUrl.replace(/\/$/, "")}/chat/completions`,
       {
