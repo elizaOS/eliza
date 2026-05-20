@@ -99,23 +99,27 @@ trap 'rmdir "$COCOTB_RESULTS_LOCK" "$COCOTB_LOCK" 2>/dev/null || true' EXIT INT 
 
 rm -rf "$COCOTB_BUILD" "$COCOTB_DIR/results.xml" "$COCOTB_RESULT_FILE" "$COCOTB_RAW_RESULT"
 
-MAKE_FILE_ARG=""
-if [ -n "${COCOTB_MAKEFILE:-}" ]; then
-    MAKE_FILE_ARG="-f ${COCOTB_MAKEFILE}"
-fi
+run_make() {
+    _sim="$1"
+    if [ -n "${COCOTB_MAKEFILE:-}" ]; then
+        $(command -v make) -C "$COCOTB_DIR" -f "$COCOTB_MAKEFILE" "SIM=$_sim" \
+            MODULE="$COCOTB_MOD" \
+            TOPLEVEL="$COCOTB_TOP" \
+            PYTHON="$PYTHON_BIN" \
+            SIM_BUILD="$COCOTB_BUILD"
+    else
+        $(command -v make) -C "$COCOTB_DIR" "SIM=$_sim" \
+            MODULE="$COCOTB_MOD" \
+            TOPLEVEL="$COCOTB_TOP" \
+            PYTHON="$PYTHON_BIN" \
+            SIM_BUILD="$COCOTB_BUILD"
+    fi
+}
 
 if command -v verilator >/dev/null 2>&1; then
-    $(command -v make) -C "$COCOTB_DIR" $MAKE_FILE_ARG SIM=verilator \
-        MODULE="$COCOTB_MOD" \
-        TOPLEVEL="$COCOTB_TOP" \
-        PYTHON="$PYTHON_BIN" \
-        SIM_BUILD="$COCOTB_BUILD"
+    run_make verilator
 elif command -v iverilog >/dev/null 2>&1; then
-    $(command -v make) -C "$COCOTB_DIR" $MAKE_FILE_ARG SIM=icarus \
-        MODULE="$COCOTB_MOD" \
-        TOPLEVEL="$COCOTB_TOP" \
-        PYTHON="$PYTHON_BIN" \
-        SIM_BUILD="$COCOTB_BUILD"
+    run_make icarus
 else
     echo "No cocotb simulator found. Install Verilator or Icarus Verilog."
     exit 1

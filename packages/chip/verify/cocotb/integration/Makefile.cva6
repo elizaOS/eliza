@@ -21,6 +21,20 @@ CVA6_REPO_DIR ?= $(REPO)/external/cva6/cva6
 HPDCACHE_DIR  ?= $(CVA6_REPO_DIR)/core/cache_subsystem/hpdcache
 TARGET_CFG    ?= cv64a6_imafdc_sv39
 
+# Gate the verilator full-conversion pass.  Until a Verilator release that
+# accepts CVA6 btb.sv whole-array NBA is on PATH, this Makefile exits with
+# a clear blocker message instead of running.  Opt in by exporting
+# CVA6_VERILATOR_FULL_OK=1 (also picked up by the cocotb tests
+# themselves to flip them from skip to run).
+ifeq ($(CVA6_VERILATOR_FULL_OK),)
+$(info STATUS: BLOCKED cocotb-cva6-cpu — Verilator 5.049 internal error)
+$(info   V3Delayed.cpp:958 Unexpected LHS form at)
+$(info     external/cva6/cva6/core/frontend/btb.sv:188 (btb_q <= btb_d))
+$(info   See external/cva6/pin-manifest.json::verilator_full_conversion_blocker.)
+$(info   Set CVA6_VERILATOR_FULL_OK=1 once a fixed Verilator release lands.)
+$(error CVA6 cocotb runner gated on verilator_full_conversion_blocker)
+endif
+
 CVA6_FLIST_OUT  := $(PWD)/.cva6_flist.txt
 CVA6_INCDIR_OUT := $(PWD)/.cva6_incdir.txt
 

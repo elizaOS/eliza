@@ -60,31 +60,38 @@ edges:
       cva6_config_pkg::cva6_cfg)))` and bridges its `noc_req_t` /
       `noc_resp_t` structs to flat AXI4 master signals via the new
       `rtl/top/adapters/e1_cva6_to_e1axi4.sv` adapter.  Both files
-      elaborate cleanly under verilator-strict with the full v5.3.0
-      source tree linked (185 modules, 275 MB of CVA6 sources via
-      `external/cva6/cva6/core/Flist.cva6`).  Two cocotb tests under
-      the dedicated `e1_cva6_unit_tb` harness exercise the wrapper
-      against an in-TB ROM + DRAM model:
+      elaborate cleanly under verilator-strict --lint-only with the
+      full v5.3.0 source tree linked (185 modules, 275 MB of CVA6
+      sources via `external/cva6/cva6/core/Flist.cva6`, zero errors).
+
+      Two cocotb tests under the dedicated `e1_cva6_unit_tb` harness
+      cover the wrapper-level execution path:
       `make cocotb-cva6-cpu-bootrom` and `make cocotb-cva6-cpu-dram`.
+      Both are currently gated on the Verilator V3Delayed blocker
+      below; they skip with a clear reason until the construct is
+      supported.  The lite-mode integration suite (18 cocotb tests)
+      continues to pass at this top because the wrapper is not in
+      the lite-mode compile path.
 
-      At the SoC integration top (`rtl/top/e1_soc_integrated.sv`)
-      the wrapper is instantiated as `u_cva6_slot0` under
-      `+define+E1_CLUSTER_SLOT0_CVA6` but its AXI4 master is still
-      tied off because the per-core cluster slot expects 128-bit
-      data (`AXI_DATA_W=128`, matching L1D cache line width) while
-      CVA6 natively issues 64-bit data.  The remaining gap is a
-      64↔128 AXI4 data-width converter.  Until that adapter lands
-      slot 0 stays observability-only: the wrapper elaborates and
-      can be driven by cocotb at the unit-TB level, but slot-0
-      fabric traffic does not flow.
+      NEW BLOCKER (specific, not generic): Verilator 5.049 aborts
+      with `Internal Error: ../V3Delayed.cpp:958: Unexpected LHS
+      form` at `external/cva6/cva6/core/frontend/btb.sv:188`.  The
+      offending construct is a whole-array non-blocking assignment
+      to `btb_q` (a 2D unpacked array of structs of size
+      `NR_ROWS x CVA6Cfg.INSTR_PER_FETCH`).  Verilator's V3Delayed
+      lowering pass does not currently support this LHS form.
+      Documented in `external/cva6/pin-manifest.json`
+      `verilator_full_conversion_blocker` with unblocking options.
 
-      Next-step blocker: implement
-      `rtl/top/adapters/e1_axi4_width_converter.sv` (64↔128 with
-      strobe expansion / merging) and wire it between
-      `u_cva6_slot0.axi_*` and `cluster_axi_*[0]` so the cluster
-      slot exits tie-off.  The drift gate
-      (`scripts/check_cva6_pin.py`) still enforces the wrapper +
-      pin chain.
+      Plus the SoC integration gap: at the SoC top
+      (`rtl/top/e1_soc_integrated.sv`) the wrapper is instantiated
+      as `u_cva6_slot0` under `+define+E1_CLUSTER_SLOT0_CVA6` but
+      its AXI4 master ties off because the per-core cluster slot
+      expects 128-bit data (`AXI_DATA_W=128`, matching L1D cache
+      line width) while CVA6 natively issues 64-bit data.  The
+      remaining gap is a 64<->128 AXI4 data-width converter
+      (`rtl/top/adapters/e1_axi4_width_converter.sv` — to be
+      written) before slot 0 can drive real fabric traffic.
 
   - name: chi_to_axi4_bridge
     description: TL-C → CHI → AXI4 cache south-side bridge

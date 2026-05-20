@@ -24,13 +24,22 @@ The DRAM-content readback assertion is the upgrade target: once a
 side-channel observer reads the dram_mem array, the test will also
 verify dram_mem[0] == 0xCAFEBABE.  Until that side-channel exists the
 B-handshake count is the structural proof the store completed.
+
+BLOCKED on Verilator 5.049 internal error (`V3Delayed: Unexpected LHS
+form`) at `external/cva6/cva6/core/frontend/btb.sv:188` — see
+`external/cva6/pin-manifest.json` `verilator_full_conversion_blocker`.
+Set `CVA6_VERILATOR_FULL_OK=1` once a fixed Verilator release lands.
 """
 
 from __future__ import annotations
 
+import os
+
 import cocotb
 from cocotb.clock import Clock
 from cocotb.triggers import RisingEdge
+
+_RUN_CVA6 = os.environ.get("CVA6_VERILATOR_FULL_OK", "0") == "1"
 
 # RV64I encoding (objdump-style) for the store/load program.
 # Constants chosen so the program fits in the boot ROM region.
@@ -71,7 +80,7 @@ def _preload_rom(dut, program: list[int]) -> None:
         dut.boot_rom[i].value = (hi << 32) | lo
 
 
-@cocotb.test()
+@cocotb.test(skip=not _RUN_CVA6)
 async def test_cva6_dram_store(dut):
     """CVA6 fires an AW + W + B sequence against the DRAM region.
 
@@ -106,7 +115,7 @@ async def test_cva6_dram_store(dut):
     )
 
 
-@cocotb.test()
+@cocotb.test(skip=not _RUN_CVA6)
 async def test_cva6_dram_load(dut):
     """CVA6 issues an AR handshake against the DRAM region.
 

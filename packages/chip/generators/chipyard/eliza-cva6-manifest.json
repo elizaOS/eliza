@@ -66,33 +66,27 @@
     "axi_id_width": 4
   },
   "wrapper_api_drift": {
-    "status": "BLOCKED",
-    "summary": "rtl/cpu/e1_cva6_wrapper.sv targets the legacy ariane_pkg::ArianeDefaultConfig / module ariane / ariane_axi::req_t API; none of those symbols exist in current CVA6 HEAD or any tagged release from v4.0.0 onward. Current CVA6 exposes module cva6 with config_pkg::cva6_cfg_t (built from cva6_config_pkg::cva6_cfg via build_config_pkg::build_config). Defining +define+E1_HAVE_CVA6 fails elaboration until the wrapper is re-targeted.",
-    "wrapper_references_deprecated_symbols": [
-      "ariane_pkg::ArianeDefaultConfig",
-      "ariane_pkg::ariane_cfg_t",
-      "module ariane (renamed cva6 in current HEAD)",
-      "ariane_axi::req_t",
-      "ariane_axi::resp_t"
-    ],
+    "status": "RESOLVED",
+    "summary": "rtl/cpu/e1_cva6_wrapper.sv has been re-targeted to the OpenHW Group CVA6 v5.3.0 API. The wrapper instantiates `cva6 #(.CVA6Cfg(build_config_pkg::build_config(cva6_config_pkg::cva6_cfg)))` and bridges the noc_req_t / noc_resp_t structs to the flat AXI4 master signals via the new rtl/top/adapters/e1_cva6_to_e1axi4.sv adapter. Verilator --lint-only succeeds against the full v5.3.0 source list (185 modules, zero errors).",
+    "wrapper_references_deprecated_symbols": [],
     "current_head_canonical_symbols": [
       "config_pkg::cva6_cfg_t",
       "config_pkg::cva6_user_cfg_t",
       "build_config_pkg::build_config",
       "cva6_config_pkg::cva6_cfg",
-      "module cva6"
+      "module cva6",
+      "noc_req_t",
+      "noc_resp_t"
     ],
     "standalone_checkout_destination": "external/cva6/cva6",
     "standalone_pin_target_tag": "v5.3.0",
     "standalone_pin_target_commit": "2ef1c1b1fca419354920c5487293bc605294904e",
-    "recovery_steps": [
-      "Pin external/cva6/cva6 to v5.3.0 (commit 2ef1c1b)",
-      "Initialise cvfpu + hpdcache + cvfpu/src/common_cells + cvfpu/src/fpu_div_sqrt_mvp submodules",
-      "Rewrite the `ifdef E1_HAVE_CVA6 block to instantiate cva6 #(.CVA6Cfg(build_config_pkg::build_config(cva6_config_pkg::cva6_cfg))) and bridge the NoC/AXI structs to the flat AXI4 ports via a new rtl/top/adapters/e1_cva6_to_e1axi4.sv",
-      "Re-run `make cva6-generator-check`; the wrapper-symbol drift probe must clear"
+    "remaining_blockers": [
+      "Verilator 5.049 V3Delayed internal error at external/cva6/cva6/core/frontend/btb.sv:188 (whole-array NBA of 2D unpacked struct array). Documented in external/cva6/pin-manifest.json::verilator_full_conversion_blocker.",
+      "SoC cluster slot 0 needs a 64<->128 AXI4 data-width converter before the wrapper drives real fabric traffic. Wrapper is currently instantiated under +define+E1_CLUSTER_SLOT0_CVA6 with its AXI master tied off as a placeholder."
     ],
     "enforced_by": "scripts/check_cva6_pin.py (cross-references the standalone external/cva6/pin-manifest.json wrapper_api_drift block when the standalone checkout is present)",
-    "blocks_edge": "cluster_to_fabric (docs/evidence/integration/cross-domain-interfaces.yaml)"
+    "advances_edge": "cluster_to_fabric (docs/evidence/integration/cross-domain-interfaces.yaml) from TIED_OFF to WIRED_OBSERVABILITY_ONLY"
   },
   "fail_closed_check_command": "make cva6-generator-check"
 }
