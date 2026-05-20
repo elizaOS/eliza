@@ -49,7 +49,7 @@ const ORACLE_BASE_URL = "https://oracle.the-undesirables.com";
 const ORACLE_SEARCH_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/search`;
 const ORACLE_MARKET_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/market`;
 const SCATTER_MINT_URL = "https://scatter.art/the-undesirables";
-const PLUGIN_VERSION = "2.4.0";
+const PLUGIN_VERSION = "2.4.3";
 const COLLECTION_TOTAL = 4444;
 const MINTED_COUNT = 273;
 
@@ -148,6 +148,15 @@ function getSafePath(workspacePath: string, requestedFile: string): string {
   if (!targetPath.startsWith(baseDir + path.sep) && targetPath !== baseDir) {
     throw new Error(`Security Error: Path traversal attempt detected on ${requestedFile}`);
   }
+  // Resolve symlinks to prevent symlink-based traversal bypasses
+  if (fs.existsSync(targetPath)) {
+    const realTarget = fs.realpathSync(targetPath);
+    const realBase = fs.realpathSync(baseDir);
+    if (!realTarget.startsWith(realBase + path.sep) && realTarget !== realBase) {
+      throw new Error(`Security Error: Symlink traversal detected on ${requestedFile}`);
+    }
+    return realTarget;
+  }
   return targetPath;
 }
 
@@ -196,7 +205,8 @@ async function loadWorkspace(workspacePath: string): Promise<SoulWorkspace> {
   if (fs.existsSync(predictionsPath)) {
     try {
       const raw = await fs.promises.readFile(predictionsPath, "utf-8");
-      workspace.predictions = JSON.parse(raw);
+      const parsed = JSON.parse(raw);
+      workspace.predictions = Array.isArray(parsed) ? parsed : [];
     } catch {
       workspace.predictions = [];
     }
@@ -284,7 +294,7 @@ async function generateResponse(
     if (callback) {
       await callback({ text: safeResponse, source: "plugin-undesirables" }, actionName);
     }
-    return { success: false, text: safeResponse, data: { error: errorMsg } };
+    return { success: false, text: safeResponse };
   }
 }
 
@@ -881,6 +891,7 @@ async function oracleFetch(url: string): Promise<Record<string, unknown> | null>
       method: "GET",
       headers: { "User-Agent": `plugin-undesirables/${PLUGIN_VERSION}` },
       signal: AbortSignal.timeout(8000),
+      redirect: "error",
     });
     if (!response.ok) return null;
     return await response.json() as Record<string, unknown>;
@@ -909,11 +920,12 @@ const oracleProvider: Provider = {
     }
 
     const lower = text.toLowerCase();
-    const searchKeywords = ["price", "worth", "value", "cost", "card", "grade",
-      "pokemon", "charizard", "pikachu", "magic", "yugioh", "yu-gi-oh", "tcg",
-      "psa", "beckett", "bgs", "cgc"];
-    const marketKeywords = ["market", "top cards", "most expensive", "trending",
-      "snapshot", "overview", "tcg market", "card market"];
+    const searchKeywords = ["price of", "worth of", "value of", "how much is",
+      "pokemon card", "charizard", "pikachu", "magic card", "yugioh card",
+      "yu-gi-oh", "tcg price", "psa grade", "beckett grade", "bgs grade",
+      "cgc grade", "card worth", "card value", "booster box"];
+    const marketKeywords = ["tcg market", "card market", "top cards", "most expensive card",
+      "market snapshot", "market overview", "trading card market"];
 
     const wantSearch = searchKeywords.some(kw => lower.includes(kw));
     const wantSnapshot = marketKeywords.some(kw => lower.includes(kw));
@@ -1071,13 +1083,15 @@ const marketIntelligenceEvaluator: Evaluator = {
   ],
   validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
     const text = message?.content?.text?.toLowerCase() || "";
-    if (text.length < 5) return false;
+    if (text.length < 10) return false;
 
+    // Use multi-word phrases to avoid false positives on common words
     const triggerKeywords = [
-      "card", "pokemon", "charizard", "pikachu", "magic the gathering",
-      "yugioh", "yu-gi-oh", "tcg", "psa", "beckett", "grading",
-      "booster", "pack", "sealed", "collection", "rare", "holographic",
-      "first edition", "1st edition", "mint condition", "gem mint",
+      "pokemon card", "trading card", "charizard", "pikachu", "magic the gathering",
+      "yugioh card", "yu-gi-oh", "tcg", "psa grade", "psa 10", "beckett grade",
+      "bgs grade", "cgc grade", "card grading", "booster pack", "booster box",
+      "sealed product", "holographic card", "holo rare",
+      "first edition card", "1st edition card", "gem mint", "mint condition card",
     ];
     return triggerKeywords.some(kw => text.includes(kw));
   },
@@ -1090,8 +1104,25 @@ const marketIntelligenceEvaluator: Evaluator = {
   ): Promise<ActionResult | undefined> => {
     const text = message?.content?.text || "";
 
-    // Extract card-related terms for a targeted search
-    const searchTerms = text.replace(/[^a-zA-Z0-9\s-]/g, "").trim().slice(0, 80);
+    // Extract likely card/product names instead of sending the full sentence
+    // Remove common conversational words, keep nouns and proper names
+    const stopWords = new Set(["i", "just", "pulled", "a", "an", "the", "from", "my", "is", "was",
+      "are", "been", "have", "has", "had", "do", "does", "did", "will", "would",
+      "could", "should", "can", "may", "might", "shall", "it", "its", "this",
+      "that", "these", "those", "what", "how", "much", "many", "some", "any",
+      "about", "of", "in", "on", "at", "to", "for", "with", "and", "or", "but",
+      "not", "got", "get", "got", "know", "think", "want", "need", "like"]);
+    const searchTerms = text
+      .replace(/[^a-zA-Z0-9\s-]/g, "")
+      .split(/\s+/)
+      .filter(w => w.length > 1 && !stopWords.has(w.toLowerCase()))
+      .join(" ")
+      .trim()
+      .slice(0, 80);
+
+    if (!searchTerms) {
+      return { success: true, text: "Could not extract card name from message." };
+    }
     const data = await oracleFetch(`${ORACLE_SEARCH_ENDPOINT}?query=${encodeURIComponent(searchTerms)}&limit=3`);
     const results = (data?.data as Record<string, unknown>)?.results as Array<Record<string, unknown>> || [];
 
