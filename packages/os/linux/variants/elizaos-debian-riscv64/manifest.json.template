@@ -20,14 +20,15 @@
   "validation": {
     "requiredEvidence": [
       "qemu-virt-boot",
-      "grub-efi-riscv64-boot"
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live"
     ],
     "evidence": [
       {
         "id": "qemu-virt-boot",
         "status": "missing",
         "path": null,
-        "notes": "qemu-system-riscv64 -M virt boot transcript not yet collected. provenance: scaffolding."
+        "notes": "qemu-system-riscv64 -M virt boot transcript not yet collected."
       },
       {
         "id": "u-boot-extlinux-boot",
@@ -39,7 +40,13 @@
         "id": "grub-efi-riscv64-boot",
         "status": "missing",
         "path": null,
-        "notes": "config/hooks/normal/0020-grub-efi-riscv64.hook.binary stages BOOTRISCV64.EFI + grub.cfg. Boot transcript not yet captured. provenance: scaffolding."
+        "notes": "config/hooks/normal/0020-grub-efi-riscv64.hook.binary stages BOOTRISCV64.EFI + grub.cfg. Boot transcript not yet captured."
+      },
+      {
+        "id": "elizaos-agent-live",
+        "status": "missing",
+        "path": null,
+        "notes": "Capture elizaos-agent.service active state and http://127.0.0.1:31337/api/health from the riscv64 boot target before publishing."
       },
       {
         "id": "hardware-board-boot",
@@ -49,5 +56,5 @@
       }
     ]
   },
-  "notes": "Wave 4 live-build artifact. provenance: scaffolding until a real build replaces the @@-prefixed placeholders. build_ts=@@BUILD_TIMESTAMP@@ arch=@@ARCH@@ kernel_flavour=@@KERNEL_FLAVOUR@@."
+  "notes": "Live-build artifact template. Replace @@-prefixed placeholders from build.sh output. build_ts=@@BUILD_TIMESTAMP@@ arch=@@ARCH@@ kernel_flavour=@@KERNEL_FLAVOUR@@."
 }

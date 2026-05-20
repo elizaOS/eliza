@@ -6,7 +6,7 @@
 # Usage:
 #   ./run-build.sh                       # build image + run cross-compile
 #   ./run-build.sh --no-cache            # rebuild image from scratch
-#   ./run-build.sh --c-loop              # fallback: build with ENABLE_C_LOOP=ON
+#   ./run-build.sh --baseline-jit        # experimental: requires realized WebKit patches
 #   ./run-build.sh --jobs 4              # cap parallel build jobs (default: nproc)
 #   ./run-build.sh --image-only          # just build the Docker image, don't run
 #   ./run-build.sh --shell               # drop into a shell inside the image
@@ -23,7 +23,7 @@ cd "$HERE"
 
 IMAGE_TAG="milady/bun-riscv64-builder"
 NO_CACHE=""
-FORCE_CLOOP=""
+FORCE_CLOOP="1"
 JOBS=""
 IMAGE_ONLY=0
 SHELL_MODE=0
@@ -32,6 +32,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --no-cache) NO_CACHE="--no-cache"; shift ;;
         --c-loop|--cloop) FORCE_CLOOP="1"; shift ;;
+        --baseline-jit) FORCE_CLOOP="0"; shift ;;
         --jobs) JOBS="$2"; shift 2 ;;
         --image-only) IMAGE_ONLY=1; shift ;;
         --shell) SHELL_MODE=1; shift ;;

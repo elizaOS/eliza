@@ -207,7 +207,7 @@ else
     fi
     # android-riscv64-cpu path. Sentinel: assets/agent/riscv64/libllama.so
     if [ "$SKIP_ANDROID" = "0" ]; then
-        android_sentinel="$repo_root/packages/app/android/app/src/main/assets/agent/riscv64/libllama.so"
+        android_sentinel="$repo_root/packages/app-core/platforms/android/app/src/main/assets/agent/riscv64/libllama.so"
         if should_build "$android_sentinel"; then
             echo "→ Building libllama (android-riscv64-cpu) …"
             if "$NODE_BIN" "$COMPILE_LIBLLAMA" --target android-riscv64-cpu >"$repo_root/build/libllama-android-riscv64.log" 2>&1; then

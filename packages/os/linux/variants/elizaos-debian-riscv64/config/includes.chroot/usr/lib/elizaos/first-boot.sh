@@ -26,6 +26,8 @@ INSTANCE_ID_FILE="${CONFIG_DIR}/instance-id"
 FIRST_BOOT_MARKER="${STATE_DIR}/.first-boot-complete"
 SERIAL_CONSOLE="/dev/ttyS0"
 AGENT_BIN="/opt/elizaos/bin/elizaos"
+AGENT_HEALTH_SCRIPT="/usr/lib/elizaos/wait-agent-health.sh"
+AGENT_HEALTH_URL="http://127.0.0.1:31337/api/health"
 
 log() {
     printf '[elizaos-first-boot] %s\n' "$*"
@@ -92,9 +94,7 @@ else
 fi
 log "${FIRSTBOOT_READY_LINE}"
 
-# 5. Enable the agent. Early RISC-V images intentionally ship with a
-#    STATUS_LATER placeholder until the agent binary is packaged, so do not
-#    block first boot on starting a unit whose ExecStart target is absent.
+# 5. Enable and start the agent when the packaged binary is present.
 log "enabling elizaos-agent.service"
 systemctl enable elizaos-agent.service
 if [ -x "${AGENT_BIN}" ]; then
@@ -102,7 +102,8 @@ if [ -x "${AGENT_BIN}" ]; then
     timeout 10s systemctl start --no-block elizaos-agent.service || {
         log "WARN: elizaos-agent.service failed to queue"
     }
-    if timeout 30s sh -c 'until systemctl is-active --quiet elizaos-agent.service; do sleep 1; done'; then
+    if timeout 30s sh -c 'until systemctl is-active --quiet elizaos-agent.service; do sleep 1; done' \
+        && "${AGENT_HEALTH_SCRIPT}" "${AGENT_HEALTH_URL}"; then
         AGENT_READY_LINE="elizaos-agent-ready instance=${INSTANCE_UUID}"
         if [ -w "${SERIAL_CONSOLE}" ]; then
             printf '%s\n' "${AGENT_READY_LINE}" > "${SERIAL_CONSOLE}"

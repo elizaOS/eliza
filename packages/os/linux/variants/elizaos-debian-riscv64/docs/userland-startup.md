@@ -6,10 +6,10 @@ RISC-V 64 live image. It pairs with the live-build artifacts under
 [`../config/`](../config/) and is consumed by the qemu-virt harness to
 decide whether a given boot is healthy.
 
-> **Wave status:** 2B-B1. The systemd units, first-boot script, and
-> `elizaos` system user are wired and validated. The agent binary
-> itself is **not** shipped yet — see
-> [STATUS_LATER agent binary](#status_later-agent-binary).
+The systemd units, first-boot script, `elizaos` system user, and
+`/opt/elizaos` runtime payload are wired by the live-build hooks. Agent
+liveness is separate from first-boot readiness and must be backed by a
+service-active check plus `/api/health`.
 
 ## Boot sequence
 
@@ -88,28 +88,19 @@ A successful first boot also persists:
 - `/var/lib/elizaos/.first-boot-complete` — elizaos:elizaos 0640,
   UTC timestamp of completion
 
-## STATUS_LATER agent binary
+## Agent Liveness
 
-The userland-bootstrap wave deliberately does **not** ship the agent
-binary. Instead, the chroot hook
-[`0030-elizaos-userland.hook.chroot`](../config/hooks/normal/0030-elizaos-userland.hook.chroot)
-drops a marker file at
-`/opt/elizaos/STATUS_LATER_AGENT_BINARY`.
+First-boot completion and agent liveness are separate signals:
 
-This separates first-boot completion from agent liveness:
-
-| Outcome | `/opt/elizaos/STATUS_LATER_AGENT_BINARY` | `elizaos-firstboot-ready` on `ttyS0` | `elizaos-agent-ready` on `ttyS0` | `elizaos-agent.service` state |
+| Outcome | `elizaos-firstboot-ready` on `ttyS0` | `elizaos-agent-ready` on `ttyS0` | `/api/health` | `elizaos-agent.service` state |
 |---|---|---|---|---|
-| Boot fine, agent missing | present | **yes** | **no** | not started |
-| Boot fine, agent live    | **absent** | **yes** | **yes** | `active (running)` |
-| Boot broken              | irrelevant | **no**  | **no** | irrelevant |
+| Boot fine, agent live | **yes** | **yes** | HTTP 200 | `active (running)` |
+| Boot fine, agent unhealthy | **yes** | **no** | missing/failing | not active or failed |
+| Boot broken | **no** | **no** | irrelevant | irrelevant |
 
-When the build pipeline gains the ability to install a real elizaOS
-release artifact, the hook that lays the binary down at
-`/opt/elizaos/bin/elizaos` **must delete** the
-`STATUS_LATER_AGENT_BINARY` file as its final step. The qemu harness
-uses the presence of this file as a hard signal that the variant is
-still in Wave 2B and the agent is not expected to come up.
+`elizaos-agent-ready` is emitted only after systemd reports the service
+active and `wait-agent-health.sh` receives a successful response from
+`http://127.0.0.1:31337/api/health`.
 
 ## File map
 
@@ -118,12 +109,11 @@ still in Wave 2B and the agent is not expected to come up.
 | `/etc/systemd/system/elizaos-agent.service` | `includes.chroot/etc/systemd/system/elizaos-agent.service` |
 | `/etc/systemd/system/elizaos-first-boot.service` | `includes.chroot/etc/systemd/system/elizaos-first-boot.service` |
 | `/usr/lib/elizaos/first-boot.sh` | `includes.chroot/usr/lib/elizaos/first-boot.sh` |
-| `/opt/elizaos/` (reserved tree, marker only) | created by `hooks/normal/0010-elizaos-agent.hook.chroot` |
-| `/opt/elizaos/STATUS_LATER_AGENT_BINARY` | created by `hooks/normal/0030-elizaos-userland.hook.chroot` |
+| `/usr/lib/elizaos/wait-agent-health.sh` | `includes.chroot/usr/lib/elizaos/wait-agent-health.sh` |
+| `/opt/elizaos/` (agent runtime tree) | created by `hooks/normal/0010-elizaos-agent.hook.chroot` |
 
 ## What this wave does NOT do
 
-- It does not download, build, or unpack the elizaOS agent binary.
 - It does not configure Cloud login, model downloads, or any
   connector. The agent runs `--headless --port=31337` against a fresh
   state directory.

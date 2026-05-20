@@ -105,6 +105,11 @@ class OsRv64ChipBootContractTests(unittest.TestCase):
             mock.patch.object(gate, "QEMU_EVIDENCE", qemu),
             mock.patch.object(gate, "FIRST_BOOT", first_boot),
             mock.patch.object(gate, "AGENT_UNIT", agent_unit),
+            mock.patch.object(
+                gate,
+                "AGENT_INSTALL_HOOK",
+                variant / "config/hooks/normal/0010-elizaos-agent.hook.chroot",
+            ),
             mock.patch.object(gate, "RELEASE_CHECK", release_check),
         ]
         return patches, manifest, qemu, variant

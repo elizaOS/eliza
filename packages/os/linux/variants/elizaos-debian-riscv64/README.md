@@ -16,19 +16,17 @@ two variants live side by side and serve different audiences:
 
 ## Status
 
-**Wave 4: live-build configuration landed.** The Dockerfile, build
-orchestrator, `auto/config`, package list, chroot/binary hooks,
-extlinux fallback, and manifest template now form a real `lb build`
-pipeline. A board-bring-up engineer can run the builder container and
-expect `lb build` to produce a bootable RISC-V 64 live ISO suitable for
-`qemu-system-riscv64 -M virt`.
+The Dockerfile, build orchestrator, `auto/config`, package lists,
+chroot/binary hooks, extlinux fallback, and manifest template form the
+RISC-V 64 live-build pipeline. A board-bring-up engineer can run the
+builder container and expect `lb build` to produce a bootable RISC-V 64
+live ISO suitable for `qemu-system-riscv64 -M virt`.
 
-The artifact itself has **not** been produced from this checkout yet —
-running `lb build` pulls multi-GB from Debian mirrors and takes 30+
-minutes, which is out of scope for the sub-agent that landed the
-config. The placeholder fields in `manifest.json.template` are marked
-`provenance: scaffolding` and stay that way until a real build replaces
-them.
+The artifact itself has **not** been produced from this checkout yet.
+Running `lb build` pulls multi-GB from Debian mirrors and takes 30+
+minutes, so CI and release hosts should run it in a dedicated builder.
+The template fields in `manifest.json.template` stay unresolved until a
+real build replaces them.
 
 What works today:
 
@@ -50,15 +48,43 @@ What works today:
 
 What does **not** work yet:
 
-- No published artifact exists. The placeholder URL in
+- No published artifact exists. The template URL in
   `manifest.json.template` and `DEFAULT_ELIZAOS_IMAGES` resolves to
   nothing.
 - No board-bring-up evidence is collected yet; the `evidence[]` array
   in the manifest is all `status: "missing"` by design.
 - The chroot hook at `config/hooks/normal/0010-elizaos-agent.hook.chroot`
-  only stages `/opt/elizaos/` and an `INSTALL_STATE.json` marker —
-  the real agent installer (bun runtime, `@elizaos/agent` build,
-  systemd unit) lives behind the userland-bootstrap sub-agent.
+  installs a real agent payload from `/opt/elizaos-artifacts/` and
+  verifies the shared `bun-linux-riscv64-musl.zip` SHA-256 before the
+  image can finish building.
+
+## Agent artifact contract
+
+The live-build chroot must contain these files before
+`0010-elizaos-agent.hook.chroot` runs:
+
+```text
+/opt/elizaos-artifacts/
+├── bun-linux-riscv64-musl.zip
+├── bun-linux-riscv64-musl.zip.sha256
+└── elizaos-agent-riscv64/
+    └── elizaos
+```
+
+`bun-linux-riscv64-musl.zip` is the same artifact described by
+`packages/app-core/scripts/bun-riscv64/bun-version.json` and consumed by
+Android when `MILADY_BUN_RISCV64_URL` is set. Its internal Bun binary
+must be at `bun-linux-riscv64-musl/bun`. The SHA-256 file contains the
+expected digest for the zip. The `elizaos` binary must be executable and
+must support:
+
+```sh
+/opt/elizaos/bin/elizaos start --headless --port=31337
+```
+
+The hook fails the build if any artifact is missing, if the digest does
+not match, or if the Bun payload does not unpack to an executable
+`bun-linux-riscv64-musl/bun`.
 
 ## Running the build
 
@@ -116,7 +142,7 @@ elizaos-debian-riscv64/
 │   ├── package-lists/
 │   │   └── elizaos.list.chroot               base + linux-image-riscv64 + grub + nodejs + sqlite + ssh
 │   ├── hooks/normal/
-│   │   ├── 0010-elizaos-agent.hook.chroot    placeholder /opt/elizaos + ssh hardening
+│   │   ├── 0010-elizaos-agent.hook.chroot    verified agent + Bun payload install, ssh hardening
 │   │   └── 0020-grub-efi-riscv64.hook.binary builds BOOTRISCV64.EFI + grub.cfg
 │   └── includes.binary/extlinux/extlinux.conf  U-Boot distroboot fallback
 ├── manifest.json.template    artifact fragment that build.sh fills in
@@ -133,10 +159,8 @@ elizaos-debian-riscv64/
    `packages/chip/docs/evidence/linux/` and flip the corresponding
    `evidence[].status` from `missing` to `collected` in the emitted
    manifest fragment.
-4. Replace the placeholder agent install in
-   `0010-elizaos-agent.hook.chroot` with the real elizaOS-agent
-   installer (bun + `@elizaos/agent` + systemd unit) once the
-   userland-bootstrap sub-agent ships it.
+4. Capture `agent-health-live` evidence with `elizaos-agent.service`
+   active and `/api/health` responding on the boot target.
 5. Once an artifact actually publishes, update the matching entry in
    `DEFAULT_ELIZAOS_IMAGES` (real URL, real sha256, real size) and
    move its release status from `planned` to `candidate`/`available`.

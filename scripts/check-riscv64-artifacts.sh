@@ -365,8 +365,8 @@ NATIVE_PLUGINS=(
 
 # DFlash libllama + ggml family stages into either:
 #   build/riscv64-stage/riscv64/                              (linux-riscv64 staging)
-#   packages/app/android/app/src/main/jniLibs/riscv64/        (legacy jniLibs path)
-#   packages/app/android/app/src/main/assets/agent/riscv64/   (android-riscv64-cpu stage, compile-libllama.mjs default)
+#   packages/app-core/platforms/android/app/src/main/jniLibs/riscv64/
+#   packages/app-core/platforms/android/app/src/main/assets/agent/riscv64/
 # We probe all three locations; the harness reports SKIP only if none
 # contains the .so.
 LLAMA_FAMILY_BASENAMES=(
@@ -380,8 +380,8 @@ LLAMA_FAMILY_BASENAMES=(
 
 LLAMA_FAMILY_SEARCH_DIRS=(
     "build/riscv64-stage/riscv64"
-    "packages/app/android/app/src/main/jniLibs/riscv64"
-    "packages/app/android/app/src/main/assets/agent/riscv64"
+    "packages/app-core/platforms/android/app/src/main/jniLibs/riscv64"
+    "packages/app-core/platforms/android/app/src/main/assets/agent/riscv64"
 )
 
 OMNIVOICE_SEARCH=(

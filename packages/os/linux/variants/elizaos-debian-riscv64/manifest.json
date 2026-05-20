@@ -10,7 +10,7 @@
   },
   "filename": "elizaos-debian-riscv64-20260519T232700Z.iso",
   "downloadUrl": "https://download.elizaos.ai/os/linux/elizaos-debian-riscv64-20260519T232700Z.iso",
-  "status": "candidate",
+  "status": "planned",
   "sizeBytes": 456570880,
   "sha256": "65d8e24382a428489dff2ef14aa134c2c5cf5bedc5d095207da0a79495007b3c",
   "signature": {
@@ -20,26 +20,33 @@
   "validation": {
     "requiredEvidence": [
       "qemu-virt-boot",
-      "grub-efi-riscv64-boot"
+      "grub-efi-riscv64-boot",
+      "elizaos-agent-live"
     ],
     "evidence": [
       {
         "id": "qemu-virt-boot",
-        "status": "collected",
-        "path": "evidence/qemu_virt_boot.json",
-        "notes": "qemu-system-riscv64 -M virt boot transcript captured. This is emulator evidence only, not silicon or physical-board proof."
+        "status": "missing",
+        "path": null,
+        "notes": "qemu-system-riscv64 -M virt boot transcript must be regenerated for the current first-boot and agent-live contract before promotion."
       },
       {
         "id": "grub-efi-riscv64-boot",
-        "status": "collected",
-        "path": "evidence/grub_efi_riscv64_boot.json",
-        "notes": "GRUB EFI RISC-V menu and kernel handoff captured in the qemu-virt serial transcript."
+        "status": "missing",
+        "path": null,
+        "notes": "GRUB EFI RISC-V menu and kernel handoff must be recaptured against the current live image before promotion."
       },
       {
         "id": "u-boot-extlinux-boot",
         "status": "not-required",
         "path": null,
         "notes": "Not required for this GRUB EFI qemu-virt artifact. config/includes.binary/extlinux/extlinux.conf remains staged for distroboot follow-up evidence."
+      },
+      {
+        "id": "elizaos-agent-live",
+        "status": "missing",
+        "path": "evidence/agent_health_live.json",
+        "notes": "Required before publishing: capture elizaos-agent.service active state and http://127.0.0.1:31337/api/health from the riscv64 boot target."
       },
       {
         "id": "hardware-board-boot",
@@ -49,5 +56,5 @@
       }
     ]
   },
-  "notes": "Wave 4 live-build artifact. build_ts=20260519T232700Z arch=riscv64 kernel_flavour=riscv64. Evidence scope is qemu-virt emulator boot through RISC-V EDK2 + GRUB EFI only."
+  "notes": "Live-build manifest awaiting regenerated boot and agent-live evidence for the current artifact contract. build_ts=20260519T232700Z arch=riscv64 kernel_flavour=riscv64."
 }

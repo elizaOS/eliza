@@ -26,6 +26,7 @@ STATUS_REPORT = VARIANT / "STATUS.md"
 QEMU_EVIDENCE = VARIANT / "evidence/qemu_virt_boot.json"
 FIRST_BOOT = VARIANT / "config/includes.chroot/usr/lib/elizaos/first-boot.sh"
 AGENT_UNIT = VARIANT / "config/includes.chroot/etc/systemd/system/elizaos-agent.service"
+AGENT_INSTALL_HOOK = VARIANT / "config/hooks/normal/0010-elizaos-agent.hook.chroot"
 RELEASE_CHECK = VARIANT / "scripts/check_release_manifest.py"
 REPORT = ROOT / "build/reports/os_rv64_chip_boot_contract.json"
 SCHEMA = "eliza.os_rv64_chip_boot_contract.v1"
@@ -133,6 +134,18 @@ def agent_binary_path(unit_text: str) -> str | None:
     return match.group(1) if match else None
 
 
+def agent_installer_packages_binary(path_value: str | None) -> bool:
+    if path_value != "/opt/elizaos/bin/elizaos" or not AGENT_INSTALL_HOOK.is_file():
+        return False
+    hook = read_text(AGENT_INSTALL_HOOK)
+    return (
+        "bun-linux-riscv64-musl.zip" in hook
+        and "sha256sum" in hook
+        and "AGENT_BIN_SOURCE" in hook
+        and "${INSTALL_ROOT}/bin/elizaos" in hook
+    )
+
+
 def packaged_agent_binary_exists(path_value: str | None) -> bool:
     if not path_value:
         return False
@@ -141,7 +154,9 @@ def packaged_agent_binary_exists(path_value: str | None) -> bool:
         VARIANT / "config/includes.chroot" / absolute,
         VARIANT / "config/includes.binary" / absolute,
     )
-    return any(candidate.exists() for candidate in candidates)
+    return any(candidate.exists() for candidate in candidates) or agent_installer_packages_binary(
+        path_value
+    )
 
 
 def marker_position(text: str, needle: str) -> int | None:

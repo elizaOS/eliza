@@ -15,6 +15,7 @@ concurrency:
 
 env:
   APP_DIR: packages/app
+  ANDROID_DIR: packages/app-core/platforms/android
   NODE_VERSION: "24.15.0"
 
 jobs:
@@ -67,7 +68,7 @@ jobs:
         run: bun run preflight:android:sideload
 
       - name: Override Gradle JDK path for CI
-        working-directory: ${{ env.APP_DIR }}/android
+        working-directory: ${{ env.ANDROID_DIR }}
         run: |
           # Remove the hardcoded local JDK path so Gradle uses JAVA_HOME from setup-java
           sed -i '/org.gradle.java.home=/d' gradle.properties
@@ -90,7 +91,7 @@ jobs:
 
       - name: Build debug APK
         if: github.event_name == 'workflow_dispatch'
-        working-directory: ${{ env.APP_DIR }}/android
+        working-directory: ${{ env.ANDROID_DIR }}
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.version }}
           ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.version_code }}
@@ -98,7 +99,7 @@ jobs:
 
       - name: Build release APK & AAB
         if: github.event_name == 'release'
-        working-directory: ${{ env.APP_DIR }}/android
+        working-directory: ${{ env.ANDROID_DIR }}
         env:
           ELIZAOS_VERSION_NAME: ${{ steps.version.outputs.version }}
           ELIZAOS_VERSION_CODE: ${{ steps.version.outputs.version_code }}
@@ -116,8 +117,8 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > /tmp/keystore.jks
 
-          UNSIGNED_APK="${{ env.APP_DIR }}/android/app/build/outputs/apk/release/app-release-unsigned.apk"
-          SIGNED_APK="${{ env.APP_DIR }}/android/app/build/outputs/apk/release/eliza-${{ steps.version.outputs.version }}.apk"
+          UNSIGNED_APK="${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/app-release-unsigned.apk"
+          SIGNED_APK="${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/eliza-${{ steps.version.outputs.version }}.apk"
 
           ${ANDROID_HOME}/build-tools/35.0.0/apksigner sign \
             --ks /tmp/keystore.jks \
@@ -132,18 +133,18 @@ jobs:
       - name: Generate Android checksums
         if: github.event_name == 'release'
         run: |
-          find "${{ env.APP_DIR }}/android/app/build/outputs" \
+          find "${{ env.ANDROID_DIR }}/app/build/outputs" \
             \( -name "*.apk" -o -name "*.aab" \) -type f -print0 \
             | sort -z \
-            | xargs -0 sha256sum > "${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt"
-          cat "${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt"
+            | xargs -0 sha256sum > "${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt"
+          cat "${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt"
 
       - name: Upload debug APK artifact
         if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v7
         with:
           name: eliza-android-debug
-          path: ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
+          path: ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload release artifacts
         if: github.event_name == 'release'
@@ -151,9 +152,9 @@ jobs:
         with:
           name: eliza-android-release
           path: |
-            ${{ env.APP_DIR }}/android/app/build/outputs/apk/release/*.apk
-            ${{ env.APP_DIR }}/android/app/build/outputs/bundle/release/*.aab
-            ${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt
+            ${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/*.apk
+            ${{ env.ANDROID_DIR }}/app/build/outputs/bundle/release/*.aab
+            ${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt
 
       - name: Upload to GitHub Release
         if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.upload_to_release)
@@ -161,8 +162,8 @@ jobs:
         with:
           tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || '' }}
           files: |
-            ${{ env.APP_DIR }}/android/app/build/outputs/apk/release/*.apk
-            ${{ env.APP_DIR }}/android/app/build/outputs/bundle/release/*.aab
-            ${{ env.APP_DIR }}/android/app/build/outputs/apk/debug/app-debug.apk
-            ${{ env.APP_DIR }}/android/app/build/outputs/SHA256SUMS.txt
+            ${{ env.ANDROID_DIR }}/app/build/outputs/apk/release/*.apk
+            ${{ env.ANDROID_DIR }}/app/build/outputs/bundle/release/*.aab
+            ${{ env.ANDROID_DIR }}/app/build/outputs/apk/debug/app-debug.apk
+            ${{ env.ANDROID_DIR }}/app/build/outputs/SHA256SUMS.txt
           fail_on_unmatched_files: false

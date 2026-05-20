@@ -31,7 +31,7 @@
  *   4. Overlay native       — permissions, services, entitlements, Podfile
  *   5. Platform patches     — Gradle template, SPM compat, xcconfig
  *   5b. Stage Android agent — bun + musl + libstdc++ + libgcc + bundle
- *                             into packages/app/android/app/src/main/assets/agent/
+ *                             into packages/app-core/platforms/android/app/src/main/assets/agent/
  *                             (Android targets only; see
  *                             scripts/lib/stage-android-agent.mjs and
  *                             docs/agent-on-mobile.md).
@@ -82,7 +82,7 @@ const packagesRoot = path.resolve(appCoreRoot, "..");
 const elizaRepoRoot = path.resolve(packagesRoot, "..");
 const appDir = resolveMainAppDir(repoRoot, "app");
 const iosDir = path.join(appDir, "ios", "App");
-const androidDir = path.join(appDir, "android");
+const androidDir = path.join(appCoreRoot, "platforms", "android");
 const localArtifactsDir = path.join(elizaRepoRoot, ".eliza-local", "artifacts");
 const androidSmsGatewayDebugApkArtifact = path.join(
   localArtifactsDir,
@@ -801,6 +801,13 @@ async function buildWeb(platform) {
   };
   const bun = resolveBunExecutable();
   if (bun) {
+    const sharedEntry = path.join(packagesRoot, "shared", "dist", "index.js");
+    if (!fs.existsSync(sharedEntry)) {
+      console.log(
+        "[mobile-build] Building workspace dependencies for mobile web bundle.",
+      );
+      await run(bun, ["run", "dev:prepare"], { cwd: repoRoot, env });
+    }
     await run(bun, ["run", "build:web"], { cwd: appDir, env });
     return;
   }
@@ -5410,7 +5417,6 @@ async function buildAndroid() {
   await generateAndroidBrandAssets();
   overlayAndroid({ includeAospRoleLaunchers: false });
   sanitizeAndroidManifestWhenPlatformTemplatesMissing();
-  auditAndroidSystemSource("pre-gradle", { requireCapabilityManifest: false });
   writeAndroidCleartextPolicy({
     allowCleartext: true,
     label: "sideload",

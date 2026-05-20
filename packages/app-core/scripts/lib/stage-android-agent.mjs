@@ -39,6 +39,7 @@
  * `agent-bundle.js` is produced by `bun run --cwd packages/agent build:mobile`.
  */
 import { spawn } from "node:child_process";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -224,6 +225,33 @@ async function downloadFile(url, targetPath) {
   fs.writeFileSync(targetPath, buf);
 }
 
+function normalizeSha256(value, envName) {
+  const sha256 = value?.trim().toLowerCase();
+  if (!sha256) return null;
+  if (!/^[a-f0-9]{64}$/.test(sha256)) {
+    throw new Error(
+      `${envName} must be a lowercase or uppercase 64-character SHA-256 hex digest.`,
+    );
+  }
+  return sha256;
+}
+
+function riscv64BunSha256() {
+  return normalizeSha256(
+    process.env.MILADY_BUN_RISCV64_SHA256 ??
+      process.env.ELIZA_BUN_RISCV64_SHA256,
+    process.env.MILADY_BUN_RISCV64_SHA256
+      ? "MILADY_BUN_RISCV64_SHA256"
+      : "ELIZA_BUN_RISCV64_SHA256",
+  );
+}
+
+function sha256File(filePath) {
+  const hash = crypto.createHash("sha256");
+  hash.update(fs.readFileSync(filePath));
+  return hash.digest("hex");
+}
+
 function normalizeBunChannel(value) {
   const channel = String(value ?? DEFAULT_BUN_CHANNEL)
     .trim()
@@ -264,12 +292,24 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   const cacheKey = bunCacheKey(bunChannel);
   const archCache = path.join(cacheDir, `bun-${bunArch}-${cacheKey}`);
   const bunPath = path.join(archCache, "bun");
+  const sourceSha256Path = path.join(archCache, ".source.sha256");
+  const expectedRiscv64Sha256 =
+    bunArch === "riscv64" ? riscv64BunSha256() : null;
   // Canary cache invalidates after 24h so we pull bug-fix snapshots
   // automatically without forcing every CI run to re-download.
   const isFresh = (() => {
     if (!fs.existsSync(bunPath)) return false;
     const st = fs.statSync(bunPath);
     if (st.size <= 1_000_000) return false;
+    if (bunArch === "riscv64") {
+      if (!expectedRiscv64Sha256) return false;
+      if (!fs.existsSync(sourceSha256Path)) return false;
+      const cachedSha256 = fs
+        .readFileSync(sourceSha256Path, "utf8")
+        .trim()
+        .toLowerCase();
+      if (cachedSha256 !== expectedRiscv64Sha256) return false;
+    }
     if (bunChannel !== "canary") return true;
     const ageMs = Date.now() - st.mtimeMs;
     return ageMs < 24 * 60 * 60 * 1000;
@@ -292,6 +332,12 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
           "or skip the riscv64 ABI for this build.",
       );
     }
+    if (!expectedRiscv64Sha256) {
+      throw new Error(
+        "Bun riscv64 artifact hash is required: set MILADY_BUN_RISCV64_SHA256 " +
+          "(or ELIZA_BUN_RISCV64_SHA256) to the SHA-256 of bun-linux-riscv64-musl.zip.",
+      );
+    }
     url = riscvUrl;
   } else {
     url =
@@ -302,6 +348,16 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   const channelLabel = bunChannelLabel(bunChannel);
   log(`Downloading ${channelLabel} (${bunArch}-musl) from ${url}`);
   await downloadFile(url, zipPath);
+  if (expectedRiscv64Sha256) {
+    const actualSha256 = sha256File(zipPath);
+    if (actualSha256 !== expectedRiscv64Sha256) {
+      fs.rmSync(zipPath, { force: true });
+      throw new Error(
+        `bun-linux-riscv64-musl.zip SHA-256 mismatch: expected ` +
+          `${expectedRiscv64Sha256}, got ${actualSha256}`,
+      );
+    }
+  }
   await run("unzip", ["-q", "-o", zipPath, "-d", archCache]);
   const extractedDir = path.join(archCache, `bun-linux-${bunArch}-musl`);
   const extractedBun = path.join(extractedDir, "bun");
@@ -313,6 +369,9 @@ async function ensureBunBinary({ cacheDir, bunArch, bunChannel, log }) {
   fs.rmSync(extractedDir, { recursive: true, force: true });
   fs.rmSync(zipPath, { force: true });
   fs.chmodSync(bunPath, 0o755);
+  if (expectedRiscv64Sha256) {
+    fs.writeFileSync(sourceSha256Path, `${expectedRiscv64Sha256}\n`, "utf8");
+  }
   return bunPath;
 }
 

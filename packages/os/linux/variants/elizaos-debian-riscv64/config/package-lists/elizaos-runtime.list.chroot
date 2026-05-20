@@ -5,10 +5,8 @@
 # so the userland-bootstrap wave can be reasoned about and trimmed
 # independently.
 #
-# These packages must be present even when /opt/elizaos/bin/elizaos is
-# the STATUS_LATER placeholder — they are what first-boot.sh and the
-# qemu-virt harness rely on to declare "boot fine, agent missing" rather
-# than "boot broken".
+# These packages must be present before first boot so the agent service can
+# start, probe localhost health, and leave useful diagnostics in qemu logs.
 #
 # One package per line. Comments begin with `#`. All packages must exist
 # for `riscv64` in Debian Trixie.
