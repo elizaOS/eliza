@@ -1,16 +1,16 @@
 import {
   BUN_PERMISSIONS,
   type BunPermission,
-  CARROT_ISOLATIONS,
-  type CarrotIsolation,
-  type CarrotPermissionGrant,
-  type CarrotPermissionTag,
+  REMOTE_PLUGIN_ISOLATIONS,
+  type RemotePluginIsolation,
+  type RemotePluginPermissionGrant,
+  type RemotePluginPermissionTag,
   HOST_PERMISSIONS,
   type HostPermission,
-  type LegacyCarrotPermission,
+  type LegacyRemotePluginPermission,
 } from "./types.js";
 
-export type CarrotBunWorkerPermissions = Record<BunPermission, boolean>;
+export type RemotePluginBunWorkerPermissions = Record<BunPermission, boolean>;
 
 export function isHostPermission(value: string): value is HostPermission {
   return HOST_PERMISSIONS.includes(value as HostPermission);
@@ -20,16 +20,16 @@ export function isBunPermission(value: string): value is BunPermission {
   return BUN_PERMISSIONS.includes(value as BunPermission);
 }
 
-export function isCarrotIsolation(value: string): value is CarrotIsolation {
-  return CARROT_ISOLATIONS.includes(value as CarrotIsolation);
+export function isCarrotIsolation(value: string): value is RemotePluginIsolation {
+  return REMOTE_PLUGIN_ISOLATIONS.includes(value as RemotePluginIsolation);
 }
 
 export function normalizeCarrotPermissions(
-  input?: CarrotPermissionGrant | LegacyCarrotPermission[] | null,
-): CarrotPermissionGrant {
+  input?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
+): RemotePluginPermissionGrant {
   const host: Partial<Record<HostPermission, boolean>> = {};
   const bun: Partial<Record<BunPermission, boolean>> = {};
-  let isolation: CarrotIsolation = "shared-worker";
+  let isolation: RemotePluginIsolation = "shared-worker";
 
   if (Array.isArray(input)) {
     for (const permission of input) {
@@ -64,10 +64,10 @@ export function normalizeCarrotPermissions(
 }
 
 export function flattenCarrotPermissions(
-  input?: CarrotPermissionGrant | LegacyCarrotPermission[] | null,
-): CarrotPermissionTag[] {
+  input?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
+): RemotePluginPermissionTag[] {
   const permissions = normalizeCarrotPermissions(input);
-  const tags: CarrotPermissionTag[] = [];
+  const tags: RemotePluginPermissionTag[] = [];
 
   for (const key of HOST_PERMISSIONS) {
     if (permissions.host?.[key] === true) {
@@ -84,9 +84,9 @@ export function flattenCarrotPermissions(
 }
 
 export function mergeCarrotPermissions(
-  defaults?: CarrotPermissionGrant | LegacyCarrotPermission[] | null,
-  overrides?: CarrotPermissionGrant | LegacyCarrotPermission[] | null,
-): CarrotPermissionGrant {
+  defaults?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
+  overrides?: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null,
+): RemotePluginPermissionGrant {
   const base = normalizeCarrotPermissions(defaults);
   const extra = normalizeCarrotPermissions(overrides);
   return {
@@ -103,34 +103,34 @@ export function mergeCarrotPermissions(
 }
 
 export function hasHostPermission(
-  input: CarrotPermissionGrant | LegacyCarrotPermission[] | null | undefined,
+  input: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null | undefined,
   permission: HostPermission,
 ): boolean {
   return normalizeCarrotPermissions(input).host?.[permission] === true;
 }
 
 export function hasBunPermission(
-  input: CarrotPermissionGrant | LegacyCarrotPermission[] | null | undefined,
+  input: RemotePluginPermissionGrant | LegacyRemotePluginPermission[] | null | undefined,
   permission: BunPermission,
 ): boolean {
   return normalizeCarrotPermissions(input).bun?.[permission] === true;
 }
 
 export function toBunWorkerPermissions(
-  permissions: CarrotPermissionGrant,
-): CarrotBunWorkerPermissions {
+  permissions: RemotePluginPermissionGrant,
+): RemotePluginBunWorkerPermissions {
   const normalized = normalizeCarrotPermissions(permissions);
   return Object.fromEntries(
     BUN_PERMISSIONS.map((permission) => [
       permission,
       normalized.bun?.[permission] === true,
     ]),
-  ) as CarrotBunWorkerPermissions;
+  ) as RemotePluginBunWorkerPermissions;
 }
 
 export function parseCarrotPermissionTag(
   tag: string,
-): CarrotPermissionTag | null {
+): RemotePluginPermissionTag | null {
   const parts = tag.split(":");
   if (parts.length !== 2) return null;
   const [scope, value] = parts;
@@ -146,6 +146,6 @@ export function parseCarrotPermissionTag(
   return null;
 }
 
-export function isCarrotPermissionTag(tag: string): tag is CarrotPermissionTag {
+export function isCarrotPermissionTag(tag: string): tag is RemotePluginPermissionTag {
   return parseCarrotPermissionTag(tag) !== null;
 }

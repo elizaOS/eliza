@@ -4,9 +4,9 @@ import {
   diffCarrotPermissions,
   getCarrotManifestPermissionTags,
 } from "./manifest.js";
-import type { CarrotManifest } from "./types.js";
+import type { RemotePluginManifest } from "./types.js";
 
-const manifest: CarrotManifest = {
+const manifest: RemotePluginManifest = {
   id: "bunny.search",
   name: "Search",
   version: "0.1.0",
@@ -70,8 +70,8 @@ describe("carrot manifests", () => {
 
     expect(request).toEqual({
       requestId: "req-1",
-      carrotId: "bunny.search",
-      carrotName: "Search",
+      remotePluginId: "bunny.search",
+      remotePluginName: "Search",
       version: "0.1.0",
       sourceKind: "local",
       sourceLabel: "/tmp/search",

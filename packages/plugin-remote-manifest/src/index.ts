@@ -1,13 +1,13 @@
 export type {
-  CarrotConsentRequestInput,
-  CarrotPermissionDiff,
+  RemotePluginConsentRequestInput,
+  RemotePluginPermissionDiff,
 } from "./manifest.js";
 export {
   buildCarrotPermissionConsentRequest,
   diffCarrotPermissions,
   getCarrotManifestPermissionTags,
 } from "./manifest.js";
-export type { CarrotBunWorkerPermissions } from "./permissions.js";
+export type { RemotePluginBunWorkerPermissions } from "./permissions.js";
 export {
   flattenCarrotPermissions,
   hasBunPermission,
@@ -19,16 +19,16 @@ export {
   toBunWorkerPermissions,
 } from "./permissions.js";
 export type {
-  CarrotStorePaths,
-  CarrotStoreSnapshot,
+  RemotePluginStorePaths,
+  RemotePluginStoreSnapshot,
   InstalledCarrot,
   InstalledCarrotSnapshot,
   InstallPrebuiltCarrotOptions,
 } from "./store.js";
 export {
-  assertCarrotPayload,
+  assertRemotePluginPayload,
   buildCarrotRuntimeContext,
-  CarrotStoreError,
+  RemotePluginStoreError,
   ensureCarrotSourceDirectory,
   getCarrotStorePaths,
   installPrebuiltCarrot,
@@ -53,24 +53,24 @@ export {
 } from "./store.js";
 export type {
   BunPermission,
-  CarrotDependencyMap,
-  CarrotInstallRecord,
-  CarrotInstallSource,
-  CarrotInstallStatus,
-  CarrotIsolation,
-  CarrotListEntry,
-  CarrotManifest,
-  CarrotMode,
-  CarrotPermissionConsentRequest,
-  CarrotPermissionGrant,
-  CarrotPermissionTag,
-  CarrotRegistry,
-  CarrotRemoteUI,
-  CarrotRuntimeContext,
-  CarrotViewManifest,
-  CarrotViewRPC,
-  CarrotWorkerManifest,
-  CarrotWorkerMessage,
+  RemotePluginDependencyMap,
+  RemotePluginInstallRecord,
+  RemotePluginInstallSource,
+  RemotePluginInstallStatus,
+  RemotePluginIsolation,
+  RemotePluginListEntry,
+  RemotePluginManifest,
+  RemotePluginViewMode,
+  RemotePluginPermissionConsentRequest,
+  RemotePluginPermissionGrant,
+  RemotePluginPermissionTag,
+  RemotePluginRegistry,
+  RemotePluginRemoteUI,
+  RemotePluginRuntimeContext,
+  RemotePluginViewManifest,
+  RemotePluginViewRPC,
+  RemotePluginWorkerManifest,
+  RemotePluginWorkerMessage,
   HostAction,
   HostActionMessage,
   HostPermission,
@@ -81,7 +81,7 @@ export type {
   JsonObject,
   JsonPrimitive,
   JsonValue,
-  LegacyCarrotPermission,
+  LegacyRemotePluginPermission,
   WorkerEventMessage,
   WorkerInitMessage,
   WorkerReadyMessage,
@@ -90,11 +90,11 @@ export type {
 } from "./types.js";
 export {
   BUN_PERMISSIONS,
-  CARROT_ISOLATIONS,
+  REMOTE_PLUGIN_ISOLATIONS,
   HOST_PERMISSIONS,
 } from "./types.js";
 export type {
-  CarrotManifestValidationIssue,
-  CarrotManifestValidationResult,
+  RemotePluginManifestValidationIssue,
+  RemotePluginManifestValidationResult,
 } from "./validation.js";
 export { validateCarrotManifest } from "./validation.js";

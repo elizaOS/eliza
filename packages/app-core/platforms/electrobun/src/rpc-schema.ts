@@ -13,11 +13,11 @@
  */
 
 import type {
-  CarrotListEntry,
-  CarrotPermissionGrant,
-  CarrotStoreSnapshot,
+  RemotePluginListEntry,
+  RemotePluginPermissionGrant,
+  RemotePluginStoreSnapshot,
   InstalledCarrotSnapshot,
-} from "@elizaos/electrobun-carrots";
+} from "@elizaos/plugin-remote-manifest";
 import type { RPCSchema } from "electrobun/bun";
 
 // ============================================================================
@@ -761,12 +761,12 @@ export interface CarrotWorkerStatus {
 export interface CarrotInstallFromDirectoryRequest {
   sourceDir: string;
   devMode?: boolean;
-  permissionsGranted?: CarrotPermissionGrant;
+  permissionsGranted?: RemotePluginPermissionGrant;
 }
 
 export interface CarrotUninstallResult {
   removed: boolean;
-  carrot: CarrotListEntry | null;
+  carrot: RemotePluginListEntry | null;
 }
 
 export interface CarrotLogsSnapshot {
@@ -1041,11 +1041,11 @@ export type ElizaDesktopRPCSchema = {
       };
       carrotList: {
         params: undefined;
-        response: { carrots: CarrotListEntry[] };
+        response: { carrots: RemotePluginListEntry[] };
       };
       carrotGetStoreSnapshot: {
         params: undefined;
-        response: CarrotStoreSnapshot;
+        response: RemotePluginStoreSnapshot;
       };
       carrotGet: {
         params: { id: string };
@@ -2038,7 +2038,7 @@ export type ElizaDesktopRPCSchema = {
       desktopManagedWindowsChanged: {
         windows: DesktopManagedWindowSnapshot[];
       };
-      carrotStoreChanged: { snapshot: CarrotStoreSnapshot };
+      carrotStoreChanged: { snapshot: RemotePluginStoreSnapshot };
       carrotWorkerChanged: { status: CarrotWorkerStatus };
 
       // Canvas: Window events
