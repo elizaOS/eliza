@@ -1713,13 +1713,9 @@ function parsePlatformReplyReferenceBlock(
 ): PlatformReplyReference | null {
 	if (!text) return null;
 	const lines = text.replace(/\r\n/g, "\n").split("\n");
-	let start = -1;
-	for (let index = lines.length - 1; index >= 0; index--) {
-		if (lines[index]?.trim() === PLATFORM_REPLY_REFERENCE_START) {
-			start = index;
-			break;
-		}
-	}
+	const start = lines.findLastIndex(
+		(line) => line.trim() === PLATFORM_REPLY_REFERENCE_START,
+	);
 	if (start === -1) return null;
 	const end = lines.findIndex(
 		(line, index) =>

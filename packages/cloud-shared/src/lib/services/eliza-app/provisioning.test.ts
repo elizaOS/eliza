@@ -18,10 +18,31 @@ mock.module("../../../db/repositories/credit-transactions", () => ({
   },
 }));
 
+class InsufficientCreditsError extends Error {
+  constructor(
+    public readonly required: number,
+    public readonly available: number,
+    public readonly reason?: string,
+  ) {
+    super(
+      `Insufficient credits. Required: $${required.toFixed(4)}, Available: $${available.toFixed(4)}`,
+    );
+    this.name = "InsufficientCreditsError";
+  }
+}
+
+class CreditsService {}
+
 mock.module("../credits", () => ({
   creditsService: {
     addCredits,
   },
+  CreditsService,
+  InsufficientCreditsError,
+  COST_BUFFER: 1.5,
+  MIN_RESERVATION: 0.000001,
+  EPSILON: 0.0000001,
+  DEFAULT_OUTPUT_TOKENS: 500,
 }));
 
 mock.module("../eliza-sandbox", () => ({
