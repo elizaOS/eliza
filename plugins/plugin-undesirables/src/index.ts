@@ -25,6 +25,7 @@ import type {
   Plugin,
   Action,
   Provider,
+  Evaluator,
   IAgentRuntime,
   Memory,
   State,
@@ -46,7 +47,9 @@ import { MemeTrendService } from "./services.js";
 
 const ORACLE_BASE_URL = "https://oracle.the-undesirables.com";
 const ORACLE_SEARCH_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/search`;
+const ORACLE_MARKET_ENDPOINT = `${ORACLE_BASE_URL}/api/v1/market`;
 const SCATTER_MINT_URL = "https://scatter.art/the-undesirables";
+const PLUGIN_VERSION = "2.4.0";
 const COLLECTION_TOTAL = 4444;
 const MINTED_COUNT = 273;
 
@@ -871,67 +874,95 @@ const riskAssessmentAction: Action = {
 // PROVIDERS
 // ============================================================
 
+/** Shared fetch helper with timeout and error handling */
+async function oracleFetch(url: string): Promise<Record<string, unknown> | null> {
+  try {
+    const response = await fetch(url, {
+      method: "GET",
+      headers: { "User-Agent": `plugin-undesirables/${PLUGIN_VERSION}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!response.ok) return null;
+    return await response.json() as Record<string, unknown>;
+  } catch (err: unknown) {
+    const msg = err instanceof Error ? err.message : "Unknown";
+    console.error(`[Undesirables Oracle] Fetch failed: ${msg}`);
+    return null;
+  }
+}
+
 /**
- * Oracle Provider — Fetches live TCG market data from the free search endpoint.
+ * Oracle Provider — Fetches live TCG market data from free endpoints.
  * Available to ALL plugin users (no auth, no cost).
- * Injects real product prices into the agent's context window.
+ *
+ * Two data sources:
+ * - /api/v1/search — product-specific pricing (triggered by card/market keywords)
+ * - /api/v1/market — daily market snapshot with top cards and totals
  */
 const oracleProvider: Provider = {
   name: "undesirables-oracle",
-  description: "Live TCG market intelligence from the Undesirables Oracle API (427K+ products, real prices)",
+  description: "Live TCG market intelligence from the Undesirables Oracle API (370K+ products, real prices, daily snapshots)",
   get: async (runtime: IAgentRuntime, message: Memory, _state: State): Promise<ProviderResult> => {
     const text = message?.content?.text || "";
     if (!text || text.length < 3) {
       return { text: "" };
     }
 
-    // Extract potential product/card names from the message
-    const marketKeywords = ["price", "worth", "value", "cost", "market", "card", "grade",
+    const lower = text.toLowerCase();
+    const searchKeywords = ["price", "worth", "value", "cost", "card", "grade",
       "pokemon", "charizard", "pikachu", "magic", "yugioh", "yu-gi-oh", "tcg",
-      "psa", "beckett", "bgs", "cgc", "buy", "sell", "invest"];
-    const hasMarketIntent = marketKeywords.some(kw => text.toLowerCase().includes(kw));
+      "psa", "beckett", "bgs", "cgc"];
+    const marketKeywords = ["market", "top cards", "most expensive", "trending",
+      "snapshot", "overview", "tcg market", "card market"];
 
-    if (!hasMarketIntent) {
+    const wantSearch = searchKeywords.some(kw => lower.includes(kw));
+    const wantSnapshot = marketKeywords.some(kw => lower.includes(kw));
+
+    if (!wantSearch && !wantSnapshot) {
       return { text: "" };
     }
 
-    try {
+    const parts: string[] = [];
+
+    // Product search
+    if (wantSearch) {
       const searchTerms = text.replace(/[^a-zA-Z0-9\s-]/g, "").trim().slice(0, 100);
-      const url = `${ORACLE_SEARCH_ENDPOINT}?query=${encodeURIComponent(searchTerms)}&limit=5`;
-      const response = await fetch(url, {
-        method: "GET",
-        headers: { "User-Agent": "plugin-undesirables/2.3.0" },
-        signal: AbortSignal.timeout(8000),
-      });
-
-      if (!response.ok) {
-        return { text: "" };
-      }
-
-      const data = await response.json() as Record<string, unknown>;
+      const data = await oracleFetch(`${ORACLE_SEARCH_ENDPOINT}?query=${encodeURIComponent(searchTerms)}&limit=5`);
       const results = (data?.data as Record<string, unknown>)?.results as Array<Record<string, unknown>> || [];
 
-      if (results.length === 0) {
-        return { text: "" };
+      if (results.length > 0) {
+        const formatted = results.map((r: Record<string, unknown>) =>
+          `• ${r.name} — Market: $${Number(r.market_price || 0).toFixed(2)} | Low: $${Number(r.low_price || 0).toFixed(2)} | Mid: $${Number(r.mid_price || 0).toFixed(2)} | High: $${Number(r.high_price || 0).toFixed(2)} (${r.price_date})`
+        ).join("\n");
+        parts.push(`[PRODUCT SEARCH — ${results.length} results]\n${formatted}`);
       }
+    }
 
-      const formatted = results.map((r: Record<string, unknown>) =>
-        `• ${r.name} — Market: $${Number(r.market_price || 0).toFixed(2)} | Low: $${Number(r.low_price || 0).toFixed(2)} | Mid: $${Number(r.mid_price || 0).toFixed(2)} | High: $${Number(r.high_price || 0).toFixed(2)} (${r.price_date})`
-      ).join("\n");
+    // Market snapshot
+    if (wantSnapshot) {
+      const data = await oracleFetch(ORACLE_MARKET_ENDPOINT);
+      if (data?.status === "ok") {
+        const mktData = data.data as Record<string, unknown>;
+        const topCards = (mktData?.top_cards as Array<Record<string, unknown>> || []).slice(0, 5);
+        const totalProducts = mktData?.total_products || "?";
+        const withPricing = mktData?.with_pricing || "?";
 
-      return {
-        text: `[ORACLE — LIVE MARKET DATA]
-Source: oracle.the-undesirables.com (427K+ products indexed)
-Query matched ${results.length} products:
-${formatted}
+        if (topCards.length > 0) {
+          const formatted = topCards.map((c: Record<string, unknown>) =>
+            `• ${c.name} — $${Number(c.market_price || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })} (${c.date})`
+          ).join("\n");
+          parts.push(`[MARKET SNAPSHOT — ${data.game || "TCG"}]\nTotal products indexed: ${totalProducts} (${withPricing} with pricing)\nTop cards by market price:\n${formatted}`);
+        }
+      }
+    }
 
-Use this real market data to inform your response. These are actual prices, not estimates.`,
-      };
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Unknown";
-      console.error(`[Undesirables Oracle] Fetch failed: ${msg}`);
+    if (parts.length === 0) {
       return { text: "" };
     }
+
+    return {
+      text: `[ORACLE — LIVE MARKET DATA]\nSource: oracle.the-undesirables.com\n\n${parts.join("\n\n")}\n\nThis is real market data from live indexes. Use it to inform your response.`,
+    };
   },
 };
 
@@ -1004,6 +1035,92 @@ Website: https://the-undesirables.com${demoNotice}`,
 };
 
 // ============================================================
+// EVALUATORS
+// ============================================================
+
+/**
+ * Market Intelligence Evaluator
+ *
+ * Runs passively on every message. When the conversation touches
+ * market-related topics, it auto-enriches the agent's context with
+ * live data from the Oracle's free endpoints.
+ *
+ * This is what makes the plugin "ambient intelligence" — the agent
+ * becomes market-aware without anyone explicitly calling an action.
+ */
+const marketIntelligenceEvaluator: Evaluator = {
+  name: "UNDESIRABLE_MARKET_INTELLIGENCE",
+  description:
+    "Passively monitors conversations for market-related topics and enriches " +
+    "agent context with live TCG market data from the Oracle API.",
+  alwaysRun: true,
+  similes: [
+    "MARKET_ENRICHMENT",
+    "PRICE_CONTEXT",
+    "TCG_AWARENESS",
+  ],
+  examples: [
+    {
+      prompt: "User mentions a specific trading card by name in conversation",
+      messages: [
+        { name: "{{user1}}", content: { text: "I just pulled a Charizard from a pack!" } } as ActionExample,
+        { name: "{{agentName}}", content: { text: "That's a great pull! Based on current market data..." } } as ActionExample,
+      ],
+      outcome: "The evaluator detected a TCG card mention and enriched the response with live Charizard pricing data from oracle.the-undesirables.com.",
+    },
+  ],
+  validate: async (_runtime: IAgentRuntime, message: Memory): Promise<boolean> => {
+    const text = message?.content?.text?.toLowerCase() || "";
+    if (text.length < 5) return false;
+
+    const triggerKeywords = [
+      "card", "pokemon", "charizard", "pikachu", "magic the gathering",
+      "yugioh", "yu-gi-oh", "tcg", "psa", "beckett", "grading",
+      "booster", "pack", "sealed", "collection", "rare", "holographic",
+      "first edition", "1st edition", "mint condition", "gem mint",
+    ];
+    return triggerKeywords.some(kw => text.includes(kw));
+  },
+  handler: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    _state?: State,
+    _options?: Record<string, unknown>,
+    callback?: HandlerCallback
+  ): Promise<ActionResult | undefined> => {
+    const text = message?.content?.text || "";
+
+    // Extract card-related terms for a targeted search
+    const searchTerms = text.replace(/[^a-zA-Z0-9\s-]/g, "").trim().slice(0, 80);
+    const data = await oracleFetch(`${ORACLE_SEARCH_ENDPOINT}?query=${encodeURIComponent(searchTerms)}&limit=3`);
+    const results = (data?.data as Record<string, unknown>)?.results as Array<Record<string, unknown>> || [];
+
+    if (results.length === 0) {
+      return { success: true, text: "No matching products found in Oracle index." };
+    }
+
+    const enrichment = results.map((r: Record<string, unknown>) =>
+      `${r.name}: $${Number(r.market_price || 0).toFixed(2)} market / $${Number(r.mid_price || 0).toFixed(2)} mid (${r.price_date})`
+    ).join("; ");
+
+    console.log(`[Undesirables Evaluator] Enriched context with ${results.length} products: ${enrichment.slice(0, 100)}...`);
+
+    if (callback) {
+      await callback({
+        text: `📊 Market context: ${enrichment}`,
+        source: "plugin-undesirables-evaluator",
+      });
+    }
+
+    return {
+      success: true,
+      text: `Enriched with ${results.length} live market prices`,
+      data: { products: results.length, enrichment },
+    };
+  },
+};
+
+// ============================================================
 // PLUGIN EXPORT
 // ============================================================
 
@@ -1012,16 +1129,16 @@ const undesirablePlugin: Plugin = {
   description:
     "The Undesirables — 4,444 autonomous AI agents on Ethereum. " +
     "Pioneers 'Personality-as-Code' via verifiable soul workspaces. " +
-    "Live TCG Oracle data (427K+ products), personality-driven market analysis, " +
-    "Business Pilot, whale tracking, and 24 skill matchers. " +
-    "NFT holders get unique souls; everyone gets the demo + real market data.",
+    "Live TCG Oracle data (370K+ products), daily market snapshots, " +
+    "passive market intelligence evaluator, personality-driven analysis, " +
+    "and 24 skill matchers. Zero config required — demo soul included.",
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     const validation = validateUndesirableConfig(runtime);
     if (!validation.valid) {
-      console.log(`🐸 Undesirables: No workspace set — demo soul will be loaded automatically.`);
+      console.log(`🐸 Undesirables v${PLUGIN_VERSION}: Demo soul loaded automatically.`);
       console.log(`   Mint a unique soul at ${SCATTER_MINT_URL}`);
     } else {
-      console.log(`🐸 Undesirable soul workspace loaded: ${validation.workspacePath}`);
+      console.log(`🐸 Undesirables v${PLUGIN_VERSION}: Soul workspace loaded from ${validation.workspacePath}`);
     }
   },
   actions: [
@@ -1036,7 +1153,7 @@ const undesirablePlugin: Plugin = {
     riskAssessmentAction,
   ],
   providers: [oracleProvider, soulProvider],
-  evaluators: [],
+  evaluators: [marketIntelligenceEvaluator],
   services: [MemeTrendService],
 };
 
