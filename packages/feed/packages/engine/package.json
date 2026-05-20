@@ -36,7 +36,6 @@
     "xml2js": "^0.6.2"
   },
   "peerDependencies": {
-    "@feed/training": "workspace:*",
     "drizzle-orm": "^0.44.7",
     "openai": "^6.8.1",
     "dotenv": "^16.4.5",

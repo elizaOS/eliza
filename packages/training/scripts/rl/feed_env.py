@@ -120,7 +120,7 @@ class FeedEnvConfig(BaseEnvConfig):
 
     reward_weight_profile: str = Field(
         default_factory=lambda: os.getenv("REWARD_WEIGHT_PROFILE", "default"),
-        description="Reward weight profile name from packages/training/python/config/reward_weights.yaml",
+        description="Reward weight profile name from packages/training/config/reward_weights.yaml",
     )
 
     # RLAIF Judge settings (Legacy - kept for config compatibility)

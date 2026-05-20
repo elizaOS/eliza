@@ -39,8 +39,6 @@
       "@feed/a2a": ["../a2a/src/index.ts"],
       "@feed/a2a/*": ["../a2a/src/*"],
       "@feed/mcp": ["../mcp/src/index.ts"],
-      "@feed/training": ["../training/src/index.ts"],
-      "@feed/training/*": ["../training/src/*"],
       "@feed/web/*": ["../../apps/web/*"],
       "@feed/testing": ["./src/index.ts"],
       "@feed/testing/*": ["./*"]
@@ -75,7 +73,6 @@
     { "path": "../api" },
     { "path": "../agents" },
     { "path": "../a2a" },
-    { "path": "../mcp" },
-    { "path": "../training" }
+    { "path": "../mcp" }
   ]
 }
