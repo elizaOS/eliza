@@ -77,6 +77,14 @@ describe("connectorEntrySchema accounts field", () => {
     });
     expect(parsed.accounts?.agent?.credentialKeys).toEqual([]);
   });
+
+  it("rejects an empty accounts object — at least one side must be defined", () => {
+    const result = connectorEntrySchema.safeParse({
+      ...baseConnector,
+      accounts: {},
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("normalizeConnectorAuth (legacy auth → accounts.agent)", () => {
@@ -112,17 +120,49 @@ describe("normalizeConnectorAuth (legacy auth → accounts.agent)", () => {
     expect(normalized.accounts?.agent?.authKind).toBe("none");
   });
 
-  it("leaves explicit accounts untouched even when auth is also declared", () => {
+  it("maps legacy credentials auth to accounts.agent with api-key", () => {
+    const entry = connectorEntrySchema.parse({
+      ...baseConnector,
+      auth: { kind: "credentials", credentialKeys: ["USERNAME", "PASSWORD"] },
+    });
+    const normalized = normalizeConnectorAuth(entry);
+    expect(normalized.accounts?.agent?.authKind).toBe("api-key");
+    expect(normalized.accounts?.agent?.credentialKeys).toEqual([
+      "USERNAME",
+      "PASSWORD",
+    ]);
+  });
+
+  it("preserves an explicit accounts.agent when also given legacy auth", () => {
     const entry = connectorEntrySchema.parse({
       ...baseConnector,
       auth: { kind: "oauth", credentialKeys: ["FOO_TOKEN"] },
       accounts: {
-        owner: { supported: true, authKind: "local-app" },
+        agent: { supported: true, authKind: "local-app" },
       },
     });
     const normalized = normalizeConnectorAuth(entry);
-    expect(normalized.accounts?.owner?.authKind).toBe("local-app");
-    expect(normalized.accounts?.agent).toBeUndefined();
+    expect(normalized.accounts?.agent?.authKind).toBe("local-app");
+  });
+
+  it("fills accounts.agent from legacy auth when accounts only declares owner (partial migration)", () => {
+    const entry = connectorEntrySchema.parse({
+      ...baseConnector,
+      auth: { kind: "token", credentialKeys: ["LEGACY_TOKEN"] },
+      accounts: {
+        owner: {
+          supported: true,
+          authKind: "oauth-cloud",
+          credentialKeys: [],
+        },
+      },
+    });
+    const normalized = normalizeConnectorAuth(entry);
+    expect(normalized.accounts?.owner?.authKind).toBe("oauth-cloud");
+    expect(normalized.accounts?.agent?.authKind).toBe("api-key");
+    expect(normalized.accounts?.agent?.credentialKeys).toEqual([
+      "LEGACY_TOKEN",
+    ]);
   });
 
   it("is a no-op when neither auth nor accounts is declared", () => {
