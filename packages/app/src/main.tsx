@@ -105,6 +105,7 @@ import {
 import { AppProvider } from "@elizaos/ui/state";
 import { applyUiTheme, loadUiTheme } from "@elizaos/ui/state/persistence";
 import { ELIZA_DEFAULT_THEME } from "@elizaos/ui/themes";
+import * as React from "react";
 import { type ComponentType, lazy, StrictMode, Suspense } from "react";
 import { createRoot } from "react-dom/client";
 import {

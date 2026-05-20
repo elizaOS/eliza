@@ -1,11 +1,12 @@
-import { client, type AppRunSummary } from "@elizaos/ui/api";
 import {
+  type AppOperatorSurfaceProps,
+  type AppRunSummary,
+  client,
   type GameOperatorAction,
   type GameOperatorEvent,
   GameOperatorShell,
-} from "@elizaos/ui/components/apps/surfaces/GameOperatorShell";
-import type { AppOperatorSurfaceProps } from "@elizaos/ui/components/apps/surfaces/types";
-import { useApp } from "@elizaos/ui/state";
+  useApp,
+} from "@elizaos/ui";
 import { type CSSProperties, useCallback, useMemo, useState } from "react";
 
 type RunEventSummary = {
