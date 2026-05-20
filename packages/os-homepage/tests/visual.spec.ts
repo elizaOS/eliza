@@ -24,6 +24,32 @@ const VIEWPORTS = [
 
 async function prepare(page: Page) {
   await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(async () => {
+    const wait = (ms: number) =>
+      new Promise((resolve) => setTimeout(resolve, ms));
+    const step = Math.max(window.innerHeight, 600);
+    const height = Math.max(
+      document.body.scrollHeight,
+      document.documentElement.scrollHeight,
+    );
+
+    for (let y = 0; y < height; y += step) {
+      window.scrollTo(0, y);
+      await wait(50);
+    }
+
+    await Promise.all(
+      Array.from(document.images).map((image) => {
+        if (image.complete) return Promise.resolve();
+        return new Promise((resolve) => {
+          image.addEventListener("load", resolve, { once: true });
+          image.addEventListener("error", resolve, { once: true });
+        });
+      }),
+    );
+
+    window.scrollTo(0, 0);
+  });
   await page.waitForTimeout(250);
 }
 

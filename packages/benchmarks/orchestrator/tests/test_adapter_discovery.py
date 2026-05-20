@@ -981,6 +981,23 @@ def test_audio_benchmark_registry_commands_and_scores(tmp_path: Path) -> None:
         )
 
 
+def test_vision_language_multimodal_model_detection_allows_cerebras_vision_models() -> None:
+    assert (
+        orchestrator_adapters._is_vision_language_multimodal_model(
+            provider="cerebras",
+            model="kimi-k2-vl",
+        )
+        is True
+    )
+    assert (
+        orchestrator_adapters._is_vision_language_multimodal_model(
+            provider="cerebras",
+            model="gpt-oss-120b",
+        )
+        is False
+    )
+
+
 def test_taubench_extracts_pass_hat_k_dict_shape() -> None:
     score = _score_from_taubench_json(
         {
