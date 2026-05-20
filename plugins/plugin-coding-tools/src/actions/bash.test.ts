@@ -1,4 +1,5 @@
 import * as fs from "node:fs/promises";
+import { createServer } from "node:http";
 import * as os from "node:os";
 import * as path from "node:path";
 import type { IAgentRuntime, Memory, UUID } from "@elizaos/core";
@@ -9,6 +10,7 @@ import { SANDBOX_SERVICE, SESSION_CWD_SERVICE } from "../types.js";
 import {
   resolveCryptoSpotPriceCommand,
   resolveDiskInspectionCommand,
+  resolveLocalStatusCommand,
   shellAction,
 } from "./bash.js";
 
@@ -477,6 +479,32 @@ describe("shellAction", () => {
     expect(result).toEqual({ command, rewritten: false });
   });
 
+  it("canonicalizes local bot health endpoint probes", () => {
+    const result = resolveLocalStatusCommand({
+      messageText:
+        "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+      command: "curl -s http://localhost:3000/health",
+    });
+
+    expect(result.rewritten).toBe(true);
+    expect(result.kind).toBe("health");
+    expect(result.command).toContain("ELIZA_API_PORT");
+    expect(result.command).toContain("/api/health");
+  });
+
+  it("canonicalizes RAM status probes", () => {
+    const result = resolveLocalStatusCommand({
+      messageText: "how much RAM is free right now? concise",
+      command: "top -b -n 1 | head",
+    });
+
+    expect(result).toEqual({
+      command: "free -m",
+      kind: "memory",
+      rewritten: true,
+    });
+  });
+
   it("adds user-facing text for neutral crypto spot-price JSON", async () => {
     const { runtime } = await makeRuntime();
     const result = await shellAction.handler?.(
@@ -496,6 +524,64 @@ describe("shellAction", () => {
     expect(result.text).toContain('{"bitcoin":{"usd":77296}}');
     expect(result.userFacingText).toBe(
       "BTC price: $77,296.00 USD (source: CoinGecko).",
+    );
+  });
+
+  it("adds user-facing text for local health JSON", async () => {
+    const previousPort = process.env.ELIZA_API_PORT;
+    const server = createServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end('{"ready":true,"plugins":{"loaded":24,"failed":0}}');
+    });
+    await new Promise<void>((resolve) =>
+      server.listen(0, "127.0.0.1", resolve),
+    );
+    const address = server.address();
+    if (!address || typeof address === "string") {
+      server.close();
+      throw new Error("test server did not expose a TCP port");
+    }
+    process.env.ELIZA_API_PORT = String(address.port);
+    const { runtime } = await makeRuntime();
+    try {
+      const result = await shellAction.handler?.(
+        runtime,
+        makeMessage(
+          "11111111-aaaa-bbbb-cccc-545454545454",
+          "check the local bot health endpoint and summarize ready status and plugin counts, concise",
+        ),
+        undefined,
+        {
+          command: "curl -s http://localhost:3000/health",
+        },
+      );
+
+      expect(result.success).toBe(true);
+      expect(result.userFacingText).toBe(
+        "Health: ready=true; plugins loaded=24, failed=0.",
+      );
+    } finally {
+      if (previousPort === undefined) delete process.env.ELIZA_API_PORT;
+      else process.env.ELIZA_API_PORT = previousPort;
+      server.close();
+    }
+  });
+
+  it("adds user-facing text for RAM status output", async () => {
+    const { runtime } = await makeRuntime();
+    const result = await shellAction.handler?.(
+      runtime,
+      makeMessage(
+        "11111111-aaaa-bbbb-cccc-555555555555",
+        "how much RAM is free right now? concise",
+      ),
+      undefined,
+      { command: "top -b -n 1 | head" },
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.userFacingText).toMatch(
+      /^Free RAM: \d+ MB \(\d+ MB available\) of \d+ MB total\.$/,
     );
   });
 

@@ -58,6 +58,14 @@ interface DiskInspectionCommandResolution {
   rewritten: boolean;
 }
 
+type LocalStatusKind = "health" | "memory";
+
+interface LocalStatusCommandResolution {
+  command: string;
+  kind?: LocalStatusKind;
+  rewritten: boolean;
+}
+
 type ShellHistoryEntryLike = {
   command?: unknown;
 };
@@ -90,6 +98,8 @@ const CRYPTO_SPOT_ASSETS: CryptoSpotAsset[] = [
 
 const BOUNDED_DISK_INSPECTION_COMMAND =
   'df -h / /home; printf \'\\n--- cleanup candidates ---\\n\'; for p in /tmp /var/tmp "$HOME/.cache" "$HOME/.bun" "$HOME/.npm" "$HOME/.local/share/Trash"; do [ -e "$p" ] && du -sh "$p" 2>/dev/null; done | sort -hr | head -n 10';
+const LOCAL_HEALTH_COMMAND = `PORT="\${ELIZA_API_PORT:-\${ELIZA_PORT:-\${API_PORT:-\${SERVER_PORT:-2138}}}}"; curl -fsS "http://127.0.0.1:\${PORT}/api/health"`;
+const LOCAL_MEMORY_COMMAND = "free -m";
 
 function normalizeShellSubaction(
   value: string | undefined,
@@ -255,6 +265,48 @@ export function resolveDiskInspectionCommand(args: {
     return { command: args.command, rewritten: false };
   }
   return { command: BOUNDED_DISK_INSPECTION_COMMAND, rewritten: true };
+}
+
+function requestedLocalStatusKind(text: string): LocalStatusKind | undefined {
+  const normalized = text.toLowerCase().replace(/\s+/g, " ").trim();
+  if (!normalized) return undefined;
+  if (
+    /\b(?:health endpoint|api\/health|ready status|plugin counts?|bot health|runtime health)\b/.test(
+      normalized,
+    ) &&
+    /\b(?:local|bot|runtime|ready|plugins?)\b/.test(normalized)
+  ) {
+    return "health";
+  }
+  if (
+    /\b(?:ram|memory)\b/.test(normalized) &&
+    /\b(?:free|available|right now|current|currently)\b/.test(normalized)
+  ) {
+    return "memory";
+  }
+  return undefined;
+}
+
+export function resolveLocalStatusCommand(args: {
+  command: string;
+  messageText: string;
+}): LocalStatusCommandResolution {
+  const kind = requestedLocalStatusKind(args.messageText);
+  if (kind === "health") {
+    return {
+      command: LOCAL_HEALTH_COMMAND,
+      kind,
+      rewritten: args.command !== LOCAL_HEALTH_COMMAND,
+    };
+  }
+  if (kind === "memory") {
+    return {
+      command: LOCAL_MEMORY_COMMAND,
+      kind,
+      rewritten: args.command !== LOCAL_MEMORY_COMMAND,
+    };
+  }
+  return { command: args.command, rewritten: false };
 }
 
 function shouldIgnoreUngroundedRuntimeCwd(args: {
@@ -488,6 +540,50 @@ function cryptoSpotUserFacingText(args: {
   });
   if (!result) return undefined;
   return `${asset.symbol} price: ${formatUsd(result.price)} USD (source: ${result.source}).`;
+}
+
+function healthUserFacingText(stdout: string): string | undefined {
+  const parsed = extractJsonPayload(stdout);
+  if (!parsed || typeof parsed !== "object") return undefined;
+  const record = parsed as Record<string, unknown>;
+  const plugins = record.plugins as Record<string, unknown> | undefined;
+  const ready = record.ready;
+  const loaded = plugins?.loaded;
+  const failed = plugins?.failed;
+  const readyText = typeof ready === "boolean" ? String(ready) : undefined;
+  if (!readyText && loaded === undefined && failed === undefined) {
+    return undefined;
+  }
+  const parts = [`ready=${readyText ?? "unknown"}`];
+  if (loaded !== undefined || failed !== undefined) {
+    parts.push(
+      `plugins loaded=${loaded ?? "unknown"}, failed=${failed ?? "unknown"}`,
+    );
+  }
+  return `Health: ${parts.join("; ")}.`;
+}
+
+function memoryUserFacingText(stdout: string): string | undefined {
+  const memLine = stdout
+    .split(/\r?\n/u)
+    .find((line) => line.trim().toLowerCase().startsWith("mem:"));
+  if (!memLine) return undefined;
+  const parts = memLine.trim().split(/\s+/u);
+  const total = parts[1];
+  const free = parts[3];
+  const available = parts[6];
+  if (!total || !free) return undefined;
+  return `Free RAM: ${free} MB (${available ?? "unknown"} MB available) of ${total} MB total.`;
+}
+
+function localStatusUserFacingText(args: {
+  message: Memory;
+  stdout: string;
+}): string | undefined {
+  const kind = requestedLocalStatusKind(messageText(args.message));
+  if (kind === "health") return healthUserFacingText(args.stdout);
+  if (kind === "memory") return memoryUserFacingText(args.stdout);
+  return undefined;
 }
 
 function formatStreams(
@@ -751,6 +847,16 @@ export const shellAction: Action = {
         `${CODING_TOOLS_LOG_PREFIX} SHELL removed ungrounded runtime directory override; using cwd=${cwd}`,
       );
     }
+    const localStatusCommand = resolveLocalStatusCommand({
+      command,
+      messageText: messageText(message),
+    });
+    if (localStatusCommand.rewritten) {
+      command = localStatusCommand.command;
+      coreLogger.warn(
+        `${CODING_TOOLS_LOG_PREFIX} SHELL replaced local status probe with canonical command`,
+      );
+    }
     const diskCommand = resolveDiskInspectionCommand({
       command,
       messageText: messageText(message),
@@ -849,11 +955,12 @@ export const shellAction: Action = {
       sandbox_backend: result.sandbox,
       signal,
     });
-    const userFacingText = cryptoSpotUserFacingText({
-      message,
-      command,
-      stdout: result.stdout,
-    });
+    const userFacingText =
+      cryptoSpotUserFacingText({
+        message,
+        command,
+        stdout: result.stdout,
+      }) ?? localStatusUserFacingText({ message, stdout: result.stdout });
     return userFacingText ? { ...actionResult, userFacingText } : actionResult;
   },
   examples: [
