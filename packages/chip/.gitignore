@@ -30,6 +30,7 @@ __pycache__/
 *.vcd
 *.fst
 *.log
+!docs/evidence/linux/*.template.log
 *.kicad_prl
 external/
 tools/bin/
