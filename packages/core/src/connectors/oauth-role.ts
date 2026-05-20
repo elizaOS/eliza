@@ -16,7 +16,11 @@
 import { logger } from "../logger";
 import type { ConnectorAccountRole } from "./account-manager";
 
-const CANONICAL_ROLES = new Set<ConnectorAccountRole>(["OWNER", "AGENT", "TEAM"]);
+const CANONICAL_ROLES = new Set<ConnectorAccountRole>([
+	"OWNER",
+	"AGENT",
+	"TEAM",
+]);
 
 /**
  * Reads `requestedRole` from an OAuth flow's metadata and returns it as a
@@ -29,28 +33,28 @@ const CANONICAL_ROLES = new Set<ConnectorAccountRole>(["OWNER", "AGENT", "TEAM"]
  * `plugin:<name>:connector` convention used elsewhere in the codebase.
  */
 export function readRequestedConnectorRole(
-  metadata: Record<string, unknown> | null | undefined,
-  src: string,
+	metadata: Record<string, unknown> | null | undefined,
+	src: string,
 ): ConnectorAccountRole {
-  const requestedRoleRaw = metadata?.requestedRole;
-  if (
-    typeof requestedRoleRaw === "string" &&
-    CANONICAL_ROLES.has(requestedRoleRaw as ConnectorAccountRole)
-  ) {
-    return requestedRoleRaw as ConnectorAccountRole;
-  }
-  // Only surface a diagnostic when something meaningful was supplied but
-  // couldn't be matched. Skip `undefined`, `null`, and empty strings — those
-  // are absent-but-valid states that callers shouldn't have to debug.
-  if (
-    requestedRoleRaw !== undefined &&
-    requestedRoleRaw !== null &&
-    requestedRoleRaw !== ""
-  ) {
-    logger.debug(
-      { src, requestedRoleRaw },
-      "Unrecognised requestedRole in OAuth flow metadata; defaulting to OWNER",
-    );
-  }
-  return "OWNER";
+	const requestedRoleRaw = metadata?.requestedRole;
+	if (
+		typeof requestedRoleRaw === "string" &&
+		CANONICAL_ROLES.has(requestedRoleRaw as ConnectorAccountRole)
+	) {
+		return requestedRoleRaw as ConnectorAccountRole;
+	}
+	// Only surface a diagnostic when something meaningful was supplied but
+	// couldn't be matched. Skip `undefined`, `null`, and empty strings — those
+	// are absent-but-valid states that callers shouldn't have to debug.
+	if (
+		requestedRoleRaw !== undefined &&
+		requestedRoleRaw !== null &&
+		requestedRoleRaw !== ""
+	) {
+		logger.debug(
+			{ src, requestedRoleRaw },
+			"Unrecognised requestedRole in OAuth flow metadata; defaulting to OWNER",
+		);
+	}
+	return "OWNER";
 }

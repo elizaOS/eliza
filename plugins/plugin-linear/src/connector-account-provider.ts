@@ -271,12 +271,8 @@ export function createLinearConnectorAccountProvider(
         throw new Error("Linear viewer payload did not include an organization id or urlKey.");
       }
 
-      const flowMetadata =
-        (request.flow.metadata as Record<string, unknown> | undefined) ?? {};
-      const role = readRequestedConnectorRole(
-        flowMetadata,
-        "plugin:linear:connector",
-      );
+      const flowMetadata = (request.flow.metadata as Record<string, unknown> | undefined) ?? {};
+      const role = readRequestedConnectorRole(flowMetadata, "plugin:linear:connector");
 
       const accountPatch: ConnectorAccountPatch & { provider: string } = {
         provider: LINEAR_PROVIDER_NAME,

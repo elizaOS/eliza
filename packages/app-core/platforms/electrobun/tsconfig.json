@@ -30,9 +30,9 @@
       "@elizaos/app-core": ["../../src/index.ts"],
       "@elizaos/app-core/*": ["../../src/*"],
       "@elizaos/plugin-remote-manifest": [
-        "../../../electrobun-carrots/src/index.ts"
+        "../../../plugin-remote-manifest/src/index.ts"
       ],
-      "@elizaos/plugin-remote-manifest/*": ["../../../electrobun-carrots/src/*"],
+      "@elizaos/plugin-remote-manifest/*": ["../../../plugin-remote-manifest/src/*"],
       "@elizaos/agent": ["../../../agent/src/index.ts"],
       "@elizaos/agent/*": ["../../../agent/src/*"],
       "@elizaos/core": ["../../../core/src/index.node.ts"],

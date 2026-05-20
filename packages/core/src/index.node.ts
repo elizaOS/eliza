@@ -263,6 +263,7 @@ export * from "./services/pairing-integration";
 export * from "./services/pairing-migration";
 export * from "./services/plugin-hooks";
 export * from "./services/relationships-graph-builder";
+export * from "./services/runtime-capability-service";
 export {
 	getTaskSchedulerAdapter,
 	markTaskSchedulerDirty,
@@ -271,7 +272,6 @@ export {
 	stopTaskScheduler,
 	unregisterTaskSchedulerRuntime,
 } from "./services/task-scheduler";
-export * from "./services/runtime-capability-service";
 export * from "./services/tool-policy";
 export * from "./services/trajectories";
 export * from "./services/triggerScheduling";

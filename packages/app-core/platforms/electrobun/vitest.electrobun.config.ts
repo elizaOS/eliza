@@ -8,9 +8,9 @@ const appStewardSrcRoot = path.resolve(
   __dirname,
   "../../../../plugins/plugin-steward-app/src",
 );
-const carrotsSrcRoot = path.resolve(
+const remotePluginSrcRoot = path.resolve(
   __dirname,
-  "../../../electrobun-carrots/src",
+  "../../../plugin-remote-manifest/src",
 );
 const sharedSrcRoot = path.resolve(__dirname, "../../../shared/src");
 
@@ -34,12 +34,12 @@ export default defineConfig({
         replacement: path.join(appStewardSrcRoot, "$1"),
       },
       {
-        find: /^@elizaos\/electrobun-carrots$/,
-        replacement: path.join(carrotsSrcRoot, "index.ts"),
+        find: /^@elizaos\/plugin-remote-manifest$/,
+        replacement: path.join(remotePluginSrcRoot, "index.ts"),
       },
       {
-        find: /^@elizaos\/electrobun-carrots\/(.*)$/,
-        replacement: path.join(carrotsSrcRoot, "$1"),
+        find: /^@elizaos\/plugin-remote-manifest\/(.*)$/,
+        replacement: path.join(remotePluginSrcRoot, "$1"),
       },
       {
         find: /^@elizaos\/shared$/,

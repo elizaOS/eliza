@@ -119,12 +119,17 @@ export class RuntimeCapabilityService
 	private strategies: CapabilityStrategy[];
 	private fallback: ElizaCapabilityRouter;
 
-	constructor(runtime: IAgentRuntime, options: RuntimeCapabilityServiceOptions = {}) {
+	constructor(
+		runtime: IAgentRuntime,
+		options: RuntimeCapabilityServiceOptions = {},
+	) {
 		super(runtime);
 		this.strategies = options.strategies ?? [];
-		this.fallback = options.fallback ?? new UnavailableCapabilityRouter({
-			reason: "no-capability-strategy-configured",
-		});
+		this.fallback =
+			options.fallback ??
+			new UnavailableCapabilityRouter({
+				reason: "no-capability-strategy-configured",
+			});
 	}
 
 	static override async start(

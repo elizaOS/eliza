@@ -164,7 +164,9 @@ function renderState(component: ReactTypes.ReactElement) {
 
 function getElementByText(container: HTMLElement, text: string) {
   const elements = Array.from(container.querySelectorAll<HTMLElement>("*"));
-  const match = elements.find((element) => element.textContent?.trim() === text);
+  const match = elements.find(
+    (element) => element.textContent?.trim() === text,
+  );
   if (!match) {
     throw new Error(`Unable to find element with text: ${text}`);
   }

@@ -352,8 +352,7 @@ export function resolveRemoteCapabilityRouterConfig(
     return typeof env === "string" && env.trim() ? env.trim() : undefined;
   };
   const baseUrl =
-    get("ELIZA_CAPABILITY_ROUTER_URL") ??
-    get("ELIZA_REMOTE_CAPABILITY_URL");
+    get("ELIZA_CAPABILITY_ROUTER_URL") ?? get("ELIZA_REMOTE_CAPABILITY_URL");
   const endpoints = parseEndpointList(
     get("ELIZA_CAPABILITY_ROUTER_URLS"),
     get("ELIZA_CAPABILITY_ROUTER_TOKEN"),
