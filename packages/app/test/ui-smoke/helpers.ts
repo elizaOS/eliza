@@ -521,6 +521,18 @@ export async function installDefaultAppRoutes(page: Page): Promise<void> {
     });
   });
 
+  await page.route("**/api/facewear/status", async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ connected: false, devices: [] }),
+    });
+  });
+
   await page.route("**/api/wallet/market-overview", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
