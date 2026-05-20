@@ -1,4 +1,4 @@
-import { expect, type Locator, test } from "playwright/test";
+import { expect, type APIRequestContext, type Locator, test } from "playwright/test";
 import { releaseData } from "../../src/generated/release-data";
 
 function escapeRegExp(value: string): string {
@@ -22,6 +22,22 @@ async function _expectExternalOrLocal(
   expect(href).toBeTruthy();
   const host = new URL(href ?? "", `https://${productionHost}`).hostname;
   expect([productionHost, "localhost", "127.0.0.1"]).toContain(host);
+}
+
+async function expectReachableHead(
+  request: APIRequestContext,
+  label: string,
+  href: string,
+) {
+  const response = await request.fetch(href, {
+    method: "HEAD",
+    maxRedirects: 5,
+    timeout: 20_000,
+  });
+  expect(
+    response.status(),
+    `${label} should resolve without a broken external target: ${href}`,
+  ).toBeLessThan(400);
 }
 
 test("homepage centers Eliza App downloads and product CTAs", async ({
@@ -117,4 +133,52 @@ test("homepage centers Eliza App downloads and product CTAs", async ({
     "border-radius",
     "0px",
   );
+});
+
+test("homepage live marketing links resolve for cloud, os, release, and downloads", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await expect(
+    page.getByRole("heading", { name: /^Your Eliza, everywhere\.$/ }),
+  ).toBeVisible();
+
+  const links = page.locator("main a, header a, footer a");
+  const hrefs = await links.evaluateAll((anchors) =>
+    anchors
+      .map((anchor) => ({
+        label: anchor.textContent?.replace(/\s+/g, " ").trim() || "link",
+        href: anchor.getAttribute("href"),
+      }))
+      .filter(
+        (link): link is { label: string; href: string } =>
+          Boolean(link.href) && link.href !== "#download",
+      ),
+  );
+
+  const uniqueHrefs = new Map<string, string>();
+  for (const link of hrefs) {
+    const url = new URL(link.href, page.url());
+    if (url.origin === new URL(page.url()).origin) {
+      continue;
+    }
+    uniqueHrefs.set(url.toString(), link.label);
+  }
+
+  expect([...uniqueHrefs.keys()].sort()).toEqual(
+    [
+      "https://elizaos.ai/",
+      "https://www.elizacloud.ai/login?intent=launch",
+      releaseData.release.url,
+      releaseData.release.checksum?.url,
+      ...releaseData.release.downloads.map((download) => download.url),
+    ]
+      .filter((href): href is string => Boolean(href))
+      .sort(),
+  );
+
+  for (const [href, label] of uniqueHrefs) {
+    await expectReachableHead(request, label, href);
+  }
 });

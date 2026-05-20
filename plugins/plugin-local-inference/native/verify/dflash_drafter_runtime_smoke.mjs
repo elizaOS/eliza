@@ -145,6 +145,7 @@ function parseArgs(argv) {
       "Write a short paragraph about speculative decoding.",
     benchDraftMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_MIN || "2",
     benchDraftMax: process.env.ELIZA_DFLASH_BENCH_DRAFT_MAX || "6",
+    benchDraftPMin: process.env.ELIZA_DFLASH_BENCH_DRAFT_P_MIN || "0.1",
     benchTimeoutMs: Number.parseInt(
       process.env.ELIZA_DFLASH_BENCH_TIMEOUT_MS || "600000",
       10,
@@ -186,6 +187,7 @@ function parseArgs(argv) {
     else if (arg === "--bench-prompt") args.benchPrompt = next();
     else if (arg === "--bench-draft-n-min") args.benchDraftMin = next();
     else if (arg === "--bench-draft-n-max") args.benchDraftMax = next();
+    else if (arg === "--bench-draft-p-min") args.benchDraftPMin = next();
     else if (arg === "--bench-timeout-ms")
       args.benchTimeoutMs = Number.parseInt(next(), 10);
     else if (arg === "--bench-report") args.benchReport = next();
@@ -218,6 +220,7 @@ function parseArgs(argv) {
           "  --bench-prompt <text>          Prompt for bench runs (default: speculative decoding paragraph)",
           "  --bench-draft-n-min <N>        Draft min for with-drafter bench pass (default: 2)",
           "  --bench-draft-n-max <N>        Draft max for with-drafter bench pass (default: 6)",
+          "  --bench-draft-p-min <N>        Draft probability floor for with-drafter bench pass (default: 0.1)",
           "  --bench-timeout-ms <N>         Timeout per bench pass (default: 600000)",
           "  --bench-report <path>          Speedup report JSON path (default: packages/inference/reports/dflash-bench/)",
         ].join("\n"),
