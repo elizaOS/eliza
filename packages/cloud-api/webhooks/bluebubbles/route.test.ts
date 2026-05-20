@@ -13,10 +13,12 @@ type RegisterPhoneGatewayDeviceResult = {
   skippedReason?: string;
 };
 
-const registerPhoneGatewayDevice = mock(async (): Promise<RegisterPhoneGatewayDeviceResult> => ({
-  id: "gateway-device-1",
-  registered: true,
-}));
+const registerPhoneGatewayDevice = mock(
+  async (): Promise<RegisterPhoneGatewayDeviceResult> => ({
+    id: "gateway-device-1",
+    registered: true,
+  }),
+);
 
 mock.module("@/lib/services/agent-gateway-router", () => ({
   agentGatewayRouterService: {

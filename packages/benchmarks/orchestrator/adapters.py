@@ -147,7 +147,7 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         "hermes_yc_bench",
         "hermes_swe_env",
     }:
-        return ALL_HARNESSES if _has_hermes_sandbox_backend() else ()
+        return ("hermes",) if _has_hermes_sandbox_backend() else ()
     if benchmark_id == "voicebench":
         return ALL_HARNESSES if _has_voicebench_real_audio_assets() else ()
     if benchmark_id == "voicebench_quality":

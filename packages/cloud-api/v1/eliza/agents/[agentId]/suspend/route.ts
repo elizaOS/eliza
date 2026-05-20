@@ -131,12 +131,8 @@ async function __hono_POST(
 const __hono_app = new Hono<AppEnv>();
 __hono_app.options("/", () => handleCorsOptions(CORS_METHODS));
 __hono_app.post("/", async (c) =>
-  __hono_POST(
-    c.req.raw,
-    c.env,
-    {
-      params: Promise.resolve({ agentId: c.req.param("agentId")! }),
-    },
-  ),
+  __hono_POST(c.req.raw, c.env, {
+    params: Promise.resolve({ agentId: c.req.param("agentId")! }),
+  }),
 );
 export default __hono_app;
