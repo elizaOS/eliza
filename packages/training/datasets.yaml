@@ -221,11 +221,33 @@ datasets:
     priority: core
     license: apache-2.0
 
-  # xlam-fc-60k removed: Salesforce/xlam-function-calling-60k is a gated
-  # repo (click-through CC-BY-4.0 acknowledgment + APIGen citation) that
-  # snapshot_download cannot fetch without an authenticated HF token. We
-  # don't have one configured in this environment. Re-add when a token is
-  # available; the `xlam_fc` adapter still exists in lib/adapters.py.
+  - slug: openhermes-2.5
+    repo_id: teknium/OpenHermes-2.5
+    normalizer: hermes_fc
+    weight: 1.0
+    est_size_gb: 4.0
+    priority: extra
+    license: apache-2.0
+
+  - slug: hermes-fc-v2
+    repo_id: NousResearch/Hermes-Function-Calling-V2
+    normalizer: hermes_fc
+    weight: 2.0
+    est_size_gb: 0.8
+    priority: core
+    license: apache-2.0
+
+  - slug: openclaw-operator
+    repo_id: CyberAGI/openclaw-operator-data
+    normalizer: openclaw
+    weight: 1.5
+    est_size_gb: 0.5
+    priority: core
+    license: apache-2.0
+
+  # xlam-fc-60k: gated repo (CC-BY-4.0 + APIGen citation) — requires HF token
+  # with access grant. Use convert_xlam_to_eliza.py with --hf-token when available.
+  # The xlam_fc adapter in lib/adapters.py handles the format.
 
   - slug: sharegpt-tool-calls
     repo_id: Guilherme34/sharegpt-tool-calls

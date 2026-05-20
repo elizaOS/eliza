@@ -386,7 +386,7 @@ npm install -g elizaai@2.0.0-alpha.26
 
 # Disable automatic update checks by editing eliza.json
 # Set "update": { "checkOnStart": false } in your config file
-$EDITOR "$(eliza config path)"
+$EDITOR "~/.eliza/eliza.json"
 ```
 
 For package-manager-specific pinning:
@@ -476,7 +476,7 @@ For fully air-gapped deployments, disable the update check entirely:
 Or set via the CLI (open config in your editor):
 
 ```bash
-$EDITOR "$(eliza config path)"
+$EDITOR "~/.eliza/eliza.json"
 # Set "update": { "checkOnStart": false }
 ```
 

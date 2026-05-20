@@ -92,6 +92,20 @@ def _has_trope(text: str) -> bool:
     return False
 
 
+def _strip_trope_prefix(text: str) -> str:
+    """Remove trope opener from the start of a context assistant message.
+
+    Removes patterns like "Of course! " or "Certainly! " from the beginning
+    so context turns don't teach the model to start with tropes.
+    """
+    stripped = text.strip()
+    for prefix in TROPE_STARTS:
+        if stripped.startswith(prefix):
+            rest = stripped[len(prefix):].lstrip("! ,").lstrip()
+            return rest if rest else stripped
+    return stripped
+
+
 def _extract_think(text: str) -> tuple[str, str]:
     m = _THINK_RE.match(text.strip())
     if m:
@@ -316,8 +330,9 @@ def _convert_record(raw: dict[str, Any]) -> list[dict[str, Any]]:
             rec = _make_record(system, list(context), content, tools_list, source_tag, raw.get("id", ""))
             if rec is not None:
                 output.append(rec)
-            # Push assistant turn into context for subsequent turns
-            context.append({"role": "assistant", "content": content})
+            # Push assistant turn into context for subsequent turns; strip trope prefix
+            # from context history so it doesn't teach trope-style openings.
+            context.append({"role": "assistant", "content": _strip_trope_prefix(content)})
             continue
 
         if role in ("user", "tool"):

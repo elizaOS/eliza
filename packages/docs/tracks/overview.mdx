@@ -1,0 +1,43 @@
+---
+title: Tracks Overview
+description: "The eight ways to build with elizaOS — pick the one that fits your project."
+---
+
+elizaOS spans a runtime, a plugin ecosystem, an app distribution layer, a hosted cloud, an operating system, and a model-training stack. The documentation is organized around eight tracks. Pick the one that describes what you're building.
+
+<CardGroup cols={2}>
+  <Card title="Agent" icon="robot" href="/tracks/agent/overview">
+    **You want one Eliza agent running somewhere.** Character file, connectors, memory, channels.
+  </Card>
+  <Card title="Agent App" icon="window" href="/tracks/agent-app/overview">
+    **You want a polished product wrapping an agent.** Desktop / mobile / dashboard, with onboarding, distribution, and (optionally) Cloud-backed deployment.
+  </Card>
+  <Card title="Plugin" icon="puzzle-piece" href="/tracks/plugin/overview">
+    **You want to extend Eliza for everyone.** Build and publish a reusable `@elizaos/plugin-*` package.
+  </Card>
+  <Card title="Framework" icon="cubes" href="/tracks/framework/overview">
+    **You want to use `@elizaos/core` as a library.** Wire the runtime into a TypeScript codebase you already own.
+  </Card>
+  <Card title="Framework App" icon="rocket" href="/tracks/framework-app/overview">
+    **You want a custom application built on core.** No app shell — just the runtime, your plugins, and your code.
+  </Card>
+  <Card title="elizaOS" icon="computer" href="/tracks/elizaos/overview">
+    **You want Eliza on real hardware.** Bootable Linux distribution and AOSP variant.
+  </Card>
+  <Card title="Cloud" icon="cloud" href="/tracks/cloud/overview">
+    **You want managed infrastructure.** Eliza Cloud APIs for auth, app registration, inference, billing, containers, domains.
+  </Card>
+  <Card title="Training & Simulation" icon="brain" href="/tracks/training/overview">
+    **You want to train or evaluate.** Eliza-1 fine-tuning, the Feed simulation, robot embodiment, benchmarks.
+  </Card>
+</CardGroup>
+
+## Tracks compose
+
+These aren't silos. A typical project crosses several:
+
+- A **Plugin** is consumed by an **Agent**, which is wrapped in an **Agent App**, which deploys to **Cloud**.
+- A **Framework App** can target **elizaOS** as its host OS.
+- **Training & Simulation** produces models that any of the above can load.
+
+Start with the track closest to your output artifact and follow the links inward.

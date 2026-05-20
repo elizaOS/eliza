@@ -1,0 +1,41 @@
+---
+title: Create an Agent
+description: "Scaffold and run a new Eliza agent project."
+---
+
+## Scaffold
+
+```bash
+npx elizaos create my-agent
+cd my-agent
+```
+
+The CLI generates a project with:
+
+- `character.ts` — the agent's identity and plugin list
+- `package.json` — wired to `@elizaos/core` and the default plugin set
+- `tsconfig.json`, `bunfig.toml` — build config
+- `src/index.ts` — the entry point that boots the runtime
+
+## Install and run
+
+```bash
+bun install
+bun run dev
+```
+
+This starts the agent with hot-reload. The API binds to `MILADY_API_PORT` (default `31337`) and the dashboard to `MILADY_PORT` (default `2138`). Ports auto-shift if taken.
+
+## Add a model provider
+
+Edit `.env` and add credentials for at least one provider (Anthropic, OpenAI, OpenRouter, Ollama, or any other supported plugin). The defaults are Anthropic `claude-opus-4-7` / `claude-haiku-4-5-20251001` — see [Model Providers](/model-providers) for overrides.
+
+## Add a connector
+
+Connectors are plugins. Add the channel you want (e.g. `@elizaos/plugin-discord`) to your `character.ts` `plugins` array and set the required environment variables. See [Connectors](/guides/connectors) for the full list and per-channel setup.
+
+## Next
+
+- [Edit your character](/tracks/agent/character)
+- [Connect channels](/tracks/agent/connect-channels)
+- [CLI reference](/cli/overview)

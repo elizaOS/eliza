@@ -62,6 +62,23 @@ test.beforeEach(async ({ context, page, browserName }) => {
       },
     }),
   );
+
+  await page.route("**/api/credits/balance", (route) =>
+    route.fulfill({ json: { balance: 100 } }),
+  );
+
+  await page.route("**/api/v1/user", (route) =>
+    route.fulfill({
+      json: {
+        success: true,
+        user: {
+          id: "user_1",
+          email: "playwright@example.com",
+          name: "Playwright User",
+        },
+      },
+    }),
+  );
 });
 
 test("api explorer: search, auth, request tester, response, and OpenAPI export", async ({

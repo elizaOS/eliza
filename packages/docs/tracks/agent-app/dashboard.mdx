@@ -1,0 +1,20 @@
+---
+title: Dashboard
+description: "The web dashboard shipped inside every Eliza app."
+---
+
+The dashboard is the React UI that desktop, mobile, and the standalone web app all render. It exposes:
+
+- **Chat** — the main conversation surface ([dashboard/chat](/dashboard/chat))
+- **Apps** — installed agent apps, capabilities, settings ([dashboard/apps](/dashboard/apps))
+- **Pairing** — connect remote clients to a local agent ([dashboard/pairing](/dashboard/pairing))
+- **Stream** — live event view (memory writes, action calls, evaluator results) ([dashboard/stream](/dashboard/stream))
+
+## Source
+
+- UI: [`packages/app/src/`](https://github.com/elizaOS/eliza/tree/develop/packages/app)
+- Shared logic and onboarding: [`packages/app-core/src/`](https://github.com/elizaOS/eliza/tree/develop/packages/app-core)
+
+## White-labeling
+
+Branding (logo, app name, colors, default character) is set via `app.config.ts`. The same shell can ship as multiple distinct products by changing the config.

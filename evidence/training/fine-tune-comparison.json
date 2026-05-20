@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "status": "blocked",
+  "generatedAt": "2026-05-20T00:00:00-07:00",
+  "modelRepo": "elizaos/eliza-1",
+  "datasetRepo": "elizaos/eliza-1-training",
+  "baselineReleaseState": "base-v1",
+  "fineTunedReleaseState": "finetuned-v2",
+  "activeTiers": [
+    "0_8b",
+    "2b",
+    "4b",
+    "9b",
+    "27b",
+    "27b-256k"
+  ],
+  "legacyTiers": [
+    "0_6b"
+  ],
+  "minimumRequiredComparisonTier": "0_8b",
+  "comparisonContract": {
+    "mustUseCurrentActiveTier": true,
+    "mustCompareAgainstSameBaseRelease": true,
+    "legacy0_6bEvidenceIsInsufficient": true,
+    "requiredModelArtifact": "bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf",
+    "requiredMetrics": [
+      "eliza_bench",
+      "native_tool_call",
+      "structured_response"
+    ]
+  },
+  "currentDatasetEvidence": {
+    "status": "present-and-live-audit-passing",
+    "sftPackage": "elizaos/eliza-1-training/sft/0_8b/",
+    "manifest": "sft/0_8b/manifest.json",
+    "validation": "sft/0_8b/validation.json",
+    "counts": {
+      "train": 116,
+      "val": 6,
+      "test": 3,
+      "total": 125
+    }
+  },
+  "hfArtifactAudit": {
+    "checkedAt": "2026-05-20T00:00:00-07:00",
+    "missing": [
+      "bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf",
+      "evidence/training/0_8b/eliza-bench.json",
+      "evidence/training/0_8b/native-tool-call.json",
+      "evidence/training/0_8b/structured-response.json"
+    ],
+    "present": [
+      "evidence/training/fine-tune-comparison.json",
+      "elizaos/eliza-1-training/sft/0_8b/manifest.json",
+      "elizaos/eliza-1-training/sft/0_8b/validation.json"
+    ],
+    "finetunedV2Entries": []
+  },
+  "localFeasibility": {
+    "status": "not-feasible-on-this-host",
+    "host": "Darwin arm64 macOS 26.2",
+    "cudaAvailable": false,
+    "torchImport": "ModuleNotFoundError: No module named 'torch'",
+    "tritonAvailable": false,
+    "reason": "The active 0_8b APOLLO fine-tune path requires the Linux/CUDA training image with Torch/Triton kernels. This macOS arm64 host has no CUDA stack and no local Torch/Triton training environment."
+  },
+  "releaseAudit": {
+    "command": "python3 packages/training/scripts/manifest/audit_hf_eliza1_release.py --summary",
+    "failedCheck": {
+      "category": "fineTuneComparison",
+      "name": "fine-tune comparison evidence passed",
+      "detail": "status: 'blocked', legacy 0_6b comparison evidence is not current release evidence, comparisons.0_8b: missing"
+    }
+  },
+  "legacyComparisonEvidence": {
+    "datasetRepo": "elizaos/eliza-1-training",
+    "releaseStatus": "legacy-only; not accepted for active Eliza-1 tiers",
+    "paths": [
+      "evals/bench/0_6b/base-eliza_bench-summary.json",
+      "evals/bench/0_6b/base-native_tool_call-summary.json",
+      "evals/bench/0_6b/finetuned-eliza_bench-summary.json",
+      "evals/bench/0_6b/finetuned-native_tool_call-summary.json",
+      "evals/bench/0_6b/gate_report.json",
+      "evals/bench/0_6b/eliza1-0_6b-apollo-sft-manifest.json",
+      "evals/bench/0_6b/eliza1-0_6b-apollo-sft-report.md"
+    ]
+  },
+  "comparisons": {},
+  "blockers": [
+    "no current 0_8b fine-tuned model artifact is published under elizaos/eliza-1/bundles/0_8b/finetuned-v2/",
+    "no finetuned-v2 release state has been created for the active 0_8b tier",
+    "baseline-vs-fine-tuned eliza_bench report for active 0_8b is missing at evidence/training/0_8b/eliza-bench.json",
+    "baseline-vs-fine-tuned native_tool_call report for active 0_8b is missing at evidence/training/0_8b/native-tool-call.json",
+    "baseline-vs-fine-tuned structured_response report for active 0_8b is missing at evidence/training/0_8b/structured-response.json",
+    "legacy 0_6b comparison artifacts exist only in the training dataset repo and do not cover the active release tier set",
+    "local macOS training is blocked; run the active 0_8b fine-tune and evals in the Linux/CUDA training image or cloud target"
+  ],
+  "nextActions": [
+    "export HF_TOKEN using the split-token construction supplied by the operator, without printing it",
+    "hf download elizaos/eliza-1-training --type dataset --include 'sft/0_8b/*' --local-dir /tmp/eliza-1-training",
+    "run the qwen3.5-0.8b smoke and preflight in the Linux/CUDA training image; preserve the smoke summary and .preflight.ok evidence",
+    "cd packages/training && uv run --extra train python scripts/run_pipeline.py --registry-key qwen3.5-0.8b --train-file /tmp/eliza-1-training/sft/0_8b/train.jsonl --val-file /tmp/eliza-1-training/sft/0_8b/val.jsonl --test-file /tmp/eliza-1-training/sft/0_8b/test.jsonl --epochs 1 --run-name eliza-1-0_8b-finetuned-v2",
+    "publish bundles/0_8b/finetuned-v2/eliza-1-0_8b-sft.gguf with provenance tied to elizaos/eliza-1-training/sft/0_8b",
+    "run baseline and fine-tuned eliza_bench, native_tool_call, and structured_response evals against the same held-out inputs",
+    "publish evidence/training/0_8b/eliza-bench.json, evidence/training/0_8b/native-tool-call.json, and evidence/training/0_8b/structured-response.json",
+    "replace this blocker with status=pass only if comparisons.0_8b.passed=true and comparisons.0_8b.beatsBaseline=true"
+  ]
+}

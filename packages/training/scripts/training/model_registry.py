@@ -311,7 +311,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
@@ -355,7 +355,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
@@ -388,7 +388,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
@@ -423,7 +423,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",
@@ -456,7 +456,7 @@ REGISTRY: dict[str, ModelEntry] = {
         infer_kv_head_dim=256,
         quantization_after=(
             "polarquant",
-            "fused_turboquant",
+            "turboquant",
             "qjl",
             "gguf-q3_k_m",
             "gguf-q4_k_m",

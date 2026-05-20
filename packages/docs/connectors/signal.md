@@ -211,6 +211,6 @@ Each account entry accepts all the same fields as the top-level `connectors.sign
 
 ## Related
 
-- [Signal plugin reference](/plugin-registry/platform/signal)
+- [Signal plugin reference](/connectors/signal)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

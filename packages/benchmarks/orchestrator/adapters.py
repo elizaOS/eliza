@@ -118,6 +118,11 @@ SWE_BENCH_DOCKER_UNAVAILABLE_REASON = (
     "(start Docker Desktop/daemon so official SWE-Bench tests can run); "
     "harness not run"
 )
+OSWORLD_DOCKER_UNAVAILABLE_REASON = (
+    "OSWorld Docker desktop backend unavailable "
+    "(start Docker Desktop/daemon so the VM-backed tasks can run); "
+    "harness not run"
+)
 HERMES_SANDBOX_UNAVAILABLE_REASON = (
     "Hermes sandbox execution unavailable "
     "(set MODAL_TOKEN_ID/MODAL_TOKEN_SECRET or start a reachable Docker daemon); "
@@ -147,6 +152,8 @@ def _agent_compatibility_for(benchmark_id: str) -> tuple[str, ...]:
         return ALL_HARNESSES if _has_terminal_bench_docker_backend() else ()
     if benchmark_id in {"swe_bench", "swe_bench_orchestrated"}:
         return ALL_HARNESSES if _has_swe_bench_docker_backend() else ()
+    if benchmark_id == "osworld":
+        return ALL_HARNESSES if _has_osworld_docker_backend() else ()
     if benchmark_id == "gauntlet":
         return ALL_HARNESSES if _has_gauntlet_real_surfpool_backend() else ()
     if benchmark_id in {
@@ -286,6 +293,18 @@ def _has_swe_bench_docker_backend() -> bool:
         return _SWE_BENCH_DOCKER_AVAILABLE
     _SWE_BENCH_DOCKER_AVAILABLE = _has_terminal_bench_docker_backend()
     return _SWE_BENCH_DOCKER_AVAILABLE
+
+
+_OSWORLD_DOCKER_AVAILABLE: bool | None = None
+
+
+def _has_osworld_docker_backend() -> bool:
+    """Return true when Docker can run OSWorld's VM orchestration backend."""
+    global _OSWORLD_DOCKER_AVAILABLE
+    if _OSWORLD_DOCKER_AVAILABLE is not None:
+        return _OSWORLD_DOCKER_AVAILABLE
+    _OSWORLD_DOCKER_AVAILABLE = _docker_info_available(attempts=1, timeout_s=5.0)
+    return _OSWORLD_DOCKER_AVAILABLE
 
 
 def _has_hermes_sandbox_backend() -> bool:
@@ -2084,8 +2103,7 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
         default_method = "eliza_compactbench/compactors/__init__.py:HybridLedgerCompactor"
     method = str(ctx.request.extra_config.get("method", default_method))
     compactbench_root = Path(adapter.cwd)
-    venv_python = compactbench_root / ".venv" / "bin" / "python"
-    python_executable = str(venv_python) if venv_python.exists() else sys.executable
+    python_executable = _compactbench_python_executable(compactbench_root)
     args = [
         python_executable,
         "run_cerebras.py",
@@ -2122,6 +2140,45 @@ def _command_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> l
             ]
         )
     return args
+
+
+def _compactbench_python_executable(compactbench_root: Path) -> str:
+    candidates: list[str] = []
+    venv_python = compactbench_root / ".venv" / "bin" / "python"
+    if venv_python.exists():
+        candidates.append(str(venv_python))
+    candidates.append(sys.executable)
+    for binary in ("python3", "python"):
+        resolved = shutil.which(binary)
+        if resolved:
+            candidates.append(resolved)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _python_can_import(candidate, "ruamel.yaml"):
+            return candidate
+    return candidates[0] if candidates else sys.executable
+
+
+def _python_can_import(python_executable: str, module: str) -> bool:
+    try:
+        completed = subprocess.run(
+            [
+                python_executable,
+                "-c",
+                f"import importlib; importlib.import_module({module!r})",
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+    return completed.returncode == 0
 
 
 def _env_compactbench(ctx: ExecutionContext, adapter: BenchmarkAdapter) -> dict[str, str]:

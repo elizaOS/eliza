@@ -12,7 +12,7 @@ The Instagram connector is an elizaOS plugin that bridges your agent to Instagra
 |-------|-------|
 | Package | `@elizaos/plugin-instagram` |
 | Config key | `connectors.instagram` |
-| Install | `eliza plugins install @elizaos/plugin-instagram` |
+| Install | `bun add @elizaos/plugin-instagram` |
 
 ## Setup Requirements
 
@@ -30,7 +30,7 @@ The Instagram connector is an elizaOS plugin that bridges your agent to Instagra
 Install the plugin from the registry:
 
 ```bash
-eliza plugins install instagram
+bun add instagram
 ```
 
 Configure in `~/.eliza/eliza.json`:
@@ -47,7 +47,7 @@ Configure in `~/.eliza/eliza.json`:
 
 ## Setup
 
-1. Install the plugin: `eliza plugins install instagram`.
+1. Install the plugin: `bun add instagram`.
 2. Set `INSTAGRAM_USERNAME` and `INSTAGRAM_PASSWORD` as environment variables or in your config.
 3. If your account has 2FA enabled, provide the `INSTAGRAM_VERIFICATION_CODE` when prompted.
 4. Optionally configure a proxy with `INSTAGRAM_PROXY`.
@@ -63,5 +63,5 @@ Configure in `~/.eliza/eliza.json`:
 
 ## Related
 
-- [Instagram plugin reference](/plugin-registry/platform/instagram)
+- [Instagram plugin reference](/connectors/instagram)
 - [Connectors overview](/guides/connectors#instagram)

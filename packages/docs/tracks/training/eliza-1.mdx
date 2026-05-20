@@ -1,0 +1,37 @@
+---
+title: Eliza-1
+description: "Open-weight Eliza models — fine-tuning, quantization, publishing."
+---
+
+**Eliza-1** is the model family Eliza agents run locally by default. Built on Qwen base models, fine-tuned for native tool-calling and agent loops, quantized for on-device inference.
+
+## Sizes
+
+- **0.8B** — mobile / edge tier.
+- **2B** — laptop CPU + small GPU.
+- **7B** — workstation GPU.
+- **14B / 27B** — server GPU.
+
+Larger sizes track agent benchmarks closer to flagship frontier models on tool-calling and autonomy tasks; smaller sizes prioritize latency and footprint.
+
+## Pipeline
+
+1. **Dataset prep** — normalize trajectories, filter, embed metadata. `packages/training/data/`.
+2. **SFT** — native tool-calling supervised fine-tune. APOLLO optimizer. `packages/training/scripts/`.
+3. **Quantization** — PolarQuant / TurboQuant / QJL. Post-training, no quality regression.
+4. **Publish** — HuggingFace repos with model cards. Bundle manifests reference exact training and eval runs.
+
+## Training requirements
+
+- GPU tier scales with model size. 0.8B fits on a 24 GB consumer GPU; 27B requires 8x H100.
+- Remote orchestration via Vast.ai integration in `packages/training/scripts/`.
+
+## Loading in an agent
+
+Eliza-1 models load through the standard model-provider plugin surface (`@elizaos/plugin-llamacpp`, `@elizaos/plugin-ollama`, or direct FFI). Set the model id in your character's `settings.model`.
+
+## See also
+
+- [Model providers](/model-providers)
+- [Benchmarks](/tracks/training/benchmarks)
+- [Local models guide](/guides/local-models)

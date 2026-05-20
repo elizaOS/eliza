@@ -122,6 +122,6 @@ Each account has its own API key, proxy URL, and session. Per-account fields ove
 
 ## Related
 
-- [WeChat plugin reference](/plugin-registry/platform/wechat)
+- [WeChat plugin reference](/connectors/wechat)
 - [Connectors overview](/guides/connectors)
 - [Configuration reference](/configuration)

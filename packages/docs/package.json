@@ -2,7 +2,7 @@
   "name": "@elizaos/docs",
   "version": "2.0.0-beta.2",
   "type": "module",
-  "description": "ElizaOS documentation",
+  "description": "elizaOS documentation",
   "scripts": {
     "test": "bun test ./test",
     "predev": "node ../shared/scripts/sync-to-public.mjs ./public --logos --favicons --ogembeds --banners",

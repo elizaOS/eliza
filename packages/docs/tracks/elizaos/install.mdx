@@ -1,0 +1,47 @@
+---
+title: Install elizaOS
+description: "Flashers, checksums, recovery, channels."
+---
+
+## Pick a target
+
+- **USB drive** — for elizaOS Live on existing x86_64 hardware.
+- **Phone / tablet** — for elizaOS Mobile on a supported AOSP device.
+- **Virtual machine** — for evaluation. QEMU/KVM, UTM (macOS), and OVA bundles ship from `packages/os/release/`.
+
+## Verify the image
+
+Every release ships a signed manifest with SHA256 checksums and SBOMs. Always verify:
+
+```bash
+sha256sum -c elizaos-<channel>-<arch>.iso.sha256
+```
+
+The signing key is published alongside the release manifest. Refuse images that don't verify.
+
+## Flash
+
+The repo ships a cross-platform flasher under `packages/os/usb-installer/`. It handles target selection, format, write, and verify in one pass. Tools required vary by OS:
+
+- macOS / Linux — works against the standard block-device tooling.
+- Windows — uses platform-specific flashing internals.
+
+Destructive operation. The flasher requires explicit confirmation of the target device before writing.
+
+## Channels
+
+- **alpha** — fast-moving. Daily builds. Expect breakage.
+- **beta** — pre-release. Targeted at testers and developers.
+- **stable** — slow, validated. Default for production use.
+
+Switch channels by re-flashing with a different release artifact. There is no in-place channel switch.
+
+## Recovery
+
+Each release ships a recovery image alongside the install image. If a device fails to boot after an OTA, fastboot or USB-boot the recovery image and re-run the install.
+
+## See also
+
+- [Linux](/tracks/elizaos/linux)
+- [AOSP](/tracks/elizaos/aosp)
+- [Build and release](/build-and-release)

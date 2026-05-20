@@ -44,7 +44,7 @@ runtime bridge, so local iOS wakes are recorded as explicit
 `ios_ittp_route_kernel_unavailable_in_background_jscontext` skips instead of
 probing a fake TCP endpoint.
 
-The AOSP / ElizaOS Android build is a separate privileged system target. It can
+The AOSP / elizaOS Android build is a separate privileged system target. It can
 stage the on-device Bun agent, `/system/bin/sh`, shell plugin, coding-tools
 plugin, agent orchestrator, and optional AVF/Microdroid boundary when the
 device image exposes those APIs. The Android template includes a reflection-only

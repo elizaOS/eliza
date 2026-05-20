@@ -425,7 +425,7 @@ When Eliza starts, it discovers plugins from multiple sources in this order:
 4. **Provider plugins** — Auto-enabled when API key env var is set (e.g., `ANTHROPIC_API_KEY` → `@elizaos/plugin-anthropic`)
 5. **Feature plugins** — Enabled via feature flags in `eliza.json` (e.g., `features.browser: true` → `@elizaos/plugin-browser`)
 6. **Ejected plugins** — Git-cloned upstream plugins in `~/.eliza/plugins/ejected/` (take priority over npm versions)
-7. **User-installed plugins** — Installed via `eliza plugins install`
+7. **User-installed plugins** — Installed via `bun add <name>` (after editing character.plugins)
 8. **Custom plugins** — Dropped into `~/.eliza/plugins/custom/`
 
 ### Auto-Enable by Environment Variable
