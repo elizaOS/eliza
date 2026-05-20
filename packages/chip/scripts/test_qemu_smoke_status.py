@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import stat
 import subprocess
 import tempfile
@@ -26,6 +27,14 @@ QEMU_OS_ATTEMPT_MANIFEST = ROOT / "build/reports/qemu_os_boot_attempt.json"
 def write_executable(path: Path, text: str) -> None:
     path.write_text(text)
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def link_host_tools(bindir: Path, *names: str) -> None:
+    for name in names:
+        host_tool = shutil.which(name)
+        if host_tool is None:
+            raise AssertionError(f"missing host tool required by test: {name}")
+        (bindir / name).symlink_to(host_tool)
 
 
 def run_check(env: dict[str, str]) -> subprocess.CompletedProcess[str]:
@@ -98,6 +107,35 @@ def test_build_failure_is_fail() -> None:
             f"expected build failure to exit 1, got {result.returncode}\n{result.stdout}"
         )
     assert_contains(result.stdout, "STATUS: FAIL qemu.build")
+
+
+def test_autodetected_clang_without_lld_is_blocked() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        bindir = Path(td)
+        link_host_tools(bindir, "cat", "dirname", "grep", "mkdir", "rm", "rmdir", "sh")
+        clang = bindir / "clang"
+        write_executable(
+            clang,
+            "#!/bin/sh\n"
+            'case "$*" in\n'
+            "  *-fuse-ld=lld*) echo 'clang: error: invalid linker name in argument' >&2; exit 1 ;;\n"
+            "  *) exit 0 ;;\n"
+            "esac\n",
+        )
+        result = run_check(
+            {
+                "PATH": str(bindir),
+                "RISCV_CC": "",
+                "RISCV_CLANG_CANDIDATES": "clang",
+                "REQUIRE_QEMU": "0",
+            }
+        )
+    if result.returncode != 0:
+        raise AssertionError(
+            f"expected missing lld to be non-strict BLOCKED, got {result.returncode}\n{result.stdout}"
+        )
+    assert_contains(result.stdout, "STATUS: PASS qemu.semantic")
+    assert_contains(result.stdout, "STATUS: BLOCKED qemu.build")
 
 
 def test_fake_toolchain_and_qemu_pass() -> None:
@@ -275,6 +313,7 @@ def main() -> int:
         test_missing_toolchain_is_non_strict_blocked,
         test_missing_toolchain_is_strict_blocked,
         test_build_failure_is_fail,
+        test_autodetected_clang_without_lld_is_blocked,
         test_fake_toolchain_and_qemu_pass,
         test_os_boot_check_blocks_without_payloads,
         test_os_boot_check_fails_on_kernel_panic,

@@ -6,7 +6,7 @@ source_ids:
 dut: e1_linux_soc_contract
 scope: >
   Dry-run coverage targets for future AI-assisted cocotb stimulus proposals
-  against interrupt-controller, CLINT placeholder, and reset-domain edges.
+  against interrupt-controller, future CLINT, and reset-domain edges.
   Candidate tests are not evidence until accepted into source and passing the
   named cocotb gates.
 required_followup_gates:
@@ -34,6 +34,6 @@ bins:
       - verify/cocotb/test_reset_domain_cleanup.py::reset_clears_handshake_signals
   - id: clint_future_timer_irq_contract
     description: Future CLINT timer interrupt contract must elaborate even while skipped.
-    required_observation: skipped scaffold remains discoverable until CLINT lands in the SoC contract
+    required_observation: fail-closed skipped contract remains discoverable until CLINT lands in the SoC contract
     existing_reference:
       - verify/cocotb/test_clint_timer_irq.py::clint_timer_irq_fires_when_mtime_ge_mtimecmp
