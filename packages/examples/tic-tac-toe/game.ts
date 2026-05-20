@@ -680,10 +680,12 @@ async function playAIVsAI(session: GameSession): Promise<void> {
   showResult(game.getState().winner as "X" | "O" | "draw");
 }
 
-async function runBenchmark(session: GameSession): Promise<void> {
+async function runBenchmark(
+  session: GameSession,
+  iterations = 100,
+): Promise<void> {
   console.log("\n⚡ Running performance benchmark...\n");
 
-  const iterations = 100;
   const start = performance.now();
 
   for (let i = 0; i < iterations; i++) {
@@ -707,10 +709,15 @@ async function runBenchmark(session: GameSession): Promise<void> {
 
 type GameMode = "human" | "watch" | "bench";
 
-function parseArgs(): { mode?: GameMode; noPrompt?: boolean } {
+function parseArgs(): {
+  mode?: GameMode;
+  noPrompt?: boolean;
+  benchmarkIterations?: number;
+} {
   const args = process.argv.slice(2);
   let mode: GameMode | undefined;
   let noPrompt = false;
+  let benchmarkIterations: number | undefined;
 
   for (const arg of args) {
     const lower = arg.toLowerCase();
@@ -732,10 +739,15 @@ function parseArgs(): { mode?: GameMode; noPrompt?: boolean } {
       mode = "bench";
     } else if (lower === "--no-prompt" || lower === "-y") {
       noPrompt = true;
+    } else if (lower.startsWith("--iterations=")) {
+      const parsed = parseInt(lower.split("=")[1], 10);
+      if (Number.isFinite(parsed)) {
+        benchmarkIterations = Math.max(1, parsed);
+      }
     }
   }
 
-  return { mode, noPrompt };
+  return { mode, noPrompt, benchmarkIterations };
 }
 
 // ============================================================================
@@ -743,7 +755,7 @@ function parseArgs(): { mode?: GameMode; noPrompt?: boolean } {
 // ============================================================================
 
 async function main(): Promise<void> {
-  const { mode: cliMode, noPrompt } = parseArgs();
+  const { mode: cliMode, noPrompt, benchmarkIterations } = parseArgs();
   const usePromptUi = !(cliMode === "bench" && noPrompt);
 
   await showIntro(usePromptUi);
@@ -789,7 +801,7 @@ async function main(): Promise<void> {
         await playAIVsAI(session);
         break;
       case "bench":
-        await runBenchmark(session);
+        await runBenchmark(session, benchmarkIterations);
         break;
     }
 

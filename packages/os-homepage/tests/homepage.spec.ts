@@ -60,10 +60,10 @@ test("download section exposes release artifact links", async ({ page }) => {
 
   await expect(
     downloads.getByRole("link", { name: "Download" }).first(),
-  ).toHaveAttribute("href", /elizaos-live-beta-x86_64\.img\.zst$/);
+  ).toHaveAttribute("href", /eliza-canary-linux-x64\.tar\.zst$/);
   await expect(
     downloads.getByRole("link", { name: "SHA256" }).first(),
-  ).toHaveAttribute("href", /SHA256SUMS$/);
+  ).toHaveAttribute("href", /SHA256SUMS\.txt$/);
 });
 
 test("anchor sections #download and #hardware exist and are reachable", async ({
@@ -121,10 +121,7 @@ test("hardware tiles link to checkout per product", async ({ page }) => {
   await page.goto("/");
   await expect(
     page.getByRole("link", { name: /Open checkout/i }),
-  ).toHaveAttribute(
-    "href",
-    /^https:\/\/elizaos\.ai\/checkout\?collection=elizaos-hardware$/,
-  );
+  ).toHaveAttribute("href", "/checkout?collection=elizaos-hardware");
 });
 
 test("checkout lives on elizaOS and starts with Eliza Cloud auth", async ({
@@ -200,9 +197,9 @@ for (const product of [
 
     await expect(page.getByRole("heading", { name })).toBeVisible();
     await expect(
-      page.getByRole("link", { name: /Pre-order on elizaos.ai/i }),
-    ).toHaveAttribute("href", `https://elizaos.ai/checkout?sku=${sku}`);
-    await expect(page.getByText("Checkout stays on elizaos.ai.")).toBeVisible();
+      page.getByRole("link", { name: /Pre-order checkout/i }),
+    ).toHaveAttribute("href", `/checkout?sku=${sku}`);
+    await expect(page.getByText("Checkout stays on elizaOS.")).toBeVisible();
     await expect(
       page.getByRole("link", { name: /Download beta/i }),
     ).toHaveAttribute("href", "/downloads/elizaos-beta-manifest.json");
