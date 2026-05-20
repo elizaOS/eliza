@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 
+import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
+import { join } from "node:path";
 import { fireEvent, screen } from "@testing-library/dom";
 import type ReactTypes from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -9,8 +11,26 @@ const pluginRequire = createRequire(
   `${process.cwd()}/plugins/plugin-clawville/src/ui/ClawvilleOperatorSurface.tsx`,
 );
 const React = pluginRequire("react") as typeof ReactTypes;
-const { flushSync } = pluginRequire("react-dom") as typeof import("react-dom");
-const { createRoot } = pluginRequire(
+const bunModulesDir = join(process.cwd(), "node_modules", ".bun");
+const reactDomPackageDir = readdirSync(bunModulesDir).find((entry) =>
+  entry.startsWith(`react-dom@${React.version}+`),
+);
+if (!reactDomPackageDir) {
+  throw new Error(`Unable to locate react-dom ${React.version} package`);
+}
+const reactDomRequire = createRequire(
+  join(
+    bunModulesDir,
+    reactDomPackageDir,
+    "node_modules",
+    "react-dom",
+    "package.json",
+  ),
+);
+const { flushSync } = reactDomRequire(
+  "react-dom",
+) as typeof import("react-dom");
+const { createRoot } = reactDomRequire(
   "react-dom/client",
 ) as typeof import("react-dom/client");
 const { act } = React;
